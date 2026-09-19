@@ -1,6 +1,6 @@
 /**
  * The state inversion. Tracks the frenzy window and the escalating value of
- * predators consumed within a single window.
+ * enemies consumed within a single window.
  */
 export class Frenzy {
   timer = 0;
@@ -11,7 +11,7 @@ export class Frenzy {
     return this.timer > 0;
   }
 
-  /** Last two seconds: predators flash as a warning. */
+  /** Last two seconds: enemies flash as a warning. */
   get warning(): boolean {
     return this.active && this.timer <= 2;
   }
@@ -38,7 +38,7 @@ export class Frenzy {
     return false;
   }
 
-  /** Score for the next predator eaten in this window: 200, 400, 800, 1600. */
+  /** Score for the next enemy eaten in this window: 200, 400, 800, 1600. */
   consumeValue(): number {
     const value = 200 * Math.pow(2, this.chain);
     this.chain++;

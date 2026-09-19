@@ -1,4 +1,4 @@
-/** Small seedable PRNG (mulberry32) so predator behavior is reproducible in tests. */
+/** Small seedable PRNG (mulberry32) so enemy behavior is reproducible in tests. */
 export class Rng {
   private s: number;
 

@@ -1,14 +1,19 @@
 import { Dir } from '../world/types';
 
 /**
- * Keyboard + touch swipe. Directions are buffered: the latest requested
- * direction is held until the entity can actually turn that way.
+ * Keyboard + touch. Movement is hold-to-move: `direction` is the most
+ * recently pressed direction key that is still held, or 'none' when nothing
+ * is held. Touch works as a drag joystick: the finger's offset from where it
+ * landed is the held direction until it lifts.
  */
 export class Input {
-  private buffered: Dir = 'none';
+  private held: Dir[] = [];
+  /** Increments on every direction press so consumers can react once per press. */
+  directionSeq = 0;
   private pressed = new Set<string>();
   private justPressed = new Set<string>();
   private touchStart: { x: number; y: number } | null = null;
+  private touchDir: Dir = 'none';
 
   constructor(target: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -18,36 +23,57 @@ export class Input {
       this.justPressed.add(code);
       const d = keyToDir(code);
       if (d !== 'none') {
-        this.buffered = d;
+        this.held = this.held.filter((h) => h !== d);
+        this.held.push(d);
+        this.directionSeq++;
         e.preventDefault();
       }
       if (['Space', 'Enter', 'Escape', 'KeyM', 'F1'].includes(code)) e.preventDefault();
     });
-    window.addEventListener('keyup', (e) => this.pressed.delete(normalizeCode(e)));
+    window.addEventListener('keyup', (e) => {
+      const code = normalizeCode(e);
+      this.pressed.delete(code);
+      const d = keyToDir(code);
+      if (d !== 'none') this.held = this.held.filter((h) => h !== d);
+    });
+    window.addEventListener('blur', () => {
+      this.held = [];
+      this.pressed.clear();
+    });
 
     target.addEventListener('touchstart', (e) => {
       const t = e.changedTouches[0];
       this.touchStart = { x: t.clientX, y: t.clientY };
       this.justPressed.add('Touch');
     }, { passive: true });
-    target.addEventListener('touchend', (e) => {
+    target.addEventListener('touchmove', (e) => {
       if (!this.touchStart) return;
       const t = e.changedTouches[0];
       const dx = t.clientX - this.touchStart.x;
       const dy = t.clientY - this.touchStart.y;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) > 24) {
-        this.buffered = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 18) {
+        const d: Dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+        if (d !== this.touchDir) this.directionSeq++;
+        this.touchDir = d;
       }
-      this.touchStart = null;
     }, { passive: true });
+    const release = () => {
+      this.touchStart = null;
+      this.touchDir = 'none';
+    };
+    target.addEventListener('touchend', release, { passive: true });
+    target.addEventListener('touchcancel', release, { passive: true });
   }
 
+  /** Held movement direction right now, or 'none'. */
   get direction(): Dir {
-    return this.buffered;
+    if (this.touchDir !== 'none') return this.touchDir;
+    return this.held.length ? this.held[this.held.length - 1] : 'none';
   }
 
   clearDirection(): void {
-    this.buffered = 'none';
+    this.held = [];
+    this.touchDir = 'none';
   }
 
   isDown(code: string): boolean {

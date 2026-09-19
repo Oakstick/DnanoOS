@@ -2,9 +2,10 @@ import { GameLoop } from './engine/GameLoop';
 import { Game } from './game/Game';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement | null;
-if (!canvas) throw new Error('Missing #game canvas');
+const canvas3d = document.getElementById('game3d') as HTMLCanvasElement | null;
+if (!canvas || !canvas3d) throw new Error('Missing #game or #game3d canvas');
 
-const game = new Game(canvas);
+const game = new Game(canvas, canvas3d);
 const loop = new GameLoop(
   (dt) => game.update(dt),
   () => game.render(),

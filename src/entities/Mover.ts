@@ -1,5 +1,5 @@
 import { Grid } from '../world/Grid';
-import { Dir, DIR_VECTORS, OPPOSITE, Vec2 } from '../world/types';
+import { Dir, DIR_VECTORS, OPPOSITE, Tile, Vec2 } from '../world/types';
 
 /**
  * Grid-locked mover. `tile` is the integer tile we are leaving/standing on and
@@ -11,6 +11,8 @@ export class Mover {
   offset = 0;
   dir: Dir = 'none';
   speed: number; // tiles per second
+  /** Flyers ignore elevation and pits. */
+  flying = false;
 
   constructor(start: Vec2, speed: number) {
     this.tile = { ...start };
@@ -21,6 +23,15 @@ export class Mover {
   get pos(): Vec2 {
     const v = DIR_VECTORS[this.dir];
     return { x: this.tile.x + v.x * this.offset, y: this.tile.y + v.y * this.offset };
+  }
+
+  /** Floor elevation under the mover, blended between the tiles it is crossing. */
+  elevationOn(grid: Grid): number {
+    const a = grid.elevation(this.tile.x, this.tile.y);
+    if (this.dir === 'none' || this.offset === 0) return a;
+    const n = grid.wrap(this.nextTile(this.tile));
+    const b = grid.get(n.x, n.y) === Tile.Rock ? a : grid.elevation(n.x, n.y);
+    return a + (b - a) * this.offset;
   }
 
   /** Tile the mover is "in" for collision and pickup purposes. */
@@ -60,12 +71,13 @@ export class Mover {
     decide: (tile: Vec2, current: Dir) => Dir,
     allowNest = false,
     allowMidReverse = false,
+    stopWhenIdle = false,
   ): boolean {
     let crossed = false;
 
     if (this.dir === 'none') {
       const want = decide(this.tile, this.dir);
-      if (grid.canMove(this.tile, want, allowNest)) this.dir = want;
+      if (grid.canMove(this.tile, want, allowNest, this.flying)) this.dir = want;
       else return false;
     } else if (allowMidReverse) {
       const want = decide(this.tile, this.dir);
@@ -87,9 +99,10 @@ export class Mover {
       crossed = true;
 
       const want = decide(this.tile, this.dir);
-      if (want !== 'none' && grid.canMove(this.tile, want, allowNest)) {
+      if (want !== 'none' && grid.canMove(this.tile, want, allowNest, this.flying)) {
         this.dir = want;
-      } else if (!grid.canMove(this.tile, this.dir, allowNest)) {
+      } else if ((stopWhenIdle && want === 'none') || !grid.canMove(this.tile, this.dir, allowNest, this.flying)) {
+        // Either nothing is asked for (hold-to-move release) or the way is blocked: rest on this center.
         this.dir = 'none';
         remaining = 0;
         break;

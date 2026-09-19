@@ -1,14 +1,18 @@
+/** A gold nugget is worth a kill; only fifty exist per grove. */
 export const POINTS = {
-  nodule: 10,
+  nodule: 50,
   charge: 50,
 } as const;
 
 const HIGH_SCORE_KEY = 'vh.highscore';
 
+/** Popolon starts with three lives and can never hold more. */
+export const MAX_LIVES = 3;
+
 export class Score {
   score = 0;
   high = 0;
-  lives = 3;
+  lives = MAX_LIVES;
   level = 0;
   private nextLifeAt = 10_000;
 
@@ -33,10 +37,16 @@ export class Score {
     }
     if (this.score >= this.nextLifeAt) {
       this.nextLifeAt += 10_000;
-      this.lives++;
-      return true;
+      return this.gainLife();
     }
     return false;
+  }
+
+  /** Returns true if a life was actually added (not already at the cap). */
+  gainLife(): boolean {
+    if (this.lives >= MAX_LIVES) return false;
+    this.lives++;
+    return true;
   }
 
   loseLife(): boolean {
@@ -46,7 +56,7 @@ export class Score {
 
   reset(): void {
     this.score = 0;
-    this.lives = 3;
+    this.lives = MAX_LIVES;
     this.level = 0;
     this.nextLifeAt = 10_000;
   }

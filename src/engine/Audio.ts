@@ -2,7 +2,9 @@
  * Procedural Web Audio. No sample files needed for the scaffold; swap any
  * play* body for buffer playback later.
  */
-export type Sfx = 'nodule' | 'charge' | 'eat' | 'death' | 'clear' | 'start';
+export type Sfx =
+  | 'nodule' | 'charge' | 'eat' | 'death' | 'clear' | 'start'
+  | 'slash' | 'hurt' | 'fuse' | 'explode' | 'arrow' | 'arrowHit' | 'win' | 'jump';
 
 const MASTER_VOLUME = 0.5;
 
@@ -64,7 +66,7 @@ export class AudioManager {
     lfo.start();
   }
 
-  /** 0..1 how close the nearest predator is; raises the ambient pulse. */
+  /** 0..1 how close the nearest enemy is; raises the ambient pulse. */
   setThreat(level: number): void {
     if (!this.ctx || !this.ambientGain || !this.ambientOsc) return;
     const now = this.ctx.currentTime;
@@ -95,6 +97,16 @@ export class AudioManager {
     }
   }
 
+  /** Nugget reward: a bright two-note chime that climbs a little with each nugget found. */
+  playReward(step: number): void {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    const base = 660 * Math.pow(1.03, Math.min(step, 24));
+    this.blip(t, base, 0.12, 'triangle', 0.22);
+    this.blip(t + 0.09, base * 1.5, 0.16, 'triangle', 0.22);
+    this.blip(t + 0.09, base * 3, 0.1, 'sine', 0.08);
+  }
+
   play(sfx: Sfx): void {
     if (!this.ctx || !this.master) return;
     const t = this.ctx.currentTime;
@@ -112,8 +124,33 @@ export class AudioManager {
       case 'death':
         this.sweep(t, 400, 40, 1.1, 'sawtooth', 0.3);
         break;
+      case 'slash':
+        this.sweep(t, 1400, 500, 0.12, 'sawtooth', 0.12);
+        break;
+      case 'hurt':
+        this.sweep(t, 300, 120, 0.3, 'square', 0.22);
+        break;
+      case 'fuse':
+        this.blip(t, 1200, 0.04, 'square', 0.08);
+        break;
+      case 'arrow':
+        this.sweep(t, 2400, 900, 0.14, 'triangle', 0.14);
+        break;
+      case 'jump':
+        this.sweep(t, 300, 700, 0.16, 'triangle', 0.16);
+        break;
+      case 'arrowHit':
+        this.blip(t, 180, 0.08, 'square', 0.18);
+        break;
+      case 'explode':
+        this.sweep(t, 160, 25, 0.9, 'sawtooth', 0.6);
+        this.sweep(t, 900, 60, 0.25, 'square', 0.3);
+        break;
       case 'clear':
         [0, 0.12, 0.24, 0.36].forEach((d, i) => this.blip(t + d, 440 * Math.pow(1.25, i), 0.1, 'triangle', 0.2));
+        break;
+      case 'win':
+        [0, 0.15, 0.3, 0.45, 0.75].forEach((d, i) => this.blip(t + d, [523, 659, 784, 1047, 1319][i], 0.3, 'triangle', 0.25));
         break;
       case 'start':
         [0, 0.15].forEach((d, i) => this.blip(t + d, 330 + i * 110, 0.12, 'triangle', 0.2));
