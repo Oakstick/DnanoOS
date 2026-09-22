@@ -275,7 +275,9 @@ const P = {
   brown: 0x6b3f1d,
   purple: 0x7a3fe0,
   darkPurple: 0x3d1f78,
-  bone: 0xe8e8f0,
+  bone: 0xe0d3ba,
+  boneShade: 0xb3a288,
+  cavity: 0x241d17,
   eyeRed: 0xff2a2a,
   green: 0x3fe05a,
   lightGreen: 0x9dffab,
@@ -339,32 +341,42 @@ export const BAT_RIG: PartDef[] = [
   { name: 'rightWing', boxes: [[[7, 0, 0], [10, 3, 2]]], pivot: [6, 1.5, 1] },
 ];
 
-/** Skeleton: 7 wide, 3 deep, 12 tall, club raised on the right. */
+/** Skeleton: 9 wide, 5 deep, 15 tall. Ribbed cage with a hollow chest, red eye sockets. */
 export const SKELETON: VoxelModel = {
-  palette: { W: P.bone, K: P.dark, E: P.eyeRed, D: P.brown },
+  palette: { W: P.bone, w: P.boneShade, K: P.cavity, E: P.eyeRed },
   layers: [
-    ['.......', '.W...W.', '.......'],
-    ['.......', '.W...W.', '.......'],
-    ['.......', '.W...W.', '.......'],
-    ['.......', '.W...W.', '.......'],
-    ['.......', '.WWWWW.', '.......'],
-    ['.......', 'W.WWW.D', '.......'],
-    ['.......', 'W.W.W.D', '.......'],
-    ['.......', 'W.WWW.D', '.......'],
-    ['.......', 'W.WWW.D', '.......'],
-    ['.......', '..WWW.D', '.......'],
-    ['.......', '..WWW..', '..EWE..'],
-    ['.......', '..WWW..', '..WWW..'],
+    // 0 feet
+    ['.........', '.........', '...W.W...', '...W.W...', '.........'],
+    // 1-4 leg bones
+    ['.........', '.........', '...W.W...', '.........', '.........'],
+    ['.........', '.........', '...W.W...', '.........', '.........'],
+    ['.........', '.........', '...W.W...', '.........', '.........'],
+    ['.........', '.........', '...W.W...', '.........', '.........'],
+    // 5 pelvis, hands at the sides
+    ['....w....', '...WWW...', 'W..WWW..W', '...WWW...', '....W....'],
+    // 6-9 the cage: solid rib bands alternating with gaps that show the hollow
+    ['...www...', '...WKW...', 'W..WKW..W', '...WKW...', '...WWW...'],
+    ['...www...', '..WKKKW..', 'W.WKKKW.W', '..WKKKW..', '.........'],
+    ['...www...', '..WKKKW..', 'W.WKKKW.W', '..WKKKW..', '...WWW...'],
+    ['...www...', '..WKKKW..', 'W.WKKKW.W', '..WKKKW..', '.........'],
+    // 10 shoulders and collarbone
+    ['...www...', '..WWWWW..', 'WWWWWWWWW', '..WWWWW..', '...WWW...'],
+    // 11 neck
+    ['.........', '....w....', '....W....', '....W....', '.........'],
+    // 12-14 jaw and skull, eyes on the front face
+    ['.........', '...www...', '...WWW...', '...WWW...', '...WWW...'],
+    ['...www...', '..WWWWW..', '..WWWWW..', '..WWWWW..', '..KEWEK..'],
+    ['.........', '...www...', '...WWW...', '...WWW...', '.........'],
   ],
 };
 
-/** Skeleton joints: thin legs at the pelvis, arms at the shoulder, skull at the neck. */
+/** Skeleton joints: bare arms from the collarbone ends, legs at the pelvis, skull at the neck. */
 export const SKELETON_RIG: PartDef[] = [
-  { name: 'leftLeg', boxes: [[[1, 0, 0], [1, 3, 2]]], pivot: [1, 4, 1] },
-  { name: 'rightLeg', boxes: [[[5, 0, 0], [5, 3, 2]]], pivot: [5, 4, 1] },
-  { name: 'leftArm', boxes: [[[0, 5, 0], [0, 8, 2]]], pivot: [0, 9, 1] },
-  { name: 'clubArm', boxes: [[[6, 5, 0], [6, 9, 2]]], pivot: [6, 9.5, 1] },
-  { name: 'head', boxes: [[[2, 10, 0], [4, 11, 2]]], pivot: [3, 10, 1] },
+  { name: 'leftLeg', boxes: [[[3, 0, 0], [3, 4, 4]]], pivot: [3, 5, 2] },
+  { name: 'rightLeg', boxes: [[[5, 0, 0], [5, 4, 4]]], pivot: [5, 5, 2] },
+  { name: 'leftArm', boxes: [[[0, 5, 0], [0, 9, 4]]], pivot: [0, 10, 2] },
+  { name: 'rightArm', boxes: [[[8, 5, 0], [8, 9, 4]]], pivot: [8, 10, 2] },
+  { name: 'head', boxes: [[[2, 12, 0], [6, 14, 4]]], pivot: [4, 11.5, 2] },
 ];
 
 /** Slime: 7 wide, 7 deep, 5 tall. */
@@ -390,14 +402,15 @@ export const NUGGET: VoxelModel = {
 };
 
 /** Power crystal: 3 wide, 3 deep, 5 tall diamond. */
-export const CRYSTAL: VoxelModel = {
+/** Remedy: an upright green cross, 5 wide, 3 deep, 5 tall. Restores health. */
+export const MEDKIT: VoxelModel = {
   palette: { G: P.green, L: P.lightGreen },
   layers: [
-    ['...', '.G.', '...'],
-    ['.G.', 'GLG', '.G.'],
-    ['.L.', 'LLL', '.L.'],
-    ['.G.', 'GLG', '.G.'],
-    ['...', '.L.', '...'],
+    ['..G..', '..G..', '..G..'],
+    ['..G..', '..L..', '..G..'],
+    ['GGGGG', 'GLLLG', 'GGGGG'],
+    ['..G..', '..L..', '..G..'],
+    ['..G..', '..G..', '..G..'],
   ],
 };
 

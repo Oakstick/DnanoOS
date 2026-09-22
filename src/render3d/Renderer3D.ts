@@ -11,7 +11,7 @@ import { Puddle, PUDDLE_SECONDS } from '../systems/Puddles';
 import { Grid } from '../world/Grid';
 import { CARDINALS, Dir, DIR_VECTORS, Tile } from '../world/types';
 import {
-  ARROW, BAT, BAT_RIG, BOMB, BOOMERANG, bottleModel, buildRiggedMesh, buildVoxelField, buildVoxelMesh, CRESCENT, CRYSTAL,
+  ARROW, BAT, BAT_RIG, BOMB, BOOMERANG, bottleModel, buildRiggedMesh, buildVoxelField, buildVoxelMesh, CRESCENT, MEDKIT,
   DIAMOND, FIREBALL, hideFieldRange, LANTERN, NUGGET, PartDef, Placement, POPOLON, POPOLON_RIG, RiggedMesh, SKELETON,
   SKELETON_RIG, SLIME, TREE_LOW, VoxelField, VoxelModel,
 } from './voxels';
@@ -36,7 +36,7 @@ const COLORS = {
   slash: 0xbfefff,
   shield: 0x7fd7ff,
   invincible: 0xffd84a,
-  crystal: 0xff5cf0,
+  remedy: 0x4cf06a,
   mote: 0xe4ff6a, // fireflies
 };
 
@@ -61,8 +61,36 @@ const LIGHT_POOL = { torches: 3, crystals: 3, shrines: 2, effects: 2 };
 
 export type CameraMode = 'third' | 'top';
 
-/** Third-person camera: behind Popolon's shoulder, turning with him. */
-const THIRD = { distance: 3.4, height: 2.3, ahead: 2.8, lookUp: 0.5, yawLerp: 3.5, posLerp: 6 };
+/**
+ * Over-the-shoulder chase camera. The mouse aims it and Popolon runs wherever
+ * it points, so the camera leads and the hero follows. It orbits a pivot set
+ * a little to his right, which keeps him out of the middle of the screen and
+ * leaves the view down the corridor clear.
+ */
+const CHASE = {
+  distance: 3.4,
+  shoulder: 0.3,
+  /**
+   * The camera orbits a point at Popolon's chest, which keeps him just below
+   * the middle of the screen. Pitching down lifts the camera rather than
+   * tilting past him, and that is what clears the undergrowth: the corridors
+   * are a single tile wide, so a camera at his own height would spend the
+   * game behind a hedge. At rest it sits about a tile and a half up.
+   */
+  pivotHeight: 1.7,
+  restPitch: -0.44,
+  lookAhead: 2.2,
+  minPitch: -1.2,
+  maxPitch: 0.1,
+  minDistance: 0.9,
+  posLerp: 16,
+  /** Radians of turn per pixel of mouse movement. */
+  sensitivity: 0.0026,
+  /** Without the mouse captured the view drifts back behind him at this rate. */
+  followLerp: 3.5,
+};
+/** Undergrowth is at least this tall, which is what the camera has to squeeze past. */
+const WALL_TOP = 0.7;
 /** How quickly character models ease into a new heading (per second). */
 const TURN_RATE = { hero: 14, enemy: 10 };
 /** Top-down follow camera: high and slightly south of the hero, looking north. */
@@ -141,7 +169,11 @@ export class Renderer3D {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   cameraMode: CameraMode = 'third';
-  private yaw = dirToYaw('down');
+  /** Where the chase camera looks, in world radians. The mouse drives these. */
+  camYaw = 0;
+  camPitch = CHASE.restPitch;
+  /** True while the mouse is captured; otherwise the view trails his heading. */
+  mouseLook = false;
 
   private levelGroup = new THREE.Group();
   private grid: Grid | null = null;
@@ -151,7 +183,7 @@ export class Renderer3D {
   private moteBase: Float32Array = new Float32Array(0);
   private torches = new Map<string, THREE.Object3D>();
   private torchLights: THREE.PointLight[] = [];
-  private crystalLights: THREE.PointLight[] = [];
+  private remedyLights: THREE.PointLight[] = [];
   private shrineLights: THREE.PointLight[] = [];
   private effectLights: THREE.PointLight[] = [];
   private effectCursor = 0;
@@ -212,7 +244,7 @@ export class Renderer3D {
       return pool;
     };
     this.torchLights = make(LIGHT_POOL.torches, COLORS.torchLight, 7);
-    this.crystalLights = make(LIGHT_POOL.crystals, COLORS.crystal, 5);
+    this.remedyLights = make(LIGHT_POOL.crystals, COLORS.remedy, 5);
     this.shrineLights = make(LIGHT_POOL.shrines, 0xffffff, 5);
     this.effectLights = make(LIGHT_POOL.effects, 0xffffff, 6);
   }
@@ -418,10 +450,10 @@ export class Renderer3D {
 
     grid.forEach((x, y, t) => {
       if (t === Tile.Charge) {
-        const crystal = buildVoxelMesh(CRYSTAL, { size: 0.11, emissive: 0.9, emissiveColor: COLORS.crystal });
-        crystal.position.set(x, floorY(x, y) + 0.15, y);
-        this.levelGroup.add(crystal);
-        this.charges.set(key(x, y), { mesh: crystal });
+        const cross = buildVoxelMesh(MEDKIT, { size: 0.1, emissive: 0.75, emissiveColor: COLORS.remedy });
+        cross.position.set(x, floorY(x, y) + 0.3, y);
+        this.levelGroup.add(cross);
+        this.charges.set(key(x, y), { mesh: cross });
       }
     });
 
@@ -922,12 +954,12 @@ export class Renderer3D {
     for (let i = torchPoints.length; i < this.torchLights.length; i++) this.torchLights[i].intensity = 0;
 
     const crystalPoints = [...this.charges.values()].map((c) => c.mesh.position);
-    nearest(crystalPoints, focus, this.crystalLights.length).forEach((p, i) => {
-      const light = this.crystalLights[i];
+    nearest(crystalPoints, focus, this.remedyLights.length).forEach((p, i) => {
+      const light = this.remedyLights[i];
       light.position.set(p.x, p.y + 0.45, p.z);
       light.intensity = 4 + Math.sin(time * 5) * 1.5;
     });
-    for (let i = crystalPoints.length; i < this.crystalLights.length; i++) this.crystalLights[i].intensity = 0;
+    for (let i = crystalPoints.length; i < this.remedyLights.length; i++) this.remedyLights[i].intensity = 0;
 
     const shrines = [...this.diamondViews.entries()].filter(([d]) => d.active);
     const shrinePoints = shrines.map(([, v]) => v.group.position);
@@ -983,7 +1015,7 @@ export class Renderer3D {
         rotX(p, 'leftLeg', s * 0.85);
         rotX(p, 'rightLeg', -s * 0.85);
         rotX(p, 'leftArm', -s * 0.5);
-        rotX(p, 'clubArm', -0.4 + s * 0.35);
+        rotX(p, 'rightArm', s * 0.5);
         rotX(p, 'head', Math.sin(view.phase * 2) * 0.1);
         root.rotation.z = Math.sin(view.phase) * 0.06;
         break;
@@ -1081,14 +1113,20 @@ export class Renderer3D {
     let posLerp: number;
 
     if (this.cameraMode === 'third') {
-      // Swing behind whichever way he faces; the turn is eased so corners feel like a glance, not a snap.
-      this.yaw = lerpAngle(this.yaw, dirToYaw(hero.facing), 1 - Math.exp(-THIRD.yawLerp * dt));
-      const f = new THREE.Vector3(Math.cos(this.yaw), 0, Math.sin(this.yaw));
-      desired = focus.clone().addScaledVector(f, -THIRD.distance).add(new THREE.Vector3(0, THIRD.height, 0));
-      look = focus.clone().addScaledVector(f, THIRD.ahead).add(new THREE.Vector3(0, THIRD.lookUp, 0));
-      posLerp = THIRD.posLerp;
+      // Hands off the mouse, the view drifts back behind whichever way he faces.
+      if (!this.mouseLook) {
+        this.camYaw = lerpAngle(this.camYaw, dirToYaw(hero.facing), 1 - Math.exp(-CHASE.followLerp * dt));
+      }
+      const cp = Math.cos(this.camPitch);
+      const dir = new THREE.Vector3(cp * Math.cos(this.camYaw), Math.sin(this.camPitch), cp * Math.sin(this.camYaw));
+      const right = new THREE.Vector3(-Math.sin(this.camYaw), 0, Math.cos(this.camYaw));
+      const pivot = focus.clone()
+        .add(new THREE.Vector3(0, CHASE.pivotHeight, 0))
+        .addScaledVector(right, CHASE.shoulder);
+      desired = pivot.clone().addScaledVector(dir, -this.clearBehind(pivot, dir));
+      look = pivot.clone().addScaledVector(dir, CHASE.lookAhead);
+      posLerp = CHASE.posLerp;
     } else {
-      this.yaw = dirToYaw('up');
       desired = focus.clone().add(new THREE.Vector3(0, TOP.height, TOP.back));
       look = focus.clone().add(new THREE.Vector3(0, 0, -TOP.lookAhead));
       posLerp = TOP.lerp;
@@ -1105,6 +1143,39 @@ export class Renderer3D {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
+  }
+
+  /** Turns the camera by a mouse movement in pixels. */
+  look(dx: number, dy: number): void {
+    this.camYaw += dx * CHASE.sensitivity;
+    const p = this.camPitch - dy * CHASE.sensitivity;
+    this.camPitch = Math.max(CHASE.minPitch, Math.min(CHASE.maxPitch, p));
+  }
+
+  /** Points the camera along a grid direction, for a fresh life or dungeon. */
+  aimAlong(dir: Dir): void {
+    this.camYaw = dirToYaw(dir);
+    this.camPitch = CHASE.restPitch;
+  }
+
+  /**
+   * How far back the camera can sit before undergrowth comes between it and
+   * Popolon. Walls are whole tiles, so the ray is walked against the grid
+   * rather than the scene, which costs nothing and never snags on a leaf.
+   */
+  private clearBehind(pivot: THREE.Vector3, dir: THREE.Vector3): number {
+    if (!this.grid) return CHASE.distance;
+    const steps = 14;
+    for (let i = 1; i <= steps; i++) {
+      const d = (CHASE.distance * i) / steps;
+      const x = Math.round(pivot.x - dir.x * d);
+      const z = Math.round(pivot.z - dir.z * d);
+      const y = pivot.y - dir.y * d;
+      if (this.grid.get(x, z) !== Tile.Rock) continue;
+      if (y > this.grid.elevation(x, z) * STEP + WALL_TOP) continue;
+      return Math.max(CHASE.minDistance, d - CHASE.distance / steps);
+    }
+    return CHASE.distance;
   }
 
   render(): void {
@@ -1176,7 +1247,7 @@ function nearest(points: THREE.Vector3[], focus: THREE.Vector3, count: number): 
 
 function modelFor(e: Enemy): { model: VoxelModel; rig: PartDef[]; size: number; hover: number } {
   switch (e.kind) {
-    case 'skeleton': return { model: SKELETON, rig: SKELETON_RIG, size: 0.075, hover: 0 };
+    case 'skeleton': return { model: SKELETON, rig: SKELETON_RIG, size: 0.07, hover: 0 };
     case 'bat': return { model: BAT, rig: BAT_RIG, size: 0.07, hover: 0.55 };
     case 'vampire': return { model: BAT, rig: BAT_RIG, size: 0.08, hover: 0.65 };
     case 'slime': return { model: SLIME, rig: [], size: 0.1, hover: 0 };

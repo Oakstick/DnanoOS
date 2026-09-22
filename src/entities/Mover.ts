@@ -13,6 +13,8 @@ export class Mover {
   speed: number; // tiles per second
   /** Flyers ignore elevation and pits. */
   flying = false;
+  /** Width of the world last stepped through, so `occupied` can wrap in a tunnel. */
+  private worldWidth = 0;
 
   constructor(start: Vec2, speed: number) {
     this.tile = { ...start };
@@ -27,6 +29,7 @@ export class Mover {
 
   /** Floor elevation under the mover, blended between the tiles it is crossing. */
   elevationOn(grid: Grid): number {
+    this.worldWidth = grid.width;
     const a = grid.elevation(this.tile.x, this.tile.y);
     if (this.dir === 'none' || this.offset === 0) return a;
     const n = grid.wrap(this.nextTile(this.tile));
@@ -35,8 +38,15 @@ export class Mover {
   }
 
   /** Tile the mover is "in" for collision and pickup purposes. */
+  /**
+   * The tile this mover counts as standing on. Half a tile past the centre it
+   * becomes the tile ahead, wrapped, so a mover crossing a tunnel edge reports
+   * the tile it is really entering rather than one off the end of the map.
+   */
   get occupied(): Vec2 {
-    return this.offset >= 0.5 ? this.nextTile(this.tile) : this.tile;
+    const p = this.offset >= 0.5 ? this.nextTile(this.tile) : this.tile;
+    if (this.worldWidth <= 0) return p;
+    return { x: ((p.x % this.worldWidth) + this.worldWidth) % this.worldWidth, y: p.y };
   }
 
   protected nextTile(from: Vec2): Vec2 {
@@ -52,6 +62,7 @@ export class Mover {
 
   /** Immediately flip direction, preserving position. */
   reverse(grid: Grid): void {
+    this.worldWidth = grid.width;
     if (this.dir === 'none' || this.offset === 0) {
       this.dir = OPPOSITE[this.dir];
       return;
@@ -73,6 +84,7 @@ export class Mover {
     allowMidReverse = false,
     stopWhenIdle = false,
   ): boolean {
+    this.worldWidth = grid.width;
     let crossed = false;
 
     if (this.dir === 'none') {

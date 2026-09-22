@@ -17,11 +17,12 @@ describe('level data', () => {
     }
   });
 
-  it('the authored dungeon is four quadrants: double the width and height of the base', () => {
+
+  it('the authored dungeon is four mirrored quadrants, 27 x 23 in all', () => {
     const { rows, heights } = composeDungeon();
-    expect(rows[0].length).toBe(53);
-    expect(rows).toHaveLength(45);
-    expect(heights).toHaveLength(45);
+    expect(rows[0].length).toBe(27);
+    expect(rows).toHaveLength(23);
+    expect(heights).toHaveLength(23);
     const text = rows.join('');
     expect(text.split('P')).toHaveLength(2); // exactly one spawn
     expect(text.split('G')).toHaveLength(2); // exactly one hollow exit
@@ -30,66 +31,66 @@ describe('level data', () => {
     expect(text.split('-')).toHaveLength(5); // four outer tunnel mouths, none in the middle
   });
 
-  it('upscales to roads three characters wide', () => {
+  it('keeps corridors one tile wide, widening only inside the hollow chambers', () => {
     const level = parseLevel(LEVELS[0]);
     const g = level.grid;
-    expect(WORLD_SCALE).toBe(3);
-    expect(g.width).toBe(53 * 3);
-    expect(g.height).toBe(45 * 3);
-    // Every open tile lies in a run of at least three open tiles both across and along.
-    let narrow = 0;
-    g.forEach((x, y, t) => {
-      if (t === Tile.Rock || t === Tile.Pit) return;
-      const openish = (xx: number, yy: number) => g.get(xx, yy) !== Tile.Rock;
-      const acrossX = [-2, -1, 0].some((s) => openish(x + s, y) && openish(x + s + 1, y) && openish(x + s + 2, y));
-      const acrossY = [-2, -1, 0].some((s) => openish(x, y + s) && openish(x, y + s + 1) && openish(x, y + s + 2));
-      if (!(acrossX && acrossY)) narrow++;
+    expect(WORLD_SCALE).toBe(1);
+    expect(g.width).toBe(27);
+    expect(g.height).toBe(23);
+    // The hollow and its three mirrored clearings are rooms, not corridors.
+    const inChamber = (x: number, y: number) => (x >= 6 && x <= 8 || x >= 18 && x <= 20)
+      && (y >= 8 && y <= 9 || y >= 13 && y <= 14);
+    const roomy = (x: number, y: number) => {
+      const t = g.get(x, y);
+      return t !== Tile.Rock && t !== Tile.Pit;
+    };
+    const wide: string[] = [];
+    g.forEach((x, y) => {
+      if (!(roomy(x, y) && roomy(x + 1, y) && roomy(x, y + 1) && roomy(x + 1, y + 1))) return;
+      for (const [cx, cy] of [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]]) {
+        if (!inChamber(cx, cy)) wide.push(`${x},${y}`);
+      }
     });
-    expect(narrow).toBe(0);
-    // Single-tile features stay single: one spawn, 25 nuggets, 16 crystals.
+    expect(wide).toEqual([]);
     expect(g.count(Tile.Nodule)).toBe(NUGGETS_PER_LEVEL);
     expect(g.count(Tile.Charge)).toBe(16);
   });
 
-  it('pits become one-tile trenches across the full road', () => {
+  it('cuts each pit as a single tile spanning its corridor', () => {
     const level = parseLevel(LEVELS[0]);
     const g = level.grid;
     expect(g.count(Tile.Pit)).toBe(PITS_PER_LEVEL * WORLD_SCALE);
-    // Each trench: three pits in a line, with open floor on both sides along the road.
     const pits: Vec2[] = [];
     g.forEach((x, y, t) => {
       if (t === Tile.Pit) pits.push({ x, y });
     });
     for (const p of pits) {
-      const vertical = g.isPit(p.x, p.y - 1) || g.isPit(p.x, p.y + 1);
-      const horizontal = g.isPit(p.x - 1, p.y) || g.isPit(p.x + 1, p.y);
-      expect(vertical || horizontal).toBe(true);
-      if (vertical) expect(g.isWalkable(p.x - 1, p.y) && g.isWalkable(p.x + 1, p.y)).toBe(true);
-      else expect(g.isWalkable(p.x, p.y - 1) && g.isWalkable(p.x, p.y + 1)).toBe(true);
+      // Floor on the two ends of the corridor, rock on the two sides.
+      const across = g.isWalkable(p.x - 1, p.y) && g.isWalkable(p.x + 1, p.y)
+        && g.get(p.x, p.y - 1) === Tile.Rock && g.get(p.x, p.y + 1) === Tile.Rock;
+      const along = g.isWalkable(p.x, p.y - 1) && g.isWalkable(p.x, p.y + 1)
+        && g.get(p.x - 1, p.y) === Tile.Rock && g.get(p.x + 1, p.y) === Tile.Rock;
+      expect(across || along, `pit ${p.x},${p.y}`).toBe(true);
     }
   });
 
   it('quadrants rise clockwise with ramps at some gates and ledges at the rest', () => {
     const level = parseLevel(LEVELS[0]);
     const g = level.grid;
-    const s = WORLD_SCALE;
-    expect(g.elevation(5 * s, 5 * s)).toBe(0); // top-left, the hollow's level
-    expect(g.elevation(47 * s, 5 * s)).toBe(1); // top-right
-    expect(g.elevation(5 * s, 40 * s)).toBe(1); // bottom-left
-    expect(g.elevation(47 * s, 40 * s)).toBe(2); // bottom-right
-    const gateX = 26 * s + 1;
-    expect(g.isRamp(gateX, 4 * s + 1)).toBe(true); // a ramp gate, its center tile
-    expect(g.elevation(gateX, 4 * s + 1)).toBe(0); // ramp block settles to the lower floor even inside
-    expect(g.isRamp(gateX, 1 * s + 1)).toBe(false); // a ledge gate
-    // From the ledge gate's far edge you can jump up but not walk up.
-    const ledgeEdge = { x: 26 * s + 2, y: 1 * s + 1 };
-    expect(g.canMove(ledgeEdge, 'right')).toBe(false);
-    expect(g.jumpLanding(ledgeEdge, 'right')).toEqual({ x: ledgeEdge.x + 2, y: ledgeEdge.y });
-    expect(g.canMove({ x: ledgeEdge.x + 1, y: ledgeEdge.y }, 'left')).toBe(true); // walking down
-    // The ramp joins its two levels on foot.
-    expect(g.canMove({ x: 26 * s + 2, y: 4 * s + 1 }, 'right')).toBe(true);
+    expect(g.elevation(3, 1)).toBe(0); // top-left, the hollow's level
+    expect(g.elevation(23, 1)).toBe(1); // top-right
+    expect(g.elevation(3, 21)).toBe(1); // bottom-left
+    expect(g.elevation(23, 21)).toBe(2); // bottom-right
+    const seam = 13;
+    expect(g.isRamp(seam, 4)).toBe(true); // the tunnel row gate carries a ramp
+    expect(g.elevation(seam, 4)).toBe(0); // a gate tile settles to the lower floor
+    expect(g.isRamp(seam, 1)).toBe(false); // a ledge gate
+    // From the ledge gate you can jump up but not walk up.
+    expect(g.canMove({ x: seam, y: 1 }, 'right')).toBe(false);
+    expect(g.jumpLanding({ x: seam, y: 1 }, 'right')).toEqual({ x: seam + 2, y: 1 });
+    expect(g.canMove({ x: seam + 1, y: 1 }, 'left')).toBe(true); // walking down
+    expect(g.canMove({ x: seam, y: 4 }, 'right')).toBe(true); // the ramp joins its two levels
   });
-
   it('cuts pits into straight corridors of the authored grid with level banks', () => {
     const layout = placePits(composeDungeon(), PITS_PER_LEVEL, 1);
     const pits: Vec2[] = [];
@@ -138,11 +139,11 @@ describe('level data', () => {
     }
   });
 
+
   it('ground walkers can still reach every quadrant through the ramps', () => {
     const level = parseLevel(LEVELS[0]);
     const seen = reachable(level.grid, level.enemySpawn, false);
-    const s = WORLD_SCALE;
-    for (const probe of [{ x: 47 * s + 1, y: 1 * s + 1 }, { x: 1 * s + 1, y: 43 * s + 1 }, { x: 47 * s + 1, y: 43 * s + 1 }]) {
+    for (const probe of [{ x: 23, y: 1 }, { x: 3, y: 21 }, { x: 23, y: 21 }]) {
       expect(seen.has(`${probe.x},${probe.y}`), `walker reaches ${probe.x},${probe.y}`).toBe(true);
     }
   });
@@ -165,10 +166,9 @@ describe('level data', () => {
       }
     }
     expect(closest).toBeGreaterThanOrEqual(4);
-    const quadrants = new Set(spots.map((s) => (s.x < 26 ? 0 : 1) + (s.y < 22 ? 0 : 2)));
+    const quadrants = new Set(spots.map((s) => (s.x < 13 ? 0 : 1) + (s.y < 11 ? 0 : 2)));
     expect(quadrants.size).toBe(4);
   });
-
   it('later dungeons get their own layout', () => {
     expect(levelFor(7).rows).not.toEqual(levelFor(8).rows);
     expect(parseLevel(levelFor(7)).grid.count(Tile.Nodule)).toBe(NUGGETS_PER_LEVEL);

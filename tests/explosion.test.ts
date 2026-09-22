@@ -68,9 +68,9 @@ describe('Explosion', () => {
       if (t === Tile.Rock && Math.abs(x - nestCenter.x) <= 12 && Math.abs(y - nestCenter.y) <= 5 && isProtected(grid, x, y)) nearHollow = { x, y };
     });
     expect(nearHollow).not.toBeNull();
-    // An interior wall block far from the hollow is fair game (authored cell 2,2 is rock).
-    expect(grid.get(7, 7)).toBe(Tile.Rock);
-    expect(isProtected(grid, 7, 7)).toBe(false);
+    // An interior wall block far from the hollow is fair game.
+    expect(grid.get(13, 2)).toBe(Tile.Rock);
+    expect(isProtected(grid, 13, 2)).toBe(false);
   });
 
   it('keeps all nuggets when blasting a wall (only adds connectivity)', () => {

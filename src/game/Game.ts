@@ -9,7 +9,7 @@ import { INVISIBLE_SECONDS, Potion } from '../entities/Potion';
 import { Projectile, spawnShots } from '../entities/Projectile';
 import { ITEM_ORDER, ItemKind, ITEMS, RangedKind, WEAPON_ORDER, weaponLabel, WEAPONS } from '../entities/Weapons';
 import { HudStatus, Renderer } from '../render/Renderer';
-import { optionColor, optionName, Renderer3D, STEP } from '../render3d/Renderer3D';
+import { dirToYaw, optionColor, optionName, Renderer3D, STEP } from '../render3d/Renderer3D';
 import { findAttackTargets, findProjectileHits, POINTS_KILL, tileInReach } from '../systems/Combat';
 import { blastDamage, breakRocks, CHAIN_DELAY, inBlast } from '../systems/Explosion';
 import { Frenzy } from '../systems/Frenzy';
@@ -18,11 +18,13 @@ import { MAX_LIVES, POINTS, Score } from '../systems/Score';
 import { Grid } from '../world/Grid';
 import { parseLevel, ParsedLevel } from '../world/Level';
 import { levelFor } from '../world/levels';
-import { Dir, relativeDir, Tile, Vec2 } from '../world/types';
+import { CARDINALS, Dir, relativeDir, Tile, Vec2 } from '../world/types';
 
 export type Screen = 'title' | 'ready' | 'playing' | 'paused' | 'dying' | 'won' | 'gameover';
 
 /** Reinforcements: the first arrives after this long, then one every interval, up to the cap. */
+/** Health a green cross gives back, capped at Popolon's maximum. */
+const REMEDY_HEAL = 50;
 const SPAWN_FIRST = 20;
 const SPAWN_EVERY = 25;
 const MAX_ENEMIES = 12;
@@ -76,8 +78,8 @@ export class Game {
   showFps = false;
   private rng = new Rng();
   private wantedDir: Dir = 'none';
-  private lastDirSeq = 0;
-  private lastRawDir: Dir = 'none';
+  /** The corridor the chase camera currently points down. */
+  private camDir: Dir = 'none';
 
   private globalMode: GlobalMode = 'scatter';
   private modeIndex = 0;
@@ -95,8 +97,9 @@ export class Game {
     this.renderer3D = new Renderer3D(canvas3d);
     this.input = new Input(canvas);
     this.loadLevel(0);
+    this.renderer.resize();
     window.addEventListener('resize', () => {
-      this.renderer.resize(this.grid.width, this.grid.height);
+      this.renderer.resize();
       this.renderer3D.resize();
     });
   }
@@ -109,7 +112,6 @@ export class Game {
     this.grid = this.level.grid;
     this.nuggetsTotal = this.grid.count(Tile.Nodule);
     this.nuggetsGot = 0;
-    this.renderer.resize(this.grid.width, this.grid.height);
 
     const c = this.level.nestCenter;
     this.nestSlots = [this.level.enemySpawn, { x: c.x - 2, y: c.y }, { x: c.x, y: c.y }, { x: c.x + 2, y: c.y }];
@@ -140,6 +142,8 @@ export class Game {
   /** Puts everyone back at spawn without touching collected gold. */
   private resetRound(): void {
     this.hero.respawn(this.level.heroSpawn);
+    this.renderer3D.aimAlong(this.hero.facing);
+    this.camDir = this.hero.facing;
     this.enemies.forEach((e, i) => e.reset(this.nestSlots[i] ?? this.level.nestCenter));
     this.modeIndex = 0;
     this.modeTimer = MODE_SCHEDULE[0].seconds;
@@ -151,7 +155,7 @@ export class Game {
     this.trailTile.clear();
     this.input.clearDirection();
     this.wantedDir = 'none';
-    this.lastRawDir = 'none';
+    this.camDir = 'none';
     this.bombs.forEach((b) => this.renderer3D.removeBomb(b));
     this.bombs = [];
     this.bombsLeft = BOMBS_PER_LIFE;
@@ -241,23 +245,54 @@ export class Game {
     if (this.input.wasPressed('KeyC')) {
       this.renderer3D.cameraMode = this.renderer3D.cameraMode === 'third' ? 'top' : 'third';
     }
+
+    // Mouse aiming only steers the chase camera, never the top-down view.
+    const aiming = this.input.aiming && this.renderer3D.cameraMode === 'third';
+    this.renderer3D.mouseLook = aiming;
+    const look = this.input.takeLook();
+    if (aiming && this.screen === 'playing') this.renderer3D.look(look.dx, look.dy);
   }
 
   /**
-   * Movement input. In third person a key means "relative to where Popolon
-   * faces": up is forward, left and right turn, down reverses. Each press is
-   * resolved once, so the camera swinging round cannot reinterpret a held key.
+   * Movement input. In third person a key means "relative to where the camera
+   * looks": W runs into the view, A and D step to either side, S backs out.
+   * The corridor taken is the one nearest the camera's heading.
    */
   private resolveWantedDir(): Dir {
     const raw = this.input.direction;
     if (this.renderer3D.cameraMode !== 'third') return raw;
-    if (this.input.directionSeq !== this.lastDirSeq || raw !== this.lastRawDir) {
-      this.lastDirSeq = this.input.directionSeq;
-      this.lastRawDir = raw;
-      this.wantedDir = relativeDir(raw, this.hero.facing);
+    if (raw === 'none') {
+      this.wantedDir = 'none';
+      return 'none';
     }
-    if (raw === 'none') this.wantedDir = 'none';
+    this.wantedDir = relativeDir(raw, this.cameraFacing());
     return this.wantedDir;
+  }
+
+  /**
+   * The corridor the camera is pointing down. A band of hysteresis keeps a
+   * wobble near the diagonal from flipping him between two of them.
+   */
+  private cameraFacing(): Dir {
+    const yaw = this.renderer3D.camYaw;
+    const off = (d: Dir) => {
+      let a = (yaw - dirToYaw(d)) % (Math.PI * 2);
+      if (a > Math.PI) a -= Math.PI * 2;
+      if (a < -Math.PI) a += Math.PI * 2;
+      return Math.abs(a);
+    };
+    if (this.camDir !== 'none' && off(this.camDir) < Math.PI * 0.32) return this.camDir;
+    let best: Dir = 'down';
+    let bestOff = Infinity;
+    for (const d of CARDINALS) {
+      const a = off(d);
+      if (a < bestOff) {
+        bestOff = a;
+        best = d;
+      }
+    }
+    this.camDir = best;
+    return best;
   }
 
   private tick(dt: number): void {
@@ -360,12 +395,16 @@ export class Game {
       this.floaters.push({ x: o.x, y: o.y, text: `${this.nuggetsGot}/${this.nuggetsTotal}`, life: 0.9, color: '#f2c53d' });
       if (this.nuggetsGot >= this.nuggetsTotal) this.win();
     } else if (got === Tile.Charge) {
+      const before = this.hero.hp;
+      this.hero.heal(REMEDY_HEAL);
+      const gained = this.hero.hp - before;
       this.score.add(POINTS.charge);
-      this.audio.play('charge');
-      this.audio.setFrenzy(true);
-      this.frenzy.start(this.level.data.frenzySeconds);
-      this.enemies.forEach((e) => e.enterFrenzy(this.grid));
-      this.renderer3D.spark(o.x, o.y, 0xff5cf0);
+      this.audio.play('heal');
+      this.renderer3D.spark(o.x, o.y, 0x4cf06a);
+      this.floaters.push({
+        x: o.x, y: o.y, life: 0.9, color: '#5cff6a',
+        text: gained > 0 ? `+${gained} HP` : 'FULL HEALTH',
+      });
     }
   }
 
@@ -647,7 +686,7 @@ export class Game {
     this.renderer3D.render();
     r.begin();
     this.drawWorldOverlays();
-    r.drawHUD(this.score, this.level.data.name, this.frenzy, this.grid.height, this.hudStatus(), this.time);
+    if (this.screen !== 'title') r.drawHUD(this.score, this.level.data.name, this.frenzy, this.hudStatus(), this.time);
 
     switch (this.screen) {
       case 'title':
@@ -687,8 +726,6 @@ export class Game {
   /** Health bar over Popolon, shrine labels, and floating text projected onto the overlay canvas. */
   private drawWorldOverlays(): void {
     const r = this.renderer;
-    const offX = (window.innerWidth - r.width) / 2;
-    const offY = (window.innerHeight - r.height) / 2;
 
     if (this.hero.alive && this.screen === 'playing') {
       const hp = this.hero.pos;
@@ -698,17 +735,17 @@ export class Game {
         const h = Math.max(4, r.tile * 0.18);
         const frac = this.hero.hp / this.hero.maxHp;
         const color = frac > 0.5 ? '#5cff6a' : frac > 0.25 ? '#f2c53d' : '#d8262e';
-        r.drawBarAt(p.x - offX - w / 2, p.y - offY, w, h, frac, color);
+        r.drawBarAt(p.x - w / 2, p.y, w, h, frac, color);
       }
     }
     for (const d of this.diamonds) {
       if (!d.active) continue;
       const p = this.renderer3D.project(d.tile.x, this.renderer3D.floorHeight(d.tile.x, d.tile.y) + 1.25, d.tile.y);
-      if (p) r.drawTextAt(p.x - offX, p.y - offY, optionName(d).toUpperCase(), 0.95, optionColor(d), 0.45);
+      if (p) r.drawTextAt(p.x, p.y, optionName(d).toUpperCase(), 0.95, optionColor(d), 0.45);
     }
     for (const f of this.floaters) {
       const p = this.renderer3D.project(f.x, this.renderer3D.floorHeight(f.x, f.y) + 0.9 + (1 - f.life) * 0.6, f.y);
-      if (p) r.drawTextAt(p.x - offX, p.y - offY, f.text, Math.min(1, f.life * 2), f.color ?? '#f2c53d');
+      if (p) r.drawTextAt(p.x, p.y, f.text, Math.min(1, f.life * 2), f.color ?? '#f2c53d');
     }
   }
 }

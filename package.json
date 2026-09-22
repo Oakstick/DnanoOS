@@ -8,7 +8,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "package": "npm run build && node tools/package.mjs",
+    "vox:import": "node tools/vox.mjs import",
+    "vox:export": "node tools/vox.mjs export"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",

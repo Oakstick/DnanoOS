@@ -1,4 +1,5 @@
 import { Rng } from '../engine/Rng';
+import { stepToward } from '../systems/Pathing';
 import { Grid } from '../world/Grid';
 import { CARDINALS, Dir, DIR_VECTORS, OPPOSITE, Tile, Vec2 } from '../world/types';
 import { Hero } from './Hero';
@@ -152,6 +153,14 @@ export class Enemy extends Mover {
       this.mode = 'leaving';
       this.target = ctx.nestExit;
       mayReverse = true;
+    }
+
+    // Going home is the one trip that must always succeed, so it is routed
+    // rather than eyeballed: the hollow has a single mouth and a greedy walker
+    // can orbit the block outside it without ever turning away to go around.
+    if (this.mode === 'eaten') {
+      const step = stepToward(grid, tile, this.target, this.flying);
+      if (step) return step;
     }
 
     let options = CARDINALS.filter((d) => grid.canMove(tile, d, allowNest, this.flying));

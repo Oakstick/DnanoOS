@@ -8,53 +8,41 @@ export const SPEED_SCALE = 0.8;
 export const NUGGETS_PER_LEVEL = 25;
 /** Potion bottles per dungeon: one extra life, two shields, two invisibility. */
 export const POTION_PLAN: PotionKind[] = ['life', 'shield', 'shield', 'invisible', 'invisible'];
-/** Trenches across straight roads that must be jumped. */
-export const PITS_PER_LEVEL = 14;
-/** Tiles per authored cell: roads are this many characters wide. */
-export const WORLD_SCALE = 3;
+/** Pits cut across corridors that must be jumped. */
+export const PITS_PER_LEVEL = 6;
+/** Manhattan distance kept between two pits. */
+const MIN_PIT_SPACING = 6;
+/** Tiles per authored cell: corridors are this many tiles wide. */
+export const WORLD_SCALE = 1;
 
 /**
- * 27 x 23 base quadrant. Center box (rows 8-14) is the enemy hollow where
- * slain foes reform. The full dungeon is composed from four mirrored copies.
+ * 14 x 12 base quadrant, mirrored into a 27 x 23 dungeon. Corridors are one
+ * tile wide. The chamber at rows 7-10 is the enemy hollow where slain foes
+ * reform, reached by the passage above its G gate.
  */
 const QUADRANT: string[] = [
-  '###########################',
-  '#............#............#',
-  '#o###.#####..#..#####.###o#',
-  '#.###.#####..#..#####.###.#',
-  '#............W............#',
-  '#.###.#.###########.#.###.#',
-  '#.....#......#......#.....#',
-  '#####.#####..#..#####.#####',
-  '#####.#             #.#####',
-  '#####.#  ####G####  #.#####',
-  '-.....   #NNNNNNN#   .....-',
-  '#####.#  #NNNNNNN#  #.#####',
-  '#####.#  #########  #.#####',
-  '#####.#             #.#####',
-  '#####.# ########### #.#####',
-  '#............#............#',
-  '#.###.#####..#..#####.###.#',
-  '#o..#........P........#..o#',
-  '###.#.#.###########.#.#.###',
-  '#.....#......#......#.....#',
-  '#.#########..#..#########.#',
-  '#............I............#',
-  '###########################',
+  '##############',
+  '#o........W.o#',
+  '#.##.##.##.#.#',
+  '#.##.##.##.#.#',
+  '-.P..........#',
+  '#.##.##.##.#.#',
+  '#.##.##.##.#.#',
+  '#.I..##G##...#',
+  '#.##.#NNN#.#.#',
+  '#.##.#NNN#.#.#',
+  '#o...#####..o#',
+  '##############',
 ];
 
-/** Rows of the middle column that open between the left and right halves (top half; mirrored below). */
-const COLUMN_GATES = [1, 4, 10, 15, 21];
+/** Rows of the shared column that open between the left and right halves. */
+const COLUMN_GATES = [1, 4, 10];
 /** Columns of the middle row that open between the top and bottom halves. */
-const ROW_GATES = [5, 13, 21, 31, 39, 47];
+const ROW_GATES = [1, 10, 16, 25];
 /** Gates that carry a ramp; every other gate is a one-level ledge you must jump up. */
 const RAMP_COLUMN_GATES = [4];
-const RAMP_ROW_GATES = [13, 39];
+const RAMP_ROW_GATES = [10, 16];
 
-/**
- * Floor level of each quadrant. The hollow sits on the ground; the dungeon
- * rises clockwise so the far corner is two levels up.
- */
 const QUADRANT_LEVELS = { tl: 0, tr: 1, bl: 1, br: 2 };
 
 export interface Layout {
@@ -63,7 +51,7 @@ export interface Layout {
 }
 
 /**
- * Mirrors the quadrant right and down into a 53 x 45 dungeon. The shared
+ * Mirrors the quadrant right and down into a 27 x 23 dungeon. The shared
  * border column and row are punched through at a few gates. Only the top-left
  * copy keeps its hollow and spawn; the other hollows become walled clearings.
  * Shrines alternate quadrants: weapons top-left and bottom-right, items
@@ -168,12 +156,51 @@ export function placePits(layout: Layout, count: number, seed: number): Layout {
     const j = Math.floor(rng.next() * (i + 1));
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
+  // With one-tile corridors a single pit can seal off a whole wing, so a cut is
+  // only kept when every tile still walkable from the hollow stays walkable.
+  const passable = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return false;
+    const c = grid[y][x];
+    return c !== '#' && c !== '~' && c !== '^';
+  };
+  let start = { x: 1, y: 1 };
+  for (let y = 0; y < h; y++) {
+    const x = grid[y].indexOf('G');
+    if (x >= 0) start = { x, y };
+  }
+  const floodSize = (): number => {
+    const seen = new Set([`${start.x},${start.y}`]);
+    const stack = [start];
+    let n = 0;
+    while (stack.length > 0) {
+      const p = stack.pop()!;
+      n++;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const q = { x: p.x + dx, y: p.y + dy };
+        const key = `${q.x},${q.y}`;
+        if (seen.has(key) || !passable(q.x, q.y)) continue;
+        seen.add(key);
+        stack.push(q);
+      }
+    }
+    return n;
+  };
+
   const chosen: { x: number; y: number; glyph: string }[] = [];
+  let reach = floodSize();
   for (const c of candidates) {
     if (chosen.length >= count) break;
-    if (chosen.every((p) => Math.abs(p.x - c.x) + Math.abs(p.y - c.y) >= 6)) chosen.push(c);
+    if (!chosen.every((p) => Math.abs(p.x - c.x) + Math.abs(p.y - c.y) >= MIN_PIT_SPACING)) continue;
+    const was = grid[c.y][c.x];
+    grid[c.y][c.x] = c.glyph;
+    const now = floodSize();
+    if (now === reach - 1) {
+      chosen.push(c);
+      reach = now;
+    } else {
+      grid[c.y][c.x] = was; // this cut would strand part of the dungeon
+    }
   }
-  for (const p of chosen) grid[p.y][p.x] = p.glyph;
   return { rows: grid.map((r) => r.join('')), heights: layout.heights };
 }
 
@@ -272,15 +299,20 @@ export function placePotions(rows: string[], plan: PotionKind[], seed: number): 
     [open[i], open[j]] = [open[j], open[i]];
   }
 
+  // Two separate rules: never crowd a nugget or shrine, and keep the bottles
+  // well apart from each other. Sharing one distance made them clump, because
+  // in a small dungeon no tile is far from every nugget at once.
   const chosen: { x: number; y: number }[] = [];
-  let minDist = 6;
-  while (chosen.length < plan.length && minDist >= 0) {
+  let apart = 8;
+  while (chosen.length < plan.length && apart >= 0) {
     for (const p of open) {
       if (chosen.length >= plan.length) break;
-      const clear = [...busy, ...chosen].every((c) => Math.abs(c.x - p.x) + Math.abs(c.y - p.y) >= minDist);
-      if (clear && !chosen.includes(p)) chosen.push(p);
+      if (chosen.includes(p)) continue;
+      if (busy.some((c) => Math.abs(c.x - p.x) + Math.abs(c.y - p.y) < 2)) continue;
+      if (chosen.some((c) => Math.abs(c.x - p.x) + Math.abs(c.y - p.y) < apart)) continue;
+      chosen.push(p);
     }
-    minDist--;
+    apart--;
   }
   chosen.forEach((p, i) => {
     grid[p.y][p.x] = POTION_GLYPH_OF[plan[i]];

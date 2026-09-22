@@ -61,7 +61,7 @@ describe('Projectile', () => {
 
   it('passes through the wrap tunnel of the real level', () => {
     const level = parseLevel(LEVELS[0]);
-    const a = new Projectile({ x: 1, y: 31 }, 'left'); // the tunnel row, scaled
+    const a = new Projectile({ x: 1, y: 4 }, 'left'); // the wrap tunnel row
     a.update(0.15, level.grid);
     expect(a.alive).toBe(true);
     expect(a.pos.x).toBeGreaterThan(level.grid.width - 3);

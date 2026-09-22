@@ -4,7 +4,7 @@
  */
 export type Sfx =
   | 'nodule' | 'charge' | 'eat' | 'death' | 'clear' | 'start'
-  | 'slash' | 'hurt' | 'fuse' | 'explode' | 'arrow' | 'arrowHit' | 'win' | 'jump';
+  | 'slash' | 'hurt' | 'fuse' | 'explode' | 'arrow' | 'arrowHit' | 'win' | 'jump' | 'heal';
 
 const MASTER_VOLUME = 0.5;
 
@@ -117,6 +117,12 @@ export class AudioManager {
         break;
       case 'charge':
         this.sweep(t, 200, 900, 0.35, 'sawtooth', 0.2);
+        break;
+      case 'heal':
+        // A warm rising third, the sound of catching your breath.
+        this.blip(t, 523, 0.14, 'sine', 0.18);
+        this.blip(t + 0.09, 659, 0.16, 'sine', 0.18);
+        this.blip(t + 0.19, 784, 0.26, 'sine', 0.16);
         break;
       case 'eat':
         this.sweep(t, 900, 200, 0.25, 'square', 0.2);

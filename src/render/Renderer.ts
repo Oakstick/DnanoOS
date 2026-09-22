@@ -5,6 +5,11 @@ import { Score } from '../systems/Score';
 
 /** HUD band height in tiles: room for the portrait panel. */
 export const HUD_ROWS = 3;
+/** The layout unit is the window divided into this many columns or rows, whichever is smaller. */
+const LAYOUT_COLS = 64;
+const LAYOUT_ROWS = 36;
+const MIN_TILE = 10;
+const MAX_TILE = 28;
 
 export const PALETTE = {
   abyss: '#070608',
@@ -56,19 +61,20 @@ const RULES: string[] = [
   'The dungeon rises in levels. Jump with Space to clear pits, leap over foes, and climb a ledge; ramps let you walk up. Bats fly over everything.',
   'Enemies hunt you, and more keep arriving from the hollow the longer you take.',
   'You start with a sword. Strike a shrine (E) to cycle its gift, step on it to take it: a weapon replaces your sword until its ammo runs out.',
-  'Potions: red is an extra life, blue a shield, purple invisibility. Pink crystals stun every foe for chain gold. Bombs blast through walls. Slime trails slow you.',
+  'Green crosses restore 50 health. Potions: red is an extra life, blue a shield, purple invisibility. Bombs blast through walls. Slime trails slow you.',
 ];
 
 /**
  * Canvas 2D overlay that floats over the WebGL view: HUD band, world labels,
- * and the start, pause, win, and death screens. Sized to the maze in tiles so
- * text scales with the window.
+ * and the start, pause, win, and death screens. Fills the window; `tile` is
+ * the layout unit and scales with the shorter window side so text and the
+ * HUD band stay legible from phones to 4K.
  */
 export class Renderer {
   readonly ctx: CanvasRenderingContext2D;
   tile = 24;
-  private cols = 1;
-  private rows = 1;
+  private w = 1;
+  private h = 1;
   private dpr = 1;
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -77,28 +83,24 @@ export class Renderer {
     this.ctx = ctx;
   }
 
-  resize(cols: number, rows: number): void {
-    this.cols = cols;
-    this.rows = rows + HUD_ROWS;
+  resize(): void {
+    this.w = window.innerWidth;
+    this.h = window.innerHeight;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const availW = window.innerWidth - 16;
-    const availH = window.innerHeight - 16;
-    this.tile = Math.max(4, Math.floor(Math.min(availW / this.cols, availH / this.rows)));
-    const w = this.tile * this.cols;
-    const h = this.tile * this.rows;
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
-    this.canvas.width = Math.round(w * this.dpr);
-    this.canvas.height = Math.round(h * this.dpr);
+    this.tile = Math.max(MIN_TILE, Math.min(MAX_TILE, this.w / LAYOUT_COLS, this.h / LAYOUT_ROWS));
+    this.canvas.style.width = `${this.w}px`;
+    this.canvas.style.height = `${this.h}px`;
+    this.canvas.width = Math.round(this.w * this.dpr);
+    this.canvas.height = Math.round(this.h * this.dpr);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 
   get width(): number {
-    return this.tile * this.cols;
+    return this.w;
   }
 
   get height(): number {
-    return this.tile * this.rows;
+    return this.h;
   }
 
   begin(): void {
@@ -107,11 +109,12 @@ export class Renderer {
 
   // ------------------------------------------------------------------ HUD
 
-  drawHUD(score: Score, levelName: string, frenzy: Frenzy, gridRows: number, s: HudStatus, time = 0): void {
+  /** The HUD band sits along the bottom edge of the window. */
+  drawHUD(score: Score, levelName: string, frenzy: Frenzy, s: HudStatus, time = 0): void {
     const { ctx, tile: t } = this;
-    const top = gridRows * t;
-    const w = this.width;
     const band = HUD_ROWS * t;
+    const top = this.height - band;
+    const w = this.width;
     ctx.fillStyle = 'rgba(2,6,12,0.82)';
     ctx.fillRect(0, top, w, band);
 
@@ -359,7 +362,8 @@ export class Renderer {
 
     ctx.fillStyle = '#8f8a80';
     ctx.font = `${t * 0.55}px system-ui, sans-serif`;
-    ctx.fillText('Hold W to walk, A / D turn, S reverse   Space jump   E attack   B bomb   C camera   Esc pause   M mute', W / 2, H * 0.9);
+    ctx.fillText('Click to aim with the mouse   Hold W to run, A / D sidestep, S back', W / 2, H * 0.88);
+    ctx.fillText('Space jump   E attack   B bomb   C camera   Esc pause   M mute', W / 2, H * 0.92);
     const pulse = 0.7 + Math.sin(time * 4) * 0.3;
     ctx.globalAlpha = pulse;
     ctx.font = `bold ${t * 0.9}px system-ui, sans-serif`;

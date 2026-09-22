@@ -1,13 +1,13 @@
 # Void Harvest
 
 A voxel dungeon crawler through a moonlit forest labyrinth with verticality.
-Popolon walks wide forest roads, three characters across, walled by undergrowth
+Popolon walks single-file forest paths, one tile wide, walled by undergrowth
 and trees, to gather twenty-five gold nuggets while a skeleton, two bats, and a
 slime hunt him. The forest rises in levels: ramps join some floors, ledges must
-be jumped, trenches across the road must be cleared, and bats fly over all of it. Power crystals stun every foe for a few seconds; cut
-them down while they glow for chain gold. Viewed from a third-person camera
-that rides behind Popolon and turns with him (C switches to a top-down
-follow view). The dungeon is 53 by 45 tiles, composed from four mirrored quadrants.
+be jumped, trenches across the road must be cleared, and bats fly over all of it. Green crosses left along the paths
+restore fifty health. Viewed over Popolon's shoulder from a camera the mouse
+aims: click the view to capture the pointer, and he runs wherever it looks
+(C switches to a top-down follow view). The dungeon is 27 by 23 tiles, composed from four mirrored quadrants.
 
 Core loop: grid navigation and resource collection under asynchronous pursuit,
 punctuated by a temporary state-inversion (stun) that flips hunter and hunted.
@@ -26,18 +26,43 @@ Open the printed URL (default http://localhost:5173).
 | `npm run dev` | Dev server with hot reload |
 | `npm run build` | Type-check and bundle to `dist/` |
 | `npm run preview` | Serve the production build |
+| `npm run package` | Build and zip `dist/` into `release/void-harvest-<version>.zip` for sharing |
+| `npm run vox:import -- <file.vox>` | Convert a MagicaVoxel file into a `VoxelModel` literal |
+| `npm run vox:export -- <MODEL>` | Write a model from `voxels.ts` out to `art/<model>.vox` |
 | `npm test` | Run unit tests once |
 | `npm run test:watch` | Tests in watch mode |
+
+## Share it
+
+The game is a static site: one HTML file and one JavaScript bundle, about
+160 KB zipped, no server code. `npm run package` builds it and writes
+`release/void-harvest-<version>.zip`. Friends need a link, not the zip:
+opening `index.html` straight from disk does not work, because browsers
+refuse to load module scripts over `file://`. Any static host works:
+
+- **itch.io**: create a project, kind "HTML", upload the zip, tick "This
+  file will be played in the browser", set the viewport to fullscreen or at
+  least 1280 x 720. Free, and made for sharing browser games.
+- **Netlify Drop** (https://app.netlify.com/drop): drag the `dist/` folder
+  onto the page and you get a public URL in seconds.
+- **GitHub Pages**: push the repo, then publish `dist/` with
+  `npx gh-pages -d dist` or a Pages workflow.
+- **On your own network**: `npm run preview -- --host` serves the build on
+  your LAN address for people in the same room.
+
+The build uses relative asset paths (`base: './'`), so it runs from any
+folder or subpath. Best score is kept in the browser's localStorage.
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
-| W / up (hold) | Walk forward in the direction Popolon faces; release to rest on the next tile |
-| A / D, left / right | Turn left or right (taken at the next junction, or at once when stopped) |
+| W / up (hold) | Run the way the camera is looking; release to rest on the next tile |
+| A / D, left / right | Step to either side of the way the camera looks |
 | S / down | Reverse |
 | Touch drag | Same as the keys, relative to facing |
-| C | Switch between the third-person camera and the top-down follow view (top-down uses grid-absolute keys) |
+| Mouse | Aims the camera once you click the view to capture the pointer; Popolon takes the corridor it points down |
+| C | Switch between the chase camera and the top-down follow view (top-down uses grid-absolute keys) |
 | Space | Jump two tiles forward: over trenches and enemies, up one level; one tile or a hop in place when two is blocked |
 | E / tap | Attack: swing the sword, or fire the shrine weapon that has replaced it; facing a shrine, cycle it instead |
 | B / L / Shift | Drop a bomb on the current tile (stock of 3) |
@@ -52,9 +77,10 @@ Every tile has a floor level, 0 to 2. Quadrants rise clockwise from the
 hollow: top-left at ground, top-right and bottom-left one level up, bottom-right
 two. Walking down a drop is always allowed; walking up needs a ramp, which
 joins two levels at a few gates and at the tunnel mouths. Every other gate is a
-ledge: stand on the lower side and jump. Fourteen trenches, one tile deep and
-spanning the full road width, are cut across straight roads; walkers cannot
-cross them, jumpers and flyers can.
+ledge: stand on the lower side and jump. Six pits, one tile deep, are cut
+across straight corridors; walkers cannot cross them, jumpers and flyers can.
+A pit is only kept where it leaves the whole dungeon connected, so no cut can
+seal off a wing or trap the enemies in their hollow.
 
 A jump takes 0.42 s and lands two tiles ahead if that floor is at most one level
 up and the tile between is not a wall, otherwise one tile ahead, otherwise it is
@@ -223,14 +249,43 @@ tests check that a rig claims every voxel and that no part is empty.
 Levels are ASCII rows in `src/world/levels.ts`. Every row must be the same width.
 
 ```
-#  rock          .  gold nugget     o  power crystal
+#  rock          .  gold nugget     o  green cross (heals 50)
    open floor    P  hero spawn     G  hollow exit
 N  hollow floor   -  tunnel (wraps horizontally)
 W  weapon shrine I  item shrine
 r  life potion   b  shield potion    v  invisibility potion
 ```
 
-The tests check that every nugget and crystal is reachable from the spawn.
+The tests check that every nugget and cross is reachable from the spawn.
+
+## MagicaVoxel
+
+Models can be authored in MagicaVoxel instead of by hand. `tools/vox.mjs`
+converts in both directions, so a character can start in the editor or start
+in code and move to the editor later.
+
+```bash
+npm run vox:import -- path/to/model.vox --name WIZARD   # prints a VoxelModel
+npm run vox:export -- POPOLON                           # writes art/popolon.vox
+node tools/vox.mjs info path/to/model.vox               # sizes and voxel counts
+```
+
+`import` prints a `VoxelModel` literal on stdout, ready to paste into
+`src/render3d/voxels.ts`; size and colour counts go to stderr so you can
+redirect the model on its own. It crops away empty space, orders the palette
+by how often each colour is used, and assigns the keys. The text format holds
+59 colours, so reduce the palette in MagicaVoxel first if a model exceeds it.
+
+`export` writes a `.vox` you can open in the editor. The four characters are
+checked in under `art/` and are regenerated by rerunning the command.
+
+Axes differ between the two worlds: MagicaVoxel is z-up with y running away
+from its default camera, this format is y-up with rows running back to front.
+The converter remaps them so a model faces the camera in the editor and faces
++z in the game. Pass `--front ymax` if an imported model comes in backwards.
+A rigged character also needs its `PartDef` boxes updated, because those are
+voxel coordinates into the model grid and a new model will not match the old
+one's limbs.
 
 ## Art pipeline
 
@@ -244,7 +299,7 @@ node tools/gen-image.mjs --out art/wall-albedo.png --aspect 1:1 "seamless tileab
 
 ## Next steps
 
-- Richer voxel models (imported from MagicaVoxel or Blender)
+- Richer voxel models (the MagicaVoxel bridge is in; Blender is still manual)
 - Enemy hit points and attack telegraphs for the skeleton and slime
 - Health pickups and treasure chests as bonus items
 - Hit sparks and blast debris are the only effects; a fuller particle pass would help the win and death moments

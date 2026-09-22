@@ -14,8 +14,12 @@ export class Input {
   private justPressed = new Set<string>();
   private touchStart: { x: number; y: number } | null = null;
   private touchDir: Dir = 'none';
+  private lookX = 0;
+  private lookY = 0;
+  private readonly target: HTMLElement;
 
   constructor(target: HTMLElement) {
+    this.target = target;
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       const code = normalizeCode(e);
@@ -41,6 +45,21 @@ export class Input {
       this.pressed.clear();
     });
 
+    // Mouse aiming: clicking the view captures the pointer, after which the
+    // mouse turns the camera instead of moving a cursor around the page.
+    target.addEventListener('mousedown', () => {
+      if (document.pointerLockElement !== target) target.requestPointerLock?.();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement !== target) return;
+      this.lookX += e.movementX;
+      this.lookY += e.movementY;
+    });
+    document.addEventListener('pointerlockchange', () => {
+      this.lookX = 0;
+      this.lookY = 0;
+    });
+
     target.addEventListener('touchstart', (e) => {
       const t = e.changedTouches[0];
       this.touchStart = { x: t.clientX, y: t.clientY };
@@ -63,6 +82,19 @@ export class Input {
     };
     target.addEventListener('touchend', release, { passive: true });
     target.addEventListener('touchcancel', release, { passive: true });
+  }
+
+  /** True while the mouse is captured and aiming the camera. */
+  get aiming(): boolean {
+    return document.pointerLockElement === this.target;
+  }
+
+  /** Mouse movement in pixels since the last call, then cleared. */
+  takeLook(): { dx: number; dy: number } {
+    const d = { dx: this.lookX, dy: this.lookY };
+    this.lookX = 0;
+    this.lookY = 0;
+    return d;
   }
 
   /** Held movement direction right now, or 'none'. */

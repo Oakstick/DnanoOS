@@ -6,7 +6,7 @@ import { INVISIBLE_SECONDS, Potion, POTIONS } from '../src/entities/Potion';
 import { MAX_LIVES, Score } from '../src/systems/Score';
 import { Grid } from '../src/world/Grid';
 import { parseLevel } from '../src/world/Level';
-import { composeDungeon, LEVELS, placePotions, POTION_PLAN } from '../src/world/levels';
+import { composeDungeon, LEVELS, NUGGETS_PER_LEVEL, placeNuggets, placePotions, POTION_PLAN } from '../src/world/levels';
 import { Tile } from '../src/world/types';
 
 describe('potions in the grove', () => {
@@ -26,7 +26,8 @@ describe('potions in the grove', () => {
   });
 
   it('placement is deterministic and differs per seed', () => {
-    const rows = composeDungeon().rows;
+    // Potions land on plain floor, which is what placeNuggets leaves behind.
+    const rows = placeNuggets(composeDungeon().rows, NUGGETS_PER_LEVEL, 1);
     expect(placePotions(rows, POTION_PLAN, 1)).toEqual(placePotions(rows, POTION_PLAN, 1));
     expect(placePotions(rows, POTION_PLAN, 1)).not.toEqual(placePotions(rows, POTION_PLAN, 2));
   });
