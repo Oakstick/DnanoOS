@@ -173,6 +173,8 @@ export class Game {
 
   private enter(screen: Screen): void {
     this.screen = screen;
+    // The backing track steps back when the game does.
+    this.audio.duckMusic(screen === 'paused' || screen === 'dying' || screen === 'gameover');
     switch (screen) {
       case 'ready': this.screenTimer = READY_SECONDS; break;
       case 'dying': this.screenTimer = DYING_SECONDS; break;

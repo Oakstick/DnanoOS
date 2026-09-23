@@ -2,11 +2,15 @@
  * Procedural Web Audio. No sample files needed for the scaffold; swap any
  * play* body for buffer playback later.
  */
+import { Music } from './Music';
+
 export type Sfx =
   | 'nodule' | 'charge' | 'eat' | 'death' | 'clear' | 'start'
   | 'slash' | 'hurt' | 'fuse' | 'explode' | 'arrow' | 'arrowHit' | 'win' | 'jump' | 'heal';
 
 const MASTER_VOLUME = 0.5;
+/** The backing track sits well under the effects; it is a bed, not a feature. */
+const MUSIC_VOLUME = 0.42;
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
@@ -14,6 +18,7 @@ export class AudioManager {
   private ambientOsc: OscillatorNode | null = null;
   private ambientGain: GainNode | null = null;
   private frenzyOsc: OscillatorNode | null = null;
+  private music: Music | null = null;
   private pickupPitch = 0;
   muted = false;
 
@@ -36,6 +41,8 @@ export class AudioManager {
     this.master.gain.value = this.muted ? 0 : MASTER_VOLUME;
     this.master.connect(this.ctx.destination);
     this.startAmbient();
+    this.music = new Music(this.ctx, this.master, MUSIC_VOLUME);
+    this.music.start();
   }
 
   toggleMute(): boolean {
@@ -55,7 +62,10 @@ export class AudioManager {
     this.ambientOsc.type = 'sine';
     this.ambientOsc.frequency.value = 42;
     this.ambientGain = this.ctx.createGain();
-    this.ambientGain.gain.value = 0.12;
+    // Barely there at rest. A steady sub tone owns the low end of a mix and
+    // would turn the backing track to mud; it is only meant to be noticed
+    // when it swells, which is the warning that something is closing in.
+    this.ambientGain.gain.value = 0.016;
     const lfo = this.ctx.createOscillator();
     lfo.frequency.value = 0.15;
     const lfoGain = this.ctx.createGain();
@@ -70,8 +80,13 @@ export class AudioManager {
   setThreat(level: number): void {
     if (!this.ctx || !this.ambientGain || !this.ambientOsc) return;
     const now = this.ctx.currentTime;
-    this.ambientGain.gain.setTargetAtTime(0.12 + level * 0.25, now, 0.1);
+    this.ambientGain.gain.setTargetAtTime(0.016 + level * 0.17, now, 0.1);
     this.ambientOsc.frequency.setTargetAtTime(42 + level * 30, now, 0.1);
+  }
+
+  /** Drops the music under a pause or a death, and lifts it again after. */
+  duckMusic(under: boolean): void {
+    this.music?.setLevel(under ? MUSIC_VOLUME * 0.3 : MUSIC_VOLUME);
   }
 
   setFrenzy(active: boolean): void {

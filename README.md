@@ -27,6 +27,7 @@ Open the printed URL (default http://localhost:5173).
 | `npm run build` | Type-check and bundle to `dist/` |
 | `npm run preview` | Serve the production build |
 | `npm run package` | Build and zip `dist/` into `release/void-harvest-<version>.zip` for sharing |
+| `npm run build:standalone` | Inline the whole game into one double-clickable `standalone/void-harvest.html` |
 | `npm run vox:import -- <file.vox>` | Convert a MagicaVoxel file into a `VoxelModel` literal |
 | `npm run vox:export -- <MODEL>` | Write a model from `voxels.ts` out to `art/<model>.vox` |
 | `npm test` | Run unit tests once |
@@ -34,11 +35,21 @@ Open the printed URL (default http://localhost:5173).
 
 ## Share it
 
-The game is a static site: one HTML file and one JavaScript bundle, about
-160 KB zipped, no server code. `npm run package` builds it and writes
-`release/void-harvest-<version>.zip`. Friends need a link, not the zip:
-opening `index.html` straight from disk does not work, because browsers
-refuse to load module scripts over `file://`. Any static host works:
+There are two ways to hand the game to someone.
+
+**One file, no server.** `npm run build:standalone` inlines everything into
+`standalone/void-harvest.html`, about 600 KB. Double-click it and it plays;
+mail it, drop it on a USB stick, put it in shared storage. This works where
+`dist/index.html` does not, because a browser refuses to *fetch* a module
+script over `file://` but runs an inline one quite happily, and the inlined
+build has nothing left to fetch. The build fails loudly if any reference to an
+outside file survives. High scores and the mute setting still persist, and
+both reads are guarded, so a browser that blocks storage on local files just
+starts you at zero.
+
+**Hosted, for a link.** `npm run package` builds the ordinary site and writes
+`release/void-harvest-<version>.zip`, about 160 KB. That one needs a URL, not
+a double-click. Any static host works:
 
 - **itch.io**: create a project, kind "HTML", upload the zip, tick "This
   file will be played in the browser", set the viewport to fullscreen or at
@@ -208,6 +219,7 @@ src/
     GameLoop.ts        Fixed-step update, variable render, tab-visibility pause
     Input.ts           Keyboard hold-to-move and touch drag
     Audio.ts           Procedural Web Audio (sfx, ambient threat pulse, stun loop)
+    Music.ts           Procedural lo-fi backing track: scheduler, chords, drums, crackle
     Rng.ts             Seedable PRNG for reproducible enemy behavior
   world/
     types.ts           Tile enum, directions, vectors
@@ -302,6 +314,27 @@ The converter remaps them so a model faces the camera in the editor and faces
 A rigged character also needs its `PartDef` boxes updated, because those are
 voxel coordinates into the model grid and a new model will not match the old
 one's limbs.
+
+## Sound
+
+Everything you hear is generated at runtime; there are no audio files. Effects
+are short oscillator and noise shapes in `Audio.ts`, and `Music.ts` plays a
+backing track the same way: a scheduler queues sixteenths a quarter of a second
+ahead of the clock and builds each hit as it goes, so the whole soundtrack is a
+few kilobytes of code rather than a download.
+
+The track is a four-bar loop of I-vi-IV-V in C major, voiced with sevenths and
+ninths, at 78 beats per minute. What makes it read as lo-fi is the treatment
+rather than the notes: one gentle low-pass rolls the top off like a worn tape,
+that filter drifts under a slow LFO for warble, each chord note is detuned a
+few cents so the pad smears, offbeats land late for swing, and a loop of sparse
+crackle sits underneath. The melody picks fresh notes from the chord's scale
+each bar, so the loop never repeats exactly.
+
+The music ducks to a third while paused, dying, or on the game over screen, and
+M mutes everything. The old sub-bass threat drone is now barely audible at rest
+and only swells when an enemy closes in: a steady low tone owns the bottom of a
+mix and would otherwise turn the track to mud.
 
 ## Art pipeline
 
