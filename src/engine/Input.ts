@@ -1,11 +1,33 @@
 import { Dir } from '../world/types';
 
 /**
- * Keyboard + touch. Movement is hold-to-move: `direction` is the most
- * recently pressed direction key that is still held, or 'none' when nothing
+ * Keyboard, touch and gamepad. Movement is hold-to-move: `direction` is the
+ * most recently pressed direction that is still held, or 'none' when nothing
  * is held. Touch works as a drag joystick: the finger's offset from where it
- * landed is the held direction until it lifts.
+ * landed is the held direction until it lifts. A controller's buttons are
+ * reported as the key codes they stand in for, so the rest of the game never
+ * has to know which one you are playing with.
  */
+/** Gamepad buttons in the standard layout, mapped to the keys they stand for. */
+const PAD_BUTTONS: Record<number, string> = {
+  0: 'Space',       // A / cross: jump
+  2: 'KeyE',        // X / square: attack
+  7: 'KeyE',        // right trigger: attack
+  1: 'KeyB',        // B / circle: bomb
+  4: 'KeyB',        // left bumper: bomb
+  3: 'KeyC',        // Y / triangle: swap camera
+  9: 'Enter',       // start
+  8: 'Escape',      // back / select
+};
+/** D-pad buttons, which move him exactly like the sticks do. */
+const PAD_DPAD: Record<number, Dir> = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
+/** Past this much push a stick counts as held; a grid needs a decisive shove. */
+const MOVE_DEADZONE = 0.4;
+const LOOK_DEADZONE = 0.16;
+/** Right stick at full tilt turns the camera this fast, in mouse pixels per second. */
+const PAD_LOOK_SPEED = 950;
+/** Seconds the camera keeps obeying the stick after you let go of it. */
+const PAD_AIM_MEMORY = 1.2;
 export class Input {
   private held: Dir[] = [];
   /** Increments on every direction press so consumers can react once per press. */
@@ -17,6 +39,11 @@ export class Input {
   private lookX = 0;
   private lookY = 0;
   private readonly target: HTMLElement;
+  private padDir: Dir = 'none';
+  private padHeld = new Set<string>();
+  private padAimAge = PAD_AIM_MEMORY;
+  /** True once a controller has been seen, for the hint on the title screen. */
+  padConnected = false;
 
   constructor(target: HTMLElement) {
     this.target = target;
@@ -84,9 +111,67 @@ export class Input {
     target.addEventListener('touchcancel', release, { passive: true });
   }
 
-  /** True while the mouse is captured and aiming the camera. */
+  /**
+   * Reads the controller. Called once per fixed update, which is what makes
+   * stick aiming run at the same speed whatever the frame rate is doing.
+   */
+  poll(dt: number): void {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let pad: Gamepad | null = null;
+    for (const p of pads) if (p && p.connected) { pad = p; break; }
+    this.padAimAge += dt;
+    if (!pad) {
+      if (this.padHeld.size > 0) {
+        for (const code of this.padHeld) this.pressed.delete(code);
+        this.padHeld.clear();
+      }
+      this.padDir = 'none';
+      return;
+    }
+    this.padConnected = true;
+
+    // Buttons, as the keys they stand for, so presses arrive like any other.
+    const down = new Set<string>();
+    pad.buttons.forEach((b, i) => {
+      if (!b.pressed) return;
+      const code = PAD_BUTTONS[i];
+      if (code) down.add(code);
+    });
+    for (const code of down) {
+      if (!this.padHeld.has(code)) this.justPressed.add(code);
+      this.pressed.add(code);
+    }
+    for (const code of this.padHeld) if (!down.has(code)) this.pressed.delete(code);
+    this.padHeld = down;
+
+    // Left stick, or the d-pad, chooses the corridor.
+    let dir: Dir = 'none';
+    for (const [i, d] of Object.entries(PAD_DPAD)) {
+      if (pad.buttons[Number(i)]?.pressed) dir = d;
+    }
+    if (dir === 'none') {
+      const x = pad.axes[0] ?? 0;
+      const y = pad.axes[1] ?? 0;
+      if (Math.max(Math.abs(x), Math.abs(y)) >= MOVE_DEADZONE) {
+        dir = Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up');
+      }
+    }
+    if (dir !== this.padDir && dir !== 'none') this.directionSeq++;
+    this.padDir = dir;
+
+    // Right stick aims, squared so small pushes stay fine and full tilt is quick.
+    const lx = curve(pad.axes[2] ?? 0);
+    const ly = curve(pad.axes[3] ?? 0);
+    if (lx !== 0 || ly !== 0) {
+      this.lookX += lx * PAD_LOOK_SPEED * dt;
+      this.lookY += ly * PAD_LOOK_SPEED * dt;
+      this.padAimAge = 0;
+    }
+  }
+
+  /** True while the mouse or the right stick is aiming the camera. */
   get aiming(): boolean {
-    return document.pointerLockElement === this.target;
+    return document.pointerLockElement === this.target || this.padAimAge < PAD_AIM_MEMORY;
   }
 
   /** Mouse movement in pixels since the last call, then cleared. */
@@ -99,6 +184,7 @@ export class Input {
 
   /** Held movement direction right now, or 'none'. */
   get direction(): Dir {
+    if (this.padDir !== 'none') return this.padDir;
     if (this.touchDir !== 'none') return this.touchDir;
     return this.held.length ? this.held[this.held.length - 1] : 'none';
   }
@@ -106,6 +192,7 @@ export class Input {
   clearDirection(): void {
     this.held = [];
     this.touchDir = 'none';
+    this.padDir = 'none';
   }
 
   isDown(code: string): boolean {
@@ -120,6 +207,13 @@ export class Input {
   flush(): void {
     this.justPressed.clear();
   }
+}
+
+/** Stick response: squared past the deadzone, so a nudge is a nudge. */
+function curve(v: number): number {
+  if (Math.abs(v) < LOOK_DEADZONE) return 0;
+  const t = (Math.abs(v) - LOOK_DEADZONE) / (1 - LOOK_DEADZONE);
+  return Math.sign(v) * t * t;
 }
 
 /** Prefer the physical key code; fall back to the logical key for virtual keyboards. */

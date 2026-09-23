@@ -184,6 +184,7 @@ export class Game {
 
   update(dt: number): void {
     this.time += dt;
+    this.input.poll(dt);
     this.handleGlobalKeys();
 
     switch (this.screen) {
@@ -246,7 +247,7 @@ export class Game {
       this.renderer3D.cameraMode = this.renderer3D.cameraMode === 'third' ? 'top' : 'third';
     }
 
-    // Mouse aiming only steers the chase camera, never the top-down view.
+    // Aiming, by mouse or right stick, only steers the chase camera.
     const aiming = this.input.aiming && this.renderer3D.cameraMode === 'third';
     this.renderer3D.mouseLook = aiming;
     const look = this.input.takeLook();

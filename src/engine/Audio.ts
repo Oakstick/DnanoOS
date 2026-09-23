@@ -97,14 +97,30 @@ export class AudioManager {
     }
   }
 
-  /** Nugget reward: a bright two-note chime that climbs a little with each nugget found. */
+  /**
+   * Nugget reward: a coin. Struck metal is inharmonic, so the clink is three
+   * partials at bell ratios rather than a chord, decaying almost at once. Over
+   * it go the two rising notes an arcade coin is made of, a fourth apart, with
+   * a thin shimmer on the second for the ring. The whole thing creeps up in
+   * pitch as the hoard grows, so a run of nuggets builds instead of repeating.
+   */
   playReward(step: number): void {
     if (!this.ctx || !this.master) return;
     const t = this.ctx.currentTime;
-    const base = 660 * Math.pow(1.03, Math.min(step, 24));
-    this.blip(t, base, 0.12, 'triangle', 0.22);
-    this.blip(t + 0.09, base * 1.5, 0.16, 'triangle', 0.22);
-    this.blip(t + 0.09, base * 3, 0.1, 'sine', 0.08);
+    const base = 988 * Math.pow(1.018, Math.min(step, 24));
+
+    // The clink of metal on metal.
+    this.blip(t, base * 1.0, 0.06, 'sine', 0.10);
+    this.blip(t, base * 2.76, 0.05, 'sine', 0.07);
+    this.blip(t, base * 5.4, 0.04, 'sine', 0.035);
+
+    // The coin itself: two notes, the second held.
+    this.blip(t, base, 0.09, 'square', 0.15);
+    this.blip(t + 0.07, base * 1.335, 0.24, 'square', 0.14);
+
+    // Shimmer riding on the held note.
+    this.blip(t + 0.07, base * 2.67, 0.26, 'sine', 0.045);
+    this.blip(t + 0.09, base * 4.0, 0.16, 'sine', 0.025);
   }
 
   play(sfx: Sfx): void {

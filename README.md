@@ -71,6 +71,22 @@ folder or subpath. Best score is kept in the browser's localStorage.
 | M | Mute |
 | F1 | Frame counter in the HUD |
 
+A gamepad works too, in the standard layout. It is polled each fixed update,
+so stick aiming runs at the same speed whatever the frame rate is doing, and
+its buttons are reported as the keys they stand for, which is why nothing
+outside the input layer has to know which one you are playing with.
+
+| Control | Action |
+| --- | --- |
+| Left stick / d-pad | Run, relative to where the camera looks |
+| Right stick | Aim the camera; let go and it drifts back behind him |
+| A | Jump |
+| X or right trigger | Attack, or cycle a shrine |
+| B or left bumper | Drop a bomb |
+| Y | Switch camera |
+| Start | Begin, continue |
+| Back | Pause |
+
 ## Verticality
 
 Every tile has a floor level, 0 to 2. Quadrants rise clockwise from the
@@ -139,7 +155,7 @@ Boons are lost with a life.
 
 Popolon has three lives, shown as hearts in the HUD, and can never hold more
 than three. Each dungeon hides exactly twenty-five gold nuggets worth 50 gold
-apiece; every one plays a reward chime that climbs as you collect, the HUD
+apiece; every one rings like a dropped coin, climbing in pitch as you collect, the HUD
 counts them, and taking the last one wins the game with a victory screen.
 The longer you take, the more enemies crawl out of the hollow: the first
 reinforcement after 20 seconds, then one every 25 seconds, up to twelve foes.

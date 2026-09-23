@@ -362,8 +362,11 @@ export class Renderer {
 
     ctx.fillStyle = '#8f8a80';
     ctx.font = `${t * 0.55}px system-ui, sans-serif`;
-    ctx.fillText('Click to aim with the mouse   Hold W to run, A / D sidestep, S back', W / 2, H * 0.88);
-    ctx.fillText('Space jump   E attack   B bomb   C camera   Esc pause   M mute', W / 2, H * 0.92);
+    ctx.fillText('Click to aim with the mouse   Hold W to run, A / D sidestep, S back', W / 2, H * 0.81);
+    ctx.fillText('Space jump   E attack   B bomb   C camera   Esc pause   M mute', W / 2, H * 0.855);
+    ctx.fillStyle = '#7fd7ff';
+    ctx.fillText('Controller: left stick runs, right stick aims, A jump, X attack, B bomb, Start begins', W / 2, H * 0.90);
+    ctx.fillStyle = '#8f8a80';
     const pulse = 0.7 + Math.sin(time * 4) * 0.3;
     ctx.globalAlpha = pulse;
     ctx.font = `bold ${t * 0.9}px system-ui, sans-serif`;
