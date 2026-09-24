@@ -1,4 +1,4 @@
-# Link the C runtime statically so VoidHarvest.exe needs no Visual C++
+# Link the C runtime statically so the game exe needs no Visual C++
 # redistributable on the player's machine (one less Steam install step).
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]

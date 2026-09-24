@@ -1,5 +1,5 @@
-//! Embeds the icon and version info into VoidHarvest.exe on Windows.
-//! The icon is generated from the game's own voxel art: `VoidHarvest --write-icon assets/icon.ico`.
+//! Embeds the icon and version info into the game exe on Windows.
+//! The icon is generated from the game's own voxel art: `TheGreatAdventuresOfSebastian --write-icon assets/icon.ico`.
 
 fn main() {
     println!("cargo:rerun-if-changed=assets/icon.ico");

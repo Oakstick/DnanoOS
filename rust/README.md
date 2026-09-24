@@ -4,7 +4,7 @@ The game rebuilt in Rust from the TypeScript/Three.js version one folder up, fea
 
 | Target | Graphics | How to build | Output |
 |---|---|---|---|
-| Windows executable (Steam) | wgpu over Direct3D 12, Vulkan as the fallback | `powershell -File build-windows.ps1` | `dist/windows/VoidHarvest.exe` |
+| Windows executable (Steam) | wgpu over Direct3D 12, Vulkan as the fallback | `powershell -File build-windows.ps1` | `dist/windows/The Great Adventures of Sebastian.exe` |
 | Web | WebAssembly over WebGPU, WebGL2 as the fallback | `powershell -File build-web.ps1` | `dist/web/` |
 
 wgpu is Rust's implementation of the WebGPU API. The browser build uses the browser's own WebGPU, and the desktop build maps the same calls onto the native APIs. The shaders are WGSL either way.
