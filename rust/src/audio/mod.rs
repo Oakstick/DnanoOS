@@ -29,6 +29,14 @@ pub enum Sfx {
     Win,
     Jump,
     Heal,
+    /// Countdown beep.
+    Tick,
+    /// Countdown release.
+    Go,
+    /// Landing from a jump.
+    Land,
+    /// A nugget milestone (every five).
+    Milestone,
 }
 
 const MASTER_VOLUME: f64 = 0.5;
@@ -45,6 +53,8 @@ pub struct AudioManager {
     pub muted: bool,
     ducked: bool,
     tempo_step: u32,
+    rng: crate::logic::rng::Rng,
+    foot: bool,
 }
 
 impl Default for AudioManager {
@@ -56,7 +66,16 @@ impl Default for AudioManager {
 impl AudioManager {
     pub fn new() -> Self {
         let muted = platform::load("vh.muted").map(|v| v == "1").unwrap_or(false);
-        Self { synth: None, stream: None, pickup_pitch: 0, muted, ducked: false, tempo_step: 0 }
+        Self {
+            synth: None,
+            stream: None,
+            pickup_pitch: 0,
+            muted,
+            ducked: false,
+            tempo_step: 0,
+            rng: crate::logic::rng::Rng::from_time(),
+            foot: false,
+        }
     }
 
     /// Opens the audio device on first use. On the web this must follow a user gesture.
@@ -99,9 +118,10 @@ impl AudioManager {
         self.muted
     }
 
-    /// 0..1 how close the nearest enemy is; raises the ambient pulse.
+    /// 0..1 how close the nearest enemy is; raises the ambient pulse and thickens the drums.
     pub fn set_threat(&mut self, level: f64) {
         self.with(|s| {
+            s.intensity = level;
             s.drone_gain_target = 0.016 + level * 0.17;
             s.drone_freq_target = 42.0 + level * 30.0;
         });
@@ -152,13 +172,70 @@ impl AudioManager {
         });
     }
 
+    /// 0..1 how badly hurt the hero is; muffles the music.
+    pub fn set_danger(&mut self, level: f64) {
+        self.with(|s| s.danger_target = level.clamp(0.0, 1.0));
+    }
+
+    /// A footstep, varied every time so a run never sounds like a loop. Slime squelches.
+    pub fn play_step(&mut self, loudness: f64, slimy: bool) {
+        self.foot = !self.foot;
+        let (p, g) = (1.0 + self.rng.range(-0.08, 0.08) + if self.foot { 0.05 } else { -0.05 }, self.rng.range(0.8, 1.1));
+        let offset = self.rng.next() * 2.5;
+        self.with(|s| {
+            let t = s.now;
+            let vol = 0.05 * loudness * g;
+            let cutoff = if slimy { 480.0 } else { 900.0 * p };
+            s.push(
+                Voice::new(t, t + 0.09, Wave::Noise { rate: 0.9 * p, offset }, Env::constant(1.0), Env::ramp(t, vol * 2.2, 0.001, 0.07), Bus::Sfx)
+                    .filtered(synth::FilterKind::Lowpass, cutoff, 1.0),
+            );
+            if slimy {
+                s.push(Voice::new(t, t + 0.14, Wave::Sine, Env::ramp(t, 320.0 * p, 110.0, 0.12), Env::ramp(t, vol * 1.4, 0.001, 0.12), Bus::Sfx));
+            } else {
+                s.push(Voice::new(t, t + 0.06, Wave::Sine, Env::ramp(t, 120.0 * p, 70.0, 0.05), Env::ramp(t, vol * 1.6, 0.001, 0.05), Bus::Sfx));
+            }
+        });
+    }
+
+    /// A kill; each one in a quick streak rings a semitone higher.
+    pub fn play_kill(&mut self, streak: u32) {
+        let up = 2f64.powf(streak.min(12) as f64 / 12.0);
+        let (p, g) = (up * self.rng.range(0.97, 1.03), self.rng.range(0.9, 1.05));
+        self.with(|s| {
+            let t = s.now;
+            s.var_pitch = p;
+            s.var_gain = g;
+            sweep(s, t, 900.0, 200.0, 0.25, Wave::Square, 0.2);
+            if streak >= 2 {
+                blip(s, t + 0.05, 1320.0, 0.12, Wave::Triangle, 0.08);
+            }
+            s.var_pitch = 1.0;
+            s.var_gain = 1.0;
+        });
+    }
+
     pub fn play(&mut self, sfx: Sfx) {
         if sfx == Sfx::Nodule {
             self.pickup_pitch = (self.pickup_pitch + 1) % 2;
         }
         let pitch = self.pickup_pitch as f64;
+        // Dynamic variation: no two plays of an effect come out exactly alike.
+        // Cues that carry meaning (countdown, fanfare) stay exact.
+        let exact = matches!(sfx, Sfx::Tick | Sfx::Go | Sfx::Win | Sfx::Milestone);
+        let vp = if exact { 1.0 } else { self.rng.range(0.94, 1.06) };
+        let vg = if exact { 1.0 } else { self.rng.range(0.85, 1.05) };
+        let side = if sfx == Sfx::Slash {
+            self.foot = !self.foot;
+            if self.foot { 1.0 } else { 0.86 }
+        } else {
+            1.0
+        };
+        let offset = self.rng.next() * 2.0;
         self.with(|s| {
             let t = s.now;
+            s.var_pitch = vp * side;
+            s.var_gain = vg;
             match sfx {
                 Sfx::Nodule => blip(s, t, 520.0 + pitch * 90.0, 0.05, Wave::Square, 0.12),
                 Sfx::Charge => sweep(s, t, 200.0, 900.0, 0.35, Wave::Saw, 0.2),
@@ -170,7 +247,36 @@ impl AudioManager {
                 }
                 Sfx::Eat => sweep(s, t, 900.0, 200.0, 0.25, Wave::Square, 0.2),
                 Sfx::Death => sweep(s, t, 400.0, 40.0, 1.1, Wave::Saw, 0.3),
-                Sfx::Slash => sweep(s, t, 1400.0, 500.0, 0.12, Wave::Saw, 0.12),
+                Sfx::Slash => {
+                    // Blade swish plus a breath of air behind it; forehand and backhand differ.
+                    sweep(s, t, 1400.0, 500.0, 0.12, Wave::Saw, 0.1);
+                    s.push(
+                        Voice::new(t, t + 0.16, Wave::Noise { rate: 1.6, offset }, Env::constant(1.0), Env::ramp(t, 0.16 * vg, 0.001, 0.14), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 2600.0 * vp * side, 1.2),
+                    );
+                }
+                Sfx::Tick => {
+                    blip(s, t, 880.0, 0.1, Wave::Square, 0.12);
+                    blip(s, t, 1760.0, 0.06, Wave::Sine, 0.05);
+                }
+                Sfx::Go => {
+                    blip(s, t, 1175.0, 0.28, Wave::Square, 0.13);
+                    blip(s, t, 1760.0, 0.32, Wave::Triangle, 0.12);
+                    sweep(s, t, 220.0, 440.0, 0.2, Wave::Triangle, 0.14);
+                }
+                Sfx::Land => {
+                    s.push(
+                        Voice::new(t, t + 0.12, Wave::Noise { rate: 0.8, offset }, Env::constant(1.0), Env::ramp(t, 0.22 * vg, 0.001, 0.1), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 700.0 * vp, 1.0),
+                    );
+                    sweep(s, t, 150.0, 55.0, 0.12, Wave::Sine, 0.25);
+                }
+                Sfx::Milestone => {
+                    for (i, f) in [784.0, 988.0, 1175.0, 1568.0].into_iter().enumerate() {
+                        blip(s, t + i as f64 * 0.06, f, 0.18, Wave::Triangle, 0.12);
+                    }
+                    blip(s, t + 0.24, 2349.0, 0.3, Wave::Sine, 0.05);
+                }
                 Sfx::Hurt => sweep(s, t, 300.0, 120.0, 0.3, Wave::Square, 0.22),
                 Sfx::Fuse => blip(s, t, 1200.0, 0.04, Wave::Square, 0.08),
                 Sfx::Arrow => sweep(s, t, 2400.0, 900.0, 0.14, Wave::Triangle, 0.14),
@@ -191,16 +297,20 @@ impl AudioManager {
                     blip(s, t + 0.15, 440.0, 0.12, Wave::Triangle, 0.2);
                 }
             }
+            s.var_pitch = 1.0;
+            s.var_gain = 1.0;
         });
     }
 }
 
 fn blip(s: &mut Synth, t: f64, freq: f64, dur: f64, wave: Wave, vol: f64) {
-    s.push(Voice::new(t, t + dur + 0.02, wave, Env::constant(freq), Env::ramp(t, vol, 0.001, dur), Bus::Sfx));
+    let (p, g) = (s.var_pitch, s.var_gain);
+    s.push(Voice::new(t, t + dur + 0.02, wave, Env::constant(freq * p), Env::ramp(t, vol * g, 0.001, dur), Bus::Sfx));
 }
 
 fn sweep(s: &mut Synth, t: f64, from: f64, to: f64, dur: f64, wave: Wave, vol: f64) {
-    s.push(Voice::new(t, t + dur + 0.02, wave, Env::ramp(t, from, to, dur), Env::ramp(t, vol, 0.001, dur), Bus::Sfx));
+    let (p, g) = (s.var_pitch, s.var_gain);
+    s.push(Voice::new(t, t + dur + 0.02, wave, Env::ramp(t, from * p, to * p, dur), Env::ramp(t, vol * g, 0.001, dur), Bus::Sfx));
 }
 
 /**

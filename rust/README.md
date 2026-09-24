@@ -44,6 +44,13 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 - **HUD:** health in the top-left corner (portrait, lives, HP bar, weapon, potion effects), score in the top-right corner (gold, nuggets, best). Bombs and the dungeon name sit in the bottom-right.
 - **Music tempo:** every 5 nuggets the backing track speeds up by 5% (78 BPM at the start, about 95 BPM at 20 nuggets). Collecting all 25 plays a congratulations fanfare: a brass run, a snare roll, then a ringing chord with sparkles.
 - **Menus:** the title screen has Play / Quit Game buttons and the pause screen has Resume / Quit to Title / Quit Game. Use the mouse (hover and click), the arrows or W/S with Enter or Space, or the d-pad or stick with A or Start. The web build leaves out Quit Game.
+- **Start:** Popolon begins at the center of the dungeon, facing its longest corridor, after a 3-2-1-GO countdown with beeps.
+- **Sword:** each swing has a wind-up, a snapping strike with the hips turning into it and a small lunge, then a follow-through. Swings alternate forehand and backhand, with a sweeping trail.
+- **Impact feedback:** micro dust bursts on kills, hits, shots striking walls, landings, footsteps and blasts. Screen shake scales with the impact (a tap for a wall hit, a jolt for a bomb at your feet), and kills get a brief freeze-frame.
+- **Loadout panel:** the bottom-middle panel shows the held weapon with ammo pips, shield charges, and each running potion with a bar that drains as it wears off.
+- **UI visibility:** larger text, drop shadows on all text, darker bordered panels, a trailing damage chunk on the health bar, and a red screen-edge flash when hurt.
+- **Dynamic audio:** every effect varies a little in pitch and volume. Kill streaks climb in pitch, forehand and backhand swishes differ, and footsteps alternate (they squelch in slime). The music layers in extra hats and ghost kicks as enemies close in, and it muffles when health runs low.
+- **Juiced rewards:** collected nuggets fly into the HUD counter, which punches in. The score rolls up, floating text pops in, and every five nuggets gets a banner and a chime.
 - **Weight:** Popolon no longer snaps to full speed. Holding a direction accelerates him to the same top speed as before in 0.2 s. Letting go coasts him to rest on the next tile center under friction. Reversing brakes before he turns, and corners bleed a little speed. Hitboxes, `occupied` tiles and collisions are unchanged (`src/logic/hero.rs`, covered by tests).
 
 ## Layout

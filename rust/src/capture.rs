@@ -21,6 +21,8 @@ fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 }
 
 enum Cmd {
+    Nugget,
+    Hurt,
     Press(Action),
     Hold(Dir, bool),
     Look(f64, f64),
@@ -48,6 +50,8 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "pause" => Cmd::Press(Action::Pause),
             "tap" => Cmd::Press(Action::Tap),
             "fps" => Cmd::Press(Action::Fps),
+            "nugget" => Cmd::Nugget,
+            "hurt" => Cmd::Hurt,
             "look" => {
                 let dx = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 let dy = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
@@ -88,6 +92,7 @@ pub fn run(args: &[String]) -> i32 {
     };
     eprintln!("renderer: {}", gpu.backend);
     let mut game = Game::new();
+    game.viewport = (w as f32, h as f32);
     let mut next = 0;
     let mut t = 0.0;
     while t < until {
@@ -96,6 +101,8 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Press(a) => game.input.inject(a),
                 Cmd::Hold(d, down) => game.input.hold_dir(d, down),
                 Cmd::Look(dx, dy) => game.view.look(dx, dy),
+                Cmd::Nugget => game.debug_collect_nugget(),
+                Cmd::Hurt => game.debug_hurt(),
             }
             next += 1;
         }

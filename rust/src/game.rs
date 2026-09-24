@@ -16,7 +16,7 @@ use crate::logic::projectile::{spawn_shots, Projectile, ShotState};
 use crate::logic::rng::Rng;
 use crate::logic::systems::*;
 use crate::logic::types::{dist_sq, manhattan, relative_dir, Dir, PotionKind, Tile, CARDINALS, P};
-use crate::render::view::{dir_to_yaw, CameraMode, SceneState, WorldView};
+use crate::render::view::{dir_to_yaw, floor_at, CameraMode, SceneState, WorldView};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Screen {
@@ -49,7 +49,18 @@ const MODE_SCHEDULE: [(GlobalMode, f64); 6] = [
     (GlobalMode::Chase, f64::INFINITY),
 ];
 
-const READY_SECONDS: f64 = 2.2;
+/// The countdown before play: 3, 2, 1, then GO.
+pub const READY_SECONDS: f64 = 3.0;
+/// How long "GO!" hangs on screen once play begins.
+const GO_SECONDS: f32 = 0.8;
+/// Freeze-frame on a kill, the classic "impact" beat.
+const HITSTOP_KILL: f64 = 0.05;
+/// Kills closer together than this count as a streak.
+const STREAK_SECONDS: f64 = 1.6;
+/// Tiles walked between footsteps.
+const STRIDE_TILES: f64 = 0.5;
+/// A collected nugget takes this long to fly into the HUD counter.
+pub const COIN_FLIGHT_SECONDS: f32 = 0.55;
 const DYING_SECONDS: f64 = 1.8;
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
 
@@ -58,7 +69,43 @@ pub struct Floater {
     pub y: f64,
     pub text: String,
     pub life: f64,
+    pub max_life: f64,
     pub color: Option<u32>,
+}
+
+/// A nugget on its way from the world to the HUD counter, in screen space.
+pub struct FlyingCoin {
+    pub from: (f32, f32),
+    pub t: f32,
+}
+
+/// A big centered announcement ("10 NUGGETS").
+pub struct Banner {
+    pub text: String,
+    pub sub: String,
+    pub color: u32,
+    pub life: f32,
+    pub max: f32,
+}
+
+/// Presentation state for rewards and feedback; none of it affects the rules.
+#[derive(Default)]
+pub struct Juice {
+    /// The score as displayed, rolling up toward the real one.
+    pub score_shown: f64,
+    /// 1 when a nugget lands in the counter, fading to 0.
+    pub nugget_punch: f32,
+    /// The health bar's trailing chunk after a hit, in HP.
+    pub hp_trail: f32,
+    /// Flash on the health bar: color and 1..0 strength.
+    pub hp_flash: f32,
+    pub hp_flash_color: u32,
+    /// Red screen-edge flash when hurt.
+    pub hurt: f32,
+    pub coins: Vec<FlyingCoin>,
+    pub banner: Option<Banner>,
+    /// Seconds "GO!" has left on screen.
+    pub go: f32,
 }
 
 /// A button on the title or pause menu.
@@ -117,7 +164,8 @@ pub struct Game {
     global_mode: GlobalMode,
     mode_index: usize,
     mode_timer: f64,
-    screen_timer: f64,
+    /// Seconds left on a timed screen (the countdown reads it).
+    pub screen_timer: f64,
     pub time: f64,
     pub floaters: Vec<Floater>,
     nest_slots: Vec<P>,
@@ -130,6 +178,15 @@ pub struct Game {
     pub quit_requested: bool,
     /// Logical window size, for hit-testing menu buttons.
     pub viewport: (f32, f32),
+    pub juice: Juice,
+    /// Seconds of freeze-frame left.
+    hitstop: f64,
+    kill_streak: u32,
+    streak_timer: f64,
+    step_dist: f64,
+    was_airborne: bool,
+    /// The way Popolon faces at spawn: down the longest corridor from the center.
+    start_facing: Dir,
 }
 
 impl Game {
@@ -172,6 +229,13 @@ impl Game {
             menu_index: 0,
             quit_requested: false,
             viewport: (1280.0, 720.0),
+            juice: Juice::default(),
+            hitstop: 0.0,
+            kill_streak: 0,
+            streak_timer: 0.0,
+            step_dist: 0.0,
+            was_airborne: false,
+            start_facing: Dir::Down,
         };
         g.load_level(0);
         g
@@ -182,6 +246,10 @@ impl Game {
     pub fn load_level(&mut self, index: usize) {
         self.score.level = index;
         self.level = parse_level(&level_for(index));
+        // Popolon starts in the heart of the dungeon, facing its longest corridor.
+        let (spawn, facing) = center_spawn(&self.level);
+        self.level.hero_spawn = spawn;
+        self.start_facing = facing;
         self.nuggets_total = self.level.grid.count(Tile::Nodule) as u32;
         self.nuggets_got = 0;
         self.audio.set_tempo_step(0);
@@ -220,7 +288,14 @@ impl Game {
     /// Puts everyone back at spawn without touching collected gold.
     fn reset_round(&mut self) {
         self.hero.respawn(self.level.hero_spawn);
+        self.hero.facing = self.start_facing;
         self.view.aim_along(self.hero.facing);
+        self.juice.coins.clear();
+        self.juice.banner = None;
+        self.juice.hp_trail = self.hero.hp as f32;
+        self.hitstop = 0.0;
+        self.kill_streak = 0;
+        self.was_airborne = false;
         let center = self.level.nest_center;
         for (i, e) in self.enemies.iter_mut().enumerate() {
             e.reset(self.nest_slots.get(i).copied().unwrap_or(center));
@@ -244,8 +319,8 @@ impl Game {
         self.score.reset();
         self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare sword
         self.load_level(0);
+        self.juice.score_shown = 0.0;
         self.enter(Screen::Ready);
-        self.audio.play(Sfx::Start);
     }
 
     fn enter(&mut self, screen: Screen) {
@@ -255,6 +330,9 @@ impl Game {
         self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won));
         if screen == Screen::Title {
             self.audio.set_tempo_step(0);
+        }
+        if screen == Screen::Ready {
+            self.audio.play(Sfx::Tick); // "3"
         }
         self.screen_timer = match screen {
             Screen::Ready => READY_SECONDS,
@@ -267,6 +345,7 @@ impl Game {
 
     pub fn update(&mut self, dt: f64) {
         self.time += dt;
+        self.update_juice(dt);
         self.input.poll(dt);
         self.handle_global_keys();
 
@@ -288,12 +367,24 @@ impl Game {
                 None => {}
             },
             Screen::Ready => {
+                let before = self.screen_timer.ceil();
                 self.screen_timer -= dt;
                 if self.screen_timer <= 0.0 {
                     self.enter(Screen::Playing);
+                    self.audio.play(Sfx::Go);
+                    self.juice.go = GO_SECONDS;
+                } else if self.screen_timer.ceil() < before {
+                    self.audio.play(Sfx::Tick); // "2", "1"
                 }
             }
-            Screen::Playing => self.tick(dt),
+            Screen::Playing => {
+                // A freeze-frame on a hit: the world holds for a beat, effects keep moving.
+                if self.hitstop > 0.0 {
+                    self.hitstop -= dt;
+                } else {
+                    self.tick(dt);
+                }
+            }
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
                 Some(MenuItem::QuitToTitle) => self.enter(Screen::Title),
@@ -485,7 +576,9 @@ impl Game {
         self.update_mode_schedule(dt);
 
         let wanted = self.resolve_wanted_dir();
+        let before = self.hero.pos();
         self.hero.update(dt, &self.level.grid, wanted);
+        self.footsteps(before);
         self.collect();
         self.visit_shrines();
         self.visit_potions();
@@ -563,7 +656,7 @@ impl Game {
         self.spawned += 1;
         self.audio.play(Sfx::Fuse);
         let c = self.level.nest_center;
-        self.floaters.push(Floater { x: c.x as f64, y: c.y as f64 - 1.0, text: "SOMETHING STIRS".into(), life: 1.6, color: Some(0xb06cff) });
+        self.floater(c.x as f64, c.y as f64 - 1.0, "SOMETHING STIRS", 1.6, Some(0xb06cff));
     }
 
     /// Moving slimes mark every tile they cross; standing in the slime slows the hero.
@@ -604,7 +697,7 @@ impl Game {
     }
 
     fn floater(&mut self, x: f64, y: f64, text: impl Into<String>, life: f64, color: Option<u32>) {
-        self.floaters.push(Floater { x, y, text: text.into(), life, color });
+        self.floaters.push(Floater { x, y, text: text.into(), life, max_life: life, color });
     }
 
     fn collect(&mut self) {
@@ -630,8 +723,25 @@ impl Game {
                     self.audio.set_tempo_step(self.nuggets_got / NUGGETS_PER_TEMPO_STEP);
                 }
                 self.view.spark(&self.level.grid, ox, oy, 0xf2c53d);
+                self.view.sparkle(&self.level.grid, ox, oy, 0.35, 0xf2c53d, 18);
+                self.view.dust(&self.level.grid, ox, oy, 0xb8902a, 6, 1.2);
+                // The nugget flies from where it lay into the HUD counter.
+                let (w, h) = self.viewport;
+                let at = glam::Vec3::new(o.x as f32, floor_at(&self.level.grid, o.x as f32, o.y as f32) + 0.3, o.y as f32);
+                let from = self.view.project(at, w, h).unwrap_or((w / 2.0, h / 2.0));
+                self.juice.coins.push(FlyingCoin { from, t: 0.0 });
                 let text = format!("{}/{}", self.nuggets_got, self.nuggets_total);
                 self.floater(ox, oy, text, 0.9, Some(0xf2c53d));
+                if self.nuggets_got % NUGGETS_PER_TEMPO_STEP == 0 && self.nuggets_got < self.nuggets_total {
+                    self.audio.play(Sfx::Milestone);
+                    self.juice.banner = Some(Banner {
+                        text: format!("{} NUGGETS", self.nuggets_got),
+                        sub: format!("{} TO GO   THE MUSIC QUICKENS", self.nuggets_total - self.nuggets_got),
+                        color: 0xf2c53d,
+                        life: 1.8,
+                        max: 1.8,
+                    });
+                }
                 if self.nuggets_got >= self.nuggets_total {
                     self.win();
                 }
@@ -643,6 +753,9 @@ impl Game {
                 self.score.add(POINTS_CHARGE);
                 self.audio.play(Sfx::Heal);
                 self.view.spark(&self.level.grid, ox, oy, 0x4cf06a);
+                self.view.sparkle(&self.level.grid, ox, oy, 0.4, 0x5cff6a, 16);
+                self.juice.hp_flash = 1.0;
+                self.juice.hp_flash_color = 0x5cff6a;
                 let text = if gained > 0 { format!("+{gained} HP") } else { "FULL HEALTH".to_string() };
                 self.floater(ox, oy, text, 0.9, Some(0x5cff6a));
             }
@@ -750,7 +863,11 @@ impl Game {
     /// Sword swing: slays every targetable enemy in front of the hero.
     fn perform_attack(&mut self) {
         self.audio.play(Sfx::Slash);
+        self.view.sword_slash();
         let hits = find_attack_targets(self.hero.pos(), self.hero.facing, &self.enemies);
+        if !hits.is_empty() {
+            self.view.shake(0.14);
+        }
         for i in hits {
             self.slay_enemy(i);
         }
@@ -760,10 +877,21 @@ impl Game {
         let value = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.score.add(value);
         self.enemies[i].kill();
-        self.audio.play(Sfx::Eat);
+        self.kill_streak = if self.streak_timer > 0.0 { self.kill_streak + 1 } else { 1 };
+        self.streak_timer = STREAK_SECONDS;
+        self.audio.play_kill(self.kill_streak - 1);
         let p = self.enemies[i].pos();
+        let color = self.enemies[i].b.color;
         self.view.spark(&self.level.grid, p.x, p.y, 0xffb0b0);
+        self.view.dust(&self.level.grid, p.x, p.y, color, 14, 2.4);
+        self.view.sparkle(&self.level.grid, p.x, p.y, 0.5, 0xfff1c0, 8);
+        self.view.shake(0.1);
+        self.hitstop = HITSTOP_KILL;
         self.floater(p.x, p.y, value.to_string(), 1.0, None);
+        if self.kill_streak >= 2 {
+            let text = format!("x{} STREAK", self.kill_streak);
+            self.floater(p.x, p.y - 0.6, text, 1.2, Some(0xff8a2a));
+        }
     }
 
     /// Fires the held ranged weapon in the facing direction; the last shot hands the sword back.
@@ -798,6 +926,8 @@ impl Game {
             } else if state == ShotState::Wall {
                 let p = self.projectiles[i].pos;
                 self.view.spark(&self.level.grid, p.x, p.y, 0xfff1c0);
+                self.view.dust(&self.level.grid, p.x, p.y, 0x4a3620, 6, 1.6);
+                self.view.shake(0.03);
             } else if state == ShotState::Caught {
                 self.hero.refund_shot();
                 self.audio.play(Sfx::Nodule);
@@ -851,6 +981,10 @@ impl Game {
             self.view.remove_rock(&self.level.grid, t.x, t.y);
         }
         self.view.explode(&self.level.grid, c.x as f64, c.y as f64, broken.len());
+        self.view.dust(&self.level.grid, c.x as f64, c.y as f64, 0x4a3620, 30, 4.0);
+        // The closer the blast, the harder the kick.
+        let d = dist_sq(c.v(), self.hero.pos()).sqrt() as f32;
+        self.view.shake(0.75 * (1.0 - d / 12.0).max(0.15));
         self.audio.play(Sfx::Explode);
 
         for i in 0..self.enemies.len() {
@@ -899,6 +1033,8 @@ impl Game {
             DamageResult::Blocked => {
                 self.audio.play(Sfx::Nodule);
                 self.view.spark(&self.level.grid, hp.x, hp.y, 0x7fd7ff);
+                self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.5, 0x7fd7ff, 12);
+                self.view.shake(0.15);
                 self.floater(hp.x, hp.y, "BLOCKED", 0.8, Some(0x7fd7ff));
                 false
             }
@@ -906,6 +1042,11 @@ impl Game {
             DamageResult::Damaged => {
                 self.audio.play(Sfx::Hurt);
                 self.view.spark(&self.level.grid, hp.x, hp.y, 0xd8262e);
+                self.view.dust(&self.level.grid, hp.x, hp.y, 0xd8262e, 10, 2.2);
+                self.view.shake(0.42);
+                self.juice.hurt = 1.0;
+                self.juice.hp_flash = 1.0;
+                self.juice.hp_flash_color = 0xff4d4d;
                 if !self.hero.alive {
                     self.kill_hero();
                     return true;
@@ -922,6 +1063,7 @@ impl Game {
         self.frenzy.cancel();
         let hp = self.hero.pos();
         self.view.explode(&self.level.grid, hp.x, hp.y, 0);
+        self.view.shake(0.8);
         self.enter(Screen::Dying);
     }
 
@@ -934,7 +1076,139 @@ impl Game {
         let hp = self.hero.pos();
         let nearest = self.enemies.iter().filter(|e| e.is_dangerous()).map(|e| manhattan(e.pos(), hp)).fold(f64::INFINITY, f64::min);
         self.audio.set_threat(if nearest.is_infinite() { 0.0 } else { (1.0 - nearest / 10.0).max(0.0) });
+        let frac = self.hero.hp as f64 / self.hero.max_hp as f64;
+        self.audio.set_danger(if frac < 0.35 { 1.0 - frac / 0.35 } else { 0.0 });
+        self.streak_timer -= dt;
     }
+
+    /// Footsteps while running, a thud and a puff of dust on landing.
+    fn footsteps(&mut self, before: crate::logic::types::V) {
+        let airborne = self.hero.airborne();
+        if self.was_airborne && !airborne {
+            let hp = self.hero.pos();
+            self.audio.play(Sfx::Land);
+            self.view.dust(&self.level.grid, hp.x, hp.y, 0x4a3620, 12, 1.8);
+            self.view.shake(0.07);
+            self.step_dist = 0.0;
+        }
+        self.was_airborne = airborne;
+        if airborne || !self.hero.alive {
+            return;
+        }
+        let after = self.hero.pos();
+        let moved = dist_sq(before, after).sqrt();
+        if moved <= 0.0 || moved > 1.5 {
+            return; // standing, or wrapping through a tunnel
+        }
+        self.step_dist += moved;
+        if self.step_dist >= STRIDE_TILES {
+            self.step_dist -= STRIDE_TILES;
+            let speed = if self.hero.m.speed > 0.0 { (self.hero.vel / self.hero.m.speed).clamp(0.3, 1.0) } else { 0.5 };
+            let slimy = self.hero.slowed();
+            self.audio.play_step(speed, slimy);
+            let color = if slimy { 0x5cff6a } else { 0x4a3620 };
+            self.view.dust(&self.level.grid, after.x, after.y, color, 2, 0.7);
+        }
+    }
+
+    /// Rewards and feedback that live only on screen: rolling score, flying coins, flashes.
+    fn update_juice(&mut self, dt: f64) {
+        let dtf = dt as f32;
+        let j = &mut self.juice;
+        let target = self.score.score as f64;
+        if j.score_shown < target {
+            j.score_shown = (j.score_shown + (target - j.score_shown) * (dt * 9.0).min(1.0) + dt * 40.0).min(target);
+        } else {
+            j.score_shown = target;
+        }
+        let hp = self.hero.hp as f32;
+        if j.hp_trail > hp {
+            j.hp_trail = (j.hp_trail - dtf * 60.0).max(hp);
+        } else {
+            j.hp_trail = hp;
+        }
+        j.nugget_punch = (j.nugget_punch - dtf * 3.5).max(0.0);
+        j.hp_flash = (j.hp_flash - dtf * 3.0).max(0.0);
+        j.hurt = (j.hurt - dtf * 2.2).max(0.0);
+        j.go = (j.go - dtf).max(0.0);
+        let mut landed = 0;
+        j.coins.retain_mut(|c| {
+            c.t += dtf / COIN_FLIGHT_SECONDS;
+            if c.t >= 1.0 {
+                landed += 1;
+                false
+            } else {
+                true
+            }
+        });
+        if landed > 0 {
+            j.nugget_punch = 1.0;
+        }
+        if let Some(b) = &mut j.banner {
+            b.life -= dtf;
+            if b.life <= 0.0 {
+                j.banner = None;
+            }
+        }
+    }
+
+    /// Test and capture hook: drop a nugget under Popolon and pick it up.
+    pub fn debug_collect_nugget(&mut self) {
+        let o = self.hero.occupied();
+        self.level.grid.set(o.x, o.y, Tile::Nodule);
+        self.collect();
+    }
+
+    /// Test and capture hook: an enemy's touch.
+    pub fn debug_hurt(&mut self) {
+        self.hero.invuln = 0.0;
+        self.hurt_hero(CONTACT_DAMAGE);
+    }
+
+    /// Nuggets shown in the HUD: the ones still flying there are not counted yet.
+    pub fn nuggets_shown(&self) -> u32 {
+        self.nuggets_got.saturating_sub(self.juice.coins.len() as u32)
+    }
+}
+
+/**
+ * The open floor tile nearest the dungeon's center (never a shrine, bottle,
+ * ramp or the hollow), and the direction with the longest clear run from it.
+ */
+pub fn center_spawn(level: &ParsedLevel) -> (P, Dir) {
+    let g = &level.grid;
+    let (cx, cy) = ((g.width - 1) as f64 / 2.0, (g.height - 1) as f64 / 2.0);
+    let taken: Vec<P> = level
+        .weapon_shrines
+        .iter()
+        .chain(level.item_shrines.iter())
+        .copied()
+        .chain(level.potions.iter().map(|(p, _)| *p))
+        .collect();
+    let mut best = level.hero_spawn;
+    let mut best_d = f64::INFINITY;
+    for (x, y, t) in g.cells() {
+        let p = P::new(x, y);
+        if t != Tile::Open || g.is_ramp(x, y) || taken.contains(&p) {
+            continue;
+        }
+        let d = (x as f64 - cx).powi(2) + (y as f64 - cy).powi(2);
+        if d < best_d {
+            best_d = d;
+            best = p;
+        }
+    }
+    let run = |d: Dir| {
+        let mut n = 0;
+        let mut p = best;
+        while n < 12 && g.can_move(p, d, false, false) {
+            p = g.neighbor(p, d);
+            n += 1;
+        }
+        n
+    };
+    let facing = [Dir::Down, Dir::Up, Dir::Left, Dir::Right].into_iter().max_by_key(|&d| (run(d), d == Dir::Down)).unwrap();
+    (best, facing)
 }
 
 impl Default for Game {
@@ -970,6 +1244,34 @@ mod tests {
             g.collect();
             assert_eq!(g.audio.tempo_step(), n / NUGGETS_PER_TEMPO_STEP, "after {n} nuggets");
         }
+    }
+
+    #[test]
+    fn popolon_starts_in_the_middle_after_a_countdown() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        let spawn = g.level.hero_spawn;
+        let (w, h) = (g.level.grid.width, g.level.grid.height);
+        assert!((spawn.x - (w - 1) / 2).abs() <= 2 && (spawn.y - (h - 1) / 2).abs() <= 2, "spawn {spawn:?}");
+        // Every pickup is still reachable from the new start.
+        let seen = crate::logic::pathing::reachable(&g.level.grid, spawn, true, false);
+        for (x, y, t) in g.level.grid.cells() {
+            if t == Tile::Nodule || t == Tile::Charge {
+                assert!(seen.contains(&P::new(x, y)), "pickup at {x},{y} unreachable from the center");
+            }
+        }
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Ready);
+        for _ in 0..(2.9 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.screen, Screen::Ready, "still counting down at 2.9 s");
+        for _ in 0..(0.2 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.screen, Screen::Playing);
+        assert_eq!(g.hero.occupied(), spawn);
     }
 
     #[test]

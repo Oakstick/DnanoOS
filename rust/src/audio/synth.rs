@@ -229,6 +229,14 @@ pub struct Synth {
 
     // Frenzy wail.
     pub frenzy: bool,
+    /// Per-play variation applied by the effect helpers: pitch and gain multipliers.
+    pub var_pitch: f64,
+    pub var_gain: f64,
+    /// 0..1 how close the danger is; the music layers in extra percussion as it rises.
+    pub intensity: f64,
+    /// 0..1 how hurt the hero is; the music muffles as it rises.
+    pub danger_target: f64,
+    danger: f64,
     frenzy_phase: f64,
 
     pub music: super::music::Sequencer,
@@ -259,6 +267,11 @@ impl Synth {
             drone_freq: 42.0,
             drone_freq_target: 42.0,
             frenzy: false,
+            var_pitch: 1.0,
+            var_gain: 1.0,
+            intensity: 0.0,
+            danger_target: 0.0,
+            danger: 0.0,
             frenzy_phase: 0.0,
             music: super::music::Sequencer::new(),
             control_countdown: 0,
@@ -360,8 +373,11 @@ impl Synth {
 
     /// Control-rate work: the tape warble and the music sequencer.
     fn control(&mut self) {
-        let wobble = (TAU * 0.23 * self.now).sin() * 260.0;
-        self.tone.set_freq(MUSIC_LOWPASS + wobble, self.sample_rate);
+        // Low health pulls the tape filter down, as if the music were heard underwater.
+        self.danger += (self.danger_target - self.danger) * 0.004;
+        let wobble = (TAU * 0.23 * self.now).sin() * 260.0 * (1.0 - 0.5 * self.danger);
+        let cutoff = MUSIC_LOWPASS + (1250.0 - MUSIC_LOWPASS) * self.danger;
+        self.tone.set_freq(cutoff + wobble, self.sample_rate);
         let mut seq = std::mem::take(&mut self.music);
         seq.pump(self);
         self.music = seq;

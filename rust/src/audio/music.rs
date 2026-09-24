@@ -93,6 +93,15 @@ impl Sequencer {
         if beat % 2 == 0 {
             hat(s, t, if beat % 4 == 0 { 0.07 } else { 0.045 });
         }
+        // Intensity layers: as enemies close in, the offbeat sixteenths fill with
+        // hats, then ghost kicks push the groove forward.
+        let intensity = s.intensity;
+        if intensity > 0.3 && beat % 2 == 1 {
+            hat(s, t, 0.02 + 0.035 * intensity);
+        }
+        if intensity > 0.6 && (beat == 3 || beat == 11) {
+            kick(s, t, 0.12 + 0.1 * intensity);
+        }
         if beat == 0 {
             bass(s, t, chord.root, sd * 3.0);
             keys(s, t, &chord.voicing, 0.3);

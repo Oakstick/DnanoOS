@@ -90,6 +90,13 @@ const BLAST_SECONDS: f32 = 0.45;
 const DEBRIS_SECONDS: f32 = 1.4;
 const GRAVITY: f32 = 14.0;
 const REASSEMBLE_START: f64 = 0.7;
+/// How long the sword's wind-up, strike and follow-through take on screen.
+pub const SLASH_SECONDS: f32 = 0.3;
+/// Particles alive at once; the oldest make way.
+const MAX_PARTICLES: usize = 700;
+/// Screen shake: trauma decays at this rate per second; offset scales with trauma squared.
+const TRAUMA_DECAY: f32 = 1.9;
+const SHAKE_DISTANCE: f32 = 0.13;
 pub const FOV_DEGREES: f32 = 50.0;
 pub const NEAR: f32 = 0.1;
 pub const FAR: f32 = 80.0;
@@ -263,6 +270,19 @@ impl Tree {
     }
 }
 
+/// One speck of dust or spark.
+struct Particle {
+    pos: Vec3,
+    vel: Vec3,
+    color: Vec3,
+    life: f32,
+    max: f32,
+    size: f32,
+    gravity: f32,
+    floor: f32,
+    glow: bool,
+}
+
 struct Debris {
     pos: Vec3,
     vel: Vec3,
@@ -375,6 +395,16 @@ pub struct WorldView {
     hero_phase: f32,
     hero_yaw: f32,
     hero_root_rot: Vec3,
+    /// Seconds into the current sword slash, or negative when idle.
+    slash_t: f32,
+    /// +1 forehand, -1 backhand; alternates every swing.
+    slash_side: f32,
+    hero_lunge: f32,
+    particles: Vec<Particle>,
+    /// 0..1 accumulated impact, driving the screen shake.
+    trauma: f32,
+    shake_clock: f32,
+    shake_offset: Vec3,
     enemy_views: Vec<EnemyView>,
     diamond_spin: Vec<f32>,
     cam_pos: Vec3,
@@ -417,6 +447,13 @@ impl WorldView {
             hero_phase: 0.0,
             hero_yaw: 0.0,
             hero_root_rot: Vec3::ZERO,
+            slash_t: -1.0,
+            slash_side: 1.0,
+            hero_lunge: 0.0,
+            particles: Vec::new(),
+            trauma: 0.0,
+            shake_clock: 0.0,
+            shake_offset: Vec3::ZERO,
             enemy_views: Vec::new(),
             diamond_spin: Vec::new(),
             cam_pos: Vec3::ZERO,
@@ -440,6 +477,8 @@ impl WorldView {
         self.enemy_views.clear();
         self.blasts.clear();
         self.debris.clear();
+        self.particles.clear();
+        self.trauma = 0.0;
         for l in self.effect_lights.iter_mut() {
             l.intensity = 0.0;
         }
@@ -751,6 +790,12 @@ impl WorldView {
 
         // Hero pose: stride cycle, facing, sword swing, jump tuck.
         let hero = s.hero;
+        if self.slash_t >= 0.0 {
+            self.slash_t += dtf;
+            if self.slash_t > SLASH_SECONDS {
+                self.slash_t = -1.0;
+            }
+        }
         self.hero_phase += dtf * hero.motion as f32 * if hero.hasted() { 17.0 } else { 13.0 };
         self.hero_yaw = lerp_angle(self.hero_yaw, dir_to_rotation(hero.facing), 1.0 - (-TURN_RATE_HERO * dtf).exp());
         self.animate_hero(hero);
@@ -770,6 +815,88 @@ impl WorldView {
         }
         self.update_camera(dtf, s.grid, hero);
         self.update_tree_fade(dtf, hero);
+        self.update_shake(dtf);
+    }
+
+    /// Trauma-based shake: a few incommensurate sines, so it never loops visibly.
+    fn update_shake(&mut self, dt: f32) {
+        self.trauma = (self.trauma - TRAUMA_DECAY * dt).max(0.0);
+        self.shake_clock += dt;
+        let t = self.shake_clock;
+        let s = self.trauma * self.trauma * SHAKE_DISTANCE;
+        self.shake_offset = Vec3::new(
+            (t * 47.0).sin() * 0.6 + (t * 83.0).sin() * 0.4,
+            ((t * 59.0).sin() * 0.6 + (t * 97.0).cos() * 0.4) * 0.7,
+            (t * 53.0).cos() * 0.6 + (t * 71.0).sin() * 0.4,
+        ) * s;
+    }
+
+    /// Adds impact to the screen shake (0.05 a tap, 0.7 a bomb at your feet).
+    pub fn shake(&mut self, amount: f32) {
+        self.trauma = (self.trauma + amount).min(1.0);
+    }
+
+    /// Starts the sword's slash animation; swings alternate forehand and backhand.
+    pub fn sword_slash(&mut self) {
+        self.slash_t = 0.0;
+        self.slash_side = -self.slash_side;
+    }
+
+    fn push_particle(&mut self, p: Particle) {
+        if self.particles.len() >= MAX_PARTICLES {
+            self.particles.remove(0);
+        }
+        self.particles.push(p);
+    }
+
+    /// Micro dust kicked up at a point on the floor: small lit cubes that tumble and settle.
+    pub fn dust(&mut self, grid: &Grid, x: f64, y: f64, color: u32, count: usize, speed: f32) {
+        let (x, z) = (x as f32, y as f32);
+        let floor = floor_at(grid, x, z);
+        let base = lin(color);
+        for _ in 0..count {
+            let r = &mut self.rng;
+            let a = r.nextf() * TAU;
+            let sp = speed * (0.4 + r.nextf() * 0.6);
+            let shade = 0.75 + r.nextf() * 0.5;
+            let p = Particle {
+                pos: Vec3::new(x + (r.nextf() - 0.5) * 0.3, floor + 0.04 + r.nextf() * 0.15, z + (r.nextf() - 0.5) * 0.3),
+                vel: Vec3::new(a.cos() * sp, speed * (0.4 + r.nextf() * 0.8), a.sin() * sp),
+                color: base * shade,
+                life: 0.3 + r.nextf() * 0.4,
+                max: 0.7,
+                size: 0.03 + r.nextf() * 0.035,
+                gravity: 7.0,
+                floor: floor + 0.02,
+                glow: false,
+            };
+            self.push_particle(p);
+        }
+    }
+
+    /// Glowing motes that burst upward from a point: pickups, kills, heals.
+    pub fn sparkle(&mut self, grid: &Grid, x: f64, y: f64, height: f32, color: u32, count: usize) {
+        let (x, z) = (x as f32, y as f32);
+        let floor = floor_at(grid, x, z);
+        let base = lin(color);
+        for _ in 0..count {
+            let r = &mut self.rng;
+            let a = r.nextf() * TAU;
+            let sp = 0.6 + r.nextf() * 1.6;
+            let life = 0.4 + r.nextf() * 0.45;
+            let p = Particle {
+                pos: Vec3::new(x, floor + height, z),
+                vel: Vec3::new(a.cos() * sp, 1.2 + r.nextf() * 2.6, a.sin() * sp),
+                color: base * (1.2 + r.nextf() * 0.8),
+                life,
+                max: life,
+                size: 0.035 + r.nextf() * 0.03,
+                gravity: 4.0,
+                floor: floor + 0.02,
+                glow: true,
+            };
+            self.push_particle(p);
+        }
     }
 
     /**
@@ -811,6 +938,24 @@ impl WorldView {
     }
 
     fn update_effects(&mut self, dt: f32, _s: &SceneState) {
+        let drag = 1.0 - (2.4 * dt).min(0.9);
+        self.particles.retain_mut(|p| {
+            p.life -= dt;
+            if p.life <= 0.0 {
+                return false;
+            }
+            p.vel.y -= p.gravity * dt;
+            p.vel.x *= drag;
+            p.vel.z *= drag;
+            p.pos += p.vel * dt;
+            if p.pos.y < p.floor {
+                p.pos.y = p.floor;
+                p.vel.y *= -0.3;
+                p.vel.x *= 0.5;
+                p.vel.z *= 0.5;
+            }
+            true
+        });
         self.debris.retain_mut(|d| {
             d.life -= dt;
             if d.life <= 0.0 {
@@ -909,6 +1054,45 @@ impl WorldView {
         p.rot_x(rig, "swordArm", swing);
         p.rot_x(rig, "head", motion * 0.08 + if hero.swinging() { 0.15 } else { 0.0 });
         self.hero_root_rot.x = motion * if hero.hasted() { 0.14 } else { 0.07 };
+        self.hero_root_rot.y = 0.0;
+        self.hero_lunge = 0.0;
+        if self.slash_t >= 0.0 {
+            self.pose_slash();
+        }
+    }
+
+    /**
+     * The sword slash, keyed like a hand animation: a quick wind-up that lifts
+     * the blade back over the shoulder, a fast strike that sweeps it across
+     * and down with the hips turning into it and a small lunge, then an eased
+     * follow-through back to guard. Mirrored on alternate swings.
+     */
+    fn pose_slash(&mut self) {
+        // (time, arm pitch, arm roll, body twist, lunge); roll and twist mirror with the side.
+        const KEYS: [(f32, f32, f32, f32, f32); 4] = [
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            (0.2, -2.3, 0.55, 0.38, -0.03),
+            (0.47, 1.55, -0.75, -0.5, 0.1),
+            (1.0, 0.0, 0.0, 0.0, 0.0),
+        ];
+        let p = (self.slash_t / SLASH_SECONDS).clamp(0.0, 1.0);
+        let k = KEYS.iter().rposition(|k| k.0 <= p).unwrap_or(0).min(KEYS.len() - 2);
+        let (a, b) = (KEYS[k], KEYS[k + 1]);
+        let u = ((p - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
+        // The strike snaps (ease-out cubic); wind-up and recovery ease in and out.
+        let e = if k == 1 { 1.0 - (1.0 - u).powi(3) } else { u * u * (3.0 - 2.0 * u) };
+        let mix = |x: f32, y: f32| x + (y - x) * e;
+        let side = self.slash_side;
+        let rig = &self.models.popolon;
+        if let Some(i) = rig.index("swordArm") {
+            self.hero_pose.rot[i].x = mix(a.1, b.1);
+            self.hero_pose.rot[i].z = mix(a.2, b.2) * side;
+        }
+        let guard = (p * PI).sin();
+        self.hero_pose.rot_x(rig, "shieldArm", -0.55 * guard);
+        self.hero_pose.rot_x(rig, "head", 0.12 * guard);
+        self.hero_root_rot.y = mix(a.3, b.3) * side;
+        self.hero_lunge = mix(a.4, b.4);
     }
 
     fn animate_enemy(&mut self, i: usize, e: &Enemy, dt: f32, time: f32) {
@@ -1059,7 +1243,7 @@ impl WorldView {
     // ------------------------------------------------------------- camera math
 
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_at_rh(self.cam_pos, self.cam_look, Vec3::Y)
+        Mat4::look_at_rh(self.cam_pos + self.shake_offset, self.cam_look + self.shake_offset * 0.6, Vec3::Y)
     }
 
     pub fn projection(&self) -> Mat4 {
@@ -1113,7 +1297,7 @@ impl WorldView {
         };
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
-            let root = hero_group * euler(self.hero_root_rot);
+            let root = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
             let target = if ghost { &mut f.transparent[cube] } else { &mut f.opaque[cube] };
             emit_rig(target, &self.models.popolon, &self.hero_pose, root, Vec3::ONE, alpha, emissive);
         }
@@ -1123,10 +1307,28 @@ impl WorldView {
         }
         f.lights.push(Light { pos: hero_pos + Vec3::new(0.0, 1.2, 0.0), color: light_color * hero_light, distance: 6.0 });
 
-        if hero.swinging() {
-            let opacity = (hero.swing_progress() as f32 * PI).sin() * 0.85;
-            let m = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.35, 0.2)) * euler(Vec3::new(-PI / 2.0, 0.0, PI));
-            f.transparent[MeshKind::Ring as usize].push(Instance::new(m, lin(SLASH), opacity, Vec3::ZERO, SHADE_UNLIT));
+        if self.slash_t >= 0.0 {
+            // The blade's trail: a bright leading arc and fading echoes behind it, swept across the front.
+            let p = self.slash_t / SLASH_SECONDS;
+            let q = ((p - 0.17) / 0.33).clamp(0.0, 1.0);
+            let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
+            let side = self.slash_side;
+            for k in 0..5 {
+                let qk = (q - k as f32 * 0.09).clamp(0.0, 1.0);
+                let sweep = side * (1.15 - 2.3 * (1.0 - (1.0 - qk).powi(3)));
+                let alpha = env * (0.85 - k as f32 * 0.16);
+                if alpha <= 0.01 {
+                    continue;
+                }
+                let m = hero_group
+                    * Mat4::from_translation(Vec3::new(0.0, 0.45 - k as f32 * 0.02, 0.12))
+                    * Mat4::from_rotation_y(sweep)
+                    * Mat4::from_rotation_z(side * 0.32)
+                    * euler(Vec3::new(-PI / 2.0, 0.0, PI))
+                    * Mat4::from_scale(Vec3::splat(1.08 + k as f32 * 0.03));
+                let color = if k == 0 { lin(0xffffff) } else { lin(SLASH) };
+                f.transparent[MeshKind::Ring as usize].push(Instance::new(m, color, alpha, Vec3::ZERO, SHADE_UNLIT));
+            }
         }
         if hero.alive && hero.shield > 0 {
             let opacity = 0.16 + (time * 5.0).sin() * 0.06 + hero.shield as f32 * 0.03;
@@ -1251,6 +1453,17 @@ impl WorldView {
             let t = 1.0 - b.life / b.seconds;
             let m = Mat4::from_translation(b.pos) * Mat4::from_scale(Vec3::splat(b.radius * (1.0 + t * b.scale)));
             f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, b.color, 0.9 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+        }
+
+        // --- impact particles
+        for p in &self.particles {
+            let k = (p.life / p.max).clamp(0.0, 1.0);
+            let m = Mat4::from_translation(p.pos) * Mat4::from_scale(Vec3::splat(p.size * k.sqrt().max(0.2)));
+            if p.glow {
+                f.additive.push(Instance::new(m, p.color, k, Vec3::ZERO, SHADE_UNLIT));
+            } else {
+                f.opaque[cube].push(Instance::new(m, p.color, 1.0, Vec3::ZERO, SHADE_LIT));
+            }
         }
 
         // --- fireflies
@@ -1481,9 +1694,14 @@ mod tests {
     #[test]
     fn trees_fade_out_of_the_way_at_spawn() {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
-        // At spawn the chase camera sits behind a wall tree; it must fade, and not much else.
+        // At the web build's old spawn (2,4) the chase camera sits behind a wall tree;
+        // it must fade, and not much else.
         let mut g = crate::game::Game::new();
         g.input.inject(crate::input::Action::Confirm);
+        g.update(crate::app::STEP);
+        g.hero.m.teleport(P::new(2, 4));
+        g.hero.facing = Dir::Down;
+        g.view.aim_along(Dir::Down);
         for _ in 0..300 {
             g.update(crate::app::STEP);
         }

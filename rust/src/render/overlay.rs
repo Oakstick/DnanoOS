@@ -81,6 +81,8 @@ pub struct Overlay {
     pub height: f32,
     /// Multiplies every alpha, like canvas globalAlpha.
     pub alpha: f32,
+    /// Drop-shadow offset for text in pixels; 0 draws none.
+    pub shadow: f32,
 }
 
 /// Share of the font size a glyph cell is tall; keeps capitals near a system font's cap height.
@@ -90,7 +92,7 @@ const CONDENSE: f32 = 0.78;
 
 impl Overlay {
     pub fn new() -> Self {
-        Self { verts: Vec::with_capacity(16_384), width: 1.0, height: 1.0, alpha: 1.0 }
+        Self { verts: Vec::with_capacity(16_384), width: 1.0, height: 1.0, alpha: 1.0, shadow: 0.0 }
     }
 
     pub fn begin(&mut self, width: f32, height: f32) {
@@ -98,6 +100,7 @@ impl Overlay {
         self.width = width;
         self.height = height;
         self.alpha = 1.0;
+        self.shadow = 0.0;
     }
 
     fn solid_uv() -> [f32; 2] {
@@ -180,6 +183,13 @@ impl Overlay {
 
     /// Text centered vertically on `y`, like canvas `textBaseline = 'middle'`.
     pub fn text(&mut self, text: &str, x: f32, y: f32, size: f32, color: [f32; 4], align: Align, bold: bool) {
+        if self.shadow > 0.0 {
+            // A dark drop shadow keeps text readable over bright floors and lights.
+            let d = self.shadow.max(size * 0.07);
+            let s = std::mem::replace(&mut self.shadow, 0.0);
+            self.text(text, x + d, y + d, size, [0.0, 0.0, 0.0, color[3] * 0.8], align, bold);
+            self.shadow = s;
+        }
         let cell = size * GLYPH;
         let cw = cell * CONDENSE;
         let w = self.measure(text, size);
@@ -197,10 +207,11 @@ impl Overlay {
                 _ => '?' as u32,
             };
             if ch != ' ' && code != SOLID {
-                let u0 = ((code % COLS) * CELL) as f32 / ATLAS_W as f32;
-                let v0 = ((code / COLS) * CELL) as f32 / ATLAS_H as f32;
-                let du = CELL as f32 / ATLAS_W as f32;
-                let dv = CELL as f32 / ATLAS_H as f32;
+                // Inset by a texel so bilinear sampling never bleeds in the neighboring glyph.
+                let u0 = ((code % COLS) * CELL) as f32 / ATLAS_W as f32 + 1.0 / ATLAS_W as f32;
+                let v0 = ((code / COLS) * CELL) as f32 / ATLAS_H as f32 + 1.0 / ATLAS_H as f32;
+                let du = (CELL - 2) as f32 / ATLAS_W as f32;
+                let dv = (CELL - 2) as f32 / ATLAS_H as f32;
                 for (k, _) in passes.iter().enumerate() {
                     let ox = if k == 1 { (cw / 12.0).max(0.6) } else { 0.0 };
                     let x0 = pen + ox;
