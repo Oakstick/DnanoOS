@@ -55,7 +55,7 @@ struct JumpState {
 }
 
 /**
- * Popolon. Makes footstep noise while moving; enemies with hearing home in
+ * Sebastian. Makes footstep noise while moving; enemies with hearing home in
  * on `heard_pos` rather than the true position. Fights with a short sword,
  * a ranged weapon from the shrine, and bombs.
  */

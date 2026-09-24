@@ -349,6 +349,7 @@ impl Game {
     pub fn update(&mut self, dt: f64) {
         self.time += dt;
         self.update_juice(dt);
+        self.view.showcase = self.screen == Screen::Title;
         self.input.poll(dt);
         self.handle_global_keys();
 
@@ -919,7 +920,7 @@ impl Game {
         self.audio.play(Sfx::Arrow);
         if !self.hero.has_ranged_weapon() {
             let hp = self.hero.pos();
-            self.floater(hp.x, hp.y, "SWORD", 1.2, Some(SWORD_COLOR));
+            self.floater(hp.x, hp.y, "AXE", 1.2, Some(SWORD_COLOR));
         }
     }
 

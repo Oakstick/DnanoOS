@@ -509,7 +509,7 @@ impl Gpu {
             pass.set_bind_group(0, &self.scene_bind, &[]);
 
             // Static level geometry.
-            if self.static_count > 0 {
+            if self.static_count > 0 && !frame.skip_static {
                 let m = &self.meshes[MeshKind::Cube as usize];
                 pass.set_pipeline(&self.scene_opaque);
                 pass.set_vertex_buffer(0, m.vertices.slice(..));

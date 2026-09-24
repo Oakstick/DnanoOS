@@ -13,7 +13,8 @@ use glam::Vec3;
 
 use super::overlay::{rgba, Align, Overlay};
 use super::view::STEP;
-use super::voxels::{sprite_from_model, Sprite, BAT, POPOLON, SKELETON, SLIME};
+use super::characters::{bog_slime, draugr, raven, sebastian};
+use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen};
 use crate::logic::items::{weapon, weapon_label, RangedKind, WeaponKind};
 use crate::logic::systems::MAX_LIVES;
@@ -41,11 +42,11 @@ struct Sprites {
 fn sprites() -> &'static Sprites {
     static S: OnceLock<Sprites> = OnceLock::new();
     S.get_or_init(|| Sprites {
-        portrait: sprite_from_model(&POPOLON),
+        portrait: sprite_from(&sebastian()),
         cast: vec![
-            (sprite_from_model(&SKELETON), "Skeleton", 0xe9e9f2, "Follows your footsteps. Falls apart, gets up again."),
-            (sprite_from_model(&BAT), "Bat", 0x9a5cff, "Fast, and flies over pits and ledges."),
-            (sprite_from_model(&SLIME), "Slime", 0x5cff6a, "Slow, but its trail slows you too."),
+            (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
+            (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
+            (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail slows you too."),
         ],
     })
 }
@@ -54,7 +55,7 @@ const RULES: [&str; 5] = [
     "Collect all 25 gold nuggets to win. Three lives; dying loses everything you carry.",
     "The dungeon rises in levels. Jump with Space to clear pits, leap over foes, and climb a ledge; ramps let you walk up. Bats fly over everything.",
     "Enemies hunt you, and more keep arriving from the hollow the longer you take. Every five nuggets the music quickens.",
-    "You start with a sword. Strike a shrine to cycle its gift, step on it to take it: a weapon replaces your sword until its ammo runs out.",
+    "You start with your axe. Strike a shrine to cycle its gift, step on it to take it: a weapon replaces the axe until its ammo runs out.",
     "Green crosses restore 50 health. Potions: red is an extra life, blue a shield, purple invisibility. Bombs blast through walls. Slime trails slow you.",
 ];
 
@@ -109,7 +110,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o,
             t,
             &[
-                line("POPOLON HAS FALLEN", 1.6, 0xd8262e),
+                line("SEBASTIAN HAS FALLEN", 1.6, 0xd8262e),
                 line(format!("Gold {}", g.score.score), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
                 line("Enter, click or tap to try again", 0.8, TEXT_DIM),
@@ -197,8 +198,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 
     let row_a = margin + t * 0.8;
     let row_b = margin + t * 1.85;
-    o.text("POPOLON", cx0, row_a, small, rgba(SAND, 1.0), Align::Left, true);
-    let mut hx = cx0 + o.measure("POPOLON", small) + t * 0.6;
+    o.text("SEBASTIAN", cx0, row_a, small, rgba(SAND, 1.0), Align::Left, true);
+    let mut hx = cx0 + o.measure("SEBASTIAN", small) + t * 0.6;
     for i in 0..MAX_LIVES {
         let color = if i < g.score.lives { rgba(0xff4d6d, 1.0) } else { [1.0, 1.0, 1.0, 0.2] };
         o.text("♥", hx, row_a, fs * 1.1, color, Align::Left, false);
@@ -274,7 +275,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 }
 
 /**
- * The bottom-middle panel: what Popolon holds and what protects him. Left,
+ * The bottom-middle panel: what Sebastian holds and what protects him. Left,
  * the weapon with its ammo as pips; right, shield charges as shields and
  * every running potion with a bar that drains as it wears off.
  */
@@ -462,8 +463,11 @@ fn draw_weapon_icon(o: &mut Overlay, kind: WeaponKind, cx: f32, cy: f32, size: f
     let pi = std::f32::consts::PI;
     match kind {
         WeaponKind::Sword => {
-            o.line([cx, cy + h], [cx, cy - h], lw, c);
-            o.line([cx - h * 0.6, cy + h * 0.35], [cx + h * 0.6, cy + h * 0.35], lw, c);
+            // A bearded axe: the haft, then the blade flaring forward and hooking down.
+            o.line([cx - h * 0.3, cy + h], [cx + h * 0.1, cy - h], lw, rgba(0xb07a44, 1.0));
+            o.line([cx + h * 0.05, cy - h * 0.75], [cx + h * 0.85, cy - h * 0.95], lw * 1.3, c);
+            o.line([cx + h * 0.85, cy - h * 0.95], [cx + h * 0.75, cy - h * 0.05], lw * 1.3, c);
+            o.line([cx + h * 0.75, cy - h * 0.05], [cx - h * 0.05, cy - h * 0.3], lw * 1.3, c);
         }
         WeaponKind::Ranged(RangedKind::Arrow) => {
             o.line([cx, cy + h], [cx, cy - h], lw, c);
@@ -585,47 +589,84 @@ fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
     }
 }
 
-/// Start screen: title, hero shot, the cast, the rules and the controls.
+/// Start screen. The real 3D Sebastian stands in the middle while the camera
+/// circles him; the logo, the quest, the foes and the controls frame him.
 fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let time = g.time as f32;
     let sp = sprites();
-    o.rect(0.0, 0.0, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.88]);
 
-    o.text("VOID HARVEST", w / 2.0, h * 0.09, t * 2.0, rgba(GOLD, 1.0), Align::Center, true);
-    o.text("Popolon and the Sunken Dungeon", w / 2.0, h * 0.09 + t * 1.6, t * 0.7, rgba(SAND, 1.0), Align::Center, true);
-
-    let hero_h = (h * 0.34).min(t * 11.0);
-    let hero_scale = hero_h / sp.portrait.height as f32;
-    let hero_x = w * 0.14 - sp.portrait.width as f32 * hero_scale / 2.0;
-    let hero_y = h * 0.22 + (time * 2.0).sin() * t * 0.1;
-    draw_sprite(o, &sp.portrait, hero_x, hero_y, hero_scale, None, 1.0);
-    o.text("POPOLON", w * 0.14, hero_y + hero_h + t * 0.9, t * 0.8, rgba(0xf2e3c4, 1.0), Align::Center, true);
-    o.text("the knight", w * 0.14, hero_y + hero_h + t * 1.7, t * 0.55, rgba(TEXT_DIM, 1.0), Align::Center, false);
-
-    let cast_h = (h * 0.17).min(t * 5.5);
-    let cast_y = h * 0.24;
-    for (i, (sprite, name, color, blurb)) in sp.cast.iter().enumerate() {
-        let cx = w * (0.42 + i as f32 * 0.2);
-        let scale = cast_h / sprite.height as f32;
-        let x = cx - sprite.width as f32 * scale / 2.0;
-        let bob = (time * 3.0 + i as f32).sin() * t * 0.08;
-        draw_sprite(o, sprite, x, cast_y + (cast_h - sprite.height as f32 * scale) + bob, scale, None, 1.0);
-        o.text(&name.to_uppercase(), cx, cast_y + cast_h + t * 0.9, t * 0.7, rgba(*color, 1.0), Align::Center, true);
-        o.wrap_text(blurb, cx, cast_y + cast_h + t * 1.6, w * 0.19, t * 0.62, t * 0.5, rgba(TEXT_DIM, 1.0));
+    // Shade the scene top and bottom, keep the middle clear for Sebastian.
+    let bands = 24;
+    for i in 0..bands {
+        let y0 = h * i as f32 / bands as f32;
+        let v = i as f32 / (bands - 1) as f32;
+        let a = if v < 0.35 { 0.82 - v / 0.35 * 0.5 } else if v < 0.72 { 0.32 } else { 0.32 + (v - 0.72) / 0.28 * 0.58 };
+        o.rect(0.0, y0, w, h / bands as f32 + 1.0, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, a]);
+    }
+    // Side vignettes behind the panels.
+    for i in 0..10 {
+        let a = 0.05 * (10 - i) as f32 / 10.0;
+        o.rect(0.0, 0.0, w * 0.035 * (i + 1) as f32, h, [0.0, 0.0, 0.0, a]);
+        o.rect(w - w * 0.035 * (i + 1) as f32, 0.0, w * 0.035 * (i + 1) as f32, h, [0.0, 0.0, 0.0, a]);
     }
 
-    let mut y = h * 0.6;
+    // ---- logo
+    o.text("THE GREAT ADVENTURES OF", w / 2.0, h * 0.075, t * 0.95, rgba(SAND, 1.0), Align::Center, true);
+    draw_logo_word(o, "SEBASTIAN", w / 2.0, h * 0.075 + t * 2.6, t * 3.3, time);
+    let orn_y = h * 0.075 + t * 4.55;
+    draw_ornament(o, w / 2.0, orn_y, t * 13.0, t, time);
+    o.text("A Viking in the Sunken Dungeon", w / 2.0, orn_y + t * 0.95, t * 0.6, rgba(0xcfc2a0, 1.0), Align::Center, false);
+
+    // ---- left: the quest
+    let px = w * 0.03;
+    let py = h * 0.3;
+    let pw = w * 0.26;
+    let ph = h * 0.44;
+    panel(o, px, py, pw, ph, t);
+    o.text("YOUR QUEST", px + pw / 2.0, py + t * 0.75, t * 0.8, rgba(GOLD, 1.0), Align::Center, true);
+    let mut y = py + t * 1.8;
+    let size = t * 0.5;
     for rule in RULES {
-        y = o.wrap_text(rule, w / 2.0, y, w * 0.86, t * 0.75, t * 0.6, rgba(SAND, 1.0)) + t * 0.25;
+        o.rect(px + t * 0.55, y - t * 0.1, t * 0.22, t * 0.22, rgba(GOLD, 0.9));
+        y = wrap_left(o, rule, px + t * 1.05, y, pw - t * 1.5, t * 0.62, size, rgba(SAND, 1.0)) + t * 0.22;
     }
 
+    // ---- right: the foes
+    let fx = w * 0.71;
+    let fw = w * 0.26;
+    panel(o, fx, py, fw, ph, t);
+    o.text("FOES OF THE DEEP", fx + fw / 2.0, py + t * 0.75, t * 0.8, rgba(0xff8a6a, 1.0), Align::Center, true);
+    let row_h = (ph - t * 1.6) / sp.cast.len() as f32;
+    for (i, (sprite, name, color, blurb)) in sp.cast.iter().enumerate() {
+        let ry = py + t * 1.5 + i as f32 * row_h;
+        let box_w = row_h * 0.95;
+        let scale = ((box_w - t * 0.4) / sprite.width as f32).min((row_h - t * 0.5) / sprite.height as f32);
+        let sx = fx + t * 0.4 + (box_w - sprite.width as f32 * scale) / 2.0;
+        let bob = (time * 2.5 + i as f32 * 1.3).sin() * t * 0.06;
+        let sy = ry + (row_h - sprite.height as f32 * scale) / 2.0 + bob;
+        o.circle(fx + t * 0.4 + box_w / 2.0, ry + row_h / 2.0, box_w * 0.42, rgba(*color, 0.07));
+        draw_sprite(o, sprite, sx, sy, scale, None, 1.0);
+        let tx = fx + t * 0.6 + box_w;
+        o.text(&name.to_uppercase(), tx, ry + t * 0.7, t * 0.62, rgba(*color, 1.0), Align::Left, true);
+        wrap_left(o, blurb, tx, ry + t * 1.45, fx + fw - tx - t * 0.4, t * 0.55, t * 0.45, rgba(TEXT_DIM, 1.0));
+    }
+
+    // ---- the name plate under the 3D hero
+    let ny = h * 0.69;
+    o.text("SEBASTIAN", w / 2.0, ny, t * 1.0, rgba(0xf2e3c4, 1.0), Align::Center, true);
+    o.text("the viking", w / 2.0, ny + t * 0.8, t * 0.55, rgba(TEXT_DIM, 1.0), Align::Center, false);
+
+    // ---- controls strip
+    let cy = h * 0.83;
+    let cw = w * 0.84;
+    panel(o, w / 2.0 - cw / 2.0, cy - t * 0.3, cw, t * 2.6, t);
     let hint = rgba(TEXT_DIM, 1.0);
-    o.text("Click to aim with the mouse   Hold W to run, A / D sidestep, S back", w / 2.0, h * 0.81, t * 0.55, hint, Align::Center, false);
+    o.text("Click to aim with the mouse   Hold W to run, A / D sidestep, S back   Tap a direction to turn", w / 2.0, cy + t * 0.3, t * 0.5, hint, Align::Center, false);
     o.text(
         "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Esc pause   M mute   F11 fullscreen",
         w / 2.0,
-        h * 0.855,
+        cy + t * 1.05,
         t * 0.5,
         hint,
         Align::Center,
@@ -634,12 +675,82 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     o.text(
         "Controller: left stick runs, right stick aims, A jump, X attack, B bomb, Start begins or pauses",
         w / 2.0,
-        h * 0.9,
-        t * 0.55,
+        cy + t * 1.8,
+        t * 0.5,
         rgba(0x7fd7ff, 1.0),
         Align::Center,
         false,
     );
+
     draw_menu(o, g, t);
-    o.text(&format!("Best {}", g.score.high), w - t * 0.6, h * 0.04, t * 0.5, rgba(TEXT_DIM, 1.0), Align::Right, false);
+    o.text(&format!("Best {}", g.score.high), w - t * 0.6, h * 0.035, t * 0.5, rgba(TEXT_DIM, 1.0), Align::Right, false);
+}
+
+/// The title word: a dark outline, a bronze bevel below, gold on top, and a
+/// shimmer of light sweeping through the letters.
+fn draw_logo_word(o: &mut Overlay, word: &str, cx: f32, cy: f32, size: f32, time: f32) {
+    let shadow = std::mem::replace(&mut o.shadow, 0.0);
+    let n = word.chars().count() as f32;
+    let adv = o.measure("M", size);
+    let x0 = cx - adv * n / 2.0;
+    let sweep = ((time * 0.35) % 1.6) * (n + 6.0) - 3.0;
+    let d = (size * 0.05).max(2.0);
+    for (i, ch) in word.chars().enumerate() {
+        let s = ch.to_string();
+        let x = x0 + adv * (i as f32 + 0.5);
+        let bounce = (time * 2.2 + i as f32 * 0.5).sin() * size * 0.015;
+        let y = cy + bounce;
+        for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d), (-d, -d), (d, d), (-d, d), (d, -d)] {
+            o.text(&s, x + dx, y + dy + d, size, [0.0, 0.0, 0.0, 0.85], Align::Center, true);
+        }
+        o.text(&s, x, y + d * 1.2, size, rgba(0x8a5a14, 1.0), Align::Center, true);
+        let glint = (1.0 - ((i as f32 - sweep).abs() / 1.6)).clamp(0.0, 1.0);
+        let color = mix_rgb(GOLD, 0xfff6d0, glint * 0.85);
+        o.text(&s, x, y, size, rgba(color, 1.0), Align::Center, true);
+    }
+    o.shadow = shadow;
+}
+
+/// A knotwork-style rule: a line with diamonds at the ends and a gem in the middle.
+fn draw_ornament(o: &mut Overlay, cx: f32, cy: f32, width: f32, t: f32, time: f32) {
+    let lw = (t * 0.08).max(1.5);
+    let c = rgba(GOLD, 0.85);
+    let half = width / 2.0;
+    o.line([cx - half, cy], [cx - t * 0.8, cy], lw, c);
+    o.line([cx + t * 0.8, cy], [cx + half, cy], lw, c);
+    let diamond = |o: &mut Overlay, x: f32, r: f32, color: [f32; 4]| {
+        o.line([x - r, cy], [x, cy - r], lw, color);
+        o.line([x, cy - r], [x + r, cy], lw, color);
+        o.line([x + r, cy], [x, cy + r], lw, color);
+        o.line([x, cy + r], [x - r, cy], lw, color);
+    };
+    diamond(o, cx - half, t * 0.3, c);
+    diamond(o, cx + half, t * 0.3, c);
+    diamond(o, cx, t * 0.5, c);
+    let pulse = 0.6 + (time * 3.0).sin() * 0.4;
+    o.circle(cx, cy, t * 0.2, rgba(0xff8a2a, pulse));
+    for k in [-1.0, 1.0] {
+        diamond(o, cx + k * half * 0.5, t * 0.18, rgba(GOLD, 0.6));
+    }
+}
+
+/// Left-aligned word wrap. Returns the y just below the last line.
+#[allow(clippy::too_many_arguments)]
+fn wrap_left(o: &mut Overlay, text: &str, x: f32, mut y: f32, max_width: f32, line_height: f32, size: f32, color: [f32; 4]) -> f32 {
+    let mut line = String::new();
+    for word in text.split(' ') {
+        let trial = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+        if o.measure(&trial, size) > max_width && !line.is_empty() {
+            o.text(&line, x, y, size, color, Align::Left, false);
+            y += line_height;
+            line = word.to_string();
+        } else {
+            line = trial;
+        }
+    }
+    if !line.is_empty() {
+        o.text(&line, x, y, size, color, Align::Left, false);
+        y += line_height;
+    }
+    y
 }

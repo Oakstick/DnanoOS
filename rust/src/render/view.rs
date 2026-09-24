@@ -9,6 +9,7 @@ use std::f32::consts::{PI, TAU};
 use bytemuck::{Pod, Zeroable};
 use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
 
+use super::characters;
 use super::voxels::*;
 use crate::logic::enemy::{Enemy, EnemyKind, EnemyMode};
 use crate::logic::grid::Grid;
@@ -85,7 +86,8 @@ const TOP_HEIGHT: f32 = 8.2;
 const TOP_BACK: f32 = 5.0;
 const TOP_LOOK_AHEAD: f32 = 0.4;
 const TOP_LERP: f32 = 5.0;
-const VOXEL: f32 = 0.075;
+/// Sebastian's voxel size: 23 voxels make him about as tall as a tile is wide.
+const VOXEL: f32 = 0.05;
 const BLAST_SECONDS: f32 = 0.45;
 const DEBRIS_SECONDS: f32 = 1.4;
 const GRAVITY: f32 = 14.0;
@@ -161,6 +163,8 @@ pub struct Frame {
     pub additive: Vec<Instance>,
     pub lights: Vec<Light>,
     pub coin_pulse: f32,
+    /// The title diorama draws on its own; the level's static geometry sits this frame out.
+    pub skip_static: bool,
 }
 
 impl Frame {
@@ -327,6 +331,8 @@ struct Models {
     fireball: Mesh,
     crescent: Mesh,
     diamond: Mesh,
+    tree: Mesh,
+    nugget: Mesh,
     bottles: HashMap<u32, Mesh>,
 }
 
@@ -338,11 +344,11 @@ impl Models {
             bottles.insert(hex, build_mesh_recolored(&BOTTLE, 0.1, BOTTLE_LIQUID, hex));
         }
         Self {
-            popolon: build_rig(&POPOLON, POPOLON_RIG, VOXEL),
-            skeleton: build_rig(&SKELETON, SKELETON_RIG, 0.07),
-            bat: build_rig(&BAT, BAT_RIG, 0.07),
-            vampire: build_rig(&BAT, BAT_RIG, 0.08),
-            slime: build_rig(&SLIME, &[], 0.1),
+            popolon: build_rig(&characters::sebastian(), characters::SEBASTIAN_RIG, VOXEL),
+            skeleton: build_rig(&characters::draugr(), characters::DRAUGR_RIG, 0.05),
+            bat: build_rig(&characters::raven(false), characters::RAVEN_RIG, 0.042),
+            vampire: build_rig(&characters::raven(true), characters::RAVEN_RIG, 0.05),
+            slime: build_rig(&characters::bog_slime(), &[], 0.075),
             medkit: build_mesh(&MEDKIT, 0.1),
             bomb: build_mesh(&BOMB, 0.09),
             arrow: build_mesh(&ARROW, 0.08),
@@ -350,6 +356,8 @@ impl Models {
             fireball: build_mesh(&FIREBALL, 0.09),
             crescent: build_mesh(&CRESCENT, 0.08),
             diamond: build_mesh(&DIAMOND, 0.1),
+            tree: build_mesh(&TREE_LOW, 0.17),
+            nugget: build_mesh(&NUGGET, 0.11),
             bottles,
         }
     }
@@ -372,6 +380,10 @@ pub struct WorldView {
     /// True while the mouse is captured; otherwise the view trails his heading.
     pub mouse_look: bool,
     pub aspect: f32,
+    /// Title screen: the camera circles Sebastian instead of chasing him.
+    pub showcase: bool,
+    showcase_angle: f32,
+    showcase_timer: f32,
 
     models: Models,
     /// Level geometry that only changes when a bomb or a pickup changes it.
@@ -410,6 +422,7 @@ pub struct WorldView {
     cam_pos: Vec3,
     cam_look: Vec3,
     initialized: bool,
+    was_showcase: bool,
     rng: Rng,
 }
 
@@ -427,6 +440,9 @@ impl WorldView {
             cam_pitch: chase::REST_PITCH,
             mouse_look: false,
             aspect: 16.0 / 9.0,
+            showcase: false,
+            showcase_angle: 0.6,
+            showcase_timer: 0.0,
             models,
             static_cubes: Vec::new(),
             static_dirty: true,
@@ -459,6 +475,7 @@ impl WorldView {
             cam_pos: Vec3::ZERO,
             cam_look: Vec3::ZERO,
             initialized: false,
+            was_showcase: false,
             rng: Rng::from_time(),
         }
     }
@@ -790,6 +807,14 @@ impl WorldView {
 
         // Hero pose: stride cycle, facing, sword swing, jump tuck.
         let hero = s.hero;
+        if self.showcase {
+            // Sebastian shows off his axe now and then on the title screen.
+            self.showcase_timer += dtf;
+            if self.showcase_timer > 3.6 {
+                self.showcase_timer = 0.0;
+                self.sword_slash();
+            }
+        }
         if self.slash_t >= 0.0 {
             self.slash_t += dtf;
             if self.slash_t > SLASH_SECONDS {
@@ -814,7 +839,9 @@ impl WorldView {
             }
         }
         self.update_camera(dtf, s.grid, hero);
-        self.update_tree_fade(dtf, hero);
+        if !self.showcase {
+            self.update_tree_fade(dtf, hero);
+        }
         self.update_shake(dtf);
     }
 
@@ -1202,7 +1229,16 @@ impl WorldView {
         let (hx, hz) = (hp.x as f32, hp.y as f32);
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
         let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
-        let (desired, look, pos_lerp) = if self.camera_mode == CameraMode::Third {
+        if self.showcase != self.was_showcase {
+            self.was_showcase = self.showcase;
+            self.initialized = false;
+        }
+        let (desired, look, pos_lerp) = if self.showcase {
+            // The title diorama: the camera sways gently in front of Sebastian.
+            self.showcase_angle += dt;
+            let a = (self.showcase_angle * 0.23).sin() * 0.5;
+            (STAGE + Vec3::new(a.sin() * 4.3, 1.45, a.cos() * 4.3), STAGE + Vec3::new(0.0, 0.62, 0.0), 6.0)
+        } else if self.camera_mode == CameraMode::Third {
             if !self.mouse_look {
                 self.cam_yaw = lerp_angle(self.cam_yaw, dir_to_yaw(hero.facing), 1.0 - (-chase::FOLLOW_LERP * dt).exp());
             }
@@ -1276,6 +1312,11 @@ impl WorldView {
     /// Everything that moves or animates, plus the light list, for one rendered frame.
     pub fn emit(&self, s: &SceneState, f: &mut Frame) {
         f.clear();
+        f.skip_static = self.showcase;
+        if self.showcase {
+            self.emit_stage(s, f);
+            return;
+        }
         let time = s.time as f32;
         let grid = s.grid;
         let cube = MeshKind::Cube as usize;
@@ -1305,7 +1346,13 @@ impl WorldView {
         if ghost {
             hero_light = 3.0;
         }
-        f.lights.push(Light { pos: hero_pos + Vec3::new(0.0, 1.2, 0.0), color: light_color * hero_light, distance: 6.0 });
+        // His lantern rides well above the horned helmet, so it lights him without bleaching him.
+        let to_cam = {
+            let d = self.cam_pos - hero_pos;
+            let flat = Vec3::new(d.x, 0.0, d.z);
+            if flat.length_squared() > 1e-4 { flat.normalize() } else { Vec3::Z }
+        };
+        f.lights.push(Light { pos: hero_pos + Vec3::new(0.0, 2.3, 0.0) + to_cam * 0.9, color: light_color * hero_light * 2.2, distance: 8.5 });
 
         if self.slash_t >= 0.0 {
             // The blade's trail: a bright leading arc and fading echoes behind it, swept across the front.
@@ -1507,6 +1554,158 @@ impl WorldView {
 impl Default for WorldView {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------- title diorama
+
+/// Where the title stage stands: well away from the dungeon, which is not drawn meanwhile.
+const STAGE: Vec3 = Vec3::new(-40.0, 0.0, -40.0);
+
+impl WorldView {
+    /**
+     * The title screen's stage: a mossy stone platform and dais in a ring of
+     * trees and lanterns, Sebastian in the middle showing off his axe, his
+     * foes idling around him, under a warm key light and a cool rim light.
+     */
+    fn emit_stage(&self, s: &SceneState, f: &mut Frame) {
+        let time = s.time as f32;
+        let cube = MeshKind::Cube as usize;
+        let cyl = MeshKind::Cylinder as usize;
+        let at = |x: f32, y: f32, z: f32| STAGE + Vec3::new(x, y, z);
+
+        // Ground: a wide mossy platform, a stone dais, a ring of standing stones.
+        let platform = Mat4::from_translation(at(0.0, -0.09, 0.0)) * Mat4::from_scale(Vec3::new(14.0, 1.5, 14.0));
+        f.opaque[cyl].push(Instance::new(platform, lin(0x2a4a28), 1.0, Vec3::ZERO, SHADE_LIT));
+        let dais = Mat4::from_translation(at(0.0, 0.095, 0.0)) * Mat4::from_scale(Vec3::new(4.3, 1.6, 4.3));
+        f.opaque[cyl].push(Instance::new(dais, lin(0x6a6e64), 1.0, Vec3::ZERO, SHADE_LIT));
+        for i in 0..14 {
+            let a = i as f32 / 14.0 * TAU;
+            let r = 1.85 + (i % 3) as f32 * 0.08;
+            let hgt = 0.18 + (i % 4) as f32 * 0.07;
+            let m = Mat4::from_translation(at(a.cos() * r, hgt / 2.0, a.sin() * r))
+                * Mat4::from_rotation_y(a)
+                * Mat4::from_scale(Vec3::new(0.26, hgt, 0.2));
+            let shade = if i % 2 == 0 { 0x5a5e56 } else { 0x4a4e48 };
+            f.opaque[cube].push(Instance::new(m, lin(shade), 1.0, Vec3::ZERO, SHADE_LIT));
+        }
+        // A ring of trees, and two lantern posts.
+        for i in 0..14 {
+            let a = i as f32 / 14.0 * TAU + 0.2;
+            // Leave the camera's side of the ring open (the camera sits toward +z).
+            if a.sin() > 0.55 {
+                continue;
+            }
+            let r = 4.6 + (i % 2) as f32 * 0.9;
+            push_field(&mut f.opaque[cube], &self.models.tree, at(a.cos() * r, 0.0, a.sin() * r), a * 3.0, 1.9 + (i % 3) as f32 * 0.3, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
+        }
+        let lanterns = [at(-2.3, 0.0, 1.9), at(2.4, 0.0, -1.6)];
+        for p in lanterns {
+            // Iron braziers: a dark post and a glowing coal bed on top.
+            let post = Mat4::from_translation(p + Vec3::new(0.0, 0.45, 0.0)) * Mat4::from_scale(Vec3::new(0.12, 0.9, 0.12));
+            f.opaque[cube].push(Instance::new(post, lin(0x2e2a26), 1.0, Vec3::ZERO, SHADE_LIT));
+            let bowl = Mat4::from_translation(p + Vec3::new(0.0, 0.93, 0.0)) * Mat4::from_scale(Vec3::new(1.2, 0.8, 1.2));
+            f.opaque[cyl].push(Instance::new(bowl, lin(0x3a3530), 1.0, Vec3::ZERO, SHADE_LIT));
+            for k in 0..5 {
+                let a = time * 3.0 + k as f32 * 1.3;
+                let fp = p + Vec3::new(a.cos() * 0.08, 1.02 + (time * 5.0 + k as f32).sin().abs() * 0.12, a.sin() * 0.08);
+                let m = Mat4::from_translation(fp) * Mat4::from_scale(Vec3::splat(0.07));
+                f.additive.push(Instance::new(m, lin(0xffa040) * 1.4, 0.8, Vec3::ZERO, SHADE_UNLIT));
+            }
+        }
+        // A little hoard glinting on the dais.
+        for (i, (x, z)) in [(-0.6, -0.35), (0.55, -0.45), (0.15, -0.7)].into_iter().enumerate() {
+            let pulse = lin(0xf2c53d) * (0.4 + (time * 3.0 + i as f32).sin() * 0.2);
+            push_field(&mut f.opaque[cube], &self.models.nugget, at(x, 0.19, z), i as f32 * 2.1, 0.75, Vec3::ONE, pulse, SHADE_LIT);
+        }
+
+        // Sebastian, turning a little as if looking around.
+        let hero = s.hero;
+        let yaw = (time * 0.4).sin() * 0.3;
+        let group = Mat4::from_translation(at(0.0, 0.19, 0.0)) * Mat4::from_rotation_y(yaw);
+        let root = group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
+        let breathe = Vec3::new(0.0, (time * 2.0).sin() * 0.006, 0.0);
+        let mut pose = self.hero_pose.clone();
+        if let Some(h) = self.models.popolon.index("head") {
+            pose.pos[h] += breathe;
+            pose.rot[h].y = (time * 0.7).sin() * 0.25;
+        }
+        let emissive = if hero.invincible() { lin(INVINCIBLE) * 0.4 } else { Vec3::ZERO };
+        emit_rig(&mut f.opaque[cube], &self.models.popolon, &pose, root, Vec3::ONE, 1.0, emissive);
+        if self.slash_t >= 0.0 {
+            let p = self.slash_t / SLASH_SECONDS;
+            let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
+            let q = ((p - 0.17) / 0.33).clamp(0.0, 1.0);
+            let sweep = self.slash_side * (1.15 - 2.3 * (1.0 - (1.0 - q).powi(3)));
+            let m = group
+                * Mat4::from_translation(Vec3::new(0.0, 0.5, 0.12))
+                * Mat4::from_rotation_y(sweep)
+                * euler(Vec3::new(-PI / 2.0, 0.0, PI))
+                * Mat4::from_scale(Vec3::splat(1.15));
+            f.transparent[MeshKind::Ring as usize].push(Instance::new(m, lin(0xffffff), env * 0.8, Vec3::ZERO, SHADE_UNLIT));
+        }
+
+        // His foes, idling around the dais.
+        let draugr = self.models.rig(RigId::Skeleton);
+        let mut dp = Pose::rest(draugr);
+        let sway = (time * 1.6).sin();
+        dp.rot_x(draugr, "leftArm", -0.35 + sway * 0.15);
+        dp.rot_x(draugr, "rightArm", -0.6 - sway * 0.2);
+        dp.rot_x(draugr, "head", (time * 0.9).sin() * 0.2);
+        let droot = Mat4::from_translation(at(-1.0, 0.0, -0.65)) * Mat4::from_rotation_y(0.7) * Mat4::from_rotation_z(sway * 0.05);
+        emit_rig(&mut f.opaque[cube], draugr, &dp, droot, Vec3::ONE, 1.0, Vec3::ZERO);
+
+        for (id, pos, phase, facing) in [
+            (RigId::Bat, Vec3::new(1.05, 1.35, -0.7), 0.0, -0.7),
+            (RigId::Vampire, Vec3::new(-0.95, 1.8, -1.2), 1.7, 0.6),
+        ] {
+            let rig = self.models.rig(id);
+            let mut rp = Pose::rest(rig);
+            let flap = (time * 13.0 + phase).sin() * 0.8;
+            if let Some(l) = rig.index("leftWing") {
+                rp.rot[l].z = -flap;
+            }
+            if let Some(r) = rig.index("rightWing") {
+                rp.rot[r].z = flap;
+            }
+            let bob = (time * 1.8 + phase).sin() * 0.12 + (time * 13.0 + phase).sin() * 0.03;
+            let m = Mat4::from_translation(at(pos.x, pos.y + bob, pos.z)) * Mat4::from_rotation_y(facing) * Mat4::from_rotation_x(0.25);
+            emit_rig(&mut f.opaque[cube], rig, &rp, m, Vec3::ONE, 1.0, Vec3::ZERO);
+        }
+
+        let slime = self.models.rig(RigId::Slime);
+        let sq = (time * 2.6).sin();
+        let sm = Mat4::from_translation(at(0.95, 0.0, 0.25)) * Mat4::from_rotation_y(-0.8) * Mat4::from_scale(Vec3::new(1.0 - sq * 0.12, 1.0 + sq * 0.25, 1.0 - sq * 0.12));
+        emit_rig(&mut f.opaque[cube], slime, &Pose::rest(slime), sm, Vec3::ONE, 1.0, Vec3::ZERO);
+        // Its puddle.
+        let pm = Mat4::from_translation(at(0.95, 0.2, 0.25)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.5, 0.45, 1.0));
+        f.transparent[MeshKind::Disc as usize].push(Instance::new(pm, lin(0x5cff6a), 0.35, Vec3::ZERO, SHADE_UNLIT));
+
+        // Fireflies.
+        for i in 0..50 {
+            let fi = i as f32;
+            let a = fi * 2.399;
+            let r = 1.5 + (fi * 0.37) % 3.2;
+            let p = at(a.cos() * r + (time * 0.5 + fi).sin() * 0.3, 0.5 + (fi * 0.61) % 2.0 + (time * 0.9 + fi).sin() * 0.15, a.sin() * r);
+            let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05));
+            f.additive.push(Instance::new(m, lin(MOTE), 0.55 + (time * 2.2 + fi).sin() * 0.3, Vec3::ZERO, SHADE_UNLIT));
+        }
+
+        // Light: warm lanterns as the key, a cool moon rim from behind, glows from the cast.
+        let flicker = 1.0 + (time * 7.0).sin() * 0.05 + (time * 3.1).sin() * 0.04;
+        f.lights.push(Light { pos: at(-1.8, 2.3, 2.6), color: lin(0xffc27a) * 26.0 * flicker, distance: 10.0 });
+        f.lights.push(Light { pos: at(2.6, 2.8, -2.6), color: lin(0x8fb4ff) * 22.0, distance: 10.0 });
+        f.lights.push(Light { pos: at(0.0, 3.2, 1.2), color: lin(HERO_LIGHT) * 7.0, distance: 8.0 });
+        for p in lanterns {
+            f.lights.push(Light { pos: p + Vec3::new(0.0, 1.3, 0.0), color: lin(TORCH_LIGHT) * 4.0 * flicker, distance: 5.0 });
+        }
+        f.lights.push(Light { pos: at(0.95, 0.5, 0.25), color: lin(0x5cff6a) * 1.5, distance: 2.5 });
+        f.lights.push(Light { pos: at(-1.1, 1.0, -0.5), color: lin(0x6ff0ff) * 1.5, distance: 2.5 });
+        for l in &self.effect_lights {
+            if l.intensity > 0.0 {
+                f.lights.push(Light { pos: l.pos, color: l.color * l.intensity, distance: l.distance });
+            }
+        }
     }
 }
 
@@ -1716,3 +1915,4 @@ mod tests {
         assert!((c - d).length() < 1e-5);
     }
 }
+

@@ -1,4 +1,4 @@
-# Void Harvest (Rust + wgpu)
+# The Great Adventures of Sebastian (Rust + wgpu)
 
 The game rebuilt in Rust from the TypeScript/Three.js version one folder up, feature for feature. It uses one codebase for two targets:
 
@@ -39,6 +39,9 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 | Mute / FPS / Fullscreen | M / F1 / F11, Alt+Enter | |
 
 ## What changed from the web version
+
+- **Sebastian the viking** replaces Popolon. He has a horned iron helmet with a bronze band, a braided ginger beard with gold beads, a fur mantle and red cloak, and a painted round shield on his back, and he swings a bearded axe. The foes are the **Draugr** (an undead viking, the old skeleton), the **Raven** and **Night Raven** (the old bats) and the **Bog Slime**. All of them are sculpted in code (`src/render/characters.rs`) at about twice the old resolution.
+- **Start page:** a 3D diorama with Sebastian on a stone dais among his foes, braziers and fireflies, under a swaying camera. On top sit the gold "The Great Adventures of Sebastian" logo, a quest panel, a foes panel and the menu.
 
 - **Mouse buttons:** left click attacks (sword swing or the held shot), right click drops a bomb. The first left click in play also captures the mouse for aiming.
 - **HUD:** health in the top-left corner (portrait, lives, HP bar, weapon, potion effects), score in the top-right corner (gold, nuggets, best). Bombs and the dungeon name sit in the bottom-right.

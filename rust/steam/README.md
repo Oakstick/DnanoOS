@@ -1,4 +1,4 @@
-# Shipping Void Harvest on Steam
+# Shipping The Great Adventures of Sebastian on Steam
 
 What is already done in the code, and what only you can do on the Steamworks side.
 
@@ -11,11 +11,11 @@ What is already done in the code, and what only you can do on the Steamworks sid
 - **Pause on focus loss**, so opening the Steam overlay pauses the game.
 - **Save data** lives in `%APPDATA%\VoidHarvest\settings.txt` (high score, mute, fullscreen). A panic writes `crash.log` there too.
 - **Achievements** (build with `-Steam`): `ACH_FIRST_NUGGET` (first nugget) and `ACH_HARVEST` (all 25 nuggets). Create them with exactly these API names in the partner site before testing.
-- **Icon** embedded in the exe, generated from Popolon's voxel front view (`VoidHarvest --write-icon assets/icon.ico` rebuilds it).
+- **Icon** embedded in the exe, generated from Sebastian's voxel front view (`VoidHarvest --write-icon assets/icon.ico` rebuilds it).
 
 ## Before you can upload
 
-1. **Rename the hero.** Popolon is Konami's character from *Knightmare*, and the art direction is openly Knightmare-styled. "Void Harvest" is safe as a title; the hero's name and anything else that points at the Konami game is not. Change `POPOLON` naming in `src/render/hud.rs` and the rules text before the store page goes up.
+1. **Original cast.** The hero is now Sebastian, a viking of our own, and the Knightmare-styled Popolon is gone, which removes the Konami-specific character the first port flagged (still worth a quick trademark search on the new title before the store page goes up). The executable is still `VoidHarvest.exe`; rename the `[[bin]]` in `Cargo.toml` and the launch option together if the store build should carry the new title.
 2. Join Steamworks (Steam Direct fee, tax and bank forms), create the app, and note the **App ID** and the **Windows depot ID**.
 3. Replace `480` / `481` in `app_build.vdf`, `depot_build_windows.vdf` and `steam_appid.txt`. Keep `steam_appid.txt` out of the depot; it is only for running the exe outside Steam while testing.
 4. Set the launch option: executable `VoidHarvest.exe`, OS Windows.

@@ -371,19 +371,19 @@ pub fn default_enemy_specs(grid: &Grid) -> Vec<EnemySpec> {
     let h = grid.height - 1;
     vec![
         EnemySpec {
-            kind: EnemyKind::Skeleton, name: "Skeleton".into(), color: 0xe9e9f2,
+            kind: EnemyKind::Skeleton, name: "Draugr".into(), color: 0xe9e9f2,
             scatter_target: P::new(w - 2, 0), exit_delay: 0.0, speed_factor: 1.0,
         },
         EnemySpec {
-            kind: EnemyKind::Bat, name: "Bat".into(), color: 0x9a5cff,
+            kind: EnemyKind::Bat, name: "Raven".into(), color: 0x9a5cff,
             scatter_target: P::new(2, 0), exit_delay: 2.5, speed_factor: 1.12,
         },
         EnemySpec {
-            kind: EnemyKind::Vampire, name: "Vampire Bat".into(), color: 0x4f6dff,
+            kind: EnemyKind::Vampire, name: "Night Raven".into(), color: 0x4f6dff,
             scatter_target: P::new(w, h), exit_delay: 5.0, speed_factor: 1.05,
         },
         EnemySpec {
-            kind: EnemyKind::Slime, name: "Slime".into(), color: 0x5cff6a,
+            kind: EnemyKind::Slime, name: "Bog Slime".into(), color: 0x5cff6a,
             scatter_target: P::new(0, h), exit_delay: 7.5, speed_factor: 0.8,
         },
     ]

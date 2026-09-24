@@ -9,8 +9,8 @@ fn main() {
     }
     let mut res = winresource::WindowsResource::new();
     res.set_icon("assets/icon.ico")
-        .set("ProductName", "Void Harvest")
-        .set("FileDescription", "Void Harvest")
+        .set("ProductName", "The Great Adventures of Sebastian")
+        .set("FileDescription", "The Great Adventures of Sebastian")
         .set("LegalCopyright", "Copyright (c) 2026");
     if let Err(e) = res.compile() {
         println!("cargo:warning=icon not embedded: {e}");

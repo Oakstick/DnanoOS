@@ -111,7 +111,11 @@ pub struct Sprite {
 }
 
 pub fn sprite_from_model(model: &VoxelModel) -> Sprite {
-    let c = collect(model);
+    sprite_from(&collect(model))
+}
+
+/// Front view of any voxel model (text-authored or sculpted).
+pub fn sprite_from(c: &Collected) -> Sprite {
     let mut pixels = Vec::new();
     for y in (0..c.height).rev() {
         let mut row = Vec::new();
@@ -164,8 +168,7 @@ fn in_box(v: &Voxel, b: &VoxelBox) -> bool {
 }
 
 /// Splits a model into pivoted parts; rotating a part swings it around its joint.
-pub fn build_rig(model: &VoxelModel, defs: &[PartDef], size: f32) -> Rig {
-    let c = collect(model);
+pub fn build_rig(c: &Collected, defs: &[PartDef], size: f32) -> Rig {
     let ox = (c.width - 1) as f32 / 2.0;
     let oz = (c.depth - 1) as f32 / 2.0;
     let mut buckets: Vec<Vec<Voxel>> = vec![Vec::new(); defs.len()];
@@ -206,132 +209,18 @@ pub fn build_rig(model: &VoxelModel, defs: &[PartDef], size: f32) -> Rig {
 mod pal {
     pub const RED: u32 = 0xd8262e;
     pub const DARK_RED: u32 = 0x8f1a1f;
-    pub const BLUE: u32 = 0x2b4fd6;
-    pub const SKIN: u32 = 0xf2c9a0;
     pub const WHITE: u32 = 0xf4f4f8;
     pub const GOLD: u32 = 0xf2c53d;
     pub const CYAN: u32 = 0x8fe7ff;
     pub const STEEL: u32 = 0xb8c0cc;
     pub const DARK: u32 = 0x1a1a24;
     pub const BROWN: u32 = 0x6b3f1d;
-    pub const PURPLE: u32 = 0x7a3fe0;
-    pub const DARK_PURPLE: u32 = 0x3d1f78;
-    pub const BONE: u32 = 0xe0d3ba;
-    pub const BONE_SHADE: u32 = 0xb3a288;
-    pub const CAVITY: u32 = 0x241d17;
-    pub const EYE_RED: u32 = 0xff2a2a;
     pub const GREEN: u32 = 0x3fe05a;
     pub const LIGHT_GREEN: u32 = 0x9dffab;
-    pub const DARK_GREEN: u32 = 0x1c7a2c;
     pub const ORANGE: u32 = 0xff8a2a;
     pub const YELLOW: u32 = 0xffe066;
 }
 use pal::*;
-
-/// Popolon: 9 wide, 5 deep, 14 tall. Sword raised on his right (+x), shield on his left.
-pub const POPOLON: VoxelModel = VoxelModel {
-    palette: &[
-        ('R', RED), ('r', DARK_RED), ('B', BLUE), ('S', SKIN), ('W', WHITE), ('Y', GOLD),
-        ('C', CYAN), ('G', STEEL), ('K', DARK), ('D', BROWN),
-    ],
-    layers: &[
-        // 0-1 boots
-        &[".........", "..DD.DD..", "..DD.DD..", "..DD.DD..", "........."],
-        &[".........", "..DD.DD..", "..DD.DD..", "..DD.DD..", "........."],
-        // 2-4 legs
-        &[".........", "..BB.BB..", "..BB.BB..", "..BB.BB..", "........."],
-        &[".........", "..BB.BB..", "..BB.BB..", "..BB.BB..", "........."],
-        &[".........", "..BBBBB..", "..BBBBB..", "..BBBBB..", "........."],
-        // 5-8 torso, arms, shield (x=0), sword hilt (x=8)
-        &[".........", ".SRRRRRS.", "GSRRRRRSY", ".SRRRRRS.", "G........"],
-        &[".........", ".RRRRRRR.", "GRRRRRRRC", ".RRRRRRR.", "G........"],
-        &[".........", ".RRrRrRR.", "GRRRRRRRC", ".RRRRRRR.", "G........"],
-        &[".........", ".RRRRRRR.", "GRRRRRRRC", ".RRRRRRR.", "G........"],
-        // 9-11 head with eyes on the front row
-        &[".........", "...SSS...", "...SSS..C", "...SSS...", "........."],
-        &[".........", "...SSS...", "...SSS..C", "...KSK...", "........."],
-        &[".........", "...SSS...", "...SSS..C", "...SSS...", "........."],
-        // 12-13 helmet and horns, blade tip
-        &[".........", "..RRRRR..", ".YRRRRRYC", "..RRRRR..", "........."],
-        &[".........", "...RRR...", ".Y.RRR.YC", "...RRR...", "........."],
-    ],
-};
-
-/// Popolon's joints: legs at the hip, arms at the shoulder, head at the neck.
-pub const POPOLON_RIG: &[PartDef] = &[
-    PartDef { name: "leftLeg", boxes: &[([2, 0, 0], [3, 3, 4])], pivot: [2.5, 4.0, 2.0] },
-    PartDef { name: "rightLeg", boxes: &[([5, 0, 0], [6, 3, 4])], pivot: [5.5, 4.0, 2.0] },
-    PartDef { name: "shieldArm", boxes: &[([0, 5, 0], [1, 8, 4])], pivot: [1.0, 8.5, 2.0] },
-    PartDef { name: "swordArm", boxes: &[([7, 5, 0], [7, 8, 4]), ([8, 5, 0], [8, 13, 4])], pivot: [7.0, 8.5, 2.0] },
-    PartDef { name: "head", boxes: &[([1, 9, 0], [7, 13, 4])], pivot: [4.0, 9.0, 2.0] },
-];
-
-/// Bat: 11 wide, 3 deep, 4 tall.
-pub const BAT: VoxelModel = VoxelModel {
-    palette: &[('P', PURPLE), ('p', DARK_PURPLE), ('K', DARK), ('Y', YELLOW)],
-    layers: &[
-        &["...........", "....pKp....", "..........."],
-        &["P.........P", "PPPPpppPPPP", "....pYp...."],
-        &["PP.......PP", ".PPPpppPPP.", "....ppp...."],
-        &["...........", "..PP...PP..", "..........."],
-    ],
-};
-
-/// Bat wings hinge where they meet the body.
-pub const BAT_RIG: &[PartDef] = &[
-    PartDef { name: "leftWing", boxes: &[([0, 0, 0], [3, 3, 2])], pivot: [4.0, 1.5, 1.0] },
-    PartDef { name: "rightWing", boxes: &[([7, 0, 0], [10, 3, 2])], pivot: [6.0, 1.5, 1.0] },
-];
-
-/// Skeleton: 9 wide, 5 deep, 15 tall. Ribbed cage with a hollow chest, red eye sockets.
-pub const SKELETON: VoxelModel = VoxelModel {
-    palette: &[('W', BONE), ('w', BONE_SHADE), ('K', CAVITY), ('E', EYE_RED)],
-    layers: &[
-        // 0 feet
-        &[".........", ".........", "...W.W...", "...W.W...", "........."],
-        // 1-4 leg bones
-        &[".........", ".........", "...W.W...", ".........", "........."],
-        &[".........", ".........", "...W.W...", ".........", "........."],
-        &[".........", ".........", "...W.W...", ".........", "........."],
-        &[".........", ".........", "...W.W...", ".........", "........."],
-        // 5 pelvis, hands at the sides
-        &["....w....", "...WWW...", "W..WWW..W", "...WWW...", "....W...."],
-        // 6-9 the cage: solid rib bands alternating with gaps that show the hollow
-        &["...www...", "...WKW...", "W..WKW..W", "...WKW...", "...WWW..."],
-        &["...www...", "..WKKKW..", "W.WKKKW.W", "..WKKKW..", "........."],
-        &["...www...", "..WKKKW..", "W.WKKKW.W", "..WKKKW..", "...WWW..."],
-        &["...www...", "..WKKKW..", "W.WKKKW.W", "..WKKKW..", "........."],
-        // 10 shoulders and collarbone
-        &["...www...", "..WWWWW..", "WWWWWWWWW", "..WWWWW..", "...WWW..."],
-        // 11 neck
-        &[".........", "....w....", "....W....", "....W....", "........."],
-        // 12-14 jaw and skull, eyes on the front face
-        &[".........", "...www...", "...WWW...", "...WWW...", "...WWW..."],
-        &["...www...", "..WWWWW..", "..WWWWW..", "..WWWWW..", "..KEWEK.."],
-        &[".........", "...www...", "...WWW...", "...WWW...", "........."],
-    ],
-};
-
-/// Skeleton joints: bare arms from the collarbone ends, legs at the pelvis, skull at the neck.
-pub const SKELETON_RIG: &[PartDef] = &[
-    PartDef { name: "leftLeg", boxes: &[([3, 0, 0], [3, 4, 4])], pivot: [3.0, 5.0, 2.0] },
-    PartDef { name: "rightLeg", boxes: &[([5, 0, 0], [5, 4, 4])], pivot: [5.0, 5.0, 2.0] },
-    PartDef { name: "leftArm", boxes: &[([0, 5, 0], [0, 9, 4])], pivot: [0.0, 10.0, 2.0] },
-    PartDef { name: "rightArm", boxes: &[([8, 5, 0], [8, 9, 4])], pivot: [8.0, 10.0, 2.0] },
-    PartDef { name: "head", boxes: &[([2, 12, 0], [6, 14, 4])], pivot: [4.0, 11.5, 2.0] },
-];
-
-/// Slime: 7 wide, 7 deep, 5 tall.
-pub const SLIME: VoxelModel = VoxelModel {
-    palette: &[('G', GREEN), ('L', LIGHT_GREEN), ('g', DARK_GREEN), ('K', DARK)],
-    layers: &[
-        &[".ggggg.", "ggggggg", "ggggggg", "ggggggg", "ggggggg", "ggggggg", ".ggggg."],
-        &[".GGGGG.", "GGGGGGG", "GGGGGGG", "GGGGGGG", "GGGGGGG", "GGGGGGG", ".GGGGG."],
-        &["..GGG..", ".GGGGG.", "GGGGGGG", "GGGGGGG", "GGGGGGG", ".GKGKG.", "..GGG.."],
-        &[".......", "..GGG..", ".GGGGG.", ".GGLGG.", ".GGGGG.", "..GGG..", "......."],
-        &[".......", ".......", "..LLL..", "..LLL..", "..LLL..", ".......", "......."],
-    ],
-};
 
 /// Gold nugget: a lumpy chunk, 4 wide, 3 deep, 3 tall, brighter on top.
 pub const NUGGET: VoxelModel = VoxelModel {
@@ -443,7 +332,7 @@ mod tests {
 
     #[test]
     fn models_are_rectangular_and_colored() {
-        for m in [&POPOLON, &BAT, &SKELETON, &SLIME, &NUGGET, &MEDKIT, &BOMB, &DIAMOND, &TREE_LOW, &BOTTLE] {
+        for m in [&NUGGET, &MEDKIT, &BOMB, &DIAMOND, &TREE_LOW, &BOTTLE] {
             let c = collect(m);
             assert!(!c.voxels.is_empty());
             for layer in m.layers {
@@ -456,18 +345,18 @@ mod tests {
     }
 
     #[test]
-    fn rigs_claim_the_named_parts() {
-        let rig = build_rig(&POPOLON, POPOLON_RIG, 0.075);
+    fn rigs_claim_every_voxel_once() {
+        let model = crate::render::characters::sebastian();
+        let rig = build_rig(&model, crate::render::characters::SEBASTIAN_RIG, 0.05);
         assert_eq!(rig.parts.len(), 6);
-        assert!(rig.parts.iter().all(|p| !p.cubes.is_empty()));
         let total: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
-        assert_eq!(total, collect(&POPOLON).voxels.len());
+        assert_eq!(total, model.voxels.len());
     }
 
     #[test]
     fn portrait_is_the_front_view() {
-        let s = sprite_from_model(&POPOLON);
-        assert_eq!(s.height, 14);
-        assert_eq!(s.width, 9);
+        let s = sprite_from(&crate::render::characters::sebastian());
+        assert_eq!(s.height, 23);
+        assert_eq!(s.width, 15);
     }
 }

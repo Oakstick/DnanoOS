@@ -115,7 +115,9 @@ pub fn run(args: &[String]) -> i32 {
     game.view.aspect = w as f32 / h as f32;
     game.view.emit(&game.scene(), &mut frame);
     overlay.begin(w as f32, h as f32);
-    hud::draw(&mut overlay, &game, 60);
+    if !args.iter().any(|a| a == "--no-hud") {
+        hud::draw(&mut overlay, &game, 60);
+    }
     gpu.sync_static(&mut game.view);
     let rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
@@ -132,9 +134,9 @@ pub fn run(args: &[String]) -> i32 {
 
 // ------------------------------------------------------------------- icon
 
-/// Writes the application icon (Popolon's front view) as a multi-size .ico.
+/// Writes the application icon (Sebastian's front view) as a multi-size .ico.
 pub fn write_icon(path: &str) -> std::io::Result<()> {
-    let sprite = crate::render::voxels::sprite_from_model(&crate::render::voxels::POPOLON);
+    let sprite = crate::render::voxels::sprite_from(&crate::render::characters::sebastian());
     let sizes = [16u32, 24, 32, 48, 64, 128, 256];
     let mut images = Vec::new();
     for &size in &sizes {
