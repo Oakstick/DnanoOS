@@ -39,6 +39,7 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 | Pause | Esc | Start, Back |
 | Mute / FPS / Fullscreen | M / F3 / F11, Alt+Enter | |
 | Cheat: straight to the Cyclops | F1 | |
+| Cheat: straight to the blacksmith (with 1000 coins) | 0 | |
 
 ## What changed from the web version
 

@@ -75,6 +75,8 @@ const DYING_SECONDS: f64 = 1.8;
 pub const CLEARED_SECONDS: f64 = 3.4;
 /// After the Cyclops bursts, a beat to take it in before the victory screen.
 const VICTORY_DELAY: f64 = 1.6;
+/// The shop cheat tops the purse up to this, so there is something to spend.
+const CHEAT_COINS: u32 = 1000;
 /// Damage the Cyclops takes from a bomb (the weapons carry their own).
 const BOMB_DAMAGE: i32 = 6;
 /// A lightning potion's zap: how far it jumps and how many foes it strikes.
@@ -667,6 +669,9 @@ impl Game {
         if self.input.was_pressed(&[Action::Cheat]) {
             self.cheat_to_boss();
         }
+        if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
+            self.cheat_to_shop();
+        }
         if self.input.was_pressed(&[Action::Fullscreen]) {
             self.want_fullscreen_toggle = true;
         }
@@ -1010,6 +1015,21 @@ impl Game {
         self.load_boss(0);
         self.juice.fade = 1.0;
         self.enter(Screen::Ready);
+        self.input.consume(Action::Attack);
+    }
+
+    /// 0: straight to the blacksmith, from anywhere, with coins to test with.
+    pub fn cheat_to_shop(&mut self) {
+        self.audio.unlock();
+        if matches!(self.screen, Screen::Title | Screen::GameOver) {
+            self.score.reset();
+            self.juice.score_shown = 0.0;
+            self.new_kit();
+            self.load_level(0);
+        }
+        self.purse = self.purse.max(CHEAT_COINS);
+        self.open_shop();
+        self.juice.fade = 1.0;
         self.input.consume(Action::Attack);
     }
 
@@ -2062,6 +2082,20 @@ mod tests {
         press(&mut g, ShopAction::Potion(PotionKind::Invulnerability));
         assert_eq!(g.purse, 10);
         assert_eq!(g.belt.len(), before + 1);
+    }
+
+    #[test]
+    fn zero_opens_the_shop_from_anywhere() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Shop);
+        assert!(g.purse >= CHEAT_COINS);
+        let mut g = playing();
+        g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Shop);
     }
 
     #[test]

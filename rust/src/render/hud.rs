@@ -756,7 +756,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let hint = rgba(TEXT_DIM, 1.0);
     o.text("Click to aim with the mouse   Hold W to run, A / D sidestep, S back   Tap a direction to turn", w / 2.0, cy + t * 0.3, t * 0.5, hint, Align::Center, false);
     o.text(
-        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Q drink potion   Tab next potion   Esc pause   M mute   F1 boss fight",
+        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Q drink potion   Tab next potion   Esc pause   M mute   F1 boss   0 shop",
         w / 2.0,
         cy + t * 1.05,
         t * 0.5,
