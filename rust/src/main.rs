@@ -19,6 +19,19 @@ fn main() {
             }
         });
     }
+    if let Some(i) = args.iter().position(|a| a == "--write-music") {
+        // --write-music out.wav [seconds] [intensity]
+        let path = args.get(i + 1).map(String::as_str).unwrap_or("music.wav");
+        let secs = args.get(i + 2).and_then(|s| s.parse().ok()).unwrap_or(40.0);
+        let intensity = args.get(i + 3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        std::process::exit(match void_harvest::capture::write_music(path, secs, intensity) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
+    }
     if args.iter().any(|a| a == "--capture") {
         std::process::exit(void_harvest::capture::run(&args));
     }

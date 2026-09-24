@@ -132,6 +132,41 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
+// ------------------------------------------------------------------ music
+
+/// Renders the soundtrack to a 16-bit mono WAV, for listening outside the game.
+/// `intensity` 0..1 previews the danger layers.
+pub fn write_music(path: &str, seconds: f64, intensity: f64) -> std::io::Result<()> {
+    let rate = 48_000u32;
+    let mut synth = crate::audio::synth::Synth::new(rate as f64, 0.42);
+    synth.music.running = true;
+    synth.intensity = intensity;
+    let mut buf = vec![0.0f32; (rate as f64 * seconds) as usize];
+    // Render in callback-sized blocks, as the audio device would, so finished notes are retired.
+    for block in buf.chunks_mut(512) {
+        synth.render(block, 1);
+    }
+    // Normalized for listening; in the game the music sits under the effects.
+    let peak = buf.iter().fold(1e-6f32, |m, v| m.max(v.abs()));
+    let gain = 0.7 / peak;
+    let data: Vec<u8> = buf.iter().flat_map(|v| (((v * gain).clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).collect();
+    let mut out = Vec::with_capacity(44 + data.len());
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&1u16.to_le_bytes()); // mono
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out.extend_from_slice(&data);
+    std::fs::write(path, out)
+}
+
 // ------------------------------------------------------------------- icon
 
 /// Writes the application icon (Sebastian's front view) as a multi-size .ico.
