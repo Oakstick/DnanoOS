@@ -56,6 +56,14 @@ pub struct Input {
     pub pad_connected: bool,
     /// The mouse is captured for aiming.
     pub mouse_captured: bool,
+    /// Pointer position in logical pixels, for menus.
+    pub cursor: Option<(f32, f32)>,
+    /// The pointer moved since the last update (menus follow the hover).
+    pub cursor_moved: bool,
+    /// Where the last left click or tap landed this update, in logical pixels.
+    pub click: Option<(f32, f32)>,
+    /// A direction pressed this update (menu navigation), from keys, d-pad or stick.
+    pub nav: Option<Dir>,
 }
 
 pub fn key_to_dir(code: winit::keyboard::KeyCode) -> Dir {
@@ -103,9 +111,17 @@ impl Input {
         if d != Dir::None {
             self.held.retain(|&h| h != d);
             self.held.push(d);
+            self.nav = Some(d);
         }
         if let Some(a) = key_to_action(code) {
             self.press(a);
+        }
+    }
+
+    pub fn cursor_moved_to(&mut self, x: f32, y: f32) {
+        if self.cursor != Some((x, y)) {
+            self.cursor = Some((x, y));
+            self.cursor_moved = true;
         }
     }
 
@@ -127,6 +143,9 @@ impl Input {
             MouseButton::Right => &[Action::Bomb],
             _ => &[],
         };
+        if down && button == MouseButton::Left {
+            self.click = self.cursor;
+        }
         for &a in actions {
             if down {
                 self.press(a);
@@ -150,6 +169,7 @@ impl Input {
                 if self.touch.is_none() {
                     self.touch = Some((id, x, y));
                     self.just.insert(Action::Tap);
+                    self.click = Some((x as f32, y as f32));
                 }
             }
             Moved => {
@@ -228,6 +248,9 @@ impl Input {
                 };
             }
         }
+        if dir != self.pad_dir && dir != Dir::None {
+            self.nav = Some(dir);
+        }
         self.pad_dir = dir;
 
         // Right stick aims, squared so small pushes stay fine and full tilt is quick.
@@ -283,6 +306,9 @@ impl Input {
 
     pub fn flush(&mut self) {
         self.just.clear();
+        self.click = None;
+        self.nav = None;
+        self.cursor_moved = false;
     }
 
     /// Feeds a scripted press (for captures and tests).

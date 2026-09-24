@@ -14,7 +14,7 @@ use glam::Vec3;
 use super::overlay::{rgba, Align, Overlay};
 use super::view::STEP;
 use super::voxels::{sprite_from_model, Sprite, BAT, POPOLON, SKELETON, SLIME};
-use crate::game::{Game, Screen};
+use crate::game::{Game, MenuItem, Screen};
 use crate::logic::items::{weapon_label, RangedKind, WeaponKind};
 use crate::logic::systems::MAX_LIVES;
 use crate::render::view::floor_at;
@@ -88,12 +88,13 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             &[line(g.level.data.name.to_uppercase(), 1.1, GOLD), line("DESCENDING...", 0.8, SAND)],
             0.35,
         ),
-        Screen::Paused => draw_screen(
-            o,
-            t,
-            &[line("PAUSED", 1.6, TEXT), line("Esc or Start to resume", 0.7, SAND)],
-            0.65,
-        ),
+        Screen::Paused => {
+            o.rect(0.0, 0.0, o.width, o.height, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.65]);
+            let top = menu_rects(Screen::Paused, 1, o.width, o.height)[0][1];
+            o.text("PAUSED", o.width / 2.0, top - t * 2.6, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
+            o.text("Esc or Start to resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center, false);
+            draw_menu(o, g, t);
+        }
         Screen::Won => draw_screen(
             o,
             t,
@@ -348,6 +349,46 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
 
 // ------------------------------------------------------------------ screens
 
+/// Button rectangles `[x, y, w, h]` for a menu, in logical pixels. The title
+/// menu is a row along the bottom; the pause menu is a centered column.
+pub fn menu_rects(screen: Screen, count: usize, w: f32, h: f32) -> Vec<[f32; 4]> {
+    let t = tile_for(w, h);
+    let bh = t * 1.3;
+    match screen {
+        Screen::Title => {
+            let bw = t * 6.0;
+            let gap = t * 0.8;
+            let total = bw * count as f32 + gap * (count.saturating_sub(1)) as f32;
+            let x0 = w / 2.0 - total / 2.0;
+            (0..count).map(|i| [x0 + i as f32 * (bw + gap), h * 0.95 - bh / 2.0, bw, bh]).collect()
+        }
+        _ => {
+            let bw = t * 9.0;
+            let gap = t * 0.45;
+            let y0 = h / 2.0 - t * 0.6;
+            (0..count).map(|i| [w / 2.0 - bw / 2.0, y0 + i as f32 * (bh + gap), bw, bh]).collect()
+        }
+    }
+}
+
+/// The current screen's buttons, with the highlighted one outlined in gold.
+fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
+    let items = g.menu_items();
+    let rects = menu_rects(g.screen, items.len(), o.width, o.height);
+    let pulse = 0.75 + (g.time as f32 * 4.0).sin() * 0.25;
+    for (i, (item, r)) in items.iter().zip(rects).enumerate() {
+        let selected = i == g.menu_index;
+        let quit = matches!(item, MenuItem::Quit | MenuItem::QuitToTitle);
+        let bg = if selected { [1.0, 1.0, 1.0, 0.14] } else { [1.0, 1.0, 1.0, 0.05] };
+        o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);
+        o.rect(r[0], r[1], r[2], r[3], bg);
+        let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
+        o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
+        let color = if selected { if quit { 0xff8a8a } else { GOLD } } else { TEXT_DIM };
+        o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.7, rgba(color, 1.0), Align::Center, true);
+    }
+}
+
 /// Centered overlay for ready, pause, win, and game over screens.
 fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
     let (w, h) = (o.width, o.height);
@@ -417,7 +458,6 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         Align::Center,
         false,
     );
-    let pulse = 0.7 + (time * 4.0).sin() * 0.3;
-    o.text("Press Enter, click or tap to begin", w / 2.0, h * 0.95, t * 0.9, rgba(TEXT, pulse), Align::Center, true);
+    draw_menu(o, g, t);
     o.text(&format!("Best {}", g.score.high), w - t * 0.6, h * 0.04, t * 0.5, rgba(TEXT_DIM, 1.0), Align::Right, false);
 }

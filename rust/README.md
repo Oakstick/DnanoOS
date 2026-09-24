@@ -43,6 +43,7 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 - **Mouse buttons:** left click attacks (sword swing or the held shot), right click drops a bomb. The first left click in play also captures the mouse for aiming.
 - **HUD:** health in the top-left corner (portrait, lives, HP bar, weapon, potion effects), score in the top-right corner (gold, nuggets, best). Bombs and the dungeon name sit in the bottom-right.
 - **Music tempo:** every 5 nuggets the backing track speeds up by 5% (78 BPM at the start, about 95 BPM at 20 nuggets). Collecting all 25 plays a congratulations fanfare: a brass run, a snare roll, then a ringing chord with sparkles.
+- **Menus:** the title screen has Play / Quit Game buttons and the pause screen has Resume / Quit to Title / Quit Game. Use the mouse (hover and click), the arrows or W/S with Enter or Space, or the d-pad or stick with A or Start. The web build leaves out Quit Game.
 - **Weight:** Popolon no longer snaps to full speed. Holding a direction accelerates him to the same top speed as before in 0.2 s. Letting go coasts him to rest on the next tile center under friction. Reversing brakes before he turns, and corners bleed a little speed. Hitboxes, `occupied` tiles and collisions are unchanged (`src/logic/hero.rs`, covered by tests).
 
 ## Layout

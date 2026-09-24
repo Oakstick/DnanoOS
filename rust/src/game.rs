@@ -61,6 +61,27 @@ pub struct Floater {
     pub color: Option<u32>,
 }
 
+/// A button on the title or pause menu.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MenuItem {
+    Play,
+    Resume,
+    QuitToTitle,
+    /// Leave the game entirely. Desktop only: a browser tab cannot close itself.
+    Quit,
+}
+
+impl MenuItem {
+    pub fn label(self) -> &'static str {
+        match self {
+            MenuItem::Play => "PLAY",
+            MenuItem::Resume => "RESUME",
+            MenuItem::QuitToTitle => "QUIT TO TITLE",
+            MenuItem::Quit => "QUIT GAME",
+        }
+    }
+}
+
 /// Things the platform layer may want to hear about (Steam achievements).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameEvent {
@@ -103,6 +124,12 @@ pub struct Game {
     pub events: Vec<GameEvent>,
     /// Set when the player asks for fullscreen; the app layer applies it.
     pub want_fullscreen_toggle: bool,
+    /// The highlighted menu button.
+    pub menu_index: usize,
+    /// The player chose Quit Game; the app layer closes the window.
+    pub quit_requested: bool,
+    /// Logical window size, for hit-testing menu buttons.
+    pub viewport: (f32, f32),
 }
 
 impl Game {
@@ -142,6 +169,9 @@ impl Game {
             nest_slots: Vec::new(),
             events: Vec::new(),
             want_fullscreen_toggle: false,
+            menu_index: 0,
+            quit_requested: false,
+            viewport: (1280.0, 720.0),
         };
         g.load_level(0);
         g
@@ -220,6 +250,7 @@ impl Game {
 
     fn enter(&mut self, screen: Screen) {
         self.screen = screen;
+        self.menu_index = 0;
         // The backing track steps back when the game does, and under the fanfare.
         self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won));
         if screen == Screen::Title {
@@ -240,14 +271,22 @@ impl Game {
         self.handle_global_keys();
 
         match self.screen {
-            Screen::Title => {
-                if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
+            Screen::Title => match self.menu_choice() {
+                Some(MenuItem::Quit) => self.quit_requested = true,
+                Some(_) => {
                     self.audio.unlock();
                     self.start_game();
                     // The click that starts the game is not also a sword swing.
                     self.input.consume(Action::Attack);
                 }
-            }
+                // A tap or click anywhere else on the title still begins, as it always has.
+                None if self.input.was_pressed(&[Action::Tap]) => {
+                    self.audio.unlock();
+                    self.start_game();
+                    self.input.consume(Action::Attack);
+                }
+                None => {}
+            },
             Screen::Ready => {
                 self.screen_timer -= dt;
                 if self.screen_timer <= 0.0 {
@@ -255,7 +294,12 @@ impl Game {
                 }
             }
             Screen::Playing => self.tick(dt),
-            Screen::Paused => {}
+            Screen::Paused => match self.menu_choice() {
+                Some(MenuItem::Resume) => self.enter(Screen::Playing),
+                Some(MenuItem::QuitToTitle) => self.enter(Screen::Title),
+                Some(MenuItem::Quit) => self.quit_requested = true,
+                _ => {}
+            },
             Screen::Dying => {
                 self.screen_timer -= dt;
                 if self.screen_timer <= 0.0 {
@@ -287,6 +331,59 @@ impl Game {
         };
         self.view.update(dt, &state);
         self.input.flush();
+    }
+
+    /// The buttons on the current screen, top to bottom (or left to right).
+    pub fn menu_items(&self) -> Vec<MenuItem> {
+        let quit = cfg!(not(target_arch = "wasm32"));
+        let mut items = match self.screen {
+            Screen::Title => vec![MenuItem::Play],
+            Screen::Paused => vec![MenuItem::Resume, MenuItem::QuitToTitle],
+            _ => return Vec::new(),
+        };
+        if quit {
+            items.push(MenuItem::Quit);
+        }
+        items
+    }
+
+    /**
+     * Menu input for this update: arrows, W/S, the d-pad or the stick move the
+     * highlight, the pointer highlights what it hovers, and Enter, Space, A,
+     * Start or a click on a button picks. Returns the button chosen, if any.
+     */
+    fn menu_choice(&mut self) -> Option<MenuItem> {
+        let items = self.menu_items();
+        if items.is_empty() {
+            return None;
+        }
+        let rects = crate::render::hud::menu_rects(self.screen, items.len(), self.viewport.0, self.viewport.1);
+        let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
+        let n = items.len();
+        let horizontal = self.screen == Screen::Title;
+        match self.input.nav {
+            Some(Dir::Up) if !horizontal => self.menu_index = (self.menu_index + n - 1) % n,
+            Some(Dir::Down) if !horizontal => self.menu_index = (self.menu_index + 1) % n,
+            Some(Dir::Left) if horizontal => self.menu_index = (self.menu_index + n - 1) % n,
+            Some(Dir::Right) if horizontal => self.menu_index = (self.menu_index + 1) % n,
+            _ => {}
+        }
+        if self.input.cursor_moved && !self.input.mouse_captured {
+            if let Some(i) = self.input.cursor.and_then(hit) {
+                self.menu_index = i;
+            }
+        }
+        self.menu_index = self.menu_index.min(n - 1);
+        if let Some(p) = self.input.click {
+            return hit(p).map(|i| {
+                self.menu_index = i;
+                items[i]
+            });
+        }
+        if self.input.was_pressed(&[Action::Confirm, Action::Jump]) {
+            return Some(items[self.menu_index]);
+        }
+        None
     }
 
     pub fn scene(&self) -> SceneState<'_> {
@@ -873,6 +970,32 @@ mod tests {
             g.collect();
             assert_eq!(g.audio.tempo_step(), n / NUGGETS_PER_TEMPO_STEP, "after {n} nuggets");
         }
+    }
+
+    #[test]
+    fn the_menus_can_quit() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Quit]);
+        // Right, then Enter, on the title picks Quit.
+        g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
+        g.update(crate::app::STEP);
+        g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
+        g.input.key_down(winit::keyboard::KeyCode::Enter, false);
+        g.update(crate::app::STEP);
+        assert!(g.quit_requested);
+        assert_eq!(g.screen, Screen::Title);
+
+        // Pause offers Resume / Quit to Title / Quit Game; clicking a button picks it.
+        let mut g = playing();
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Paused);
+        let r = crate::render::hud::menu_rects(Screen::Paused, 3, g.viewport.0, g.viewport.1)[1];
+        g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        g.input.mouse_button(winit::event::MouseButton::Left, true);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Title);
     }
 
     #[test]

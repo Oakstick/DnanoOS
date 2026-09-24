@@ -209,6 +209,7 @@ impl App {
         gpu.resize(size.width, size.height);
         let scale = window.scale_factor() as f32;
         let logical = (size.width as f32 / scale, size.height as f32 / scale);
+        self.game.viewport = logical;
         self.game.view.aspect = size.width as f32 / size.height as f32;
         self.game.view.emit(&self.game.scene(), &mut self.frame);
         self.overlay.begin(logical.0, logical.1);
@@ -344,6 +345,10 @@ impl ApplicationHandler for App {
                     self.game.input.key_up(code);
                 }
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                let scale = self.window.as_ref().map(|w| w.scale_factor()).unwrap_or(1.0);
+                self.game.input.cursor_moved_to((position.x / scale) as f32, (position.y / scale) as f32);
+            }
             WindowEvent::MouseInput { state, button, .. } => {
                 let down = state == ElementState::Pressed;
                 if down && button == MouseButton::Left && matches!(self.game.screen, Screen::Playing | Screen::Ready) {
@@ -373,6 +378,10 @@ impl ApplicationHandler for App {
                     }
                 }
                 self.frame();
+                if self.game.quit_requested {
+                    el.exit();
+                    return;
+                }
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
