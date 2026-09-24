@@ -1,0 +1,12 @@
+"AppBuild"
+{
+	"AppID"		"480"	// replace with your App ID (480 is Valve's Spacewar test app)
+	"Desc"		"Void Harvest"
+	"BuildOutput"	"output/"
+	"ContentRoot"	"../dist/"
+	"SetLive"	""	// e.g. "beta" to push straight to a branch
+	"Depots"
+	{
+		"481"	"depot_build_windows.vdf"	// replace with your Windows depot ID
+	}
+}

@@ -1,0 +1,12 @@
+"DepotBuild"
+{
+	"DepotID"	"481"	// replace with your Windows depot ID
+	"ContentRoot"	"../dist/windows/"
+	"FileMapping"
+	{
+		"LocalPath"	"*"
+		"DepotPath"	"."
+		"Recursive"	"1"
+	}
+	"FileExclusion"	"*.pdb"
+}

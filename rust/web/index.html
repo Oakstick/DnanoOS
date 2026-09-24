@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Void Harvest</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2309070f'/%3E%3Cpath d='M8 1 14 8 8 15 2 8Z' fill='%238fe7ff'/%3E%3C/svg%3E" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #06100b; overflow: hidden; }
+      canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; touch-action: none; }
+      #status { position: fixed; inset: 0; display: grid; place-items: center; color: #8f8a80; font: 14px system-ui, sans-serif; }
+    </style>
+  </head>
+  <body oncontextmenu="return false">
+    <div id="status">Loading Void Harvest…</div>
+    <script type="module">
+      import init from './pkg/void_harvest.js';
+      const status = document.getElementById('status');
+      init().then(() => status.remove()).catch((e) => {
+        // `start` hands control to the event loop by throwing; anything else is a real failure.
+        if (String(e).includes('Using exceptions for control flow')) { status.remove(); return; }
+        status.textContent = 'Could not start: ' + e;
+        console.error(e);
+      });
+    </script>
+  </body>
+</html>
