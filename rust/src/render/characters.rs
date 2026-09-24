@@ -7,6 +7,7 @@
 //! the front (the face), x across. Characters face +z.
 
 use super::voxels::{Collected, PartDef, Voxel};
+use crate::logic::gear::ShieldKind;
 
 pub struct Sculpt {
     w: i32,
@@ -157,8 +158,16 @@ mod viking {
     pub const EDGE: u32 = 0xf2f5f8;
 }
 
-/// Sebastian the viking: 15 wide, 9 deep, 23 tall.
+/// Sebastian the viking with his starting kit: 15 wide, 9 deep, 23 tall.
 pub fn sebastian() -> Collected {
+    sebastian_geared(1, Some(ShieldKind::Round))
+}
+
+/**
+ * Sebastian carrying a given axe (level 1 bearded axe, 2 battle axe, 3
+ * double-bladed great axe) and shield on his back (or none, if it broke).
+ */
+pub fn sebastian_geared(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
     use viking::*;
     let mut s = Sculpt::new(15, 23, 9);
     // Boots with fur cuffs, wrapped trousers.
@@ -186,25 +195,9 @@ pub fn sebastian() -> Collected {
     s.cuboid(2, 13, 1, 12, 14, 5, FUR);
     s.paint(|x, y, z, c| if c == FUR && (x + z + y) % 3 == 0 { Some(FUR_L) } else { None });
     s.cuboid(3, 7, 1, 11, 12, 1, CLOAK);
-    // Round shield slung on the back: quartered paint, iron rim, gold boss.
-    for y in 5..=15 {
-        for x in 2..=12 {
-            let (dx, dy) = (x as f32 - 7.0, y as f32 - 10.0);
-            let r = (dx * dx + dy * dy).sqrt();
-            if r > 4.4 {
-                continue;
-            }
-            let c = if r < 1.2 {
-                GOLD
-            } else if r > 3.6 {
-                IRON
-            } else if (dx >= 0.0) != (dy >= 0.0) {
-                SHIELD_RED
-            } else {
-                SHIELD_CREAM
-            };
-            s.set(x, y, 0, c);
-        }
+    // The shield slung on his back.
+    if let Some(kind) = shield {
+        back_shield(&mut s, kind);
     }
     // Arms: sleeves, leather bracers, hands.
     for (x0, x1) in [(1, 2), (12, 13)] {
@@ -212,20 +205,8 @@ pub fn sebastian() -> Collected {
         s.cuboid(x0, 9, 3, x1, 10, 4, LEATHER);
         s.cuboid(x0, 7, 3, x1, 8, 4, SKIN);
     }
-    // The bearded axe in his right hand.
-    for y in 5..=17 {
-        s.set(13, y, 4, HAFT);
-    }
-    s.cuboid(12, 7, 3, 13, 8, 4, SKIN);
-    for (z, y0, y1) in [(5, 14, 17), (6, 13, 17), (7, 12, 18)] {
-        for y in y0..=y1 {
-            s.set(13, y, z, STEEL);
-        }
-    }
-    for y in 11..=18 {
-        s.set(13, y, 8, EDGE);
-    }
-    s.set(13, 11, 7, STEEL);
+    // The axe in his right hand.
+    hand_axe(&mut s, axe_level);
     // Neck and head.
     s.cuboid(6, 14, 3, 8, 14, 4, SKIN);
     s.cuboid(5, 15, 2, 9, 19, 5, SKIN);
@@ -276,12 +257,147 @@ pub fn sebastian() -> Collected {
     s.finish(0.05)
 }
 
+/// The axe at each level, in the right hand (x = 13).
+fn hand_axe(s: &mut Sculpt, level: u8) {
+    use viking::*;
+    const DARK_STEEL: u32 = 0x8a929e;
+    const WRAP_RED: u32 = 0x9a1c22;
+    const GILT: u32 = 0xffd84a;
+    const DARK_HAFT: u32 = 0x3e2412;
+    match level {
+        1 => {
+            for y in 5..=17 {
+                s.set(13, y, 4, HAFT);
+            }
+            for (z, y0, y1) in [(5, 14, 17), (6, 13, 17), (7, 12, 18)] {
+                for y in y0..=y1 {
+                    s.set(13, y, z, STEEL);
+                }
+            }
+            for y in 11..=18 {
+                s.set(13, y, 8, EDGE);
+            }
+            s.set(13, 11, 7, STEEL);
+        }
+        2 => {
+            // Battle axe: a red-wrapped haft, a broad dark blade and a back spike.
+            for y in 4..=18 {
+                s.set(13, y, 4, if y % 2 == 0 && (9..=13).contains(&y) { WRAP_RED } else { HAFT });
+            }
+            for (z, y0, y1) in [(5, 13, 18), (6, 12, 18), (7, 11, 19)] {
+                for y in y0..=y1 {
+                    s.set(13, y, z, DARK_STEEL);
+                }
+            }
+            for y in 10..=19 {
+                s.set(13, y, 8, EDGE);
+            }
+            for z in 2..=3 {
+                s.set(13, 16, z, DARK_STEEL);
+            }
+            s.set(13, 19, 4, DARK_STEEL);
+        }
+        _ => {
+            // Great axe: dark haft with gold bands, a blade either side, gilded edges.
+            for y in 3..=18 {
+                s.set(13, y, 4, if y % 4 == 1 { GILT } else { DARK_HAFT });
+            }
+            for (z, y0, y1) in [(5, 12, 18), (6, 11, 18), (7, 10, 19)] {
+                for y in y0..=y1 {
+                    s.set(13, y, z, STEEL);
+                }
+            }
+            for y in 9..=19 {
+                s.set(13, y, 8, GILT);
+            }
+            for (z, y0, y1) in [(3, 12, 18), (2, 11, 18)] {
+                for y in y0..=y1 {
+                    s.set(13, y, z, STEEL);
+                }
+            }
+            for y in 10..=19 {
+                s.set(13, y, 1, GILT);
+            }
+            s.set(13, 19, 4, GILT);
+        }
+    }
+    s.cuboid(12, 7, 3, 13, 8, 4, SKIN);
+}
+
+/// A shield on his back (z = 0): its shape and paint tell the four apart.
+fn back_shield(s: &mut Sculpt, kind: ShieldKind) {
+    use viking::*;
+    const WOOD: u32 = 0x9a6a3a;
+    const WOOD_D: u32 = 0x7a522a;
+    const STEEL_D: u32 = 0x6e7888;
+    const PLATE: u32 = 0xa8b4c4;
+    const RIVET: u32 = 0xe8eef4;
+    for y in 3..=16 {
+        for x in 2..=12 {
+            let (dx, dy) = (x as f32 - 7.0, y as f32 - 10.0);
+            let c = match kind {
+                ShieldKind::Round | ShieldKind::IronRound => {
+                    let r = (dx * dx + dy * dy).sqrt();
+                    if r > 4.4 {
+                        continue;
+                    }
+                    if kind == ShieldKind::Round {
+                        if r < 1.2 {
+                            IRON
+                        } else if r > 3.6 {
+                            IRON
+                        } else if x % 2 == 0 {
+                            WOOD
+                        } else {
+                            WOOD_D
+                        }
+                    } else if r < 1.2 {
+                        GOLD
+                    } else if r > 3.6 {
+                        STEEL_D
+                    } else if (r - 2.6).abs() < 0.35 && (x + y) % 2 == 0 {
+                        RIVET
+                    } else {
+                        MAIL
+                    }
+                }
+                ShieldKind::Kite | ShieldKind::Dreadnought => {
+                    // Broad at the top, tapering to a point at the bottom.
+                    let half = if y >= 11 { 4.5 } else { 4.5 * (y as f32 - 3.0) / 8.0 + 0.5 };
+                    if dx.abs() > half {
+                        continue;
+                    }
+                    let rim = dx.abs() > half - 1.0 || y == 16;
+                    if kind == ShieldKind::Kite {
+                        if rim {
+                            IRON
+                        } else if (dx >= 0.0) != (dy >= 1.0) {
+                            SHIELD_RED
+                        } else {
+                            SHIELD_CREAM
+                        }
+                    } else if rim {
+                        GOLD
+                    } else if (x + y) % 3 == 0 && dx.abs() > half - 2.2 {
+                        RIVET
+                    } else if dx.abs() < 0.6 || y == 12 {
+                        STEEL_D
+                    } else {
+                        PLATE
+                    }
+                }
+            };
+            s.set(x, y, 0, c);
+        }
+    }
+}
+
 /// Sebastian's joints. Leg boxes stop short of the cloak and shield on his back.
 pub const SEBASTIAN_RIG: &[PartDef] = &[
     PartDef { name: "leftLeg", boxes: &[([3, 0, 2], [6, 6, 8])], pivot: [5.0, 7.0, 4.0] },
     PartDef { name: "rightLeg", boxes: &[([8, 0, 2], [11, 6, 8])], pivot: [9.0, 7.0, 4.0] },
     PartDef { name: "shieldArm", boxes: &[([0, 5, 2], [2, 14, 8])], pivot: [2.0, 13.5, 3.5] },
-    PartDef { name: "swordArm", boxes: &[([12, 4, 2], [14, 18, 8])], pivot: [12.0, 13.5, 3.5] },
+    PartDef { name: "swordArm", boxes: &[([12, 3, 1], [14, 19, 8])], pivot: [12.0, 13.5, 3.5] },
     PartDef { name: "head", boxes: &[([0, 15, 0], [14, 22, 8]), ([4, 10, 6], [10, 14, 8])], pivot: [7.0, 14.5, 3.5] },
 ];
 
@@ -468,6 +584,80 @@ pub fn bog_slime() -> Collected {
     s.set(5, 2, 10, WHITE);
     s.finish(0.05)
 }
+
+// ----------------------------------------------------------------- blacksmith
+
+/**
+ * Hrolf the blacksmith: a broad, bald smith with a great black beard, bare
+ * arms, a leather apron and a hammer. 17 wide, 23 tall, 12 deep.
+ */
+pub fn blacksmith() -> Collected {
+    const SKIN: u32 = 0xe0a878;
+    const SKIN_D: u32 = 0xb87e54;
+    const BEARD: u32 = 0x2a1e18;
+    const BEARD_L: u32 = 0x4a3a30;
+    const SHIRT: u32 = 0x6a6e5a;
+    const APRON: u32 = 0x7a4a24;
+    const APRON_D: u32 = 0x5a3418;
+    const TROUSER: u32 = 0x3e3a34;
+    const BOOT: u32 = 0x2e2018;
+    const IRON: u32 = 0x4a4e56;
+    const IRON_L: u32 = 0x7a808a;
+    const HAFT: u32 = 0x6b3f1d;
+    const EYE: u32 = 0x1c1c24;
+    const BRASS: u32 = 0xd8a040;
+    let mut s = Sculpt::new(17, 23, 12);
+    // Legs and boots, planted wide.
+    for (x0, x1) in [(4, 7), (9, 12)] {
+        s.cuboid(x0, 0, 3, x1, 1, 8, BOOT);
+        s.cuboid(x0, 2, 4, x1, 6, 7, TROUSER);
+    }
+    // A barrel chest and belly.
+    s.ellipsoid((8.0, 11.0, 5.5), (5.5, 5.0, 3.6), 6, SHIRT);
+    s.cuboid(3, 7, 3, 13, 14, 8, SHIRT);
+    // The apron, belt and a brass buckle.
+    s.cuboid(4, 3, 9, 12, 14, 9, APRON);
+    s.cuboid(5, 5, 10, 7, 7, 10, APRON_D); // pocket
+    s.cuboid(3, 8, 3, 13, 8, 9, APRON_D);
+    s.set(8, 8, 9, BRASS);
+    // Massive bare arms.
+    for (x0, x1) in [(0, 2), (14, 16)] {
+        s.cuboid(x0, 7, 4, x1, 14, 7, SKIN);
+        s.cuboid(x0, 7, 4, x1, 8, 7, SKIN_D);
+    }
+    // The hammer in his right fist, held out over the anvil.
+    for z in 6..=11 {
+        s.set(15, 8, z, HAFT);
+    }
+    s.cuboid(14, 7, 10, 16, 10, 11, IRON);
+    s.cuboid(14, 10, 10, 16, 10, 11, IRON_L);
+    // Neck, bald head, big ears.
+    s.cuboid(6, 15, 4, 10, 15, 7, SKIN);
+    s.ellipsoid((8.0, 18.5, 6.0), (3.2, 3.4, 3.1), 16, SKIN);
+    s.set(4, 18, 6, SKIN_D);
+    s.set(12, 18, 6, SKIN_D);
+    s.set(7, 21, 8, 0xf0c0a0); // shine on the scalp
+    // Bushy brows and eyes.
+    s.cuboid(6, 19, 9, 7, 19, 9, BEARD);
+    s.cuboid(9, 19, 9, 10, 19, 9, BEARD);
+    s.set(6, 18, 9, EYE);
+    s.set(10, 18, 9, EYE);
+    s.set(8, 17, 10, SKIN_D); // nose
+    // The great beard, down over the chest.
+    s.cuboid(5, 12, 8, 11, 17, 9, BEARD);
+    s.cuboid(6, 10, 9, 10, 13, 10, BEARD);
+    s.cuboid(7, 9, 10, 9, 10, 10, BEARD);
+    s.cuboid(6, 16, 9, 10, 16, 9, BEARD_L); // mustache
+    s.set(8, 16, 10, BEARD_L);
+    s.paint(|x, y, _z, c| if c == BEARD && (x + y * 2) % 5 == 0 { Some(BEARD_L) } else { None });
+    s.finish(0.05)
+}
+
+/// The hammer arm swings from the shoulder; the head nods.
+pub const BLACKSMITH_RIG: &[PartDef] = &[
+    PartDef { name: "hammerArm", boxes: &[([14, 6, 3], [16, 14, 11])], pivot: [15.0, 13.5, 5.5] },
+    PartDef { name: "head", boxes: &[([3, 15, 0], [13, 22, 11])], pivot: [8.0, 15.0, 6.0] },
+];
 
 // -------------------------------------------------------------------- cyclops
 
@@ -688,6 +878,9 @@ mod tests {
     fn every_character_is_sculpted_and_rigged() {
         for (model, rig) in [
             (sebastian(), SEBASTIAN_RIG),
+            (sebastian_geared(3, Some(ShieldKind::Dreadnought)), SEBASTIAN_RIG),
+            (sebastian_geared(2, None), SEBASTIAN_RIG),
+            (blacksmith(), BLACKSMITH_RIG),
             (draugr(), DRAUGR_RIG),
             (raven(false), RAVEN_RIG),
             (raven(true), RAVEN_RIG),

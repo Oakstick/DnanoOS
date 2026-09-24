@@ -10,7 +10,7 @@ pub const SPEED_SCALE: f64 = 0.8;
 pub const NUGGETS_PER_LEVEL: usize = 25;
 /// Potion bottles per dungeon: one extra life, two shields, two invisibility.
 pub const POTION_PLAN: [PotionKind; 5] =
-    [PotionKind::Life, PotionKind::Shield, PotionKind::Shield, PotionKind::Invisible, PotionKind::Invisible];
+    [PotionKind::Life, PotionKind::Health, PotionKind::Health, PotionKind::Swiftness, PotionKind::Swiftness];
 /// Pits cut across corridors that must be jumped.
 pub const PITS_PER_LEVEL: usize = 6;
 /// Manhattan distance kept between two pits.

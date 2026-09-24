@@ -125,7 +125,7 @@ impl App {
         while gilrs.next_event().is_some() {}
         let (_, pad) = gilrs.gamepads().find(|(_, g)| g.is_connected())?;
         let mut actions = HashSet::new();
-        let map: [(Button, &[Action]); 9] = [
+        let map: [(Button, &[Action]); 11] = [
             (Button::South, &[Action::Jump]),
             (Button::West, &[Action::Attack]),
             (Button::RightTrigger2, &[Action::Attack]),
@@ -135,6 +135,8 @@ impl App {
             (Button::Start, &[Action::Confirm, Action::Pause]),
             (Button::Select, &[Action::Pause]),
             (Button::RightThumb, &[Action::CameraReset]),
+            (Button::RightTrigger, &[Action::Drink]),
+            (Button::LeftTrigger2, &[Action::NextPotion]),
         ];
         for (b, acts) in map {
             if pad.is_pressed(b) {

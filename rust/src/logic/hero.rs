@@ -1,3 +1,4 @@
+use super::gear::{self, ShieldGear, ShieldKind};
 use super::grid::Grid;
 use super::items::{item, weapon, ItemKind, RangedKind, WeaponKind, SPEED_BOOST};
 use super::mover::Mover;
@@ -11,7 +12,12 @@ pub const HERO_MAX_HP: i32 = 100;
 pub const CONTACT_DAMAGE: i32 = 25;
 const INVULN_SECONDS: f64 = 1.0;
 const BLOCK_INVULN_SECONDS: f64 = 0.5;
-const ATTACK_COOLDOWN: f64 = 0.45;
+/// Potion effects on attack speed, damage taken and healing.
+const ARCANE_COOLDOWN: f64 = 0.5;
+const IRON_SKIN_TAKEN: f64 = 0.4;
+const REGEN_PER_SECOND: f64 = 5.0;
+/// A health potion's moment of immunity.
+pub const HEALTH_IMMUNITY: f64 = 1.5;
 const SWING_SECONDS: f64 = 0.18;
 /// Speed multiplier while slowed by slime.
 pub const SLIME_SLOW: f64 = 0.5;
@@ -37,6 +43,34 @@ pub const LANDING_KEEP: f64 = 0.6;
 /// Standing still, a new direction first turns him on the spot; he only steps
 /// off once it has been held this long. A tap turns, a hold walks.
 pub const TURN_TAP_SECONDS: f64 = 0.12;
+
+/// Seconds left on each timed potion (swiftness and invulnerability use the older boon timers).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Effects {
+    pub strength: f64,
+    pub arcane: f64,
+    pub regeneration: f64,
+    pub iron_skin: f64,
+    pub lightning: f64,
+    pub night_vision: f64,
+    pub true_sight: f64,
+}
+
+impl Effects {
+    fn tick(&mut self, dt: f64) {
+        for t in [
+            &mut self.strength,
+            &mut self.arcane,
+            &mut self.regeneration,
+            &mut self.iron_skin,
+            &mut self.lightning,
+            &mut self.night_vision,
+            &mut self.true_sight,
+        ] {
+            *t = (*t - dt).max(0.0);
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DamageResult {
@@ -78,13 +112,22 @@ pub struct Hero {
     /// Seconds of swing animation remaining.
     pub swing: f64,
 
-    /// The sword by default; a shrine weapon replaces it until its ammo is spent.
+    /// What is in his hand: his main weapon, or a shrine weapon until its ammo is spent.
     pub weapon: WeaponKind,
+    /// The weapon he bought and equipped: the axe, or a ranged weapon with endless use.
+    pub main: WeaponKind,
+    /// The axe's level (1..=3): reach, arc and damage of every swing.
+    pub axe_level: u8,
     pub ammo: u32,
     pub fire_cooldown: f64,
 
-    /// Hits the shield will still absorb.
-    pub shield: u32,
+    /// The shield on his arm, wearing down as it blocks.
+    pub shield: Option<ShieldGear>,
+    /// Set on the hit that breaks the shield; the game clears it.
+    pub shield_broke: bool,
+    /// Timed potion effects, seconds left each.
+    pub fx: Effects,
+    regen_carry: f64,
     pub invincible_timer: f64,
     /// Enemies cannot sense or touch him while this runs.
     pub invisible_timer: f64,
@@ -116,9 +159,14 @@ impl Hero {
             attack_cooldown: 0.0,
             swing: 0.0,
             weapon: WeaponKind::Sword,
+            main: WeaponKind::Sword,
+            axe_level: 1,
             ammo: 0,
             fire_cooldown: 0.0,
-            shield: 0,
+            shield: Some(ShieldGear::new(ShieldKind::Round)),
+            shield_broke: false,
+            fx: Effects::default(),
+            regen_carry: 0.0,
             invincible_timer: 0.0,
             invisible_timer: 0.0,
             speed_timer: 0.0,
@@ -154,6 +202,17 @@ impl Hero {
     }
     pub fn has_ranged_weapon(&self) -> bool {
         self.weapon != WeaponKind::Sword
+    }
+    /// Holding a shrine weapon with limited ammo rather than his own.
+    pub fn holding_pickup(&self) -> bool {
+        self.weapon != self.main
+    }
+    /// Damage multiplier from a strength potion.
+    pub fn might(&self) -> i32 {
+        if self.fx.strength > 0.0 { 2 } else { 1 }
+    }
+    fn cooldown_scale(&self) -> f64 {
+        if self.fx.arcane > 0.0 { ARCANE_COOLDOWN } else { 1.0 }
     }
     pub fn occupied(&self) -> P {
         self.m.occupied()
@@ -222,6 +281,13 @@ impl Hero {
         self.invisible_timer = (self.invisible_timer - dt).max(0.0);
         self.speed_timer = (self.speed_timer - dt).max(0.0);
         self.slow_timer = (self.slow_timer - dt).max(0.0);
+        self.fx.tick(dt);
+        if self.fx.regeneration > 0.0 && self.alive {
+            self.regen_carry += REGEN_PER_SECOND * dt;
+            let whole = self.regen_carry.floor();
+            self.regen_carry -= whole;
+            self.heal(whole as i32);
+        }
         self.m.speed = self.base_speed
             * if self.hasted() { SPEED_BOOST } else { 1.0 }
             * if self.slowed() { SLIME_SLOW } else { 1.0 };
@@ -367,15 +433,32 @@ impl Hero {
         }
     }
 
-    /// Applies a hit. Invincibility and the post-hit window ignore it; a shield absorbs it.
+    /**
+     * Applies a hit. Invincibility and the post-hit window ignore it; iron
+     * skin shrinks it; the shield takes its share and wears down by as much,
+     * breaking when it runs out. Blocked means none of it got through.
+     */
     pub fn take_damage(&mut self, amount: i32) -> DamageResult {
         if !self.alive || self.invuln > 0.0 || self.invincible() {
             return DamageResult::Immune;
         }
-        if self.shield > 0 {
-            self.shield -= 1;
-            self.invuln = BLOCK_INVULN_SECONDS;
-            return DamageResult::Blocked;
+        let mut amount = amount;
+        if self.fx.iron_skin > 0.0 {
+            amount = ((amount as f64) * IRON_SKIN_TAKEN).ceil() as i32;
+        }
+        if let Some(s) = &mut self.shield {
+            let share = ((amount as f64) * gear::shield(s.kind).block).round() as i32;
+            let absorbed = share.min(s.durability);
+            s.durability -= absorbed;
+            amount -= absorbed;
+            if s.durability <= 0 {
+                self.shield = None;
+                self.shield_broke = true;
+            }
+            if amount <= 0 {
+                self.invuln = BLOCK_INVULN_SECONDS;
+                return DamageResult::Blocked;
+            }
         }
         self.hp = (self.hp - amount).max(0);
         self.invuln = INVULN_SECONDS;
@@ -390,52 +473,94 @@ impl Hero {
         if !self.alive || self.attack_cooldown > 0.0 {
             return false;
         }
-        self.attack_cooldown = ATTACK_COOLDOWN;
+        self.attack_cooldown = gear::axe(self.axe_level).cooldown * self.cooldown_scale();
         self.swing = SWING_SECONDS;
         true
     }
 
     /**
-     * Spends a shot of the held ranged weapon if one is ready. Returns the kind
-     * fired, or None. The last shot drops the hero back to the sword.
+     * Fires the held ranged weapon if it is ready. Returns the kind fired, or
+     * None. His own weapon never runs dry; a shrine weapon spends ammo, and
+     * its last shot puts his own weapon back in his hand.
      */
     pub fn try_fire(&mut self) -> Option<RangedKind> {
         let WeaponKind::Ranged(kind) = self.weapon else { return None };
-        if !self.alive || self.ammo == 0 || self.fire_cooldown > 0.0 {
+        let pickup = self.holding_pickup();
+        if !self.alive || (pickup && self.ammo == 0) || self.fire_cooldown > 0.0 {
             return None;
         }
-        self.ammo -= 1;
-        self.fire_cooldown = weapon(kind).cooldown;
+        self.fire_cooldown = weapon(kind).cooldown * self.cooldown_scale();
         self.swing = SWING_SECONDS.min(0.12); // a short arm motion for the shot
-        if self.ammo == 0 {
-            self.revert_to_sword();
+        if pickup {
+            self.ammo -= 1;
+            if self.ammo == 0 {
+                self.revert_to_sword();
+            }
         }
         Some(kind)
     }
 
-    /// A caught boomerang comes back to the quiver, if the boomerang is still held.
+    /// A caught boomerang comes back to the quiver, if a shrine boomerang is still held.
     pub fn refund_shot(&mut self) {
-        if self.weapon != WeaponKind::Ranged(RangedKind::Boomerang) {
+        if self.weapon != WeaponKind::Ranged(RangedKind::Boomerang) || !self.holding_pickup() {
             return;
         }
         self.ammo = (self.ammo + 1).min(weapon(RangedKind::Boomerang).ammo);
     }
 
-    /// Takes a shrine weapon in place of the sword.
+    /// Takes a shrine weapon in place of his own until its ammo runs out.
     pub fn equip(&mut self, w: RangedKind) {
         self.weapon = WeaponKind::Ranged(w);
         self.ammo = weapon(w).ammo;
         self.fire_cooldown = 0.0;
     }
 
+    /// Puts his own weapon (bought and equipped) back in his hand.
     pub fn revert_to_sword(&mut self) {
-        self.weapon = WeaponKind::Sword;
+        self.weapon = self.main;
         self.ammo = 0;
         self.fire_cooldown = 0.0;
     }
 
+    /// Sets his own weapon and axe level from what he owns.
+    pub fn arm(&mut self, arsenal: &gear::Arsenal) {
+        self.axe_level = arsenal.axe_level();
+        self.main = arsenal.main_ranged().map(WeaponKind::Ranged).unwrap_or(WeaponKind::Sword);
+        let pickup = self.holding_pickup() && self.ammo > 0;
+        if !pickup {
+            self.weapon = self.main;
+            self.ammo = 0;
+        }
+    }
+
+    /// A shield boon or shield potion: a fresh round shield, or his own mended.
     pub fn grant_shield(&mut self) {
-        self.shield = item(ItemKind::Shield).charges;
+        match &mut self.shield {
+            Some(s) => s.durability = gear::shield(s.kind).durability,
+            None => self.shield = Some(ShieldGear::new(ShieldKind::Round)),
+        }
+    }
+
+    /// Drinks a potion with a timed or instant effect (Extra Life is the game's to handle).
+    pub fn drink(&mut self, kind: crate::logic::types::PotionKind) {
+        use crate::logic::types::PotionKind as K;
+        let secs = gear::potion(kind).seconds;
+        match kind {
+            K::Health => {
+                self.heal(50);
+                self.invuln = self.invuln.max(HEALTH_IMMUNITY);
+            }
+            K::Regeneration => self.fx.regeneration = secs,
+            K::Swiftness => self.speed_timer = secs,
+            K::NightVision => self.fx.night_vision = secs,
+            K::TrueSight => self.fx.true_sight = secs,
+            K::Strength => self.fx.strength = secs,
+            K::IronSkin => self.fx.iron_skin = secs,
+            K::Arcane => self.fx.arcane = secs,
+            K::Lightning => self.fx.lightning = secs,
+            K::Invulnerability => self.invincible_timer = secs,
+            K::Life => {}
+        }
     }
     pub fn grant_invincibility(&mut self) {
         self.invincible_timer = item(ItemKind::Invincible).seconds;
@@ -468,8 +593,11 @@ impl Hero {
         self.invuln = 0.0;
         self.attack_cooldown = 0.0;
         self.swing = 0.0;
+        // Death takes shrine pickups and potion effects; what he bought stays his.
         self.revert_to_sword();
-        self.shield = 0;
+        self.shield_broke = false;
+        self.fx = Effects::default();
+        self.regen_carry = 0.0;
         self.invincible_timer = 0.0;
         self.invisible_timer = 0.0;
         self.speed_timer = 0.0;

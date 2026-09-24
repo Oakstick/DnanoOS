@@ -13,6 +13,9 @@ pub enum ShotState {
 }
 
 const CATCH_RADIUS: f64 = 0.5;
+/// Seeking knives notice foes this close and turn this fast (radians per second).
+const SEEK_RANGE: f64 = 7.0;
+const SEEK_TURN: f64 = 7.0;
 
 /**
  * A ranged shot. Flies straight along a cardinal direction, passes through
@@ -32,6 +35,8 @@ pub struct Projectile {
     pub struck: HashSet<usize>,
     /// Render-only spin of the model, in radians.
     pub spin: f32,
+    /// Unit direction of flight; seeking shots bend it toward their prey.
+    pub heading: V,
 }
 
 impl Projectile {
@@ -46,6 +51,7 @@ impl Projectile {
             returning: false,
             struck: HashSet::new(),
             spin: 0.0,
+            heading: dir.or_down().vecf(),
         }
     }
 
@@ -54,16 +60,39 @@ impl Projectile {
         P::new(js_round(self.pos.x) as i32, js_round(self.pos.y) as i32)
     }
 
-    pub fn update(&mut self, dt: f64, grid: &Grid, hero_pos: V) -> ShotState {
+    /// Flies one step. Seeking shots steer toward the nearest of `prey` within reach.
+    pub fn update(&mut self, dt: f64, grid: &Grid, hero_pos: V, prey: &[V]) -> ShotState {
         if !self.alive {
             return ShotState::Spent;
+        }
+        if self.def.homing {
+            let near = prey
+                .iter()
+                .filter(|p| dist_sq(**p, self.pos) < SEEK_RANGE * SEEK_RANGE)
+                // Only what lies ahead, so a knife never doubles back.
+                .filter(|p| (p.x - self.pos.x) * self.heading.x + (p.y - self.pos.y) * self.heading.y > -0.2)
+                .min_by(|a, b| dist_sq(**a, self.pos).partial_cmp(&dist_sq(**b, self.pos)).unwrap());
+            if let Some(t) = near {
+                let want = (t.y - self.pos.y).atan2(t.x - self.pos.x);
+                let have = self.heading.y.atan2(self.heading.x);
+                let mut d = (want - have) % std::f64::consts::TAU;
+                if d > std::f64::consts::PI {
+                    d -= std::f64::consts::TAU;
+                }
+                if d < -std::f64::consts::PI {
+                    d += std::f64::consts::TAU;
+                }
+                let turn = d.clamp(-SEEK_TURN * dt, SEEK_TURN * dt);
+                let a = have + turn;
+                self.heading = V::new(a.cos(), a.sin());
+            }
         }
         let mut remaining = self.def.speed * dt;
         // Sub-step so a fast shot cannot skip over a wall block.
         while remaining > 0.0 {
             let s = remaining.min(0.25);
             remaining -= s;
-            let v = self.dir.vecf();
+            let v = self.heading;
             // Tile centers are integers, so wrap x within [-0.5, width - 0.5).
             let w = grid.width as f64;
             let raw_x = self.pos.x + v.x * s + 0.5;
@@ -99,6 +128,7 @@ impl Projectile {
     fn turn_back(&mut self) {
         self.returning = true;
         self.dir = self.dir.opposite();
+        self.heading = V::new(-self.heading.x, -self.heading.y);
         let back = self.traveled + 2.0;
         self.traveled = self.def.range - back;
         self.struck.clear();

@@ -25,6 +25,12 @@ pub enum Action {
     CameraReset,
     /// F1: straight to the first boss fight (testing cheat).
     Cheat,
+    /// Q / RB: drink the selected potion on the belt.
+    Drink,
+    /// Tab / LT: select the next potion (in the shop: the next tab).
+    NextPotion,
+    /// 1..5: drink the potion in that belt slot.
+    Slot(u8),
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -95,6 +101,13 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         F1 => Action::Cheat,
         F3 => Action::Fps,
         KeyC => Action::Camera,
+        KeyQ => Action::Drink,
+        Tab => Action::NextPotion,
+        Digit1 => Action::Slot(0),
+        Digit2 => Action::Slot(1),
+        Digit3 => Action::Slot(2),
+        Digit4 => Action::Slot(3),
+        Digit5 => Action::Slot(4),
         KeyE => Action::Attack,
         KeyB | KeyL | ShiftLeft | ShiftRight => Action::Bomb,
         F11 => Action::Fullscreen,

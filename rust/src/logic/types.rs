@@ -137,28 +137,38 @@ pub fn relative_dir(input: Dir, forward: Dir) -> Dir {
     }
 }
 
-/// Potion bottles found lying in the dungeon.
+/// Potions: found in the first dungeon, bought from the blacksmith, carried on the belt.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PotionKind {
+    Health,
+    Regeneration,
+    Swiftness,
+    NightVision,
+    TrueSight,
+    Strength,
+    IronSkin,
+    Arcane,
+    Lightning,
+    Invulnerability,
     Life,
-    Shield,
-    Invisible,
 }
 
 impl PotionKind {
+    /// Level glyphs. Only three bottle marks exist in the layouts (kept for
+    /// parity with the web build); the game assigns the real brews on load.
     pub fn from_glyph(c: char) -> Option<PotionKind> {
         match c {
             'r' => Some(PotionKind::Life),
-            'b' => Some(PotionKind::Shield),
-            'v' => Some(PotionKind::Invisible),
+            'b' => Some(PotionKind::Health),
+            'v' => Some(PotionKind::Swiftness),
             _ => None,
         }
     }
     pub fn glyph(self) -> char {
         match self {
             PotionKind::Life => 'r',
-            PotionKind::Shield => 'b',
-            PotionKind::Invisible => 'v',
+            PotionKind::Swiftness => 'v',
+            _ => 'b',
         }
     }
 }

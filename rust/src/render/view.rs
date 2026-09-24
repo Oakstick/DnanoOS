@@ -20,7 +20,9 @@ use crate::logic::rng::Rng;
 use crate::logic::systems::{Frenzy, PuddleField, PUDDLE_SECONDS};
 use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
 
+mod forge;
 mod meadow;
+pub use forge::SMITH_BEAT;
 pub use meadow::meadow_atmosphere;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
@@ -383,14 +385,24 @@ struct Models {
     bottles: HashMap<u32, Mesh>,
     cyclops: Rig,
     boulder: Rig,
+    /// Sebastian for every axe level and shield (or none).
+    heroes: HashMap<(u8, Option<crate::logic::gear::ShieldKind>), Rig>,
+    blacksmith: Rig,
+    knife: Rig,
 }
 
 impl Models {
     fn new() -> Self {
         let mut bottles = HashMap::new();
-        for kind in [crate::logic::types::PotionKind::Life, crate::logic::types::PotionKind::Shield, crate::logic::types::PotionKind::Invisible] {
-            let hex = crate::logic::items::potion_def(kind).color;
+        for kind in crate::logic::gear::POTIONS {
+            let hex = crate::logic::gear::potion(kind).color;
             bottles.insert(hex, build_mesh_recolored(&BOTTLE, 0.1, BOTTLE_LIQUID, hex));
+        }
+        let mut heroes = HashMap::new();
+        for level in 1..=3u8 {
+            for shield in [None].into_iter().chain(crate::logic::gear::SHIELDS.into_iter().map(Some)) {
+                heroes.insert((level, shield), build_rig(&characters::sebastian_geared(level, shield), characters::SEBASTIAN_RIG, VOXEL));
+            }
         }
         Self {
             popolon: build_rig(&characters::sebastian(), characters::SEBASTIAN_RIG, VOXEL),
@@ -419,6 +431,9 @@ impl Models {
                 0.07,
             ),
             boulder: build_rig(&meadow::boulder(), &[], 0.09),
+            heroes,
+            blacksmith: build_rig(&characters::blacksmith(), characters::BLACKSMITH_RIG, 0.055),
+            knife: build_rig(&forge::knife_model(), &[], 0.06),
         }
     }
 
@@ -494,6 +509,13 @@ pub struct WorldView {
     recentering: bool,
     /// A boss the chase camera keeps in view (ground position), when there is one.
     pub focus: Option<Vec3>,
+    /// The shop: the camera looks into the blacksmith's forge.
+    pub forge: bool,
+    was_forge: bool,
+    zaps: Vec<forge::Zap>,
+    /// Swiftness afterimages: position, heading, fade.
+    ghosts: Vec<(Vec3, f32, f32)>,
+    ghost_clock: f32,
     rng: Rng,
 }
 
@@ -552,6 +574,11 @@ impl WorldView {
             was_showcase: false,
             recentering: false,
             focus: None,
+            forge: false,
+            was_forge: false,
+            zaps: Vec::new(),
+            ghosts: Vec::new(),
+            ghost_clock: 0.0,
             rng: Rng::from_time(),
         }
     }
@@ -936,6 +963,7 @@ impl WorldView {
             }
         }
         self.update_meadow(dtf);
+        self.update_forge_fx(dtf, hero);
         self.update_camera(dtf, s.grid, hero);
         if !self.showcase {
             self.update_tree_fade(dtf, hero);
@@ -1327,11 +1355,17 @@ impl WorldView {
         let (hx, hz) = (hp.x as f32, hp.y as f32);
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
         let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
-        if self.showcase != self.was_showcase {
+        if self.showcase != self.was_showcase || self.forge != self.was_forge {
             self.was_showcase = self.showcase;
+            self.was_forge = self.forge;
             self.initialized = false;
         }
-        let (desired, look, pos_lerp) = if self.showcase {
+        let (desired, look, pos_lerp) = if self.forge {
+            // The forge fills the left of the screen; the shop panel sits on the right.
+            self.showcase_angle += dt;
+            let a = (self.showcase_angle * 0.2).sin() * 0.15;
+            (forge::FORGE + Vec3::new(2.3 + a, 2.3, 5.5), forge::FORGE + Vec3::new(2.05 + a * 0.5, 0.75, -0.2), 6.0)
+        } else if self.showcase {
             // The title diorama: the camera sways gently in front of Sebastian.
             self.showcase_angle += dt;
             let a = (self.showcase_angle * 0.23).sin() * 0.5;
@@ -1435,8 +1469,22 @@ impl WorldView {
     /// Everything that moves or animates, plus the light list, for one rendered frame.
     pub fn emit(&self, s: &SceneState, f: &mut Frame) {
         f.clear();
-        f.skip_static = self.showcase;
+        f.skip_static = self.showcase || self.forge;
+        if self.forge {
+            self.emit_forge(s, f);
+            return;
+        }
         f.atmosphere = if self.meadow && !self.showcase { meadow_atmosphere() } else { Atmosphere::forest() };
+        let nv = (s.hero.fx.night_vision as f32).min(1.0);
+        if nv > 0.0 && !self.meadow && !self.showcase {
+            let a = &mut f.atmosphere;
+            a.ambient *= 1.0 + 3.0 * nv;
+            a.hemi_sky *= 1.0 + 1.4 * nv;
+            a.hemi_ground *= 1.0 + 2.5 * nv;
+            a.sun *= 1.0 + 1.0 * nv;
+            a.fog_near += 10.0 * nv;
+            a.fog_far += 20.0 * nv;
+        }
         if self.showcase {
             self.emit_stage(s, f);
             return;
@@ -1455,17 +1503,26 @@ impl WorldView {
         let hero_group = Mat4::from_translation(hero_pos) * Mat4::from_rotation_y(self.hero_yaw);
         let blink = hero.invulnerable() && !hero.invincible() && ((time * 16.0).floor() as i64).rem_euclid(2) == 0;
         let ghost = hero.invisible();
-        let (emissive, light_color) = if hero.invincible() {
+        let (mut emissive, light_color) = if hero.invincible() {
             (lin(INVINCIBLE) * (0.45 + (time * 12.0).sin() * 0.25), lin(INVINCIBLE))
         } else {
             (Vec3::ZERO, lin(HERO_LIGHT))
         };
+        if hero.fx.strength > 0.0 {
+            emissive += lin(0xff2a1a) * (0.12 + (time * 6.0).sin().abs() * 0.12);
+        }
+        // Iron skin turns him to grey steel.
+        let tint = if hero.fx.iron_skin > 0.0 { Vec3::new(0.62, 0.68, 0.78) } else { Vec3::ONE };
+        if hero.fx.iron_skin > 0.0 {
+            emissive += Vec3::splat(0.05);
+        }
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
             let root = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
             let target = if ghost { &mut f.transparent[cube] } else { &mut f.opaque[cube] };
-            emit_rig(target, &self.models.popolon, &self.hero_pose, root, Vec3::ONE, alpha, emissive);
+            emit_rig(target, self.hero_rig(hero), &self.hero_pose, root, tint, alpha, emissive);
         }
+        self.emit_hero_fx(hero, hero_pos, time, f);
         let mut hero_light = if hero.alive { 8.0 } else { 0.0 };
         if ghost {
             hero_light = 3.0;
@@ -1487,6 +1544,12 @@ impl WorldView {
             let q = ((p - 0.17) / 0.33).clamp(0.0, 1.0);
             let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
             let side = self.slash_side;
+            let size = 1.0 + 0.22 * (hero.axe_level.clamp(1, 3) - 1) as f32;
+            let axe_color = match hero.axe_level {
+                1 => lin(SLASH),
+                2 => lin(0xffb0a0),
+                _ => lin(0xffe28a),
+            };
             for k in 0..5 {
                 let qk = (q - k as f32 * 0.09).clamp(0.0, 1.0);
                 let sweep = side * (1.15 - 2.3 * (1.0 - (1.0 - qk).powi(3)));
@@ -1499,16 +1562,12 @@ impl WorldView {
                     * Mat4::from_rotation_y(sweep)
                     * Mat4::from_rotation_z(side * 0.32)
                     * euler(Vec3::new(-PI / 2.0, 0.0, PI))
-                    * Mat4::from_scale(Vec3::splat(1.08 + k as f32 * 0.03));
-                let color = if k == 0 { lin(0xffffff) } else { lin(SLASH) };
+                    * Mat4::from_scale(Vec3::splat((1.08 + k as f32 * 0.03) * size));
+                let color = if k == 0 { lin(0xffffff) } else { axe_color };
                 f.transparent[MeshKind::Ring as usize].push(Instance::new(m, color, alpha, Vec3::ZERO, SHADE_UNLIT));
             }
         }
-        if hero.alive && hero.shield > 0 {
-            let opacity = 0.16 + (time * 5.0).sin() * 0.06 + hero.shield as f32 * 0.03;
-            let m = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.5, 0.0)) * Mat4::from_scale(Vec3::splat(0.58));
-            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, lin(SHIELD), opacity, Vec3::ZERO, SHADE_UNLIT));
-        }
+
         if hero.alive {
             // A drop shadow that stays on the floor while he jumps, so height reads clearly.
             let ground_h = floor_at(grid, hx, hz);
@@ -1593,7 +1652,11 @@ impl WorldView {
         for p in s.projectiles {
             let (px, pz) = (p.pos.x as f32, p.pos.y as f32);
             let pos = Vec3::new(px, floor_at(grid, px, pz) + 0.45, pz);
-            let group = Mat4::from_translation(pos) * Mat4::from_rotation_y(dir_to_rotation(p.dir));
+            let yaw = (p.heading.x as f32).atan2(p.heading.y as f32);
+            if self.emit_forged_shot(p.kind, pos, yaw, time, f) {
+                continue;
+            }
+            let group = Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw);
             let color = lin(p.def.color);
             let (mesh, spin, glow) = match p.kind {
                 RangedKind::Boomerang => (&self.models.boomerang, 14.0, Vec3::ZERO),

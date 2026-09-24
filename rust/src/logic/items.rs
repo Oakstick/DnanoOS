@@ -1,5 +1,6 @@
 //! Weapons, shrine boons, potions, bombs and shrines: the small rule objects.
 
+use super::gear;
 use super::types::{PotionKind, P};
 
 // ------------------------------------------------------------------ weapons
@@ -13,6 +14,14 @@ pub enum RangedKind {
     Boomerang,
     Fireball,
     Crescent,
+    // Forged by the blacksmith.
+    FlameArrow,
+    HolyArrow,
+    Knife,
+    TwinKnives,
+    SeekingKnives,
+    SteelBoomerang,
+    FireBoomerang,
 }
 
 /// Everything the hero can hold: the default sword, or one ranged weapon that replaces it.
@@ -47,6 +56,12 @@ pub struct WeaponDef {
     /// Also fire perpendicular copies (left and right of facing).
     pub spread: bool,
     pub cooldown: f64,
+    /// Damage to a boss per hit (ordinary foes fall to any hit).
+    pub damage: i32,
+    /// Curves toward the nearest foe.
+    pub homing: bool,
+    /// Sets what it hits burning.
+    pub burn: bool,
 }
 
 pub const WEAPON_ORDER: [RangedKind; 6] = [
@@ -59,38 +74,51 @@ pub const WEAPON_ORDER: [RangedKind; 6] = [
 ];
 
 pub fn weapon(kind: RangedKind) -> WeaponDef {
+    let base = WeaponDef {
+        name: "", color: 0xffffff, ammo: 6, speed: 14.0, range: 14.0, hit_radius: 0.5,
+        pierce: false, returns: false, lateral: &[0.0], spread: false, cooldown: 0.3,
+        damage: 1, homing: false, burn: false,
+    };
     match kind {
-        RangedKind::Arrow => WeaponDef {
-            name: "Arrow", color: 0xe0c9a6, ammo: 7, speed: 14.0, range: 14.0, hit_radius: 0.5,
-            pierce: false, returns: false, lateral: &[0.0], spread: false, cooldown: 0.25,
-        },
-        RangedKind::Double => WeaponDef {
-            name: "Double Arrow", color: 0xf2e3c4, ammo: 7, speed: 14.0, range: 14.0, hit_radius: 0.5,
-            pierce: false, returns: false, lateral: &[-0.28, 0.28], spread: false, cooldown: 0.3,
-        },
-        RangedKind::Trishot => WeaponDef {
-            name: "Tri-Shot", color: 0x9ad1ff, ammo: 6, speed: 13.0, range: 12.0, hit_radius: 0.5,
-            pierce: false, returns: false, lateral: &[0.0], spread: true, cooldown: 0.35,
-        },
+        RangedKind::Arrow => WeaponDef { name: "Arrow", color: 0xe0c9a6, ammo: 7, cooldown: 0.25, ..base },
+        RangedKind::Double => WeaponDef { name: "Double Arrow", color: 0xf2e3c4, ammo: 7, lateral: &[-0.28, 0.28], ..base },
+        RangedKind::Trishot => WeaponDef { name: "Tri-Shot", color: 0x9ad1ff, speed: 13.0, range: 12.0, spread: true, cooldown: 0.35, ..base },
         RangedKind::Boomerang => WeaponDef {
             name: "Boomerang", color: 0xc98f4a, ammo: 5, speed: 10.0, range: 5.0, hit_radius: 0.6,
-            pierce: true, returns: true, lateral: &[0.0], spread: false, cooldown: 0.4,
+            pierce: true, returns: true, cooldown: 0.4, damage: 2, ..base
         },
         RangedKind::Fireball => WeaponDef {
-            name: "Fireball", color: 0xff8a2a, ammo: 5, speed: 8.0, range: 12.0, hit_radius: 0.6,
-            pierce: true, returns: false, lateral: &[0.0], spread: false, cooldown: 0.45,
+            name: "Fireball", color: 0xff8a2a, ammo: 5, speed: 8.0, range: 12.0, hit_radius: 0.6, pierce: true, cooldown: 0.45, damage: 2, ..base
         },
-        RangedKind::Crescent => WeaponDef {
-            name: "Crescent", color: 0x8fe7ff, ammo: 6, speed: 16.0, range: 6.0, hit_radius: 0.9,
-            pierce: true, returns: false, lateral: &[0.0], spread: false, cooldown: 0.3,
+        RangedKind::Crescent => WeaponDef { name: "Crescent", color: 0x8fe7ff, speed: 16.0, range: 6.0, hit_radius: 0.9, pierce: true, ..base },
+        RangedKind::FlameArrow => WeaponDef {
+            name: "Flame Arrows", color: 0xff8a2a, lateral: &[-0.3, 0.0, 0.3], cooldown: 0.3, burn: true, ..base
+        },
+        RangedKind::HolyArrow => WeaponDef {
+            name: "Holy Arrows", color: 0xfff1a8, speed: 18.0, range: 18.0, hit_radius: 0.6, pierce: true, cooldown: 0.3, damage: 3, ..base
+        },
+        RangedKind::Knife => WeaponDef { name: "Throwing Knife", color: 0xc8d0da, speed: 16.0, range: 9.0, cooldown: 0.18, ..base },
+        RangedKind::TwinKnives => WeaponDef {
+            name: "Twin Knives", color: 0xdfe6ee, speed: 16.0, range: 9.0, lateral: &[-0.22, 0.22], cooldown: 0.2, ..base
+        },
+        RangedKind::SeekingKnives => WeaponDef {
+            name: "Seeking Knives", color: 0x9ad1ff, speed: 12.0, range: 12.0, lateral: &[-0.3, 0.0, 0.3], cooldown: 0.24, homing: true, ..base
+        },
+        RangedKind::SteelBoomerang => WeaponDef {
+            name: "Steel Boomerang", color: 0xb8c8d8, speed: 11.0, range: 7.0, hit_radius: 0.85,
+            pierce: true, returns: true, cooldown: 0.4, damage: 3, ..base
+        },
+        RangedKind::FireBoomerang => WeaponDef {
+            name: "Fire Boomerang", color: 0xff7a2a, speed: 12.0, range: 7.5, hit_radius: 0.9,
+            pierce: true, returns: true, cooldown: 0.38, damage: 3, burn: true, ..base
         },
     }
 }
 
-/// Display name and color for any held weapon, sword included.
-pub fn weapon_label(kind: WeaponKind) -> (&'static str, u32) {
+/// Display name and color for any held weapon, sword included (at the axe's level).
+pub fn weapon_label(kind: WeaponKind, axe_level: u8) -> (&'static str, u32) {
     match kind {
-        WeaponKind::Sword => (SWORD_NAME, SWORD_COLOR),
+        WeaponKind::Sword => (gear::Line::Axe.name(axe_level), gear::Line::Axe.color(axe_level)),
         WeaponKind::Ranged(r) => {
             let d = weapon(r);
             (d.name, d.color)
@@ -132,22 +160,6 @@ pub const SPEED_BOOST: f64 = 1.4;
 
 // ------------------------------------------------------------------ potions
 
-#[derive(Clone, Copy, Debug)]
-pub struct PotionDef {
-    pub name: &'static str,
-    pub color: u32,
-}
-
-pub fn potion_def(kind: PotionKind) -> PotionDef {
-    match kind {
-        PotionKind::Life => PotionDef { name: "Extra Life", color: 0xff4d6d },
-        PotionKind::Shield => PotionDef { name: "Shield", color: 0x4da3ff },
-        PotionKind::Invisible => PotionDef { name: "Invisibility", color: 0xb06cff },
-    }
-}
-
-pub const INVISIBLE_SECONDS: f64 = 10.0;
-
 /// A bottle lying on a tile. Taken once, never respawns within the level.
 #[derive(Clone, Debug)]
 pub struct Potion {
@@ -160,8 +172,8 @@ impl Potion {
     pub fn new(tile: P, kind: PotionKind) -> Self {
         Self { tile, kind, taken: false }
     }
-    pub fn def(&self) -> PotionDef {
-        potion_def(self.kind)
+    pub fn def(&self) -> gear::PotionDef {
+        gear::potion(self.kind)
     }
 }
 

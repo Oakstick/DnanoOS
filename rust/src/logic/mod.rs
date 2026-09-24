@@ -2,6 +2,7 @@
 
 pub mod boss;
 pub mod enemy;
+pub mod gear;
 pub mod grid;
 pub mod hero;
 pub mod items;

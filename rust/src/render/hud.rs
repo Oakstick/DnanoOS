@@ -16,7 +16,12 @@ use super::view::STEP;
 use super::characters::{bog_slime, draugr, raven, sebastian};
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen};
-use crate::logic::items::{weapon, weapon_label, RangedKind, WeaponKind};
+use crate::logic::gear::Line;
+use crate::logic::items::{weapon, weapon_label, WeaponKind};
+use crate::render::icons::{icon, Icon};
+
+mod shop;
+pub use shop::shop_rects;
 use crate::logic::systems::MAX_LIVES;
 use crate::render::view::floor_at;
 
@@ -56,7 +61,7 @@ const RULES: [&str; 5] = [
     "The dungeon rises in levels. Jump with Space to clear pits, leap over foes, and climb a ledge; ramps let you walk up. Bats fly over everything.",
     "Enemies hunt you, and more keep arriving from the hollow the longer you take. Every five nuggets the music quickens.",
     "You start with your axe. Strike a shrine to cycle its gift, step on it to take it: a weapon replaces the axe until its ammo runs out.",
-    "Green crosses restore 50 health. Potions: red is an extra life, blue a shield, purple invisibility. Bombs blast through walls. Slime trails slow you.",
+    "Nuggets and foes earn coins; after each boss, Hrolf the blacksmith sells weapons, upgrades, shields and potions. Carry up to five potions (Q or 1-5 to drink). Shields wear down as they block.",
 ];
 
 pub struct OverlayLine {
@@ -79,6 +84,13 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     let t = tile_for(w, h);
     // Every piece of text gets a drop shadow so it reads over bright floors and lights.
     o.shadow = (t * 0.08).max(1.5);
+    if g.screen == Screen::Shop {
+        shop::draw_shop(o, g, t);
+        if g.juice.fade > 0.0 {
+            o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, g.juice.fade.min(1.0)]);
+        }
+        return;
+    }
     if g.screen != Screen::Title {
         draw_world_overlays(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
@@ -102,7 +114,8 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 line("The meadow is quiet again. Sebastian marches on.", 0.9, SAND),
                 line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
-                line(format!("Enter, click or tap: on to {}", crate::logic::levels::level_for(g.dungeon + 1).name), 0.8, TEXT_DIM),
+                line(format!("+{} coins to spend", crate::logic::gear::COINS_BOSS + 100 * g.dungeon as u32), 0.9, GOLD),
+                line("Enter, click or tap: visit Hrolf the blacksmith", 0.8, TEXT_DIM),
             ],
             0.7,
         ),
@@ -245,7 +258,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let hurt_red = j.hurt > 0.5 && ((time * 20.0).floor() as i64).rem_euclid(2) == 0;
     let tint = if golden { Some(0xffd84a) } else if hurt_red { Some(0xff5a5a) } else { None };
     draw_sprite(o, &sp.portrait, px0, py0, scale, tint, if ghost { 0.4 } else { 1.0 });
-    if hero.shield > 0 {
+    if hero.shield.is_some() {
         o.rect_outline(px0 - t * 0.15, py0 - t * 0.1, portrait_w + t * 0.3, portrait_h + t * 0.2, (t * 0.08).max(1.0), [127.0 / 255.0, 215.0 / 255.0, 1.0, 0.9]);
     }
 
@@ -279,7 +292,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let rx = w - margin - right_w;
     panel(o, rx, margin, right_w, band, t);
     let rc = rx + right_w - t * 0.5;
-    o.text("GOLD", rc, margin + t * 0.5, small, rgba(SAND, 1.0), Align::Right, true);
+    o.text("SCORE", rc, margin + t * 0.5, small, rgba(SAND, 1.0), Align::Right, true);
     o.text(&format!("{:06}", j.score_shown.round() as u64), rc, margin + t * 1.2, fs * 1.3, rgba(TEXT, 1.0), Align::Right, true);
     // The counter jumps when a nugget lands in it.
     let punch = j.nugget_punch;
@@ -293,7 +306,14 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     if punch > 0.0 {
         o.circle(tx + t * 0.2, ty, t * 0.9 * (1.0 - punch) + t * 0.2, rgba(GOLD, punch * 0.25));
     }
-    o.text(&format!("BEST {:06}", g.score.high), rc, margin + t * 2.65, small, rgba(TEXT_DIM, 1.0), Align::Right, true);
+    // The purse: coins to spend at the blacksmith.
+    let cp = j.coin_punch;
+    let cs = small * (1.0 + 0.35 * cp);
+    let coins = format!("{}", g.purse);
+    let cy = margin + t * 2.65;
+    o.text(&coins, rc, cy, cs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
+    let ciw = small * 1.2;
+    draw_sprite(o, icon(Icon::Coin), rc - o.measure(&coins, cs) - ciw - t * 0.15, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
 
     // ---- bottom middle: weapon, shield and potions
     draw_loadout(o, g, t, fs, small);
@@ -335,102 +355,126 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 
 /**
  * The bottom-middle panel: what Sebastian holds and what protects him. Left,
- * the weapon with its ammo as pips; right, shield charges as shields and
- * every running potion with a bar that drains as it wears off.
+ * the weapon (its level as pips, ammo for a shrine weapon); middle, the
+ * shield and how much it has left; right, the potion belt with the one Q
+ * drinks outlined. Running potion effects sit in a row just above it.
  */
 fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
     let (w, h) = (o.width, o.height);
     let hero = &g.hero;
+    let time = g.time as f32;
     let margin = t * 0.4;
-    let pw = t * 17.0;
-    let ph = t * 2.5;
+    let pw = t * 27.0;
+    let ph = t * 2.6;
     let x0 = w / 2.0 - pw / 2.0;
     let y0 = h - margin - ph;
     panel(o, x0, y0, pw, ph, t);
 
     // Weapon.
-    let (wname, wcolor) = weapon_label(hero.weapon);
-    let icx = x0 + t * 1.25;
-    let icy = y0 + ph / 2.0;
-    o.circle(icx, icy, t * 0.85, [1.0, 1.0, 1.0, 0.07]);
-    let recoil = if hero.swinging() { 1.15 } else { 1.0 };
-    draw_weapon_icon(o, hero.weapon, icx, icy, t * 1.05 * recoil, wcolor);
-    let tx = x0 + t * 2.4;
-    o.text(&wname.to_uppercase(), tx, y0 + t * 0.8, fs, rgba(wcolor, 1.0), Align::Left, true);
-    match hero.weapon {
-        WeaponKind::Sword => {
-            let ready = hero.attack_cooldown <= 0.0;
-            let (label, color) = if ready { ("READY", 0x7dff9a) } else { ("SWING", TEXT_DIM) };
-            o.text(label, tx, y0 + t * 1.7, small, rgba(color, 1.0), Align::Left, true);
+    let (wname, wcolor) = weapon_label(hero.weapon, hero.axe_level);
+    let ic = match hero.weapon {
+        WeaponKind::Sword => Icon::Weapon(Line::Axe, hero.axe_level),
+        WeaponKind::Ranged(_) if !hero.holding_pickup() => Icon::Weapon(g.arsenal.equipped, g.arsenal.level(g.arsenal.equipped)),
+        WeaponKind::Ranged(r) => Icon::Pickup(r),
+    };
+    let iw = t * 2.0 * if hero.swinging() { 1.12 } else { 1.0 };
+    o.rect(x0 + t * 0.3, y0 + t * 0.3, t * 2.0, t * 2.0, [1.0, 1.0, 1.0, 0.06]);
+    draw_sprite(o, icon(ic), x0 + t * 1.3 - iw / 2.0, y0 + t * 1.3 - iw / 2.0, iw / 16.0, None, 1.0);
+    let tx = x0 + t * 2.6;
+    o.text(&wname.to_uppercase(), tx, y0 + t * 0.75, fs * 0.9, rgba(wcolor, 1.0), Align::Left, true);
+    let row2 = y0 + t * 1.65;
+    if hero.holding_pickup() {
+        let WeaponKind::Ranged(r) = hero.weapon else { unreachable!() };
+        let max = weapon(r).ammo;
+        let pip = t * 0.28;
+        for i in 0..max {
+            let c = if i < hero.ammo { rgba(wcolor, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
+            o.rect(tx + i as f32 * (pip + t * 0.1), row2 - pip / 2.0, pip, pip, c);
         }
-        WeaponKind::Ranged(r) => {
-            let max = weapon(r).ammo;
-            let pip = t * 0.3;
-            for i in 0..max {
-                let filled = i < hero.ammo;
-                let px = tx + i as f32 * (pip + t * 0.12);
-                let c = if filled { rgba(wcolor, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
-                o.rect(px, y0 + t * 1.7 - pip / 2.0, pip, pip, c);
-            }
-            let after = tx + max as f32 * (pip + t * 0.12) + t * 0.2;
-            o.text(&format!("x{}", hero.ammo), after, y0 + t * 1.7, small, rgba(TEXT, 1.0), Align::Left, true);
+    } else {
+        // Level pips, then whether it is ready.
+        let level = if hero.weapon == WeaponKind::Sword { hero.axe_level } else { g.arsenal.level(g.arsenal.equipped) };
+        for i in 0..3u8 {
+            let c = if i < level { rgba(GOLD, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
+            let px = tx + i as f32 * t * 0.45;
+            o.rect(px, row2 - t * 0.14, t * 0.3, t * 0.3, c);
+        }
+        let ready = if hero.weapon == WeaponKind::Sword { hero.attack_cooldown <= 0.0 } else { hero.fire_cooldown <= 0.0 };
+        let (label, color) = if ready { ("READY", 0x7dff9a) } else { ("...", TEXT_DIM) };
+        o.text(label, tx + t * 1.5, row2, small, rgba(color, 1.0), Align::Left, true);
+    }
+
+    // Shield.
+    let sx0 = x0 + t * 9.6;
+    o.rect(sx0, y0 + t * 0.35, (t * 0.05).max(1.0), ph - t * 0.7, [1.0, 1.0, 1.0, 0.12]);
+    let sx = sx0 + t * 0.4;
+    match hero.shield {
+        Some(sh) => {
+            let def = crate::logic::gear::shield(sh.kind);
+            let siw = t * 1.7;
+            draw_sprite(o, icon(Icon::Shield(sh.kind)), sx, y0 + (ph - siw) / 2.0, siw / 16.0, None, 1.0);
+            let bx = sx + siw + t * 0.3;
+            o.text(&def.name.to_uppercase(), bx, y0 + t * 0.75, small, rgba(def.color, 1.0), Align::Left, true);
+            let frac = sh.fraction();
+            let low = frac < 0.3 && (time * 5.0).sin() > 0.0;
+            bar(o, bx, y0 + t * 1.45, t * 4.2, t * 0.32, frac, if frac > 0.3 { 0x9ad1ff } else if low { 0xff4a3a } else { 0xff8a6a });
+        }
+        None => {
+            o.text("NO SHIELD", sx, y0 + ph / 2.0, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
         }
     }
 
-    // Divider.
-    let mid = x0 + pw * 0.47;
-    o.rect(mid, y0 + t * 0.35, (t * 0.05).max(1.0), ph - t * 0.7, [1.0, 1.0, 1.0, 0.12]);
-
-    // Shield charges.
-    let sx = mid + t * 0.5;
-    let shield_color = 0x7fd7ff;
-    let max_shield = crate::logic::items::item(crate::logic::items::ItemKind::Shield).charges;
-    o.text("SHIELD", sx, y0 + t * 0.8, small, rgba(if hero.shield > 0 { shield_color } else { TEXT_DIM }, 1.0), Align::Left, true);
-    let mut ix = sx + o.measure("SHIELD", small) + t * 0.45;
-    for i in 0..max_shield {
-        let on = i < hero.shield;
-        draw_shield_icon(o, ix, y0 + t * 0.8, t * 0.5, if on { rgba(shield_color, 1.0) } else { [1.0, 1.0, 1.0, 0.15] });
-        ix += t * 0.7;
+    // The potion belt.
+    let bx0 = x0 + t * 17.6;
+    o.rect(bx0, y0 + t * 0.35, (t * 0.05).max(1.0), ph - t * 0.7, [1.0, 1.0, 1.0, 0.12]);
+    let slot = t * 1.55;
+    for i in 0..crate::logic::gear::BELT_SLOTS {
+        let x = bx0 + t * 0.4 + i as f32 * (slot + t * 0.2);
+        let y = y0 + t * 0.3;
+        o.rect(x, y, slot, slot, [1.0, 1.0, 1.0, 0.06]);
+        if let Some(&k) = g.belt.get(i) {
+            draw_sprite(o, icon(Icon::Potion(k)), x + slot * 0.08, y + slot * 0.08, slot * 0.84 / 16.0, None, 1.0);
+        }
+        let sel = i == g.belt_index && i < g.belt.len();
+        o.rect_outline(x, y, slot, slot, if sel { (t * 0.08).max(1.5) } else { 1.0 }, if sel { rgba(GOLD, 0.95) } else { [1.0, 1.0, 1.0, 0.18] });
+        o.text(&format!("{}", i + 1), x + slot / 2.0, y + slot + t * 0.35, t * 0.36, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    }
+    if let Some(&k) = g.belt.get(g.belt_index) {
+        let def = crate::logic::gear::potion(k);
+        o.text(&format!("Q  {}", def.name.to_uppercase()), bx0 + t * 0.4, y0 - t * 0.35, t * 0.42, rgba(def.color, 1.0), Align::Left, true);
     }
 
-    // Potions and boons, each with a bar that drains as it wears off.
-    let mut boons: Vec<(&str, f64, f64, u32)> = Vec::new();
-    if hero.invincible() {
-        boons.push(("INVINCIBLE", hero.invincible_timer, crate::logic::items::item(crate::logic::items::ItemKind::Invincible).seconds, 0xffd84a));
-    }
-    if hero.invisible() {
-        boons.push(("INVISIBLE", hero.invisible_timer, crate::logic::items::INVISIBLE_SECONDS, 0xb06cff));
-    }
-    if hero.hasted() {
-        boons.push(("SPEED", hero.speed_timer, crate::logic::items::item(crate::logic::items::ItemKind::Speed).seconds, 0x7dff9a));
+    // Running effects, each with a bar that drains as it wears off.
+    let fx = &hero.fx;
+    let mut effects: Vec<(Icon, f64, f64, u32)> = Vec::new();
+    let mut add = |kind: crate::logic::types::PotionKind, left: f64| {
+        if left > 0.0 {
+            let d = crate::logic::gear::potion(kind);
+            effects.push((Icon::Potion(kind), left, d.seconds, d.color));
+        }
+    };
+    use crate::logic::types::PotionKind as K;
+    add(K::Invulnerability, hero.invincible_timer);
+    add(K::Swiftness, hero.speed_timer);
+    add(K::Strength, fx.strength);
+    add(K::IronSkin, fx.iron_skin);
+    add(K::Arcane, fx.arcane);
+    add(K::Lightning, fx.lightning);
+    add(K::Regeneration, fx.regeneration);
+    add(K::NightVision, fx.night_vision);
+    add(K::TrueSight, fx.true_sight);
+    let ew = t * 1.1;
+    let mut ex = x0 + t * 0.3;
+    let ey = y0 - t * 1.55;
+    for (ic, left, total, color) in effects {
+        o.rect(ex - 2.0, ey - 2.0, ew + 4.0, ew + t * 0.35, [0.0, 0.0, 0.0, 0.55]);
+        draw_sprite(o, icon(ic), ex, ey, ew / 16.0, None, 1.0);
+        let fr = (left / total.max(0.01)).clamp(0.0, 1.0) as f32;
+        o.rect(ex, ey + ew + t * 0.05, ew * fr, t * 0.14, rgba(color, 1.0));
+        ex += ew + t * 0.3;
     }
     if hero.slowed() {
-        boons.push(("SLOWED", hero.slow_timer, crate::logic::hero::SLIME_SLOW_SECONDS, 0x5cff6a));
-    }
-    let row = y0 + t * 1.75;
-    if boons.is_empty() {
-        o.text("NO POTION", sx, row, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
-    }
-    let mut bx = sx;
-    for (label, left, total, color) in boons {
-        let lw = o.measure(label, small * 0.85);
-        o.text(label, bx, row - t * 0.12, small * 0.85, rgba(color, 1.0), Align::Left, true);
-        let fr = (left / total).clamp(0.0, 1.0) as f32;
-        o.rect(bx, row + t * 0.28, lw, t * 0.12, [1.0, 1.0, 1.0, 0.12]);
-        o.rect(bx, row + t * 0.28, lw * fr, t * 0.12, rgba(color, 1.0));
-        bx += lw + t * 0.6;
-    }
-}
-
-fn draw_shield_icon(o: &mut Overlay, cx: f32, cy: f32, size: f32, color: [f32; 4]) {
-    let hw = size * 0.42;
-    o.rect(cx - hw, cy - size * 0.5, hw * 2.0, size * 0.55, color);
-    // Taper to a point below.
-    let steps = 4;
-    for i in 0..steps {
-        let k = 1.0 - (i as f32 + 1.0) / (steps as f32 + 0.5);
-        let y = cy + size * 0.05 + i as f32 * size * 0.11;
-        o.rect(cx - hw * k, y, hw * 2.0 * k, size * 0.12, color);
+        o.text("SLOWED", ex, ey + ew / 2.0, small * 0.9, rgba(0x5cff6a, 1.0), Align::Left, true);
     }
 }
 
@@ -515,44 +559,6 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     o.text(&g.level.data.name.to_uppercase(), w / 2.0, y + t * 4.3, t * 0.6, rgba(SAND, 1.0), Align::Center, true);
 }
 
-/// Small glyph for the held weapon, centered at (cx, cy).
-fn draw_weapon_icon(o: &mut Overlay, kind: WeaponKind, cx: f32, cy: f32, size: f32, color: u32) {
-    let c = rgba(color, 1.0);
-    let lw = (size * 0.18).max(1.0);
-    let h = size / 2.0;
-    let pi = std::f32::consts::PI;
-    match kind {
-        WeaponKind::Sword => {
-            // A bearded axe: the haft, then the blade flaring forward and hooking down.
-            o.line([cx - h * 0.3, cy + h], [cx + h * 0.1, cy - h], lw, rgba(0xb07a44, 1.0));
-            o.line([cx + h * 0.05, cy - h * 0.75], [cx + h * 0.85, cy - h * 0.95], lw * 1.3, c);
-            o.line([cx + h * 0.85, cy - h * 0.95], [cx + h * 0.75, cy - h * 0.05], lw * 1.3, c);
-            o.line([cx + h * 0.75, cy - h * 0.05], [cx - h * 0.05, cy - h * 0.3], lw * 1.3, c);
-        }
-        WeaponKind::Ranged(RangedKind::Arrow) => {
-            o.line([cx, cy + h], [cx, cy - h], lw, c);
-            o.line([cx - h * 0.5, cy - h * 0.4], [cx, cy - h], lw, c);
-            o.line([cx, cy - h], [cx + h * 0.5, cy - h * 0.4], lw, c);
-        }
-        WeaponKind::Ranged(RangedKind::Double) => {
-            for dx in [-h * 0.4, h * 0.4] {
-                o.line([cx + dx, cy + h], [cx + dx, cy - h], lw, c);
-            }
-        }
-        WeaponKind::Ranged(RangedKind::Trishot) => {
-            o.line([cx, cy + h * 0.6], [cx, cy - h], lw, c);
-            o.line([cx, cy + h * 0.6], [cx - h, cy + h * 0.2], lw, c);
-            o.line([cx, cy + h * 0.6], [cx + h, cy + h * 0.2], lw, c);
-        }
-        WeaponKind::Ranged(RangedKind::Boomerang) => {
-            o.line([cx - h, cy - h * 0.6], [cx - h * 0.2, cy + h * 0.7], lw, c);
-            o.line([cx - h * 0.2, cy + h * 0.7], [cx + h, cy - h * 0.2], lw, c);
-        }
-        WeaponKind::Ranged(RangedKind::Fireball) => o.circle(cx, cy, h * 0.7, c),
-        WeaponKind::Ranged(RangedKind::Crescent) => o.arc(cx, cy, h * 0.9, pi * 1.1, pi * 1.9, lw, c),
-    }
-}
-
 // ------------------------------------------------------------- world labels
 
 /// Health bar over Popolon, shrine labels, and floating text projected onto the overlay.
@@ -568,6 +574,32 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
             let bh = (t * 0.22).max(5.0);
             let frac = g.hero.hp as f32 / g.hero.max_hp as f32;
             bar(o, x - bw / 2.0, y, bw, bh, frac, hp_color(frac));
+        }
+    }
+    if g.hero.fx.true_sight > 0.0 && g.screen == Screen::Playing {
+        // True sight: every nugget, bottle and cross marked, walls or not.
+        let pulse = 0.75 + (g.time as f32 * 5.0).sin() * 0.25;
+        let fade = (g.hero.fx.true_sight as f32).min(1.0);
+        let mark = |o: &mut Overlay, x: i32, y: i32, color: u32| {
+            let (fx, fy) = (x as f32, y as f32);
+            if let Some((sx, sy)) = view.project(Vec3::new(fx, floor_at(grid, fx, fy) + 0.9, fy), w, h) {
+                let r = t * 0.32 * pulse;
+                o.line([sx, sy - r], [sx + r, sy], 2.0, rgba(color, fade));
+                o.line([sx + r, sy], [sx, sy + r], 2.0, rgba(color, fade));
+                o.line([sx, sy + r], [sx - r, sy], 2.0, rgba(color, fade));
+                o.line([sx - r, sy], [sx, sy - r], 2.0, rgba(color, fade));
+                o.line([sx, sy + r], [sx, sy + r * 2.2], 1.5, rgba(color, fade * 0.6));
+            }
+        };
+        for (x, y, tile) in grid.cells() {
+            match tile {
+                crate::logic::types::Tile::Nodule => mark(o, x, y, GOLD),
+                crate::logic::types::Tile::Charge => mark(o, x, y, 0x5cff6a),
+                _ => {}
+            }
+        }
+        for p in g.potions.iter().filter(|p| !p.taken) {
+            mark(o, p.tile.x, p.tile.y, p.def().color);
         }
     }
     for d in &g.diamonds {
@@ -724,7 +756,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let hint = rgba(TEXT_DIM, 1.0);
     o.text("Click to aim with the mouse   Hold W to run, A / D sidestep, S back   Tap a direction to turn", w / 2.0, cy + t * 0.3, t * 0.5, hint, Align::Center, false);
     o.text(
-        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Esc pause   M mute   F11 fullscreen   F1 boss fight",
+        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Q drink potion   Tab next potion   Esc pause   M mute   F1 boss fight",
         w / 2.0,
         cy + t * 1.05,
         t * 0.5,

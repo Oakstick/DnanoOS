@@ -6,7 +6,10 @@
 //! The script is `seconds:command` pairs. Commands: an action (confirm,
 //! attack, bomb, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
 //! up/down/left/right, `look:dx:dy` for a mouse turn in pixels, `nugget`,
-//! `hurt`, `boss` (the F1 cheat) and `wound:N` (N damage to the boss).
+//! `hurt`, `boss` (the F1 cheat), `wound:N` (N damage to the boss), `daze`,
+//! `shop` (open the blacksmith), `coins:N`, `tab`, `drink`, and `potion:I`
+//! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
+//! equipped) and `shield:I` (shield I, or none past the end).
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -26,6 +29,11 @@ enum Cmd {
     Hurt,
     Wound(i32),
     Daze,
+    Shop,
+    Arm(usize, u8),
+    Shield(usize),
+    Coins(u32),
+    Potion(usize),
     Press(Action),
     Hold(Dir, bool),
     Look(f64, f64),
@@ -56,6 +64,17 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "nugget" => Cmd::Nugget,
             "boss" => Cmd::Press(Action::Cheat),
             "daze" => Cmd::Daze,
+            "shop" => Cmd::Shop,
+            "arm" => {
+                let line = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let level = parts.next().and_then(|v| v.parse().ok()).unwrap_or(1);
+                Cmd::Arm(line, level)
+            }
+            "shield" => Cmd::Shield(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "tab" => Cmd::Press(Action::NextPotion),
+            "drink" => Cmd::Press(Action::Drink),
+            "coins" => Cmd::Coins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(500)),
+            "potion" => Cmd::Potion(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "hurt" => Cmd::Hurt,
             "look" => {
@@ -111,6 +130,14 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Hurt => game.debug_hurt(),
                 Cmd::Wound(n) => game.debug_wound_boss(n),
                 Cmd::Daze => game.debug_daze_boss(),
+                Cmd::Shop => game.open_shop(),
+                Cmd::Arm(line, level) => game.debug_arm(crate::logic::gear::LINES[line.min(3)], level),
+                Cmd::Shield(i) => {
+                    game.hero.shield = crate::logic::gear::SHIELDS.get(i).map(|&k| crate::logic::gear::ShieldGear::new(k));
+                }
+                Cmd::Coins(n) => game.purse = n,
+                // Drink potion number N of the shop's list at once, to see its effect.
+                Cmd::Potion(i) => game.debug_drink(crate::logic::gear::POTIONS[i.min(10)]),
             }
             next += 1;
         }

@@ -3,13 +3,17 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod shop;
+pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState, ShopTab};
+
 use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
 use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
 use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
+use crate::logic::gear::{self, Arsenal, ShieldGear, ShieldKind, BELT_SLOTS, COINS_BOSS, COINS_KILL, COINS_NUGGET, FOUND_POTIONS};
 use crate::logic::hero::{DamageResult, Hero, CONTACT_DAMAGE};
 use crate::logic::items::{
-    Bomb, Diamond, DiamondKind, ItemKind, Offer, Potion, BOMBS_PER_LIFE, INVISIBLE_SECONDS, SWORD_COLOR,
+    Bomb, Diamond, DiamondKind, ItemKind, Offer, Potion, BOMBS_PER_LIFE,
 };
 use crate::logic::level::{parse_level, ParsedLevel};
 use crate::logic::levels::{boss_arena, level_for, ARENA};
@@ -29,6 +33,8 @@ pub enum Screen {
     /// Every nugget taken: the fanfare plays, then the way to the boss opens.
     Cleared,
     Won,
+    /// The blacksmith's forge, after a boss.
+    Shop,
     GameOver,
 }
 
@@ -69,10 +75,14 @@ const DYING_SECONDS: f64 = 1.8;
 pub const CLEARED_SECONDS: f64 = 3.4;
 /// After the Cyclops bursts, a beat to take it in before the victory screen.
 const VICTORY_DELAY: f64 = 1.6;
-/// Damage the Cyclops takes from each weapon.
-const AXE_DAMAGE: i32 = 2;
-const SHOT_DAMAGE: i32 = 1;
+/// Damage the Cyclops takes from a bomb (the weapons carry their own).
 const BOMB_DAMAGE: i32 = 6;
+/// A lightning potion's zap: how far it jumps and how many foes it strikes.
+const ZAP_RANGE: f64 = 4.5;
+const ZAP_TARGETS: usize = 3;
+/// Burning: seconds it lasts and seconds between its bites.
+const BURN_SECONDS: f64 = 3.0;
+const BURN_TICK: f64 = 0.75;
 /// Freeze-frame on a blow to the boss.
 const HITSTOP_BOSS: f64 = 0.035;
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
@@ -123,6 +133,8 @@ pub struct Juice {
     pub fade: f32,
     /// The boss health bar's trailing chunk, in HP.
     pub boss_trail: f32,
+    /// 1 when coins come in, fading: the purse counter jumps.
+    pub coin_punch: f32,
 }
 
 /// A button on the title or pause menu.
@@ -216,6 +228,17 @@ pub struct Game {
     boss_events: Vec<BossEvent>,
     /// Counts down to the victory screen once the boss is dead.
     victory_timer: Option<f64>,
+    /// Coins to spend at the blacksmith.
+    pub purse: u32,
+    /// Weapons he owns and the one he has equipped.
+    pub arsenal: Arsenal,
+    /// Potions carried on his belt, and the one Q (or RB) drinks.
+    pub belt: Vec<PotionKind>,
+    pub belt_index: usize,
+    pub shop: ShopState,
+    /// Seconds the boss has left burning, and until its next bite.
+    boss_burn: f64,
+    burn_tick: f64,
 }
 
 impl Game {
@@ -271,6 +294,13 @@ impl Game {
             boss_shots: Vec::new(),
             boss_events: Vec::new(),
             victory_timer: None,
+            purse: 0,
+            arsenal: Arsenal::default(),
+            belt: Vec::new(),
+            belt_index: 0,
+            shop: ShopState::default(),
+            boss_burn: 0.0,
+            burn_tick: 0.0,
         };
         g.load_level(0);
         g
@@ -309,8 +339,12 @@ impl Game {
         self.nest_slots = vec![self.level.enemy_spawn, P::new(c.x - 2, c.y), P::new(c.x, c.y), P::new(c.x + 2, c.y)];
 
         // Clearing a dungeon keeps the held weapon and its ammo; only death takes them.
-        let carried = if self.hero.alive && self.hero.has_ranged_weapon() { Some((self.hero.weapon, self.hero.ammo)) } else { None };
+        let carried = if self.hero.alive && self.hero.holding_pickup() { Some((self.hero.weapon, self.hero.ammo)) } else { None };
+        // His shield, dents and all, goes with him.
+        let shield = self.hero.shield;
         self.hero = Hero::new(self.level.hero_spawn, self.level.data.hero_speed);
+        self.hero.shield = shield;
+        self.hero.arm(&self.arsenal);
         let specs = if self.level.data.boss { Vec::new() } else { default_enemy_specs(&self.level.grid) };
         self.enemies = specs
             .iter()
@@ -337,12 +371,29 @@ impl Game {
             .chain(self.level.item_shrines.iter().enumerate().map(|(i, &t)| Diamond::new(DiamondKind::Item, t, i)))
             .collect();
         self.potions = self.level.potions.iter().map(|&(t, k)| Potion::new(t, k)).collect();
+        if index == 0 && !self.level.data.boss {
+            // The first dungeon's bottles hold a little of everything.
+            for (p, k) in self.potions.iter_mut().zip(FOUND_POTIONS) {
+                p.kind = k;
+            }
+        }
+        if index == 0 && self.level.data.boss {
+            // Two bottles by the start of the first boss fight.
+            let (hx, hy) = crate::logic::levels::ARENA_HERO;
+            self.potions = vec![Potion::new(P::new(hx - 2, hy + 1), PotionKind::Health), Potion::new(P::new(hx + 2, hy + 1), PotionKind::Strength)];
+        }
+        if index >= 1 {
+            // From the second dungeon on, gear only comes from the blacksmith.
+            self.potions.clear();
+            self.diamonds.clear();
+        }
+        self.boss_burn = 0.0;
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss);
         self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         self.reset_round();
-        if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried {
+        if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
             self.hero.equip(w);
             self.hero.ammo = ammo;
         }
@@ -386,10 +437,21 @@ impl Game {
 
     fn start_game(&mut self) {
         self.score.reset();
-        self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare sword
+        self.new_kit();
+        self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare axe
         self.load_level(0);
         self.juice.score_shown = 0.0;
         self.enter(Screen::Ready);
+    }
+
+    /// A fresh adventure: the axe, a round shield, an empty purse, one health potion.
+    fn new_kit(&mut self) {
+        self.arsenal = Arsenal::default();
+        self.purse = 0;
+        self.belt = vec![PotionKind::Health];
+        self.belt_index = 0;
+        self.hero.shield = Some(ShieldGear::new(ShieldKind::Round));
+        self.hero.arm(&self.arsenal);
     }
 
     fn enter(&mut self, screen: Screen) {
@@ -417,6 +479,7 @@ impl Game {
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
+        self.view.forge = self.screen == Screen::Shop;
         self.view.focus = self
             .boss
             .as_ref()
@@ -494,15 +557,15 @@ impl Game {
                 }
             }
             Screen::Won => {
-                // The boss is down: on to the next dungeon.
+                // The boss is down: off to the blacksmith.
                 if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
-                    let next = self.dungeon + 1;
-                    self.load_level(next);
+                    self.open_shop();
                     self.juice.fade = 1.0;
-                    self.enter(Screen::Ready);
                     self.input.consume(Action::Attack);
+                    self.input.consume(Action::Confirm);
                 }
             }
+            Screen::Shop => self.update_shop(dt),
             Screen::GameOver => {
                 if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
                     self.enter(Screen::Title);
@@ -720,6 +783,18 @@ impl Game {
         if self.input.was_pressed(&[Action::Bomb]) {
             self.place_bomb();
         }
+        if self.input.was_pressed(&[Action::NextPotion]) && !self.belt.is_empty() {
+            self.belt_index = (self.belt_index + 1) % self.belt.len();
+            self.audio.play(Sfx::Nodule);
+        }
+        if self.input.was_pressed(&[Action::Drink]) {
+            self.drink(self.belt_index);
+        }
+        for slot in 0..BELT_SLOTS {
+            if self.input.was_pressed(&[Action::Slot(slot as u8)]) {
+                self.drink(slot);
+            }
+        }
         self.update_projectiles(dt);
         self.update_bombs(dt);
         for d in self.diamonds.iter_mut() {
@@ -854,6 +929,7 @@ impl Game {
                     self.events.push(GameEvent::FirstNugget);
                 }
                 self.score.add(POINTS_NODULE);
+                self.earn(COINS_NUGGET);
                 self.audio.play_reward(self.nuggets_got);
                 // Every five nuggets the music presses on a little faster.
                 if self.nuggets_got % NUGGETS_PER_TEMPO_STEP == 0 {
@@ -929,6 +1005,7 @@ impl Game {
         if matches!(self.screen, Screen::Title | Screen::GameOver) {
             self.score.reset();
             self.juice.score_shown = 0.0;
+            self.new_kit();
         }
         self.load_boss(0);
         self.juice.fade = 1.0;
@@ -956,6 +1033,21 @@ impl Game {
         self.update_boss_shots(dt);
         if self.screen != Screen::Playing {
             return;
+        }
+        if self.boss_burn > 0.0 {
+            self.boss_burn -= dt;
+            self.burn_tick -= dt;
+            if let Some(bp) = self.boss.as_ref().filter(|b| b.active()).map(|b| b.pos) {
+                if self.burn_tick <= 0.0 {
+                    self.burn_tick = BURN_TICK;
+                    self.wound_boss(1, bp);
+                }
+                if self.rng.next() < dt * 20.0 {
+                    self.view.sparkle(&self.level.grid, bp.x, bp.y, 1.0 + self.rng.next() as f32, 0xff7a2a, 2);
+                }
+            } else {
+                self.boss_burn = 0.0;
+            }
         }
         // Touching it hurts, unless he sails over it.
         if let Some(b) = &self.boss {
@@ -1027,6 +1119,9 @@ impl Game {
                 self.audio.play(Sfx::BossDeath);
                 self.audio.set_threat(0.0);
                 self.score.add(POINTS_CYCLOPS);
+                let bounty = COINS_BOSS + 100 * self.dungeon as u32;
+                self.earn(bounty);
+                self.floater(p.x, p.y - 0.8, format!("+{bounty} COINS"), 2.2, Some(0xffd84a));
                 self.floater(p.x, p.y, format!("+{POINTS_CYCLOPS}"), 2.0, Some(0xf2c53d));
                 self.events.push(GameEvent::BossSlain);
                 self.victory_timer = Some(VICTORY_DELAY);
@@ -1162,21 +1257,17 @@ impl Game {
                 continue;
             }
             self.potions[i].taken = true;
+            let kind = self.potions[i].kind;
             let def = self.potions[i].def();
-            let mut label = def.name.to_uppercase();
-            match self.potions[i].kind {
-                PotionKind::Life => {
-                    if !self.score.gain_life() {
-                        self.score.add(500);
-                        label = "FULL LIVES +500".into();
-                    }
-                }
-                PotionKind::Shield => self.hero.grant_shield(),
-                PotionKind::Invisible => self.hero.grant_invisibility(INVISIBLE_SECONDS),
-            }
-            self.audio.play(Sfx::Start);
             self.view.spark(&self.level.grid, o.x as f64, o.y as f64, def.color);
-            self.floater(o.x as f64, o.y as f64, label, 1.4, Some(def.color));
+            // Onto the belt if there is room; an extra life (or a full belt) is drunk at once.
+            if kind != PotionKind::Life && self.belt.len() < BELT_SLOTS {
+                self.belt.push(kind);
+                self.audio.play(Sfx::Start);
+                self.floater(o.x as f64, o.y as f64, format!("{} POTION", def.name.to_uppercase()), 1.4, Some(def.color));
+            } else {
+                self.quaff(kind);
+            }
         }
     }
 
@@ -1214,26 +1305,109 @@ impl Game {
     }
 
     /// Sword swing: slays every targetable enemy in front of the hero.
+    /// An axe swing: its level sets the reach, the arc and the blow.
     fn perform_attack(&mut self) {
         self.audio.play(Sfx::Slash);
         self.view.sword_slash();
-        let hits = find_attack_targets(self.hero.pos(), self.hero.facing, &self.enemies);
+        let stats = gear::axe(self.hero.axe_level);
+        let hits = find_axe_targets(self.hero.pos(), self.hero.facing, &self.enemies, &stats);
         if !hits.is_empty() {
-            self.view.shake(0.14);
+            self.view.shake(0.14 + 0.04 * self.hero.axe_level as f32);
         }
         for i in hits {
             self.slay_enemy(i);
         }
         if let Some(bp) = self.boss_target() {
-            if in_swing_reach(self.hero.pos(), self.hero.facing, bp, BODY_RADIUS) {
-                self.wound_boss(AXE_DAMAGE, bp);
+            if in_axe_arc(self.hero.pos(), self.hero.facing, bp, &stats, BODY_RADIUS) {
+                self.wound_boss(stats.damage * self.hero.might(), bp);
             }
         }
+        self.zap();
+    }
+
+    /**
+     * A lightning potion at work: every attack also arcs to the nearest few
+     * foes around him (and the boss, if it is close).
+     */
+    fn zap(&mut self) {
+        if self.hero.fx.lightning <= 0.0 {
+            return;
+        }
+        let hp = self.hero.pos();
+        let mut near: Vec<(f64, usize)> = self
+            .enemies
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.is_targetable())
+            .map(|(i, e)| (dist_sq(e.pos(), hp), i))
+            .filter(|&(d, _)| d <= ZAP_RANGE * ZAP_RANGE)
+            .collect();
+        near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        let mut struck = false;
+        for &(_, i) in near.iter().take(ZAP_TARGETS) {
+            let p = self.enemies[i].pos();
+            self.view.zap(&self.level.grid, hp, p);
+            self.slay_enemy(i);
+            struck = true;
+        }
+        if let Some(bp) = self.boss_target() {
+            if dist_sq(bp, hp) <= (ZAP_RANGE + 1.0).powi(2) {
+                self.view.zap(&self.level.grid, hp, bp);
+                self.wound_boss(self.hero.might(), bp);
+                struck = true;
+            }
+        }
+        if struck {
+            self.audio.play(Sfx::Zap);
+        }
+    }
+
+    /// Coins in the purse, and the counter jumps.
+    fn earn(&mut self, coins: u32) {
+        self.purse += coins;
+        self.juice.coin_punch = 1.0;
+    }
+
+    /// Drinks the potion in belt slot `slot`, if there is one.
+    fn drink(&mut self, slot: usize) {
+        if slot >= self.belt.len() || !self.hero.alive {
+            return;
+        }
+        let kind = self.belt.remove(slot);
+        if self.belt_index >= self.belt.len() {
+            self.belt_index = self.belt.len().saturating_sub(1);
+        }
+        self.quaff(kind);
+    }
+
+    /// A potion's effect, from the belt or picked up.
+    fn quaff(&mut self, kind: PotionKind) {
+        let def = gear::potion(kind);
+        let hp = self.hero.pos();
+        let mut label = format!("{}!", def.name.to_uppercase());
+        if kind == PotionKind::Life {
+            if !self.score.gain_life() {
+                self.score.add(500);
+                label = "FULL LIVES +500".into();
+            }
+        } else {
+            let before = self.hero.hp;
+            self.hero.drink(kind);
+            if kind == PotionKind::Health {
+                label = format!("+{} HP", self.hero.hp - before);
+                self.juice.hp_flash = 1.0;
+                self.juice.hp_flash_color = 0x5cff6a;
+            }
+        }
+        self.audio.play(Sfx::Drink);
+        self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, def.color, 24);
+        self.floater(hp.x, hp.y, label, 1.3, Some(def.color));
     }
 
     fn slay_enemy(&mut self, i: usize) {
         let value = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.score.add(value);
+        self.earn(COINS_KILL);
         self.enemies[i].kill();
         self.kill_streak = if self.streak_timer > 0.0 { self.kill_streak + 1 } else { 1 };
         self.streak_timer = STREAK_SECONDS;
@@ -1258,17 +1432,23 @@ impl Game {
         let shots = spawn_shots(kind, self.hero.pos(), self.hero.facing);
         self.projectiles.extend(shots);
         self.audio.play(Sfx::Arrow);
-        if !self.hero.has_ranged_weapon() {
+        if !self.hero.holding_pickup() && self.hero.weapon != crate::logic::items::WeaponKind::Ranged(kind) {
+            // The shrine weapon ran dry; his own is back in hand.
             let hp = self.hero.pos();
-            self.floater(hp.x, hp.y, "AXE", 1.2, Some(SWORD_COLOR));
+            let (name, color) = crate::logic::items::weapon_label(self.hero.weapon, self.hero.axe_level);
+            self.floater(hp.x, hp.y, name.to_uppercase(), 1.2, Some(color));
         }
+        self.zap();
     }
 
     fn update_projectiles(&mut self, dt: f64) {
         let hero_pos = self.hero.pos();
+        // What seeking knives can chase.
+        let mut prey: Vec<V> = self.enemies.iter().filter(|e| e.is_targetable()).map(|e| e.pos()).collect();
+        prey.extend(self.boss_target());
         let mut i = 0;
         while i < self.projectiles.len() {
-            let state = self.projectiles[i].update(dt, &self.level.grid, hero_pos);
+            let state = self.projectiles[i].update(dt, &self.level.grid, hero_pos, &prey);
             if self.projectiles[i].alive {
                 let (pos, radius) = (self.projectiles[i].pos, self.projectiles[i].def.hit_radius);
                 let hits = find_projectile_hits(pos, radius, &self.enemies, &self.projectiles[i].struck);
@@ -1285,13 +1465,19 @@ impl Game {
                 if let Some(bp) = self.boss_target() {
                     let p = &self.projectiles[i];
                     if p.alive && !p.struck.contains(&usize::MAX) && dist_sq(p.pos, bp).sqrt() <= radius + BODY_RADIUS {
-                        let dmg = if p.kind == crate::logic::items::RangedKind::Fireball { SHOT_DAMAGE * 2 } else { SHOT_DAMAGE };
+                        let dmg = p.def.damage * self.hero.might();
+                        let burns = p.def.burn;
                         let at = p.pos;
                         self.projectiles[i].struck.insert(usize::MAX);
                         if !self.projectiles[i].def.pierce {
                             self.projectiles[i].alive = false;
                         }
-                        self.wound_boss(dmg, at);
+                        if self.wound_boss(dmg, at) && burns {
+                            if self.boss_burn <= 0.0 {
+                                self.burn_tick = BURN_TICK;
+                            }
+                            self.boss_burn = BURN_SECONDS;
+                        }
                     }
                 }
             } else if state == ShotState::Wall {
@@ -1405,6 +1591,13 @@ impl Game {
     fn hurt_hero(&mut self, amount: i32) -> bool {
         let result = self.hero.take_damage(amount);
         let hp = self.hero.pos();
+        if self.hero.shield_broke {
+            self.hero.shield_broke = false;
+            self.audio.play(Sfx::ShieldBreak);
+            self.view.dust(&self.level.grid, hp.x, hp.y, 0x8a6a40, 16, 3.0);
+            self.view.shake(0.3);
+            self.floater(hp.x, hp.y - 0.6, "SHIELD BROKEN", 1.4, Some(0xff8a6a));
+        }
         match result {
             DamageResult::Blocked => {
                 self.audio.play(Sfx::Nodule);
@@ -1513,6 +1706,7 @@ impl Game {
         j.hurt = (j.hurt - dtf * 2.2).max(0.0);
         j.go = (j.go - dtf).max(0.0);
         j.fade = (j.fade - dtf * 1.6).max(0.0);
+        j.coin_punch = (j.coin_punch - dtf * 3.0).max(0.0);
         let boss_hp = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         if j.boss_trail > boss_hp {
             j.boss_trail = (j.boss_trail - dtf * 12.0).max(boss_hp);
@@ -1553,6 +1747,18 @@ impl Game {
             let at = b.pos;
             self.wound_boss(amount, at);
         }
+    }
+
+    /// Capture hook: own and equip weapon `line` at `level`.
+    pub fn debug_arm(&mut self, line: gear::Line, level: u8) {
+        self.arsenal.levels[line.index()] = level.clamp(1, 3);
+        self.arsenal.equipped = line;
+        self.hero.arm(&self.arsenal);
+    }
+
+    /// Capture hook: drink a potion without owning it.
+    pub fn debug_drink(&mut self, kind: PotionKind) {
+        self.quaff(kind);
     }
 
     /// Capture hook: knock the boss down as if a dive had missed.
@@ -1798,11 +2004,96 @@ mod tests {
         }
         assert_eq!(g.screen, Screen::Won);
         assert!(g.events.contains(&GameEvent::BossSlain));
+        assert!(g.purse >= COINS_BOSS, "the boss pays out");
         g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Shop, "the blacksmith comes after the boss");
+        // Leave the forge: on to dungeon II, where only the smith sells gear.
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Ready);
         assert!(!g.level.data.boss);
         assert_eq!(g.dungeon, 1);
+        assert!(g.potions.is_empty() && g.diamonds.is_empty(), "no free gear after the first dungeon");
+    }
+
+    #[test]
+    fn the_blacksmith_sells_upgrades_and_equips() {
+        let mut g = playing();
+        g.open_shop();
+        g.purse = 2000;
+        let press = |g: &mut Game, action: ShopAction| {
+            let rows = g.shop_rows();
+            let (r, c) = rows
+                .iter()
+                .enumerate()
+                .find_map(|(r, row)| row.buttons.iter().position(|b| b.action == action).map(|c| (r, c)))
+                .expect("no such button");
+            g.shop.row = r;
+            g.shop.col = c;
+            g.input.inject(Action::Confirm);
+            g.update(crate::app::STEP);
+        };
+        use crate::logic::gear::Line;
+        press(&mut g, ShopAction::Buy(Line::Knife));
+        assert_eq!(g.arsenal.level(Line::Knife), 1);
+        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Knife), "bought weapons go straight to hand");
+        press(&mut g, ShopAction::Upgrade(Line::Knife));
+        press(&mut g, ShopAction::Upgrade(Line::Knife));
+        assert_eq!(g.arsenal.level(Line::Knife), 3);
+        assert_eq!(g.hero.weapon, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::SeekingKnives));
+        press(&mut g, ShopAction::Equip(Line::Axe));
+        assert_eq!(g.hero.weapon, crate::logic::items::WeaponKind::Sword);
+        press(&mut g, ShopAction::Upgrade(Line::Axe));
+        assert_eq!(g.hero.axe_level, 2);
+        let spent = 2000 - g.purse;
+        assert_eq!(spent, Line::Knife.price() + Line::Knife.upgrade_price(1) + Line::Knife.upgrade_price(2) + Line::Axe.upgrade_price(1));
+        g.shop.tab = ShopTab::Shields;
+        press(&mut g, ShopAction::BuyShield(ShieldKind::Kite));
+        assert_eq!(g.hero.shield.unwrap().kind, ShieldKind::Kite);
+        g.shop.tab = ShopTab::Potions;
+        let before = g.belt.len();
+        press(&mut g, ShopAction::Potion(PotionKind::Strength));
+        assert_eq!(g.belt.len(), before + 1);
+        // Too poor: nothing changes hands.
+        g.purse = 10;
+        press(&mut g, ShopAction::Potion(PotionKind::Invulnerability));
+        assert_eq!(g.purse, 10);
+        assert_eq!(g.belt.len(), before + 1);
+    }
+
+    #[test]
+    fn shields_wear_down_and_break() {
+        let mut g = playing();
+        g.hero.shield = Some(ShieldGear::new(ShieldKind::Round));
+        let hp = g.hero.hp;
+        g.debug_hurt(); // 25: the round shield takes half
+        assert!(g.hero.hp < hp && g.hero.hp > hp - 25, "shield took no share: {}", g.hero.hp);
+        let left = g.hero.shield.unwrap().durability;
+        assert!(left < gear::shield(ShieldKind::Round).durability);
+        for _ in 0..10 {
+            g.debug_hurt();
+            g.hero.hp = 100;
+        }
+        assert!(g.hero.shield.is_none(), "it should have broken");
+    }
+
+    #[test]
+    fn potions_ride_on_the_belt_until_drunk() {
+        let mut g = playing();
+        g.belt = vec![PotionKind::Strength, PotionKind::Health];
+        g.hero.hp = 40;
+        g.input.inject(Action::Slot(1));
+        g.update(crate::app::STEP);
+        assert_eq!(g.hero.hp, 90);
+        assert_eq!(g.belt, vec![PotionKind::Strength]);
+        g.input.inject(Action::Drink);
+        g.update(crate::app::STEP);
+        assert!(g.belt.is_empty());
+        assert!(g.hero.fx.strength > 0.0);
+        assert_eq!(g.hero.might(), 2);
     }
 
     #[test]

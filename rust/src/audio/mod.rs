@@ -51,6 +51,18 @@ pub enum Sfx {
     BossHit,
     /// Its death cry.
     BossDeath,
+    /// The smith's hammer on the anvil.
+    Anvil,
+    /// Coins changing hands at the forge.
+    Buy,
+    /// Not enough coins, or not possible.
+    Denied,
+    /// A potion going down.
+    Drink,
+    /// A shield splintering.
+    ShieldBreak,
+    /// A lightning potion's arc.
+    Zap,
 }
 
 const MASTER_VOLUME: f64 = 0.5;
@@ -342,6 +354,59 @@ impl AudioManager {
                         Voice::new(t, t + 0.55, Wave::Noise { rate: 0.6, offset }, Env::constant(1.0), Env::ramp(t, 0.4 * vg, 0.001, 0.5), Bus::Sfx)
                             .filtered(synth::FilterKind::Lowpass, 420.0, 1.0),
                     );
+                }
+                Sfx::Anvil => {
+                    // Struck steel rings at inharmonic partials; a dull thud underneath.
+                    let v = 0.05 * vg;
+                    for (f, d, g) in [(1180.0, 0.5, 1.0), (1180.0 * 2.76, 0.3, 0.5), (1180.0 * 5.4, 0.18, 0.3), (640.0, 0.25, 0.4)] {
+                        blip(s, t, f, d, Wave::Sine, v * g);
+                    }
+                    s.push(
+                        Voice::new(t, t + 0.05, Wave::Noise { rate: 1.4, offset }, Env::constant(1.0), Env::ramp(t, 0.08 * vg, 0.001, 0.04), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 3200.0, 1.2),
+                    );
+                }
+                Sfx::Buy => {
+                    // A jingle of coins, then a bright confirming chord.
+                    for i in 0..5 {
+                        let at = t + i as f64 * 0.045;
+                        blip(s, at, 1900.0 + (i * 173 % 500) as f64, 0.06, Wave::Sine, 0.06);
+                        blip(s, at, 1900.0 * 2.76, 0.03, Wave::Sine, 0.02);
+                    }
+                    for (i, f) in [659.25, 830.61, 987.77].into_iter().enumerate() {
+                        blip(s, t + 0.22 + i as f64 * 0.05, f, 0.3, Wave::Triangle, 0.1);
+                    }
+                }
+                Sfx::Denied => {
+                    blip(s, t, 196.0, 0.12, Wave::Square, 0.1);
+                    blip(s, t + 0.13, 147.0, 0.2, Wave::Square, 0.1);
+                }
+                Sfx::Drink => {
+                    // Glug, glug, and a sparkle as it takes.
+                    for i in 0..3 {
+                        let at = t + i as f64 * 0.11;
+                        sweep(s, at, 260.0, 520.0, 0.08, Wave::Sine, 0.16);
+                    }
+                    for (i, f) in [1318.5, 1760.0, 2637.0].into_iter().enumerate() {
+                        blip(s, t + 0.36 + i as f64 * 0.05, f, 0.15, Wave::Sine, 0.05);
+                    }
+                }
+                Sfx::ShieldBreak => {
+                    s.push(
+                        Voice::new(t, t + 0.35, Wave::Noise { rate: 1.0, offset }, Env::constant(1.0), Env::ramp(t, 0.35 * vg, 0.001, 0.3), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 1400.0, 0.8),
+                    );
+                    sweep(s, t, 500.0, 90.0, 0.3, Wave::Square, 0.14);
+                    for i in 0..4 {
+                        blip(s, t + 0.04 + i as f64 * 0.05, 2400.0 - i as f64 * 300.0, 0.05, Wave::Square, 0.03);
+                    }
+                }
+                Sfx::Zap => {
+                    s.push(
+                        Voice::new(t, t + 0.22, Wave::Noise { rate: 2.0, offset }, Env::constant(1.0), Env::ramp(t, 0.2 * vg, 0.001, 0.2), Bus::Sfx)
+                            .filtered(synth::FilterKind::Highpass, 2500.0, 0.8),
+                    );
+                    sweep(s, t, 2200.0, 300.0, 0.18, Wave::Saw, 0.08);
                 }
                 Sfx::BossHit => {
                     // A wet thwack: a thump, a squelch, a bright tick of impact.
