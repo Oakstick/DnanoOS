@@ -243,7 +243,8 @@ pub struct Synth {
     control_countdown: usize,
 }
 
-pub const MUSIC_LOWPASS: f64 = 3600.0;
+/// The music bus low-pass: open enough to keep the upbeat track bright, still warm.
+pub const MUSIC_LOWPASS: f64 = 6200.0;
 
 impl Synth {
     pub fn new(sample_rate: f64, music_level: f64) -> Self {
@@ -343,7 +344,7 @@ impl Synth {
 
             // Music: tape low-pass over the voices, crackle bed joins after it.
             self.music_level += (self.music_target - self.music_level) * music_k;
-            let crackle = self.crackle.process(self.noise[self.crackle_pos] as f64) * 0.05;
+            let crackle = self.crackle.process(self.noise[self.crackle_pos] as f64) * 0.02;
             self.crackle_pos = (self.crackle_pos + 1) % noise_len;
             let music_out = (self.tone.process(music) + crackle) * self.music_level;
 
@@ -375,7 +376,7 @@ impl Synth {
     fn control(&mut self) {
         // Low health pulls the tape filter down, as if the music were heard underwater.
         self.danger += (self.danger_target - self.danger) * 0.004;
-        let wobble = (TAU * 0.23 * self.now).sin() * 260.0 * (1.0 - 0.5 * self.danger);
+        let wobble = (TAU * 0.23 * self.now).sin() * 180.0 * (1.0 - 0.5 * self.danger);
         let cutoff = MUSIC_LOWPASS + (1250.0 - MUSIC_LOWPASS) * self.danger;
         self.tone.set_freq(cutoff + wobble, self.sample_rate);
         let mut seq = std::mem::take(&mut self.music);

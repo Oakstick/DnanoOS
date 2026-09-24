@@ -161,6 +161,8 @@ pub struct Game {
     rng: Rng,
     /// The corridor the chase camera currently points down.
     cam_dir: Dir,
+    /// A held key and the corridor it was resolved to when pressed (camera-follow mode).
+    latch: Option<(Dir, Dir)>,
     global_mode: GlobalMode,
     mode_index: usize,
     mode_timer: f64,
@@ -217,6 +219,7 @@ impl Game {
             show_fps: false,
             rng: Rng::from_time(),
             cam_dir: Dir::None,
+            latch: None,
             global_mode: GlobalMode::Scatter,
             mode_index: 0,
             mode_timer: MODE_SCHEDULE[0].1,
@@ -538,9 +541,23 @@ impl Game {
     fn resolve_wanted_dir(&mut self) -> Dir {
         let raw = self.input.direction();
         if self.view.camera_mode != CameraMode::Third || raw == Dir::None {
+            self.latch = None;
             return raw;
         }
-        relative_dir(raw, self.camera_facing())
+        // When the camera trails his heading, a turn on the spot swings the view,
+        // which would re-map the still-held key and spin him again. So a held key
+        // keeps the corridor it meant when pressed. With the mouse steering, the
+        // camera does not follow him, and running where it looks stays live.
+        if !self.view.mouse_look {
+            if let Some((key, abs)) = self.latch {
+                if key == raw {
+                    return abs;
+                }
+            }
+        }
+        let abs = relative_dir(raw, self.camera_facing());
+        self.latch = Some((raw, abs));
+        abs
     }
 
     /// The corridor the camera is pointing down, with hysteresis near the diagonals.

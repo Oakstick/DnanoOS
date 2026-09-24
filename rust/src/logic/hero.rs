@@ -34,6 +34,9 @@ pub const MIN_COAST: f64 = 0.15;
 pub const CORNER_KEEP: f64 = 0.75;
 /// Share of running speed kept through a landing.
 pub const LANDING_KEEP: f64 = 0.6;
+/// Standing still, a new direction first turns him on the spot; he only steps
+/// off once it has been held this long. A tap turns, a hold walks.
+pub const TURN_TAP_SECONDS: f64 = 0.12;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DamageResult {
@@ -94,6 +97,8 @@ pub struct Hero {
     pub altitude: f64,
     /// Ground speed along `m.dir` in tiles per second; eases toward `m.speed`.
     pub vel: f64,
+    /// Seconds left before a fresh turn on the spot may become a step.
+    pub turn_timer: f64,
 }
 
 impl Hero {
@@ -122,6 +127,7 @@ impl Hero {
             jump: None,
             altitude: 0.0,
             vel: 0.0,
+            turn_timer: 0.0,
         }
     }
 
@@ -284,7 +290,24 @@ impl Hero {
         m.world_width = grid.width;
 
         if m.dir == Dir::None {
-            if wanted != Dir::None && grid.can_move(m.tile, wanted, false, false) {
+            if wanted == Dir::None {
+                self.vel = 0.0;
+                self.turn_timer = 0.0;
+                return;
+            }
+            // Turn on the spot first: facing a wall, a pit or an enemy is a move of its own.
+            if wanted != self.facing {
+                self.facing = wanted;
+                self.turn_timer = TURN_TAP_SECONDS;
+                self.vel = 0.0;
+                return;
+            }
+            if self.turn_timer > 0.0 {
+                self.turn_timer -= dt;
+                self.vel = 0.0;
+                return;
+            }
+            if grid.can_move(m.tile, wanted, false, false) {
                 m.dir = wanted; // from rest, or with whatever a landing carried
             } else {
                 self.vel = 0.0;
@@ -455,6 +478,7 @@ impl Hero {
         self.jump = None;
         self.altitude = 0.0;
         self.vel = 0.0;
+        self.turn_timer = 0.0;
     }
 }
 
@@ -474,9 +498,32 @@ mod tests {
     const DT: f64 = 1.0 / 120.0;
 
     #[test]
+    fn turns_on_the_spot_before_walking() {
+        let g = corridor(40);
+        let mut h = Hero::new(P::new(3, 1), 5.2);
+        // Up is a wall: he turns to face it and stays put.
+        for _ in 0..30 {
+            h.update(DT, &g, Dir::Up);
+        }
+        assert_eq!(h.facing, Dir::Up);
+        assert_eq!(h.pos(), crate::logic::types::V::new(3.0, 1.0));
+        // A tap to the right turns without stepping.
+        h.update(DT, &g, Dir::Right);
+        h.update(DT, &g, Dir::None);
+        assert_eq!(h.facing, Dir::Right);
+        assert_eq!(h.pos().x, 3.0);
+        // Holding it walks.
+        for _ in 0..60 {
+            h.update(DT, &g, Dir::Right);
+        }
+        assert!(h.pos().x > 3.5);
+    }
+
+    #[test]
     fn accelerates_from_rest_instead_of_snapping() {
         let g = corridor(40);
         let mut h = Hero::new(P::new(1, 1), 5.2);
+        h.facing = Dir::Right;
         h.update(DT, &g, Dir::Right);
         let first = h.pos().x - 1.0;
         assert!(first > 0.0 && first < 5.2 * DT * 0.2, "first step {first}");
