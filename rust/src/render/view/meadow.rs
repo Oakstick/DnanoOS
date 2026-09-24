@@ -12,7 +12,6 @@ mod pal {
     pub const GRASS_B: u32 = 0x62b437;
     pub const GRASS_DEEP: u32 = 0x3f8a26;
     pub const GRASS_TIP: u32 = 0x9ee05a;
-    pub const DIRT_A: u32 = 0x9a7446;
     pub const DIRT_B: u32 = 0x7d5b34;
     pub const PEBBLE: u32 = 0xa8a294;
     pub const HEDGE_A: u32 = 0x3f8f32;
@@ -27,6 +26,9 @@ mod pal {
     pub const WATER: u32 = 0x3f9fdc;
     pub const BED: u32 = 0x6a6448;
     pub const FLOWERS: [u32; 5] = [0xf8f8f0, 0xffe066, 0xff8ad8, 0x8fb4ff, 0xff6a5a];
+    pub const BUSH: [u32; 3] = [0x56bc40, 0x62c848, 0x4aad3a];
+    pub const BUSH_LIGHT: u32 = 0x94e466;
+    pub const BERRIES: [u32; 3] = [0xd8262e, 0xf8f8f0, 0xffb0d8];
     pub const BUTTERFLIES: [u32; 4] = [0xf8f8f0, 0xffe066, 0xff9a3a, 0x7ab8ff];
     pub const BOLT: u32 = 0xff7a2a;
     pub const BOLT_CORE: u32 = 0xfff1c0;
@@ -54,21 +56,6 @@ fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3
     out.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
 }
 
-/// Smooth value noise over the tile grid, 0..1, with cells `cell` tiles wide.
-fn value_noise(x: f32, y: f32, cell: f32, seed: f64) -> f32 {
-    let (gx, gy) = (x / cell, y / cell);
-    let (ix, iy) = (gx.floor(), gy.floor());
-    let (fx, fy) = (gx - ix, gy - iy);
-    let s = |t: f32| t * t * (3.0 - 2.0 * t);
-    let h = |a: f32, b: f32| hash(a as f64 + seed, b as f64 - seed * 0.5) as f32;
-    let top = h(ix, iy) + (h(ix + 1.0, iy) - h(ix, iy)) * s(fx);
-    let bot = h(ix, iy + 1.0) + (h(ix + 1.0, iy + 1.0) - h(ix, iy + 1.0)) * s(fx);
-    top + (bot - top) * s(fy)
-}
-
-fn dirtiness(x: i32, y: i32) -> f32 {
-    value_noise(x as f32, y as f32, 3.3, 17.0) * 0.75 + value_noise(x as f32, y as f32, 1.4, 5.0) * 0.25
-}
 
 fn in_arena(x: i32, y: i32) -> bool {
     let (x0, y0, x1, y1) = ARENA;
@@ -124,32 +111,10 @@ impl WorldView {
                 }
                 continue;
             }
-            // Grass, going to bare earth where the dirt noise is high.
-            let n = dirtiness(x, y);
+            // Grass everywhere.
             let jitter = 0.94 + hash(hx, hy) as f32 * 0.12;
             let grass = lin(if (x + y) % 2 == 0 { GRASS_A } else { GRASS_B }) * jitter;
-            let dirt = lin(if hash(hx + 3.0, hy) < 0.5 { DIRT_A } else { DIRT_B }) * jitter;
-            let bare = ((n - 0.6) / 0.1).clamp(0.0, 1.0);
-            let color = grass.lerp(dirt, bare);
-            cube(&mut self.static_cubes, Vec3::new(xf, -0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, color);
-            if (0.54..0.62).contains(&n) && hash(hx, hy + 9.0) < 0.6 {
-                // Ragged dirt blobs that break up the tile edges.
-                for k in 0..3 {
-                    let hk = hash(hx * 7.0 + k as f64, hy * 3.0 - k as f64) as f32;
-                    let p = Vec3::new(xf + (hk - 0.5) * 0.7, 0.003 + k as f32 * 0.003, yf + (hash(hy, hx + k as f64) as f32 - 0.5) * 0.7);
-                    let s = 0.22 + hk * 0.3;
-                    cube(&mut self.static_cubes, p, Vec3::new(s, 0.006, s * (0.6 + hk * 0.5)), hk * 6.0, dirt * (0.95 + hk * 0.1));
-                }
-            }
-            if bare > 0.5 {
-                // Pebbles on the bare earth.
-                for k in 0..(1 + (hash(hx, hy + 4.0) * 3.0) as usize) {
-                    let hk = hash(hx * 11.0 + k as f64, hy * 13.0) as f32;
-                    let hj = hash(hy * 7.0 + k as f64, hx * 5.0) as f32;
-                    cube(&mut self.static_cubes, Vec3::new(xf + (hk - 0.5) * 0.8, 0.02, yf + (hj - 0.5) * 0.8), Vec3::new(0.07, 0.04, 0.06), hk * 5.0, lin(PEBBLE));
-                }
-                continue;
-            }
+            cube(&mut self.static_cubes, Vec3::new(xf, -0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, grass);
             // Tufts of grass...
             let tufts = 2 + (hash(hx + 1.0, hy + 2.0) * 3.0) as usize;
             for k in 0..tufts {
@@ -219,6 +184,65 @@ impl WorldView {
             push_field(&mut self.static_cubes, &tree, pos, rot, scale, tree_tint, Vec3::ZERO, SHADE_LIT);
             self.tree_index.insert(key, self.trees.len());
             self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.26 * scale + 0.05, height: 1.02 * scale, fade: 1.0, alive: true });
+        }
+
+        // Bushes tucked against the hedges, pillars and walls, off the walking lines.
+        for (x, y, t) in grid.cells() {
+            if !in_arena(x, y) || !matches!(t, Tile::Open | Tile::Charge) || bridge(x, y) {
+                continue;
+            }
+            for d in CARDINALS {
+                let (dx, dy) = d.vec();
+                if !rock(x + dx, y + dy) {
+                    continue;
+                }
+                let arena_rock = in_arena(x + dx, y + dy);
+                let chance = if arena_rock { 0.65 } else { 0.5 };
+                let h = hash(x as f64 * 3.1 + dx as f64 * 7.0, y as f64 * 2.3 + dy as f64 * 5.0);
+                if h > chance {
+                    continue;
+                }
+                // Slide along the edge a little so rows of bushes do not line up.
+                let slide = (hash(y as f64 + dx as f64, x as f64 + dy as f64) as f32 - 0.5) * 0.5;
+                let pos = Vec3::new(x as f32 + dx as f32 * 0.3 + dy as f32 * slide, 0.0, y as f32 + dy as f32 * 0.3 + dx as f32 * slide);
+                self.build_bush(pos, 0.95 + h as f32 * 0.5);
+            }
+        }
+    }
+
+    /// A round leafy bush: a mound of overlapping leaf blocks, lighter on top, now and then with berries or blossoms.
+    fn build_bush(&mut self, at: Vec3, size: f32) {
+        let (hx, hy) = (at.x as f64 * 13.0, at.z as f64 * 17.0);
+        let blobs = 11;
+        for k in 0..blobs {
+            let hk = hash(hx + k as f64 * 1.9, hy - k as f64 * 2.7) as f32;
+            let hj = hash(hy + k as f64 * 3.3, hx + k as f64) as f32;
+            let a = k as f32 / blobs as f32 * TAU + hk;
+            // A dome: blobs on the rim sit low, the ones near the middle high.
+            let r = if k == 0 { 0.0 } else if k < 7 { 0.15 + hj * 0.05 } else { 0.07 + hj * 0.04 };
+            let s = (if k < 7 { 0.15 } else { 0.18 } + hk * 0.07) * size;
+            let y = if k == 0 { 0.24 } else if k < 7 { 0.09 + hj * 0.05 } else { 0.2 + hj * 0.06 } * size;
+            let p = at + Vec3::new(a.cos() * r * size, y, a.sin() * r * size);
+            let c = lin(BUSH[(hk * 3.0) as usize % 3]) * (0.9 + hj * 0.2);
+            let m = Mat4::from_translation(p) * Mat4::from_rotation_y(a) * Mat4::from_rotation_x((hk - 0.5) * 0.6) * Mat4::from_scale(Vec3::new(s, s * 0.85, s));
+            self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
+        }
+        // Sunlit leaves on the crown.
+        for k in 0..3 {
+            let hk = hash(hx - k as f64 * 5.0, hy + k as f64 * 4.0) as f32;
+            let a = hk * TAU;
+            let p = at + Vec3::new(a.cos() * 0.07 * size, (0.33 + hk * 0.03) * size, a.sin() * 0.07 * size);
+            cube(&mut self.static_cubes, p, Vec3::new(0.14, 0.06, 0.14) * size, a, lin(BUSH_LIGHT));
+        }
+        let flavor = hash(hx * 0.5, hy * 0.5);
+        if flavor < 0.45 {
+            let berry = lin(BERRIES[(flavor * 20.0) as usize % 3]);
+            for k in 0..5 {
+                let hk = hash(hx + k as f64 * 7.0, hy + 3.0) as f32;
+                let a = hk * TAU;
+                let p = at + Vec3::new(a.cos() * 0.2 * size, (0.12 + hk * 0.18) * size, a.sin() * 0.2 * size);
+                cube(&mut self.static_cubes, p, Vec3::splat(0.045), 0.0, berry);
+            }
         }
     }
 
