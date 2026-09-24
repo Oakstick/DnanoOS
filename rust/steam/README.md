@@ -7,7 +7,7 @@ What is already done in the code, and what only you can do on the Steamworks sid
 - **Standalone executable.** `The Great Adventures of Sebastian.exe` has everything baked in: voxel art, font, music and sound are all generated in code. The C runtime is linked statically (`.cargo/config.toml`), so players need no Visual C++ redistributable. No console window in release builds.
 - **Direct3D 12 first** on Windows, with Vulkan as the fallback (set `WGPU_BACKEND=vulkan` to force it). That keeps the Steam overlay and Steam's recording happy.
 - **Borderless fullscreen by default** in release builds, toggled with F11 or Alt+Enter and remembered. Pass `--windowed` or `--fullscreen` to override it (for example in Steam launch options).
-- **Controllers** through gilrs (XInput, DualShock/DualSense, Steam Deck): left stick runs, right stick aims, A jump, X or RT attack, B or LB bomb, Y camera, Start begins and pauses. Keep Steam Input enabled and pick "Gamepad" as the default template.
+- **Controllers** through gilrs (XInput, DualShock/DualSense, Steam Deck): left stick runs, right stick aims the camera (R3 recenters), A jump, X or RT attack, B or LB bomb, Y camera, Start begins and pauses. Keep Steam Input enabled and pick "Gamepad" as the default template.
 - **Pause on focus loss**, so opening the Steam overlay pauses the game.
 - **Save data** lives in `%APPDATA%\VoidHarvest\settings.txt` (high score, mute, fullscreen). A panic writes `crash.log` there too.
 - **Achievements** (build with `-Steam`): `ACH_FIRST_NUGGET` (first nugget) and `ACH_HARVEST` (all 25 nuggets). Create them with exactly these API names in the partner site before testing.

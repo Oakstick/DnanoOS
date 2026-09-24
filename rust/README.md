@@ -30,7 +30,7 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 | | Keyboard and mouse | Controller |
 |---|---|---|
 | Move | WASD / arrows (relative to the camera) | Left stick, d-pad |
-| Aim camera | Mouse (click to capture) | Right stick |
+| Aim camera | Mouse (click to capture) | Right stick (the camera stays where you aim it; click R3 to swing it back behind Sebastian) |
 | Attack / fire | **Left click**, E | X, right trigger |
 | Bomb | **Right click**, B, Shift | B, left bumper |
 | Jump | Space | A |

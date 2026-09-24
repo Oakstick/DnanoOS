@@ -21,6 +21,8 @@ pub enum Action {
     Mute,
     Fps,
     Fullscreen,
+    /// Right-stick click: swing the camera back behind Sebastian.
+    CameraReset,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -28,7 +30,8 @@ const MOVE_DEADZONE: f32 = 0.4;
 const LOOK_DEADZONE: f32 = 0.16;
 /// Right stick at full tilt turns the camera this fast, in mouse pixels per second.
 const PAD_LOOK_SPEED: f64 = 950.0;
-/// Seconds the camera keeps obeying the stick after you let go of it.
+/// The mouse or stick counts as steering the camera for this long after its
+/// last movement; with the stick, `pad_aiming` also holds on until recentered.
 const PAD_AIM_MEMORY: f64 = 1.2;
 
 /// One controller reading, in the web Gamepad API's conventions (y down).
@@ -52,6 +55,9 @@ pub struct Input {
     pad_dir: Dir,
     pad_held: HashSet<Action>,
     pad_aim_age: f64,
+    /// Once the right stick has moved the camera, it stays where it was put
+    /// (no drifting back behind him) until R3 recenters it.
+    pub pad_aiming: bool,
     /// True once a controller has been seen.
     pub pad_connected: bool,
     /// The mouse is captured for aiming.
@@ -260,12 +266,13 @@ impl Input {
             self.look.0 += lx as f64 * PAD_LOOK_SPEED * dt;
             self.look.1 += ly as f64 * PAD_LOOK_SPEED * dt;
             self.pad_aim_age = 0.0;
+            self.pad_aiming = true;
         }
     }
 
     /// True while the mouse or the right stick is aiming the camera.
     pub fn aiming(&self) -> bool {
-        self.mouse_captured || self.pad_aim_age < PAD_AIM_MEMORY
+        self.mouse_captured || self.pad_aiming || self.pad_aim_age < PAD_AIM_MEMORY
     }
 
     /// Look movement in mouse pixels since the last call, then cleared.

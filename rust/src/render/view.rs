@@ -423,6 +423,8 @@ pub struct WorldView {
     cam_look: Vec3,
     initialized: bool,
     was_showcase: bool,
+    /// R3 was pressed: the camera is swinging back behind him.
+    recentering: bool,
     rng: Rng,
 }
 
@@ -476,6 +478,7 @@ impl WorldView {
             cam_look: Vec3::ZERO,
             initialized: false,
             was_showcase: false,
+            recentering: false,
             rng: Rng::from_time(),
         }
     }
@@ -1239,7 +1242,19 @@ impl WorldView {
             let a = (self.showcase_angle * 0.23).sin() * 0.5;
             (STAGE + Vec3::new(a.sin() * 4.3, 1.45, a.cos() * 4.3), STAGE + Vec3::new(0.0, 0.62, 0.0), 6.0)
         } else if self.camera_mode == CameraMode::Third {
-            if !self.mouse_look {
+            if self.recentering {
+                let k = 1.0 - (-10.0 * dt).exp();
+                let goal = dir_to_yaw(hero.facing);
+                self.cam_yaw = lerp_angle(self.cam_yaw, goal, k);
+                self.cam_pitch += (chase::REST_PITCH - self.cam_pitch) * k;
+                let mut off = (self.cam_yaw - goal).rem_euclid(TAU);
+                if off > PI {
+                    off = TAU - off;
+                }
+                if off < 0.01 && (self.cam_pitch - chase::REST_PITCH).abs() < 0.01 {
+                    self.recentering = false;
+                }
+            } else if !self.mouse_look {
                 self.cam_yaw = lerp_angle(self.cam_yaw, dir_to_yaw(hero.facing), 1.0 - (-chase::FOLLOW_LERP * dt).exp());
             }
             let cp = self.cam_pitch.cos();
@@ -1265,9 +1280,17 @@ impl WorldView {
 
     /// Turns the camera by a mouse movement in pixels.
     pub fn look(&mut self, dx: f64, dy: f64) {
+        if dx != 0.0 || dy != 0.0 {
+            self.recentering = false; // the player took the camera back
+        }
         self.cam_yaw += dx as f32 * chase::SENSITIVITY;
         let p = self.cam_pitch - dy as f32 * chase::SENSITIVITY;
         self.cam_pitch = p.clamp(chase::MIN_PITCH, chase::MAX_PITCH);
+    }
+
+    /// Swings the chase camera back behind Sebastian (R3); it follows him again afterwards.
+    pub fn recenter(&mut self) {
+        self.recentering = true;
     }
 
     /// Points the camera along a grid direction, for a fresh life or dungeon.

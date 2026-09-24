@@ -673,7 +673,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         false,
     );
     o.text(
-        "Controller: left stick runs, right stick aims, A jump, X attack, B bomb, Start begins or pauses",
+        "Controller: left stick runs, right stick aims (R3 recenters), A jump, X attack, B bomb, Start begins or pauses",
         w / 2.0,
         cy + t * 1.8,
         t * 0.5,

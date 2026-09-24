@@ -522,7 +522,13 @@ impl Game {
         let aiming = self.input.aiming() && self.view.camera_mode == CameraMode::Third;
         self.view.mouse_look = aiming;
         let (dx, dy) = self.input.take_look();
-        if aiming && self.screen == Screen::Playing {
+        if self.input.was_pressed(&[Action::CameraReset]) {
+            // R3: swing the view back behind him and let it follow again.
+            self.input.pad_aiming = false;
+            self.view.recenter();
+        }
+        // Looking around is allowed during the countdown too.
+        if aiming && matches!(self.screen, Screen::Playing | Screen::Ready) {
             self.view.look(dx, dy);
         }
     }
@@ -1290,6 +1296,45 @@ mod tests {
         }
         assert_eq!(g.screen, Screen::Playing);
         assert_eq!(g.hero.occupied(), spawn);
+    }
+
+    #[test]
+    fn the_right_stick_turns_the_camera_and_it_stays_put() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = playing();
+        let start = g.view.cam_yaw;
+        let pad = |x: f32, y: f32| crate::input::PadState { right: (x, y), ..Default::default() };
+        g.input.set_pad(Some(pad(1.0, 0.0)));
+        for _ in 0..60 {
+            g.update(crate::app::STEP);
+        }
+        let turned = g.view.cam_yaw;
+        assert!(turned - start > 0.5, "stick barely turned the camera: {}", turned - start);
+        // Let go and wait: the camera keeps the angle instead of drifting back behind him.
+        g.input.set_pad(Some(pad(0.0, 0.0)));
+        for _ in 0..(3.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert!((g.view.cam_yaw - turned).abs() < 1e-3, "camera drifted");
+        // Tilting the stick up and down pitches it.
+        let pitch = g.view.cam_pitch;
+        g.input.set_pad(Some(pad(0.0, -1.0)));
+        for _ in 0..20 {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.view.cam_pitch != pitch);
+        // R3 swings it back behind him.
+        let mut click = pad(0.0, 0.0);
+        click.actions.insert(Action::CameraReset);
+        g.input.set_pad(Some(click));
+        g.update(crate::app::STEP);
+        g.input.set_pad(Some(pad(0.0, 0.0)));
+        for _ in 0..120 {
+            g.update(crate::app::STEP);
+        }
+        let behind = crate::render::view::dir_to_yaw(g.hero.facing);
+        let off = (g.view.cam_yaw - behind).rem_euclid(std::f32::consts::TAU);
+        assert!(off < 0.05 || off > std::f32::consts::TAU - 0.05, "not recentered: {off}");
     }
 
     #[test]
