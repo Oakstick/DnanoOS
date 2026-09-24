@@ -52,7 +52,7 @@ fn sprites() -> &'static Sprites {
 }
 
 const RULES: [&str; 5] = [
-    "Collect all 25 gold nuggets to win. Three lives; dying loses everything you carry.",
+    "Collect all 25 gold nuggets to open the way to the Cyclops, then bring it down. Three lives; dying loses everything you carry.",
     "The dungeon rises in levels. Jump with Space to clear pits, leap over foes, and climb a ledge; ramps let you walk up. Bats fly over everything.",
     "Enemies hunt you, and more keep arriving from the hollow the longer you take. Every five nuggets the music quickens.",
     "You start with your axe. Strike a shrine to cycle its gift, step on it to take it: a weapon replaces the axe until its ammo runs out.",
@@ -98,11 +98,11 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o,
             t,
             &[
-                line("YOU WON", 2.2, GOLD),
-                line("Every nugget in the dungeon is yours.", 0.9, SAND),
+                line("THE CYCLOPS IS SLAIN", 2.0, GOLD),
+                line("The meadow is quiet again. Sebastian marches on.", 0.9, SAND),
                 line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
-                line("Enter, click or tap to play again", 0.8, TEXT_DIM),
+                line(format!("Enter, click or tap: on to {}", crate::logic::levels::level_for(g.dungeon + 1).name), 0.8, TEXT_DIM),
             ],
             0.7,
         ),
@@ -117,7 +117,60 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             ],
             0.65,
         ),
+        Screen::Cleared => {
+            // The fanfare's last moments fade to black on the way to the boss.
+            let k = (1.0 - g.screen_timer as f32 / 0.9).clamp(0.0, 1.0);
+            o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, k]);
+        }
         _ => {}
+    }
+    if g.juice.fade > 0.0 {
+        o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, g.juice.fade.min(1.0)]);
+    }
+}
+
+/**
+ * The boss's health across the top middle: its name, a long bar that flashes
+ * when struck and leaves a pale trail of what the blow cost, and notches at
+ * the thirds where it grows angrier.
+ */
+fn draw_boss_bar(o: &mut Overlay, g: &Game, t: f32) {
+    let Some(b) = &g.boss else { return };
+    if matches!(b.state, crate::logic::boss::BossState::Hidden | crate::logic::boss::BossState::Dead) {
+        return;
+    }
+    let w = o.width;
+    let margin = t * 0.4;
+    let bw = (w * 0.34).min(t * 19.0);
+    let x0 = w / 2.0 - bw / 2.0;
+    let y0 = margin + t * 0.35;
+    let time = g.time as f32;
+    let name = match b.phase() {
+        1 => "THE CYCLOPS",
+        2 => "THE CYCLOPS - ENRAGED",
+        _ => "THE CYCLOPS - FURIOUS",
+    };
+    let name_color = match b.phase() {
+        1 => SAND,
+        2 => 0xff8a2a,
+        _ => 0xff4d4d,
+    };
+    o.text(name, w / 2.0, y0 + t * 0.2, t * 0.62, rgba(name_color, 1.0), Align::Center, true);
+    let by = y0 + t * 0.75;
+    let bh = t * 0.55;
+    let frac = b.hp as f32 / b.max_hp as f32;
+    let trail = (g.juice.boss_trail / b.max_hp as f32).clamp(0.0, 1.0);
+    o.rect(x0 - 3.0, by - 3.0, bw + 6.0, bh + 6.0, [0.0, 0.0, 0.0, 0.8]);
+    o.rect(x0, by, bw, bh, [1.0, 1.0, 1.0, 0.1]);
+    o.rect(x0, by, bw * trail, bh, [1.0, 0.95, 0.85, 0.8]);
+    let color = if b.flash > 0.3 { 0xffffff } else if b.dazed() { mix_rgb(0xc24bd8, 0xffe066, (time * 8.0).sin() * 0.5 + 0.5) } else { 0xc24bd8 };
+    o.rect(x0, by, bw * frac, bh, rgba(color, 1.0));
+    o.rect(x0, by, bw * frac, bh * 0.3, [1.0, 1.0, 1.0, 0.2]);
+    for k in [1.0f32 / 3.0, 2.0 / 3.0] {
+        o.rect(x0 + bw * k - 1.0, by - t * 0.1, 2.0, bh + t * 0.2, [0.0, 0.0, 0.0, 0.85]);
+    }
+    if b.dazed() {
+        o.text("DAZED - STRIKE NOW!", w / 2.0, by + bh + t * 0.55, t * 0.55, rgba(0xffe066, 0.7 + (time * 10.0).sin() * 0.3), Align::Center, true);
     }
 }
 
@@ -232,7 +285,11 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let punch = j.nugget_punch;
     let ncolor = if punch > 0.0 { mix_rgb(GOLD, 0xffffff, punch * 0.7) } else { GOLD };
     let (tx, ty) = nugget_target(w, h);
-    o.text(&format!("NUGGETS {}/{}", g.nuggets_shown(), g.nuggets_total), rc, ty, small * (1.0 + 0.45 * punch), rgba(ncolor, 1.0), Align::Right, true);
+    if g.boss.is_some() {
+        o.text("BOSS FIGHT", rc, ty, small, rgba(0xff8a2a, 1.0), Align::Right, true);
+    } else {
+        o.text(&format!("NUGGETS {}/{}", g.nuggets_shown(), g.nuggets_total), rc, ty, small * (1.0 + 0.45 * punch), rgba(ncolor, 1.0), Align::Right, true);
+    }
     if punch > 0.0 {
         o.circle(tx + t * 0.2, ty, t * 0.9 * (1.0 - punch) + t * 0.2, rgba(GOLD, punch * 0.25));
     }
@@ -262,6 +319,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     if let Some(fps) = fps {
         o.text(&format!("{fps} fps"), margin + t * 0.3, h - margin - t * 0.4, small, rgba(0x99ffff, 1.0), Align::Left, true);
     }
+
+    draw_boss_bar(o, g, t);
 
     // Frenzy window, centered along the top edge.
     if g.frenzy.active() {
@@ -451,7 +510,8 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let y = h * 0.42;
     o.circle(w / 2.0, y, t * 3.2 * pop, [1.0, 1.0, 1.0, 0.05 * alpha]);
     o.text(&n.to_string(), w / 2.0, y, t * 5.0 * pop, rgba(GOLD, alpha), Align::Center, true);
-    o.text("GET READY", w / 2.0, y + t * 3.2, t * 0.9, rgba(TEXT, 1.0), Align::Center, true);
+    let ready = if g.boss.is_some() { "THE CYCLOPS AWAITS" } else { "GET READY" };
+    o.text(ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
     o.text(&g.level.data.name.to_uppercase(), w / 2.0, y + t * 4.3, t * 0.6, rgba(SAND, 1.0), Align::Center, true);
 }
 
@@ -664,7 +724,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let hint = rgba(TEXT_DIM, 1.0);
     o.text("Click to aim with the mouse   Hold W to run, A / D sidestep, S back   Tap a direction to turn", w / 2.0, cy + t * 0.3, t * 0.5, hint, Align::Center, false);
     o.text(
-        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Esc pause   M mute   F11 fullscreen",
+        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Esc pause   M mute   F11 fullscreen   F1 boss fight",
         w / 2.0,
         cy + t * 1.05,
         t * 0.5,

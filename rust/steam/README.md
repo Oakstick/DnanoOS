@@ -10,7 +10,7 @@ What is already done in the code, and what only you can do on the Steamworks sid
 - **Controllers** through gilrs (XInput, DualShock/DualSense, Steam Deck): left stick runs, right stick aims the camera (R3 recenters), A jump, X or RT attack, B or LB bomb, Y camera, Start begins and pauses. Keep Steam Input enabled and pick "Gamepad" as the default template.
 - **Pause on focus loss**, so opening the Steam overlay pauses the game.
 - **Save data** lives in `%APPDATA%\VoidHarvest\settings.txt` (high score, mute, fullscreen). A panic writes `crash.log` there too.
-- **Achievements** (build with `-Steam`): `ACH_FIRST_NUGGET` (first nugget) and `ACH_HARVEST` (all 25 nuggets). Create them with exactly these API names in the partner site before testing.
+- **Achievements** (build with `-Steam`): `ACH_FIRST_NUGGET` (first nugget), `ACH_HARVEST` (all 25 nuggets) and `ACH_CYCLOPS` (the first boss slain). The F1 boss cheat is meant for testing; take it out (the `Cheat` key in `src/input.rs`) or accept that it can unlock `ACH_CYCLOPS` before you ship. Create them with exactly these API names in the partner site before testing.
 - **Icon** embedded in the exe, generated from Sebastian's voxel front view (`TheGreatAdventuresOfSebastian --write-icon assets/icon.ico` rebuilds it).
 
 ## Before you can upload

@@ -21,6 +21,8 @@ pub struct LevelData {
     pub enemy_speed: f64,
     pub hero_speed: f64,
     pub frenzy_seconds: f64,
+    /// A boss arena: no nuggets, no hollow, one big foe.
+    pub boss: bool,
 }
 
 #[derive(Clone, Debug)]

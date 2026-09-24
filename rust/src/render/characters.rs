@@ -469,10 +469,220 @@ pub fn bog_slime() -> Collected {
     s.finish(0.05)
 }
 
+// -------------------------------------------------------------------- cyclops
+
+mod cyc {
+    pub const SKIN: u32 = 0x9a4f86;
+    pub const SKIN_D: u32 = 0x6e3160;
+    pub const SKIN_L: u32 = 0xc987b0;
+    pub const WART: u32 = 0x5a2450;
+    pub const SCLERA: u32 = 0xf4eedc;
+    pub const SCLERA_D: u32 = 0xdcd2b8;
+    pub const VEIN: u32 = 0xd23a3a;
+    pub const IRIS: u32 = 0xffb21e;
+    pub const IRIS_D: u32 = 0xd8641a;
+    pub const PUPIL: u32 = 0x160810;
+    pub const SHINE: u32 = 0xffffff;
+    pub const MAW: u32 = 0x2a0a16;
+    pub const TOOTH: u32 = 0xf2ead0;
+    pub const HORN: u32 = 0xeadfc2;
+    pub const HORN_D: u32 = 0x9c8a66;
+    pub const MEMBRANE: u32 = 0x4e1f47;
+    pub const BONE: u32 = 0x8c5a7e;
+    pub const LASH: u32 = 0x1c0a18;
+}
+
+/// The Cyclops' grid: 45 wide (wings spread), 34 tall (horns), 29 deep.
+pub const CYCLOPS_SIZE: (i32, i32, i32) = (45, 34, 29);
+/// Center of the great eye in its voxel grid; the iris and lids pivot here.
+pub const CYCLOPS_EYE: [f32; 3] = [22.0, 18.0, 15.5];
+const EYE_R: f32 = 9.3;
+
+/**
+ * The Cyclops: a round, warty, mauve body that is mostly one enormous eye,
+ * a jagged grin under it, curling horns, stubby bat wings and four
+ * tentacles dangling beneath. The iris and the lids are separate layers
+ * (`cyclops_iris`, `cyclops_lid`) so it can look around and blink.
+ */
+pub fn cyclops() -> Collected {
+    use cyc::*;
+    let (w, h, d) = CYCLOPS_SIZE;
+    let [ex, ey, ez] = CYCLOPS_EYE;
+    let mut s = Sculpt::new(w, h, d);
+    // Body.
+    s.ellipsoid((ex, ey, 13.0), (12.0, 11.5, 11.5), 0, SKIN);
+    s.paint(|x, y, z, _| {
+        let n = noise(x, y, z);
+        if (y as f32) < ey - 7.0 {
+            Some(if n < 0.3 { SKIN } else { SKIN_L })
+        } else if n < 0.06 {
+            Some(WART)
+        } else if (y as f32) > ey + 6.0 && (z as f32) < 12.0 {
+            Some(SKIN_D)
+        } else {
+            None
+        }
+    });
+    // The eye bulges out of the front.
+    s.ellipsoid((ex, ey, ez), (EYE_R, EYE_R, EYE_R), 0, SCLERA);
+    s.paint(|x, y, z, c| {
+        if c != SCLERA {
+            return None;
+        }
+        let (dx, dy, dz) = (x as f32 - ex, y as f32 - ey, z as f32 - ez);
+        let r = (dx * dx + dy * dy + dz * dz).sqrt();
+        let front = dz / r.max(0.01);
+        // Bloodshot toward the rim, clean around the iris.
+        if front < 0.8 && noise(x, y, z) < 0.13 {
+            Some(VEIN)
+        } else if front < 0.45 {
+            Some(SCLERA_D)
+        } else {
+            None
+        }
+    });
+    // A jagged grin below the eye.
+    s.paint(|x, y, z, _| {
+        let dx = (x as f32 - ex).abs();
+        if !(6..=9).contains(&y) || dx > 6.5 - (9 - y) as f32 * 0.8 || z < 16 {
+            return None;
+        }
+        let tooth = (y == 9 && x % 2 == 0) || (y == 6 && x % 2 == 1);
+        Some(if tooth { TOOTH } else { MAW })
+    });
+    // Horns, curling up and out.
+    for side in [-1.0f32, 1.0] {
+        for i in 0..9 {
+            let k = i as f32 / 8.0;
+            let cx = ex + side * (6.0 + k * 5.0 + (k * 2.6).sin() * 1.5);
+            let cy = 27.0 + k * 6.0 - k * k * 1.5;
+            let cz = 11.5 + k * 2.5;
+            let r = 1.9 - k * 1.3;
+            let c = if k > 0.7 { HORN_D } else { HORN };
+            s.ellipsoid((cx, cy, cz), (r, r, r), 0, c);
+        }
+    }
+    // Stubby bat wings, flat membranes on bony fingers.
+    for side in [-1i32, 1] {
+        for i in 0..11 {
+            let x = ex as i32 + side * (11 + i);
+            let top = 23 + i / 3;
+            let bottom = 22 - ((10 - i) as f32 * 0.8) as i32 + if i % 4 == 3 { 2 } else { 0 };
+            for y in bottom..=top {
+                let c = if y == top || (i % 4 == 0 && y > bottom) { BONE } else { MEMBRANE };
+                s.set(x, y, 10, c);
+                if i < 4 {
+                    s.set(x, y, 11, c);
+                }
+            }
+        }
+    }
+    // Four tentacles hanging beneath, curling at the tips.
+    for (k, &(tx, tz)) in TENTACLES.iter().enumerate() {
+        for y in 0..6 {
+            let curl = if y < 2 { (2 - y) as f32 * 0.8 * if k % 2 == 0 { 1.0 } else { -1.0 } } else { 0.0 };
+            let r = 1.0 + y as f32 * 0.22;
+            let c = if y % 2 == 0 { SKIN_D } else { SKIN };
+            s.ellipsoid((tx + curl, y as f32, tz), (r, 0.7, r), y, c);
+        }
+    }
+    s.finish(0.06)
+}
+
+const TENTACLES: [(f32, f32); 4] = [(16.0, 9.0), (28.0, 9.0), (18.0, 17.0), (26.0, 17.0)];
+
+/// The iris and slit pupil: a cap sitting just proud of the eye's front.
+pub fn cyclops_iris() -> Collected {
+    use cyc::*;
+    let (w, h, d) = CYCLOPS_SIZE;
+    let [ex, ey, ez] = CYCLOPS_EYE;
+    let mut s = Sculpt::new(w, h, d);
+    for y in 0..h {
+        for z in 0..d {
+            for x in 0..w {
+                let (dx, dy, dz) = (x as f32 - ex, y as f32 - ey, z as f32 - ez);
+                let r = (dx * dx + dy * dy + dz * dz).sqrt();
+                if r <= EYE_R || r > EYE_R + 1.2 || dz <= 0.0 {
+                    continue;
+                }
+                let off = (dx * dx + dy * dy).sqrt();
+                if off > 4.6 {
+                    continue;
+                }
+                let c = if dx.abs() < 0.9 && dy.abs() < 3.6 {
+                    PUPIL
+                } else if off > 3.6 {
+                    IRIS_D
+                } else {
+                    IRIS
+                };
+                s.set(x, y, z, c);
+            }
+        }
+    }
+    s.set(ex as i32 - 2, ey as i32 + 2, (ez + EYE_R + 0.8) as i32, SHINE);
+    s.finish(0.05)
+}
+
+/// An eyelid shell: `top` covers the eye from above, else from below. At rest it is folded back.
+pub fn cyclops_lid(top: bool) -> Collected {
+    use cyc::*;
+    let (w, h, d) = CYCLOPS_SIZE;
+    let [ex, ey, ez] = CYCLOPS_EYE;
+    let mut s = Sculpt::new(w, h, d);
+    for y in 0..h {
+        for z in 0..d {
+            for x in 0..w {
+                let (dx, dy, dz) = (x as f32 - ex, y as f32 - ey, z as f32 - ez);
+                let r = (dx * dx + dy * dy + dz * dz).sqrt();
+                if r <= EYE_R + 1.2 || r > EYE_R + 2.3 || dz <= -2.0 {
+                    continue;
+                }
+                let elev = (dy / r).asin();
+                let edge = if top { 0.62 } else { -0.72 };
+                let inside = if top { elev > edge } else { elev < edge };
+                if !inside {
+                    continue;
+                }
+                let rim = (elev - edge).abs() < 0.12;
+                s.set(x, y, z, if rim { SKIN_L } else if noise(x, y, z) < 0.08 { WART } else { SKIN });
+                if top && rim && dz > 2.0 && x % 2 == 0 {
+                    s.set(x, y - 1, z + 1, LASH);
+                }
+            }
+        }
+    }
+    s.finish(0.05)
+}
+
+/// Wings hinge at the body; tentacles hang from their roots.
+pub const CYCLOPS_RIG: &[PartDef] = &[
+    PartDef { name: "leftWing", boxes: &[([0, 10, 0], [10, 30, 28])], pivot: [10.5, 22.0, 10.5] },
+    PartDef { name: "rightWing", boxes: &[([34, 10, 0], [44, 30, 28])], pivot: [33.5, 22.0, 10.5] },
+    PartDef { name: "tentacle0", boxes: &[([12, 0, 5], [20, 5, 13])], pivot: [16.0, 6.0, 9.0] },
+    PartDef { name: "tentacle1", boxes: &[([24, 0, 5], [32, 5, 13])], pivot: [28.0, 6.0, 9.0] },
+    PartDef { name: "tentacle2", boxes: &[([14, 0, 14], [21, 5, 21])], pivot: [18.0, 6.0, 17.0] },
+    PartDef { name: "tentacle3", boxes: &[([23, 0, 14], [30, 5, 21])], pivot: [26.0, 6.0, 17.0] },
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::render::voxels::build_rig;
+
+    #[test]
+    fn the_cyclops_has_an_eye_that_moves_and_lids_that_blink() {
+        let r = crate::render::voxels::build_layered_rig(
+            &cyclops(),
+            CYCLOPS_RIG,
+            &[("iris", &cyclops_iris(), CYCLOPS_EYE), ("lidTop", &cyclops_lid(true), CYCLOPS_EYE), ("lidBottom", &cyclops_lid(false), CYCLOPS_EYE)],
+            0.07,
+        );
+        for name in ["body", "iris", "lidTop", "lidBottom", "leftWing", "rightWing", "tentacle0", "tentacle3"] {
+            let i = r.index(name).unwrap_or_else(|| panic!("no {name}"));
+            assert!(r.parts[i].cubes.len() > 10, "{name} has {} cubes", r.parts[i].cubes.len());
+        }
+    }
 
     #[test]
     fn every_character_is_sculpted_and_rigged() {

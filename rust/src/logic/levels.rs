@@ -451,6 +451,7 @@ fn dungeon(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seco
         hero_speed,
         enemy_speed,
         frenzy_seconds,
+        boss: false,
     }
 }
 
@@ -478,6 +479,73 @@ pub fn level_for(index: usize) -> LevelData {
         enemy_speed: (base.enemy_speed + extra * 0.3 * SPEED_SCALE).min(9.0 * SPEED_SCALE),
         hero_speed: (base.hero_speed + extra * 0.2 * SPEED_SCALE).min(9.0 * SPEED_SCALE),
         frenzy_seconds: (base.frenzy_seconds - extra * 0.5).max(2.0),
+        boss: false,
+    }
+}
+
+/// The open middle of a boss arena, inclusive tile bounds: (x0, y0, x1, y1).
+pub const ARENA: (i32, i32, i32, i32) = (3, 3, 23, 19);
+/// The stream that crosses the arena runs along this row...
+pub const STREAM_ROW: i32 = 12;
+/// ...and wooden bridges cross it at these columns.
+pub const BRIDGES: [i32; 3] = [7, 13, 19];
+const PILLARS: [(i32, i32); 6] = [(7, 5), (19, 5), (10, 9), (16, 9), (7, 16), (19, 16)];
+/// Low brick walls, as runs of tiles: (x0, x1, y).
+const LOW_WALLS: [(i32, i32, i32); 5] = [(4, 6, 8), (20, 22, 8), (11, 12, 15), (14, 15, 15), (12, 14, 3)];
+/// Where Sebastian and the Cyclops start.
+pub const ARENA_HERO: (i32, i32) = (13, 18);
+pub const ARENA_BOSS: (i32, i32) = (13, 6);
+
+/**
+ * The boss arena after dungeon `index`: the same dungeon's outer ring, with
+ * the labyrinth in the middle torn out and turned into a sunny meadow. A
+ * stream crosses it under three bridges; stone pillars and low brick walls
+ * give cover from what the Cyclops throws. The ring keeps its green crosses,
+ * and a weapon shrine and an item shrine flank the start.
+ */
+pub fn boss_arena(index: usize) -> LevelData {
+    let base = level_for(index);
+    let mut rows: Vec<Vec<char>> = base.rows.iter().map(|r| r.chars().collect()).collect();
+    let (x0, y0, x1, y1) = ARENA;
+    for (y, row) in rows.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            let (x, y) = (x as i32, y as i32);
+            if x >= x0 && x <= x1 && y >= y0 && y <= y1 {
+                *c = ' ';
+                continue;
+            }
+            // Out in the ring only rock, tunnels and green crosses stay.
+            if !matches!(*c, '#' | '-' | 'o') {
+                *c = ' ';
+            }
+        }
+    }
+    for x in x0..=x1 {
+        if !BRIDGES.contains(&x) {
+            rows[STREAM_ROW as usize][x as usize] = '~';
+        }
+    }
+    for (x, y) in PILLARS {
+        rows[y as usize][x as usize] = '#';
+    }
+    for (a, b, y) in LOW_WALLS {
+        for x in a..=b {
+            rows[y as usize][x as usize] = '#';
+        }
+    }
+    rows[ARENA_HERO.1 as usize][ARENA_HERO.0 as usize] = 'P';
+    rows[ARENA_BOSS.1 as usize][ARENA_BOSS.0 as usize] = 'G';
+    rows[ARENA_HERO.1 as usize][(ARENA_HERO.0 - 4) as usize] = 'W';
+    rows[ARENA_HERO.1 as usize][(ARENA_HERO.0 + 4) as usize] = 'I';
+    let heights = rows.iter().map(|r| "0".repeat(r.len())).collect();
+    LevelData {
+        name: if index == 0 { "The Cyclops' Meadow".to_string() } else { format!("The Cyclops' Meadow {}", index + 1) },
+        rows: rows.iter().map(|r| r.iter().collect()).collect(),
+        heights,
+        hero_speed: base.hero_speed,
+        enemy_speed: base.enemy_speed,
+        frenzy_seconds: base.frenzy_seconds,
+        boss: true,
     }
 }
 
@@ -506,6 +574,25 @@ mod tests {
         for (x, y, t) in level.grid.cells() {
             if t == Tile::Nodule || t == Tile::Charge {
                 assert!(seen.contains(&crate::logic::types::P::new(x, y)), "pickup at {x},{y} unreachable");
+            }
+        }
+    }
+
+    #[test]
+    fn the_boss_arena_is_open_in_the_middle() {
+        let level = parse_level(&boss_arena(0));
+        let g = &level.grid;
+        assert_eq!(g.count(Tile::Nodule), 0);
+        assert!(level.data.boss);
+        let (x0, y0, x1, y1) = ARENA;
+        let rock = (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| (x, y))).filter(|&(x, y)| g.get(x, y) == Tile::Rock).count();
+        assert!(rock <= 20, "the middle should be open, found {rock} rock tiles");
+        assert_eq!(g.count(Tile::Pit), (x1 - x0 + 1) as usize - BRIDGES.len(), "one stream, bridged");
+        // Everywhere open is reachable on foot from the start, over the bridges.
+        let seen = reachable(g, level.hero_spawn, false, false);
+        for (x, y, t) in g.cells() {
+            if matches!(t, Tile::Open | Tile::Charge) && (x0..=x1).contains(&x) && (y0..=y1).contains(&y) {
+                assert!(seen.contains(&crate::logic::types::P::new(x, y)), "{x},{y} cut off");
             }
         }
     }

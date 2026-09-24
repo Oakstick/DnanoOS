@@ -7,8 +7,7 @@ use glam::Vec3;
 use wgpu::util::DeviceExt;
 
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
-use super::view::{colors, Frame, Instance, Light, MeshKind, WorldView, FAR, MESH_KINDS};
-use super::voxels::lin;
+use super::view::{Frame, Instance, Light, MeshKind, WorldView, FAR, MESH_KINDS};
 
 const MAX_LIGHTS: usize = 32;
 const SAMPLES: u32 = 4;
@@ -441,20 +440,20 @@ impl Gpu {
         for (i, l) in chosen.iter().enumerate() {
             lights[i] = GpuLight { pos: [l.pos.x, l.pos.y, l.pos.z, l.distance], color: [l.color.x, l.color.y, l.color.z, 0.0] };
         }
-        let fog = super::overlay::rgba(colors::BACKGROUND, 14.0);
+        let atm = frame.atmosphere;
+        let fog = super::overlay::rgba(atm.background, atm.fog_near);
         let v4 = |v: Vec3, w: f32| [v.x, v.y, v.z, w];
-        let moon_dir = Vec3::new(-6.0, 14.0, 8.0).normalize();
         let cam = view.camera_position();
         let g = Globals {
             view_proj: view.view_proj().to_cols_array(),
             cam_pos: v4(cam, 1.0),
             fog,
-            params: [34.0f32.min(FAR), 1.2, frame.coin_pulse, chosen.len() as f32],
-            hemi_sky: v4(lin(0x6f8fa8) * 1.0, 0.0),
-            hemi_ground: v4(lin(0x14260f) * 1.0, 0.0),
-            ambient: v4(lin(0x2c3a2a) * 0.7, 0.0),
-            moon_dir: v4(moon_dir, 0.0),
-            moon_color: v4(lin(colors::MOON) * 0.9, 0.0),
+            params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
+            hemi_sky: v4(atm.hemi_sky, 0.0),
+            hemi_ground: v4(atm.hemi_ground, 0.0),
+            ambient: v4(atm.ambient, 0.0),
+            moon_dir: v4(atm.sun_dir, 0.0),
+            moon_color: v4(atm.sun, 0.0),
             lights,
         };
         self.queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));
@@ -487,7 +486,7 @@ impl Gpu {
 
         let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
         {
-            let bg = super::overlay::rgba(colors::BACKGROUND, 1.0);
+            let bg = super::overlay::rgba(atm.background, 1.0);
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {

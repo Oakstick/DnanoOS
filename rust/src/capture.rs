@@ -5,7 +5,8 @@
 //!
 //! The script is `seconds:command` pairs. Commands: an action (confirm,
 //! attack, bomb, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
-//! up/down/left/right, and `look:dx:dy` for a mouse turn in pixels.
+//! up/down/left/right, `look:dx:dy` for a mouse turn in pixels, `nugget`,
+//! `hurt`, `boss` (the F1 cheat) and `wound:N` (N damage to the boss).
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -23,6 +24,8 @@ fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 enum Cmd {
     Nugget,
     Hurt,
+    Wound(i32),
+    Daze,
     Press(Action),
     Hold(Dir, bool),
     Look(f64, f64),
@@ -51,6 +54,9 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "tap" => Cmd::Press(Action::Tap),
             "fps" => Cmd::Press(Action::Fps),
             "nugget" => Cmd::Nugget,
+            "boss" => Cmd::Press(Action::Cheat),
+            "daze" => Cmd::Daze,
+            "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "hurt" => Cmd::Hurt,
             "look" => {
                 let dx = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
@@ -103,6 +109,8 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Look(dx, dy) => game.view.look(dx, dy),
                 Cmd::Nugget => game.debug_collect_nugget(),
                 Cmd::Hurt => game.debug_hurt(),
+                Cmd::Wound(n) => game.debug_wound_boss(n),
+                Cmd::Daze => game.debug_daze_boss(),
             }
             next += 1;
         }

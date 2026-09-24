@@ -24,6 +24,16 @@ fn in_swing(hero: V, facing: Dir, p: V) -> bool {
     along >= -0.25 && along <= ATTACK_REACH && across <= ATTACK_HALF_WIDTH
 }
 
+/// Does a swing reach a big body of `radius` tiles centered at `p`?
+pub fn in_swing_reach(hero: V, facing: Dir, p: V, radius: f64) -> bool {
+    let f = facing.or_down().vecf();
+    let dx = p.x - hero.x;
+    let dy = p.y - hero.y;
+    let along = dx * f.x + dy * f.y;
+    let across = (dx * f.y - dy * f.x).abs();
+    along >= -0.25 - radius * 0.5 && along <= ATTACK_REACH + radius && across <= ATTACK_HALF_WIDTH + radius * 0.8
+}
+
 /// Objects on a tile the sword can reach: used to strike shrines.
 pub fn tile_in_reach(hero: V, facing: Dir, tile: P) -> bool {
     in_swing(hero, facing, tile.v())

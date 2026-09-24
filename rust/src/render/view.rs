@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 
 use bytemuck::{Pod, Zeroable};
-use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
+use glam::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
 
 use super::characters;
 use super::voxels::*;
@@ -19,6 +19,9 @@ use crate::logic::projectile::Projectile;
 use crate::logic::rng::Rng;
 use crate::logic::systems::{Frenzy, PuddleField, PUDDLE_SECONDS};
 use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
+
+mod meadow;
+pub use meadow::meadow_atmosphere;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
 pub mod colors {
@@ -76,6 +79,8 @@ mod chase {
     pub const SENSITIVITY: f32 = 0.0026;
     /// Without the mouse captured the view drifts back behind him at this rate.
     pub const FOLLOW_LERP: f32 = 3.5;
+    /// How quickly the view swings to keep a boss in frame.
+    pub const FOCUS_LERP: f32 = 2.2;
 }
 /// Undergrowth is at least this tall, which is what the camera has to squeeze past.
 const WALL_TOP: f32 = 0.7;
@@ -156,6 +161,45 @@ pub struct Light {
     pub distance: f32,
 }
 
+/// The sky, fog and ambient light a level is drawn under.
+#[derive(Clone, Copy, Debug)]
+pub struct Atmosphere {
+    /// Sky and fog color, sRGB hex.
+    pub background: u32,
+    pub fog_near: f32,
+    pub fog_far: f32,
+    pub hemi_sky: Vec3,
+    pub hemi_ground: Vec3,
+    pub ambient: Vec3,
+    /// Direction toward the moon or sun, and its light.
+    pub sun_dir: Vec3,
+    pub sun: Vec3,
+    pub exposure: f32,
+}
+
+impl Atmosphere {
+    /// The dungeons: a moonlit forest at night.
+    pub fn forest() -> Self {
+        Self {
+            background: BACKGROUND,
+            fog_near: 14.0,
+            fog_far: 34.0,
+            hemi_sky: lin(0x6f8fa8),
+            hemi_ground: lin(0x14260f),
+            ambient: lin(0x2c3a2a) * 0.7,
+            sun_dir: Vec3::new(-6.0, 14.0, 8.0).normalize(),
+            sun: lin(MOON) * 0.9,
+            exposure: 1.2,
+        }
+    }
+}
+
+impl Default for Atmosphere {
+    fn default() -> Self {
+        Self::forest()
+    }
+}
+
 #[derive(Default)]
 pub struct Frame {
     pub opaque: [Vec<Instance>; MESH_KINDS],
@@ -165,6 +209,7 @@ pub struct Frame {
     pub coin_pulse: f32,
     /// The title diorama draws on its own; the level's static geometry sits this frame out.
     pub skip_static: bool,
+    pub atmosphere: Atmosphere,
 }
 
 impl Frame {
@@ -188,6 +233,8 @@ pub struct SceneState<'a> {
     pub diamonds: &'a [Diamond],
     pub potions: &'a [Potion],
     pub puddles: &'a PuddleField,
+    pub boss: Option<&'a crate::logic::boss::Cyclops>,
+    pub boss_shots: &'a [crate::logic::boss::BossShot],
 }
 
 // ---------------------------------------------------------------- views
@@ -334,6 +381,8 @@ struct Models {
     tree: Mesh,
     nugget: Mesh,
     bottles: HashMap<u32, Mesh>,
+    cyclops: Rig,
+    boulder: Rig,
 }
 
 impl Models {
@@ -359,6 +408,17 @@ impl Models {
             tree: build_mesh(&TREE_LOW, 0.17),
             nugget: build_mesh(&NUGGET, 0.11),
             bottles,
+            cyclops: build_layered_rig(
+                &characters::cyclops(),
+                characters::CYCLOPS_RIG,
+                &[
+                    ("iris", &characters::cyclops_iris(), characters::CYCLOPS_EYE),
+                    ("lidTop", &characters::cyclops_lid(true), characters::CYCLOPS_EYE),
+                    ("lidBottom", &characters::cyclops_lid(false), characters::CYCLOPS_EYE),
+                ],
+                0.07,
+            ),
+            boulder: build_rig(&meadow::boulder(), &[], 0.09),
         }
     }
 
@@ -389,7 +449,14 @@ pub struct WorldView {
     /// Level geometry that only changes when a bomb or a pickup changes it.
     pub static_cubes: Vec<Instance>,
     pub static_dirty: bool,
-    rock_index: HashMap<P, usize>,
+    /// Static instances that make up each wall tile, hidden when a bomb breaks it.
+    rock_index: HashMap<P, (usize, usize)>,
+    /// A boss arena: the sunny meadow instead of the night forest.
+    pub meadow: bool,
+    /// Stream tiles (bridges included) and whether the water runs along x.
+    water: Vec<(P, bool)>,
+    /// Slam shockwaves: center and age.
+    rings: Vec<(Vec3, f32)>,
     trees: Vec<Tree>,
     tree_index: HashMap<P, usize>,
     /// Static instance ranges rewritten since the last upload (tree fades).
@@ -425,6 +492,8 @@ pub struct WorldView {
     was_showcase: bool,
     /// R3 was pressed: the camera is swinging back behind him.
     recentering: bool,
+    /// A boss the chase camera keeps in view (ground position), when there is one.
+    pub focus: Option<Vec3>,
     rng: Rng,
 }
 
@@ -449,6 +518,9 @@ impl WorldView {
             static_cubes: Vec::new(),
             static_dirty: true,
             rock_index: HashMap::new(),
+            meadow: false,
+            water: Vec::new(),
+            rings: Vec::new(),
             trees: Vec::new(),
             tree_index: HashMap::new(),
             static_patches: Vec::new(),
@@ -479,14 +551,17 @@ impl WorldView {
             initialized: false,
             was_showcase: false,
             recentering: false,
+            focus: None,
             rng: Rng::from_time(),
         }
     }
 
     // ---------------------------------------------------------------- build
 
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond]) {
+    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool) {
         self.static_cubes.clear();
+        self.rings.clear();
+        self.water.clear();
         self.rock_index.clear();
         self.trees.clear();
         self.tree_index.clear();
@@ -502,6 +577,17 @@ impl WorldView {
         for l in self.effect_lights.iter_mut() {
             l.intensity = 0.0;
         }
+        self.meadow = meadow;
+        if meadow {
+            self.build_meadow(grid);
+        } else {
+            self.build_forest(grid);
+        }
+        self.build_pickups(grid, enemies, diamonds);
+    }
+
+    /// The dungeons' night forest: floors in levels, ramps, pits, undergrowth, trees, lanterns.
+    fn build_forest(&mut self, grid: &Grid) {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
         let white = Vec3::ONE;
 
@@ -594,7 +680,7 @@ impl WorldView {
             let m = Mat4::from_translation(Vec3::new(x as f32, tall / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, tall, 1.0));
             let shade = hash(xf + 11.0, yf + 5.0) as f32;
             let c = offset_hsl(lin(if shade < 0.5 { STONE_A } else { STONE_B }), 0.0, 0.0, (shade - 0.5) * 0.08);
-            self.rock_index.insert(tile_key(x, y), self.static_cubes.len());
+            self.rock_index.insert(tile_key(x, y), (self.static_cubes.len(), 1));
             self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
             if !edge {
                 continue;
@@ -630,6 +716,13 @@ impl WorldView {
             push_field(&mut self.static_cubes, &lantern, pos, 0.0, 1.0, white, lantern_glow, SHADE_LIT);
             self.torches.insert(spot, (pos, (start, self.static_cubes.len() - start)));
         }
+
+    }
+
+    /// Nuggets, green crosses, the cast and the fireflies: the same in every theme.
+    fn build_pickups(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond]) {
+        let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
+        let white = Vec3::ONE;
 
         // Nuggets: hidden per tile as they are collected. Their glow pulses together.
         let nugget = build_mesh(&NUGGET, 0.11);
@@ -720,8 +813,8 @@ impl WorldView {
     /// Collapse a wall block after a blast and patch the floor beneath it.
     pub fn remove_rock(&mut self, grid: &Grid, x: i32, y: i32) {
         let k = tile_key(x, y);
-        if let Some(i) = self.rock_index.remove(&k) {
-            self.hide_range((i, 1));
+        if let Some(range) = self.rock_index.remove(&k) {
+            self.hide_range(range);
         }
         if let Some((_, range)) = self.torches.remove(&k) {
             self.hide_range(range);
@@ -735,7 +828,8 @@ impl WorldView {
         let h = floor_at(grid, x as f32, y as f32);
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
-        self.static_cubes.push(Instance::new(m, lin(DIRT), 1.0, Vec3::ZERO, SHADE_LIT));
+        let patch = if self.meadow { lin(0x7d5b34) } else { lin(DIRT) };
+        self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, SHADE_LIT));
         self.static_dirty = true;
     }
 
@@ -841,6 +935,7 @@ impl WorldView {
                 }
             }
         }
+        self.update_meadow(dtf);
         self.update_camera(dtf, s.grid, hero);
         if !self.showcase {
             self.update_tree_fade(dtf, hero);
@@ -1255,7 +1350,12 @@ impl WorldView {
                     self.recentering = false;
                 }
             } else if !self.mouse_look {
-                self.cam_yaw = lerp_angle(self.cam_yaw, dir_to_yaw(hero.facing), 1.0 - (-chase::FOLLOW_LERP * dt).exp());
+                // In a boss fight the view turns toward the boss rather than trailing his heading.
+                let target = self.focus.map(|p| p - focus).filter(|d| d.x * d.x + d.z * d.z > 2.5);
+                match target {
+                    Some(d) => self.cam_yaw = lerp_angle(self.cam_yaw, d.z.atan2(d.x), 1.0 - (-chase::FOCUS_LERP * dt).exp()),
+                    None => self.cam_yaw = lerp_angle(self.cam_yaw, dir_to_yaw(hero.facing), 1.0 - (-chase::FOLLOW_LERP * dt).exp()),
+                }
             }
             let cp = self.cam_pitch.cos();
             let dir = Vec3::new(cp * self.cam_yaw.cos(), self.cam_pitch.sin(), cp * self.cam_yaw.sin());
@@ -1336,6 +1436,7 @@ impl WorldView {
     pub fn emit(&self, s: &SceneState, f: &mut Frame) {
         f.clear();
         f.skip_static = self.showcase;
+        f.atmosphere = if self.meadow && !self.showcase { meadow_atmosphere() } else { Atmosphere::forest() };
         if self.showcase {
             self.emit_stage(s, f);
             return;
@@ -1368,6 +1469,9 @@ impl WorldView {
         let mut hero_light = if hero.alive { 8.0 } else { 0.0 };
         if ghost {
             hero_light = 3.0;
+        }
+        if self.meadow {
+            hero_light *= 0.25; // broad daylight; the lantern barely shows
         }
         // His lantern rides well above the horned helmet, so it lights him without bleaching him.
         let to_cam = {
@@ -1536,10 +1640,22 @@ impl WorldView {
             }
         }
 
-        // --- fireflies
+        // --- the boss and what it throws
+        if let Some(b) = s.boss {
+            self.emit_boss(b, hero_pos, time, f);
+        }
+        self.emit_boss_shots(s.boss_shots, hero_pos, time, f);
+
+        // --- fireflies by night; water, butterflies and pollen by day
+        if self.meadow {
+            self.emit_meadow(time, f);
+        }
         let mote_color = lin(MOTE);
         let mote_alpha = 0.6 + (time * 2.2).sin() * 0.25;
         for (i, b) in self.mote_base.iter().enumerate() {
+            if self.meadow {
+                break;
+            }
             let fi = i as f32;
             let p = Vec3::new(
                 b.x + (time * 0.5 + fi).sin() * 0.4,

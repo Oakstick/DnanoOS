@@ -8,6 +8,7 @@ use crate::game::GameEvent;
 
 pub const ACH_FIRST_NUGGET: &str = "ACH_FIRST_NUGGET";
 pub const ACH_HARVEST: &str = "ACH_HARVEST";
+pub const ACH_CYCLOPS: &str = "ACH_CYCLOPS";
 
 pub struct Steam {
     client: steamworks::Client,
@@ -36,6 +37,7 @@ impl Steam {
             let name = match e {
                 GameEvent::FirstNugget => ACH_FIRST_NUGGET,
                 GameEvent::Won => ACH_HARVEST,
+                GameEvent::BossSlain => ACH_CYCLOPS,
             };
             if self.client.user_stats().achievement(name).set().is_ok() {
                 dirty = true;

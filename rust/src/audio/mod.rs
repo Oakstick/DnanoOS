@@ -37,6 +37,20 @@ pub enum Sfx {
     Land,
     /// A nugget milestone (every five).
     Milestone,
+    /// The Cyclops bellows: arriving, enraged, getting up, dying.
+    BossRoar,
+    /// Its eye winds up to attack.
+    BossCharge,
+    /// A bolt spat from the eye.
+    BossBolt,
+    /// A boulder hurled.
+    BossHurl,
+    /// It hits the ground.
+    BossSlam,
+    /// A blow lands on it.
+    BossHit,
+    /// Its death cry.
+    BossDeath,
 }
 
 const MASTER_VOLUME: f64 = 0.5;
@@ -296,11 +310,77 @@ impl AudioManager {
                     blip(s, t, 330.0, 0.12, Wave::Triangle, 0.2);
                     blip(s, t + 0.15, 440.0, 0.12, Wave::Triangle, 0.2);
                 }
+                Sfx::BossRoar => roar(s, t, 1.0, 1.3, offset),
+                Sfx::BossDeath => roar(s, t, 1.35, 2.4, offset),
+                Sfx::BossCharge => {
+                    // A rising, wavering whine: the eye filling with light.
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.5, 0.09), (t + 0.7, 0.001)]);
+                    s.push(Voice::new(t, t + 0.72, Wave::Square, Env::ramp(t, 220.0 * vp, 880.0 * vp, 0.65), gain, Bus::Sfx).vibrato(14.0, 0.03).filtered(synth::FilterKind::Lowpass, 2400.0, 1.0));
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.55, 0.06), (t + 0.7, 0.001)]);
+                    s.push(Voice::new(t, t + 0.72, Wave::Sine, Env::ramp(t, 440.0 * vp, 1760.0 * vp, 0.65), gain, Bus::Sfx));
+                }
+                Sfx::BossBolt => {
+                    sweep(s, t, 1300.0, 240.0, 0.18, Wave::Saw, 0.09);
+                    sweep(s, t, 260.0, 90.0, 0.14, Wave::Sine, 0.2);
+                    s.push(
+                        Voice::new(t, t + 0.12, Wave::Noise { rate: 1.2, offset }, Env::constant(1.0), Env::ramp(t, 0.1 * vg, 0.001, 0.1), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 1800.0 * vp, 1.4),
+                    );
+                }
+                Sfx::BossHurl => {
+                    // A heave and a heavy whoosh.
+                    sweep(s, t, 120.0, 45.0, 0.3, Wave::Sine, 0.32);
+                    s.push(
+                        Voice::new(t, t + 0.35, Wave::Noise { rate: 0.7, offset }, Env::constant(1.0), Env::points(vec![(t, 0.0001), (t + 0.08, 0.2 * vg), (t + 0.34, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 520.0 * vp, 0.9),
+                    );
+                }
+                Sfx::BossSlam => {
+                    sweep(s, t, 95.0, 28.0, 0.6, Wave::Sine, 0.55);
+                    sweep(s, t, 180.0, 40.0, 0.25, Wave::Triangle, 0.3);
+                    s.push(
+                        Voice::new(t, t + 0.55, Wave::Noise { rate: 0.6, offset }, Env::constant(1.0), Env::ramp(t, 0.4 * vg, 0.001, 0.5), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 420.0, 1.0),
+                    );
+                }
+                Sfx::BossHit => {
+                    // A wet thwack: a thump, a squelch, a bright tick of impact.
+                    sweep(s, t, 170.0, 70.0, 0.14, Wave::Sine, 0.34);
+                    s.push(
+                        Voice::new(t, t + 0.14, Wave::Noise { rate: 0.9, offset }, Env::constant(1.0), Env::ramp(t, 0.24 * vg, 0.001, 0.12), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 900.0 * vp, 2.0),
+                    );
+                    blip(s, t, 2200.0, 0.03, Wave::Square, 0.05);
+                    sweep(s, t + 0.02, 520.0, 260.0, 0.1, Wave::Square, 0.06);
+                }
             }
             s.var_pitch = 1.0;
             s.var_gain = 1.0;
         });
     }
+}
+
+/**
+ * A monster's bellow: a stack of detuned saws sliding down under a growl of
+ * filtered noise, with a slow wobble. `pitch` lowers it (larger is deeper
+ * and longer is sadder: the death cry uses both).
+ */
+fn roar(s: &mut Synth, t: f64, deep: f64, dur: f64, offset: f64) {
+    let (p, g) = (s.var_pitch / deep, s.var_gain);
+    let gain = |peak: f64| Env::points(vec![(t, 0.0001), (t + 0.12, peak * g), (t + dur * 0.6, peak * 0.7 * g), (t + dur, 0.001)]);
+    for (i, ratio) in [1.0, 1.013, 0.497, 1.51].into_iter().enumerate() {
+        let f0 = 190.0 * p * ratio;
+        let freq = Env::points(vec![(t, f0 * 0.8), (t + 0.15, f0), (t + dur, f0 * 0.45)]);
+        s.push(
+            Voice::new(t, t + dur + 0.02, Wave::Saw, freq, gain(if i == 2 { 0.12 } else { 0.07 }), Bus::Sfx)
+                .vibrato(5.5 + i as f64 * 0.7, 0.025)
+                .filtered(synth::FilterKind::Lowpass, 1100.0, 3.0),
+        );
+    }
+    s.push(
+        Voice::new(t, t + dur + 0.02, Wave::Noise { rate: 0.5, offset }, Env::constant(1.0), gain(0.14), Bus::Sfx)
+            .filtered(synth::FilterKind::Bandpass, 380.0 * p, 1.5),
+    );
 }
 
 fn blip(s: &mut Synth, t: f64, freq: f64, dur: f64, wave: Wave, vol: f64) {

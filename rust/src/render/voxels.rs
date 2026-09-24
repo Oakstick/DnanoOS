@@ -179,7 +179,31 @@ pub fn build_rig(c: &Collected, defs: &[PartDef], size: f32) -> Rig {
             None => body.push(*v),
         }
     }
-    let make = |name: &'static str, list: &[Voxel], pivot: [f32; 3]| {
+    let make = |name: &'static str, list: &[Voxel], pivot: [f32; 3]| make_part(c, name, list, pivot, size);
+    let mut parts = vec![make("body", &body, [ox, 0.0, oz])];
+    for (i, d) in defs.iter().enumerate() {
+        parts.push(make(d.name, &buckets[i], d.pivot));
+    }
+    Rig { size, parts }
+}
+
+/**
+ * A rig whose extra parts are whole models of their own, sculpted in the same
+ * grid as the main one: for parts that overlap the body in space (an iris on
+ * an eyeball, lids around it) and so cannot be cut out with boxes.
+ */
+pub fn build_layered_rig(main: &Collected, defs: &[PartDef], layers: &[(&'static str, &Collected, [f32; 3])], size: f32) -> Rig {
+    let mut rig = build_rig(main, defs, size);
+    for (name, c, pivot) in layers {
+        rig.parts.push(make_part(main, name, &c.voxels, *pivot, size));
+    }
+    rig
+}
+
+fn make_part(c: &Collected, name: &'static str, list: &[Voxel], pivot: [f32; 3], size: f32) -> RigPart {
+    let ox = (c.width - 1) as f32 / 2.0;
+    let oz = (c.depth - 1) as f32 / 2.0;
+    {
         let rest = Vec3::new((pivot[0] - ox) * size, pivot[1] * size, (pivot[2] - oz) * size);
         let cubes: Vec<(Vec3, Vec3)> = list
             .iter()
@@ -196,12 +220,7 @@ pub fn build_rig(c: &Collected, defs: &[PartDef], size: f32) -> Rig {
             .collect();
         let min_y = cubes.iter().map(|(p, _)| p.y - size / 2.0).fold(f32::INFINITY, f32::min);
         RigPart { name, rest, cubes, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
-    };
-    let mut parts = vec![make("body", &body, [ox, 0.0, oz])];
-    for (i, d) in defs.iter().enumerate() {
-        parts.push(make(d.name, &buckets[i], d.pivot));
     }
-    Rig { size, parts }
 }
 
 // ------------------------------------------------------------------ models

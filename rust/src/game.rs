@@ -5,17 +5,18 @@ use std::f64::consts::PI;
 
 use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
+use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
 use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
 use crate::logic::hero::{DamageResult, Hero, CONTACT_DAMAGE};
 use crate::logic::items::{
     Bomb, Diamond, DiamondKind, ItemKind, Offer, Potion, BOMBS_PER_LIFE, INVISIBLE_SECONDS, SWORD_COLOR,
 };
 use crate::logic::level::{parse_level, ParsedLevel};
-use crate::logic::levels::level_for;
+use crate::logic::levels::{boss_arena, level_for, ARENA};
 use crate::logic::projectile::{spawn_shots, Projectile, ShotState};
 use crate::logic::rng::Rng;
 use crate::logic::systems::*;
-use crate::logic::types::{dist_sq, manhattan, relative_dir, Dir, PotionKind, Tile, CARDINALS, P};
+use crate::logic::types::{dist_sq, manhattan, relative_dir, Dir, PotionKind, Tile, CARDINALS, P, V};
 use crate::render::view::{dir_to_yaw, floor_at, CameraMode, SceneState, WorldView};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -25,6 +26,8 @@ pub enum Screen {
     Playing,
     Paused,
     Dying,
+    /// Every nugget taken: the fanfare plays, then the way to the boss opens.
+    Cleared,
     Won,
     GameOver,
 }
@@ -62,6 +65,16 @@ const STRIDE_TILES: f64 = 0.5;
 /// A collected nugget takes this long to fly into the HUD counter.
 pub const COIN_FLIGHT_SECONDS: f32 = 0.55;
 const DYING_SECONDS: f64 = 1.8;
+/// The fanfare and the fade into the boss arena.
+pub const CLEARED_SECONDS: f64 = 3.4;
+/// After the Cyclops bursts, a beat to take it in before the victory screen.
+const VICTORY_DELAY: f64 = 1.6;
+/// Damage the Cyclops takes from each weapon.
+const AXE_DAMAGE: i32 = 2;
+const SHOT_DAMAGE: i32 = 1;
+const BOMB_DAMAGE: i32 = 6;
+/// Freeze-frame on a blow to the boss.
+const HITSTOP_BOSS: f64 = 0.035;
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
 
 pub struct Floater {
@@ -106,6 +119,10 @@ pub struct Juice {
     pub banner: Option<Banner>,
     /// Seconds "GO!" has left on screen.
     pub go: f32,
+    /// Black over everything, 1..0, fading in after a level change.
+    pub fade: f32,
+    /// The boss health bar's trailing chunk, in HP.
+    pub boss_trail: f32,
 }
 
 /// A button on the title or pause menu.
@@ -132,8 +149,10 @@ impl MenuItem {
 /// Things the platform layer may want to hear about (Steam achievements).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameEvent {
+    /// Every nugget in a dungeon.
     Won,
     FirstNugget,
+    BossSlain,
 }
 
 pub struct Game {
@@ -189,6 +208,14 @@ pub struct Game {
     was_airborne: bool,
     /// The way Popolon faces at spawn: down the longest corridor from the center.
     start_facing: Dir,
+    /// The dungeon number this stretch of the game belongs to (its boss shares it).
+    pub dungeon: usize,
+    /// The boss of a boss arena, and what it has thrown.
+    pub boss: Option<Cyclops>,
+    pub boss_shots: Vec<BossShot>,
+    boss_events: Vec<BossEvent>,
+    /// Counts down to the victory screen once the boss is dead.
+    victory_timer: Option<f64>,
 }
 
 impl Game {
@@ -239,6 +266,11 @@ impl Game {
             step_dist: 0.0,
             was_airborne: false,
             start_facing: Dir::Down,
+            dungeon: 0,
+            boss: None,
+            boss_shots: Vec::new(),
+            boss_events: Vec::new(),
+            victory_timer: None,
         };
         g.load_level(0);
         g
@@ -246,13 +278,29 @@ impl Game {
 
     // ---------------------------------------------------------------- setup
 
+    /// Dungeon `index`: the labyrinth with its 25 nuggets.
     pub fn load_level(&mut self, index: usize) {
+        self.load(level_for(index), index);
+    }
+
+    /// The Cyclops' arena that follows dungeon `index`.
+    pub fn load_boss(&mut self, index: usize) {
+        self.load(boss_arena(index), index);
+    }
+
+    fn load(&mut self, data: crate::logic::level::LevelData, index: usize) {
         self.score.level = index;
-        self.level = parse_level(&level_for(index));
-        // Popolon starts in the heart of the dungeon, facing its longest corridor.
-        let (spawn, facing) = center_spawn(&self.level);
-        self.level.hero_spawn = spawn;
-        self.start_facing = facing;
+        self.dungeon = index;
+        self.level = parse_level(&data);
+        if self.level.data.boss {
+            // In the arena he starts at the south edge, facing the Cyclops.
+            self.start_facing = Dir::Up;
+        } else {
+            // Popolon starts in the heart of the dungeon, facing its longest corridor.
+            let (spawn, facing) = center_spawn(&self.level);
+            self.level.hero_spawn = spawn;
+            self.start_facing = facing;
+        }
         self.nuggets_total = self.level.grid.count(Tile::Nodule) as u32;
         self.nuggets_got = 0;
         self.audio.set_tempo_step(0);
@@ -263,12 +311,23 @@ impl Game {
         // Clearing a dungeon keeps the held weapon and its ammo; only death takes them.
         let carried = if self.hero.alive && self.hero.has_ranged_weapon() { Some((self.hero.weapon, self.hero.ammo)) } else { None };
         self.hero = Hero::new(self.level.hero_spawn, self.level.data.hero_speed);
-        let specs = default_enemy_specs(&self.level.grid);
+        let specs = if self.level.data.boss { Vec::new() } else { default_enemy_specs(&self.level.grid) };
         self.enemies = specs
             .iter()
             .enumerate()
             .map(|(i, s)| Enemy::new(s, self.nest_slots.get(i).copied().unwrap_or(c), self.level.data.enemy_speed))
             .collect();
+        self.boss = if self.level.data.boss {
+            let (x0, y0, x1, y1) = ARENA;
+            let hp = CYCLOPS_HP + CYCLOPS_HP_STEP * index as i32;
+            let min = V::new(x0 as f64 + 1.0, y0 as f64 + 0.5);
+            let max = V::new(x1 as f64 - 1.0, y1 as f64 - 0.5);
+            Some(Cyclops::new(self.level.enemy_spawn.v(), min, max, hp, self.rng.index(1 << 30) as u32))
+        } else {
+            None
+        };
+        self.boss_shots.clear();
+        self.victory_timer = None;
         self.diamonds = self
             .level
             .weapon_shrines
@@ -280,7 +339,8 @@ impl Game {
         self.potions = self.level.potions.iter().map(|&(t, k)| Potion::new(t, k)).collect();
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds);
+        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss);
+        self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         self.reset_round();
         if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried {
             self.hero.equip(w);
@@ -316,6 +376,12 @@ impl Game {
         self.bombs.clear();
         self.bombs_left = BOMBS_PER_LIFE;
         self.projectiles.clear();
+        // The Cyclops flies back up; it keeps the wounds it has taken.
+        let home = self.level.enemy_spawn.v();
+        if let Some(b) = &mut self.boss {
+            b.reset(home);
+        }
+        self.boss_shots.clear();
     }
 
     fn start_game(&mut self) {
@@ -330,7 +396,7 @@ impl Game {
         self.screen = screen;
         self.menu_index = 0;
         // The backing track steps back when the game does, and under the fanfare.
-        self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won));
+        self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared));
         if screen == Screen::Title {
             self.audio.set_tempo_step(0);
         }
@@ -340,6 +406,7 @@ impl Game {
         self.screen_timer = match screen {
             Screen::Ready => READY_SECONDS,
             Screen::Dying => DYING_SECONDS,
+            Screen::Cleared => CLEARED_SECONDS,
             _ => 0.0,
         };
     }
@@ -350,6 +417,12 @@ impl Game {
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
+        self.view.focus = self
+            .boss
+            .as_ref()
+            .filter(|b| b.alive() && matches!(self.screen, Screen::Playing | Screen::Paused))
+            .filter(|b| !matches!(b.state, crate::logic::boss::BossState::Hidden))
+            .map(|b| glam::Vec3::new(b.pos.x as f32, 0.0, b.pos.y as f32));
         self.input.poll(dt);
         self.handle_global_keys();
 
@@ -377,6 +450,9 @@ impl Game {
                     self.enter(Screen::Playing);
                     self.audio.play(Sfx::Go);
                     self.juice.go = GO_SECONDS;
+                    if let Some(b) = &mut self.boss {
+                        b.wake();
+                    }
                 } else if self.screen_timer.ceil() < before {
                     self.audio.play(Sfx::Tick); // "2", "1"
                 }
@@ -406,7 +482,28 @@ impl Game {
                     }
                 }
             }
-            Screen::Won | Screen::GameOver => {
+            Screen::Cleared => {
+                // The world keeps moving (sparkles, the camera) while the fanfare plays.
+                self.screen_timer -= dt;
+                self.update_effects(dt);
+                if self.screen_timer <= 0.0 {
+                    let next = self.dungeon;
+                    self.load_boss(next);
+                    self.juice.fade = 1.0;
+                    self.enter(Screen::Ready);
+                }
+            }
+            Screen::Won => {
+                // The boss is down: on to the next dungeon.
+                if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
+                    let next = self.dungeon + 1;
+                    self.load_level(next);
+                    self.juice.fade = 1.0;
+                    self.enter(Screen::Ready);
+                    self.input.consume(Action::Attack);
+                }
+            }
+            Screen::GameOver => {
                 if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
                     self.enter(Screen::Title);
                 }
@@ -423,6 +520,8 @@ impl Game {
             diamonds: &self.diamonds,
             potions: &self.potions,
             puddles: &self.puddles,
+            boss: self.boss.as_ref(),
+            boss_shots: &self.boss_shots,
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -493,12 +592,17 @@ impl Game {
             diamonds: &self.diamonds,
             potions: &self.potions,
             puddles: &self.puddles,
+            boss: self.boss.as_ref(),
+            boss_shots: &self.boss_shots,
         }
     }
 
     fn handle_global_keys(&mut self) {
         if self.input.was_pressed(&[Action::Fps]) {
             self.show_fps = !self.show_fps;
+        }
+        if self.input.was_pressed(&[Action::Cheat]) {
+            self.cheat_to_boss();
         }
         if self.input.was_pressed(&[Action::Fullscreen]) {
             self.want_fullscreen_toggle = true;
@@ -624,6 +728,12 @@ impl Game {
         if self.screen != Screen::Playing {
             return;
         }
+        if self.boss.is_some() {
+            self.update_boss(dt);
+            if self.screen != Screen::Playing {
+                return;
+            }
+        }
 
         if self.frenzy.update(dt) {
             for e in self.enemies.iter_mut() {
@@ -665,6 +775,9 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     fn update_spawns(&mut self, dt: f64) {
+        if self.boss.is_some() {
+            return; // the arena belongs to the Cyclops
+        }
         self.spawn_timer -= dt;
         if self.spawn_timer > 0.0 || self.enemies.len() >= MAX_ENEMIES {
             return;
@@ -787,7 +900,10 @@ impl Game {
         }
     }
 
-    /// The last nugget: the dungeon is harvested. Congratulations are in order.
+    /**
+     * The last nugget: the dungeon is harvested. Congratulations are in order,
+     * and then the ground shakes: the way to the Cyclops opens.
+     */
     fn win(&mut self) {
         self.audio.play(Sfx::Win);
         self.audio.set_frenzy(false);
@@ -795,8 +911,221 @@ impl Game {
         self.frenzy.cancel();
         let hp = self.hero.pos();
         self.view.spark(&self.level.grid, hp.x, hp.y, 0xf2c53d);
+        self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, 0xf2c53d, 40);
         self.events.push(GameEvent::Won);
-        self.enter(Screen::Won);
+        self.juice.banner = Some(Banner {
+            text: "THE HOARD IS YOURS".into(),
+            sub: "SOMETHING VAST STIRS IN THE MEADOW...".into(),
+            color: 0xf2c53d,
+            life: CLEARED_SECONDS as f32,
+            max: CLEARED_SECONDS as f32,
+        });
+        self.enter(Screen::Cleared);
+    }
+
+    /// F1: skip straight to the first Cyclops, from anywhere.
+    pub fn cheat_to_boss(&mut self) {
+        self.audio.unlock();
+        if matches!(self.screen, Screen::Title | Screen::GameOver) {
+            self.score.reset();
+            self.juice.score_shown = 0.0;
+        }
+        self.load_boss(0);
+        self.juice.fade = 1.0;
+        self.enter(Screen::Ready);
+        self.input.consume(Action::Attack);
+    }
+
+    // ------------------------------------------------------------------ boss
+
+    fn update_boss(&mut self, dt: f64) {
+        let hero_pos = self.hero.pos();
+        let mut events = std::mem::take(&mut self.boss_events);
+        let was_active = self.boss.as_ref().map(|b| b.active()).unwrap_or(false);
+        if let Some(b) = &mut self.boss {
+            b.update(dt, hero_pos, &mut self.boss_shots, &mut events);
+        }
+        let now_active = self.boss.as_ref().map(|b| b.active()).unwrap_or(false);
+        if now_active && !was_active {
+            self.audio.set_tempo_step(1);
+        }
+        for e in events.drain(..) {
+            self.boss_event(e);
+        }
+        self.boss_events = events;
+        self.update_boss_shots(dt);
+        if self.screen != Screen::Playing {
+            return;
+        }
+        // Touching it hurts, unless he sails over it.
+        if let Some(b) = &self.boss {
+            let near = dist_sq(b.pos, hero_pos) < CONTACT_RADIUS * CONTACT_RADIUS;
+            if b.harmful() && b.hover < 1.3 && near && !self.hero.airborne() && !self.hero.invisible() {
+                self.hurt_hero(CONTACT_DAMAGE);
+            }
+        }
+        if let Some(t) = &mut self.victory_timer {
+            *t -= dt;
+            if *t <= 0.0 {
+                self.victory_timer = None;
+                self.audio.play(Sfx::Win);
+                self.enter(Screen::Won);
+            }
+        }
+    }
+
+    fn boss_event(&mut self, e: BossEvent) {
+        let grid = &self.level.grid;
+        match e {
+            BossEvent::Roar => {
+                self.audio.play(Sfx::BossRoar);
+                self.view.shake(0.35);
+            }
+            BossEvent::Charge => self.audio.play(Sfx::BossCharge),
+            BossEvent::Fire(kind) => {
+                self.audio.play(if kind == ShotKind::Boulder { Sfx::BossHurl } else { Sfx::BossBolt });
+                if let Some(b) = &self.boss {
+                    let p = b.pos;
+                    if kind == ShotKind::Boulder {
+                        self.view.dust(grid, p.x, p.y, 0x8a6a40, 10, 2.0);
+                    }
+                }
+            }
+            BossEvent::Slam(p) => {
+                self.audio.play(Sfx::BossSlam);
+                self.view.shockwave(grid, p.x, p.y);
+                self.view.dust(grid, p.x, p.y, 0x8a6a40, 34, 4.2);
+                self.view.dust(grid, p.x, p.y, 0x5aa834, 16, 3.0);
+                let d = dist_sq(p, self.hero.pos()).sqrt() as f32;
+                self.view.shake(0.7 * (1.0 - d / 14.0).max(0.2));
+            }
+            BossEvent::Enraged(phase) => {
+                self.audio.set_tempo_step(phase as u32);
+                self.juice.banner = Some(Banner {
+                    text: if phase == 2 { "THE CYCLOPS IS ENRAGED".into() } else { "THE CYCLOPS IS FURIOUS".into() },
+                    sub: if phase == 2 { "IT DIVES NOW   DODGE, THEN STRIKE WHILE IT IS DAZED".into() } else { "FINISH IT!".into() },
+                    color: if phase == 2 { 0xff8a2a } else { 0xff4d4d },
+                    life: 2.2,
+                    max: 2.2,
+                });
+                self.drop_remedy();
+            }
+            BossEvent::Spasm(p) => {
+                self.view.spark(grid, p.x, p.y, 0xffb060);
+                self.view.dust(grid, p.x, p.y, 0x8a2a6a, 8, 3.0);
+                self.view.shake(0.12);
+                self.audio.play(Sfx::ArrowHit);
+            }
+            BossEvent::Died(p) => {
+                self.view.explode(grid, p.x, p.y, 0);
+                self.view.sparkle(grid, p.x, p.y, 1.2, 0xf2c53d, 60);
+                self.view.sparkle(grid, p.x, p.y, 1.0, 0xffffff, 30);
+                self.view.dust(grid, p.x, p.y, 0x8a2a6a, 40, 5.0);
+                self.view.shockwave(grid, p.x, p.y);
+                self.view.shake(1.0);
+                self.audio.play(Sfx::Explode);
+                self.audio.play(Sfx::BossDeath);
+                self.audio.set_threat(0.0);
+                self.score.add(POINTS_CYCLOPS);
+                self.floater(p.x, p.y, format!("+{POINTS_CYCLOPS}"), 2.0, Some(0xf2c53d));
+                self.events.push(GameEvent::BossSlain);
+                self.victory_timer = Some(VICTORY_DELAY);
+            }
+        }
+    }
+
+    /// A green cross appears on open grass away from the Cyclops: a breather between phases.
+    fn drop_remedy(&mut self) {
+        let (x0, y0, x1, y1) = ARENA;
+        let boss = self.boss.as_ref().map(|b| b.pos).unwrap_or_default();
+        let hero = self.hero.pos();
+        let mut best: Option<(f64, P)> = None;
+        for _ in 0..40 {
+            let p = P::new(x0 + self.rng.index((x1 - x0 + 1) as usize) as i32, y0 + self.rng.index((y1 - y0 + 1) as usize) as i32);
+            if self.level.grid.get(p.x, p.y) != Tile::Open {
+                continue;
+            }
+            // Not on top of him, not under the eye.
+            let score = dist_sq(p.v(), boss).sqrt().min(6.0) - (dist_sq(p.v(), hero).sqrt() - 4.0).abs();
+            if best.map(|(s, _)| score > s).unwrap_or(true) {
+                best = Some((score, p));
+            }
+        }
+        if let Some((_, p)) = best {
+            self.level.grid.set(p.x, p.y, Tile::Charge);
+            self.view.add_charge(&self.level.grid, p.x, p.y);
+            self.view.sparkle(&self.level.grid, p.x as f64, p.y as f64, 0.4, 0x5cff6a, 20);
+            self.floater(p.x as f64, p.y as f64, "HEALTH", 1.6, Some(0x5cff6a));
+        }
+    }
+
+    /// Bolts and boulders: they fly until they hit rock, Sebastian, or run out.
+    fn update_boss_shots(&mut self, dt: f64) {
+        let grid = &self.level.grid;
+        let hero_pos = self.hero.pos();
+        let hero_open = self.hero.alive && !self.hero.airborne();
+        let mut hurt = 0;
+        for s in self.boss_shots.iter_mut() {
+            let mut remaining = dt;
+            while remaining > 0.0 && s.alive {
+                let step = remaining.min(0.02);
+                remaining -= step;
+                s.pos = V::new(s.pos.x + s.vel.x * step, s.pos.y + s.vel.y * step);
+                s.rolled += (s.vel.x.hypot(s.vel.y)) * step;
+                s.life -= step;
+                let t = P::new(s.pos.x.round() as i32, s.pos.y.round() as i32);
+                if s.life <= 0.0 || !grid.in_bounds(t.x, t.y) {
+                    s.alive = false;
+                } else if grid.get(t.x, t.y) == Tile::Rock {
+                    s.alive = false;
+                    let color = if s.kind == ShotKind::Boulder { 0x8a867c } else { 0xff7a3a };
+                    self.view.spark(grid, s.pos.x, s.pos.y, color);
+                    self.view.dust(grid, s.pos.x, s.pos.y, if s.kind == ShotKind::Boulder { 0x8a867c } else { 0x4a3620 }, 8, 2.0);
+                } else if hero_open && dist_sq(s.pos, hero_pos).sqrt() < s.kind.radius() + 0.3 {
+                    s.alive = false;
+                    hurt = hurt.max(s.kind.damage());
+                    self.view.spark(grid, s.pos.x, s.pos.y, 0xff7a3a);
+                }
+            }
+        }
+        self.boss_shots.retain(|s| s.alive);
+        if hurt > 0 {
+            self.hurt_hero(hurt);
+        }
+    }
+
+    /// A blow to the Cyclops from any weapon, with all the feedback it deserves.
+    fn wound_boss(&mut self, amount: i32, at: V) -> bool {
+        let mut events = std::mem::take(&mut self.boss_events);
+        let landed = self.boss.as_mut().map(|b| b.hit(amount, &mut events)).unwrap_or(false);
+        let dying = self.boss.as_ref().map(|b| !b.alive()).unwrap_or(false);
+        if landed {
+            let grid = &self.level.grid;
+            self.audio.play(Sfx::BossHit);
+            self.view.spark(grid, at.x, at.y, 0xffe0e0);
+            self.view.dust(grid, at.x, at.y, 0x8a2a6a, 10, 2.6);
+            self.view.sparkle(grid, at.x, at.y, 1.0, 0xfff1c0, 6);
+            self.view.shake(0.16);
+            self.hitstop = HITSTOP_BOSS;
+            self.score.add(10 * amount as u32);
+            if dying {
+                // Its last scream pops everything still in the air.
+                for s in self.boss_shots.drain(..) {
+                    self.view.spark(grid, s.pos.x, s.pos.y, 0xffb060);
+                }
+                self.hitstop = 0.12;
+            }
+        }
+        for e in events.drain(..) {
+            self.boss_event(e);
+        }
+        self.boss_events = events;
+        landed
+    }
+
+    /// Where the Cyclops is, if it can be struck at all.
+    fn boss_target(&self) -> Option<V> {
+        self.boss.as_ref().filter(|b| b.vulnerable()).map(|b| b.pos)
     }
 
     /// Stepping onto an active shrine takes whatever it is showing.
@@ -895,6 +1224,11 @@ impl Game {
         for i in hits {
             self.slay_enemy(i);
         }
+        if let Some(bp) = self.boss_target() {
+            if in_swing_reach(self.hero.pos(), self.hero.facing, bp, BODY_RADIUS) {
+                self.wound_boss(AXE_DAMAGE, bp);
+            }
+        }
     }
 
     fn slay_enemy(&mut self, i: usize) {
@@ -945,6 +1279,19 @@ impl Game {
                     if !self.projectiles[i].def.pierce {
                         self.projectiles[i].alive = false;
                         break;
+                    }
+                }
+                // The boss counts as one more target, struck once per shot.
+                if let Some(bp) = self.boss_target() {
+                    let p = &self.projectiles[i];
+                    if p.alive && !p.struck.contains(&usize::MAX) && dist_sq(p.pos, bp).sqrt() <= radius + BODY_RADIUS {
+                        let dmg = if p.kind == crate::logic::items::RangedKind::Fireball { SHOT_DAMAGE * 2 } else { SHOT_DAMAGE };
+                        let at = p.pos;
+                        self.projectiles[i].struck.insert(usize::MAX);
+                        if !self.projectiles[i].def.pierce {
+                            self.projectiles[i].alive = false;
+                        }
+                        self.wound_boss(dmg, at);
                     }
                 }
             } else if state == ShotState::Wall {
@@ -1014,6 +1361,11 @@ impl Game {
         for i in 0..self.enemies.len() {
             if self.enemies[i].is_targetable() && in_blast(c, self.enemies[i].pos()) {
                 self.slay_enemy(i);
+            }
+        }
+        if let Some(bp) = self.boss_target() {
+            if in_blast(c, bp) {
+                self.wound_boss(BOMB_DAMAGE, bp);
             }
         }
         for other in self.bombs.iter_mut() {
@@ -1099,7 +1451,12 @@ impl Game {
         });
         let hp = self.hero.pos();
         let nearest = self.enemies.iter().filter(|e| e.is_dangerous()).map(|e| manhattan(e.pos(), hp)).fold(f64::INFINITY, f64::min);
-        self.audio.set_threat(if nearest.is_infinite() { 0.0 } else { (1.0 - nearest / 10.0).max(0.0) });
+        let mut threat = if nearest.is_infinite() { 0.0 } else { (1.0 - nearest / 10.0).max(0.0) };
+        if let Some(b) = self.boss.as_ref().filter(|b| b.active()) {
+            // A boss fight is never calm; the closer the eye, the harder the drums.
+            threat = 0.55 + 0.45 * (1.0 - dist_sq(b.pos, hp).sqrt() / 10.0).max(0.0);
+        }
+        self.audio.set_threat(threat);
         let frac = self.hero.hp as f64 / self.hero.max_hp as f64;
         self.audio.set_danger(if frac < 0.35 { 1.0 - frac / 0.35 } else { 0.0 });
         self.streak_timer -= dt;
@@ -1155,6 +1512,13 @@ impl Game {
         j.hp_flash = (j.hp_flash - dtf * 3.0).max(0.0);
         j.hurt = (j.hurt - dtf * 2.2).max(0.0);
         j.go = (j.go - dtf).max(0.0);
+        j.fade = (j.fade - dtf * 1.6).max(0.0);
+        let boss_hp = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
+        if j.boss_trail > boss_hp {
+            j.boss_trail = (j.boss_trail - dtf * 12.0).max(boss_hp);
+        } else {
+            j.boss_trail = boss_hp;
+        }
         let mut landed = 0;
         j.coins.retain_mut(|c| {
             c.t += dtf / COIN_FLIGHT_SECONDS;
@@ -1181,6 +1545,22 @@ impl Game {
         let o = self.hero.occupied();
         self.level.grid.set(o.x, o.y, Tile::Nodule);
         self.collect();
+    }
+
+    /// Test and capture hook: `amount` damage straight to the boss.
+    pub fn debug_wound_boss(&mut self, amount: i32) {
+        if let Some(b) = self.boss.as_ref().filter(|b| b.active()) {
+            let at = b.pos;
+            self.wound_boss(amount, at);
+        }
+    }
+
+    /// Capture hook: knock the boss down as if a dive had missed.
+    pub fn debug_daze_boss(&mut self) {
+        if let Some(b) = self.boss.as_mut().filter(|b| b.active()) {
+            b.state = crate::logic::boss::BossState::Dazed(0.0);
+            b.hover = 0.05;
+        }
     }
 
     /// Test and capture hook: an enemy's touch.
@@ -1370,8 +1750,59 @@ mod tests {
         let o = g.hero.occupied();
         g.level.grid.set(o.x, o.y, Tile::Nodule);
         g.collect();
-        assert_eq!(g.screen, Screen::Won);
+        assert_eq!(g.screen, Screen::Cleared);
         assert!(g.events.contains(&GameEvent::Won));
+        // After the fanfare, the Cyclops' meadow, and a countdown.
+        for _ in 0..((CLEARED_SECONDS + 0.1) / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(g.level.data.boss);
+        assert!(g.boss.is_some());
+        assert!(g.enemies.is_empty());
+    }
+
+    #[test]
+    fn f1_jumps_to_the_boss_and_felling_it_leads_on() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        g.input.key_down(winit::keyboard::KeyCode::F1, false);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(g.level.data.boss, "F1 goes straight to the boss arena");
+        for _ in 0..((READY_SECONDS + 2.2) / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0; // keep him alive while we watch
+        }
+        assert_eq!(g.screen, Screen::Playing);
+        assert!(g.boss.as_ref().unwrap().active(), "the Cyclops has landed");
+        // An axe blow in reach lands.
+        let bp = g.boss.as_ref().unwrap().pos;
+        g.hero.m.teleport(P::new(bp.x.round() as i32, bp.y.round() as i32 + 1));
+        g.hero.facing = Dir::Up;
+        let hp = g.boss.as_ref().unwrap().hp;
+        g.hitstop = 0.0;
+        g.perform_attack();
+        assert!(g.boss.as_ref().unwrap().hp < hp, "axe missed the Cyclops");
+        // Beat it and the victory screen leads to dungeon II.
+        while g.boss.as_ref().unwrap().alive() {
+            g.debug_wound_boss(10);
+            for _ in 0..20 {
+                g.update(crate::app::STEP);
+                g.hero.invuln = 1.0;
+            }
+        }
+        for _ in 0..(6.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        assert_eq!(g.screen, Screen::Won);
+        assert!(g.events.contains(&GameEvent::BossSlain));
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(!g.level.data.boss);
+        assert_eq!(g.dungeon, 1);
     }
 
     #[test]

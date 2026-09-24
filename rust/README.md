@@ -36,7 +36,8 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 | Jump | Space | A |
 | Camera mode | C | Y |
 | Pause | Esc | Start, Back |
-| Mute / FPS / Fullscreen | M / F1 / F11, Alt+Enter | |
+| Mute / FPS / Fullscreen | M / F3 / F11, Alt+Enter | |
+| Cheat: straight to the Cyclops | F1 | |
 
 ## What changed from the web version
 
@@ -57,6 +58,8 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 - **Soundtrack:** a Norse war song in D minor at 100 BPM. A war horn opens it over a hurdy-gurdy drone on D and A. Under that sit galloping war drums, stomps and claps, a plucked lyre, a bone-flute melody, a chanting choir in the second half, and "HEY!" shouts at the turnarounds. The first pass builds up layer by layer and every fourth bar ends in a tom roll. `TheGreatAdventuresOfSebastian --write-music out.wav [seconds] [intensity]` renders it to a file.
 - **Turning on the spot:** standing still, tapping a direction turns Popolon to face it without stepping, and holding it walks. A blocked direction (wall, pit) just turns him, so you can aim a swing, a shot or a jump anywhere.
 - **Weight:** Popolon no longer snaps to full speed. Holding a direction accelerates him to the same top speed as before in 0.2 s. Letting go coasts him to rest on the next tile center under friction. Reversing brakes before he turns, and corners bleed a little speed. Hitboxes, `occupied` tiles and collisions are unchanged (`src/logic/hero.rs`, covered by tests).
+- **Boss: the Cyclops.** Collecting all 25 nuggets plays the fanfare, then the game fades into the Cyclops' Meadow. It is the same dungeon's outer ring, but the labyrinth in the middle is torn out and replaced with a sunny grassland: grass tufts, flowers, dirt patches, stone pillars, low brick walls, and a stream crossed by three wooden bridges. The Cyclops is a giant floating eye with horns, bat wings and tentacles. It drops in after the countdown, drifts around keeping its distance, squints and glows to telegraph, then attacks with bolt fans, bolt rings, tracking bolt streams and rolling boulders. Pillars and walls block its shots, and jumping clears them. At two thirds and one third health it grows angrier and faster, a green cross appears, the music steps up, and it starts diving at you. A dive that misses leaves it dazed in the grass, taking double damage. Damage per hit: axe 2, shots 1 (fireball 2), bombs 6. Felling it gives 5000 points and leads on to the next dungeon. Losing a life sends it back into the sky, but it keeps its wounds. In the arena the chase camera turns to keep the Cyclops in frame unless you steer the camera yourself. Code: `src/logic/boss.rs` (rules), `src/render/view/meadow.rs` (meadow and boss rendering), `boss_arena` in `src/logic/levels.rs`.
+- **F1 cheat:** jumps straight to the first Cyclops fight from anywhere, for testing. The FPS counter moved to F3.
 
 ## Layout
 

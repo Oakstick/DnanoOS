@@ -23,6 +23,8 @@ pub enum Action {
     Fullscreen,
     /// Right-stick click: swing the camera back behind Sebastian.
     CameraReset,
+    /// F1: straight to the first boss fight (testing cheat).
+    Cheat,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -90,7 +92,8 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         Enter | NumpadEnter => Action::Confirm,
         Escape => Action::Pause,
         KeyM => Action::Mute,
-        F1 => Action::Fps,
+        F1 => Action::Cheat,
+        F3 => Action::Fps,
         KeyC => Action::Camera,
         KeyE => Action::Attack,
         KeyB | KeyL | ShiftLeft | ShiftRight => Action::Bomb,
