@@ -129,6 +129,9 @@ pub const SHADE_PULSE: f32 = 2.0;
 /// Lit, and screen-door dithered away by `1 - alpha` (trees fading out of the camera's way).
 pub const SHADE_DITHER: f32 = 3.0;
 
+/// Lit, and on its top face a field of grass blades drawn with parallax occlusion mapping.
+pub const SHADE_GRASS: f32 = 4.0;
+
 /// How see-through a tree gets while it blocks the view of Popolon.
 pub const TREE_FADE_MIN: f32 = 0.22;
 /// Fade speed, in full fades per second.
@@ -732,7 +735,7 @@ impl WorldView {
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
         let patch = if self.meadow { lin(0x62b437) } else { lin(0x3c6c32) };
-        self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, SHADE_LIT));
+        self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, if self.meadow { SHADE_LIT } else { SHADE_GRASS }));
         self.static_dirty = true;
     }
 

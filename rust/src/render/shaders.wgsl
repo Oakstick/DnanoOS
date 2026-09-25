@@ -97,6 +97,89 @@ fn pow2(x: f32) -> f32 {
     return x * x;
 }
 
+// ------------------------------------------------------------ grass (POM)
+//
+// Parallax occlusion mapping on the top face of a grass tile: the face is the
+// tips of a field of blades, and the view ray is marched down into a
+// procedural height field of tapered blades until it hits one. What it hits
+// sets the color: dark down at the roots, bright at the tips, each blade its
+// own shade. No textures; the field is a hashed cell grid in world xz.
+
+const GRASS_FREQ: f32 = 26.0;   // blade cells per world unit
+const GRASS_DEPTH: f32 = 0.07;  // how far below the surface the roots sit, world units
+
+fn hash22(p: vec2<f32>) -> vec2<f32> {
+    var q = vec2<f32>(dot(p, vec2<f32>(127.1, 311.7)), dot(p, vec2<f32>(269.5, 183.3)));
+    return fract(sin(q) * 43758.5453);
+}
+
+// Height (0 roots .. 1 tips) of the field at `uv`, and the id of the blade there.
+fn blade_field(uv: vec2<f32>) -> vec2<f32> {
+    let cell = floor(uv);
+    let f = uv - cell;
+    var best = 0.0;
+    var id = 0.0;
+    for (var j = -1; j <= 1; j++) {
+        for (var i = -1; i <= 1; i++) {
+            let o = vec2<f32>(f32(i), f32(j));
+            let r = hash22(cell + o);
+            let center = o + vec2<f32>(0.15) + 0.7 * r;
+            let tall = 0.5 + 0.5 * fract(r.x * 7.13 + r.y * 3.71);
+            // A blade: a thin ridge at a random angle, pointed at one end.
+            let a = fract(r.y * 9.31 + r.x * 1.7) * 6.2832;
+            let axis = vec2<f32>(cos(a), sin(a));
+            let p = f - center;
+            let along = dot(p, axis);
+            let across = abs(dot(p, vec2<f32>(-axis.y, axis.x)));
+            let len = 0.62;
+            let taper = clamp(0.5 - along / (2.0 * len), 0.0, 1.0);
+            let width = 0.32 * taper + 0.03;
+            let ridge = clamp(1.0 - across / width, 0.0, 1.0);
+            let h = tall * ridge * sqrt(taper) * step(abs(along), len);
+            if (h > best) {
+                best = h;
+                id = fract(r.x * 13.7 + r.y * 5.3);
+            }
+        }
+    }
+    return vec2<f32>(best, id);
+}
+
+// Returns (brightness multiplier, blade id, fade) for a grass top face at `world`.
+fn grass_shade(world: vec3<f32>, view_depth: f32) -> vec3<f32> {
+    let fade = 1.0 - smoothstep(9.0, 22.0, view_depth);
+    if (fade <= 0.0) {
+        return vec3<f32>(0.9, 0.5, 0.0);
+    }
+    let v = normalize(g.cam_pos.xyz - world);
+    let steps = select(10, 18, view_depth < 8.0);
+    let uv0 = world.xz * GRASS_FREQ;
+    // How far the ray slides across the field while it sinks the full depth.
+    let slide = -v.xz / max(v.y, 0.2) * (GRASS_DEPTH * GRASS_FREQ);
+    let dstep = 1.0 / f32(steps);
+    var depth = 0.0;
+    var hb = blade_field(uv0);
+    var prev_depth = 0.0;
+    var prev_gap = 1.0 - hb.x;
+    for (var s = 0; s < steps; s++) {
+        let gap = (1.0 - hb.x) - depth;
+        if (gap <= 0.0) {
+            // Refine between the last two samples.
+            let t = prev_gap / max(prev_gap - gap, 1e-4);
+            depth = mix(prev_depth, depth, clamp(t, 0.0, 1.0));
+            hb = blade_field(uv0 + slide * depth);
+            break;
+        }
+        prev_depth = depth;
+        prev_gap = gap;
+        depth += dstep;
+        hb = blade_field(uv0 + slide * depth);
+    }
+    let h = 1.0 - depth;
+    let shade = mix(0.34, 1.3, h * h * (3.0 - 2.0 * h)) * (0.85 + 0.3 * hb.y);
+    return vec3<f32>(mix(0.9, shade, fade), hb.y, fade * h);
+}
+
 @fragment
 fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
     // Derivatives first, while control flow is still uniform.
@@ -107,10 +190,18 @@ fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
 
     let mode = in.emissive.w;
     // Screen-door fade: a 4x4 ordered dither keeps fading trees in the opaque pass.
-    if (mode > 2.5 && in.color.a < bayer4(in.clip.xy)) {
+    if (mode > 2.5 && mode < 3.5 && in.color.a < bayer4(in.clip.xy)) {
         discard;
     }
-    var rgb = in.color.rgb;
+    var albedo = in.color.rgb;
+    if (mode > 3.5 && n.y > 0.9) {
+        // Grass: blade tips catch a warmer, yellower light than the shaded roots.
+        let gs = grass_shade(in.world, in.depth);
+        albedo = albedo * gs.x;
+        albedo = mix(albedo, albedo * vec3<f32>(1.12, 1.1, 0.8), gs.z * 0.5);
+        albedo = mix(albedo, albedo * vec3<f32>(0.85, 1.05, 0.9), (gs.y - 0.5) * 0.6 * gs.z);
+    }
+    var rgb = albedo;
     if (mode < 0.5 || mode > 1.5) {
         var irr = g.ambient.rgb;
         irr += mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * n.y + 0.5);
@@ -132,7 +223,7 @@ fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
         if (mode > 1.5 && mode < 2.5) {
             emissive *= g.params.z;
         }
-        rgb = in.color.rgb * irr / PI + emissive;
+        rgb = albedo * irr / PI + emissive;
     }
     rgb = to_srgb(aces_filmic(rgb, g.params.y));
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);

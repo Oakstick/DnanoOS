@@ -29,6 +29,12 @@ fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3
     out.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
 }
 
+/// A grass tile: its top face is shaded as a field of blades.
+fn grass_cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, color: Vec3) {
+    let m = Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, pos);
+    out.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_GRASS));
+}
+
 fn jit(hex: u32, h: f64, amount: f32) -> Vec3 {
     lin(hex) * (1.0 - amount + h as f32 * amount * 2.0)
 }
@@ -64,9 +70,15 @@ impl WorldView {
                 // Raised ground: an earthen cliff with the grass on top.
                 let body = h - 0.04;
                 cube(&mut self.static_cubes, Vec3::new(xf, body / 2.0 - 0.05, yf), Vec3::new(1.0, body + 0.1, 1.0), 0.0, jit(CLIFF, hash(hx + 2.0, hy), 0.08));
-                cube(&mut self.static_cubes, Vec3::new(xf, h - 0.02, yf), Vec3::new(1.0, 0.04, 1.0), 0.0, road);
-            } else {
+                if t == Tile::Nest {
+                    cube(&mut self.static_cubes, Vec3::new(xf, h - 0.02, yf), Vec3::new(1.0, 0.04, 1.0), 0.0, road);
+                } else {
+                    grass_cube(&mut self.static_cubes, Vec3::new(xf, h - 0.02, yf), Vec3::new(1.0, 0.04, 1.0), road);
+                }
+            } else if t == Tile::Nest {
                 cube(&mut self.static_cubes, Vec3::new(xf, -0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, road);
+            } else {
+                grass_cube(&mut self.static_cubes, Vec3::new(xf, -0.05, yf), Vec3::new(1.0, 0.1, 1.0), road);
             }
             if t == Tile::Nest {
                 continue;
