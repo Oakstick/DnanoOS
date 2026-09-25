@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::f64::consts::PI;
 
 mod shop;
+mod tour;
 pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState, ShopTab};
+pub use tour::{Tour, TourArt, TourStop, TOUR_STOP_SECONDS};
 
 use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
@@ -35,6 +37,8 @@ pub enum Screen {
     Won,
     /// The blacksmith's forge, after a boss.
     Shop,
+    /// The first-run tour of the dungeon, before the first countdown.
+    Tour,
     GameOver,
 }
 
@@ -65,7 +69,10 @@ const GO_SECONDS: f32 = 0.8;
 /// Freeze-frame on a kill, the classic "impact" beat.
 const HITSTOP_KILL: f64 = 0.05;
 /// Kills closer together than this count as a streak.
-const STREAK_SECONDS: f64 = 1.6;
+const STREAK_SECONDS: f64 = 2.5;
+/// Every third kill in a streak is BRUTAL: a big shake and double points for a while.
+pub const BRUTAL_STREAK: u32 = 3;
+pub const DOUBLE_POINTS_SECONDS: f64 = 10.0;
 /// Tiles walked between footsteps.
 const STRIDE_TILES: f64 = 0.5;
 /// A collected nugget takes this long to fly into the HUD counter.
@@ -137,6 +144,8 @@ pub struct Juice {
     pub boss_trail: f32,
     /// 1 when coins come in, fading: the purse counter jumps.
     pub coin_punch: f32,
+    /// 1 on a BRUTAL streak, fading: a hot flash over the screen.
+    pub brutal: f32,
 }
 
 /// A button on the title or pause menu.
@@ -241,6 +250,11 @@ pub struct Game {
     /// Seconds the boss has left burning, and until its next bite.
     boss_burn: f64,
     burn_tick: f64,
+    /// Seconds of double points left (from a BRUTAL streak).
+    pub double_points: f64,
+    /// The first-run tour, while it plays, and whether it is still owed.
+    pub tour: Option<Tour>,
+    pub tour_pending: bool,
 }
 
 impl Game {
@@ -303,6 +317,10 @@ impl Game {
             shop: ShopState::default(),
             boss_burn: 0.0,
             burn_tick: 0.0,
+            double_points: 0.0,
+            tour: None,
+            // Tests start straight into play; they switch the tour on when they want it.
+            tour_pending: !cfg!(test) && !tour::tour_seen(),
         };
         g.load_level(0);
         g
@@ -411,6 +429,7 @@ impl Game {
         self.juice.hp_trail = self.hero.hp as f32;
         self.hitstop = 0.0;
         self.kill_streak = 0;
+        self.double_points = 0.0;
         self.was_airborne = false;
         let center = self.level.nest_center;
         for (i, e) in self.enemies.iter_mut().enumerate() {
@@ -443,7 +462,11 @@ impl Game {
         self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare axe
         self.load_level(0);
         self.juice.score_shown = 0.0;
-        self.enter(Screen::Ready);
+        if self.tour_pending {
+            self.begin_tour();
+        } else {
+            self.enter(Screen::Ready);
+        }
     }
 
     /// A fresh adventure: the axe, a round shield, an empty purse, one health potion.
@@ -482,6 +505,7 @@ impl Game {
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
         self.view.forge = self.screen == Screen::Shop;
+        self.view.tour = self.tour.as_ref().filter(|_| self.screen == Screen::Tour).map(|t| (t.stop().target, t.t as f32, t.index));
         self.view.focus = self
             .boss
             .as_ref()
@@ -568,6 +592,7 @@ impl Game {
                 }
             }
             Screen::Shop => self.update_shop(dt),
+            Screen::Tour => self.update_tour(dt),
             Screen::GameOver => {
                 if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
                     self.enter(Screen::Title);
@@ -933,7 +958,7 @@ impl Game {
                 if self.nuggets_got == 1 {
                     self.events.push(GameEvent::FirstNugget);
                 }
-                self.score.add(POINTS_NODULE);
+                self.award(POINTS_NODULE);
                 self.earn(COINS_NUGGET);
                 self.audio.play_reward(self.nuggets_got);
                 // Every five nuggets the music presses on a little faster.
@@ -968,7 +993,7 @@ impl Game {
                 let before = self.hero.hp;
                 self.hero.heal(REMEDY_HEAL);
                 let gained = self.hero.hp - before;
-                self.score.add(POINTS_CHARGE);
+                self.award(POINTS_CHARGE);
                 self.audio.play(Sfx::Heal);
                 self.view.spark(&self.level.grid, ox, oy, 0x4cf06a);
                 self.view.sparkle(&self.level.grid, ox, oy, 0.4, 0x5cff6a, 16);
@@ -1007,6 +1032,7 @@ impl Game {
     /// F1: skip straight to the first Cyclops, from anywhere.
     pub fn cheat_to_boss(&mut self) {
         self.audio.unlock();
+        self.tour = None;
         if matches!(self.screen, Screen::Title | Screen::GameOver) {
             self.score.reset();
             self.juice.score_shown = 0.0;
@@ -1021,6 +1047,7 @@ impl Game {
     /// 0: straight to the blacksmith, from anywhere, with coins to test with.
     pub fn cheat_to_shop(&mut self) {
         self.audio.unlock();
+        self.tour = None;
         if matches!(self.screen, Screen::Title | Screen::GameOver) {
             self.score.reset();
             self.juice.score_shown = 0.0;
@@ -1138,7 +1165,7 @@ impl Game {
                 self.audio.play(Sfx::Explode);
                 self.audio.play(Sfx::BossDeath);
                 self.audio.set_threat(0.0);
-                self.score.add(POINTS_CYCLOPS);
+                self.award(POINTS_CYCLOPS);
                 let bounty = COINS_BOSS + 100 * self.dungeon as u32;
                 self.earn(bounty);
                 self.floater(p.x, p.y - 0.8, format!("+{bounty} COINS"), 2.2, Some(0xffd84a));
@@ -1222,7 +1249,6 @@ impl Game {
             self.view.sparkle(grid, at.x, at.y, 1.0, 0xfff1c0, 6);
             self.view.shake(0.16);
             self.hitstop = HITSTOP_BOSS;
-            self.score.add(10 * amount as u32);
             if dying {
                 // Its last scream pops everything still in the air.
                 for s in self.boss_shots.drain(..) {
@@ -1230,6 +1256,7 @@ impl Game {
                 }
                 self.hitstop = 0.12;
             }
+            self.award(10 * amount as u32);
         }
         for e in events.drain(..) {
             self.boss_event(e);
@@ -1382,6 +1409,34 @@ impl Game {
         }
     }
 
+    /// Adds points, doubled while a BRUTAL streak's reward runs. Returns what was added.
+    fn award(&mut self, points: u32) -> u32 {
+        let points = if self.double_points > 0.0 { points * 2 } else { points };
+        self.score.add(points);
+        points
+    }
+
+    /**
+     * A third kill in quick succession: BRUTAL. The screen jolts and flashes,
+     * the world holds for a beat, and every point is doubled for a while.
+     */
+    fn brutal(&mut self) {
+        self.double_points = DOUBLE_POINTS_SECONDS;
+        self.view.shake(0.85);
+        self.hitstop = 0.14;
+        self.juice.brutal = 1.0;
+        self.audio.play(Sfx::Brutal);
+        self.juice.banner = Some(Banner {
+            text: "BRUTAL!".into(),
+            sub: format!("x{} KILL STREAK   DOUBLE POINTS FOR {} SECONDS", self.kill_streak, DOUBLE_POINTS_SECONDS as u32),
+            color: 0xff3a2a,
+            life: 2.2,
+            max: 2.2,
+        });
+        let hp = self.hero.pos();
+        self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.8, 0xff5a3a, 30);
+    }
+
     /// Coins in the purse, and the counter jumps.
     fn earn(&mut self, coins: u32) {
         self.purse += coins;
@@ -1407,7 +1462,7 @@ impl Game {
         let mut label = format!("{}!", def.name.to_uppercase());
         if kind == PotionKind::Life {
             if !self.score.gain_life() {
-                self.score.add(500);
+                self.award(500);
                 label = "FULL LIVES +500".into();
             }
         } else {
@@ -1425,13 +1480,16 @@ impl Game {
     }
 
     fn slay_enemy(&mut self, i: usize) {
-        let value = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
-        self.score.add(value);
+        let base = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.earn(COINS_KILL);
         self.enemies[i].kill();
         self.kill_streak = if self.streak_timer > 0.0 { self.kill_streak + 1 } else { 1 };
         self.streak_timer = STREAK_SECONDS;
         self.audio.play_kill(self.kill_streak - 1);
+        if self.kill_streak % BRUTAL_STREAK == 0 {
+            self.brutal();
+        }
+        let value = self.award(base);
         let p = self.enemies[i].pos();
         let color = self.enemies[i].b.color;
         self.view.spark(&self.level.grid, p.x, p.y, 0xffb0b0);
@@ -1439,7 +1497,8 @@ impl Game {
         self.view.sparkle(&self.level.grid, p.x, p.y, 0.5, 0xfff1c0, 8);
         self.view.shake(0.1);
         self.hitstop = HITSTOP_KILL;
-        self.floater(p.x, p.y, value.to_string(), 1.0, None);
+        let label = if self.double_points > 0.0 { format!("{value} x2") } else { value.to_string() };
+        self.floater(p.x, p.y, label, 1.0, if self.double_points > 0.0 { Some(0xff5a3a) } else { None });
         if self.kill_streak >= 2 {
             let text = format!("x{} STREAK", self.kill_streak);
             self.floater(p.x, p.y - 0.6, text, 1.2, Some(0xff8a2a));
@@ -1673,6 +1732,7 @@ impl Game {
         let frac = self.hero.hp as f64 / self.hero.max_hp as f64;
         self.audio.set_danger(if frac < 0.35 { 1.0 - frac / 0.35 } else { 0.0 });
         self.streak_timer -= dt;
+        self.double_points = (self.double_points - dt).max(0.0);
     }
 
     /// Footsteps while running, a thud and a puff of dust on landing.
@@ -1727,6 +1787,7 @@ impl Game {
         j.go = (j.go - dtf).max(0.0);
         j.fade = (j.fade - dtf * 1.6).max(0.0);
         j.coin_punch = (j.coin_punch - dtf * 3.0).max(0.0);
+        j.brutal = (j.brutal - dtf * 1.8).max(0.0);
         let boss_hp = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         if j.boss_trail > boss_hp {
             j.boss_trail = (j.boss_trail - dtf * 12.0).max(boss_hp);
@@ -1766,6 +1827,13 @@ impl Game {
         if let Some(b) = self.boss.as_ref().filter(|b| b.active()) {
             let at = b.pos;
             self.wound_boss(amount, at);
+        }
+    }
+
+    /// Capture hook: three quick kills, for a BRUTAL streak.
+    pub fn debug_streak(&mut self) {
+        for i in 0..self.enemies.len().min(3) {
+            self.slay_enemy(i);
         }
     }
 
@@ -2096,6 +2164,52 @@ mod tests {
         g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Shop);
+    }
+
+    #[test]
+    fn a_third_quick_kill_is_brutal_and_doubles_points() {
+        let mut g = playing();
+        let before = g.score.score;
+        g.slay_enemy(0);
+        g.slay_enemy(1);
+        assert_eq!(g.double_points, 0.0);
+        g.slay_enemy(2);
+        assert!(g.double_points > 0.0, "no BRUTAL on the third kill");
+        assert_eq!(g.juice.banner.as_ref().map(|b| b.text.as_str()), Some("BRUTAL!"));
+        // The third kill already counts double: 100 + 100 + 200.
+        assert_eq!(g.score.score - before, 400);
+        let mid = g.score.score;
+        g.debug_collect_nugget();
+        assert_eq!(g.score.score - mid, POINTS_NODULE * 2, "nuggets count double too");
+    }
+
+    #[test]
+    fn the_first_game_opens_with_a_tour() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-tour"));
+        let mut g = Game::new();
+        g.tour_pending = true;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Tour);
+        let stops = g.tour.as_ref().unwrap().stops.len();
+        assert!(stops >= 8, "only {stops} stops");
+        assert!(g.tour.as_ref().unwrap().stops.iter().any(|s| matches!(s.art, TourArt::Enemy(_))));
+        // The camera flies to the first thing.
+        for _ in 0..60 {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.view.tour.is_some());
+        // Click through every stop; then the countdown.
+        for _ in 0..stops {
+            for _ in 0..40 {
+                g.update(crate::app::STEP);
+            }
+            g.input.inject(Action::Confirm);
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(!g.tour_pending);
+        assert!(tour::tour_seen(), "the tour is remembered");
     }
 
     #[test]

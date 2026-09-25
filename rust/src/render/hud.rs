@@ -84,6 +84,10 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     let t = tile_for(w, h);
     // Every piece of text gets a drop shadow so it reads over bright floors and lights.
     o.shadow = (t * 0.08).max(1.5);
+    if g.screen == Screen::Tour {
+        draw_tour(o, g, t);
+        return;
+    }
     if g.screen == Screen::Shop {
         shop::draw_shop(o, g, t);
         if g.juice.fade > 0.0 {
@@ -492,6 +496,32 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let j = &g.juice;
 
+    // BRUTAL: a hot flash that burns off from the middle out.
+    if j.brutal > 0.0 {
+        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, 0.22 * j.brutal * j.brutal]);
+        let bands = 8;
+        let bw = t * 0.45;
+        for i in 0..bands {
+            let a = j.brutal * 0.5 * (1.0 - i as f32 / bands as f32);
+            let inset = i as f32 * bw;
+            o.rect_outline(inset + bw / 2.0, inset + bw / 2.0, w - 2.0 * inset - bw, h - 2.0 * inset - bw, bw, rgba(0xff5a1a, a));
+        }
+    }
+    // Double points: a badge under the score while it lasts.
+    if g.double_points > 0.0 && g.screen == Screen::Playing {
+        let margin = t * 0.4;
+        let bw = t * 8.6;
+        let x = w - margin - bw;
+        let y = margin + PANEL_ROWS * t + t * 0.25;
+        let pulse = 0.8 + (g.time as f32 * 8.0).sin() * 0.2;
+        o.rect(x, y, bw, t * 1.1, [0.35, 0.05, 0.02, 0.8]);
+        o.rect_outline(x, y, bw, t * 1.1, (t * 0.07).max(1.0), rgba(0xff5a3a, pulse));
+        let secs = g.double_points.ceil() as u32;
+        o.text(&format!("x2 POINTS  {secs}s"), x + bw / 2.0, y + t * 0.45, t * 0.6, rgba(0xffd0a0, 1.0), Align::Center, true);
+        let fr = (g.double_points / crate::game::DOUBLE_POINTS_SECONDS) as f32;
+        o.rect(x + t * 0.3, y + t * 0.85, (bw - t * 0.6) * fr, t * 0.1, rgba(0xff5a3a, 1.0));
+    }
+
     // Red at the screen edges when hurt.
     if j.hurt > 0.0 {
         let bands = 10;
@@ -525,7 +555,9 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
     // Milestone banner.
     if let Some(b) = &j.banner {
         let age = b.max - b.life;
-        let pop = 1.0 + 0.55 * (1.0 - (age / 0.2).min(1.0)).powi(2);
+        let big = b.text == "BRUTAL!";
+        let pop = if big { 1.0 + 1.6 * (1.0 - (age / 0.25).min(1.0)).powi(3) } else { 1.0 + 0.55 * (1.0 - (age / 0.2).min(1.0)).powi(2) };
+        let pop = if big { pop * 1.7 } else { pop };
         let alpha = (b.life / 0.4).min(1.0);
         let y = h * 0.27;
         o.rect(0.0, y - t * 1.3, w, t * 2.6, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.45 * alpha]);
@@ -557,6 +589,114 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let ready = if g.boss.is_some() { "THE CYCLOPS AWAITS" } else { "GET READY" };
     o.text(ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
     o.text(&g.level.data.name.to_uppercase(), w / 2.0, y + t * 4.3, t * 0.6, rgba(SAND, 1.0), Align::Center, true);
+}
+
+// ------------------------------------------------------------------- tour
+
+/**
+ * The first-run tour's overlay: letterbox bars slide in, a pulsing frame
+ * locks onto what the camera is showing, and a see-through card names it
+ * and explains it, with a picture, progress dots and how to move on.
+ */
+fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
+    let Some(tour) = &g.tour else { return };
+    let (w, h) = (o.width, o.height);
+    let stop = tour.stop();
+    let time = g.time as f32;
+    let k = (tour.age as f32 / 0.6).min(1.0);
+    let bar_h = h * 0.1 * (1.0 - (1.0 - k).powi(3));
+    o.rect(0.0, 0.0, w, bar_h, [0.0, 0.0, 0.0, 0.92]);
+    o.rect(0.0, h - bar_h, w, bar_h, [0.0, 0.0, 0.0, 0.92]);
+
+    // Lock-on frame around the target, tightening as the camera arrives.
+    let st = tour.t as f32;
+    let settle = (st / 1.2).min(1.0);
+    if let Some((x, y)) = g.view.project(stop.target, w, h) {
+        let size = t * (2.4 + 3.0 * (1.0 - settle)) * (1.0 + (time * 4.0).sin() * 0.04);
+        let arm = size * 0.35;
+        let lw = (t * 0.1).max(2.0);
+        let c = rgba(stop.color, 0.9 * settle.max(0.3));
+        for (sx, sy) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+            let (cx, cy) = (x + sx * size, y + sy * size);
+            o.line([cx, cy], [cx - sx * arm, cy], lw, c);
+            o.line([cx, cy], [cx, cy - sy * arm], lw, c);
+        }
+    }
+
+    // The card: a see-through panel above the lower bar.
+    let fade = (st / 0.5).min(1.0);
+    let cw = (w * 0.42).max(t * 26.0).min(w - t * 1.6);
+    let chh = t * 6.4;
+    let cx = t * 0.8;
+    let cy = h - bar_h - chh - t * 0.6;
+    o.rect(cx, cy, cw, chh, [0.02, 0.03, 0.05, 0.5 * fade]);
+    o.rect(cx, cy, t * 0.14, chh, rgba(stop.color, 0.9 * fade));
+    o.rect_outline(cx, cy, cw, chh, 1.0, [1.0, 1.0, 1.0, 0.18 * fade]);
+    let art = t * 4.2;
+    let ax = cx + t * 0.6;
+    let ay = cy + (chh - art) / 2.0;
+    draw_tour_art(o, stop.art, ax, ay, art, fade);
+    let tx = ax + art + t * 0.7;
+    // The title types itself out.
+    let shown = ((st * 30.0) as usize).min(stop.title.len());
+    o.text(&stop.title[..shown], tx, cy + t * 1.0, t * 1.0, rgba(stop.color, fade), Align::Left, true);
+    wrap_left(o, stop.body, tx, cy + t * 2.1, cw - (tx - cx) - t * 0.6, t * 0.62, t * 0.5, rgba(TEXT, fade));
+
+    // Progress dots and the way on.
+    let n = tour.stops.len();
+    let dy = cy + chh - t * 0.55;
+    for i in 0..n {
+        let on = i == tour.index;
+        let c = if on { rgba(stop.color, fade) } else if i < tour.index { [1.0, 1.0, 1.0, 0.5 * fade] } else { [1.0, 1.0, 1.0, 0.18 * fade] };
+        let r = if on { t * 0.16 } else { t * 0.11 };
+        o.circle(tx + i as f32 * t * 0.5, dy, r, c);
+    }
+    let left = (crate::game::TOUR_STOP_SECONDS - tour.t).max(0.0) as f32 / crate::game::TOUR_STOP_SECONDS as f32;
+    o.rect(cx, cy + chh - t * 0.08, cw * left, t * 0.08, rgba(stop.color, 0.6 * fade));
+    o.text("Enter / click / A: next     Esc: skip the tour", w - t * 0.8, h - bar_h / 2.0, t * 0.5, rgba(TEXT_DIM, k), Align::Right, false);
+    o.text("THE GREAT ADVENTURES OF SEBASTIAN", t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Left, false);
+    o.text(&format!("{} / {}", tour.index + 1, n), w - t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Right, false);
+}
+
+/// The picture on a tour card: a portrait of a foe, or an icon of a thing.
+fn draw_tour_art(o: &mut Overlay, art: crate::game::TourArt, x: f32, y: f32, size: f32, alpha: f32) {
+    use crate::game::TourArt;
+    use crate::logic::enemy::EnemyKind;
+    o.rect(x, y, size, size, [1.0, 1.0, 1.0, 0.06 * alpha]);
+    let sp = sprites();
+    let fit = |o: &mut Overlay, s: &Sprite| {
+        let scale = (size * 0.9) / s.width.max(s.height) as f32;
+        let (sw, sh) = (s.width as f32 * scale, s.height as f32 * scale);
+        draw_sprite(o, s, x + (size - sw) / 2.0, y + (size - sh) / 2.0, scale, None, alpha);
+    };
+    match art {
+        TourArt::Hero => fit(o, &sp.portrait),
+        TourArt::Enemy(kind) => {
+            let i = match kind {
+                EnemyKind::Skeleton => 0,
+                EnemyKind::Bat | EnemyKind::Vampire => 1,
+                EnemyKind::Slime => 2,
+            };
+            let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
+            let s = &sp.cast[i].0;
+            let scale = (size * 0.9) / s.width.max(s.height) as f32;
+            let (sw, sh) = (s.width as f32 * scale, s.height as f32 * scale);
+            draw_sprite(o, s, x + (size - sw) / 2.0, y + (size - sh) / 2.0, scale, tint, alpha);
+        }
+        TourArt::Nugget => fit(o, icon(Icon::Coin)),
+        TourArt::Potion(k) => fit(o, icon(Icon::Potion(k))),
+        TourArt::WeaponShrine => fit(o, icon(Icon::Pickup(crate::logic::items::RangedKind::Trishot))),
+        TourArt::ItemShrine => fit(o, icon(Icon::Shield(crate::logic::gear::ShieldKind::IronRound))),
+        TourArt::Cross => {
+            let c = rgba(0x4cf06a, alpha);
+            o.rect(x + size * 0.4, y + size * 0.15, size * 0.2, size * 0.7, c);
+            o.rect(x + size * 0.15, y + size * 0.4, size * 0.7, size * 0.2, c);
+        }
+        TourArt::Pit => {
+            o.circle(x + size / 2.0, y + size / 2.0, size * 0.38, rgba(0x2a1e12, alpha));
+            o.circle(x + size / 2.0, y + size / 2.0, size * 0.3, rgba(0x050406, alpha));
+        }
+    }
 }
 
 // ------------------------------------------------------------- world labels

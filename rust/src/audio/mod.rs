@@ -63,6 +63,10 @@ pub enum Sfx {
     ShieldBreak,
     /// A lightning potion's arc.
     Zap,
+    /// The tour's camera swooping to the next stop.
+    Whoosh,
+    /// A x3 kill streak.
+    Brutal,
 }
 
 const MASTER_VOLUME: f64 = 0.5;
@@ -248,7 +252,7 @@ impl AudioManager {
         let pitch = self.pickup_pitch as f64;
         // Dynamic variation: no two plays of an effect come out exactly alike.
         // Cues that carry meaning (countdown, fanfare) stay exact.
-        let exact = matches!(sfx, Sfx::Tick | Sfx::Go | Sfx::Win | Sfx::Milestone);
+        let exact = matches!(sfx, Sfx::Tick | Sfx::Go | Sfx::Win | Sfx::Milestone | Sfx::Brutal);
         let vp = if exact { 1.0 } else { self.rng.range(0.94, 1.06) };
         let vg = if exact { 1.0 } else { self.rng.range(0.85, 1.05) };
         let side = if sfx == Sfx::Slash {
@@ -399,6 +403,30 @@ impl AudioManager {
                     sweep(s, t, 500.0, 90.0, 0.3, Wave::Square, 0.14);
                     for i in 0..4 {
                         blip(s, t + 0.04 + i as f64 * 0.05, 2400.0 - i as f64 * 300.0, 0.05, Wave::Square, 0.03);
+                    }
+                }
+                Sfx::Whoosh => {
+                    // Air rushing past as the camera flies.
+                    s.push(
+                        Voice::new(t, t + 0.6, Wave::Noise { rate: 1.0, offset }, Env::constant(1.0), Env::points(vec![(t, 0.0001), (t + 0.25, 0.16 * vg), (t + 0.6, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 900.0 * vp, 1.4),
+                    );
+                    sweep(s, t, 180.0, 90.0, 0.5, Wave::Sine, 0.08);
+                }
+                Sfx::Brutal => {
+                    // A crushing impact, a war-horn stab and a gong-like ring.
+                    sweep(s, t, 110.0, 30.0, 0.7, Wave::Sine, 0.6);
+                    s.push(
+                        Voice::new(t, t + 0.5, Wave::Noise { rate: 0.6, offset }, Env::constant(1.0), Env::ramp(t, 0.45, 0.001, 0.45), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 700.0, 1.0),
+                    );
+                    for (i, f) in [146.83, 220.0, 293.66].into_iter().enumerate() {
+                        let gain = Env::points(vec![(t + 0.05, 0.0001), (t + 0.12, 0.09), (t + 0.7, 0.05), (t + 1.2, 0.001)]);
+                        s.push(Voice::new(t + 0.05, t + 1.25, Wave::Saw, Env::constant(f * (1.0 + i as f64 * 0.002)), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 1400.0, 1.5));
+                    }
+                    for (f, g) in [(523.0, 0.06), (523.0 * 2.76, 0.03), (523.0 * 5.4, 0.015)] {
+                        let gain = Env::points(vec![(t + 0.05, 0.0001), (t + 0.07, g), (t + 1.5, 0.0005)]);
+                        s.push(Voice::new(t + 0.05, t + 1.55, Wave::Sine, Env::constant(f), gain, Bus::Sfx));
                     }
                 }
                 Sfx::Zap => {

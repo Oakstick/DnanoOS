@@ -9,7 +9,8 @@
 //! `hurt`, `boss` (the F1 cheat), `wound:N` (N damage to the boss), `daze`,
 //! `shop` (open the blacksmith), `coins:N`, `tab`, `drink`, and `potion:I`
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
-//! equipped) and `shield:I` (shield I, or none past the end).
+//! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
+//! the first-run tour on the next confirm) and `streak` (three quick kills).
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -30,6 +31,8 @@ enum Cmd {
     Wound(i32),
     Daze,
     Shop,
+    Tour,
+    Streak,
     Arm(usize, u8),
     Shield(usize),
     Coins(u32),
@@ -65,6 +68,8 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "boss" => Cmd::Press(Action::Cheat),
             "daze" => Cmd::Daze,
             "shop" => Cmd::Shop,
+            "tour" => Cmd::Tour,
+            "streak" => Cmd::Streak,
             "arm" => {
                 let line = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
                 let level = parts.next().and_then(|v| v.parse().ok()).unwrap_or(1);
@@ -118,6 +123,7 @@ pub fn run(args: &[String]) -> i32 {
     eprintln!("renderer: {}", gpu.backend);
     let mut game = Game::new();
     game.viewport = (w as f32, h as f32);
+    game.tour_pending = false;
     let mut next = 0;
     let mut t = 0.0;
     while t < until {
@@ -131,6 +137,8 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Wound(n) => game.debug_wound_boss(n),
                 Cmd::Daze => game.debug_daze_boss(),
                 Cmd::Shop => game.open_shop(),
+                Cmd::Tour => game.tour_pending = true,
+                Cmd::Streak => game.debug_streak(),
                 Cmd::Arm(line, level) => game.debug_arm(crate::logic::gear::LINES[line.min(3)], level),
                 Cmd::Shield(i) => {
                     game.hero.shield = crate::logic::gear::SHIELDS.get(i).map(|&k| crate::logic::gear::ShieldGear::new(k));

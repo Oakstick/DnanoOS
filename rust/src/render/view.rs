@@ -511,6 +511,10 @@ pub struct WorldView {
     pub focus: Option<Vec3>,
     /// The shop: the camera looks into the blacksmith's forge.
     pub forge: bool,
+    /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
+    pub tour: Option<(Vec3, f32, usize)>,
+    tour_index: Option<usize>,
+    tour_angle: f32,
     was_forge: bool,
     zaps: Vec<forge::Zap>,
     /// Swiftness afterimages: position, heading, fade.
@@ -575,6 +579,9 @@ impl WorldView {
             recentering: false,
             focus: None,
             forge: false,
+            tour: None,
+            tour_index: None,
+            tour_angle: 0.0,
             was_forge: false,
             zaps: Vec::new(),
             ghosts: Vec::new(),
@@ -1059,7 +1066,11 @@ impl WorldView {
      */
     fn update_tree_fade(&mut self, dt: f32, hero: &Hero) {
         let hp = hero.pos();
-        let feet = Vec3::new(hp.x as f32, hero.altitude as f32 * STEP, hp.y as f32);
+        // During the tour, clear the view of whatever the camera is showing.
+        let feet = match self.tour {
+            Some((target, _, _)) => target - Vec3::new(0.0, 0.3, 0.0),
+            None => Vec3::new(hp.x as f32, hero.altitude as f32 * STEP, hp.y as f32),
+        };
         let targets = [feet + Vec3::new(0.0, 0.25, 0.0), feet + Vec3::new(0.0, 0.6, 0.0), feet + Vec3::new(0.0, 1.0, 0.0)];
         let eye = self.cam_pos;
         let step = TREE_FADE_RATE * dt;
@@ -1068,7 +1079,7 @@ impl WorldView {
             if !t.alive {
                 continue;
             }
-            let blocking = hero.alive && targets.iter().any(|&to| t.blocks(eye, to));
+            let blocking = (hero.alive || self.tour.is_some()) && targets.iter().any(|&to| t.blocks(eye, to));
             let goal = if blocking { TREE_FADE_MIN } else { 1.0 };
             let fade = if t.fade < goal { (t.fade + step).min(goal) } else { (t.fade - step).max(goal) };
             if fade == t.fade {
@@ -1162,7 +1173,8 @@ impl WorldView {
         }
         self.animate_enemy(i, e, dt, time);
         let v = &mut self.enemy_views[i];
-        let hidden = matches!(e.mode(), EnemyMode::Eaten | EnemyMode::Nest);
+        // Waiting in the hollow they are out of sight, except when the tour shows them off.
+        let hidden = e.mode() == EnemyMode::Eaten || (e.mode() == EnemyMode::Nest && self.tour.is_none());
         v.visible = !hidden;
         if e.mode() == EnemyMode::Scattered {
             v.light_intensity = 0.6;
@@ -1360,7 +1372,21 @@ impl WorldView {
             self.was_forge = self.forge;
             self.initialized = false;
         }
-        let (desired, look, pos_lerp) = if self.forge {
+        if self.tour.is_none() {
+            self.tour_index = None;
+        }
+        let (desired, look, pos_lerp) = if let Some((target, t, index)) = self.tour {
+            // A dramatic swoop: in from high and wide, then a slow close orbit.
+            if self.tour_index != Some(index) {
+                self.tour_index = Some(index);
+                self.tour_angle = open_angle(grid, target);
+            }
+            let e = 1.0 - (1.0 - (t / 1.2).min(1.0)).powi(3);
+            let a = self.tour_angle + t * 0.16;
+            let r = 2.5 + 3.6 * (1.0 - e);
+            let h = 2.15 + 3.0 * (1.0 - e);
+            (target + Vec3::new(a.cos() * r, h, a.sin() * r), target + Vec3::new(0.0, 0.35, 0.0), 4.0 + 5.0 * e)
+        } else if self.forge {
             // The forge fills the left of the screen; the shop panel sits on the right.
             self.showcase_angle += dt;
             let a = (self.showcase_angle * 0.2).sin() * 0.15;
@@ -1703,6 +1729,12 @@ impl WorldView {
             }
         }
 
+        // --- a spotlight on whatever the tour is showing
+        if let Some((target, t, _)) = self.tour {
+            let k = (t / 0.6).min(1.0);
+            f.lights.push(Light { pos: target + Vec3::new(0.3, 1.8, 0.4), color: lin(0xffe6b8) * 9.0 * k, distance: 5.0 });
+        }
+
         // --- the boss and what it throws
         if let Some(b) = s.boss {
             self.emit_boss(b, hero_pos, time, f);
@@ -1969,6 +2001,30 @@ fn clear_behind(grid: &Grid, pivot: Vec3, dir: Vec3) -> f32 {
         return chase::MIN_DISTANCE.max(d - chase::DISTANCE / steps as f32);
     }
     chase::DISTANCE
+}
+
+/// The direction from `target` with the most open ground, so a close camera sits over a road.
+fn open_angle(grid: &Grid, target: Vec3) -> f32 {
+    let mut best = (0, PI / 2.0);
+    for k in 0..16 {
+        let a = k as f32 / 16.0 * TAU;
+        let mut open = 0;
+        for d in [0.8f32, 1.6, 2.4, 3.2] {
+            let x = js_round((target.x + a.cos() * d) as f64) as i32;
+            let z = js_round((target.z + a.sin() * d) as f64) as i32;
+            if grid.get(x, z) != Tile::Rock {
+                open += 1;
+            } else {
+                break;
+            }
+        }
+        // Prefer looking in from the south (the usual view) when it is a tie.
+        let score = open * 10 + if a.sin() > 0.3 { 1 } else { 0 };
+        if score > best.0 {
+            best = (score, a);
+        }
+    }
+    best.1
 }
 
 /// Camera yaw for a facing: forward = (cos yaw, 0, sin yaw) in world XZ.
