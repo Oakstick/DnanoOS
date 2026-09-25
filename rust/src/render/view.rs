@@ -731,7 +731,7 @@ impl WorldView {
         let h = floor_at(grid, x as f32, y as f32);
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
-        let patch = if self.meadow { lin(0x62b437) } else { lin(0x6e553a) };
+        let patch = if self.meadow { lin(0x62b437) } else { lin(0x3c6c32) };
         self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, SHADE_LIT));
         self.static_dirty = true;
     }

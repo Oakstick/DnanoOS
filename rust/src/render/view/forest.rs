@@ -1,18 +1,13 @@
-//! The dungeons' terrain: a night forest cut by old forest roads. Walkable
-//! tiles are packed-earth roads with grass verges, wheel ruts, a grassy
-//! strip down the middle, fallen leaves and the odd mushroom. Wall tiles
+//! The dungeons' terrain: a night forest cut by grassy paths. Walkable
+//! tiles are one even green with the odd tuft. Wall tiles
 //! are mossy mounds edged along every road by a dry-stone fence, with ferns,
 //! bushes and a mixed wood of pines, oaks and birches growing on them.
 
 use super::*;
 
 mod pal {
-    pub const ROAD: u32 = 0x6e553a;
-    pub const ROAD_D: u32 = 0x5a4430;
-    pub const RUT: u32 = 0x4a3826;
+    pub const GRASS: u32 = 0x3c6c32;
     pub const CLIFF: u32 = 0x4a3c2e;
-    pub const VERGE: u32 = 0x3e6e30;
-    pub const VERGE_D: u32 = 0x2f5a26;
     pub const TUFT: u32 = 0x5a8a3a;
     pub const MOUND: u32 = 0x2c4424;
     pub const MOUND_D: u32 = 0x243a1e;
@@ -20,8 +15,6 @@ mod pal {
     pub const FERN_L: u32 = 0x4a8a38;
     pub const STONES: [u32; 4] = [0x7a7c76, 0x6a6c66, 0x8a8a82, 0x5e605a];
     pub const MOSS: u32 = 0x4a7a32;
-    pub const LEAVES: [u32; 4] = [0xc87a2a, 0xe0a030, 0x8a5a2a, 0x6a8a2a];
-    pub const PEBBLE: u32 = 0x8a8a84;
     pub const STEP_STONE: u32 = 0x76766e;
 }
 use pal::*;
@@ -65,9 +58,10 @@ impl WorldView {
             let (xf, yf) = (x as f32, y as f32);
             let (hx, hy) = (x as f64, y as f64);
             let h = floor_y(x, y);
-            let road = if t == Tile::Nest { lin(HOLLOW) } else { jit(if (x + y) % 2 == 0 { ROAD } else { ROAD_D }, hash(hx, hy), 0.06) * (1.0 + grid.elevation(x, y) as f32 * 0.06) };
+            // One even green, barely varied tile to tile (a touch lighter on higher ground).
+            let road = if t == Tile::Nest { lin(HOLLOW) } else { jit(GRASS, hash(hx, hy), 0.025) * (1.0 + grid.elevation(x, y) as f32 * 0.05) };
             if h > 0.0 {
-                // Raised ground: an earthen cliff with the road on top.
+                // Raised ground: an earthen cliff with the grass on top.
                 let body = h - 0.04;
                 cube(&mut self.static_cubes, Vec3::new(xf, body / 2.0 - 0.05, yf), Vec3::new(1.0, body + 0.1, 1.0), 0.0, jit(CLIFF, hash(hx + 2.0, hy), 0.08));
                 cube(&mut self.static_cubes, Vec3::new(xf, h - 0.02, yf), Vec3::new(1.0, 0.04, 1.0), 0.0, road);
@@ -77,61 +71,10 @@ impl WorldView {
             if t == Tile::Nest {
                 continue;
             }
-            // Grass verges where the road meets the woods.
-            for d in CARDINALS {
-                let (dx, dy) = d.vec();
-                if !rock(x + dx, y + dy) {
-                    continue;
-                }
-                let c = Vec3::new(xf + dx as f32 * 0.4, h + 0.006, yf + dy as f32 * 0.4);
-                let s = if dx != 0 { Vec3::new(0.2, 0.012, 1.0) } else { Vec3::new(1.0, 0.012, 0.2) };
-                cube(&mut self.static_cubes, c, s, 0.0, jit(if hash(hx + dx as f64, hy) < 0.5 { VERGE } else { VERGE_D }, hash(hy, hx), 0.08));
-                for k in 0..3 {
-                    let hk = hash(hx * 7.0 + k as f64 + dx as f64 * 3.0, hy * 5.0 + dy as f64 * 3.0) as f32;
-                    let along = (k as f32 - 1.0) * 0.32 + (hk - 0.5) * 0.15;
-                    let p = if dx != 0 { Vec3::new(c.x + (hk - 0.5) * 0.1, h, c.z + along) } else { Vec3::new(c.x + along, h, c.z + (hk - 0.5) * 0.1) };
-                    self.tuft(p, hk, TUFT, VERGE_D);
-                }
-            }
-            // Ruts and a grassy middle on straight stretches.
-            let open = |dx: i32, dy: i32| !rock(x + dx, y + dy);
-            let along_x = open(-1, 0) && open(1, 0) && !open(0, -1) && !open(0, 1);
-            let along_z = open(0, -1) && open(0, 1) && !open(-1, 0) && !open(1, 0);
-            if along_x || along_z {
-                for side in [-0.2f32, 0.2] {
-                    let (p, s) = if along_x { (Vec3::new(xf, h + 0.004, yf + side), Vec3::new(1.0, 0.008, 0.09)) } else { (Vec3::new(xf + side, h + 0.004, yf), Vec3::new(0.09, 0.008, 1.0)) };
-                    cube(&mut self.static_cubes, p, s, 0.0, lin(RUT));
-                }
-                if hash(hx * 3.0, hy * 3.0 + 1.0) < 0.65 {
-                    let s = if along_x { Vec3::new(1.0, 0.01, 0.1) } else { Vec3::new(0.1, 0.01, 1.0) };
-                    cube(&mut self.static_cubes, Vec3::new(xf, h + 0.005, yf), s, 0.0, jit(VERGE_D, hash(hx, hy + 4.0), 0.1));
-                    let hk = hash(hx + 9.0, hy * 2.0) as f32;
-                    let off = (hk - 0.5) * 0.6;
-                    self.tuft(if along_x { Vec3::new(xf + off, h, yf) } else { Vec3::new(xf, h, yf + off) }, hk, TUFT, VERGE_D);
-                }
-            }
-            // Fallen leaves, pebbles, and now and then a mushroom or a twig.
-            for k in 0..3 {
-                let hk = hash(hx * 11.0 + k as f64, hy * 13.0 - k as f64) as f32;
-                let hj = hash(hy * 17.0 + k as f64, hx * 5.0) as f32;
-                let c = lin(LEAVES[(hk * 4.0) as usize % 4]);
-                cube(&mut self.static_cubes, Vec3::new(xf + (hk - 0.5) * 0.8, h + 0.008, yf + (hj - 0.5) * 0.8), Vec3::new(0.06, 0.006, 0.045), hk * 9.0, c);
-            }
-            if hash(hx * 2.0 + 5.0, hy) < 0.45 {
-                let hk = hash(hx, hy * 7.0) as f32;
-                cube(&mut self.static_cubes, Vec3::new(xf + (hk - 0.5) * 0.6, h + 0.02, yf + (0.5 - hk) * 0.5), Vec3::new(0.07, 0.04, 0.06), hk * 5.0, lin(PEBBLE));
-            }
-            let m = hash(hx * 5.0, hy * 5.0 + 3.0);
-            if m < 0.09 {
-                // A red toadstool by the verge.
-                let a = (m * 70.0) as f32;
-                let p = Vec3::new(xf + a.cos() * 0.36, h, yf + a.sin() * 0.36);
-                cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.035, 0.0), Vec3::new(0.025, 0.07, 0.025), 0.0, lin(0xe8e0d0));
-                cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.075, 0.0), Vec3::new(0.08, 0.03, 0.08), a, lin(0xc8262e));
-                cube(&mut self.static_cubes, p + Vec3::new(0.012, 0.092, 0.0), Vec3::new(0.018, 0.006, 0.018), 0.0, lin(0xf4f4f0));
-            } else if m > 0.9 {
-                let a = (m * 40.0) as f32;
-                cube(&mut self.static_cubes, Vec3::new(xf + (m as f32 - 0.95) * 4.0, h + 0.012, yf), Vec3::new(0.3, 0.02, 0.025), a, lin(0x5a3a1c));
+            // Only now and then a small tuft breaks up the grass.
+            if hash(hx * 5.0 + 3.0, hy * 7.0) < 0.1 {
+                let hk = hash(hx, hy * 3.0) as f32;
+                self.tuft(Vec3::new(xf + (hk - 0.5) * 0.6, h, yf + (0.5 - hk) * 0.5), hk, TUFT, GRASS);
             }
         }
 
