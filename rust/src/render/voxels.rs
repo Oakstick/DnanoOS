@@ -1,4 +1,4 @@
-//! Voxel models authored as text, and the cutting of characters into rigged parts.
+//! Voxel model data, sprites, and the cutting of characters into rigged parts.
 //!
 //! `layers` run from the bottom of the model to the top; each layer is a list
 //! of rows from back (-z) to front (+z); each row is a string of palette keys
@@ -70,36 +70,6 @@ pub struct Mesh {
     pub cubes: Vec<(Vec3, Vec3)>,
 }
 
-pub fn build_mesh(model: &VoxelModel, size: f32) -> Mesh {
-    let c = collect(model);
-    let ox = (c.width - 1) as f32 / 2.0;
-    let oz = (c.depth - 1) as f32 / 2.0;
-    let cubes = c
-        .voxels
-        .iter()
-        .map(|v| {
-            (
-                Vec3::new((v.x as f32 - ox) * size, (v.y as f32 + 0.5) * size, (v.z as f32 - oz) * size),
-                lin(v.c),
-            )
-        })
-        .collect();
-    Mesh { size, cubes }
-}
-
-/// The same mesh with one palette key recolored (potion liquids).
-pub fn build_mesh_recolored(model: &VoxelModel, size: f32, key_color: u32, to: u32) -> Mesh {
-    let mut m = build_mesh(model, size);
-    let from = lin(key_color);
-    let to = lin(to);
-    for (_, c) in m.cubes.iter_mut() {
-        if (*c - from).length() < 1e-4 {
-            *c = to;
-        }
-    }
-    m
-}
-
 // ---------------------------------------------------------------- sprites
 
 /// Front view of a model as a 2D sprite: for each column and height, the
@@ -108,10 +78,6 @@ pub struct Sprite {
     pub width: i32,
     pub height: i32,
     pub pixels: Vec<Vec<Option<u32>>>,
-}
-
-pub fn sprite_from_model(model: &VoxelModel) -> Sprite {
-    sprite_from(&collect(model))
 }
 
 /// Front view of any voxel model (text-authored or sculpted).
@@ -223,145 +189,9 @@ fn make_part(c: &Collected, name: &'static str, list: &[Voxel], pivot: [f32; 3],
     }
 }
 
-// ------------------------------------------------------------------ models
-
-mod pal {
-    pub const RED: u32 = 0xd8262e;
-    pub const DARK_RED: u32 = 0x8f1a1f;
-    pub const WHITE: u32 = 0xf4f4f8;
-    pub const GOLD: u32 = 0xf2c53d;
-    pub const CYAN: u32 = 0x8fe7ff;
-    pub const STEEL: u32 = 0xb8c0cc;
-    pub const DARK: u32 = 0x1a1a24;
-    pub const BROWN: u32 = 0x6b3f1d;
-    pub const GREEN: u32 = 0x3fe05a;
-    pub const LIGHT_GREEN: u32 = 0x9dffab;
-    pub const ORANGE: u32 = 0xff8a2a;
-    pub const YELLOW: u32 = 0xffe066;
-}
-use pal::*;
-
-/// Gold nugget: a lumpy chunk, 4 wide, 3 deep, 3 tall, brighter on top.
-pub const NUGGET: VoxelModel = VoxelModel {
-    palette: &[('Y', GOLD), ('y', YELLOW), ('d', 0xb8902a)],
-    layers: &[&[".dYd", "dYYY", ".dY."], &["..Yy", ".YyY", "..Y."], &["....", "..y.", "...."]],
-};
-
-/// Remedy: an upright green cross, 5 wide, 3 deep, 5 tall. Restores health.
-pub const MEDKIT: VoxelModel = VoxelModel {
-    palette: &[('G', GREEN), ('L', LIGHT_GREEN)],
-    layers: &[
-        &["..G..", "..G..", "..G.."],
-        &["..G..", "..L..", "..G.."],
-        &["GGGGG", "GLLLG", "GGGGG"],
-        &["..G..", "..L..", "..G.."],
-        &["..G..", "..G..", "..G.."],
-    ],
-};
-
-/// TNT-style bomb: 5 wide, 5 deep, 6 tall with a fuse on top.
-pub const BOMB: VoxelModel = VoxelModel {
-    palette: &[('R', RED), ('r', DARK_RED), ('W', WHITE), ('K', DARK), ('G', STEEL)],
-    layers: &[
-        &["rRRRr", "RRRRR", "RRRRR", "RRRRR", "rRRRr"],
-        &["RRRRR", "RRRRR", "RRRRR", "RRRRR", "RRRRR"],
-        &["WWWWW", "WWKWW", "WKKKW", "WWKWW", "WWWWW"],
-        &["RRRRR", "RRRRR", "RRRRR", "RRRRR", "RRRRR"],
-        &["rRRRr", "RRRRR", "RRRRR", "RRRRR", "rRRRr"],
-        &[".....", ".....", "..G..", ".....", "....."],
-    ],
-};
-
-/// Arrow lying flat: 1 wide, 7 deep, 1 tall. Steel tip at the front (+z), feathers at the back.
-pub const ARROW: VoxelModel = VoxelModel {
-    palette: &[('D', BROWN), ('G', STEEL), ('W', WHITE)],
-    layers: &[&["W", "W", "D", "D", "D", "D", "G"]],
-};
-
-/// Boomerang lying flat: an L of wood with pale tips.
-pub const BOOMERANG: VoxelModel = VoxelModel {
-    palette: &[('D', BROWN), ('W', WHITE)],
-    layers: &[&["W....", "D....", "D....", "D....", "WDDDW"]],
-};
-
-/// Fireball: 3x3x3 with a bright core.
-pub const FIREBALL: VoxelModel = VoxelModel {
-    palette: &[('O', ORANGE), ('Y', YELLOW)],
-    layers: &[&[".O.", "OOO", ".O."], &["OOO", "OYO", "OOO"], &[".O.", "OOO", ".O."]],
-};
-
-/// Crescent blade lying flat: a wide arc.
-pub const CRESCENT: VoxelModel = VoxelModel {
-    palette: &[('C', CYAN), ('W', WHITE)],
-    layers: &[&["C.....C", "CC...CC", ".CCWCC."]],
-};
-
-/// Placeholder liquid color in the bottle, recolored per potion.
-pub const BOTTLE_LIQUID: u32 = 0x010203;
-
-/// Potion bottle: 3 wide, 3 deep, 6 tall.
-pub const BOTTLE: VoxelModel = VoxelModel {
-    palette: &[('L', BOTTLE_LIQUID), ('G', 0xcfe8f0), ('K', BROWN)],
-    layers: &[
-        &[".L.", "LLL", ".L."],
-        &["LLL", "LLL", "LLL"],
-        &["LLL", "LLL", "LLL"],
-        &[".G.", "GLG", ".G."],
-        &["...", ".G.", "..."],
-        &["...", ".K.", "..."],
-    ],
-};
-
-/// Shrine crystal: an 8-tall diamond, 5 wide and deep at the waist.
-pub const DIAMOND: VoxelModel = VoxelModel {
-    palette: &[('W', WHITE), ('L', CYAN)],
-    layers: &[
-        &[".....", ".....", "..W..", ".....", "....."],
-        &[".....", "..L..", ".LWL.", "..L..", "....."],
-        &["..L..", ".LLL.", "LLWLL", ".LLL.", "..L.."],
-        &[".LLL.", "LLLLL", "LLWLL", "LLLLL", ".LLL."],
-        &["..L..", ".LLL.", "LLWLL", ".LLL.", "..L.."],
-        &[".....", "..L..", ".LWL.", "..L..", "....."],
-        &[".....", ".....", "..W..", ".....", "....."],
-    ],
-};
-
-/// Hanging lantern on a post: glowing cage on top.
-pub const LANTERN: VoxelModel = VoxelModel {
-    palette: &[('D', BROWN), ('G', 0xd6ff5a), ('K', DARK)],
-    layers: &[&["D"], &["D"], &["D"], &["D"], &["G"], &["K"]],
-};
-
-/// Lean forest tree for dense woods: 3 wide, 3 deep, 6 tall, 22 voxels.
-pub const TREE_LOW: VoxelModel = VoxelModel {
-    palette: &[('T', 0x4a2f16), ('G', 0x2f6b2a), ('g', 0x24521f), ('L', 0x4c8f3c)],
-    layers: &[
-        &["...", ".T.", "..."],
-        &["...", ".T.", "..."],
-        &[".g.", "gGg", ".g."],
-        &["gGg", "GGG", "gGg"],
-        &[".G.", "GLG", ".G."],
-        &["...", ".L.", "..."],
-    ],
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn models_are_rectangular_and_colored() {
-        for m in [&NUGGET, &MEDKIT, &BOMB, &DIAMOND, &TREE_LOW, &BOTTLE] {
-            let c = collect(m);
-            assert!(!c.voxels.is_empty());
-            for layer in m.layers {
-                assert_eq!(layer.len() as i32, c.depth);
-                for row in layer.iter() {
-                    assert_eq!(row.len() as i32, c.width);
-                }
-            }
-        }
-    }
 
     #[test]
     fn rigs_claim_every_voxel_once() {

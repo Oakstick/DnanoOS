@@ -382,6 +382,8 @@ struct Models {
     diamond: Mesh,
     tree: Mesh,
     nugget: Mesh,
+    /// Shrine pedestals: weapon (blue runes) and item (gold runes).
+    pedestals: [(Mesh, Mesh); 2],
     bottles: HashMap<u32, Mesh>,
     cyclops: Rig,
     boulder: Rig,
@@ -396,7 +398,7 @@ impl Models {
         let mut bottles = HashMap::new();
         for kind in crate::logic::gear::POTIONS {
             let hex = crate::logic::gear::potion(kind).color;
-            bottles.insert(hex, build_mesh_recolored(&BOTTLE, 0.1, BOTTLE_LIQUID, hex));
+            bottles.insert(hex, super::props::bottle(hex));
         }
         let mut heroes = HashMap::new();
         for level in 1..=3u8 {
@@ -410,15 +412,16 @@ impl Models {
             bat: build_rig(&characters::raven(false), characters::RAVEN_RIG, 0.042),
             vampire: build_rig(&characters::raven(true), characters::RAVEN_RIG, 0.05),
             slime: build_rig(&characters::bog_slime(), &[], 0.075),
-            medkit: build_mesh(&MEDKIT, 0.1),
-            bomb: build_mesh(&BOMB, 0.09),
-            arrow: build_mesh(&ARROW, 0.08),
-            boomerang: build_mesh(&BOOMERANG, 0.07),
-            fireball: build_mesh(&FIREBALL, 0.09),
-            crescent: build_mesh(&CRESCENT, 0.08),
-            diamond: build_mesh(&DIAMOND, 0.1),
-            tree: build_mesh(&TREE_LOW, 0.17),
-            nugget: build_mesh(&NUGGET, 0.11),
+            medkit: super::props::medkit(),
+            bomb: super::props::bomb(),
+            arrow: super::props::arrow(),
+            boomerang: super::props::boomerang(),
+            fireball: super::props::fireball(),
+            crescent: super::props::crescent(),
+            diamond: super::props::gem(),
+            tree: super::props::pine(),
+            nugget: super::props::nugget(),
+            pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
             cyclops: build_layered_rig(
                 &characters::cyclops(),
@@ -698,8 +701,8 @@ impl WorldView {
                 || grid.get(x, y - 1) != Tile::Rock
                 || grid.get(x, y + 1) != Tile::Rock
         };
-        let tree = build_mesh(&TREE_LOW, 0.17);
-        let lantern = build_mesh(&LANTERN, 0.09);
+        let tree = super::props::pine();
+        let (lantern, lantern_glass) = super::props::lantern();
         let lantern_glow = lin(TORCH_LIGHT) * 0.8;
         let mut trees: Vec<(P, Vec3, f32, f32)> = Vec::new();
         let mut lanterns: Vec<P> = Vec::new();
@@ -737,7 +740,7 @@ impl WorldView {
             self.trees.push(Tree {
                 range: (start, self.static_cubes.len() - start),
                 base: pos,
-                // TREE_LOW is 3 voxels across and 6 tall at 0.17 per voxel.
+                // The pine is 7 voxels across and 13 tall at 0.078 per voxel.
                 radius: 0.26 * scale + 0.05,
                 height: 1.02 * scale,
                 fade: 1.0,
@@ -747,7 +750,8 @@ impl WorldView {
         for spot in lanterns {
             let pos = Vec3::new(spot.x as f32, floor_y(spot.x, spot.y) + 0.5, spot.y as f32 + 0.5);
             let start = self.static_cubes.len();
-            push_field(&mut self.static_cubes, &lantern, pos, 0.0, 1.0, white, lantern_glow, SHADE_LIT);
+            push_field(&mut self.static_cubes, &lantern, pos, 0.0, 1.0, white, Vec3::ZERO, SHADE_LIT);
+            push_field(&mut self.static_cubes, &lantern_glass, pos, 0.0, 1.0, white, lantern_glow, SHADE_LIT);
             self.torches.insert(spot, (pos, (start, self.static_cubes.len() - start)));
         }
 
@@ -759,7 +763,7 @@ impl WorldView {
         let white = Vec3::ONE;
 
         // Nuggets: hidden per tile as they are collected. Their glow pulses together.
-        let nugget = build_mesh(&NUGGET, 0.11);
+        let nugget = super::props::nugget();
         let nugget_glow = lin(0xf2c53d);
         for (x, y, t) in grid.cells() {
             if t != Tile::Nodule {
@@ -1634,9 +1638,11 @@ impl WorldView {
         let mut shrine_points = Vec::new();
         for (i, d) in s.diamonds.iter().enumerate() {
             let base = Vec3::new(d.tile.x as f32, floor_at(grid, d.tile.x as f32, d.tile.y as f32), d.tile.y as f32);
-            let ped = Mat4::from_translation(base + Vec3::new(0.0, 0.06, 0.0));
-            let ped_color = lin(if d.kind == DiamondKind::Weapon { 0x3b4a6a } else { 0x5a4a2a });
-            f.opaque[MeshKind::Cylinder as usize].push(Instance::new(ped, ped_color, 1.0, Vec3::ZERO, SHADE_LIT));
+            let (stone, runes) = &self.models.pedestals[if d.kind == DiamondKind::Weapon { 0 } else { 1 }];
+            let rune = lin(if d.kind == DiamondKind::Weapon { 0x6ab8ff } else { 0xffc84a });
+            let rune_glow = if d.active { 0.6 + (time * 2.5 + d.tile.x as f32).sin().abs() * 0.6 } else { 0.1 };
+            emit_mesh(&mut f.opaque[cube], stone, Mat4::from_translation(base), Vec3::ONE, 1.0, Vec3::ZERO);
+            emit_mesh(&mut f.opaque[cube], runes, Mat4::from_translation(base), Vec3::ONE, 1.0, rune * rune_glow);
             if !d.active {
                 continue;
             }
@@ -1644,7 +1650,7 @@ impl WorldView {
             let spin = self.diamond_spin.get(i).copied().unwrap_or(0.0);
             let m = Mat4::from_translation(base + Vec3::new(0.0, 0.45 + (time * 2.0 + d.tile.x as f32).sin() * 0.06, 0.0))
                 * Mat4::from_rotation_y(spin);
-            emit_mesh(&mut f.opaque[cube], &self.models.diamond, m, lin(hex), 1.0, lin(hex) * 0.8);
+            emit_mesh(&mut f.opaque[cube], &self.models.diamond, m, lin(hex), 1.0, lin(hex) * 0.3);
             shrine_points.push((base, lin(hex)));
         }
 
@@ -1672,6 +1678,14 @@ impl WorldView {
             let tint = if on { Vec3::ONE } else { lin(0x9a9a9a) };
             let glow = if on { Vec3::splat(0.9) } else { Vec3::ZERO };
             emit_mesh(&mut f.opaque[cube], &self.models.bomb, Mat4::from_translation(pos), tint, 1.0, glow);
+            // The fuse sputters: a few sparks jumping off its tip.
+            let tip = pos + Vec3::new(0.07, 0.53, 0.0);
+            for k in 0..4 {
+                let ph = (s.time as f32 * 9.0 + k as f32 * 0.25).fract();
+                let a = k as f32 * 1.9 + (s.time as f32 * 3.0).floor();
+                let p = tip + Vec3::new(a.cos() * ph * 0.12, ph * 0.12, a.sin() * ph * 0.12);
+                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03)), lin(0xffc040) * 1.8, 1.0 - ph, Vec3::ZERO, SHADE_UNLIT));
+            }
         }
 
         // --- projectiles
@@ -1732,7 +1746,7 @@ impl WorldView {
         // --- a spotlight on whatever the tour is showing
         if let Some((target, t, _)) = self.tour {
             let k = (t / 0.6).min(1.0);
-            f.lights.push(Light { pos: target + Vec3::new(0.3, 1.8, 0.4), color: lin(0xffe6b8) * 9.0 * k, distance: 5.0 });
+            f.lights.push(Light { pos: target + Vec3::new(0.4, 3.0, 0.6), color: lin(0xffe6b8) * 5.0 * k, distance: 6.0 });
         }
 
         // --- the boss and what it throws

@@ -147,7 +147,7 @@ impl WorldView {
         }
 
         // Rock: pillars, low walls, and the hedge ring with its trees.
-        let tree = build_mesh(&TREE_LOW, 0.17);
+        let tree = crate::render::props::pine();
         let tree_tint = Vec3::new(1.15, 1.35, 1.05);
         let mut trees: Vec<(P, Vec3, f32, f32)> = Vec::new();
         for (x, y, t) in grid.cells() {

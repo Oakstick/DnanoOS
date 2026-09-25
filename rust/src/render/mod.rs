@@ -5,5 +5,6 @@ pub mod gpu;
 pub mod hud;
 pub mod icons;
 pub mod overlay;
+pub mod props;
 pub mod view;
 pub mod voxels;

@@ -104,6 +104,7 @@ pub enum Icon {
     Potion(PotionKind),
     Coin,
     Lock,
+    Bomb,
 }
 
 pub fn icon(i: Icon) -> &'static Sprite {
@@ -126,6 +127,7 @@ pub fn icon(i: Icon) -> &'static Sprite {
         }
         m.insert(Icon::Coin, coin());
         m.insert(Icon::Lock, lock());
+        m.insert(Icon::Bomb, bomb());
         m
     });
     &map[&i]
@@ -445,6 +447,19 @@ fn coin() -> Sprite {
     c.rect(5, 5, 9, 5, GOLD_D);
     c.rect(5, 10, 9, 10, GOLD_D);
     c.set(4, 4, 0xfff6c0);
+    c.outlined()
+}
+
+fn bomb() -> Sprite {
+    let mut c = Canvas::new();
+    c.disc(7.0, 9.0, 6.0, 0x2c3038);
+    c.disc(5.5, 7.5, 2.4, 0x5a6270);
+    c.disc(5.0, 7.0, 1.0, 0xb8c0cc);
+    c.rect(1, 9, 13, 9, 0x6a707c);
+    c.rect(6, 2, 8, 3, 0x6a707c);
+    c.line((8, 1), (10, 0), 0xc8a060);
+    c.set(11, 0, 0xff7a20);
+    c.set(12, 1, 0xffd23a);
     c.outlined()
 }
 

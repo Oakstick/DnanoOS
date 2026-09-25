@@ -333,9 +333,9 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let mut x = br;
     let brow = by0 + t * 1.35;
     for _ in 0..g.bombs_left {
-        o.rect(x - t * 0.48, brow - t * 0.24, t * 0.48, t * 0.48, rgba(0xc8262e, 1.0));
-        o.rect(x - t * 0.48, brow - t * 0.07, t * 0.48, t * 0.14, rgba(0xf4f4f8, 1.0));
-        x -= t * 0.66;
+        let iw = t * 0.7;
+        draw_sprite(o, icon(Icon::Bomb), x - iw, brow - iw / 2.0, iw / 16.0, None, 1.0);
+        x -= t * 0.78;
     }
     let label = if g.bombs_left > 0 { "BOMBS" } else { "NO BOMBS" };
     o.text(label, x - t * 0.2, brow, small, rgba(TEXT_DIM, 1.0), Align::Right, true);
