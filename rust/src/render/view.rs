@@ -1381,11 +1381,11 @@ impl WorldView {
                 self.tour_index = Some(index);
                 self.tour_angle = open_angle(grid, target);
             }
-            let e = 1.0 - (1.0 - (t / 1.2).min(1.0)).powi(3);
-            let a = self.tour_angle + t * 0.16;
+            let e = 1.0 - (1.0 - (t / 0.7).min(1.0)).powi(3);
+            let a = self.tour_angle + t * 0.22;
             let r = 2.5 + 3.6 * (1.0 - e);
             let h = 2.15 + 3.0 * (1.0 - e);
-            (target + Vec3::new(a.cos() * r, h, a.sin() * r), target + Vec3::new(0.0, 0.35, 0.0), 4.0 + 5.0 * e)
+            (target + Vec3::new(a.cos() * r, h, a.sin() * r), target + Vec3::new(0.0, 0.35, 0.0), 7.0 + 6.0 * e)
         } else if self.forge {
             // The forge fills the left of the screen; the shop panel sits on the right.
             self.showcase_angle += dt;

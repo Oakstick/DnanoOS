@@ -17,7 +17,7 @@ use crate::render::view::floor_at;
 /// Settings key that records the tour has been seen.
 const TOUR_KEY: &str = "vh.tour_done";
 /// Seconds a stop holds before moving on by itself.
-pub const TOUR_STOP_SECONDS: f64 = 5.5;
+pub const TOUR_STOP_SECONDS: f64 = 3.3;
 
 /// What the card shows beside the words.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -181,7 +181,7 @@ impl Game {
             self.finish_tour();
             return;
         }
-        if next && tour.t > 0.25 {
+        if next && tour.t > 0.15 {
             tour.index += 1;
             tour.t = 0.0;
             if tour.index >= tour.stops.len() {

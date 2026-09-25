@@ -603,14 +603,14 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let stop = tour.stop();
     let time = g.time as f32;
-    let k = (tour.age as f32 / 0.6).min(1.0);
+    let k = (tour.age as f32 / 0.35).min(1.0);
     let bar_h = h * 0.1 * (1.0 - (1.0 - k).powi(3));
     o.rect(0.0, 0.0, w, bar_h, [0.0, 0.0, 0.0, 0.92]);
     o.rect(0.0, h - bar_h, w, bar_h, [0.0, 0.0, 0.0, 0.92]);
 
     // Lock-on frame around the target, tightening as the camera arrives.
     let st = tour.t as f32;
-    let settle = (st / 1.2).min(1.0);
+    let settle = (st / 0.7).min(1.0);
     if let Some((x, y)) = g.view.project(stop.target, w, h) {
         let size = t * (2.4 + 3.0 * (1.0 - settle)) * (1.0 + (time * 4.0).sin() * 0.04);
         let arm = size * 0.35;
@@ -624,7 +624,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     }
 
     // The card: a see-through panel above the lower bar.
-    let fade = (st / 0.5).min(1.0);
+    let fade = (st / 0.25).min(1.0);
     let cw = (w * 0.42).max(t * 26.0).min(w - t * 1.6);
     let chh = t * 6.4;
     let cx = t * 0.8;
@@ -638,7 +638,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     draw_tour_art(o, stop.art, ax, ay, art, fade);
     let tx = ax + art + t * 0.7;
     // The title types itself out.
-    let shown = ((st * 30.0) as usize).min(stop.title.len());
+    let shown = ((st * 60.0) as usize).min(stop.title.len());
     o.text(&stop.title[..shown], tx, cy + t * 1.0, t * 1.0, rgba(stop.color, fade), Align::Left, true);
     wrap_left(o, stop.body, tx, cy + t * 2.1, cw - (tx - cx) - t * 0.6, t * 0.62, t * 0.5, rgba(TEXT, fade));
 
