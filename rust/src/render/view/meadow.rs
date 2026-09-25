@@ -28,6 +28,8 @@ mod pal {
     pub const FLOWERS: [u32; 5] = [0xf8f8f0, 0xffe066, 0xff8ad8, 0x8fb4ff, 0xff6a5a];
     pub const BUSH: [u32; 3] = [0x56bc40, 0x62c848, 0x4aad3a];
     pub const BUSH_LIGHT: u32 = 0x94e466;
+    pub const FOREST_BUSH: [u32; 3] = [0x2f6b2a, 0x3a7a2e, 0x285a22];
+    pub const FOREST_BUSH_LIGHT: u32 = 0x5a9a3a;
     pub const BERRIES: [u32; 3] = [0xd8262e, 0xf8f8f0, 0xffb0d8];
     pub const BUTTERFLIES: [u32; 4] = [0xf8f8f0, 0xffe066, 0xff9a3a, 0x7ab8ff];
     pub const BOLT: u32 = 0xff7a2a;
@@ -205,13 +207,14 @@ impl WorldView {
                 // Slide along the edge a little so rows of bushes do not line up.
                 let slide = (hash(y as f64 + dx as f64, x as f64 + dy as f64) as f32 - 0.5) * 0.5;
                 let pos = Vec3::new(x as f32 + dx as f32 * 0.3 + dy as f32 * slide, 0.0, y as f32 + dy as f32 * 0.3 + dx as f32 * slide);
-                self.build_bush(pos, 0.95 + h as f32 * 0.5);
+                self.build_bush(pos, 0.95 + h as f32 * 0.5, false);
             }
         }
     }
 
     /// A round leafy bush: a mound of overlapping leaf blocks, lighter on top, now and then with berries or blossoms.
-    fn build_bush(&mut self, at: Vec3, size: f32) {
+    pub(super) fn build_bush(&mut self, at: Vec3, size: f32, forest: bool) {
+        let (leaves, light) = if forest { (FOREST_BUSH, FOREST_BUSH_LIGHT) } else { (BUSH, BUSH_LIGHT) };
         let (hx, hy) = (at.x as f64 * 13.0, at.z as f64 * 17.0);
         let blobs = 11;
         for k in 0..blobs {
@@ -223,7 +226,7 @@ impl WorldView {
             let s = (if k < 7 { 0.15 } else { 0.18 } + hk * 0.07) * size;
             let y = if k == 0 { 0.24 } else if k < 7 { 0.09 + hj * 0.05 } else { 0.2 + hj * 0.06 } * size;
             let p = at + Vec3::new(a.cos() * r * size, y, a.sin() * r * size);
-            let c = lin(BUSH[(hk * 3.0) as usize % 3]) * (0.9 + hj * 0.2);
+            let c = lin(leaves[(hk * 3.0) as usize % 3]) * (0.9 + hj * 0.2);
             let m = Mat4::from_translation(p) * Mat4::from_rotation_y(a) * Mat4::from_rotation_x((hk - 0.5) * 0.6) * Mat4::from_scale(Vec3::new(s, s * 0.85, s));
             self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
         }
@@ -232,7 +235,7 @@ impl WorldView {
             let hk = hash(hx - k as f64 * 5.0, hy + k as f64 * 4.0) as f32;
             let a = hk * TAU;
             let p = at + Vec3::new(a.cos() * 0.07 * size, (0.33 + hk * 0.03) * size, a.sin() * 0.07 * size);
-            cube(&mut self.static_cubes, p, Vec3::new(0.14, 0.06, 0.14) * size, a, lin(BUSH_LIGHT));
+            cube(&mut self.static_cubes, p, Vec3::new(0.14, 0.06, 0.14) * size, a, lin(light));
         }
         let flavor = hash(hx * 0.5, hy * 0.5);
         if flavor < 0.45 {

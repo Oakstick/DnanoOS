@@ -165,7 +165,7 @@ pub fn run(args: &[String]) -> i32 {
     let rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {
-            eprintln!("wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}", game.screen);
+            eprintln!("wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances", game.screen, game.view.static_cubes.len());
             0
         }
         Err(e) => {

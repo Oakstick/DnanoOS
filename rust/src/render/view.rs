@@ -20,6 +20,7 @@ use crate::logic::rng::Rng;
 use crate::logic::systems::{Frenzy, PuddleField, PUDDLE_SECONDS};
 use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
 
+mod forest;
 mod forge;
 mod meadow;
 pub use forge::SMITH_BEAT;
@@ -53,8 +54,6 @@ use colors::*;
 /// World units per elevation level.
 pub const STEP: f32 = 0.55;
 const MOTE_COUNT: usize = 220;
-/// Share of wall tiles facing a road that grow a tree.
-const TREE_DENSITY: f64 = 0.5;
 const LIGHT_POOL_TORCHES: usize = 3;
 const LIGHT_POOL_REMEDIES: usize = 3;
 const LIGHT_POOL_SHRINES: usize = 2;
@@ -623,140 +622,6 @@ impl WorldView {
         self.build_pickups(grid, enemies, diamonds);
     }
 
-    /// The dungeons' night forest: floors in levels, ramps, pits, undergrowth, trees, lanterns.
-    fn build_forest(&mut self, grid: &Grid) {
-        let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
-        let white = Vec3::ONE;
-
-        // Floors: raised tiles are boxes standing on the ground, so their sides show as cliffs.
-        for (x, y, t) in grid.cells() {
-            if t == Tile::Rock || t == Tile::Pit || grid.is_ramp(x, y) {
-                continue;
-            }
-            let h = floor_y(x, y);
-            let thick = 0.1 + h;
-            let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32))
-                * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
-            let checker = (x + y) % 2 == 0;
-            let base = if t == Tile::Nest { HOLLOW } else if checker { FLOOR_A } else { FLOOR_B };
-            let c = offset_hsl(
-                lin(base),
-                0.0,
-                0.0,
-                (hash(x as f64, y as f64) as f32 - 0.5) * 0.05 + grid.elevation(x, y) as f32 * 0.05,
-            );
-            self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
-        }
-
-        // Ramps: three ascending slabs toward the higher neighbor.
-        for (x, y, _) in grid.cells() {
-            if !grid.is_ramp(x, y) {
-                continue;
-            }
-            let low = grid.elevation(x, y);
-            let mut up: Option<Dir> = None;
-            for d in CARDINALS {
-                let n = grid.neighbor(P::new(x, y), d);
-                if grid.get(n.x, n.y) != Tile::Rock && !grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low {
-                    up = Some(d);
-                }
-            }
-            let up = up.unwrap_or_else(|| {
-                // Interior ramp tile: lean the way a neighboring ramp tile does, else default right.
-                let mut u = Dir::Right;
-                for d in CARDINALS {
-                    let n = grid.neighbor(P::new(x, y), d);
-                    if grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low {
-                        u = d;
-                    }
-                }
-                u
-            });
-            let (vx, vy) = up.vec();
-            for i in 0..3 {
-                let top = low as f32 * STEP + ((i + 1) as f32 / 3.0) * STEP;
-                let thick = top + 0.1;
-                let o = (i as f32 - 1.0) / 3.0;
-                let m = Mat4::from_translation(Vec3::new(x as f32 + vx as f32 * o, (top - 0.1) / 2.0, y as f32 + vy as f32 * o))
-                    * Mat4::from_scale(Vec3::new(if vx != 0 { 1.0 / 3.0 } else { 1.0 }, thick, if vy != 0 { 1.0 / 3.0 } else { 1.0 }));
-                self.static_cubes.push(Instance::new(m, lin(RAMP), 1.0, Vec3::ZERO, SHADE_LIT));
-            }
-        }
-
-        // Pits: a dark floor far below with a rim.
-        for (x, y, t) in grid.cells() {
-            if t != Tile::Pit {
-                continue;
-            }
-            let bottom = Mat4::from_translation(Vec3::new(x as f32, -0.9, y as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.1, 1.0));
-            self.static_cubes.push(Instance::new(bottom, lin(PIT), 1.0, Vec3::ZERO, SHADE_LIT));
-            let rim = Mat4::from_translation(Vec3::new(x as f32, -0.03, y as f32)) * Mat4::from_scale(Vec3::new(1.02, 0.06, 1.02));
-            self.static_cubes.push(Instance::new(rim, lin(PIT_RIM), 1.0, Vec3::ZERO, SHADE_LIT));
-        }
-
-        // Walls: undergrowth blocks rising from the tallest neighboring floor, with trees on the road-facing edge.
-        let faces_road = |x: i32, y: i32| {
-            grid.get(x - 1, y) != Tile::Rock
-                || grid.get(x + 1, y) != Tile::Rock
-                || grid.get(x, y - 1) != Tile::Rock
-                || grid.get(x, y + 1) != Tile::Rock
-        };
-        let tree = super::props::pine();
-        let (lantern, lantern_glass) = super::props::lantern();
-        let lantern_glow = lin(TORCH_LIGHT) * 0.8;
-        let mut trees: Vec<(P, Vec3, f32, f32)> = Vec::new();
-        let mut lanterns: Vec<P> = Vec::new();
-        for (x, y, t) in grid.cells() {
-            if t != Tile::Rock {
-                continue;
-            }
-            let (xf, yf) = (x as f64, y as f64);
-            let base = floor_y(x, y);
-            let edge = faces_road(x, y);
-            let tall = base + if edge { 0.7 + hash(xf, yf) as f32 * 0.25 } else { 0.9 + hash(xf, yf) as f32 * 0.3 };
-            let m = Mat4::from_translation(Vec3::new(x as f32, tall / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, tall, 1.0));
-            let shade = hash(xf + 11.0, yf + 5.0) as f32;
-            let c = offset_hsl(lin(if shade < 0.5 { STONE_A } else { STONE_B }), 0.0, 0.0, (shade - 0.5) * 0.08);
-            self.rock_index.insert(tile_key(x, y), (self.static_cubes.len(), 1));
-            self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
-            if !edge {
-                continue;
-            }
-            if grid.is_walkable(x, y + 1, false) && hash(xf * 3.0, yf * 7.0) < 0.06 {
-                lanterns.push(P::new(x, y));
-            } else if hash(xf * 5.0 + 1.0, yf * 3.0 + 2.0) < TREE_DENSITY {
-                trees.push((
-                    P::new(x, y),
-                    Vec3::new(x as f32, tall - 0.05, y as f32),
-                    hash(xf, yf) as f32 * TAU,
-                    0.8 + hash(yf, xf) as f32 * 0.6,
-                ));
-            }
-        }
-        for (key, pos, rot, scale) in trees {
-            let start = self.static_cubes.len();
-            push_field(&mut self.static_cubes, &tree, pos, rot, scale, white, Vec3::ZERO, SHADE_LIT);
-            self.tree_index.insert(key, self.trees.len());
-            self.trees.push(Tree {
-                range: (start, self.static_cubes.len() - start),
-                base: pos,
-                // The pine is 7 voxels across and 13 tall at 0.078 per voxel.
-                radius: 0.26 * scale + 0.05,
-                height: 1.02 * scale,
-                fade: 1.0,
-                alive: true,
-            });
-        }
-        for spot in lanterns {
-            let pos = Vec3::new(spot.x as f32, floor_y(spot.x, spot.y) + 0.5, spot.y as f32 + 0.5);
-            let start = self.static_cubes.len();
-            push_field(&mut self.static_cubes, &lantern, pos, 0.0, 1.0, white, Vec3::ZERO, SHADE_LIT);
-            push_field(&mut self.static_cubes, &lantern_glass, pos, 0.0, 1.0, white, lantern_glow, SHADE_LIT);
-            self.torches.insert(spot, (pos, (start, self.static_cubes.len() - start)));
-        }
-
-    }
-
     /// Nuggets, green crosses, the cast and the fireflies: the same in every theme.
     fn build_pickups(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond]) {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
@@ -866,7 +731,7 @@ impl WorldView {
         let h = floor_at(grid, x as f32, y as f32);
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
-        let patch = if self.meadow { lin(0x62b437) } else { lin(DIRT) };
+        let patch = if self.meadow { lin(0x62b437) } else { lin(0x6e553a) };
         self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, SHADE_LIT));
         self.static_dirty = true;
     }

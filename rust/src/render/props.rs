@@ -449,6 +449,78 @@ pub fn pine() -> Mesh {
     mesh_from(&s.finish(0.06), 0.078)
 }
 
+/// A broad oak: a thick trunk with branch stubs under a lumpy, lit crown.
+pub fn oak() -> Mesh {
+    const DARK: u32 = 0x24521f;
+    const MID: u32 = 0x356e2a;
+    const LIGHT: u32 = 0x5a9a3a;
+    let mut s = Sculpt::new(11, 14, 11);
+    s.cuboid(5, 0, 5, 6, 6, 6, 0x4a3018);
+    for (x, z) in [(4, 5), (7, 6), (5, 4), (6, 7)] {
+        s.set(x, 0, z, 0x3a2410);
+    }
+    s.set(7, 5, 5, 0x4a3018);
+    s.set(4, 6, 6, 0x4a3018);
+    for (c, r) in [((5.5, 9.0, 5.5), (4.4, 3.2, 4.4)), ((3.5, 8.2, 4.5), (2.6, 2.2, 2.6)), ((7.6, 8.4, 6.8), (2.6, 2.3, 2.5)), ((5.5, 11.2, 5.0), (2.8, 2.2, 2.8))] {
+        s.ellipsoid(c, r, 6, MID);
+    }
+    s.paint(|x, y, z, c| {
+        if c != MID {
+            return None;
+        }
+        let n = noise(x, y, z);
+        Some(if y <= 7 {
+            DARK
+        } else if y >= 11 || n < 0.28 {
+            LIGHT
+        } else if n > 0.88 {
+            0x8a9a2a // a turning leaf or two
+        } else {
+            MID
+        })
+    });
+    // Break up the silhouette.
+    for y in 6..14 {
+        for z in 0..11 {
+            for x in 0..11 {
+                if s.get(x, y, z).map(|c| c != 0x4a3018).unwrap_or(false) && noise(x + 3, y, z + 5) < 0.12 {
+                    s.clear(x, y, z);
+                }
+            }
+        }
+    }
+    mesh_from(&s.finish(0.06), 0.075)
+}
+
+/// A slender birch: a white, black-flecked trunk under an airy yellow-green crown.
+pub fn birch() -> Mesh {
+    const LEAF: u32 = 0x7aa83a;
+    let mut s = Sculpt::new(7, 16, 7);
+    for y in 0..11 {
+        s.set(3, y, 3, if noise(3, y, 3) < 0.3 || y % 4 == 1 { 0x2a2a2a } else { 0xe8e4d8 });
+    }
+    s.set(2, 7, 3, 0xe8e4d8);
+    s.set(4, 9, 3, 0xe8e4d8);
+    s.ellipsoid((3.0, 11.5, 3.0), (2.8, 3.8, 2.8), 7, LEAF);
+    s.paint(|x, y, z, c| {
+        if c != LEAF {
+            return None;
+        }
+        let n = noise(x, y, z);
+        Some(if n < 0.3 { 0x9ac84a } else if n > 0.8 { 0x5a8a2a } else { LEAF })
+    });
+    for y in 7..16 {
+        for z in 0..7 {
+            for x in 0..7 {
+                if !(x == 3 && z == 3) && noise(x + 11, y, z) < 0.22 {
+                    s.clear(x, y, z);
+                }
+            }
+        }
+    }
+    mesh_from(&s.finish(0.05), 0.07)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,10 +547,12 @@ mod tests {
             ("gem", gem(), 150),
             ("pedestal", pedestal(0x00ffff).0, 150),
             ("pine", pine(), 60),
+            ("oak", oak(), 100),
+            ("birch", birch(), 40),
         ] {
             assert!(m.cubes.len() >= min_cubes, "{name}: only {} cubes", m.cubes.len());
             let s = size(&m);
-            assert!(s.max_element() < 1.1, "{name} grew too big: {s}");
+            assert!(s.max_element() < 1.25, "{name} grew too big: {s}");
         }
         // The pine keeps the old tree's footprint, which the camera fade relies on.
         let p = size(&pine());
