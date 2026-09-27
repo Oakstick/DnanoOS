@@ -517,7 +517,7 @@ pub fn compose_estate(base: &[&str]) -> Layout {
 
 /**
  * Hides `count` golden keys: every '.' becomes plain floor, then keys go to
- * open tiles far from the middle (where Sebastian starts), from each other and
+ * open tiles far from the middle (where Ragnar starts), from each other and
  * from the gate, two to each quarter, favoring dead ends.
  */
 pub fn place_keys(rows: &[Vec<char>], count: usize, seed: u32) -> Vec<Vec<char>> {
@@ -659,7 +659,7 @@ pub const BRIDGES: [i32; 3] = [7, 13, 19];
 const PILLARS: [(i32, i32); 6] = [(7, 5), (19, 5), (10, 9), (16, 9), (7, 16), (19, 16)];
 /// Low brick walls, as runs of tiles: (x0, x1, y).
 const LOW_WALLS: [(i32, i32, i32); 5] = [(4, 6, 8), (20, 22, 8), (11, 12, 15), (14, 15, 15), (12, 14, 3)];
-/// Where Sebastian and the Cyclops start.
+/// Where Ragnar and the Cyclops start.
 pub const ARENA_HERO: (i32, i32) = (13, 18);
 pub const ARENA_BOSS: (i32, i32) = (13, 6);
 

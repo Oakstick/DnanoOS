@@ -1,4 +1,4 @@
-//! Void Harvest: Popolon and the Sunken Dungeon.
+//! Adventures of the Ancient Blades (the crate keeps its first name, Void Harvest).
 //!
 //! One Rust codebase for the desktop build (a standalone executable over
 //! Direct3D 12 / Vulkan / Metal through wgpu) and the web build (WebAssembly

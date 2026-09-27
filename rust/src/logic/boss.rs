@@ -1,6 +1,6 @@
 //! The Cyclops: a floating eye the size of a hut, the first boss. It drifts
 //! around the meadow keeping its distance, squints to telegraph, then hurls
-//! bolts and boulders at Sebastian. Wounded, it grows faster and angrier,
+//! bolts and boulders at Ragnar. Wounded, it grows faster and angrier,
 //! and starts diving at him; a dive that misses leaves it dazed on the grass,
 //! which is the moment to close in with the axe.
 //!
@@ -54,7 +54,7 @@ impl ShotKind {
     }
 }
 
-/// Something the Cyclops threw. Flies until it hits rock, Sebastian, or its range.
+/// Something the Cyclops threw. Flies until it hits rock, Ragnar, or its range.
 #[derive(Clone, Debug)]
 pub struct BossShot {
     pub pos: V,
@@ -237,7 +237,7 @@ impl Cyclops {
         }
     }
 
-    /// Back up into the sky over `home` (Sebastian lost a life); keeps its wounds.
+    /// Back up into the sky over `home` (Ragnar lost a life); keeps its wounds.
     pub fn reset(&mut self, home: V) {
         if !self.alive() {
             return;

@@ -263,7 +263,7 @@ impl WorldView {
             let pos = Vec3::new(cx, base - 0.01, cz);
             let start = self.static_cubes.len();
             push_field(&mut self.static_cubes, &temple, pos, 0.0, 1.0, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
-            // It fades like a tree when it comes between the camera and Sebastian.
+            // It fades like a tree when it comes between the camera and Ragnar.
             self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.85, height: 2.0, fade: 1.0, alive: true, shades: None });
             push_field(&mut self.static_cubes, &temple_flame, pos, 0.0, 1.0, Vec3::ONE, lin(0xffb050) * 2.5, SHADE_LIT);
             self.candles.push(pos + Vec3::new(0.0, 0.35, 0.18));

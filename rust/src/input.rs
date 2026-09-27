@@ -21,11 +21,11 @@ pub enum Action {
     Mute,
     Fps,
     Fullscreen,
-    /// Right-stick click: swing the camera back behind Sebastian.
+    /// Right-stick click: swing the camera back behind Ragnar.
     CameraReset,
     /// F1: straight to the first boss fight (testing cheat).
     Cheat,
-    /// F2: every key, and Sebastian at the gate (testing cheat).
+    /// F2: every key, and Ragnar at the gate (testing cheat).
     KeyCheat,
     /// F4: free movement on or off.
     FreeMove,

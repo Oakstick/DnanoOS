@@ -14,7 +14,7 @@ struct Light {
 struct Globals {
     view_proj: mat4x4<f32>,
     light_vp: mat4x4<f32>, // world to the moon's (or sun's) shadow map: the whole level
-    light_vp_near: mat4x4<f32>, // ...and the fine cascade ahead of Sebastian
+    light_vp_near: mat4x4<f32>, // ...and the fine cascade ahead of Ragnar
     cam_pos: vec4<f32>,
     cam_fwd: vec4<f32>,    // xyz camera forward; w shadow map texel size in uv
     fog: vec4<f32>,        // rgb fog color (sRGB), w near
@@ -460,7 +460,7 @@ fn cfbm3(p_in: vec2<f32>) -> f32 {
 
 // The smoke wall round the island: tall curtains of billowing smoke, rank
 // behind rank, rising slowly and heaving at the crest, about five times
-// Sebastian's height. The moon catches the tops; the depths stay dark.
+// Ragnar's height. The moon catches the tops; the depths stay dark.
 fn smoke_wall(in: VOut) -> FOut {
     let time = g.sky_right.w;
     let rank = in.emissive.x - 30.0;
@@ -558,7 +558,7 @@ fn cloud_sea(in: VOut) -> FOut {
 }
 
 // Low night mist in slow drifting banks, thinning right in front of the camera
-// so it never fogs the view of Sebastian. Moonlit, and warmed by lights nearby.
+// so it never fogs the view of Ragnar. Moonlit, and warmed by lights nearby.
 fn ground_mist(in: VOut, layer: f32) -> FOut {
     let time = g.sky_right.w;
     let drift = vec2<f32>(0.16, 0.06) * time * (1.0 + 0.3 * layer);

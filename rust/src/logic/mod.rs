@@ -6,6 +6,7 @@ pub mod garden;
 pub mod gear;
 pub mod grid;
 pub mod hero;
+pub mod heroes;
 pub mod items;
 pub mod level;
 pub mod levels;

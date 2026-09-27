@@ -1,5 +1,5 @@
 //! What the blacksmith sells: four weapon lines with three levels each,
-//! four shields that wear down as they block, and the potions Sebastian
+//! four shields that wear down as they block, and the potions Ragnar
 //! carries on his belt. Prices, stats and names live here; the shop screen
 //! and the combat code read them.
 

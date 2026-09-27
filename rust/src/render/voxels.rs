@@ -199,8 +199,8 @@ mod tests {
 
     #[test]
     fn rigs_claim_every_voxel_once() {
-        let model = crate::render::characters::sebastian();
-        let rig = build_rig(&model, crate::render::characters::SEBASTIAN_RIG, 0.05);
+        let model = crate::render::characters::ragnar();
+        let rig = build_rig(&model, crate::render::characters::RAGNAR_RIG, 0.05);
         assert_eq!(rig.parts.len(), 6);
         let total: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
         assert_eq!(total, model.voxels.len());
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn portrait_is_the_front_view() {
-        let s = sprite_from(&crate::render::characters::sebastian());
+        let s = sprite_from(&crate::render::characters::ragnar());
         assert_eq!(s.height, 23);
         assert_eq!(s.width, 15);
     }

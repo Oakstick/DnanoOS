@@ -1,5 +1,5 @@
 //! Embeds the icon and version info into the game exe on Windows.
-//! The icon is generated from the game's own voxel art: `TheGreatAdventuresOfSebastian --write-icon assets/icon.ico`.
+//! The icon is generated from the game's own voxel art: `AdventuresOfTheAncientBlades --write-icon assets/icon.ico`.
 
 fn main() {
     println!("cargo:rerun-if-changed=assets/icon.ico");
@@ -9,8 +9,8 @@ fn main() {
     }
     let mut res = winresource::WindowsResource::new();
     res.set_icon("assets/icon.ico")
-        .set("ProductName", "The Great Adventures of Sebastian")
-        .set("FileDescription", "The Great Adventures of Sebastian")
+        .set("ProductName", "Adventures of the Ancient Blades")
+        .set("FileDescription", "Adventures of the Ancient Blades")
         .set("LegalCopyright", "Copyright (c) 2026");
     if let Err(e) = res.compile() {
         println!("cargo:warning=icon not embedded: {e}");

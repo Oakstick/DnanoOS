@@ -19,7 +19,7 @@ use crate::render::gpu::Gpu;
 use crate::render::hud;
 use crate::render::overlay::Overlay;
 use crate::render::view::Frame;
-use crate::render::characters::sebastian;
+use crate::render::characters::ragnar;
 use crate::render::voxels::sprite_from;
 
 /// Fixed simulation step.
@@ -236,7 +236,7 @@ impl App {
     }
 
     fn window_icon() -> Option<Icon> {
-        let s = sprite_from(&sebastian());
+        let s = sprite_from(&ragnar());
         let size = 64u32;
         let scale = (size as f32 / s.height as f32).floor().max(1.0) as u32;
         let ox = (size - s.width as u32 * scale) / 2;
@@ -266,7 +266,7 @@ impl ApplicationHandler for App {
         }
         #[allow(unused_mut)]
         let mut attrs = Window::default_attributes()
-            .with_title("The Great Adventures of Sebastian")
+            .with_title("Adventures of the Ancient Blades")
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             .with_min_inner_size(winit::dpi::LogicalSize::new(480.0, 270.0))
             .with_window_icon(Self::window_icon());

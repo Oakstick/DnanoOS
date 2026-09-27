@@ -31,7 +31,7 @@ pub enum WeaponKind {
     Ranged(RangedKind),
 }
 
-/// The melee weapon: Sebastian's bearded axe.
+/// The melee weapon: Ragnar's bearded axe.
 pub const SWORD_NAME: &str = "Axe";
 pub const SWORD_COLOR: u32 = 0xcfe8f0;
 

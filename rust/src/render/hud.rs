@@ -13,7 +13,7 @@ use glam::Vec3;
 
 use super::overlay::{rgba, Align, Overlay};
 use super::view::STEP;
-use super::characters::{bog_slime, draugr, raven, sebastian};
+use super::characters::{bog_slime, draugr, raven, ragnar};
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen};
 use crate::logic::gear::Line;
@@ -49,7 +49,7 @@ struct Sprites {
 fn sprites() -> &'static Sprites {
     static S: OnceLock<Sprites> = OnceLock::new();
     S.get_or_init(|| Sprites {
-        portrait: sprite_from(&sebastian()),
+        portrait: sprite_from(&ragnar()),
         krampus: sprite_from(&crate::render::view::krampus()),
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
@@ -98,6 +98,10 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         }
         return;
     }
+    if g.screen == Screen::Select {
+        draw_select(o, g, t);
+        return;
+    }
     if g.screen != Screen::Title {
         draw_world_overlays(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
@@ -118,7 +122,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             t,
             &[
                 line("THE CYCLOPS IS SLAIN", 2.0, GOLD),
-                line("The meadow is quiet again. Sebastian marches on.", 0.9, SAND),
+                line(format!("The meadow is quiet again. {} marches on.", g.hero_kind.name()), 0.9, SAND),
                 line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
                 line(format!("+{} coins to spend", crate::logic::gear::COINS_BOSS + 100 * g.dungeon as u32), 0.9, GOLD),
@@ -130,7 +134,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o,
             t,
             &[
-                line("SEBASTIAN HAS FALLEN", 1.6, 0xd8262e),
+                line(format!("{} HAS FALLEN", g.hero_kind.name().to_uppercase()), 1.6, 0xd8262e),
                 line(format!("Gold {}", g.score.score), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
                 line("Enter, click or tap to try again", 0.8, TEXT_DIM),
@@ -271,8 +275,9 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 
     let row_a = margin + t * 0.8;
     let row_b = margin + t * 1.85;
-    o.text("SEBASTIAN", cx0, row_a, small, rgba(SAND, 1.0), Align::Left, true);
-    let mut hx = cx0 + o.measure("SEBASTIAN", small) + t * 0.6;
+    let name = g.hero_kind.name().to_uppercase();
+    o.text(&name, cx0, row_a, small, rgba(SAND, 1.0), Align::Left, true);
+    let mut hx = cx0 + o.measure(&name, small) + t * 0.6;
     for i in 0..MAX_LIVES {
         let color = if i < g.score.lives { rgba(0xff4d6d, 1.0) } else { [1.0, 1.0, 1.0, 0.2] };
         o.text("♥", hx, row_a, fs * 1.1, color, Align::Left, false);
@@ -372,7 +377,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 }
 
 /**
- * The bottom-middle panel: what Sebastian holds and what protects him. Left,
+ * The bottom-middle panel: what Ragnar holds and what protects him. Left,
  * the weapon (its level as pips, ammo for a shrine weapon); middle, the
  * shield and how much it has left; right, the potion belt with the one Q
  * drinks outlined. Running potion effects sit in a row just above it.
@@ -668,7 +673,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     let left = (crate::game::TOUR_STOP_SECONDS - tour.t).max(0.0) as f32 / crate::game::TOUR_STOP_SECONDS as f32;
     o.rect(cx, cy + chh - t * 0.08, cw * left, t * 0.08, rgba(stop.color, 0.6 * fade));
     o.text("Enter / click / A: next     Esc: skip the tour", w - t * 0.8, h - bar_h / 2.0, t * 0.5, rgba(TEXT_DIM, k), Align::Right, false);
-    o.text("THE GREAT ADVENTURES OF SEBASTIAN", t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Left, false);
+    o.text("ADVENTURES OF THE ANCIENT BLADES", t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Left, false);
     o.text(&format!("{} / {}", tour.index + 1, n), w - t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Right, false);
 }
 
@@ -717,7 +722,7 @@ fn draw_tour_art(o: &mut Overlay, art: crate::game::TourArt, x: f32, y: f32, siz
 
 // ------------------------------------------------------------- world labels
 
-/// Health bar over Popolon, shrine labels, and floating text projected onto the overlay.
+/// Health bar over Ragnar, shrine labels, and floating text projected onto the overlay.
 fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let grid = &g.level.grid;
@@ -837,14 +842,14 @@ fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
     }
 }
 
-/// Start screen. The real 3D Sebastian stands in the middle while the camera
+/// Start screen. The real 3D Ragnar stands in the middle while the camera
 /// circles him; the logo, the quest, the foes and the controls frame him.
 fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let time = g.time as f32;
     let sp = sprites();
 
-    // Shade the scene top and bottom, keep the middle clear for Sebastian.
+    // Shade the scene top and bottom, keep the middle clear for Ragnar.
     let bands = 24;
     for i in 0..bands {
         let y0 = h * i as f32 / bands as f32;
@@ -860,11 +865,31 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     }
 
     // ---- logo
-    o.text("THE GREAT ADVENTURES OF", w / 2.0, h * 0.075, t * 0.95, rgba(SAND, 1.0), Align::Center, true);
-    draw_logo_word(o, "SEBASTIAN", w / 2.0, h * 0.075 + t * 2.6, t * 3.3, time);
+    o.text("ADVENTURES OF THE", w / 2.0, h * 0.075, t * 0.95, rgba(SAND, 1.0), Align::Center, true);
+    draw_logo_word(o, "ANCIENT BLADES", w / 2.0, h * 0.075 + t * 2.6, t * 2.9, time);
     let orn_y = h * 0.075 + t * 4.55;
-    draw_ornament(o, w / 2.0, orn_y, t * 13.0, t, time);
-    o.text("A Viking in the Sunken Dungeon", w / 2.0, orn_y + t * 0.95, t * 0.6, rgba(0xcfc2a0, 1.0), Align::Center, false);
+    draw_ornament(o, w / 2.0, orn_y, t * 15.0, t, time);
+    // The three heroes' names, small gold diamonds between them.
+    {
+        let (y, size) = (orn_y + t * 0.95, t * 0.6);
+        let gap = t * 1.4;
+        let names = ["Ragnar", "Mehmed", "Miyamoto"];
+        let total: f32 = names.iter().map(|n| o.measure(n, size)).sum::<f32>() + gap * 2.0;
+        let mut x = w / 2.0 - total / 2.0;
+        for (i, n) in names.iter().enumerate() {
+            o.text(n, x, y, size, rgba(0xcfc2a0, 1.0), Align::Left, false);
+            x += o.measure(n, size);
+            if i < 2 {
+                let (cx, r, lw) = (x + gap / 2.0, t * 0.16, (t * 0.07).max(1.2));
+                let c = rgba(GOLD, 0.9);
+                o.line([cx - r, y], [cx, y - r], lw, c);
+                o.line([cx, y - r], [cx + r, y], lw, c);
+                o.line([cx + r, y], [cx, y + r], lw, c);
+                o.line([cx, y + r], [cx - r, y], lw, c);
+                x += gap;
+            }
+        }
+    }
 
     // ---- left: the quest
     let px = w * 0.03;
@@ -902,7 +927,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
 
     // ---- the name plate under the 3D hero
     let ny = h * 0.69;
-    o.text("SEBASTIAN", w / 2.0, ny, t * 1.0, rgba(0xf2e3c4, 1.0), Align::Center, true);
+    o.text(&g.hero_kind.name().to_uppercase(), w / 2.0, ny, t * 1.0, rgba(0xf2e3c4, 1.0), Align::Center, true);
     o.text("the viking", w / 2.0, ny + t * 0.8, t * 0.55, rgba(TEXT_DIM, 1.0), Align::Center, false);
 
     // ---- controls strip
@@ -957,6 +982,114 @@ fn draw_logo_word(o: &mut Overlay, word: &str, cx: f32, cy: f32, size: f32, time
         o.text(&s, x, y, size, rgba(color, 1.0), Align::Center, true);
     }
     o.shadow = shadow;
+}
+
+// ---------------------------------------------------------- character screen
+
+/// A rectangle on screen: x, y, width, height.
+#[derive(Clone, Copy, Debug)]
+pub struct Rect(pub [f32; 4]);
+
+impl Rect {
+    pub fn contains(&self, p: (f32, f32)) -> bool {
+        let r = self.0;
+        p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]
+    }
+}
+
+/// Where the character screen's parts sit: a third of the screen for each hero, and the buttons.
+pub struct SelectLayout {
+    pub heroes: [Rect; 3],
+    pub back: Rect,
+    pub begin: Rect,
+}
+
+impl SelectLayout {
+    pub fn hero_at(&self, p: (f32, f32)) -> Option<usize> {
+        self.heroes.iter().position(|r| r.contains(p))
+    }
+}
+
+pub fn select_layout(w: f32, h: f32) -> SelectLayout {
+    let t = tile_for(w, h);
+    let (bw, bh, gap) = (t * 6.0, t * 1.3, t * 0.8);
+    let y = h * 0.93 - bh / 2.0;
+    SelectLayout {
+        heroes: [0, 1, 2].map(|i| Rect([w * i as f32 / 3.0, h * 0.18, w / 3.0, h * 0.62])),
+        back: Rect([w / 2.0 - gap / 2.0 - bw, y, bw, bh]),
+        begin: Rect([w / 2.0 + gap / 2.0, y, bw, bh]),
+    }
+}
+
+/**
+ * The character screen over its 3D cavern: the title, a name plate under
+ * each hero (grey with a lock for those not yet unlocked, gold for the one
+ * picked), and Back and Begin.
+ */
+fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
+    use crate::logic::heroes::ROSTER;
+    let (w, h) = (o.width, o.height);
+    let time = g.time as f32;
+    // Darken the top and bottom so the words read over the cavern.
+    let bands = 24;
+    for i in 0..bands {
+        let v = i as f32 / (bands - 1) as f32;
+        let a = if v < 0.2 { 0.78 - v / 0.2 * 0.6 } else if v < 0.7 { 0.18 } else { 0.18 + (v - 0.7) / 0.3 * 0.62 };
+        o.rect(0.0, h * i as f32 / bands as f32, w, h / bands as f32 + 1.0, [2.0 / 255.0, 3.0 / 255.0, 6.0 / 255.0, a]);
+    }
+
+    // ---- title
+    o.text("ADVENTURES OF THE ANCIENT BLADES", w / 2.0, h * 0.045, t * 0.55, rgba(SAND, 0.9), Align::Center, false);
+    draw_logo_word(o, "CHOOSE YOUR HERO", w / 2.0, h * 0.045 + t * 1.55, t * 1.55, time);
+    draw_ornament(o, w / 2.0, h * 0.045 + t * 2.85, t * 11.0, t, time);
+
+    // ---- a plate under each hero's feet
+    let hero = g.select_hero();
+    for (i, &kind) in ROSTER.iter().enumerate() {
+        let picked = i == g.select_index;
+        let Some((sx, sy)) = g.view.project(g.view.select_feet(i), w, h) else { continue };
+        let shake = if picked && g.select_denied > 0.0 { (g.select_denied as f32 * 70.0).sin() * t * 0.3 } else { 0.0 };
+        let (pw, ph) = (t * 6.4, t * 1.9);
+        let (px, py) = (sx - pw / 2.0 + shake, sy + t * 0.35);
+        let open = kind.unlocked();
+        o.rect(px, py, pw, ph, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, if picked { 0.88 } else { 0.7 }]);
+        let pulse = 0.7 + (time * 4.0).sin() * 0.3;
+        let edge = match (picked, open) {
+            (true, true) => rgba(GOLD, pulse),
+            (true, false) => rgba(if g.select_denied > 0.0 { 0xff5a5a } else { 0x9aa4b4 }, 0.9),
+            _ => [1.0, 1.0, 1.0, 0.15],
+        };
+        o.rect_outline(px, py, pw, ph, (t * if picked { 0.1 } else { 0.06 }).max(1.0), edge);
+        let name_color = match (open, picked) {
+            (true, true) => GOLD,
+            (true, false) => SAND,
+            (false, _) => 0x8c929c,
+        };
+        let cx = px + pw / 2.0;
+        o.text(&kind.name().to_uppercase(), cx, py + ph * 0.36, t * if picked { 0.95 } else { 0.8 }, rgba(name_color, 1.0), Align::Center, true);
+        o.text(kind.title(), cx, py + ph * 0.74, t * 0.5, rgba(if open { TEXT_DIM } else { 0x6c727c }, 1.0), Align::Center, false);
+        if !open {
+            // A padlock on the plate's shoulder, and the word under it.
+            let lock = icon(Icon::Lock);
+            let scale = (t * 1.1) / lock.height.max(1) as f32;
+            draw_sprite(o, lock, px - lock.width as f32 * scale * 0.4, py - lock.height as f32 * scale * 0.45, scale, Some(0xb4bcc8), 1.0);
+            o.text("LOCKED", cx, py + ph + t * 0.45, t * 0.48, rgba(if picked && g.select_denied > 0.0 { 0xff6a6a } else { 0x8c929c }, 1.0), Align::Center, true);
+        }
+    }
+
+    // ---- buttons: Back, and Begin (dimmed while a locked hero is picked)
+    let layout = select_layout(w, h);
+    for (r, label, live) in [(layout.back, "BACK", true), (layout.begin, "BEGIN", hero.unlocked())] {
+        let r = r.0;
+        let hover = g.input.cursor.is_some_and(|p| Rect(r).contains(p));
+        o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);
+        let main = label == "BEGIN";
+        let edge = if main && live { rgba(GOLD, 0.75 + (time * 4.0).sin() * 0.25) } else if hover { [1.0, 1.0, 1.0, 0.4] } else { [1.0, 1.0, 1.0, 0.18] };
+        o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
+        let color = if !live { 0x5c626c } else if main { GOLD } else { TEXT_DIM };
+        o.text(label, r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.7, rgba(color, 1.0), Align::Center, true);
+    }
+    o.text("Left / Right choose     Enter begin     Esc back", w / 2.0, h * 0.985, t * 0.45, rgba(TEXT_DIM, 1.0), Align::Center, false);
 }
 
 /// A knotwork-style rule: a line with diamonds at the ends and a gem in the middle.

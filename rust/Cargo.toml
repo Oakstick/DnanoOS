@@ -2,8 +2,8 @@
 name = "void-harvest"
 version = "0.2.0"
 edition = "2021"
-description = "Popolon and the Sunken Dungeon: a voxel maze crawler"
-default-run = "TheGreatAdventuresOfSebastian"
+description = "Adventures of the Ancient Blades: a voxel maze crawler"
+default-run = "AdventuresOfTheAncientBlades"
 build = "build.rs"
 
 [lib]
@@ -11,7 +11,7 @@ name = "void_harvest"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "TheGreatAdventuresOfSebastian"
+name = "AdventuresOfTheAncientBlades"
 path = "src/main.rs"
 
 [features]

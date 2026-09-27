@@ -11,12 +11,14 @@
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
-//! `goo` (a slime trail around Sebastian) and `gate` (the F2 cheat: every key, at the gate).
+//! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
+//! and `nav:left` / `nav:right` for a menu step (the character screen).
 //! `--iso` renders the whole level from an isometric map camera instead;
-//! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front);
+//! `--closeup [angle]` a portrait of Ragnar (angle in degrees around him, 0 = his front);
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
 //! (and `rise` times the distance above it, 0.28 unless given); `--bench N` then times N
-//! more draws of the same frame.
+//! more draws of the same frame; `--all-heroes` shows the locked heroes in colour on the
+//! character screen.
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -47,6 +49,8 @@ enum Cmd {
     Potion(usize),
     Press(Action),
     Hold(Dir, bool),
+    /// A menu step (the arrow keys' one-shot navigation).
+    Nav(Dir),
     Look(f64, f64),
 }
 
@@ -97,6 +101,10 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
                 let dy = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 Cmd::Look(dx, dy)
             }
+            "nav" => match parts.next().and_then(dir) {
+                Some(d) => Cmd::Nav(d),
+                None => continue,
+            },
             c if c.starts_with('+') || c.starts_with('-') => match dir(&c[1..]) {
                 Some(d) => Cmd::Hold(d, c.starts_with('+')),
                 None => continue,
@@ -141,6 +149,7 @@ pub fn run(args: &[String]) -> i32 {
             match script[next].1 {
                 Cmd::Press(a) => game.input.inject(a),
                 Cmd::Hold(d, down) => game.input.hold_dir(d, down),
+                Cmd::Nav(d) => game.input.nav = Some(d),
                 Cmd::Look(dx, dy) => game.view.look(dx, dy),
                 Cmd::Nugget => game.debug_collect_key(),
                 Cmd::Hurt => game.debug_hurt(),
@@ -168,6 +177,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut frame = Frame::default();
     let mut overlay = Overlay::new();
     game.view.aspect = w as f32 / h as f32;
+    game.view.preview_heroes = args.iter().any(|a| a == "--all-heroes");
     let iso = args.iter().any(|a| a == "--iso");
     if iso {
         game.view.set_map_view(&game.level.grid);
@@ -196,7 +206,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     game.view.emit(&game.scene(), &mut frame);
     if iso {
-        // Only the lights near Sebastian reach the GPU; lift the ambient so the far corners read.
+        // Only the lights near Ragnar reach the GPU; lift the ambient so the far corners read.
         let a = &mut frame.atmosphere;
         a.ambient *= 3.0;
         a.hemi_sky *= 2.0;
@@ -261,9 +271,9 @@ pub fn write_music(path: &str, seconds: f64, intensity: f64) -> std::io::Result<
 
 // ------------------------------------------------------------------- icon
 
-/// Writes the application icon (Sebastian's front view) as a multi-size .ico.
+/// Writes the application icon (Ragnar's front view) as a multi-size .ico.
 pub fn write_icon(path: &str) -> std::io::Result<()> {
-    let sprite = crate::render::voxels::sprite_from(&crate::render::characters::sebastian());
+    let sprite = crate::render::voxels::sprite_from(&crate::render::characters::ragnar());
     let sizes = [16u32, 24, 32, 48, 64, 128, 256];
     let mut images = Vec::new();
     for &size in &sizes {

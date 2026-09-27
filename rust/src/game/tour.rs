@@ -1,5 +1,5 @@
 //! The first-run tour: before the very first countdown the game holds still
-//! and the camera swoops from Sebastian to each kind of thing in the
+//! and the camera swoops from Ragnar to each kind of thing in the
 //! dungeon (gold, crosses, bottles, shrines, a pit) and then to each foe,
 //! while a see-through card explains it. Enter or a click moves on, Esc
 //! skips; it plays once and is remembered in the settings file.
@@ -79,7 +79,7 @@ impl Game {
         };
         let mut stops = vec![TourStop {
             target: at(spawn, 0.5),
-            title: "SEBASTIAN",
+            title: "RAGNAR",
             body: "That's you: a viking with an axe, a round shield, and a hoard to win. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
             color: 0xf2e3c4,
             art: TourArt::Hero,

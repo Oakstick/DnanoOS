@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod select;
 mod shop;
 mod tour;
 pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState, ShopTab};
@@ -28,6 +29,8 @@ use crate::render::view::{dir_to_yaw, floor_at, CameraMode, SceneState, WorldVie
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Screen {
     Title,
+    /// Choosing a hero, after Play on the title.
+    Select,
     Ready,
     Playing,
     Paused,
@@ -42,7 +45,7 @@ pub enum Screen {
     GameOver,
 }
 
-/// Health a green cross gives back, capped at Popolon's maximum.
+/// Health a green cross gives back, capped at Ragnar's maximum.
 const REMEDY_HEAL: i32 = 50;
 /// Reinforcements: the first arrives after this long, then one every interval, up to the cap.
 const SPAWN_FIRST: f64 = 20.0;
@@ -195,7 +198,7 @@ pub struct Game {
     /// The gate to the boss, and whether every key has been found.
     pub gate: Option<P>,
     pub gate_open: bool,
-    /// How far its doors have swung (0 shut, 1 open); they start when Sebastian comes to them.
+    /// How far its doors have swung (0 shut, 1 open); they start when Ragnar comes to them.
     pub door: f64,
     door_opening: bool,
     gate_hint: f64,
@@ -240,7 +243,7 @@ pub struct Game {
     streak_timer: f64,
     step_dist: f64,
     was_airborne: bool,
-    /// The way Popolon faces at spawn: down the longest corridor from the center.
+    /// The way Ragnar faces at spawn: down the longest corridor from the center.
     start_facing: Dir,
     /// The dungeon number this stretch of the game belongs to (its boss shares it).
     pub dungeon: usize,
@@ -266,6 +269,13 @@ pub struct Game {
     /// The first-run tour, while it plays, and whether it is still owed.
     pub tour: Option<Tour>,
     pub tour_pending: bool,
+    /// The hero being played (chosen on the character screen).
+    pub hero_kind: crate::logic::heroes::HeroKind,
+    /// The character screen: which place in the line-up is highlighted, seconds since it
+    /// moved, and seconds left of the shake after a locked hero was picked.
+    pub select_index: usize,
+    pub select_age: f64,
+    pub select_denied: f64,
 }
 
 impl Game {
@@ -338,6 +348,10 @@ impl Game {
             tour: None,
             // Tests start straight into play; they switch the tour on when they want it.
             tour_pending: !cfg!(test) && !tour::tour_seen(),
+            hero_kind: crate::logic::heroes::HeroKind::Ragnar,
+            select_index: 1,
+            select_age: 0.0,
+            select_denied: 0.0,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -366,7 +380,7 @@ impl Game {
             // In the arena he starts at the south edge, facing the Cyclops.
             self.start_facing = Dir::Up;
         } else {
-            // Popolon starts in the heart of the dungeon, facing its longest corridor.
+            // Ragnar starts in the heart of the dungeon, facing its longest corridor.
             let (spawn, facing) = center_spawn(&self.level);
             self.level.hero_spawn = spawn;
             self.start_facing = facing;
@@ -539,7 +553,7 @@ impl Game {
         // Dungeon I has its own recorded soundtrack; the title, the shop and the rest keep the synth tune.
         use crate::audio::Soundtrack;
         match screen {
-            Screen::Title | Screen::Shop => self.audio.set_soundtrack(Some(Soundtrack::Menu)),
+            Screen::Title | Screen::Select | Screen::Shop => self.audio.set_soundtrack(Some(Soundtrack::Menu)),
             Screen::Ready | Screen::Tour => {
                 let track = if self.level.data.boss {
                     Some(Soundtrack::Boss)
@@ -569,6 +583,11 @@ impl Game {
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
+        self.view.select = (self.screen == Screen::Select).then(|| crate::render::view::SelectView {
+            index: self.select_index,
+            age: self.select_age as f32,
+            denied: self.select_denied as f32,
+        });
         self.view.forge = self.screen == Screen::Shop;
         self.view.tour = self.tour.as_ref().filter(|_| self.screen == Screen::Tour).map(|t| (t.stop().target, t.t as f32, t.index));
         self.view.focus = self
@@ -583,20 +602,20 @@ impl Game {
         match self.screen {
             Screen::Title => match self.menu_choice() {
                 Some(MenuItem::Quit) => self.quit_requested = true,
+                // Play (or a tap anywhere else on the title) opens the character screen.
                 Some(_) => {
                     self.audio.unlock();
-                    self.start_game();
-                    // The click that starts the game is not also a sword swing.
+                    self.open_select();
                     self.input.consume(Action::Attack);
                 }
-                // A tap or click anywhere else on the title still begins, as it always has.
                 None if self.input.was_pressed(&[Action::Tap]) => {
                     self.audio.unlock();
-                    self.start_game();
+                    self.open_select();
                     self.input.consume(Action::Attack);
                 }
                 None => {}
             },
+            Screen::Select => self.update_select(dt),
             Screen::Ready => {
                 let before = self.screen_timer.ceil();
                 self.screen_timer -= dt;
@@ -1133,7 +1152,7 @@ impl Game {
         }
     }
 
-    /// The last key: every lock on the gate is lit. Now Sebastian must reach it.
+    /// The last key: every lock on the gate is lit. Now Ragnar must reach it.
     fn unlock_gate(&mut self) {
         self.gate_open = true;
         self.audio.play(Sfx::Win);
@@ -1152,7 +1171,7 @@ impl Game {
     }
 
     /**
-     * The gate in the outer wall. Locked, it tells Sebastian how many keys he
+     * The gate in the outer wall. Locked, it tells Ragnar how many keys he
      * still lacks. Unlocked, its doors swing open as he comes up to them, and
      * stepping through leads on to the boss.
      */
@@ -1207,7 +1226,7 @@ impl Game {
         self.enter(Screen::Cleared);
     }
 
-    /// F2: every key found at once, and Sebastian at the gate (testing cheat).
+    /// F2: every key found at once, and Ragnar at the gate (testing cheat).
     pub fn cheat_to_gate(&mut self) {
         let Some(g) = self.gate else { return };
         for (x, y, t) in self.level.grid.cells().collect::<Vec<_>>() {
@@ -1394,7 +1413,7 @@ impl Game {
         }
     }
 
-    /// Bolts and boulders: they fly until they hit rock, Sebastian, or run out.
+    /// Bolts and boulders: they fly until they hit rock, Ragnar, or run out.
     fn update_boss_shots(&mut self, dt: f64) {
         let grid = &self.level.grid;
         let hero_pos = self.hero.pos();
@@ -2008,7 +2027,7 @@ impl Game {
         }
     }
 
-    /// Test and capture hook: drop a nugget under Popolon and pick it up.
+    /// Test and capture hook: drop a nugget under Ragnar and pick it up.
     pub fn debug_collect_key(&mut self) {
         let o = self.hero.occupied();
         self.level.grid.set(o.x, o.y, Tile::Nodule);
@@ -2051,7 +2070,7 @@ impl Game {
     }
 
     /// Test and capture hook: an enemy's touch.
-    /// A fresh slime trail along the tiles around Sebastian, for screenshots.
+    /// A fresh slime trail along the tiles around Ragnar, for screenshots.
     pub fn debug_goo(&mut self) {
         let p = self.hero.occupied();
         let g = &self.level.grid;
@@ -2129,16 +2148,56 @@ impl Default for Game {
 mod tests {
     use super::*;
 
+    /// Play on the title, then begin with the hero on the character screen (Ragnar).
+    fn start_from_title(g: &mut Game) {
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Select);
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+    }
+
     fn playing() -> Game {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
-        g.input.inject(Action::Confirm);
-        g.update(crate::app::STEP);
+        start_from_title(&mut g);
         for _ in 0..(READY_SECONDS / crate::app::STEP) as usize + 2 {
             g.update(crate::app::STEP);
         }
         assert_eq!(g.screen, Screen::Playing);
         g
+    }
+
+    #[test]
+    fn the_character_screen_offers_three_heroes_but_only_ragnar_can_begin() {
+        use crate::logic::heroes::HeroKind;
+        let mut g = Game::new();
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Select);
+        assert_eq!(g.select_hero(), HeroKind::Ragnar, "Ragnar is highlighted first");
+        // Mehmed and Miyamoto are locked: picking them is refused.
+        for (dir, hero) in [(Dir::Left, HeroKind::Mehmed), (Dir::Right, HeroKind::Ragnar), (Dir::Right, HeroKind::Miyamoto)] {
+            g.input.nav = Some(dir);
+            g.update(crate::app::STEP);
+            assert_eq!(g.select_hero(), hero);
+            g.input.inject(Action::Confirm);
+            g.update(crate::app::STEP);
+            if hero == HeroKind::Ragnar {
+                assert_eq!(g.screen, Screen::Ready, "Ragnar begins");
+                g.enter(Screen::Title);
+                g.open_select();
+                g.select_index = HeroKind::Ragnar.slot();
+            } else {
+                assert_eq!(g.screen, Screen::Select, "{hero:?} is locked");
+                assert!(g.select_denied > 0.0);
+            }
+        }
+        assert_eq!(g.hero_kind, HeroKind::Ragnar);
+        // Esc goes back to the title.
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Title);
     }
 
     #[test]
@@ -2155,7 +2214,7 @@ mod tests {
     }
 
     #[test]
-    fn popolon_starts_in_the_middle_after_a_countdown() {
+    fn ragnar_starts_in_the_middle_after_a_countdown() {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
         let spawn = g.level.hero_spawn;
@@ -2168,8 +2227,7 @@ mod tests {
                 assert!(seen.contains(&P::new(x, y)), "pickup at {x},{y} unreachable from the center");
             }
         }
-        g.input.inject(Action::Confirm);
-        g.update(crate::app::STEP);
+        start_from_title(&mut g);
         assert_eq!(g.screen, Screen::Ready);
         for _ in 0..(2.9 / crate::app::STEP) as usize {
             g.update(crate::app::STEP);
@@ -2420,8 +2478,7 @@ mod tests {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-tour"));
         let mut g = Game::new();
         g.tour_pending = true;
-        g.input.inject(Action::Confirm);
-        g.update(crate::app::STEP);
+        start_from_title(&mut g);
         assert_eq!(g.screen, Screen::Tour);
         let stops = g.tour.as_ref().unwrap().stops.len();
         assert!(stops >= 8, "only {stops} stops");

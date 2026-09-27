@@ -4,7 +4,7 @@
 //! The gatehouse stands in the north wall: two stone towers with battlements
 //! either side of a pointed arch, oak doors banded with iron, and above the
 //! arch eight lock lamps, one lit for every key found. With all eight, a
-//! beacon of light rises from it; as Sebastian comes up, the doors swing in on
+//! beacon of light rises from it; as Ragnar comes up, the doors swing in on
 //! a golden glow.
 
 use super::*;

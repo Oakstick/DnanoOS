@@ -433,7 +433,7 @@ impl WorldView {
         push_statue(out, &statue, base + Vec3::new(0.0, STATUE_BASE, 0.0), PI);
         let len = out.len() - start;
         let shades: Vec<f32> = out[start..].iter().map(|i| i.emissive[3]).collect();
-        // Like a temple, it fades when it stands between the camera and Sebastian.
+        // Like a temple, it fades when it stands between the camera and Ragnar.
         self.trees.push(Tree { range: (start, len), base, radius: 0.5, height: 2.1, fade: 1.0, alive: true, shades: Some(shades) });
 
         // Flagstones on the path tiles at its corners, laid in rings round it.

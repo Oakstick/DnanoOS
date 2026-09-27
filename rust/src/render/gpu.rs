@@ -213,7 +213,7 @@ pub struct Gpu {
     pub format: wgpu::TextureFormat,
     rt: Targets,
     post: PostShared,
-    /// One layer of the shadow map per cascade: the fine one round Sebastian, then the whole level.
+    /// One layer of the shadow map per cascade: the fine one round Ragnar, then the whole level.
     shadow_layers: [wgpu::TextureView; 2],
     shadow_pipe: wgpu::RenderPipeline,
     shadow_binds: [wgpu::BindGroup; 2],
@@ -791,7 +791,7 @@ impl Gpu {
         let (cam, fwd, cam_r, cam_u, ortho) = view.camera_basis();
         let (sky_fwd, sky_right, sky_up) = view.sky_basis();
         // Two shadow cascades look down the light: a fine one over the ground ahead of
-        // Sebastian, stepped a whole texel at a time so its edges never crawl, and a coarse
+        // Ragnar, stepped a whole texel at a time so its edges never crawl, and a coarse
         // one over the whole level (or the diorama on show).
         let (center, radius) = view.shadow_box();
         let l = atm.sun_dir.normalize_or(Vec3::Y);

@@ -71,10 +71,10 @@ impl WorldView {
         self.ghosts.retain(|g| g.2 > 0.0);
     }
 
-    /// Sebastian's rig for the axe and shield he has right now.
+    /// Ragnar's rig for the axe and shield he has right now.
     pub(super) fn hero_rig(&self, hero: &Hero) -> &Rig {
         let key = (hero.axe_level.clamp(1, 3), hero.shield.map(|s| s.kind));
-        self.models.heroes.get(&key).unwrap_or(&self.models.popolon)
+        self.models.heroes.get(&key).unwrap_or(&self.models.ragnar)
     }
 
     /// Auras and trails of the potions he has drunk, and the lightning arcs.
@@ -197,7 +197,7 @@ impl WorldView {
     /**
      * Hrolf's forge: a stone floor, a brick hearth with glowing coals and a
      * chimney, an anvil, a rack of weapons, a barrel, and the smith himself
-     * hammering away while Sebastian looks on.
+     * hammering away while Ragnar looks on.
      */
     pub(super) fn emit_forge(&self, s: &SceneState, f: &mut Frame) {
         let time = s.time as f32;
@@ -310,7 +310,7 @@ impl WorldView {
             f.lights.push(Light { pos: anvil + Vec3::new(0.0, 0.9, 0.2), color: lin(0xffc060) * 10.0 * (1.0 - k), distance: 4.0 });
         }
 
-        // Sebastian, in his current gear, watching the work.
+        // Ragnar, in his current gear, watching the work.
         let hero = s.hero;
         let rig = self.hero_rig(hero);
         let mut hp = Pose::rest(rig);

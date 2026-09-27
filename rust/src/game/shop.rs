@@ -1,7 +1,7 @@
 //! Hrolf's forge: the blacksmith's shop between a boss and the next dungeon.
 //! Three tabs (weapons, shields, potions) of rows of buttons, driven by the
 //! keyboard, a controller or the mouse. The rows are built fresh from what
-//! Sebastian owns, so labels and prices always tell the truth.
+//! Ragnar owns, so labels and prices always tell the truth.
 
 use super::{Game, Screen};
 use crate::audio::Sfx;

@@ -26,8 +26,10 @@ mod fountain;
 mod garden;
 mod gate;
 mod meadow;
+mod select;
 pub use forge::SMITH_BEAT;
 pub use fountain::krampus;
+pub use select::SelectView;
 pub use meadow::meadow_atmosphere;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
@@ -96,7 +98,7 @@ const TOP_HEIGHT: f32 = 8.2;
 const TOP_BACK: f32 = 5.0;
 const TOP_LOOK_AHEAD: f32 = 0.4;
 const TOP_LERP: f32 = 5.0;
-/// Sebastian's voxel size: 23 voxels make him about as tall as a tile is wide.
+/// Ragnar's voxel size: 23 voxels make him about as tall as a tile is wide.
 const VOXEL: f32 = 0.05;
 const BLAST_SECONDS: f32 = 0.45;
 const DEBRIS_SECONDS: f32 = 1.4;
@@ -151,7 +153,7 @@ pub fn glow_orb(f: &mut Frame, at: Vec3, radius: f32, color: Vec3, strength: f32
     f.glow.push(Instance::new(m, color, strength, Vec3::ZERO, SHADE_GLOW));
 }
 
-/// How see-through a tree gets while it blocks the view of Popolon.
+/// How see-through a tree gets while it blocks the view of Ragnar.
 
 pub const TREE_FADE_MIN: f32 = 0.22;
 /// Fade speed, in full fades per second.
@@ -370,7 +372,7 @@ impl Tree {
             return false;
         }
         const SAMPLES: usize = 24;
-        // Stop a little short of Popolon so a tree right behind him never counts.
+        // Stop a little short of Ragnar so a tree right behind him never counts.
         for i in 0..SAMPLES {
             let p = eye.lerp(to, i as f32 / SAMPLES as f32 * 0.95);
             if p.y < self.base.y || p.y > self.base.y + self.height {
@@ -430,7 +432,7 @@ struct EffectLight {
 }
 
 struct Models {
-    popolon: Rig,
+    ragnar: Rig,
     skeleton: Rig,
     bat: Rig,
     vampire: Rig,
@@ -450,10 +452,13 @@ struct Models {
     bottles: HashMap<u32, Mesh>,
     cyclops: Rig,
     boulder: Rig,
-    /// Sebastian for every axe level and shield (or none).
+    /// Ragnar for every axe level and shield (or none).
     heroes: HashMap<(u8, Option<crate::logic::gear::ShieldKind>), Rig>,
     blacksmith: Rig,
     knife: Rig,
+    /// The two heroes waiting to be unlocked, for the character screen.
+    mehmed: Rig,
+    miyamoto: Rig,
 }
 
 impl Models {
@@ -466,11 +471,11 @@ impl Models {
         let mut heroes = HashMap::new();
         for level in 1..=3u8 {
             for shield in [None].into_iter().chain(crate::logic::gear::SHIELDS.into_iter().map(Some)) {
-                heroes.insert((level, shield), build_rig(&characters::sebastian_hd(level, shield), characters::SEBASTIAN_HD_RIG, VOXEL / 2.0));
+                heroes.insert((level, shield), build_rig(&characters::ragnar_hd(level, shield), characters::RAGNAR_HD_RIG, VOXEL / 2.0));
             }
         }
         Self {
-            popolon: build_rig(&characters::sebastian_hd(1, Some(crate::logic::gear::ShieldKind::Round)), characters::SEBASTIAN_HD_RIG, VOXEL / 2.0),
+            ragnar: build_rig(&characters::ragnar_hd(1, Some(crate::logic::gear::ShieldKind::Round)), characters::RAGNAR_HD_RIG, VOXEL / 2.0),
             skeleton: build_rig(&characters::draugr(), characters::DRAUGR_RIG, 0.05),
             bat: build_rig(&characters::raven(false), characters::RAVEN_RIG, 0.042),
             vampire: build_rig(&characters::raven(true), characters::RAVEN_RIG, 0.05),
@@ -501,6 +506,8 @@ impl Models {
             heroes,
             blacksmith: build_rig(&characters::blacksmith(), characters::BLACKSMITH_RIG, 0.055),
             knife: build_rig(&forge::knife_model(), &[], 0.06),
+            mehmed: build_rig(&characters::mehmed(), characters::MEHMED_RIG, VOXEL / 2.0),
+            miyamoto: build_rig(&characters::miyamoto(), characters::MIYAMOTO_RIG, VOXEL / 2.0),
         }
     }
 
@@ -522,7 +529,7 @@ pub struct WorldView {
     /// True while the mouse is captured; otherwise the view trails his heading.
     pub mouse_look: bool,
     pub aspect: f32,
-    /// Title screen: the camera circles Sebastian instead of chasing him.
+    /// Title screen: the camera circles Ragnar instead of chasing him.
     pub showcase: bool,
     /// Free movement: the chase camera turns after him only while he runs straight ahead.
     pub follow_heading: bool,
@@ -602,6 +609,16 @@ pub struct WorldView {
     pub focus: Option<Vec3>,
     /// The shop: the camera looks into the blacksmith's forge.
     pub forge: bool,
+    /// The character screen, while it is up.
+    pub select: Option<SelectView>,
+    /// The character screen's cavern (built once), how far each hero has stepped forward,
+    /// where the camera has drifted to, and whether the screen was up last frame.
+    select_set: Vec<Instance>,
+    select_step: [f32; 3],
+    select_cam: f32,
+    was_select: bool,
+    /// Draw the heroes not yet unlocked in colour too (a capture option, to look at them).
+    pub preview_heroes: bool,
     /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
     pub tour: Option<(Vec3, f32, usize)>,
     tour_index: Option<usize>,
@@ -621,7 +638,7 @@ fn tile_key(x: i32, y: i32) -> P {
 impl WorldView {
     pub fn new() -> Self {
         let models = Models::new();
-        let hero_pose = Pose::rest(&models.popolon);
+        let hero_pose = Pose::rest(&models.ragnar);
         Self {
             camera_mode: CameraMode::Third,
             cam_yaw: 0.0,
@@ -682,6 +699,12 @@ impl WorldView {
             recentering: false,
             focus: None,
             forge: false,
+            select: None,
+            select_set: select::cavern(),
+            select_step: [0.0, 1.0, 0.0],
+            select_cam: 0.0,
+            was_select: false,
+            preview_heroes: false,
             tour: None,
             tour_index: None,
             tour_angle: 0.0,
@@ -927,10 +950,19 @@ impl WorldView {
         let time = s.time as f32;
         self.update_effects(dtf, s);
 
+        // The character screen: the picked hero steps forward, the others back.
+        if let Some(sel) = self.select {
+            let k = 1.0 - (-7.0 * dtf).exp();
+            for (i, step) in self.select_step.iter_mut().enumerate() {
+                let goal = if i == sel.index { 1.0 } else { 0.0 };
+                *step += (goal - *step) * k;
+            }
+        }
+
         // Hero pose: stride cycle, facing, sword swing, jump tuck.
         let hero = s.hero;
         if self.showcase {
-            // Sebastian shows off his axe now and then on the title screen.
+            // Ragnar shows off his axe now and then on the title screen.
             self.showcase_timer += dtf;
             if self.showcase_timer > 3.6 {
                 self.showcase_timer = 0.0;
@@ -1052,7 +1084,7 @@ impl WorldView {
     }
 
     /**
-     * Trees standing between the camera and Popolon dissolve so he is never
+     * Trees standing between the camera and Ragnar dissolve so he is never
      * lost behind the woods, then grow back once the view is clear. The fade
      * is a screen-door dither in the opaque pass, so depth stays correct.
      */
@@ -1193,7 +1225,7 @@ impl WorldView {
 
     /// Legs and arms swing in opposition while moving; the sword arm does the slash; a tuck in the air.
     fn animate_hero(&mut self, hero: &Hero) {
-        let rig = &self.models.popolon;
+        let rig = &self.models.ragnar;
         let p = &mut self.hero_pose;
         let motion = hero.motion as f32;
         let stride = self.hero_phase.sin() * motion;
@@ -1243,7 +1275,7 @@ impl WorldView {
         let e = if k == 1 { 1.0 - (1.0 - u).powi(3) } else { u * u * (3.0 - 2.0 * u) };
         let mix = |x: f32, y: f32| x + (y - x) * e;
         let side = self.slash_side;
-        let rig = &self.models.popolon;
+        let rig = &self.models.ragnar;
         if let Some(i) = rig.index("swordArm") {
             self.hero_pose.rot[i].x = mix(a.1, b.1);
             self.hero_pose.rot[i].z = mix(a.2, b.2) * side;
@@ -1363,9 +1395,10 @@ impl WorldView {
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
         let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
         self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
-        if self.showcase != self.was_showcase || self.forge != self.was_forge {
+        if self.showcase != self.was_showcase || self.forge != self.was_forge || self.select.is_some() != self.was_select {
             self.was_showcase = self.showcase;
             self.was_forge = self.forge;
+            self.was_select = self.select.is_some();
             self.initialized = false;
         }
         if self.tour.is_none() {
@@ -1382,13 +1415,21 @@ impl WorldView {
             let r = 2.5 + 3.6 * (1.0 - e);
             let h = 2.15 + 3.0 * (1.0 - e);
             (target + Vec3::new(a.cos() * r, h, a.sin() * r), target + Vec3::new(0.0, 0.35, 0.0), 7.0 + 6.0 * e)
+        } else if let Some(sel) = self.select {
+            // The character screen: a low, heroic view of the line-up, drifting toward whoever is picked.
+            let goal = select::slot_feet(sel.index, 1.0).x - select::SELECT_STAGE.x;
+            self.select_cam += (goal * 0.32 - self.select_cam) * (1.0 - (-3.0 * dt).exp());
+            self.showcase_angle += dt;
+            let sway = (self.showcase_angle * 0.31).sin() * 0.07;
+            let base = select::SELECT_STAGE;
+            (base + Vec3::new(self.select_cam + sway, 1.0, 3.35), base + Vec3::new(self.select_cam * 1.15, 0.78, 0.0), 6.0)
         } else if self.forge {
             // The forge fills the left of the screen; the shop panel sits on the right.
             self.showcase_angle += dt;
             let a = (self.showcase_angle * 0.2).sin() * 0.15;
             (forge::FORGE + Vec3::new(2.3 + a, 2.3, 5.5), forge::FORGE + Vec3::new(2.05 + a * 0.5, 0.75, -0.2), 6.0)
         } else if self.showcase {
-            // The title diorama: the camera sways gently in front of Sebastian.
+            // The title diorama: the camera sways gently in front of Ragnar.
             self.showcase_angle += dt;
             let a = (self.showcase_angle * 0.23).sin() * 0.5;
             (STAGE + Vec3::new(a.sin() * 4.3, 1.45, a.cos() * 4.3), STAGE + Vec3::new(0.0, 0.62, 0.0), 6.0)
@@ -1436,6 +1477,8 @@ impl WorldView {
         };
         self.focus_point = if let Some((target, _, _)) = self.tour {
             target
+        } else if let Some(sel) = self.select {
+            select::slot_feet(sel.index, 1.0) + Vec3::new(0.0, 0.7, 0.0)
         } else if self.forge {
             forge::FORGE + Vec3::new(1.6, 0.8, 0.0)
         } else if self.showcase {
@@ -1464,7 +1507,7 @@ impl WorldView {
         self.cam_pitch = p.clamp(chase::MIN_PITCH, chase::MAX_PITCH);
     }
 
-    /// Swings the chase camera back behind Sebastian (R3); it follows him again afterwards.
+    /// Swings the chase camera back behind Ragnar (R3); it follows him again afterwards.
     pub fn recenter(&mut self) {
         self.recentering = true;
     }
@@ -1548,11 +1591,16 @@ impl WorldView {
         Some((self.focus_point - pos).dot(fwd).max(0.5))
     }
 
+    /// Where hero `i` of the character screen's line-up stands, his feet in the world.
+    pub fn select_feet(&self, i: usize) -> Vec3 {
+        select::slot_feet(i, self.select_step[i.min(2)])
+    }
+
     /// The region the shadow map covers: its center and radius.
     /// Where the fine shadow cascade centers: on the ground a little past where the
     /// camera looks. None where the coarse one is enough (the map, the title, the shop).
     pub fn shadow_focus(&self) -> Option<Vec3> {
-        if self.forge || self.showcase || self.map_view.is_some() {
+        if self.forge || self.showcase || self.select.is_some() || self.map_view.is_some() {
             return None;
         }
         let fwd = self.cam_look - self.cam_pos;
@@ -1561,7 +1609,9 @@ impl WorldView {
     }
 
     pub fn shadow_box(&self) -> (Vec3, f32) {
-        if self.forge {
+        if self.select.is_some() {
+            (select::SELECT_STAGE + Vec3::new(0.0, 0.6, -0.6), 6.5)
+        } else if self.forge {
             (forge::FORGE, 7.0)
         } else if self.showcase {
             (STAGE, 5.0)
@@ -1611,11 +1661,15 @@ impl WorldView {
             let up = right.cross(fwd);
             f.facing = Quat::from_mat3(&glam::Mat3::from_cols(right, up, -fwd));
         }
-        f.skip_static = self.showcase || self.forge;
+        f.skip_static = self.showcase || self.forge || self.select.is_some();
         f.time = s.time as f32;
         if self.forge {
             f.atmosphere.night_sky = 0.0;
             self.emit_forge(s, f);
+            return;
+        }
+        if let Some(sel) = self.select {
+            self.emit_select(sel, s, f);
             return;
         }
         f.atmosphere = if self.meadow && !self.showcase { meadow_atmosphere() } else { Atmosphere::forest() };
@@ -1946,7 +2000,7 @@ const STAGE: Vec3 = Vec3::new(-40.0, 0.0, -40.0);
 impl WorldView {
     /**
      * The title screen's stage: a mossy stone platform and dais in a ring of
-     * trees and lanterns, Sebastian in the middle showing off his axe, his
+     * trees and lanterns, Ragnar in the middle showing off his axe, his
      * foes idling around him, under a warm key light and a cool rim light.
      */
     fn emit_stage(&self, s: &SceneState, f: &mut Frame) {
@@ -2000,19 +2054,19 @@ impl WorldView {
             push_field(&mut f.opaque[cube], &self.models.nugget, at(x, 0.19, z), i as f32 * 2.1, 0.75, Vec3::ONE, pulse, SHADE_LIT);
         }
 
-        // Sebastian, turning a little as if looking around.
+        // Ragnar, turning a little as if looking around.
         let hero = s.hero;
         let yaw = (time * 0.4).sin() * 0.3;
         let group = Mat4::from_translation(at(0.0, 0.19, 0.0)) * Mat4::from_rotation_y(yaw);
         let root = group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
         let breathe = Vec3::new(0.0, (time * 2.0).sin() * 0.006, 0.0);
         let mut pose = self.hero_pose.clone();
-        if let Some(h) = self.models.popolon.index("head") {
+        if let Some(h) = self.models.ragnar.index("head") {
             pose.pos[h] += breathe;
             pose.rot[h].y = (time * 0.7).sin() * 0.25;
         }
         let emissive = if hero.invincible() { lin(INVINCIBLE) * 0.4 } else { Vec3::ZERO };
-        emit_rig(&mut f.opaque[cube], &self.models.popolon, &pose, root, Vec3::ONE, 1.0, emissive);
+        emit_rig(&mut f.opaque[cube], &self.models.ragnar, &pose, root, Vec3::ONE, 1.0, emissive);
         if self.slash_t >= 0.0 {
             let p = self.slash_t / SLASH_SECONDS;
             let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
@@ -2125,6 +2179,20 @@ fn emit_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: V
     }
 }
 
+/// Like `emit_rig`, but drained of colour to grey and tinted (a hero not yet unlocked).
+fn emit_rig_grey(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
+    let s = Mat4::from_scale(Vec3::splat(rig.size));
+    for (i, part) in rig.parts.iter().enumerate() {
+        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
+        for (j, (off, c)) in part.cubes.iter().enumerate() {
+            let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
+            // Like a statue in pale stone: the colours' lightness kept, squeezed into a narrow range.
+            let grey = 0.1 + 0.3 * c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).sqrt();
+            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, Vec3::splat(grey) * tint, 1.0, Vec3::ZERO, shade));
+        }
+    }
+}
+
 /// Floor height in world units under a point, as the web build rounds it.
 pub fn floor_at(grid: &Grid, x: f32, y: f32) -> f32 {
     grid.elevation(js_round(x as f64) as i32, js_round(y as f64) as i32) as f32 * STEP
@@ -2132,7 +2200,7 @@ pub fn floor_at(grid: &Grid, x: f32, y: f32) -> f32 {
 
 /**
  * How far back the camera can sit before undergrowth comes between it and
- * Popolon. Walls are whole tiles, so the ray is walked against the grid.
+ * Ragnar. Walls are whole tiles, so the ray is walked against the grid.
  */
 fn clear_behind(grid: &Grid, pivot: Vec3, dir: Vec3) -> f32 {
     let steps = 14;
@@ -2303,8 +2371,11 @@ mod tests {
         // At the web build's old spawn (2,4) the chase camera sits behind a wall tree;
         // it must fade, and not much else.
         let mut g = crate::game::Game::new();
-        g.input.inject(crate::input::Action::Confirm);
-        g.update(crate::app::STEP);
+        // Play on the title, then begin with Ragnar on the character screen.
+        for _ in 0..2 {
+            g.input.inject(crate::input::Action::Confirm);
+            g.update(crate::app::STEP);
+        }
         g.hero.m.teleport(P::new(2, 4));
         g.hero.facing = Dir::Down;
         g.view.aim_along(Dir::Down);
@@ -2333,7 +2404,7 @@ const SMOKE_TOP: f32 = 7.4;
 
 /**
  * The cloud sea the island floats on, and the smoke wall round its edges:
- * ranks of billowing curtains that rise to about five times Sebastian's
+ * ranks of billowing curtains that rise to about five times Ragnar's
  * height. A rank thins away as the camera comes up to it, so the view out
  * from near the edge stays clear, and from far outside (the map) the near
  * ranks are left out altogether.

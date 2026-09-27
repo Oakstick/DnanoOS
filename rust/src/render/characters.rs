@@ -73,6 +73,29 @@ impl Sculpt {
         }
     }
 
+    /// Fills a tapered capsule from `a` (radius `ra`) to `b` (radius `rb`), in voxel units.
+    #[allow(clippy::too_many_arguments)]
+    pub fn capsule(&mut self, a: (f32, f32, f32), b: (f32, f32, f32), ra: f32, rb: f32, c: u32) {
+        let r = ra.max(rb) + 1.0;
+        let lo = (a.0.min(b.0) - r, a.1.min(b.1) - r, a.2.min(b.2) - r);
+        let hi = (a.0.max(b.0) + r, a.1.max(b.1) + r, a.2.max(b.2) + r);
+        let ab = (b.0 - a.0, b.1 - a.1, b.2 - a.2);
+        let len2 = (ab.0 * ab.0 + ab.1 * ab.1 + ab.2 * ab.2).max(1e-6);
+        for y in lo.1.floor() as i32..=hi.1.ceil() as i32 {
+            for z in lo.2.floor() as i32..=hi.2.ceil() as i32 {
+                for x in lo.0.floor() as i32..=hi.0.ceil() as i32 {
+                    let p = (x as f32 - a.0, y as f32 - a.1, z as f32 - a.2);
+                    let t = ((p.0 * ab.0 + p.1 * ab.1 + p.2 * ab.2) / len2).clamp(0.0, 1.0);
+                    let d = (p.0 - ab.0 * t, p.1 - ab.1 * t, p.2 - ab.2 * t);
+                    let rad = ra + (rb - ra) * t;
+                    if d.0 * d.0 + d.1 * d.1 + d.2 * d.2 <= rad * rad {
+                        self.set(x, y, z, c);
+                    }
+                }
+            }
+        }
+    }
+
     /// Recolors every filled voxel the predicate picks.
     pub fn paint(&mut self, mut f: impl FnMut(i32, i32, i32, u32) -> Option<u32>) {
         for y in 0..self.h {
@@ -123,7 +146,7 @@ fn scale(c: u32, k: f32) -> u32 {
     ch(16) | ch(8) | ch(0) | (c & 0xff00_0000)
 }
 
-// ------------------------------------------------------------------ Sebastian
+// ------------------------------------------------------------------ Ragnar
 
 mod viking {
     pub const SKIN: u32 = 0xf0c49c;
@@ -158,16 +181,16 @@ mod viking {
     pub const EDGE: u32 = 0xf2f5f8;
 }
 
-/// Sebastian the viking with his starting kit: 15 wide, 9 deep, 23 tall.
-pub fn sebastian() -> Collected {
-    sebastian_geared(1, Some(ShieldKind::Round))
+/// Ragnar the viking with his starting kit: 15 wide, 9 deep, 23 tall.
+pub fn ragnar() -> Collected {
+    ragnar_geared(1, Some(ShieldKind::Round))
 }
 
 /**
- * Sebastian carrying a given axe (level 1 bearded axe, 2 battle axe, 3
+ * Ragnar carrying a given axe (level 1 bearded axe, 2 battle axe, 3
  * double-bladed great axe) and shield on his back (or none, if it broke).
  */
-pub fn sebastian_geared(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
+pub fn ragnar_geared(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
     use viking::*;
     let mut s = Sculpt::new(15, 23, 9);
     // Boots with fur cuffs, wrapped trousers.
@@ -392,8 +415,8 @@ fn back_shield(s: &mut Sculpt, kind: ShieldKind) {
     }
 }
 
-/// Sebastian's joints. Leg boxes stop short of the cloak and shield on his back.
-pub const SEBASTIAN_RIG: &[PartDef] = &[
+/// Ragnar's joints. Leg boxes stop short of the cloak and shield on his back.
+pub const RAGNAR_RIG: &[PartDef] = &[
     PartDef { name: "leftLeg", boxes: &[([3, 0, 2], [6, 6, 8])], pivot: [5.0, 7.0, 4.0] },
     PartDef { name: "rightLeg", boxes: &[([8, 0, 2], [11, 6, 8])], pivot: [9.0, 7.0, 4.0] },
     PartDef { name: "shieldArm", boxes: &[([0, 5, 2], [2, 14, 8])], pivot: [2.0, 13.5, 3.5] },
@@ -401,7 +424,7 @@ pub const SEBASTIAN_RIG: &[PartDef] = &[
     PartDef { name: "head", boxes: &[([0, 15, 0], [14, 22, 8]), ([4, 10, 6], [10, 14, 8])], pivot: [7.0, 14.5, 3.5] },
 ];
 
-// ------------------------------------------------------- Sebastian, in detail
+// ------------------------------------------------------- Ragnar, in detail
 
 /// Voxel materials, carried in the top byte of a voxel's color. The shader
 /// gives each its own surface: see `voxel_surface` in shaders.wgsl.
@@ -478,13 +501,13 @@ fn blob(s: &mut Sculpt, c: (f32, f32, f32), r: f32, color: u32) {
 }
 
 /**
- * Sebastian at twice the resolution of `sebastian_geared` (the same size in
+ * Ragnar at twice the resolution of `ragnar_geared` (the same size in
  * the world): a riveted spangenhelm with ivory horns, a braided fur beard, a
  * fur mantle, a woven tunic with embroidered trim, a stitched belt with a
  * gold buckle and a pouch, laced bracers, cross-gartered trousers, fur-cuffed
  * boots. 30 wide, 46 tall, 18 deep; voxels carry materials.
  */
-pub fn sebastian_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
+pub fn ragnar_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
     use hd::*;
     let mut s = Sculpt::new(30, 46, 18);
 
@@ -735,7 +758,7 @@ pub fn sebastian_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
     s.finish(0.035)
 }
 
-/// Sebastian's axe at each level, in his right hand (x 26..27, blade forward).
+/// Ragnar's axe at each level, in his right hand (x 26..27, blade forward).
 fn hand_axe_hd(s: &mut Sculpt, level: u8) {
     use hd::*;
     let blade = |s: &mut Sculpt, profile: &[(i32, i32, i32)], body: u32, edge: u32| {
@@ -854,14 +877,507 @@ fn back_shield_hd(s: &mut Sculpt, kind: ShieldKind) {
     }
 }
 
-/// The detailed Sebastian's joints, in its doubled grid.
-pub const SEBASTIAN_HD_RIG: &[PartDef] = &[
+/// The detailed Ragnar's joints, in its doubled grid.
+pub const RAGNAR_HD_RIG: &[PartDef] = &[
     PartDef { name: "leftLeg", boxes: &[([6, 0, 4], [14, 13, 16])], pivot: [11.0, 14.0, 9.5] },
     PartDef { name: "rightLeg", boxes: &[([15, 0, 4], [23, 13, 16])], pivot: [18.5, 14.0, 9.5] },
     PartDef { name: "shieldArm", boxes: &[([0, 10, 4], [5, 29, 16])], pivot: [5.0, 27.0, 8.0] },
     PartDef { name: "swordArm", boxes: &[([24, 6, 0], [29, 37, 17])], pivot: [24.0, 27.0, 8.0] },
     PartDef { name: "head", boxes: &[([0, 30, 2], [29, 45, 17]), ([9, 17, 13], [20, 29, 17])], pivot: [14.5, 29.0, 7.5] },
 ];
+
+// ------------------------------------------------- Mehmed and Miyamoto
+
+/// A sculpt seen through an x offset, so a model can be drawn in its body's
+/// own coordinates (the same as Ragnar's, shifted) while its weapon reaches
+/// past the edge of those.
+struct Offset<'a> {
+    s: &'a mut Sculpt,
+    dx: i32,
+}
+
+impl Offset<'_> {
+    fn set(&mut self, x: i32, y: i32, z: i32, c: u32) {
+        self.s.set(x + self.dx, y, z, c);
+    }
+
+    fn clear(&mut self, x: i32, y: i32, z: i32) {
+        self.s.clear(x + self.dx, y, z);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cuboid(&mut self, x0: i32, y0: i32, z0: i32, x1: i32, y1: i32, z1: i32, c: u32) {
+        self.s.cuboid(x0 + self.dx, y0, z0, x1 + self.dx, y1, z1, c);
+    }
+
+    fn ellipsoid(&mut self, c: (f32, f32, f32), r: (f32, f32, f32), ymin: i32, color: u32) {
+        self.s.ellipsoid((c.0 + self.dx as f32, c.1, c.2), r, ymin, color);
+    }
+
+    fn capsule(&mut self, a: (f32, f32, f32), b: (f32, f32, f32), ra: f32, rb: f32, c: u32) {
+        let d = self.dx as f32;
+        self.s.capsule((a.0 + d, a.1, a.2), (b.0 + d, b.1, b.2), ra, rb, c);
+    }
+
+    fn paint(&mut self, mut f: impl FnMut(i32, i32, i32, u32) -> Option<u32>) {
+        let dx = self.dx;
+        self.s.paint(|x, y, z, c| f(x - dx, y, z, c));
+    }
+}
+
+/// All the voxel columns whose centres lie within `half` of `c`.
+fn span(c: f32, half: f32) -> (i32, i32) {
+    ((c - half).ceil() as i32, (c + half).floor() as i32)
+}
+
+mod jan {
+    use super::mat;
+    pub const SKIN: u32 = 0xd9a47c | mat::SKIN;
+    pub const SKIN_D: u32 = 0xb8825c | mat::SKIN;
+    pub const EYE_W: u32 = 0xf2eee4;
+    pub const IRIS: u32 = 0x4a2c16;
+    pub const PUPIL: u32 = 0x140c08;
+    pub const HAIR: u32 = 0x221812 | mat::FUR;
+    pub const BEARD: u32 = 0x1e1510 | mat::FUR;
+    pub const BEARD_L: u32 = 0x3a2a1e | mat::FUR;
+    pub const BROW: u32 = 0x18110c | mat::FUR;
+    pub const FELT: u32 = 0xf0ebe0 | mat::CLOTH;
+    pub const FELT_D: u32 = 0xd6cfbf | mat::CLOTH;
+    pub const GOLD: u32 = 0xf2c53d | mat::GOLD;
+    pub const GOLD_D: u32 = 0xb88a2a | mat::GOLD;
+    pub const GEM: u32 = 0x1fb8a4;
+    pub const KAFTAN: u32 = 0x1d6a3a | mat::CLOTH;
+    pub const KAFTAN_D: u32 = 0x145230 | mat::CLOTH;
+    pub const THREAD: u32 = 0xae8c36 | mat::CLOTH;
+    pub const ROBE: u32 = 0x8e1c26 | mat::CLOTH;
+    pub const ROBE_D: u32 = 0x6e141c | mat::CLOTH;
+    pub const SASH: u32 = 0xa01e2a | mat::CLOTH;
+    pub const SASH_D: u32 = 0x7a1620 | mat::CLOTH;
+    pub const BOOT: u32 = 0x8a2a1c | mat::LEATHER;
+    pub const BOOT_D: u32 = 0x5e1c12 | mat::LEATHER;
+    pub const SHAFT: u32 = 0x4e301a | mat::WOOD;
+    pub const STEEL: u32 = 0xc8d0da | mat::METAL;
+    pub const STEEL_D: u32 = 0x8a929e | mat::METAL;
+    pub const EDGE: u32 = 0xf2f5f8 | mat::METAL;
+    pub const TASSEL: u32 = 0xb81e26 | mat::CLOTH;
+}
+
+/**
+ * Mehmed the janissary, the size of the detailed Ragnar: a tall white börk
+ * with its flap hanging down his back and a gilt spoon-holder plate set with
+ * a green stone, a black beard and a heavy moustache, a green kaftan worked
+ * with gold to the ankles, frogged across the chest and open below a crimson
+ * sash over a crimson robe, red boots with turned-up toes, and in his left
+ * hand a halberd taller than he is. 48 wide (his body in the middle, as
+ * Ragnar's is in his), 62 tall, 20 deep; voxels carry materials.
+ */
+pub fn mehmed() -> Collected {
+    use jan::*;
+    let mut base = Sculpt::new(48, 62, 20);
+    let mut s = Offset { s: &mut base, dx: 4 };
+    let cx = 19.5f32;
+
+    // ---- boots: red leather, the toes turned up
+    for (x0, x1) in [(13, 18), (21, 26)] {
+        s.cuboid(x0, 0, 7, x1, 4, 14, BOOT);
+        s.cuboid(x0 + 1, 0, 15, x1 - 1, 1, 15, BOOT);
+        s.cuboid(x0 + 2, 2, 16, x1 - 2, 2, 16, BOOT_D);
+        s.cuboid(x0, 0, 7, x1, 0, 15, BOOT_D);
+    }
+
+    // ---- the kaftan's skirt, flaring to the ankles, open down the front over a crimson robe
+    for y in 4..=15 {
+        let t = (15 - y) as f32 / 11.0;
+        let (x0, x1) = span(cx, 8.6 + t * 2.6);
+        let (z0, z1) = (5 - (t * 1.6).round() as i32, 14 + (t * 1.6).round() as i32);
+        s.cuboid(x0, y, z0, x1, y, z1, KAFTAN);
+        let (g0, g1) = span(cx, 1.0 + t * 2.2);
+        for x in g0..=g1 {
+            s.set(x, y, z1, if y % 3 == 0 { ROBE_D } else { ROBE });
+            s.set(x, y, z1 - 1, ROBE);
+        }
+        s.set(g0 - 1, y, z1, GOLD);
+        s.set(g1 + 1, y, z1, GOLD);
+    }
+
+    // ---- the crimson sash, a loose end hanging at the front
+    {
+        let (x0, x1) = span(cx, 9.6);
+        s.cuboid(x0, 15, 4, x1, 17, 15, SASH);
+        s.cuboid(x0, 16, 4, x1, 16, 15, SASH_D);
+        s.cuboid(14, 9, 16, 16, 15, 16, SASH);
+        s.cuboid(14, 9, 16, 16, 9, 16, GOLD_D);
+    }
+
+    // ---- the kaftan's body, frogged across the chest with gold
+    {
+        let (x0, x1) = span(cx, 8.6);
+        s.cuboid(x0, 18, 5, x1, 28, 14, KAFTAN);
+        let (x0, x1) = span(cx, 9.8);
+        s.cuboid(x0, 25, 5, x1, 28, 14, KAFTAN);
+        for y in [19, 21, 23, 25] {
+            s.cuboid(16, y, 15, 23, y, 15, GOLD);
+            s.set(15, y, 15, GOLD_D);
+            s.set(24, y, 15, GOLD_D);
+        }
+        s.cuboid(19, 18, 15, 20, 26, 15, GOLD_D);
+    }
+
+    // ---- arms: wide sleeves with gold cuffs; the left hand grips the halberd, the right hangs in a fist
+    for (x0, x1) in [(7, 10), (29, 32)] {
+        s.cuboid(x0, 16, 6, x1, 27, 12, KAFTAN);
+        s.cuboid(x0 - 1, 14, 5, x1 + 1, 16, 13, KAFTAN);
+        s.cuboid(x0 - 1, 14, 5, x1 + 1, 14, 13, GOLD_D);
+        s.cuboid(x0, 11, 7, x1, 13, 11, SKIN);
+        s.cuboid(x0, 11, 11, x1, 11, 11, SKIN_D);
+    }
+    s.cuboid(3, 11, 7, 6, 13, 11, SKIN);
+
+    // ---- the damask: a lattice of gold thread over the green, a gold flower in every lozenge
+    s.paint(|x, y, z, c| {
+        if c != KAFTAN {
+            return None;
+        }
+        let u = if z <= 5 || z >= 14 { x } else { z + 40 };
+        let (a, b) = ((u + y).rem_euclid(6), (u - y).rem_euclid(6));
+        if a == 0 || b == 0 {
+            Some(THREAD)
+        } else if a == 3 && b == 3 {
+            Some(GOLD)
+        } else if noise(x, y, z) < 0.12 {
+            Some(KAFTAN_D)
+        } else {
+            None
+        }
+    });
+
+    // ---- collar and neck
+    s.cuboid(15, 28, 6, 24, 29, 13, KAFTAN_D);
+    s.cuboid(15, 29, 6, 24, 29, 13, GOLD_D);
+    s.cuboid(17, 28, 8, 22, 30, 11, SKIN);
+
+    // ---- head
+    s.cuboid(15, 30, 5, 24, 39, 12, SKIN);
+    for y in 30..=39 {
+        for (x, z) in [(15, 5), (24, 5), (15, 12), (24, 12)] {
+            s.clear(x, y, z);
+        }
+    }
+    s.cuboid(15, 30, 5, 24, 38, 6, HAIR);
+    for x in [15, 24] {
+        s.cuboid(x, 31, 6, x, 38, 8, HAIR);
+        s.cuboid(x, 33, 9, x, 34, 10, SKIN_D);
+    }
+
+    // ---- a full black beard, trimmed square, and a heavy moustache
+    s.ellipsoid((cx, 28.4, 12.2), (5.4, 3.9, 2.6), 24, BEARD);
+    s.paint(|_, y, z, c| (c == BEARD && y > 31 && z <= 12).then_some(SKIN));
+    s.paint(|x, y, z, c| (c == BEARD && noise(x, y / 2, z) > 0.72).then_some(BEARD_L));
+    s.cuboid(16, 32, 13, 23, 32, 13, BEARD_L);
+    s.cuboid(15, 30, 13, 15, 32, 13, BEARD_L);
+    s.cuboid(24, 30, 13, 24, 32, 13, BEARD_L);
+    s.cuboid(18, 31, 13, 21, 31, 13, BEARD);
+
+    // ---- eyes under heavy, knitted brows; a strong nose
+    for (w, i) in [(16, 17), (23, 22)] {
+        s.set(w, 34, 12, EYE_W);
+        s.set(w, 35, 12, EYE_W);
+        s.set(i, 35, 12, IRIS);
+        s.set(i, 34, 12, PUPIL);
+    }
+    for x in [15, 16, 17, 22, 23, 24] {
+        s.set(x, 36, 12, BROW);
+        s.set(x, 36, 13, BROW);
+    }
+    for x in [18, 21] {
+        s.set(x, 35, 13, BROW);
+        s.set(x, 36, 13, BROW);
+    }
+    s.cuboid(19, 32, 13, 20, 35, 13, SKIN);
+    s.cuboid(19, 32, 14, 20, 33, 14, SKIN_D);
+
+    // ---- the börk: white felt on a gold band, tapering, its flap folded down his back
+    for y in 38..=54 {
+        let taper = if y < 41 { 0.0 } else { (y - 41) as f32 * 0.07 };
+        let (x0, x1) = span(cx, 5.3 - taper);
+        let (z0, z1) = ((4.6 + taper * 0.6).round() as i32, (12.4 - taper * 0.6).round() as i32);
+        s.cuboid(x0, y, z0, x1, y, z1, if y <= 39 { GOLD } else { FELT });
+    }
+    s.paint(|x, y, z, c| (c == FELT && y > 41 && (x + z) % 4 == 0).then_some(FELT_D));
+    {
+        let (x0, x1) = span(cx, 4.4);
+        s.cuboid(x0, 30, 4, x1, 53, 4, FELT);
+        s.cuboid(x0, 52, 4, x1, 54, 5, FELT);
+        s.paint(|x, y, z, c| (c == FELT && z == 4 && y < 52 && x % 3 == 0).then_some(FELT_D));
+        s.cuboid(x0, 30, 4, x1, 30, 4, GOLD_D);
+    }
+    // The spoon-holder plate over the brow, set with a green stone, a plume socket above.
+    {
+        let (x0, x1) = span(cx, 2.6);
+        s.cuboid(x0, 40, 13, x1, 47, 13, GOLD);
+        s.cuboid(x0 + 1, 48, 13, x1 - 1, 48, 13, GOLD);
+        s.cuboid(x0 + 1, 41, 14, x1 - 1, 41, 14, GOLD_D);
+        s.cuboid(x0 + 1, 46, 14, x1 - 1, 46, 14, GOLD_D);
+        s.cuboid(19, 43, 14, 20, 44, 14, GEM);
+        s.cuboid(19, 49, 12, 20, 51, 13, GOLD_D);
+    }
+
+    // ---- the halberd: a shaft banded with gold, a red tassel, a crescent axe, a back spike, a spear point
+    for y in 0..=56 {
+        let band = matches!(y, 0 | 1 | 18 | 30 | 43 | 56);
+        s.cuboid(1, y, 9, 2, y, 10, if band { GOLD } else { SHAFT });
+    }
+    s.cuboid(0, 39, 8, 3, 42, 11, TASSEL);
+    s.cuboid(-1, 38, 9, 4, 38, 10, TASSEL);
+    for y in 44..=56 {
+        let t = (y - 44) as f32 / 12.0;
+        let reach = 1.2 + 3.3 * (t * std::f32::consts::PI).sin();
+        let out = (0.0 - reach).round() as i32;
+        for x in out..=0 {
+            let c = if x == out { EDGE } else { STEEL };
+            s.set(x, y, 9, c);
+            s.set(x, y, 10, c);
+        }
+    }
+    s.cuboid(3, 49, 9, 4, 50, 10, STEEL_D);
+    s.set(5, 49, 9, STEEL_D);
+    s.set(5, 49, 10, STEEL_D);
+    s.cuboid(1, 57, 9, 2, 59, 10, STEEL);
+    s.cuboid(1, 60, 9, 2, 60, 10, EDGE);
+    s.set(1, 61, 9, EDGE);
+    drop(s);
+    base.finish(0.035)
+}
+
+/// Mehmed's joints, in his 48-wide grid: the head with its hat and the top of his beard.
+pub const MEHMED_RIG: &[PartDef] = &[PartDef { name: "head", boxes: &[([17, 30, 0], [30, 61, 19]), ([18, 26, 12], [29, 29, 15])], pivot: [23.5, 29.0, 9.0] }];
+
+mod sam {
+    use super::mat;
+    pub const SKIN: u32 = 0xe2b48c | mat::SKIN;
+    pub const SKIN_D: u32 = 0xa8785a | mat::SKIN;
+    pub const EYE_W: u32 = 0xeeeae0;
+    pub const PUPIL: u32 = 0x0e0a08;
+    pub const LACQUER: u32 = 0xb8222a | mat::LEATHER;
+    pub const LACQUER_D: u32 = 0x8a1820 | mat::LEATHER;
+    pub const BLACK: u32 = 0x1c1a1e | mat::LEATHER;
+    pub const IRON: u32 = 0x2c2a30 | mat::METAL;
+    pub const GOLD: u32 = 0xf2c53d | mat::GOLD;
+    pub const GOLD_D: u32 = 0xb88a2a | mat::GOLD;
+    pub const LACING: u32 = 0x24367a | mat::CLOTH;
+    pub const OBI: u32 = 0x2a4aa8 | mat::CLOTH;
+    pub const OBI_D: u32 = 0x1e3a86 | mat::CLOTH;
+    pub const HAKAMA: u32 = 0x2e2c36 | mat::CLOTH;
+    pub const HAKAMA_D: u32 = 0x201e28 | mat::CLOTH;
+    pub const KOTE: u32 = 0x26242e | mat::CLOTH;
+    pub const TABI: u32 = 0xe8e2d4 | mat::CLOTH;
+    pub const STRAW: u32 = 0xc8a868 | mat::WOOD;
+    pub const MASK: u32 = 0xc0262c | mat::LEATHER;
+    pub const TEETH: u32 = 0xf0ecdc | mat::IVORY;
+    pub const WHISKER: u32 = 0x141010 | mat::FUR;
+    pub const STEEL: u32 = 0xc8d0da | mat::METAL;
+    pub const EDGE: u32 = 0xf6f9fc | mat::METAL;
+    pub const WRAP: u32 = 0x18161a | mat::CLOTH;
+    pub const SAME: u32 = 0xeae4d4 | mat::IVORY;
+}
+
+/**
+ * Miyamoto the samurai, the size of the detailed Ragnar: a black iron kabuto
+ * crowned with great gilt horns, its neck guard of red lacquered lames and
+ * gilt turnbacks; a red oni mask with a snarl of white teeth and black
+ * whiskers; a cuirass, shoulder guards and armoured skirt of red lacquered
+ * lames edged in gold and laced in blue silk; a blue obi with a scabbard at
+ * the hip; dark hakama, black shin guards, straw sandals over white tabi;
+ * and a long katana raised in his right hand. 48 wide (his body in the
+ * middle), 60 tall, 22 deep; voxels carry materials.
+ */
+pub fn miyamoto() -> Collected {
+    use sam::*;
+    let mut base = Sculpt::new(48, 60, 22);
+    let mut s = Offset { s: &mut base, dx: 4 };
+    let cx = 19.5f32;
+
+    // ---- straw sandals over split-toed tabi
+    for (x0, x1) in [(13, 18), (21, 26)] {
+        s.cuboid(x0, 0, 8, x1, 0, 17, STRAW);
+        s.cuboid(x0, 1, 8, x1, 2, 16, TABI);
+        s.cuboid(x0 + 2, 1, 16, x0 + 2, 2, 17, BLACK);
+    }
+    // ---- black lacquered shin guards, splinted with gold, over the hakama
+    for (x0, x1) in [(13, 18), (21, 26)] {
+        s.cuboid(x0, 3, 8, x1, 9, 15, HAKAMA);
+        s.cuboid(x0, 3, 15, x1, 9, 16, BLACK);
+        for x in (x0..=x1).step_by(2) {
+            s.cuboid(x, 3, 16, x, 8, 16, GOLD_D);
+        }
+        s.cuboid(x0, 9, 15, x1, 9, 16, GOLD);
+    }
+    // ---- hakama: wide pleated trousers
+    for y in 8..=14 {
+        let t = (y - 8) as f32 / 6.0;
+        let (x0, x1) = span(cx, 7.4 + t * 1.2);
+        s.cuboid(x0, y, 6, x1, y, 16, HAKAMA);
+    }
+    s.paint(|x, y, _, c| (c == HAKAMA && y > 2 && x % 3 == 0).then_some(HAKAMA_D));
+
+    // ---- the kusazuri: an armoured skirt of lacquered lames, flaring from the waist
+    for y in 10..=17 {
+        let t = (17 - y) as f32 / 7.0;
+        let (x0, x1) = span(cx, 9.0 + t * 2.0);
+        let (z0, z1) = (5 - (t * 1.6).round() as i32, 16 + (t * 1.6).round() as i32);
+        s.cuboid(x0, y, z0, x1, y, z1, if (y - 10) % 3 == 0 { GOLD_D } else { LACQUER });
+    }
+    // ---- the obi, and a black scabbard slung at the left hip
+    {
+        let (x0, x1) = span(cx, 9.2);
+        s.cuboid(x0, 17, 5, x1, 18, 16, OBI);
+        s.cuboid(x0, 18, 5, x1, 18, 16, OBI_D);
+        s.capsule((12.5, 18.0, 17.0), (8.0, 11.0, 3.0), 0.8, 0.7, BLACK);
+        s.capsule((12.5, 18.0, 17.0), (12.2, 17.5, 16.2), 1.0, 1.0, GOLD);
+    }
+    // ---- the dō: a cuirass of red lames edged with gold; black breastplate top, a gilt crest
+    {
+        let (x0, x1) = span(cx, 8.6);
+        for y in 19..=27 {
+            s.cuboid(x0, y, 6, x1, y, 15, if (y - 19) % 3 == 0 { GOLD_D } else { LACQUER });
+        }
+        s.cuboid(x0, 28, 6, x1, 29, 15, BLACK);
+        s.cuboid(x0, 29, 6, x1, 29, 15, GOLD);
+        s.ellipsoid((cx, 23.5, 16.0), (1.6, 1.6, 0.7), 0, GOLD);
+        s.set(19, 23, 17, GOLD_D);
+        s.set(20, 24, 17, GOLD_D);
+    }
+    // ---- sode: great shoulder guards of lames, spreading as they hang
+    for side in [-1i32, 1] {
+        for y in 20..=29 {
+            let flare = ((29 - y) as f32 * 0.2).round() as i32;
+            let (xa, xb) = if side < 0 { (6 - flare, 10 - flare) } else { (29 + flare, 33 + flare) };
+            let c = if y == 29 { BLACK } else if (29 - y) % 3 == 0 { GOLD_D } else { LACQUER };
+            s.cuboid(xa, y, 7, xb, y, 14, c);
+        }
+    }
+    // Blue silk lacing through every red lame; gaps between the skirt's panels.
+    s.paint(|x, y, z, c| {
+        if c != LACQUER {
+            return None;
+        }
+        if (10..=17).contains(&y) && (x == 15 || x == 24) {
+            return Some(LACQUER_D);
+        }
+        // Laced in pairs of blue cords down each lame.
+        ((x + z).rem_euclid(5) == 0 && y % 3 == 1).then_some(LACING)
+    });
+
+    // ---- arms: sleeves of dark silk sewn with gilt plates, gauntleted fists
+    s.cuboid(7, 14, 7, 10, 25, 12, KOTE);
+    s.cuboid(7, 11, 7, 10, 13, 12, BLACK);
+    s.cuboid(7, 11, 12, 10, 11, 12, GOLD_D);
+    s.capsule((30.5, 26.0, 10.5), (31.0, 20.5, 12.5), 2.2, 2.0, KOTE);
+    s.capsule((31.0, 20.5, 12.5), (30.5, 18.8, 16.0), 2.0, 1.8, KOTE);
+    s.paint(|x, y, z, c| (c == KOTE && (x + y * 2 + z) % 5 == 0).then_some(GOLD_D));
+    s.ellipsoid((30.5, 18.3, 16.6), (1.9, 1.9, 1.9), 0, BLACK);
+
+    // ---- the katana, raised: a silk-wrapped hilt through his fist, a gilt guard, a long blade with a bright edge
+    {
+        let fist = (30.5f32, 18.3f32, 16.6f32);
+        let (dx, dy, dz) = (0.27f32, 0.96f32, 0.08f32);
+        let n = (dx * dx + dy * dy + dz * dz).sqrt();
+        let d = (dx / n, dy / n, dz / n);
+        let at = |k: f32| (fist.0 + d.0 * k, fist.1 + d.1 * k, fist.2 + d.2 * k);
+        for i in -7i32..=2 {
+            let p = at(i as f32);
+            let c = if i == -7 { GOLD } else if i.rem_euclid(2) == 0 { SAME } else { WRAP };
+            s.capsule(p, p, 0.8, 0.8, c);
+        }
+        s.ellipsoid(at(3.0), (1.9, 0.6, 1.9), 0, GOLD);
+        s.capsule(at(3.5), at(4.5), 0.7, 0.7, GOLD_D);
+        for i in 0..=31 {
+            let t = i as f32 / 31.0;
+            let bend = t * t * 1.8;
+            let p = at(4.5 + i as f32);
+            let (x, y, z) = ((p.0 - bend * 0.25).round() as i32, p.1.round() as i32, (p.2 - bend).round() as i32);
+            s.set(x, y, z, STEEL);
+            if i < 29 {
+                s.set(x + 1, y, z, EDGE);
+            } else {
+                s.set(x, y + 1, z, EDGE);
+            }
+        }
+    }
+
+    // ---- throat guard, the head, and the red oni mask with its snarl
+    s.cuboid(15, 27, 7, 24, 29, 13, BLACK);
+    s.cuboid(16, 27, 14, 23, 29, 14, LACQUER_D);
+    s.cuboid(16, 27, 14, 23, 27, 14, GOLD_D);
+    s.cuboid(15, 30, 6, 24, 39, 13, SKIN);
+    s.cuboid(15, 30, 11, 24, 34, 14, MASK);
+    s.cuboid(19, 33, 15, 20, 35, 15, MASK);
+    s.cuboid(19, 33, 16, 20, 33, 16, MASK);
+    s.set(18, 33, 15, MASK);
+    s.set(21, 33, 15, MASK);
+    for x in 17..=22 {
+        s.set(x, 32, 15, if x % 2 == 0 { TEETH } else { PUPIL });
+        s.set(x, 31, 15, if x % 2 == 1 { TEETH } else { PUPIL });
+    }
+    s.set(16, 31, 15, TEETH);
+    s.set(23, 31, 15, TEETH);
+    s.cuboid(16, 33, 15, 17, 33, 15, WHISKER);
+    s.cuboid(22, 33, 15, 23, 33, 15, WHISKER);
+    s.set(15, 34, 15, WHISKER);
+    s.set(24, 34, 15, WHISKER);
+    s.cuboid(19, 29, 15, 20, 30, 15, WHISKER);
+    // Fierce eyes in the shadow of the visor.
+    s.cuboid(15, 35, 13, 24, 36, 13, SKIN_D);
+    for (w, p) in [(16, 17), (23, 22)] {
+        s.set(w, 35, 13, EYE_W);
+        s.set(p, 35, 13, PUPIL);
+    }
+    s.cuboid(16, 36, 14, 18, 36, 14, MASK);
+    s.cuboid(21, 36, 14, 23, 36, 14, MASK);
+
+    // ---- the kabuto: a black iron bowl studded with gilt rivets, a visor, flaring neck-guard lames, gilt turnbacks
+    s.ellipsoid((cx, 37.5, 10.0), (6.4, 6.0, 5.6), 37, IRON);
+    s.paint(|x, y, _, c| (c == IRON && y > 38 && x % 3 == 0 && y % 2 == 0).then_some(GOLD_D));
+    s.cuboid(14, 37, 12, 25, 37, 16, BLACK);
+    s.cuboid(14, 37, 16, 25, 37, 16, GOLD);
+    for (i, y) in [36, 34, 32, 30].into_iter().enumerate() {
+        let out = i as f32 * 1.1;
+        let (x0, x1) = span(cx, 6.4 + out);
+        let z0 = (4.0 - out).round() as i32;
+        for yy in y - 1..=y {
+            let c = if yy == y - 1 { GOLD_D } else { LACQUER };
+            for z in z0..=12 {
+                s.set(x0, yy, z, c);
+                s.set(x1, yy, z, c);
+            }
+            for x in x0..=x1 {
+                s.set(x, yy, z0, c);
+            }
+        }
+    }
+    for (xa, xb) in [(12, 14), (25, 27)] {
+        s.cuboid(xa, 34, 12, xb, 37, 14, LACQUER);
+        s.cuboid(xa, 37, 12, xb, 37, 14, GOLD);
+        s.cuboid(xa, 34, 14, xb, 36, 14, GOLD_D);
+    }
+    // ---- the crest: a gilt disc on the brow, and great gilt horns rising from it in a wide V
+    s.ellipsoid((cx, 40.0, 16.2), (2.0, 2.0, 0.8), 0, GOLD);
+    for side in [-1.0f32, 1.0] {
+        let steps = 28;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let x = cx + side * (1.8 + 7.0 * t + 1.5 * t * t);
+            let y = 40.5 + 16.0 * t - 2.0 * t * t * t;
+            let r = 1.1 - 0.55 * t;
+            s.capsule((x, y, 16.2), (x, y, 16.2), r, r, if t > 0.88 { GOLD_D } else { GOLD });
+        }
+    }
+    drop(s);
+    base.finish(0.035)
+}
+
+/// Miyamoto's joints, in his 48-wide grid: the head with its helmet and crest.
+pub const MIYAMOTO_RIG: &[PartDef] = &[PartDef { name: "head", boxes: &[([13, 30, 0], [36, 59, 21])], pivot: [23.5, 30.0, 10.0] }];
 
 // --------------------------------------------------------------------- draugr
 
@@ -1339,17 +1855,19 @@ mod tests {
     #[test]
     fn every_character_is_sculpted_and_rigged() {
         for (model, rig) in [
-            (sebastian(), SEBASTIAN_RIG),
-            (sebastian_geared(3, Some(ShieldKind::Dreadnought)), SEBASTIAN_RIG),
-            (sebastian_geared(2, None), SEBASTIAN_RIG),
-            (sebastian_hd(1, Some(ShieldKind::Round)), SEBASTIAN_HD_RIG),
-            (sebastian_hd(3, Some(ShieldKind::Dreadnought)), SEBASTIAN_HD_RIG),
-            (sebastian_hd(2, Some(ShieldKind::Kite)), SEBASTIAN_HD_RIG),
+            (ragnar(), RAGNAR_RIG),
+            (ragnar_geared(3, Some(ShieldKind::Dreadnought)), RAGNAR_RIG),
+            (ragnar_geared(2, None), RAGNAR_RIG),
+            (ragnar_hd(1, Some(ShieldKind::Round)), RAGNAR_HD_RIG),
+            (ragnar_hd(3, Some(ShieldKind::Dreadnought)), RAGNAR_HD_RIG),
+            (ragnar_hd(2, Some(ShieldKind::Kite)), RAGNAR_HD_RIG),
             (blacksmith(), BLACKSMITH_RIG),
             (draugr(), DRAUGR_RIG),
             (raven(false), RAVEN_RIG),
             (raven(true), RAVEN_RIG),
             (bog_slime(), &[] as &[PartDef]),
+            (mehmed(), MEHMED_RIG),
+            (miyamoto(), MIYAMOTO_RIG),
         ] {
             assert!(model.voxels.len() > 100, "too few voxels: {}", model.voxels.len());
             let r = build_rig(&model, rig, 0.05);
@@ -1360,9 +1878,9 @@ mod tests {
     }
 
     #[test]
-    fn detailed_sebastian_carries_materials() {
-        let model = sebastian_hd(1, Some(ShieldKind::Round));
-        let rig = build_rig(&model, SEBASTIAN_HD_RIG, 0.025);
+    fn detailed_ragnar_carries_materials() {
+        let model = ragnar_hd(1, Some(ShieldKind::Round));
+        let rig = build_rig(&model, RAGNAR_HD_RIG, 0.025);
         let shades: std::collections::HashSet<i32> = rig.parts.iter().flat_map(|p| p.shade.iter().map(|&s| s as i32)).collect();
         for m in 6..=13 {
             assert!(shades.contains(&m), "no voxels of material {m}");

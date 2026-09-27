@@ -12,7 +12,7 @@ $out = 'dist/windows'
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $out | Out-Null
 # Cargo names cannot hold spaces; the shipped exe carries the full title.
-Copy-Item target/release/TheGreatAdventuresOfSebastian.exe (Join-Path $out 'The Great Adventures of Sebastian.exe')
+Copy-Item target/release/AdventuresOfTheAncientBlades.exe (Join-Path $out 'Adventures of the Ancient Blades.exe')
 if ($Steam) {
     # The Steamworks runtime has to sit next to the executable.
     $dll = Get-ChildItem target/release -Recurse -Filter steam_api64.dll | Select-Object -First 1
