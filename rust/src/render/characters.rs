@@ -120,7 +120,7 @@ fn noise(x: i32, y: i32, z: i32) -> f32 {
 
 fn scale(c: u32, k: f32) -> u32 {
     let ch = |s: u32| ((((c >> s) & 255) as f32 * k).clamp(0.0, 255.0) as u32) << s;
-    ch(16) | ch(8) | ch(0)
+    ch(16) | ch(8) | ch(0) | (c & 0xff00_0000)
 }
 
 // ------------------------------------------------------------------ Sebastian
@@ -399,6 +399,468 @@ pub const SEBASTIAN_RIG: &[PartDef] = &[
     PartDef { name: "shieldArm", boxes: &[([0, 5, 2], [2, 14, 8])], pivot: [2.0, 13.5, 3.5] },
     PartDef { name: "swordArm", boxes: &[([12, 3, 1], [14, 19, 8])], pivot: [12.0, 13.5, 3.5] },
     PartDef { name: "head", boxes: &[([0, 15, 0], [14, 22, 8]), ([4, 10, 6], [10, 14, 8])], pivot: [7.0, 14.5, 3.5] },
+];
+
+// ------------------------------------------------------- Sebastian, in detail
+
+/// Voxel materials, carried in the top byte of a voxel's color. The shader
+/// gives each its own surface: see `voxel_surface` in shaders.wgsl.
+pub mod mat {
+    pub const METAL: u32 = 1 << 24;
+    pub const FUR: u32 = 2 << 24;
+    pub const CLOTH: u32 = 3 << 24;
+    pub const LEATHER: u32 = 4 << 24;
+    pub const SKIN: u32 = 5 << 24;
+    pub const IVORY: u32 = 6 << 24;
+    pub const WOOD: u32 = 7 << 24;
+    pub const GOLD: u32 = 8 << 24;
+}
+
+mod hd {
+    use super::mat;
+    pub const SKIN: u32 = 0xf0c49c | mat::SKIN;
+    pub const SKIN_D: u32 = 0xd49e76 | mat::SKIN;
+    pub const BLUSH: u32 = 0xe8a486 | mat::SKIN;
+    pub const EYE_W: u32 = 0xf4f0e6;
+    pub const IRIS: u32 = 0x2f5c9c;
+    pub const PUPIL: u32 = 0x121a2c;
+    pub const BEARD: u32 = 0xc4581c | mat::FUR;
+    pub const BEARD_L: u32 = 0xe2823a | mat::FUR;
+    pub const BEARD_D: u32 = 0x93400f | mat::FUR;
+    pub const HAIR: u32 = 0x8a3c10 | mat::FUR;
+    pub const HELM: u32 = 0x8d96a3 | mat::METAL;
+    pub const HELM_D: u32 = 0x6a727e | mat::METAL;
+    pub const HELM_L: u32 = 0xaab2bc | mat::METAL;
+    pub const RIVET: u32 = 0xe4e9ee | mat::METAL;
+    pub const BRONZE: u32 = 0xc8903c | mat::GOLD;
+    pub const BRONZE_D: u32 = 0x9a6a28 | mat::GOLD;
+    pub const GOLD: u32 = 0xf2c53d | mat::GOLD;
+    pub const HORN: u32 = 0xf2e8d0 | mat::IVORY;
+    pub const HORN_M: u32 = 0xdccca6 | mat::IVORY;
+    pub const HORN_TIP: u32 = 0xb4a176 | mat::IVORY;
+    pub const TUNIC: u32 = 0x2e5f96 | mat::CLOTH;
+    pub const TUNIC_D: u32 = 0x244d7c | mat::CLOTH;
+    pub const TUNIC_L: u32 = 0x3a70aa | mat::CLOTH;
+    pub const TRIM: u32 = 0xd0a848 | mat::CLOTH;
+    pub const TRIM_D: u32 = 0x8a2a24 | mat::CLOTH;
+    pub const CLOAK: u32 = 0x7d2a24 | mat::CLOTH;
+    pub const CLOAK_D: u32 = 0x5e1e1a | mat::CLOTH;
+    pub const TROUSER: u32 = 0x55593f | mat::CLOTH;
+    pub const TROUSER_D: u32 = 0x464a33 | mat::CLOTH;
+    pub const FUR: u32 = 0x8f6c49 | mat::FUR;
+    pub const FUR_L: u32 = 0xc2a27c | mat::FUR;
+    pub const FUR_D: u32 = 0x654a30 | mat::FUR;
+    pub const BELT: u32 = 0x5c3a1c | mat::LEATHER;
+    pub const LEATHER: u32 = 0x7a4a24 | mat::LEATHER;
+    pub const LEATHER_D: u32 = 0x55331a | mat::LEATHER;
+    pub const STITCH: u32 = 0xd8bc8e | mat::LEATHER;
+    pub const WRAP: u32 = 0xb89a68 | mat::LEATHER;
+    pub const BOOT: u32 = 0x4e321a | mat::LEATHER;
+    pub const BOOT_D: u32 = 0x33200f | mat::LEATHER;
+    pub const WOOD: u32 = 0x9a6a3a | mat::WOOD;
+    pub const WOOD_D: u32 = 0x7a522a | mat::WOOD;
+    pub const HAFT: u32 = 0x6b3f1d | mat::WOOD;
+    pub const DARK_HAFT: u32 = 0x3e2412 | mat::WOOD;
+    pub const IRON: u32 = 0x5a616b | mat::METAL;
+    pub const STEEL: u32 = 0xc8d0da | mat::METAL;
+    pub const STEEL_D: u32 = 0x8a929e | mat::METAL;
+    pub const EDGE: u32 = 0xf2f5f8 | mat::METAL;
+    pub const PLATE: u32 = 0xa8b4c4 | mat::METAL;
+    pub const WRAP_RED: u32 = 0x9a1c22 | mat::LEATHER;
+    pub const GILT: u32 = 0xffd84a | mat::GOLD;
+    pub const PAINT_RED: u32 = 0xb8242a | mat::WOOD;
+    pub const PAINT_CREAM: u32 = 0xe9dcbc | mat::WOOD;
+}
+
+/// A ball of voxels.
+fn blob(s: &mut Sculpt, c: (f32, f32, f32), r: f32, color: u32) {
+    s.ellipsoid(c, (r, r, r), 0, color);
+}
+
+/**
+ * Sebastian at twice the resolution of `sebastian_geared` (the same size in
+ * the world): a riveted spangenhelm with ivory horns, a braided fur beard, a
+ * fur mantle, a woven tunic with embroidered trim, a stitched belt with a
+ * gold buckle and a pouch, laced bracers, cross-gartered trousers, fur-cuffed
+ * boots. 30 wide, 46 tall, 18 deep; voxels carry materials.
+ */
+pub fn sebastian_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
+    use hd::*;
+    let mut s = Sculpt::new(30, 46, 18);
+
+    // ---- legs: boots with fur cuffs, cross-gartered trousers
+    for (x0, x1) in [(8, 13), (16, 21)] {
+        s.cuboid(x0, 0, 6, x1, 3, 13, BOOT);
+        s.cuboid(x0 + 1, 0, 14, x1 - 1, 2, 14, BOOT);
+        s.cuboid(x0, 0, 6, x1, 0, 13, BOOT_D);
+        s.cuboid(x0 + 1, 0, 14, x1 - 1, 0, 14, BOOT_D);
+        for x in (x0..=x1).step_by(2) {
+            s.set(x, 3, 14, STITCH);
+        }
+        s.cuboid(x0, 7, 7, x1, 13, 12, TROUSER);
+        s.cuboid(x0 - 1, 4, 5, x1 + 1, 6, 14, FUR);
+        for (x, z) in [(x0 - 1, 5), (x1 + 1, 5), (x0 - 1, 14), (x1 + 1, 14)] {
+            for y in 4..=6 {
+                s.clear(x, y, z);
+            }
+        }
+        for x in x0 - 1..=x1 + 1 {
+            for z in 5..=14 {
+                let rim = x == x0 - 1 || x == x1 + 1 || z == 5 || z == 14;
+                if rim && s.get(x, 4, z).is_some() && noise(x, 3, z) > 0.55 {
+                    s.set(x, 3, z, FUR_D);
+                }
+                if rim && s.get(x, 6, z).is_some() && noise(x, 7, z) > 0.6 {
+                    s.set(x, 7, z, FUR_L);
+                }
+            }
+        }
+        s.paint(|x, y, z, c| {
+            let edge = x == x0 || x == x1 || z == 7 || z == 12;
+            if c == TROUSER && edge && (8..=12).contains(&y) && ((x + z + y) % 6 == 0 || (x + z - y).rem_euclid(6) == 0) {
+                Some(WRAP)
+            } else if c == TROUSER && noise(x, y, z) < 0.08 {
+                Some(TROUSER_D)
+            } else {
+                None
+            }
+        });
+    }
+
+    // ---- tunic, embroidered hem, red cloak down the back
+    s.cuboid(7, 14, 5, 22, 27, 11, TUNIC);
+    s.cuboid(6, 14, 4, 23, 16, 12, TUNIC);
+    for y in 17..=27 {
+        for (x, z) in [(7, 5), (22, 5), (7, 11), (22, 11)] {
+            s.clear(x, y, z);
+        }
+    }
+    s.paint(|x, y, z, c| {
+        if c != TUNIC {
+            return None;
+        }
+        if y == 14 {
+            return Some(if (x + z) % 4 == 0 { TRIM_D } else { TRIM });
+        }
+        if y <= 16 && (x % 3 == 0) && z >= 12 {
+            return Some(TUNIC_D); // skirt folds
+        }
+        let n = noise(x, y, z);
+        Some(if n < 0.08 { TUNIC_D } else if n > 0.93 { TUNIC_L } else { TUNIC })
+    });
+    s.cuboid(7, 14, 3, 22, 27, 4, CLOAK);
+    s.paint(|x, y, z, c| if c == CLOAK && (x % 4 == 0 || (y == 14 && noise(x, y, z) > 0.5)) { Some(CLOAK_D) } else { None });
+
+    // ---- belt: stitched leather, a gold buckle, a pouch at the right hip
+    s.cuboid(6, 15, 4, 23, 17, 12, BELT);
+    s.paint(|x, y, z, c| {
+        let face = z == 12 || x == 6 || x == 23 || z == 4;
+        if c == BELT && face && (y == 15 || y == 17) && (x + z) % 2 == 0 {
+            Some(STITCH)
+        } else {
+            None
+        }
+    });
+    s.cuboid(13, 14, 13, 16, 16, 13, GOLD);
+    s.set(14, 15, 13, BELT);
+    s.set(15, 15, 13, BRONZE_D);
+    s.cuboid(18, 14, 13, 22, 16, 14, LEATHER);
+    s.cuboid(18, 15, 15, 22, 16, 15, LEATHER_D);
+    for x in [18, 20, 22] {
+        s.set(x, 15, 15, STITCH);
+    }
+    s.set(20, 16, 15, GOLD);
+
+    // ---- the shield on his back
+    if let Some(kind) = shield {
+        back_shield_hd(&mut s, kind);
+    }
+
+    // ---- arms: sleeves, laced bracers, hands
+    for (x0, x1, outer) in [(2, 5, 2), (24, 27, 27)] {
+        s.cuboid(x0, 22, 6, x1, 27, 10, TUNIC);
+        s.cuboid(x0, 17, 6, x1, 21, 10, LEATHER);
+        s.cuboid(x0, 17, 6, x1, 17, 10, LEATHER_D);
+        s.cuboid(x0, 21, 6, x1, 21, 10, LEATHER_D);
+        for y in 18..=20 {
+            s.set(outer, y, 7 + (y % 2) * 2, STITCH);
+        }
+        s.cuboid(x0, 13, 6, x1, 16, 10, SKIN);
+        for x in x0..=x1 {
+            s.set(x, 13, 10, SKIN_D);
+        }
+    }
+    hand_axe_hd(&mut s, axe_level);
+
+    // ---- fur mantle over the shoulders, with tufts hanging from its edge
+    s.ellipsoid((14.5, 28.5, 7.5), (11.8, 3.2, 6.3), 26, FUR);
+    for y in 30..=32 {
+        for z in 0..18 {
+            for x in 10..=19 {
+                s.clear(x, y, z);
+            }
+        }
+    }
+    for x in 2..=27 {
+        for z in 1..=14 {
+            if s.get(x, 26, z) == Some(FUR) && noise(x, 25, z) > 0.5 {
+                s.set(x, 25, z, FUR);
+                if noise(x, 24, z) > 0.72 {
+                    s.set(x, 24, z, FUR_D);
+                }
+            }
+        }
+    }
+    s.paint(|x, y, z, c| {
+        if c != FUR || y < 24 {
+            return None;
+        }
+        let n = noise(x, y / 2, z);
+        Some(if (x * 7 + z * 3) % 5 == 0 { FUR_L } else if n < 0.28 { FUR_D } else if n > 0.72 { FUR_L } else { FUR })
+    });
+
+    // ---- neck and head
+    s.cuboid(12, 28, 7, 17, 29, 10, SKIN);
+    s.cuboid(10, 30, 4, 19, 39, 11, SKIN);
+    for y in 30..=39 {
+        for (x, z) in [(10, 4), (19, 4), (10, 11), (19, 11)] {
+            s.clear(x, y, z);
+        }
+    }
+    s.cuboid(10, 30, 4, 19, 38, 5, HAIR);
+    for x in [10, 19] {
+        s.cuboid(x, 31, 5, x, 38, 7, HAIR);
+        s.cuboid(x, 33, 8, x, 34, 9, SKIN_D); // ears
+    }
+    // Eyes: white, iris toward the middle, a pupil; bushy brows above.
+    for (w, i) in [(11, 12), (18, 17)] {
+        s.set(w, 34, 11, EYE_W);
+        s.set(w, 35, 11, EYE_W);
+        s.set(i, 35, 11, IRIS);
+        s.set(i, 34, 11, PUPIL);
+    }
+    for x in [10, 11, 12, 13, 16, 17, 18, 19] {
+        s.set(x, 36, 11, BEARD_D);
+        if x != 13 && x != 16 {
+            s.set(x, 36, 12, BEARD_D);
+        }
+    }
+    s.set(11, 33, 11, BLUSH);
+    s.set(18, 33, 11, BLUSH);
+    // Nose.
+    s.cuboid(14, 32, 12, 15, 35, 12, SKIN);
+    s.cuboid(14, 32, 13, 15, 33, 13, SKIN_D);
+
+    // ---- the beard: full and long, a drooping mustache, two gold-ringed braids
+    s.ellipsoid((14.5, 27.0, 12.0), (5.8, 6.4, 2.7), 20, BEARD);
+    s.paint(|x, y, z, c| if c == BEARD && (y > 32 || (y == 32 && !(12..=17).contains(&x))) && z <= 11 { Some(SKIN) } else { None });
+    for y in 33..40 {
+        for z in 0..18 {
+            for x in 0..30 {
+                if s.get(x, y, z) == Some(BEARD) {
+                    s.clear(x, y, z);
+                }
+            }
+        }
+    }
+    s.cuboid(10, 32, 12, 19, 32, 13, BEARD_L);
+    s.cuboid(11, 33, 12, 13, 33, 12, BEARD_L);
+    s.cuboid(16, 33, 12, 18, 33, 12, BEARD_L);
+    for x in [9, 20] {
+        s.cuboid(x, 29, 12, x, 32, 13, BEARD_L);
+    }
+    for bx in [12, 16] {
+        for y in 17..=22 {
+            s.cuboid(bx, y, 13, bx + 1, y, 13, if y % 2 == 0 { BEARD } else { BEARD_D });
+        }
+        for y in [18, 21] {
+            s.cuboid(bx, y, 13, bx + 1, y, 14, GOLD);
+        }
+        s.cuboid(bx, 17, 13, bx + 1, 17, 13, BEARD_L);
+    }
+    s.paint(|x, y, z, c| {
+        if c != BEARD {
+            return None;
+        }
+        let n = noise(x, y / 3, z);
+        Some(if n < 0.3 { BEARD_D } else if n > 0.7 { BEARD_L } else { BEARD })
+    });
+    // A braid down the back.
+    for y in 21..=29 {
+        s.cuboid(14, y, 3, 15, y, 3, if y % 2 == 0 { HAIR } else { BEARD_D });
+    }
+    s.cuboid(14, 23, 2, 15, 23, 3, GOLD);
+
+    // ---- helmet: a hammered iron spangenhelm, bronze band and strips, rivets
+    s.ellipsoid((14.5, 37.5, 7.5), (5.9, 7.0, 4.9), 37, HELM);
+    s.paint(|x, y, z, c| {
+        if c != HELM {
+            return None;
+        }
+        if y <= 38 {
+            return Some(if y == 38 && (x + z) % 3 == 0 { RIVET } else { BRONZE });
+        }
+        let strip = (14..=15).contains(&x) || (7..=8).contains(&z);
+        if strip {
+            return Some(if y % 3 == 0 { RIVET } else { BRONZE_D });
+        }
+        let n = noise(x, y, z);
+        Some(if n < 0.1 { HELM_D } else if n > 0.92 { HELM_L } else { HELM })
+    });
+    s.cuboid(14, 35, 12, 15, 38, 12, HELM);
+    s.set(14, 37, 12, RIVET);
+
+    // ---- horns sweeping up and out from bronze collars
+    for side in [-1.0f32, 1.0] {
+        let steps = 22;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let x = 14.5 + side * (5.6 + 7.2 * t - 0.6 * t * t);
+            let y = 39.2 + 1.6 * t + 4.2 * t * t;
+            let z = 7.5 - 1.2 * t;
+            let r = 1.75 * (1.0 - t) + 0.45;
+            let ring = ((t * 7.0).fract() < 0.18) && t > 0.2 && t < 0.85;
+            let color = if t < 0.1 {
+                BRONZE
+            } else if t > 0.82 {
+                HORN_TIP
+            } else if ring || t > 0.6 {
+                HORN_M
+            } else {
+                HORN
+            };
+            blob(&mut s, (x, y, z), r, color);
+        }
+    }
+    s.finish(0.035)
+}
+
+/// Sebastian's axe at each level, in his right hand (x 26..27, blade forward).
+fn hand_axe_hd(s: &mut Sculpt, level: u8) {
+    use hd::*;
+    let blade = |s: &mut Sculpt, profile: &[(i32, i32, i32)], body: u32, edge: u32| {
+        let last = profile.len() - 1;
+        for (i, &(z, y0, y1)) in profile.iter().enumerate() {
+            for y in y0..=y1 {
+                for x in 26..=27 {
+                    s.set(x, y, z, if i == last { edge } else { body });
+                }
+            }
+        }
+    };
+    match level {
+        1 => {
+            for y in 8..=36 {
+                s.cuboid(26, y, 8, 27, y, 9, if (12..=19).contains(&y) && y % 2 == 0 { LEATHER_D } else { HAFT });
+            }
+            blade(s, &[(10, 31, 35), (11, 30, 35), (12, 29, 36), (13, 28, 36), (14, 27, 36), (15, 26, 36), (16, 26, 36)], STEEL, EDGE);
+            s.cuboid(25, 32, 7, 28, 35, 10, STEEL_D);
+            s.set(25, 34, 10, RIVET);
+            s.set(28, 34, 10, RIVET);
+        }
+        2 => {
+            for y in 7..=36 {
+                s.cuboid(26, y, 8, 27, y, 9, if (18..=26).contains(&y) && y % 2 == 0 { WRAP_RED } else { HAFT });
+            }
+            blade(s, &[(10, 29, 36), (11, 28, 36), (12, 27, 37), (13, 26, 37), (14, 25, 37), (15, 24, 37), (16, 24, 37)], STEEL_D, EDGE);
+            s.cuboid(25, 31, 7, 28, 35, 10, IRON);
+            for z in 3..=6 {
+                s.cuboid(26, 32, z, 27, 33, z, STEEL_D);
+            }
+            s.cuboid(26, 37, 8, 27, 37, 9, STEEL_D);
+        }
+        _ => {
+            for y in 6..=36 {
+                s.cuboid(26, y, 8, 27, y, 9, if y % 6 == 0 { GILT } else { DARK_HAFT });
+            }
+            blade(s, &[(10, 28, 36), (11, 27, 36), (12, 26, 37), (13, 25, 37), (14, 24, 37), (15, 23, 37), (16, 23, 37)], STEEL, GILT);
+            blade(s, &[(7, 28, 36), (6, 27, 36), (5, 26, 37), (4, 25, 37), (3, 24, 37), (2, 23, 37), (1, 23, 37)], STEEL, GILT);
+            s.cuboid(25, 30, 7, 28, 35, 10, GILT);
+            s.cuboid(26, 37, 8, 27, 37, 9, GILT);
+        }
+    }
+    // The fist around the haft.
+    s.cuboid(24, 13, 6, 27, 16, 10, SKIN);
+    s.cuboid(24, 13, 10, 27, 13, 10, SKIN_D);
+}
+
+/// The shield on his back: its face at z 0..1, rim and boss standing out.
+fn back_shield_hd(s: &mut Sculpt, kind: ShieldKind) {
+    use hd::*;
+    for y in 8..=34 {
+        for x in 3..=26 {
+            let (dx, dy) = (x as f32 - 14.5, y as f32 - 21.0);
+            let r = (dx * dx + dy * dy).sqrt();
+            let (face, raised) = match kind {
+                ShieldKind::Round | ShieldKind::IronRound => {
+                    if r > 9.0 {
+                        continue;
+                    }
+                    let rim = r > 8.0;
+                    let boss = r < 2.3;
+                    let rivet = (r - 8.5).abs() < 0.5 && (dx.atan2(dy) * 12.0 / std::f32::consts::TAU).fract().abs() < 0.12;
+                    let face = if kind == ShieldKind::Round {
+                        if rim || boss {
+                            IRON
+                        } else if x % 4 == 0 {
+                            WOOD_D
+                        } else if (x / 4) % 2 == 0 {
+                            WOOD
+                        } else {
+                            PAINT_RED
+                        }
+                    } else if boss {
+                        GOLD
+                    } else if rim {
+                        STEEL_D
+                    } else if (r - 5.4).abs() < 0.45 && (x + y) % 2 == 0 {
+                        RIVET
+                    } else {
+                        PLATE
+                    };
+                    (if rivet { RIVET } else { face }, rim || boss)
+                }
+                ShieldKind::Kite | ShieldKind::Dreadnought => {
+                    let half = if y >= 22 { 9.0 } else { 9.0 * (y as f32 - 8.0) / 14.0 + 0.8 };
+                    if dx.abs() > half || y > 33 {
+                        continue;
+                    }
+                    let rim = dx.abs() > half - 1.2 || y == 33;
+                    let face = if kind == ShieldKind::Kite {
+                        if rim {
+                            IRON
+                        } else if (dx >= 0.0) != (dy >= 2.0) {
+                            PAINT_RED
+                        } else {
+                            PAINT_CREAM
+                        }
+                    } else if rim {
+                        GOLD
+                    } else if (x + y) % 3 == 0 && dx.abs() > half - 2.6 {
+                        RIVET
+                    } else if dx.abs() < 0.8 || y == 24 {
+                        STEEL_D
+                    } else {
+                        PLATE
+                    };
+                    (face, rim)
+                }
+            };
+            s.set(x, y, 1, face);
+            if raised {
+                s.set(x, y, 0, face);
+            }
+        }
+    }
+}
+
+/// The detailed Sebastian's joints, in its doubled grid.
+pub const SEBASTIAN_HD_RIG: &[PartDef] = &[
+    PartDef { name: "leftLeg", boxes: &[([6, 0, 4], [14, 13, 16])], pivot: [11.0, 14.0, 9.5] },
+    PartDef { name: "rightLeg", boxes: &[([15, 0, 4], [23, 13, 16])], pivot: [18.5, 14.0, 9.5] },
+    PartDef { name: "shieldArm", boxes: &[([0, 10, 4], [5, 29, 16])], pivot: [5.0, 27.0, 8.0] },
+    PartDef { name: "swordArm", boxes: &[([24, 6, 0], [29, 37, 17])], pivot: [24.0, 27.0, 8.0] },
+    PartDef { name: "head", boxes: &[([0, 30, 2], [29, 45, 17]), ([9, 17, 13], [20, 29, 17])], pivot: [14.5, 29.0, 7.5] },
 ];
 
 // --------------------------------------------------------------------- draugr
@@ -880,6 +1342,9 @@ mod tests {
             (sebastian(), SEBASTIAN_RIG),
             (sebastian_geared(3, Some(ShieldKind::Dreadnought)), SEBASTIAN_RIG),
             (sebastian_geared(2, None), SEBASTIAN_RIG),
+            (sebastian_hd(1, Some(ShieldKind::Round)), SEBASTIAN_HD_RIG),
+            (sebastian_hd(3, Some(ShieldKind::Dreadnought)), SEBASTIAN_HD_RIG),
+            (sebastian_hd(2, Some(ShieldKind::Kite)), SEBASTIAN_HD_RIG),
             (blacksmith(), BLACKSMITH_RIG),
             (draugr(), DRAUGR_RIG),
             (raven(false), RAVEN_RIG),
@@ -892,6 +1357,19 @@ mod tests {
                 assert!(!part.cubes.is_empty(), "empty part {}", part.name);
             }
         }
+    }
+
+    #[test]
+    fn detailed_sebastian_carries_materials() {
+        let model = sebastian_hd(1, Some(ShieldKind::Round));
+        let rig = build_rig(&model, SEBASTIAN_HD_RIG, 0.025);
+        let shades: std::collections::HashSet<i32> = rig.parts.iter().flat_map(|p| p.shade.iter().map(|&s| s as i32)).collect();
+        for m in 6..=13 {
+            assert!(shades.contains(&m), "no voxels of material {m}");
+        }
+        // The axe goes with the arm, the horns with the head.
+        let arm = &rig.parts[rig.index("swordArm").unwrap()];
+        assert!(arm.cubes.len() > 150, "sword arm has {} cubes", arm.cubes.len());
     }
 
     #[test]

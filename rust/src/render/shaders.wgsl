@@ -13,7 +13,9 @@ struct Light {
 
 struct Globals {
     view_proj: mat4x4<f32>,
+    light_vp: mat4x4<f32>, // world to the moon's (or sun's) shadow map
     cam_pos: vec4<f32>,
+    cam_fwd: vec4<f32>,    // xyz camera forward; w shadow map texel size in uv
     fog: vec4<f32>,        // rgb fog color (sRGB), w near
     params: vec4<f32>,     // x fog far, y exposure, z nugget pulse, w light count
     hemi_sky: vec4<f32>,
@@ -30,6 +32,8 @@ struct Globals {
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+@group(0) @binding(1) var shadow_map: texture_depth_2d;
+@group(0) @binding(2) var shadow_cmp: sampler_comparison;
 
 struct VIn {
     @location(0) pos: vec3<f32>,
@@ -47,6 +51,7 @@ struct VOut {
     @location(1) color: vec4<f32>,
     @location(2) emissive: vec4<f32>,
     @location(3) depth: f32,
+    @location(4) local: vec3<f32>, // position inside the unit cube, for per-voxel surface detail
 };
 
 @vertex
@@ -59,8 +64,160 @@ fn vs_scene(v: VIn) -> VOut {
     out.color = v.color;
     out.emissive = v.emissive;
     out.depth = out.clip.w;
+    out.local = v.pos;
     return out;
 }
+
+// Depth only, from the light: the shadow map.
+@vertex
+fn vs_shadow(v: VIn) -> @builtin(position) vec4<f32> {
+    let m = mat4x4<f32>(v.m0, v.m1, v.m2, v.m3);
+    return g.light_vp * (m * vec4<f32>(v.pos, 1.0));
+}
+
+// How much of the moonlight (or sunlight) reaches `world`: a 4x4 filtered
+// lookup for soft shadow edges.
+fn sun_visibility(world: vec3<f32>, n: vec3<f32>) -> f32 {
+    let texel = g.cam_fwd.w;
+    let lp = g.light_vp * vec4<f32>(world + n * 0.025, 1.0);
+    let c = lp.xyz / lp.w;
+    let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || c.z > 1.0) {
+        return 1.0;
+    }
+    var lit = 0.0;
+    for (var y = 0; y < 4; y++) {
+        for (var x = 0; x < 4; x++) {
+            let o = (vec2<f32>(f32(x), f32(y)) - 1.5) * texel * 1.35;
+            lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + o, c.z - 0.0008);
+        }
+    }
+    return lit / 16.0;
+}
+
+// ------------------------------------------------------------ voxel materials
+//
+// Character voxels carry a material (shade mode 6 and up). Each face of each
+// voxel gets procedural detail in its own little square, so it sticks to the
+// model as it moves: woven threads, fur strands, hammered dents, wood grain,
+// and a bevel that darkens every voxel's edges. Detail fades out when a voxel
+// covers only a few pixels, so it never shimmers.
+
+struct Surface {
+    albedo: vec3<f32>,
+    n: vec3<f32>,
+    spec: f32,     // specular strength
+    shine: f32,    // specular exponent
+    metal: f32,    // 1 tints highlights with the albedo
+    wrap: f32,     // light wrapping past the terminator (soft materials)
+    sheen: f32,    // rim glow at grazing angles (fur, cloth)
+};
+
+fn hash12(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+}
+
+fn voxel_uv(local: vec3<f32>) -> vec2<f32> {
+    let a = abs(local);
+    if (a.x >= a.y && a.x >= a.z) {
+        return local.zy + 0.5;
+    }
+    if (a.y >= a.z) {
+        return local.xz + 0.5;
+    }
+    return local.xy + 0.5;
+}
+
+fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, base: vec3<f32>, n: vec3<f32>, seed: f32) -> Surface {
+    var m: Surface;
+    m.albedo = base;
+    m.n = n;
+    m.spec = 0.0;
+    m.shine = 16.0;
+    m.metal = 0.0;
+    m.wrap = 0.0;
+    m.sheen = 0.0;
+    let uv = voxel_uv(local);
+    let e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    m.albedo *= mix(1.0, mix(0.9, 1.0, smoothstep(0.0, 0.11, e)), bevel_detail);
+    let helper = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.y) > 0.9);
+    let t = normalize(cross(helper, n));
+    let b = cross(n, t);
+    switch kind {
+        case 1: {
+            // Hammered iron: shallow dents that bend the highlight.
+            let c = uv * 2.0 + vec2<f32>(seed, seed * 1.7);
+            let cell = fract(c) - 0.5;
+            let dent = hash12(floor(c));
+            m.n = normalize(n + (t * cell.x + b * cell.y) * 0.55 * detail * (0.4 + dent));
+            m.albedo *= mix(1.0, 0.86 + 0.22 * dent, detail) * 0.55;
+            m.spec = 1.0;
+            m.shine = 44.0;
+            m.metal = 0.85;
+        }
+        case 2: {
+            // Fur and hair: strands of varied shade, soft light, a sheen at the rim.
+            let col = floor(uv.x * 5.0);
+            let s = hash12(vec2<f32>(col, seed * 31.0));
+            let strand = 0.7 + 0.55 * s * (0.65 + 0.35 * sin(uv.y * 8.0 + s * 6.0));
+            m.albedo *= mix(1.0, strand, detail);
+            m.wrap = 0.35;
+            m.sheen = 0.3;
+            m.spec = 0.08;
+            m.shine = 10.0;
+        }
+        case 3: {
+            // Woven cloth: over-under threads, four to a voxel.
+            let tt = uv * 4.0;
+            let f = fract(tt);
+            let over = (i32(floor(tt.x)) + i32(floor(tt.y))) % 2 == 0;
+            let thread = select(sin(f.y * PI), sin(f.x * PI), over);
+            m.albedo *= mix(1.0, 0.86 + 0.18 * thread, detail);
+            m.wrap = 0.15;
+            m.sheen = 0.12;
+        }
+        case 4: {
+            // Leather: a soft mottle and a dull shine.
+            let g = hash12(floor(uv * 5.0) + seed * 13.0);
+            m.albedo *= mix(1.0, 0.86 + 0.24 * g, detail);
+            m.spec = 0.25;
+            m.shine = 18.0;
+        }
+        case 5: {
+            // Skin: light wraps around, a faint oily shine.
+            m.wrap = 0.45;
+            m.spec = 0.1;
+            m.shine = 14.0;
+        }
+        case 6: {
+            // Ivory horn: growth rings and a polished gloss.
+            m.albedo *= mix(1.0, 0.93 + 0.08 * sin(uv.y * 19.0 + seed * 5.0), detail);
+            m.spec = 0.45;
+            m.shine = 36.0;
+        }
+        case 7: {
+            // Wood: long grain.
+            let grain = abs(sin(uv.x * 13.0 + sin(uv.y * 4.0 + seed * 9.0) * 1.8));
+            m.albedo *= mix(1.0, 0.8 + 0.26 * grain, detail);
+            m.spec = 0.08;
+        }
+        case 8: {
+            // Gold and bronze: bright, warm, polished.
+            m.spec = 1.3;
+            m.shine = 60.0;
+            m.metal = 1.0;
+            m.albedo *= 0.85;
+        }
+        default: {}
+    }
+    return m;
+}
+
+// The scene pass writes color and, for post-processing, the world normal and view depth.
+struct FOut {
+    @location(0) color: vec4<f32>,
+    @location(1) gbuf: vec4<f32>,
+};
 
 fn rrt_odt_fit(v: vec3<f32>) -> vec3<f32> {
     let a = v * (v + 0.0245786) - 0.000090537;
@@ -214,7 +371,7 @@ fn cfbm(p_in: vec2<f32>) -> f32 {
     return v;
 }
 
-fn cloud_sea(in: VOut) -> vec4<f32> {
+fn cloud_sea(in: VOut) -> FOut {
     let seed = in.emissive.x;
     let layer_y = in.emissive.y;
     let time = g.sky_right.w;
@@ -230,20 +387,20 @@ fn cloud_sea(in: VOut) -> vec4<f32> {
     let q = max(vec2<f32>(b.x, b.y) - xz, xz - vec2<f32>(b.z, b.w));
     let outside = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0);
 
-    var cover = smoothstep(0.34, 0.62, n);
+    var cover = smoothstep(0.28, 0.56, n);
     if (seed < 0.5) {
         cover = 0.75 + 0.25 * cover; // the floor of the sea: nearly solid
     }
     // Above the floor, hug the outside of the level and pile up against it.
     if (layer_y > -0.2) {
         // A dense bank right against the walls, breaking into wisps further out.
-        let reach = 1.2 + 3.2 * n + (layer_y + 0.1) * -1.5;
-        let bank = smoothstep(reach, reach * 0.3, outside) * (0.45 + 0.55 * smoothstep(0.3, 0.6, n));
+        let reach = 2.0 + 4.0 * n - (layer_y + 0.1) * 1.6;
+        let bank = smoothstep(reach, reach * 0.25, outside) * (0.6 + 0.4 * smoothstep(0.3, 0.6, n));
         cover = max(cover * (1.0 - smoothstep(3.0, 7.0, outside)), bank);
         cover *= smoothstep(-0.2, 0.25, outside);
     }
     // Thin out away from the level, so the starry sky shows beyond.
-    cover *= 1.0 - smoothstep(2.5 + (layer_y + 1.6) * 1.2, 9.0 + (1.6 - abs(layer_y)) * 2.5, outside + (n - 0.5) * 7.0);
+    cover *= 1.0 - smoothstep(3.0 + (layer_y + 1.6) * 1.0, 9.5 + (1.6 - abs(layer_y)) * 2.0, outside + (n - 0.5) * 6.0);
 
     // Moonlit billow tops, darker troughs, a cool rim of light at the level's edge.
     let tint = in.color.rgb;
@@ -251,11 +408,14 @@ fn cloud_sea(in: VOut) -> vec4<f32> {
     col += vec3<f32>(0.02, 0.03, 0.03) * smoothstep(2.0, 0.0, abs(outside)) * smoothstep(0.4, 0.8, n);
     let rgb = to_srgb(aces_filmic(col, g.params.y));
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
-    return vec4<f32>(mix(rgb, g.fog.rgb, fog_f * 0.6), cover * in.color.a);
+    var out: FOut;
+    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f * 0.6), cover * in.color.a);
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
 }
 
 @fragment
-fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
+fn fs_scene(in: VOut) -> FOut {
     // Derivatives first, while control flow is still uniform.
     var n = normalize(cross(dpdx(in.world), dpdy(in.world)));
     if (dot(n, g.cam_pos.xyz - in.world) < 0.0) {
@@ -263,7 +423,8 @@ fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
     }
 
     let mode = in.emissive.w;
-    if (mode > 4.5) {
+    let local_w = fwidth(in.local);
+    if (mode > 4.5 && mode < 5.5) {
         return cloud_sea(in);
     }
     // Screen-door fade: a 4x4 ordered dither keeps fading trees in the opaque pass.
@@ -271,41 +432,86 @@ fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
         discard;
     }
     var albedo = in.color.rgb;
-    if (mode > 3.5 && n.y > 0.9) {
+    if (mode > 3.5 && mode < 4.5 && n.y > 0.9) {
         // Grass: blade tips catch a warmer, yellower light than the shaded roots.
         let gs = grass_shade(in.world, in.depth);
         albedo = albedo * gs.x;
         albedo = mix(albedo, albedo * vec3<f32>(1.12, 1.1, 0.8), gs.z * 0.5);
         albedo = mix(albedo, albedo * vec3<f32>(0.85, 1.05, 0.9), (gs.y - 0.5) * 0.6 * gs.z);
     }
-    var rgb = albedo;
+    var surf: Surface;
+    surf.albedo = albedo;
+    surf.n = n;
+    surf.spec = 0.0;
+    surf.shine = 16.0;
+    surf.metal = 0.0;
+    surf.wrap = 0.0;
+    surf.sheen = 0.0;
+    if (mode > 5.5) {
+        let px = max(local_w.x, max(local_w.y, local_w.z));
+        let detail = 1.0 - smoothstep(0.1, 0.3, px);
+        let bevel = 1.0 - smoothstep(0.2, 0.5, px);
+        let seed = fract(dot(in.color.rgb, vec3<f32>(17.13, 31.71, 11.37)));
+        surf = voxel_surface(i32(round(mode - 5.0)), in.local, detail, bevel, albedo, n, seed);
+    }
+    let sn = surf.n;
+    let view_dir = normalize(g.cam_pos.xyz - in.world);
+    let spec_tint = mix(vec3<f32>(1.0), surf.albedo * 1.6, surf.metal);
+    let spec_norm = (surf.shine + 8.0) / (8.0 * PI);
+    var rgb = surf.albedo;
     if (mode < 0.5 || mode > 1.5) {
         var irr = g.ambient.rgb;
-        irr += mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * n.y + 0.5);
-        irr += max(dot(n, g.moon_dir.xyz), 0.0) * g.moon_color.rgb;
+        irr += mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * sn.y + 0.5);
+        var spec = vec3<f32>(0.0);
+        let wrap = surf.wrap;
+        let ndl_raw = dot(sn, g.moon_dir.xyz);
+        let ndl = max((ndl_raw + wrap) / (1.0 + wrap), 0.0);
+        if (ndl > 0.0) {
+            let vis = sun_visibility(in.world, n);
+            irr += ndl * g.moon_color.rgb * vis;
+            if (surf.spec > 0.0 && ndl_raw > 0.0) {
+                let h = normalize(g.moon_dir.xyz + view_dir);
+                spec += pow(max(dot(sn, h), 0.0), surf.shine) * ndl_raw * g.moon_color.rgb * vis;
+            }
+        }
         let count = min(u32(g.params.w), MAX_LIGHTS);
         for (var i = 0u; i < count; i++) {
             let l = g.lights[i];
             let to_light = l.pos.xyz - in.world;
             let d = length(to_light);
-            let nl = max(dot(n, to_light / max(d, 1e-4)), 0.0);
+            let ld = to_light / max(d, 1e-4);
+            let nl_raw = dot(sn, ld);
+            let nl = max((nl_raw + wrap) / (1.0 + wrap), 0.0);
             var att = 1.0 / max(d * d, 0.01);
             if (l.pos.w > 0.0) {
                 let r = d / l.pos.w;
                 att *= pow2(clamp(1.0 - r * r * r * r, 0.0, 1.0));
             }
             irr += nl * l.color.rgb * att;
+            if (surf.spec > 0.0 && nl_raw > 0.0) {
+                let h = normalize(ld + view_dir);
+                spec += pow(max(dot(sn, h), 0.0), surf.shine) * nl_raw * l.color.rgb * att;
+            }
         }
         var emissive = in.emissive.rgb;
         if (mode > 1.5 && mode < 2.5) {
             emissive *= g.params.z;
         }
-        rgb = albedo * irr / PI + emissive;
+        rgb = surf.albedo * irr / PI + spec * spec_tint * surf.spec * spec_norm + emissive;
+        // Metals mirror the sky above and the ground below; fur and cloth catch a rim of sky.
+        let fres = pow(1.0 - max(dot(sn, view_dir), 0.0), 3.0);
+        let r = reflect(-view_dir, sn);
+        let env = mix(g.hemi_ground.rgb * 0.6, g.hemi_sky.rgb * 1.3, smoothstep(-0.35, 0.35, r.y));
+        rgb += env * spec_tint * surf.metal * (0.3 + 0.5 * fres);
+        rgb += g.hemi_sky.rgb * surf.albedo * surf.sheen * fres;
     }
     rgb = to_srgb(aces_filmic(rgb, g.params.y));
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     rgb = mix(rgb, g.fog.rgb, fog_f);
-    return vec4<f32>(rgb, in.color.a);
+    var out: FOut;
+    out.color = vec4<f32>(rgb, in.color.a);
+    out.gbuf = vec4<f32>(n, dot(in.world - g.cam_pos.xyz, g.cam_fwd.xyz));
+    return out;
 }
 
 // ------------------------------------------------------------------ night sky
@@ -362,7 +568,7 @@ fn star_layer(ray: vec3<f32>, scale: f32, density: f32, px: f32, time: f32) -> v
 }
 
 @fragment
-fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
+fn fs_sky(in: SkyOut) -> FOut {
     let ray = normalize(g.sky_fwd.xyz + in.ndc.x * g.sky_right.xyz + in.ndc.y * g.sky_up.xyz);
     let time = g.sky_right.w;
     // Radians per pixel, to keep stars and the moon's rim crisp at any resolution.
@@ -413,7 +619,10 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     }
     // Dither so the dark halo and horizon glow do not band in 8 bits.
     col += (hash31(vec3<f32>(in.clip.xy, fract(time) * 7.0)) - 0.5) / 255.0;
-    return vec4<f32>(col, 1.0);
+    var out: FOut;
+    out.color = vec4<f32>(col, 1.0);
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
 }
 
 // ------------------------------------------------------------------ overlay

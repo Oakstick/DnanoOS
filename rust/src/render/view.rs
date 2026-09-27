@@ -185,6 +185,8 @@ pub struct Atmosphere {
     pub exposure: f32,
     /// 1 for the starry night sky with its full moon, 0 for a plain background.
     pub night_sky: f32,
+    /// How strongly bright things glow (bloom).
+    pub bloom: f32,
     /// Where the moon hangs in the sky (it is placed for the view, not for the light).
     pub moon_view: Vec3,
 }
@@ -196,13 +198,14 @@ impl Atmosphere {
             background: BACKGROUND,
             fog_near: 14.0,
             fog_far: 34.0,
-            hemi_sky: lin(0x6f8fa8),
+            hemi_sky: lin(0x6f8fa8) * 0.85,
             hemi_ground: lin(0x14260f),
             ambient: lin(0x2c3a2a) * 0.7,
             sun_dir: Vec3::new(-6.0, 14.0, 8.0).normalize(),
-            sun: lin(MOON) * 0.9,
+            sun: lin(MOON) * 1.15,
             exposure: 1.2,
             night_sky: 1.0,
+            bloom: 1.0,
             moon_view: Vec3::new(-1.103, 0.534, -0.311).normalize(),
         }
     }
@@ -419,11 +422,11 @@ impl Models {
         let mut heroes = HashMap::new();
         for level in 1..=3u8 {
             for shield in [None].into_iter().chain(crate::logic::gear::SHIELDS.into_iter().map(Some)) {
-                heroes.insert((level, shield), build_rig(&characters::sebastian_geared(level, shield), characters::SEBASTIAN_RIG, VOXEL));
+                heroes.insert((level, shield), build_rig(&characters::sebastian_hd(level, shield), characters::SEBASTIAN_HD_RIG, VOXEL / 2.0));
             }
         }
         Self {
-            popolon: build_rig(&characters::sebastian(), characters::SEBASTIAN_RIG, VOXEL),
+            popolon: build_rig(&characters::sebastian_hd(1, Some(crate::logic::gear::ShieldKind::Round)), characters::SEBASTIAN_HD_RIG, VOXEL / 2.0),
             skeleton: build_rig(&characters::draugr(), characters::DRAUGR_RIG, 0.05),
             bat: build_rig(&characters::raven(false), characters::RAVEN_RIG, 0.042),
             vampire: build_rig(&characters::raven(true), characters::RAVEN_RIG, 0.05),
@@ -524,6 +527,10 @@ pub struct WorldView {
     cam_look: Vec3,
     /// A fixed orthographic map view (half the visible height), for the isometric overview.
     map_view: Option<f32>,
+    /// What the camera is looking at (kept in focus by the depth of field).
+    focus_point: Vec3,
+    /// The level's size in tiles, for the shadow map's coverage.
+    level_dims: Vec2,
     initialized: bool,
     was_showcase: bool,
     /// R3 was pressed: the camera is swinging back behind him.
@@ -596,6 +603,8 @@ impl WorldView {
             cam_pos: Vec3::ZERO,
             cam_look: Vec3::ZERO,
             map_view: None,
+            focus_point: Vec3::ZERO,
+            level_dims: Vec2::new(28.0, 24.0),
             initialized: false,
             was_showcase: false,
             recentering: false,
@@ -1256,6 +1265,7 @@ impl WorldView {
         let (hx, hz) = (hp.x as f32, hp.y as f32);
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
         let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
+        self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
         if self.showcase != self.was_showcase || self.forge != self.was_forge {
             self.was_showcase = self.showcase;
             self.was_forge = self.forge;
@@ -1316,6 +1326,15 @@ impl WorldView {
         } else {
             (focus + Vec3::new(0.0, TOP_HEIGHT, TOP_BACK), focus + Vec3::new(0.0, 0.0, -TOP_LOOK_AHEAD), TOP_LERP)
         };
+        self.focus_point = if let Some((target, _, _)) = self.tour {
+            target
+        } else if self.forge {
+            forge::FORGE + Vec3::new(1.6, 0.8, 0.0)
+        } else if self.showcase {
+            STAGE + Vec3::new(0.0, 0.6, 0.0)
+        } else {
+            focus + Vec3::new(0.0, 0.5, 0.0)
+        };
         if !self.initialized {
             self.cam_pos = desired;
             self.cam_look = look;
@@ -1354,6 +1373,14 @@ impl WorldView {
         Mat4::look_at_rh(self.cam_pos + self.shake_offset, self.cam_look + self.shake_offset * 0.6, Vec3::Y)
     }
 
+    /// Freezes the camera on a close portrait of a point, from `angle` radians around it.
+    pub fn set_closeup(&mut self, target: Vec3, angle: f32, distance: f32) {
+        self.focus_point = target;
+        self.cam_look = target;
+        self.cam_pos = target + Vec3::new(angle.sin() * distance, distance * 0.28, angle.cos() * distance);
+        self.shake_offset = Vec3::ZERO;
+    }
+
     /// Freezes the camera into a classic isometric view of the whole grid.
     pub fn set_map_view(&mut self, grid: &Grid) {
         let (w, h) = (grid.width as f32, grid.height as f32);
@@ -1379,6 +1406,44 @@ impl WorldView {
         let up = right.cross(fwd);
         let t = (FOV_DEGREES.to_radians() * 0.5).tan();
         (fwd, right * t * self.aspect.max(0.01), up * t)
+    }
+
+    /// The camera for reconstructing world positions from depth: position, forward, and right
+    /// and up scaled to the screen edges (per unit of depth, or in world units when orthographic).
+    pub fn camera_basis(&self) -> (Vec3, Vec3, Vec3, Vec3, bool) {
+        let pos = self.cam_pos + self.shake_offset;
+        let fwd = (self.cam_look + self.shake_offset * 0.6 - pos).normalize_or(Vec3::NEG_Z);
+        let right = fwd.cross(Vec3::Y).normalize_or(Vec3::X);
+        let up = right.cross(fwd);
+        let aspect = self.aspect.max(0.01);
+        match self.map_view {
+            Some(half) => (pos, fwd, right * half * aspect, up * half, true),
+            None => {
+                let t = (FOV_DEGREES.to_radians() * 0.5).tan();
+                (pos, fwd, right * t * aspect, up * t, false)
+            }
+        }
+    }
+
+    /// How far in front of the camera the in-focus plane lies; None turns depth of field off.
+    pub fn focus_depth(&self) -> Option<f32> {
+        if self.map_view.is_some() {
+            return None;
+        }
+        let (pos, fwd, ..) = self.camera_basis();
+        Some((self.focus_point - pos).dot(fwd).max(0.5))
+    }
+
+    /// The region the shadow map covers: its center and radius.
+    pub fn shadow_box(&self) -> (Vec3, f32) {
+        if self.forge {
+            (forge::FORGE, 7.0)
+        } else if self.showcase {
+            (STAGE, 5.0)
+        } else {
+            let d = self.level_dims;
+            (Vec3::new(d.x / 2.0 - 0.5, 0.5, d.y / 2.0 - 0.5), d.length() / 2.0 + 2.5)
+        }
     }
 
     pub fn projection(&self) -> Mat4 {
@@ -1904,8 +1969,9 @@ fn emit_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: V
     let s = Mat4::from_scale(Vec3::splat(rig.size));
     for (i, part) in rig.parts.iter().enumerate() {
         let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-        for (off, c) in &part.cubes {
-            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, *c * tint, alpha, emissive, SHADE_LIT));
+        for (j, (off, c)) in part.cubes.iter().enumerate() {
+            let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
+            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, *c * tint, alpha, emissive, shade));
         }
     }
 }
@@ -2116,7 +2182,7 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
     let center = Vec3::new(w / 2.0 - 0.5, 0.0, h / 2.0 - 0.5);
     let size = (w.max(h) + 70.0) * 2.0;
     // (height, opacity, seed), lowest first so they blend back to front.
-    let layers = [(-1.6, 1.0, 0.0), (-1.05, 0.8, 1.0), (-0.55, 0.7, 2.0), (-0.1, 0.65, 3.0), (0.15, 0.6, 4.0), (0.4, 0.5, 5.0), (0.7, 0.35, 6.0)];
+    let layers = [(-1.6, 1.0, 0.0), (-1.2, 0.9, 1.0), (-0.8, 0.85, 2.0), (-0.45, 0.8, 3.0), (-0.1, 0.8, 4.0), (0.15, 0.75, 5.0), (0.4, 0.65, 6.0), (0.7, 0.5, 7.0), (1.0, 0.35, 8.0)];
     for (y, alpha, seed) in layers {
         let m = Mat4::from_translation(center + Vec3::new(0.0, y, 0.0)) * Mat4::from_scale(Vec3::new(size, 0.002, size));
         f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0x161b24), alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));

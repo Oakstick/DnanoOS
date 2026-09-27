@@ -87,7 +87,7 @@ pub fn sprite_from(c: &Collected) -> Sprite {
         let mut row = Vec::new();
         for x in 0..c.width {
             let best = c.voxels.iter().filter(|v| v.x == x && v.y == y).max_by_key(|v| v.z);
-            row.push(best.map(|v| v.c));
+            row.push(best.map(|v| v.c & 0xff_ffff));
         }
         pixels.push(row);
     }
@@ -113,6 +113,8 @@ pub struct RigPart {
     pub rest: Vec3,
     /// Cubes relative to the joint.
     pub cubes: Vec<(Vec3, Vec3)>,
+    /// Each cube's shade mode: plain lit, or a voxel material (see `characters::mat`).
+    pub shade: Vec<f32>,
     /// Lowest cube face below the joint (negative when the part hangs below it).
     pub min_y: f32,
 }
@@ -185,7 +187,9 @@ fn make_part(c: &Collected, name: &'static str, list: &[Voxel], pivot: [f32; 3],
             })
             .collect();
         let min_y = cubes.iter().map(|(p, _)| p.y - size / 2.0).fold(f32::INFINITY, f32::min);
-        RigPart { name, rest, cubes, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
+        // The top byte of a voxel's color names its material; 0 is plain lit.
+        let shade = list.iter().map(|v| if v.c >> 24 == 0 { 0.0 } else { 5.0 + (v.c >> 24) as f32 }).collect();
+        RigPart { name, rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
     }
 }
 

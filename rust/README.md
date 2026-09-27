@@ -73,17 +73,20 @@ Serve `web/` over http (for example `python -m http.server 5174 --directory web`
 - **Sculpted items and objects:** every prop is re-sculpted in voxels at three to four times the old resolution, at the same world size (`src/render/props.rs`). That covers lumpy gold nuggets with glints; green crosses with a bevel and a white plus; a round riveted iron bomb with a rope fuse that sputters sparks; fletched arrows with steel broadheads; banded boomerangs; ragged fireballs; crescent blades; round glass potion flasks half full of their brew, with a cork and twine; faceted shrine gems on carved stone pedestals with glowing rune rings; iron-caged lanterns; and Norse pines for the forest. The HUD's bombs are pixel icons too.
 - **Forest terrain:** dungeon paths are even green grass tiles with only the odd tuft. Their top faces are drawn with parallax occlusion mapping (`grass_shade` in `src/render/shaders.wgsl`, shading mode `SHADE_GRASS`). The fragment shader marches the view ray down into a procedural field of thin, pointed grass blades, about 26 per tile, reaching 7 cm deep. It shades by where the ray lands (dark roots, bright yellow-green tips, each blade its own shade), so the flat tile reads as a lawn with depth. It fades to plain green with distance to avoid shimmer, and it costs nothing on the CPU. Raised ground shows earthen cliffs, and ramps are mossy stone steps. Walls are low mossy mounds edged along every road by a dry-stone fence (two staggered courses and moss-topped cap stones), with ferns and bushes behind it. The woods on top are a mixed forest of pines, oaks and white birches, denser away from the roads. Bombs still blast through, taking the fence, bushes and trees with them. Code: `src/render/view/forest.rs`, trees in `src/render/props.rs`.
 - **F1 cheat:** jumps straight to the first Cyclops fight from anywhere, for testing. The FPS counter moved to F3.
+- **Night sky and cloud sea:** the forest levels sit under a black sky with three layers of twinkling stars, a faint milky band and a full moon (a full-screen sky pass, `fs_sky`). The dungeon floats on a sea of drifting dark clouds: stacked procedural mist layers (`SHADE_CLOUD`) that bank up against the level's sides and thin out away from it.
+- **Lighting and post-processing (stage 1):** each frame draws a 4096² shadow map from the moon (or the meadow's sun) over the whole level, sampled with a 16-tap filter for soft edges. The scene pass writes color plus world normals and view depth. From that buffer come contact shading (SSAO, at half resolution with a depth-aware blur), a five-level bloom chain for glow, and a composite with background depth of field (in focus on Sebastian), gentle grading and a vignette. The HUD is drawn afterwards, sharp. Code: `src/render/gpu.rs`, `src/render/post.wgsl`.
+- **Detailed Sebastian:** the hero is sculpted at twice the old resolution (30x46x18, `sebastian_hd` in `src/render/characters.rs`). It has a riveted spangenhelm with bronze strips and ivory horns, a braided fur beard with gold rings, a fur mantle, a woven tunic with embroidered hem, a stitched belt with gold buckle and pouch, laced bracers, cross-gartered trousers, fur-cuffed boots, and all axes and shields rebuilt. Voxels carry materials in the top byte of their color (metal, fur, cloth, leather, skin, ivory, wood, gold). The shader gives each face its own procedural detail and shine (`voxel_surface`): hammered dents, woven threads, fur strands, wood grain and polished highlights, faded out at a distance. The HUD portrait keeps the old pixel model.
 
 ## Layout
 
 ```
 src/logic/     rules: grid, level generation, hero, enemies, items, projectiles, systems
 src/game.rs    screens, the round, and the rules that tie entities together
-src/render/    view.rs (scene -> instances + lights), gpu.rs (wgpu), shaders.wgsl, hud.rs, overlay.rs, voxels.rs
+src/render/    view.rs (scene -> instances + lights), gpu.rs (wgpu), shaders.wgsl, post.wgsl, hud.rs, overlay.rs, voxels.rs
 src/audio/     software synth, lo-fi music sequencer, sound effects
 src/input.rs   keyboard, mouse, touch and gamepad mapped to actions
 src/app.rs     winit window, event loop, fixed 120 Hz step
-src/capture.rs headless screenshots: --capture out.png --time 6 --script "0.1:confirm,3:+up,4:bomb"
+src/capture.rs headless screenshots: --capture out.png --time 6 --script "0.1:confirm,3:+up,4:bomb" [--iso] [--closeup DEG]
 steam/         SteamPipe build scripts and the release checklist
 ```
 

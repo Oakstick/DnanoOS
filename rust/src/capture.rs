@@ -11,7 +11,8 @@
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm) and `streak` (three quick kills).
-//! `--iso` renders the whole level from an isometric map camera instead.
+//! `--iso` renders the whole level from an isometric map camera instead;
+//! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front).
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -160,6 +161,18 @@ pub fn run(args: &[String]) -> i32 {
     let iso = args.iter().any(|a| a == "--iso");
     if iso {
         game.view.set_map_view(&game.level.grid);
+    }
+    if let Some(i) = args.iter().position(|a| a == "--closeup") {
+        let deg: f32 = args.get(i + 1).and_then(|a| a.parse().ok()).unwrap_or(20.0);
+        let p = game.hero.pos();
+        let y = game.hero.altitude as f32 * crate::render::view::STEP;
+        let face = match game.hero.facing {
+            Dir::Up => std::f32::consts::PI,
+            Dir::Down | Dir::None => 0.0,
+            Dir::Left => -std::f32::consts::FRAC_PI_2,
+            Dir::Right => std::f32::consts::FRAC_PI_2,
+        };
+        game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62, p.y as f32), face + deg.to_radians(), 2.1);
     }
     game.view.emit(&game.scene(), &mut frame);
     if iso {

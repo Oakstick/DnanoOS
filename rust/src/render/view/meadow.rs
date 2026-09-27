@@ -44,13 +44,14 @@ pub fn meadow_atmosphere() -> Atmosphere {
         background: 0x9fd3f2,
         fog_near: 22.0,
         fog_far: 62.0,
-        hemi_sky: lin(0xcfe6ff) * 0.62,
+        hemi_sky: lin(0xcfe6ff) * 0.5,
         hemi_ground: lin(0x5a7a32) * 0.55,
         ambient: lin(0x8a9a80) * 0.22,
         sun_dir: Vec3::new(-0.45, 1.0, 0.55).normalize(),
-        sun: lin(0xfff0d6) * 1.35,
+        sun: lin(0xfff0d6) * 1.7,
         exposure: 1.05,
         night_sky: 0.0,
+        bloom: 0.35,
         moon_view: Vec3::Y,
     }
 }
