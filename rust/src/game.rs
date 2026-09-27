@@ -12,7 +12,7 @@ use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
 use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
 use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
-use crate::logic::gear::{self, Arsenal, ShieldGear, ShieldKind, BELT_SLOTS, COINS_BOSS, COINS_KILL, COINS_KEY, FOUND_POTIONS};
+use crate::logic::gear::{self, Arsenal, ShieldGear, ShieldKind, BELT_SLOTS, COINS_BOSS, COINS_KILL, COINS_KEY};
 use crate::logic::hero::{DamageResult, Hero, CONTACT_DAMAGE};
 use crate::logic::items::{
     Bomb, Diamond, DiamondKind, ItemKind, Offer, Potion, BOMBS_PER_LIFE,
@@ -340,6 +340,7 @@ impl Game {
             tour_pending: !cfg!(test) && !tour::tour_seen(),
         };
         g.load_level(0);
+        g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
         g
     }
 
@@ -433,12 +434,6 @@ impl Game {
             .chain(self.level.item_shrines.iter().enumerate().map(|(i, &t)| Diamond::new(DiamondKind::Item, t, i)))
             .collect();
         self.potions = self.level.potions.iter().map(|&(t, k)| Potion::new(t, k)).collect();
-        if index == 0 && !self.level.data.boss {
-            // The first dungeon's bottles hold a little of everything.
-            for (p, k) in self.potions.iter_mut().zip(FOUND_POTIONS) {
-                p.kind = k;
-            }
-        }
         if index == 0 && self.level.data.boss {
             // Two bottles by the start of the first boss fight.
             let (hx, hy) = crate::logic::levels::ARENA_HERO;
@@ -479,8 +474,13 @@ impl Game {
         self.double_points = 0.0;
         self.was_airborne = false;
         let center = self.level.nest_center;
+        let graves = self.grave_spawns();
         for (i, e) in self.enemies.iter_mut().enumerate() {
-            e.reset(self.nest_slots.get(i).copied().unwrap_or(center));
+            match graves.get(i % graves.len().max(1)) {
+                // Draugr climb out of the churchyard rather than the hollow.
+                Some(&g) if e.kind() == EnemyKind::Skeleton => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
+                _ => e.reset(self.nest_slots.get(i).copied().unwrap_or(center)),
+            }
         }
         self.mode_index = 0;
         self.mode_timer = MODE_SCHEDULE[0].1;
@@ -535,10 +535,17 @@ impl Game {
             self.audio.set_tempo_step(0);
         }
         // Dungeon I has its own recorded soundtrack; the title, the shop and the rest keep the synth tune.
+        use crate::audio::Soundtrack;
         match screen {
-            Screen::Title | Screen::Shop => self.audio.set_soundtrack(None),
+            Screen::Title | Screen::Shop => self.audio.set_soundtrack(Some(Soundtrack::Menu)),
             Screen::Ready | Screen::Tour => {
-                let track = (self.dungeon == 0 && !self.level.data.boss).then_some(crate::audio::Soundtrack::Level1);
+                let track = if self.level.data.boss {
+                    Some(Soundtrack::Boss)
+                } else if self.dungeon == 0 {
+                    Some(Soundtrack::Level1)
+                } else {
+                    None
+                };
                 self.audio.set_soundtrack(track);
             }
             _ => {}
@@ -954,13 +961,44 @@ impl Game {
         let mut spec = default_enemy_specs(&self.level.grid).into_iter().find(|s| s.kind == kind).unwrap();
         spec.exit_delay = 0.5;
         spec.name = format!("{} {}", spec.name, self.spawned / SPAWN_CYCLE.len() + 2);
-        let enemy = Enemy::new(&spec, self.level.nest_center, self.level.data.enemy_speed);
+        let graves = self.grave_spawns();
+        let mut enemy = Enemy::new(&spec, self.level.nest_center, self.level.data.enemy_speed);
+        let risen = if kind == EnemyKind::Skeleton && !graves.is_empty() {
+            // A draugr claws its way up out of a grave.
+            let g = graves[((self.rng.next() * graves.len() as f64) as usize).min(graves.len() - 1)];
+            enemy.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS);
+            Some(g)
+        } else {
+            None
+        };
         self.view.add_enemy(&enemy);
         self.enemies.push(enemy);
         self.spawned += 1;
         self.audio.play(Sfx::Fuse);
-        let c = self.level.nest_center;
-        self.floater(c.x as f64, c.y as f64 - 1.0, "SOMETHING STIRS", 1.6, Some(0xb06cff));
+        match risen {
+            Some(g) => self.floater(g.x as f64, g.y as f64 - 0.6, "THE DEAD RISE", 1.6, Some(0xe9e9f2)),
+            None => {
+                let c = self.level.nest_center;
+                self.floater(c.x as f64, c.y as f64 - 1.0, "SOMETHING STIRS", 1.6, Some(0xb06cff));
+            }
+        }
+    }
+
+    /// Walkable tiles beside the churchyard's graves, where draugr rise (none without a churchyard).
+    fn grave_spawns(&self) -> Vec<P> {
+        let Some(plan) = &self.garden else { return vec![] };
+        let g = &self.level.grid;
+        let mut out: Vec<P> = vec![];
+        for p in &plan.graveyard {
+            for d in crate::logic::types::CARDINALS {
+                let n = g.neighbor(*p, d);
+                if g.is_walkable(n.x, n.y, false) && !g.is_bridge(n.x, n.y) && g.get(n.x, n.y) == Tile::Open && !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+        }
+        out.sort_by_key(|p| (p.y, p.x));
+        out
     }
 
     /// Moving slimes mark every tile they cross; standing in the slime slows the hero.
@@ -2181,6 +2219,15 @@ mod tests {
         g.input.mouse_button(winit::event::MouseButton::Left, true);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Title);
+    }
+
+    #[test]
+    fn draugr_rise_from_the_churchyard() {
+        let g = playing();
+        let graves = g.grave_spawns();
+        assert!(!graves.is_empty(), "Dungeon I has a churchyard");
+        let draugr = g.enemies.iter().find(|e| e.kind() == EnemyKind::Skeleton).expect("a draugr");
+        assert!(graves.contains(&draugr.m.tile), "it starts by the graves, not in the hollow: {:?}", draugr.m.tile);
     }
 
     #[test]

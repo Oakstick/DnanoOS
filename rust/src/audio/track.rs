@@ -12,12 +12,18 @@ use lewton::inside_ogg::OggStreamReader;
 pub enum Soundtrack {
     /// "The New Adventure": dungeon I.
     Level1,
+    /// The title screen and the blacksmith.
+    Menu,
+    /// The Cyclops fight.
+    Boss,
 }
 
 impl Soundtrack {
     fn bytes(self) -> &'static [u8] {
         match self {
             Soundtrack::Level1 => include_bytes!("../../assets/music/level1.ogg"),
+            Soundtrack::Menu => include_bytes!("../../assets/music/menu.ogg"),
+            Soundtrack::Boss => include_bytes!("../../assets/music/boss.ogg"),
         }
     }
 
@@ -25,6 +31,8 @@ impl Soundtrack {
     pub fn gain(self) -> f64 {
         match self {
             Soundtrack::Level1 => 1.0,
+            Soundtrack::Menu => 0.85,
+            Soundtrack::Boss => 0.8,
         }
     }
 }
@@ -142,11 +150,13 @@ mod loudness {
         a.music.loops = 1;
         a.intensity = 0.3;
         let synth = rms(&mut a, 20);
-        let mut b = Synth::new(48_000.0, 0.42);
-        b.track = Track::new(Soundtrack::Level1);
-        b.track_target = 1.0;
-        b.track_level = 1.0;
-        let track = rms(&mut b, 20);
-        println!("synth tune rms {synth:.4}, track rms {track:.4}, ratio {:.3}", synth / track);
+        for which in [Soundtrack::Level1, Soundtrack::Menu, Soundtrack::Boss] {
+            let mut b = Synth::new(48_000.0, 0.42);
+            b.track = Track::new(which);
+            b.track_target = 1.0;
+            b.track_level = 1.0;
+            let track = rms(&mut b, 20);
+            println!("{which:?}: synth tune rms {synth:.4}, track rms {track:.4}, ratio {:.3}", synth / track);
+        }
     }
 }

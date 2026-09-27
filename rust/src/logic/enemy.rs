@@ -167,6 +167,13 @@ impl Enemy {
         self.b.scatter_timer = 0.0;
     }
 
+    /// Climbs up out of the ground at `at`: in pieces at first (as a slain draugr lies), whole after `seconds`.
+    pub fn rise_at(&mut self, at: P, seconds: f64) {
+        self.m.teleport(at);
+        self.b.mode = EnemyMode::Scattered;
+        self.b.scatter_timer = seconds;
+    }
+
     /// Enemies in or leaving the nest are unaffected.
     pub fn enter_frenzy(&mut self, grid: &Grid) {
         if !self.is_dangerous() {

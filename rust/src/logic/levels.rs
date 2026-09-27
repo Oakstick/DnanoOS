@@ -573,8 +573,17 @@ pub fn place_keys(rows: &[Vec<char>], count: usize, seed: u32) -> Vec<Vec<char>>
 
 /// The estate for a dungeon: pits, keys and potions, seeded so each has its own.
 pub fn decorate_estate(layout: &Layout, seed: u32) -> Layout {
-    let pitted = place_pits(layout, PITS_PER_LEVEL * 3, seed);
-    let plan: Vec<PotionKind> = POTION_PLAN.iter().chain(POTION_PLAN.iter()).copied().collect();
+    // No green crosses in an estate: healing comes from its six potions.
+    let mut layout = layout.clone();
+    for row in layout.rows.iter_mut() {
+        for c in row.iter_mut() {
+            if *c == 'o' {
+                *c = ' ';
+            }
+        }
+    }
+    let pitted = place_pits(&layout, PITS_PER_LEVEL * 3, seed);
+    let plan = vec![PotionKind::Health; 6];
     let rows = place_potions(&place_keys(&pitted.rows, KEYS_PER_LEVEL, seed), &plan, seed);
     upscale(&Layout { rows, heights: pitted.heights }, WORLD_SCALE)
 }
@@ -672,8 +681,8 @@ pub fn boss_arena(index: usize) -> LevelData {
                 *c = ' ';
                 continue;
             }
-            // Out in the ring only rock, tunnels and green crosses stay.
-            if !matches!(*c, '#' | '-' | 'o') {
+            // Out in the ring only rock and tunnels stay.
+            if !matches!(*c, '#' | '-') {
                 *c = ' ';
             }
         }
@@ -732,7 +741,9 @@ mod tests {
         assert!(data.rows.iter().all(|r| r.chars().count() == 53));
         let level = parse_level(&data);
         assert_eq!(level.grid.count(Tile::Nodule), KEYS_PER_LEVEL);
-        assert_eq!(level.potions.len(), 10);
+        assert_eq!(level.potions.len(), 6);
+        assert!(level.potions.iter().all(|(_, k)| *k == PotionKind::Health));
+        assert_eq!(level.grid.count(Tile::Charge), 0, "no green crosses");
         assert_eq!(level.weapon_shrines.len(), 4);
         assert_eq!(level.item_shrines.len(), 4);
         assert_eq!(level.grid.count(Tile::Nest), 6, "one hollow");
