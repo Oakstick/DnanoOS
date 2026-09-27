@@ -81,7 +81,8 @@ pub enum DamageResult {
 
 #[derive(Clone, Copy, Debug)]
 struct JumpState {
-    from: P,
+    /// Where the leap started (a tile center in grid movement, anywhere in free movement).
+    from_pos: V,
     to: P,
     from_h: f64,
     to_h: f64,
@@ -142,7 +143,21 @@ pub struct Hero {
     pub vel: f64,
     /// Seconds left before a fresh turn on the spot may become a step.
     pub turn_timer: f64,
+
+    /// Free movement: he walks anywhere, not just tile to tile (the grid mover then only
+    /// tracks the tile he stands on, for everything else in the game).
+    pub free_move: bool,
+    /// Which way the player wants him to go, in grid units (any length; zero to stop).
+    pub wish: V,
+    free_pos: V,
+    free_vel: V,
+    synced: P,
+    /// Which way he faces in free movement: an angle in the grid's x/y plane.
+    pub heading: f64,
 }
+
+/// His body's radius against walls in free movement, in tiles.
+pub const FREE_RADIUS: f64 = 0.3;
 
 impl Hero {
     pub fn new(start: P, speed: f64) -> Self {
@@ -176,6 +191,12 @@ impl Hero {
             altitude: 0.0,
             vel: 0.0,
             turn_timer: 0.0,
+            free_move: false,
+            wish: V::new(0.0, 0.0),
+            free_pos: start.v(),
+            free_vel: V::new(0.0, 0.0),
+            synced: start,
+            heading: std::f64::consts::FRAC_PI_2,
         }
     }
 
@@ -238,13 +259,11 @@ impl Hero {
     /// While airborne the position follows the jump line instead of the grid mover.
     pub fn pos(&self) -> V {
         match self.jump {
+            None if self.free_move && self.m.tile == self.synced => self.free_pos,
             None => self.m.pos(),
             Some(j) => {
                 let t = j.t / JUMP_SECONDS;
-                V::new(
-                    j.from.x as f64 + (j.to.x - j.from.x) as f64 * t,
-                    j.from.y as f64 + (j.to.y - j.from.y) as f64 * t,
-                )
+                V::new(j.from_pos.x + (j.to.x as f64 - j.from_pos.x) * t, j.from_pos.y + (j.to.y as f64 - j.from_pos.y) * t)
             }
         }
     }
@@ -257,13 +276,14 @@ impl Hero {
         if !self.alive || self.jump.is_some() {
             return false;
         }
+        let from_pos = self.pos();
         let from = self.m.occupied();
         let to = grid.jump_landing(from, self.facing).unwrap_or(from);
         self.m.tile = from;
         self.m.offset = 0.0;
         self.m.dir = Dir::None;
         self.jump = Some(JumpState {
-            from,
+            from_pos,
             to,
             from_h: grid.elevation(from.x, from.y) as f64,
             to_h: grid.elevation(to.x, to.y) as f64,
@@ -306,6 +326,8 @@ impl Hero {
                 self.m.tile = j.to;
                 self.m.offset = 0.0;
                 self.jump = None;
+                self.free_pos = j.to.v();
+                self.synced = j.to;
                 self.altitude = grid.elevation(j.to.x, j.to.y) as f64;
                 self.vel *= LANDING_KEEP;
                 if !self.invisible() {
@@ -317,13 +339,19 @@ impl Hero {
         }
 
         let before = self.pos();
-        // Hold-to-move: he runs only while a direction is held, and coasts to rest on the next tile center.
-        self.drive(dt, grid, wanted);
-        let after = self.pos();
-        if self.m.dir != Dir::None {
-            self.facing = self.m.dir;
+        if self.free_move {
+            self.drive_free(dt, grid);
+        } else {
+            // Hold-to-move: he runs only while a direction is held, and coasts to rest on the next tile center.
+            self.drive(dt, grid, wanted);
+            if self.m.dir != Dir::None {
+                self.facing = self.m.dir;
+            }
+            self.altitude = self.m.elevation_on(grid);
+            self.free_pos = self.m.pos();
+            self.synced = self.m.tile;
         }
-        self.altitude = self.m.elevation_on(grid);
+        let after = self.pos();
 
         let moved = before.x != after.x || before.y != after.y;
         if moved {
@@ -341,6 +369,99 @@ impl Hero {
         } else {
             self.heard_age += dt;
             self.motion = (self.motion - dt * 4.0).max(0.0);
+        }
+    }
+
+    /**
+     * Free movement: he runs any way the stick or keys point, with the same
+     * acceleration, top speed and friction as on the grid, sliding along
+     * walls, pits and ledges too high to climb. Ramps carry him up; a drop he
+     * steps straight off. The grid mover keeps the tile he stands on.
+     */
+    fn drive_free(&mut self, dt: f64, grid: &Grid) {
+        let top = self.m.speed;
+        if self.m.tile != self.synced {
+            // Put somewhere by the game (a respawn, a cheat): start from there.
+            self.free_pos = self.m.tile.v();
+            self.free_vel = V::new(0.0, 0.0);
+            self.altitude = grid.elevation(self.m.tile.x, self.m.tile.y) as f64;
+        }
+        let len = (self.wish.x * self.wish.x + self.wish.y * self.wish.y).sqrt();
+        let (tx, ty) = if len > 1e-3 { (self.wish.x / len * top, self.wish.y / len * top) } else { (0.0, 0.0) };
+        let rate = if len > 1e-3 { top / ACCEL_SECONDS } else { top / STOP_SECONDS };
+        let (dx, dy) = (tx - self.free_vel.x, ty - self.free_vel.y);
+        let d = (dx * dx + dy * dy).sqrt();
+        let step = rate * dt * 1.6;
+        self.free_vel = if d <= step { V::new(tx, ty) } else { V::new(self.free_vel.x + dx / d * step, self.free_vel.y + dy / d * step) };
+        if len > 1e-3 {
+            self.heading = self.wish.y.atan2(self.wish.x);
+            let (c, s) = (self.heading.cos(), self.heading.sin());
+            self.facing = if c.abs() >= s.abs() { if c > 0.0 { Dir::Right } else { Dir::Left } } else if s > 0.0 { Dir::Down } else { Dir::Up };
+        }
+        // Move one axis at a time so he slides along whatever stops him.
+        self.free_pos.x += self.free_vel.x * dt;
+        self.push_out(grid);
+        self.free_pos.y += self.free_vel.y * dt;
+        self.push_out(grid);
+        let w = grid.width as f64;
+        if self.free_pos.x < -0.5 {
+            self.free_pos.x += w;
+        } else if self.free_pos.x >= w - 0.5 {
+            self.free_pos.x -= w;
+        }
+        let tile = grid.wrap(P::new(self.free_pos.x.round() as i32, self.free_pos.y.round() as i32));
+        let speed = (self.free_vel.x * self.free_vel.x + self.free_vel.y * self.free_vel.y).sqrt();
+        self.m.tile = tile;
+        self.m.offset = 0.0;
+        self.m.dir = if speed > 0.05 { self.facing } else { Dir::None };
+        self.m.world_width = grid.width;
+        self.synced = tile;
+        self.vel = speed;
+        // Up ramps smoothly; down a drop quickly but not in a single frame.
+        let floor = free_floor(grid, self.free_pos);
+        if floor >= self.altitude {
+            self.altitude = floor;
+        } else {
+            self.altitude += (floor - self.altitude) * (1.0 - (-18.0 * dt).exp());
+        }
+    }
+
+    /// Pushes him out of every tile around him that he may not stand on from where he is.
+    fn push_out(&mut self, grid: &Grid) {
+        let here = P::new(self.free_pos.x.round() as i32, self.free_pos.y.round() as i32);
+        let here = grid.wrap(here);
+        for oy in -1..=1 {
+            for ox in -1..=1 {
+                if ox == 0 && oy == 0 {
+                    continue;
+                }
+                let (nx, ny) = (here.x + ox, here.y + oy);
+                if !free_blocked(grid, here, nx, ny) {
+                    continue;
+                }
+                // Nearest point of that tile's square to his center.
+                let (cx, cy) = (self.free_pos.x.clamp(nx as f64 - 0.5, nx as f64 + 0.5), self.free_pos.y.clamp(ny as f64 - 0.5, ny as f64 + 0.5));
+                let (ex, ey) = (self.free_pos.x - cx, self.free_pos.y - cy);
+                let dist = (ex * ex + ey * ey).sqrt();
+                if dist >= FREE_RADIUS {
+                    continue;
+                }
+                if dist > 1e-6 {
+                    self.free_pos.x = cx + ex / dist * FREE_RADIUS;
+                    self.free_pos.y = cy + ey / dist * FREE_RADIUS;
+                    // Lose the speed that went into the wall.
+                    let (nxv, nyv) = (ex / dist, ey / dist);
+                    let into = self.free_vel.x * nxv + self.free_vel.y * nyv;
+                    if into < 0.0 {
+                        self.free_vel.x -= into * nxv;
+                        self.free_vel.y -= into * nyv;
+                    }
+                } else if ox != 0 {
+                    self.free_pos.x = nx as f64 - ox as f64 * (0.5 + FREE_RADIUS);
+                } else {
+                    self.free_pos.y = ny as f64 - oy as f64 * (0.5 + FREE_RADIUS);
+                }
+            }
         }
     }
 
@@ -584,6 +705,9 @@ impl Hero {
     /// New life: full health, bare sword, all boons gone. Death costs everything.
     pub fn respawn(&mut self, at: P) {
         self.m.teleport(at);
+        self.free_pos = at.v();
+        self.free_vel = V::new(0.0, 0.0);
+        self.synced = at;
         self.heard_pos = at.v();
         self.heard_age = 0.0;
         self.alive = true;
@@ -610,8 +734,53 @@ impl Hero {
     }
 }
 
+/// Whether free movement may not enter tile (x, y) from tile `from`: no floor, or a climb without a ramp.
+fn free_blocked(grid: &Grid, from: P, x: i32, y: i32) -> bool {
+    let n = grid.wrap(P::new(x, y));
+    if !grid.is_walkable(n.x, n.y, false) {
+        return true;
+    }
+    let climb = grid.elevation(n.x, n.y) - grid.elevation(from.x, from.y);
+    climb > 0 && !(climb == 1 && (grid.is_ramp(from.x, from.y) || grid.is_ramp(n.x, n.y)))
+}
+
+/// The floor height (in levels) under a free-moving point: level ground, or partway up a ramp.
+fn free_floor(grid: &Grid, p: V) -> f64 {
+    let t = grid.wrap(P::new(p.x.round() as i32, p.y.round() as i32));
+    let low = grid.elevation(t.x, t.y);
+    if !grid.is_ramp(t.x, t.y) {
+        return low as f64;
+    }
+    for d in crate::logic::types::CARDINALS {
+        let n = grid.neighbor(t, d);
+        if grid.get(n.x, n.y) != crate::logic::types::Tile::Rock && !grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low {
+            let (dx, dy) = d.vec();
+            let along = (p.x - t.x as f64) * dx as f64 + (p.y - t.y as f64) * dy as f64 + 0.5;
+            return low as f64 + along.clamp(0.0, 1.0);
+        }
+    }
+    low as f64
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn walks_freely_and_slides_along_walls() {
+        let g = corridor(8);
+        let mut h = Hero::new(P::new(1, 1), 5.0);
+        h.free_move = true;
+        // Straight along the corridor, then pressing into its wall: he goes on, but never in.
+        h.wish = V::new(1.0, 1.0);
+        for _ in 0..120 {
+            h.update(1.0 / 120.0, &g, Dir::None);
+        }
+        let p = h.pos();
+        assert!(p.x > 2.5, "he moved along: {p:?}");
+        assert!((p.y - 1.0).abs() <= 0.5 - FREE_RADIUS + 1e-6, "he stayed off the wall: {p:?}");
+        assert_eq!(h.facing, Dir::Right);
+        assert_eq!(h.occupied(), P::new(p.x.round() as i32, 1));
+    }
+
     use super::*;
     use crate::logic::types::Tile;
 

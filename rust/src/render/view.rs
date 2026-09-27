@@ -906,7 +906,8 @@ impl WorldView {
             }
         }
         self.hero_phase += dtf * hero.motion as f32 * if hero.hasted() { 17.0 } else { 13.0 };
-        self.hero_yaw = lerp_angle(self.hero_yaw, dir_to_rotation(hero.facing), 1.0 - (-TURN_RATE_HERO * dtf).exp());
+        let turn_to = if hero.free_move { (hero.heading.cos() as f32).atan2(hero.heading.sin() as f32) } else { dir_to_rotation(hero.facing) };
+        self.hero_yaw = lerp_angle(self.hero_yaw, turn_to, 1.0 - (-TURN_RATE_HERO * dtf).exp());
         self.animate_hero(hero);
 
         for (i, e) in s.enemies.iter().enumerate() {
@@ -1368,6 +1369,17 @@ impl WorldView {
                 let target = self.focus.map(|p| p - focus).filter(|d| d.x * d.x + d.z * d.z > 2.5);
                 match target {
                     Some(d) => self.cam_yaw = lerp_angle(self.cam_yaw, d.z.atan2(d.x), 1.0 - (-chase::FOCUS_LERP * dt).exp()),
+                    None if hero.free_move => {
+                        // Free movement: trail where he runs, unless he is backing toward the camera.
+                        let goal = hero.heading as f32;
+                        let mut off = (goal - self.cam_yaw).rem_euclid(TAU);
+                        if off > PI {
+                            off = TAU - off;
+                        }
+                        if hero.vel > 0.3 && off < 1.75 {
+                            self.cam_yaw = lerp_angle(self.cam_yaw, goal, 1.0 - (-chase::FOLLOW_LERP * 0.6 * dt).exp());
+                        }
+                    }
                     None => self.cam_yaw = lerp_angle(self.cam_yaw, dir_to_yaw(hero.facing), 1.0 - (-chase::FOLLOW_LERP * dt).exp()),
                 }
             }

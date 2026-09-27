@@ -341,6 +341,8 @@ impl Game {
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
+        // Free movement is on unless the player turned it off (tests keep to the grid).
+        g.hero.free_move = !cfg!(test) && crate::platform::load("vh.free_move").map(|v| v != "0").unwrap_or(true);
         g
     }
 
@@ -434,10 +436,9 @@ impl Game {
             .chain(self.level.item_shrines.iter().enumerate().map(|(i, &t)| Diamond::new(DiamondKind::Item, t, i)))
             .collect();
         self.potions = self.level.potions.iter().map(|&(t, k)| Potion::new(t, k)).collect();
-        if index == 0 && self.level.data.boss {
-            // Two bottles by the start of the first boss fight.
-            let (hx, hy) = crate::logic::levels::ARENA_HERO;
-            self.potions = vec![Potion::new(P::new(hx - 2, hy + 1), PotionKind::Health), Potion::new(P::new(hx + 2, hy + 1), PotionKind::Strength)];
+        if self.level.data.boss {
+            // No bottles in a boss arena: bring your own.
+            self.potions.clear();
         }
         if index >= 1 {
             // From the second dungeon on, gear only comes from the blacksmith.
@@ -762,6 +763,13 @@ impl Game {
         if self.input.was_pressed(&[Action::KeyCheat]) && self.screen == Screen::Playing {
             self.cheat_to_gate();
         }
+        if self.input.was_pressed(&[Action::FreeMove]) {
+            self.hero.free_move = !self.hero.free_move;
+            crate::platform::save("vh.free_move", if self.hero.free_move { "1" } else { "0" });
+            let p = self.hero.pos();
+            let text = if self.hero.free_move { "FREE MOVEMENT" } else { "GRID MOVEMENT" };
+            self.floater(p.x, p.y - 0.8, text, 1.4, Some(0xf2e3c4));
+        }
         if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
             self.cheat_to_shop();
         }
@@ -832,6 +840,18 @@ impl Game {
         abs
     }
 
+    /// Free movement's direction in grid units: the held keys, turned to match the camera behind him.
+    fn free_wish(&self) -> V {
+        let (rx, ry) = self.input.move_vector();
+        if self.view.camera_mode != CameraMode::Third {
+            return V::new(rx, ry);
+        }
+        let yaw = self.view.cam_yaw as f64;
+        let (fx, fy) = (yaw.cos(), yaw.sin());
+        let (sx, sy) = (-fy, fx);
+        V::new(fx * -ry + sx * rx, fy * -ry + sy * rx)
+    }
+
     /// The corridor the camera is pointing down, with hysteresis near the diagonals.
     fn camera_facing(&mut self) -> Dir {
         let yaw = self.view.cam_yaw as f64;
@@ -865,6 +885,7 @@ impl Game {
         self.update_mode_schedule(dt);
 
         let wanted = self.resolve_wanted_dir();
+        self.hero.wish = self.free_wish();
         let before = self.hero.pos();
         self.hero.update(dt, &self.level.grid, wanted);
         self.footsteps(before);

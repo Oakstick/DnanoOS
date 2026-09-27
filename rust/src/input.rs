@@ -27,6 +27,8 @@ pub enum Action {
     Cheat,
     /// F2: every key, and Sebastian at the gate (testing cheat).
     KeyCheat,
+    /// F4: free movement on or off.
+    FreeMove,
     /// Q / RB: drink the selected potion on the belt.
     Drink,
     /// Tab / LT: select the next potion (in the shop: the next tab).
@@ -104,6 +106,7 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         KeyM => Action::Mute,
         F1 => Action::Cheat,
         F2 => Action::KeyCheat,
+        F4 => Action::FreeMove,
         F3 => Action::Fps,
         KeyC => Action::Camera,
         KeyQ => Action::Drink,
@@ -311,6 +314,30 @@ impl Input {
             return self.touch_dir;
         }
         self.held.last().copied().unwrap_or(Dir::None)
+    }
+
+    /// Every held direction added up (for free movement: W and D together run diagonally).
+    pub fn move_vector(&self) -> (f64, f64) {
+        let mut v = (0.0, 0.0);
+        let mut add = |d: Dir| {
+            let (x, y) = d.vec();
+            v.0 += x as f64;
+            v.1 += y as f64;
+        };
+        if self.pad_dir != Dir::None {
+            add(self.pad_dir);
+        } else if self.touch_dir != Dir::None {
+            add(self.touch_dir);
+        } else {
+            let mut seen: Vec<Dir> = vec![];
+            for &d in &self.held {
+                if !seen.contains(&d) {
+                    seen.push(d);
+                    add(d);
+                }
+            }
+        }
+        v
     }
 
     pub fn clear_direction(&mut self) {
