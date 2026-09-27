@@ -11,6 +11,7 @@
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm) and `streak` (three quick kills).
+//! `--iso` renders the whole level from an isometric map camera instead.
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -156,7 +157,18 @@ pub fn run(args: &[String]) -> i32 {
     let mut frame = Frame::default();
     let mut overlay = Overlay::new();
     game.view.aspect = w as f32 / h as f32;
+    let iso = args.iter().any(|a| a == "--iso");
+    if iso {
+        game.view.set_map_view(&game.level.grid);
+    }
     game.view.emit(&game.scene(), &mut frame);
+    if iso {
+        // Only the lights near Sebastian reach the GPU; lift the ambient so the far corners read.
+        let a = &mut frame.atmosphere;
+        a.ambient *= 3.0;
+        a.hemi_sky *= 2.0;
+        a.hemi_ground *= 2.5;
+    }
     overlay.begin(w as f32, h as f32);
     if !args.iter().any(|a| a == "--no-hud") {
         hud::draw(&mut overlay, &game, 60);

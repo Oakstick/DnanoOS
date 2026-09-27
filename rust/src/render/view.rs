@@ -508,6 +508,8 @@ pub struct WorldView {
     diamond_spin: Vec<f32>,
     cam_pos: Vec3,
     cam_look: Vec3,
+    /// A fixed orthographic map view (half the visible height), for the isometric overview.
+    map_view: Option<f32>,
     initialized: bool,
     was_showcase: bool,
     /// R3 was pressed: the camera is swinging back behind him.
@@ -579,6 +581,7 @@ impl WorldView {
             diamond_spin: Vec::new(),
             cam_pos: Vec3::ZERO,
             cam_look: Vec3::ZERO,
+            map_view: None,
             initialized: false,
             was_showcase: false,
             recentering: false,
@@ -1337,7 +1340,25 @@ impl WorldView {
         Mat4::look_at_rh(self.cam_pos + self.shake_offset, self.cam_look + self.shake_offset * 0.6, Vec3::Y)
     }
 
+    /// Freezes the camera into a classic isometric view of the whole grid.
+    pub fn set_map_view(&mut self, grid: &Grid) {
+        let (w, h) = (grid.width as f32, grid.height as f32);
+        let center = Vec3::new(w / 2.0 - 0.5, 0.0, h / 2.0 - 0.5);
+        // 45 degrees around, 35.26 degrees down: the true isometric angle.
+        let dir = Vec3::ONE.normalize();
+        self.cam_look = center;
+        self.cam_pos = center + dir * 80.0;
+        self.shake_offset = Vec3::ZERO;
+        // The diamond of the map is (w + h) / sqrt(2) wide and about half that tall on screen.
+        let across = (w + h) / 2f32.sqrt();
+        self.map_view = Some((across / self.aspect.max(0.01)).max(across * 0.5 + 2.0) * 0.53);
+    }
+
     pub fn projection(&self) -> Mat4 {
+        if let Some(half) = self.map_view {
+            let hw = half * self.aspect.max(0.01);
+            return Mat4::orthographic_rh(-hw, hw, -half, half, 1.0, 200.0);
+        }
         Mat4::perspective_rh(FOV_DEGREES.to_radians(), self.aspect.max(0.01), NEAR, FAR)
     }
 
