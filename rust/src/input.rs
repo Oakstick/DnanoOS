@@ -25,6 +25,8 @@ pub enum Action {
     CameraReset,
     /// F1: straight to the first boss fight (testing cheat).
     Cheat,
+    /// F2: every key, and Sebastian at the gate (testing cheat).
+    KeyCheat,
     /// Q / RB: drink the selected potion on the belt.
     Drink,
     /// Tab / LT: select the next potion (in the shop: the next tab).
@@ -101,6 +103,7 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         Escape => Action::Pause,
         KeyM => Action::Mute,
         F1 => Action::Cheat,
+        F2 => Action::KeyCheat,
         F3 => Action::Fps,
         KeyC => Action::Camera,
         KeyQ => Action::Drink,

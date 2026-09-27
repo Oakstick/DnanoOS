@@ -38,21 +38,23 @@ mod pal {
 }
 use pal::*;
 
-/// Daylight for the meadow: a blue sky, a warm sun, bright bounce from the grass.
+/// Dusk over the meadow: a low golden sun in the west under a sky going from
+/// flame to violet, the first stars out overhead, mauve clouds below.
 pub fn meadow_atmosphere() -> Atmosphere {
     Atmosphere {
-        background: 0x9fd3f2,
-        fog_near: 22.0,
-        fog_far: 62.0,
-        hemi_sky: lin(0xcfe6ff) * 0.5,
-        hemi_ground: lin(0x5a7a32) * 0.55,
-        ambient: lin(0x8a9a80) * 0.22,
-        sun_dir: Vec3::new(-0.45, 1.0, 0.55).normalize(),
-        sun: lin(0xfff0d6) * 1.7,
-        exposure: 1.05,
-        night_sky: 0.0,
-        bloom: 0.35,
-        moon_view: Vec3::Y,
+        background: 0x5a4a66,
+        fog_near: 18.0,
+        fog_far: 52.0,
+        hemi_sky: lin(0x9a8ad8) * 0.55,
+        hemi_ground: lin(0x5a6a30) * 0.5,
+        ambient: lin(0x8a7a90) * 0.24,
+        sun_dir: Vec3::new(-0.7, 0.6, -0.25).normalize(),
+        sun: lin(0xffb070) * 2.2,
+        exposure: 1.25,
+        night_sky: 2.0,
+        bloom: 0.7,
+        moon_view: Vec3::new(-0.42, 0.2, -0.9).normalize(),
+        cloud_tint: lin(0x4a3444),
     }
 }
 
@@ -85,6 +87,9 @@ impl WorldView {
                 }
                 continue;
             }
+            if (t == Tile::Pit || bridge(x, y)) && self.garden.is_some() {
+                continue; // the garden river builds the stream
+            }
             if t == Tile::Pit || bridge(x, y) {
                 // Stream bed, banks, and (on a bridge) the deck.
                 let along_x = pit(x - 1, y) || pit(x + 1, y);
@@ -116,10 +121,11 @@ impl WorldView {
                 }
                 continue;
             }
-            // Grass everywhere.
-            let jitter = 0.94 + hash(hx, hy) as f32 * 0.12;
-            let grass = lin(if (x + y) % 2 == 0 { GRASS_A } else { GRASS_B }) * jitter;
-            cube(&mut self.static_cubes, Vec3::new(xf, -0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, grass);
+            // Grass everywhere: one lawn, its top a field of blades.
+            let jitter = 0.97 + hash(hx, hy) as f32 * 0.06;
+            let grass = lin(GRASS_A) * jitter;
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(1.0, 0.1, 1.0), Quat::IDENTITY, Vec3::new(xf, -0.05, yf));
+            self.static_cubes.push(Instance::new(m, grass, 1.0, Vec3::ZERO, SHADE_GRASS));
             // Tufts of grass...
             let tufts = 2 + (hash(hx + 1.0, hy + 2.0) * 3.0) as usize;
             for k in 0..tufts {
@@ -189,6 +195,16 @@ impl WorldView {
             push_field(&mut self.static_cubes, &tree, pos, rot, scale, tree_tint, Vec3::ZERO, SHADE_LIT);
             self.tree_index.insert(key, self.trees.len());
             self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.26 * scale + 0.05, height: 1.02 * scale, fade: 1.0, alive: true });
+        }
+
+        // The stream in its stone channel, under stone bridges; and mist over it all.
+        if let Some(plan) = self.garden.clone() {
+            let water: HashMap<P, i32> = plan.river.iter().map(|r| (r.p, r.level)).collect();
+            self.build_river(grid, &plan, &water);
+            for b in &plan.bridges {
+                self.build_stone_bridge(grid, *b);
+            }
+            self.build_mist(grid, &HashMap::new());
         }
 
         // Bushes tucked against the hedges, pillars and walls, off the walking lines.
@@ -317,6 +333,12 @@ impl WorldView {
             cube(&mut self.static_cubes, Vec3::new(xf, top + 0.07, yf), Vec3::new(0.74, 0.14, 0.74), 0.0, lin(STONE));
             cube(&mut self.static_cubes, Vec3::new(xf, top + 0.17, yf), Vec3::new(0.62, 0.06, 0.62), 0.0, lin(STONE_D));
             top += 0.2;
+            // A fire bowl on top, smoking into the dusk.
+            cube(&mut self.static_cubes, Vec3::new(xf, top + 0.06, yf), Vec3::new(0.36, 0.12, 0.36), 0.0, lin(0x2a2a2e));
+            let m = Mat4::from_translation(Vec3::new(xf, top + 0.13, yf)) * Mat4::from_scale(Vec3::new(0.26, 0.04, 0.26));
+            self.static_cubes.push(Instance::new(m, lin(0xff8a30), 1.0, lin(0xff7020) * 2.0, SHADE_LIT));
+            self.candles.push(Vec3::new(xf, top + 0.45, yf));
+            self.smoke.push((Vec3::new(xf, top + 0.3, yf), 0.9));
         }
         // Moss creeping up from the base.
         for k in 0..7 {

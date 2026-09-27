@@ -24,6 +24,7 @@ pub const TOUR_STOP_SECONDS: f64 = 3.3;
 pub enum TourArt {
     Hero,
     Nugget,
+    Gate,
     Cross,
     Potion(PotionKind),
     WeaponShrine,
@@ -85,10 +86,19 @@ impl Game {
         if let Some(p) = nearest(Tile::Nodule) {
             stops.push(TourStop {
                 target: at(p, 0.2),
-                title: "GOLD NUGGET",
-                body: "Collect all 25 to open the way to the Cyclops. Each one is worth 10 coins for the blacksmith, and every five make the music press on faster.",
+                title: "GOLDEN KEY",
+                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 coins for the blacksmith. Look for their golden glow.",
                 color: 0xf2c53d,
                 art: TourArt::Nugget,
+            });
+        }
+        if let Some(gate) = self.gate {
+            stops.push(TourStop {
+                target: at(P::new(gate.x, gate.y + 1), 1.0),
+                title: "THE GATE",
+                body: "In the north wall. With all eight keys its doors swing open: go through to face the Cyclops.",
+                color: 0xf2c53d,
+                art: TourArt::Gate,
             });
         }
         if let Some(p) = nearest(Tile::Charge) {

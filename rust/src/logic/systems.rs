@@ -236,8 +236,8 @@ impl PuddleField {
 
 // -------------------------------------------------------------------- score
 
-/// A gold nugget is worth half a kill.
-pub const POINTS_NODULE: u32 = 50;
+/// A golden key is worth four kills.
+pub const POINTS_NODULE: u32 = 400;
 pub const POINTS_CHARGE: u32 = 50;
 /// Popolon starts with three lives and can never hold more.
 pub const MAX_LIVES: u32 = 3;

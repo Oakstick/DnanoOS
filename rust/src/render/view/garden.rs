@@ -307,7 +307,7 @@ impl WorldView {
                 floor = -0.3;
             }
             let thick = matches!(feature.get(&p), Some(Feature::Water) | Some(Feature::Grave));
-            let layers: &[(f32, f32)] = if thick { &[(0.1, 0.42), (0.28, 0.36), (0.5, 0.24)] } else { &[(0.12, 0.22), (0.34, 0.15)] };
+            let layers: &[(f32, f32)] = if thick { &[(0.1, 0.55), (0.28, 0.48), (0.5, 0.36), (0.8, 0.22)] } else { &[(0.12, 0.34), (0.34, 0.27), (0.62, 0.16)] };
             for (k, &(lift, alpha)) in layers.iter().enumerate() {
                 let m = Mat4::from_translation(Vec3::new(x as f32, floor + lift, y as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
                 self.mist.push(Instance::new(m, lin(MIST), alpha, Vec3::new(20.0 + k as f32, lift, 0.0), SHADE_CLOUD));
@@ -316,7 +316,7 @@ impl WorldView {
     }
 
     /// The river's channel: bed, stone banks, weirs, lily pads, reeds, the grotto and the lip of the falls.
-    fn build_river(&mut self, grid: &Grid, plan: &GardenPlan, water: &HashMap<P, i32>) {
+    pub(super) fn build_river(&mut self, grid: &Grid, plan: &GardenPlan, water: &HashMap<P, i32>) {
         let n = plan.river.len();
         for (i, r) in plan.river.iter().enumerate() {
             let (x, y) = (r.p.x, r.p.y);
@@ -428,7 +428,7 @@ impl WorldView {
     }
 
     /// A stone bridge with a balustrade on each side over an arch; up a ramp it climbs in steps.
-    fn build_stone_bridge(&mut self, grid: &Grid, b: P) {
+    pub(super) fn build_stone_bridge(&mut self, grid: &Grid, b: P) {
         let (xf, yf) = (b.x as f32, b.y as f32);
         let (hx, hy) = (b.x as f64, b.y as f64);
         let low = grid.elevation(b.x, b.y) as f32 * STEP;
@@ -692,16 +692,18 @@ impl WorldView {
             f.transparent[cube_i].push(Instance::new(m, lin(0x17323a), 0.92, Vec3::ZERO, SHADE_WATER));
             if i + 1 < n {
                 let next = plan.river[i + 1];
-                if next.level < r.level {
-                    // A cascade down to the next reach.
-                    let (dx, dy) = (next.p.x - r.p.x, next.p.y - r.p.y);
-                    let low = next.level as f32 * STEP - WATER_DROP;
-                    let at = Vec3::new(xf + dx as f32 * 0.5, (lv + low) / 2.0, yf + dy as f32 * 0.5);
-                    let s = if dx != 0 { Vec3::new(0.002, lv - low, 1.0) } else { Vec3::new(1.0, lv - low, 0.002) };
+                if next.level != r.level {
+                    // A cascade from the higher reach down to the lower.
+                    let (hi, lo) = if next.level < r.level { (*r, next) } else { (next, *r) };
+                    let (dx, dy) = (lo.p.x - hi.p.x, lo.p.y - hi.p.y);
+                    let top = hi.level as f32 * STEP - WATER_DROP;
+                    let low = lo.level as f32 * STEP - WATER_DROP;
+                    let at = Vec3::new(hi.p.x as f32 + dx as f32 * 0.5, (top + low) / 2.0, hi.p.y as f32 + dy as f32 * 0.5);
+                    let s = if dx != 0 { Vec3::new(0.002, top - low, 1.0) } else { Vec3::new(1.0, top - low, 0.002) };
                     f.transparent[cube_i].push(Instance::new(Mat4::from_translation(at) * Mat4::from_scale(s), lin(0xc8dce4), 0.85, Vec3::ZERO, SHADE_WATER));
                     self.foam(Vec3::new(at.x + dx as f32 * 0.1, low + 0.02, at.z + dy as f32 * 0.1), time, i as f32, f);
                 }
-            } else {
+            } else if r.p.x == 0 {
                 // Over the edge into the clouds.
                 let edge = Vec3::new(xf - 0.5, lv, yf);
                 let drop = 3.2;

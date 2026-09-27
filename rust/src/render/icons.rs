@@ -105,6 +105,7 @@ pub enum Icon {
     Coin,
     Lock,
     Bomb,
+    Key,
 }
 
 pub fn icon(i: Icon) -> &'static Sprite {
@@ -128,6 +129,7 @@ pub fn icon(i: Icon) -> &'static Sprite {
         m.insert(Icon::Coin, coin());
         m.insert(Icon::Lock, lock());
         m.insert(Icon::Bomb, bomb());
+        m.insert(Icon::Key, key());
         m
     });
     &map[&i]
@@ -460,6 +462,20 @@ fn bomb() -> Sprite {
     c.line((8, 1), (10, 0), 0xc8a060);
     c.set(11, 0, 0xff7a20);
     c.set(12, 1, 0xffd23a);
+    c.outlined()
+}
+
+/// A golden key: an ornate ring bow, a shaft, two teeth.
+fn key() -> Sprite {
+    let mut c = Canvas::new();
+    c.disc(4.5, 4.5, 4.0, GOLD_D);
+    c.disc(4.5, 4.5, 3.2, GOLD);
+    c.disc(4.5, 4.5, 1.4, 0x1a1408);
+    c.line((7, 7), (14, 14), GOLD);
+    c.line((8, 7), (14, 13), GOLD_D);
+    c.rect(11, 12, 12, 15, GOLD);
+    c.rect(13, 10, 15, 11, GOLD);
+    c.set(3, 2, 0xfff6c0);
     c.outlined()
 }
 

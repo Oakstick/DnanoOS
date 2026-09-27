@@ -12,7 +12,7 @@ use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
 use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
 use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
-use crate::logic::gear::{self, Arsenal, ShieldGear, ShieldKind, BELT_SLOTS, COINS_BOSS, COINS_KILL, COINS_NUGGET, FOUND_POTIONS};
+use crate::logic::gear::{self, Arsenal, ShieldGear, ShieldKind, BELT_SLOTS, COINS_BOSS, COINS_KILL, COINS_KEY, FOUND_POTIONS};
 use crate::logic::hero::{DamageResult, Hero, CONTACT_DAMAGE};
 use crate::logic::items::{
     Bomb, Diamond, DiamondKind, ItemKind, Offer, Potion, BOMBS_PER_LIFE,
@@ -49,8 +49,10 @@ const SPAWN_FIRST: f64 = 20.0;
 const SPAWN_EVERY: f64 = 25.0;
 const MAX_ENEMIES: usize = 12;
 const SPAWN_CYCLE: [EnemyKind; 4] = [EnemyKind::Bat, EnemyKind::Slime, EnemyKind::Vampire, EnemyKind::Skeleton];
-/// The music quickens one step for every this many nuggets.
-pub const NUGGETS_PER_TEMPO_STEP: u32 = 5;
+/// The music quickens one step for every this many keys.
+pub const KEYS_PER_TEMPO_STEP: u32 = 2;
+/// Seconds the gate's doors take to swing open.
+const DOOR_SECONDS: f64 = 1.6;
 
 /// Alternating scatter/chase schedule in seconds. Frozen while enemies are stunned.
 const MODE_SCHEDULE: [(GlobalMode, f64); 6] = [
@@ -126,7 +128,7 @@ pub struct Juice {
     /// The score as displayed, rolling up toward the real one.
     pub score_shown: f64,
     /// 1 when a nugget lands in the counter, fading to 0.
-    pub nugget_punch: f32,
+    pub key_punch: f32,
     /// The health bar's trailing chunk after a hit, in HP.
     pub hp_trail: f32,
     /// Flash on the health bar: color and 1..0 strength.
@@ -174,7 +176,7 @@ impl MenuItem {
 pub enum GameEvent {
     /// Every nugget in a dungeon.
     Won,
-    FirstNugget,
+    FirstKey,
     BossSlain,
 }
 
@@ -188,8 +190,15 @@ pub struct Game {
     pub projectiles: Vec<Projectile>,
     pub diamonds: Vec<Diamond>,
     pub potions: Vec<Potion>,
-    pub nuggets_total: u32,
-    pub nuggets_got: u32,
+    pub keys_total: u32,
+    pub keys_got: u32,
+    /// The gate to the boss, and whether every key has been found.
+    pub gate: Option<P>,
+    pub gate_open: bool,
+    /// How far its doors have swung (0 shut, 1 open); they start when Sebastian comes to them.
+    pub door: f64,
+    door_opening: bool,
+    gate_hint: f64,
     pub puddles: PuddleField,
     /// Dungeon I's garden plan (its river, bridges and scenery), when this is Dungeon I.
     pub garden: Option<crate::logic::garden::GardenPlan>,
@@ -273,8 +282,13 @@ impl Game {
             projectiles: Vec::new(),
             diamonds: Vec::new(),
             potions: Vec::new(),
-            nuggets_total: 0,
-            nuggets_got: 0,
+            keys_total: 0,
+            keys_got: 0,
+            gate: None,
+            gate_open: false,
+            door: 0.0,
+            door_opening: false,
+            gate_hint: 0.0,
             puddles: PuddleField::default(),
             garden: None,
             trail_tile: HashMap::new(),
@@ -356,7 +370,15 @@ impl Game {
         }
         // Dungeon I is a landscape garden: a bridged river, a churchyard, temples and flower beds.
         self.garden = None;
-        if index == 0 && !self.level.data.boss {
+        if self.level.data.boss {
+            // The arena's stream runs in a stone channel under stone bridges too.
+            self.garden = crate::logic::garden::stream_plan(&self.level.grid);
+            if let Some(plan) = &self.garden {
+                for b in &plan.bridges {
+                    self.level.grid.set_bridge(b.x, b.y, true);
+                }
+            }
+        } else if index == 0 {
             let l = &self.level;
             let mut keep = vec![l.hero_spawn, l.enemy_spawn];
             keep.extend(l.weapon_shrines.iter().chain(&l.item_shrines).copied());
@@ -366,8 +388,13 @@ impl Game {
                 crate::logic::garden::apply(&mut self.level.grid, plan);
             }
         }
-        self.nuggets_total = self.level.grid.count(Tile::Nodule) as u32;
-        self.nuggets_got = 0;
+        self.keys_total = self.level.grid.count(Tile::Nodule) as u32;
+        self.keys_got = 0;
+        self.gate = self.level.gate;
+        self.gate_open = false;
+        self.door = 0.0;
+        self.door_opening = false;
+        self.gate_hint = 0.0;
         self.audio.set_tempo_step(0);
 
         let c = self.level.nest_center;
@@ -425,7 +452,12 @@ impl Game {
         self.boss_burn = 0.0;
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss, self.garden.as_ref());
+        if let Some(g) = self.level.gate {
+            for dx in -1..=1 {
+                self.level.grid.set_landmark(g.x + dx, g.y, true);
+            }
+        }
+        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss, self.garden.as_ref(), self.level.gate);
         self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         self.reset_round();
         if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
@@ -636,6 +668,7 @@ impl Game {
             puddles: &self.puddles,
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
+            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32 }),
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -708,6 +741,7 @@ impl Game {
             puddles: &self.puddles,
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
+            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32 }),
         }
     }
 
@@ -717,6 +751,9 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::Cheat]) {
             self.cheat_to_boss();
+        }
+        if self.input.was_pressed(&[Action::KeyCheat]) && self.screen == Screen::Playing {
+            self.cheat_to_gate();
         }
         if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
             self.cheat_to_shop();
@@ -825,6 +862,7 @@ impl Game {
         self.hero.update(dt, &self.level.grid, wanted);
         self.footsteps(before);
         self.collect();
+        self.update_gate(dt);
         self.visit_shrines();
         self.visit_potions();
 
@@ -978,39 +1016,41 @@ impl Game {
         let (ox, oy) = (o.x as f64, o.y as f64);
         match got {
             Some(Tile::Nodule) => {
-                self.nuggets_got += 1;
-                if self.nuggets_got == 1 {
-                    self.events.push(GameEvent::FirstNugget);
+                self.keys_got += 1;
+                if self.keys_got == 1 {
+                    self.events.push(GameEvent::FirstKey);
                 }
                 self.award(POINTS_NODULE);
-                self.earn(COINS_NUGGET);
-                self.audio.play_reward(self.nuggets_got);
-                // Every five nuggets the music presses on a little faster.
-                if self.nuggets_got % NUGGETS_PER_TEMPO_STEP == 0 {
-                    self.audio.set_tempo_step(self.nuggets_got / NUGGETS_PER_TEMPO_STEP);
+                self.earn(COINS_KEY);
+                self.audio.play_reward(self.keys_got * 3);
+                self.audio.play(Sfx::Anvil);
+                self.view.shake(0.25);
+                // Every other key the music presses on a little faster.
+                if self.keys_got % KEYS_PER_TEMPO_STEP == 0 {
+                    self.audio.set_tempo_step(self.keys_got / KEYS_PER_TEMPO_STEP);
                 }
                 self.view.spark(&self.level.grid, ox, oy, 0xf2c53d);
-                self.view.sparkle(&self.level.grid, ox, oy, 0.35, 0xf2c53d, 18);
-                self.view.dust(&self.level.grid, ox, oy, 0xb8902a, 6, 1.2);
-                // The nugget flies from where it lay into the HUD counter.
+                self.view.sparkle(&self.level.grid, ox, oy, 0.6, 0xf2c53d, 40);
+                self.view.dust(&self.level.grid, ox, oy, 0xb8902a, 10, 1.6);
+                // The key flies from where it lay into the HUD counter.
                 let (w, h) = self.viewport;
                 let at = glam::Vec3::new(o.x as f32, floor_at(&self.level.grid, o.x as f32, o.y as f32) + 0.3, o.y as f32);
                 let from = self.view.project(at, w, h).unwrap_or((w / 2.0, h / 2.0));
                 self.juice.coins.push(FlyingCoin { from, t: 0.0 });
-                let text = format!("{}/{}", self.nuggets_got, self.nuggets_total);
-                self.floater(ox, oy, text, 0.9, Some(0xf2c53d));
-                if self.nuggets_got % NUGGETS_PER_TEMPO_STEP == 0 && self.nuggets_got < self.nuggets_total {
+                let text = format!("KEY {}/{}", self.keys_got, self.keys_total);
+                self.floater(ox, oy, text, 1.2, Some(0xf2c53d));
+                if self.keys_got < self.keys_total {
                     self.audio.play(Sfx::Milestone);
+                    let left = self.keys_total - self.keys_got;
                     self.juice.banner = Some(Banner {
-                        text: format!("{} NUGGETS", self.nuggets_got),
-                        sub: format!("{} TO GO   THE MUSIC QUICKENS", self.nuggets_total - self.nuggets_got),
+                        text: "A GOLDEN KEY".to_string(),
+                        sub: format!("{left} MORE {}   A LOCK ON THE GATE LIGHTS UP", if left == 1 { "TO FIND" } else { "TO FIND" }),
                         color: 0xf2c53d,
                         life: 1.8,
                         max: 1.8,
                     });
-                }
-                if self.nuggets_got >= self.nuggets_total {
-                    self.win();
+                } else {
+                    self.unlock_gate();
                 }
             }
             Some(Tile::Charge) => {
@@ -1030,9 +1070,60 @@ impl Game {
         }
     }
 
+    /// The last key: every lock on the gate is lit. Now Sebastian must reach it.
+    fn unlock_gate(&mut self) {
+        self.gate_open = true;
+        self.audio.play(Sfx::Win);
+        let hp = self.hero.pos();
+        self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, 0xf2c53d, 40);
+        self.juice.banner = Some(Banner {
+            text: "THE GATE IS UNLOCKED".into(),
+            sub: "FIND IT IN THE NORTH WALL AND GO THROUGH".into(),
+            color: 0xf2c53d,
+            life: 3.0,
+            max: 3.0,
+        });
+        if self.gate.is_none() {
+            self.win(); // an estate without a gate: straight on to the boss
+        }
+    }
+
     /**
-     * The last nugget: the dungeon is harvested. Congratulations are in order,
-     * and then the ground shakes: the way to the Cyclops opens.
+     * The gate in the outer wall. Locked, it tells Sebastian how many keys he
+     * still lacks. Unlocked, its doors swing open as he comes up to them, and
+     * stepping through leads on to the boss.
+     */
+    fn update_gate(&mut self, dt: f64) {
+        let Some(g) = self.gate else { return };
+        self.gate_hint = (self.gate_hint - dt).max(0.0);
+        let hp = self.hero.pos();
+        let near = (hp.x - g.x as f64).abs() < 1.2 && (hp.y - g.y as f64).abs() < 1.7;
+        if near && !self.gate_open && self.gate_hint <= 0.0 {
+            self.gate_hint = 3.0;
+            self.audio.play(Sfx::Denied);
+            self.floater(g.x as f64, g.y as f64 + 0.6, format!("LOCKED  {}/{} KEYS", self.keys_got, self.keys_total), 1.6, Some(0xf2c53d));
+        }
+        if near && self.gate_open && !self.door_opening {
+            self.door_opening = true;
+            self.audio.play(Sfx::BossCharge);
+            self.view.shake(0.35);
+        }
+        if self.door_opening && self.door < 1.0 {
+            self.door = (self.door + dt / DOOR_SECONDS).min(1.0);
+            if self.door >= 1.0 {
+                self.level.grid.set(g.x, g.y, Tile::Open);
+                self.level.grid.set_elevation(g.x, g.y, self.level.grid.elevation(g.x, g.y + 1));
+                self.audio.play(Sfx::Whoosh);
+            }
+        }
+        if self.door >= 1.0 && self.hero.occupied() == g {
+            self.win();
+        }
+    }
+
+    /**
+     * Through the gate: the dungeon is behind him. Congratulations are in
+     * order, and then the ground shakes: the way to the Cyclops opens.
      */
     fn win(&mut self) {
         self.audio.play(Sfx::Win);
@@ -1044,13 +1135,28 @@ impl Game {
         self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, 0xf2c53d, 40);
         self.events.push(GameEvent::Won);
         self.juice.banner = Some(Banner {
-            text: "THE HOARD IS YOURS".into(),
+            text: "THROUGH THE GATE".into(),
             sub: "SOMETHING VAST STIRS IN THE MEADOW...".into(),
             color: 0xf2c53d,
             life: CLEARED_SECONDS as f32,
             max: CLEARED_SECONDS as f32,
         });
         self.enter(Screen::Cleared);
+    }
+
+    /// F2: every key found at once, and Sebastian at the gate (testing cheat).
+    pub fn cheat_to_gate(&mut self) {
+        let Some(g) = self.gate else { return };
+        for (x, y, t) in self.level.grid.cells().collect::<Vec<_>>() {
+            if t == Tile::Nodule {
+                self.level.grid.set(x, y, Tile::Open);
+                self.view.remove_collectible(x, y);
+            }
+        }
+        self.keys_got = self.keys_total;
+        self.unlock_gate();
+        self.hero.m.teleport(P::new(g.x, g.y + 2));
+        self.hero.facing = Dir::Up;
     }
 
     /// F1: skip straight to the first Cyclops, from anywhere.
@@ -1805,7 +1911,7 @@ impl Game {
         } else {
             j.hp_trail = hp;
         }
-        j.nugget_punch = (j.nugget_punch - dtf * 3.5).max(0.0);
+        j.key_punch = (j.key_punch - dtf * 3.5).max(0.0);
         j.hp_flash = (j.hp_flash - dtf * 3.0).max(0.0);
         j.hurt = (j.hurt - dtf * 2.2).max(0.0);
         j.go = (j.go - dtf).max(0.0);
@@ -1829,7 +1935,7 @@ impl Game {
             }
         });
         if landed > 0 {
-            j.nugget_punch = 1.0;
+            j.key_punch = 1.0;
         }
         if let Some(b) = &mut j.banner {
             b.life -= dtf;
@@ -1840,7 +1946,7 @@ impl Game {
     }
 
     /// Test and capture hook: drop a nugget under Popolon and pick it up.
-    pub fn debug_collect_nugget(&mut self) {
+    pub fn debug_collect_key(&mut self) {
         let o = self.hero.occupied();
         self.level.grid.set(o.x, o.y, Tile::Nodule);
         self.collect();
@@ -1904,8 +2010,8 @@ impl Game {
     }
 
     /// Nuggets shown in the HUD: the ones still flying there are not counted yet.
-    pub fn nuggets_shown(&self) -> u32 {
-        self.nuggets_got.saturating_sub(self.juice.coins.len() as u32)
+    pub fn keys_shown(&self) -> u32 {
+        self.keys_got.saturating_sub(self.juice.coins.len() as u32)
     }
 }
 
@@ -1927,7 +2033,7 @@ pub fn center_spawn(level: &ParsedLevel) -> (P, Dir) {
     let mut best_d = f64::INFINITY;
     for (x, y, t) in g.cells() {
         let p = P::new(x, y);
-        if t != Tile::Open || g.is_ramp(x, y) || taken.contains(&p) {
+        if t != Tile::Open || g.is_ramp(x, y) || taken.contains(&p) || y == (g.height - 1) / 2 {
             continue;
         }
         let d = (x as f64 - cx).powi(2) + (y as f64 - cy).powi(2);
@@ -1972,15 +2078,15 @@ mod tests {
     }
 
     #[test]
-    fn every_fifth_nugget_quickens_the_music() {
+    fn every_second_key_quickens_the_music() {
         let mut g = playing();
-        for n in 1..=12u32 {
-            g.nuggets_got = n - 1;
+        for n in 1..=7u32 {
+            g.keys_got = n - 1;
             // Put a nugget under him and let him pick it up.
             let o = g.hero.occupied();
             g.level.grid.set(o.x, o.y, Tile::Nodule);
             g.collect();
-            assert_eq!(g.audio.tempo_step(), n / NUGGETS_PER_TEMPO_STEP, "after {n} nuggets");
+            assert_eq!(g.audio.tempo_step(), n / KEYS_PER_TEMPO_STEP, "after {n} keys");
         }
     }
 
@@ -2078,12 +2184,25 @@ mod tests {
     }
 
     #[test]
-    fn the_last_nugget_wins_with_the_fanfare() {
+    fn the_last_key_unlocks_the_gate_and_going_through_wins() {
         let mut g = playing();
-        g.nuggets_got = g.nuggets_total - 1;
+        assert_eq!(g.keys_total, 8);
+        g.keys_got = g.keys_total - 1;
         let o = g.hero.occupied();
         g.level.grid.set(o.x, o.y, Tile::Nodule);
         g.collect();
+        assert!(g.gate_open);
+        assert_eq!(g.screen, Screen::Playing, "the gate must still be reached");
+        // Up to the gate: the doors swing open, and he steps through.
+        let gate = g.gate.unwrap();
+        g.hero.m.teleport(P::new(gate.x, gate.y + 1));
+        for _ in 0..((DOOR_SECONDS + 0.2) / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.door >= 1.0);
+        assert!(g.level.grid.is_walkable(gate.x, gate.y, false));
+        g.hero.m.teleport(gate);
+        g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Cleared);
         assert!(g.events.contains(&GameEvent::Won));
         // After the fanfare, the Cyclops' meadow, and a countdown.
@@ -2219,7 +2338,7 @@ mod tests {
         // The third kill already counts double: 100 + 100 + 200.
         assert_eq!(g.score.score - before, 400);
         let mid = g.score.score;
-        g.debug_collect_nugget();
+        g.debug_collect_key();
         assert_eq!(g.score.score - mid, POINTS_NODULE * 2, "nuggets count double too");
     }
 

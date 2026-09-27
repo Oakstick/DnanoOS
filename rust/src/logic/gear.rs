@@ -281,8 +281,8 @@ pub const FOUND_POTIONS: [PotionKind; 5] = [PotionKind::Life, PotionKind::Health
 
 // -------------------------------------------------------------------- coins
 
-/// Coins for each gold nugget, each foe, and a fallen boss.
-pub const COINS_NUGGET: u32 = 10;
+/// Coins for each golden key, each foe, and a fallen boss.
+pub const COINS_KEY: u32 = 30;
 pub const COINS_KILL: u32 = 5;
 pub const COINS_BOSS: u32 = 250;
 

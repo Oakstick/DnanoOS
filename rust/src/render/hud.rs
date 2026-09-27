@@ -57,11 +57,11 @@ fn sprites() -> &'static Sprites {
 }
 
 const RULES: [&str; 5] = [
-    "Collect all 25 gold nuggets to open the way to the Cyclops, then bring it down. Three lives; dying loses everything you carry.",
+    "Find the 8 golden keys hidden across the estate, then go through the gate in the north wall to face the Cyclops. Three lives; dying loses everything you carry.",
     "The dungeon rises in levels. Jump with Space to clear pits, leap over foes, and climb a ledge; ramps let you walk up. Bats fly over everything.",
-    "Enemies hunt you, and more keep arriving from the hollow the longer you take. Every five nuggets the music quickens.",
+    "Enemies hunt you, and more keep arriving from the hollow the longer you take. Slimes cannot cross bridges. Every other key the music quickens.",
     "You start with your axe. Strike a shrine to cycle its gift, step on it to take it: a weapon replaces the axe until its ammo runs out.",
-    "Nuggets and foes earn coins; after each boss, Hrolf the blacksmith sells weapons, upgrades, shields and potions. Carry up to five potions (Q or 1-5 to drink). Shields wear down as they block.",
+    "Keys and foes earn coins; after each boss, Hrolf the blacksmith sells weapons, upgrades, shields and potions. Carry up to five potions (Q or 1-5 to drink). Shields wear down as they block.",
 ];
 
 pub struct OverlayLine {
@@ -227,8 +227,8 @@ fn panel(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, t: f32) {
     o.rect(x + t * 0.3, y, w - t * 0.6, (t * 0.06).max(1.0), rgba(GOLD, 0.35));
 }
 
-/// Where flying nuggets land: the NUGGETS counter in the top-right panel.
-pub fn nugget_target(w: f32, h: f32) -> (f32, f32) {
+/// Where flying keys land: the row of keys in the top-right panel.
+pub fn key_target(w: f32, h: f32) -> (f32, f32) {
     let t = tile_for(w, h);
     let margin = t * 0.4;
     (w - margin - t * 2.6, margin + t * 1.95)
@@ -299,13 +299,24 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     o.text("SCORE", rc, margin + t * 0.5, small, rgba(SAND, 1.0), Align::Right, true);
     o.text(&format!("{:06}", j.score_shown.round() as u64), rc, margin + t * 1.2, fs * 1.3, rgba(TEXT, 1.0), Align::Right, true);
     // The counter jumps when a nugget lands in it.
-    let punch = j.nugget_punch;
+    let punch = j.key_punch;
     let ncolor = if punch > 0.0 { mix_rgb(GOLD, 0xffffff, punch * 0.7) } else { GOLD };
-    let (tx, ty) = nugget_target(w, h);
+    let (tx, ty) = key_target(w, h);
     if g.boss.is_some() {
         o.text("BOSS FIGHT", rc, ty, small, rgba(0xff8a2a, 1.0), Align::Right, true);
     } else {
-        o.text(&format!("NUGGETS {}/{}", g.nuggets_shown(), g.nuggets_total), rc, ty, small * (1.0 + 0.45 * punch), rgba(ncolor, 1.0), Align::Right, true);
+        // A row of keys: gold for each one found, shadows for the rest.
+        let n = g.keys_total.max(1);
+        let ks = small * 1.3;
+        let gap = ks * 0.92;
+        let x0 = rc - gap * n as f32 + gap - ks;
+        o.text("KEYS", x0 - t * 0.2, ty, small, rgba(ncolor, 1.0), Align::Right, true);
+        for i in 0..n {
+            let got = i < g.keys_shown();
+            let pop = if got && i + 1 == g.keys_shown() { 1.0 + 0.5 * punch } else { 1.0 };
+            let s = ks * pop;
+            draw_sprite(o, icon(Icon::Key), x0 + i as f32 * gap - (s - ks) / 2.0, ty - s / 2.0, s / 16.0, if got { None } else { Some(0x3a3a44) }, if got { 1.0 } else { 0.75 });
+        }
     }
     if punch > 0.0 {
         o.circle(tx + t * 0.2, ty, t * 0.9 * (1.0 - punch) + t * 0.2, rgba(GOLD, punch * 0.25));
@@ -534,7 +545,7 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
     }
 
     // Nuggets flying to the counter along an arc, with a short trail.
-    let (tx, ty) = nugget_target(w, h);
+    let (tx, ty) = key_target(w, h);
     for c in &j.coins {
         for k in 0..4 {
             let u = (c.t - k as f32 * 0.05).clamp(0.0, 1.0);
@@ -683,7 +694,8 @@ fn draw_tour_art(o: &mut Overlay, art: crate::game::TourArt, x: f32, y: f32, siz
             let (sw, sh) = (s.width as f32 * scale, s.height as f32 * scale);
             draw_sprite(o, s, x + (size - sw) / 2.0, y + (size - sh) / 2.0, scale, tint, alpha);
         }
-        TourArt::Nugget => fit(o, icon(Icon::Coin)),
+        TourArt::Nugget => fit(o, icon(Icon::Key)),
+        TourArt::Gate => fit(o, icon(Icon::Lock)),
         TourArt::Potion(k) => fit(o, icon(Icon::Potion(k))),
         TourArt::WeaponShrine => fit(o, icon(Icon::Pickup(crate::logic::items::RangedKind::Trishot))),
         TourArt::ItemShrine => fit(o, icon(Icon::Shield(crate::logic::gear::ShieldKind::IronRound))),

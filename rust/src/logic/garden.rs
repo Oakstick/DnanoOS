@@ -80,6 +80,33 @@ pub fn plan(grid: &Grid, keep: &[P]) -> Option<GardenPlan> {
     Some(plan)
 }
 
+/**
+ * A boss arena's stream as a river: its water tiles (pits) and the bridges
+ * across it, in one row, flowing east to west. No scenery beyond that.
+ */
+pub fn stream_plan(grid: &Grid) -> Option<GardenPlan> {
+    let mut rows: HashMap<i32, Vec<i32>> = HashMap::new();
+    for (x, y, t) in grid.cells() {
+        if t == Tile::Pit {
+            rows.entry(y).or_default().push(x);
+        }
+    }
+    let (&y, xs) = rows.iter().max_by_key(|(_, xs)| xs.len())?;
+    let (x0, x1) = (*xs.iter().min()?, *xs.iter().max()?);
+    let mut river = vec![];
+    let mut bridges = vec![];
+    for x in (x0..=x1).rev() {
+        let t = grid.get(x, y);
+        if t == Tile::Pit {
+            river.push(RiverTile { p: P::new(x, y), level: grid.elevation(x, y) });
+        } else if t != Tile::Rock {
+            river.push(RiverTile { p: P::new(x, y), level: grid.elevation(x, y) });
+            bridges.push(P::new(x, y));
+        }
+    }
+    Some(GardenPlan { river, bridges, ..Default::default() })
+}
+
 /// Marks the bridges and protects the scenery from bombs.
 pub fn apply(grid: &mut Grid, plan: &GardenPlan) {
     for b in &plan.bridges {
@@ -187,7 +214,7 @@ fn river_course(grid: &Grid, keep: &[P]) -> Option<(Vec<RiverTile>, Vec<P>)> {
     course.reverse();
     let bridges: Vec<P> = course.iter().copied().filter(|p| grid.get(p.x, p.y) != Tile::Rock).collect();
 
-    // Water lies at the lowest floor beside it, and never climbs downstream.
+    // Water lies at the lowest floor beside it; where that steps, it falls over a weir.
     let mut levels: Vec<Option<i32>> = course
         .iter()
         .map(|p| {
@@ -206,7 +233,7 @@ fn river_course(grid: &Grid, keep: &[P]) -> Option<(Vec<RiverTile>, Vec<P>)> {
     let first = levels.iter().flatten().copied().next().unwrap_or(0);
     let mut last = first;
     for l in levels.iter_mut() {
-        let v = l.unwrap_or(last).min(last);
+        let v = l.unwrap_or(last);
         *l = Some(v);
         last = v;
     }
@@ -271,7 +298,7 @@ fn place_features(grid: &Grid, plan: &mut GardenPlan) {
     let hero_side = |b: &[P]| center(b);
 
     // The churchyard: the biggest walled enclosure, away from the middle.
-    let mut big: Vec<usize> = (0..blocks.len()).filter(|&i| blocks[i].len() >= 8).collect();
+    let mut big: Vec<usize> = (0..blocks.len()).filter(|&i| (8..=30).contains(&blocks[i].len())).collect();
     big.sort_by(|&a, &b| blocks[b].len().cmp(&blocks[a].len()).then(hero_side(&blocks[a]).0.total_cmp(&hero_side(&blocks[b]).0).reverse()));
     let mut used: HashSet<usize> = HashSet::new();
     if let Some(&g) = big.first() {
@@ -291,7 +318,9 @@ fn place_features(grid: &Grid, plan: &mut GardenPlan) {
     if !plan.graveyard.is_empty() {
         anchors.push(center(&plan.graveyard));
     }
-    for _ in 0..2 {
+    let big_estate = grid.width * grid.height > 1500;
+    let (temple_count, shrine_count) = if big_estate { (4, 14) } else { (2, 6) };
+    for _ in 0..temple_count {
         let pick = squares.iter().copied().filter(|i| !used.contains(i)).max_by(|&a, &b| {
             let fa = far(center(&blocks[a]), &anchors) + h(a as i32, 0, 7) * 0.5;
             let fb = far(center(&blocks[b]), &anchors) + h(b as i32, 0, 7) * 0.5;
@@ -310,11 +339,11 @@ fn place_features(grid: &Grid, plan: &mut GardenPlan) {
             used.insert(i);
         }
     }
-    // Wayside shrines: six wall tiles by the paths, spread across the garden.
+    // Wayside shrines: wall tiles by the paths, spread across the garden.
     let mut candidates: Vec<P> = (0..blocks.len()).filter(|i| !used.contains(i)).flat_map(|i| blocks[i].iter().copied()).filter(|&p| faces_path(grid, p)).collect();
     candidates.sort_by_key(|p| (p.y, p.x));
     let mut spots: Vec<(f64, f64)> = anchors.clone();
-    for _ in 0..6 {
+    for _ in 0..shrine_count {
         let pick = candidates.iter().copied().filter(|p| !plan.shrines.contains(p)).max_by(|a, b| {
             let fa = far((a.x as f64, a.y as f64), &spots) + h(a.x, a.y, 11) * 2.0;
             let fb = far((b.x as f64, b.y as f64), &spots) + h(b.x, b.y, 11) * 2.0;
@@ -355,7 +384,7 @@ mod tests {
         for pair in plan.river.windows(2) {
             let (a, b) = (pair[0], pair[1]);
             assert_eq!((a.p.x - b.p.x).abs() + (a.p.y - b.p.y).abs(), 1, "the river is continuous");
-            assert!(b.level <= a.level, "water never flows uphill");
+            assert!((b.level - a.level).abs() <= 1, "the water steps at most one level at a time");
         }
         assert!(plan.bridges.len() >= 2, "it crosses some paths: {:?}", plan.bridges);
         for r in &plan.river {
@@ -390,9 +419,9 @@ mod tests {
     fn scenery_is_placed_and_bombproof() {
         let (grid, plan, _) = garden();
         assert!(plan.graveyard.len() >= 8, "a churchyard: {:?}", plan.graveyard);
-        assert_eq!(plan.temples.len(), 2);
+        assert_eq!(plan.temples.len(), 4);
         assert!(!plan.flowers.is_empty());
-        assert_eq!(plan.shrines.len(), 6);
+        assert_eq!(plan.shrines.len(), 14);
         for p in plan.graveyard.iter().chain(plan.river.iter().map(|r| &r.p)) {
             if grid.get(p.x, p.y) == Tile::Rock {
                 assert!(grid.is_landmark(p.x, p.y));

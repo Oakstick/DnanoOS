@@ -701,8 +701,43 @@ fn fs_sky(in: SkyOut) -> FOut {
     return out;
 }
 
+// Dusk (sRGB): flame at the horizon through rose and violet to deep blue, a low
+// sun with a wide glow, streaks of cloud lit gold on the sun's side, first stars.
+fn dusk_sky(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
+    let up = ray.y;
+    let u = max(up, 0.0);
+    let sun = normalize(g.sky_moon.xyz);
+    var col = mix(vec3<f32>(1.0, 0.58, 0.3), vec3<f32>(0.88, 0.44, 0.48), smoothstep(0.0, 0.08, u));
+    col = mix(col, vec3<f32>(0.4, 0.3, 0.58), smoothstep(0.08, 0.32, u));
+    col = mix(col, vec3<f32>(0.07, 0.08, 0.22), smoothstep(0.32, 0.85, u));
+    let flat_ray = normalize(vec3<f32>(ray.x, 0.0, ray.z) + vec3<f32>(1e-4, 0.0, 0.0));
+    let toward = max(dot(flat_ray, normalize(vec3<f32>(sun.x, 0.0, sun.z))), 0.0);
+    col = mix(col, col * vec3<f32>(1.15, 0.92, 0.75) + vec3<f32>(0.12, 0.05, 0.0), toward * toward * (1.0 - smoothstep(0.0, 0.45, u)));
+    if (up < 0.0) {
+        col = mix(g.fog.rgb, col, smoothstep(-0.25, 0.0, up));
+    }
+    // The sun: a disc and its glow.
+    let ang = acos(clamp(dot(ray, sun), -1.0, 1.0));
+    col += vec3<f32>(1.0, 0.55, 0.25) * (exp(-ang * 5.0) * 0.3 + exp(-ang * 28.0) * 0.5);
+    col = mix(col, vec3<f32>(1.0, 0.93, 0.72), 1.0 - smoothstep(0.034 - px, 0.034 + px, ang));
+    // Streaky clouds on a high sheet, gold toward the sun, mauve away from it.
+    if (up > 0.005) {
+        let q = ray.xz / (up + 0.06) * 0.55;
+        let n = cfbm(vec2<f32>(q.x * 0.45 + time * 0.012, q.y * 1.7 + time * 0.004));
+        let cover = smoothstep(0.46, 0.76, n) * smoothstep(0.005, 0.1, up) * (1.0 - smoothstep(0.45, 0.85, up));
+        let sunward = pow(max(dot(normalize(ray), sun), 0.0), 3.0);
+        let lit = mix(vec3<f32>(0.42, 0.28, 0.42), vec3<f32>(1.0, 0.64, 0.42), clamp(sunward * 1.5 + toward * 0.35, 0.0, 1.0));
+        col = mix(col, lit * (0.75 + 0.45 * n), cover * 0.85);
+    }
+    col += star_layer(ray, 90.0, 0.05, px, time) * smoothstep(0.35, 0.8, up) * 0.8;
+    return col;
+}
+
 // The night sky along `ray` (sRGB): horizon glow, milky band, stars, the moon. `px` is radians per pixel.
 fn sky_color(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
+    if (g.sky_fwd.w > 1.5) {
+        return dusk_sky(ray, px, time);
+    }
     let up = ray.y;
 
     let zenith = vec3<f32>(0.004, 0.006, 0.014);

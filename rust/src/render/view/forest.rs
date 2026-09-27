@@ -158,6 +158,10 @@ impl WorldView {
             if matches!(here, Some(Feature::Water | Feature::Grave | Feature::Flowers)) {
                 continue;
             }
+            // The gatehouse stands on the gate's tile and the two either side of it.
+            if self.gate_tile.is_some_and(|g| g.y == y && (g.x - x).abs() <= 1) {
+                continue;
+            }
             let lawn = here == Some(Feature::Temple);
             let (xf, yf) = (x as f32, y as f32);
             let (hx, hy) = (x as f64, y as f64);

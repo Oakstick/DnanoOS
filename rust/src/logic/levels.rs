@@ -6,8 +6,10 @@ use super::types::PotionKind;
 
 /// Everyone moves at this fraction of the original tuning.
 pub const SPEED_SCALE: f64 = 0.8;
-/// Gold nuggets scattered through each dungeon; collecting them all wins.
+/// Gold nuggets scattered through each classic 27 x 23 dungeon (the boss arenas' base).
 pub const NUGGETS_PER_LEVEL: usize = 25;
+/// Golden keys hidden across each estate; all of them open the gate to the boss.
+pub const KEYS_PER_LEVEL: usize = 8;
 /// Potion bottles per dungeon: one extra life, two shields, two invisibility.
 pub const POTION_PLAN: [PotionKind; 5] =
     [PotionKind::Life, PotionKind::Health, PotionKind::Health, PotionKind::Swiftness, PotionKind::Swiftness];
@@ -442,6 +444,155 @@ pub fn decorate_dungeon(layout: &Layout, seed: u32) -> Layout {
     upscale(&Layout { rows, heights: pitted.heights }, WORLD_SCALE)
 }
 
+/**
+ * Four classic dungeons joined into one estate four times the size: the
+ * dungeon is mirrored right and down again (53 x 45), so floor levels meet
+ * across the seams, and passages are opened through the shared wall column
+ * and row. One enemy hollow is kept (top-left); the others become walled
+ * courtyards. Each quarter keeps one weapon and one item shrine. The shared
+ * row across the middle stays wall but for its passages, and in Dungeon I a
+ * river takes it.
+ */
+pub fn compose_estate(base: &[&str]) -> Layout {
+    let d = compose_dungeon(base);
+    let mirror_x = |rows: &[Vec<char>]| -> Vec<Vec<char>> {
+        rows.iter()
+            .map(|r| {
+                let mut out = r.clone();
+                out.extend(r.iter().rev().skip(1));
+                out
+            })
+            .collect()
+    };
+    let mirror_y = |rows: Vec<Vec<char>>| -> Vec<Vec<char>> {
+        let mut out = rows.clone();
+        out.extend(rows[..rows.len() - 1].iter().rev().cloned());
+        out
+    };
+    let mut grid = mirror_y(mirror_x(&d.rows));
+    let mut heights = mirror_y(mirror_x(&d.heights));
+    let (w, h) = (grid[0].len(), grid.len());
+    let (mid_x, mid_y) = ((w - 1) / 2, (h - 1) / 2);
+    let (dw, dh) = (d.rows[0].len(), d.rows.len());
+    for y in 0..h {
+        for x in 0..w {
+            let home = x < mid_x && y < mid_y;
+            // Which quarter of its own dungeon copy this tile lies in.
+            let (lx, ly) = (if x < dw { x } else { w - 1 - x }, if y < dh { y } else { h - 1 - y });
+            let sub_left = lx < (dw - 1) / 2;
+            let sub_top = ly < (dh - 1) / 2;
+            match grid[y][x] {
+                'N' | 'G' | 'P' if !home => grid[y][x] = '.',
+                'W' if !(sub_left && sub_top) => grid[y][x] = '.',
+                'I' if !(!sub_left && sub_top) => grid[y][x] = '.',
+                '-' if x == mid_x => {
+                    grid[y][x] = '.';
+                    heights[y][x] = heights[y][x - 1];
+                }
+                _ => {}
+            }
+        }
+    }
+    // Passages through the shared column and row, wherever corridors meet across them.
+    let walk = |g: &Vec<Vec<char>>, x: usize, y: usize| g[y][x] != '#';
+    for y in 1..h - 1 {
+        if grid[y][mid_x] == '#' && walk(&grid, mid_x - 1, y) && walk(&grid, mid_x + 1, y) && [1, 4, 18, 21].contains(&(if y < mid_y { y } else { h - 1 - y })) {
+            grid[y][mid_x] = '.';
+            heights[y][mid_x] = heights[y][mid_x - 1];
+        }
+    }
+    for x in 1..w - 1 {
+        let lx = if x < dw { x } else { w - 1 - x };
+        if grid[mid_y][x] == '#' && walk(&grid, x, mid_y - 1) && walk(&grid, x, mid_y + 1) && [1, 10, 16, 25].contains(&lx) {
+            grid[mid_y][x] = '.';
+            heights[mid_y][x] = heights[mid_y - 1][x];
+        }
+    }
+    // The gate to the boss: in the north wall, at the middle, over the passage there.
+    grid[0][mid_x] = 'D';
+    grid[1][mid_x] = '.';
+    heights[1][mid_x] = heights[1][mid_x - 1];
+    Layout { rows: grid, heights }
+}
+
+/**
+ * Hides `count` golden keys: every '.' becomes plain floor, then keys go to
+ * open tiles far from the middle (where Sebastian starts), from each other and
+ * from the gate, two to each quarter, favoring dead ends.
+ */
+pub fn place_keys(rows: &[Vec<char>], count: usize, seed: u32) -> Vec<Vec<char>> {
+    let mut grid: Vec<Vec<char>> = rows.iter().map(|r| r.iter().map(|&c| if c == '.' { ' ' } else { c }).collect()).collect();
+    let (w, h) = (grid[0].len() as i32, grid.len() as i32);
+    let (cx, cy) = ((w - 1) / 2, (h - 1) / 2);
+    let open = |g: &Vec<Vec<char>>, x: i32, y: i32| x >= 0 && y >= 0 && x < w && y < h && !matches!(g[y as usize][x as usize], '#' | '~' | '^' | 'D');
+    let mut rng = Rng::new(seed.wrapping_mul(2654435761).wrapping_add(11));
+    let mut cands: Vec<(i32, i32, f64)> = vec![];
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            if grid[y as usize][x as usize] != ' ' || (x - cx).abs() + (y - cy).abs() < 12 || y <= 6 && (x - cx).abs() <= 6 {
+                continue;
+            }
+            let busy = (-1..=1).any(|dy| (-1..=1).any(|dx| {
+                let c = grid[(y + dy) as usize][(x + dx) as usize];
+                !matches!(c, ' ' | '#' | '.')
+            }));
+            if busy {
+                continue;
+            }
+            let exits = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().filter(|(dx, dy)| open(&grid, x + dx, y + dy)).count();
+            let bonus = if exits == 1 { 6.0 } else { 0.0 } + rng.next() * 2.0;
+            cands.push((x, y, bonus));
+        }
+    }
+    let quarter = |x: i32, y: i32| (x > cx) as usize + 2 * (y > cy) as usize;
+    let per_quarter = count.div_ceil(4);
+    let mut chosen: Vec<(i32, i32)> = vec![];
+    let mut used = [0usize; 4];
+    while chosen.len() < count {
+        let pick = cands
+            .iter()
+            .filter(|c| used[quarter(c.0, c.1)] < per_quarter && !chosen.contains(&(c.0, c.1)))
+            .max_by(|a, b| {
+                let score = |c: &(i32, i32, f64)| {
+                    let apart = chosen.iter().map(|q| (q.0 - c.0).abs() + (q.1 - c.1).abs()).min().unwrap_or(40).min(24) as f64;
+                    let out = ((c.0 - cx).abs() + (c.1 - cy).abs()).min(30) as f64;
+                    apart * 1.5 + out * 0.5 + c.2
+                };
+                score(a).total_cmp(&score(b))
+            })
+            .copied();
+        let Some((x, y, _)) = pick else { break };
+        chosen.push((x, y));
+        used[quarter(x, y)] += 1;
+    }
+    for (x, y) in chosen {
+        grid[y as usize][x as usize] = '.';
+    }
+    grid
+}
+
+/// The estate for a dungeon: pits, keys and potions, seeded so each has its own.
+pub fn decorate_estate(layout: &Layout, seed: u32) -> Layout {
+    let pitted = place_pits(layout, PITS_PER_LEVEL * 3, seed);
+    let plan: Vec<PotionKind> = POTION_PLAN.iter().chain(POTION_PLAN.iter()).copied().collect();
+    let rows = place_potions(&place_keys(&pitted.rows, KEYS_PER_LEVEL, seed), &plan, seed);
+    upscale(&Layout { rows, heights: pitted.heights }, WORLD_SCALE)
+}
+
+fn estate(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seconds: f64) -> LevelData {
+    let layout = decorate_estate(&compose_estate(&QUADRANT), seed);
+    LevelData {
+        name: name.to_string(),
+        rows: Layout::strings(&layout.rows),
+        heights: Layout::strings(&layout.heights),
+        hero_speed,
+        enemy_speed,
+        frenzy_seconds,
+        boss: false,
+    }
+}
+
+/// A classic 27 x 23 dungeon with its nuggets, as the web build made it (the boss arenas are cut from it).
 fn dungeon(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seconds: f64) -> LevelData {
     let layout = decorate_dungeon(&compose_dungeon(&QUADRANT), seed);
     LevelData {
@@ -457,10 +608,17 @@ fn dungeon(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seco
 
 pub fn levels() -> Vec<LevelData> {
     vec![
-        dungeon("Dungeon I: Sunken Halls", 1, 6.5 * SPEED_SCALE, 5.4 * SPEED_SCALE, 7.0),
-        dungeon("Dungeon II: The Cisterns", 2, 7.0 * SPEED_SCALE, 6.3 * SPEED_SCALE, 5.5),
-        dungeon("Dungeon III: Bone Vaults", 3, 7.5 * SPEED_SCALE, 7.3 * SPEED_SCALE, 4.0),
+        estate("Dungeon I: The Moonlit Garden", 1, 6.5 * SPEED_SCALE, 5.4 * SPEED_SCALE, 7.0),
+        estate("Dungeon II: The Cisterns", 2, 7.0 * SPEED_SCALE, 6.3 * SPEED_SCALE, 5.5),
+        estate("Dungeon III: Bone Vaults", 3, 7.5 * SPEED_SCALE, 7.3 * SPEED_SCALE, 4.0),
     ]
+}
+
+/// The classic dungeons, one per level, that the boss arenas are cut from.
+pub fn classic_dungeon(index: usize) -> LevelData {
+    let names = ["Sunken Halls", "The Cisterns", "Bone Vaults"];
+    let seed = index as u32 + 1;
+    dungeon(names.get(index).copied().unwrap_or("Deeper Still"), seed, 6.5 * SPEED_SCALE, 5.4 * SPEED_SCALE, 7.0)
 }
 
 /// Beyond the last authored level, speeds keep ramping and hazards land in new spots.
@@ -471,7 +629,7 @@ pub fn level_for(index: usize) -> LevelData {
     }
     let base = all.last().unwrap().clone();
     let extra = (index - all.len() + 1) as f64;
-    let layout = decorate_dungeon(&compose_dungeon(&QUADRANT), index as u32 + 1);
+    let layout = decorate_estate(&compose_estate(&QUADRANT), index as u32 + 1);
     LevelData {
         name: format!("Dungeon {}: Deeper Still", index + 1),
         rows: Layout::strings(&layout.rows),
@@ -504,7 +662,7 @@ pub const ARENA_BOSS: (i32, i32) = (13, 6);
  * and a weapon shrine and an item shrine flank the start.
  */
 pub fn boss_arena(index: usize) -> LevelData {
-    let base = level_for(index);
+    let base = classic_dungeon(index);
     let mut rows: Vec<Vec<char>> = base.rows.iter().map(|r| r.chars().collect()).collect();
     let (x0, y0, x1, y1) = ARENA;
     for (y, row) in rows.iter_mut().enumerate() {
@@ -558,7 +716,7 @@ mod tests {
 
     #[test]
     fn dungeon_is_27_by_23_with_25_nuggets_and_5_potions() {
-        let data = level_for(0);
+        let data = classic_dungeon(0);
         assert_eq!(data.rows.len(), 23);
         assert!(data.rows.iter().all(|r| r.chars().count() == 27));
         let level = parse_level(&data);
@@ -568,9 +726,32 @@ mod tests {
     }
 
     #[test]
-    fn every_pickup_is_reachable_with_jumps() {
+    fn the_estate_is_four_dungeons_with_eight_keys_and_a_gate() {
+        let data = level_for(0);
+        assert_eq!(data.rows.len(), 45);
+        assert!(data.rows.iter().all(|r| r.chars().count() == 53));
+        let level = parse_level(&data);
+        assert_eq!(level.grid.count(Tile::Nodule), KEYS_PER_LEVEL);
+        assert_eq!(level.potions.len(), 10);
+        assert_eq!(level.weapon_shrines.len(), 4);
+        assert_eq!(level.item_shrines.len(), 4);
+        assert_eq!(level.grid.count(Tile::Nest), 6, "one hollow");
+        let gate = level.gate.expect("a gate");
+        assert_eq!((gate.x, gate.y), (26, 0));
+        assert!(level.grid.is_walkable(gate.x, gate.y + 1, false), "a passage leads to the gate");
+        // Two keys to each quarter.
+        for q in 0..4 {
+            let n = level.grid.cells().filter(|&(x, y, t)| t == Tile::Nodule && (x > 26) as usize + 2 * (y > 22) as usize == q).count();
+            assert_eq!(n, 2, "quarter {q}");
+        }
+    }
+
+    #[test]
+    fn every_pickup_and_the_gate_are_reachable_with_jumps() {
         let level = parse_level(&level_for(0));
         let seen = reachable(&level.grid, level.hero_spawn, true, false);
+        let gate = level.gate.unwrap();
+        assert!(seen.contains(&crate::logic::types::P::new(gate.x, gate.y + 1)));
         for (x, y, t) in level.grid.cells() {
             if t == Tile::Nodule || t == Tile::Charge {
                 assert!(seen.contains(&crate::logic::types::P::new(x, y)), "pickup at {x},{y} unreachable");
@@ -599,8 +780,8 @@ mod tests {
 
     #[test]
     fn layout_matches_the_web_build() {
-        // Row 1 of Dungeon I as generated by the TypeScript build (seed 1).
-        let data = level_for(0);
+        // Dungeon I as generated by the TypeScript build (seed 1): the classic dungeon the estates are built from.
+        let data = classic_dungeon(0);
         let expected = include_str!("../../tests/dungeon1.txt");
         let got = data.rows.join("\n");
         assert_eq!(got.trim_end(), expected.trim_end());

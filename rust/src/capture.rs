@@ -11,7 +11,7 @@
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
-//! `goo` (a slime trail around Sebastian).
+//! `goo` (a slime trail around Sebastian) and `gate` (the F2 cheat: every key, at the gate).
 //! `--iso` renders the whole level from an isometric map camera instead;
 //! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front).
 
@@ -37,6 +37,7 @@ enum Cmd {
     Tour,
     Streak,
     Goo,
+    Gate,
     Arm(usize, u8),
     Shield(usize),
     Coins(u32),
@@ -75,6 +76,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "tour" => Cmd::Tour,
             "streak" => Cmd::Streak,
             "goo" => Cmd::Goo,
+            "gate" => Cmd::Gate,
             "arm" => {
                 let line = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
                 let level = parts.next().and_then(|v| v.parse().ok()).unwrap_or(1);
@@ -137,7 +139,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Press(a) => game.input.inject(a),
                 Cmd::Hold(d, down) => game.input.hold_dir(d, down),
                 Cmd::Look(dx, dy) => game.view.look(dx, dy),
-                Cmd::Nugget => game.debug_collect_nugget(),
+                Cmd::Nugget => game.debug_collect_key(),
                 Cmd::Hurt => game.debug_hurt(),
                 Cmd::Wound(n) => game.debug_wound_boss(n),
                 Cmd::Daze => game.debug_daze_boss(),
@@ -145,6 +147,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Tour => game.tour_pending = true,
                 Cmd::Streak => game.debug_streak(),
                 Cmd::Goo => game.debug_goo(),
+                Cmd::Gate => game.cheat_to_gate(),
                 Cmd::Arm(line, level) => game.debug_arm(crate::logic::gear::LINES[line.min(3)], level),
                 Cmd::Shield(i) => {
                     game.hero.shield = crate::logic::gear::SHIELDS.get(i).map(|&k| crate::logic::gear::ShieldGear::new(k));

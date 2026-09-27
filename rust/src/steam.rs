@@ -35,7 +35,7 @@ impl Steam {
         let mut dirty = false;
         for e in events.iter() {
             let name = match e {
-                GameEvent::FirstNugget => ACH_FIRST_NUGGET,
+                GameEvent::FirstKey => ACH_FIRST_NUGGET,
                 GameEvent::Won => ACH_HARVEST,
                 GameEvent::BossSlain => ACH_CYCLOPS,
             };

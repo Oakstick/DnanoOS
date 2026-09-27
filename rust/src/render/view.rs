@@ -23,6 +23,7 @@ use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
 mod forest;
 mod forge;
 mod garden;
+mod gate;
 mod meadow;
 pub use forge::SMITH_BEAT;
 pub use meadow::meadow_atmosphere;
@@ -190,8 +191,10 @@ pub struct Atmosphere {
     pub night_sky: f32,
     /// How strongly bright things glow (bloom).
     pub bloom: f32,
-    /// Where the moon hangs in the sky (it is placed for the view, not for the light).
+    /// Where the moon (or at dusk the setting sun) hangs in the sky.
     pub moon_view: Vec3,
+    /// The cloud sea's color.
+    pub cloud_tint: Vec3,
 }
 
 impl Atmosphere {
@@ -210,6 +213,7 @@ impl Atmosphere {
             night_sky: 1.0,
             bloom: 1.0,
             moon_view: Vec3::new(-1.103, 0.534, -0.311).normalize(),
+            cloud_tint: lin(0x161b24),
         }
     }
 }
@@ -259,6 +263,16 @@ pub struct SceneState<'a> {
     pub puddles: &'a PuddleField,
     pub boss: Option<&'a crate::logic::boss::Cyclops>,
     pub boss_shots: &'a [crate::logic::boss::BossShot],
+    pub gate: Option<GateView>,
+}
+
+/// The gate to the boss as the view needs it: where, how many locks are lit, how far the doors have swung.
+#[derive(Clone, Copy, Debug)]
+pub struct GateView {
+    pub tile: P,
+    pub keys: u32,
+    pub total: u32,
+    pub door: f32,
 }
 
 // ---------------------------------------------------------------- views
@@ -404,6 +418,7 @@ struct Models {
     diamond: Mesh,
     tree: Mesh,
     nugget: Mesh,
+    key: Mesh,
     /// Shrine pedestals: weapon (blue runes) and item (gold runes).
     pedestals: [(Mesh, Mesh); 2],
     bottles: HashMap<u32, Mesh>,
@@ -443,6 +458,7 @@ impl Models {
             diamond: super::props::gem(),
             tree: super::props::pine(),
             nugget: super::props::nugget(),
+            key: gate::golden_key(),
             pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
             cyclops: build_layered_rig(
@@ -501,6 +517,12 @@ pub struct WorldView {
     mist: Vec<Instance>,
     /// Candle flames in shrines, temples and graves: the nearest few cast light.
     candles: Vec<Vec3>,
+    /// Where the golden keys lie (each drawn while its tile still holds one).
+    keys: Vec<P>,
+    /// The gate to the boss, in the outer wall.
+    gate_tile: Option<P>,
+    /// Smoke sources: where, and how strongly.
+    smoke: Vec<(Vec3, f32)>,
     /// Slam shockwaves: center and age.
     rings: Vec<(Vec3, f32)>,
     trees: Vec<Tree>,
@@ -586,6 +608,9 @@ impl WorldView {
             garden: None,
             mist: Vec::new(),
             candles: Vec::new(),
+            keys: Vec::new(),
+            gate_tile: None,
+            smoke: Vec::new(),
             rings: Vec::new(),
             trees: Vec::new(),
             tree_index: HashMap::new(),
@@ -635,8 +660,12 @@ impl WorldView {
 
     // ---------------------------------------------------------------- build
 
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool, garden: Option<&crate::logic::garden::GardenPlan>) {
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
         self.garden = garden.cloned();
+        self.gate_tile = gate;
+        self.keys.clear();
+        self.smoke.clear();
         self.candles.clear();
         self.mist.clear();
         self.static_cubes.clear();
@@ -663,6 +692,12 @@ impl WorldView {
         } else {
             self.build_forest(grid);
         }
+        if let Some(g) = gate {
+            self.build_gate(grid, g);
+        }
+        // A thread of smoke above every candle.
+        let wisps: Vec<(Vec3, f32)> = self.candles.iter().map(|c| (*c + Vec3::new(0.0, 0.12, 0.0), 0.35)).collect();
+        self.smoke.extend(wisps);
         self.build_pickups(grid, enemies, diamonds);
     }
 
@@ -671,11 +706,16 @@ impl WorldView {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
         let white = Vec3::ONE;
 
-        // Nuggets: hidden per tile as they are collected. Their glow pulses together.
+        // Golden keys: drawn each frame, spinning, for as long as their tile holds one.
+        for (x, y, t) in grid.cells() {
+            if t == Tile::Nodule {
+                self.keys.push(P::new(x, y));
+            }
+        }
         let nugget = super::props::nugget();
         let nugget_glow = lin(0xf2c53d);
         for (x, y, t) in grid.cells() {
-            if t != Tile::Nodule {
+            if t != Tile::Nodule || !self.keys.is_empty() {
                 continue;
             }
             let (xf, yf) = (x as f64, y as f64);
@@ -1752,10 +1792,11 @@ impl WorldView {
         // --- fireflies by night; water, butterflies and pollen by day
         if self.meadow {
             self.emit_meadow(time, f);
-        } else {
-            emit_cloud_sea(grid, f);
-            self.emit_garden(time, f);
         }
+        emit_cloud_sea(grid, f);
+        self.emit_garden(time, f);
+        self.emit_gate_and_keys(s, time, hero_pos, f);
+        self.emit_smoke(time, f);
         let mote_color = lin(MOTE);
         let mote_alpha = 0.6 + (time * 2.2).sin() * 0.25;
         for (i, b) in self.mote_base.iter().enumerate() {
@@ -2194,6 +2235,7 @@ mod tests {
 /// The dungeon floats on a sea of dark clouds: stacked mist layers under and around it. The
 /// upper layers only show outside the level and swallow its sides; the lowest hides the void.
 fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
+    let tint = f.atmosphere.cloud_tint;
     let (w, h) = (grid.width as f32, grid.height as f32);
     f.bounds = Vec4::new(-0.5, -0.5, w - 0.5, h - 0.5);
     let center = Vec3::new(w / 2.0 - 0.5, 0.0, h / 2.0 - 0.5);
@@ -2202,7 +2244,7 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
     let layers = [(-1.6, 1.0, 0.0), (-1.2, 0.9, 1.0), (-0.8, 0.85, 2.0), (-0.45, 0.8, 3.0), (-0.1, 0.8, 4.0), (0.15, 0.75, 5.0), (0.4, 0.65, 6.0), (0.7, 0.5, 7.0), (1.0, 0.35, 8.0)];
     for (y, alpha, seed) in layers {
         let m = Mat4::from_translation(center + Vec3::new(0.0, y, 0.0)) * Mat4::from_scale(Vec3::new(size, 0.002, size));
-        f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0x161b24), alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));
+        f.transparent[MeshKind::Cube as usize].push(Instance::new(m, tint, alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));
     }
 }
 

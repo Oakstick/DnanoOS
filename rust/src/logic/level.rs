@@ -34,6 +34,8 @@ pub struct ParsedLevel {
     pub weapon_shrines: Vec<P>,
     pub item_shrines: Vec<P>,
     pub potions: Vec<(P, PotionKind)>,
+    /// The gate to the boss, set in the outer wall; it opens when every key is found.
+    pub gate: Option<P>,
     pub data: LevelData,
 }
 
@@ -49,6 +51,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
     let mut weapon_shrines = Vec::new();
     let mut item_shrines = Vec::new();
     let mut potions = Vec::new();
+    let mut gate = None;
 
     assert!(
         data.heights.is_empty() || data.heights.len() as i32 == height,
@@ -65,6 +68,10 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
             let p = P::new(x, y);
             let t = match c {
                 '#' => Tile::Rock,
+                'D' => {
+                    gate = Some(p);
+                    Tile::Rock
+                }
                 '.' => Tile::Nodule,
                 'o' => Tile::Charge,
                 ' ' => Tile::Open,
@@ -187,6 +194,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
         weapon_shrines,
         item_shrines,
         potions,
+        gate,
         data: data.clone(),
     }
 }
