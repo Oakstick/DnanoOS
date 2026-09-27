@@ -139,7 +139,9 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
     m.sheen = 0.0;
     let uv = voxel_uv(local);
     let e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-    m.albedo *= mix(1.0, mix(0.9, 1.0, smoothstep(0.0, 0.11, e)), bevel_detail);
+    if (kind != 9) {
+        m.albedo *= mix(1.0, mix(0.9, 1.0, smoothstep(0.0, 0.11, e)), bevel_detail);
+    }
     let helper = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.y) > 0.9);
     let t = normalize(cross(helper, n));
     let b = cross(n, t);
@@ -200,6 +202,13 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             let grain = abs(sin(uv.x * 13.0 + sin(uv.y * 4.0 + seed * 9.0) * 1.8));
             m.albedo *= mix(1.0, 0.8 + 0.26 * grain, detail);
             m.spec = 0.08;
+        }
+        case 9: {
+            // Slime: wet and glossy, a sharp highlight and light soaking in.
+            m.spec = 1.4;
+            m.shine = 90.0;
+            m.wrap = 0.4;
+            m.sheen = 0.2;
         }
         case 8: {
             // Gold and bronze: bright, warm, polished.
@@ -376,6 +385,9 @@ fn cloud_sea(in: VOut) -> FOut {
     let layer_y = in.emissive.y;
     let time = g.sky_right.w;
     let xz = in.world.xz;
+    if (seed > 19.5) {
+        return ground_mist(in, seed - 20.0);
+    }
     let drift = vec2<f32>(0.11, 0.05) * time * (0.6 + 0.15 * seed);
     let p = xz * 0.16 + vec2<f32>(seed * 17.3, seed * 9.1);
     // Domain warp for billowing shapes.
@@ -414,6 +426,110 @@ fn cloud_sea(in: VOut) -> FOut {
     return out;
 }
 
+// Low night mist in slow drifting banks, thinning right in front of the camera
+// so it never fogs the view of Sebastian. Moonlit, and warmed by lights nearby.
+fn ground_mist(in: VOut, layer: f32) -> FOut {
+    let time = g.sky_right.w;
+    let drift = vec2<f32>(0.16, 0.06) * time * (1.0 + 0.3 * layer);
+    let p = in.world.xz * 0.42 + vec2<f32>(layer * 7.1, layer * 3.3);
+    let warp = vec2<f32>(cfbm(p * 0.5 + drift * 0.4), cfbm(p * 0.5 - drift.yx * 0.4 + 3.7));
+    let n = cfbm(p + drift + warp * 1.3);
+    var cover = smoothstep(0.34, 0.74, n) * in.color.a;
+    cover *= smoothstep(1.2, 4.5, length(g.cam_pos.xyz - in.world));
+    // Moonlight on the mist, and a warm glow where lanterns and candles are near.
+    var light = g.moon_color.rgb * 0.22 + g.hemi_sky.rgb * 0.25 + g.ambient.rgb;
+    let count = min(u32(g.params.w), MAX_LIGHTS);
+    for (var i = 0u; i < count; i++) {
+        let l = g.lights[i];
+        let d = length(l.pos.xyz - in.world);
+        var att = 1.0 / max(d * d, 0.25);
+        if (l.pos.w > 0.0) {
+            let r = d / l.pos.w;
+            att *= pow2(clamp(1.0 - r * r * r * r, 0.0, 1.0));
+        }
+        light += l.color.rgb * min(att, 1.5) * 0.06;
+    }
+    let col = in.color.rgb * light * (0.8 + 0.4 * n);
+    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    var out: FOut;
+    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), cover * (1.0 - fog_f * 0.5));
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
+}
+
+// ------------------------------------------------------------------ water
+//
+// A river at night: a dark body under a rippled surface that mirrors the
+// starry sky and the moon (so the moon lays a broken path on the water),
+// catches glints from lanterns, and grows more mirror-like at grazing
+// angles. Upright sheets are cascades: white streaks falling over dark water.
+
+fn water_height(q: vec2<f32>, time: f32) -> f32 {
+    let flow = vec2<f32>(time * 0.45, 0.0);
+    return cnoise(q * 2.3 + flow * 2.3) * 0.55 + cnoise(q * 5.1 + vec2<f32>(time * 1.1, time * 0.4)) * 0.3 + cnoise(q * 11.0 - vec2<f32>(time * 0.3, time * 1.3)) * 0.15;
+}
+
+fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
+    let time = g.sky_right.w;
+    let view_dir = normalize(g.cam_pos.xyz - in.world);
+    var out: FOut;
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    if (abs(n_geom.y) < 0.5) {
+        // Falling water: streaks rushing down, whiter where it breaks.
+        let across = dot(in.world.xz, vec2<f32>(0.7071, 0.7071)) * 14.0;
+        let fall = in.world.y * 5.0 + time * 6.0;
+        let streak = cnoise(vec2<f32>(across, fall)) * 0.7 + cnoise(vec2<f32>(across * 2.3, fall * 2.0 + 5.0)) * 0.3;
+        let white = smoothstep(0.35, 0.8, streak);
+        var col = mix(vec3<f32>(0.02, 0.05, 0.06), in.color.rgb * 0.5, white);
+        col *= g.moon_color.rgb * 0.5 + g.hemi_sky.rgb * 0.6 + g.ambient.rgb * 2.0;
+        let rgb = to_srgb(aces_filmic(col * 2.2, g.params.y));
+        out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), in.color.a * (0.55 + 0.45 * white));
+        return out;
+    }
+    // Ripples: the normal from the slope of a moving height field.
+    let q = in.world.xz;
+    let e = 0.04;
+    let h0 = water_height(q, time);
+    let hx = water_height(q + vec2<f32>(e, 0.0), time);
+    let hz = water_height(q + vec2<f32>(0.0, e), time);
+    let n = normalize(vec3<f32>(-(hx - h0) / e * 0.06, 1.0, -(hz - h0) / e * 0.06));
+    let r = reflect(-view_dir, n);
+    var sky = mix(g.fog.rgb, g.fog.rgb * 1.4 + vec3<f32>(0.05), clamp(r.y, 0.0, 1.0));
+    if (g.sky_fwd.w > 0.0) {
+        sky = sky_color(normalize(vec3<f32>(r.x, abs(r.y), r.z)), 0.004, time);
+    }
+    let fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, view_dir), 0.0), 5.0);
+    // The body of the water: dark, lit faintly from above and by lights nearby.
+    var body = in.color.rgb * (g.ambient.rgb * 2.0 + g.hemi_sky.rgb * 0.35 + g.moon_color.rgb * 0.15);
+    var spec = vec3<f32>(0.0);
+    let count = min(u32(g.params.w), MAX_LIGHTS);
+    for (var i = 0u; i < count; i++) {
+        let l = g.lights[i];
+        let to_light = l.pos.xyz - in.world;
+        let d = length(to_light);
+        let ld = to_light / max(d, 1e-4);
+        var att = 1.0 / max(d * d, 0.05);
+        if (l.pos.w > 0.0) {
+            let rr = d / l.pos.w;
+            att *= pow2(clamp(1.0 - rr * rr * rr * rr, 0.0, 1.0));
+        }
+        body += in.color.rgb * l.color.rgb * att * 0.25;
+        let hv = normalize(ld + view_dir);
+        spec += pow(max(dot(n, hv), 0.0), 220.0) * l.color.rgb * att * 3.0;
+    }
+    // A broad moonlit sheen around the moon's reflection, broken up by the ripples.
+    let md = normalize(g.sky_moon.xyz);
+    let sheen = pow(max(dot(r, md), 0.0), 40.0) * 0.5 + pow(max(dot(r, md), 0.0), 6.0) * 0.08;
+    let ripple_light = g.hemi_sky.rgb * (0.05 + 0.25 * clamp(h0 - 0.35, 0.0, 1.0)) + g.moon_color.rgb * sheen * g.sky_fwd.w;
+    let body_srgb = to_srgb(aces_filmic(body + spec + ripple_light, g.params.y));
+    let mirror = clamp(fres * 1.5 + 0.3, 0.0, 1.0);
+    var col = mix(body_srgb, max(sky, body_srgb), mirror) + to_srgb(aces_filmic(spec, g.params.y)) * 0.5;
+    out.color = vec4<f32>(mix(col, g.fog.rgb, fog_f), mix(in.color.a, 1.0, fres));
+    return out;
+}
+
 @fragment
 fn fs_scene(in: VOut) -> FOut {
     // Derivatives first, while control flow is still uniform.
@@ -426,6 +542,9 @@ fn fs_scene(in: VOut) -> FOut {
     let local_w = fwidth(in.local);
     if (mode > 4.5 && mode < 5.5) {
         return cloud_sea(in);
+    }
+    if (mode > 19.5) {
+        return water(in, n);
     }
     // Screen-door fade: a 4x4 ordered dither keeps fading trees in the opaque pass.
     if (mode > 2.5 && mode < 3.5 && in.color.a < bayer4(in.clip.xy)) {
@@ -573,6 +692,17 @@ fn fs_sky(in: SkyOut) -> FOut {
     let time = g.sky_right.w;
     // Radians per pixel, to keep stars and the moon's rim crisp at any resolution.
     let px = length(fwidth(ray));
+    var col = sky_color(ray, px, time);
+    // Dither so the dark halo and horizon glow do not band in 8 bits.
+    col += (hash31(vec3<f32>(in.clip.xy, fract(time) * 7.0)) - 0.5) / 255.0;
+    var out: FOut;
+    out.color = vec4<f32>(col, 1.0);
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
+}
+
+// The night sky along `ray` (sRGB): horizon glow, milky band, stars, the moon. `px` is radians per pixel.
+fn sky_color(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
     let up = ray.y;
 
     let zenith = vec3<f32>(0.004, 0.006, 0.014);
@@ -617,12 +747,7 @@ fn fs_sky(in: SkyOut) -> FOut {
         let edge = 1.0 - smoothstep(radius - px * 1.5, radius + px * 0.5, ang);
         col = mix(col, moon, edge);
     }
-    // Dither so the dark halo and horizon glow do not band in 8 bits.
-    col += (hash31(vec3<f32>(in.clip.xy, fract(time) * 7.0)) - 0.5) / 255.0;
-    var out: FOut;
-    out.color = vec4<f32>(col, 1.0);
-    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
-    return out;
+    return col;
 }
 
 // ------------------------------------------------------------------ overlay

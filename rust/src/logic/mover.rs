@@ -17,11 +17,13 @@ pub struct Mover {
     pub flying: bool,
     /// Width of the world last stepped through, so `occupied` can wrap in a tunnel.
     pub world_width: i32,
+    /// Slimes will not set out onto a bridge.
+    pub avoids_bridges: bool,
 }
 
 impl Mover {
     pub fn new(start: P, speed: f64) -> Self {
-        Self { tile: start, offset: 0.0, dir: Dir::None, speed, flying: false, world_width: 0 }
+        Self { tile: start, offset: 0.0, dir: Dir::None, speed, flying: false, world_width: 0, avoids_bridges: false }
     }
 
     /// Continuous position in tile units (tile centers are integers).
@@ -53,6 +55,18 @@ impl Mover {
             return p;
         }
         P::new(p.x.rem_euclid(self.world_width), p.y)
+    }
+
+    /// Can this mover leave its tile in `dir`: the grid's rules, plus any bridge it shuns.
+    pub fn can_go(&self, grid: &Grid, dir: Dir, allow_nest: bool) -> bool {
+        if !grid.can_move(self.tile, dir, allow_nest, self.flying) {
+            return false;
+        }
+        if self.avoids_bridges {
+            let n = grid.neighbor(self.tile, dir);
+            return !grid.is_bridge(n.x, n.y);
+        }
+        true
     }
 
     pub fn next_tile(&self, from: P) -> P {
@@ -95,7 +109,7 @@ impl Mover {
 
         if self.dir == Dir::None {
             let want = decide(self.tile, self.dir);
-            if grid.can_move(self.tile, want, allow_nest, self.flying) {
+            if self.can_go(grid, want, allow_nest) {
                 self.dir = want;
             } else {
                 return false;
@@ -121,11 +135,9 @@ impl Mover {
             crossed = true;
 
             let want = decide(self.tile, self.dir);
-            if want != Dir::None && grid.can_move(self.tile, want, allow_nest, self.flying) {
+            if want != Dir::None && self.can_go(grid, want, allow_nest) {
                 self.dir = want;
-            } else if (stop_when_idle && want == Dir::None)
-                || !grid.can_move(self.tile, self.dir, allow_nest, self.flying)
-            {
+            } else if (stop_when_idle && want == Dir::None) || !self.can_go(grid, self.dir, allow_nest) {
                 // Either nothing is asked for (hold-to-move release) or the way is blocked: rest on this center.
                 self.dir = Dir::None;
                 break;

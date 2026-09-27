@@ -13,12 +13,17 @@ pub struct Grid {
     tiles: Vec<Tile>,
     heights: Vec<i32>,
     ramps: Vec<bool>,
+    /// Floor that spans water: everyone crosses it but slimes.
+    bridges: Vec<bool>,
+    /// Scenery a bomb must not break: the river, the churchyard, the temples.
+    landmarks: Vec<bool>,
 }
 
 impl Grid {
     pub fn new(width: i32, height: i32, tiles: Vec<Tile>, heights: Vec<i32>, ramps: Vec<bool>) -> Self {
         assert_eq!(tiles.len(), (width * height) as usize, "grid size mismatch");
-        Self { width, height, tiles, heights, ramps }
+        let n = tiles.len();
+        Self { width, height, tiles, heights, ramps, bridges: vec![false; n], landmarks: vec![false; n] }
     }
 
     pub fn in_bounds(&self, x: i32, y: i32) -> bool {
@@ -65,6 +70,28 @@ impl Grid {
 
     pub fn is_ramp(&self, x: i32, y: i32) -> bool {
         self.in_bounds(x, y) && self.ramps[self.idx(x, y)]
+    }
+
+    pub fn is_bridge(&self, x: i32, y: i32) -> bool {
+        self.in_bounds(x, y) && self.bridges[self.idx(x, y)]
+    }
+
+    pub fn set_bridge(&mut self, x: i32, y: i32, on: bool) {
+        if self.in_bounds(x, y) {
+            let i = self.idx(x, y);
+            self.bridges[i] = on;
+        }
+    }
+
+    pub fn is_landmark(&self, x: i32, y: i32) -> bool {
+        self.in_bounds(x, y) && self.landmarks[self.idx(x, y)]
+    }
+
+    pub fn set_landmark(&mut self, x: i32, y: i32, on: bool) {
+        if self.in_bounds(x, y) {
+            let i = self.idx(x, y);
+            self.landmarks[i] = on;
+        }
     }
 
     /// Standable floor: not rock, not a pit, and the nest only when allowed.

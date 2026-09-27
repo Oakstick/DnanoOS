@@ -22,6 +22,7 @@ use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
 
 mod forest;
 mod forge;
+mod garden;
 mod meadow;
 pub use forge::SMITH_BEAT;
 pub use meadow::meadow_atmosphere;
@@ -132,8 +133,10 @@ pub const SHADE_DITHER: f32 = 3.0;
 /// Lit, and on its top face a field of grass blades drawn with parallax occlusion mapping.
 pub const SHADE_GRASS: f32 = 4.0;
 
-/// A layer of the cloud sea the dungeon floats on: drifting procedural mist.
+/// A layer of the cloud sea the dungeon floats on (or, with a seed of 20 and up, ground mist).
 pub const SHADE_CLOUD: f32 = 5.0;
+/// Moving water: rippled, mirroring the night sky; sheets that stand upright fall as cascades.
+pub const SHADE_WATER: f32 = 20.0;
 
 /// How see-through a tree gets while it blocks the view of Popolon.
 
@@ -492,6 +495,12 @@ pub struct WorldView {
     pub meadow: bool,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
+    /// Dungeon I's landscape garden, when this level is it.
+    garden: Option<crate::logic::garden::GardenPlan>,
+    /// Ground mist sheets, drawn every frame.
+    mist: Vec<Instance>,
+    /// Candle flames in shrines, temples and graves: the nearest few cast light.
+    candles: Vec<Vec3>,
     /// Slam shockwaves: center and age.
     rings: Vec<(Vec3, f32)>,
     trees: Vec<Tree>,
@@ -574,6 +583,9 @@ impl WorldView {
             rock_index: HashMap::new(),
             meadow: false,
             water: Vec::new(),
+            garden: None,
+            mist: Vec::new(),
+            candles: Vec::new(),
             rings: Vec::new(),
             trees: Vec::new(),
             tree_index: HashMap::new(),
@@ -623,7 +635,10 @@ impl WorldView {
 
     // ---------------------------------------------------------------- build
 
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool) {
+    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool, garden: Option<&crate::logic::garden::GardenPlan>) {
+        self.garden = garden.cloned();
+        self.candles.clear();
+        self.mist.clear();
         self.static_cubes.clear();
         self.rings.clear();
         self.water.clear();
@@ -1694,14 +1709,10 @@ impl WorldView {
             }
         }
 
-        // --- slime puddles
+        // --- slime trails: glossy splats joined tile to tile, bubbling, drying away
+        let trail: std::collections::HashSet<P> = s.puddles.iter().map(|(p, _)| p).collect();
         for (tile, life) in s.puddles.iter() {
-            let opacity = 0.55 * (life as f32 / (PUDDLE_SECONDS as f32 * 0.4)).min(1.0);
-            let wobble = 1.0 + (time * 3.0 + tile.x as f32).sin() * 0.05;
-            let m = Mat4::from_translation(Vec3::new(tile.x as f32, floor_at(grid, tile.x as f32, tile.y as f32) + 0.02, tile.y as f32))
-                * Mat4::from_rotation_x(-PI / 2.0)
-                * Mat4::from_scale(Vec3::new(0.42 * wobble, 0.42 / wobble, 1.0));
-            f.transparent[MeshKind::Disc as usize].push(Instance::new(m, lin(0x5cff6a), opacity, Vec3::ZERO, SHADE_UNLIT));
+            emit_goo(f, tile, floor_at(grid, tile.x as f32, tile.y as f32), life as f32 / PUDDLE_SECONDS as f32, time, &trail);
         }
 
         // --- debris and blasts
@@ -1743,6 +1754,7 @@ impl WorldView {
             self.emit_meadow(time, f);
         } else {
             emit_cloud_sea(grid, f);
+            self.emit_garden(time, f);
         }
         let mote_color = lin(MOTE);
         let mote_alpha = 0.6 + (time * 2.2).sin() * 0.25;
@@ -1767,6 +1779,10 @@ impl WorldView {
             let fi = i as f32;
             let intensity = 4.5 + (time * 3.0 + fi * 2.3).sin() * 0.5 + (time * 7.0 + fi).sin() * 0.3;
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.5, 0.2), color: lin(TORCH_LIGHT) * intensity, distance: 7.0 });
+        }
+        for (i, p) in nearest(&self.candles, focus, 3).into_iter().enumerate() {
+            let flicker = 1.6 + (time * 9.0 + i as f32 * 1.7).sin() * 0.25 + (time * 23.0 + i as f32).sin() * 0.12;
+            f.lights.push(Light { pos: p, color: lin(0xffb060) * flicker, distance: 3.2 });
         }
         for p in nearest(&remedy_points, focus, LIGHT_POOL_REMEDIES) {
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.45, 0.0), color: lin(REMEDY) * (4.0 + (time * 5.0).sin() * 1.5), distance: 5.0 });
@@ -1910,9 +1926,10 @@ impl WorldView {
         let sq = (time * 2.6).sin();
         let sm = Mat4::from_translation(at(0.95, 0.0, 0.25)) * Mat4::from_rotation_y(-0.8) * Mat4::from_scale(Vec3::new(1.0 - sq * 0.12, 1.0 + sq * 0.25, 1.0 - sq * 0.12));
         emit_rig(&mut f.opaque[cube], slime, &Pose::rest(slime), sm, Vec3::ONE, 1.0, Vec3::ZERO);
-        // Its puddle.
-        let pm = Mat4::from_translation(at(0.95, 0.2, 0.25)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.5, 0.45, 1.0));
-        f.transparent[MeshKind::Disc as usize].push(Instance::new(pm, lin(0x5cff6a), 0.35, Vec3::ZERO, SHADE_UNLIT));
+        // Its trail.
+        let stage_floor = at(0.0, 0.2, 0.0).y;
+        let here = at(0.95, 0.0, 0.25);
+        emit_goo(f, P::new(here.x.round() as i32, here.z.round() as i32), stage_floor - 0.005, 1.0, time, &Default::default());
 
         // Fireflies.
         for i in 0..50 {
@@ -2186,5 +2203,65 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
     for (y, alpha, seed) in layers {
         let m = Mat4::from_translation(center + Vec3::new(0.0, y, 0.0)) * Mat4::from_scale(Vec3::new(size, 0.002, size));
         f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0x161b24), alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));
+    }
+}
+
+/// Slime's wet material: glossy, a sharp highlight (voxel material 9).
+const SHADE_GOO: f32 = 14.0;
+
+/**
+ * One tile of slime trail: a lumpy splat of glossy goo with droplets flung
+ * around it, a smear joining it to the next trail tile, and bubbles that swell
+ * and pop. `life` runs 1 (fresh) to 0 (dried up); the goo shrinks as it dries.
+ */
+fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &std::collections::HashSet<P>) {
+    let disc = MeshKind::Disc as usize;
+    let k = (life / 0.4).min(1.0).sqrt();
+    if k <= 0.02 {
+        return;
+    }
+    let (tx, tz) = (tile.x as f32, tile.y as f32);
+    let (hx, hy) = (tile.x as f64, tile.y as f64);
+    let goo = lin(0x46d23c);
+    let goo_l = lin(0x9cf06a);
+    let glow = lin(0x5cff6a) * 0.14;
+    let mut lift = 0.012;
+    let mut blob = |f: &mut Frame, x: f32, z: f32, rx: f32, rz: f32, rot: f32, color: Vec3| {
+        let m = Mat4::from_translation(Vec3::new(x, floor + lift, z)) * Mat4::from_rotation_y(rot) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(rx, rz, 1.0));
+        f.opaque[disc].push(Instance::new(m, color, 1.0, glow, SHADE_GOO));
+        lift += 0.0015;
+    };
+    let wob = 1.0 + (time * 2.1 + tx * 1.3 + tz * 0.7).sin() * 0.05;
+    let jx = (hash(hx * 3.0, hy * 5.0) as f32 - 0.5) * 0.12;
+    let jz = (hash(hy * 3.0, hx * 5.0) as f32 - 0.5) * 0.12;
+    let spin = hash(hx, hy) as f32 * TAU;
+    // The main splat: two overlapping lobes.
+    blob(f, tx + jx, tz + jz, 0.25 * k * wob, 0.19 * k / wob, spin, goo);
+    blob(f, tx + jx + spin.cos() * 0.08, tz + jz + spin.sin() * 0.08, 0.15 * k / wob, 0.12 * k * wob, spin + 1.3, goo_l);
+    // Droplets flung around it.
+    for i in 0..5 {
+        let hi = hash(hx * 7.0 + i as f64, hy * 11.0) as f32;
+        let a = spin + i as f32 * 1.3 + hi;
+        let d = 0.24 + hi * 0.14;
+        let r = (0.035 + hi * 0.045) * k;
+        blob(f, tx + jx + a.cos() * d, tz + jz + a.sin() * d, r, r * 0.85, a, if i % 2 == 0 { goo } else { goo_l });
+    }
+    // A smear toward the next tile of the trail, so it reads as one track.
+    for (dx, dz) in [(1, 0), (0, 1)] {
+        if trail.contains(&P::new(tile.x + dx, tile.y + dz)) {
+            let (rx, rz) = if dx != 0 { (0.36, 0.1) } else { (0.1, 0.36) };
+            blob(f, tx + dx as f32 * 0.5, tz + dz as f32 * 0.5, rx * k, rz * k, 0.0, goo);
+        }
+    }
+    // Bubbles: swell, then pop.
+    for b in 0..2 {
+        let hb = hash(hx * 13.0 + b as f64, hy * 17.0) as f32;
+        let phase = (time * (0.35 + hb * 0.3) + hb * 5.0).fract();
+        let r = phase.powf(0.7) * 0.04 * k;
+        if phase < 0.95 && r > 0.004 {
+            let p = Vec3::new(tx + jx + (hb - 0.5) * 0.24, floor + 0.012 + r * 0.6, tz + jz + (0.5 - hb) * 0.2);
+            let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r));
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, goo_l, 1.0, glow, SHADE_GOO));
+        }
     }
 }

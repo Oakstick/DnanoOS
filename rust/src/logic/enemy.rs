@@ -234,10 +234,13 @@ impl Enemy {
         self.m.speed = b.base_speed * b.speed_factor * mult;
         let allow_nest = matches!(b.mode, EnemyMode::Eaten | EnemyMode::Leaving);
         let flying = self.m.flying;
+        // Slimes shun bridges; only a slain one's spirit drifts home over them.
+        let avoid_bridges = b.kind == EnemyKind::Slime && b.mode != EnemyMode::Eaten;
+        self.m.avoids_bridges = avoid_bridges;
         self.m.step(
             dt,
             grid,
-            |tile, current| b.decide_at_center(tile, current, ctx, allow_nest, flying, own_pos),
+            |tile, current| b.decide_at_center(tile, current, ctx, allow_nest, flying, avoid_bridges, own_pos),
             allow_nest,
             false,
             false,
@@ -254,6 +257,7 @@ impl Brain {
         ctx: &mut EnemyContext,
         mut allow_nest: bool,
         flying: bool,
+        avoid_bridges: bool,
         own_pos: V,
     ) -> Dir {
         let grid = ctx.grid;
@@ -278,8 +282,15 @@ impl Brain {
             }
         }
 
-        let mut options: Vec<Dir> =
-            CARDINALS.iter().copied().filter(|&d| grid.can_move(tile, d, allow_nest, flying)).collect();
+        let mut options: Vec<Dir> = CARDINALS
+            .iter()
+            .copied()
+            .filter(|&d| grid.can_move(tile, d, allow_nest, flying))
+            .filter(|&d| {
+                let n = grid.neighbor(tile, d);
+                !(avoid_bridges && grid.is_bridge(n.x, n.y))
+            })
+            .collect();
         if !may_reverse {
             let no_reverse: Vec<Dir> = options.iter().copied().filter(|&d| d != current.opposite()).collect();
             if !no_reverse.is_empty() {

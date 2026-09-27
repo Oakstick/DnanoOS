@@ -10,7 +10,8 @@
 //! `shop` (open the blacksmith), `coins:N`, `tab`, `drink`, and `potion:I`
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
-//! the first-run tour on the next confirm) and `streak` (three quick kills).
+//! the first-run tour on the next confirm), `streak` (three quick kills) and
+//! `goo` (a slime trail around Sebastian).
 //! `--iso` renders the whole level from an isometric map camera instead;
 //! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front).
 
@@ -35,6 +36,7 @@ enum Cmd {
     Shop,
     Tour,
     Streak,
+    Goo,
     Arm(usize, u8),
     Shield(usize),
     Coins(u32),
@@ -72,6 +74,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "shop" => Cmd::Shop,
             "tour" => Cmd::Tour,
             "streak" => Cmd::Streak,
+            "goo" => Cmd::Goo,
             "arm" => {
                 let line = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
                 let level = parts.next().and_then(|v| v.parse().ok()).unwrap_or(1);
@@ -141,6 +144,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Shop => game.open_shop(),
                 Cmd::Tour => game.tour_pending = true,
                 Cmd::Streak => game.debug_streak(),
+                Cmd::Goo => game.debug_goo(),
                 Cmd::Arm(line, level) => game.debug_arm(crate::logic::gear::LINES[line.min(3)], level),
                 Cmd::Shield(i) => {
                     game.hero.shield = crate::logic::gear::SHIELDS.get(i).map(|&k| crate::logic::gear::ShieldGear::new(k));

@@ -191,6 +191,8 @@ pub struct Game {
     pub nuggets_total: u32,
     pub nuggets_got: u32,
     pub puddles: PuddleField,
+    /// Dungeon I's garden plan (its river, bridges and scenery), when this is Dungeon I.
+    pub garden: Option<crate::logic::garden::GardenPlan>,
     trail_tile: HashMap<usize, P>,
     spawn_timer: f64,
     spawned: usize,
@@ -274,6 +276,7 @@ impl Game {
             nuggets_total: 0,
             nuggets_got: 0,
             puddles: PuddleField::default(),
+            garden: None,
             trail_tile: HashMap::new(),
             spawn_timer: SPAWN_FIRST,
             spawned: 0,
@@ -351,6 +354,18 @@ impl Game {
             self.level.hero_spawn = spawn;
             self.start_facing = facing;
         }
+        // Dungeon I is a landscape garden: a bridged river, a churchyard, temples and flower beds.
+        self.garden = None;
+        if index == 0 && !self.level.data.boss {
+            let l = &self.level;
+            let mut keep = vec![l.hero_spawn, l.enemy_spawn];
+            keep.extend(l.weapon_shrines.iter().chain(&l.item_shrines).copied());
+            keep.extend(l.potions.iter().map(|(p, _)| *p));
+            self.garden = crate::logic::garden::plan(&l.grid, &keep);
+            if let Some(plan) = &self.garden {
+                crate::logic::garden::apply(&mut self.level.grid, plan);
+            }
+        }
         self.nuggets_total = self.level.grid.count(Tile::Nodule) as u32;
         self.nuggets_got = 0;
         self.audio.set_tempo_step(0);
@@ -410,7 +425,7 @@ impl Game {
         self.boss_burn = 0.0;
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss);
+        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss, self.garden.as_ref());
         self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         self.reset_round();
         if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
@@ -1867,6 +1882,22 @@ impl Game {
     }
 
     /// Test and capture hook: an enemy's touch.
+    /// A fresh slime trail along the tiles around Sebastian, for screenshots.
+    pub fn debug_goo(&mut self) {
+        let p = self.hero.occupied();
+        let g = &self.level.grid;
+        let mut tiles: Vec<P> = vec![];
+        for (dx, dy) in [(0, 0), (1, 0), (2, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1)] {
+            let t = P::new(p.x + dx, p.y + dy);
+            if g.is_walkable(t.x, t.y, false) {
+                tiles.push(t);
+            }
+        }
+        for (i, t) in tiles.into_iter().enumerate() {
+            self.puddles.add(t, PUDDLE_SECONDS * (1.0 - i as f64 * 0.08));
+        }
+    }
+
     pub fn debug_hurt(&mut self) {
         self.hero.invuln = 0.0;
         self.hurt_hero(CONTACT_DAMAGE);

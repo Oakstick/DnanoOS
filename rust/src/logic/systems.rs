@@ -134,7 +134,7 @@ pub fn break_rocks(grid: &mut Grid, center: P, radius: f64) -> Vec<P> {
             }
             let x = center.x + dx;
             let y = center.y + dy;
-            if grid.get(x, y) != Tile::Rock || is_protected(grid, x, y) {
+            if grid.get(x, y) != Tile::Rock || is_protected(grid, x, y) || grid.is_landmark(x, y) {
                 continue;
             }
             grid.set(x, y, Tile::Open);

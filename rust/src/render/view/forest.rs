@@ -20,7 +20,7 @@ mod pal {
 use pal::*;
 
 /// Height of a wall mound above the floor it rises from.
-const MOUND_H: f32 = 0.18;
+pub(super) const MOUND_H: f32 = 0.18;
 /// One course of fence stones.
 const COURSE: f32 = 0.17;
 
@@ -55,10 +55,13 @@ impl WorldView {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
         let rock = |x: i32, y: i32| grid.get(x, y) == Tile::Rock;
         let white = Vec3::ONE;
+        // Dungeon I's garden replaces some wall tiles with its own scenery.
+        let feature = self.garden.as_ref().map(garden::features).unwrap_or_default();
+        use garden::Feature;
 
         // ---- roads
         for (x, y, t) in grid.cells() {
-            if t == Tile::Rock || t == Tile::Pit || grid.is_ramp(x, y) {
+            if t == Tile::Rock || t == Tile::Pit || grid.is_ramp(x, y) || grid.is_bridge(x, y) {
                 continue;
             }
             let (xf, yf) = (x as f32, y as f32);
@@ -92,7 +95,7 @@ impl WorldView {
 
         // ---- ramps: mossy stone steps toward the higher neighbor
         for (x, y, _) in grid.cells() {
-            if !grid.is_ramp(x, y) {
+            if !grid.is_ramp(x, y) || grid.is_bridge(x, y) {
                 continue;
             }
             let low = grid.elevation(x, y);
@@ -151,6 +154,11 @@ impl WorldView {
             if t != Tile::Rock {
                 continue;
             }
+            let here = feature.get(&P::new(x, y)).copied();
+            if matches!(here, Some(Feature::Water | Feature::Grave | Feature::Flowers)) {
+                continue;
+            }
+            let lawn = here == Some(Feature::Temple);
             let (xf, yf) = (x as f32, y as f32);
             let (hx, hy) = (x as f64, y as f64);
             let base = floor_y(x, y);
@@ -164,14 +172,14 @@ impl WorldView {
             for &d in &roads {
                 self.build_fence(xf, yf, top, d, hx, hy);
             }
-            // Ferns on the mound.
-            for k in 0..2 {
+            // Ferns on the mound (a temple's lawn is kept clear).
+            for k in 0..if lawn { 0 } else { 2 } {
                 let hk = hash(hx * 3.0 + k as f64 * 5.0, hy * 7.0 + 1.0) as f32;
                 let hj = hash(hy * 3.0 + k as f64, hx * 5.0 + 2.0) as f32;
                 self.fern(Vec3::new(xf + (hk - 0.5) * 0.5, top, yf + (hj - 0.5) * 0.5), hk);
             }
             // Bushes tucked behind the fence.
-            if !roads.is_empty() {
+            if !roads.is_empty() && !lawn {
                 let bushes = 1 + (hash(hx * 9.0, hy * 2.0) * 1.9) as usize;
                 for k in 0..bushes {
                     let hk = hash(hx * 13.0 + k as f64 * 3.0, hy * 11.0) as f32;
@@ -183,6 +191,9 @@ impl WorldView {
                 }
             }
             self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
+            if here.is_some() {
+                continue; // a temple or a shrine stands here instead of a tree
+            }
             // Trees: dense in the heart of the woods, sparser by the roads.
             let pick = hash(hx * 5.0 + 1.0, hy * 3.0 + 2.0);
             let edge = !roads.is_empty();
@@ -214,6 +225,10 @@ impl WorldView {
             push_field(&mut self.static_cubes, &lantern_glass, pos, 0.0, 1.0, white, lantern_glow, SHADE_LIT);
             self.torches.insert(spot, (pos, (start, self.static_cubes.len() - start)));
         }
+        if let Some(plan) = self.garden.clone() {
+            self.build_garden(grid, &plan, &feature);
+        }
+        self.build_mist(grid, &feature);
     }
 
     /// A dry-stone fence along the road-facing side `d` of a wall tile: two staggered courses and mossy caps.
