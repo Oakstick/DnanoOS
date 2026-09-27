@@ -565,6 +565,9 @@ impl WorldView {
 
         // A lamp under the water lights him from below, shimmering as the surface moves.
         let shimmer = (time * 2.7).sin() * 0.25 + (time * 5.3 + 1.0).sin() * 0.15;
+        if o.distance_squared(self.focus_point) > 20.0 * 20.0 {
+            return;
+        }
         f.lights.push(Light { pos: Vec3::new(o.x, o.y + 0.36, o.z), color: lin(0x40d4ff) * (1.7 + shimmer), distance: 3.2 });
     }
 }

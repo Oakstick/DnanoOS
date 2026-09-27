@@ -23,6 +23,7 @@ pub const TOUR_STOP_SECONDS: f64 = 3.3;
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TourArt {
     Hero,
+    Fountain,
     Nugget,
     Gate,
     Cross,
@@ -83,6 +84,15 @@ impl Game {
             color: 0xf2e3c4,
             art: TourArt::Hero,
         }];
+        if let Some(f) = self.garden.as_ref().and_then(|g| g.fountain) {
+            stops.push(TourStop {
+                target: at(f.p, 1.3),
+                title: "THE KRAMPUS FOUNTAIN",
+                body: "The heart of the garden. Its four channels run out to every side of the estate: cross them by the bridges, which slimes will not set foot on.",
+                color: 0x5cd4ff,
+                art: TourArt::Fountain,
+            });
+        }
         if let Some(p) = nearest(Tile::Nodule) {
             stops.push(TourStop {
                 target: at(p, 0.2),

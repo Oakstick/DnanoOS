@@ -874,7 +874,7 @@ impl Gpu {
             all.extend_from_slice(&frame.additive);
         }
         if !frame.glow.is_empty() {
-            ranges.push((2, MeshKind::Sphere as usize, all.len() as u32, frame.glow.len() as u32));
+            ranges.push((2, MeshKind::Disc as usize, all.len() as u32, frame.glow.len() as u32));
             all.extend_from_slice(&frame.glow);
         }
         self.dyn_buf.write(&self.device, &self.queue, bytemuck::cast_slice(&all));
@@ -1028,6 +1028,31 @@ impl Gpu {
             pass.draw(0..overlay.len() as u32, 0..1);
         }
         self.queue.submit([enc.finish()]);
+    }
+
+    /// Draws the same frame `n` times offscreen, waiting for each; the mean milliseconds per frame.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn bench(&mut self, view: &WorldView, frame: &Frame, overlay: &[OVertex], logical: (f32, f32), n: u32) -> f64 {
+        let (w, h) = (self.config.width, self.config.height);
+        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("bench"),
+            size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let tv = tex.create_view(&Default::default());
+        self.draw(&tv, view, frame, overlay, logical);
+        let _ = self.device.poll(wgpu::PollType::Wait);
+        let start = std::time::Instant::now();
+        for _ in 0..n {
+            self.draw(&tv, view, frame, overlay, logical);
+            let _ = self.device.poll(wgpu::PollType::Wait);
+        }
+        start.elapsed().as_secs_f64() * 1000.0 / n.max(1) as f64
     }
 
     /// Renders into an offscreen texture and reads it back as tightly packed RGBA8.

@@ -41,6 +41,8 @@ const FRENZIED_WARN: u32 = 0xe8f0ff;
 
 struct Sprites {
     portrait: Sprite,
+    /// The fountain's statue, for its tour card.
+    krampus: Sprite,
     cast: Vec<(Sprite, &'static str, u32, &'static str)>,
 }
 
@@ -48,6 +50,7 @@ fn sprites() -> &'static Sprites {
     static S: OnceLock<Sprites> = OnceLock::new();
     S.get_or_init(|| Sprites {
         portrait: sprite_from(&sebastian()),
+        krampus: sprite_from(&crate::render::view::krampus()),
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
             (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
@@ -682,6 +685,7 @@ fn draw_tour_art(o: &mut Overlay, art: crate::game::TourArt, x: f32, y: f32, siz
     };
     match art {
         TourArt::Hero => fit(o, &sp.portrait),
+        TourArt::Fountain => fit(o, &sp.krampus),
         TourArt::Enemy(kind) => {
             let i = match kind {
                 EnemyKind::Skeleton => 0,

@@ -573,6 +573,10 @@ fn ground_mist(in: VOut, layer: f32) -> FOut {
     for (var i = 0u; i < count; i++) {
         let l = g.lights[i];
         let d = length(l.pos.xyz - in.world);
+        // Out of its reach, a light adds nothing: skip the rest.
+        if (d >= l.pos.w && l.pos.w > 0.0) {
+            continue;
+        }
         var att = 1.0 / max(d * d, 0.25);
         if (l.pos.w > 0.0) {
             let r = d / l.pos.w;
@@ -652,6 +656,10 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
         let l = g.lights[i];
         let to_light = l.pos.xyz - in.world;
         let d = length(to_light);
+        // Out of its reach, a light adds nothing: skip the rest.
+        if (d >= l.pos.w && l.pos.w > 0.0) {
+            continue;
+        }
         let ld = to_light / max(d, 1e-4);
         var att = 1.0 / max(d * d, 0.05);
         if (l.pos.w > 0.0) {
@@ -687,6 +695,10 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
         let l = g.lights[i];
         let to_light = l.pos.xyz - in.world;
         let d = length(to_light);
+        // Out of its reach, a light adds nothing: skip the rest.
+        if (d >= l.pos.w && l.pos.w > 0.0) {
+            continue;
+        }
         var att = 1.0 / max(d * d, 0.05);
         if (l.pos.w > 0.0) {
             let rr = d / l.pos.w;
@@ -706,13 +718,12 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
     return out;
 }
 
-// A soft glowing orb, drawn additively on a sphere: its unit-sphere position
-// is its normal, so it glows brightest where it faces the camera and fades
-// to nothing at its rim.
+// A soft glowing orb: a disc turned to face the camera, drawn additively,
+// brightest in the middle and fading to nothing at its rim (as a lit sphere
+// of haze would look).
 fn glow_orb(in: VOut) -> FOut {
-    let view_dir = normalize(g.cam_pos.xyz - in.world);
-    let facing = max(dot(normalize(in.local), view_dir), 0.0);
-    let k = facing * facing * facing;
+    let r2 = min(dot(in.local.xy, in.local.xy), 1.0);
+    let k = pow(1.0 - r2, 1.5);
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
     out.color = vec4<f32>(to_srgb(aces_filmic(in.color.rgb, g.params.y)), in.color.a * k * (1.0 - fog_f * 0.8));
@@ -794,6 +805,10 @@ fn fs_scene(in: VOut) -> FOut {
             let l = g.lights[i];
             let to_light = l.pos.xyz - in.world;
             let d = length(to_light);
+            // Out of its reach, a light adds nothing: skip the rest.
+            if (d >= l.pos.w && l.pos.w > 0.0) {
+                continue;
+            }
             let ld = to_light / max(d, 1e-4);
             let nl_raw = dot(sn, ld);
             let nl = max((nl_raw + wrap) / (1.0 + wrap), 0.0);

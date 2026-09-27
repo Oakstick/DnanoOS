@@ -27,6 +27,7 @@ mod garden;
 mod gate;
 mod meadow;
 pub use forge::SMITH_BEAT;
+pub use fountain::krampus;
 pub use meadow::meadow_atmosphere;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
@@ -146,7 +147,7 @@ pub const SHADE_GLOW: f32 = 22.0;
 
 /// A halo of light round a lamp or a wisp: `radius` across, `strength` bright.
 pub fn glow_orb(f: &mut Frame, at: Vec3, radius: f32, color: Vec3, strength: f32) {
-    let m = Mat4::from_translation(at) * Mat4::from_scale(Vec3::splat(radius));
+    let m = Mat4::from_scale_rotation_translation(Vec3::splat(radius), f.facing, at);
     f.glow.push(Instance::new(m, color, strength, Vec3::ZERO, SHADE_GLOW));
 }
 
@@ -246,8 +247,10 @@ pub struct Frame {
     pub transparent_early: Vec<Instance>,
     pub transparent: [Vec<Instance>; MESH_KINDS],
     pub additive: Vec<Instance>,
-    /// Soft glowing orbs, drawn additively on spheres (`SHADE_GLOW`): halos round lamps, wisps.
+    /// Soft glowing orbs, drawn additively on discs facing the camera (`SHADE_GLOW`): halos round lamps, wisps.
     pub glow: Vec<Instance>,
+    /// Turns a disc in the XY plane to face the camera.
+    pub facing: Quat,
     pub lights: Vec<Light>,
     pub coin_pulse: f32,
     /// Seconds since start, for the twinkling stars.
@@ -1068,7 +1071,9 @@ impl WorldView {
             if !t.alive {
                 continue;
             }
-            let blocking = (hero.alive || self.tour.is_some()) && targets.iter().any(|&to| t.blocks(eye, to));
+            // What the tour is showing never fades out of its own shot.
+            let shown = self.tour.is_some() && Vec2::new(t.base.x - feet.x, t.base.z - feet.z).length() < t.radius + 0.3;
+            let blocking = (hero.alive || self.tour.is_some()) && !shown && targets.iter().any(|&to| t.blocks(eye, to));
             let goal = if blocking { TREE_FADE_MIN } else { 1.0 };
             let fade = if t.fade < goal { (t.fade + step).min(goal) } else { (t.fade - step).max(goal) };
             if fade == t.fade {
@@ -1600,6 +1605,12 @@ impl WorldView {
     /// Everything that moves or animates, plus the light list, for one rendered frame.
     pub fn emit(&self, s: &SceneState, f: &mut Frame) {
         f.clear();
+        {
+            let fwd = (self.cam_look - self.cam_pos).normalize_or(Vec3::NEG_Z);
+            let right = fwd.cross(Vec3::Y).normalize_or(Vec3::X);
+            let up = right.cross(fwd);
+            f.facing = Quat::from_mat3(&glam::Mat3::from_cols(right, up, -fwd));
+        }
         f.skip_static = self.showcase || self.forge;
         f.time = s.time as f32;
         if self.forge {

@@ -15,7 +15,8 @@
 //! `--iso` renders the whole level from an isometric map camera instead;
 //! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front);
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
-//! (and `rise` times the distance above it, 0.28 unless given).
+//! (and `rise` times the distance above it, 0.28 unless given); `--bench N` then times N
+//! more draws of the same frame.
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -207,6 +208,10 @@ pub fn run(args: &[String]) -> i32 {
     }
     gpu.sync_static(&mut game.view);
     let rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+    if let Some(n) = arg(&args, "--bench").and_then(|n| n.parse::<u32>().ok()) {
+        let ms = gpu.bench(&game.view, &frame, &overlay.verts, (w as f32, h as f32), n);
+        eprintln!("bench: {ms:.2} ms a frame over {n} frames ({:.0} fps)", 1000.0 / ms);
+    }
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {
             eprintln!("wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances", game.screen, game.view.static_cubes.len());

@@ -801,7 +801,9 @@ impl WorldView {
                     let m = Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.028 - s as f32 * 0.004));
                     f.additive.push(Instance::new(m, lin(0x8affe0), 0.7 * (1.0 - s as f32 / 6.0), Vec3::ZERO, SHADE_UNLIT));
                 }
-                f.lights.push(Light { pos: p, color: lin(0x4cffc8) * 0.9 * pulse, distance: 2.6 });
+                if p.distance_squared(self.focus_point) < 18.0 * 18.0 {
+                    f.lights.push(Light { pos: p, color: lin(0x4cffc8) * 0.9 * pulse, distance: 2.6 });
+                }
             }
         }
         f.transparent[cube_i].extend_from_slice(&self.mist);
