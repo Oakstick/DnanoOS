@@ -1,42 +1,29 @@
-//! Hrolf's forge: the blacksmith's shop between a boss and the next dungeon.
-//! Three tabs (weapons, shields, potions) of rows of buttons, driven by the
-//! keyboard, a controller or the mouse. The rows are built fresh from what
-//! Ragnar owns, so labels and prices always tell the truth.
+//! The old gatekeeper's wares: after each Cyclops, or wherever the hero calls
+//! him (he promised he would come). Four tabs, one for each of the hero's
+//! trees (weapons, path, shields, elixirs), each a column of ten tiers:
+//! unlock the next, wield or carry what is owned, buy bottles of the elixirs
+//! learned. Driven by the keyboard, a controller or the mouse. The rows are
+//! built fresh from the hero's progress, so labels and prices always tell the truth.
 
 use super::{Game, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
-use crate::logic::gear::{self, Line, ShieldGear, ShieldKind, BELT_SLOTS, LINES, MAX_LEVEL, POTIONS, SHIELDS};
+use crate::logic::gear::{self, ShieldGear, BELT_SLOTS};
+use crate::logic::progression::{self, Refusal, Tree, TIERS, TREES};
 use crate::logic::types::{Dir, PotionKind};
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ShopTab {
-    Weapons,
-    Shields,
-    Potions,
-}
-
-pub const TABS: [ShopTab; 3] = [ShopTab::Weapons, ShopTab::Shields, ShopTab::Potions];
-
-impl ShopTab {
-    pub fn label(self) -> &'static str {
-        match self {
-            ShopTab::Weapons => "WEAPONS",
-            ShopTab::Shields => "SHIELDS",
-            ShopTab::Potions => "POTIONS",
-        }
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ShopAction {
-    Tab(ShopTab),
-    Buy(Line),
-    Upgrade(Line),
-    Equip(Line),
-    BuyShield(ShieldKind),
+    Tab(Tree),
+    /// Pay for (or unseal with a relic) the next tier of a tree.
+    Unlock(Tree, u8),
+    /// Take an owned weapon in hand, or an owned shield on the arm.
+    Wield(u8),
+    Carry(u8),
+    /// A bottle of an unlocked elixir for the belt.
+    Bottle(PotionKind),
     Repair,
-    Potion(PotionKind),
+    Life,
     Leave,
 }
 
@@ -44,10 +31,9 @@ pub enum ShopAction {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RowKind {
     Tabs,
-    Weapon(Line),
-    Shield(ShieldKind),
+    Tier(Tree, u8),
     Repair,
-    Potions,
+    Life,
     Leave,
 }
 
@@ -55,9 +41,11 @@ pub enum RowKind {
 pub struct ShopButton {
     pub action: ShopAction,
     pub label: String,
-    /// Coins it costs, 0 if free.
+    /// Silver it costs, 0 if free.
     pub price: u32,
-    /// Can it be pressed at all (owned, maxed and equipped ones cannot).
+    /// Rune fragments it costs on top.
+    pub runes: u32,
+    /// Can it be pressed at all (owned, locked and equipped ones cannot).
     pub enabled: bool,
 }
 
@@ -77,87 +65,100 @@ pub struct ShopNote {
 
 #[derive(Clone, Debug)]
 pub struct ShopState {
-    pub tab: ShopTab,
+    pub tab: Tree,
     pub row: usize,
     pub col: usize,
     pub note: Option<ShopNote>,
-    /// 1 when something was just bought, fading: the smith's hammer rings.
+    /// 1 when something was just bought, fading.
     pub flourish: f32,
+    /// Called from inside a dungeon: leaving goes back to it rather than on to the next.
+    pub called: bool,
 }
 
 impl Default for ShopState {
     fn default() -> Self {
-        Self { tab: ShopTab::Weapons, row: 1, col: 0, note: None, flourish: 0.0 }
+        Self { tab: Tree::Armory, row: 1, col: 0, note: None, flourish: 0.0, called: false }
     }
 }
 
-fn button(action: ShopAction, label: impl Into<String>, price: u32, enabled: bool) -> ShopButton {
-    ShopButton { action, label: label.into(), price, enabled }
+fn button(action: ShopAction, label: impl Into<String>, price: u32, runes: u32, enabled: bool) -> ShopButton {
+    ShopButton { action, label: label.into(), price, runes, enabled }
 }
 
 impl Game {
+    /// The old man's wares after a Cyclops, on the first row of weapons.
     pub fn open_shop(&mut self) {
         self.shop = ShopState::default();
+        self.shop.row = self.first_row_of_interest();
         self.enter(Screen::Shop);
     }
 
-    /// The rows of the current tab, top to bottom: tabs, goods, and the way out.
+    /// The row to start on: the next tier to take in the open tab.
+    fn first_row_of_interest(&self) -> usize {
+        let owned = self.progress.hero(self.hero_kind).owned(self.shop.tab);
+        (owned as usize + 1).min(TIERS as usize)
+    }
+
+    /// The rows of the current tab, top to bottom: tabs, ten tiers, extras, and the way out.
     pub fn shop_rows(&self) -> Vec<ShopRow> {
+        let hero = self.hero_kind;
+        let h = self.progress.hero(hero);
+        let tree = self.shop.tab;
         let mut rows = vec![ShopRow {
             kind: RowKind::Tabs,
-            buttons: TABS.iter().map(|&t| button(ShopAction::Tab(t), t.label(), 0, true)).collect(),
+            buttons: TREES.iter().map(|&t| button(ShopAction::Tab(t), t.label(), 0, 0, true)).collect(),
         }];
-        match self.shop.tab {
-            ShopTab::Weapons => {
-                for line in LINES {
-                    let level = self.arsenal.level(line);
-                    let mut b = Vec::new();
-                    if level == 0 {
-                        b.push(button(ShopAction::Buy(line), format!("BUY {}", line.price()), line.price(), true));
-                    } else {
-                        let equipped = self.arsenal.equipped == line;
-                        b.push(button(ShopAction::Equip(line), if equipped { "EQUIPPED" } else { "EQUIP" }, 0, !equipped));
-                        if level < MAX_LEVEL {
-                            let p = line.upgrade_price(level);
-                            b.push(button(ShopAction::Upgrade(line), format!("UPGRADE {p}"), p, true));
-                        } else {
-                            b.push(button(ShopAction::Upgrade(line), "MAX LEVEL", 0, false));
-                        }
+        for tier in 1..=TIERS {
+            let b = if h.has(tree, tier) {
+                match tree {
+                    Tree::Armory => {
+                        let held = h.wield == tier;
+                        button(ShopAction::Wield(tier), if held { "IN HAND" } else { "WIELD" }, 0, 0, !held)
                     }
-                    rows.push(ShopRow { kind: RowKind::Weapon(line), buttons: b });
+                    Tree::Shield => {
+                        let worn = self.hero.shield.map(|s| s.tier == tier).unwrap_or(false);
+                        button(ShopAction::Carry(tier), if worn { "ON YOUR ARM" } else { "CARRY" }, 0, 0, !worn)
+                    }
+                    Tree::Path => button(ShopAction::Unlock(tree, tier), "LEARNED", 0, 0, false),
+                    Tree::Elixir => {
+                        let kind = progression::ELIXIRS[(tier - 1) as usize];
+                        let p = progression::bottle_price(kind);
+                        button(ShopAction::Bottle(kind), format!("BUY {p}"), p, 0, true)
+                    }
                 }
-            }
-            ShopTab::Shields => {
-                for kind in SHIELDS {
-                    let mine = self.hero.shield.map(|s| s.kind == kind).unwrap_or(false);
-                    let def = gear::shield(kind);
-                    let b = if mine {
-                        button(ShopAction::BuyShield(kind), "ON YOUR ARM", 0, false)
-                    } else {
-                        button(ShopAction::BuyShield(kind), format!("BUY {}", def.price), def.price, true)
-                    };
-                    rows.push(ShopRow { kind: RowKind::Shield(kind), buttons: vec![b] });
+            } else if h.next(tree) == Some(tier) {
+                if h.found(tree, tier) {
+                    button(ShopAction::Unlock(tree, tier), "UNSEAL", 0, 0, true)
+                } else {
+                    let p = progression::price(tree, tier);
+                    let verb = if tree == Tree::Path { "LEARN" } else { "UNLOCK" };
+                    button(ShopAction::Unlock(tree, tier), format!("{verb} {}", p.silver), p.silver, p.runes, true)
                 }
-                if let Some(s) = self.hero.shield {
-                    let p = s.repair_price();
-                    let b = if p == 0 { button(ShopAction::Repair, "GOOD AS NEW", 0, false) } else { button(ShopAction::Repair, format!("REPAIR {p}"), p, true) };
-                    rows.push(ShopRow { kind: RowKind::Repair, buttons: vec![b] });
-                }
-            }
-            ShopTab::Potions => {
-                for pair in POTIONS.chunks(2) {
-                    let buttons = pair
-                        .iter()
-                        .map(|&k| {
-                            let p = gear::potion(k).price;
-                            button(ShopAction::Potion(k), format!("BUY {p}"), p, true)
-                        })
-                        .collect();
-                    rows.push(ShopRow { kind: RowKind::Potions, buttons });
-                }
-            }
+            } else if h.found(tree, tier) {
+                button(ShopAction::Unlock(tree, tier), "RELIC FOUND", 0, 0, false)
+            } else if progression::sealed(tier) {
+                button(ShopAction::Unlock(tree, tier), "SEALED", 0, 0, false)
+            } else {
+                button(ShopAction::Unlock(tree, tier), "LOCKED", 0, 0, false)
+            };
+            rows.push(ShopRow { kind: RowKind::Tier(tree, tier), buttons: vec![b] });
         }
-        rows.push(ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, "LEAVE THE FORGE", 0, true)] });
+        match tree {
+            Tree::Shield => {
+                let tier = self.hero.shield.map(|s| s.tier).unwrap_or(h.carry);
+                let fraction = self.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
+                let p = progression::repair_price(tier, fraction);
+                let b = if p == 0 { button(ShopAction::Repair, "GOOD AS NEW", 0, 0, false) } else { button(ShopAction::Repair, format!("MEND {p}"), p, 0, true) };
+                rows.push(ShopRow { kind: RowKind::Repair, buttons: vec![b] });
+            }
+            Tree::Elixir => {
+                let p = progression::bottle_price(PotionKind::Life);
+                rows.push(ShopRow { kind: RowKind::Life, buttons: vec![button(ShopAction::Life, format!("BUY {p}"), p, 0, true)] });
+            }
+            _ => {}
+        }
+        let leave = if self.shop.called { "BACK TO THE DUNGEON" } else { "DOWN INTO THE DARK" };
+        rows.push(ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, leave, 0, 0, true)] });
         rows
     }
 
@@ -171,11 +172,6 @@ impl Game {
                 self.shop.note = None;
             }
         }
-        // The smith's hammer rings on the anvil in time with his swing.
-        let beat = |t: f64| (t * crate::render::view::SMITH_BEAT).floor();
-        if beat(self.time) != beat(self.time - dt) {
-            self.audio.play(Sfx::Anvil);
-        }
 
         let rows = self.shop_rows();
         let n = rows.len();
@@ -185,8 +181,6 @@ impl Game {
             Some(Dir::Down) => self.shop.row = (self.shop.row + 1) % n,
             Some(Dir::Left) if self.shop.row == 0 => self.switch_tab(-1),
             Some(Dir::Right) if self.shop.row == 0 => self.switch_tab(1),
-            Some(Dir::Left) => self.shop.col = self.shop.col.saturating_sub(1),
-            Some(Dir::Right) => self.shop.col += 1,
             _ => {}
         }
         if self.input.was_pressed(&[Action::NextPotion]) {
@@ -195,10 +189,7 @@ impl Game {
         let rows = self.shop_rows();
         let n = rows.len();
         self.shop.row = self.shop.row.min(n - 1);
-        if self.shop.row == 0 {
-            self.shop.col = TABS.iter().position(|&t| t == self.shop.tab).unwrap_or(0);
-        }
-        self.shop.col = self.shop.col.min(rows[self.shop.row].buttons.len() - 1);
+        self.shop.col = if self.shop.row == 0 { TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0) } else { 0 };
 
         let rects = crate::render::hud::shop_rects(&rows, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| {
@@ -211,10 +202,16 @@ impl Game {
             }
             None
         };
+        // Hovering a tier's line (not only its button) shows it in the card.
+        let row_hit = |p: (f32, f32)| crate::render::hud::shop_row_at(&rows, self.viewport.0, self.viewport.1, p);
         if self.input.cursor_moved {
-            if let Some((r, c)) = self.input.cursor.and_then(hit) {
-                self.shop.row = r;
-                self.shop.col = c;
+            if let Some(p) = self.input.cursor {
+                if let Some((r, c)) = hit(p) {
+                    self.shop.row = r;
+                    self.shop.col = c;
+                } else if let Some(r) = row_hit(p) {
+                    self.shop.row = r;
+                }
             }
         }
         let mut pressed = None;
@@ -223,9 +220,11 @@ impl Game {
                 self.shop.row = r;
                 self.shop.col = c;
                 pressed = Some(rows[r].buttons[c].clone());
+            } else if let Some(r) = row_hit(p) {
+                self.shop.row = r;
             }
         } else if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Attack]) {
-            pressed = Some(rows[self.shop.row].buttons[self.shop.col].clone());
+            pressed = Some(rows[self.shop.row].buttons[self.shop.col.min(rows[self.shop.row].buttons.len() - 1)].clone());
         }
         if self.input.was_pressed(&[Action::Pause]) {
             // Escape heads for the door; pressed again, it leaves.
@@ -242,8 +241,11 @@ impl Game {
     }
 
     fn switch_tab(&mut self, step: i32) {
-        let i = TABS.iter().position(|&t| t == self.shop.tab).unwrap_or(0) as i32;
-        self.shop.tab = TABS[(i + step).rem_euclid(TABS.len() as i32) as usize];
+        let i = TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0) as i32;
+        self.shop.tab = TREES[(i + step).rem_euclid(TREES.len() as i32) as usize];
+        if self.shop.row != 0 {
+            self.shop.row = self.first_row_of_interest();
+        }
         self.audio.play(Sfx::Nodule);
     }
 
@@ -251,14 +253,14 @@ impl Game {
         self.shop.note = Some(ShopNote { text: text.into(), color, life: 2.6 });
     }
 
-    /// Takes the coins if he has them; otherwise says so.
+    /// Takes the silver if he has it; otherwise says so.
     fn pay(&mut self, price: u32) -> bool {
-        if self.purse < price {
+        if self.progress.silver < price {
             self.audio.play(Sfx::Denied);
-            self.note(format!("NOT ENOUGH COINS - {} MORE NEEDED", price - self.purse), 0xff6a6a);
+            self.note(format!("NOT ENOUGH SILVER - {} MORE NEEDED", price - self.progress.silver), 0xff6a6a);
             return false;
         }
-        self.purse -= price;
+        self.progress.silver -= price;
         true
     }
 
@@ -266,6 +268,7 @@ impl Game {
         self.audio.play(Sfx::Buy);
         self.shop.flourish = 1.0;
         self.note(what, color);
+        self.save_progress();
     }
 
     fn press_shop(&mut self, b: ShopButton) {
@@ -273,6 +276,7 @@ impl Game {
             self.audio.play(Sfx::Denied);
             return;
         }
+        let hero = self.hero_kind;
         match b.action {
             ShopAction::Tab(t) => {
                 self.shop.tab = t;
@@ -280,68 +284,91 @@ impl Game {
             }
             ShopAction::Leave => {
                 self.audio.play(Sfx::Start);
-                let next = self.dungeon + 1;
-                self.load_level(next);
+                if self.shop.called {
+                    // Back where he called from: the dungeon waited.
+                    self.enter(Screen::Ready);
+                } else {
+                    let next = self.dungeon + 1;
+                    self.load_level(next);
+                    self.enter(Screen::Ready);
+                }
                 self.juice.fade = 1.0;
-                self.enter(Screen::Ready);
                 self.input.consume(Action::Attack);
             }
-            ShopAction::Buy(line) => {
-                if self.pay(line.price()) {
-                    self.arsenal.levels[line.index()] = 1;
-                    self.arsenal.equipped = line;
-                    self.hero.arm(&self.arsenal);
-                    self.sold(format!("{} FORGED AND EQUIPPED", line.name(1).to_uppercase()), line.color(1));
+            ShopAction::Unlock(tree, tier) => match self.progress.unlock(hero, tree, tier) {
+                Ok(_) => {
+                    let n = progression::node(hero, tree, tier);
+                    if tree == Tree::Shield {
+                        self.hero.shield = Some(ShieldGear::new(tier));
+                    }
+                    self.equip_from_progress();
+                    let verb = match tree {
+                        Tree::Armory => "IN YOUR HAND",
+                        Tree::Path => "LEARNED",
+                        Tree::Shield => "ON YOUR ARM",
+                        Tree::Elixir => "BREWED - BOTTLES FOR SALE",
+                    };
+                    self.sold(format!("{} {verb}", n.name.to_uppercase()), n.color);
                 }
-            }
-            ShopAction::Upgrade(line) => {
-                let level = self.arsenal.level(line);
-                if self.pay(line.upgrade_price(level)) {
-                    self.arsenal.levels[line.index()] = level + 1;
-                    self.hero.arm(&self.arsenal);
-                    self.sold(format!("UPGRADED TO {}", line.name(level + 1).to_uppercase()), line.color(level + 1));
+                Err(Refusal::Silver(more)) => {
+                    self.audio.play(Sfx::Denied);
+                    self.note(format!("NOT ENOUGH SILVER - {more} MORE NEEDED"), 0xff6a6a);
                 }
-            }
-            ShopAction::Equip(line) => {
-                self.arsenal.equipped = line;
-                self.hero.arm(&self.arsenal);
+                Err(Refusal::Runes(more)) => {
+                    self.audio.play(Sfx::Denied);
+                    let s = if more == 1 { "" } else { "S" };
+                    self.note(format!("SEALED - {more} MORE RUNE FRAGMENT{s}, OR FIND ITS RELIC"), 0x9ad1ff);
+                }
+                Err(_) => self.audio.play(Sfx::Denied),
+            },
+            ShopAction::Wield(tier) => {
+                self.progress.hero_mut(hero).wield = tier;
+                self.equip_from_progress();
                 self.audio.play(Sfx::Start);
-                let level = self.arsenal.level(line);
-                self.note(format!("{} IN HAND", line.name(level).to_uppercase()), line.color(level));
+                let n = progression::node(hero, Tree::Armory, tier);
+                self.note(format!("{} IN HAND", n.name.to_uppercase()), n.color);
+                self.save_progress();
             }
-            ShopAction::BuyShield(kind) => {
-                if self.pay(gear::shield(kind).price) {
-                    self.hero.shield = Some(ShieldGear::new(kind));
-                    self.sold(format!("{} ON YOUR ARM", gear::shield(kind).name.to_uppercase()), gear::shield(kind).color);
-                }
+            ShopAction::Carry(tier) => {
+                self.progress.hero_mut(hero).carry = tier;
+                self.hero.shield = Some(ShieldGear::new(tier));
+                self.equip_from_progress();
+                self.audio.play(Sfx::Start);
+                let n = progression::node(hero, Tree::Shield, tier);
+                self.note(format!("{} ON YOUR ARM", n.name.to_uppercase()), n.color);
+                self.save_progress();
             }
             ShopAction::Repair => {
-                let Some(s) = self.hero.shield else { return };
-                if self.pay(s.repair_price()) {
-                    self.hero.grant_shield();
-                    self.sold("SHIELD HAMMERED BACK TO FULL".into(), gear::shield(s.kind).color);
+                let tier = self.hero.shield.map(|s| s.tier).unwrap_or(self.progress.hero(hero).carry);
+                let fraction = self.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
+                if self.pay(progression::repair_price(tier, fraction)) {
+                    self.hero.shield = Some(ShieldGear::new(tier));
+                    self.equip_from_progress();
+                    let n = progression::node(hero, Tree::Shield, tier);
+                    self.sold(format!("{} MENDED", n.name.to_uppercase()), n.color);
                 }
             }
-            ShopAction::Potion(kind) => {
-                let def = gear::potion(kind);
-                if kind == PotionKind::Life && self.score.lives >= crate::logic::systems::MAX_LIVES {
-                    self.audio.play(Sfx::Denied);
-                    self.note("YOUR LIVES ARE ALREADY FULL", 0xff6a6a);
-                    return;
-                }
-                if kind != PotionKind::Life && self.belt.len() >= BELT_SLOTS {
+            ShopAction::Bottle(kind) => {
+                let def = gear::potion(hero, kind);
+                if self.belt.len() >= BELT_SLOTS {
                     self.audio.play(Sfx::Denied);
                     self.note("YOUR BELT IS FULL", 0xff6a6a);
                     return;
                 }
-                if self.pay(def.price) {
-                    if kind == PotionKind::Life {
-                        self.score.gain_life();
-                        self.sold("AN EXTRA LIFE".into(), def.color);
-                    } else {
-                        self.belt.push(kind);
-                        self.sold(format!("{} POTION ON YOUR BELT", def.name.to_uppercase()), def.color);
-                    }
+                if self.pay(progression::bottle_price(kind)) {
+                    self.belt.push(kind);
+                    self.sold(format!("{} ON YOUR BELT", def.name.to_uppercase()), def.color);
+                }
+            }
+            ShopAction::Life => {
+                if self.score.lives >= crate::logic::systems::MAX_LIVES {
+                    self.audio.play(Sfx::Denied);
+                    self.note("YOUR LIVES ARE ALREADY FULL", 0xff6a6a);
+                    return;
+                }
+                if self.pay(progression::bottle_price(PotionKind::Life)) {
+                    self.score.gain_life();
+                    self.sold("AN EXTRA LIFE".into(), 0xff6d8d);
                 }
             }
         }

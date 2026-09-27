@@ -10,8 +10,9 @@
 use super::rng::Rng;
 use super::types::{dist_sq, V};
 
-/// Health of the first Cyclops; each later one has `CYCLOPS_HP_STEP` more.
-pub const CYCLOPS_HP: i32 = 40;
+/// Health of the first Cyclops (about two dozen blows of a first-tier blade); each later one
+/// has `CYCLOPS_HP_STEP` more, and from the second on its hide turns a point of every blow.
+pub const CYCLOPS_HP: i32 = 24;
 pub const CYCLOPS_HP_STEP: i32 = 12;
 /// How far from its center the body reaches, in tiles (for hits both ways).
 pub const BODY_RADIUS: f64 = 0.85;
@@ -28,6 +29,8 @@ const DAZED_SECONDS: f64 = 2.4;
 const DYING_SECONDS: f64 = 2.6;
 /// Brief immunity after a hit, so one blow never lands twice.
 const HIT_GRACE: f64 = 0.12;
+/// A stunning blow stops it at most this often.
+const STAGGER_COOLDOWN: f64 = 3.0;
 /// Points for felling it.
 pub const POINTS_CYCLOPS: u32 = 5000;
 
@@ -142,6 +145,7 @@ pub struct Cyclops {
     max: V,
     rng: Rng,
     spasm_timer: f64,
+    stagger_cool: f64,
 }
 
 impl Cyclops {
@@ -163,6 +167,7 @@ impl Cyclops {
             max,
             rng: Rng::new(seed),
             spasm_timer: 0.0,
+            stagger_cool: 0.0,
         }
     }
 
@@ -190,6 +195,29 @@ impl Cyclops {
     /// Can blows land right now?
     pub fn vulnerable(&self) -> bool {
         self.active() && self.grace <= 0.0
+    }
+
+    /**
+     * A stunning blow (a tier-4 weapon): stopped in its tracks, a moment
+     * harmless and its coming attack lost; at most every few seconds.
+     */
+    pub fn stagger(&mut self) -> bool {
+        if self.stagger_cool > 0.0 || !matches!(self.state, BossState::Drift(_) | BossState::Charge(..)) {
+            return false;
+        }
+        self.state = BossState::Recover(0.0);
+        self.stagger_cool = STAGGER_COOLDOWN;
+        true
+    }
+
+    /// Is `from` behind it, out of sight of its eye?
+    pub fn behind(&self, from: V) -> bool {
+        let to = (from.y - self.pos.y).atan2(from.x - self.pos.x);
+        let mut d = (to - self.look).rem_euclid(std::f64::consts::TAU);
+        if d > std::f64::consts::PI {
+            d = std::f64::consts::TAU - d;
+        }
+        d > 1.9
     }
 
     pub fn dazed(&self) -> bool {
@@ -364,6 +392,7 @@ impl Cyclops {
     pub fn update(&mut self, dt: f64, hero: V, shots: &mut Vec<BossShot>, events: &mut Vec<BossEvent>) {
         self.flash = (self.flash - dt * 4.0).max(0.0);
         self.grace = (self.grace - dt).max(0.0);
+        self.stagger_cool = (self.stagger_cool - dt).max(0.0);
         let speed_k = match self.phase() {
             1 => 1.0,
             2 => 1.2,

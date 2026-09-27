@@ -97,7 +97,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(p, 0.2),
                 title: "GOLDEN KEY",
-                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 coins for the blacksmith. Look for their golden glow.",
+                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 silver at the old gatekeeper's. Look for their golden glow.",
                 color: 0xf2c53d,
                 art: TourArt::Nugget,
             });
@@ -124,8 +124,8 @@ impl Game {
             stops.push(TourStop {
                 target: at(pot.tile, 0.2),
                 title: "POTION",
-                body: "Bottles go on your belt, up to five. Drink with Q, or 1 to 5 for a slot. Only the first dungeon has them lying around; after that, buy them from the blacksmith.",
-                color: pot.def().color,
+                body: "Bottles go on your belt, up to five. Drink with Q, or 1 to 5 for a slot. Only the first dungeon has them lying around; after that, buy them from the old gatekeeper.",
+                color: pot.def(self.hero_kind).color,
                 art: TourArt::Potion(pot.kind),
             });
         }

@@ -1,6 +1,7 @@
-use super::gear::{self, ShieldGear, ShieldKind};
+use super::gear::ShieldGear;
 use super::grid::Grid;
 use super::items::{item, weapon, ItemKind, RangedKind, WeaponKind, SPEED_BOOST};
+use super::progression::{self, path, STAMINA_MAX, STAMINA_PER_BLOW, STAMINA_REGEN, STAMINA_REST};
 use super::mover::Mover;
 use super::types::{Dir, P, V};
 
@@ -12,12 +13,22 @@ pub const HERO_MAX_HP: i32 = 100;
 pub const CONTACT_DAMAGE: i32 = 25;
 const INVULN_SECONDS: f64 = 1.0;
 const BLOCK_INVULN_SECONDS: f64 = 0.5;
-/// Potion effects on attack speed, damage taken and healing.
-const ARCANE_COOLDOWN: f64 = 0.5;
-const IRON_SKIN_TAKEN: f64 = 0.4;
-const REGEN_PER_SECOND: f64 = 5.0;
+/// Elixirs: what they heal, how they change his speed, his blows and the hits he takes.
+pub const HEALTH_POTION: i32 = 35;
+const HASTE_SPEED: f64 = 2.0;
+const HASTE_COOLDOWN: f64 = 0.5;
+const STRENGTH_BONUS: i32 = 2;
+const BARK_HP: i32 = 50;
+const FURY_TAKEN: f64 = 0.5;
+const FURY_MAX: i32 = 5;
+const RAGNAROK_SPEED: f64 = 1.3;
+const RAGNAROK_COOLDOWN: f64 = 0.67;
+const RAGNAROK_DRAIN: f64 = 2.0;
+const SPIRIT_REGEN: f64 = 3.0;
 /// A health potion's moment of immunity.
 pub const HEALTH_IMMUNITY: f64 = 1.5;
+/// The blink of Bifrost Step leaves him untouchable this long.
+const STEP_IMMUNITY: f64 = 0.3;
 const SWING_SECONDS: f64 = 0.18;
 /// Speed multiplier while slowed by slime.
 pub const SLIME_SLOW: f64 = 0.5;
@@ -44,29 +55,20 @@ pub const LANDING_KEEP: f64 = 0.6;
 /// off once it has been held this long. A tap turns, a hold walks.
 pub const TURN_TAP_SECONDS: f64 = 0.12;
 
-/// Seconds left on each timed potion (swiftness and invulnerability use the older boon timers).
+/// Seconds left on each timed elixir (invulnerability uses the boon timer).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Effects {
     pub strength: f64,
-    pub arcane: f64,
-    pub regeneration: f64,
-    pub iron_skin: f64,
-    pub lightning: f64,
-    pub night_vision: f64,
-    pub true_sight: f64,
+    pub haste: f64,
+    pub fury: f64,
+    pub fire: f64,
+    pub ragnarok: f64,
+    pub spirit: f64,
 }
 
 impl Effects {
     fn tick(&mut self, dt: f64) {
-        for t in [
-            &mut self.strength,
-            &mut self.arcane,
-            &mut self.regeneration,
-            &mut self.iron_skin,
-            &mut self.lightning,
-            &mut self.night_vision,
-            &mut self.true_sight,
-        ] {
+        for t in [&mut self.strength, &mut self.haste, &mut self.fury, &mut self.fire, &mut self.ragnarok, &mut self.spirit] {
             *t = (*t - dt).max(0.0);
         }
     }
@@ -90,9 +92,10 @@ struct JumpState {
 }
 
 /**
- * Ragnar. Makes footstep noise while moving; enemies with hearing home in
- * on `heard_pos` rather than the true position. Fights with a short sword,
- * a ranged weapon from the shrine, and bombs.
+ * The hero. Makes footstep noise while moving; enemies with hearing home in
+ * on `heard_pos` rather than the true position. Fights with the blade of his
+ * armory (swung or thrown), a ranged weapon from a shrine, and bombs; every
+ * blow costs stamina. His shield and his path's skills guard him.
  */
 #[derive(Clone, Debug)]
 pub struct Hero {
@@ -115,12 +118,31 @@ pub struct Hero {
 
     /// What is in his hand: his main weapon, or a shrine weapon until its ammo is spent.
     pub weapon: WeaponKind,
-    /// The weapon he bought and equipped: the axe, or a ranged weapon with endless use.
+    /// His own: the armory blade swung (Sword), or thrown (a Hurled weapon that never runs out).
     pub main: WeaponKind,
-    /// The axe's level (1..=3): reach, arc and damage of every swing.
-    pub axe_level: u8,
+    /// The armory tier in his hand (1..=10).
+    pub blade: u8,
+    /// How far along his heroic path he is (0..=10): the skills he has.
+    pub path: u8,
     pub ammo: u32,
     pub fire_cooldown: f64,
+    /// Stamina for blows and blinks; it comes back once he has rested a moment.
+    pub stamina: f64,
+    stamina_rest: f64,
+    /// Set when a blow is refused for want of stamina; the game clears it.
+    pub winded: bool,
+    /// Forge-Heart: seconds of free swings left, and until it can come again.
+    pub heart: f64,
+    pub heart_cooldown: f64,
+    /// Bifrost Step: seconds until he can blink again.
+    pub step_cooldown: f64,
+    /// Health soaked up by a shield potion before his own is touched.
+    pub bark: i32,
+    /// Berserker's Draught: blows taken while it runs, each adding to his own.
+    pub fury_stacks: i32,
+    /// Set on a hit his shield took some of (for its gifts); the game clears it.
+    pub blocked_hit: bool,
+    drain_carry: f64,
 
     /// The shield on his arm, wearing down as it blocks.
     pub shield: Option<ShieldGear>,
@@ -175,10 +197,21 @@ impl Hero {
             swing: 0.0,
             weapon: WeaponKind::Sword,
             main: WeaponKind::Sword,
-            axe_level: 1,
+            blade: 1,
+            path: 0,
             ammo: 0,
             fire_cooldown: 0.0,
-            shield: Some(ShieldGear::new(ShieldKind::Round)),
+            stamina: STAMINA_MAX,
+            stamina_rest: 0.0,
+            winded: false,
+            heart: 0.0,
+            heart_cooldown: 0.0,
+            step_cooldown: 0.0,
+            bark: 0,
+            fury_stacks: 0,
+            blocked_hit: false,
+            drain_carry: 0.0,
+            shield: Some(ShieldGear::new(1)),
             shield_broke: false,
             fx: Effects::default(),
             regen_carry: 0.0,
@@ -228,12 +261,58 @@ impl Hero {
     pub fn holding_pickup(&self) -> bool {
         self.weapon != self.main
     }
-    /// Damage multiplier from a strength potion.
-    pub fn might(&self) -> i32 {
-        if self.fx.strength > 0.0 { 2 } else { 1 }
+    /// A blow of `base` damage as his elixirs make it: strength and fury add to it, Ragnarok doubles it.
+    pub fn blow(&self, base: i32) -> i32 {
+        let mut d = base;
+        if self.fx.strength > 0.0 {
+            d += STRENGTH_BONUS;
+        }
+        if self.fx.fury > 0.0 {
+            d += self.fury_stacks;
+        }
+        if self.fx.ragnarok > 0.0 {
+            d *= 2;
+        }
+        d
     }
     fn cooldown_scale(&self) -> f64 {
-        if self.fx.arcane > 0.0 { ARCANE_COOLDOWN } else { 1.0 }
+        let mut s = 1.0;
+        if self.path >= 1 {
+            s *= path::RAGE_COOLDOWN;
+        }
+        if self.fx.haste > 0.0 {
+            s *= HASTE_COOLDOWN;
+        }
+        if self.fx.ragnarok > 0.0 {
+            s *= RAGNAROK_COOLDOWN;
+        }
+        s
+    }
+    /// His blows cost nothing: Forge-Heart, or the Ragnarok tonic.
+    pub fn tireless(&self) -> bool {
+        self.heart > 0.0 || self.fx.ragnarok > 0.0
+    }
+    /// His health cap: more while Shield-Maiden's Guard and a shield are with him.
+    pub fn health_cap(&self) -> i32 {
+        HERO_MAX_HP + if self.path >= 2 && self.shield.is_some() { path::GUARD_HP } else { 0 }
+    }
+    /// Spends stamina for a blow or a blink; false (and winded) if he has too little.
+    fn spend(&mut self, cost: f64) -> bool {
+        if self.tireless() {
+            return true;
+        }
+        if self.stamina + 1e-9 < cost {
+            self.winded = true;
+            return false;
+        }
+        self.stamina -= cost;
+        self.stamina_rest = STAMINA_REST;
+        if self.stamina < STAMINA_PER_BLOW && self.path >= 7 && self.heart_cooldown <= 0.0 {
+            // Forge-Heart: at the end of his breath the mountain's own stamina takes over.
+            self.heart = path::HEART_SECONDS;
+            self.heart_cooldown = path::HEART_COOLDOWN;
+        }
+        true
     }
     pub fn occupied(&self) -> P {
         self.m.occupied()
@@ -301,15 +380,53 @@ impl Hero {
         self.invisible_timer = (self.invisible_timer - dt).max(0.0);
         self.speed_timer = (self.speed_timer - dt).max(0.0);
         self.slow_timer = (self.slow_timer - dt).max(0.0);
+        self.step_cooldown = (self.step_cooldown - dt).max(0.0);
+        self.heart = (self.heart - dt).max(0.0);
+        self.heart_cooldown = (self.heart_cooldown - dt).max(0.0);
         self.fx.tick(dt);
-        if self.fx.regeneration > 0.0 && self.alive {
-            self.regen_carry += REGEN_PER_SECOND * dt;
-            let whole = self.regen_carry.floor();
-            self.regen_carry -= whole;
-            self.heal(whole as i32);
+        if self.fx.fury <= 0.0 {
+            self.fury_stacks = 0;
+        }
+        self.max_hp = self.health_cap();
+        self.hp = self.hp.min(self.max_hp);
+        if self.alive {
+            // Stamina comes back once he stops spending it; a skald's song brings it faster.
+            self.stamina_rest = (self.stamina_rest - dt).max(0.0);
+            if self.stamina_rest <= 0.0 {
+                let rate = STAMINA_REGEN * if self.path >= 4 { path::SONG_REGEN } else { 1.0 };
+                self.stamina = (self.stamina + rate * dt).min(STAMINA_MAX);
+            }
+            if self.fx.spirit > 0.0 {
+                self.regen_carry += SPIRIT_REGEN * dt;
+                let whole = self.regen_carry.floor();
+                self.regen_carry -= whole;
+                self.heal(whole as i32);
+            }
+            if self.fx.ragnarok > 0.0 {
+                // The end-times tonic eats at him, but never takes his last breath.
+                self.drain_carry += RAGNAROK_DRAIN * dt;
+                let whole = self.drain_carry.floor() as i32;
+                self.drain_carry -= whole as f64;
+                self.hp = (self.hp - whole).max(1);
+            }
+            if let Some(s) = &mut self.shield {
+                let mend = progression::ward(s.tier).mend;
+                if mend > 0.0 && s.durability < s.max() {
+                    s.mend_carry += mend * dt;
+                    let whole = s.mend_carry.floor();
+                    s.mend_carry -= whole;
+                    s.durability = (s.durability + whole as i32).min(s.max());
+                }
+            }
+        }
+        if self.heart > 0.0 {
+            // Forge-Heart shrugs off the slime.
+            self.slow_timer = 0.0;
         }
         self.m.speed = self.base_speed
             * if self.hasted() { SPEED_BOOST } else { 1.0 }
+            * if self.fx.haste > 0.0 { HASTE_SPEED } else { 1.0 }
+            * if self.fx.ragnarok > 0.0 { RAGNAROK_SPEED } else { 1.0 }
             * if self.slowed() { SLIME_SLOW } else { 1.0 };
         if !self.alive {
             return;
@@ -555,23 +672,45 @@ impl Hero {
     }
 
     /**
-     * Applies a hit. Invincibility and the post-hit window ignore it; iron
-     * skin shrinks it; the shield takes its share and wears down by as much,
-     * breaking when it runs out. Blocked means none of it got through.
+     * Applies a hit. Invincibility and the post-hit window ignore it; a
+     * berserker's rage makes it land harder and a berserker's draught softer
+     * (and feeds his fury); a shield potion's bark soaks it first; the shield
+     * takes its share and wears down by as much, breaking when it runs out
+     * unless it is too well made to. Blocked means none of it got through.
      */
     pub fn take_damage(&mut self, amount: i32) -> DamageResult {
         if !self.alive || self.invuln > 0.0 || self.invincible() {
             return DamageResult::Immune;
         }
-        let mut amount = amount;
-        if self.fx.iron_skin > 0.0 {
-            amount = ((amount as f64) * IRON_SKIN_TAKEN).ceil() as i32;
+        let mut amount = amount as f64;
+        if self.path >= 1 {
+            amount *= path::RAGE_TAKEN;
+        }
+        if self.fx.fury > 0.0 {
+            amount *= FURY_TAKEN;
+            self.fury_stacks = (self.fury_stacks + 1).min(FURY_MAX);
+        }
+        let mut amount = amount.round().max(1.0) as i32;
+        if self.bark > 0 {
+            let soaked = self.bark.min(amount);
+            self.bark -= soaked;
+            amount -= soaked;
+            if amount <= 0 {
+                self.invuln = BLOCK_INVULN_SECONDS;
+                return DamageResult::Blocked;
+            }
         }
         if let Some(s) = &mut self.shield {
-            let share = ((amount as f64) * gear::shield(s.kind).block).round() as i32;
-            let absorbed = share.min(s.durability);
+            let w = progression::ward(s.tier);
+            let share = ((amount as f64) * w.block).round() as i32;
+            let floor = if w.unbreakable { 1 } else { 0 };
+            let absorbed = share.min(s.durability - floor).max(0);
             s.durability -= absorbed;
             amount -= absorbed;
+            if absorbed > 0 {
+                self.blocked_hit = true;
+                self.hp = (self.hp + w.aegis).min(self.max_hp);
+            }
             if s.durability <= 0 {
                 self.shield = None;
                 self.shield_broke = true;
@@ -589,14 +728,53 @@ impl Hero {
         DamageResult::Damaged
     }
 
-    /// Starts a swing if the cooldown allows. Returns true if a swing began.
+    /// Starts a swing if the cooldown and his stamina allow. Returns true if a swing began.
     pub fn try_attack(&mut self) -> bool {
-        if !self.alive || self.attack_cooldown > 0.0 {
+        if !self.alive || self.attack_cooldown > 0.0 || !self.spend(STAMINA_PER_BLOW) {
             return false;
         }
-        self.attack_cooldown = gear::axe(self.axe_level).cooldown * self.cooldown_scale();
+        self.attack_cooldown = progression::blade(self.blade).cooldown * self.cooldown_scale();
         self.swing = SWING_SECONDS;
         true
+    }
+
+    /**
+     * Bifrost Step: a flash of light carries him up to three tiles the way he
+     * faces, as far as the floor lets him walk. Returns where he left and
+     * where he landed, or None if it is not ready, he is too tired, or there
+     * is nowhere to go.
+     */
+    pub fn try_step(&mut self, grid: &Grid) -> Option<(V, V)> {
+        if !self.alive || self.path < 5 || self.jump.is_some() || self.step_cooldown > 0.0 {
+            return None;
+        }
+        let from = self.occupied();
+        let mut to = from;
+        for _ in 0..path::STEP_TILES as i32 {
+            let (dx, dy) = self.facing.vec();
+            let n = grid.wrap(P::new(to.x + dx, to.y + dy));
+            if free_blocked(grid, to, n.x, n.y) || !grid.is_walkable(n.x, n.y, false) {
+                break;
+            }
+            to = n;
+        }
+        if to == from || !self.spend(path::STEP_STAMINA) {
+            return None;
+        }
+        let before = self.pos();
+        self.m.teleport(to);
+        self.free_pos = to.v();
+        self.free_vel = V::new(0.0, 0.0);
+        self.synced = to;
+        self.altitude = grid.elevation(to.x, to.y) as f64;
+        self.vel = 0.0;
+        self.step_cooldown = path::STEP_COOLDOWN;
+        self.invuln = self.invuln.max(STEP_IMMUNITY);
+        if !self.invisible() {
+            self.heard_pos = to.v();
+            self.heard_age = 0.0;
+        }
+        Some((before, to.v()))
     }
 
     /**
@@ -608,6 +786,10 @@ impl Hero {
         let WeaponKind::Ranged(kind) = self.weapon else { return None };
         let pickup = self.holding_pickup();
         if !self.alive || (pickup && self.ammo == 0) || self.fire_cooldown > 0.0 {
+            return None;
+        }
+        // His own thrown weapon costs stamina like a swing; a shrine's spends its ammo instead.
+        if !pickup && !self.spend(STAMINA_PER_BLOW) {
             return None;
         }
         self.fire_cooldown = weapon(kind).cooldown * self.cooldown_scale();
@@ -643,10 +825,10 @@ impl Hero {
         self.fire_cooldown = 0.0;
     }
 
-    /// Sets his own weapon and axe level from what he owns.
-    pub fn arm(&mut self, arsenal: &gear::Arsenal) {
-        self.axe_level = arsenal.axe_level();
-        self.main = arsenal.main_ranged().map(WeaponKind::Ranged).unwrap_or(WeaponKind::Sword);
+    /// Puts armory tier `tier` in his hand: swung, or thrown if it is a throwing weapon.
+    pub fn arm(&mut self, tier: u8) {
+        self.blade = tier.clamp(1, progression::TIERS);
+        self.main = if progression::blade(self.blade).throw.is_some() { WeaponKind::Ranged(RangedKind::Hurled(self.blade)) } else { WeaponKind::Sword };
         let pickup = self.holding_pickup() && self.ammo > 0;
         if !pickup {
             self.weapon = self.main;
@@ -654,34 +836,45 @@ impl Hero {
         }
     }
 
-    /// A shield boon or shield potion: a fresh round shield, or his own mended.
+    /// A shield boon: his own shield mended, or (if it broke) a plain first-tier one.
     pub fn grant_shield(&mut self) {
         match &mut self.shield {
-            Some(s) => s.durability = gear::shield(s.kind).durability,
-            None => self.shield = Some(ShieldGear::new(ShieldKind::Round)),
+            Some(s) => s.durability = s.max(),
+            None => self.shield = Some(ShieldGear::new(1)),
         }
     }
 
     /// Drinks a potion with a timed or instant effect (Extra Life is the game's to handle).
     pub fn drink(&mut self, kind: crate::logic::types::PotionKind) {
         use crate::logic::types::PotionKind as K;
-        let secs = gear::potion(kind).seconds;
+        let secs = crate::logic::gear::potion_seconds(kind);
         match kind {
             K::Health => {
-                self.heal(50);
+                self.heal(HEALTH_POTION);
                 self.invuln = self.invuln.max(HEALTH_IMMUNITY);
             }
-            K::Regeneration => self.fx.regeneration = secs,
-            K::Swiftness => self.speed_timer = secs,
-            K::NightVision => self.fx.night_vision = secs,
-            K::TrueSight => self.fx.true_sight = secs,
+            K::Stamina => self.stamina = STAMINA_MAX,
             K::Strength => self.fx.strength = secs,
-            K::IronSkin => self.fx.iron_skin = secs,
-            K::Arcane => self.fx.arcane = secs,
-            K::Lightning => self.fx.lightning = secs,
-            K::Invulnerability => self.invincible_timer = secs,
+            K::Haste => self.fx.haste = secs,
+            K::Bark => self.bark = BARK_HP,
+            K::Fury => {
+                self.fx.fury = secs;
+                self.fury_stacks = 0;
+            }
+            K::Fire => self.fx.fire = secs,
+            K::Invulnerability => self.invincible_timer = self.invincible_timer.max(secs),
+            K::Ragnarok => self.fx.ragnarok = secs,
+            K::Spirit => self.fx.spirit = secs,
             K::Life => {}
         }
+    }
+
+    /// The World Tree's restoration: full health and stamina, and every ill (slime, the tonic's drain) purged.
+    pub fn restore(&mut self) {
+        self.hp = self.max_hp;
+        self.stamina = STAMINA_MAX;
+        self.slow_timer = 0.0;
+        self.fx.ragnarok = 0.0;
     }
     pub fn grant_invincibility(&mut self) {
         self.invincible_timer = item(ItemKind::Invincible).seconds;
@@ -713,7 +906,7 @@ impl Hero {
         self.alive = true;
         self.motion = 0.0;
         self.facing = Dir::Down;
-        self.hp = self.max_hp;
+        self.hp = self.health_cap();
         self.invuln = 0.0;
         self.attack_cooldown = 0.0;
         self.swing = 0.0;
@@ -722,6 +915,17 @@ impl Hero {
         self.shield_broke = false;
         self.fx = Effects::default();
         self.regen_carry = 0.0;
+        self.drain_carry = 0.0;
+        self.stamina = STAMINA_MAX;
+        self.stamina_rest = 0.0;
+        self.winded = false;
+        self.heart = 0.0;
+        self.heart_cooldown = 0.0;
+        self.step_cooldown = 0.0;
+        self.bark = 0;
+        self.fury_stacks = 0;
+        self.blocked_hit = false;
+        self.max_hp = self.health_cap();
         self.invincible_timer = 0.0;
         self.invisible_timer = 0.0;
         self.speed_timer = 0.0;
@@ -877,6 +1081,68 @@ mod tests {
             h.update(DT, &g, Dir::Left);
         }
         assert_eq!(h.dir(), Dir::Left);
+    }
+
+    #[test]
+    fn every_blow_costs_stamina_and_it_comes_back_after_a_rest() {
+        let g = corridor(10);
+        let mut h = Hero::new(P::new(3, 1), 5.2);
+        let mut swings = 0;
+        for _ in 0..40 {
+            h.attack_cooldown = 0.0;
+            if h.try_attack() {
+                swings += 1;
+            }
+        }
+        assert_eq!(swings, (STAMINA_MAX / STAMINA_PER_BLOW) as usize, "out of breath after a flurry");
+        assert!(h.winded);
+        for _ in 0..600 {
+            h.update(DT, &g, Dir::None);
+        }
+        assert_eq!(h.stamina, STAMINA_MAX);
+        // Forge-Heart (path 7) takes over when his breath runs out.
+        h.path = 7;
+        for _ in 0..40 {
+            h.attack_cooldown = 0.0;
+            h.try_attack();
+        }
+        assert!(h.heart > 0.0 && h.tireless());
+    }
+
+    #[test]
+    fn a_great_shield_never_breaks_and_heals_him_as_it_blocks() {
+        let mut h = Hero::new(P::new(3, 1), 5.2);
+        h.shield = Some(ShieldGear::new(10));
+        h.hp = 50;
+        for _ in 0..200 {
+            h.invuln = 0.0;
+            h.take_damage(40);
+            if !h.alive {
+                break;
+            }
+            h.hp = h.hp.max(60);
+        }
+        assert!(h.shield.is_some(), "tier 8 and up never break");
+        let mut h = Hero::new(P::new(3, 1), 5.2);
+        h.shield = Some(ShieldGear::new(10));
+        h.hp = 50;
+        h.take_damage(10);
+        assert!(h.hp > 50 - 2, "the block healed most of what got through: {}", h.hp);
+    }
+
+    #[test]
+    fn bifrost_step_blinks_him_ahead_until_a_wall() {
+        let g = corridor(8);
+        let mut h = Hero::new(P::new(1, 1), 5.2);
+        h.facing = Dir::Right;
+        assert!(h.try_step(&g).is_none(), "he has not walked the path that far yet");
+        h.path = 5;
+        let (_, to) = h.try_step(&g).expect("blinks");
+        assert_eq!(to, V::new(4.0, 1.0));
+        assert!(h.try_step(&g).is_none(), "it needs a moment to come again");
+        h.step_cooldown = 0.0;
+        let (_, to) = h.try_step(&g).expect("blinks again");
+        assert_eq!(to, V::new(6.0, 1.0), "the wall stops the light");
     }
 
     #[test]

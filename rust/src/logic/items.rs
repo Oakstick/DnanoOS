@@ -1,6 +1,8 @@
 //! Weapons, shrine boons, potions, bombs and shrines: the small rule objects.
 
 use super::gear;
+use super::heroes::HeroKind;
+use super::progression::{self, Tree};
 use super::types::{PotionKind, P};
 
 // ------------------------------------------------------------------ weapons
@@ -14,26 +16,19 @@ pub enum RangedKind {
     Boomerang,
     Fireball,
     Crescent,
-    // Forged by the blacksmith.
-    FlameArrow,
-    HolyArrow,
-    Knife,
-    TwinKnives,
-    SeekingKnives,
-    SteelBoomerang,
-    FireBoomerang,
+    /// A thrown weapon of the armory (tiers 2, 9 and 10): it never runs out.
+    Hurled(u8),
+    /// The piercing wave a tier-3 blade sends down the line with each swing.
+    Wave,
 }
 
-/// Everything the hero can hold: the default sword, or one ranged weapon that replaces it.
+/// Everything the hero can hold: his armory blade swung, or a ranged weapon (his own thrown one, or a shrine's).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum WeaponKind {
     Sword,
     Ranged(RangedKind),
 }
 
-/// The melee weapon: Ragnar's bearded axe.
-pub const SWORD_NAME: &str = "Axe";
-pub const SWORD_COLOR: u32 = 0xcfe8f0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct WeaponDef {
@@ -91,34 +86,32 @@ pub fn weapon(kind: RangedKind) -> WeaponDef {
             name: "Fireball", color: 0xff8a2a, ammo: 5, speed: 8.0, range: 12.0, hit_radius: 0.6, pierce: true, cooldown: 0.45, damage: 2, ..base
         },
         RangedKind::Crescent => WeaponDef { name: "Crescent", color: 0x8fe7ff, speed: 16.0, range: 6.0, hit_radius: 0.9, pierce: true, ..base },
-        RangedKind::FlameArrow => WeaponDef {
-            name: "Flame Arrows", color: 0xff8a2a, lateral: &[-0.3, 0.0, 0.3], cooldown: 0.3, burn: true, ..base
-        },
-        RangedKind::HolyArrow => WeaponDef {
-            name: "Holy Arrows", color: 0xfff1a8, speed: 18.0, range: 18.0, hit_radius: 0.6, pierce: true, cooldown: 0.3, damage: 3, ..base
-        },
-        RangedKind::Knife => WeaponDef { name: "Throwing Knife", color: 0xc8d0da, speed: 16.0, range: 9.0, cooldown: 0.18, ..base },
-        RangedKind::TwinKnives => WeaponDef {
-            name: "Twin Knives", color: 0xdfe6ee, speed: 16.0, range: 9.0, lateral: &[-0.22, 0.22], cooldown: 0.2, ..base
-        },
-        RangedKind::SeekingKnives => WeaponDef {
-            name: "Seeking Knives", color: 0x9ad1ff, speed: 12.0, range: 12.0, lateral: &[-0.3, 0.0, 0.3], cooldown: 0.24, homing: true, ..base
-        },
-        RangedKind::SteelBoomerang => WeaponDef {
-            name: "Steel Boomerang", color: 0xb8c8d8, speed: 11.0, range: 7.0, hit_radius: 0.85,
-            pierce: true, returns: true, cooldown: 0.4, damage: 3, ..base
-        },
-        RangedKind::FireBoomerang => WeaponDef {
-            name: "Fire Boomerang", color: 0xff7a2a, speed: 12.0, range: 7.5, hit_radius: 0.9,
-            pierce: true, returns: true, cooldown: 0.38, damage: 3, burn: true, ..base
+        RangedKind::Hurled(tier) => {
+            let b = progression::blade(tier);
+            let t = b.throw.unwrap_or(progression::Throw { speed: 12.0, range: 6.0, radius: 0.6, returns: true, homing: false });
+            let color = match tier {
+                9 => 0xffd84a,
+                10 => 0x7ae8ff,
+                _ => 0xc8d4e0,
+            };
+            WeaponDef {
+                name: "Thrown", color, speed: t.speed, range: t.range, hit_radius: t.radius, pierce: true, returns: t.returns,
+                cooldown: b.cooldown, damage: b.damage, homing: t.homing, ..base
+            }
+        }
+        RangedKind::Wave => WeaponDef {
+            name: "Wave", color: 0x9ad1ff, speed: 14.0, range: 7.0, hit_radius: 0.7, pierce: true, damage: progression::blade(3).damage, ..base
         },
     }
 }
 
-/// Display name and color for any held weapon, sword included (at the axe's level).
-pub fn weapon_label(kind: WeaponKind, axe_level: u8) -> (&'static str, u32) {
+/// Display name and color for any held weapon: his own armory blade (at `tier`) or a shrine's.
+pub fn weapon_label(hero: HeroKind, kind: WeaponKind, tier: u8) -> (&'static str, u32) {
     match kind {
-        WeaponKind::Sword => (gear::Line::Axe.name(axe_level), gear::Line::Axe.color(axe_level)),
+        WeaponKind::Sword | WeaponKind::Ranged(RangedKind::Hurled(_)) => {
+            let n = progression::node(hero, Tree::Armory, tier);
+            (n.name, n.color)
+        }
         WeaponKind::Ranged(r) => {
             let d = weapon(r);
             (d.name, d.color)
@@ -172,8 +165,8 @@ impl Potion {
     pub fn new(tile: P, kind: PotionKind) -> Self {
         Self { tile, kind, taken: false }
     }
-    pub fn def(&self) -> gear::PotionDef {
-        gear::potion(self.kind)
+    pub fn def(&self, hero: HeroKind) -> gear::PotionDef {
+        gear::potion(hero, self.kind)
     }
 }
 

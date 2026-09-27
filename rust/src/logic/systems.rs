@@ -39,22 +39,22 @@ pub fn tile_in_reach(hero: V, facing: Dir, tile: P) -> bool {
     in_swing(hero, facing, tile.v())
 }
 
-/// Is `p` inside the arc of an axe with these stats?
-pub fn in_axe_arc(hero: V, facing: Dir, p: V, a: &super::gear::AxeStats, radius: f64) -> bool {
+/// Is `p` (of `radius`) inside the arc of a swing reaching `reach` ahead, `half_width` to each side and `behind` back?
+pub fn in_blade_arc(hero: V, facing: Dir, p: V, reach: f64, half_width: f64, behind: f64, radius: f64) -> bool {
     let f = facing.or_down().vecf();
     let dx = p.x - hero.x;
     let dy = p.y - hero.y;
     let along = dx * f.x + dy * f.y;
     let across = (dx * f.y - dy * f.x).abs();
-    along >= -a.behind - radius * 0.5 && along <= a.reach + radius && across <= a.half_width + radius * 0.8
+    along >= -behind - radius * 0.5 && along <= reach + radius && across <= half_width + radius * 0.8
 }
 
-/// Indices of targetable enemies caught by a swing of an axe with these stats.
-pub fn find_axe_targets(hero: V, facing: Dir, enemies: &[Enemy], a: &super::gear::AxeStats) -> Vec<usize> {
+/// Indices of targetable enemies caught by such a swing.
+pub fn find_blade_targets(hero: V, facing: Dir, enemies: &[Enemy], reach: f64, half_width: f64, behind: f64) -> Vec<usize> {
     enemies
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.is_targetable() && in_axe_arc(hero, facing, e.pos(), a, 0.0))
+        .filter(|(_, e)| e.is_targetable() && in_blade_arc(hero, facing, e.pos(), reach, half_width, behind, 0.0))
         .map(|(i, _)| i)
         .collect()
 }

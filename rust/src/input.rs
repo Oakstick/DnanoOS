@@ -35,8 +35,12 @@ pub enum Action {
     NextPotion,
     /// 1..5: drink the potion in that belt slot.
     Slot(u8),
-    /// 0: straight to the blacksmith (testing cheat).
+    /// 0: straight to the old man's wares (testing cheat).
     ShopCheat,
+    /// F / LB: Bifrost Step, the path's blink (once it is learned).
+    Step,
+    /// H / Back: call the old gatekeeper, and his wares open.
+    Call,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -118,6 +122,8 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         Digit5 => Action::Slot(4),
         Digit0 | Numpad0 => Action::ShopCheat,
         KeyE => Action::Attack,
+        KeyF => Action::Step,
+        KeyH => Action::Call,
         KeyB | KeyL | ShiftLeft | ShiftRight => Action::Bomb,
         F11 => Action::Fullscreen,
         _ => return None,

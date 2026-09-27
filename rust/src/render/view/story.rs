@@ -1003,56 +1003,11 @@ impl WorldView {
         let easy = sv.since(Shot::Easy);
         let descent = sv.since(Shot::Descent).min(60.0);
 
-        // ---- the torches on the pillars
-        for (n, &(x, z)) in [(-3.35f32, -1.3f32), (3.35, -1.3), (-3.35, 2.0), (3.35, 2.0)].iter().enumerate() {
-            let inward = -x.signum();
-            let base = at(Vec3::new(x + inward * 0.47, 2.0, z));
-            let fl = 1.0 + (time * 9.0 + n as f32 * 1.7).sin() * 0.07 + (time * 23.0 + n as f32).sin() * 0.04;
-            for k in 0..6 {
-                let a = time * 4.0 + k as f32 * 1.1 + n as f32;
-                let rise = (time * 3.0 + k as f32 * 0.37).fract();
-                let p = base + Vec3::new(a.cos() * 0.035 * (1.0 - rise), rise * 0.22, a.sin() * 0.035 * (1.0 - rise));
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.06 * (1.0 - rise * 0.6))), lin(if k % 2 == 0 { 0xffa040 } else { 0xffd070 }) * 1.5, 0.85 * (1.0 - rise), Vec3::ZERO, SHADE_UNLIT));
-            }
-            glow_orb(f, base + Vec3::new(0.0, 0.08, 0.0), 0.55, lin(0xff9a40), 0.3 * fl);
-            f.lights.push(Light { pos: base + Vec3::new(inward * 0.15, 0.1, 0.0), color: lin(0xffb074) * 4.6 * fl, distance: 6.0 });
-        }
-        // The old man's lantern by his stool.
-        let lantern = at(Vec3::new(2.4, 0.13, -2.25));
-        f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.14, 0.2, 0.14), Quat::from_rotation_y(0.4), lantern), lin(0xffd49a), 1.0, lin(0xffa040) * 1.8, SHADE_LIT));
-        f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.17, 0.03, 0.17), Quat::from_rotation_y(0.4), lantern + Vec3::new(0.0, 0.11, 0.0)), lin(0x222226), 1.0, Vec3::ZERO, SHADE_METAL));
-        glow_orb(f, lantern, 0.45, lin(0xffa050), 0.25);
-        f.lights.push(Light { pos: lantern + Vec3::new(0.0, 0.3, 0.2), color: lin(0xffb060) * 2.5, distance: 3.5 });
-        // Cool fills on faces from the front and on the old man and the dog; a faint red seeping under the door.
-        f.lights.push(Light { pos: at(Vec3::new(0.3, 2.4, 3.2)), color: lin(0x9ab0d8) * 2.8, distance: 7.0 });
-        f.lights.push(Light { pos: at(Vec3::new(1.0, 2.0, 0.2)), color: lin(0xa8bce0) * 2.6, distance: 5.0 });
-        f.lights.push(Light { pos: at(Vec3::new(-1.2, 1.5, -0.3)), color: lin(0xc8b8a8) * 2.2, distance: 3.6 });
+        gateway_lights(f, time);
 
         // ---- the door: shut, then grinding open on the stair and its red glow
         let open = smooth(stage::DOOR, stage::DOOR + 2.0, descent) * 1.45;
-        for side in [-1.0f32, 1.0] {
-            // Each leaf swings in, away from the room, about its hinge in the jamb.
-            let hinge = at(Vec3::new(side * 0.97, 0.0, -3.47));
-            let q = Quat::from_rotation_y(-side * open);
-            for &(off, size, c, mat) in door_leaf().iter() {
-                let local = Vec3::new(-side * off.x, off.y, off.z);
-                f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(size, q, hinge + q * local), lin(c), 1.0, Vec3::ZERO, mat));
-            }
-        }
-        let red = 0.35 + open * 3.0;
-        glowing(&mut f.opaque[cube], at(Vec3::new(0.0, 0.015, -3.36)), Vec3::new(1.85, 0.02, 0.04), Quat::IDENTITY, lin(0x300800), lin(0xff3a10) * (0.8 + 0.3 * (time * 2.0).sin()) * (1.0 - open / 1.45));
-        f.lights.push(Light { pos: at(Vec3::new(0.0, 0.3, -3.3 - open * 0.4)), color: lin(0xff4a1a) * red, distance: 3.0 + open * 3.5 });
-        if open > 0.05 {
-            f.lights.push(Light { pos: at(Vec3::new(0.0, -1.5, -6.5)), color: lin(0xff3a0a) * 8.0 * open, distance: 7.0 });
-            glow_orb(f, at(Vec3::new(0.0, 0.9, -4.6)), 1.6, lin(0xff4a18), 0.2 * open);
-            glow_orb(f, at(Vec3::new(0.0, -0.9, -6.6)), 2.2, lin(0xff3010), 0.35 * open);
-            for n in 0..20 {
-                let fk = n as f32;
-                let u = (time * 0.35 + fk * 0.13).fract();
-                let p = at(Vec3::new((fk * 1.7).sin() * 0.7, -1.4 + u * 3.5, -6.0 + u * 3.0 + (fk * 2.3).cos() * 0.3));
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.025)), lin(0xff8a30) * 1.6, (1.0 - u) * open * 0.8, Vec3::ZERO, SHADE_UNLIT));
-            }
-        }
+        gateway_door(f, open, time);
 
         // ---- the way they came: a swirling rent in the arch, and it closing
         if arrive < stage::CLOSE + 0.45 {
@@ -1636,4 +1591,111 @@ fn door_leaf() -> Vec<(Vec3, Vec3, u32, f32)> {
         out.push((Vec3::new(0.82 + a.cos() * 0.09, 0.98 + a.sin() * 0.09, 0.1), Vec3::splat(0.028), 0x6a6c72, SHADE_METAL));
     }
     out
+}
+
+/// The crypt's light: torches on the pillars, the old man's lantern, cool fills on faces.
+fn gateway_lights(f: &mut Frame, time: f32) {
+    let cube = MeshKind::Cube as usize;
+    let at = |p: Vec3| GATEWAY + p;
+    // ---- the torches on the pillars
+    for (n, &(x, z)) in [(-3.35f32, -1.3f32), (3.35, -1.3), (-3.35, 2.0), (3.35, 2.0)].iter().enumerate() {
+        let inward = -x.signum();
+        let base = at(Vec3::new(x + inward * 0.47, 2.0, z));
+        let fl = 1.0 + (time * 9.0 + n as f32 * 1.7).sin() * 0.07 + (time * 23.0 + n as f32).sin() * 0.04;
+        for k in 0..6 {
+            let a = time * 4.0 + k as f32 * 1.1 + n as f32;
+            let rise = (time * 3.0 + k as f32 * 0.37).fract();
+            let p = base + Vec3::new(a.cos() * 0.035 * (1.0 - rise), rise * 0.22, a.sin() * 0.035 * (1.0 - rise));
+            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.06 * (1.0 - rise * 0.6))), lin(if k % 2 == 0 { 0xffa040 } else { 0xffd070 }) * 1.5, 0.85 * (1.0 - rise), Vec3::ZERO, SHADE_UNLIT));
+        }
+        glow_orb(f, base + Vec3::new(0.0, 0.08, 0.0), 0.55, lin(0xff9a40), 0.3 * fl);
+        f.lights.push(Light { pos: base + Vec3::new(inward * 0.15, 0.1, 0.0), color: lin(0xffb074) * 4.6 * fl, distance: 6.0 });
+    }
+    // The old man's lantern by his stool.
+    let lantern = at(Vec3::new(2.4, 0.13, -2.25));
+    f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.14, 0.2, 0.14), Quat::from_rotation_y(0.4), lantern), lin(0xffd49a), 1.0, lin(0xffa040) * 1.8, SHADE_LIT));
+    f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.17, 0.03, 0.17), Quat::from_rotation_y(0.4), lantern + Vec3::new(0.0, 0.11, 0.0)), lin(0x222226), 1.0, Vec3::ZERO, SHADE_METAL));
+    glow_orb(f, lantern, 0.45, lin(0xffa050), 0.25);
+    f.lights.push(Light { pos: lantern + Vec3::new(0.0, 0.3, 0.2), color: lin(0xffb060) * 2.5, distance: 3.5 });
+    // Cool fills on faces from the front and on the old man and the dog; a faint red seeping under the door.
+    f.lights.push(Light { pos: at(Vec3::new(0.3, 2.4, 3.2)), color: lin(0x9ab0d8) * 2.8, distance: 7.0 });
+    f.lights.push(Light { pos: at(Vec3::new(1.0, 2.0, 0.2)), color: lin(0xa8bce0) * 2.6, distance: 5.0 });
+    f.lights.push(Light { pos: at(Vec3::new(-1.2, 1.5, -0.3)), color: lin(0xc8b8a8) * 2.2, distance: 3.6 });
+}
+
+/// The door to the stair: its two leaves swung `open` (radians) and the red glow beyond.
+fn gateway_door(f: &mut Frame, open: f32, time: f32) {
+    let cube = MeshKind::Cube as usize;
+    let at = |p: Vec3| GATEWAY + p;
+    for side in [-1.0f32, 1.0] {
+        // Each leaf swings in, away from the room, about its hinge in the jamb.
+        let hinge = at(Vec3::new(side * 0.97, 0.0, -3.47));
+        let q = Quat::from_rotation_y(-side * open);
+        for &(off, size, c, mat) in door_leaf().iter() {
+            let local = Vec3::new(-side * off.x, off.y, off.z);
+            f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(size, q, hinge + q * local), lin(c), 1.0, Vec3::ZERO, mat));
+        }
+    }
+    let red = 0.35 + open * 3.0;
+    glowing(&mut f.opaque[cube], at(Vec3::new(0.0, 0.015, -3.36)), Vec3::new(1.85, 0.02, 0.04), Quat::IDENTITY, lin(0x300800), lin(0xff3a10) * (0.8 + 0.3 * (time * 2.0).sin()) * (1.0 - open / 1.45));
+    f.lights.push(Light { pos: at(Vec3::new(0.0, 0.3, -3.3 - open * 0.4)), color: lin(0xff4a1a) * red, distance: 3.0 + open * 3.5 });
+    if open > 0.05 {
+        f.lights.push(Light { pos: at(Vec3::new(0.0, -1.5, -6.5)), color: lin(0xff3a0a) * 8.0 * open, distance: 7.0 });
+        glow_orb(f, at(Vec3::new(0.0, 0.9, -4.6)), 1.6, lin(0xff4a18), 0.2 * open);
+        glow_orb(f, at(Vec3::new(0.0, -0.9, -6.6)), 2.2, lin(0xff3010), 0.35 * open);
+        for n in 0..20 {
+            let fk = n as f32;
+            let u = (time * 0.35 + fk * 0.13).fract();
+            let p = at(Vec3::new((fk * 1.7).sin() * 0.7, -1.4 + u * 3.5, -6.0 + u * 3.0 + (fk * 2.3).cos() * 0.3));
+            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.025)), lin(0xff8a30) * 1.6, (1.0 - u) * open * 0.8, Vec3::ZERO, SHADE_UNLIT));
+        }
+    }
+}
+
+/// Where the hero stands at the old man's, and the old man.
+const WARES_HERO: Vec3 = Vec3::new(0.9, 0.0, 0.3);
+const WARES_OLD_MAN: Vec3 = Vec3::new(-1.2, 0.0, -1.1);
+const WARES_DOG: Vec3 = Vec3::new(-0.4, 0.0, -0.45);
+
+impl WorldView {
+    /// The old man's wares: the camera looks past them to the right, where the panel goes.
+    pub(super) fn wares_camera(&self, t: f32) -> (Vec3, Vec3) {
+        let a = (t * 0.2).sin() * 0.12;
+        (GATEWAY + Vec3::new(2.2 + a, 1.85, 3.55), GATEWAY + Vec3::new(1.6 + a * 0.5, 0.8, -1.2))
+    }
+
+    /**
+     * The shop's backdrop: the crypt by the gate to the underworld, the door
+     * shut on its red glow, the old gatekeeper leaning on his staff and talking
+     * now and then, Quitmer lying on his straw wagging, and the hero before
+     * them with the weapon and shield he has chosen.
+     */
+    pub(super) fn emit_wares(&self, s: &SceneState, f: &mut Frame) {
+        let time = s.time as f32;
+        let cube = MeshKind::Cube as usize;
+        let at = |p: Vec3| GATEWAY + p;
+        f.atmosphere = crypt();
+        f.opaque[cube].extend_from_slice(&self.story_sets[1]);
+        f.transparent[cube].extend_from_slice(&self.story_mist[1]);
+        f.bounds = Vec4::new(GATEWAY.x - 4.5, GATEWAY.z - 3.5, GATEWAY.x + 4.5, GATEWAY.z + 4.5);
+        gateway_lights(f, time);
+        gateway_door(f, 0.0, time);
+
+        // The old man, turned to the hero, a gesture every few seconds.
+        let talk = time % 7.0;
+        self.emit_old_man(f, at(WARES_OLD_MAN), yaw_to(WARES_OLD_MAN, WARES_HERO), 0.0, 0.0, 0.0, Some(talk), time);
+        // Quitmer, off his chain, lying at ease by the old man.
+        let yaw = yaw_to(WARES_DOG, WARES_HERO) - 0.3;
+        self.emit_dog(f, at(WARES_DOG), yaw, 0.0, 0.0, 1.0, 0.0, 0.0, 0.7, time);
+        // The hero, breathing, looking the old man's wares over.
+        let rig = &self.models.hero;
+        let mut pose = Pose::rest(rig);
+        let breathe = (time * 1.8).sin();
+        if let Some(i) = rig.index("head") {
+            pose.rot[i].x = 0.08 + breathe * 0.02;
+        }
+        let root = Mat4::from_translation(at(WARES_HERO)) * Mat4::from_rotation_y(yaw_to(WARES_HERO, WARES_OLD_MAN)) * Mat4::from_scale(Vec3::new(1.0, 1.0 + breathe * 0.006, 1.0));
+        emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+        f.lights.push(Light { pos: at(WARES_HERO + Vec3::new(0.6, 1.8, 1.4)), color: lin(0xffe0c0) * 3.0, distance: 4.0 });
+    }
 }

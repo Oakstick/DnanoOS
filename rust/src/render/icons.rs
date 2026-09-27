@@ -1,13 +1,16 @@
-//! Pixel-art icons for the HUD and the blacksmith: every weapon at every
-//! level, the four shields and the potions. Drawn procedurally on a 16x16
-//! canvas with a dark outline, the way hand-made 16-bit item icons look.
+//! Pixel-art icons for the HUD and the old man's wares: every entry of every
+//! hero's four trees (weapons, shields, elixirs and the rune stones of the
+//! path), the shrine weapons, silver, rune fragments, keys and bombs. Drawn
+//! procedurally on a 16x16 canvas with a dark outline, the way hand-made
+//! 16-bit item icons look.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use super::voxels::Sprite;
-use crate::logic::gear::{potion, Line, ShieldKind};
+use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::items::RangedKind;
+use crate::logic::progression::{self, Form, Tree, TIERS, TREES};
 use crate::logic::types::PotionKind;
 
 const N: i32 = 16;
@@ -97,12 +100,14 @@ impl Canvas {
 /// Everything that has an icon.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Icon {
-    Weapon(Line, u8),
+    /// Tier n of a hero's tree.
+    Node(HeroKind, Tree, u8),
+    /// A potion on a hero's belt (his own brews, or an extra life).
+    Potion(HeroKind, PotionKind),
     /// A shrine's ammo weapon.
     Pickup(RangedKind),
-    Shield(ShieldKind),
-    Potion(PotionKind),
     Coin,
+    Rune,
     Lock,
     Bomb,
     Key,
@@ -112,21 +117,29 @@ pub fn icon(i: Icon) -> &'static Sprite {
     static CACHE: OnceLock<HashMap<Icon, Sprite>> = OnceLock::new();
     let map = CACHE.get_or_init(|| {
         let mut m = HashMap::new();
-        for line in crate::logic::gear::LINES {
-            for level in 1..=3 {
-                m.insert(Icon::Weapon(line, level), weapon(line, level));
+        for hero in ROSTER {
+            for tree in TREES {
+                for tier in 1..=TIERS {
+                    let n = progression::node(hero, tree, tier);
+                    m.insert(Icon::Node(hero, tree, tier), item(n.form, n.color));
+                }
+            }
+            for kind in crate::logic::gear::ALL_POTIONS {
+                let sprite = match progression::elixir_tier(kind) {
+                    Some(tier) => {
+                        let n = progression::node(hero, Tree::Elixir, tier);
+                        item(n.form, n.color)
+                    }
+                    None => life(),
+                };
+                m.insert(Icon::Potion(hero, kind), sprite);
             }
         }
         for k in crate::logic::items::WEAPON_ORDER {
             m.insert(Icon::Pickup(k), pickup(k));
         }
-        for k in crate::logic::gear::SHIELDS {
-            m.insert(Icon::Shield(k), shield(k));
-        }
-        for k in crate::logic::gear::POTIONS {
-            m.insert(Icon::Potion(k), bottle(k));
-        }
         m.insert(Icon::Coin, coin());
+        m.insert(Icon::Rune, rune_fragment());
         m.insert(Icon::Lock, lock());
         m.insert(Icon::Bomb, bomb());
         m.insert(Icon::Key, key());
@@ -139,7 +152,6 @@ pub fn icon(i: Icon) -> &'static Sprite {
 
 const STEEL: u32 = 0xc8d0da;
 const STEEL_D: u32 = 0x8a929e;
-const EDGE: u32 = 0xf4f8fc;
 const WOOD: u32 = 0x8a5a2e;
 const WOOD_L: u32 = 0xb07a44;
 const GOLD: u32 = 0xffd84a;
@@ -148,98 +160,322 @@ const FIRE: u32 = 0xff7a2a;
 const FIRE_L: u32 = 0xffd23a;
 const RED: u32 = 0xc8262e;
 
-fn weapon(line: Line, level: u8) -> Sprite {
+/// Blends two colours: 0 is `a`, 1 is `b`.
+fn mix(a: u32, b: u32, t: f32) -> u32 {
+    let ch = |s: u32| {
+        let (x, y) = (((a >> s) & 255) as f32, ((b >> s) & 255) as f32);
+        ((x + (y - x) * t).round().clamp(0.0, 255.0) as u32) << s
+    };
+    ch(16) | ch(8) | ch(0)
+}
+
+/// An entry's colour, a darker and a lighter shade of it.
+fn shades(col: u32) -> (u32, u32, u32) {
+    (col, scale(col, 0.6), mix(col, 0xffffff, 0.5))
+}
+
+/// Points along a gently curved blade from `a` to `b`, bowed `bow` pixels to its right.
+fn curve(a: (f32, f32), b: (f32, f32), bow: f32) -> Vec<(i32, i32)> {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len = (dx * dx + dy * dy).sqrt().max(1.0);
+    let (nx, ny) = (-dy / len, dx / len);
+    (0..=24)
+        .map(|i| {
+            let t = i as f32 / 24.0;
+            let k = bow * (std::f32::consts::PI * t).sin();
+            ((a.0 + dx * t - nx * k).round() as i32, (a.1 + dy * t - ny * k).round() as i32)
+        })
+        .collect()
+}
+
+/// A handle and cross-guard at the lower left, for a blade rising to the upper right.
+fn hilt(c: &mut Canvas, guard: u32) {
+    c.line((1, 14), (3, 12), WOOD);
+    c.line((2, 14), (4, 12), WOOD_L);
+    c.set(1, 15, guard);
+    c.line((2, 9), (6, 13), guard);
+}
+
+/// The icon of a tree entry: its form, in its colour.
+fn item(form: Form, col: u32) -> Sprite {
     let mut c = Canvas::new();
-    match (line, level) {
-        (Line::Axe, 1) => {
-            c.line((3, 14), (11, 3), WOOD);
-            c.line((4, 14), (12, 3), WOOD_L);
-            // Bearded blade on the upper right.
-            c.rect(9, 2, 12, 7, STEEL);
-            c.rect(12, 1, 13, 8, STEEL);
-            c.line((14, 1), (14, 8), EDGE);
-            c.rect(9, 6, 10, 8, STEEL_D);
+    let (m, d, l) = shades(col);
+    let steel = mix(STEEL, col, 0.45);
+    match form {
+        Form::Knife => {
+            c.line((2, 13), (4, 11), WOOD);
+            c.line((3, 13), (5, 11), WOOD_L);
+            c.line((3, 9), (7, 13), d);
+            c.line((5, 10), (10, 5), steel);
+            c.line((6, 10), (11, 5), m);
+            c.line((6, 11), (12, 5), l);
+            c.set(12, 4, l);
         }
-        (Line::Axe, 2) => {
-            c.line((2, 15), (11, 3), WOOD);
-            c.line((3, 15), (12, 3), WOOD_L);
-            for y in [10, 12] {
-                c.line((5, y), (7, y - 2), RED);
+        Form::Sword => {
+            hilt(&mut c, d);
+            c.line((5, 10), (13, 2), steel);
+            c.line((5, 11), (14, 2), m);
+            c.line((6, 11), (14, 3), l);
+            c.set(14, 1, l);
+            c.set(3, 11, GOLD);
+        }
+        Form::Saber => {
+            hilt(&mut c, d);
+            for (x, y) in curve((5.0, 10.0), (14.0, 1.0), 2.2) {
+                c.set(x, y, m);
+                c.set(x + 1, y, l);
             }
-            c.rect(8, 1, 12, 8, STEEL_D);
-            c.rect(12, 0, 14, 9, STEEL_D);
-            c.line((15, 0), (15, 9), EDGE);
-            c.rect(6, 3, 8, 4, STEEL_D); // back spike
-            c.set(5, 3, STEEL);
+            c.set(3, 11, GOLD);
         }
-        (Line::Axe, _) => {
-            c.line((2, 15), (8, 5), 0x3e2412);
-            c.line((3, 15), (9, 5), 0x5a3418);
-            c.set(4, 12, GOLD);
-            c.set(6, 9, GOLD);
-            // Two blades, gilded edges.
-            c.disc(4.5, 4.0, 3.6, STEEL);
-            c.disc(12.0, 4.0, 3.6, STEEL);
-            c.rect(6, 2, 10, 6, STEEL_D);
-            c.paint(|x, y, col| {
-                let (a, b) = ((x as f32 - 4.5).hypot(y as f32 - 4.0), (x as f32 - 12.0).hypot(y as f32 - 4.0));
-                if col == STEEL && (a > 2.8 && x < 5 || b > 2.8 && x > 11) {
-                    Some(GOLD)
+        Form::Katana => {
+            for (i, (x, y)) in [(1, 14), (2, 13), (3, 12), (1, 15), (2, 14), (3, 13)].into_iter().enumerate() {
+                c.set(x, y, if i % 2 == 0 { 0x2a2a30 } else { 0xe8e0d0 });
+            }
+            c.disc(4.5, 10.5, 1.4, d);
+            for (x, y) in curve((5.0, 10.0), (15.0, 0.0), 1.2) {
+                c.set(x, y, m);
+                c.set(x, y + 1, l);
+            }
+        }
+        Form::Axe => {
+            c.line((3, 14), (10, 4), WOOD);
+            c.line((4, 14), (11, 4), WOOD_L);
+            c.rect(9, 2, 12, 7, m);
+            c.rect(12, 1, 13, 8, m);
+            c.line((14, 1), (14, 8), l);
+            c.rect(9, 6, 10, 8, d);
+            c.set(10, 3, l);
+        }
+        Form::TwinAxes => {
+            c.line((2, 14), (11, 3), WOOD);
+            c.line((13, 14), (4, 3), WOOD_L);
+            c.rect(1, 1, 4, 5, m);
+            c.line((0, 1), (0, 5), l);
+            c.rect(11, 1, 14, 5, m);
+            c.line((15, 1), (15, 5), l);
+            c.rect(3, 4, 4, 6, d);
+            c.rect(11, 4, 12, 6, d);
+        }
+        Form::TwinBlades => {
+            for (x, y) in curve((3.0, 12.0), (14.0, 1.0), 1.6) {
+                c.set(x, y, m);
+                c.set(x + 1, y, l);
+            }
+            for (x, y) in curve((12.0, 12.0), (1.0, 1.0), -1.6) {
+                c.set(x, y, m);
+                c.set(x - 1, y, l);
+            }
+            c.line((1, 10), (4, 13), d);
+            c.line((11, 13), (14, 10), d);
+            c.line((1, 14), (2, 13), WOOD);
+            c.line((14, 14), (13, 13), WOOD);
+        }
+        Form::Wand => {
+            c.line((3, 15), (10, 6), 0x3a2a3a);
+            c.line((4, 15), (11, 6), 0x5a3a5a);
+            c.disc(12.0, 4.0, 2.8, m);
+            c.disc(12.0, 4.0, 1.6, l);
+            for (x, y) in [(12, 0), (14, 1), (10, 1), (15, 3)] {
+                c.set(x, y, m);
+            }
+            c.set(12, 4, 0xffffff);
+        }
+        Form::Spear => {
+            c.line((1, 15), (10, 6), WOOD);
+            c.line((2, 15), (11, 6), WOOD_L);
+            c.set(10, 7, d);
+            c.set(11, 7, d);
+            c.line((11, 5), (14, 2), m);
+            c.line((12, 6), (15, 3), m);
+            c.line((11, 4), (13, 2), m);
+            c.line((12, 5), (15, 2), l);
+            c.set(15, 1, l);
+        }
+        Form::Hammer => {
+            c.rect(7, 8, 8, 14, WOOD);
+            c.rect(8, 8, 8, 14, WOOD_L);
+            c.rect(6, 15, 9, 15, d);
+            c.rect(2, 2, 13, 7, m);
+            c.rect(2, 2, 13, 2, l);
+            c.rect(2, 7, 13, 7, d);
+            c.rect(2, 3, 3, 6, l);
+            c.line((7, 3), (8, 6), l);
+            c.set(6, 5, l);
+            c.set(9, 4, l);
+        }
+        Form::Mace => {
+            c.rect(7, 8, 8, 15, WOOD);
+            c.set(8, 12, GOLD);
+            c.disc(7.5, 5.0, 3.8, m);
+            for (x, y) in [(7, 0), (8, 0), (2, 5), (13, 5), (3, 1), (12, 1), (3, 8), (12, 8)] {
+                c.set(x, y, d);
+            }
+            c.disc(6.5, 4.0, 1.3, l);
+        }
+        Form::Bow => {
+            for i in 0..=40 {
+                let a = (120.0 + 120.0 * i as f32 / 40.0).to_radians();
+                c.set((14.0 + 9.0 * a.cos()).round() as i32, (8.0 + 7.6 * a.sin()).round() as i32, m);
+                c.set((14.0 + 8.0 * a.cos()).round() as i32, (8.0 + 6.8 * a.sin()).round() as i32, d);
+            }
+            c.line((10, 1), (10, 15), 0xe8e0d0);
+            c.line((3, 8), (14, 8), WOOD_L);
+            c.set(2, 8, l);
+            c.set(3, 7, l);
+            c.set(3, 9, l);
+            c.set(14, 7, RED);
+            c.set(14, 9, RED);
+        }
+        Form::Sickle => {
+            c.line((2, 14), (6, 10), WOOD);
+            c.line((3, 14), (7, 10), WOOD_L);
+            for i in 0..=30 {
+                let a = (180.0 + 170.0 * i as f32 / 30.0).to_radians();
+                c.set((8.5 + 4.5 * a.cos()).round() as i32, (6.0 + 4.5 * a.sin()).round() as i32, m);
+                c.set((8.5 + 3.5 * a.cos()).round() as i32, (6.0 + 3.5 * a.sin()).round() as i32, l);
+            }
+            for (x, y) in [(5, 15), (7, 14), (9, 15), (11, 14)] {
+                c.set(x, y, STEEL_D);
+            }
+            c.disc(13.5, 13.0, 1.5, STEEL_D);
+        }
+        Form::Round => {
+            c.disc(7.5, 7.5, 7.0, 0x5a616b);
+            c.disc(7.5, 7.5, 5.8, m);
+            c.paint(|x, _, p| if p == m && x % 3 == 0 { Some(d) } else { None });
+            c.disc(7.5, 7.5, 1.8, l);
+            c.set(7, 7, 0xffffff);
+        }
+        Form::Kite => {
+            for y in 1..15 {
+                let half = if y < 8 { 6.5 } else { 6.5 * (15 - y) as f32 / 7.0 };
+                for x in 0..N {
+                    let dx = (x as f32 - 7.5).abs();
+                    if dx > half {
+                        continue;
+                    }
+                    let rim = dx > half - 1.2 || y == 1;
+                    c.set(x, y, if rim { d } else if dx < 0.8 || y == 6 { l } else { m });
+                }
+            }
+        }
+        Form::Spiral => {
+            c.disc(7.5, 7.5, 7.0, d);
+            c.disc(7.5, 7.5, 5.8, m);
+            c.paint(|x, y, p| {
+                let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+                let r = dx.hypot(dy);
+                let a = dy.atan2(dx) / std::f32::consts::TAU;
+                if p == m && (a + r / 2.4).rem_euclid(1.0) < 0.28 {
+                    Some(l)
                 } else {
                     None
                 }
             });
-            c.set(8, 1, GOLD);
+            c.disc(7.5, 7.5, 1.5, STEEL);
         }
-        (Line::Arrow, 1) => arrow(&mut c, 0, STEEL, 0xd8d0c0, RED),
-        (Line::Arrow, 2) => {
-            for off in [-3, 0, 3] {
-                arrow(&mut c, off, FIRE, WOOD_L, FIRE);
+        Form::Tate => {
+            c.rect(2, 1, 13, 14, m);
+            for x in [5, 9] {
+                c.line((x, 1), (x, 14), d);
             }
-            for (x, y) in [(13, 1), (14, 3), (12, 0), (15, 2)] {
-                c.set(x, y, FIRE_L);
+            c.rect(2, 3, 13, 3, d);
+            c.rect(2, 12, 13, 12, d);
+            c.disc(7.5, 7.5, 1.8, l);
+            c.set(7, 7, 0xffffff);
+        }
+        Form::Mirror => {
+            c.disc(7.5, 7.5, 7.0, GOLD_D);
+            c.disc(7.5, 7.5, 5.8, m);
+            c.line((4, 7), (7, 4), 0xffffff);
+            c.line((5, 9), (9, 5), l);
+            for (x, y) in [(7, 0), (0, 7), (15, 8), (8, 15)] {
+                c.set(x, y, GOLD);
             }
         }
-        (Line::Arrow, _) => {
-            // A golden arrow in a burst of light.
-            for (a, b) in [((11, 0), (11, 8)), ((7, 4), (15, 4)), ((8, 1), (14, 7)), ((14, 1), (8, 7))] {
-                c.line(a, b, 0xfff6c0);
-            }
-            arrow(&mut c, 0, GOLD, GOLD_D, 0xffffff);
-            c.disc(11.5, 4.0, 1.6, 0xffffff);
+        Form::Flask => {
+            c.rect(6, 0, 9, 1, 0xa87a4a);
+            c.rect(6, 2, 9, 4, 0xc8dce8);
+            c.disc(7.5, 10.0, 5.2, 0xc8dce8);
+            c.disc(7.5, 10.2, 4.4, m);
+            c.rect(7, 3, 8, 5, m);
+            c.paint(|x, y, p| if p == m && y > 11 && (x + y) % 2 == 0 { Some(d) } else { None });
+            c.set(5, 8, 0xffffff);
+            c.set(5, 9, 0xffffff);
         }
-        (Line::Knife, 1) => knife(&mut c, (3, 13), STEEL),
-        (Line::Knife, 2) => {
-            knife(&mut c, (1, 12), STEEL);
-            knife(&mut c, (5, 15), EDGE);
+        Form::Vial => {
+            c.rect(6, 0, 9, 1, 0xa87a4a);
+            c.rect(5, 2, 10, 14, 0xc8dce8);
+            c.rect(6, 5, 9, 14, m);
+            c.rect(6, 15, 9, 15, 0xc8dce8);
+            c.paint(|x, y, p| if p == m && y > 10 && (x + y) % 2 == 0 { Some(d) } else { None });
+            c.line((6, 3), (6, 7), 0xffffff);
         }
-        (Line::Knife, _) => {
-            // Three knives fanned out, trailing blue.
-            for (dx, dy) in [(-2, 2), (1, 0), (4, -2)] {
-                c.line((1 + dx, 12 + dy), (4 + dx, 9 + dy), 0x6aa8ff);
-            }
-            knife(&mut c, (1, 14), 0x9ad1ff);
-            knife(&mut c, (4, 12), 0x9ad1ff);
-            knife(&mut c, (7, 10), 0x9ad1ff);
+        Form::Gourd => {
+            c.rect(7, 0, 8, 1, 0xa87a4a);
+            c.disc(7.5, 4.5, 2.8, mix(m, 0xd8b878, 0.4));
+            c.disc(7.5, 11.0, 4.6, mix(m, 0xd8b878, 0.25));
+            c.rect(4, 7, 11, 7, 0x8a2a2a);
+            c.disc(6.0, 10.0, 1.2, l);
+            c.paint(|x, y, p| if p != 0x8a2a2a && y > 12 && (x + y) % 2 == 0 { Some(d) } else { None });
         }
-        (Line::Boomerang, level) => {
-            let (col, dark) = match level {
-                1 => (0xc98f4a, 0x8a5a2e),
-                2 => (0xb8c8d8, 0x6e7888),
-                _ => (FIRE, 0xb83a1a),
-            };
-            for i in 0..8 {
-                c.rect(2 + i, 3 + i, 3 + i, 4 + i, col);
-                c.rect(9 + i.min(5), 10 - i, 10 + i.min(5), 11 - i, col);
+        Form::Rune(n) => {
+            c.disc(7.5, 8.0, 7.0, 0x4a4e56);
+            c.disc(7.0, 7.5, 6.0, 0x7a7e86);
+            c.paint(|x, y, p| if p == 0x7a7e86 && (x * 7 + y * 3) % 11 == 0 { Some(0x6a6e76) } else { None });
+            let glyphs: [&[(i32, i32, i32, i32)]; 10] = [
+                &[(6, 3, 6, 12), (6, 5, 10, 3), (6, 8, 10, 6)],
+                &[(5, 12, 5, 3), (5, 3, 10, 6), (10, 6, 10, 12)],
+                &[(6, 3, 6, 12), (6, 5, 10, 7), (10, 7, 6, 9)],
+                &[(6, 3, 6, 12), (6, 3, 10, 6), (6, 6, 10, 9)],
+                &[(6, 3, 6, 12), (6, 3, 10, 5), (10, 5, 6, 8), (6, 8, 10, 12)],
+                &[(10, 3, 6, 7), (6, 7, 10, 12)],
+                &[(5, 3, 10, 12), (10, 3, 5, 12)],
+                &[(7, 3, 7, 12), (7, 7, 4, 3), (7, 7, 10, 3)],
+                &[(7, 3, 7, 12), (7, 3, 4, 6), (7, 3, 10, 6)],
+                &[(7, 3, 10, 7), (10, 7, 7, 11), (7, 11, 4, 7), (4, 7, 7, 3)],
+            ];
+            for &(x0, y0, x1, y1) in glyphs[(n as usize).min(9)] {
+                c.line((x0, y0), (x1, y1), l);
             }
-            c.paint(|x, y, _| if (x + y) % 5 == 0 { Some(dark) } else { None });
-            if level == 3 {
-                for (x, y) in [(3, 1), (5, 2), (14, 3), (12, 2), (1, 6)] {
-                    c.set(x, y, FIRE_L);
-                }
+            c.paint(|x, y, p| if p == l && (x + y) % 3 == 0 { Some(m) } else { None });
+        }
+    }
+    c.outlined()
+}
+
+/// An extra life: a rose bottle marked with a heart.
+fn life() -> Sprite {
+    let mut c = Canvas::new();
+    let col = 0xff6d8d;
+    c.rect(6, 0, 9, 1, 0xa87a4a);
+    c.rect(6, 2, 9, 4, 0xc8dce8);
+    c.disc(7.5, 10.0, 5.2, 0xc8dce8);
+    c.disc(7.5, 10.2, 4.4, col);
+    c.rect(7, 3, 8, 5, col);
+    let w = 0xffffff;
+    c.rect(5, 8, 6, 9, w);
+    c.rect(9, 8, 10, 9, w);
+    c.rect(5, 10, 10, 10, w);
+    c.rect(6, 11, 9, 11, w);
+    c.rect(7, 12, 8, 12, w);
+    c.outlined()
+}
+
+/// A rune fragment: a broken shard of stone with a glowing line of a rune.
+fn rune_fragment() -> Sprite {
+    let mut c = Canvas::new();
+    for y in 1..15 {
+        for x in 2..14 {
+            let inside = (x - 2) + (y - 1) >= 3 && (13 - x) + (14 - y) >= 2 && x + (14 - y) >= 4 && (13 - x) + y >= 3;
+            if inside {
+                c.set(x, y, if (x * 5 + y * 3) % 7 == 0 { 0x6a6e76 } else { 0x8a8e96 });
             }
         }
     }
+    c.line((7, 3), (7, 12), 0x9ad1ff);
+    c.line((7, 5), (10, 3), 0x9ad1ff);
+    c.line((7, 8), (10, 6), 0xd8f0ff);
     c.outlined()
 }
 
@@ -256,21 +492,22 @@ fn arrow(c: &mut Canvas, off: i32, head: u32, shaft: u32, fletch: u32) {
     c.set(4 + ox, 12 + oy, fletch);
 }
 
-/// A throwing knife with its handle at `base`, blade up and to the right.
-fn knife(c: &mut Canvas, base: (i32, i32), blade: u32) {
-    let (x, y) = base;
-    c.line((x, y), (x + 2, y - 2), WOOD);
-    c.set(x + 3, y - 3, GOLD_D);
-    c.set(x + 2, y - 4, GOLD_D);
-    c.set(x + 4, y - 2, GOLD_D);
-    c.line((x + 3, y - 4), (x + 7, y - 8), blade);
-    c.line((x + 4, y - 4), (x + 8, y - 8), EDGE);
-}
-
 fn pickup(kind: RangedKind) -> Sprite {
     match kind {
-        RangedKind::Arrow => weapon(Line::Arrow, 1),
-        RangedKind::Boomerang => weapon(Line::Boomerang, 1),
+        RangedKind::Arrow => {
+            let mut c = Canvas::new();
+            arrow(&mut c, 0, STEEL, 0xd8d0c0, RED);
+            c.outlined()
+        }
+        RangedKind::Boomerang => {
+            let mut c = Canvas::new();
+            for i in 0..8 {
+                c.rect(2 + i, 3 + i, 3 + i, 4 + i, 0xc98f4a);
+                c.rect(9 + i.min(5), 10 - i, 10 + i.min(5), 11 - i, 0xc98f4a);
+            }
+            c.paint(|x, y, _| if (x + y) % 5 == 0 { Some(0x8a5a2e) } else { None });
+            c.outlined()
+        }
         _ => {
             let mut c = Canvas::new();
             match kind {
@@ -305,140 +542,6 @@ fn pickup(kind: RangedKind) -> Sprite {
             c.outlined()
         }
     }
-}
-
-// ------------------------------------------------------------------ shields
-
-fn shield(kind: ShieldKind) -> Sprite {
-    let mut c = Canvas::new();
-    match kind {
-        ShieldKind::Round | ShieldKind::IronRound => {
-            c.disc(7.5, 7.5, 7.0, 0x5a616b);
-            let iron = kind == ShieldKind::IronRound;
-            c.disc(7.5, 7.5, 5.8, if iron { 0xb8c0cc } else { 0x9a6a3a });
-            if !iron {
-                c.paint(|x, _, col| if col == 0x9a6a3a && x % 3 == 0 { Some(0x7a522a) } else { None });
-            } else {
-                c.paint(|x, y, col| {
-                    let r = (x as f32 - 7.5).hypot(y as f32 - 7.5);
-                    if col == 0xb8c0cc && (r - 4.4).abs() < 0.5 && (x + y) % 3 == 0 {
-                        Some(0xf4f8fc)
-                    } else if col == 0xb8c0cc && x + y < 12 {
-                        Some(0xd0d8e2)
-                    } else {
-                        None
-                    }
-                });
-            }
-            c.disc(7.5, 7.5, 1.8, if iron { GOLD } else { 0x8a929e });
-            c.set(7, 7, 0xffffff);
-        }
-        ShieldKind::Kite | ShieldKind::Dreadnought => {
-            let dread = kind == ShieldKind::Dreadnought;
-            for y in 1..15 {
-                let half = if y < 8 { 6.5 } else { 6.5 * (15 - y) as f32 / 7.0 };
-                for x in 0..N {
-                    let dx = (x as f32 - 7.5).abs();
-                    if dx > half {
-                        continue;
-                    }
-                    let rim = dx > half - 1.2 || y == 1;
-                    let col = if dread {
-                        if rim {
-                            GOLD
-                        } else if (x + y) % 4 == 0 && dx > half - 2.5 {
-                            0xf4f8fc
-                        } else if dx < 0.8 || y == 6 {
-                            0x6e7888
-                        } else {
-                            0xa8b4c4
-                        }
-                    } else if rim {
-                        0x5a616b
-                    } else if (x < 8) != (y >= 7) {
-                        0xd8262e
-                    } else {
-                        0xece0c0
-                    };
-                    c.set(x, y, col);
-                }
-            }
-        }
-    }
-    c.outlined()
-}
-
-// ------------------------------------------------------------------ potions
-
-fn bottle(kind: PotionKind) -> Sprite {
-    let mut c = Canvas::new();
-    let col = potion(kind).color;
-    let dark = scale(col, 0.65);
-    // Cork, neck, round belly, a glint.
-    c.rect(6, 0, 9, 1, 0xa87a4a);
-    c.rect(6, 2, 9, 4, 0xc8dce8);
-    c.disc(7.5, 10.0, 5.2, 0xc8dce8);
-    c.disc(7.5, 10.2, 4.4, col);
-    c.rect(7, 3, 8, 5, col);
-    c.paint(|x, y, p| if p == col && y > 11 && (x + y) % 2 == 0 { Some(dark) } else { None });
-    c.set(5, 8, 0xffffff);
-    c.set(5, 9, 0xffffff);
-    // A symbol for what it does.
-    let w = 0xffffff;
-    match kind {
-        PotionKind::Health => {
-            c.rect(7, 8, 8, 12, w);
-            c.rect(5, 9, 10, 10, w);
-        }
-        PotionKind::Regeneration => {
-            c.line((6, 12), (9, 8), 0x2a8a2a);
-            c.rect(8, 8, 9, 9, 0x2a8a2a);
-        }
-        PotionKind::Swiftness => {
-            c.line((5, 11), (10, 11), w);
-            c.line((6, 9), (11, 9), w);
-        }
-        PotionKind::NightVision | PotionKind::TrueSight => {
-            c.rect(5, 9, 10, 11, w);
-            c.rect(7, 9, 8, 11, 0x14081a);
-            c.set(5, 9, col);
-            c.set(10, 11, col);
-        }
-        PotionKind::Strength => {
-            c.rect(6, 9, 9, 12, 0xffd0c0);
-            c.rect(6, 8, 7, 8, 0xffd0c0);
-        }
-        PotionKind::IronSkin => {
-            c.rect(6, 8, 9, 11, 0xe8eef4);
-            c.rect(7, 12, 8, 12, 0xe8eef4);
-        }
-        PotionKind::Arcane => {
-            c.set(7, 8, w);
-            c.rect(6, 10, 9, 10, w);
-            c.rect(7, 9, 8, 11, w);
-            c.set(8, 12, w);
-        }
-        PotionKind::Lightning => {
-            c.line((9, 7), (6, 10), FIRE_L);
-            c.line((6, 10), (9, 10), FIRE_L);
-            c.line((9, 10), (6, 13), FIRE_L);
-        }
-        PotionKind::Invulnerability => {
-            c.set(7, 7, w);
-            c.rect(5, 9, 10, 9, w);
-            c.rect(6, 10, 9, 11, w);
-            c.set(6, 12, w);
-            c.set(9, 12, w);
-        }
-        PotionKind::Life => {
-            c.rect(5, 8, 6, 9, w);
-            c.rect(9, 8, 10, 9, w);
-            c.rect(5, 10, 10, 10, w);
-            c.rect(6, 11, 9, 11, w);
-            c.rect(7, 12, 8, 12, w);
-        }
-    }
-    c.outlined()
 }
 
 fn coin() -> Sprite {
@@ -499,20 +602,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_item_has_a_distinct_icon() {
-        let mut seen: Vec<&Vec<Vec<Option<u32>>>> = Vec::new();
-        for line in crate::logic::gear::LINES {
-            for level in 1..=3 {
-                let s = icon(Icon::Weapon(line, level));
-                assert!(s.pixels.iter().flatten().filter(|p| p.is_some()).count() > 20, "{line:?} {level} is nearly empty");
-                assert!(!seen.contains(&&s.pixels), "{line:?} {level} looks like another icon");
-                seen.push(&s.pixels);
+    fn every_entry_of_a_tree_has_a_distinct_icon() {
+        for hero in ROSTER {
+            for tree in TREES {
+                let mut seen: Vec<&Vec<Vec<Option<u32>>>> = Vec::new();
+                for tier in 1..=TIERS {
+                    let s = icon(Icon::Node(hero, tree, tier));
+                    assert!(s.pixels.iter().flatten().filter(|p| p.is_some()).count() > 20, "{hero:?} {tree:?} {tier} is nearly empty");
+                    assert!(!seen.contains(&&s.pixels), "{hero:?} {tree:?} {tier} looks like another icon");
+                    seen.push(&s.pixels);
+                }
             }
-        }
-        for k in crate::logic::gear::POTIONS {
-            let s = icon(Icon::Potion(k));
-            assert!(!seen.contains(&&s.pixels), "{k:?} looks like another icon");
-            seen.push(&s.pixels);
         }
     }
 }

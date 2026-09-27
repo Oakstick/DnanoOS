@@ -137,19 +137,20 @@ pub fn relative_dir(input: Dir, forward: Dir) -> Dir {
     }
 }
 
-/// Potions: found in the first dungeon, bought from the blacksmith, carried on the belt.
+/// Potions: the ten brews of a hero's elixir tree (tier 1 first) and an extra life.
+/// Found in the first dungeon, bought from the old gatekeeper, carried on the belt.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PotionKind {
     Health,
-    Regeneration,
-    Swiftness,
-    NightVision,
-    TrueSight,
+    Stamina,
     Strength,
-    IronSkin,
-    Arcane,
-    Lightning,
+    Haste,
+    Bark,
+    Fury,
+    Fire,
     Invulnerability,
+    Ragnarok,
+    Spirit,
     Life,
 }
 
@@ -160,14 +161,14 @@ impl PotionKind {
         match c {
             'r' => Some(PotionKind::Life),
             'b' => Some(PotionKind::Health),
-            'v' => Some(PotionKind::Swiftness),
+            'v' => Some(PotionKind::Haste),
             _ => None,
         }
     }
     pub fn glyph(self) -> char {
         match self {
             PotionKind::Life => 'r',
-            PotionKind::Swiftness => 'v',
+            PotionKind::Haste => 'v',
             _ => 'b',
         }
     }

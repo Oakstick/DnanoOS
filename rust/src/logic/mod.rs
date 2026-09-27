@@ -11,6 +11,7 @@ pub mod items;
 pub mod level;
 pub mod levels;
 pub mod mover;
+pub mod progression;
 pub mod pathing;
 pub mod projectile;
 pub mod rng;

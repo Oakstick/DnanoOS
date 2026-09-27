@@ -63,6 +63,8 @@ pub struct EnemyContext<'a> {
     pub hero_hidden: bool,
     /// 0..1 how enraged the dungeon is (it rises with every key taken): faster, keener hunters.
     pub rage: f64,
+    /// A decoy (Loki's trick) the hunters chase in the hero's place.
+    pub decoy: Option<V>,
     pub rng: &'a mut Rng,
 }
 
@@ -99,6 +101,10 @@ pub struct Brain {
     pub scatter_timer: f64,
     pub target: V,
     initial_exit_delay: f64,
+    /// Seconds left stunned or fleeing in panic, whatever the rest are doing.
+    pub dread: f64,
+    /// Seconds left wandering at random, still dangerous (Loki's trick).
+    pub confused: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -125,6 +131,8 @@ impl Enemy {
                 scatter_timer: 0.0,
                 target: spec.scatter_target.v(),
                 initial_exit_delay: spec.exit_delay,
+                dread: 0.0,
+                confused: 0.0,
             },
         }
     }
@@ -190,9 +198,31 @@ impl Enemy {
     }
 
     pub fn exit_frenzy(&mut self, global: GlobalMode) {
-        if self.b.mode == EnemyMode::Frenzied {
+        if self.b.mode == EnemyMode::Frenzied && self.b.dread <= 0.0 {
             self.b.mode = global.mode();
         }
+    }
+
+    /// Stunned by a blow, or sent fleeing in panic by a kill: harmless and slow for `seconds`.
+    pub fn scare(&mut self, grid: &Grid, seconds: f64) {
+        if self.is_dangerous() {
+            self.b.mode = EnemyMode::Frenzied;
+            self.m.reverse(grid);
+        } else if !self.is_stunned() {
+            return;
+        }
+        self.b.dread = self.b.dread.max(seconds);
+    }
+
+    /// Befuddled by a trick: it wanders at random for `seconds`, though it still bites.
+    pub fn confuse(&mut self, seconds: f64) {
+        if self.is_dangerous() {
+            self.b.confused = self.b.confused.max(seconds);
+        }
+    }
+
+    pub fn is_confused(&self) -> bool {
+        self.b.confused > 0.0 && self.is_dangerous()
     }
 
     pub fn reverse(&mut self, grid: &Grid) {
@@ -222,6 +252,13 @@ impl Enemy {
     pub fn update(&mut self, dt: f64, ctx: &mut EnemyContext) {
         let grid = ctx.grid;
         let b = &mut self.b;
+        b.confused = (b.confused - dt).max(0.0);
+        if b.dread > 0.0 {
+            b.dread -= dt;
+            if b.dread <= 0.0 && b.mode == EnemyMode::Frenzied && !ctx.frenzy_active {
+                b.mode = ctx.global_mode.mode();
+            }
+        }
 
         if b.mode == EnemyMode::Scattered {
             b.scatter_timer -= dt;
@@ -323,7 +360,7 @@ impl Brain {
         if options.is_empty() {
             return current;
         }
-        if self.mode == EnemyMode::Frenzied {
+        if self.mode == EnemyMode::Frenzied || self.confused > 0.0 {
             return ctx.rng.pick(&options);
         }
 
@@ -359,6 +396,10 @@ impl Brain {
         }
         if ctx.hero_hidden {
             return self.scatter_target.v();
+        }
+        if let Some(d) = ctx.decoy {
+            // A decoy draws every hunter, the eyeless ones by its noise.
+            return d;
         }
         let hp = ctx.hero.pos;
         if ctx.rage >= RAGE_DIRECT && self.kind != EnemyKind::Skeleton {
@@ -446,6 +487,7 @@ mod tests {
                 frenzy_active: false,
                 hero_hidden: false,
                 rage: 0.0,
+                decoy: None,
                 rng: &mut rng,
             };
             bat.update(1.0 / 120.0, &mut ctx);

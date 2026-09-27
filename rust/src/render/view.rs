@@ -28,7 +28,6 @@ mod gate;
 mod meadow;
 mod select;
 mod story;
-pub use forge::SMITH_BEAT;
 pub use fountain::krampus;
 pub use select::SelectView;
 pub use story::StoryView;
@@ -292,6 +291,12 @@ pub struct SceneState<'a> {
     pub boss: Option<&'a crate::logic::boss::Cyclops>,
     pub boss_shots: &'a [crate::logic::boss::BossShot],
     pub gate: Option<GateView>,
+    /// This dungeon's hidden shrine, until its relic is taken.
+    pub relic: Option<P>,
+    /// A decoy of Loki's trick.
+    pub decoy: Option<crate::logic::types::V>,
+    /// Who is being played, for his weapon and shield models and his brews' colours.
+    pub hero_kind: crate::logic::heroes::HeroKind,
 }
 
 /// The gate to the boss as the view needs it: where, how many locks are lit, how far the doors have swung.
@@ -453,10 +458,11 @@ struct Models {
     bottles: HashMap<u32, Mesh>,
     cyclops: Rig,
     boulder: Rig,
-    /// Ragnar for every axe level and shield (or none).
-    heroes: HashMap<(u8, Option<crate::logic::gear::ShieldKind>), Rig>,
-    blacksmith: Rig,
-    knife: Rig,
+    /// The hero as he is equipped now (weapon in hand, shield on his back), what that is,
+    /// and his weapon on its own for when he throws it. Rebuilt when his gear changes.
+    hero: Rig,
+    hero_key: (crate::logic::heroes::HeroKind, u8, Option<u8>),
+    thrown: Rig,
     /// The two heroes waiting to be unlocked, for the character screen.
     mehmed: Rig,
     miyamoto: Rig,
@@ -470,18 +476,18 @@ struct Models {
 impl Models {
     fn new() -> Self {
         let mut bottles = HashMap::new();
-        for kind in crate::logic::gear::POTIONS {
-            let hex = crate::logic::gear::potion(kind).color;
-            bottles.insert(hex, super::props::bottle(hex));
-        }
-        let mut heroes = HashMap::new();
-        for level in 1..=3u8 {
-            for shield in [None].into_iter().chain(crate::logic::gear::SHIELDS.into_iter().map(Some)) {
-                heroes.insert((level, shield), build_rig(&characters::ragnar_hd(level, shield), characters::RAGNAR_HD_RIG, VOXEL / 2.0));
+        for hero in crate::logic::heroes::ROSTER {
+            for kind in crate::logic::gear::ALL_POTIONS {
+                let hex = crate::logic::gear::potion(hero, kind).color;
+                bottles.entry(hex).or_insert_with(|| super::props::bottle(hex));
             }
         }
+        let ragnar = crate::logic::heroes::HeroKind::Ragnar;
         Self {
-            ragnar: build_rig(&characters::ragnar_hd(1, Some(crate::logic::gear::ShieldKind::Round)), characters::RAGNAR_HD_RIG, VOXEL / 2.0),
+            ragnar: forge::hero_model(ragnar, 1, Some(1)),
+            hero: forge::hero_model(ragnar, 1, Some(1)),
+            hero_key: (ragnar, 1, Some(1)),
+            thrown: forge::thrown_model(ragnar, 1),
             skeleton: build_rig(&characters::draugr(), characters::DRAUGR_RIG, 0.05),
             bat: build_rig(&characters::raven(false), characters::RAVEN_RIG, 0.042),
             vampire: build_rig(&characters::raven(true), characters::RAVEN_RIG, 0.05),
@@ -508,9 +514,6 @@ impl Models {
                 0.07,
             ),
             boulder: build_rig(&meadow::boulder(), &[], 0.09),
-            heroes,
-            blacksmith: build_rig(&characters::blacksmith(), characters::BLACKSMITH_RIG, 0.055),
-            knife: build_rig(&forge::knife_model(), &[], 0.06),
             mehmed: build_rig(&characters::mehmed(), characters::MEHMED_RIG, VOXEL / 2.0),
             miyamoto: build_rig(&characters::miyamoto(), characters::MIYAMOTO_RIG, VOXEL / 2.0),
             kids: [0, 1, 2, 3].map(|i| build_rig(&super::cast::kid(i), super::cast::KID_RIG, story::KID_VOXEL)),
@@ -969,6 +972,7 @@ impl WorldView {
     pub fn update(&mut self, dt: f64, s: &SceneState) {
         let dtf = dt as f32;
         let time = s.time as f32;
+        self.refit_hero(s.hero_kind, s.hero);
         self.update_effects(dtf, s);
 
         if let Some(sv) = self.story {
@@ -1261,6 +1265,7 @@ impl WorldView {
             p.rot_x(rig, "swordArm", 0.4 * tuck);
             p.rot_x(rig, "head", -0.15 * tuck);
             self.hero_root_rot.x = 0.2 * tuck;
+            self.sync_hands();
             return;
         }
         p.rot_x(rig, "leftLeg", stride * 0.75);
@@ -1274,6 +1279,17 @@ impl WorldView {
         self.hero_lunge = 0.0;
         if self.slash_t >= 0.0 {
             self.pose_slash();
+        }
+        self.sync_hands();
+    }
+
+    /// The weapons (layered parts of his rig) move with the arms that hold them.
+    fn sync_hands(&mut self) {
+        let rig = &self.models.ragnar;
+        for (arm, held) in [("swordArm", "blade"), ("shieldArm", "offhand")] {
+            if let (Some(a), Some(b)) = (rig.index(arm), rig.index(held)) {
+                self.hero_pose.rot[b] = self.hero_pose.rot[a];
+            }
         }
     }
 
@@ -1454,10 +1470,10 @@ impl WorldView {
             let base = select::SELECT_STAGE;
             (base + Vec3::new(self.select_cam + sway, 1.0, 3.35), base + Vec3::new(self.select_cam * 1.15, 0.78, 0.0), 6.0)
         } else if self.forge {
-            // The forge fills the left of the screen; the shop panel sits on the right.
+            // The old man's crypt fills the left of the screen; his wares sit on the right.
             self.showcase_angle += dt;
-            let a = (self.showcase_angle * 0.2).sin() * 0.15;
-            (forge::FORGE + Vec3::new(2.3 + a, 2.3, 5.5), forge::FORGE + Vec3::new(2.05 + a * 0.5, 0.75, -0.2), 6.0)
+            let (eye, look) = self.wares_camera(self.showcase_angle);
+            (eye, look, 6.0)
         } else if self.showcase {
             // The title diorama: the camera sways gently in front of Ragnar.
             self.showcase_angle += dt;
@@ -1512,7 +1528,7 @@ impl WorldView {
         } else if let Some(sel) = self.select {
             select::slot_feet(sel.index, 1.0) + Vec3::new(0.0, 0.7, 0.0)
         } else if self.forge {
-            forge::FORGE + Vec3::new(1.6, 0.8, 0.0)
+            story::GATEWAY + Vec3::new(-0.4, 0.8, -0.6)
         } else if self.showcase {
             STAGE + Vec3::new(0.0, 0.6, 0.3)
         } else {
@@ -1646,7 +1662,7 @@ impl WorldView {
         } else if self.select.is_some() {
             (select::SELECT_STAGE + Vec3::new(0.0, 0.6, -0.6), 6.5)
         } else if self.forge {
-            (forge::FORGE, 7.0)
+            (story::GATEWAY + Vec3::new(-0.5, 1.0, -0.5), 5.5)
         } else if self.showcase {
             (STAGE, 5.0)
         } else {
@@ -1702,8 +1718,7 @@ impl WorldView {
             return;
         }
         if self.forge {
-            f.atmosphere.night_sky = 0.0;
-            self.emit_forge(s, f);
+            self.emit_wares(s, f);
             return;
         }
         if let Some(sel) = self.select {
@@ -1711,7 +1726,8 @@ impl WorldView {
             return;
         }
         f.atmosphere = if self.meadow && !self.showcase { meadow_atmosphere() } else { Atmosphere::forest() };
-        let nv = (s.hero.fx.night_vision as f32).min(1.0);
+        // Seer's Sight (path 3) sees through the dark.
+        let nv = if s.hero.path >= 3 { 0.6 } else { 0.0 };
         if nv > 0.0 && !self.meadow && !self.showcase {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
@@ -1747,10 +1763,10 @@ impl WorldView {
         if hero.fx.strength > 0.0 {
             emissive += lin(0xff2a1a) * (0.12 + (time * 6.0).sin().abs() * 0.12);
         }
-        // Iron skin turns him to grey steel.
-        let tint = if hero.fx.iron_skin > 0.0 { Vec3::new(0.62, 0.68, 0.78) } else { Vec3::ONE };
-        if hero.fx.iron_skin > 0.0 {
-            emissive += Vec3::splat(0.05);
+        // A shield potion's bark greys his skin a little.
+        let tint = if hero.bark > 0 { Vec3::new(0.82, 0.84, 0.88) } else { Vec3::ONE };
+        if hero.fx.ragnarok > 0.0 {
+            emissive += lin(0x9a2aff) * (0.1 + (time * 5.0).sin().abs() * 0.1);
         }
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
@@ -1780,11 +1796,13 @@ impl WorldView {
             let q = ((p - 0.17) / 0.33).clamp(0.0, 1.0);
             let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
             let side = self.slash_side;
-            let size = 1.0 + 0.22 * (hero.axe_level.clamp(1, 3) - 1) as f32;
-            let axe_color = match hero.axe_level {
-                1 => lin(SLASH),
-                2 => lin(0xffb0a0),
-                _ => lin(0xffe28a),
+            // The trail grows with the blade's reach and takes its colour.
+            let reach = crate::logic::progression::blade(hero.blade).swing.map(|s| s.0).unwrap_or(1.2) as f32;
+            let size = 1.0 + (reach - 1.2) * 0.5;
+            let axe_color = if hero.blade <= 1 {
+                lin(SLASH)
+            } else {
+                lin(crate::logic::progression::node(s.hero_kind, crate::logic::progression::Tree::Armory, hero.blade).color).lerp(Vec3::ONE, 0.35)
             };
             for k in 0..5 {
                 let qk = (q - k as f32 * 0.09).clamp(0.0, 1.0);
@@ -1828,6 +1846,13 @@ impl WorldView {
             if v.light_intensity > 0.0 {
                 f.lights.push(Light { pos: v.group_pos + Vec3::new(0.0, 0.6, 0.0), color: v.light_color * v.light_intensity, distance: 4.0 });
             }
+            if s.enemies[i].is_confused() && v.visible {
+                for k in 0..3 {
+                    let a = time * 5.0 + k as f32 * TAU / 3.0;
+                    let p = v.group_pos + Vec3::new(a.cos() * 0.28, 1.0 + (time * 7.0 + k as f32).sin() * 0.04, a.sin() * 0.28);
+                    f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05)), lin(0xc89aff) * 1.6, 0.9, Vec3::ZERO, SHADE_UNLIT));
+                }
+            }
         }
 
         // --- remedies
@@ -1860,12 +1885,33 @@ impl WorldView {
             shrine_points.push((base, lin(hex)));
         }
 
+        // --- the hidden shrine: a pedestal with a rune stone turning over it, and with Seer's Sight a beam through the walls
+        if let Some(t) = s.relic {
+            let base = Vec3::new(t.x as f32, floor_at(grid, t.x as f32, t.y as f32), t.y as f32);
+            let (stone, runes) = &self.models.pedestals[0];
+            let rune = lin(0x9ad1ff);
+            emit_mesh(&mut f.opaque[cube], stone, Mat4::from_translation(base), Vec3::ONE, 1.0, Vec3::ZERO);
+            emit_mesh(&mut f.opaque[cube], runes, Mat4::from_translation(base), Vec3::ONE, 1.0, rune * (0.8 + (time * 3.0).sin().abs() * 0.8));
+            let m = Mat4::from_translation(base + Vec3::new(0.0, 0.55 + (time * 2.0).sin() * 0.07, 0.0)) * Mat4::from_rotation_y(time * 1.4) * Mat4::from_scale(Vec3::new(0.2, 0.26, 0.1));
+            f.opaque[cube].push(Instance::new(m, lin(0x8a8e96), 1.0, rune * 0.5, SHADE_LIT));
+            glow_orb(f, base + Vec3::new(0.0, 0.6, 0.0), 0.7, rune, 0.35);
+            f.lights.push(Light { pos: base + Vec3::new(0.0, 0.9, 0.0), color: rune * 5.0, distance: 3.5 });
+            if s.hero.path >= 3 {
+                let beam = Mat4::from_translation(base + Vec3::new(0.0, 3.0, 0.0)) * Mat4::from_scale(Vec3::new(0.12, 6.0, 0.12));
+                f.additive.push(Instance::new(beam, rune, 0.35 + 0.1 * (time * 4.0).sin(), Vec3::ZERO, SHADE_UNLIT));
+            }
+        }
+        if let Some(d) = s.decoy {
+            let at = Vec3::new(d.x as f32, floor_at(grid, d.x as f32, d.y as f32), d.y as f32);
+            self.emit_decoy(at, time, f);
+        }
+
         // --- potions
         for p in s.potions {
             if p.taken {
                 continue;
             }
-            let hex = p.def().color;
+            let hex = p.def(s.hero_kind).color;
             let pos = Vec3::new(
                 p.tile.x as f32,
                 floor_at(grid, p.tile.x as f32, p.tile.y as f32) + 0.05 + (time * 2.5 + p.tile.x as f32).sin() * 0.04,

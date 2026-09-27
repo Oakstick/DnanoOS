@@ -45,9 +45,17 @@ enum Cmd {
     Streak,
     Goo,
     Gate,
-    Arm(usize, u8),
-    Shield(usize),
+    /// Every tree owned up to tier N, that weapon in hand and that shield on his back.
+    Arm(u8),
+    Shield(u8),
     Coins(u32),
+    Runes(u32),
+    /// The heroic path learned to level N.
+    Path(u8),
+    /// In the old man's wares: highlight row N.
+    Row(usize),
+    /// Call the old man from the dungeon.
+    Call,
     Potion(usize),
     Press(Action),
     Hold(Dir, bool),
@@ -76,6 +84,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "attack" => Cmd::Press(Action::Attack),
             "bomb" => Cmd::Press(Action::Bomb),
             "jump" => Cmd::Press(Action::Jump),
+            "step" => Cmd::Press(Action::Step),
             "camera" => Cmd::Press(Action::Camera),
             "pause" => Cmd::Press(Action::Pause),
             "tap" => Cmd::Press(Action::Tap),
@@ -88,12 +97,12 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "streak" => Cmd::Streak,
             "goo" => Cmd::Goo,
             "gate" => Cmd::Gate,
-            "arm" => {
-                let line = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
-                let level = parts.next().and_then(|v| v.parse().ok()).unwrap_or(1);
-                Cmd::Arm(line, level)
-            }
+            "arm" => Cmd::Arm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "shield" => Cmd::Shield(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "runes" => Cmd::Runes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
+            "path" => Cmd::Path(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
+            "row" => Cmd::Row(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "call" => Cmd::Call,
             "tab" => Cmd::Press(Action::NextPotion),
             "drink" => Cmd::Press(Action::Drink),
             "coins" => Cmd::Coins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(500)),
@@ -170,13 +179,21 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Streak => game.debug_streak(),
                 Cmd::Goo => game.debug_goo(),
                 Cmd::Gate => game.cheat_to_gate(),
-                Cmd::Arm(line, level) => game.debug_arm(crate::logic::gear::LINES[line.min(3)], level),
-                Cmd::Shield(i) => {
-                    game.hero.shield = crate::logic::gear::SHIELDS.get(i).map(|&k| crate::logic::gear::ShieldGear::new(k));
+                Cmd::Arm(tier) => game.debug_arm(tier),
+                Cmd::Shield(tier) => {
+                    game.hero.shield = (tier > 0).then(|| crate::logic::gear::ShieldGear::new(tier.min(crate::logic::progression::TIERS)));
                 }
-                Cmd::Coins(n) => game.purse = n,
-                // Drink potion number N of the shop's list at once, to see its effect.
-                Cmd::Potion(i) => game.debug_drink(crate::logic::gear::POTIONS[i.min(10)]),
+                Cmd::Coins(n) => game.progress.silver = n,
+                Cmd::Runes(n) => game.progress.runes = n,
+                Cmd::Path(n) => {
+                    let hero = game.hero_kind;
+                    game.progress.hero_mut(hero).owned[1] = n.min(crate::logic::progression::TIERS);
+                    game.equip_from_progress();
+                }
+                Cmd::Row(n) => game.shop.row = n,
+                Cmd::Call => game.call_old_man(),
+                // Drink brew number N (0 = tier 1 .. 9 = tier 10, 10 = an extra life) at once, to see its effect.
+                Cmd::Potion(i) => game.debug_drink(crate::logic::gear::ALL_POTIONS[i.min(10)]),
             }
             next += 1;
         }

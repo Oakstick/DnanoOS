@@ -926,7 +926,7 @@ mod tests {
             Sfx::Toll, Sfx::Caw, Sfx::Kick, Sfx::Clang, Sfx::Bells, Sfx::Shriek, Sfx::Stinger, Sfx::Portal,
             Sfx::Growl, Sfx::Chain, Sfx::Whimper, Sfx::Soul, Sfx::DoorGrind, Sfx::Wind, Sfx::Drip,
         ];
-        let mut render = |what: &str| {
+        let render = |what: &str| {
             let mut buf = vec![0.0f32; 48_000 * 2];
             let mut s = synth.lock().unwrap();
             for block in buf.chunks_mut(512) {

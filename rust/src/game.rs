@@ -7,7 +7,7 @@ mod select;
 mod shop;
 mod story;
 mod tour;
-pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState, ShopTab};
+pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState};
 pub use story::{Story, STORY_FADE, TYPE_DELAY};
 pub use tour::{Tour, TourArt, TourStop, TOUR_STOP_SECONDS};
 
@@ -15,7 +15,8 @@ use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
 use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
 use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
-use crate::logic::gear::{self, Arsenal, ShieldGear, ShieldKind, BELT_SLOTS, COINS_BOSS, COINS_KILL, COINS_KEY};
+use crate::logic::gear::{self, ShieldGear, BELT_SLOTS, COINS_BOSS, COINS_KEY, COINS_KILL, RUNES_BOSS, RUNES_SHRINE, RUNE_DROP};
+use crate::logic::progression::{self, path, Progress, Tree};
 use crate::logic::hero::{DamageResult, Hero, CONTACT_DAMAGE};
 use crate::logic::items::{
     Bomb, Diamond, DiamondKind, ItemKind, Offer, Potion, BOMBS_PER_LIFE,
@@ -42,7 +43,7 @@ pub enum Screen {
     /// Every nugget taken: the fanfare plays, then the way to the boss opens.
     Cleared,
     Won,
-    /// The blacksmith's forge, after a boss.
+    /// The old gatekeeper's wares: after a boss, or whenever he is called.
     Shop,
     /// The first-run tour of the dungeon, before the first countdown.
     Tour,
@@ -99,14 +100,28 @@ pub const CLEARED_SECONDS: f64 = 3.4;
 const VICTORY_DELAY: f64 = 1.6;
 /// The shop cheat tops the purse up to this, so there is something to spend.
 const CHEAT_COINS: u32 = 1000;
+/// ...and the runes up to this.
+const CHEAT_RUNES: u32 = 10;
 /// Damage the Cyclops takes from a bomb (the weapons carry their own).
 const BOMB_DAMAGE: i32 = 6;
-/// A lightning potion's zap: how far it jumps and how many foes it strikes.
+/// Chain lightning (a tier-10 weapon): how far each arc leaps from where it struck, and what it deals the Cyclops.
 const ZAP_RANGE: f64 = 4.5;
-const ZAP_TARGETS: usize = 3;
-/// Burning: seconds it lasts and seconds between its bites.
-const BURN_SECONDS: f64 = 3.0;
-const BURN_TICK: f64 = 0.75;
+const ZAP_DAMAGE: i32 = 2;
+/// Bleeding (a tier-8 weapon): seconds between its bites.
+const BLEED_TICK: f64 = 0.5;
+/// Loki's trick: how long foes stay befuddled, how long a decoy lasts and how often one appears.
+const CONFUSE_SECONDS: f64 = 4.0;
+const DECOY_SECONDS: f64 = 5.0;
+const DECOY_EVERY: f64 = 10.0;
+/// From the second dungeon on the Cyclops' hide turns this much of every blow.
+const BOSS_ARMOR: i32 = 1;
+/// A shield's stagger (tier 7): how far and how long the foes around him reel.
+const STAGGER_RADIUS: f64 = 2.5;
+const STAGGER_SECONDS: f64 = 2.0;
+/// Missiles a mirror-shield turns back strike the Cyclops this hard.
+const REFLECT_DAMAGE: i32 = 2;
+/// Dragonfire burns the Cyclops this hard when it touches him.
+const DRAGONFIRE_DAMAGE: i32 = 3;
 /// Freeze-frame on a blow to the boss.
 const HITSTOP_BOSS: f64 = 0.035;
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
@@ -168,6 +183,8 @@ pub struct Juice {
 pub enum MenuItem {
     Play,
     Resume,
+    /// The gatekeeper's promise: call him, and his wares open wherever you are.
+    CallOldMan,
     QuitToTitle,
     /// Leave the game entirely. Desktop only: a browser tab cannot close itself.
     Quit,
@@ -178,6 +195,7 @@ impl MenuItem {
         match self {
             MenuItem::Play => "START",
             MenuItem::Resume => "RESUME",
+            MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
         }
@@ -263,17 +281,23 @@ pub struct Game {
     boss_events: Vec<BossEvent>,
     /// Counts down to the victory screen once the boss is dead.
     victory_timer: Option<f64>,
-    /// Coins to spend at the blacksmith.
-    pub purse: u32,
-    /// Weapons he owns and the one he has equipped.
-    pub arsenal: Arsenal,
+    /// Silver, rune fragments and every hero's unlocked trees: kept between adventures.
+    pub progress: Progress,
     /// Potions carried on his belt, and the one Q (or RB) drinks.
     pub belt: Vec<PotionKind>,
     pub belt_index: usize,
     pub shop: ShopState,
-    /// Seconds the boss has left burning, and until its next bite.
-    boss_burn: f64,
-    burn_tick: f64,
+    /// Seconds the boss has left bleeding, and until its next bite.
+    boss_bleed: f64,
+    bleed_tick: f64,
+    /// A decoy of Loki's trick the foes chase (where, seconds left), and seconds until the next.
+    pub decoy: Option<(V, f64)>,
+    decoy_cooldown: f64,
+    /// Once per dungeon: the Valkyrie's revival, and the World Tree's restoration, spent.
+    revived: bool,
+    restored: bool,
+    /// This dungeon's hidden shrine and its relic, until taken.
+    pub relic_shrine: Option<P>,
     /// Seconds of double points left (from a BRUTAL streak).
     pub double_points: f64,
     /// The first-run tour, while it plays, and whether it is still owed.
@@ -350,13 +374,18 @@ impl Game {
             boss_shots: Vec::new(),
             boss_events: Vec::new(),
             victory_timer: None,
-            purse: 0,
-            arsenal: Arsenal::default(),
+            // Tests start from nothing; the game from the saved progress.
+            progress: if cfg!(test) { Progress::default() } else { crate::platform::load("vh.progress").and_then(|s| Progress::decode(&s)).unwrap_or_default() },
             belt: Vec::new(),
             belt_index: 0,
             shop: ShopState::default(),
-            boss_burn: 0.0,
-            burn_tick: 0.0,
+            boss_bleed: 0.0,
+            bleed_tick: 0.0,
+            decoy: None,
+            decoy_cooldown: 0.0,
+            revived: false,
+            restored: false,
+            relic_shrine: None,
             double_points: 0.0,
             tour: None,
             // Tests start straight into play; they switch the tour on when they want it.
@@ -439,7 +468,7 @@ impl Game {
         let shield = self.hero.shield;
         self.hero = Hero::new(self.level.hero_spawn, self.level.data.hero_speed);
         self.hero.shield = shield;
-        self.hero.arm(&self.arsenal);
+        self.equip_from_progress();
         let specs = if self.level.data.boss { Vec::new() } else { default_enemy_specs(&self.level.grid) };
         self.enemies = specs
             .iter()
@@ -471,11 +500,19 @@ impl Game {
             self.potions.clear();
         }
         if index >= 1 {
-            // From the second dungeon on, gear only comes from the blacksmith.
+            // From the second dungeon on, gear only comes from the old gatekeeper.
             self.potions.clear();
             self.diamonds.clear();
         }
-        self.boss_burn = 0.0;
+        self.boss_bleed = 0.0;
+        self.decoy = None;
+        self.decoy_cooldown = 0.0;
+        if !self.level.data.boss {
+            // The Valkyrie and the World Tree answer once in each dungeon (its Cyclops included).
+            self.revived = false;
+            self.restored = false;
+        }
+        self.relic_shrine = if self.level.data.boss { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         if let Some(g) = self.level.gate {
@@ -547,14 +584,78 @@ impl Game {
         }
     }
 
-    /// A fresh adventure: the axe, a round shield, an empty purse, one health potion.
+    /// A fresh adventure: the weapon and shield he chose at the old man's, one health potion.
+    /// Silver, runes and what is unlocked are his from adventure to adventure.
     fn new_kit(&mut self) {
-        self.arsenal = Arsenal::default();
-        self.purse = 0;
         self.belt = vec![PotionKind::Health];
         self.belt_index = 0;
-        self.hero.shield = Some(ShieldGear::new(ShieldKind::Round));
-        self.hero.arm(&self.arsenal);
+        let carry = self.progress.hero(self.hero_kind).carry;
+        self.hero.shield = Some(ShieldGear::new(carry));
+        self.equip_from_progress();
+    }
+
+    /// Puts the chosen weapon in his hand and his path's skills in his heart.
+    pub fn equip_from_progress(&mut self) {
+        let h = *self.progress.hero(self.hero_kind);
+        self.hero.arm(h.wield);
+        self.hero.path = h.path();
+        self.hero.max_hp = self.hero.health_cap();
+    }
+
+    /// Writes the silver, the runes and the unlocks to the save (not in tests).
+    fn save_progress(&self) {
+        if !cfg!(test) {
+            crate::platform::save("vh.progress", &self.progress.encode());
+        }
+    }
+
+    /**
+     * Where this dungeon hides its shrine: the dead end farthest (by walking)
+     * from where he starts, clear of keys, shrines, bottles and the gate.
+     */
+    fn hidden_shrine_spot(&self) -> Option<P> {
+        let g = &self.level.grid;
+        let start = self.level.hero_spawn;
+        let mut dist: HashMap<P, u32> = HashMap::new();
+        let mut queue = std::collections::VecDeque::new();
+        dist.insert(start, 0);
+        queue.push_back(start);
+        while let Some(t) = queue.pop_front() {
+            let d = dist[&t];
+            for dir in CARDINALS {
+                if !g.can_move(t, dir, false, false) {
+                    continue;
+                }
+                let n = g.neighbor(t, dir);
+                if let std::collections::hash_map::Entry::Vacant(e) = dist.entry(n) {
+                    e.insert(d + 1);
+                    queue.push_back(n);
+                }
+            }
+        }
+        let taken: Vec<P> = self
+            .level
+            .weapon_shrines
+            .iter()
+            .chain(&self.level.item_shrines)
+            .copied()
+            .chain(self.level.potions.iter().map(|(p, _)| *p))
+            .chain(self.level.gate)
+            .chain([self.level.enemy_spawn, self.level.nest_center])
+            .collect();
+        let mut best: Option<(u32, P)> = None;
+        for (&t, &d) in &dist {
+            if g.get(t.x, t.y) != Tile::Open || g.is_bridge(t.x, t.y) || taken.iter().any(|q| manhattan(q.v(), t.v()) < 2.0) {
+                continue;
+            }
+            let exits = CARDINALS.iter().filter(|&&dir| g.can_move(t, dir, false, false)).count();
+            // Dead ends first; ties go to the far one, then the lower-left, so it is always the same spot.
+            let score = d + if exits == 1 { 1000 } else { 0 };
+            if best.map(|(s, b)| score > s || (score == s && (t.y, t.x) > (b.y, b.x))).unwrap_or(true) {
+                best = Some((score, t));
+            }
+        }
+        best.map(|(_, t)| t)
     }
 
     fn enter(&mut self, screen: Screen) {
@@ -655,6 +756,7 @@ impl Game {
             }
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
+                Some(MenuItem::CallOldMan) => self.call_old_man(),
                 Some(MenuItem::QuitToTitle) => self.enter(Screen::Title),
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 _ => {}
@@ -682,7 +784,7 @@ impl Game {
                 }
             }
             Screen::Won => {
-                // The boss is down: off to the blacksmith.
+                // The boss is down: off to the old gatekeeper.
                 if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
                     self.open_shop();
                     self.juice.fade = 1.0;
@@ -712,6 +814,9 @@ impl Game {
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
             gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32 }),
+            relic: self.relic_shrine,
+            decoy: self.decoy.map(|(p, _)| p),
+            hero_kind: self.hero_kind,
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -734,7 +839,7 @@ impl Game {
         let quit = cfg!(not(target_arch = "wasm32"));
         let mut items = match self.screen {
             Screen::Title => vec![MenuItem::Play],
-            Screen::Paused => vec![MenuItem::Resume, MenuItem::QuitToTitle],
+            Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::QuitToTitle],
             _ => return Vec::new(),
         };
         if quit {
@@ -797,6 +902,9 @@ impl Game {
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
             gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32 }),
+            relic: self.relic_shrine,
+            decoy: self.decoy.map(|(p, _)| p),
+            hero_kind: self.hero_kind,
         }
     }
 
@@ -819,6 +927,9 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
             self.cheat_to_shop();
+        }
+        if self.input.was_pressed(&[Action::Call]) && matches!(self.screen, Screen::Playing | Screen::Paused) {
+            self.call_old_man();
         }
         if self.input.was_pressed(&[Action::Fullscreen]) {
             self.want_fullscreen_toggle = true;
@@ -943,9 +1054,22 @@ impl Game {
         self.update_gate(dt);
         self.visit_shrines();
         self.visit_potions();
+        self.visit_relic_shrine();
+        self.update_decoy(dt);
+        self.watch_health();
 
         if self.input.was_pressed(&[Action::Attack, Action::Tap]) {
             self.attack();
+        }
+        if self.input.was_pressed(&[Action::Step]) {
+            self.bifrost_step();
+        }
+        if self.hero.winded {
+            self.hero.winded = false;
+            let hp = self.hero.pos();
+            if !self.floaters.iter().any(|f| f.text == "OUT OF BREATH") {
+                self.floater(hp.x, hp.y - 0.6, "OUT OF BREATH", 0.9, Some(0x9ad1ff));
+            }
         }
         if self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
             self.audio.play(Sfx::Jump);
@@ -1005,6 +1129,7 @@ impl Game {
                 frenzy_active: self.frenzy.active(),
                 hero_hidden: self.hero.invisible(),
                 rage: self.rage(),
+                decoy: self.decoy.map(|(p, _)| p),
                 rng: &mut self.rng,
             };
             self.enemies[i].update(dt, &mut ctx);
@@ -1313,7 +1438,7 @@ impl Game {
         self.input.consume(Action::Attack);
     }
 
-    /// 0: straight to the blacksmith, from anywhere, with coins to test with.
+    /// 0: straight to the old man's wares, from anywhere, with silver and runes to test with.
     pub fn cheat_to_shop(&mut self) {
         self.audio.unlock();
         self.tour = None;
@@ -1323,7 +1448,8 @@ impl Game {
             self.new_kit();
             self.load_level(0);
         }
-        self.purse = self.purse.max(CHEAT_COINS);
+        self.progress.silver = self.progress.silver.max(CHEAT_COINS);
+        self.progress.runes = self.progress.runes.max(CHEAT_RUNES);
         self.open_shop();
         self.juice.fade = 1.0;
         self.input.consume(Action::Attack);
@@ -1350,26 +1476,33 @@ impl Game {
         if self.screen != Screen::Playing {
             return;
         }
-        if self.boss_burn > 0.0 {
-            self.boss_burn -= dt;
-            self.burn_tick -= dt;
+        if self.boss_bleed > 0.0 {
+            self.boss_bleed -= dt;
+            self.bleed_tick -= dt;
             if let Some(bp) = self.boss.as_ref().filter(|b| b.active()).map(|b| b.pos) {
-                if self.burn_tick <= 0.0 {
-                    self.burn_tick = BURN_TICK;
+                if self.bleed_tick <= 0.0 {
+                    self.bleed_tick = BLEED_TICK;
                     self.wound_boss(1, bp);
                 }
                 if self.rng.next() < dt * 20.0 {
-                    self.view.sparkle(&self.level.grid, bp.x, bp.y, 1.0 + self.rng.next() as f32, 0xff7a2a, 2);
+                    self.view.sparkle(&self.level.grid, bp.x, bp.y, 0.6 + self.rng.next() as f32, 0xc8202a, 2);
                 }
             } else {
-                self.boss_burn = 0.0;
+                self.boss_bleed = 0.0;
             }
         }
-        // Touching it hurts, unless he sails over it.
+        // Touching it hurts, unless he sails over it; a thorned shield or dragonfire bites back.
         if let Some(b) = &self.boss {
             let near = dist_sq(b.pos, hero_pos) < CONTACT_RADIUS * CONTACT_RADIUS;
             if b.harmful() && b.hover < 1.3 && near && !self.hero.airborne() && !self.hero.invisible() {
+                let bp = b.pos;
+                let open = !self.hero.invulnerable() && !self.hero.invincible();
+                let thorns = self.hero.shield.map(|s| progression::ward(s.tier).thorns).unwrap_or(0);
+                let fire = if self.hero.fx.fire > 0.0 { DRAGONFIRE_DAMAGE } else { 0 };
                 self.hurt_hero(CONTACT_DAMAGE);
+                if open && thorns + fire > 0 {
+                    self.wound_boss(thorns + fire, bp);
+                }
             }
         }
         if let Some(t) = &mut self.victory_timer {
@@ -1437,10 +1570,16 @@ impl Game {
                 self.award(POINTS_CYCLOPS);
                 let bounty = COINS_BOSS + 100 * self.dungeon as u32;
                 self.earn(bounty);
-                self.floater(p.x, p.y - 0.8, format!("+{bounty} COINS"), 2.2, Some(0xffd84a));
+                self.floater(p.x, p.y - 0.8, format!("+{bounty} SILVER"), 2.2, Some(0xffd84a));
                 self.floater(p.x, p.y, format!("+{POINTS_CYCLOPS}"), 2.0, Some(0xf2c53d));
+                let runes = RUNES_BOSS + self.dungeon as u32;
+                self.progress.runes += runes;
+                self.floater(p.x, p.y + 0.8, format!("+{runes} RUNE FRAGMENTS"), 2.4, Some(0x9ad1ff));
+                // Its downfall gives up a relic of the old heroes.
+                self.take_relic(p);
                 self.events.push(GameEvent::BossSlain);
                 self.victory_timer = Some(VICTORY_DELAY);
+                self.save_progress();
             }
         }
     }
@@ -1501,6 +1640,35 @@ impl Game {
         }
         self.boss_shots.retain(|s| s.alive);
         if hurt > 0 {
+            let ward = self.hero.shield.map(|s| progression::ward(s.tier));
+            let open = !self.hero.invulnerable() && !self.hero.invincible();
+            if let (Some(w), true) = (ward, open) {
+                if w.missile_proof {
+                    // The missile smashes on the shield: it wears, but nothing gets through.
+                    if let Some(s) = &mut self.hero.shield {
+                        let floor = if w.unbreakable { 1 } else { 0 };
+                        s.durability = (s.durability - (hurt as f64 * w.block).round() as i32).max(floor);
+                    }
+                    self.hero.invuln = 0.5;
+                    self.hero.heal(w.aegis);
+                    let hp = self.hero.pos();
+                    self.audio.play(Sfx::Nodule);
+                    self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.5, 0x7fd7ff, 12);
+                    self.floater(hp.x, hp.y, if w.reflect { "TURNED BACK" } else { "WARDED" }, 0.8, Some(0x7fd7ff));
+                    if w.reflect {
+                        if let Some(bp) = self.boss_target() {
+                            self.view.zap(&self.level.grid, hp, bp);
+                            self.wound_boss(REFLECT_DAMAGE, bp);
+                        }
+                    }
+                    if self.hero.shield.map(|s| s.durability <= 0).unwrap_or(false) {
+                        self.hero.shield = None;
+                        self.hero.shield_broke = true;
+                        self.hurt_hero(0);
+                    }
+                    return;
+                }
+            }
             self.hurt_hero(hurt);
         }
     }
@@ -1574,7 +1742,7 @@ impl Game {
             }
             self.potions[i].taken = true;
             let kind = self.potions[i].kind;
-            let def = self.potions[i].def();
+            let def = self.potions[i].def(self.hero_kind);
             self.view.spark(&self.level.grid, o.x as f64, o.y as f64, def.color);
             // Onto the belt if there is room; an extra life (or a full belt) is drunk at once.
             if kind != PotionKind::Life && self.belt.len() < BELT_SLOTS {
@@ -1620,62 +1788,252 @@ impl Game {
         self.fire();
     }
 
-    /// Sword swing: slays every targetable enemy in front of the hero.
-    /// An axe swing: its level sets the reach, the arc and the blow.
+    /**
+     * A swing of his armory blade: its reach and arc slay every foe caught
+     * and strike the Cyclops; then whatever rides on the blade: a piercing
+     * wave, a stunning oath, a trick, a bleeding cut.
+     */
     fn perform_attack(&mut self) {
         self.audio.play(Sfx::Slash);
         self.view.sword_slash();
-        let stats = gear::axe(self.hero.axe_level);
-        let hits = find_axe_targets(self.hero.pos(), self.hero.facing, &self.enemies, &stats);
+        let blade = progression::blade(self.hero.blade);
+        let Some((reach, half_width, behind)) = blade.swing else { return };
+        let hp = self.hero.pos();
+        let facing = self.hero.facing;
+        let hits = find_blade_targets(hp, facing, &self.enemies, reach, half_width, behind);
         if !hits.is_empty() {
-            self.view.shake(0.14 + 0.04 * self.hero.axe_level as f32);
+            self.view.shake(0.14 + 0.02 * self.hero.blade as f32);
         }
         for i in hits {
             self.slay_enemy(i);
         }
+        let mut struck_boss = false;
         if let Some(bp) = self.boss_target() {
-            if in_axe_arc(self.hero.pos(), self.hero.facing, bp, &stats, BODY_RADIUS) {
-                self.wound_boss(stats.damage * self.hero.might(), bp);
+            if in_blade_arc(hp, facing, bp, reach, half_width, behind, BODY_RADIUS) {
+                struck_boss = self.strike_boss(blade.damage, bp);
             }
         }
-        self.zap();
+        if blade.wave {
+            // Angurvadel's stream of anguish: a wave of force down the line.
+            self.projectiles.extend(spawn_shots(crate::logic::items::RangedKind::Wave, hp, facing));
+        }
+        if blade.stun > 0.0 {
+            self.stun_around(hp, progression::STUN_RADIUS, blade.stun);
+            if struck_boss {
+                let staggered = self.boss.as_mut().and_then(|b| b.stagger().then_some(b.pos));
+                if let Some(p) = staggered {
+                    self.floater(p.x, p.y - 0.9, "STAGGERED", 1.0, Some(0xe0c070));
+                }
+            }
+        }
+        if blade.trick {
+            self.loki_trick(hp);
+        }
+        if blade.bleed > 0.0 && struck_boss {
+            if self.boss_bleed <= 0.0 {
+                self.bleed_tick = BLEED_TICK;
+            }
+            self.boss_bleed = blade.bleed;
+        }
     }
 
     /**
-     * A lightning potion at work: every attack also arcs to the nearest few
-     * foes around him (and the boss, if it is close).
+     * A blow of `base` damage to the Cyclops, as everything he has makes it:
+     * his elixirs, the Cyclops' armour (from the second dungeon on, unless the
+     * blade ignores it), a critical hit (always, for a blade that never misses;
+     * sometimes, with Seer's Sight), and triple from behind (Wolf's Fang).
      */
-    fn zap(&mut self) {
-        if self.hero.fx.lightning <= 0.0 {
-            return;
+    fn strike_boss(&mut self, base: i32, at: V) -> bool {
+        let blade = progression::blade(self.hero.blade);
+        let mut dmg = self.hero.blow(base);
+        if self.dungeon >= 1 && !blade.pierce_armor {
+            dmg = (dmg - BOSS_ARMOR).max(1);
         }
-        let hp = self.hero.pos();
-        let mut near: Vec<(f64, usize)> = self
-            .enemies
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.is_targetable())
-            .map(|(i, e)| (dist_sq(e.pos(), hp), i))
-            .filter(|&(d, _)| d <= ZAP_RANGE * ZAP_RANGE)
-            .collect();
-        near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        let mut struck = false;
-        for &(_, i) in near.iter().take(ZAP_TARGETS) {
-            let p = self.enemies[i].pos();
-            self.view.zap(&self.level.grid, hp, p);
-            self.slay_enemy(i);
-            struck = true;
+        let mut tag = None;
+        if blade.crit || (self.hero.path >= 3 && self.rng.next() < path::SIGHT_CRIT) {
+            dmg *= 2;
+            tag = Some(("CRITICAL!", 0xffd84a));
         }
-        if let Some(bp) = self.boss_target() {
-            if dist_sq(bp, hp) <= (ZAP_RANGE + 1.0).powi(2) {
-                self.view.zap(&self.level.grid, hp, bp);
-                self.wound_boss(self.hero.might(), bp);
-                struck = true;
+        let from = self.hero.pos();
+        if self.hero.path >= 6 && self.boss.as_ref().map(|b| b.behind(from)).unwrap_or(false) {
+            dmg *= path::FANG_MULT;
+            tag = Some(("BACKSTAB!", 0xff5a3a));
+        }
+        let landed = self.wound_boss(dmg, at);
+        if let (true, Some((text, color))) = (landed, tag) {
+            self.floater(at.x, at.y - 1.1, text, 1.0, Some(color));
+        }
+        landed
+    }
+
+    /// A stunning blow or a shield's clash: every foe within `radius` reels, harmless, for `seconds`.
+    fn stun_around(&mut self, at: V, radius: f64, seconds: f64) {
+        let grid = &self.level.grid;
+        let mut any = false;
+        for e in self.enemies.iter_mut() {
+            if (e.is_dangerous() || e.is_stunned()) && dist_sq(e.pos(), at) <= radius * radius {
+                e.scare(grid, seconds);
+                any = true;
             }
         }
-        if struck {
+        if any {
+            self.view.shockwave(grid, at.x, at.y);
             self.audio.play(Sfx::Zap);
         }
+    }
+
+    /// Loki's trick: the foes around him lose their way, and now and then a decoy of him draws them off.
+    fn loki_trick(&mut self, at: V) {
+        for e in self.enemies.iter_mut() {
+            if dist_sq(e.pos(), at) <= progression::TRICK_RADIUS * progression::TRICK_RADIUS {
+                e.confuse(CONFUSE_SECONDS);
+            }
+        }
+        if self.decoy_cooldown <= 0.0 {
+            self.decoy = Some((at, DECOY_SECONDS));
+            self.decoy_cooldown = DECOY_EVERY;
+            self.view.sparkle(&self.level.grid, at.x, at.y, 0.8, 0x9a4aff, 30);
+            self.floater(at.x, at.y - 0.8, "DECOY", 1.2, Some(0xc89aff));
+        }
+    }
+
+    fn update_decoy(&mut self, dt: f64) {
+        self.decoy_cooldown = (self.decoy_cooldown - dt).max(0.0);
+        if let Some((p, t)) = &mut self.decoy {
+            *t -= dt;
+            if *t <= 0.0 {
+                let at = *p;
+                self.view.sparkle(&self.level.grid, at.x, at.y, 0.6, 0x9a4aff, 16);
+                self.decoy = None;
+            }
+        }
+    }
+
+    /**
+     * Chain lightning (a tier-10 weapon) from where it struck: it leaps to
+     * the nearest foes in turn, up to `count`, and to the Cyclops if it is near.
+     */
+    fn chain_lightning(&mut self, from: V, count: usize) {
+        let mut at = from;
+        let mut struck = 0;
+        let mut done: Vec<usize> = Vec::new();
+        while struck < count {
+            let next = self
+                .enemies
+                .iter()
+                .enumerate()
+                .filter(|(i, e)| e.is_targetable() && !done.contains(i))
+                .map(|(i, e)| (dist_sq(e.pos(), at), i))
+                .filter(|&(d, _)| d <= ZAP_RANGE * ZAP_RANGE)
+                .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            let Some((_, i)) = next else { break };
+            let p = self.enemies[i].pos();
+            self.view.zap(&self.level.grid, at, p);
+            self.slay_enemy(i);
+            done.push(i);
+            at = p;
+            struck += 1;
+        }
+        if let Some(bp) = self.boss_target() {
+            if dist_sq(bp, from) <= (ZAP_RANGE + 1.0).powi(2) {
+                self.view.zap(&self.level.grid, from, bp);
+                self.strike_boss(ZAP_DAMAGE, bp);
+                struck += 1;
+            }
+        }
+        if struck > 0 {
+            self.audio.play(Sfx::Zap);
+            self.view.shake(0.2);
+        }
+    }
+
+    /// Bifrost Step (path 5): a flash of spectral light carries him a few tiles ahead.
+    fn bifrost_step(&mut self) {
+        if self.hero.path < 5 {
+            return;
+        }
+        let Some((from, to)) = self.hero.try_step(&self.level.grid) else { return };
+        let grid = &self.level.grid;
+        self.audio.play(Sfx::Whoosh);
+        self.view.zap(grid, from, to);
+        self.view.sparkle(grid, from.x, from.y, 0.6, 0x9af0ff, 18);
+        self.view.sparkle(grid, to.x, to.y, 0.8, 0xfff1ff, 24);
+    }
+
+    /**
+     * The path's safety nets, watched every tick: the World Tree (path 10)
+     * restores him once per dungeon when he falls to a quarter of his health.
+     */
+    fn watch_health(&mut self) {
+        if self.hero.path >= 10 && !self.restored && self.hero.alive && (self.hero.hp as f64) <= self.hero.max_hp as f64 * path::TREE_AT {
+            self.restored = true;
+            self.hero.restore();
+            let hp = self.hero.pos();
+            let n = progression::node(self.hero_kind, Tree::Path, 10);
+            self.audio.play(Sfx::Heal);
+            self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.0, 0x6ae86a, 50);
+            self.juice.hp_flash = 1.0;
+            self.juice.hp_flash_color = 0x5cff6a;
+            self.juice.banner = Some(Banner { text: n.ability.to_uppercase(), sub: "FULLY RESTORED".into(), color: 0x6ae86a, life: 2.0, max: 2.0 });
+        }
+    }
+
+    /// Stepping onto the hidden shrine takes its relic and a rune fragment.
+    fn visit_relic_shrine(&mut self) {
+        let Some(t) = self.relic_shrine else { return };
+        if self.hero.airborne() || self.hero.occupied() != t {
+            return;
+        }
+        self.relic_shrine = None;
+        self.progress.runes += RUNES_SHRINE;
+        self.audio.play(Sfx::Milestone);
+        self.view.sparkle(&self.level.grid, t.x as f64, t.y as f64, 1.0, 0x9ad1ff, 50);
+        self.floater(t.x as f64, t.y as f64 + 0.6, format!("+{RUNES_SHRINE} RUNE FRAGMENT"), 1.8, Some(0x9ad1ff));
+        self.take_relic(t.v());
+        self.save_progress();
+    }
+
+    /**
+     * A relic of the old heroes, from a hidden shrine or a fallen Cyclops: it
+     * unseals the next sealed tier of the tree that has the most still sealed.
+     */
+    fn take_relic(&mut self, at: V) {
+        let hero = self.hero_kind;
+        let Some(tree) = self.progress.relic_tree(hero) else {
+            // Every tree is open: the relic is worth its weight in silver.
+            self.earn(300);
+            self.floater(at.x, at.y - 1.4, "+300 SILVER", 1.8, Some(0xffd84a));
+            return;
+        };
+        let Some(tier) = self.progress.find_relic(hero, tree) else { return };
+        let n = progression::node(hero, tree, tier);
+        let now = self.progress.hero(hero).has(tree, tier);
+        self.equip_from_progress();
+        self.juice.banner = Some(Banner {
+            text: format!("RELIC: {}", n.name.to_uppercase()),
+            sub: if now {
+                format!("{} {} OF {} IS YOURS", tree.step(), tier, tree.title(hero).to_uppercase())
+            } else {
+                format!("{} {} OF {} UNSEALED   IT IS YOURS ONCE THE TIERS BEFORE IT ARE", tree.step(), tier, tree.title(hero).to_uppercase())
+            },
+            color: n.color,
+            life: 3.2,
+            max: 3.2,
+        });
+        self.view.sparkle(&self.level.grid, at.x, at.y, 1.2, n.color, 40);
+    }
+
+    /**
+     * The gatekeeper's promise: wherever he is, the hero can call for help and
+     * the old man's wares open (the dungeon waits).
+     */
+    pub fn call_old_man(&mut self) {
+        self.audio.play(Sfx::Whoosh);
+        self.shop = ShopState { called: true, ..ShopState::default() };
+        self.enter(Screen::Shop);
+        self.juice.fade = 1.0;
+        self.input.consume(Action::Attack);
+        self.input.consume(Action::Confirm);
     }
 
     /// Adds points, doubled while a BRUTAL streak's reward runs. Returns what was added.
@@ -1706,9 +2064,9 @@ impl Game {
         self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.8, 0xff5a3a, 30);
     }
 
-    /// Coins in the purse, and the counter jumps.
+    /// Silver in the purse, and the counter jumps.
     fn earn(&mut self, coins: u32) {
-        self.purse += coins;
+        self.progress.silver += coins;
         self.juice.coin_punch = 1.0;
     }
 
@@ -1726,7 +2084,7 @@ impl Game {
 
     /// A potion's effect, from the belt or picked up.
     fn quaff(&mut self, kind: PotionKind) {
-        let def = gear::potion(kind);
+        let def = gear::potion(self.hero_kind, kind);
         let hp = self.hero.pos();
         let mut label = format!("{}!", def.name.to_uppercase());
         if kind == PotionKind::Life {
@@ -1752,6 +2110,22 @@ impl Game {
         let base = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.earn(COINS_KILL);
         self.enemies[i].kill();
+        let at = self.enemies[i].pos();
+        if self.hero.path >= 8 {
+            // Terrify: the lesser foes around the kill flee in blind panic.
+            let grid = &self.level.grid;
+            for (k, e) in self.enemies.iter_mut().enumerate() {
+                if k != i && e.is_dangerous() && dist_sq(e.pos(), at) <= path::TERROR_RADIUS * path::TERROR_RADIUS {
+                    e.scare(grid, path::TERROR_SECONDS);
+                }
+            }
+        }
+        if self.rng.next() < RUNE_DROP {
+            self.progress.runes += 1;
+            self.audio.play(Sfx::Milestone);
+            self.view.sparkle(&self.level.grid, at.x, at.y, 0.8, 0x9ad1ff, 20);
+            self.floater(at.x, at.y - 1.2, "RUNE FRAGMENT", 1.6, Some(0x9ad1ff));
+        }
         self.kill_streak = if self.streak_timer > 0.0 { self.kill_streak + 1 } else { 1 };
         self.streak_timer = STREAK_SECONDS;
         self.audio.play_kill(self.kill_streak - 1);
@@ -1783,10 +2157,9 @@ impl Game {
         if !self.hero.holding_pickup() && self.hero.weapon != crate::logic::items::WeaponKind::Ranged(kind) {
             // The shrine weapon ran dry; his own is back in hand.
             let hp = self.hero.pos();
-            let (name, color) = crate::logic::items::weapon_label(self.hero.weapon, self.hero.axe_level);
+            let (name, color) = crate::logic::items::weapon_label(self.hero_kind, self.hero.weapon, self.hero.blade);
             self.floater(hp.x, hp.y, name.to_uppercase(), 1.2, Some(color));
         }
-        self.zap();
     }
 
     fn update_projectiles(&mut self, dt: f64) {
@@ -1800,6 +2173,7 @@ impl Game {
             if self.projectiles[i].alive {
                 let (pos, radius) = (self.projectiles[i].pos, self.projectiles[i].def.hit_radius);
                 let hits = find_projectile_hits(pos, radius, &self.enemies, &self.projectiles[i].struck);
+                let mut hit_at = hits.first().map(|_| pos);
                 for e in hits {
                     self.slay_enemy(e);
                     self.projectiles[i].struck.insert(e);
@@ -1813,19 +2187,25 @@ impl Game {
                 if let Some(bp) = self.boss_target() {
                     let p = &self.projectiles[i];
                     if p.alive && !p.struck.contains(&usize::MAX) && dist_sq(p.pos, bp).sqrt() <= radius + BODY_RADIUS {
-                        let dmg = p.def.damage * self.hero.might();
-                        let burns = p.def.burn;
+                        let base = p.def.damage;
                         let at = p.pos;
                         self.projectiles[i].struck.insert(usize::MAX);
                         if !self.projectiles[i].def.pierce {
                             self.projectiles[i].alive = false;
                         }
-                        if self.wound_boss(dmg, at) && burns {
-                            if self.boss_burn <= 0.0 {
-                                self.burn_tick = BURN_TICK;
-                            }
-                            self.boss_burn = BURN_SECONDS;
-                        }
+                        self.strike_boss(base, at);
+                        hit_at = Some(at);
+                    }
+                }
+                // Mjolnir: its first strike of each throw calls down chain lightning.
+                let chain = match self.projectiles[i].kind {
+                    crate::logic::items::RangedKind::Hurled(t) => progression::blade(t).chain,
+                    _ => 0,
+                };
+                if chain > 0 && !self.projectiles[i].struck.contains(&(usize::MAX - 1)) {
+                    if let Some(at) = hit_at {
+                        self.projectiles[i].struck.insert(usize::MAX - 1);
+                        self.chain_lightning(at, chain);
                     }
                 }
             } else if state == ShotState::Wall {
@@ -1929,7 +2309,28 @@ impl Game {
             if !same_tile && dist_sq(e.pos(), hp) > COLLISION_RADIUS_SQ {
                 continue;
             }
-            if self.hurt_hero(CONTACT_DAMAGE) {
+            if self.hero.fx.fire > 0.0 {
+                // Dragonfire: whatever lays a claw on him burns to ash.
+                let p = self.enemies[i].pos();
+                self.view.sparkle(&self.level.grid, p.x, p.y, 0.8, 0xff7a2a, 24);
+                self.slay_enemy(i);
+                continue;
+            }
+            let died = self.hurt_hero(CONTACT_DAMAGE);
+            if self.hero.blocked_hit {
+                self.hero.blocked_hit = false;
+                let ward = self.hero.shield.map(|s| progression::ward(s.tier));
+                if let Some(w) = ward {
+                    if w.bash && self.enemies[i].is_dangerous() {
+                        // The rim strikes back: the foe whose blow it caught goes down.
+                        self.slay_enemy(i);
+                    }
+                    if w.stagger {
+                        self.stun_around(hp, STAGGER_RADIUS, STAGGER_SECONDS);
+                    }
+                }
+            }
+            if died {
                 return;
             }
         }
@@ -1937,7 +2338,7 @@ impl Game {
 
     /// Applies damage with shield and invincibility rules. Returns true if the hero died.
     fn hurt_hero(&mut self, amount: i32) -> bool {
-        let result = self.hero.take_damage(amount);
+        let result = if amount > 0 { self.hero.take_damage(amount) } else { DamageResult::Immune };
         let hp = self.hero.pos();
         if self.hero.shield_broke {
             self.hero.shield_broke = false;
@@ -1964,6 +2365,18 @@ impl Game {
                 self.juice.hurt = 1.0;
                 self.juice.hp_flash = 1.0;
                 self.juice.hp_flash_color = 0xff4d4d;
+                if !self.hero.alive && self.hero.path >= 9 && !self.revived {
+                    // Valkyrie Call: once in each dungeon, a fatal blow is not the end.
+                    self.revived = true;
+                    self.hero.alive = true;
+                    self.hero.hp = self.hero.max_hp / 2;
+                    self.hero.invuln = 2.0;
+                    let n = progression::node(self.hero_kind, Tree::Path, 9);
+                    self.audio.play(Sfx::Heal);
+                    self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.4, 0xfff1a8, 60);
+                    self.juice.banner = Some(Banner { text: n.ability.to_uppercase(), sub: "RAISED AGAIN WITH HALF YOUR HEALTH".into(), color: 0xfff1a8, life: 2.2, max: 2.2 });
+                    return false;
+                }
                 if !self.hero.alive {
                     self.kill_hero();
                     return true;
@@ -2106,11 +2519,15 @@ impl Game {
         }
     }
 
-    /// Capture hook: own and equip weapon `line` at `level`.
-    pub fn debug_arm(&mut self, line: gear::Line, level: u8) {
-        self.arsenal.levels[line.index()] = level.clamp(1, 3);
-        self.arsenal.equipped = line;
-        self.hero.arm(&self.arsenal);
+    /// Capture hook: own everything up to `tier` in every tree, and take tier `tier` weapon and shield.
+    pub fn debug_arm(&mut self, tier: u8) {
+        let tier = tier.clamp(1, progression::TIERS);
+        let h = self.progress.hero_mut(self.hero_kind);
+        h.owned = [tier; 4];
+        h.wield = tier;
+        h.carry = tier;
+        self.hero.shield = Some(ShieldGear::new(tier));
+        self.equip_from_progress();
     }
 
     /// Capture hook: drink a potion without owning it.
@@ -2433,12 +2850,13 @@ mod tests {
         assert!(g.quit_requested);
         assert_eq!(g.screen, Screen::Title);
 
-        // Pause offers Resume / Quit to Title / Quit Game; clicking a button picks it.
+        // Pause offers Resume / Call the Old Man / Quit to Title / Quit Game; clicking a button picks it.
         let mut g = playing();
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Paused);
-        let r = crate::render::hud::menu_rects(Screen::Paused, 3, g.viewport.0, g.viewport.1)[1];
+        assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::QuitToTitle, MenuItem::Quit]);
+        let r = crate::render::hud::menu_rects(Screen::Paused, 4, g.viewport.0, g.viewport.1)[2];
         g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
         g.input.mouse_button(winit::event::MouseButton::Left, true);
         g.update(crate::app::STEP);
@@ -2522,11 +2940,13 @@ mod tests {
         }
         assert_eq!(g.screen, Screen::Won);
         assert!(g.events.contains(&GameEvent::BossSlain));
-        assert!(g.purse >= COINS_BOSS, "the boss pays out");
+        assert!(g.progress.silver >= COINS_BOSS, "the boss pays out");
+        assert!(g.progress.runes >= RUNES_BOSS, "and leaves rune fragments");
+        assert!((0..4).any(|t| g.progress.hero(g.hero_kind).relics[t] != 0), "and a relic");
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
-        assert_eq!(g.screen, Screen::Shop, "the blacksmith comes after the boss");
-        // Leave the forge: on to dungeon II, where only the smith sells gear.
+        assert_eq!(g.screen, Screen::Shop, "the old man comes after the boss");
+        // Leave him: on to dungeon II, where only the old man sells gear.
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         g.input.inject(Action::Pause);
@@ -2538,10 +2958,10 @@ mod tests {
     }
 
     #[test]
-    fn the_blacksmith_sells_upgrades_and_equips() {
+    fn the_old_man_sells_each_tree_in_order_and_equips() {
         let mut g = playing();
         g.open_shop();
-        g.purse = 2000;
+        g.progress.silver = 5000;
         let press = |g: &mut Game, action: ShopAction| {
             let rows = g.shop_rows();
             let (r, c) = rows
@@ -2554,32 +2974,106 @@ mod tests {
             g.input.inject(Action::Confirm);
             g.update(crate::app::STEP);
         };
-        use crate::logic::gear::Line;
-        press(&mut g, ShopAction::Buy(Line::Knife));
-        assert_eq!(g.arsenal.level(Line::Knife), 1);
-        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Knife), "bought weapons go straight to hand");
-        press(&mut g, ShopAction::Upgrade(Line::Knife));
-        press(&mut g, ShopAction::Upgrade(Line::Knife));
-        assert_eq!(g.arsenal.level(Line::Knife), 3);
-        assert_eq!(g.hero.weapon, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::SeekingKnives));
-        press(&mut g, ShopAction::Equip(Line::Axe));
-        assert_eq!(g.hero.weapon, crate::logic::items::WeaponKind::Sword);
-        press(&mut g, ShopAction::Upgrade(Line::Axe));
-        assert_eq!(g.hero.axe_level, 2);
-        let spent = 2000 - g.purse;
-        assert_eq!(spent, Line::Knife.price() + Line::Knife.upgrade_price(1) + Line::Knife.upgrade_price(2) + Line::Axe.upgrade_price(1));
-        g.shop.tab = ShopTab::Shields;
-        press(&mut g, ShopAction::BuyShield(ShieldKind::Kite));
-        assert_eq!(g.hero.shield.unwrap().kind, ShieldKind::Kite);
-        g.shop.tab = ShopTab::Potions;
+        // Tier 3 cannot be had before tier 2.
+        press(&mut g, ShopAction::Unlock(Tree::Armory, 3));
+        assert_eq!(g.progress.hero(g.hero_kind).owned(Tree::Armory), 1);
+        press(&mut g, ShopAction::Unlock(Tree::Armory, 2));
+        assert_eq!(g.hero.blade, 2, "a new weapon goes straight to hand");
+        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Hurled(2)), "Skofnung is thrown");
+        press(&mut g, ShopAction::Wield(1));
+        assert_eq!(g.hero.blade, 1);
+        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Sword);
+        assert_eq!(g.progress.silver, 5000 - progression::price(Tree::Armory, 2).silver);
+        g.shop.tab = Tree::Path;
+        press(&mut g, ShopAction::Unlock(Tree::Path, 1));
+        assert_eq!(g.hero.path, 1, "the skill is his at once");
+        g.shop.tab = Tree::Shield;
+        press(&mut g, ShopAction::Unlock(Tree::Shield, 2));
+        assert_eq!(g.hero.shield.unwrap().tier, 2);
+        g.shop.tab = Tree::Elixir;
         let before = g.belt.len();
-        press(&mut g, ShopAction::Potion(PotionKind::Strength));
+        press(&mut g, ShopAction::Bottle(PotionKind::Health));
         assert_eq!(g.belt.len(), before + 1);
+        // An elixir must be unlocked before its bottles are sold.
+        assert!(g.shop_rows().iter().flat_map(|r| &r.buttons).all(|b| b.action != ShopAction::Bottle(PotionKind::Strength)));
         // Too poor: nothing changes hands.
-        g.purse = 10;
-        press(&mut g, ShopAction::Potion(PotionKind::Invulnerability));
-        assert_eq!(g.purse, 10);
-        assert_eq!(g.belt.len(), before + 1);
+        g.progress.silver = 10;
+        press(&mut g, ShopAction::Unlock(Tree::Elixir, 2));
+        assert_eq!(g.progress.silver, 10);
+        assert_eq!(g.progress.hero(g.hero_kind).owned(Tree::Elixir), 1);
+    }
+
+    #[test]
+    fn the_old_man_can_be_called_from_the_dungeon_and_it_waits() {
+        let mut g = playing();
+        let at = g.hero.pos();
+        g.input.key_down(winit::keyboard::KeyCode::KeyH, false);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Shop);
+        assert!(g.shop.called);
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Ready, "back to the same dungeon after a countdown");
+        assert_eq!(g.dungeon, 0);
+        assert_eq!(g.hero.pos(), at, "where he was");
+    }
+
+    #[test]
+    fn each_dungeon_hides_a_shrine_with_a_relic() {
+        let mut g = playing();
+        let t = g.relic_shrine.expect("a hidden shrine");
+        assert_eq!(g.level.grid.get(t.x, t.y), Tile::Open);
+        let runes = g.progress.runes;
+        g.hero.m.teleport(t);
+        g.update(crate::app::STEP);
+        assert!(g.relic_shrine.is_none());
+        assert_eq!(g.progress.runes, runes + RUNES_SHRINE);
+        assert!((0..4).any(|i| g.progress.hero(g.hero_kind).relics[i] != 0));
+    }
+
+    #[test]
+    fn the_path_revives_and_restores_once_per_dungeon() {
+        let mut g = playing();
+        g.progress.hero_mut(g.hero_kind).owned[1] = 10;
+        g.equip_from_progress();
+        g.hero.shield = None;
+        g.hero.hp = 20;
+        g.update(crate::app::STEP);
+        assert_eq!(g.hero.hp, g.hero.max_hp, "the World Tree restores him at a quarter health");
+        g.hero.hp = 20;
+        g.update(crate::app::STEP);
+        assert_eq!(g.hero.hp, 20, "only once");
+        g.hero.invuln = 0.0;
+        g.hurt_hero(500);
+        assert!(g.hero.alive, "the Valkyrie raises him");
+        assert_eq!(g.hero.hp, g.hero.max_hp / 2);
+        g.hero.invuln = 0.0;
+        g.hurt_hero(500);
+        assert!(!g.hero.alive, "but only once");
+    }
+
+    #[test]
+    fn the_blades_carry_their_gifts() {
+        let mut g = playing();
+        // Tier 4 stuns the foes around the blow.
+        g.debug_arm(4);
+        let hp = g.hero.pos();
+        for e in g.enemies.iter_mut() {
+            e.b.mode = EnemyMode::Chase;
+            e.m.teleport(P::new(hp.x as i32 - 2, hp.y as i32));
+        }
+        g.hero.facing = Dir::Right;
+        g.hero.attack_cooldown = 0.0;
+        assert!(g.hero.try_attack());
+        g.perform_attack();
+        assert!(g.enemies.iter().all(|e| e.is_stunned()), "the oath binds them");
+        // Tier 6 leaves a decoy.
+        g.debug_arm(6);
+        g.hero.attack_cooldown = 0.0;
+        g.perform_attack();
+        assert!(g.decoy.is_some());
     }
 
     #[test]
@@ -2589,7 +3083,7 @@ mod tests {
         g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Shop);
-        assert!(g.purse >= CHEAT_COINS);
+        assert!(g.progress.silver >= CHEAT_COINS);
         let mut g = playing();
         g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
         g.update(crate::app::STEP);
@@ -2644,12 +3138,12 @@ mod tests {
     #[test]
     fn shields_wear_down_and_break() {
         let mut g = playing();
-        g.hero.shield = Some(ShieldGear::new(ShieldKind::Round));
+        g.hero.shield = Some(ShieldGear::new(1));
         let hp = g.hero.hp;
-        g.debug_hurt(); // 25: the round shield takes half
+        g.debug_hurt(); // 25: the first shield takes 40%
         assert!(g.hero.hp < hp && g.hero.hp > hp - 25, "shield took no share: {}", g.hero.hp);
         let left = g.hero.shield.unwrap().durability;
-        assert!(left < gear::shield(ShieldKind::Round).durability);
+        assert!(left < ShieldGear::new(1).max());
         for _ in 0..10 {
             g.debug_hurt();
             g.hero.hp = 100;
@@ -2664,13 +3158,13 @@ mod tests {
         g.hero.hp = 40;
         g.input.inject(Action::Slot(1));
         g.update(crate::app::STEP);
-        assert_eq!(g.hero.hp, 90);
+        assert_eq!(g.hero.hp, 40 + crate::logic::hero::HEALTH_POTION);
         assert_eq!(g.belt, vec![PotionKind::Strength]);
         g.input.inject(Action::Drink);
         g.update(crate::app::STEP);
         assert!(g.belt.is_empty());
         assert!(g.hero.fx.strength > 0.0);
-        assert_eq!(g.hero.might(), 2);
+        assert_eq!(g.hero.blow(1), 3);
     }
 
     #[test]

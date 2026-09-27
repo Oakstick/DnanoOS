@@ -7,7 +7,16 @@
 //! the front (the face), x across. Characters face +z.
 
 use super::voxels::{Collected, PartDef, Voxel};
-use crate::logic::gear::ShieldKind;
+use crate::logic::progression::Form;
+
+/// The shields the small portrait model can carry.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShieldKind {
+    Round,
+    IronRound,
+    Kite,
+    Dreadnought,
+}
 
 pub struct Sculpt {
     w: i32,
@@ -480,19 +489,6 @@ mod hd {
     pub const WRAP: u32 = 0xb89a68 | mat::LEATHER;
     pub const BOOT: u32 = 0x4e321a | mat::LEATHER;
     pub const BOOT_D: u32 = 0x33200f | mat::LEATHER;
-    pub const WOOD: u32 = 0x9a6a3a | mat::WOOD;
-    pub const WOOD_D: u32 = 0x7a522a | mat::WOOD;
-    pub const HAFT: u32 = 0x6b3f1d | mat::WOOD;
-    pub const DARK_HAFT: u32 = 0x3e2412 | mat::WOOD;
-    pub const IRON: u32 = 0x5a616b | mat::METAL;
-    pub const STEEL: u32 = 0xc8d0da | mat::METAL;
-    pub const STEEL_D: u32 = 0x8a929e | mat::METAL;
-    pub const EDGE: u32 = 0xf2f5f8 | mat::METAL;
-    pub const PLATE: u32 = 0xa8b4c4 | mat::METAL;
-    pub const WRAP_RED: u32 = 0x9a1c22 | mat::LEATHER;
-    pub const GILT: u32 = 0xffd84a | mat::GOLD;
-    pub const PAINT_RED: u32 = 0xb8242a | mat::WOOD;
-    pub const PAINT_CREAM: u32 = 0xe9dcbc | mat::WOOD;
 }
 
 /// A ball of voxels.
@@ -505,9 +501,11 @@ fn blob(s: &mut Sculpt, c: (f32, f32, f32), r: f32, color: u32) {
  * the world): a riveted spangenhelm with ivory horns, a braided fur beard, a
  * fur mantle, a woven tunic with embroidered trim, a stitched belt with a
  * gold buckle and a pouch, laced bracers, cross-gartered trousers, fur-cuffed
- * boots. 30 wide, 46 tall, 18 deep; voxels carry materials.
+ * boots, and a shield of his tree (form, colour, tier) slung on his back, or
+ * none. His weapon is a model of its own (see `armory`), held in his right
+ * fist. 30 wide, 46 tall, 18 deep; voxels carry materials.
  */
-pub fn ragnar_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
+pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     use hd::*;
     let mut s = Sculpt::new(30, 46, 18);
 
@@ -595,8 +593,8 @@ pub fn ragnar_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
     s.set(20, 16, 15, GOLD);
 
     // ---- the shield on his back
-    if let Some(kind) = shield {
-        back_shield_hd(&mut s, kind);
+    if let Some((form, color, tier)) = shield {
+        super::armory::back_shield(&mut s, form, color, tier);
     }
 
     // ---- arms: sleeves, laced bracers, hands
@@ -613,7 +611,9 @@ pub fn ragnar_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
             s.set(x, 13, 10, SKIN_D);
         }
     }
-    hand_axe_hd(&mut s, axe_level);
+    // The right fist, closed round whatever he holds.
+    s.cuboid(24, 13, 6, 27, 16, 10, SKIN);
+    s.cuboid(24, 13, 10, 27, 13, 10, SKIN_D);
 
     // ---- fur mantle over the shoulders, with tufts hanging from its edge
     s.ellipsoid((14.5, 28.5, 7.5), (11.8, 3.2, 6.3), 26, FUR);
@@ -756,125 +756,6 @@ pub fn ragnar_hd(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
         }
     }
     s.finish(0.035)
-}
-
-/// Ragnar's axe at each level, in his right hand (x 26..27, blade forward).
-fn hand_axe_hd(s: &mut Sculpt, level: u8) {
-    use hd::*;
-    let blade = |s: &mut Sculpt, profile: &[(i32, i32, i32)], body: u32, edge: u32| {
-        let last = profile.len() - 1;
-        for (i, &(z, y0, y1)) in profile.iter().enumerate() {
-            for y in y0..=y1 {
-                for x in 26..=27 {
-                    s.set(x, y, z, if i == last { edge } else { body });
-                }
-            }
-        }
-    };
-    match level {
-        1 => {
-            for y in 8..=36 {
-                s.cuboid(26, y, 8, 27, y, 9, if (12..=19).contains(&y) && y % 2 == 0 { LEATHER_D } else { HAFT });
-            }
-            blade(s, &[(10, 31, 35), (11, 30, 35), (12, 29, 36), (13, 28, 36), (14, 27, 36), (15, 26, 36), (16, 26, 36)], STEEL, EDGE);
-            s.cuboid(25, 32, 7, 28, 35, 10, STEEL_D);
-            s.set(25, 34, 10, RIVET);
-            s.set(28, 34, 10, RIVET);
-        }
-        2 => {
-            for y in 7..=36 {
-                s.cuboid(26, y, 8, 27, y, 9, if (18..=26).contains(&y) && y % 2 == 0 { WRAP_RED } else { HAFT });
-            }
-            blade(s, &[(10, 29, 36), (11, 28, 36), (12, 27, 37), (13, 26, 37), (14, 25, 37), (15, 24, 37), (16, 24, 37)], STEEL_D, EDGE);
-            s.cuboid(25, 31, 7, 28, 35, 10, IRON);
-            for z in 3..=6 {
-                s.cuboid(26, 32, z, 27, 33, z, STEEL_D);
-            }
-            s.cuboid(26, 37, 8, 27, 37, 9, STEEL_D);
-        }
-        _ => {
-            for y in 6..=36 {
-                s.cuboid(26, y, 8, 27, y, 9, if y % 6 == 0 { GILT } else { DARK_HAFT });
-            }
-            blade(s, &[(10, 28, 36), (11, 27, 36), (12, 26, 37), (13, 25, 37), (14, 24, 37), (15, 23, 37), (16, 23, 37)], STEEL, GILT);
-            blade(s, &[(7, 28, 36), (6, 27, 36), (5, 26, 37), (4, 25, 37), (3, 24, 37), (2, 23, 37), (1, 23, 37)], STEEL, GILT);
-            s.cuboid(25, 30, 7, 28, 35, 10, GILT);
-            s.cuboid(26, 37, 8, 27, 37, 9, GILT);
-        }
-    }
-    // The fist around the haft.
-    s.cuboid(24, 13, 6, 27, 16, 10, SKIN);
-    s.cuboid(24, 13, 10, 27, 13, 10, SKIN_D);
-}
-
-/// The shield on his back: its face at z 0..1, rim and boss standing out.
-fn back_shield_hd(s: &mut Sculpt, kind: ShieldKind) {
-    use hd::*;
-    for y in 8..=34 {
-        for x in 3..=26 {
-            let (dx, dy) = (x as f32 - 14.5, y as f32 - 21.0);
-            let r = (dx * dx + dy * dy).sqrt();
-            let (face, raised) = match kind {
-                ShieldKind::Round | ShieldKind::IronRound => {
-                    if r > 9.0 {
-                        continue;
-                    }
-                    let rim = r > 8.0;
-                    let boss = r < 2.3;
-                    let rivet = (r - 8.5).abs() < 0.5 && (dx.atan2(dy) * 12.0 / std::f32::consts::TAU).fract().abs() < 0.12;
-                    let face = if kind == ShieldKind::Round {
-                        if rim || boss {
-                            IRON
-                        } else if x % 4 == 0 {
-                            WOOD_D
-                        } else if (x / 4) % 2 == 0 {
-                            WOOD
-                        } else {
-                            PAINT_RED
-                        }
-                    } else if boss {
-                        GOLD
-                    } else if rim {
-                        STEEL_D
-                    } else if (r - 5.4).abs() < 0.45 && (x + y) % 2 == 0 {
-                        RIVET
-                    } else {
-                        PLATE
-                    };
-                    (if rivet { RIVET } else { face }, rim || boss)
-                }
-                ShieldKind::Kite | ShieldKind::Dreadnought => {
-                    let half = if y >= 22 { 9.0 } else { 9.0 * (y as f32 - 8.0) / 14.0 + 0.8 };
-                    if dx.abs() > half || y > 33 {
-                        continue;
-                    }
-                    let rim = dx.abs() > half - 1.2 || y == 33;
-                    let face = if kind == ShieldKind::Kite {
-                        if rim {
-                            IRON
-                        } else if (dx >= 0.0) != (dy >= 2.0) {
-                            PAINT_RED
-                        } else {
-                            PAINT_CREAM
-                        }
-                    } else if rim {
-                        GOLD
-                    } else if (x + y) % 3 == 0 && dx.abs() > half - 2.6 {
-                        RIVET
-                    } else if dx.abs() < 0.8 || y == 24 {
-                        STEEL_D
-                    } else {
-                        PLATE
-                    };
-                    (face, rim)
-                }
-            };
-            s.set(x, y, 1, face);
-            if raised {
-                s.set(x, y, 0, face);
-            }
-        }
-    }
 }
 
 /// The detailed Ragnar's joints, in its doubled grid.
@@ -1858,9 +1739,9 @@ mod tests {
             (ragnar(), RAGNAR_RIG),
             (ragnar_geared(3, Some(ShieldKind::Dreadnought)), RAGNAR_RIG),
             (ragnar_geared(2, None), RAGNAR_RIG),
-            (ragnar_hd(1, Some(ShieldKind::Round)), RAGNAR_HD_RIG),
-            (ragnar_hd(3, Some(ShieldKind::Dreadnought)), RAGNAR_HD_RIG),
-            (ragnar_hd(2, Some(ShieldKind::Kite)), RAGNAR_HD_RIG),
+            (ragnar_hd(Some((Form::Round, 0xb8864a, 1))), RAGNAR_HD_RIG),
+            (ragnar_hd(Some((Form::Kite, 0x8fa8c8, 8))), RAGNAR_HD_RIG),
+            (ragnar_hd(None), RAGNAR_HD_RIG),
             (blacksmith(), BLACKSMITH_RIG),
             (draugr(), DRAUGR_RIG),
             (raven(false), RAVEN_RIG),
@@ -1879,15 +1760,15 @@ mod tests {
 
     #[test]
     fn detailed_ragnar_carries_materials() {
-        let model = ragnar_hd(1, Some(ShieldKind::Round));
+        let model = ragnar_hd(Some((Form::Round, 0xb8864a, 1)));
         let rig = build_rig(&model, RAGNAR_HD_RIG, 0.025);
         let shades: std::collections::HashSet<i32> = rig.parts.iter().flat_map(|p| p.shade.iter().map(|&s| s as i32)).collect();
         for m in 6..=13 {
             assert!(shades.contains(&m), "no voxels of material {m}");
         }
-        // The axe goes with the arm, the horns with the head.
+        // The fist goes with the arm, the horns with the head.
         let arm = &rig.parts[rig.index("swordArm").unwrap()];
-        assert!(arm.cubes.len() > 150, "sword arm has {} cubes", arm.cubes.len());
+        assert!(arm.cubes.len() > 60, "sword arm has {} cubes", arm.cubes.len());
     }
 
     #[test]
