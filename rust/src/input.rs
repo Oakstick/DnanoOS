@@ -316,7 +316,11 @@ impl Input {
         self.held.last().copied().unwrap_or(Dir::None)
     }
 
-    /// Every held direction added up (for free movement: W and D together run diagonally).
+    /**
+     * Free movement's direction, one of eight (or none): held keys add up, so
+     * W and D together run diagonally and opposite keys cancel; the left stick
+     * snaps to the nearest of eight directions. Unit length.
+     */
     pub fn move_vector(&self) -> (f64, f64) {
         let mut v = (0.0, 0.0);
         let mut add = |d: Dir| {
@@ -324,6 +328,11 @@ impl Input {
             v.0 += x as f64;
             v.1 += y as f64;
         };
+        let stick = self.pad.as_ref().filter(|p| p.dpad.is_none()).map(|p| p.left).filter(|&(x, y)| x.abs().max(y.abs()) >= MOVE_DEADZONE);
+        if let Some((x, y)) = stick {
+            let a = ((y as f64).atan2(x as f64) / std::f64::consts::FRAC_PI_4).round() * std::f64::consts::FRAC_PI_4;
+            return (a.cos(), a.sin());
+        }
         if self.pad_dir != Dir::None {
             add(self.pad_dir);
         } else if self.touch_dir != Dir::None {
@@ -337,7 +346,12 @@ impl Input {
                 }
             }
         }
-        v
+        let len = (v.0 * v.0 + v.1 * v.1).sqrt();
+        if len > 0.0 {
+            (v.0 / len, v.1 / len)
+        } else {
+            (0.0, 0.0)
+        }
     }
 
     pub fn clear_direction(&mut self) {
@@ -391,4 +405,22 @@ fn curve(v: f32) -> f32 {
     }
     let t = (v.abs() - LOOK_DEADZONE) / (1.0 - LOOK_DEADZONE);
     v.signum() * t * t
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_combine_into_eight_directions() {
+        let mut i = Input::new();
+        i.hold_dir(Dir::Up, true);
+        i.hold_dir(Dir::Right, true);
+        let (x, y) = i.move_vector();
+        assert!((x - 0.7071).abs() < 1e-3 && (y + 0.7071).abs() < 1e-3, "up and right run diagonally: {x},{y}");
+        i.hold_dir(Dir::Down, true);
+        assert_eq!(i.move_vector(), (1.0, 0.0), "up and down cancel");
+        i.clear_direction();
+        assert_eq!(i.move_vector(), (0.0, 0.0));
+    }
 }

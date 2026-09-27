@@ -841,8 +841,11 @@ impl Game {
     }
 
     /// Free movement's direction in grid units: the held keys, turned to match the camera behind him.
-    fn free_wish(&self) -> V {
+    fn free_wish(&mut self) -> V {
         let (rx, ry) = self.input.move_vector();
+        // The chase camera swings round behind him only while he runs straight ahead; running
+        // diagonally, sideways or back it holds still, so each of the eight directions stays put.
+        self.view.follow_heading = ry < -0.99;
         if self.view.camera_mode != CameraMode::Third {
             return V::new(rx, ry);
         }

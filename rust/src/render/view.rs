@@ -498,6 +498,8 @@ pub struct WorldView {
     pub aspect: f32,
     /// Title screen: the camera circles Sebastian instead of chasing him.
     pub showcase: bool,
+    /// Free movement: the chase camera turns after him only while he runs straight ahead.
+    pub follow_heading: bool,
     showcase_angle: f32,
     showcase_timer: f32,
 
@@ -597,6 +599,7 @@ impl WorldView {
             mouse_look: false,
             aspect: 16.0 / 9.0,
             showcase: false,
+            follow_heading: false,
             showcase_angle: 0.6,
             showcase_timer: 0.0,
             models,
@@ -1376,7 +1379,7 @@ impl WorldView {
                         if off > PI {
                             off = TAU - off;
                         }
-                        if hero.vel > 0.3 && off < 1.75 {
+                        if hero.vel > 0.3 && off < 1.75 && self.follow_heading {
                             self.cam_yaw = lerp_angle(self.cam_yaw, goal, 1.0 - (-chase::FOLLOW_LERP * 0.6 * dt).exp());
                         }
                     }
