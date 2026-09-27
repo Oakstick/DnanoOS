@@ -1,6 +1,7 @@
 //! Dungeon I dressed as an English landscape garden (`logic::garden` plans
-//! it): a river in a stone-edged channel with lily pads and reeds, a grotto
-//! spring and a waterfall off the island's edge, balustraded stone bridges,
+//! it): channels running from the Krampus fountain (`fountain.rs`) in
+//! stone-edged beds with lily pads and reeds, waterfalls off the island's
+//! edges, balustraded stone bridges,
 //! a churchyard behind iron railings, flower beds inside clipped box hedges,
 //! round classical temples on the lawns and small wayside shrines with
 //! candles. The water itself is drawn each frame (it moves); the rest is
@@ -65,6 +66,7 @@ fn jit(hex: u32, h: f64, amount: f32) -> Vec3 {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Feature {
     Water,
+    Fountain,
     Grave,
     Flowers,
     Temple,
@@ -87,8 +89,11 @@ pub fn features(plan: &GardenPlan) -> HashMap<P, Feature> {
     for p in &plan.shrines {
         map.insert(*p, Feature::Shrine);
     }
-    for r in &plan.river {
+    for r in plan.water() {
         map.insert(r.p, Feature::Water);
+    }
+    if let Some(f) = plan.fountain {
+        map.insert(f.p, Feature::Fountain);
     }
     map
 }
@@ -218,14 +223,20 @@ impl WorldView {
     /// The garden's static geometry. `feature` says what each wall tile became.
     pub(super) fn build_garden(&mut self, grid: &Grid, plan: &GardenPlan, feature: &HashMap<P, Feature>) {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
-        let water: HashMap<P, i32> = plan.river.iter().map(|r| (r.p, r.level)).collect();
+        let water: HashMap<P, i32> = plan.water().map(|r| (r.p, r.level)).collect();
         self.build_river(grid, plan, &water);
         for b in &plan.bridges {
             self.build_stone_bridge(grid, *b);
         }
+        if let Some(f) = plan.fountain {
+            self.build_fountain(grid, f, plan);
+        }
 
         // Churchyard, flowers, temples' lawns, shrines.
         let grave_center = plan.graveyard_center().map(|(x, y)| P::new(x.round() as i32, y.round() as i32));
+        if let (Some((cx, cz)), Some(c)) = (plan.graveyard_center(), grave_center) {
+            self.wisps = Some(Vec3::new(cx, floor_y(c.x, c.y) + 0.1, cz));
+        }
         let mut tree_done = false;
         let mut tomb_done = false;
         let mut candles = 0;
@@ -253,7 +264,7 @@ impl WorldView {
             let start = self.static_cubes.len();
             push_field(&mut self.static_cubes, &temple, pos, 0.0, 1.0, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
             // It fades like a tree when it comes between the camera and Sebastian.
-            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.85, height: 2.0, fade: 1.0, alive: true });
+            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.85, height: 2.0, fade: 1.0, alive: true, shades: None });
             push_field(&mut self.static_cubes, &temple_flame, pos, 0.0, 1.0, Vec3::ONE, lin(0xffb050) * 2.5, SHADE_LIT);
             self.candles.push(pos + Vec3::new(0.0, 0.35, 0.18));
         }
@@ -296,7 +307,7 @@ impl WorldView {
     /// Ground mist: two thin sheets over every tile, a third over water and graves.
     pub(super) fn build_mist(&mut self, grid: &Grid, feature: &HashMap<P, Feature>) {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
-        let water: HashMap<P, i32> = self.garden.as_ref().map(|g| g.river.iter().map(|r| (r.p, r.level)).collect()).unwrap_or_default();
+        let water: HashMap<P, i32> = self.garden.as_ref().map(|g| g.water().map(|r| (r.p, r.level)).collect()).unwrap_or_default();
         self.mist.clear();
         for (x, y, t) in grid.cells() {
             let p = P::new(x, y);
@@ -315,113 +326,126 @@ impl WorldView {
         }
     }
 
-    /// The river's channel: bed, stone banks, weirs, lily pads, reeds, the grotto and the lip of the falls.
+    /// The channels: bed, stone banks, weirs, lily pads, reeds; a grotto where a stream rises from the ground, rocks where one pours off the edge.
     pub(super) fn build_river(&mut self, grid: &Grid, plan: &GardenPlan, water: &HashMap<P, i32>) {
-        let n = plan.river.len();
-        for (i, r) in plan.river.iter().enumerate() {
-            let (x, y) = (r.p.x, r.p.y);
-            let (xf, yf) = (x as f32, y as f32);
-            let (hx, hy) = (x as f64, y as f64);
-            let lv = r.level as f32 * STEP;
-            let bed = lv - BED_DROP;
-            // The bed: a column of mud up to a pebbly floor.
-            cube(&mut self.static_cubes, Vec3::new(xf, (bed - 1.2) / 2.0, yf), Vec3::new(1.0, bed + 1.2, 1.0), 0.0, jit(MUD, hash(hx, hy), 0.1));
-            for k in 0..4 {
-                let hk = hash(hx * 7.0 + k as f64, hy * 3.0) as f32;
-                let hj = hash(hy * 5.0 + k as f64, hx * 2.0) as f32;
-                cube(&mut self.static_cubes, Vec3::new(xf + (hk - 0.5) * 0.8, bed + 0.02, yf + (hj - 0.5) * 0.7), Vec3::new(0.08 + hk * 0.06, 0.04, 0.07 + hj * 0.05), hk * 3.0, lin(PEBBLE[k % 3]));
-            }
-            // Banks wherever the channel meets something that is not river.
-            let bridge = grid.is_bridge(x, y);
-            for d in CARDINALS {
-                let (dx, dy) = d.vec();
-                let np = P::new(x + dx, y + dy);
-                if let Some(&nl) = water.get(&np) {
-                    // A weir where the river steps down into the next reach.
-                    if nl < r.level {
-                        let low = nl as f32 * STEP - BED_DROP;
-                        let at = Vec3::new(xf + dx as f32 * 0.5, (low + lv - WATER_DROP - 0.02) / 2.0, yf + dy as f32 * 0.5);
-                        let s = if dx != 0 { Vec3::new(0.16, lv - WATER_DROP - 0.02 - low, 1.0) } else { Vec3::new(1.0, lv - WATER_DROP - 0.02 - low, 0.16) };
-                        cube(&mut self.static_cubes, at, s, 0.0, lin(BANK[0]));
-                        let lip = Vec3::new(xf + dx as f32 * 0.5, lv - WATER_DROP - 0.03, yf + dy as f32 * 0.5);
-                        cube(&mut self.static_cubes, lip, if dx != 0 { Vec3::new(0.2, 0.05, 1.02) } else { Vec3::new(1.02, 0.05, 0.2) }, 0.0, lin(COPING));
+        let fountain = plan.fountain.map(|f| f.p);
+        for channel in &plan.channels {
+            let n = channel.len();
+            let off_edge = channel.last().is_some_and(|r| r.p.x == 0 || r.p.y == 0 || r.p.x == grid.width - 1 || r.p.y == grid.height - 1);
+            for (i, r) in channel.iter().enumerate() {
+                let (x, y) = (r.p.x, r.p.y);
+                let (xf, yf) = (x as f32, y as f32);
+                let (hx, hy) = (x as f64, y as f64);
+                let lv = r.level as f32 * STEP;
+                let bed = lv - BED_DROP;
+                // The bed: a column of mud up to a pebbly floor.
+                cube(&mut self.static_cubes, Vec3::new(xf, (bed - 1.2) / 2.0, yf), Vec3::new(1.0, bed + 1.2, 1.0), 0.0, jit(MUD, hash(hx, hy), 0.1));
+                for k in 0..4 {
+                    let hk = hash(hx * 7.0 + k as f64, hy * 3.0) as f32;
+                    let hj = hash(hy * 5.0 + k as f64, hx * 2.0) as f32;
+                    cube(&mut self.static_cubes, Vec3::new(xf + (hk - 0.5) * 0.8, bed + 0.02, yf + (hj - 0.5) * 0.7), Vec3::new(0.08 + hk * 0.06, 0.04, 0.07 + hj * 0.05), hk * 3.0, lin(PEBBLE[k % 3]));
+                }
+                // Banks wherever the channel meets something that is not water (the fountain has its own wall).
+                let bridge = grid.is_bridge(x, y);
+                for d in CARDINALS {
+                    let (dx, dy) = d.vec();
+                    let np = P::new(x + dx, y + dy);
+                    if let Some(&nl) = water.get(&np) {
+                        // A weir where the channel steps down into the next reach.
+                        if nl < r.level {
+                            let low = nl as f32 * STEP - BED_DROP;
+                            let at = Vec3::new(xf + dx as f32 * 0.5, (low + lv - WATER_DROP - 0.02) / 2.0, yf + dy as f32 * 0.5);
+                            let s = if dx != 0 { Vec3::new(0.16, lv - WATER_DROP - 0.02 - low, 1.0) } else { Vec3::new(1.0, lv - WATER_DROP - 0.02 - low, 0.16) };
+                            cube(&mut self.static_cubes, at, s, 0.0, lin(BANK[0]));
+                            let lip = Vec3::new(xf + dx as f32 * 0.5, lv - WATER_DROP - 0.03, yf + dy as f32 * 0.5);
+                            cube(&mut self.static_cubes, lip, if dx != 0 { Vec3::new(0.2, 0.05, 1.02) } else { Vec3::new(1.02, 0.05, 0.2) }, 0.0, lin(COPING));
+                        }
+                        continue;
                     }
-                    continue;
+                    // A bridge's deck runs on over the path; off the edge there is nothing to bank.
+                    if !grid.in_bounds(np.x, np.y) || Some(np) == fountain || (bridge && grid.get(np.x, np.y) != Tile::Rock) {
+                        continue;
+                    }
+                    let turn = if dx != 0 { PI / 2.0 } else { 0.0 };
+                    let top = lv + 0.03;
+                    let at = |u: f32, hgt: f32| Vec3::new(xf + dx as f32 * 0.45 + if dx != 0 { 0.0 } else { u }, hgt, yf + dy as f32 * 0.45 + if dx != 0 { u } else { 0.0 });
+                    // Squared stones in courses, and a coping along the top.
+                    let mut u = -0.5;
+                    let mut k = 0;
+                    while u < 0.5 {
+                        let hk = hash(hx * 3.0 + k as f64 + dx as f64 * 5.0, hy * 7.0 + dy as f64 * 3.0) as f32;
+                        let len = (0.2 + hk * 0.12).min(0.5 - u);
+                        cube(&mut self.static_cubes, at(u + len / 2.0, (bed + top) / 2.0), Vec3::new(len - 0.01, top - bed, 0.1), turn, jit(BANK[k % 3], hk as f64, 0.06));
+                        u += len;
+                        k += 1;
+                    }
+                    cube(&mut self.static_cubes, at(0.0, top + 0.025), Vec3::new(1.0, 0.05, 0.16), turn, lin(COPING));
+                    // Reeds along some banks.
+                    if !bridge && hash(hx * 11.0 + dx as f64, hy * 13.0 + dy as f64) < 0.45 {
+                        for b in 0..5 {
+                            let hb = hash(hx * 17.0 + b as f64, hy + dy as f64 * 3.0 + dx as f64) as f32;
+                            let tall = 0.22 + hb * 0.2;
+                            let base = at((hb - 0.5) * 0.8, lv - WATER_DROP) - Vec3::new(dx as f32, 0.0, dy as f32) * 0.09;
+                            let m = Mat4::from_translation(base) * Mat4::from_rotation_z((hb - 0.5) * 0.3) * Mat4::from_translation(Vec3::new(0.0, tall / 2.0, 0.0)) * Mat4::from_scale(Vec3::new(0.014, tall, 0.014));
+                            self.static_cubes.push(Instance::new(m, lin(REED), 1.0, Vec3::ZERO, SHADE_LIT));
+                            if b % 2 == 0 {
+                                cube(&mut self.static_cubes, base + Vec3::new(0.0, tall * 0.85, 0.0), Vec3::new(0.028, 0.07, 0.028), 0.0, lin(CATTAIL));
+                            }
+                        }
+                    }
                 }
-                if !grid.in_bounds(np.x, np.y) || (bridge && dx == 0) {
-                    continue;
-                }
-                let turn = if dx != 0 { PI / 2.0 } else { 0.0 };
-                let top = lv + 0.03;
-                let at = |u: f32, hgt: f32| Vec3::new(xf + dx as f32 * 0.45 + if dx != 0 { 0.0 } else { u }, hgt, yf + dy as f32 * 0.45 + if dx != 0 { u } else { 0.0 });
-                // Squared stones in courses, and a coping along the top.
-                let mut u = -0.5;
-                let mut k = 0;
-                while u < 0.5 {
-                    let hk = hash(hx * 3.0 + k as f64 + dx as f64 * 5.0, hy * 7.0 + dy as f64 * 3.0) as f32;
-                    let len = (0.2 + hk * 0.12).min(0.5 - u);
-                    cube(&mut self.static_cubes, at(u + len / 2.0, (bed + top) / 2.0), Vec3::new(len - 0.01, top - bed, 0.1), turn, jit(BANK[k % 3], hk as f64, 0.06));
-                    u += len;
-                    k += 1;
-                }
-                cube(&mut self.static_cubes, at(0.0, top + 0.025), Vec3::new(1.0, 0.05, 0.16), turn, lin(COPING));
-                // Reeds along some banks.
-                if !bridge && hash(hx * 11.0 + dx as f64, hy * 13.0 + dy as f64) < 0.45 {
-                    for b in 0..5 {
-                        let hb = hash(hx * 17.0 + b as f64, hy + dy as f64 * 3.0 + dx as f64) as f32;
-                        let tall = 0.22 + hb * 0.2;
-                        let base = at((hb - 0.5) * 0.8, lv - WATER_DROP) - Vec3::new(dx as f32, 0.0, dy as f32) * 0.09;
-                        let m = Mat4::from_translation(base) * Mat4::from_rotation_z((hb - 0.5) * 0.3) * Mat4::from_translation(Vec3::new(0.0, tall / 2.0, 0.0)) * Mat4::from_scale(Vec3::new(0.014, tall, 0.014));
-                        self.static_cubes.push(Instance::new(m, lin(REED), 1.0, Vec3::ZERO, SHADE_LIT));
-                        if b % 2 == 0 {
-                            cube(&mut self.static_cubes, base + Vec3::new(0.0, tall * 0.85, 0.0), Vec3::new(0.028, 0.07, 0.028), 0.0, lin(CATTAIL));
+                // Lily pads on the quiet reaches, and in a pool where a channel ends short of the edge.
+                let level = |j: usize| channel.get(j).map(|t| t.level);
+                let calm = !bridge && i > 0 && level(i - 1) == Some(r.level) && (level(i + 1) == Some(r.level) || (i + 1 == n && !off_edge));
+                if calm && hash(hx * 3.0 + 1.0, hy * 5.0) < 0.55 {
+                    for k in 0..3 {
+                        let hk = hash(hx * 19.0 + k as f64, hy * 23.0) as f32;
+                        let hj = hash(hy * 29.0 + k as f64, hx * 31.0) as f32;
+                        let p = Vec3::new(xf + (hk - 0.5) * 0.6, lv - WATER_DROP + 0.006, yf + (hj - 0.5) * 0.5);
+                        let size = 0.13 + hk * 0.08;
+                        cube(&mut self.static_cubes, p, Vec3::new(size, 0.012, size), hk * TAU, lin(if k % 2 == 0 { PAD } else { PAD_L }));
+                        if hj < 0.35 {
+                            cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.03, 0.0), Vec3::new(0.05, 0.04, 0.05), hk * 2.0, lin(LILY[k % 2]));
+                            cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.055, 0.0), Vec3::new(0.025, 0.02, 0.025), 0.0, lin(0xf2d060));
                         }
                     }
                 }
             }
-            // Lily pads on the quiet reaches.
-            let calm = !bridge && i > 0 && i + 1 < n && plan.river[i - 1].level == r.level && plan.river[i + 1].level == r.level;
-            if calm && hash(hx * 3.0 + 1.0, hy * 5.0) < 0.55 {
-                for k in 0..3 {
-                    let hk = hash(hx * 19.0 + k as f64, hy * 23.0) as f32;
-                    let hj = hash(hy * 29.0 + k as f64, hx * 31.0) as f32;
-                    let p = Vec3::new(xf + (hk - 0.5) * 0.6, lv - WATER_DROP + 0.006, yf + (hj - 0.5) * 0.5);
-                    let size = 0.13 + hk * 0.08;
-                    cube(&mut self.static_cubes, p, Vec3::new(size, 0.012, size), hk * TAU, lin(if k % 2 == 0 { PAD } else { PAD_L }));
-                    if hj < 0.35 {
-                        cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.03, 0.0), Vec3::new(0.05, 0.04, 0.05), hk * 2.0, lin(LILY[k % 2]));
-                        cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.055, 0.0), Vec3::new(0.025, 0.02, 0.025), 0.0, lin(0xf2d060));
+
+            // A stream with no fountain rises from a grotto: rough rocks arched over a black cave mouth, ivy trailing.
+            if fountain.is_none() {
+                if let Some(src) = channel.first() {
+                    let (xf, yf) = (src.p.x as f32, src.p.y as f32);
+                    let lv = src.level as f32 * STEP;
+                    let inward = if src.p.x == grid.width - 1 { 1.0 } else { -1.0 };
+                    cube(&mut self.static_cubes, Vec3::new(xf + inward * 0.42, lv + 0.2, yf), Vec3::new(0.1, 0.9, 0.9), 0.0, lin(CAVE));
+                    for k in 0..14 {
+                        let hk = hash(k as f64 * 3.0, 7.0) as f32;
+                        let hj = hash(k as f64 * 5.0, 11.0) as f32;
+                        let a = k as f32 / 13.0 * PI;
+                        let (side, hgt) = (a.cos() * 0.55, lv - 0.2 + a.sin() * 0.9);
+                        let size = 0.24 + hk * 0.16;
+                        cube(&mut self.static_cubes, Vec3::new(xf + inward * (0.2 + hj * 0.2), hgt, yf + side), Vec3::new(size, size * 0.85, size), hk * 3.0, jit(ROCK[k % 3], hj as f64, 0.08));
+                        if hj < 0.4 {
+                            cube(&mut self.static_cubes, Vec3::new(xf + inward * 0.05, hgt - 0.12, yf + side), Vec3::new(0.05, 0.24, 0.12), 0.0, lin(IVY));
+                        }
                     }
                 }
             }
-        }
-
-        // The grotto at the spring: rough rocks arched over a black cave mouth, ivy trailing.
-        if let Some(src) = plan.river.first() {
-            let (xf, yf) = (src.p.x as f32, src.p.y as f32);
-            let lv = src.level as f32 * STEP;
-            let inward = if src.p.x == grid.width - 1 { 1.0 } else { -1.0 };
-            cube(&mut self.static_cubes, Vec3::new(xf + inward * 0.42, lv + 0.2, yf), Vec3::new(0.1, 0.9, 0.9), 0.0, lin(CAVE));
-            for k in 0..14 {
-                let hk = hash(k as f64 * 3.0, 7.0) as f32;
-                let hj = hash(k as f64 * 5.0, 11.0) as f32;
-                let a = k as f32 / 13.0 * PI;
-                let (side, hgt) = (a.cos() * 0.55, lv - 0.2 + a.sin() * 0.9);
-                let size = 0.24 + hk * 0.16;
-                cube(&mut self.static_cubes, Vec3::new(xf + inward * (0.2 + hj * 0.2), hgt, yf + side), Vec3::new(size, size * 0.85, size), hk * 3.0, jit(ROCK[k % 3], hj as f64, 0.08));
-                if hj < 0.4 {
-                    cube(&mut self.static_cubes, Vec3::new(xf + inward * 0.05, hgt - 0.12, yf + side), Vec3::new(0.05, 0.24, 0.12), 0.0, lin(IVY));
-                }
-            }
-        }
-        // Rocks either side of the falls where the river leaves the island.
-        if let Some(out) = plan.river.last() {
-            let (xf, yf) = (out.p.x as f32, out.p.y as f32);
-            let lv = out.level as f32 * STEP;
-            for side in [-1.0f32, 1.0] {
-                for k in 0..3 {
-                    let hk = hash(k as f64 + side as f64 * 3.0, 17.0) as f32;
-                    cube(&mut self.static_cubes, Vec3::new(xf - 0.3 + k as f32 * 0.25, lv - 0.05 + hk * 0.1, yf + side * 0.5), Vec3::new(0.3, 0.28 + hk * 0.15, 0.26), hk * 2.0, jit(ROCK[k], hk as f64, 0.08));
+            // Rocks either side of the falls where a channel leaves the island.
+            if off_edge && n >= 2 {
+                let out = channel[n - 1];
+                let prev = channel[n - 2].p;
+                let (ax, az) = ((out.p.x - prev.x) as f32, (out.p.y - prev.y) as f32);
+                let (xf, yf) = (out.p.x as f32, out.p.y as f32);
+                let lv = out.level as f32 * STEP;
+                for side in [-1.0f32, 1.0] {
+                    for k in 0..3 {
+                        let hk = hash(k as f64 + side as f64 * 3.0 + xf as f64, 17.0 + yf as f64) as f32;
+                        let along = 0.3 - k as f32 * 0.25;
+                        let p = Vec3::new(xf + ax * along - az * side * 0.5, lv - 0.05 + hk * 0.1, yf + az * along + ax * side * 0.5);
+                        cube(&mut self.static_cubes, p, Vec3::new(0.3, 0.28 + hk * 0.15, 0.26), hk * 2.0, jit(ROCK[k], hk as f64, 0.08));
+                    }
                 }
             }
         }
@@ -679,64 +703,111 @@ impl WorldView {
     /// The moving water: surfaces, falls, foam and spray; then the mist over everything.
     pub(super) fn emit_garden(&self, time: f32, f: &mut Frame) {
         let cube_i = MeshKind::Cube as usize;
+        let sphere = MeshKind::Sphere as usize;
         let Some(plan) = &self.garden else {
             f.transparent[cube_i].extend_from_slice(&self.mist);
             return;
         };
-        let n = plan.river.len();
-        for (i, r) in plan.river.iter().enumerate() {
-            let lv = r.level as f32 * STEP - WATER_DROP;
-            let (xf, yf) = (r.p.x as f32, r.p.y as f32);
-            // The last tile's surface runs to the island's edge.
-            let m = Mat4::from_translation(Vec3::new(xf, lv, yf)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
-            f.transparent[cube_i].push(Instance::new(m, lin(0x17323a), 0.92, Vec3::ZERO, SHADE_WATER));
-            if i + 1 < n {
-                let next = plan.river[i + 1];
-                if next.level != r.level {
-                    // A cascade from the higher reach down to the lower.
-                    let (hi, lo) = if next.level < r.level { (*r, next) } else { (next, *r) };
-                    let (dx, dy) = (lo.p.x - hi.p.x, lo.p.y - hi.p.y);
-                    let top = hi.level as f32 * STEP - WATER_DROP;
-                    let low = lo.level as f32 * STEP - WATER_DROP;
-                    let at = Vec3::new(hi.p.x as f32 + dx as f32 * 0.5, (top + low) / 2.0, hi.p.y as f32 + dy as f32 * 0.5);
-                    let s = if dx != 0 { Vec3::new(0.002, top - low, 1.0) } else { Vec3::new(1.0, top - low, 0.002) };
-                    f.transparent[cube_i].push(Instance::new(Mat4::from_translation(at) * Mat4::from_scale(s), lin(0xc8dce4), 0.85, Vec3::ZERO, SHADE_WATER));
-                    self.foam(Vec3::new(at.x + dx as f32 * 0.1, low + 0.02, at.z + dy as f32 * 0.1), time, i as f32, f);
+        let (w, h) = (self.level_dims.x as i32, self.level_dims.y as i32);
+        for (ci, channel) in plan.channels.iter().enumerate() {
+            let n = channel.len();
+            let off_edge = channel.last().is_some_and(|r| r.p.x == 0 || r.p.y == 0 || r.p.x == w - 1 || r.p.y == h - 1);
+            for (i, r) in channel.iter().enumerate() {
+                let lv = r.level as f32 * STEP - WATER_DROP;
+                let (xf, yf) = (r.p.x as f32, r.p.y as f32);
+                // Which way it runs here: on toward the next tile (the last keeps the heading it came in on).
+                let (fx, fy) = match (channel.get(i + 1), i.checked_sub(1).and_then(|j| channel.get(j))) {
+                    (Some(nx), _) => (nx.p.x - r.p.x, nx.p.y - r.p.y),
+                    (None, Some(pv)) => (r.p.x - pv.p.x, r.p.y - pv.p.y),
+                    _ => (0, 0),
+                };
+                // A pool at a dead end barely moves.
+                let speed = if !off_edge && i + 2 >= n { 0.06 } else { 0.45 };
+                let flow = Vec3::new(fx as f32 * speed, fy as f32 * speed, 0.0);
+                let m = Mat4::from_translation(Vec3::new(xf, lv, yf)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
+                f.transparent[cube_i].push(Instance::new(m, lin(0x17323a), 0.92, flow, SHADE_WATER));
+                if i + 1 < n {
+                    let next = channel[i + 1];
+                    if next.level != r.level {
+                        // A cascade from the higher reach down to the lower.
+                        let (hi, lo) = if next.level < r.level { (*r, next) } else { (next, *r) };
+                        let (dx, dy) = (lo.p.x - hi.p.x, lo.p.y - hi.p.y);
+                        let top = hi.level as f32 * STEP - WATER_DROP;
+                        let low = lo.level as f32 * STEP - WATER_DROP;
+                        let at = Vec3::new(hi.p.x as f32 + dx as f32 * 0.5, (top + low) / 2.0, hi.p.y as f32 + dy as f32 * 0.5);
+                        let s = if dx != 0 { Vec3::new(0.002, top - low, 1.0) } else { Vec3::new(1.0, top - low, 0.002) };
+                        f.transparent[cube_i].push(Instance::new(Mat4::from_translation(at) * Mat4::from_scale(s), lin(0xc8dce4), 0.85, Vec3::ZERO, SHADE_WATER));
+                        self.foam(Vec3::new(at.x + dx as f32 * 0.1, low + 0.02, at.z + dy as f32 * 0.1), time, (i + ci * 50) as f32, f);
+                    }
+                } else if off_edge {
+                    // Over the edge and down into the clouds, throwing spray, mist boiling up below.
+                    let (ax, az) = (fx as f32, fy as f32);
+                    let edge = Vec3::new(xf + ax * 0.5, lv, yf + az * 0.5);
+                    let drop = 4.2;
+                    let size = if ax != 0.0 { Vec3::new(0.002, drop, 0.96) } else { Vec3::new(0.96, drop, 0.002) };
+                    let m = Mat4::from_translation(edge + Vec3::new(ax * 0.02, -drop / 2.0, az * 0.02)) * Mat4::from_scale(size);
+                    f.transparent[cube_i].push(Instance::new(m, lin(0xc8dce4), 0.8, Vec3::ZERO, SHADE_WATER));
+                    for k in 0..12 {
+                        let fk = k as f32 + ci as f32 * 5.0;
+                        let t = (time * 0.6 + fk * 0.37).fract();
+                        let across = (fk * 1.7).sin() * 0.4;
+                        let p = edge + Vec3::new(ax * (0.1 + t * 0.5) - az * across, -t * t * 2.8, az * (0.1 + t * 0.5) + ax * across);
+                        let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.07 + t * 0.12));
+                        f.additive.push(Instance::new(m, lin(0xcfe0ea), 0.25 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+                    }
+                    for k in 0..6 {
+                        let fk = k as f32 * 1.3 + ci as f32;
+                        let t = (time * 0.12 + fk * 0.17).fract();
+                        let across = (fk * 2.3).sin() * 0.5;
+                        let p = edge + Vec3::new(ax * (0.6 + t * 0.8) - az * across, -2.6 + t * 2.4, az * (0.6 + t * 0.8) + ax * across);
+                        let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.3 + t * 0.5));
+                        f.transparent[sphere].push(Instance::new(m, lin(0xb4c4cc), 0.12 * (PI * t).sin(), Vec3::ZERO, SHADE_LIT));
+                    }
                 }
-            } else if r.p.x == 0 {
-                // Over the edge into the clouds.
-                let edge = Vec3::new(xf - 0.5, lv, yf);
-                let drop = 3.2;
-                let m = Mat4::from_translation(edge - Vec3::new(0.02, drop / 2.0, 0.0)) * Mat4::from_scale(Vec3::new(0.002, drop, 0.96));
-                f.transparent[cube_i].push(Instance::new(m, lin(0xc8dce4), 0.8, Vec3::ZERO, SHADE_WATER));
-                for k in 0..10 {
-                    let fk = k as f32;
-                    let t = (time * 0.6 + fk * 0.37).fract();
-                    let p = edge + Vec3::new(-0.1 - t * 0.5, -t * t * 2.5, ((fk * 1.7).sin()) * 0.4);
-                    let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.07 + t * 0.12));
-                    f.additive.push(Instance::new(m, lin(0xcfe0ea), 0.25 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+            }
+            // Foam flecks drifting downstream.
+            if n >= 2 {
+                let count = (n / 3).clamp(3, 10);
+                for k in 0..count {
+                    let fk = k as f32 + ci as f32 * 0.37;
+                    let s = (time * 0.12 * 20.0 / n as f32 + fk * 0.618).fract() * (n as f32 - 1.0);
+                    let i = s.floor() as usize;
+                    let (a, b) = (channel[i], channel[(i + 1).min(n - 1)]);
+                    let t = s - i as f32;
+                    let side = (fk * 2.3).sin() * 0.3;
+                    let (dx, dy) = ((b.p.x - a.p.x) as f32, (b.p.y - a.p.y) as f32);
+                    let p = Vec3::new(
+                        a.p.x as f32 + dx * t - dy * side,
+                        a.level.min(b.level) as f32 * STEP - WATER_DROP + 0.01,
+                        a.p.y as f32 + dy * t + dx * side,
+                    );
+                    let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.04, 0.005, 0.03));
+                    f.additive.push(Instance::new(m, lin(0xb8ccd4), 0.35, Vec3::ZERO, SHADE_UNLIT));
                 }
             }
         }
-        // Foam flecks drifting downstream.
-        for k in 0..24 {
-            let fk = k as f32;
-            let s = (time * 0.12 + fk * 0.618).fract() * (n as f32 - 1.0);
-            let i = s.floor() as usize;
-            let (a, b) = (plan.river[i], plan.river[(i + 1).min(n - 1)]);
-            let t = s - i as f32;
-            let p = Vec3::new(
-                a.p.x as f32 + (b.p.x - a.p.x) as f32 * t,
-                a.level as f32 * STEP - WATER_DROP + 0.01,
-                a.p.y as f32 + (b.p.y - a.p.y) as f32 * t + (fk * 2.3).sin() * 0.3,
-            );
-            let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.04, 0.005, 0.03));
-            f.additive.push(Instance::new(m, lin(0xb8ccd4), 0.35, Vec3::ZERO, SHADE_UNLIT));
+        // Will-o'-the-wisps over the churchyard: pale lights that bob and wander, trailing sparks.
+        if let Some(home) = self.wisps {
+            for k in 0..3 {
+                let fk = k as f32;
+                let t = time * (0.19 + fk * 0.05) + fk * 2.1;
+                let at = |t: f32| home + Vec3::new(t.sin() * 1.7 + (t * 2.3).sin() * 0.3, 0.5 + (t * 5.0 + fk).sin() * 0.12, (t * 0.8 + fk).cos() * 1.4);
+                let p = at(t);
+                let pulse = 0.8 + (time * 3.1 + fk * 1.9).sin() * 0.2;
+                glow_orb(f, p, 0.36 * pulse, lin(0x5cffd0), 0.32 * pulse);
+                glow_orb(f, p, 0.09, lin(0xe0fff6), 0.9);
+                for s in 1..6 {
+                    let q = at(t - s as f32 * 0.035) + Vec3::new(0.0, (time * 7.0 + s as f32).sin() * 0.02, 0.0);
+                    let m = Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.028 - s as f32 * 0.004));
+                    f.additive.push(Instance::new(m, lin(0x8affe0), 0.7 * (1.0 - s as f32 / 6.0), Vec3::ZERO, SHADE_UNLIT));
+                }
+                f.lights.push(Light { pos: p, color: lin(0x4cffc8) * 0.9 * pulse, distance: 2.6 });
+            }
         }
         f.transparent[cube_i].extend_from_slice(&self.mist);
     }
 
-    fn foam(&self, at: Vec3, time: f32, seed: f32, f: &mut Frame) {
+    pub(super) fn foam(&self, at: Vec3, time: f32, seed: f32, f: &mut Frame) {
         for k in 0..8 {
             let fk = k as f32 + seed * 3.0;
             let t = (time * 1.3 + fk * 0.29).fract();

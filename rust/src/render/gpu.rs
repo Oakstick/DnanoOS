@@ -23,6 +23,8 @@ const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const HDR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const AO: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const SHADOW_SIZE: u32 = if cfg!(target_arch = "wasm32") { 2048 } else { 4096 };
+/// Half the width of the fine shadow cascade, in world units.
+const NEAR_CASCADE: f32 = 10.0;
 const BLOOM_LEVELS: usize = 5;
 
 #[repr(C)]
@@ -37,6 +39,7 @@ struct GpuLight {
 struct Globals {
     view_proj: [f32; 16],
     light_vp: [f32; 16],
+    light_vp_near: [f32; 16],
     cam_pos: [f32; 4],
     cam_fwd: [f32; 4],
     fog: [f32; 4],
@@ -51,6 +54,7 @@ struct Globals {
     sky_up: [f32; 4],
     sky_moon: [f32; 4],
     bounds: [f32; 4],
+    shadow: [f32; 4],
     lights: [GpuLight; MAX_LIGHTS],
 }
 
@@ -64,6 +68,7 @@ struct PostUniform {
     cam_u: [f32; 4],
     params: [f32; 4],
     params2: [f32; 4],
+    moon: [f32; 4],
 }
 
 struct MeshBuf {
@@ -110,6 +115,7 @@ struct Targets {
     bloom: Vec<wgpu::TextureView>,
     ssao_bind: wgpu::BindGroup,
     blur_bind: wgpu::BindGroup,
+    rays_bind: wgpu::BindGroup,
     /// [0] reads the scene color; [i] reads bloom[i - 1].
     down_binds: Vec<wgpu::BindGroup>,
     /// [i] reads bloom[i + 1], to add into bloom[i].
@@ -173,6 +179,7 @@ impl Targets {
         let b = &post.blank;
         let ssao_bind = post.bind(device, "ssao", [&gbuf, b, b, b]);
         let blur_bind = post.bind(device, "blur", [&ao, &gbuf, b, b]);
+        let rays_bind = post.bind(device, "rays", [&color, &gbuf, b, b]);
         let mut down_binds = vec![post.bind(device, "bloom pre", [&color, b, b, b])];
         for i in 1..BLOOM_LEVELS {
             down_binds.push(post.bind(device, "bloom down", [&bloom[i - 1], b, b, b]));
@@ -190,6 +197,7 @@ impl Targets {
             bloom,
             ssao_bind,
             blur_bind,
+            rays_bind,
             down_binds,
             up_binds,
             composite_bind,
@@ -205,9 +213,11 @@ pub struct Gpu {
     pub format: wgpu::TextureFormat,
     rt: Targets,
     post: PostShared,
-    shadow_view: wgpu::TextureView,
+    /// One layer of the shadow map per cascade: the fine one round Sebastian, then the whole level.
+    shadow_layers: [wgpu::TextureView; 2],
     shadow_pipe: wgpu::RenderPipeline,
-    shadow_bind: wgpu::BindGroup,
+    shadow_binds: [wgpu::BindGroup; 2],
+    cascade_bufs: [wgpu::Buffer; 2],
     scene_opaque: wgpu::RenderPipeline,
     scene_blend: wgpu::RenderPipeline,
     scene_add: wgpu::RenderPipeline,
@@ -217,6 +227,7 @@ pub struct Gpu {
     bloom_pre_pipe: wgpu::RenderPipeline,
     bloom_down_pipe: wgpu::RenderPipeline,
     bloom_up_pipe: wgpu::RenderPipeline,
+    rays_pipe: wgpu::RenderPipeline,
     composite_pipe: wgpu::RenderPipeline,
     overlay_pipe: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
@@ -326,7 +337,7 @@ impl Gpu {
         };
         let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow map"),
-            size: wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 2 },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -334,7 +345,16 @@ impl Gpu {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let shadow_view = shadow_tex.create_view(&Default::default());
+        let shadow_view = shadow_tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+        let layer = |i: u32| {
+            shadow_tex.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: i,
+                array_layer_count: Some(1),
+                ..Default::default()
+            })
+        };
+        let shadow_layers = [layer(0), layer(1)];
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("shadow"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -349,7 +369,7 @@ impl Gpu {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Depth, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
+                    ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Depth, view_dimension: wgpu::TextureViewDimension::D2Array, multisampled: false },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
@@ -374,16 +394,23 @@ impl Gpu {
             bind_group_layouts: &[&scene_layout],
             push_constant_ranges: &[],
         });
-        // The shadow pass cannot bind the map it draws into: it gets the uniforms alone.
+        // The shadow pass cannot bind the map it draws into: it gets its cascade's matrix alone.
         let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shadow"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX)],
+            entries: &[uniform_entry(3, wgpu::ShaderStages::VERTEX)],
         });
-        let shadow_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("shadow"),
-            layout: &shadow_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() }],
-        });
+        let cascade_buf = || {
+            device.create_buffer(&wgpu::BufferDescriptor { label: Some("cascade"), size: 64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
+        };
+        let cascade_bufs = [cascade_buf(), cascade_buf()];
+        let shadow_bind = |buf: &wgpu::Buffer| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("shadow"),
+                layout: &shadow_layout,
+                entries: &[wgpu::BindGroupEntry { binding: 3, resource: buf.as_entire_binding() }],
+            })
+        };
+        let shadow_binds = [shadow_bind(&cascade_bufs[0]), shadow_bind(&cascade_bufs[1])];
         let shadow_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("shadow"),
             bind_group_layouts: &[&shadow_layout],
@@ -556,6 +583,7 @@ impl Gpu {
         let bloom_pre_pipe = post_pipe("fs_bloom_pre", HDR, None);
         let bloom_down_pipe = post_pipe("fs_bloom_down", HDR, None);
         let bloom_up_pipe = post_pipe("fs_bloom_up", HDR, Some(add_all));
+        let rays_pipe = post_pipe("fs_rays", HDR, Some(add_all));
         let composite_pipe = post_pipe("fs_composite", format, None);
         let post = PostShared {
             layout: post_layout,
@@ -681,9 +709,10 @@ impl Gpu {
             format,
             rt,
             post,
-            shadow_view,
+            shadow_layers,
             shadow_pipe,
-            shadow_bind,
+            shadow_binds,
+            cascade_bufs,
             scene_opaque,
             scene_blend,
             scene_add,
@@ -693,6 +722,7 @@ impl Gpu {
             bloom_pre_pipe,
             bloom_down_pipe,
             bloom_up_pipe,
+            rays_pipe,
             composite_pipe,
             overlay_pipe,
             globals,
@@ -760,15 +790,29 @@ impl Gpu {
         let v4 = |v: Vec3, w: f32| [v.x, v.y, v.z, w];
         let (cam, fwd, cam_r, cam_u, ortho) = view.camera_basis();
         let (sky_fwd, sky_right, sky_up) = view.sky_basis();
-        // The shadow map looks down the light over the whole level (or the diorama on show).
+        // Two shadow cascades look down the light: a fine one over the ground ahead of
+        // Sebastian, stepped a whole texel at a time so its edges never crawl, and a coarse
+        // one over the whole level (or the diorama on show).
         let (center, radius) = view.shadow_box();
         let l = atm.sun_dir.normalize_or(Vec3::Y);
         let up = if l.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
-        let light_vp = Mat4::orthographic_rh(-radius, radius, -radius, radius, 1.0, 200.0) * Mat4::look_at_rh(center + l * 90.0, center, up);
+        let light_view = Mat4::look_at_rh(center + l * 90.0, center, up);
+        let light_vp = Mat4::orthographic_rh(-radius, radius, -radius, radius, 1.0, 200.0) * light_view;
+        let near_r = NEAR_CASCADE;
+        let light_vp_near = match view.shadow_focus() {
+            Some(focus) => {
+                let f = light_view.transform_point3(focus);
+                let texel = 2.0 * near_r / SHADOW_SIZE as f32;
+                let (cx, cy) = ((f.x / texel).round() * texel, (f.y / texel).round() * texel);
+                Some(Mat4::orthographic_rh(cx - near_r, cx + near_r, cy - near_r, cy + near_r, 1.0, 200.0) * light_view)
+            }
+            None => None,
+        };
         let view_proj = view.view_proj();
         let g = Globals {
             view_proj: view_proj.to_cols_array(),
             light_vp: light_vp.to_cols_array(),
+            light_vp_near: light_vp_near.unwrap_or(light_vp).to_cols_array(),
             cam_pos: v4(view.camera_position(), 1.0),
             cam_fwd: v4(fwd, 1.0 / SHADOW_SIZE as f32),
             fog,
@@ -783,8 +827,11 @@ impl Gpu {
             sky_up: v4(sky_up, 0.0),
             sky_moon: v4(atm.moon_view, 0.0),
             bounds: frame.bounds.to_array(),
+            shadow: [near_r, radius, if light_vp_near.is_some() { 1.0 } else { 0.0 }, 0.0],
             lights,
         };
+        self.queue.write_buffer(&self.cascade_bufs[0], 0, bytemuck::cast_slice(&light_vp_near.unwrap_or(light_vp).to_cols_array()));
+        self.queue.write_buffer(&self.cascade_bufs[1], 0, bytemuck::cast_slice(&light_vp.to_cols_array()));
         self.queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));
         let focus = view.focus_depth();
         let post = PostUniform {
@@ -795,12 +842,13 @@ impl Gpu {
             cam_u: v4(cam_u, 20.0),
             params: [0.32, 1.4, 0.45 * atm.bloom, if focus.is_some() { 3.5 } else { 0.0 }],
             params2: [0.6, 0.28, frame.time, 1.0],
+            moon: moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky),
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));
 
-        // ---- instances: opaque by mesh, transparent by mesh, additive
-        let order_t = [MeshKind::Disc, MeshKind::Ring, MeshKind::Cube, MeshKind::Sphere, MeshKind::Cylinder];
+        // ---- instances: opaque by mesh, the early see-through ones, see-through by mesh, additive
+        let order_t = [MeshKind::Disc, MeshKind::Annulus, MeshKind::Ring, MeshKind::Cube, MeshKind::Sphere, MeshKind::Tube, MeshKind::Cylinder];
         let mut all: Vec<Instance> = Vec::new();
         let mut ranges: Vec<(u8, usize, u32, u32)> = Vec::new(); // (pipeline, mesh, start, count)
         for k in 0..MESH_KINDS {
@@ -809,6 +857,10 @@ impl Gpu {
                 ranges.push((0, k, all.len() as u32, list.len() as u32));
                 all.extend_from_slice(list);
             }
+        }
+        if !frame.transparent_early.is_empty() {
+            ranges.push((1, MeshKind::Cube as usize, all.len() as u32, frame.transparent_early.len() as u32));
+            all.extend_from_slice(&frame.transparent_early);
         }
         for k in order_t {
             let list = &frame.transparent[k as usize];
@@ -821,18 +873,25 @@ impl Gpu {
             ranges.push((2, MeshKind::Cube as usize, all.len() as u32, frame.additive.len() as u32));
             all.extend_from_slice(&frame.additive);
         }
+        if !frame.glow.is_empty() {
+            ranges.push((2, MeshKind::Sphere as usize, all.len() as u32, frame.glow.len() as u32));
+            all.extend_from_slice(&frame.glow);
+        }
         self.dyn_buf.write(&self.device, &self.queue, bytemuck::cast_slice(&all));
         self.overlay_buf.write(&self.device, &self.queue, bytemuck::cast_slice(overlay));
 
         let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
 
-        // ---- shadow map
-        {
+        // ---- shadow maps, fine cascade then coarse (the fine one is skipped when unused)
+        for c in 0..2 {
+            if c == 0 && light_vp_near.is_none() {
+                continue;
+            }
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow"),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_view,
+                    view: &self.shadow_layers[c],
                     depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
                     stencil_ops: None,
                 }),
@@ -840,7 +899,7 @@ impl Gpu {
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.shadow_pipe);
-            pass.set_bind_group(0, &self.shadow_bind, &[]);
+            pass.set_bind_group(0, &self.shadow_binds[c], &[]);
             if self.static_count > 0 && !frame.skip_static {
                 let m = &self.meshes[MeshKind::Cube as usize];
                 pass.set_vertex_buffer(0, m.vertices.slice(..));
@@ -850,8 +909,7 @@ impl Gpu {
             }
             if !all.is_empty() {
                 pass.set_vertex_buffer(1, self.dyn_buf.buf.slice(..));
-                for &(pipe, mesh, start, count) in ranges.iter().filter(|r| r.0 == 0) {
-                    let _ = pipe;
+                for &(_, mesh, start, count) in ranges.iter().filter(|r| r.0 == 0) {
                     let m = &self.meshes[mesh];
                     pass.set_vertex_buffer(0, m.vertices.slice(..));
                     pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
@@ -946,6 +1004,9 @@ impl Gpu {
         for i in (0..BLOOM_LEVELS - 1).rev() {
             fullscreen(&mut enc, "bloom up", &rt.bloom[i], &self.bloom_up_pipe, &rt.up_binds[i], false);
         }
+        if post.moon[2] > 0.0 {
+            fullscreen(&mut enc, "light shafts", &rt.bloom[0], &self.rays_pipe, &rt.rays_bind, false);
+        }
         fullscreen(&mut enc, "composite", target, &self.composite_pipe, &rt.composite_bind, true);
 
         // ---- HUD
@@ -1022,6 +1083,26 @@ impl Gpu {
     }
 }
 
+/**
+ * Where the moon (or at dusk the sun) is drawn on screen, in uv, and how
+ * strongly it should shine past the things in front of it: nothing when it
+ * is behind the camera or there is no sky, fading as it leaves the screen.
+ * The sky is drawn from its own view rays (`WorldView::sky_basis`), so the
+ * moon's place is found the same way.
+ */
+fn moon_on_screen(fwd: Vec3, right: Vec3, up: Vec3, moon: Vec3, night_sky: f32) -> [f32; 4] {
+    let m = moon.normalize_or(Vec3::Y);
+    let k = m.dot(fwd) / fwd.length_squared();
+    if night_sky <= 0.0 || k <= 0.05 {
+        return [0.0; 4];
+    }
+    let x = m.dot(right) / (k * right.length_squared());
+    let y = m.dot(up) / (k * up.length_squared());
+    let off = (x.abs().max(y.abs()) - 1.0).max(0.0);
+    let strength = (1.0 - off / 0.6).clamp(0.0, 1.0) * if night_sky > 1.5 { 0.9 } else { 0.55 };
+    [x * 0.5 + 0.5, 0.5 - y * 0.5, strength, 0.0]
+}
+
 // ------------------------------------------------------------------ meshes
 
 fn build_meshes(device: &wgpu::Device) -> Vec<MeshBuf> {
@@ -1032,7 +1113,9 @@ fn build_meshes(device: &wgpu::Device) -> Vec<MeshBuf> {
             1 => sphere(16, 12),
             2 => disc(12),
             3 => ring(0.45, 0.85, 16, 0.2 * std::f32::consts::PI, 0.6 * std::f32::consts::PI),
-            _ => cylinder(0.34, 0.4, 0.12, 8),
+            4 => cylinder(0.34, 0.4, 0.12, 8),
+            5 => tube(1.0, 1.12, 1.0, 24),
+            _ => ring(0.82, 1.0, 32, 0.0, std::f32::consts::TAU),
         };
         out.push(MeshBuf {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1123,6 +1206,22 @@ fn ring(inner: f32, outer: f32, segments: u32, start: f32, length: f32) -> MeshD
     for s in 0..segments as u16 {
         let a = s * 2;
         i.extend_from_slice(&[a, a + 1, a + 3, a, a + 3, a + 2]);
+    }
+    (v, i)
+}
+
+/// Open tube along y, centered on the origin: no caps.
+fn tube(r_top: f32, r_bottom: f32, h: f32, segments: u32) -> MeshData {
+    let mut v = Vec::new();
+    for s in 0..=segments {
+        let a = s as f32 / segments as f32 * std::f32::consts::TAU;
+        v.push([r_top * a.sin(), h / 2.0, r_top * a.cos()]);
+        v.push([r_bottom * a.sin(), -h / 2.0, r_bottom * a.cos()]);
+    }
+    let mut i = Vec::new();
+    for s in 0..segments as u16 {
+        let (t0, b0, t1, b1) = (s * 2, s * 2 + 1, s * 2 + 2, s * 2 + 3);
+        i.extend_from_slice(&[t0, b0, b1, t0, b1, t1]);
     }
     (v, i)
 }

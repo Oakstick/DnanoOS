@@ -17,6 +17,7 @@ struct Post {
     cam_u: vec4<f32>,     // up, scaled to the screen edge; w: blur is full this far behind focus
     params: vec4<f32>,    // contact radius, contact strength, glow strength, blur max px at 1080p (0 = off)
     params2: vec4<f32>,   // glow threshold, vignette, time, grading
+    moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through
 };
 
 @group(0) @binding(0) var<uniform> p: Post;
@@ -165,6 +166,40 @@ fn fs_bloom_up(in: POut) -> @location(0) vec4<f32> {
         }
     }
     return vec4<f32>(c / 16.0, 1.0);
+}
+
+// ------------------------------------------------------------ light shafts
+//
+// Moonlight streaming past whatever stands against the sky: from each pixel
+// walk toward the moon's place on screen gathering the sky seen on the way
+// (brightest near the moon, dimmed where smoke or cloud hangs in front of
+// it), fading with every step. Added into the glow at half resolution.
+
+@fragment
+fn fs_rays(in: POut) -> @location(0) vec4<f32> {
+    let moon = p.moon.xy;
+    let full = vec2<f32>(textureDimensions(t0));
+    let aspect = vec2<f32>(full.x / full.y, 1.0);
+    let steps = 28;
+    let delta = (moon - in.uv) / f32(steps) * 0.85;
+    let jitter = fract(52.9829189 * fract(dot(in.clip.xy, vec2<f32>(0.06711056, 0.00583715))));
+    var uv = in.uv + delta * jitter;
+    var decay = 1.0;
+    var sum = vec3<f32>(0.0);
+    for (var i = 0; i < steps; i++) {
+        uv += delta;
+        if (all(uv > vec2<f32>(0.0)) && all(uv < vec2<f32>(1.0))) {
+            let d = textureSampleLevel(t1, samp, uv, 0.0).w;
+            if (d > SKY) {
+                let c = to_lin(textureSampleLevel(t0, samp, uv, 0.0).rgb);
+                let near_moon = exp(-length((uv - moon) * aspect) * 4.0);
+                sum += c * decay * near_moon;
+            }
+        }
+        decay *= 0.94;
+    }
+    let reach = exp(-length((in.uv - moon) * aspect) * 1.6);
+    return vec4<f32>(sum / f32(steps) * p.moon.z * reach * 4.0, 1.0);
 }
 
 // ------------------------------------------------------------------ composite

@@ -1,15 +1,17 @@
-//! Dungeon I as an English landscape garden. A river winds through the
-//! hedges from a spring at one edge of the island to a waterfall off the
-//! other, crossed by bridges where it meets the paths. Around it lie a
-//! churchyard, walled flower gardens, parterres, classical temples on the
-//! larger lawns and small wayside shrines.
+//! Dungeon I as an English landscape garden. In the middle of the estate,
+//! where the two long walls that quarter it cross, stands a fountain with a
+//! statue of Krampus; four channels run from its basin straight out along
+//! those walls, north, east, south and west, under a bridge wherever a path
+//! crosses. Three pour off the island's edge into the clouds; the northern
+//! one ends in a pool short of the gate. Around them lie a churchyard, walled
+//! flower gardens, parterres, classical temples on the larger lawns and small
+//! wayside shrines.
 //!
 //! The plan is worked out from the maze itself (the layout never changes), so
-//! the river always crosses paths square-on and never blocks one: every
+//! the water always crosses paths square-on and never blocks one: every
 //! crossing becomes a bridge. Bridges are walkable by everyone but slimes.
 
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::grid::Grid;
 use super::types::{Dir, Tile, CARDINALS, P};
@@ -23,8 +25,11 @@ pub struct RiverTile {
 
 #[derive(Clone, Debug, Default)]
 pub struct GardenPlan {
-    /// From the spring (first) to the waterfall off the edge (last). Includes bridged tiles.
-    pub river: Vec<RiverTile>,
+    /// The Krampus fountain in the middle of the estate, and the floor level its basin stands on.
+    pub fountain: Option<RiverTile>,
+    /// Watercourses, each in flow order: from its source (beside the fountain) to where it
+    /// ends (off the island's edge, or in a pool). Bridged tiles are included.
+    pub channels: Vec<Vec<RiverTile>>,
     pub bridges: Vec<P>,
     /// Wall tiles of the churchyard: graves, an iron railing, a dead tree, a tomb.
     pub graveyard: Vec<P>,
@@ -37,8 +42,13 @@ pub struct GardenPlan {
 }
 
 impl GardenPlan {
+    /// Every tile of water, channel by channel.
+    pub fn water(&self) -> impl Iterator<Item = &RiverTile> {
+        self.channels.iter().flatten()
+    }
+
     pub fn is_water(&self, p: P) -> bool {
-        self.river.iter().any(|r| r.p == p)
+        self.water().any(|r| r.p == p)
     }
 
     /// The churchyard's middle, for its thicker mist.
@@ -70,12 +80,13 @@ fn near_nest(grid: &Grid, x: i32, y: i32) -> bool {
 }
 
 /**
- * The garden for this grid, or None if no river course exists. `keep` lists
- * tiles the river must not take (spawns, shrines, potions).
+ * The garden for this grid, or None if its middle has no room for the
+ * fountain and its channels. `keep` lists tiles the water must not take
+ * (spawns, shrines, potions, the gate).
  */
 pub fn plan(grid: &Grid, keep: &[P]) -> Option<GardenPlan> {
-    let (river, bridges) = river_course(grid, keep)?;
-    let mut plan = GardenPlan { river, bridges, ..Default::default() };
+    let (fountain, channels, bridges) = fountain_channels(grid, keep)?;
+    let mut plan = GardenPlan { fountain: Some(fountain), channels, bridges, ..Default::default() };
     place_features(grid, &mut plan);
     Some(plan)
 }
@@ -104,7 +115,7 @@ pub fn stream_plan(grid: &Grid) -> Option<GardenPlan> {
             bridges.push(P::new(x, y));
         }
     }
-    Some(GardenPlan { river, bridges, ..Default::default() })
+    Some(GardenPlan { channels: vec![river], bridges, ..Default::default() })
 }
 
 /// Marks the bridges and protects the scenery from bombs.
@@ -112,7 +123,7 @@ pub fn apply(grid: &mut Grid, plan: &GardenPlan) {
     for b in &plan.bridges {
         grid.set_bridge(b.x, b.y, true);
     }
-    let scenery = plan.river.iter().map(|r| r.p).chain(plan.graveyard.iter().copied()).chain(plan.temples.iter().flatten().copied());
+    let scenery = plan.water().map(|r| r.p).chain(plan.fountain.map(|f| f.p)).chain(plan.graveyard.iter().copied()).chain(plan.temples.iter().flatten().copied());
     for p in scenery {
         if grid.get(p.x, p.y) == Tile::Rock {
             grid.set_landmark(p.x, p.y, true);
@@ -121,124 +132,96 @@ pub fn apply(grid: &mut Grid, plan: &GardenPlan) {
 }
 
 /**
- * The river: a cheapest course from the east edge to the west edge that runs
- * through wall tiles and crosses paths only straight across a north-south
- * corridor (walls either side along its flow), preferring the middle rows.
+ * The fountain in the middle of the grid and its four channels. Each runs
+ * straight out along the middle row or column, through wall and across paths
+ * square-on (a bridge each time), until it pours off the island's edge. One
+ * that meets a tile it must keep clear of (the gate) ends short of it, in
+ * open water rather than under a bridge.
  */
-fn river_course(grid: &Grid, keep: &[P]) -> Option<(Vec<RiverTile>, Vec<P>)> {
-    let (w, hgt) = (grid.width, grid.height);
+fn fountain_channels(grid: &Grid, keep: &[P]) -> Option<(RiverTile, Vec<Vec<RiverTile>>, Vec<P>)> {
+    let c = P::new((grid.width - 1) / 2, (grid.height - 1) / 2);
+    if grid.get(c.x, c.y) != Tile::Rock || near_nest(grid, c.x, c.y) {
+        return None;
+    }
     let keep: HashSet<P> = keep.iter().copied().collect();
-    let mid = hgt as f64 / 2.0 - 0.5;
-    // Costs in hundredths, so the heap orders exactly.
-    let tile_cost = |x: i32, y: i32| -> Option<u32> {
-        let band = ((y as f64 - mid).abs() * 20.0) as u32;
-        if x == 0 {
-            return (y > 0 && y < hgt - 1 && grid.get(x, y) == Tile::Rock).then_some(100 + band);
+    let mut courses: Vec<Vec<P>> = vec![];
+    for d in [Dir::Up, Dir::Right, Dir::Down, Dir::Left] {
+        let (dx, dy) = d.vec();
+        let mut course = vec![];
+        let mut p = c;
+        loop {
+            let n = P::new(p.x + dx, p.y + dy);
+            if !grid.in_bounds(n.x, n.y) || keep.contains(&n) {
+                break;
+            }
+            if grid.get(n.x, n.y) == Tile::Rock {
+                if near_nest(grid, n.x, n.y) {
+                    break;
+                }
+                course.push(n);
+                if n.x == 0 || n.y == 0 || n.x == grid.width - 1 || n.y == grid.height - 1 {
+                    break; // over the edge
+                }
+            } else if crosses(grid, n, d) {
+                course.push(n);
+            } else {
+                break;
+            }
+            p = n;
         }
-        if x == w - 1 || y <= 0 || y >= hgt - 1 {
+        // A channel never ends under a bridge.
+        while course.last().is_some_and(|q| grid.get(q.x, q.y) != Tile::Rock) {
+            course.pop();
+        }
+        if course.len() < 2 {
             return None;
         }
-        let p = P::new(x, y);
-        match grid.get(x, y) {
-            Tile::Rock if !near_nest(grid, x, y) => Some(100 + band),
-            _ if keep.contains(&p) => None,
-            // A crossing: a north-south corridor with wall either side of it.
-            _ if (open_floor(grid, x, y) || grid.is_ramp(x, y))
-                && grid.get(x - 1, y) == Tile::Rock
-                && grid.get(x + 1, y) == Tile::Rock
-                && grid.get(x, y - 1) != Tile::Rock
-                && grid.get(x, y + 1) != Tile::Rock =>
-            {
-                Some(600 + band)
-            }
-            _ => None,
-        }
-    };
-    let mut dist: HashMap<P, u32> = HashMap::new();
-    let mut prev: HashMap<P, P> = HashMap::new();
-    let mut heap = BinaryHeap::new();
-    for y in 1..hgt - 1 {
-        if grid.get(w - 1, y) == Tile::Rock {
-            let p = P::new(w - 1, y);
-            dist.insert(p, 0);
-            heap.push(Reverse((0u32, y, w - 1)));
-        }
+        courses.push(course);
     }
-    let mut goal = None;
-    while let Some(Reverse((d, y, x))) = heap.pop() {
-        let p = P::new(x, y);
-        if dist.get(&p).is_some_and(|&best| d > best) {
-            continue;
-        }
-        if x == 0 {
-            goal = Some(p);
-            break;
-        }
-        let crossing = grid.get(x, y) != Tile::Rock;
-        for dir in CARDINALS {
-            // Across a path the river keeps straight on, east to west.
-            if crossing && dir != Dir::Left {
-                continue;
-            }
-            let (dx, dy) = dir.vec();
-            let (nx, ny) = (x + dx, y + dy);
-            if !grid.in_bounds(nx, ny) {
-                continue;
-            }
-            let Some(mut c) = tile_cost(nx, ny) else { continue };
-            let entering_path = grid.get(nx, ny) != Tile::Rock;
-            if entering_path && dir != Dir::Left {
-                continue;
-            }
-            if dy != 0 {
-                c += 60; // a bend costs a little: long straight reaches read as a river
-            }
-            let n = P::new(nx, ny);
-            let nd = d + c;
-            if dist.get(&n).is_none_or(|&best| nd < best) {
-                dist.insert(n, nd);
-                prev.insert(n, p);
-                heap.push(Reverse((nd, ny, nx)));
-            }
-        }
-    }
-    let goal = goal?;
-    // Walk back from the west edge: that list runs west to east, so reverse it to flow order.
-    let mut course = vec![goal];
-    let mut at = goal;
-    while let Some(&p) = prev.get(&at) {
-        course.push(p);
-        at = p;
-    }
-    // `course` now runs from the west edge back to the spring; flow is east to west.
-    course.reverse();
-    let bridges: Vec<P> = course.iter().copied().filter(|p| grid.get(p.x, p.y) != Tile::Rock).collect();
-
-    // Water lies at the lowest floor beside it; where that steps, it falls over a weir.
-    let mut levels: Vec<Option<i32>> = course
+    let taken: HashSet<P> = courses.iter().flatten().copied().chain([c]).collect();
+    let bridges = courses.iter().flatten().copied().filter(|p| grid.get(p.x, p.y) != Tile::Rock).collect();
+    // The basin stands as high as the paths around it; from there the water only runs down.
+    let top = CARDINALS
         .iter()
-        .map(|p| {
-            CARDINALS
+        .map(|&d| {
+            let (dx, dy) = d.vec();
+            grid.elevation(c.x + dx, c.y + dy)
+        })
+        .max()
+        .unwrap_or(0);
+    let channels = courses.iter().map(|course| water_levels(grid, course, &taken, top)).collect();
+    Some((RiverTile { p: c, level: top }, channels, bridges))
+}
+
+/// Can water running `d` cross the path at `p` square-on: the path running across the flow, wall ahead and behind?
+fn crosses(grid: &Grid, p: P, d: Dir) -> bool {
+    let (dx, dy) = d.vec();
+    let path = |x: i32, y: i32| grid.is_walkable(x, y, false);
+    (open_floor(grid, p.x, p.y) || grid.is_ramp(p.x, p.y))
+        && grid.get(p.x - dx, p.y - dy) == Tile::Rock
+        && grid.get(p.x + dx, p.y + dy) == Tile::Rock
+        && path(p.x - dy, p.y - dx)
+        && path(p.x + dy, p.y + dx)
+}
+
+/// Water lies at the lowest floor beside it, never above the water upstream; where it steps down, it falls over a weir.
+fn water_levels(grid: &Grid, course: &[P], taken: &HashSet<P>, source: i32) -> Vec<RiverTile> {
+    let mut last = source;
+    course
+        .iter()
+        .map(|&p| {
+            let beside = CARDINALS
                 .iter()
                 .filter_map(|&d| {
                     let (dx, dy) = d.vec();
-                    let (nx, ny) = (p.x + dx, p.y + dy);
-                    let t = grid.get(nx, ny);
-                    let walk = t != Tile::Rock && t != Tile::Pit && !course.contains(&P::new(nx, ny));
-                    walk.then(|| grid.elevation(nx, ny))
+                    let n = P::new(p.x + dx, p.y + dy);
+                    (grid.is_walkable(n.x, n.y, false) && !taken.contains(&n)).then(|| grid.elevation(n.x, n.y))
                 })
-                .min()
+                .min();
+            last = beside.unwrap_or(last).min(last);
+            RiverTile { p, level: last }
         })
-        .collect();
-    let first = levels.iter().flatten().copied().next().unwrap_or(0);
-    let mut last = first;
-    for l in levels.iter_mut() {
-        let v = l.unwrap_or(last);
-        *l = Some(v);
-        last = v;
-    }
-    let river = course.iter().zip(levels).map(|(&p, l)| RiverTile { p, level: l.unwrap_or(0) }).collect();
-    Some((river, bridges))
+        .collect()
 }
 
 /// Groups of wall tiles joined edge to edge.
@@ -292,7 +275,7 @@ fn faces_path(grid: &Grid, p: P) -> bool {
 }
 
 fn place_features(grid: &Grid, plan: &mut GardenPlan) {
-    let water: HashSet<P> = plan.river.iter().map(|r| r.p).collect();
+    let water: HashSet<P> = plan.water().map(|r| r.p).chain(plan.fountain.map(|f| f.p)).collect();
     let mut blocks = wall_blocks(grid, &water);
     blocks.sort_by_key(|b| (b[0].y, b[0].x));
     let hero_side = |b: &[P]| center(b);
@@ -368,28 +351,40 @@ mod tests {
         let mut keep = vec![level.hero_spawn, level.enemy_spawn];
         keep.extend(level.weapon_shrines.iter().chain(&level.item_shrines).copied());
         keep.extend(level.potions.iter().map(|(p, _)| *p));
-        let plan = plan(&level.grid, &keep).expect("a river course");
+        keep.extend(level.gate);
+        let plan = plan(&level.grid, &keep).expect("room for the fountain");
         let mut grid = level.grid.clone();
         apply(&mut grid, &plan);
         (grid, plan, level.hero_spawn)
     }
 
     #[test]
-    fn the_river_runs_edge_to_edge_and_is_bridged_at_every_path() {
+    fn four_channels_run_from_the_fountain_and_are_bridged_at_every_path() {
         let (grid, plan, _) = garden();
-        let first = plan.river.first().unwrap().p;
-        let last = plan.river.last().unwrap().p;
-        assert_eq!(first.x, grid.width - 1, "it rises at the east edge");
-        assert_eq!(last.x, 0, "it falls off the west edge");
-        for pair in plan.river.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
-            assert_eq!((a.p.x - b.p.x).abs() + (a.p.y - b.p.y).abs(), 1, "the river is continuous");
-            assert!((b.level - a.level).abs() <= 1, "the water steps at most one level at a time");
+        let f = plan.fountain.expect("a fountain");
+        assert_eq!((f.p.x, f.p.y), (26, 22), "in the middle of the estate");
+        assert_eq!(plan.channels.len(), 4);
+        // North stops short of the gate; east, south and west pour off the edge.
+        let ends: Vec<P> = plan.channels.iter().map(|c| c.last().unwrap().p).collect();
+        assert_eq!(ends, vec![P::new(26, 2), P::new(52, 22), P::new(26, 44), P::new(0, 22)]);
+        for c in &plan.channels {
+            let first = c[0];
+            assert_eq!((first.p.x - f.p.x).abs() + (first.p.y - f.p.y).abs(), 1, "it leaves the basin");
+            assert!(first.level <= f.level);
+            for pair in c.windows(2) {
+                let (a, b) = (pair[0], pair[1]);
+                assert_eq!((a.p.x - b.p.x).abs() + (a.p.y - b.p.y).abs(), 1, "the channel is continuous");
+                assert!(b.level <= a.level && a.level - b.level <= 1, "water runs down a level at a time");
+            }
+            assert_eq!(grid.get(c.last().unwrap().p.x, c.last().unwrap().p.y), Tile::Rock, "it never ends under a bridge");
         }
-        assert!(plan.bridges.len() >= 2, "it crosses some paths: {:?}", plan.bridges);
-        for r in &plan.river {
+        assert!(plan.bridges.len() >= 12, "it crosses the paths: {:?}", plan.bridges);
+        for r in plan.water() {
             let t = grid.get(r.p.x, r.p.y);
             assert!(t == Tile::Rock || grid.is_bridge(r.p.x, r.p.y), "{:?} is water on a path", r.p);
+            if grid.is_bridge(r.p.x, r.p.y) {
+                assert_eq!(r.level, grid.elevation(r.p.x, r.p.y), "the water under {:?} lies at the path's level", r.p);
+            }
         }
     }
 
@@ -406,13 +401,20 @@ mod tests {
     fn slimes_turn_back_at_bridges() {
         use crate::logic::mover::Mover;
         let (grid, plan, _) = garden();
-        let b = plan.bridges[0];
-        // Stand next to a bridge, north of it: the step south is refused for a slime only.
-        let from = P::new(b.x, b.y - 1);
-        let mut m = Mover::new(from, 1.0);
-        assert!(m.can_go(&grid, Dir::Down, false) || grid.elevation(b.x, b.y) > grid.elevation(from.x, from.y));
-        m.avoids_bridges = true;
-        assert!(!m.can_go(&grid, Dir::Down, false));
+        for &b in &plan.bridges {
+            // Stand on the path beside a bridge: the step onto it is refused for a slime only.
+            for d in CARDINALS {
+                let (dx, dy) = d.vec();
+                let from = P::new(b.x - dx, b.y - dy);
+                if !grid.is_walkable(from.x, from.y, false) || grid.is_bridge(from.x, from.y) || grid.elevation(from.x, from.y) != grid.elevation(b.x, b.y) {
+                    continue;
+                }
+                let mut m = Mover::new(from, 1.0);
+                assert!(m.can_go(&grid, d, false), "{from:?} to the bridge at {b:?}");
+                m.avoids_bridges = true;
+                assert!(!m.can_go(&grid, d, false));
+            }
+        }
     }
 
     #[test]
@@ -422,7 +424,7 @@ mod tests {
         assert_eq!(plan.temples.len(), 4);
         assert!(!plan.flowers.is_empty());
         assert_eq!(plan.shrines.len(), 14);
-        for p in plan.graveyard.iter().chain(plan.river.iter().map(|r| &r.p)) {
+        for p in plan.graveyard.iter().chain(plan.water().map(|r| &r.p)).chain(plan.fountain.iter().map(|f| &f.p)) {
             if grid.get(p.x, p.y) == Tile::Rock {
                 assert!(grid.is_landmark(p.x, p.y));
             }
@@ -437,7 +439,9 @@ mod tests {
             let row: String = (0..grid.width)
                 .map(|x| {
                     let p = P::new(x, y);
-                    if plan.bridges.contains(&p) {
+                    if plan.fountain.is_some_and(|f| f.p == p) {
+                        'K'
+                    } else if plan.bridges.contains(&p) {
                         '='
                     } else if plan.is_water(p) {
                         '~'
@@ -461,6 +465,8 @@ mod tests {
                 .collect();
             println!("{row}");
         }
-        println!("{:?}", plan.river.iter().map(|r| (r.p.x, r.p.y, r.level)).collect::<Vec<_>>());
+        for c in &plan.channels {
+            println!("{:?}", c.iter().map(|r| (r.p.x, r.p.y, r.level)).collect::<Vec<_>>());
+        }
     }
 }

@@ -13,7 +13,9 @@
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
 //! `goo` (a slime trail around Sebastian) and `gate` (the F2 cheat: every key, at the gate).
 //! `--iso` renders the whole level from an isometric map camera instead;
-//! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front).
+//! `--closeup [angle]` a portrait of Sebastian (angle in degrees around him, 0 = his front);
+//! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
+//! (and `rise` times the distance above it, 0.28 unless given).
 
 use crate::app::STEP;
 use crate::game::Game;
@@ -180,6 +182,16 @@ pub fn run(args: &[String]) -> i32 {
             Dir::Right => std::f32::consts::FRAC_PI_2,
         };
         game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62, p.y as f32), face + deg.to_radians(), 2.1);
+    }
+    if let Some(v) = arg(&args, "--view") {
+        let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
+        if n.len() >= 5 {
+            let target = glam::Vec3::new(n[0], n[1], n[2]);
+            game.view.set_closeup(target, n[3].to_radians(), n[4]);
+            if let Some(&rise) = n.get(5) {
+                game.view.set_closeup_rise(target, n[3].to_radians(), n[4], rise);
+            }
+        }
     }
     game.view.emit(&game.scene(), &mut frame);
     if iso {

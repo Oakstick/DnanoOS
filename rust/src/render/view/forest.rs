@@ -155,7 +155,7 @@ impl WorldView {
                 continue;
             }
             let here = feature.get(&P::new(x, y)).copied();
-            if matches!(here, Some(Feature::Water | Feature::Grave | Feature::Flowers)) {
+            if matches!(here, Some(Feature::Water | Feature::Grave | Feature::Flowers | Feature::Fountain)) {
                 continue;
             }
             // The gatehouse stands on the gate's tile and the two either side of it.
@@ -219,7 +219,7 @@ impl WorldView {
             push_field(&mut self.static_cubes, &species[kind], pos, rot, scale, white, Vec3::ZERO, SHADE_LIT);
             let (r, h) = extents[kind];
             self.tree_index.insert(key, self.trees.len());
-            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: r * scale + 0.05, height: h * scale, fade: 1.0, alive: true });
+            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: r * scale + 0.05, height: h * scale, fade: 1.0, alive: true, shades: None });
         }
         for (spot, d) in lanterns {
             let (dx, dy) = d.vec();

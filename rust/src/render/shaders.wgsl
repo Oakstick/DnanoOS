@@ -13,7 +13,8 @@ struct Light {
 
 struct Globals {
     view_proj: mat4x4<f32>,
-    light_vp: mat4x4<f32>, // world to the moon's (or sun's) shadow map
+    light_vp: mat4x4<f32>, // world to the moon's (or sun's) shadow map: the whole level
+    light_vp_near: mat4x4<f32>, // ...and the fine cascade ahead of Sebastian
     cam_pos: vec4<f32>,
     cam_fwd: vec4<f32>,    // xyz camera forward; w shadow map texel size in uv
     fog: vec4<f32>,        // rgb fog color (sRGB), w near
@@ -28,12 +29,15 @@ struct Globals {
     sky_up: vec4<f32>,     // xyz to the top screen edge
     sky_moon: vec4<f32>,   // xyz toward the moon
     bounds: vec4<f32>,     // the level's footprint: min x, min z, max x, max z
+    shadow: vec4<f32>,     // x fine cascade half width, y coarse half width (world), z 1 when the fine one is drawn
     lights: array<Light, 32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
-@group(0) @binding(1) var shadow_map: texture_depth_2d;
+@group(0) @binding(1) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(2) var shadow_cmp: sampler_comparison;
+// The shadow pass draws one cascade at a time with its own matrix.
+@group(0) @binding(3) var<uniform> cascade_vp: mat4x4<f32>;
 
 struct VIn {
     @location(0) pos: vec3<f32>,
@@ -68,31 +72,79 @@ fn vs_scene(v: VIn) -> VOut {
     return out;
 }
 
-// Depth only, from the light: the shadow map.
+// Depth only, from the light: one cascade of the shadow map.
 @vertex
 fn vs_shadow(v: VIn) -> @builtin(position) vec4<f32> {
     let m = mat4x4<f32>(v.m0, v.m1, v.m2, v.m3);
-    return g.light_vp * (m * vec4<f32>(v.pos, 1.0));
+    return cascade_vp * (m * vec4<f32>(v.pos, 1.0));
 }
 
-// How much of the moonlight (or sunlight) reaches `world`: a 4x4 filtered
-// lookup for soft shadow edges.
-fn sun_visibility(world: vec3<f32>, n: vec3<f32>) -> f32 {
-    let texel = g.cam_fwd.w;
-    let lp = g.light_vp * vec4<f32>(world + n * 0.025, 1.0);
+// How wide the moon (or sun) looks: sets how fast a shadow softens with distance.
+const LIGHT_SIZE: f32 = 0.035;
+// The light's depth range, near to far, in world units.
+const LIGHT_DEPTH: f32 = 199.0;
+
+// Point `i` of `n` on a disc, spread evenly (a Vogel spiral), turned by `spin`.
+fn vogel(i: i32, n: i32, spin: f32) -> vec2<f32> {
+    let r = sqrt((f32(i) + 0.5) / f32(n));
+    let a = f32(i) * 2.39996 + spin;
+    return vec2<f32>(cos(a), sin(a)) * r;
+}
+
+// One cascade's verdict for `world`: (how lit, how far inside the cascade).
+// Soft shadows that harden where an object meets what it shades: a search
+// for the things between here and the light says how far above they are,
+// and the filter spreads with that distance.
+fn cascade_light(vp: mat4x4<f32>, layer: i32, world: vec3<f32>, half_width: f32, bias: f32, spin: f32) -> vec2<f32> {
+    let lp = vp * vec4<f32>(world, 1.0);
     let c = lp.xyz / lp.w;
     let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
-    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || c.z > 1.0) {
-        return 1.0;
+    let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    if (edge <= 0.0 || c.z > 1.0) {
+        return vec2<f32>(1.0, 0.0);
     }
-    var lit = 0.0;
-    for (var y = 0; y < 4; y++) {
-        for (var x = 0; x < 4; x++) {
-            let o = (vec2<f32>(f32(x), f32(y)) - 1.5) * texel * 1.35;
-            lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + o, c.z - 0.0008);
+    let inside = smoothstep(0.0, 0.06, edge);
+    let size = f32(textureDimensions(shadow_map).x);
+    let texel = 1.0 / size;
+    let z = c.z - bias;
+    var blockers = 0.0;
+    var found = 0.0;
+    for (var i = 0; i < 8; i++) {
+        let q = clamp((uv + vogel(i, 8, spin) * texel * 7.0) * size, vec2<f32>(0.0), vec2<f32>(size - 1.0));
+        let d = textureLoad(shadow_map, vec2<i32>(q), layer, 0);
+        if (d < z) {
+            blockers += d;
+            found += 1.0;
         }
     }
-    return lit / 16.0;
+    if (found < 0.5) {
+        return vec2<f32>(1.0, inside);
+    }
+    let gap = (z - blockers / found) * LIGHT_DEPTH;
+    let spread = clamp(gap * LIGHT_SIZE / (2.0 * half_width), texel * 1.2, texel * 9.0);
+    var lit = 0.0;
+    for (var i = 0; i < 16; i++) {
+        lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vogel(i, 16, spin) * spread, layer, z);
+    }
+    return vec2<f32>(lit / 16.0, inside);
+}
+
+// How much of the moonlight (or sunlight) reaches `world`: the fine cascade
+// where it covers, fading into the coarse one toward its edge.
+fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>) -> f32 {
+    let spin = fract(52.9829189 * fract(dot(frag, vec2<f32>(0.06711056, 0.00583715)))) * 6.2831853;
+    let size = f32(textureDimensions(shadow_map).x);
+    let far_w = g.shadow.y;
+    if (g.shadow.z > 0.5) {
+        let near_w = g.shadow.x;
+        let near = cascade_light(g.light_vp_near, 0, world + n * (3.0 * near_w / size), near_w, 0.02 / LIGHT_DEPTH, spin);
+        if (near.y > 0.999) {
+            return near.x;
+        }
+        let far = cascade_light(g.light_vp, 1, world + n * (3.0 * far_w / size), far_w, 0.05 / LIGHT_DEPTH, spin);
+        return mix(far.x, near.x, near.y);
+    }
+    return cascade_light(g.light_vp, 1, world + n * (3.0 * far_w / size), far_w, 0.05 / LIGHT_DEPTH, spin).x;
 }
 
 // ------------------------------------------------------------ voxel materials
@@ -380,11 +432,90 @@ fn cfbm(p_in: vec2<f32>) -> f32 {
     return v;
 }
 
+// Value noise with quintic easing: smooth enough in its slope that shading
+// by that slope shows no creases along the lattice.
+fn qnoise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let a = fract(sin(dot(i, vec2<f32>(127.1, 311.7))) * 43758.5453);
+    let b = fract(sin(dot(i + vec2<f32>(1.0, 0.0), vec2<f32>(127.1, 311.7))) * 43758.5453);
+    let c = fract(sin(dot(i + vec2<f32>(0.0, 1.0), vec2<f32>(127.1, 311.7))) * 43758.5453);
+    let d = fract(sin(dot(i + vec2<f32>(1.0, 1.0), vec2<f32>(127.1, 311.7))) * 43758.5453);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// Three octaves of it, each turned against the last, the first turned off the axes too.
+fn cfbm3(p_in: vec2<f32>) -> f32 {
+    var p = mat2x2<f32>(0.8, 0.6, -0.6, 0.8) * p_in;
+    var v = 0.0;
+    var a = 0.5;
+    for (var i = 0; i < 3; i++) {
+        v += a * qnoise(p);
+        p = mat2x2<f32>(1.6, 1.2, -1.2, 1.6) * p + vec2<f32>(3.1, 1.7);
+        a *= 0.5;
+    }
+    return v / 0.875;
+}
+
+// The smoke wall round the island: tall curtains of billowing smoke, rank
+// behind rank, rising slowly and heaving at the crest, about five times
+// Sebastian's height. The moon catches the tops; the depths stay dark.
+fn smoke_wall(in: VOut) -> FOut {
+    let time = g.sky_right.w;
+    let rank = in.emissive.x - 30.0;
+    let out_d = in.emissive.y;
+    let side = in.emissive.z;
+    let along_x = side < 1.5;
+    let along = select(in.world.z, in.world.x, along_x);
+    let y = in.world.y;
+    let u = along * 0.21 + rank * 7.31;
+    let crest = 5.8 + (qnoise(vec2<f32>(u * 0.55 + time * 0.035, rank * 3.0)) - 0.5) * 1.9 - out_d * 0.06;
+    if (y > crest + 1.0) {
+        discard;
+    }
+    let rise = time * (0.1 + 0.02 * rank);
+    let p = vec2<f32>(u, y * 0.26 - rise);
+    let pw = mat2x2<f32>(0.6, -0.8, 0.8, 0.6) * p * 1.3;
+    let warp = vec2<f32>(qnoise(pw + vec2<f32>(3.1, rise * 0.3)), qnoise(pw + vec2<f32>(7.7, 1.9)));
+    let q = p + warp * 1.25;
+    let n = cfbm3(q);
+    // Each billow's slope in the curtain's plane: the sides that bulge toward the moon catch its light.
+    let e = 0.3;
+    let grad = vec2<f32>(cfbm3(q + vec2<f32>(e, 0.0)) - n, cfbm3(q + vec2<f32>(0.0, e)) - n) / e;
+    let md = g.moon_dir.xyz;
+    let moon2 = vec2<f32>(select(md.z, md.x, along_x), md.y);
+    let shade = clamp(0.5 - dot(grad, moon2) * 0.9, 0.1, 1.5);
+    // Solid low down, breaking into billows toward the crest.
+    let body = smoothstep(crest + 0.4, crest - 2.4, y + (n - 0.5) * 1.8);
+    var cover = body * smoothstep(0.18, 0.55, n + body * 0.3);
+    // Never a flat wall right in front of the camera.
+    cover *= smoothstep(0.7, 3.5, length(g.cam_pos.xyz - in.world));
+    // Thin out toward the curtain's ends, where it overlaps the next side's.
+    let b = g.bounds;
+    let half_len = select(b.w - b.y, b.z - b.x, along_x) * 0.5 + out_d + 3.0;
+    let mid = select((b.y + b.w) * 0.5, (b.x + b.z) * 0.5, along_x);
+    cover *= smoothstep(half_len, half_len - 2.5, abs(along - mid));
+    // Moonlit billows over dark depths, brightest toward the crest; the outer ranks sink into the night.
+    let lit = smoothstep(crest - 3.4, crest - 0.3, y);
+    let tint = in.color.rgb * 2.4;
+    let col = tint * (0.3 + 0.7 * n) * (0.45 + 0.75 * shade) + g.moon_color.rgb * 0.045 * shade * n * (0.35 + 0.65 * lit);
+    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    var out: FOut;
+    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f * 0.45), cover * in.color.a * (1.0 - 0.08 * rank));
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
+}
+
 fn cloud_sea(in: VOut) -> FOut {
     let seed = in.emissive.x;
     let layer_y = in.emissive.y;
     let time = g.sky_right.w;
     let xz = in.world.xz;
+    if (seed > 29.5) {
+        return smoke_wall(in);
+    }
     if (seed > 19.5) {
         return ground_mist(in, seed - 20.0);
     }
@@ -465,9 +596,16 @@ fn ground_mist(in: VOut, layer: f32) -> FOut {
 // catches glints from lanterns, and grows more mirror-like at grazing
 // angles. Upright sheets are cascades: white streaks falling over dark water.
 
-fn water_height(q: vec2<f32>, time: f32) -> f32 {
-    let flow = vec2<f32>(time * 0.45, 0.0);
-    return cnoise(q * 2.3 + flow * 2.3) * 0.55 + cnoise(q * 5.1 + vec2<f32>(time * 1.1, time * 0.4)) * 0.3 + cnoise(q * 11.0 - vec2<f32>(time * 0.3, time * 1.3)) * 0.15;
+// The surface's height at `q`: ripples carried along by the current (`flow`,
+// world units a second), and, where water falls in, a fine fast chop.
+fn water_height(q_in: vec2<f32>, time: f32, flow: vec2<f32>, chop: f32) -> f32 {
+    let q = q_in - flow * time;
+    let t = time * (1.0 + chop * 1.5);
+    var h = cnoise(q * 2.3) * 0.55 + cnoise(q * 5.1 + vec2<f32>(t * 1.1, t * 0.4)) * 0.3 + cnoise(q * 11.0 - vec2<f32>(t * 0.3, t * 1.3)) * 0.15;
+    if (chop > 0.0) {
+        h += (cnoise(q_in * 23.0 + vec2<f32>(t * 2.1, -t * 1.7)) - 0.5) * 0.5 * chop;
+    }
+    return h;
 }
 
 fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
@@ -485,16 +623,21 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
         var col = mix(vec3<f32>(0.02, 0.05, 0.06), in.color.rgb * 0.5, white);
         col *= g.moon_color.rgb * 0.5 + g.hemi_sky.rgb * 0.6 + g.ambient.rgb * 2.0;
         let rgb = to_srgb(aces_filmic(col * 2.2, g.params.y));
-        out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), in.color.a * (0.55 + 0.45 * white));
+        // Falls off the island's edge thin away into the clouds below it.
+        let sink = smoothstep(-3.2, -0.6, in.world.y);
+        out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), in.color.a * (0.55 + 0.45 * white) * sink);
         return out;
     }
     // Ripples: the normal from the slope of a moving height field.
     let q = in.world.xz;
     let e = 0.04;
-    let h0 = water_height(q, time);
-    let hx = water_height(q + vec2<f32>(e, 0.0), time);
-    let hz = water_height(q + vec2<f32>(0.0, e), time);
-    let n = normalize(vec3<f32>(-(hx - h0) / e * 0.06, 1.0, -(hz - h0) / e * 0.06));
+    let flow = in.emissive.xy;
+    let chop = in.emissive.z;
+    let h0 = water_height(q, time, flow, chop);
+    let hx = water_height(q + vec2<f32>(e, 0.0), time, flow, chop);
+    let hz = water_height(q + vec2<f32>(0.0, e), time, flow, chop);
+    let bump = 0.06 + 0.07 * chop;
+    let n = normalize(vec3<f32>(-(hx - h0) / e * bump, 1.0, -(hz - h0) / e * bump));
     let r = reflect(-view_dir, n);
     var sky = mix(g.fog.rgb, g.fog.rgb * 1.4 + vec3<f32>(0.05), clamp(r.y, 0.0, 1.0));
     if (g.sky_fwd.w > 0.0) {
@@ -530,6 +673,53 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
     return out;
 }
 
+// A jet of water: a glassy rope, clear through the middle and bright at its
+// edges, bubbles rushing along it, glinting in the lamps and the moon.
+fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
+    let time = g.sky_right.w;
+    let view_dir = normalize(g.cam_pos.xyz - in.world);
+    let edge = pow(1.0 - abs(dot(n, view_dir)), 1.5);
+    let rush = cnoise(vec2<f32>(in.local.y * 3.0 - time * 14.0 + in.emissive.x * 7.0, atan2(in.local.z, in.local.x) * 2.0 + in.emissive.x));
+    var light = g.ambient.rgb * 2.0 + g.hemi_sky.rgb * 0.6 + g.moon_color.rgb * 0.35;
+    var spec = vec3<f32>(0.0);
+    let count = min(u32(g.params.w), MAX_LIGHTS);
+    for (var i = 0u; i < count; i++) {
+        let l = g.lights[i];
+        let to_light = l.pos.xyz - in.world;
+        let d = length(to_light);
+        var att = 1.0 / max(d * d, 0.05);
+        if (l.pos.w > 0.0) {
+            let rr = d / l.pos.w;
+            att *= pow2(clamp(1.0 - rr * rr * rr * rr, 0.0, 1.0));
+        }
+        light += l.color.rgb * att * 0.5;
+        let hv = normalize(to_light / max(d, 1e-4) + view_dir);
+        spec += pow(max(dot(n, hv), 0.0), 60.0) * l.color.rgb * att;
+    }
+    spec += pow(max(dot(n, normalize(g.moon_dir.xyz + view_dir)), 0.0), 60.0) * g.moon_color.rgb;
+    let col = in.color.rgb * light * (0.55 + 0.5 * rush + 0.6 * edge) + spec * 0.8;
+    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    var out: FOut;
+    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), in.color.a * clamp(0.35 + 0.65 * edge + 0.25 * rush, 0.0, 1.0));
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
+}
+
+// A soft glowing orb, drawn additively on a sphere: its unit-sphere position
+// is its normal, so it glows brightest where it faces the camera and fades
+// to nothing at its rim.
+fn glow_orb(in: VOut) -> FOut {
+    let view_dir = normalize(g.cam_pos.xyz - in.world);
+    let facing = max(dot(normalize(in.local), view_dir), 0.0);
+    let k = facing * facing * facing;
+    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    var out: FOut;
+    out.color = vec4<f32>(to_srgb(aces_filmic(in.color.rgb, g.params.y)), in.color.a * k * (1.0 - fog_f * 0.8));
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
+}
+
 @fragment
 fn fs_scene(in: VOut) -> FOut {
     // Derivatives first, while control flow is still uniform.
@@ -542,6 +732,12 @@ fn fs_scene(in: VOut) -> FOut {
     let local_w = fwidth(in.local);
     if (mode > 4.5 && mode < 5.5) {
         return cloud_sea(in);
+    }
+    if (mode > 21.5 && mode < 22.5) {
+        return glow_orb(in);
+    }
+    if (mode > 20.5 && mode < 21.5) {
+        return water_jet(in, n);
     }
     if (mode > 19.5) {
         return water(in, n);
@@ -586,7 +782,7 @@ fn fs_scene(in: VOut) -> FOut {
         let ndl_raw = dot(sn, g.moon_dir.xyz);
         let ndl = max((ndl_raw + wrap) / (1.0 + wrap), 0.0);
         if (ndl > 0.0) {
-            let vis = sun_visibility(in.world, n);
+            let vis = sun_visibility(in.world, n, in.clip.xy);
             irr += ndl * g.moon_color.rgb * vis;
             if (surf.spec > 0.0 && ndl_raw > 0.0) {
                 let h = normalize(g.moon_dir.xyz + view_dir);
@@ -623,6 +819,11 @@ fn fs_scene(in: VOut) -> FOut {
         let env = mix(g.hemi_ground.rgb * 0.6, g.hemi_sky.rgb * 1.3, smoothstep(-0.35, 0.35, r.y));
         rgb += env * spec_tint * surf.metal * (0.3 + 0.5 * fres);
         rgb += g.hemi_sky.rgb * surf.albedo * surf.sheen * fres;
+        if (mode > 5.5) {
+            // Characters and statues: a cool rim of moonlight on the edges turned toward it, so they stand out of the dark.
+            let rim = pow(1.0 - max(dot(sn, view_dir), 0.0), 4.0);
+            rgb += g.moon_color.rgb * rim * (0.08 + 0.22 * max(dot(sn, g.moon_dir.xyz), 0.0)) * (0.5 + 0.5 * surf.albedo);
+        }
     }
     rgb = to_srgb(aces_filmic(rgb, g.params.y));
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);

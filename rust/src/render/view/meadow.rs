@@ -194,12 +194,12 @@ impl WorldView {
             let start = self.static_cubes.len();
             push_field(&mut self.static_cubes, &tree, pos, rot, scale, tree_tint, Vec3::ZERO, SHADE_LIT);
             self.tree_index.insert(key, self.trees.len());
-            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.26 * scale + 0.05, height: 1.02 * scale, fade: 1.0, alive: true });
+            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.26 * scale + 0.05, height: 1.02 * scale, fade: 1.0, alive: true, shades: None });
         }
 
         // The stream in its stone channel, under stone bridges; and mist over it all.
         if let Some(plan) = self.garden.clone() {
-            let water: HashMap<P, i32> = plan.river.iter().map(|r| (r.p, r.level)).collect();
+            let water: HashMap<P, i32> = plan.water().map(|r| (r.p, r.level)).collect();
             self.build_river(grid, &plan, &water);
             for b in &plan.bridges {
                 self.build_stone_bridge(grid, *b);
@@ -350,7 +350,7 @@ impl WorldView {
         }
         let len = self.static_cubes.len() - start;
         self.tree_index.insert(tile_key(x, y), self.trees.len());
-        self.trees.push(Tree { range: (start, len), base: Vec3::new(xf, 0.0, yf), radius: 0.42, height: top, fade: 1.0, alive: true });
+        self.trees.push(Tree { range: (start, len), base: Vec3::new(xf, 0.0, yf), radius: 0.42, height: top, fade: 1.0, alive: true, shades: None });
     }
 
     /// One tile of low brick wall: a mortar core, three staggered courses of bricks, coping on top.

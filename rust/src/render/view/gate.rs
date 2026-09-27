@@ -248,6 +248,18 @@ impl WorldView {
                 let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r));
                 f.transparent[sphere].push(Instance::new(m, lin(SMOKE), a, Vec3::ZERO, SHADE_LIT));
             }
+            // Braziers and fire bowls throw up embers that wink out as they climb.
+            if strength >= 0.9 {
+                for k in 0..7 {
+                    let fk = k as f32 + i as f32 * 5.3;
+                    let t = (time * 0.42 + fk * 0.23).fract();
+                    let sway = Vec3::new((fk * 1.7 + time * 0.9).sin() * 0.16, 0.0, (fk * 2.3 + time * 0.7).cos() * 0.16) * t;
+                    let p = base - Vec3::new(0.0, 0.12, 0.0) + sway + Vec3::new(0.22 * t, t * 1.8, 0.08 * t);
+                    let a = (1.0 - t) * (0.55 + 0.45 * (time * 17.0 + fk).sin().abs());
+                    f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.022)), lin(0xffa040) * 1.6, a, Vec3::ZERO, SHADE_UNLIT));
+                }
+                glow_orb(f, base - Vec3::new(0.0, 0.1, 0.0), 0.45, lin(0xff8a30), 0.22);
+            }
         }
     }
 }

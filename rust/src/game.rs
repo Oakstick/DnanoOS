@@ -371,7 +371,7 @@ impl Game {
             self.level.hero_spawn = spawn;
             self.start_facing = facing;
         }
-        // Dungeon I is a landscape garden: a bridged river, a churchyard, temples and flower beds.
+        // Dungeon I is a landscape garden: a fountain and its bridged channels, a churchyard, temples and flower beds.
         self.garden = None;
         if self.level.data.boss {
             // The arena's stream runs in a stone channel under stone bridges too.
@@ -386,6 +386,7 @@ impl Game {
             let mut keep = vec![l.hero_spawn, l.enemy_spawn];
             keep.extend(l.weapon_shrines.iter().chain(&l.item_shrines).copied());
             keep.extend(l.potions.iter().map(|(p, _)| *p));
+            keep.extend(l.gate);
             self.garden = crate::logic::garden::plan(&l.grid, &keep);
             if let Some(plan) = &self.garden {
                 crate::logic::garden::apply(&mut self.level.grid, plan);
@@ -2079,7 +2080,8 @@ impl Game {
 
 /**
  * The open floor tile nearest the dungeon's center (never a shrine, bottle,
- * ramp or the hollow), and the direction with the longest clear run from it.
+ * ramp or the hollow, nor the middle row or column, where the fountain's
+ * channels run), and the direction with the longest clear run from it.
  */
 pub fn center_spawn(level: &ParsedLevel) -> (P, Dir) {
     let g = &level.grid;
@@ -2095,7 +2097,7 @@ pub fn center_spawn(level: &ParsedLevel) -> (P, Dir) {
     let mut best_d = f64::INFINITY;
     for (x, y, t) in g.cells() {
         let p = P::new(x, y);
-        if t != Tile::Open || g.is_ramp(x, y) || taken.contains(&p) || y == (g.height - 1) / 2 {
+        if t != Tile::Open || g.is_ramp(x, y) || taken.contains(&p) || y == (g.height - 1) / 2 || x == (g.width - 1) / 2 {
             continue;
         }
         let d = (x as f64 - cx).powi(2) + (y as f64 - cy).powi(2);

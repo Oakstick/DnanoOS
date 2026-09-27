@@ -22,6 +22,7 @@ use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
 
 mod forest;
 mod forge;
+mod fountain;
 mod garden;
 mod gate;
 mod meadow;
@@ -138,6 +139,16 @@ pub const SHADE_GRASS: f32 = 4.0;
 pub const SHADE_CLOUD: f32 = 5.0;
 /// Moving water: rippled, mirroring the night sky; sheets that stand upright fall as cascades.
 pub const SHADE_WATER: f32 = 20.0;
+/// A jet of water: a glassy rope with bubbles rushing along it.
+pub const SHADE_JET: f32 = 21.0;
+/// A soft glowing orb: bright in the middle, fading to nothing at its rim (additive, on a sphere).
+pub const SHADE_GLOW: f32 = 22.0;
+
+/// A halo of light round a lamp or a wisp: `radius` across, `strength` bright.
+pub fn glow_orb(f: &mut Frame, at: Vec3, radius: f32, color: Vec3, strength: f32) {
+    let m = Mat4::from_translation(at) * Mat4::from_scale(Vec3::splat(radius));
+    f.glow.push(Instance::new(m, color, strength, Vec3::ZERO, SHADE_GLOW));
+}
 
 /// How see-through a tree gets while it blocks the view of Popolon.
 
@@ -162,8 +173,12 @@ pub enum MeshKind {
     Disc = 2,
     Ring = 3,
     Cylinder = 4,
+    /// An open tube along y, flaring a little toward the bottom (a veil of falling water).
+    Tube = 5,
+    /// A thin full ring in the XY plane (ripples).
+    Annulus = 6,
 }
-pub const MESH_KINDS: usize = 5;
+pub const MESH_KINDS: usize = 7;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Light {
@@ -227,8 +242,12 @@ impl Default for Atmosphere {
 #[derive(Default)]
 pub struct Frame {
     pub opaque: [Vec<Instance>; MESH_KINDS],
+    /// See-through cubes drawn before every other see-through thing (the smoke wall far behind it all).
+    pub transparent_early: Vec<Instance>,
     pub transparent: [Vec<Instance>; MESH_KINDS],
     pub additive: Vec<Instance>,
+    /// Soft glowing orbs, drawn additively on spheres (`SHADE_GLOW`): halos round lamps, wisps.
+    pub glow: Vec<Instance>,
     pub lights: Vec<Light>,
     pub coin_pulse: f32,
     /// Seconds since start, for the twinkling stars.
@@ -245,7 +264,9 @@ impl Frame {
         for v in self.opaque.iter_mut().chain(self.transparent.iter_mut()) {
             v.clear();
         }
+        self.transparent_early.clear();
         self.additive.clear();
+        self.glow.clear();
         self.lights.clear();
     }
 }
@@ -330,6 +351,8 @@ struct Tree {
     height: f32,
     fade: f32,
     alive: bool,
+    /// Each instance's own shade, for models with voxel materials (None: all plain lit).
+    shades: Option<Vec<f32>>,
 }
 
 impl Tree {
@@ -515,6 +538,10 @@ pub struct WorldView {
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
     garden: Option<crate::logic::garden::GardenPlan>,
+    /// The Krampus fountain in the garden's middle.
+    fountain: Option<fountain::FountainView>,
+    /// Where the will-o'-the-wisps haunt: the churchyard's middle, at its turf.
+    wisps: Option<Vec3>,
     /// Ground mist sheets, drawn every frame.
     mist: Vec<Instance>,
     /// Candle flames in shrines, temples and graves: the nearest few cast light.
@@ -609,6 +636,8 @@ impl WorldView {
             meadow: false,
             water: Vec::new(),
             garden: None,
+            fountain: None,
+            wisps: None,
             mist: Vec::new(),
             candles: Vec::new(),
             keys: Vec::new(),
@@ -666,6 +695,9 @@ impl WorldView {
     #[allow(clippy::too_many_arguments)]
     pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
         self.garden = garden.cloned();
+        self.fountain = None;
+        self.wisps = None;
+        self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
         self.gate_tile = gate;
         self.keys.clear();
         self.smoke.clear();
@@ -1044,10 +1076,11 @@ impl WorldView {
             }
             let (start, len) = t.range;
             self.trees[i].fade = fade;
-            let shade = if fade < 0.999 { SHADE_DITHER } else { SHADE_LIT };
-            for inst in &mut self.static_cubes[start..start + len] {
+            let solid = fade >= 0.999;
+            let shades = self.trees[i].shades.as_deref();
+            for (k, inst) in self.static_cubes[start..start + len].iter_mut().enumerate() {
                 inst.color[3] = fade;
-                inst.emissive[3] = shade;
+                inst.emissive[3] = if !solid { SHADE_DITHER } else { shades.map_or(SHADE_LIT, |s| s[k]) };
             }
             self.static_patches.push((start, len));
         }
@@ -1451,6 +1484,12 @@ impl WorldView {
         self.shake_offset = Vec3::ZERO;
     }
 
+    /// A close view like `set_closeup`, from `rise` times the distance above the point.
+    pub fn set_closeup_rise(&mut self, target: Vec3, angle: f32, distance: f32, rise: f32) {
+        self.set_closeup(target, angle, distance);
+        self.cam_pos = target + Vec3::new(angle.sin() * distance, distance * rise, angle.cos() * distance);
+    }
+
     /// Freezes the camera into a classic isometric view of the whole grid.
     pub fn set_map_view(&mut self, grid: &Grid) {
         let (w, h) = (grid.width as f32, grid.height as f32);
@@ -1505,6 +1544,17 @@ impl WorldView {
     }
 
     /// The region the shadow map covers: its center and radius.
+    /// Where the fine shadow cascade centers: on the ground a little past where the
+    /// camera looks. None where the coarse one is enough (the map, the title, the shop).
+    pub fn shadow_focus(&self) -> Option<Vec3> {
+        if self.forge || self.showcase || self.map_view.is_some() {
+            return None;
+        }
+        let fwd = self.cam_look - self.cam_pos;
+        let flat = Vec3::new(fwd.x, 0.0, fwd.z).normalize_or_zero();
+        Some(Vec3::new(self.cam_look.x, self.focus_point.y, self.cam_look.z) + flat * 3.0)
+    }
+
     pub fn shadow_box(&self) -> (Vec3, f32) {
         if self.forge {
             (forge::FORGE, 7.0)
@@ -1804,16 +1854,17 @@ impl WorldView {
         }
         self.emit_boss_shots(s.boss_shots, hero_pos, time, f);
 
+        let focus_hint = Vec3::new(hx, 0.0, hz);
         // --- fireflies by night; water, butterflies and pollen by day
         if self.meadow {
             self.emit_meadow(time, f);
         }
-        emit_cloud_sea(grid, f);
+        emit_cloud_sea(grid, f, self.cam_pos);
         self.emit_garden(time, f);
+        self.emit_fountain(time, f);
         self.emit_gate_and_keys(s, time, hero_pos, f);
         self.emit_smoke(time, f);
         let mote_color = lin(MOTE);
-        let mote_alpha = 0.6 + (time * 2.2).sin() * 0.25;
         for (i, b) in self.mote_base.iter().enumerate() {
             if self.meadow {
                 break;
@@ -1824,21 +1875,35 @@ impl WorldView {
                 b.y + (time * 0.9 + fi * 0.7).sin() * 0.2,
                 b.z + (time * 0.4 + fi * 1.3).cos() * 0.4,
             );
-            let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.065));
-            f.additive.push(Instance::new(m, mote_color, mote_alpha, Vec3::ZERO, SHADE_UNLIT));
+            // Each firefly flashes in its own rhythm: a quick glow, then a long dim spell.
+            let phase = (time * (0.35 + (fi * 0.618).fract() * 0.3) + fi * 0.37).fract();
+            let flash = (1.0 - (phase * 3.0 - 0.5).abs() * 2.0).max(0.0);
+            glow_orb(f, p, 0.04 + 0.015 * flash, mote_color, 0.35 + 0.65 * flash * flash);
+            if flash > 0.3 && p.distance_squared(focus_hint) < 144.0 {
+                glow_orb(f, p, 0.16 + 0.1 * flash, mote_color, 0.28 * flash);
+            }
         }
 
         // --- light pools, moved to the sources nearest the hero
-        let focus = Vec3::new(hx, 0.0, hz);
+        let focus = focus_hint;
         let torch_points: Vec<Vec3> = self.torches.values().map(|(p, _)| *p).collect();
         for (i, p) in nearest(&torch_points, focus, LIGHT_POOL_TORCHES).into_iter().enumerate() {
             let fi = i as f32;
             let intensity = 4.5 + (time * 3.0 + fi * 2.3).sin() * 0.5 + (time * 7.0 + fi).sin() * 0.3;
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.5, 0.2), color: lin(TORCH_LIGHT) * intensity, distance: 7.0 });
         }
-        for (i, p) in nearest(&self.candles, focus, 3).into_iter().enumerate() {
+        for (i, p) in nearest(&self.candles, focus, 5).into_iter().enumerate() {
             let flicker = 1.6 + (time * 9.0 + i as f32 * 1.7).sin() * 0.25 + (time * 23.0 + i as f32).sin() * 0.12;
             f.lights.push(Light { pos: p, color: lin(0xffb060) * flicker, distance: 3.2 });
+        }
+        // Halos round the lamps and candles nearby, as if lighting the damp air.
+        for (i, p) in nearest(&torch_points, focus, 10).into_iter().enumerate() {
+            let flick = 0.9 + (time * 3.0 + i as f32 * 2.3).sin() * 0.06;
+            glow_orb(f, p + Vec3::new(0.0, 0.42, 0.0), 0.42, lin(TORCH_LIGHT), 0.16 * flick);
+        }
+        for (i, p) in nearest(&self.candles, focus, 14).into_iter().enumerate() {
+            let flick = 0.85 + (time * 9.0 + i as f32 * 1.7).sin() * 0.1;
+            glow_orb(f, p, 0.24, lin(0xffb060), 0.2 * flick);
         }
         for p in nearest(&remedy_points, focus, LIGHT_POOL_REMEDIES) {
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.45, 0.0), color: lin(REMEDY) * (4.0 + (time * 5.0).sin() * 1.5), distance: 5.0 });
@@ -2214,7 +2279,7 @@ mod tests {
 
     #[test]
     fn a_tree_on_the_sight_line_blocks_it() {
-        let tree = Tree { range: (0, 0), base: Vec3::new(2.0, 0.7, 3.0), radius: 0.35, height: 1.1, fade: 1.0, alive: true };
+        let tree = Tree { range: (0, 0), base: Vec3::new(2.0, 0.7, 3.0), radius: 0.35, height: 1.1, fade: 1.0, alive: true, shades: None };
         let eye = Vec3::new(2.0, 3.1, 0.9);
         assert!(tree.blocks(eye, Vec3::new(2.0, 0.6, 4.0)));
         assert!(!tree.blocks(eye, Vec3::new(5.0, 0.6, 4.0)), "a tree off to the side does not block");
@@ -2249,7 +2314,20 @@ mod tests {
 
 /// The dungeon floats on a sea of dark clouds: stacked mist layers under and around it. The
 /// upper layers only show outside the level and swallow its sides; the lowest hides the void.
-fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
+/// How far outside the island each rank of the smoke wall stands.
+const SMOKE_RANKS: [f32; 5] = [0.35, 1.3, 2.6, 4.2, 6.5];
+/// The smoke wall's sheets reach from down in the cloud sea to above its highest crest.
+const SMOKE_BOTTOM: f32 = -2.6;
+const SMOKE_TOP: f32 = 7.4;
+
+/**
+ * The cloud sea the island floats on, and the smoke wall round its edges:
+ * ranks of billowing curtains that rise to about five times Sebastian's
+ * height. A rank thins away as the camera comes up to it, so the view out
+ * from near the edge stays clear, and from far outside (the map) the near
+ * ranks are left out altogether.
+ */
+fn emit_cloud_sea(grid: &Grid, f: &mut Frame, eye: Vec3) {
     let tint = f.atmosphere.cloud_tint;
     let (w, h) = (grid.width as f32, grid.height as f32);
     f.bounds = Vec4::new(-0.5, -0.5, w - 0.5, h - 0.5);
@@ -2261,6 +2339,34 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
         let m = Mat4::from_translation(center + Vec3::new(0.0, y, 0.0)) * Mat4::from_scale(Vec3::new(size, 0.002, size));
         f.transparent[MeshKind::Cube as usize].push(Instance::new(m, tint, alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));
     }
+
+    // The smoke wall: north, south, west and east, each rank a curtain the length of the side and then some.
+    let b = f.bounds;
+    let mid_y = (SMOKE_BOTTOM + SMOKE_TOP) / 2.0;
+    let tall = SMOKE_TOP - SMOKE_BOTTOM;
+    let mut curtains: Vec<(f32, Instance)> = vec![];
+    for (rank, &out) in SMOKE_RANKS.iter().enumerate() {
+        for side in 0..4 {
+            let along_x = side < 2;
+            let len = if along_x { w } else { h } + 2.0 * out + 6.0;
+            let (pos, eye_out) = match side {
+                0 => (Vec3::new(center.x, mid_y, b.y - out), b.y - eye.z),
+                1 => (Vec3::new(center.x, mid_y, b.w + out), eye.z - b.w),
+                2 => (Vec3::new(b.x - out, mid_y, center.z), b.x - eye.x),
+                _ => (Vec3::new(b.z + out, mid_y, center.z), eye.x - b.z),
+            };
+            let k = ((out - eye_out) / 1.5).clamp(0.0, 1.0);
+            if k <= 0.0 {
+                continue;
+            }
+            let scale = if along_x { Vec3::new(len, tall, 0.002) } else { Vec3::new(0.002, tall, len) };
+            let m = Mat4::from_translation(pos) * Mat4::from_scale(scale);
+            curtains.push((out - eye_out, Instance::new(m, tint, k, Vec3::new(30.0 + rank as f32, out, side as f32), SHADE_CLOUD)));
+        }
+    }
+    // Farthest first, so the nearer ranks blend over the ones behind them.
+    curtains.sort_by(|a, b| b.0.total_cmp(&a.0));
+    f.transparent_early.extend(curtains.into_iter().map(|(_, i)| i));
 }
 
 /// Slime's wet material: glossy, a sharp highlight (voxel material 9).
