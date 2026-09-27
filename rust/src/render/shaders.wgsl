@@ -567,6 +567,10 @@ fn ground_mist(in: VOut, layer: f32) -> FOut {
     let n = cfbm(p + drift + warp * 1.3);
     var cover = smoothstep(0.34, 0.74, n) * in.color.a;
     cover *= smoothstep(1.2, 4.5, length(g.cam_pos.xyz - in.world));
+    // Thin away toward the island's edge, so the sheets never end in a hard line against the sky.
+    let b = g.bounds;
+    let inside = min(min(in.world.x - b.x, b.z - in.world.x), min(in.world.z - b.y, b.w - in.world.z));
+    cover *= smoothstep(0.0, 0.9, inside);
     // Moonlight on the mist, and a warm glow where lanterns and candles are near.
     var light = g.moon_color.rgb * 0.22 + g.hemi_sky.rgb * 0.25 + g.ambient.rgb;
     let count = min(u32(g.params.w), MAX_LIGHTS);
