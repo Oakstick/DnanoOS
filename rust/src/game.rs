@@ -5,8 +5,10 @@ use std::f64::consts::PI;
 
 mod select;
 mod shop;
+mod story;
 mod tour;
 pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState, ShopTab};
+pub use story::{Story, STORY_FADE, TYPE_DELAY};
 pub use tour::{Tour, TourArt, TourStop, TOUR_STOP_SECONDS};
 
 use crate::audio::{AudioManager, Sfx};
@@ -29,7 +31,9 @@ use crate::render::view::{dir_to_yaw, floor_at, CameraMode, SceneState, WorldVie
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Screen {
     Title,
-    /// Choosing a hero, after Play on the title.
+    /// Scene I, "The Threshold": after Play on the title, before the heroes are chosen.
+    Story,
+    /// Choosing a hero, after the story.
     Select,
     Ready,
     Playing,
@@ -276,6 +280,9 @@ pub struct Game {
     pub select_index: usize,
     pub select_age: f64,
     pub select_denied: f64,
+    /// Scene I while it plays, and whether Play on the title shows it (tests go straight to the heroes).
+    pub story: Option<Story>,
+    pub intro: bool,
 }
 
 impl Game {
@@ -352,6 +359,8 @@ impl Game {
             select_index: 1,
             select_age: 0.0,
             select_denied: 0.0,
+            story: None,
+            intro: !cfg!(test),
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -588,6 +597,13 @@ impl Game {
             age: self.select_age as f32,
             denied: self.select_denied as f32,
         });
+        self.view.story = self.story.as_ref().filter(|_| self.screen == Screen::Story).map(|s| crate::render::view::StoryView {
+            beat: s.beat,
+            t: s.t as f32,
+            age: s.age as f32,
+            shown: s.shown as f32,
+            souls: s.souls,
+        });
         self.view.forge = self.screen == Screen::Shop;
         self.view.tour = self.tour.as_ref().filter(|_| self.screen == Screen::Tour).map(|t| (t.stop().target, t.t as f32, t.index));
         self.view.focus = self
@@ -602,19 +618,12 @@ impl Game {
         match self.screen {
             Screen::Title => match self.menu_choice() {
                 Some(MenuItem::Quit) => self.quit_requested = true,
-                // Play (or a tap anywhere else on the title) opens the character screen.
-                Some(_) => {
-                    self.audio.unlock();
-                    self.open_select();
-                    self.input.consume(Action::Attack);
-                }
-                None if self.input.was_pressed(&[Action::Tap]) => {
-                    self.audio.unlock();
-                    self.open_select();
-                    self.input.consume(Action::Attack);
-                }
+                // Play (or a tap anywhere else on the title) starts the story, then the character screen.
+                Some(_) => self.play_from_title(),
+                None if self.input.was_pressed(&[Action::Tap]) => self.play_from_title(),
                 None => {}
             },
+            Screen::Story => self.update_story(dt),
             Screen::Select => self.update_select(dt),
             Screen::Ready => {
                 let before = self.screen_timer.ceil();
@@ -700,6 +709,18 @@ impl Game {
         };
         self.view.update(dt, &state);
         self.input.flush();
+    }
+
+    /// Play on the title: Scene I first (unless it is switched off), then the heroes.
+    fn play_from_title(&mut self) {
+        self.audio.unlock();
+        if self.intro {
+            self.begin_story();
+        } else {
+            self.open_select();
+        }
+        self.input.consume(Action::Attack);
+        self.input.consume(Action::Confirm);
     }
 
     /// The buttons on the current screen, top to bottom (or left to right).
@@ -2198,6 +2219,64 @@ mod tests {
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Title);
+    }
+
+    #[test]
+    fn play_opens_scene_one_which_plays_every_beat_then_the_heroes() {
+        use crate::logic::story::SCENE_ONE;
+        let mut g = Game::new();
+        g.intro = true;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Story, "Play starts the story");
+        let mut seen: Vec<usize> = Vec::new();
+        for _ in 0..(300.0 / crate::app::STEP) as usize {
+            if g.screen != Screen::Story {
+                break;
+            }
+            let st = g.story.as_ref().unwrap();
+            if seen.last() != Some(&st.beat) {
+                seen.push(st.beat);
+            }
+            // Wait out the action; press on through the lines.
+            if st.beat().waits() && st.t > 0.5 {
+                g.input.inject(Action::Confirm);
+            }
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.screen, Screen::Select, "the heroes are chosen after the story");
+        assert_eq!(seen, (0..SCENE_ONE.len()).collect::<Vec<_>>(), "every beat plays, in order");
+        assert!(g.story.is_none());
+    }
+
+    #[test]
+    fn a_press_shows_the_whole_line_before_moving_on_and_esc_skips_the_story() {
+        use crate::logic::story::{first, Shot};
+        let mut g = Game::new();
+        g.story_jump(first(Shot::Souls).unwrap(), 0.0);
+        let st = g.story.as_mut().unwrap();
+        st.shown = 0.0;
+        for _ in 0..40 {
+            g.update(crate::app::STEP);
+        }
+        let st = g.story.as_ref().unwrap();
+        assert!(st.shown > 0.0 && !st.line_done(), "the line types itself out");
+        let beat = st.beat;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        let st = g.story.as_ref().unwrap();
+        assert!(st.line_done() && st.beat == beat, "the first press shows the rest of the line");
+        assert_eq!(st.souls, 0b111, "all three warriors' souls rise once they are named");
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.story.as_ref().unwrap().beat, beat + 1, "the next press moves on");
+        // Esc skips what is left, straight to the character screen.
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        for _ in 0..(1.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.screen, Screen::Select);
     }
 
     #[test]

@@ -12,7 +12,9 @@
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
 //! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
-//! and `nav:left` / `nav:right` for a menu step (the character screen).
+//! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
+//! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
+//! where `pause` skips it).
 //! `--iso` renders the whole level from an isometric map camera instead;
 //! `--closeup [angle]` a portrait of Ragnar (angle in degrees around him, 0 = his front);
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
@@ -51,6 +53,8 @@ enum Cmd {
     Hold(Dir, bool),
     /// A menu step (the arrow keys' one-shot navigation).
     Nav(Dir),
+    /// Scene I at a beat, seconds into it.
+    Beat(usize, f64),
     Look(f64, f64),
 }
 
@@ -101,6 +105,11 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
                 let dy = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 Cmd::Look(dx, dy)
             }
+            "beat" => {
+                let n = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let at = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                Cmd::Beat(n, at)
+            }
             "nav" => match parts.next().and_then(dir) {
                 Some(d) => Cmd::Nav(d),
                 None => continue,
@@ -150,6 +159,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Press(a) => game.input.inject(a),
                 Cmd::Hold(d, down) => game.input.hold_dir(d, down),
                 Cmd::Nav(d) => game.input.nav = Some(d),
+                Cmd::Beat(n, at) => game.story_jump(n, at),
                 Cmd::Look(dx, dy) => game.view.look(dx, dy),
                 Cmd::Nugget => game.debug_collect_key(),
                 Cmd::Hurt => game.debug_hurt(),

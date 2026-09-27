@@ -14,5 +14,6 @@ pub mod mover;
 pub mod pathing;
 pub mod projectile;
 pub mod rng;
+pub mod story;
 pub mod systems;
 pub mod types;

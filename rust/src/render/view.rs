@@ -27,9 +27,11 @@ mod garden;
 mod gate;
 mod meadow;
 mod select;
+mod story;
 pub use forge::SMITH_BEAT;
 pub use fountain::krampus;
 pub use select::SelectView;
+pub use story::StoryView;
 pub use meadow::meadow_atmosphere;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
@@ -459,6 +461,11 @@ struct Models {
     /// The two heroes waiting to be unlocked, for the character screen.
     mehmed: Rig,
     miyamoto: Rig,
+    /// Scene I's cast: the four friends, the old gatekeeper, his dog, and Krampus as a shadow.
+    kids: [Rig; 4],
+    old_man: Rig,
+    dog: Rig,
+    krampus: Rig,
 }
 
 impl Models {
@@ -508,6 +515,10 @@ impl Models {
             knife: build_rig(&forge::knife_model(), &[], 0.06),
             mehmed: build_rig(&characters::mehmed(), characters::MEHMED_RIG, VOXEL / 2.0),
             miyamoto: build_rig(&characters::miyamoto(), characters::MIYAMOTO_RIG, VOXEL / 2.0),
+            kids: [0, 1, 2, 3].map(|i| build_rig(&super::cast::kid(i), super::cast::KID_RIG, story::KID_VOXEL)),
+            old_man: build_rig(&super::cast::old_man(), super::cast::OLD_MAN_RIG, story::OLD_MAN_VOXEL),
+            dog: build_rig(&super::cast::dog(), super::cast::DOG_RIG, story::DOG_VOXEL),
+            krampus: build_rig(&super::cast::krampus_shade(), super::cast::KRAMPUS_RIG, story::KRAMPUS_VOXEL),
         }
     }
 
@@ -619,6 +630,13 @@ pub struct WorldView {
     was_select: bool,
     /// Draw the heroes not yet unlocked in colour too (a capture option, to look at them).
     pub preview_heroes: bool,
+    /// Scene I while it plays; its two sets and their mist (built once); how far each
+    /// warrior's soul has risen; and whether the story was on last frame.
+    pub story: Option<StoryView>,
+    story_sets: [Vec<Instance>; 2],
+    story_mist: [Vec<Instance>; 2],
+    story_rise: [f32; 3],
+    was_story: bool,
     /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
     pub tour: Option<(Vec3, f32, usize)>,
     tour_index: Option<usize>,
@@ -705,6 +723,11 @@ impl WorldView {
             select_cam: 0.0,
             was_select: false,
             preview_heroes: false,
+            story: None,
+            story_sets: [story::graveyard_set(), story::gateway_set()],
+            story_mist: [story::graveyard_mist(), story::gateway_mist()],
+            story_rise: [0.0; 3],
+            was_story: false,
             tour: None,
             tour_index: None,
             tour_angle: 0.0,
@@ -950,6 +973,9 @@ impl WorldView {
         let time = s.time as f32;
         self.update_effects(dtf, s);
 
+        if let Some(sv) = self.story {
+            self.update_story(dtf, sv);
+        }
         // The character screen: the picked hero steps forward, the others back.
         if let Some(sel) = self.select {
             let k = 1.0 - (-7.0 * dtf).exp();
@@ -1395,16 +1421,22 @@ impl WorldView {
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
         let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
         self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
-        if self.showcase != self.was_showcase || self.forge != self.was_forge || self.select.is_some() != self.was_select {
+        if self.showcase != self.was_showcase || self.forge != self.was_forge || self.select.is_some() != self.was_select || self.story.is_some() != self.was_story {
             self.was_showcase = self.showcase;
             self.was_forge = self.forge;
             self.was_select = self.select.is_some();
+            self.was_story = self.story.is_some();
             self.initialized = false;
         }
         if self.tour.is_none() {
             self.tour_index = None;
         }
-        let (desired, look, pos_lerp) = if let Some((target, t, index)) = self.tour {
+        let story_cam = self.story.map(|sv| self.story_camera(sv));
+        let (desired, look, pos_lerp) = if let Some((eye, look, _)) = story_cam {
+            // The story's shots are placed exactly, cut to cut.
+            self.initialized = false;
+            (eye, look, 1.0)
+        } else if let Some((target, t, index)) = self.tour {
             // A dramatic swoop: in from high and wide, then a slow close orbit.
             if self.tour_index != Some(index) {
                 self.tour_index = Some(index);
@@ -1475,7 +1507,9 @@ impl WorldView {
         } else {
             (focus + Vec3::new(0.0, TOP_HEIGHT, TOP_BACK), focus + Vec3::new(0.0, 0.0, -TOP_LOOK_AHEAD), TOP_LERP)
         };
-        self.focus_point = if let Some((target, _, _)) = self.tour {
+        self.focus_point = if let Some((_, _, focus)) = story_cam {
+            focus
+        } else if let Some((target, _, _)) = self.tour {
             target
         } else if let Some(sel) = self.select {
             select::slot_feet(sel.index, 1.0) + Vec3::new(0.0, 0.7, 0.0)
@@ -1600,7 +1634,7 @@ impl WorldView {
     /// Where the fine shadow cascade centers: on the ground a little past where the
     /// camera looks. None where the coarse one is enough (the map, the title, the shop).
     pub fn shadow_focus(&self) -> Option<Vec3> {
-        if self.forge || self.showcase || self.select.is_some() || self.map_view.is_some() {
+        if self.forge || self.showcase || self.select.is_some() || self.story.is_some() || self.map_view.is_some() {
             return None;
         }
         let fwd = self.cam_look - self.cam_pos;
@@ -1609,7 +1643,9 @@ impl WorldView {
     }
 
     pub fn shadow_box(&self) -> (Vec3, f32) {
-        if self.select.is_some() {
+        if let Some(sv) = self.story {
+            self.story_shadow_box(sv)
+        } else if self.select.is_some() {
             (select::SELECT_STAGE + Vec3::new(0.0, 0.6, -0.6), 6.5)
         } else if self.forge {
             (forge::FORGE, 7.0)
@@ -1661,8 +1697,12 @@ impl WorldView {
             let up = right.cross(fwd);
             f.facing = Quat::from_mat3(&glam::Mat3::from_cols(right, up, -fwd));
         }
-        f.skip_static = self.showcase || self.forge || self.select.is_some();
+        f.skip_static = self.showcase || self.forge || self.select.is_some() || self.story.is_some();
         f.time = s.time as f32;
+        if let Some(sv) = self.story {
+            self.emit_story(sv, s, f);
+            return;
+        }
         if self.forge {
             f.atmosphere.night_sky = 0.0;
             self.emit_forge(s, f);

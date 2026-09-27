@@ -69,6 +69,46 @@ pub enum Sfx {
     Whoosh,
     /// A x3 kill streak.
     Brutal,
+    // ---- Scene I
+    /// A church bell tolling far off.
+    Toll,
+    /// Crows calling from the gate.
+    Caw,
+    /// A ball kicked.
+    Kick,
+    /// Iron struck: the gate.
+    Clang,
+    /// Krampus's bells, jangling out of the fog.
+    Bells,
+    /// Krampus's shriek as he rushes out.
+    Shriek,
+    /// A horror sting: the moment he seizes the boy.
+    Stinger,
+    /// Falling through into the underworld (and the way back slamming shut).
+    Portal,
+    /// Quitmer's snarl.
+    Growl,
+    /// His chain snapping taut.
+    Chain,
+    /// Quitmer settling down with a whine.
+    Whimper,
+    /// A warrior's soul rising.
+    Soul,
+    /// The iron door grinding open.
+    DoorGrind,
+    /// Wind over the graves.
+    Wind,
+    /// Water dripping in the dungeon.
+    Drip,
+}
+
+/// Whose voice a line of the story types out in: each has its own blip.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Speech {
+    Child,
+    Old,
+    Beast,
+    Narrator,
 }
 
 const MASTER_VOLUME: f64 = 0.5;
@@ -88,6 +128,8 @@ pub struct AudioManager {
     rng: crate::logic::rng::Rng,
     foot: bool,
     soundtrack: Option<Soundtrack>,
+    /// No music at all (the story plays over its own sounds) until the next soundtrack.
+    hushed: bool,
 }
 
 impl Default for AudioManager {
@@ -109,6 +151,7 @@ impl AudioManager {
             rng: crate::logic::rng::Rng::from_time(),
             foot: false,
             soundtrack: None,
+            hushed: false,
         }
     }
 
@@ -122,7 +165,7 @@ impl AudioManager {
                 {
                     let mut s = synth.lock().unwrap();
                     s.master = if self.muted { 0.0 } else { MASTER_VOLUME };
-                    s.music.running = self.soundtrack.is_none();
+                    s.music.running = self.soundtrack.is_none() && !self.hushed;
                     s.music.bpm = BASE_BPM * TEMPO_STEP.powi(self.tempo_step as i32);
                     s.music_target = if self.ducked { MUSIC_VOLUME * 0.3 } else { MUSIC_VOLUME };
                 }
@@ -191,9 +234,10 @@ impl AudioManager {
      * back to the synth. Asking for the one already playing leaves it running.
      */
     pub fn set_soundtrack(&mut self, which: Option<Soundtrack>) {
-        if self.synth.is_some() && self.soundtrack == which {
+        if self.synth.is_some() && self.soundtrack == which && !self.hushed {
             return;
         }
+        self.hushed = false;
         self.soundtrack = which;
         let track = which.and_then(track::Track::new);
         self.with(|s| {
@@ -206,6 +250,47 @@ impl AudioManager {
                 }
                 // Fade the recording out; the synth tune picks up underneath.
                 None => s.track_target = 0.0,
+            }
+        });
+    }
+
+    /// Lets the music fall silent, the recording and the synth tune both; the next soundtrack brings it back.
+    pub fn hush(&mut self) {
+        self.soundtrack = None;
+        self.hushed = true;
+        self.with(|s| {
+            s.music.running = false;
+            s.track_target = 0.0;
+        });
+    }
+
+    /**
+     * One blip of a line typing out in the story, in the speaker's voice: a
+     * chirp for the boys, a low reedy murmur for the old man, a rasp of breath
+     * for the dog, a soft tone for the narrator. Each is a little different.
+     */
+    pub fn play_voice(&mut self, voice: Speech) {
+        let p = self.rng.range(0.88, 1.14);
+        let offset = self.rng.next() * 2.0;
+        self.with(|s| {
+            let t = s.now;
+            match voice {
+                Speech::Child => {
+                    blip(s, t, 640.0 * p, 0.035, Wave::Square, 0.022);
+                    blip(s, t, 1280.0 * p, 0.025, Wave::Sine, 0.012);
+                }
+                Speech::Old => {
+                    s.push(Voice::new(t, t + 0.07, Wave::Saw, Env::constant(118.0 * p), Env::ramp(t, 0.05, 0.001, 0.065), Bus::Sfx).filtered(synth::FilterKind::Lowpass, 700.0, 2.0));
+                    blip(s, t, 236.0 * p, 0.05, Wave::Triangle, 0.03);
+                }
+                Speech::Beast => {
+                    s.push(
+                        Voice::new(t, t + 0.09, Wave::Noise { rate: 0.6, offset }, Env::constant(1.0), Env::ramp(t, 0.09, 0.001, 0.08), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 260.0 * p, 1.4),
+                    );
+                    s.push(Voice::new(t, t + 0.09, Wave::Saw, Env::constant(62.0 * p), Env::ramp(t, 0.06, 0.001, 0.08), Bus::Sfx).filtered(synth::FilterKind::Lowpass, 400.0, 2.0));
+                }
+                Speech::Narrator => blip(s, t, 392.0 * p, 0.05, Wave::Triangle, 0.018),
             }
         });
     }
@@ -472,6 +557,189 @@ impl AudioManager {
                     );
                     sweep(s, t, 2200.0, 300.0, 0.18, Wave::Saw, 0.08);
                 }
+                Sfx::Toll => {
+                    // A bell far off: a hum an octave under the strike, then inharmonic partials ringing on.
+                    for (ratio, g, d) in [(0.5, 0.05, 6.0), (1.0, 0.07, 4.5), (1.19, 0.035, 3.2), (1.5, 0.028, 2.8), (2.0, 0.045, 2.4), (2.52, 0.02, 1.7), (3.0, 0.014, 1.3), (4.2, 0.008, 0.9)] {
+                        let gain = Env::points(vec![(t, 0.0001), (t + 0.008, g * vg), (t + d, 0.0003)]);
+                        s.push(Voice::new(t, t + d + 0.05, Wave::Sine, Env::constant(174.6 * ratio * vp), gain, Bus::Sfx));
+                    }
+                    s.push(
+                        Voice::new(t, t + 0.06, Wave::Noise { rate: 1.2, offset }, Env::constant(1.0), Env::ramp(t, 0.05, 0.001, 0.05), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 1600.0, 1.0),
+                    );
+                }
+                Sfx::Caw => {
+                    // Two harsh caws: a buzzing tone that drops, through a nasal band.
+                    for k in 0..2 {
+                        let at = t + k as f64 * 0.34;
+                        let freq = Env::points(vec![(at, 780.0 * vp), (at + 0.05, 900.0 * vp), (at + 0.2, 540.0 * vp)]);
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.02, 0.06 * vg), (at + 0.2, 0.001)]);
+                        s.push(Voice::new(at, at + 0.22, Wave::Saw, freq, gain, Bus::Sfx).vibrato(36.0, 0.04).filtered(synth::FilterKind::Bandpass, 1400.0, 3.0));
+                        s.push(
+                            Voice::new(at, at + 0.16, Wave::Noise { rate: 1.3, offset }, Env::constant(1.0), Env::ramp(at, 0.035 * vg, 0.001, 0.15), Bus::Sfx)
+                                .filtered(synth::FilterKind::Bandpass, 1900.0, 2.0),
+                        );
+                    }
+                }
+                Sfx::Kick => {
+                    sweep(s, t, 150.0, 60.0, 0.1, Wave::Sine, 0.2);
+                    s.push(
+                        Voice::new(t, t + 0.05, Wave::Noise { rate: 0.9, offset }, Env::constant(1.0), Env::ramp(t, 0.1 * vg, 0.001, 0.045), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 700.0, 1.0),
+                    );
+                }
+                Sfx::Clang => {
+                    // Wrought iron rattling: inharmonic partials and a burst of grit.
+                    for (f, d, g) in [(420.0, 0.7, 0.06), (420.0 * 2.76, 0.4, 0.04), (420.0 * 5.4, 0.25, 0.025), (1130.0, 0.5, 0.03)] {
+                        blip(s, t, f, d, Wave::Sine, g);
+                    }
+                    s.push(
+                        Voice::new(t, t + 0.12, Wave::Noise { rate: 1.1, offset }, Env::constant(1.0), Env::ramp(t, 0.12 * vg, 0.001, 0.1), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 2600.0, 1.3),
+                    );
+                }
+                Sfx::Bells => {
+                    // Small bells jangling, and a dull cowbell clank or two under them.
+                    for k in 0..9 {
+                        let at = t + k as f64 * 0.085 + (k * 37 % 11) as f64 * 0.004;
+                        let f = 1650.0 + (k * 263 % 900) as f64;
+                        blip(s, at, f, 0.16, Wave::Sine, 0.03);
+                        blip(s, at, f * 2.76, 0.08, Wave::Sine, 0.012);
+                    }
+                    for k in 0..3 {
+                        let at = t + 0.05 + k as f64 * 0.27;
+                        s.push(Voice::new(at, at + 0.25, Wave::Square, Env::constant(540.0 * vp), Env::ramp(at, 0.04 * vg, 0.001, 0.22), Bus::Sfx).filtered(synth::FilterKind::Bandpass, 800.0, 2.5));
+                        s.push(Voice::new(at, at + 0.25, Wave::Square, Env::constant(812.0 * vp), Env::ramp(at, 0.025 * vg, 0.001, 0.2), Bus::Sfx).filtered(synth::FilterKind::Bandpass, 1200.0, 2.5));
+                    }
+                }
+                Sfx::Shriek => {
+                    roar(s, t, 0.6, 0.95, offset);
+                    let freq = Env::points(vec![(t, 1500.0 * vp), (t + 0.15, 1900.0 * vp), (t + 0.8, 700.0 * vp)]);
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.06, 0.07 * vg), (t + 0.5, 0.05 * vg), (t + 0.85, 0.001)]);
+                    s.push(Voice::new(t, t + 0.88, Wave::Saw, freq, gain, Bus::Sfx).vibrato(28.0, 0.05).filtered(synth::FilterKind::Bandpass, 2100.0, 2.0));
+                    s.push(
+                        Voice::new(t, t + 0.7, Wave::Noise { rate: 1.6, offset }, Env::constant(1.0), Env::points(vec![(t, 0.0001), (t + 0.05, 0.12 * vg), (t + 0.7, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Highpass, 2400.0, 0.8),
+                    );
+                }
+                Sfx::Stinger => {
+                    // A boom and a clash of close, sour notes.
+                    s.push(Voice::new(t, t + 1.5, Wave::Sine, Env::ramp(t, 70.0, 28.0, 1.2), Env::ramp(t, 0.5 * vg, 0.001, 1.4), Bus::Sfx));
+                    for (i, f) in [233.1, 246.9, 261.6, 277.2, 466.2].into_iter().enumerate() {
+                        let gain = Env::points(vec![(t, 0.0001), (t + 0.015, 0.045 * vg), (t + 0.5, 0.025 * vg), (t + 1.6, 0.0005)]);
+                        s.push(Voice::new(t, t + 1.65, Wave::Saw, Env::constant(f * (1.0 + i as f64 * 0.003)), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 2200.0, 1.5));
+                    }
+                    s.push(
+                        Voice::new(t, t + 0.4, Wave::Noise { rate: 0.8, offset }, Env::constant(1.0), Env::ramp(t, 0.3 * vg, 0.001, 0.38), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 1200.0, 1.0),
+                    );
+                }
+                Sfx::Portal => {
+                    // A rush of air climbing through four bands, a rising tone, then a deep boom and a shimmer.
+                    for (k, f) in [380.0, 760.0, 1500.0, 3000.0].into_iter().enumerate() {
+                        let at = t + k as f64 * 0.09;
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.25, 0.1 * vg), (at + 0.55, 0.001)]);
+                        s.push(Voice::new(at, at + 0.58, Wave::Noise { rate: 1.0, offset: offset + k as f64 * 0.3 }, Env::constant(1.0), gain, Bus::Sfx).filtered(synth::FilterKind::Bandpass, f * vp, 1.2));
+                    }
+                    sweep(s, t, 90.0, 620.0, 0.6, Wave::Triangle, 0.1);
+                    let at = t + 0.55;
+                    s.push(Voice::new(at, at + 1.0, Wave::Sine, Env::ramp(at, 95.0, 30.0, 0.9), Env::ramp(at, 0.45 * vg, 0.001, 0.95), Bus::Sfx));
+                    for f in [1568.0, 2093.0, 2637.0] {
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.03, 0.03), (at + 1.2, 0.0005)]);
+                        s.push(Voice::new(at, at + 1.25, Wave::Sine, Env::constant(f), gain, Bus::Sfx).vibrato(6.0, 0.01));
+                    }
+                }
+                Sfx::Growl => {
+                    // A rumbling snarl (its loudness shudders), rising to a snapping bark.
+                    let mut shudder = vec![(t, 0.0001)];
+                    for k in 1..24 {
+                        let at = t + k as f64 * 0.045;
+                        shudder.push((at, if k % 2 == 0 { 0.1 * vg } else { 0.045 * vg }));
+                    }
+                    shudder.push((t + 1.15, 0.001));
+                    for (i, f) in [82.0, 83.4, 164.0].into_iter().enumerate() {
+                        let pts: Vec<(f64, f64)> = shudder.iter().map(|&(a, g)| (a, g * if i == 2 { 0.5 } else { 1.0 })).collect();
+                        s.push(Voice::new(t, t + 1.18, Wave::Saw, Env::constant(f * vp), Env::points(pts), Bus::Sfx).vibrato(17.0, 0.07).filtered(synth::FilterKind::Lowpass, 650.0, 2.0));
+                    }
+                    s.push(
+                        Voice::new(t, t + 1.18, Wave::Noise { rate: 0.55, offset }, Env::constant(1.0), Env::points(shudder.clone()), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 250.0 * vp, 1.6),
+                    );
+                    let at = t + 1.05;
+                    let freq = Env::points(vec![(at, 260.0 * vp), (at + 0.06, 320.0 * vp), (at + 0.3, 120.0 * vp)]);
+                    s.push(Voice::new(at, at + 0.32, Wave::Saw, freq, Env::points(vec![(at, 0.0001), (at + 0.03, 0.16 * vg), (at + 0.3, 0.001)]), Bus::Sfx).filtered(synth::FilterKind::Lowpass, 1400.0, 3.0));
+                    s.push(
+                        Voice::new(at, at + 0.25, Wave::Noise { rate: 0.8, offset }, Env::constant(1.0), Env::ramp(at, 0.16 * vg, 0.001, 0.24), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 700.0, 1.0),
+                    );
+                }
+                Sfx::Chain => {
+                    for k in 0..7 {
+                        let at = t + k as f64 * 0.05 + (k * 13 % 7) as f64 * 0.006;
+                        let f = 2300.0 + (k * 677 % 1500) as f64;
+                        blip(s, at, f, 0.05, Wave::Sine, 0.03);
+                        blip(s, at, f * 1.48, 0.035, Wave::Sine, 0.015);
+                    }
+                    s.push(
+                        Voice::new(t, t + 0.3, Wave::Noise { rate: 1.5, offset }, Env::constant(1.0), Env::ramp(t, 0.05 * vg, 0.001, 0.28), Bus::Sfx)
+                            .filtered(synth::FilterKind::Highpass, 3200.0, 0.8),
+                    );
+                }
+                Sfx::Whimper => {
+                    let freq = Env::points(vec![(t, 880.0 * vp), (t + 0.18, 700.0 * vp), (t + 0.32, 830.0 * vp), (t + 0.62, 560.0 * vp)]);
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.05, 0.045 * vg), (t + 0.45, 0.03 * vg), (t + 0.65, 0.001)]);
+                    s.push(Voice::new(t, t + 0.66, Wave::Triangle, freq, gain, Bus::Sfx).vibrato(7.0, 0.03).filtered(synth::FilterKind::Lowpass, 1600.0, 1.0));
+                    s.push(
+                        Voice::new(t + 0.5, t + 1.0, Wave::Noise { rate: 0.7, offset }, Env::constant(1.0), Env::points(vec![(t + 0.5, 0.0001), (t + 0.6, 0.05 * vg), (t + 1.0, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 800.0, 1.0),
+                    );
+                }
+                Sfx::Soul => {
+                    // A breath of wind and a high, slow-blooming chord that hangs in the air.
+                    s.push(Voice::new(t, t + 1.2, Wave::Sine, Env::ramp(t, 110.0, 220.0, 1.0), Env::points(vec![(t, 0.0001), (t + 0.3, 0.08 * vg), (t + 1.2, 0.001)]), Bus::Sfx));
+                    for (i, f) in [880.0, 1046.5, 1318.5, 1760.0].into_iter().enumerate() {
+                        let at = t + i as f64 * 0.06;
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.35, 0.03 * vg), (at + 2.0, 0.0005)]);
+                        s.push(Voice::new(at, at + 2.05, Wave::Triangle, Env::constant(f * vp), gain, Bus::Sfx).vibrato(5.0 + i as f64 * 0.4, 0.008));
+                    }
+                    for k in 0..5 {
+                        blip(s, t + 0.2 + k as f64 * 0.11, 2637.0 * 2f64.powf((k * 5 % 12) as f64 / 12.0), 0.12, Wave::Sine, 0.02);
+                    }
+                }
+                Sfx::DoorGrind => {
+                    // Iron grinding on stone, a groaning hinge, and the thud as it comes to rest.
+                    let mut grind = vec![(t, 0.0001)];
+                    for k in 1..40 {
+                        let at = t + k as f64 * 0.05;
+                        grind.push((at, if k % 3 == 0 { 0.16 * vg } else { 0.07 * vg }));
+                    }
+                    grind.push((t + 2.1, 0.001));
+                    s.push(Voice::new(t, t + 2.12, Wave::Noise { rate: 0.5, offset }, Env::constant(1.0), Env::points(grind), Bus::Sfx).filtered(synth::FilterKind::Lowpass, 520.0, 1.5));
+                    s.push(
+                        Voice::new(t, t + 2.1, Wave::Saw, Env::points(vec![(t, 52.0), (t + 2.0, 44.0)]), Env::points(vec![(t, 0.0001), (t + 0.3, 0.08 * vg), (t + 2.0, 0.001)]), Bus::Sfx)
+                            .vibrato(3.0, 0.2)
+                            .filtered(synth::FilterKind::Lowpass, 300.0, 2.0),
+                    );
+                    let freq = Env::points(vec![(t + 0.2, 430.0), (t + 0.9, 380.0), (t + 1.5, 460.0)]);
+                    s.push(
+                        Voice::new(t + 0.2, t + 1.6, Wave::Triangle, freq, Env::points(vec![(t + 0.2, 0.0001), (t + 0.4, 0.035 * vg), (t + 1.6, 0.001)]), Bus::Sfx)
+                            .vibrato(11.0, 0.02)
+                            .filtered(synth::FilterKind::Bandpass, 900.0, 3.0),
+                    );
+                    let at = t + 2.05;
+                    s.push(Voice::new(at, at + 0.7, Wave::Sine, Env::ramp(at, 80.0, 32.0, 0.6), Env::ramp(at, 0.35 * vg, 0.001, 0.65), Bus::Sfx));
+                }
+                Sfx::Wind => {
+                    // A long gust, swelling and falling away.
+                    let gain = |g: f64| Env::points(vec![(t, 0.0001), (t + 1.4, g * 0.6), (t + 2.6, g), (t + 3.8, g * 0.5), (t + 5.5, 0.0005)]);
+                    s.push(Voice::new(t, t + 5.6, Wave::Noise { rate: 0.8, offset }, Env::constant(1.0), gain(0.045 * vg), Bus::Sfx).filtered(synth::FilterKind::Bandpass, 520.0 * vp, 0.8));
+                    s.push(Voice::new(t, t + 5.6, Wave::Noise { rate: 1.3, offset: offset + 0.7 }, Env::constant(1.0), gain(0.02 * vg), Bus::Sfx).filtered(synth::FilterKind::Bandpass, 1300.0 * vp, 2.0));
+                }
+                Sfx::Drip => {
+                    sweep(s, t, 1900.0, 900.0, 0.05, Wave::Sine, 0.04);
+                    sweep(s, t + 0.13, 1900.0, 900.0, 0.05, Wave::Sine, 0.012);
+                    sweep(s, t + 0.27, 1900.0, 900.0, 0.05, Wave::Sine, 0.004);
+                }
                 Sfx::BossHit => {
                     // A wet thwack: a thump, a squelch, a bright tick of impact.
                     sweep(s, t, 170.0, 70.0, 0.14, Wave::Sine, 0.34);
@@ -634,4 +902,47 @@ fn open_stream(music_level: f64) -> StreamResult {
     };
     stream.play().ok()?;
     Some((synth, stream))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An audio manager driving a synth with no device behind it, for rendering in tests.
+    fn silent() -> (AudioManager, Arc<Mutex<Synth>>) {
+        let synth = Arc::new(Mutex::new(Synth::new(48_000.0, MUSIC_VOLUME)));
+        synth.lock().unwrap().master = MASTER_VOLUME;
+        let mut a = AudioManager::new();
+        a.muted = false;
+        a.synth = Some(synth.clone());
+        (a, synth)
+    }
+
+    #[test]
+    fn the_story_sounds_render_clean() {
+        let (mut a, synth) = silent();
+        a.hush();
+        let all = [
+            Sfx::Toll, Sfx::Caw, Sfx::Kick, Sfx::Clang, Sfx::Bells, Sfx::Shriek, Sfx::Stinger, Sfx::Portal,
+            Sfx::Growl, Sfx::Chain, Sfx::Whimper, Sfx::Soul, Sfx::DoorGrind, Sfx::Wind, Sfx::Drip,
+        ];
+        let mut render = |what: &str| {
+            let mut buf = vec![0.0f32; 48_000 * 2];
+            let mut s = synth.lock().unwrap();
+            for block in buf.chunks_mut(512) {
+                s.render(block, 1);
+            }
+            let peak = buf.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            assert!(buf.iter().all(|v| v.is_finite()), "{what} produced NaN or infinity");
+            assert!(peak > 1e-4, "{what} is silent");
+        };
+        for sfx in all {
+            a.play(sfx);
+            render(&format!("{sfx:?}"));
+        }
+        for voice in [Speech::Child, Speech::Old, Speech::Beast, Speech::Narrator] {
+            a.play_voice(voice);
+            render(&format!("{voice:?}"));
+        }
+    }
 }

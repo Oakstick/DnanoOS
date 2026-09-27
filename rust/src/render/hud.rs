@@ -21,6 +21,7 @@ use crate::logic::items::{weapon, weapon_label, WeaponKind};
 use crate::render::icons::{icon, Icon};
 
 mod shop;
+mod story;
 pub use shop::shop_rects;
 use crate::logic::systems::MAX_LIVES;
 use crate::render::view::floor_at;
@@ -98,8 +99,15 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         }
         return;
     }
+    if g.screen == Screen::Story {
+        story::draw_story(o, g, t);
+        return;
+    }
     if g.screen == Screen::Select {
         draw_select(o, g, t);
+        if g.juice.fade > 0.0 {
+            o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, g.juice.fade.min(1.0)]);
+        }
         return;
     }
     if g.screen != Screen::Title {
@@ -116,13 +124,18 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o.text("PAUSED", o.width / 2.0, top - t * 2.6, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
             o.text("Esc or Start to resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center, false);
             draw_menu(o, g, t);
+            // Where the story stands: the road down after Krampus.
+            let y = o.height / 2.0 + t * 6.4;
+            o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
+            o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
+            o.wrap_text(crate::logic::story::objective(), o.width / 2.0, y + t * 1.7, (t * 26.0).min(o.width - t * 2.0), t * 0.75, t * 0.5, rgba(TEXT_DIM, 1.0));
         }
         Screen::Won => draw_screen(
             o,
             t,
             &[
                 line("THE CYCLOPS IS SLAIN", 2.0, GOLD),
-                line(format!("The meadow is quiet again. {} marches on.", g.hero_kind.name()), 0.9, SAND),
+                line(format!("The way down lies open. {} goes deeper.", g.hero_kind.name()), 0.9, SAND),
                 line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
                 line(format!("+{} coins to spend", crate::logic::gear::COINS_BOSS + 100 * g.dungeon as u32), 0.9, GOLD),
@@ -608,6 +621,7 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let ready = if g.boss.is_some() { "THE CYCLOPS AWAITS" } else { "GET READY" };
     o.text(ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
     o.text(&g.level.data.name.to_uppercase(), w / 2.0, y + t * 4.3, t * 0.6, rgba(SAND, 1.0), Align::Center, true);
+    o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), w / 2.0, y + t * 5.2, t * 0.48, rgba(TEXT_DIM, 1.0), Align::Center, false);
 }
 
 // ------------------------------------------------------------------- tour
