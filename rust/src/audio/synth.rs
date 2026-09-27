@@ -241,6 +241,14 @@ pub struct Synth {
 
     pub music: super::music::Sequencer,
     control_countdown: usize,
+
+    /// A recorded soundtrack playing in place of the sequencer, and its fade.
+    pub track: Option<super::track::Track>,
+    pub track_level: f64,
+    pub track_target: f64,
+    /// A low-pass on the recording that closes as the hero gets hurt, per channel.
+    track_lp: (f64, f64),
+    track_lp_k: f64,
 }
 
 /// The music bus low-pass: open enough to keep the upbeat track bright, still warm.
@@ -276,6 +284,11 @@ impl Synth {
             frenzy_phase: 0.0,
             music: super::music::Sequencer::new(),
             control_countdown: 0,
+            track: None,
+            track_level: 0.0,
+            track_target: 0.0,
+            track_lp: (0.0, 0.0),
+            track_lp_k: 1.0,
         }
     }
 
@@ -285,13 +298,14 @@ impl Synth {
         }
     }
 
-    /// Fills an interleaved buffer. Every channel gets the same mono mix.
+    /// Fills an interleaved buffer. The synth is mono; a recorded soundtrack plays in stereo.
     pub fn render(&mut self, out: &mut [f32], channels: usize) {
         let channels = channels.max(1);
         let dt = 1.0 / self.sample_rate;
         let sr = self.sample_rate;
         let drone_k = 1.0 - (-dt / 0.1).exp();
         let music_k = 1.0 - (-dt / (0.4 / 3.0)).exp();
+        let track_k = 1.0 - (-dt / 0.35).exp();
         let noise_len = self.noise.len();
 
         for frame in out.chunks_mut(channels) {
@@ -362,14 +376,39 @@ impl Synth {
                 frenzy = (1.0 - 4.0 * (self.frenzy_phase - 0.5).abs()) * 0.08;
             }
 
-            let mix = ((sfx + music_out + drone + frenzy) * self.master).clamp(-1.0, 1.0) as f32;
-            for s in frame.iter_mut() {
-                *s = mix;
+            let mono = sfx + music_out + drone + frenzy;
+            let (mut tl, mut tr) = (0.0, 0.0);
+            self.track_level += (self.track_target - self.track_level) * track_k;
+            if let Some(track) = self.track.as_mut() {
+                let (l, r) = track.next(sr);
+                let k = self.track_lp_k;
+                self.track_lp.0 += (l as f64 - self.track_lp.0) * k;
+                self.track_lp.1 += (r as f64 - self.track_lp.1) * k;
+                let g = self.track_level * self.music_level * track.which.gain();
+                tl = self.track_lp.0 * g;
+                tr = self.track_lp.1 * g;
+            }
+            let left = ((mono + tl) * self.master).clamp(-1.0, 1.0) as f32;
+            let right = ((mono + tr) * self.master).clamp(-1.0, 1.0) as f32;
+            match frame.len() {
+                1 => frame[0] = (left + right) * 0.5,
+                _ => {
+                    for (c, s) in frame.iter_mut().enumerate() {
+                        *s = match c {
+                            0 => left,
+                            1 => right,
+                            _ => (left + right) * 0.5,
+                        };
+                    }
+                }
             }
             self.now += dt;
         }
         let now = self.now;
         self.voices.retain(|v| v.stop > now);
+        if self.track_target == 0.0 && self.track_level < 1e-4 {
+            self.track = None;
+        }
     }
 
     /// Control-rate work: the tape warble and the music sequencer.
@@ -379,6 +418,9 @@ impl Synth {
         let wobble = (TAU * 0.23 * self.now).sin() * 180.0 * (1.0 - 0.5 * self.danger);
         let cutoff = MUSIC_LOWPASS + (1250.0 - MUSIC_LOWPASS) * self.danger;
         self.tone.set_freq(cutoff + wobble, self.sample_rate);
+        // The recording stays clean until he is hurt, then muffles the same way.
+        let track_cutoff = 20_000.0 + (1250.0 - 20_000.0) * self.danger.powf(0.7);
+        self.track_lp_k = 1.0 - (-TAU * track_cutoff / self.sample_rate).exp();
         let mut seq = std::mem::take(&mut self.music);
         seq.pump(self);
         self.music = seq;

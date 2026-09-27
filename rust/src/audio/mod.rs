@@ -2,11 +2,13 @@
 //! are synthesized, the same voices the web build made with Web Audio.
 
 pub mod music;
+pub mod track;
 pub mod synth;
 
 use std::sync::{Arc, Mutex};
 
 use music::BASE_BPM;
+pub use track::Soundtrack;
 use synth::{Bus, Env, Synth, Voice, Wave};
 
 use crate::platform;
@@ -85,6 +87,7 @@ pub struct AudioManager {
     tempo_step: u32,
     rng: crate::logic::rng::Rng,
     foot: bool,
+    soundtrack: Option<Soundtrack>,
 }
 
 impl Default for AudioManager {
@@ -105,6 +108,7 @@ impl AudioManager {
             tempo_step: 0,
             rng: crate::logic::rng::Rng::from_time(),
             foot: false,
+            soundtrack: None,
         }
     }
 
@@ -118,12 +122,15 @@ impl AudioManager {
                 {
                     let mut s = synth.lock().unwrap();
                     s.master = if self.muted { 0.0 } else { MASTER_VOLUME };
-                    s.music.running = true;
+                    s.music.running = self.soundtrack.is_none();
                     s.music.bpm = BASE_BPM * TEMPO_STEP.powi(self.tempo_step as i32);
                     s.music_target = if self.ducked { MUSIC_VOLUME * 0.3 } else { MUSIC_VOLUME };
                 }
                 self.synth = Some(synth);
                 self.stream = Some(stream);
+                if let Some(t) = self.soundtrack.take() {
+                    self.set_soundtrack(Some(t));
+                }
             }
             None => {
                 // No output device: the game runs silent rather than failing.
@@ -176,6 +183,35 @@ impl AudioManager {
         self.tempo_step = step;
         let bpm = BASE_BPM * TEMPO_STEP.powi(step as i32);
         self.with(|s| s.music.bpm = bpm);
+    }
+
+    /**
+     * Plays a recorded soundtrack from the top, looping, in place of the synth
+     * tune (which stops and lets its last notes ring out); `None` hands the music
+     * back to the synth. Asking for the one already playing leaves it running.
+     */
+    pub fn set_soundtrack(&mut self, which: Option<Soundtrack>) {
+        if self.synth.is_some() && self.soundtrack == which {
+            return;
+        }
+        self.soundtrack = which;
+        let track = which.and_then(track::Track::new);
+        self.with(|s| {
+            s.music.running = track.is_none();
+            match track {
+                Some(t) => {
+                    s.track = Some(t);
+                    s.track_level = 0.0;
+                    s.track_target = 1.0;
+                }
+                // Fade the recording out; the synth tune picks up underneath.
+                None => s.track_target = 0.0,
+            }
+        });
+    }
+
+    pub fn soundtrack(&self) -> Option<Soundtrack> {
+        self.soundtrack
     }
 
     pub fn tempo_step(&self) -> u32 {

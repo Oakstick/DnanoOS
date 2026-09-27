@@ -487,6 +487,15 @@ impl Game {
         if screen == Screen::Title {
             self.audio.set_tempo_step(0);
         }
+        // Dungeon I has its own recorded soundtrack; the title, the shop and the rest keep the synth tune.
+        match screen {
+            Screen::Title | Screen::Shop => self.audio.set_soundtrack(None),
+            Screen::Ready | Screen::Tour => {
+                let track = (self.dungeon == 0 && !self.level.data.boss).then_some(crate::audio::Soundtrack::Level1);
+                self.audio.set_soundtrack(track);
+            }
+            _ => {}
+        }
         if screen == Screen::Ready {
             self.audio.play(Sfx::Tick); // "3"
         }
