@@ -32,6 +32,10 @@ struct Globals {
     ambient: [f32; 4],
     moon_dir: [f32; 4],
     moon_color: [f32; 4],
+    sky_fwd: [f32; 4],
+    sky_right: [f32; 4],
+    sky_up: [f32; 4],
+    sky_moon: [f32; 4],
     lights: [GpuLight; MAX_LIGHTS],
 }
 
@@ -78,6 +82,7 @@ pub struct Gpu {
     scene_opaque: wgpu::RenderPipeline,
     scene_blend: wgpu::RenderPipeline,
     scene_add: wgpu::RenderPipeline,
+    sky_pipe: wgpu::RenderPipeline,
     overlay_pipe: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
@@ -257,6 +262,29 @@ impl Gpu {
         let scene_opaque = scene_pipe("opaque", None, true);
         let scene_blend = scene_pipe("transparent", Some(alpha), false);
         let scene_add = scene_pipe("additive", Some(additive), false);
+        // The sky: one full-screen triangle behind everything, no depth.
+        let sky_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sky"),
+            layout: Some(&scene_pl),
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_sky"), buffers: &[], compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_sky"),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                compilation_options: Default::default(),
+            }),
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState { count: SAMPLES, ..Default::default() },
+            multiview: None,
+            cache: None,
+        });
 
         // ---- overlay
         let screen = device.create_buffer(&wgpu::BufferDescriptor {
@@ -377,6 +405,7 @@ impl Gpu {
             scene_opaque,
             scene_blend,
             scene_add,
+            sky_pipe,
             overlay_pipe,
             globals,
             scene_bind,
@@ -444,6 +473,7 @@ impl Gpu {
         let fog = super::overlay::rgba(atm.background, atm.fog_near);
         let v4 = |v: Vec3, w: f32| [v.x, v.y, v.z, w];
         let cam = view.camera_position();
+        let (sky_fwd, sky_right, sky_up) = view.sky_basis();
         let g = Globals {
             view_proj: view.view_proj().to_cols_array(),
             cam_pos: v4(cam, 1.0),
@@ -454,6 +484,10 @@ impl Gpu {
             ambient: v4(atm.ambient, 0.0),
             moon_dir: v4(atm.sun_dir, 0.0),
             moon_color: v4(atm.sun, 0.0),
+            sky_fwd: v4(sky_fwd, atm.night_sky),
+            sky_right: v4(sky_right, frame.time),
+            sky_up: v4(sky_up, 0.0),
+            sky_moon: v4(atm.moon_view, 0.0),
             lights,
         };
         self.queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));
@@ -506,6 +540,10 @@ impl Gpu {
                 occlusion_query_set: None,
             });
             pass.set_bind_group(0, &self.scene_bind, &[]);
+            if atm.night_sky > 0.0 {
+                pass.set_pipeline(&self.sky_pipe);
+                pass.draw(0..3, 0..1);
+            }
 
             // Static level geometry.
             if self.static_count > 0 && !frame.skip_static {

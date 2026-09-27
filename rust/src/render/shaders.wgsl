@@ -21,6 +21,10 @@ struct Globals {
     ambient: vec4<f32>,
     moon_dir: vec4<f32>,
     moon_color: vec4<f32>,
+    sky_fwd: vec4<f32>,    // xyz forward view ray, w night sky amount
+    sky_right: vec4<f32>,  // xyz to the right screen edge, w time
+    sky_up: vec4<f32>,     // xyz to the top screen edge
+    sky_moon: vec4<f32>,   // xyz toward the moon
     lights: array<Light, 32>,
 };
 
@@ -229,6 +233,114 @@ fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     rgb = mix(rgb, g.fog.rgb, fog_f);
     return vec4<f32>(rgb, in.color.a);
+}
+
+// ------------------------------------------------------------------ night sky
+//
+// A black sky over a faint glow at the horizon (the fog color, so distant
+// trees melt into it), three layers of twinkling stars, a thin milky band and
+// a full moon with its maria and a soft halo. All procedural, per pixel.
+
+struct SkyOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) ndc: vec2<f32>,
+};
+
+@vertex
+fn vs_sky(@builtin(vertex_index) i: u32) -> SkyOut {
+    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u)) * 2.0 - 1.0;
+    var out: SkyOut;
+    out.clip = vec4<f32>(p, 1.0, 1.0);
+    out.ndc = p;
+    return out;
+}
+
+fn hash31(p: vec3<f32>) -> f32 {
+    return fract(sin(dot(p, vec3<f32>(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+fn vnoise2(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = hash31(vec3<f32>(i, 1.0));
+    let b = hash31(vec3<f32>(i + vec2<f32>(1.0, 0.0), 1.0));
+    let c = hash31(vec3<f32>(i + vec2<f32>(0.0, 1.0), 1.0));
+    let d = hash31(vec3<f32>(i + vec2<f32>(1.0, 1.0), 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn star_layer(ray: vec3<f32>, scale: f32, density: f32, px: f32, time: f32) -> vec3<f32> {
+    let p = ray * scale;
+    let cell = floor(p);
+    let h = hash31(cell);
+    if (h < 1.0 - density) {
+        return vec3<f32>(0.0);
+    }
+    let h2 = hash31(cell + 17.3);
+    let h3 = hash31(cell + 41.9);
+    let center = cell + 0.5 + (vec3<f32>(h2, h3, fract(h2 * 9.1 + h3)) - 0.5) * 0.45;
+    let d = length(p - center) / (px * scale);
+    let size = 0.9 + 1.4 * pow(h2, 3.0);
+    let core = exp(-d * d / (size * size));
+    let twinkle = 0.65 + 0.35 * sin(time * (1.5 + 3.0 * h3) + h2 * 40.0);
+    let tint = mix(vec3<f32>(0.75, 0.85, 1.0), vec3<f32>(1.0, 0.9, 0.75), h3);
+    return tint * core * twinkle * (0.35 + 0.65 * pow(h2, 2.0));
+}
+
+@fragment
+fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
+    let ray = normalize(g.sky_fwd.xyz + in.ndc.x * g.sky_right.xyz + in.ndc.y * g.sky_up.xyz);
+    let time = g.sky_right.w;
+    // Radians per pixel, to keep stars and the moon's rim crisp at any resolution.
+    let px = length(fwidth(ray));
+    let up = ray.y;
+
+    let zenith = vec3<f32>(0.004, 0.006, 0.014);
+    var col = mix(g.fog.rgb * 0.6, zenith, smoothstep(-0.2, 0.18, up));
+
+    // A faint milky band across the sky.
+    let band_n = normalize(vec3<f32>(0.35, 0.3, 0.88));
+    let band = exp(-pow(dot(ray, band_n) / 0.2, 2.0));
+    let cloud = vnoise2(vec2<f32>(atan2(ray.z, ray.x) * 6.0, ray.y * 9.0)) * vnoise2(vec2<f32>(atan2(ray.z, ray.x) * 17.0, ray.y * 23.0));
+    let above = smoothstep(-0.02, 0.2, up);
+    col += vec3<f32>(0.05, 0.055, 0.075) * band * (0.4 + 1.2 * cloud) * above;
+
+    var stars = star_layer(ray, 90.0, 0.07, px, time);
+    stars += star_layer(ray, 170.0, 0.05 + 0.08 * band, px, time) * 0.8;
+    stars += star_layer(ray, 320.0, 0.03 + 0.1 * band, px, time) * 0.6;
+    col += stars * above;
+
+    // The full moon.
+    let md = normalize(g.sky_moon.xyz);
+    let mr = normalize(cross(md, vec3<f32>(0.0, 1.0, 0.0)));
+    let mu = cross(mr, md);
+    let radius = 0.042;
+    let ang = acos(clamp(dot(ray, md), -1.0, 1.0));
+    let halo = exp(-max(ang - radius, 0.0) * 22.0) * 0.12 + exp(-max(ang - radius, 0.0) * 5.0) * 0.04;
+    col += vec3<f32>(0.55, 0.6, 0.75) * halo;
+    if (ang < radius + px * 2.0) {
+        let uv = vec2<f32>(dot(ray, mr), dot(ray, mu)) / radius;
+        let r2 = dot(uv, uv);
+        let z = sqrt(max(1.0 - r2, 0.0));
+        var surf = 0.55 * vnoise2(uv * 2.2 + 3.0) + 0.3 * vnoise2(uv * 5.0 + 11.0) + 0.15 * vnoise2(uv * 11.0);
+        let maria = smoothstep(0.48, 0.7, surf);
+        var moon = mix(vec3<f32>(0.97, 0.96, 0.91), vec3<f32>(0.7, 0.72, 0.74), maria);
+        // A few craters with bright rims.
+        for (var k = 0; k < 7; k++) {
+            let fk = f32(k);
+            let c = vec2<f32>(hash31(vec3<f32>(fk, 3.0, 1.0)), hash31(vec3<f32>(fk, 7.0, 2.0))) * 1.4 - 0.7;
+            let cr = 0.08 + 0.12 * hash31(vec3<f32>(fk, 5.0, 9.0));
+            let dd = length(uv - c) / cr;
+            moon *= 1.0 - 0.07 * smoothstep(1.0, 0.5, dd) + 0.04 * smoothstep(0.75, 1.0, dd) * smoothstep(1.2, 1.0, dd);
+        }
+        moon *= 0.72 + 0.28 * pow(z, 0.5);
+        let edge = 1.0 - smoothstep(radius - px * 1.5, radius + px * 0.5, ang);
+        col = mix(col, moon, edge);
+    }
+    // Dither so the dark halo and horizon glow do not band in 8 bits.
+    col += (hash31(vec3<f32>(in.clip.xy, fract(time) * 7.0)) - 0.5) / 255.0;
+    return vec4<f32>(col, 1.0);
 }
 
 // ------------------------------------------------------------------ overlay

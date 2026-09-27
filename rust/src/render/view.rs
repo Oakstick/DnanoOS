@@ -179,6 +179,10 @@ pub struct Atmosphere {
     pub sun_dir: Vec3,
     pub sun: Vec3,
     pub exposure: f32,
+    /// 1 for the starry night sky with its full moon, 0 for a plain background.
+    pub night_sky: f32,
+    /// Where the moon hangs in the sky (it is placed for the view, not for the light).
+    pub moon_view: Vec3,
 }
 
 impl Atmosphere {
@@ -194,6 +198,8 @@ impl Atmosphere {
             sun_dir: Vec3::new(-6.0, 14.0, 8.0).normalize(),
             sun: lin(MOON) * 0.9,
             exposure: 1.2,
+            night_sky: 1.0,
+            moon_view: Vec3::new(-1.103, 0.534, -0.311).normalize(),
         }
     }
 }
@@ -211,6 +217,8 @@ pub struct Frame {
     pub additive: Vec<Instance>,
     pub lights: Vec<Light>,
     pub coin_pulse: f32,
+    /// Seconds since start, for the twinkling stars.
+    pub time: f32,
     /// The title diorama draws on its own; the level's static geometry sits this frame out.
     pub skip_static: bool,
     pub atmosphere: Atmosphere,
@@ -1354,6 +1362,19 @@ impl WorldView {
         self.map_view = Some((across / self.aspect.max(0.01)).max(across * 0.5 + 2.0) * 0.53);
     }
 
+    /// The sky's view rays: forward, and right and up scaled to the screen edges. The pitch is
+    /// held a little above the horizon, so the stars stay up there even under a map camera.
+    pub fn sky_basis(&self) -> (Vec3, Vec3, Vec3) {
+        let d = (self.cam_look - self.cam_pos).normalize_or(Vec3::NEG_Z);
+        let yaw = d.z.atan2(d.x);
+        let pitch = d.y.clamp(-1.0, 1.0).asin().max(0.15);
+        let fwd = Vec3::new(pitch.cos() * yaw.cos(), pitch.sin(), pitch.cos() * yaw.sin());
+        let right = fwd.cross(Vec3::Y).normalize();
+        let up = right.cross(fwd);
+        let t = (FOV_DEGREES.to_radians() * 0.5).tan();
+        (fwd, right * t * self.aspect.max(0.01), up * t)
+    }
+
     pub fn projection(&self) -> Mat4 {
         if let Some(half) = self.map_view {
             let hw = half * self.aspect.max(0.01);
@@ -1389,7 +1410,9 @@ impl WorldView {
     pub fn emit(&self, s: &SceneState, f: &mut Frame) {
         f.clear();
         f.skip_static = self.showcase || self.forge;
+        f.time = s.time as f32;
         if self.forge {
+            f.atmosphere.night_sky = 0.0;
             self.emit_forge(s, f);
             return;
         }

@@ -50,6 +50,8 @@ pub fn meadow_atmosphere() -> Atmosphere {
         sun_dir: Vec3::new(-0.45, 1.0, 0.55).normalize(),
         sun: lin(0xfff0d6) * 1.35,
         exposure: 1.05,
+        night_sky: 0.0,
+        moon_view: Vec3::Y,
     }
 }
 
