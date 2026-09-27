@@ -36,6 +36,7 @@ struct Globals {
     sky_right: [f32; 4],
     sky_up: [f32; 4],
     sky_moon: [f32; 4],
+    bounds: [f32; 4],
     lights: [GpuLight; MAX_LIGHTS],
 }
 
@@ -488,6 +489,7 @@ impl Gpu {
             sky_right: v4(sky_right, frame.time),
             sky_up: v4(sky_up, 0.0),
             sky_moon: v4(atm.moon_view, 0.0),
+            bounds: frame.bounds.to_array(),
             lights,
         };
         self.queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));

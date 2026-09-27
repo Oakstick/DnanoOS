@@ -132,7 +132,11 @@ pub const SHADE_DITHER: f32 = 3.0;
 /// Lit, and on its top face a field of grass blades drawn with parallax occlusion mapping.
 pub const SHADE_GRASS: f32 = 4.0;
 
+/// A layer of the cloud sea the dungeon floats on: drifting procedural mist.
+pub const SHADE_CLOUD: f32 = 5.0;
+
 /// How see-through a tree gets while it blocks the view of Popolon.
+
 pub const TREE_FADE_MIN: f32 = 0.22;
 /// Fade speed, in full fades per second.
 const TREE_FADE_RATE: f32 = 6.0;
@@ -219,6 +223,8 @@ pub struct Frame {
     pub coin_pulse: f32,
     /// Seconds since start, for the twinkling stars.
     pub time: f32,
+    /// The level's footprint (min x, min z, max x, max z), for the cloud sea around it.
+    pub bounds: Vec4,
     /// The title diorama draws on its own; the level's static geometry sits this frame out.
     pub skip_static: bool,
     pub atmosphere: Atmosphere,
@@ -1670,6 +1676,8 @@ impl WorldView {
         // --- fireflies by night; water, butterflies and pollen by day
         if self.meadow {
             self.emit_meadow(time, f);
+        } else {
+            emit_cloud_sea(grid, f);
         }
         let mote_color = lin(MOTE);
         let mote_alpha = 0.6 + (time * 2.2).sin() * 0.25;
@@ -2100,3 +2108,17 @@ mod tests {
     }
 }
 
+/// The dungeon floats on a sea of dark clouds: stacked mist layers under and around it. The
+/// upper layers only show outside the level and swallow its sides; the lowest hides the void.
+fn emit_cloud_sea(grid: &Grid, f: &mut Frame) {
+    let (w, h) = (grid.width as f32, grid.height as f32);
+    f.bounds = Vec4::new(-0.5, -0.5, w - 0.5, h - 0.5);
+    let center = Vec3::new(w / 2.0 - 0.5, 0.0, h / 2.0 - 0.5);
+    let size = (w.max(h) + 70.0) * 2.0;
+    // (height, opacity, seed), lowest first so they blend back to front.
+    let layers = [(-1.6, 1.0, 0.0), (-1.05, 0.8, 1.0), (-0.55, 0.7, 2.0), (-0.1, 0.65, 3.0), (0.15, 0.6, 4.0), (0.4, 0.5, 5.0), (0.7, 0.35, 6.0)];
+    for (y, alpha, seed) in layers {
+        let m = Mat4::from_translation(center + Vec3::new(0.0, y, 0.0)) * Mat4::from_scale(Vec3::new(size, 0.002, size));
+        f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0x161b24), alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));
+    }
+}

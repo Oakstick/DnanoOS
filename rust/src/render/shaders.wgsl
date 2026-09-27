@@ -25,6 +25,7 @@ struct Globals {
     sky_right: vec4<f32>,  // xyz to the right screen edge, w time
     sky_up: vec4<f32>,     // xyz to the top screen edge
     sky_moon: vec4<f32>,   // xyz toward the moon
+    bounds: vec4<f32>,     // the level's footprint: min x, min z, max x, max z
     lights: array<Light, 32>,
 };
 
@@ -184,6 +185,75 @@ fn grass_shade(world: vec3<f32>, view_depth: f32) -> vec3<f32> {
     return vec3<f32>(mix(0.9, shade, fade), hb.y, fade * h);
 }
 
+// ------------------------------------------------------------ cloud sea
+//
+// Each layer is a flat sheet of drifting fbm mist. Layers above the floor
+// only appear outside the level's footprint, so they wrap its sides; every
+// layer thins out far from the level, so the night sky shows past the edge.
+
+fn cnoise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = fract(sin(dot(i, vec2<f32>(127.1, 311.7))) * 43758.5453);
+    let b = fract(sin(dot(i + vec2<f32>(1.0, 0.0), vec2<f32>(127.1, 311.7))) * 43758.5453);
+    let c = fract(sin(dot(i + vec2<f32>(0.0, 1.0), vec2<f32>(127.1, 311.7))) * 43758.5453);
+    let d = fract(sin(dot(i + vec2<f32>(1.0, 1.0), vec2<f32>(127.1, 311.7))) * 43758.5453);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn cfbm(p_in: vec2<f32>) -> f32 {
+    var p = p_in;
+    var v = 0.0;
+    var a = 0.5;
+    for (var i = 0; i < 5; i++) {
+        v += a * cnoise(p);
+        p = mat2x2<f32>(1.6, 1.2, -1.2, 1.6) * p + vec2<f32>(3.1, 1.7);
+        a *= 0.5;
+    }
+    return v;
+}
+
+fn cloud_sea(in: VOut) -> vec4<f32> {
+    let seed = in.emissive.x;
+    let layer_y = in.emissive.y;
+    let time = g.sky_right.w;
+    let xz = in.world.xz;
+    let drift = vec2<f32>(0.11, 0.05) * time * (0.6 + 0.15 * seed);
+    let p = xz * 0.16 + vec2<f32>(seed * 17.3, seed * 9.1);
+    // Domain warp for billowing shapes.
+    let warp = vec2<f32>(cfbm(p * 0.7 + drift * 0.5), cfbm(p * 0.7 - drift.yx * 0.5 + 5.2));
+    let n = cfbm(p + drift + warp * 1.6);
+
+    // Signed distance outside the level's footprint (negative inside).
+    let b = g.bounds;
+    let q = max(vec2<f32>(b.x, b.y) - xz, xz - vec2<f32>(b.z, b.w));
+    let outside = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0);
+
+    var cover = smoothstep(0.34, 0.62, n);
+    if (seed < 0.5) {
+        cover = 0.75 + 0.25 * cover; // the floor of the sea: nearly solid
+    }
+    // Above the floor, hug the outside of the level and pile up against it.
+    if (layer_y > -0.2) {
+        // A dense bank right against the walls, breaking into wisps further out.
+        let reach = 1.2 + 3.2 * n + (layer_y + 0.1) * -1.5;
+        let bank = smoothstep(reach, reach * 0.3, outside) * (0.45 + 0.55 * smoothstep(0.3, 0.6, n));
+        cover = max(cover * (1.0 - smoothstep(3.0, 7.0, outside)), bank);
+        cover *= smoothstep(-0.2, 0.25, outside);
+    }
+    // Thin out away from the level, so the starry sky shows beyond.
+    cover *= 1.0 - smoothstep(2.5 + (layer_y + 1.6) * 1.2, 9.0 + (1.6 - abs(layer_y)) * 2.5, outside + (n - 0.5) * 7.0);
+
+    // Moonlit billow tops, darker troughs, a cool rim of light at the level's edge.
+    let tint = in.color.rgb;
+    var col = mix(tint * 0.35, tint * 2.1 + vec3<f32>(0.015, 0.018, 0.03), smoothstep(0.4, 0.85, n));
+    col += vec3<f32>(0.02, 0.03, 0.03) * smoothstep(2.0, 0.0, abs(outside)) * smoothstep(0.4, 0.8, n);
+    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    return vec4<f32>(mix(rgb, g.fog.rgb, fog_f * 0.6), cover * in.color.a);
+}
+
 @fragment
 fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
     // Derivatives first, while control flow is still uniform.
@@ -193,6 +263,9 @@ fn fs_scene(in: VOut) -> @location(0) vec4<f32> {
     }
 
     let mode = in.emissive.w;
+    if (mode > 4.5) {
+        return cloud_sea(in);
+    }
     // Screen-door fade: a 4x4 ordered dither keeps fading trees in the opaque pass.
     if (mode > 2.5 && mode < 3.5 && in.color.a < bayer4(in.clip.xy)) {
         discard;
