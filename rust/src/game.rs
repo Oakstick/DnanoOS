@@ -54,7 +54,13 @@ const REMEDY_HEAL: i32 = 50;
 /// Reinforcements: the first arrives after this long, then one every interval, up to the cap.
 const SPAWN_FIRST: f64 = 20.0;
 const SPAWN_EVERY: f64 = 25.0;
+/// With every key taken the wait between reinforcements shrinks, down to this share at the last.
+const SPAWN_EVERY_ENRAGED: f64 = 0.25;
 const MAX_ENEMIES: usize = 12;
+/// Every key raises the cap on foes by this many.
+const MAX_ENEMIES_PER_KEY: usize = 2;
+/// Past this much rage the foes stop scattering and hunt without rest.
+const RAGE_NO_SCATTER: f64 = 0.5;
 const SPAWN_CYCLE: [EnemyKind; 4] = [EnemyKind::Bat, EnemyKind::Slime, EnemyKind::Vampire, EnemyKind::Skeleton];
 /// The music quickens one step for every this many keys.
 pub const KEYS_PER_TEMPO_STEP: u32 = 2;
@@ -170,7 +176,7 @@ pub enum MenuItem {
 impl MenuItem {
     pub fn label(self) -> &'static str {
         match self {
-            MenuItem::Play => "PLAY",
+            MenuItem::Play => "START",
             MenuItem::Resume => "RESUME",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
@@ -998,6 +1004,7 @@ impl Game {
                 global_mode: self.global_mode,
                 frenzy_active: self.frenzy.active(),
                 hero_hidden: self.hero.invisible(),
+                rage: self.rage(),
                 rng: &mut self.rng,
             };
             self.enemies[i].update(dt, &mut ctx);
@@ -1018,10 +1025,10 @@ impl Game {
             return; // the arena belongs to the Cyclops
         }
         self.spawn_timer -= dt;
-        if self.spawn_timer > 0.0 || self.enemies.len() >= MAX_ENEMIES {
+        if self.spawn_timer > 0.0 || self.enemies.len() >= self.max_enemies() {
             return;
         }
-        self.spawn_timer = SPAWN_EVERY;
+        self.spawn_timer = self.spawn_every();
         let kind = SPAWN_CYCLE[self.spawned % SPAWN_CYCLE.len()];
         let mut spec = default_enemy_specs(&self.level.grid).into_iter().find(|s| s.kind == kind).unwrap();
         spec.exit_delay = 0.5;
@@ -1047,6 +1054,25 @@ impl Game {
                 self.floater(c.x as f64, c.y as f64 - 1.0, "SOMETHING STIRS", 1.6, Some(0xb06cff));
             }
         }
+    }
+
+    /// 0..1 how enraged the dungeon is: the share of its keys taken.
+    pub fn rage(&self) -> f64 {
+        if self.boss.is_some() || self.keys_total == 0 {
+            0.0
+        } else {
+            self.keys_got as f64 / self.keys_total as f64
+        }
+    }
+
+    /// Seconds between reinforcements, shrinking with every key.
+    fn spawn_every(&self) -> f64 {
+        SPAWN_EVERY * (1.0 - (1.0 - SPAWN_EVERY_ENRAGED) * self.rage())
+    }
+
+    /// How many foes may roam at once, more with every key.
+    fn max_enemies(&self) -> usize {
+        MAX_ENEMIES + MAX_ENEMIES_PER_KEY * self.keys_got as usize
     }
 
     /// Walkable tiles beside the churchyard's graves, where draugr rise (none without a churchyard).
@@ -1091,10 +1117,16 @@ impl Game {
             return;
         }
         self.mode_timer -= dt;
+        if self.global_mode == GlobalMode::Scatter && self.rage() >= RAGE_NO_SCATTER {
+            // Half the keys gone: no more breathers, they hunt from here on.
+            self.mode_timer = 0.0;
+        }
         if self.mode_timer <= 0.0 && self.mode_index < MODE_SCHEDULE.len() - 1 {
             self.mode_index += 1;
-            self.mode_timer = MODE_SCHEDULE[self.mode_index].1;
-            self.global_mode = MODE_SCHEDULE[self.mode_index].0;
+            let (mode, secs) = MODE_SCHEDULE[self.mode_index];
+            // Scatter spells shorten as the rage grows; hunts lengthen.
+            self.mode_timer = if mode == GlobalMode::Scatter { secs * (1.0 - self.rage()) } else { secs * (1.0 + self.rage()) };
+            self.global_mode = mode;
             for e in self.enemies.iter_mut() {
                 if e.is_dangerous() {
                     e.reverse(&self.level.grid);
@@ -1142,12 +1174,16 @@ impl Game {
                 self.juice.coins.push(FlyingCoin { from, t: 0.0 });
                 let text = format!("KEY {}/{}", self.keys_got, self.keys_total);
                 self.floater(ox, oy, text, 1.2, Some(0xf2c53d));
+                // The dungeon takes it badly: someone new comes for him at once, and sooner after.
+                if self.boss.is_none() && self.keys_got < self.keys_total {
+                    self.spawn_timer = self.spawn_timer.min(1.5);
+                }
                 if self.keys_got < self.keys_total {
                     self.audio.play(Sfx::Milestone);
                     let left = self.keys_total - self.keys_got;
                     self.juice.banner = Some(Banner {
                         text: "A GOLDEN KEY".to_string(),
-                        sub: format!("{left} MORE {}   A LOCK ON THE GATE LIGHTS UP", if left == 1 { "TO FIND" } else { "TO FIND" }),
+                        sub: format!("{left} MORE TO FIND   THE DEAD GROW RESTLESS"),
                         color: 0xf2c53d,
                         life: 1.8,
                         max: 1.8,
@@ -2277,6 +2313,31 @@ mod tests {
             g.update(crate::app::STEP);
         }
         assert_eq!(g.screen, Screen::Select);
+    }
+
+    #[test]
+    fn every_key_enrages_the_dungeon() {
+        let mut g = playing();
+        assert_eq!(g.rage(), 0.0);
+        let (calm_wait, calm_cap) = (g.spawn_every(), g.max_enemies());
+        let before = g.enemies.len();
+        // Take a key: a reinforcement is on its way within moments.
+        let o = g.hero.occupied();
+        g.level.grid.set(o.x, o.y, Tile::Nodule);
+        g.collect();
+        assert!(g.rage() > 0.0);
+        assert!(g.spawn_timer <= 1.5, "someone comes at once");
+        for _ in 0..(2.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.enemies.len() > before, "a new foe arrived");
+        // Half the keys: no more scattering, shorter waits, more foes allowed.
+        g.keys_got = g.keys_total / 2;
+        assert!(g.spawn_every() < calm_wait && g.max_enemies() > calm_cap);
+        g.global_mode = GlobalMode::Scatter;
+        g.mode_index = 0;
+        g.update(crate::app::STEP);
+        assert_eq!(g.global_mode, GlobalMode::Chase, "they hunt without a break");
     }
 
     #[test]

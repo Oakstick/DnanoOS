@@ -447,7 +447,6 @@ struct Models {
     crescent: Mesh,
     diamond: Mesh,
     tree: Mesh,
-    nugget: Mesh,
     key: Mesh,
     /// Shrine pedestals: weapon (blue runes) and item (gold runes).
     pedestals: [(Mesh, Mesh); 2],
@@ -495,7 +494,6 @@ impl Models {
             crescent: super::props::crescent(),
             diamond: super::props::gem(),
             tree: super::props::pine(),
-            nugget: super::props::nugget(),
             key: gate::golden_key(),
             pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
@@ -1464,7 +1462,7 @@ impl WorldView {
             // The title diorama: the camera sways gently in front of Ragnar.
             self.showcase_angle += dt;
             let a = (self.showcase_angle * 0.23).sin() * 0.5;
-            (STAGE + Vec3::new(a.sin() * 4.3, 1.45, a.cos() * 4.3), STAGE + Vec3::new(0.0, 0.62, 0.0), 6.0)
+            (STAGE + Vec3::new(a * 1.1, 1.2, 3.9), STAGE + Vec3::new(a * 0.3, 0.72, -0.2), 6.0)
         } else if self.camera_mode == CameraMode::Third {
             if self.recentering {
                 let k = 1.0 - (-10.0 * dt).exp();
@@ -1516,7 +1514,7 @@ impl WorldView {
         } else if self.forge {
             forge::FORGE + Vec3::new(1.6, 0.8, 0.0)
         } else if self.showcase {
-            STAGE + Vec3::new(0.0, 0.6, 0.0)
+            STAGE + Vec3::new(0.0, 0.6, 0.3)
         } else {
             focus + Vec3::new(0.0, 0.5, 0.0)
         };
@@ -2039,44 +2037,42 @@ const STAGE: Vec3 = Vec3::new(-40.0, 0.0, -40.0);
 
 impl WorldView {
     /**
-     * The title screen's stage: a mossy stone platform and dais in a ring of
-     * trees and lanterns, Ragnar in the middle showing off his axe, his
-     * foes idling around him, under a warm key light and a cool rim light.
+     * The title screen's stage: the three friends still free stand in front,
+     * and behind each on a stone dais towers the warrior whose soul he will
+     * carry (Mehmed behind the left, Ragnar behind the middle, Miyamoto behind
+     * the right), each in a glow of his soul's colour. A ring of trees,
+     * braziers and fireflies round them, a warm key light, a cool rim.
      */
     fn emit_stage(&self, s: &SceneState, f: &mut Frame) {
+        use crate::logic::heroes::HeroKind;
         let time = s.time as f32;
         let cube = MeshKind::Cube as usize;
         let cyl = MeshKind::Cylinder as usize;
         let at = |x: f32, y: f32, z: f32| STAGE + Vec3::new(x, y, z);
 
-        // Ground: a wide mossy platform, a stone dais, a ring of standing stones.
+        // Ground: a wide mossy platform; behind the boys a dais of dressed stone, two steps up.
         let platform = Mat4::from_translation(at(0.0, -0.09, 0.0)) * Mat4::from_scale(Vec3::new(14.0, 1.5, 14.0));
         f.opaque[cyl].push(Instance::new(platform, lin(0x2a4a28), 1.0, Vec3::ZERO, SHADE_LIT));
-        let dais = Mat4::from_translation(at(0.0, 0.095, 0.0)) * Mat4::from_scale(Vec3::new(4.3, 1.6, 4.3));
-        f.opaque[cyl].push(Instance::new(dais, lin(0x6a6e64), 1.0, Vec3::ZERO, SHADE_LIT));
-        for i in 0..14 {
-            let a = i as f32 / 14.0 * TAU;
-            let r = 1.85 + (i % 3) as f32 * 0.08;
-            let hgt = 0.18 + (i % 4) as f32 * 0.07;
-            let m = Mat4::from_translation(at(a.cos() * r, hgt / 2.0, a.sin() * r))
-                * Mat4::from_rotation_y(a)
-                * Mat4::from_scale(Vec3::new(0.26, hgt, 0.2));
-            let shade = if i % 2 == 0 { 0x5a5e56 } else { 0x4a4e48 };
-            f.opaque[cube].push(Instance::new(m, lin(shade), 1.0, Vec3::ZERO, SHADE_LIT));
+        for (k, (w, d, y)) in [(4.9f32, 1.9f32, 0.07f32), (4.5, 1.5, 0.2)].into_iter().enumerate() {
+            for gx in 0..8 {
+                let x = -w / 2.0 + (gx as f32 + 0.5) * w / 8.0;
+                let v = hash(gx as f64 + k as f64 * 9.0, 3.0) as f32;
+                let m = Mat4::from_translation(at(x, y, -0.75 + k as f32 * 0.0)) * Mat4::from_scale(Vec3::new(w / 8.0 - 0.02, 0.13, d));
+                f.opaque[cube].push(Instance::new(m, lin(0x6a6e64) * (0.8 + 0.3 * v), 1.0, Vec3::ZERO, SHADE_LIT));
+            }
         }
-        // A ring of trees, and two lantern posts.
+        // A ring of trees, and two braziers either side of the line-up.
         for i in 0..14 {
             let a = i as f32 / 14.0 * TAU + 0.2;
             // Leave the camera's side of the ring open (the camera sits toward +z).
-            if a.sin() > 0.55 {
+            if a.sin() > 0.35 {
                 continue;
             }
             let r = 4.6 + (i % 2) as f32 * 0.9;
             push_field(&mut f.opaque[cube], &self.models.tree, at(a.cos() * r, 0.0, a.sin() * r), a * 3.0, 1.9 + (i % 3) as f32 * 0.3, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
         }
-        let lanterns = [at(-2.3, 0.0, 1.9), at(2.4, 0.0, -1.6)];
-        for p in lanterns {
-            // Iron braziers: a dark post and a glowing coal bed on top.
+        let braziers = [at(-2.9, 0.0, 0.2), at(2.9, 0.0, 0.2)];
+        for p in braziers {
             let post = Mat4::from_translation(p + Vec3::new(0.0, 0.45, 0.0)) * Mat4::from_scale(Vec3::new(0.12, 0.9, 0.12));
             f.opaque[cube].push(Instance::new(post, lin(0x2e2a26), 1.0, Vec3::ZERO, SHADE_LIT));
             let bowl = Mat4::from_translation(p + Vec3::new(0.0, 0.93, 0.0)) * Mat4::from_scale(Vec3::new(1.2, 0.8, 1.2));
@@ -2087,75 +2083,42 @@ impl WorldView {
                 let m = Mat4::from_translation(fp) * Mat4::from_scale(Vec3::splat(0.07));
                 f.additive.push(Instance::new(m, lin(0xffa040) * 1.4, 0.8, Vec3::ZERO, SHADE_UNLIT));
             }
-        }
-        // A little hoard glinting on the dais.
-        for (i, (x, z)) in [(-0.6, -0.35), (0.55, -0.45), (0.15, -0.7)].into_iter().enumerate() {
-            let pulse = lin(0xf2c53d) * (0.4 + (time * 3.0 + i as f32).sin() * 0.2);
-            push_field(&mut f.opaque[cube], &self.models.nugget, at(x, 0.19, z), i as f32 * 2.1, 0.75, Vec3::ONE, pulse, SHADE_LIT);
+            glow_orb(f, p + Vec3::new(0.0, 1.1, 0.0), 0.6, lin(0xffa050), 0.25);
         }
 
-        // Ragnar, turning a little as if looking around.
-        let hero = s.hero;
-        let yaw = (time * 0.4).sin() * 0.3;
-        let group = Mat4::from_translation(at(0.0, 0.19, 0.0)) * Mat4::from_rotation_y(yaw);
-        let root = group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
-        let breathe = Vec3::new(0.0, (time * 2.0).sin() * 0.006, 0.0);
-        let mut pose = self.hero_pose.clone();
-        if let Some(h) = self.models.ragnar.index("head") {
-            pose.pos[h] += breathe;
-            pose.rot[h].y = (time * 0.7).sin() * 0.25;
-        }
-        let emissive = if hero.invincible() { lin(INVINCIBLE) * 0.4 } else { Vec3::ZERO };
-        emit_rig(&mut f.opaque[cube], &self.models.ragnar, &pose, root, Vec3::ONE, 1.0, emissive);
-        if self.slash_t >= 0.0 {
-            let p = self.slash_t / SLASH_SECONDS;
-            let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
-            let q = ((p - 0.17) / 0.33).clamp(0.0, 1.0);
-            let sweep = self.slash_side * (1.15 - 2.3 * (1.0 - (1.0 - q).powi(3)));
-            let m = group
-                * Mat4::from_translation(Vec3::new(0.0, 0.5, 0.12))
-                * Mat4::from_rotation_y(sweep)
-                * euler(Vec3::new(-PI / 2.0, 0.0, PI))
-                * Mat4::from_scale(Vec3::splat(1.15));
-            f.transparent[MeshKind::Ring as usize].push(Instance::new(m, lin(0xffffff), env * 0.8, Vec3::ZERO, SHADE_UNLIT));
-        }
-
-        // His foes, idling around the dais.
-        let draugr = self.models.rig(RigId::Skeleton);
-        let mut dp = Pose::rest(draugr);
-        let sway = (time * 1.6).sin();
-        dp.rot_x(draugr, "leftArm", -0.35 + sway * 0.15);
-        dp.rot_x(draugr, "rightArm", -0.6 - sway * 0.2);
-        dp.rot_x(draugr, "head", (time * 0.9).sin() * 0.2);
-        let droot = Mat4::from_translation(at(-1.0, 0.0, -0.65)) * Mat4::from_rotation_y(0.7) * Mat4::from_rotation_z(sway * 0.05);
-        emit_rig(&mut f.opaque[cube], draugr, &dp, droot, Vec3::ONE, 1.0, Vec3::ZERO);
-
-        for (id, pos, phase, facing) in [
-            (RigId::Bat, Vec3::new(1.05, 1.35, -0.7), 0.0, -0.7),
-            (RigId::Vampire, Vec3::new(-0.95, 1.8, -1.2), 1.7, 0.6),
-        ] {
-            let rig = self.models.rig(id);
-            let mut rp = Pose::rest(rig);
-            let flap = (time * 13.0 + phase).sin() * 0.8;
-            if let Some(l) = rig.index("leftWing") {
-                rp.rot[l].z = -flap;
+        // The warriors on the dais, and in front of each the boy who will carry his soul.
+        let heroes = [(HeroKind::Mehmed, &self.models.mehmed), (HeroKind::Ragnar, &self.models.ragnar), (HeroKind::Miyamoto, &self.models.miyamoto)];
+        for (i, (_, rig)) in heroes.iter().enumerate() {
+            let x = (i as f32 - 1.0) * 1.3;
+            let tint = lin(story::SOUL_TINT[i]);
+            let feet = at(x, 0.27, -0.75);
+            let breathe = 1.0 + (time * 2.0 + i as f32 * 1.7).sin() * 0.006;
+            let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(-x * 0.12) * Mat4::from_scale(Vec3::new(1.12, 1.12 * breathe, 1.12));
+            let mut pose = Pose::rest(rig);
+            if let Some(hd) = rig.index("head") {
+                pose.rot[hd].y = (time * 0.5 + i as f32 * 2.0).sin() * 0.12;
             }
-            if let Some(r) = rig.index("rightWing") {
-                rp.rot[r].z = flap;
+            let aura = tint * (0.035 + 0.02 * (time * 1.5 + i as f32).sin());
+            emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, aura);
+            // His soul's light: a halo behind him, a ring at his feet, motes rising.
+            glow_orb(f, feet + Vec3::new(0.0, 0.75, -0.35), 1.25, tint, 0.2 + 0.05 * (time * 1.3 + i as f32).sin());
+            let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.01, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.5, 0.5, 1.0));
+            f.glow.push(Instance::new(ring, tint, 0.3, Vec3::ZERO, SHADE_GLOW));
+            for k in 0..8 {
+                let fk = k as f32;
+                let u = (time * 0.4 + fk * 0.125 + i as f32 * 0.3).fract();
+                let a = fk * 2.4 + time * 0.6;
+                glow_orb(f, feet + Vec3::new(a.cos() * 0.4, u * 1.6, a.sin() * 0.3), 0.03, tint, 0.6 * (1.0 - u));
             }
-            let bob = (time * 1.8 + phase).sin() * 0.12 + (time * 13.0 + phase).sin() * 0.03;
-            let m = Mat4::from_translation(at(pos.x, pos.y + bob, pos.z)) * Mat4::from_rotation_y(facing) * Mat4::from_rotation_x(0.25);
-            emit_rig(&mut f.opaque[cube], rig, &rp, m, Vec3::ONE, 1.0, Vec3::ZERO);
-        }
+            f.lights.push(Light { pos: feet + Vec3::new(0.0, 1.0, -0.6), color: tint * 4.0, distance: 3.0 });
 
-        let slime = self.models.rig(RigId::Slime);
-        let sq = (time * 2.6).sin();
-        let sm = Mat4::from_translation(at(0.95, 0.0, 0.25)) * Mat4::from_rotation_y(-0.8) * Mat4::from_scale(Vec3::new(1.0 - sq * 0.12, 1.0 + sq * 0.25, 1.0 - sq * 0.12));
-        emit_rig(&mut f.opaque[cube], slime, &Pose::rest(slime), sm, Vec3::ONE, 1.0, Vec3::ZERO);
-        // Its trail.
-        let stage_floor = at(0.0, 0.2, 0.0).y;
-        let here = at(0.95, 0.0, 0.25);
-        emit_goo(f, P::new(here.x.round() as i32, here.z.round() as i32), stage_floor - 0.005, 1.0, time, &Default::default());
+            // The boy, a step in front, looking about; now and then one of them waves.
+            let boy = at(x * 0.95, 0.0, 0.95);
+            let cycle = (time * 0.25 + i as f32 * 0.37).fract();
+            let act = if cycle < 0.18 { story::Act::Talk(cycle * 4.0 / 0.18) } else { story::Act::Stand };
+            let look = (time * 0.6 + i as f32 * 2.1).sin() * 0.35;
+            self.emit_kid(f, i + 1, story::kid_root(boy, -x * 0.1), act, time, look, Vec3::ZERO);
+        }
 
         // Fireflies.
         for i in 0..50 {
@@ -2167,16 +2130,14 @@ impl WorldView {
             f.additive.push(Instance::new(m, lin(MOTE), 0.55 + (time * 2.2 + fi).sin() * 0.3, Vec3::ZERO, SHADE_UNLIT));
         }
 
-        // Light: warm lanterns as the key, a cool moon rim from behind, glows from the cast.
+        // Light: warm from the front for the boys' faces, a cool moon rim from behind, the braziers.
         let flicker = 1.0 + (time * 7.0).sin() * 0.05 + (time * 3.1).sin() * 0.04;
-        f.lights.push(Light { pos: at(-1.8, 2.3, 2.6), color: lin(0xffc27a) * 26.0 * flicker, distance: 10.0 });
+        f.lights.push(Light { pos: at(-1.2, 2.2, 3.0), color: lin(0xffc27a) * 22.0 * flicker, distance: 10.0 });
         f.lights.push(Light { pos: at(2.6, 2.8, -2.6), color: lin(0x8fb4ff) * 22.0, distance: 10.0 });
-        f.lights.push(Light { pos: at(0.0, 3.2, 1.2), color: lin(HERO_LIGHT) * 7.0, distance: 8.0 });
-        for p in lanterns {
+        f.lights.push(Light { pos: at(0.8, 2.0, 2.2), color: lin(0xfff0e0) * 5.0, distance: 6.0 });
+        for p in braziers {
             f.lights.push(Light { pos: p + Vec3::new(0.0, 1.3, 0.0), color: lin(TORCH_LIGHT) * 4.0 * flicker, distance: 5.0 });
         }
-        f.lights.push(Light { pos: at(0.95, 0.5, 0.25), color: lin(0x5cff6a) * 1.5, distance: 2.5 });
-        f.lights.push(Light { pos: at(-1.1, 1.0, -0.5), color: lin(0x6ff0ff) * 1.5, distance: 2.5 });
         for l in &self.effect_lights {
             if l.intensity > 0.0 {
                 f.lights.push(Light { pos: l.pos, color: l.color * l.intensity, distance: l.distance });

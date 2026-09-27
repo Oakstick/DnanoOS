@@ -617,7 +617,7 @@ fn dungeon(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seco
 
 pub fn levels() -> Vec<LevelData> {
     vec![
-        estate("Dungeon I: The Moonlit Garden", 1, 6.5 * SPEED_SCALE, 5.4 * SPEED_SCALE, 7.0),
+        estate("The Garden Krampus", 1, 6.5 * SPEED_SCALE, 5.4 * SPEED_SCALE, 7.0),
         estate("Dungeon II: The Cisterns", 2, 7.0 * SPEED_SCALE, 6.3 * SPEED_SCALE, 5.5),
         estate("Dungeon III: Bone Vaults", 3, 7.5 * SPEED_SCALE, 7.3 * SPEED_SCALE, 4.0),
     ]

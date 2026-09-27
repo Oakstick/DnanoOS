@@ -61,6 +61,8 @@ pub struct EnemyContext<'a> {
     pub frenzy_active: bool,
     /// The hero is invisible: nobody can sense him, everyone falls back to scattering.
     pub hero_hidden: bool,
+    /// 0..1 how enraged the dungeon is (it rises with every key taken): faster, keener hunters.
+    pub rage: f64,
     pub rng: &'a mut Rng,
 }
 
@@ -76,6 +78,10 @@ pub struct EnemySpec {
 
 /// Seconds a skeleton keeps homing after the hero stops making footsteps.
 pub const HEARING_MEMORY: f64 = 1.5;
+/// How much faster than usual a fully enraged foe runs.
+pub const RAGE_SPEED: f64 = 0.35;
+/// Past this much rage every foe hunts the hero himself instead of its own trick.
+pub const RAGE_DIRECT: f64 = 0.6;
 /// Seconds a slain skeleton lies in pieces before pulling itself back together.
 pub const REASSEMBLE_SECONDS: f64 = 3.0;
 
@@ -237,7 +243,11 @@ impl Enemy {
 
         let own_pos = self.m.pos();
         b.target = b.compute_target(ctx, own_pos);
-        let mult = b.speed_multiplier(grid, self.m.tile);
+        let mut mult = b.speed_multiplier(grid, self.m.tile);
+        if matches!(b.mode, EnemyMode::Scatter | EnemyMode::Chase) {
+            // Enraged, they run up to a third faster.
+            mult *= 1.0 + RAGE_SPEED * ctx.rage;
+        }
         self.m.speed = b.base_speed * b.speed_factor * mult;
         let allow_nest = matches!(b.mode, EnemyMode::Eaten | EnemyMode::Leaving);
         let flying = self.m.flying;
@@ -351,10 +361,14 @@ impl Brain {
             return self.scatter_target.v();
         }
         let hp = ctx.hero.pos;
+        if ctx.rage >= RAGE_DIRECT && self.kind != EnemyKind::Skeleton {
+            // Enraged: no more flanking or ambushes, straight for him.
+            return hp;
+        }
         match self.kind {
             // Eyeless but sharp-eared: homes on the last place it heard footsteps.
             EnemyKind::Skeleton => {
-                if ctx.hero.heard_age < HEARING_MEMORY {
+                if ctx.hero.heard_age < HEARING_MEMORY * (1.0 + 4.0 * ctx.rage) {
                     ctx.hero.heard_pos
                 } else {
                     self.scatter_target.v()
@@ -431,6 +445,7 @@ mod tests {
                 global_mode: GlobalMode::Scatter,
                 frenzy_active: false,
                 hero_hidden: false,
+                rage: 0.0,
                 rng: &mut rng,
             };
             bat.update(1.0 / 120.0, &mut ctx);

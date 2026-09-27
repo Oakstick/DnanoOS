@@ -60,14 +60,6 @@ fn sprites() -> &'static Sprites {
     })
 }
 
-const RULES: [&str; 5] = [
-    "Find the 8 golden keys hidden across the estate, then go through the gate in the north wall to face the Cyclops. Three lives; dying loses everything you carry.",
-    "The dungeon rises in levels. Jump with Space to clear pits, leap over foes, and climb a ledge; ramps let you walk up. Bats fly over everything.",
-    "Enemies hunt you, and more keep arriving from the hollow the longer you take. Slimes cannot cross bridges. Every other key the music quickens.",
-    "You start with your axe. Strike a shrine to cycle its gift, step on it to take it: a weapon replaces the axe until its ammo runs out.",
-    "Keys and foes earn coins; after each boss, Hrolf the blacksmith sells weapons, upgrades, shields and potions. Carry up to five potions (Q or 1-5 to drink). Shields wear down as they block.",
-];
-
 pub struct OverlayLine {
     pub text: String,
     pub size: f32,
@@ -620,8 +612,13 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     o.text(&n.to_string(), w / 2.0, y, t * 5.0 * pop, rgba(GOLD, alpha), Align::Center, true);
     let ready = if g.boss.is_some() { "THE CYCLOPS AWAITS" } else { "GET READY" };
     o.text(ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
-    o.text(&g.level.data.name.to_uppercase(), w / 2.0, y + t * 4.3, t * 0.6, rgba(SAND, 1.0), Align::Center, true);
-    o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), w / 2.0, y + t * 5.2, t * 0.48, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    // The level's name, large and gold across the top, as the count begins.
+    let name = g.level.data.name.to_uppercase();
+    let fit = w * 0.86 / (name.chars().count().max(1) as f32 * o.measure("M", 1.0));
+    let ny = h * 0.2;
+    o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), w / 2.0, ny - t * 1.9, t * 0.55, rgba(SAND, 1.0), Align::Center, true);
+    draw_logo_word(o, &name, w / 2.0, ny, (t * 2.0).min(fit), g.time as f32);
+    draw_ornament(o, w / 2.0, ny + t * 1.55, t * 12.0, t, g.time as f32);
 }
 
 // ------------------------------------------------------------------- tour
@@ -809,11 +806,14 @@ pub fn menu_rects(screen: Screen, count: usize, w: f32, h: f32) -> Vec<[f32; 4]>
     let bh = t * 1.3;
     match screen {
         Screen::Title => {
-            let bw = t * 6.0;
-            let gap = t * 0.8;
-            let total = bw * count as f32 + gap * (count.saturating_sub(1)) as f32;
-            let x0 = w / 2.0 - total / 2.0;
-            (0..count).map(|i| [x0 + i as f32 * (bw + gap), h * 0.95 - bh / 2.0, bw, bh]).collect()
+            // A big START in the middle below the line-up; Quit (desktop) small in the corner.
+            let (bw, bh) = (t * 9.0, t * 1.9);
+            let mut out = vec![[w / 2.0 - bw / 2.0, h * 0.875 - bh / 2.0, bw, bh]];
+            if count > 1 {
+                let (qw, qh) = (t * 4.6, t * 1.1);
+                out.push([w - qw - t * 0.6, h - qh - t * 0.6, qw, qh]);
+            }
+            out
         }
         _ => {
             let bw = t * 9.0;
@@ -838,7 +838,12 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
         let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
         let color = if selected { if quit { 0xff8a8a } else { GOLD } } else { TEXT_DIM };
-        o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.7, rgba(color, 1.0), Align::Center, true);
+        let big = *item == MenuItem::Play;
+        if big {
+            // The start button glows gold and breathes.
+            o.rect_outline(r[0] - t * 0.12, r[1] - t * 0.12, r[2] + t * 0.24, r[3] + t * 0.24, (t * 0.05).max(1.0), rgba(GOLD, 0.35 * pulse));
+        }
+        o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * if big { 1.15 } else { 0.55 }, rgba(if big { GOLD } else { color }, 1.0), Align::Center, true);
     }
 }
 
@@ -861,14 +866,13 @@ fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
 fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let time = g.time as f32;
-    let sp = sprites();
 
     // Shade the scene top and bottom, keep the middle clear for Ragnar.
     let bands = 24;
     for i in 0..bands {
         let y0 = h * i as f32 / bands as f32;
         let v = i as f32 / (bands - 1) as f32;
-        let a = if v < 0.35 { 0.82 - v / 0.35 * 0.5 } else if v < 0.72 { 0.32 } else { 0.32 + (v - 0.72) / 0.28 * 0.58 };
+        let a = if v < 0.3 { 0.8 - v / 0.3 * 0.62 } else if v < 0.76 { 0.18 } else { 0.18 + (v - 0.76) / 0.24 * 0.6 };
         o.rect(0.0, y0, w, h / bands as f32 + 1.0, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, a]);
     }
     // Side vignettes behind the panels.
@@ -887,7 +891,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     {
         let (y, size) = (orn_y + t * 0.95, t * 0.6);
         let gap = t * 1.4;
-        let names = ["Ragnar", "Mehmed", "Miyamoto"];
+        let names = ["Mehmed", "Ragnar", "Miyamoto"];
         let total: f32 = names.iter().map(|n| o.measure(n, size)).sum::<f32>() + gap * 2.0;
         let mut x = w / 2.0 - total / 2.0;
         for (i, n) in names.iter().enumerate() {
@@ -905,66 +909,13 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         }
     }
 
-    // ---- left: the quest
-    let px = w * 0.03;
-    let py = h * 0.3;
-    let pw = w * 0.26;
-    let ph = h * 0.44;
-    panel(o, px, py, pw, ph, t);
-    o.text("YOUR QUEST", px + pw / 2.0, py + t * 0.75, t * 0.8, rgba(GOLD, 1.0), Align::Center, true);
-    let mut y = py + t * 1.8;
-    let size = t * 0.5;
-    for rule in RULES {
-        o.rect(px + t * 0.55, y - t * 0.1, t * 0.22, t * 0.22, rgba(GOLD, 0.9));
-        y = wrap_left(o, rule, px + t * 1.05, y, pw - t * 1.5, t * 0.62, size, rgba(SAND, 1.0)) + t * 0.22;
-    }
-
-    // ---- right: the foes
-    let fx = w * 0.71;
-    let fw = w * 0.26;
-    panel(o, fx, py, fw, ph, t);
-    o.text("FOES OF THE DEEP", fx + fw / 2.0, py + t * 0.75, t * 0.8, rgba(0xff8a6a, 1.0), Align::Center, true);
-    let row_h = (ph - t * 1.6) / sp.cast.len() as f32;
-    for (i, (sprite, name, color, blurb)) in sp.cast.iter().enumerate() {
-        let ry = py + t * 1.5 + i as f32 * row_h;
-        let box_w = row_h * 0.95;
-        let scale = ((box_w - t * 0.4) / sprite.width as f32).min((row_h - t * 0.5) / sprite.height as f32);
-        let sx = fx + t * 0.4 + (box_w - sprite.width as f32 * scale) / 2.0;
-        let bob = (time * 2.5 + i as f32 * 1.3).sin() * t * 0.06;
-        let sy = ry + (row_h - sprite.height as f32 * scale) / 2.0 + bob;
-        o.circle(fx + t * 0.4 + box_w / 2.0, ry + row_h / 2.0, box_w * 0.42, rgba(*color, 0.07));
-        draw_sprite(o, sprite, sx, sy, scale, None, 1.0);
-        let tx = fx + t * 0.6 + box_w;
-        o.text(&name.to_uppercase(), tx, ry + t * 0.7, t * 0.62, rgba(*color, 1.0), Align::Left, true);
-        wrap_left(o, blurb, tx, ry + t * 1.45, fx + fw - tx - t * 0.4, t * 0.55, t * 0.45, rgba(TEXT_DIM, 1.0));
-    }
-
-    // ---- the name plate under the 3D hero
-    let ny = h * 0.69;
-    o.text(&g.hero_kind.name().to_uppercase(), w / 2.0, ny, t * 1.0, rgba(0xf2e3c4, 1.0), Align::Center, true);
-    o.text("the viking", w / 2.0, ny + t * 0.8, t * 0.55, rgba(TEXT_DIM, 1.0), Align::Center, false);
-
-    // ---- controls strip
-    let cy = h * 0.83;
-    let cw = w * 0.84;
-    panel(o, w / 2.0 - cw / 2.0, cy - t * 0.3, cw, t * 2.6, t);
-    let hint = rgba(TEXT_DIM, 1.0);
-    o.text("Click to aim with the mouse   Hold W to run, A / D sidestep, S back   Tap a direction to turn", w / 2.0, cy + t * 0.3, t * 0.5, hint, Align::Center, false);
+    // One line on how to play, tucked under the button.
     o.text(
-        "Left click attack   Right click bomb   Space jump   E attack   B bomb   C camera   Q drink potion   Tab next potion   Esc pause   M mute   F1 boss   0 shop",
+        "WASD or the left stick to run   Left click / X attack   Right click / B bomb   Space / A jump   Esc pause",
         w / 2.0,
-        cy + t * 1.05,
-        t * 0.5,
-        hint,
-        Align::Center,
-        false,
-    );
-    o.text(
-        "Controller: left stick runs, right stick aims (R3 recenters), A jump, X attack, B bomb, Start begins or pauses",
-        w / 2.0,
-        cy + t * 1.8,
-        t * 0.5,
-        rgba(0x7fd7ff, 1.0),
+        h * 0.965,
+        t * 0.45,
+        rgba(TEXT_DIM, 0.9),
         Align::Center,
         false,
     );

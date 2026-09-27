@@ -661,13 +661,13 @@ const CHAIN_LEN: f32 = 2.35;
 /// The souls rise before the iron door: Mehmed, Ragnar and Miyamoto, as on the character screen.
 const SOUL_AT: [Vec3; 3] = [Vec3::new(-0.82, 0.0, -2.62), Vec3::new(0.0, 0.0, -2.82), Vec3::new(0.82, 0.0, -2.62)];
 /// Each soul's tint: steel blue for the viking, jade for the janissary, rose for the samurai.
-const SOUL_TINT: [u32; 3] = [0x7ae8c8, 0x7ab4ff, 0xff98b0];
+pub(super) const SOUL_TINT: [u32; 3] = [0x7ae8c8, 0x7ab4ff, 0xff98b0];
 /// The middle of the three boys in the gateway, for looking at them.
 const BOYS_MID: Vec3 = Vec3::new(0.05, 0.0, 1.7);
 
 /// What a boy is doing, for his limbs.
 #[derive(Clone, Copy, Debug)]
-enum Act {
+pub(super) enum Act {
     Stand,
     /// Running, or walking with `pace` below 1: the stride's phase.
     Run { phase: f32, pace: f32 },
@@ -690,7 +690,7 @@ fn ease_in(t: f32) -> f32 {
 }
 
 /// A boy's feet on the ground, facing `yaw`.
-fn kid_root(feet: Vec3, yaw: f32) -> Mat4 {
+pub(super) fn kid_root(feet: Vec3, yaw: f32) -> Mat4 {
     Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw)
 }
 
@@ -1362,7 +1362,7 @@ impl WorldView {
         (pose, (lean, bob))
     }
 
-    fn emit_kid(&self, f: &mut Frame, which: usize, root: Mat4, act: Act, time: f32, look: f32, glow: Vec3) {
+    pub(super) fn emit_kid(&self, f: &mut Frame, which: usize, root: Mat4, act: Act, time: f32, look: f32, glow: Vec3) {
         let (pose, (lean, bob)) = self.kid_pose(which, act, time, look);
         let root = root * Mat4::from_translation(Vec3::new(0.0, bob, 0.0)) * Mat4::from_rotation_x(lean);
         emit_rig(&mut f.opaque[MeshKind::Cube as usize], &self.models.kids[which.min(3)], &pose, root, Vec3::ONE, 1.0, glow);
