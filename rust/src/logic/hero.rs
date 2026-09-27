@@ -1,4 +1,5 @@
 use super::gear::ShieldGear;
+use super::heroes::HeroKind;
 use super::grid::Grid;
 use super::items::{item, weapon, ItemKind, RangedKind, WeaponKind, SPEED_BOOST};
 use super::progression::{self, path, STAMINA_MAX, STAMINA_PER_BLOW, STAMINA_REGEN, STAMINA_REST};
@@ -120,6 +121,8 @@ pub struct Hero {
     pub weapon: WeaponKind,
     /// His own: the armory blade swung (Sword), or thrown (a Hurled weapon that never runs out).
     pub main: WeaponKind,
+    /// Who he is: whose armory and path he has.
+    pub kind: HeroKind,
     /// The armory tier in his hand (1..=10).
     pub blade: u8,
     /// How far along his heroic path he is (0..=10): the skills he has.
@@ -142,6 +145,8 @@ pub struct Hero {
     pub fury_stacks: i32,
     /// Set on a hit his shield took some of (for its gifts); the game clears it.
     pub blocked_hit: bool,
+    /// A last stand (Mehmed's and Miyamoto's path 8): seconds in which he cannot die and strikes triple.
+    pub last_stand: f64,
     drain_carry: f64,
 
     /// The shield on his arm, wearing down as it blocks.
@@ -197,6 +202,7 @@ impl Hero {
             swing: 0.0,
             weapon: WeaponKind::Sword,
             main: WeaponKind::Sword,
+            kind: HeroKind::Ragnar,
             blade: 1,
             path: 0,
             ammo: 0,
@@ -210,6 +216,7 @@ impl Hero {
             bark: 0,
             fury_stacks: 0,
             blocked_hit: false,
+            last_stand: 0.0,
             drain_carry: 0.0,
             shield: Some(ShieldGear::new(1)),
             shield_broke: false,
@@ -273,6 +280,9 @@ impl Hero {
         if self.fx.ragnarok > 0.0 {
             d *= 2;
         }
+        if self.last_stand > 0.0 {
+            d *= path::STAND_MULT;
+        }
         d
     }
     fn cooldown_scale(&self) -> f64 {
@@ -288,13 +298,18 @@ impl Hero {
         }
         s
     }
+    /// Seer's Sight (Ragnar's and Mehmed's path 3): secrets through walls, sight in the dark, critical hits.
+    pub fn sees(&self) -> bool {
+        self.path >= 3 && self.kind != HeroKind::Miyamoto
+    }
     /// His blows cost nothing: Forge-Heart, or the Ragnarok tonic.
     pub fn tireless(&self) -> bool {
         self.heart > 0.0 || self.fx.ragnarok > 0.0
     }
-    /// His health cap: more while Shield-Maiden's Guard and a shield are with him.
+    /// His health cap: more from path level 2 (for Ragnar, only while a shield is with him).
     pub fn health_cap(&self) -> i32 {
-        HERO_MAX_HP + if self.path >= 2 && self.shield.is_some() { path::GUARD_HP } else { 0 }
+        let guard = self.path >= 2 && (self.kind != HeroKind::Ragnar || self.shield.is_some());
+        HERO_MAX_HP + if guard { path::GUARD_HP } else { 0 }
     }
     /// Spends stamina for a blow or a blink; false (and winded) if he has too little.
     fn spend(&mut self, cost: f64) -> bool {
@@ -307,7 +322,7 @@ impl Hero {
         }
         self.stamina -= cost;
         self.stamina_rest = STAMINA_REST;
-        if self.stamina < STAMINA_PER_BLOW && self.path >= 7 && self.heart_cooldown <= 0.0 {
+        if self.kind == HeroKind::Ragnar && self.stamina < STAMINA_PER_BLOW && self.path >= 7 && self.heart_cooldown <= 0.0 {
             // Forge-Heart: at the end of his breath the mountain's own stamina takes over.
             self.heart = path::HEART_SECONDS;
             self.heart_cooldown = path::HEART_COOLDOWN;
@@ -358,6 +373,10 @@ impl Hero {
         let from_pos = self.pos();
         let from = self.m.occupied();
         let to = grid.jump_landing(from, self.facing).unwrap_or(from);
+        if self.kind == HeroKind::Miyamoto && self.path >= 3 {
+            // Wind Step: every leap is a dodge.
+            self.invuln = self.invuln.max(path::DODGE_SECONDS);
+        }
         self.m.tile = from;
         self.m.offset = 0.0;
         self.m.dir = Dir::None;
@@ -381,6 +400,7 @@ impl Hero {
         self.speed_timer = (self.speed_timer - dt).max(0.0);
         self.slow_timer = (self.slow_timer - dt).max(0.0);
         self.step_cooldown = (self.step_cooldown - dt).max(0.0);
+        self.last_stand = (self.last_stand - dt).max(0.0);
         self.heart = (self.heart - dt).max(0.0);
         self.heart_cooldown = (self.heart_cooldown - dt).max(0.0);
         self.fx.tick(dt);
@@ -683,7 +703,7 @@ impl Hero {
             return DamageResult::Immune;
         }
         let mut amount = amount as f64;
-        if self.path >= 1 {
+        if self.path >= 1 && self.kind == HeroKind::Ragnar {
             amount *= path::RAGE_TAKEN;
         }
         if self.fx.fury > 0.0 {
@@ -720,10 +740,16 @@ impl Hero {
                 return DamageResult::Blocked;
             }
         }
-        self.hp = (self.hp - amount).max(0);
+        // In a last stand nothing can take his last breath.
+        self.hp = (self.hp - amount).max(if self.last_stand > 0.0 { 1 } else { 0 });
         self.invuln = INVULN_SECONDS;
         if self.hp == 0 {
             self.alive = false;
+        }
+        if self.kind != HeroKind::Ragnar && self.path >= 7 && self.heart_cooldown <= 0.0 {
+            // The unyielding heart (Zenith Heart, Rebel Heart): hurt, he shrugs off every hindrance.
+            self.heart = path::DEFIANCE_SECONDS;
+            self.heart_cooldown = path::DEFIANCE_COOLDOWN;
         }
         DamageResult::Damaged
     }
@@ -733,7 +759,7 @@ impl Hero {
         if !self.alive || self.attack_cooldown > 0.0 || !self.spend(STAMINA_PER_BLOW) {
             return false;
         }
-        self.attack_cooldown = progression::blade(self.blade).cooldown * self.cooldown_scale();
+        self.attack_cooldown = progression::blade(self.kind, self.blade).cooldown * self.cooldown_scale();
         self.swing = SWING_SECONDS;
         true
     }
@@ -748,9 +774,25 @@ impl Hero {
         if !self.alive || self.path < 5 || self.jump.is_some() || self.step_cooldown > 0.0 {
             return None;
         }
+        let cost = path::STEP_STAMINA * if self.kind == HeroKind::Miyamoto && self.path >= 3 { path::WIND_STEP_COST } else { 1.0 };
+        let r = self.dash(grid, path::STEP_TILES as i32, cost)?;
+        self.step_cooldown = path::STEP_COOLDOWN;
+        self.invuln = self.invuln.max(STEP_IMMUNITY);
+        Some(r)
+    }
+
+    /**
+     * Carries him up to `tiles` tiles the way he faces, as far as the floor lets
+     * him walk, for `cost` stamina (a blink, or a blade's lunge). Returns where
+     * he left and where he landed, or None if there is nowhere to go.
+     */
+    pub fn dash(&mut self, grid: &Grid, tiles: i32, cost: f64) -> Option<(V, V)> {
+        if !self.alive || self.jump.is_some() {
+            return None;
+        }
         let from = self.occupied();
         let mut to = from;
-        for _ in 0..path::STEP_TILES as i32 {
+        for _ in 0..tiles {
             let (dx, dy) = self.facing.vec();
             let n = grid.wrap(P::new(to.x + dx, to.y + dy));
             if free_blocked(grid, to, n.x, n.y) || !grid.is_walkable(n.x, n.y, false) {
@@ -758,7 +800,7 @@ impl Hero {
             }
             to = n;
         }
-        if to == from || !self.spend(path::STEP_STAMINA) {
+        if to == from || !self.spend(cost) {
             return None;
         }
         let before = self.pos();
@@ -768,8 +810,6 @@ impl Hero {
         self.synced = to;
         self.altitude = grid.elevation(to.x, to.y) as f64;
         self.vel = 0.0;
-        self.step_cooldown = path::STEP_COOLDOWN;
-        self.invuln = self.invuln.max(STEP_IMMUNITY);
         if !self.invisible() {
             self.heard_pos = to.v();
             self.heard_age = 0.0;
@@ -828,7 +868,7 @@ impl Hero {
     /// Puts armory tier `tier` in his hand: swung, or thrown if it is a throwing weapon.
     pub fn arm(&mut self, tier: u8) {
         self.blade = tier.clamp(1, progression::TIERS);
-        self.main = if progression::blade(self.blade).throw.is_some() { WeaponKind::Ranged(RangedKind::Hurled(self.blade)) } else { WeaponKind::Sword };
+        self.main = if progression::blade(self.kind, self.blade).throw.is_some() { WeaponKind::Ranged(RangedKind::Hurled(self.kind, self.blade)) } else { WeaponKind::Sword };
         let pickup = self.holding_pickup() && self.ammo > 0;
         if !pickup {
             self.weapon = self.main;
@@ -925,6 +965,7 @@ impl Hero {
         self.bark = 0;
         self.fury_stacks = 0;
         self.blocked_hit = false;
+        self.last_stand = 0.0;
         self.max_hp = self.health_cap();
         self.invincible_timer = 0.0;
         self.invisible_timer = 0.0;

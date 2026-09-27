@@ -16,8 +16,8 @@ pub enum RangedKind {
     Boomerang,
     Fireball,
     Crescent,
-    /// A thrown weapon of the armory (tiers 2, 9 and 10): it never runs out.
-    Hurled(u8),
+    /// A thrown or shot weapon of a hero's armory: it never runs out.
+    Hurled(HeroKind, u8),
     /// The piercing wave a tier-3 blade sends down the line with each swing.
     Wave,
 }
@@ -86,29 +86,23 @@ pub fn weapon(kind: RangedKind) -> WeaponDef {
             name: "Fireball", color: 0xff8a2a, ammo: 5, speed: 8.0, range: 12.0, hit_radius: 0.6, pierce: true, cooldown: 0.45, damage: 2, ..base
         },
         RangedKind::Crescent => WeaponDef { name: "Crescent", color: 0x8fe7ff, speed: 16.0, range: 6.0, hit_radius: 0.9, pierce: true, ..base },
-        RangedKind::Hurled(tier) => {
-            let b = progression::blade(tier);
-            let t = b.throw.unwrap_or(progression::Throw { speed: 12.0, range: 6.0, radius: 0.6, returns: true, homing: false });
-            let color = match tier {
-                9 => 0xffd84a,
-                10 => 0x7ae8ff,
-                _ => 0xc8d4e0,
-            };
+        RangedKind::Hurled(hero, tier) => {
+            let b = progression::blade(hero, tier);
+            let t = b.throw.unwrap_or(progression::Throw { speed: 12.0, range: 6.0, radius: 0.6, returns: true, homing: false, pierce: true, stagger: false });
+            let color = progression::node(hero, Tree::Armory, tier).color;
             WeaponDef {
-                name: "Thrown", color, speed: t.speed, range: t.range, hit_radius: t.radius, pierce: true, returns: t.returns,
+                name: "Thrown", color, speed: t.speed, range: t.range, hit_radius: t.radius, pierce: t.pierce, returns: t.returns,
                 cooldown: b.cooldown, damage: b.damage, homing: t.homing, ..base
             }
         }
-        RangedKind::Wave => WeaponDef {
-            name: "Wave", color: 0x9ad1ff, speed: 14.0, range: 7.0, hit_radius: 0.7, pierce: true, damage: progression::blade(3).damage, ..base
-        },
+        RangedKind::Wave => WeaponDef { name: "Wave", color: 0x9ad1ff, speed: 14.0, range: 7.0, hit_radius: 0.7, pierce: true, damage: 3, ..base },
     }
 }
 
 /// Display name and color for any held weapon: his own armory blade (at `tier`) or a shrine's.
 pub fn weapon_label(hero: HeroKind, kind: WeaponKind, tier: u8) -> (&'static str, u32) {
     match kind {
-        WeaponKind::Sword | WeaponKind::Ranged(RangedKind::Hurled(_)) => {
+        WeaponKind::Sword | WeaponKind::Ranged(RangedKind::Hurled(..)) => {
             let n = progression::node(hero, Tree::Armory, tier);
             (n.name, n.color)
         }

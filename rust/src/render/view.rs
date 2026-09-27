@@ -297,6 +297,10 @@ pub struct SceneState<'a> {
     pub decoy: Option<crate::logic::types::V>,
     /// Who is being played, for his weapon and shield models and his brews' colours.
     pub hero_kind: crate::logic::heroes::HeroKind,
+    /// The ancestral spirits at his side.
+    pub spirits: &'a [crate::game::Spirit],
+    /// Holy fire burning on tiles, seconds left each.
+    pub fires: &'a [(P, f64)],
 }
 
 /// The gate to the boss as the view needs it: where, how many locks are lit, how far the doors have swung.
@@ -644,6 +648,9 @@ pub struct WorldView {
     tour_angle: f32,
     was_forge: bool,
     zaps: Vec<forge::Zap>,
+    /// Arrows of a heavenly bow falling, and sun-blade flashes fading (where, how much is left, colour).
+    rains: Vec<forge::Falling>,
+    flashes: Vec<(Vec3, f32, Vec3)>,
     /// Swiftness afterimages: position, heading, fade.
     ghosts: Vec<(Vec3, f32, f32)>,
     ghost_clock: f32,
@@ -734,6 +741,8 @@ impl WorldView {
             tour_angle: 0.0,
             was_forge: false,
             zaps: Vec::new(),
+            rains: Vec::new(),
+            flashes: Vec::new(),
             ghosts: Vec::new(),
             ghost_clock: 0.0,
             rng: Rng::from_time(),
@@ -1253,7 +1262,7 @@ impl WorldView {
 
     /// Legs and arms swing in opposition while moving; the sword arm does the slash; a tuck in the air.
     fn animate_hero(&mut self, hero: &Hero) {
-        let rig = &self.models.ragnar;
+        let rig = &self.models.hero;
         let p = &mut self.hero_pose;
         let motion = hero.motion as f32;
         let stride = self.hero_phase.sin() * motion;
@@ -1285,7 +1294,7 @@ impl WorldView {
 
     /// The weapons (layered parts of his rig) move with the arms that hold them.
     fn sync_hands(&mut self) {
-        let rig = &self.models.ragnar;
+        let rig = &self.models.hero;
         for (arm, held) in [("swordArm", "blade"), ("shieldArm", "offhand")] {
             if let (Some(a), Some(b)) = (rig.index(arm), rig.index(held)) {
                 self.hero_pose.rot[b] = self.hero_pose.rot[a];
@@ -1315,7 +1324,7 @@ impl WorldView {
         let e = if k == 1 { 1.0 - (1.0 - u).powi(3) } else { u * u * (3.0 - 2.0 * u) };
         let mix = |x: f32, y: f32| x + (y - x) * e;
         let side = self.slash_side;
-        let rig = &self.models.ragnar;
+        let rig = &self.models.hero;
         if let Some(i) = rig.index("swordArm") {
             self.hero_pose.rot[i].x = mix(a.1, b.1);
             self.hero_pose.rot[i].z = mix(a.2, b.2) * side;
@@ -1727,7 +1736,7 @@ impl WorldView {
         }
         f.atmosphere = if self.meadow && !self.showcase { meadow_atmosphere() } else { Atmosphere::forest() };
         // Seer's Sight (path 3) sees through the dark.
-        let nv = if s.hero.path >= 3 { 0.6 } else { 0.0 };
+        let nv = if s.hero.sees() { 0.6 } else { 0.0 };
         if nv > 0.0 && !self.meadow && !self.showcase {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
@@ -1797,7 +1806,7 @@ impl WorldView {
             let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
             let side = self.slash_side;
             // The trail grows with the blade's reach and takes its colour.
-            let reach = crate::logic::progression::blade(hero.blade).swing.map(|s| s.0).unwrap_or(1.2) as f32;
+            let reach = crate::logic::progression::blade(s.hero_kind, hero.blade).swing.map(|s| s.0).unwrap_or(1.2) as f32;
             let size = 1.0 + (reach - 1.2) * 0.5;
             let axe_color = if hero.blade <= 1 {
                 lin(SLASH)
@@ -1896,7 +1905,7 @@ impl WorldView {
             f.opaque[cube].push(Instance::new(m, lin(0x8a8e96), 1.0, rune * 0.5, SHADE_LIT));
             glow_orb(f, base + Vec3::new(0.0, 0.6, 0.0), 0.7, rune, 0.35);
             f.lights.push(Light { pos: base + Vec3::new(0.0, 0.9, 0.0), color: rune * 5.0, distance: 3.5 });
-            if s.hero.path >= 3 {
+            if s.hero.sees() {
                 let beam = Mat4::from_translation(base + Vec3::new(0.0, 3.0, 0.0)) * Mat4::from_scale(Vec3::new(0.12, 6.0, 0.12));
                 f.additive.push(Instance::new(beam, rune, 0.35 + 0.1 * (time * 4.0).sin(), Vec3::ZERO, SHADE_UNLIT));
             }
@@ -1905,6 +1914,8 @@ impl WorldView {
             let at = Vec3::new(d.x as f32, floor_at(grid, d.x as f32, d.y as f32), d.y as f32);
             self.emit_decoy(at, time, f);
         }
+        self.emit_spirits(s, time, f);
+        self.emit_fires(s, time, f);
 
         // --- potions
         for p in s.potions {

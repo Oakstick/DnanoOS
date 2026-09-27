@@ -1,9 +1,8 @@
 //! Each hero's four trees of progression: an armory of ten legendary
-//! weapons, a heroic path of ten skills, ten shields and ten elixirs. The
-//! names and legends are each hero's own (Norse for Ragnar, Ottoman and
-//! Turkic for Mehmed, Japanese for Miyamoto); what a tier does in play is the
-//! same for all three, so tier 4 of any armory stuns and tier 10 of any path
-//! heals in full.
+//! weapons, a path of ten skills, ten shields and ten elixirs, in his own
+//! legend (Norse for Ragnar, Turkish for Mehmed, Japanese for Miyamoto).
+//! Weapons and path skills are each hero's own; shields and elixirs work the
+//! same for all three, tier for tier.
 //!
 //! Tiers 1 to 5 are sold by the old gatekeeper for silver. Tiers 6 to 10 are
 //! sealed: a relic found in a hidden shrine or taken from a fallen Cyclops
@@ -55,14 +54,14 @@ impl Tree {
             (HeroKind::Ragnar, Tree::Path) => "Heroic Path",
             (HeroKind::Ragnar, Tree::Shield) => "The Shield-Wall",
             (HeroKind::Ragnar, Tree::Elixir) => "Rune-Carved Elixirs",
-            (HeroKind::Mehmed, Tree::Armory) => "Forge of the Ocak",
-            (HeroKind::Mehmed, Tree::Path) => "Path of the Janissary",
+            (HeroKind::Mehmed, Tree::Armory) => "Imperial Armory",
+            (HeroKind::Mehmed, Tree::Path) => "Janissary Path",
             (HeroKind::Mehmed, Tree::Shield) => "Kalkans of the Hearth",
-            (HeroKind::Mehmed, Tree::Elixir) => "Sherbets of the Saray",
-            (HeroKind::Miyamoto, Tree::Armory) => "Blades of the Sacred Forge",
-            (HeroKind::Miyamoto, Tree::Path) => "Way of the Two Heavens",
+            (HeroKind::Mehmed, Tree::Elixir) => "Corbaci's Elixirs",
+            (HeroKind::Miyamoto, Tree::Armory) => "Legendary Armory",
+            (HeroKind::Miyamoto, Tree::Path) => "Bushido Path",
             (HeroKind::Miyamoto, Tree::Shield) => "Guards of the Castle",
-            (HeroKind::Miyamoto, Tree::Elixir) => "Brews of the Mountain Shrine",
+            (HeroKind::Miyamoto, Tree::Elixir) => "Spirit Brew Elixirs",
         }
     }
 
@@ -88,6 +87,10 @@ pub enum Form {
     Mace,
     Bow,
     Sickle,
+    /// A flintlock pistol.
+    Gun,
+    /// A double-pointed greatsword.
+    Forked,
     Round,
     Kite,
     Spiral,
@@ -175,29 +178,29 @@ const RAGNAR_ELIXIR: [Entry; 10] = [
 // -------------------------------------------------------------- Mehmed
 
 const MEHMED_ARMORY: [Entry; 10] = [
-    Entry("Recruit's Yatagan", "The short forward-curved blade handed to every new boy of the Ocak.", "Basic Strike", 0xd8c8a8, Knife),
-    Entry("Balkan Teber", "A light frontier battle-axe, weighted to fly out and come home.", "Returning Arc", 0xa8b8c8, Axe),
-    Entry("Damascus Kilij", "Watered steel folded a hundred times; its edge sings as it cuts.", "Crescent Cut", 0x9ad1ff, Saber),
-    Entry("Bozdogan Mace", "The grey-falcon mace of the pashas: one blow and the world spins.", "Pasha's Verdict", 0xc8c8d8, Mace),
-    Entry("Twin Karabela Sabers", "Two sabers turning like the whirling dervishes of Konya.", "Dervish Whirl", 0xff9a4a, TwinBlades),
-    Entry("Shahmaran's Fang", "A serpent blade from the Queen of Snakes, dripping with dreams.", "Serpent's Mirage", 0x6ae8a0, Saber),
-    Entry("Sword of Tepegoz", "The one-eyed giant's own blade, the only steel his hide could not turn.", "Basat's Justice", 0xc8ff9a, Sword),
-    Entry("Ejder Pala", "A broad scimitar tempered in the blood of the Anatolian dragon.", "Dragon's Blood", 0xe0303a, Saber),
-    Entry("Golden Bow of Oghuz Khan", "The golden bow of the first Khan; the grey wolf guides its arrows.", "Grey Wolf's Arrow", 0xffd84a, Bow),
-    Entry("Tengri's Sky Mace", "Forged by the Eternal Blue Sky; thunder answers when it is thrown.", "Wrath of the Blue Sky", 0x7ae8ff, Mace),
+    Entry("Bronze Yatagan", "A standard-issue curved short sword of the frontier guards bearing simple crescent stamps.", "Swift Crescent", 0xd89a5a, Knife),
+    Entry("Iron Kilic", "A traditional cavalry sabre forged for sweeping battlefield maneuvers.", "Saber Sweep", 0xa8b8c8, Saber),
+    Entry("Steel Pata Guard", "A gauntlet-sword combination offering unbreakable wrist control and piercing power.", "Gauntlet Thrust", 0x9ad1ff, Sword),
+    Entry("Dervish Crescent Blade", "A sacred blade blessed with whirling dervish devotion, humming with spiritual kinetic force.", "Whirling Devotion", 0xf2e3c4, Saber),
+    Entry("Koroglu's Steel Flintlock", "The legendary bandit hero's firearm, firing enchanted lead slugs that never miss.", "Bandit's Shot", 0x8a8a94, Gun),
+    Entry("Janissary Mace of Conquest", "A heavy flanged iron mace designed to shatter armor and fortifications.", "Shattering Blow", 0xc8c8d8, Mace),
+    Entry("Zulfikar-Infused Greatsword", "A sacred double-pointed divine blade modeled after Ali's legendary sword.", "Divine Split", 0x6ae8a0, Forked),
+    Entry("Simurg Feather Bow", "A composite bow strung with a tail feather of the mythical bird of wisdom.", "Simurg's Gaze", 0xff9a4a, Bow),
+    Entry("Masterwork Djezzar Saber", "Folded steel carved with ancient victory runes from the imperial archives.", "Imperial Authority", 0xeef4ff, Saber),
+    Entry("Kaf Dagi Sun-Blade", "Forged from meteoric iron at the edge of the mythical Mount Qaf, channeling eternal light.", "Mountain of Light", 0xffd84a, Sword),
 ];
 
 const MEHMED_PATH: [Entry; 10] = [
-    Entry("Akinci Charge", "The headlong fury of the frontier raiders.", "Raider's Fury", 0xff5a3a, Rune(0)),
-    Entry("Hearth Discipline", "The iron order of the Janissary hearth, the Ocak.", "Wall of the Ocak", 0x8fb4ff, Rune(1)),
-    Entry("Huma's Shadow", "The bird of fortune casts its shadow, and what was hidden is shown.", "Eye of the Huma", 0xc89aff, Rune(2)),
-    Entry("Mehter March", "The war band's drums and zurnas, that never let an army tire.", "Mehter's Drum", 0xffd27a, Rune(3)),
-    Entry("Tulpar Stride", "The leap of the winged horse of the steppe.", "Tulpar's Leap", 0x9af0ff, Rune(4)),
-    Entry("Asena's Ambush", "The cunning of the grey she-wolf who led the Turks out of the valley.", "Asena's Fang", 0xb8c0cc, Rune(5)),
-    Entry("Taurus Endurance", "The iron lungs of the shepherds of the Taurus peaks.", "Unbroken March", 0xff8a2a, Rune(6)),
-    Entry("The Crimson Banner", "The raised crimson standard that sent whole armies into rout.", "Rout", 0xc8202a, Rune(7)),
-    Entry("Hizir's Hand", "The green-cloaked wanderer who comes in the darkest hour.", "Hizir's Return", 0x6ae86a, Rune(8)),
-    Entry("Tree of Life", "Strength drawn from Bay-Terek, the tree at the centre of the world.", "Bay-Terek's Blessing", 0xa6f04a, Rune(9)),
+    Entry("Ocak Discipline", "Strict military training instilling unbreakable battlefield focus.", "Drill Adrenaline", 0xff5a3a, Rune(0)),
+    Entry("Kalkan Guard", "Large battle shield formation rooted in imperial vanguard tactics.", "Iron Rampart", 0x8fb4ff, Rune(1)),
+    Entry("Anatolian Seer Sight", "Mystical intuition inspired by legendary dervish visions.", "Hizir's Guidance", 0xc89aff, Rune(2)),
+    Entry("Mehteran War Chant", "Traditional marching drums and zurna frequencies that inspire fierce morale.", "Janissary Hymn", 0xffd27a, Rune(3)),
+    Entry("Alp Step", "Legendary warrior footwork allowing lightning-fast evasion and tactical repositioning.", "Zephyr Dash", 0xe8d09a, Rune(4)),
+    Entry("Devshirme Critical Focus", "Unflinching precision forged through a lifetime of elite martial trial.", "Vanguard's Strike", 0xb8c0cc, Rune(5)),
+    Entry("Koroglu's Defiance", "Rebellious spirit drawn from mountain folklore, shaking off suppression.", "Rebel Heart", 0xff8a2a, Rune(6)),
+    Entry("Heroic Last Stand", "Oath-bound defense that converts mortal peril into explosive retaliation.", "Blood of the Empire", 0xc8202a, Rune(7)),
+    Entry("Ancestor's Call", "Invoking the protective spirits of past empire commanders.", "Janissary Vanguard", 0xa8c4ff, Rune(8)),
+    Entry("Rose Garden Restoration", "Channeling pure spiritual healing from the mystical gardens of paradise.", "Eternal Blossom", 0xff8ab0, Rune(9)),
 ];
 
 const MEHMED_SHIELD: [Entry; 10] = [
@@ -214,44 +217,44 @@ const MEHMED_SHIELD: [Entry; 10] = [
 ];
 
 const MEHMED_ELIXIR: [Entry; 10] = [
-    Entry("Rose Sherbet", "Rosewater and sugar, cold from the palace snow-wells.", "Instant Restoration", 0xff8ab0, Flask),
-    Entry("Barracks Salep", "Hot orchid-root milk from the Janissary cauldron.", "Warm Breath", 0xf2e3c4, Gourd),
-    Entry("Mesir Paste", "The palace paste of forty-one spices, said to give a soldier strength.", "Forty-One Spices", 0xa0502a, Gourd),
-    Entry("Janissary Coffee", "Black, thick and bitter, boiled three times over the coals.", "Coffee Rush", 0x5a3a24, Vial),
-    Entry("Healing Bowl Draught", "Water drunk from a sifa tasi, a bowl engraved with charms.", "Warded Skin", 0x9aa4b0, Flask),
-    Entry("Deli's Draught", "The drink of the Deli horsemen, whose name means mad.", "Madman's Courage", 0xff4a8a, Gourd),
-    Entry("Naphtha Tincture", "Distilled from the burning springs of the Caspian shore.", "Burning Skin", 0xff7a2a, Vial),
-    Entry("Water of Life", "Ab-i Hayat, the spring at the edge of darkness that makes the drinker deathless.", "Deathless Moment", 0xa6e0ff, Flask),
-    Entry("Kaf Mountain Tonic", "Brewed from the snows of Mount Kaf, that rings the edge of the world.", "World's Edge", 0x9a2aff, Vial),
-    Entry("Anka Feather Elixir", "A single feather of the Anka, steeped until it glows.", "Anka's Embrace", 0xffb84a, Flask),
+    Entry("Minor Sherbet Draught", "Sweetened pomegranate and rosewater spring blend.", "Instant Restoration", 0xff6a8a, Flask),
+    Entry("Minor Stamina Infusion", "Brewed mountain mint and wild honey extract.", "Quick Breath", 0x8ae07a, Gourd),
+    Entry("Janissary Strength Coffee", "Dark, thick Turkish coffee spiked with crushed spice root.", "Sultan's Might", 0x7a5030, Vial),
+    Entry("Elixir of the Desert Wind", "Distilled cactus sap mixed with swift-running herbs.", "Swift Strider", 0xffd23a, Vial),
+    Entry("Brass Shield Tincture", "Liquid brass tincture that hardens external skin layers.", "Armor of the Gate", 0xc8a040, Flask),
+    Entry("Berserker's Dervish Draught", "Fermented grape juice infused with wild steppe roots.", "Whirling Frenzy", 0x9a2a7a, Gourd),
+    Entry("Simurg Flame Elixir", "Filtered extract from mythical phoenix-feather ash.", "Simurg's Fire", 0xff7a2a, Vial),
+    Entry("Invulnerability Oil", "Mystic oil blessed under a total solar eclipse.", "Iron Body", 0xffe066, Flask),
+    Entry("Mount Qaf Volatility Tonic", "Rare mineral distillation from the legendary peaks.", "Peak Surge", 0x9a2aff, Vial),
+    Entry("Ab-i Hayat, Water of Life", "Pure mythical elixir granting eternal rejuvenation.", "Immortal Grace", 0xa6e0ff, Flask),
 ];
 
 // ------------------------------------------------------------ Miyamoto
 
 const MIYAMOTO_ARMORY: [Entry; 10] = [
-    Entry("Oar Bokken", "The wooden sword Musashi carved from a boat's oar on his way to a duel.", "Basic Strike", 0xc8a070, Katana),
-    Entry("Iron Kusarigama", "A sickle on a weighted chain: it flies out and snaps back.", "Chain Arc", 0xa8b8c8, Sickle),
-    Entry("Monohoshizao", "Kojiro's drying pole, a blade so long it cuts beyond its reach.", "Swallow Cut", 0x9ad1ff, Katana),
-    Entry("Munisai's Jitte", "His father's iron truncheon, that hooks a blade and stuns its bearer.", "Disarming Hook", 0xc8c8d8, Knife),
-    Entry("Daisho of Two Heavens", "Long sword and short sword together, the style of Niten Ichi-ryu.", "Two Heavens as One", 0xff9a4a, TwinBlades),
-    Entry("Kitsune-bi Wakizashi", "A blade lit with fox-fire, the lantern of the trickster foxes.", "Fox's Illusion", 0x7ac8ff, Katana),
-    Entry("Muramasa", "A cursed katana that hungers to cut, and stops for no armour.", "Cursed Edge", 0xc83a5a, Katana),
-    Entry("Kusanagi", "The grass-cutting sword drawn from the tail of the eight-headed serpent.", "Orochi's Wake", 0x6ae8a0, Sword),
-    Entry("Ame-no-Nuboko", "The jewelled spear of heaven that stirred the sea to make the islands.", "Heaven's Aim", 0xffd84a, Spear),
-    Entry("Raijin's Thunder Mallet", "The drum-beating mallet of the thunder god.", "Heaven's Drum", 0x7ae8ff, Hammer),
+    Entry("Katana of the Iron Gate", "A standard-issue steel blade folded with basic iron sand.", "Swift Slash", 0xc8d0da, Katana),
+    Entry("Oni-Slayer Nodachi", "A massive field-clearing sword designed to sever ogre limbs.", "Heavy Sweep", 0xa8b8c8, Sword),
+    Entry("Tengu Wind-Blade", "Infused with mountain spirit air, humming with kinetic force.", "Gale Dash", 0x9af0d0, Saber),
+    Entry("Kusanagi-no-Tsurugi Fragment", "A jagged shard of the legendary Grass-Cutter sword.", "Divine Ignition", 0xff9a4a, Knife),
+    Entry("Dual Ninjato of the Shadow", "Matched short blades forged for silent, lightning-fast execution.", "Shadow Spin", 0x7a7a9a, TwinBlades),
+    Entry("Yari of the Shifting Serpent", "A venom-tipped spear associated with the mythical Yamata no Orochi.", "Venom Thrust", 0x6ae86a, Spear),
+    Entry("Muramasa Cursed Blade", "A blade driven by bloodlust that feeds on its wielder's vitality.", "Blood Drinker", 0xc83a5a, Katana),
+    Entry("Yumi of the Heavenly Bow", "A composite spirit-wood bow that calls down celestial arrows.", "Storm of Feathers", 0xc8e0ff, Bow),
+    Entry("Masamune Masterpiece Katana", "Forged with absolute purity, cutting only what the wielder truly intends.", "Purity Strike", 0xeef4ff, Katana),
+    Entry("Amaterasu's Sun-Forged Blade", "Channeling the blinding solar light of the celestial sun goddess.", "Solar Flash", 0xffd84a, Sword),
 ];
 
 const MIYAMOTO_PATH: [Entry; 10] = [
-    Entry("Kiai", "The spirit shout that turns breath into a blow.", "Spirit Shout", 0xff5a3a, Rune(0)),
-    Entry("Fudoshin", "The immovable heart: no fear behind the guard.", "Immovable Heart", 0x8fb4ff, Rune(1)),
-    Entry("Kan no Me", "The perceiving eye of the Book of Five Rings, that sees what is not shown.", "Perceiving Eye", 0xc89aff, Rune(2)),
-    Entry("Ibuki Breath", "The deep breathing of the mountain ascetics.", "Mountain Breath", 0xffd27a, Rune(3)),
-    Entry("Shukuchi", "The legendary step that shrinks the earth between two points.", "Shrinking Step", 0x9af0ff, Rune(4)),
-    Entry("Shinobi's Shadow", "The patience of the unseen blade, that strikes where the eye does not watch.", "Shadow Fang", 0xb8c0cc, Rune(5)),
-    Entry("Oni's Endurance", "A body toughened like a mountain demon's.", "Iron Body", 0xff8a2a, Rune(6)),
-    Entry("Hannya's Dread", "The horned mask of a jealous spirit; the weak flee from it.", "Hannya's Glare", 0xc8202a, Rune(7)),
-    Entry("Return from Yomi", "As Izanagi climbed back out of the land of the dead.", "Izanagi's Return", 0xfff1a8, Rune(8)),
-    Entry("Shinboku's Grace", "The sacred tree of the shrine, where the kami come down to earth.", "Sacred Tree's Grace", 0x6ae86a, Rune(9)),
+    Entry("Samurai's Focus", "Centering the mind through rigorous martial meditation.", "Adrenaline Rush", 0xff5a3a, Rune(0)),
+    Entry("Guardian's Stance", "Defensive footing grounded in heavy armor discipline.", "Iron Wall", 0x8fb4ff, Rune(1)),
+    Entry("Tengu's Agility", "Mountain-spirit footwork enabling impossible evasions.", "Wind Step", 0x9af0d0, Rune(2)),
+    Entry("Bards of the Court", "Inspiring war chants recalling historic feudal victories.", "Ronin's Resolve", 0xffd27a, Rune(3)),
+    Entry("Shadow Step", "Movement technique mirroring ninja arts and smoke concealment.", "Blink Dash", 0xffb0d0, Rune(4)),
+    Entry("Kitsune's Cunning", "Trickster-fox focus targeting enemy blind spots.", "Fox's Fang", 0xffa050, Rune(5)),
+    Entry("Temple Guardian Frenzy", "Unyielding spirit drawn from sacred shrine stone.", "Zenith Heart", 0xff8a2a, Rune(6)),
+    Entry("Seppuku Resolve", "Ultimate commitment to honor that converts near-death into power.", "Last Stand", 0xc8202a, Rune(7)),
+    Entry("Spirit Summon", "Calling upon ancestral guardian spirits of the clan.", "Ancestor's Guard", 0xa8c4ff, Rune(8)),
+    Entry("Lotus Blossom Restoration", "Channeling pure spiritual energy from the sacred pond.", "Nirvana Cleanse", 0xffb0e0, Rune(9)),
 ];
 
 const MIYAMOTO_SHIELD: [Entry; 10] = [
@@ -268,16 +271,16 @@ const MIYAMOTO_SHIELD: [Entry; 10] = [
 ];
 
 const MIYAMOTO_ELIXIR: [Entry; 10] = [
-    Entry("Matcha Tonic", "Whisked green tea from a temple garden.", "Instant Restoration", 0x7ac84a, Flask),
-    Entry("Umeboshi Broth", "Sour pickled plum in hot broth, the soldier's quick restorative.", "Sour Breath", 0xe05a6a, Gourd),
-    Entry("Oni's Sake", "Rice wine brewed strong enough for a mountain demon.", "Demon's Might", 0xa0302a, Gourd),
-    Entry("Tengu Wind Draught", "Mountain wind bottled by the long-nosed tengu.", "Tengu's Wind", 0xffd23a, Vial),
-    Entry("Lacquer Tincture", "It hardens the skin like a coat of lacquered armour.", "Lacquer Skin", 0x9aa4b0, Flask),
-    Entry("Fugu Distillate", "The poison of the puffer fish, taken in a deadly measure.", "Death's Edge", 0xff4a8a, Vial),
-    Entry("Kagutsuchi's Ember", "A spark of the fire kami, whose birth burned the world.", "Burning Spirit", 0xff7a2a, Vial),
-    Entry("Horai Elixir", "The elixir of immortality from Mount Horai, sent by the moon princess.", "Deathless Moment", 0xffe066, Flask),
-    Entry("Susanoo's Storm Sake", "The storm god's brew, drunk before he slew the eight-headed serpent.", "Storm Unbound", 0x9a2aff, Gourd),
-    Entry("Kodama Dew", "Dew gathered from the trees where the forest spirits live.", "Kodama's Embrace", 0xa6f0c8, Flask),
+    Entry("Minor Health Draught", "Spring water infused with crushed green tea leaves.", "Instant Restoration", 0x7ac84a, Flask),
+    Entry("Minor Stamina Dew", "Mountain mist captured in bamboo flasks.", "Quick Breath", 0x9ae0ff, Gourd),
+    Entry("Tiger Strength Sake", "Aged rice wine spiked with fiery ginger and pepper.", "Byakko's Might", 0xf0a040, Gourd),
+    Entry("Elixir of the Wind", "Essence harvested from flying Tengu feathers.", "Swift Strider", 0xffd23a, Vial),
+    Entry("Turtle Shell Tincture", "Liquid iron tincture that hardens external skin layers.", "Genbu's Shell", 0x6a8a7a, Flask),
+    Entry("Berserker's Oni Brew", "Toxic distillate brewed in volcanic ogre caves.", "Oni's Rage", 0xff4a4a, Gourd),
+    Entry("Dragonfire Elixir", "Filtered bile glands from mythological eastern dragons.", "Ryujin's Fire", 0xff7a2a, Vial),
+    Entry("Invulnerability Tincture", "Mystic mixture blessed under a blood-moon eclipse.", "Kami's Blessing", 0xffe066, Flask),
+    Entry("Yomi Volatility Tonic", "Underworld fluid hinting at the realm of the dead.", "Underworld Surge", 0x9a2aff, Vial),
+    Entry("Amrita Spirit Essence", "Pure distillation of glowing soul-stones.", "Celestial Embrace", 0xa6f0ff, Flask),
 ];
 
 fn table(hero: HeroKind, tree: Tree) -> &'static [Entry; 10] {
@@ -297,8 +300,64 @@ fn table(hero: HeroKind, tree: Tree) -> &'static [Entry; 10] {
     }
 }
 
-/// What tier `tier` (1..=10) of a tree does in play, the same for every hero.
-pub fn effect(tree: Tree, tier: u8) -> &'static str {
+/// What tier `tier` (1..=10) of `hero`'s tree does in play.
+pub fn effect(hero: HeroKind, tree: Tree, tier: u8) -> &'static str {
+    const MEHMED_ARMORY: [&str; 10] = [
+        "DMG 1. A quick slicing draw.",
+        "DMG 2. A wide horizontal arc through every foe in front.",
+        "DMG 3. A piercing thrust drives a line of force down the corridor.",
+        "DMG 3. Every strike is a 360-degree spin.",
+        "DMG 4. A pistol shot down the line that always staggers the Cyclops.",
+        "DMG 5. Shatters armour: the Cyclops' hide turns nothing.",
+        "DMG 5. A huge sweeping cut that leaves a trail of holy fire.",
+        "DMG 2 an arrow. Rains fiery arrows on up to five foes and the Cyclops, setting it alight.",
+        "DMG 6. Every hit is critical, and stuns the foes around the blow.",
+        "DMG 7. A flash of solar fire obliterates every foe around you, and the blade is back in your grip.",
+    ];
+    const MIYAMOTO_ARMORY: [&str; 10] = [
+        "DMG 1. A quick draw: the fastest strike there is.",
+        "DMG 2. A wide horizontal arc through every foe in front.",
+        "DMG 3. Lunges forward in a whirlwind slash.",
+        "DMG 3. Sacred flames: the foes around the blow burn, and so does the Cyclops.",
+        "DMG 3. Every strike is a 360-degree whirlwind, and you vanish from sight for a moment.",
+        "DMG 4. A long thrust whose venom stacks on the Cyclops, hit after hit.",
+        "DMG 5. Ignores armour, but every blow that lands drinks 2 of your health.",
+        "DMG 2 an arrow. Rains spectral arrows on up to five foes and the Cyclops.",
+        "DMG 6. Every hit is critical and ignores armour.",
+        "DMG 7. A flash of sunlight obliterates every foe around you, and the blade is back in your grip.",
+    ];
+    const SAMURAI_PATH: [&str; 10] = [
+        "Attacks 15% faster.",
+        "+50 health.",
+        "Every jump is a dodge (a moment nothing can touch you), and the blink costs half its stamina.",
+        "Stamina comes back 60% faster.",
+        "F or LB: a cloud of cherry blossoms carries you three tiles ahead.",
+        "Blows from behind strike the Cyclops for triple damage, from the flank for double.",
+        "When you are hurt: six seconds in which nothing slows you and your blows cost no stamina.",
+        "Once per dungeon, when your health hits zero: six seconds in which you cannot die and deal triple damage.",
+        "A spectral samurai fights at your side.",
+        "Once per dungeon, at a quarter health: fully healed and every ill purged.",
+    ];
+    const JANISSARY_PATH: [&str; 10] = [
+        "Attacks 15% faster.",
+        "+50 health.",
+        "See hidden vaults and potions through walls, see in the dark, and land critical hits on the Cyclops.",
+        "Stamina comes back 60% faster.",
+        "F or LB: a gust of desert wind carries you three tiles ahead.",
+        "Blows from behind strike the Cyclops for triple damage, from the flank for double.",
+        "When you are hurt: six seconds in which nothing slows you and your blows cost no stamina.",
+        "Once per dungeon, when your health hits zero: six seconds in which you cannot die and deal triple damage.",
+        "A spectral squad of three janissaries fights at your side.",
+        "Once per dungeon, at a quarter health: fully healed and every ill purged.",
+    ];
+    let i = (tier.clamp(1, TIERS) - 1) as usize;
+    match (hero, tree) {
+        (HeroKind::Mehmed, Tree::Armory) => return MEHMED_ARMORY[i],
+        (HeroKind::Miyamoto, Tree::Armory) => return MIYAMOTO_ARMORY[i],
+        (HeroKind::Mehmed, Tree::Path) => return JANISSARY_PATH[i],
+        (HeroKind::Miyamoto, Tree::Path) => return SAMURAI_PATH[i],
+        _ => {}
+    }
     const ARMORY: [&str; 10] = [
         "DMG 1. A close strike in front of you.",
         "DMG 2. Thrown in an arc, it flies back to your hand.",
@@ -347,7 +406,6 @@ pub fn effect(tree: Tree, tier: u8) -> &'static str {
         "20 seconds: double damage and faster everything, while your health drains.",
         "Heals 3 health a second for 30 seconds.",
     ];
-    let i = (tier.clamp(1, TIERS) - 1) as usize;
     match tree {
         Tree::Armory => ARMORY[i],
         Tree::Path => PATH[i],
@@ -359,7 +417,37 @@ pub fn effect(tree: Tree, tier: u8) -> &'static str {
 /// Tier `tier` (1..=10) of `hero`'s `tree`.
 pub fn node(hero: HeroKind, tree: Tree, tier: u8) -> Node {
     let e = &table(hero, tree)[(tier.clamp(1, TIERS) - 1) as usize];
-    Node { name: e.0, lore: e.1, ability: e.2, effect: effect(tree, tier), color: e.3, form: e.4 }
+    Node { name: e.0, lore: e.1, ability: e.2, effect: effect(hero, tree, tier), color: e.3, form: e.4 }
+}
+
+// -------------------------------------------------------------- currencies
+
+/// What the hero calls his coin: silver pieces, akce, gold mon.
+pub fn coin(hero: HeroKind) -> &'static str {
+    match hero {
+        HeroKind::Ragnar => "SILVER",
+        HeroKind::Mehmed => "AKCE",
+        HeroKind::Miyamoto => "MON",
+    }
+}
+
+/// What he calls the rare stones that buy sealed tiers: rune fragments, turquoise gems, spirit crystals.
+pub fn gems(hero: HeroKind, n: u32) -> String {
+    let (one, many) = match hero {
+        HeroKind::Ragnar => ("RUNE FRAGMENT", "RUNE FRAGMENTS"),
+        HeroKind::Mehmed => ("TURQUOISE GEM", "TURQUOISE GEMS"),
+        HeroKind::Miyamoto => ("SPIRIT CRYSTAL", "SPIRIT CRYSTALS"),
+    };
+    if n == 1 { one.to_string() } else { many.to_string() }
+}
+
+/// Where a dungeon hides its relic: a shrine, a vault, a grotto.
+pub fn hidden_place(hero: HeroKind) -> &'static str {
+    match hero {
+        HeroKind::Ragnar => "hidden shrine",
+        HeroKind::Mehmed => "hidden vault",
+        HeroKind::Miyamoto => "hidden grotto",
+    }
 }
 
 // ------------------------------------------------------------------ prices
@@ -429,14 +517,14 @@ pub const ELIXIRS: [PotionKind; 10] = [
 pub struct Blade {
     /// Damage to a boss per blow (ordinary foes fall to any blow).
     pub damage: i32,
-    /// The swing: tiles of reach ahead, half-width to either side, reach behind. None for thrown weapons.
+    /// The swing: tiles of reach ahead, half-width to either side, reach behind. None for thrown weapons and bows.
     pub swing: Option<(f64, f64, f64)>,
-    /// Thrown: flies out and back (returns), or on until it hits (homing spear).
+    /// Thrown or shot: flies out and back (returns), or on until it hits.
     pub throw: Option<Throw>,
     pub cooldown: f64,
     /// Each swing also sends a piercing wave down the line.
     pub wave: bool,
-    /// Seconds foes around the blow are stunned, and how far around.
+    /// Seconds foes around the blow are stunned.
     pub stun: f64,
     /// Leaves a decoy and confuses nearby foes.
     pub trick: bool,
@@ -448,6 +536,22 @@ pub struct Blade {
     pub crit: bool,
     /// Foes chain lightning strikes from where it hits.
     pub chain: usize,
+    /// Tiles it lunges forward before the swing.
+    pub lunge: f64,
+    /// Seconds its flames burn the Cyclops (and the foes round the blow catch fire).
+    pub burn: f64,
+    /// Each hit adds a stack of venom to the Cyclops.
+    pub poison: bool,
+    /// Health each blow that lands drinks from its wielder.
+    pub blood: i32,
+    /// Arrows it rains down on the nearest foes and the Cyclops (a bow).
+    pub arrows: usize,
+    /// The radius of the blinding flash that obliterates foes around him.
+    pub flash: f64,
+    /// Each swing leaves a trail of holy fire ahead of him.
+    pub fire_trail: bool,
+    /// Seconds each swing hides him from sight.
+    pub stealth: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -457,36 +561,83 @@ pub struct Throw {
     pub radius: f64,
     pub returns: bool,
     pub homing: bool,
+    /// Keeps flying through what it hits.
+    pub pierce: bool,
+    /// Staggers the Cyclops when it hits.
+    pub stagger: bool,
 }
 
 pub const STUN_RADIUS: f64 = 2.6;
 pub const TRICK_RADIUS: f64 = 3.5;
+/// A bow's arrows seek foes within this many tiles.
+pub const ARROW_RANGE: f64 = 7.0;
 
-pub fn blade(tier: u8) -> Blade {
-    let base = Blade {
-        damage: 1,
-        swing: Some((1.2, 0.7, 0.25)),
-        throw: None,
-        cooldown: 0.42,
-        wave: false,
-        stun: 0.0,
-        trick: false,
-        pierce_armor: false,
-        bleed: 0.0,
-        crit: false,
-        chain: 0,
-    };
-    match tier.clamp(1, TIERS) {
-        1 => base,
-        2 => Blade { damage: 2, swing: None, throw: Some(Throw { speed: 11.0, range: 6.0, radius: 0.7, returns: true, homing: false }), cooldown: 0.45, ..base },
-        3 => Blade { damage: 3, swing: Some((1.4, 0.8, 0.25)), cooldown: 0.5, wave: true, ..base },
-        4 => Blade { damage: 3, swing: Some((1.5, 0.95, 0.3)), cooldown: 0.48, stun: 2.5, ..base },
-        5 => Blade { damage: 3, swing: Some((1.6, 1.6, 1.6)), cooldown: 0.46, ..base },
-        6 => Blade { damage: 4, swing: Some((1.6, 1.0, 0.3)), cooldown: 0.45, trick: true, ..base },
-        7 => Blade { damage: 5, swing: Some((1.7, 1.1, 0.35)), cooldown: 0.45, pierce_armor: true, ..base },
-        8 => Blade { damage: 5, swing: Some((1.8, 1.3, 0.5)), cooldown: 0.5, bleed: 5.0, ..base },
-        9 => Blade { damage: 6, swing: None, throw: Some(Throw { speed: 15.0, range: 14.0, radius: 0.65, returns: false, homing: true }), cooldown: 0.55, crit: true, ..base },
-        _ => Blade { damage: 7, swing: None, throw: Some(Throw { speed: 17.0, range: 7.0, radius: 0.8, returns: true, homing: false }), cooldown: 0.5, chain: 5, ..base },
+const BASE_BLADE: Blade = Blade {
+    damage: 1,
+    swing: Some((1.2, 0.7, 0.25)),
+    throw: None,
+    cooldown: 0.42,
+    wave: false,
+    stun: 0.0,
+    trick: false,
+    pierce_armor: false,
+    bleed: 0.0,
+    crit: false,
+    chain: 0,
+    lunge: 0.0,
+    burn: 0.0,
+    poison: false,
+    blood: 0,
+    arrows: 0,
+    flash: 0.0,
+    fire_trail: false,
+    stealth: 0.0,
+};
+
+/// Tier `tier` of `hero`'s armory.
+pub fn blade(hero: HeroKind, tier: u8) -> Blade {
+    let base = BASE_BLADE;
+    let t = tier.clamp(1, TIERS);
+    let wide = Some((1.5, 1.5, 0.3));
+    let whirl = Some((1.6, 1.6, 1.6));
+    let flash = Blade { damage: 7, swing: Some((1.5, 1.2, 0.6)), cooldown: 1.0, flash: 3.8, ..base };
+    match hero {
+        HeroKind::Ragnar => match t {
+            1 => base,
+            2 => Blade { damage: 2, swing: None, throw: Some(Throw { speed: 11.0, range: 6.0, radius: 0.7, returns: true, homing: false, pierce: true, stagger: false }), cooldown: 0.45, ..base },
+            3 => Blade { damage: 3, swing: Some((1.4, 0.8, 0.25)), cooldown: 0.5, wave: true, ..base },
+            4 => Blade { damage: 3, swing: Some((1.5, 0.95, 0.3)), cooldown: 0.48, stun: 2.5, ..base },
+            5 => Blade { damage: 3, swing: whirl, cooldown: 0.46, ..base },
+            6 => Blade { damage: 4, swing: Some((1.6, 1.0, 0.3)), cooldown: 0.45, trick: true, ..base },
+            7 => Blade { damage: 5, swing: Some((1.7, 1.1, 0.35)), cooldown: 0.45, pierce_armor: true, ..base },
+            8 => Blade { damage: 5, swing: Some((1.8, 1.3, 0.5)), cooldown: 0.5, bleed: 5.0, ..base },
+            9 => Blade { damage: 6, swing: None, throw: Some(Throw { speed: 15.0, range: 14.0, radius: 0.65, returns: false, homing: true, pierce: true, stagger: false }), cooldown: 0.55, crit: true, ..base },
+            _ => Blade { damage: 7, swing: None, throw: Some(Throw { speed: 17.0, range: 7.0, radius: 0.8, returns: true, homing: false, pierce: true, stagger: false }), cooldown: 0.5, chain: 5, ..base },
+        },
+        HeroKind::Mehmed => match t {
+            1 => Blade { cooldown: 0.34, ..base },
+            2 => Blade { damage: 2, swing: wide, cooldown: 0.5, ..base },
+            3 => Blade { damage: 3, swing: Some((1.4, 0.6, 0.2)), cooldown: 0.5, wave: true, ..base },
+            4 => Blade { damage: 3, swing: whirl, cooldown: 0.46, ..base },
+            5 => Blade { damage: 4, swing: None, throw: Some(Throw { speed: 22.0, range: 12.0, radius: 0.45, returns: false, homing: false, pierce: false, stagger: true }), cooldown: 0.7, ..base },
+            6 => Blade { damage: 5, swing: Some((1.5, 1.0, 0.3)), cooldown: 0.5, pierce_armor: true, ..base },
+            7 => Blade { damage: 5, swing: Some((1.9, 1.6, 0.6)), cooldown: 0.55, fire_trail: true, ..base },
+            8 => Blade { damage: 2, swing: None, cooldown: 0.8, arrows: 5, burn: 3.0, ..base },
+            9 => Blade { damage: 6, swing: Some((1.8, 1.2, 0.4)), cooldown: 0.48, crit: true, stun: 2.5, ..base },
+            _ => flash,
+        },
+        HeroKind::Miyamoto => match t {
+            1 => Blade { cooldown: 0.34, ..base },
+            2 => Blade { damage: 2, swing: wide, cooldown: 0.5, ..base },
+            3 => Blade { damage: 3, swing: Some((1.3, 1.2, 1.0)), cooldown: 0.55, lunge: 2.0, ..base },
+            4 => Blade { damage: 3, swing: Some((1.5, 1.0, 0.3)), cooldown: 0.48, burn: 4.0, ..base },
+            5 => Blade { damage: 3, swing: whirl, cooldown: 0.46, stealth: 0.6, ..base },
+            6 => Blade { damage: 4, swing: Some((2.3, 0.55, 0.2)), cooldown: 0.5, poison: true, ..base },
+            7 => Blade { damage: 5, swing: Some((1.7, 1.1, 0.35)), cooldown: 0.45, pierce_armor: true, blood: 2, ..base },
+            8 => Blade { damage: 2, swing: None, cooldown: 0.8, arrows: 5, ..base },
+            9 => Blade { damage: 6, swing: Some((1.8, 1.2, 0.4)), cooldown: 0.45, crit: true, pierce_armor: true, ..base },
+            _ => flash,
+        },
     }
 }
 
@@ -573,6 +724,28 @@ pub mod path {
     pub const TERROR_SECONDS: f64 = 3.0;
     /// Level 10: the World Tree answers at this share of health.
     pub const TREE_AT: f64 = 0.25;
+    /// Mehmed's and Miyamoto's level 6: a blow from the flank.
+    pub const FLANK_MULT: i32 = 2;
+    /// Miyamoto's level 3: the moment a jump leaves him untouchable, and the blink's cost.
+    pub const DODGE_SECONDS: f64 = 0.35;
+    pub const WIND_STEP_COST: f64 = 0.5;
+    /// Mehmed's and Miyamoto's level 7: how long the unyielding heart lasts once hurt, and how often.
+    pub const DEFIANCE_SECONDS: f64 = 6.0;
+    pub const DEFIANCE_COOLDOWN: f64 = 20.0;
+    /// Their level 8: the last stand's length and what it multiplies.
+    pub const STAND_SECONDS: f64 = 6.0;
+    pub const STAND_MULT: i32 = 3;
+    /// Their level 9: the spirits (how many, and seconds between each one's blows) and their reach.
+    pub const SPIRIT_REACH: f64 = 2.6;
+}
+
+/// How many spirits fight beside `hero` once he reaches level 9, and seconds between each one's blows.
+pub fn spirits(hero: HeroKind) -> (usize, f64) {
+    match hero {
+        HeroKind::Ragnar => (0, 0.0),
+        HeroKind::Mehmed => (3, 3.0),
+        HeroKind::Miyamoto => (1, 1.2),
+    }
 }
 
 /// Stamina: what he has, what a blow costs, how fast it comes back once he rests a moment.
@@ -794,6 +967,7 @@ mod tests {
 
     #[test]
     fn weapons_grow_stronger_and_shields_sturdier_tier_by_tier() {
+        let blade = |t| blade(HeroKind::Ragnar, t);
         for t in 1..TIERS {
             assert!(blade(t + 1).damage >= blade(t).damage);
             let (a, b) = (ward(t), ward(t + 1));
@@ -805,6 +979,12 @@ mod tests {
         assert_eq!(blade(5).swing.unwrap().2, blade(5).swing.unwrap().0, "the whirlwind reaches behind as far as ahead");
         assert!(ward(10).bash && ward(10).reflect && ward(10).unbreakable && ward(10).aegis > 0, "each shield keeps the gifts below it");
         assert!(!ward(3).bash);
+        // Mehmed's and Miyamoto's armories are their own.
+        let (m, y) = (|t| super::blade(HeroKind::Mehmed, t), |t| super::blade(HeroKind::Miyamoto, t));
+        assert!(m(5).throw.unwrap().stagger && m(7).fire_trail && m(8).arrows > 0 && m(10).flash > 0.0);
+        assert!(y(3).lunge > 0.0 && y(4).burn > 0.0 && y(6).poison && y(7).blood > 0 && y(8).arrows > 0 && y(10).flash > 0.0);
+        assert_eq!(node(HeroKind::Miyamoto, Tree::Armory, 7).ability, "Blood Drinker");
+        assert_eq!(node(HeroKind::Mehmed, Tree::Path, 8).ability, "Blood of the Empire");
     }
 
     #[test]

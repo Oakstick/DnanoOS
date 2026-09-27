@@ -220,6 +220,16 @@ impl Cyclops {
         d > 1.9
     }
 
+    /// Is `from` at its flank: neither before its eye nor behind it?
+    pub fn flank(&self, from: V) -> bool {
+        let to = (from.y - self.pos.y).atan2(from.x - self.pos.x);
+        let mut d = (to - self.look).rem_euclid(std::f64::consts::TAU);
+        if d > std::f64::consts::PI {
+            d = std::f64::consts::TAU - d;
+        }
+        (1.0..=1.9).contains(&d)
+    }
+
     pub fn dazed(&self) -> bool {
         matches!(self.state, BossState::Dazed(_))
     }

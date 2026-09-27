@@ -79,8 +79,16 @@ impl Game {
         };
         let mut stops = vec![TourStop {
             target: at(spawn, 0.5),
-            title: "RAGNAR",
-            body: "That's you: a viking with an axe, a round shield, and a hoard to win. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+            title: match self.hero_kind {
+                crate::logic::heroes::HeroKind::Ragnar => "RAGNAR",
+                crate::logic::heroes::HeroKind::Mehmed => "MEHMED",
+                crate::logic::heroes::HeroKind::Miyamoto => "MIYAMOTO",
+            },
+            body: match self.hero_kind {
+                crate::logic::heroes::HeroKind::Ragnar => "That's you: a viking with a blade, a round shield, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+                crate::logic::heroes::HeroKind::Mehmed => "That's you: a janissary with a blade, a kalkan, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+                crate::logic::heroes::HeroKind::Miyamoto => "That's you: a samurai with a blade, a tate, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+            },
             color: 0xf2e3c4,
             art: TourArt::Hero,
         }];
@@ -97,7 +105,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(p, 0.2),
                 title: "GOLDEN KEY",
-                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 silver at the old gatekeeper's. Look for their golden glow.",
+                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 coins at the old gatekeeper's. Look for their golden glow.",
                 color: 0xf2c53d,
                 art: TourArt::Nugget,
             });

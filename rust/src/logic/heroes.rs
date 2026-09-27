@@ -1,6 +1,5 @@
 //! The heroes you can play: Ragnar the viking, Mehmed the janissary and
-//! Miyamoto the samurai. For now only Ragnar can be chosen; the other two
-//! stand greyed out on the character screen until their abilities are set.
+//! Miyamoto the samurai, each with his own armory and path (see `progression`).
 
 /// A playable hero.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
@@ -32,9 +31,9 @@ impl HeroKind {
         }
     }
 
-    /// Can he be chosen yet?
+    /// Can he be chosen? All three can.
     pub fn unlocked(self) -> bool {
-        self == HeroKind::Ragnar
+        true
     }
 
     /// His place in the line-up.
@@ -48,9 +47,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_ragnar_is_unlocked_and_he_stands_in_the_middle() {
-        assert_eq!(ROSTER.iter().filter(|h| h.unlocked()).count(), 1);
-        assert!(HeroKind::Ragnar.unlocked());
+    fn all_three_can_be_played_and_ragnar_stands_in_the_middle() {
+        assert!(ROSTER.iter().all(|h| h.unlocked()));
         assert_eq!(HeroKind::Ragnar.slot(), 1);
         assert_eq!(HeroKind::default(), HeroKind::Ragnar);
     }

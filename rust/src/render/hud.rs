@@ -41,16 +41,41 @@ const FRENZIED: u32 = 0x3b5bff;
 const FRENZIED_WARN: u32 = 0xe8f0ff;
 
 struct Sprites {
-    portrait: Sprite,
+    /// Each hero's face in the corner: Ragnar's pixel model, Mehmed and Miyamoto as they are played.
+    portraits: [Sprite; 3],
     /// The fountain's statue, for its tour card.
     krampus: Sprite,
     cast: Vec<(Sprite, &'static str, u32, &'static str)>,
 }
 
+/// A sprite trimmed to what is drawn in it.
+fn cropped(s: Sprite) -> Sprite {
+    let filled = |x: i32, y: i32| s.pixels[y as usize][x as usize].is_some();
+    let xs: Vec<i32> = (0..s.width).filter(|&x| (0..s.height).any(|y| filled(x, y))).collect();
+    let ys: Vec<i32> = (0..s.height).filter(|&y| (0..s.width).any(|x| filled(x, y))).collect();
+    let (Some(&x0), Some(&x1), Some(&y0), Some(&y1)) = (xs.first(), xs.last(), ys.first(), ys.last()) else { return s };
+    let pixels = (y0..=y1).map(|y| (x0..=x1).map(|x| s.pixels[y as usize][x as usize]).collect()).collect();
+    Sprite { width: x1 - x0 + 1, height: y1 - y0 + 1, pixels }
+}
+
+/// The hero's face for the HUD corner and the tour.
+fn portrait_of(hero: crate::logic::heroes::HeroKind) -> &'static Sprite {
+    use crate::logic::heroes::HeroKind;
+    &sprites().portraits[match hero {
+        HeroKind::Ragnar => 0,
+        HeroKind::Mehmed => 1,
+        HeroKind::Miyamoto => 2,
+    }]
+}
+
 fn sprites() -> &'static Sprites {
     static S: OnceLock<Sprites> = OnceLock::new();
     S.get_or_init(|| Sprites {
-        portrait: sprite_from(&ragnar()),
+        portraits: [
+            sprite_from(&ragnar()),
+            cropped(sprite_from(&super::characters::mehmed_hd(None))),
+            cropped(sprite_from(&super::characters::miyamoto_hd(None))),
+        ],
         krampus: sprite_from(&crate::render::view::krampus()),
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
@@ -133,9 +158,11 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 line(format!("Best {}", g.score.high), 0.8, SAND),
                 line(
                     format!(
-                        "+{} silver   +{} rune fragments   and a relic of the old heroes",
+                        "+{} {}   +{} {}   and a relic of the old heroes",
                         crate::logic::gear::COINS_BOSS + 100 * g.dungeon as u32,
-                        crate::logic::gear::RUNES_BOSS + g.dungeon as u32
+                        progression::coin(g.hero_kind).to_lowercase(),
+                        crate::logic::gear::RUNES_BOSS + g.dungeon as u32,
+                        progression::gems(g.hero_kind, 2).to_lowercase()
                     ),
                     0.9,
                     GOLD,
@@ -264,13 +291,13 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let small = (t * 0.52).max(11.0);
     let margin = t * 0.4;
     let band = PANEL_ROWS * t;
-    let sp = sprites();
     let time = g.time as f32;
 
     // ---- top left: health
+    let portrait = portrait_of(g.hero_kind);
     let portrait_h = band - t * 0.4;
-    let scale = portrait_h / sp.portrait.height as f32;
-    let portrait_w = sp.portrait.width as f32 * scale;
+    let scale = portrait_h / portrait.height as f32;
+    let portrait_w = portrait.width as f32 * scale;
     let px0 = margin + t * 0.35;
     let py0 = margin + t * 0.2;
     let cx0 = px0 + portrait_w + t * 0.7;
@@ -282,7 +309,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let golden = hero.invincible() && ((time * 6.0).floor() as i64).rem_euclid(2) == 0;
     let hurt_red = j.hurt > 0.5 && ((time * 20.0).floor() as i64).rem_euclid(2) == 0;
     let tint = if golden { Some(0xffd84a) } else if hurt_red { Some(0xff5a5a) } else { None };
-    draw_sprite(o, &sp.portrait, px0, py0, scale, tint, if ghost { 0.4 } else { 1.0 });
+    draw_sprite(o, portrait, px0, py0, scale, tint, if ghost { 0.4 } else { 1.0 });
     if hero.shield.is_some() {
         o.rect_outline(px0 - t * 0.15, py0 - t * 0.1, portrait_w + t * 0.3, portrait_h + t * 0.2, (t * 0.08).max(1.0), [127.0 / 255.0, 215.0 / 255.0, 1.0, 0.9]);
     }
@@ -358,11 +385,11 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     o.text(&coins, rc, cy, cs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
     let ciw = small * 1.2;
     let cx = rc - o.measure(&coins, cs) - ciw - t * 0.15;
-    draw_sprite(o, icon(Icon::Coin), cx, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
+    draw_sprite(o, icon(Icon::Money(g.hero_kind)), cx, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
     let runes = format!("{}", g.progress.runes);
     let rx2 = cx - t * 0.5;
     o.text(&runes, rx2, cy, small, rgba(0x9ad1ff, 1.0), Align::Right, true);
-    draw_sprite(o, icon(Icon::Rune), rx2 - o.measure(&runes, small) - ciw - t * 0.1, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
+    draw_sprite(o, icon(Icon::Gem(g.hero_kind)), rx2 - o.measure(&runes, small) - ciw - t * 0.1, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
 
     // ---- bottom middle: weapon, shield and potions
     draw_loadout(o, g, t, fs, small);
@@ -692,7 +719,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     let art = t * 4.2;
     let ax = cx + t * 0.6;
     let ay = cy + (chh - art) / 2.0;
-    draw_tour_art(o, stop.art, ax, ay, art, fade);
+    draw_tour_art(o, g.hero_kind, stop.art, ax, ay, art, fade);
     let tx = ax + art + t * 0.7;
     // The title types itself out.
     let shown = ((st * 60.0) as usize).min(stop.title.len());
@@ -716,7 +743,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
 }
 
 /// The picture on a tour card: a portrait of a foe, or an icon of a thing.
-fn draw_tour_art(o: &mut Overlay, art: crate::game::TourArt, x: f32, y: f32, size: f32, alpha: f32) {
+fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: crate::game::TourArt, x: f32, y: f32, size: f32, alpha: f32) {
     use crate::game::TourArt;
     use crate::logic::enemy::EnemyKind;
     o.rect(x, y, size, size, [1.0, 1.0, 1.0, 0.06 * alpha]);
@@ -727,7 +754,7 @@ fn draw_tour_art(o: &mut Overlay, art: crate::game::TourArt, x: f32, y: f32, siz
         draw_sprite(o, s, x + (size - sw) / 2.0, y + (size - sh) / 2.0, scale, None, alpha);
     };
     match art {
-        TourArt::Hero => fit(o, &sp.portrait),
+        TourArt::Hero => fit(o, portrait_of(hero)),
         TourArt::Fountain => fit(o, &sp.krampus),
         TourArt::Enemy(kind) => {
             let i = match kind {
@@ -775,7 +802,7 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
             bar(o, x - bw / 2.0, y, bw, bh, frac, hp_color(frac));
         }
     }
-    if g.hero.path >= 3 && g.screen == Screen::Playing {
+    if g.hero.sees() && g.screen == Screen::Playing {
         // Seer's Sight: every key, bottle, cross and the hidden shrine marked, walls or not.
         let pulse = 0.75 + (g.time as f32 * 5.0).sin() * 0.25;
         let fade = 0.8;

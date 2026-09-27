@@ -257,7 +257,7 @@ impl Game {
     fn pay(&mut self, price: u32) -> bool {
         if self.progress.silver < price {
             self.audio.play(Sfx::Denied);
-            self.note(format!("NOT ENOUGH SILVER - {} MORE NEEDED", price - self.progress.silver), 0xff6a6a);
+            self.note(format!("NOT ENOUGH {} - {} MORE NEEDED", progression::coin(self.hero_kind), price - self.progress.silver), 0xff6a6a);
             return false;
         }
         self.progress.silver -= price;
@@ -312,12 +312,11 @@ impl Game {
                 }
                 Err(Refusal::Silver(more)) => {
                     self.audio.play(Sfx::Denied);
-                    self.note(format!("NOT ENOUGH SILVER - {more} MORE NEEDED"), 0xff6a6a);
+                    self.note(format!("NOT ENOUGH {} - {more} MORE NEEDED", progression::coin(hero)), 0xff6a6a);
                 }
                 Err(Refusal::Runes(more)) => {
                     self.audio.play(Sfx::Denied);
-                    let s = if more == 1 { "" } else { "S" };
-                    self.note(format!("SEALED - {more} MORE RUNE FRAGMENT{s}, OR FIND ITS RELIC"), 0x9ad1ff);
+                    self.note(format!("SEALED - {more} MORE {}, OR FIND ITS RELIC", progression::gems(hero, more)), 0x9ad1ff);
                 }
                 Err(_) => self.audio.play(Sfx::Denied),
             },

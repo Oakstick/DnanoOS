@@ -853,6 +853,19 @@ mod jan {
  * Ragnar's is in his), 62 tall, 20 deep; voxels carry materials.
  */
 pub fn mehmed() -> Collected {
+    mehmed_sculpt(None, false)
+}
+
+/**
+ * Mehmed as he is played: his halberd laid aside (his weapon comes from his
+ * armory, see `armory`), both arms hanging free a little out from his sides
+ * so they can swing, and a shield of his tree (form, colour, tier) on his back.
+ */
+pub fn mehmed_hd(shield: Option<(Form, u32, u8)>) -> Collected {
+    mehmed_sculpt(shield, true)
+}
+
+fn mehmed_sculpt(shield: Option<(Form, u32, u8)>, playable: bool) -> Collected {
     use jan::*;
     let mut base = Sculpt::new(48, 62, 20);
     let mut s = Offset { s: &mut base, dx: 4 };
@@ -905,14 +918,17 @@ pub fn mehmed() -> Collected {
     }
 
     // ---- arms: wide sleeves with gold cuffs; the left hand grips the halberd, the right hangs in a fist
-    for (x0, x1) in [(7, 10), (29, 32)] {
+    let arms = if playable { [(5, 8), (31, 34)] } else { [(7, 10), (29, 32)] };
+    for (x0, x1) in arms {
         s.cuboid(x0, 16, 6, x1, 27, 12, KAFTAN);
         s.cuboid(x0 - 1, 14, 5, x1 + 1, 16, 13, KAFTAN);
         s.cuboid(x0 - 1, 14, 5, x1 + 1, 14, 13, GOLD_D);
         s.cuboid(x0, 11, 7, x1, 13, 11, SKIN);
         s.cuboid(x0, 11, 11, x1, 11, 11, SKIN_D);
     }
-    s.cuboid(3, 11, 7, 6, 13, 11, SKIN);
+    if !playable {
+        s.cuboid(3, 11, 7, 6, 13, 11, SKIN);
+    }
 
     // ---- the damask: a lattice of gold thread over the green, a gold flower in every lozenge
     s.paint(|x, y, z, c| {
@@ -1004,6 +1020,13 @@ pub fn mehmed() -> Collected {
     }
 
     // ---- the halberd: a shaft banded with gold, a red tassel, a crescent axe, a back spike, a spear point
+    if playable {
+        drop(s);
+        if let Some((form, color, tier)) = shield {
+            super::armory::back_shield_at(&mut base, form, color, tier, MEHMED_SHIELD_AT);
+        }
+        return base.finish(0.035);
+    }
     for y in 0..=56 {
         let band = matches!(y, 0 | 1 | 18 | 30 | 43 | 56);
         s.cuboid(1, y, 9, 2, y, 10, if band { GOLD } else { SHAFT });
@@ -1032,6 +1055,18 @@ pub fn mehmed() -> Collected {
 
 /// Mehmed's joints, in his 48-wide grid: the head with its hat and the top of his beard.
 pub const MEHMED_RIG: &[PartDef] = &[PartDef { name: "head", boxes: &[([17, 30, 0], [30, 61, 19]), ([18, 26, 12], [29, 29, 15])], pivot: [23.5, 29.0, 9.0] }];
+
+/// Where Mehmed's shield sits, as an offset from where Ragnar's does.
+pub const MEHMED_SHIELD_AT: (i32, i32, i32) = (9, 0, 3);
+
+/// Mehmed as he is played, jointed like Ragnar: legs under the kaftan's hem, arms, head.
+pub const MEHMED_HD_RIG: &[PartDef] = &[
+    PartDef { name: "leftLeg", boxes: &[([0, 0, 0], [23, 7, 19])], pivot: [19.5, 8.0, 10.5] },
+    PartDef { name: "rightLeg", boxes: &[([24, 0, 0], [47, 7, 19])], pivot: [27.5, 8.0, 10.5] },
+    PartDef { name: "shieldArm", boxes: &[([0, 10, 0], [13, 28, 19])], pivot: [10.5, 27.0, 9.0] },
+    PartDef { name: "swordArm", boxes: &[([34, 10, 0], [47, 28, 19])], pivot: [36.5, 27.0, 9.0] },
+    PartDef { name: "head", boxes: &[([17, 35, 0], [30, 61, 19]), ([17, 30, 5], [30, 34, 19]), ([18, 26, 12], [29, 29, 15])], pivot: [23.5, 29.0, 9.0] },
+];
 
 mod sam {
     use super::mat;
@@ -1073,6 +1108,19 @@ mod sam {
  * middle), 60 tall, 22 deep; voxels carry materials.
  */
 pub fn miyamoto() -> Collected {
+    miyamoto_sculpt(None, false)
+}
+
+/**
+ * Miyamoto as he is played: his katana sheathed in his armory (his weapon
+ * comes from there, see `armory`), both gauntleted arms hanging free under
+ * his shoulder guards, and a shield of his tree on his back.
+ */
+pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
+    miyamoto_sculpt(shield, true)
+}
+
+fn miyamoto_sculpt(shield: Option<(Form, u32, u8)>, playable: bool) -> Collected {
     use sam::*;
     let mut base = Sculpt::new(48, 60, 22);
     let mut s = Offset { s: &mut base, dx: 4 };
@@ -1150,16 +1198,23 @@ pub fn miyamoto() -> Collected {
     });
 
     // ---- arms: sleeves of dark silk sewn with gilt plates, gauntleted fists
-    s.cuboid(7, 14, 7, 10, 25, 12, KOTE);
-    s.cuboid(7, 11, 7, 10, 13, 12, BLACK);
-    s.cuboid(7, 11, 12, 10, 11, 12, GOLD_D);
-    s.capsule((30.5, 26.0, 10.5), (31.0, 20.5, 12.5), 2.2, 2.0, KOTE);
-    s.capsule((31.0, 20.5, 12.5), (30.5, 18.8, 16.0), 2.0, 1.8, KOTE);
+    let hanging: &[(i32, i32)] = if playable { &[(5, 8), (31, 34)] } else { &[(7, 10)] };
+    for &(x0, x1) in hanging {
+        s.cuboid(x0, 14, 7, x1, 25, 12, KOTE);
+        s.cuboid(x0, 11, 7, x1, 13, 12, BLACK);
+        s.cuboid(x0, 11, 12, x1, 11, 12, GOLD_D);
+    }
+    if !playable {
+        s.capsule((30.5, 26.0, 10.5), (31.0, 20.5, 12.5), 2.2, 2.0, KOTE);
+        s.capsule((31.0, 20.5, 12.5), (30.5, 18.8, 16.0), 2.0, 1.8, KOTE);
+    }
     s.paint(|x, y, z, c| (c == KOTE && (x + y * 2 + z) % 5 == 0).then_some(GOLD_D));
-    s.ellipsoid((30.5, 18.3, 16.6), (1.9, 1.9, 1.9), 0, BLACK);
+    if !playable {
+        s.ellipsoid((30.5, 18.3, 16.6), (1.9, 1.9, 1.9), 0, BLACK);
+    }
 
     // ---- the katana, raised: a silk-wrapped hilt through his fist, a gilt guard, a long blade with a bright edge
-    {
+    if !playable {
         let fist = (30.5f32, 18.3f32, 16.6f32);
         let (dx, dy, dz) = (0.27f32, 0.96f32, 0.08f32);
         let n = (dx * dx + dy * dy + dz * dz).sqrt();
@@ -1254,11 +1309,27 @@ pub fn miyamoto() -> Collected {
         }
     }
     drop(s);
+    if let Some((form, color, tier)) = shield.filter(|_| playable) {
+        super::armory::back_shield_at(&mut base, form, color, tier, MIYAMOTO_SHIELD_AT);
+    }
     base.finish(0.035)
 }
 
 /// Miyamoto's joints, in his 48-wide grid: the head with its helmet and crest.
 pub const MIYAMOTO_RIG: &[PartDef] = &[PartDef { name: "head", boxes: &[([13, 30, 0], [36, 59, 21])], pivot: [23.5, 30.0, 10.0] }];
+
+/// Where Miyamoto's shield sits, as an offset from where Ragnar's does.
+pub const MIYAMOTO_SHIELD_AT: (i32, i32, i32) = (9, 0, 4);
+
+/// Miyamoto as he is played, jointed like Ragnar. The boxes stay in front of the
+/// shield on his back (z 4 and 5), so it rides with his body.
+pub const MIYAMOTO_HD_RIG: &[PartDef] = &[
+    PartDef { name: "leftLeg", boxes: &[([0, 0, 6], [23, 9, 21])], pivot: [19.5, 10.0, 12.0] },
+    PartDef { name: "rightLeg", boxes: &[([24, 0, 6], [47, 9, 21])], pivot: [27.5, 10.0, 12.0] },
+    PartDef { name: "shieldArm", boxes: &[([0, 19, 6], [14, 28, 21]), ([0, 10, 5], [12, 18, 15])], pivot: [10.5, 26.0, 9.5] },
+    PartDef { name: "swordArm", boxes: &[([33, 19, 6], [47, 28, 21]), ([35, 10, 5], [47, 18, 15])], pivot: [36.5, 26.0, 9.5] },
+    PartDef { name: "head", boxes: &[([13, 30, 6], [36, 59, 21]), ([13, 37, 0], [36, 59, 5])], pivot: [23.5, 30.0, 10.0] },
+];
 
 // --------------------------------------------------------------------- draugr
 
@@ -1749,6 +1820,8 @@ mod tests {
             (bog_slime(), &[] as &[PartDef]),
             (mehmed(), MEHMED_RIG),
             (miyamoto(), MIYAMOTO_RIG),
+            (mehmed_hd(Some((Form::Spiral, 0xc8a060, 1))), MEHMED_HD_RIG),
+            (miyamoto_hd(Some((Form::Tate, 0xc8b870, 1))), MIYAMOTO_HD_RIG),
         ] {
             assert!(model.voxels.len() > 100, "too few voxels: {}", model.voxels.len());
             let r = build_rig(&model, rig, 0.05);

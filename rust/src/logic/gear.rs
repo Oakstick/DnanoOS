@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn each_hero_names_his_own_brews() {
         assert_eq!(potion(HeroKind::Ragnar, PotionKind::Health).name, "Minor Health Potion");
-        assert_eq!(potion(HeroKind::Mehmed, PotionKind::Haste).name, "Janissary Coffee");
+        assert_eq!(potion(HeroKind::Mehmed, PotionKind::Haste).name, "Elixir of the Desert Wind");
         assert_eq!(potion(HeroKind::Miyamoto, PotionKind::Life).name, "Extra Life");
         assert!(potion(HeroKind::Ragnar, PotionKind::Invulnerability).seconds > 0.0);
     }

@@ -7,6 +7,7 @@
 
 use super::characters::{mat, Sculpt};
 use super::voxels::Collected;
+use crate::logic::heroes::HeroKind;
 use crate::logic::progression::Form;
 
 const W: i32 = 30;
@@ -231,12 +232,74 @@ fn weapon(h: &mut Hand, form: Form, col: u32) {
                 h.set(26 + (y % 2), y, 9, IRON);
             }
         }
+        Form::Gun => {
+            // A flintlock pistol held muzzle up: a curved walnut stock in the fist, a brass-bound
+            // lock, a long iron barrel.
+            for y in 6..=17 {
+                let z0 = if y < 10 { 6 + (10 - y) / 2 } else { 8 };
+                h.cuboid(26, y, z0.min(8), 27, y, 9, HAFT);
+            }
+            h.cuboid(26, 5, 5, 27, 6, 8, GOLD);
+            h.cuboid(25, 16, 6, 28, 19, 11, HAFT_D);
+            h.cuboid(25, 17, 10, 28, 18, 12, GOLD);
+            h.cuboid(28, 18, 11, 28, 20, 11, IRON);
+            h.set(28, 21, 10, IRON);
+            for y in 20..=34 {
+                h.cuboid(26, y, 8, 27, y, 9, if y % 5 == 0 { GOLD } else { body });
+            }
+            h.cuboid(26, 35, 8, 27, 35, 9, edge);
+            h.cuboid(26, 21, 7, 26, 30, 7, WRAP);
+        }
+        Form::Forked => {
+            // A double-pointed greatsword: a long grip, broad guard, a broad blade split at the tip.
+            for y in 7..=17 {
+                h.grip(y, y, if y % 2 == 0 { WRAP } else { GOLD });
+            }
+            h.cuboid(25, 6, 7, 28, 6, 10, GOLD);
+            h.cuboid(25, 18, 4, 28, 18, 13, GOLD);
+            h.blade(19, 38, |_| 8.5, |_| 2.2, body, edge);
+            for (y, dz) in [(39, 0), (40, 0), (41, 1), (42, 1), (43, 2)] {
+                h.cuboid(26, y, 6 - dz, 27, y, 7 - dz, edge);
+                h.cuboid(26, y, 10 + dz, 27, y, 11 + dz, edge);
+            }
+            for y in 20..=36 {
+                h.cuboid(26, y, 8, 27, y, 9, dark);
+            }
+        }
         // Shields, brews and runes are not held.
         _ => {}
     }
 }
 
-/// A weapon of `form` and `col` as a model of its own, in the hero's grid: in his right
+/// How far a hero's fist is from Ragnar's (right hand, or left), in his own grid.
+fn grip_shift(hero: HeroKind, left: bool) -> (i32, i32, i32) {
+    match (hero, left) {
+        (HeroKind::Ragnar, _) => (0, 0, 0),
+        (_, false) => (11, -2, 1),
+        (_, true) => (7, -2, 1),
+    }
+}
+
+/**
+ * A weapon of `form` and `col` in `hero`'s hand, in his grid: sculpted in
+ * Ragnar's and carried over to the other heroes' fists (who keep their own
+ * hands, so the sculpted fist is left out for them).
+ */
+pub fn weapon_for(hero: HeroKind, form: Form, col: u32, left: bool) -> Collected {
+    let mut c = hero_weapon(form, col, left);
+    if hero != HeroKind::Ragnar {
+        let (dx, dy, dz) = grip_shift(hero, left);
+        c.voxels.retain(|v| v.c >> 24 != mat::SKIN >> 24);
+        for v in c.voxels.iter_mut() {
+            v.x += dx;
+            v.y += dy;
+            v.z += dz;
+        }
+    }
+    c
+}
+
+/// A weapon of `form` and `col` as a model of its own, in Ragnar's grid: in his right
 /// hand (the fist included), or the second of a pair in his left.
 pub fn hero_weapon(form: Form, col: u32, left: bool) -> Collected {
     let mut s = Sculpt::new(W, H, D);
@@ -258,6 +321,12 @@ pub fn paired(form: Form) -> bool {
  * boss standing out; wood for the lower tiers, metal higher up.
  */
 pub fn back_shield(s: &mut Sculpt, form: Form, col: u32, tier: u8) {
+    back_shield_at(s, form, col, tier, (0, 0, 0));
+}
+
+/// The same shield carved `at` voxels away from where Ragnar's hangs (for another hero's back).
+pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, i32, i32)) {
+    let (ox, oy, oz) = at;
     let stuff = if tier <= 4 && !matches!(form, Form::Mirror) { mat::WOOD } else { mat::METAL };
     let face = col | stuff;
     let face_d = mix(col, 0x000000, 0.28) | stuff;
@@ -337,9 +406,9 @@ pub fn back_shield(s: &mut Sculpt, form: Form, col: u32, tier: u8) {
                     (c, edge || crest)
                 }
             };
-            s.set(x, y, 1, c);
+            s.set(x + ox, y + oy, 1 + oz, c);
             if raised {
-                s.set(x, y, 0, c);
+                s.set(x + ox, y + oy, oz, c);
             }
         }
     }

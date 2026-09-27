@@ -106,8 +106,10 @@ pub enum Icon {
     Potion(HeroKind, PotionKind),
     /// A shrine's ammo weapon.
     Pickup(RangedKind),
-    Coin,
-    Rune,
+    /// A hero's coin: silver, akce, mon.
+    Money(HeroKind),
+    /// A hero's rare stone: a rune fragment, a turquoise gem, a spirit crystal.
+    Gem(HeroKind),
     Lock,
     Bomb,
     Key,
@@ -138,8 +140,10 @@ pub fn icon(i: Icon) -> &'static Sprite {
         for k in crate::logic::items::WEAPON_ORDER {
             m.insert(Icon::Pickup(k), pickup(k));
         }
-        m.insert(Icon::Coin, coin());
-        m.insert(Icon::Rune, rune_fragment());
+        for hero in ROSTER {
+            m.insert(Icon::Money(hero), money(hero));
+            m.insert(Icon::Gem(hero), gem(hero));
+        }
         m.insert(Icon::Lock, lock());
         m.insert(Icon::Bomb, bomb());
         m.insert(Icon::Key, key());
@@ -338,6 +342,26 @@ fn item(form: Form, col: u32) -> Sprite {
                 c.set(x, y, STEEL_D);
             }
             c.disc(13.5, 13.0, 1.5, STEEL_D);
+        }
+        Form::Gun => {
+            c.rect(1, 11, 4, 13, WOOD);
+            c.rect(2, 14, 3, 15, WOOD_L);
+            c.set(1, 14, WOOD);
+            c.rect(4, 9, 7, 11, GOLD_D);
+            c.set(5, 12, d);
+            c.line((6, 8), (14, 2), d);
+            c.line((6, 9), (14, 3), m);
+            c.line((7, 9), (15, 3), l);
+            c.set(15, 2, GOLD);
+        }
+        Form::Forked => {
+            hilt(&mut c, GOLD_D);
+            c.line((5, 10), (11, 4), steel);
+            c.line((5, 11), (12, 4), m);
+            c.line((6, 11), (12, 5), l);
+            c.line((11, 3), (12, 0), l);
+            c.line((12, 4), (15, 2), l);
+            c.set(11, 4, m);
         }
         Form::Round => {
             c.disc(7.5, 7.5, 7.0, 0x5a616b);
@@ -544,15 +568,76 @@ fn pickup(kind: RangedKind) -> Sprite {
     }
 }
 
-fn coin() -> Sprite {
+/// Each hero's coin: a silver penny marked with a rune, a silver akce with its stamp, a gold mon with its square hole.
+fn money(hero: HeroKind) -> Sprite {
     let mut c = Canvas::new();
-    c.disc(7.5, 7.5, 7.0, GOLD_D);
-    c.disc(7.0, 7.0, 5.8, GOLD);
-    c.rect(6, 4, 8, 11, GOLD_D);
-    c.rect(5, 5, 9, 5, GOLD_D);
-    c.rect(5, 10, 9, 10, GOLD_D);
-    c.set(4, 4, 0xfff6c0);
+    match hero {
+        HeroKind::Ragnar => {
+            c.disc(7.5, 7.5, 7.0, 0x8a929e);
+            c.disc(7.0, 7.0, 5.8, 0xd8dee6);
+            c.line((7, 3), (7, 12), 0x8a929e);
+            c.line((7, 5), (10, 3), 0x8a929e);
+            c.line((7, 8), (10, 6), 0x8a929e);
+            c.set(4, 4, 0xffffff);
+        }
+        HeroKind::Mehmed => {
+            c.disc(7.5, 8.0, 6.6, 0x9aa0aa);
+            c.disc(7.2, 7.6, 5.5, 0xe4e8ee);
+            c.set(13, 5, 0x9aa0aa);
+            c.line((4, 6), (11, 6), 0x8a8e96);
+            c.line((5, 9), (10, 9), 0x8a8e96);
+            c.line((10, 6), (8, 11), 0x8a8e96);
+            c.set(5, 4, 0xffffff);
+        }
+        HeroKind::Miyamoto => {
+            c.disc(7.5, 7.5, 7.0, GOLD_D);
+            c.disc(7.2, 7.2, 5.9, GOLD);
+            c.rect(5, 5, 10, 10, GOLD_D);
+            for y in 6..=9 {
+                for x in 6..=9 {
+                    c.px[(y * N + x) as usize] = None;
+                }
+            }
+            c.set(4, 3, 0xfff6c0);
+        }
+    }
     c.outlined()
+}
+
+/// Each hero's rare stone: a rune fragment, a faceted turquoise, a spirit crystal.
+fn gem(hero: HeroKind) -> Sprite {
+    match hero {
+        HeroKind::Ragnar => rune_fragment(),
+        HeroKind::Mehmed => {
+            let mut c = Canvas::new();
+            for y in 2..14 {
+                let half = if y < 6 { (y - 2) as f32 * 1.5 + 1.5 } else { (14 - y) as f32 * 0.8 };
+                for x in 0..N {
+                    let dx = x as f32 - 7.5;
+                    if dx.abs() <= half {
+                        let col = if y < 6 { if dx < 0.0 { 0x9af0e8 } else { 0x2ad0c8 } } else if dx < -1.0 { 0x2ad0c8 } else { 0x16908a };
+                        c.set(x, y, col);
+                    }
+                }
+            }
+            c.line((4, 5), (11, 5), 0xd8fff8);
+            c.outlined()
+        }
+        HeroKind::Miyamoto => {
+            let mut c = Canvas::new();
+            for y in 1..15 {
+                let half = if y < 4 { (y - 1) as f32 * 1.1 + 0.5 } else if y > 11 { (15 - y) as f32 * 1.1 + 0.5 } else { 3.5 };
+                for x in 0..N {
+                    let dx = x as f32 - 7.5;
+                    if dx.abs() <= half {
+                        c.set(x, y, if dx < -1.0 { 0xf0e8ff } else if dx < 1.5 { 0xc8b0ff } else { 0x8a70d0 });
+                    }
+                }
+            }
+            c.line((6, 3), (6, 12), 0xffffff);
+            c.outlined()
+        }
+    }
 }
 
 fn bomb() -> Sprite {

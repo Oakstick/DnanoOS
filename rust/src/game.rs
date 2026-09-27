@@ -16,6 +16,7 @@ use crate::input::{Action, Input};
 use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
 use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
 use crate::logic::gear::{self, ShieldGear, BELT_SLOTS, COINS_BOSS, COINS_KEY, COINS_KILL, RUNES_BOSS, RUNES_SHRINE, RUNE_DROP};
+use crate::logic::heroes::HeroKind;
 use crate::logic::progression::{self, path, Progress, Tree};
 use crate::logic::hero::{DamageResult, Hero, CONTACT_DAMAGE};
 use crate::logic::items::{
@@ -107,8 +108,15 @@ const BOMB_DAMAGE: i32 = 6;
 /// Chain lightning (a tier-10 weapon): how far each arc leaps from where it struck, and what it deals the Cyclops.
 const ZAP_RANGE: f64 = 4.5;
 const ZAP_DAMAGE: i32 = 2;
-/// Bleeding (a tier-8 weapon): seconds between its bites.
+/// Bleeding (a tier-8 weapon) and burning: seconds between their bites.
 const BLEED_TICK: f64 = 0.5;
+/// Venom (Miyamoto's serpent spear): the most stacks, how long they last after a hit, seconds between bites.
+const POISON_MAX: i32 = 5;
+const POISON_SECONDS: f64 = 6.0;
+const POISON_TICK: f64 = 1.0;
+/// Flames on the Cyclops (Kusanagi's fragment, the Simurg bow) and a greatsword's holy fire.
+const FIRE_COLOR: u32 = 0xff8a2a;
+const FIRE_SECONDS: f64 = 3.0;
 /// Loki's trick: how long foes stay befuddled, how long a decoy lasts and how often one appears.
 const CONFUSE_SECONDS: f64 = 4.0;
 const DECOY_SECONDS: f64 = 5.0;
@@ -125,6 +133,15 @@ const DRAGONFIRE_DAMAGE: i32 = 3;
 /// Freeze-frame on a blow to the boss.
 const HITSTOP_BOSS: f64 = 0.035;
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
+
+/// An ancestral spirit fighting beside the hero: where it floats, and seconds until its next blow.
+#[derive(Clone, Copy, Debug)]
+pub struct Spirit {
+    pub pos: V,
+    pub cooldown: f64,
+    /// 1 when it has just struck, fading: its swing.
+    pub strike: f64,
+}
 
 pub struct Floater {
     pub x: f64,
@@ -298,6 +315,16 @@ pub struct Game {
     restored: bool,
     /// This dungeon's hidden shrine and its relic, until taken.
     pub relic_shrine: Option<P>,
+    /// Colour of what the boss is losing blood to (a bleeding cut, or flames).
+    bleed_color: u32,
+    /// Venom stacked on the Cyclops (a serpent spear): stacks, seconds left, until its next bite.
+    poison: (i32, f64, f64),
+    /// Holy fire left burning on tiles (a greatsword's trail), seconds left each.
+    pub fires: Vec<(P, f64)>,
+    /// The spirits fighting at the hero's side (path 9 of Mehmed and Miyamoto).
+    pub spirits: Vec<Spirit>,
+    /// Once per dungeon: the last stand, spent.
+    stood: bool,
     /// Seconds of double points left (from a BRUTAL streak).
     pub double_points: f64,
     /// The first-run tour, while it plays, and whether it is still owed.
@@ -386,6 +413,11 @@ impl Game {
             revived: false,
             restored: false,
             relic_shrine: None,
+            bleed_color: 0xc8202a,
+            poison: (0, 0.0, 0.0),
+            fires: Vec::new(),
+            spirits: Vec::new(),
+            stood: false,
             double_points: 0.0,
             tour: None,
             // Tests start straight into play; they switch the tour on when they want it.
@@ -511,7 +543,11 @@ impl Game {
             // The Valkyrie and the World Tree answer once in each dungeon (its Cyclops included).
             self.revived = false;
             self.restored = false;
+            self.stood = false;
         }
+        self.poison = (0, 0.0, 0.0);
+        self.fires.clear();
+        self.spirits.clear();
         self.relic_shrine = if self.level.data.boss { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
@@ -597,6 +633,7 @@ impl Game {
     /// Puts the chosen weapon in his hand and his path's skills in his heart.
     pub fn equip_from_progress(&mut self) {
         let h = *self.progress.hero(self.hero_kind);
+        self.hero.kind = self.hero_kind;
         self.hero.arm(h.wield);
         self.hero.path = h.path();
         self.hero.max_hp = self.hero.health_cap();
@@ -817,6 +854,8 @@ impl Game {
             relic: self.relic_shrine,
             decoy: self.decoy.map(|(p, _)| p),
             hero_kind: self.hero_kind,
+            spirits: &self.spirits,
+            fires: &self.fires,
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -905,6 +944,8 @@ impl Game {
             relic: self.relic_shrine,
             decoy: self.decoy.map(|(p, _)| p),
             hero_kind: self.hero_kind,
+            spirits: &self.spirits,
+            fires: &self.fires,
         }
     }
 
@@ -1056,6 +1097,8 @@ impl Game {
         self.visit_potions();
         self.visit_relic_shrine();
         self.update_decoy(dt);
+        self.update_spirits(dt);
+        self.update_fires(dt);
         self.watch_health();
 
         if self.input.was_pressed(&[Action::Attack, Action::Tap]) {
@@ -1485,10 +1528,26 @@ impl Game {
                     self.wound_boss(1, bp);
                 }
                 if self.rng.next() < dt * 20.0 {
-                    self.view.sparkle(&self.level.grid, bp.x, bp.y, 0.6 + self.rng.next() as f32, 0xc8202a, 2);
+                    self.view.sparkle(&self.level.grid, bp.x, bp.y, 0.6 + self.rng.next() as f32, self.bleed_color, 2);
                 }
             } else {
                 self.boss_bleed = 0.0;
+            }
+        }
+        if self.poison.0 > 0 {
+            self.poison.1 -= dt;
+            self.poison.2 -= dt;
+            if let Some(bp) = self.boss.as_ref().filter(|b| b.active()).map(|b| b.pos) {
+                if self.poison.2 <= 0.0 {
+                    self.poison.2 = POISON_TICK;
+                    self.wound_boss(self.poison.0, bp);
+                }
+                if self.rng.next() < dt * 14.0 {
+                    self.view.sparkle(&self.level.grid, bp.x, bp.y, 0.8, 0x6ae86a, 2);
+                }
+            }
+            if self.poison.1 <= 0.0 {
+                self.poison = (0, 0.0, 0.0);
             }
         }
         // Touching it hurts, unless he sails over it; a thorned shield or dragonfire bites back.
@@ -1570,11 +1629,11 @@ impl Game {
                 self.award(POINTS_CYCLOPS);
                 let bounty = COINS_BOSS + 100 * self.dungeon as u32;
                 self.earn(bounty);
-                self.floater(p.x, p.y - 0.8, format!("+{bounty} SILVER"), 2.2, Some(0xffd84a));
+                self.floater(p.x, p.y - 0.8, format!("+{bounty} {}", progression::coin(self.hero_kind)), 2.2, Some(0xffd84a));
                 self.floater(p.x, p.y, format!("+{POINTS_CYCLOPS}"), 2.0, Some(0xf2c53d));
                 let runes = RUNES_BOSS + self.dungeon as u32;
                 self.progress.runes += runes;
-                self.floater(p.x, p.y + 0.8, format!("+{runes} RUNE FRAGMENTS"), 2.4, Some(0x9ad1ff));
+                self.floater(p.x, p.y + 0.8, format!("+{runes} {}", progression::gems(self.hero_kind, runes)), 2.4, Some(0x9ad1ff));
                 // Its downfall gives up a relic of the old heroes.
                 self.take_relic(p);
                 self.events.push(GameEvent::BossSlain);
@@ -1794,14 +1853,40 @@ impl Game {
      * wave, a stunning oath, a trick, a bleeding cut.
      */
     fn perform_attack(&mut self) {
+        let blade = progression::blade(self.hero_kind, self.hero.blade);
+        if blade.arrows > 0 {
+            self.rain_arrows(blade);
+            return;
+        }
         self.audio.play(Sfx::Slash);
         self.view.sword_slash();
-        let blade = progression::blade(self.hero.blade);
+        if blade.lunge > 0.0 {
+            // Gale Dash: a gust carries him forward into the cut.
+            if let Some((from, to)) = self.hero.dash(&self.level.grid, blade.lunge as i32, 0.0) {
+                self.view.zap(&self.level.grid, from, to);
+                self.view.dust(&self.level.grid, from.x, from.y, 0xd8f0e8, 10, 2.0);
+                self.audio.play(Sfx::Whoosh);
+            }
+        }
+        if blade.flash > 0.0 {
+            self.solar_flash(blade);
+        }
         let Some((reach, half_width, behind)) = blade.swing else { return };
         let hp = self.hero.pos();
         let facing = self.hero.facing;
-        let hits = find_blade_targets(hp, facing, &self.enemies, reach, half_width, behind);
-        if !hits.is_empty() {
+        let mut hits = find_blade_targets(hp, facing, &self.enemies, reach, half_width, behind);
+        if blade.burn > 0.0 {
+            // Sacred flames lick beyond the blade's reach.
+            for i in find_blade_targets(hp, facing, &self.enemies, reach + 0.9, half_width + 0.8, behind) {
+                if !hits.contains(&i) {
+                    let p = self.enemies[i].pos();
+                    self.view.sparkle(&self.level.grid, p.x, p.y, 0.8, FIRE_COLOR, 16);
+                    hits.push(i);
+                }
+            }
+        }
+        let landed_any = !hits.is_empty();
+        if landed_any {
             self.view.shake(0.14 + 0.02 * self.hero.blade as f32);
         }
         for i in hits {
@@ -1812,6 +1897,23 @@ impl Game {
             if in_blade_arc(hp, facing, bp, reach, half_width, behind, BODY_RADIUS) {
                 struck_boss = self.strike_boss(blade.damage, bp);
             }
+        }
+        if blade.burn > 0.0 && struck_boss {
+            self.set_boss_alight(blade.burn);
+        }
+        if blade.poison && struck_boss {
+            self.poison = ((self.poison.0 + 1).min(POISON_MAX), POISON_SECONDS, if self.poison.0 == 0 { POISON_TICK } else { self.poison.2 });
+        }
+        if blade.blood > 0 && (landed_any || struck_boss) {
+            // Muramasa drinks from the hand that holds it.
+            self.hero.hp = (self.hero.hp - blade.blood).max(1);
+            self.floater(hp.x, hp.y - 0.4, format!("-{}", blade.blood), 0.8, Some(0xc83a5a));
+        }
+        if blade.stealth > 0.0 {
+            self.hero.grant_invisibility(self.hero.invisible_timer.max(blade.stealth));
+        }
+        if blade.fire_trail {
+            self.lay_fire(hp, facing);
         }
         if blade.wave {
             // Angurvadel's stream of anguish: a wave of force down the line.
@@ -1844,13 +1946,13 @@ impl Game {
      * sometimes, with Seer's Sight), and triple from behind (Wolf's Fang).
      */
     fn strike_boss(&mut self, base: i32, at: V) -> bool {
-        let blade = progression::blade(self.hero.blade);
+        let blade = progression::blade(self.hero_kind, self.hero.blade);
         let mut dmg = self.hero.blow(base);
         if self.dungeon >= 1 && !blade.pierce_armor {
             dmg = (dmg - BOSS_ARMOR).max(1);
         }
         let mut tag = None;
-        if blade.crit || (self.hero.path >= 3 && self.rng.next() < path::SIGHT_CRIT) {
+        if blade.crit || (self.hero.sees() && self.rng.next() < path::SIGHT_CRIT) {
             dmg *= 2;
             tag = Some(("CRITICAL!", 0xffd84a));
         }
@@ -1858,12 +1960,186 @@ impl Game {
         if self.hero.path >= 6 && self.boss.as_ref().map(|b| b.behind(from)).unwrap_or(false) {
             dmg *= path::FANG_MULT;
             tag = Some(("BACKSTAB!", 0xff5a3a));
+        } else if self.hero.path >= 6 && self.hero_kind != HeroKind::Ragnar && self.boss.as_ref().map(|b| b.flank(from)).unwrap_or(false) {
+            dmg *= path::FLANK_MULT;
+            tag = Some(("FLANKED!", 0xffa050));
         }
         let landed = self.wound_boss(dmg, at);
         if let (true, Some((text, color))) = (landed, tag) {
             self.floater(at.x, at.y - 1.1, text, 1.0, Some(color));
         }
         landed
+    }
+
+    /// Sets the Cyclops burning for `seconds`.
+    fn set_boss_alight(&mut self, seconds: f64) {
+        if self.boss_bleed <= 0.0 {
+            self.bleed_tick = BLEED_TICK;
+        }
+        self.boss_bleed = self.boss_bleed.max(seconds);
+        self.bleed_color = FIRE_COLOR;
+    }
+
+    /**
+     * A bow of the heavens (Yumi, Simurg): arrows rain down out of the sky on
+     * the nearest foes in range, one each, and two on the Cyclops if it is near.
+     */
+    fn rain_arrows(&mut self, blade: progression::Blade) {
+        let hp = self.hero.pos();
+        let color = progression::node(self.hero_kind, Tree::Armory, self.hero.blade).color;
+        self.audio.play(Sfx::Arrow);
+        let mut left = blade.arrows;
+        if let Some(bp) = self.boss_target() {
+            if dist_sq(bp, hp) <= (progression::ARROW_RANGE + 1.0).powi(2) {
+                for k in 0..2 {
+                    let at = V::new(bp.x + (k as f64 - 0.5) * 0.6, bp.y);
+                    self.view.rain(&self.level.grid, at, color);
+                    self.strike_boss(blade.damage, bp);
+                }
+                if blade.burn > 0.0 {
+                    self.set_boss_alight(blade.burn);
+                }
+                left -= 2;
+            }
+        }
+        let mut near: Vec<(f64, usize)> = self
+            .enemies
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.is_targetable())
+            .map(|(i, e)| (dist_sq(e.pos(), hp), i))
+            .filter(|&(d, _)| d <= progression::ARROW_RANGE * progression::ARROW_RANGE)
+            .collect();
+        near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        for &(_, i) in near.iter().take(left) {
+            let p = self.enemies[i].pos();
+            self.view.rain(&self.level.grid, p, color);
+            self.slay_enemy(i);
+        }
+        if near.is_empty() && left == blade.arrows {
+            // Nothing in range: the volley falls ahead of him.
+            let f = self.hero.facing.or_down().vecf();
+            self.view.rain(&self.level.grid, V::new(hp.x + f.x * 3.0, hp.y + f.y * 3.0), color);
+        }
+    }
+
+    /**
+     * A sun-blade's flash (Amaterasu, Kaf Dagi): blinding light bursts from
+     * him, every foe within reach is obliterated and the Cyclops, if near, seared.
+     */
+    fn solar_flash(&mut self, blade: progression::Blade) {
+        let hp = self.hero.pos();
+        let r = blade.flash;
+        self.view.shockwave(&self.level.grid, hp.x, hp.y);
+        self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.4, 0xfff1a8, 60);
+        self.view.flash_light(&self.level.grid, hp, 0xfff1c0);
+        self.view.shake(0.4);
+        self.audio.play(Sfx::Zap);
+        let doomed: Vec<usize> = self.enemies.iter().enumerate().filter(|(_, e)| e.is_targetable() && dist_sq(e.pos(), hp) <= r * r).map(|(i, _)| i).collect();
+        for i in doomed {
+            self.slay_enemy(i);
+        }
+        if let Some(bp) = self.boss_target() {
+            if dist_sq(bp, hp) <= (r + 1.0) * (r + 1.0) {
+                self.strike_boss(blade.damage, bp);
+            }
+        }
+    }
+
+    /// A greatsword's holy fire: the tiles ahead of him burn for a few seconds.
+    fn lay_fire(&mut self, from: V, facing: Dir) {
+        let o = P::new(from.x.round() as i32, from.y.round() as i32);
+        let (dx, dy) = facing.or_down().vec();
+        let g = &self.level.grid;
+        for k in 1..=3 {
+            let t = g.wrap(P::new(o.x + dx * k, o.y + dy * k));
+            if !g.is_walkable(t.x, t.y, false) {
+                break;
+            }
+            match self.fires.iter_mut().find(|(p, _)| *p == t) {
+                Some(f) => f.1 = FIRE_SECONDS,
+                None => self.fires.push((t, FIRE_SECONDS)),
+            }
+        }
+        self.audio.play(Sfx::Fuse);
+    }
+
+    /// The holy fire burns out; while it lasts, foes on it burn to ash and the Cyclops over it catches.
+    fn update_fires(&mut self, dt: f64) {
+        for f in self.fires.iter_mut() {
+            f.1 -= dt;
+        }
+        self.fires.retain(|f| f.1 > 0.0);
+        if self.fires.is_empty() {
+            return;
+        }
+        let burning: Vec<usize> = self
+            .enemies
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.is_targetable() && self.fires.iter().any(|(p, _)| *p == e.occupied()))
+            .map(|(i, _)| i)
+            .collect();
+        for i in burning {
+            let p = self.enemies[i].pos();
+            self.view.sparkle(&self.level.grid, p.x, p.y, 0.8, FIRE_COLOR, 16);
+            self.slay_enemy(i);
+        }
+        if let Some(bp) = self.boss_target() {
+            if self.fires.iter().any(|(p, _)| dist_sq(p.v(), bp) < 1.6 * 1.6) {
+                self.set_boss_alight(1.0);
+            }
+        }
+    }
+
+    /**
+     * The ancestral spirits (path 9 of Mehmed and Miyamoto): they float round
+     * him and strike down any foe that comes near, or the Cyclops.
+     */
+    fn update_spirits(&mut self, dt: f64) {
+        let (count, every) = progression::spirits(self.hero_kind);
+        let want = if self.hero.path >= 9 && self.hero.alive { count } else { 0 };
+        let hp = self.hero.pos();
+        while self.spirits.len() < want {
+            let k = self.spirits.len() as f64;
+            self.spirits.push(Spirit { pos: hp, cooldown: every * (0.5 + k / count.max(1) as f64), strike: 0.0 });
+        }
+        self.spirits.truncate(want);
+        let n = self.spirits.len().max(1) as f64;
+        for i in 0..self.spirits.len() {
+            let a = self.time * 0.9 + i as f64 / n * std::f64::consts::TAU;
+            let goal = V::new(hp.x + a.cos() * 1.1, hp.y + a.sin() * 1.1);
+            let k = 1.0 - (-4.0 * dt).exp();
+            let sp = &mut self.spirits[i];
+            sp.pos = V::new(sp.pos.x + (goal.x - sp.pos.x) * k, sp.pos.y + (goal.y - sp.pos.y) * k);
+            sp.cooldown -= dt;
+            sp.strike = (sp.strike - dt * 3.0).max(0.0);
+            if sp.cooldown > 0.0 {
+                continue;
+            }
+            let at = sp.pos;
+            let reach = path::SPIRIT_REACH;
+            let foe = self
+                .enemies
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| e.is_dangerous() || e.is_stunned())
+                .map(|(j, e)| (dist_sq(e.pos(), at), j))
+                .filter(|&(d, _)| d <= reach * reach)
+                .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            if let Some((_, j)) = foe {
+                let p = self.enemies[j].pos();
+                self.view.zap(&self.level.grid, at, p);
+                self.slay_enemy(j);
+            } else if let Some(bp) = self.boss_target().filter(|bp| dist_sq(*bp, at) <= (reach + 1.0).powi(2)) {
+                self.view.zap(&self.level.grid, at, bp);
+                self.wound_boss(1, bp);
+            } else {
+                continue;
+            }
+            self.spirits[i].cooldown = every;
+            self.spirits[i].strike = 1.0;
+        }
     }
 
     /// A stunning blow or a shield's clash: every foe within `radius` reels, harmless, for `seconds`.
@@ -1954,10 +2230,19 @@ impl Game {
         }
         let Some((from, to)) = self.hero.try_step(&self.level.grid) else { return };
         let grid = &self.level.grid;
+        // A flash of Bifrost's light, a cloud of cherry blossom, a gust of desert sand.
+        let (trail, burst) = match self.hero_kind {
+            HeroKind::Ragnar => (0x9af0ff, 0xfff1ff),
+            HeroKind::Miyamoto => (0xffb0d0, 0xffe0f0),
+            HeroKind::Mehmed => (0xe8d09a, 0xfff0c8),
+        };
         self.audio.play(Sfx::Whoosh);
         self.view.zap(grid, from, to);
-        self.view.sparkle(grid, from.x, from.y, 0.6, 0x9af0ff, 18);
-        self.view.sparkle(grid, to.x, to.y, 0.8, 0xfff1ff, 24);
+        self.view.sparkle(grid, from.x, from.y, 0.6, trail, 24);
+        self.view.sparkle(grid, to.x, to.y, 0.8, burst, 30);
+        if self.hero_kind != HeroKind::Ragnar {
+            self.view.dust(grid, from.x, from.y, trail, 14, 2.2);
+        }
     }
 
     /**
@@ -1988,7 +2273,7 @@ impl Game {
         self.progress.runes += RUNES_SHRINE;
         self.audio.play(Sfx::Milestone);
         self.view.sparkle(&self.level.grid, t.x as f64, t.y as f64, 1.0, 0x9ad1ff, 50);
-        self.floater(t.x as f64, t.y as f64 + 0.6, format!("+{RUNES_SHRINE} RUNE FRAGMENT"), 1.8, Some(0x9ad1ff));
+        self.floater(t.x as f64, t.y as f64 + 0.6, format!("+{RUNES_SHRINE} {}", progression::gems(self.hero_kind, RUNES_SHRINE)), 1.8, Some(0x9ad1ff));
         self.take_relic(t.v());
         self.save_progress();
     }
@@ -2002,7 +2287,7 @@ impl Game {
         let Some(tree) = self.progress.relic_tree(hero) else {
             // Every tree is open: the relic is worth its weight in silver.
             self.earn(300);
-            self.floater(at.x, at.y - 1.4, "+300 SILVER", 1.8, Some(0xffd84a));
+            self.floater(at.x, at.y - 1.4, format!("+300 {}", progression::coin(self.hero_kind)), 1.8, Some(0xffd84a));
             return;
         };
         let Some(tier) = self.progress.find_relic(hero, tree) else { return };
@@ -2111,7 +2396,7 @@ impl Game {
         self.earn(COINS_KILL);
         self.enemies[i].kill();
         let at = self.enemies[i].pos();
-        if self.hero.path >= 8 {
+        if self.hero.path >= 8 && self.hero_kind == HeroKind::Ragnar {
             // Terrify: the lesser foes around the kill flee in blind panic.
             let grid = &self.level.grid;
             for (k, e) in self.enemies.iter_mut().enumerate() {
@@ -2124,7 +2409,7 @@ impl Game {
             self.progress.runes += 1;
             self.audio.play(Sfx::Milestone);
             self.view.sparkle(&self.level.grid, at.x, at.y, 0.8, 0x9ad1ff, 20);
-            self.floater(at.x, at.y - 1.2, "RUNE FRAGMENT", 1.6, Some(0x9ad1ff));
+            self.floater(at.x, at.y - 1.2, progression::gems(self.hero_kind, 1), 1.6, Some(0x9ad1ff));
         }
         self.kill_streak = if self.streak_timer > 0.0 { self.kill_streak + 1 } else { 1 };
         self.streak_timer = STREAK_SECONDS;
@@ -2154,6 +2439,15 @@ impl Game {
         let shots = spawn_shots(kind, self.hero.pos(), self.hero.facing);
         self.projectiles.extend(shots);
         self.audio.play(Sfx::Arrow);
+        if let crate::logic::items::RangedKind::Hurled(h, t) = kind {
+            if progression::node(h, Tree::Armory, t).form == progression::Form::Gun {
+                // A crack and a puff of powder smoke.
+                let hp = self.hero.pos();
+                self.audio.play(Sfx::ArrowHit);
+                self.view.dust(&self.level.grid, hp.x, hp.y, 0xb8b8c0, 12, 1.8);
+                self.view.shake(0.12);
+            }
+        }
         if !self.hero.holding_pickup() && self.hero.weapon != crate::logic::items::WeaponKind::Ranged(kind) {
             // The shrine weapon ran dry; his own is back in hand.
             let hp = self.hero.pos();
@@ -2195,11 +2489,19 @@ impl Game {
                         }
                         self.strike_boss(base, at);
                         hit_at = Some(at);
+                        if let crate::logic::items::RangedKind::Hurled(h, t) = self.projectiles[i].kind {
+                            if progression::blade(h, t).throw.map(|t| t.stagger).unwrap_or(false) {
+                                let staggered = self.boss.as_mut().and_then(|b| b.stagger().then_some(b.pos));
+                                if let Some(p) = staggered {
+                                    self.floater(p.x, p.y - 0.9, "STAGGERED", 1.0, Some(0xe0c070));
+                                }
+                            }
+                        }
                     }
                 }
                 // Mjolnir: its first strike of each throw calls down chain lightning.
                 let chain = match self.projectiles[i].kind {
-                    crate::logic::items::RangedKind::Hurled(t) => progression::blade(t).chain,
+                    crate::logic::items::RangedKind::Hurled(h, t) => progression::blade(h, t).chain,
                     _ => 0,
                 };
                 if chain > 0 && !self.projectiles[i].struck.contains(&(usize::MAX - 1)) {
@@ -2365,7 +2667,21 @@ impl Game {
                 self.juice.hurt = 1.0;
                 self.juice.hp_flash = 1.0;
                 self.juice.hp_flash_color = 0xff4d4d;
-                if !self.hero.alive && self.hero.path >= 9 && !self.revived {
+                if !self.hero.alive && self.hero.path >= 8 && self.hero_kind != HeroKind::Ragnar && !self.stood {
+                    // The last stand (Seppuku Resolve, Blood of the Empire): death is held off, and he strikes triple.
+                    self.stood = true;
+                    self.hero.alive = true;
+                    self.hero.hp = 1;
+                    self.hero.last_stand = path::STAND_SECONDS;
+                    self.hero.invuln = 0.5;
+                    let n = progression::node(self.hero_kind, Tree::Path, 8);
+                    self.audio.play(Sfx::Brutal);
+                    self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.2, 0xc8202a, 50);
+                    self.view.shake(0.6);
+                    self.juice.banner = Some(Banner { text: n.ability.to_uppercase(), sub: "YOU CANNOT DIE   TRIPLE DAMAGE".into(), color: 0xff4a3a, life: 2.2, max: 2.2 });
+                    return false;
+                }
+                if !self.hero.alive && self.hero.path >= 9 && self.hero_kind == HeroKind::Ragnar && !self.revived {
                     // Valkyrie Call: once in each dungeon, a fatal blow is not the end.
                     self.revived = true;
                     self.hero.alive = true;
@@ -2643,31 +2959,28 @@ mod tests {
     }
 
     #[test]
-    fn the_character_screen_offers_three_heroes_but_only_ragnar_can_begin() {
-        use crate::logic::heroes::HeroKind;
+    fn the_character_screen_offers_three_heroes_and_each_can_begin() {
         let mut g = Game::new();
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Select);
         assert_eq!(g.select_hero(), HeroKind::Ragnar, "Ragnar is highlighted first");
-        // Mehmed and Miyamoto are locked: picking them is refused.
-        for (dir, hero) in [(Dir::Left, HeroKind::Mehmed), (Dir::Right, HeroKind::Ragnar), (Dir::Right, HeroKind::Miyamoto)] {
-            g.input.nav = Some(dir);
-            g.update(crate::app::STEP);
-            assert_eq!(g.select_hero(), hero);
+        // Left of Ragnar stands Mehmed, right Miyamoto; each of the three can begin.
+        g.input.nav = Some(Dir::Left);
+        g.update(crate::app::STEP);
+        assert_eq!(g.select_hero(), HeroKind::Mehmed);
+        for hero in crate::logic::heroes::ROSTER {
+            g.enter(Screen::Title);
+            g.open_select();
+            g.select_index = hero.slot();
             g.input.inject(Action::Confirm);
             g.update(crate::app::STEP);
-            if hero == HeroKind::Ragnar {
-                assert_eq!(g.screen, Screen::Ready, "Ragnar begins");
-                g.enter(Screen::Title);
-                g.open_select();
-                g.select_index = HeroKind::Ragnar.slot();
-            } else {
-                assert_eq!(g.screen, Screen::Select, "{hero:?} is locked");
-                assert!(g.select_denied > 0.0);
-            }
+            assert_eq!(g.screen, Screen::Ready, "{hero:?} begins");
+            assert_eq!(g.hero_kind, hero);
+            assert_eq!(g.hero.kind, hero, "and plays with his own armory");
         }
-        assert_eq!(g.hero_kind, HeroKind::Ragnar);
+        g.enter(Screen::Title);
+        g.open_select();
         // Esc goes back to the title.
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
@@ -2979,7 +3292,7 @@ mod tests {
         assert_eq!(g.progress.hero(g.hero_kind).owned(Tree::Armory), 1);
         press(&mut g, ShopAction::Unlock(Tree::Armory, 2));
         assert_eq!(g.hero.blade, 2, "a new weapon goes straight to hand");
-        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Hurled(2)), "Skofnung is thrown");
+        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Hurled(HeroKind::Ragnar, 2)), "Skofnung is thrown");
         press(&mut g, ShopAction::Wield(1));
         assert_eq!(g.hero.blade, 1);
         assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Sword);
@@ -3074,6 +3387,70 @@ mod tests {
         g.hero.attack_cooldown = 0.0;
         g.perform_attack();
         assert!(g.decoy.is_some());
+    }
+
+    /// A game in play as `hero`, with his trees owned up to `tier`.
+    fn playing_as(hero: HeroKind, tier: u8) -> Game {
+        let mut g = playing();
+        g.hero_kind = hero;
+        g.debug_arm(tier);
+        g.hero.hp = g.hero.max_hp;
+        g
+    }
+
+    #[test]
+    fn a_samurai_stands_his_last_and_a_spirit_fights_beside_him() {
+        let mut g = playing_as(HeroKind::Miyamoto, 9);
+        g.hero.shield = None;
+        g.hero.invuln = 0.0;
+        g.hurt_hero(500);
+        assert!(g.hero.alive, "Seppuku Resolve holds death off");
+        assert!(g.hero.last_stand > 0.0);
+        assert_eq!(g.hero.blow(2), 6, "and triples his blows");
+        g.hero.invuln = 0.0;
+        g.hurt_hero(500);
+        assert!(g.hero.alive && g.hero.hp == 1, "he cannot die while it lasts");
+        // His ancestor strikes down a foe that comes near.
+        let hp = g.hero.pos();
+        g.enemies[0].b.mode = EnemyMode::Chase;
+        g.enemies[0].m.teleport(P::new(hp.x as i32, hp.y as i32));
+        for _ in 0..(2.0 / crate::app::STEP) as usize {
+            g.update_spirits(crate::app::STEP);
+        }
+        assert_eq!(g.spirits.len(), 1);
+        assert!(!g.enemies[0].is_dangerous(), "the spirit slew it");
+    }
+
+    #[test]
+    fn the_janissary_has_a_squad_a_pistol_and_a_bow() {
+        let mut g = playing_as(HeroKind::Mehmed, 9);
+        g.update_spirits(crate::app::STEP);
+        assert_eq!(g.spirits.len(), 3, "a squad of three");
+        g.debug_arm(5);
+        assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Hurled(HeroKind::Mehmed, 5)), "Koroglu's flintlock is shot");
+        // The Simurg bow rains arrows on the nearest foes.
+        g.debug_arm(8);
+        let hp = g.hero.pos();
+        for e in g.enemies.iter_mut().take(3) {
+            e.b.mode = EnemyMode::Chase;
+            e.m.teleport(P::new(hp.x as i32 + 2, hp.y as i32));
+        }
+        g.perform_attack();
+        assert!(g.enemies.iter().take(3).all(|e| !e.is_dangerous()), "every one of them struck");
+    }
+
+    #[test]
+    fn a_sun_blade_obliterates_the_foes_around_him() {
+        for hero in [HeroKind::Miyamoto, HeroKind::Mehmed] {
+            let mut g = playing_as(hero, 10);
+            let hp = g.hero.pos();
+            for (k, e) in g.enemies.iter_mut().enumerate() {
+                e.b.mode = EnemyMode::Chase;
+                e.m.teleport(P::new(hp.x as i32 + if k % 2 == 0 { 2 } else { -2 }, hp.y as i32));
+            }
+            g.perform_attack();
+            assert!(g.enemies.iter().all(|e| !e.is_dangerous()), "{hero:?}: all gone in the flash");
+        }
     }
 
     #[test]

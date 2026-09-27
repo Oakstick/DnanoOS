@@ -114,12 +114,12 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     o.text(&runes, cx, y0 + t * 1.15, cs, rgba(0x9ad1ff, 1.0), Align::Right, true);
     let iw = t * 1.0;
     cx -= o.measure(&runes, cs) + iw + t * 0.15;
-    draw_sprite(o, icon(Icon::Rune), cx, y0 + t * 1.15 - iw / 2.0, iw / 16.0, None, 1.0);
+    draw_sprite(o, icon(Icon::Gem(g.hero_kind)), cx, y0 + t * 1.15 - iw / 2.0, iw / 16.0, None, 1.0);
     cx -= t * 0.7;
     let silver = format!("{}", g.progress.silver);
     o.text(&silver, cx, y0 + t * 1.15, cs, rgba(GOLD, 1.0), Align::Right, true);
     cx -= o.measure(&silver, cs) + iw + t * 0.15;
-    draw_sprite(o, icon(Icon::Coin), cx, y0 + t * 1.15 - iw / 2.0, iw / 16.0, None, 1.0);
+    draw_sprite(o, icon(Icon::Money(g.hero_kind)), cx, y0 + t * 1.15 - iw / 2.0, iw / 16.0, None, 1.0);
 
     // The tree's name and how far along it he is.
     let ty = y0 + t * 4.25;
@@ -157,7 +157,7 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 if progression::sealed(tier) && !owned {
                     let rw = t * 0.7;
                     let found = prog.found(tr, tier);
-                    draw_sprite(o, icon(Icon::Rune), x + o.measure(&name, size) + t * 0.25, cy - rw / 2.0, rw / 16.0, if found { None } else { Some(0x4a5060) }, 1.0);
+                    draw_sprite(o, icon(Icon::Gem(g.hero_kind)), x + o.measure(&name, size) + t * 0.25, cy - rw / 2.0, rw / 16.0, if found { None } else { Some(0x4a5060) }, 1.0);
                 }
             }
             RowKind::Repair => {
@@ -221,12 +221,12 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 let mut lx = rect[0] + rect[2] / 2.0 - tw / 2.0;
                 o.text(&b.label, lx, cy, size, rgba(color, 1.0), Align::Left, true);
                 lx += o.measure(&b.label, size) + t * 0.12;
-                draw_sprite(o, icon(Icon::Coin), lx, cy - iw / 2.0, iw / 16.0, None, if afford { 1.0 } else { 0.5 });
+                draw_sprite(o, icon(Icon::Money(g.hero_kind)), lx, cy - iw / 2.0, iw / 16.0, None, if afford { 1.0 } else { 0.5 });
                 if b.runes > 0 {
                     lx += iw + t * 0.2;
                     o.text(&rune_part, lx, cy, size, rgba(if g.progress.runes >= b.runes { 0x9ad1ff } else { 0xff7a6a }, 1.0), Align::Left, true);
                     lx += o.measure(&rune_part, size);
-                    draw_sprite(o, icon(Icon::Rune), lx, cy - iw / 2.0, iw / 16.0, None, 1.0);
+                    draw_sprite(o, icon(Icon::Gem(g.hero_kind)), lx, cy - iw / 2.0, iw / 16.0, None, 1.0);
                 }
             } else {
                 o.text(&b.label, rect[0] + rect[2] / 2.0, cy, size, rgba(color, 1.0), Align::Center, true);
@@ -304,7 +304,7 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         match tree {
             Tree::Armory if prog.wield == tier => ("IN YOUR HAND".to_string(), GOLD),
             Tree::Shield if g.hero.shield.map(|s| s.tier) == Some(tier) => ("ON YOUR ARM".to_string(), GOLD),
-            Tree::Elixir => (format!("BREWED - {} SILVER A BOTTLE", progression::bottle_price(progression::ELIXIRS[(tier - 1) as usize])), 0x7dff9a),
+            Tree::Elixir => (format!("BREWED - {} {} A BOTTLE", progression::bottle_price(progression::ELIXIRS[(tier - 1) as usize]), progression::coin(hero)), 0x7dff9a),
             _ => ("YOURS".to_string(), 0x7dff9a),
         }
     } else if prog.found(tree, tier) {
@@ -317,14 +317,15 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         (format!("TAKE {} {} FIRST", tree.step(), roman(tier as usize - 1)), TEXT_DIM)
     } else if progression::sealed(tier) {
         let p = progression::price(tree, tier);
-        (format!("SEALED - {} SILVER AND {} RUNE FRAGMENTS, OR FIND ITS RELIC", p.silver, p.runes), 0x9ad1ff)
+        (format!("SEALED - {} {} AND {} {}, OR FIND ITS RELIC", p.silver, progression::coin(hero), p.runes, progression::gems(hero, p.runes)), 0x9ad1ff)
     } else {
-        (format!("{} SILVER", progression::price(tree, tier).silver), GOLD)
+        (format!("{} {}", progression::price(tree, tier).silver, progression::coin(hero)), GOLD)
     };
     let sy = c[1] + c[3] - pad - if g.shop.tab == Tree::Elixir { t * 2.0 } else { t * 0.2 };
     o.text(&status.0, c[0] + pad, sy, small * 0.9, rgba(status.1, 1.0), Align::Left, true);
     if !owned && progression::sealed(tier) && !prog.found(tree, tier) && prog.next(tree) == Some(tier) {
-        o.text("Relics wait in hidden shrines and on fallen Cyclopes.", c[0] + pad, sy - t * 0.62, small * 0.8, rgba(TEXT_DIM, 1.0), Align::Left, false);
+        let hint = format!("Relics wait in {}s and on fallen Cyclopes.", progression::hidden_place(hero));
+        o.text(&hint, c[0] + pad, sy - t * 0.62, small * 0.8, rgba(TEXT_DIM, 1.0), Align::Left, false);
     }
 
     // On the elixirs, the belt at the foot of the card.

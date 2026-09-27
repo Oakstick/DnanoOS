@@ -10,6 +10,18 @@ use crate::logic::progression::{self, Tree};
 
 const ZAP_SECONDS: f32 = 0.22;
 const GHOSTS: usize = 4;
+/// How long an arrow of a rain takes to fall.
+const RAIN_SECONDS: f32 = 0.28;
+/// How long a sun-blade's flash takes to fade.
+const FLASH_SECONDS: f32 = 0.6;
+
+/// An arrow of a heavenly bow, falling from `top` to `bottom`.
+pub(super) struct Falling {
+    pub top: Vec3,
+    pub bottom: Vec3,
+    pub life: f32,
+    pub color: Vec3,
+}
 
 /// A lightning arc between two points, flickering while it lasts.
 pub(super) struct Zap {
@@ -27,28 +39,31 @@ fn segment(a: Vec3, b: Vec3, thick: f32) -> Mat4 {
     Mat4::from_scale_rotation_translation(Vec3::new(thick, len, thick), rot, (a + b) * 0.5)
 }
 
-/// Where the sword arm and the shield arm pivot in the detailed hero grid.
-const SWORD_PIVOT: [f32; 3] = [24.0, 27.0, 8.0];
-const SHIELD_PIVOT: [f32; 3] = [5.0, 27.0, 8.0];
-
 /**
- * The detailed hero with a weapon of his armory in hand (and its twin in the
- * other, for a pair) and a shield of his tree on his back, or none. The
- * weapons are layered parts ("blade", "offhand") that follow the arms.
+ * The detailed hero as he is played with a weapon of his armory in hand
+ * (and its twin in the other, for a pair) and a shield of his tree on his
+ * back, or none. The weapons are layered parts ("blade", "offhand") that
+ * follow the arms, pivoting where the arms do.
  */
 pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
     let w = progression::node(hero, Tree::Armory, blade);
-    let body = characters::ragnar_hd(shield.map(|t| {
+    let spec = shield.map(|t| {
         let n = progression::node(hero, Tree::Shield, t);
         (n.form, n.color, t)
-    }));
-    let main = crate::render::armory::hero_weapon(w.form, w.color, false);
+    });
+    let (body, defs) = match hero {
+        HeroKind::Ragnar => (characters::ragnar_hd(spec), characters::RAGNAR_HD_RIG),
+        HeroKind::Mehmed => (characters::mehmed_hd(spec), characters::MEHMED_HD_RIG),
+        HeroKind::Miyamoto => (characters::miyamoto_hd(spec), characters::MIYAMOTO_HD_RIG),
+    };
+    let pivot = |name: &str| defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3]);
+    let main = crate::render::armory::weapon_for(hero, w.form, w.color, false);
     let off = if crate::render::armory::paired(w.form) {
-        crate::render::armory::hero_weapon(w.form, w.color, true)
+        crate::render::armory::weapon_for(hero, w.form, w.color, true)
     } else {
         crate::render::voxels::Collected { voxels: Vec::new(), width: body.width, depth: body.depth, height: body.height }
     };
-    build_layered_rig(&body, characters::RAGNAR_HD_RIG, &[("blade", &main, SWORD_PIVOT), ("offhand", &off, SHIELD_PIVOT)], VOXEL / 2.0)
+    build_layered_rig(&body, defs, &[("blade", &main, pivot("swordArm")), ("offhand", &off, pivot("shieldArm"))], VOXEL / 2.0)
 }
 
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
@@ -69,14 +84,34 @@ impl WorldView {
         self.sparkle(grid, to.x, to.y, 0.6, 0xbfe8ff, 10);
     }
 
-    /// Rebuilds the hero's rig when his weapon or shield changes.
+    /// Rebuilds the hero's rig when he, his weapon or his shield changes.
     pub(super) fn refit_hero(&mut self, hero: HeroKind, h: &Hero) {
         let key = (hero, h.blade, h.shield.map(|s| s.tier));
         if key != self.models.hero_key {
             self.models.hero = hero_model(key.0, key.1, key.2);
             self.models.thrown = thrown_model(key.0, key.1);
+            if key.0 != self.models.hero_key.0 {
+                // Another hero's joints sit elsewhere: start his pose afresh.
+                self.hero_pose = Pose::rest(&self.models.hero);
+            }
             self.models.hero_key = key;
         }
+    }
+
+    /// Arrows raining out of the sky onto `at` (a tile position), in `color`.
+    pub fn rain(&mut self, grid: &Grid, at: crate::logic::types::V, color: u32) {
+        let ground = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32) + 0.3, at.y as f32);
+        for k in 0..3 {
+            let off = Vec3::new((self.rng.nextf() - 0.5) * 0.5, 0.0, (self.rng.nextf() - 0.5) * 0.5);
+            self.rains.push(Falling { top: ground + off + Vec3::new(0.6, 7.0, 0.3), bottom: ground + off, life: RAIN_SECONDS + k as f32 * 0.06, color: lin(color) });
+        }
+        self.sparkle(grid, at.x, at.y, 0.4, color, 12);
+    }
+
+    /// A blinding flash of light at `at` (a sun-blade's), fading out over a moment.
+    pub fn flash_light(&mut self, grid: &Grid, at: crate::logic::types::V, color: u32) {
+        let p = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32) + 1.0, at.y as f32);
+        self.flashes.push((p, 1.0, lin(color)));
     }
 
     pub(super) fn update_forge_fx(&mut self, dt: f32, hero: &Hero) {
@@ -84,6 +119,14 @@ impl WorldView {
             z.life -= dt;
             z.life > 0.0
         });
+        self.rains.retain_mut(|r| {
+            r.life -= dt;
+            r.life > -0.15
+        });
+        for f in self.flashes.iter_mut() {
+            f.1 -= dt / FLASH_SECONDS;
+        }
+        self.flashes.retain(|f| f.1 > 0.0);
         // Swiftness leaves a trail of fading afterimages.
         self.ghost_clock += dt;
         let swift = hero.hasted() || hero.fx.haste > 0.0 || hero.fx.ragnarok > 0.0;
@@ -188,6 +231,66 @@ impl WorldView {
             }
             f.lights.push(Light { pos: z.b, color: lin(0xbfe8ff) * 6.0 * k, distance: 4.0 });
         }
+        for r in &self.rains {
+            // Each arrow a bright streak dropping to the ground, then a spark where it struck.
+            let u = (1.0 - r.life / RAIN_SECONDS).clamp(0.0, 1.0);
+            let tip = r.top.lerp(r.bottom, u);
+            let tail = r.top.lerp(r.bottom, (u - 0.25).max(0.0));
+            if r.life > 0.0 {
+                f.additive.push(Instance::new(segment(tail, tip, 0.05), r.color * 1.8, 0.95, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(segment(tail, tip, 0.14), r.color, 0.3, Vec3::ZERO, SHADE_UNLIT));
+            } else {
+                glow_orb(f, r.bottom, 0.5, r.color, 0.5);
+            }
+        }
+        for &(p, k, c) in &self.flashes {
+            glow_orb(f, p, 1.5 + (1.0 - k) * 4.5, c, 0.9 * k);
+            f.lights.push(Light { pos: p, color: c * 40.0 * k, distance: 9.0 });
+        }
+    }
+
+    /**
+     * The ancestral spirits at the hero's side (path 9 of Mehmed and Miyamoto):
+     * pale, see-through warriors of his own people, their weapons raised as they strike.
+     */
+    pub(super) fn emit_spirits(&self, s: &SceneState, time: f32, f: &mut Frame) {
+        let cube = MeshKind::Cube as usize;
+        let rig = match s.hero_kind {
+            HeroKind::Mehmed => &self.models.mehmed,
+            HeroKind::Miyamoto => &self.models.miyamoto,
+            HeroKind::Ragnar => return,
+        };
+        let hp = s.hero.pos();
+        for (i, sp) in s.spirits.iter().enumerate() {
+            let (x, z) = (sp.pos.x as f32, sp.pos.y as f32);
+            let bob = (time * 2.0 + i as f32 * 1.7).sin() * 0.08;
+            let p = Vec3::new(x, floor_at(s.grid, x, z) + 0.25 + bob, z);
+            let yaw = ((hp.x - sp.pos.x) as f32).atan2((hp.y - sp.pos.y) as f32) + PI * 0.5 * (1.0 - sp.strike as f32);
+            let lunge = sp.strike as f32 * 0.25;
+            let root = Mat4::from_translation(p) * Mat4::from_rotation_y(yaw) * Mat4::from_translation(Vec3::new(0.0, 0.0, lunge)) * Mat4::from_scale(Vec3::splat(0.8));
+            let a = 0.32 + 0.08 * (time * 5.0 + i as f32).sin();
+            emit_rig(&mut f.transparent[cube], rig, &Pose::rest(rig), root, lin(0xa8c8ff), a, lin(0x6a9aff) * 0.5);
+            glow_orb(f, p + Vec3::new(0.0, 0.8, 0.0), 0.7, lin(0x8ab0ff), 0.18);
+        }
+    }
+
+    /// A greatsword's holy fire, burning on the tiles it was laid on.
+    pub(super) fn emit_fires(&self, s: &SceneState, time: f32, f: &mut Frame) {
+        for (n, &(t, left)) in s.fires.iter().enumerate() {
+            let k = (left as f32).min(1.0);
+            let base = Vec3::new(t.x as f32, floor_at(s.grid, t.x as f32, t.y as f32), t.y as f32);
+            for j in 0..7 {
+                let a = j as f32 * 0.9 + n as f32;
+                let rise = (time * 2.4 + j as f32 * 0.19 + n as f32 * 0.37).fract();
+                let p = base + Vec3::new(a.cos() * 0.3 * (1.0 - rise), rise * 0.8, a.sin() * 0.3 * (1.0 - rise));
+                let c = if j % 3 == 0 { 0xfff1a8 } else { 0xff9a3a };
+                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.09 * (1.0 - rise * 0.6))), lin(c) * 1.6, 0.9 * (1.0 - rise) * k, Vec3::ZERO, SHADE_UNLIT));
+            }
+            glow_orb(f, base + Vec3::new(0.0, 0.3, 0.0), 0.6, lin(0xffb050), 0.35 * k);
+            if n % 2 == 0 {
+                f.lights.push(Light { pos: base + Vec3::new(0.0, 0.5, 0.0), color: lin(0xffa040) * 4.0 * k, distance: 3.0 });
+            }
+        }
     }
 
     /// A decoy of Loki's trick: a flickering violet phantom of the hero where he stood.
@@ -204,21 +307,28 @@ impl WorldView {
         let cube = MeshKind::Cube as usize;
         let group = Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw);
         match kind {
-            RangedKind::Hurled(tier) => {
+            RangedKind::Hurled(hero, tier) if progression::node(hero, Tree::Armory, tier).form == progression::Form::Gun => {
+                // A lead ball, glowing hot, trailing powder smoke.
+                let m = Mat4::from_translation(pos) * Mat4::from_scale(Vec3::splat(0.07));
+                f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, lin(0x6a6a70), 1.0, lin(0xffa050) * 0.8, SHADE_LIT));
+                let trail = group * Mat4::from_translation(Vec3::new(0.0, 0.0, -0.35)) * Mat4::from_scale(Vec3::new(0.05, 0.05, 0.7));
+                f.transparent[cube].push(Instance::new(trail, lin(0xc8c8d0), 0.35, Vec3::ZERO, SHADE_UNLIT));
+            }
+            RangedKind::Hurled(hero, tier) => {
                 let rig = &self.models.thrown;
                 // A spear flies point first; blades and hammers tumble end over end.
-                let spin = if progression::blade(tier).throw.map(|t| t.homing).unwrap_or(false) {
+                let spin = if progression::blade(hero, tier).throw.map(|t| t.homing).unwrap_or(false) {
                     group * Mat4::from_rotation_x(PI / 2.0) * Mat4::from_translation(Vec3::new(0.0, -0.9, 0.0))
                 } else {
                     group * Mat4::from_rotation_x(time * 18.0) * Mat4::from_translation(Vec3::new(0.0, -0.55, 0.0))
                 };
                 emit_rig(&mut f.opaque[cube], rig, &Pose::rest(rig), spin * Mat4::from_translation(Vec3::new(-0.13, 0.0, 0.0)), Vec3::ONE, 1.0, Vec3::ZERO);
-                let n = progression::node(self.models.hero_key.0, Tree::Armory, tier);
+                let n = progression::node(hero, Tree::Armory, tier);
                 if tier >= progression::SEALED_FROM {
                     f.lights.push(Light { pos, color: lin(n.color) * 4.0, distance: 3.0 });
                     glow_orb(f, pos, 0.5, lin(n.color), 0.3);
                 }
-                if progression::blade(tier).chain > 0 {
+                if progression::blade(hero, tier).chain > 0 {
                     for k in 0..3 {
                         let t = (time * 14.0 + k as f32 * 3.1).floor();
                         let h = |q: f32| (t * 12.9898 + q * 78.233).sin().fract().abs();
