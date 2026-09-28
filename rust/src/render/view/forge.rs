@@ -5,9 +5,12 @@
 
 use super::*;
 use crate::logic::heroes::HeroKind;
+use crate::render::heroes;
 use crate::logic::items::RangedKind;
 use crate::logic::progression::{self, Tree};
 
+/// The heroes' voxels: a quarter of a tile's voxel, as fine as Scene I's cast.
+const HERO_VOXEL: f32 = VOXEL / 4.0;
 const ZAP_SECONDS: f32 = 0.22;
 const GHOSTS: usize = 4;
 /// How long an arrow of a rain takes to fall.
@@ -52,9 +55,9 @@ pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
         (n.form, n.color, t)
     });
     let (body, defs) = match hero {
-        HeroKind::Ragnar => (characters::ragnar_hd(spec), characters::RAGNAR_HD_RIG),
-        HeroKind::Mehmed => (characters::mehmed_hd(spec), characters::MEHMED_HD_RIG),
-        HeroKind::Miyamoto => (characters::miyamoto_hd(spec), characters::MIYAMOTO_HD_RIG),
+        HeroKind::Ragnar => (heroes::ragnar_hd(spec), heroes::RAGNAR_HD_RIG),
+        HeroKind::Mehmed => (heroes::mehmed_hd(spec), heroes::MEHMED_HD_RIG),
+        HeroKind::Miyamoto => (heroes::miyamoto_hd(spec), heroes::MIYAMOTO_HD_RIG),
     };
     let pivot = |name: &str| defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3]);
     let main = crate::render::armory::weapon_for(hero, w.form, w.color, false);
@@ -63,7 +66,7 @@ pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
     } else {
         crate::render::voxels::Collected { voxels: Vec::new(), width: body.width, depth: body.depth, height: body.height }
     };
-    build_layered_rig(&body, defs, &[("blade", &main, pivot("swordArm")), ("offhand", &off, pivot("shieldArm"))], VOXEL / 2.0)
+    build_layered_rig(&body, defs, &[("blade", &main, pivot("swordArm")), ("offhand", &off, pivot("shieldArm"))], HERO_VOXEL)
 }
 
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
@@ -72,7 +75,7 @@ pub(super) fn thrown_model(hero: HeroKind, blade: u8) -> Rig {
     let mut c = crate::render::armory::hero_weapon(w.form, w.color, false);
     // Drop the fist (skin), keep the weapon.
     c.voxels.retain(|v| v.c >> 24 != crate::render::characters::mat::SKIN >> 24);
-    build_rig(&c, &[], VOXEL / 2.0)
+    build_rig(&c, &[], HERO_VOXEL)
 }
 
 impl WorldView {
@@ -256,8 +259,8 @@ impl WorldView {
     pub(super) fn emit_spirits(&self, s: &SceneState, time: f32, f: &mut Frame) {
         let cube = MeshKind::Cube as usize;
         let rig = match s.hero_kind {
-            HeroKind::Mehmed => &self.models.mehmed,
-            HeroKind::Miyamoto => &self.models.miyamoto,
+            HeroKind::Mehmed => &self.models.spirits[0],
+            HeroKind::Miyamoto => &self.models.spirits[1],
             HeroKind::Ragnar => return,
         };
         let hp = s.hero.pos();

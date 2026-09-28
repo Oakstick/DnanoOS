@@ -1,18 +1,23 @@
 //! The armory in 3D: every weapon a hero can hold and every shield he can
 //! sling on his back, sculpted from its form and colour in the grid of the
-//! detailed hero models (30 wide, 46 tall, 18 deep; the right fist at x 24..27,
-//! y 13..16; blades rise along y and face +z). Weapons are models of their own,
-//! layered onto the sword arm (and, for pairs, the shield arm too); shields are
-//! carved into the body's back.
+//! detailed hero models (60 wide, 92 tall, 36 deep; the right fist round
+//! x 48..55, y 26..33; blades rise along y and face +z). Weapons are laid out
+//! in units of two voxels (a 30 by 46 by 18 plan), so the blocky parts are
+//! written simply, while blades, curves and edges are traced at the full
+//! resolution. Weapons are models of their own, layered onto the sword arm
+//! (and, for pairs, the shield arm too); shields are carved into the body's back.
 
 use super::characters::{mat, Sculpt};
 use super::voxels::Collected;
 use crate::logic::heroes::HeroKind;
 use crate::logic::progression::Form;
 
+/// The plan's size, in units of two voxels.
 const W: i32 = 30;
 const H: i32 = 46;
 const D: i32 = 18;
+/// Voxels to a unit of the plan.
+const K: i32 = 2;
 
 const HAFT: u32 = 0x6b3f1d | mat::WOOD;
 const HAFT_D: u32 = 0x4a2a12 | mat::WOOD;
@@ -21,8 +26,6 @@ const WRAP_L: u32 = 0xb89a68 | mat::LEATHER;
 const STEEL: u32 = 0xc8d0da;
 const IRON: u32 = 0x5a616b | mat::METAL;
 const GOLD: u32 = 0xf2c53d | mat::GOLD;
-const SKIN: u32 = 0xf0c49c | mat::SKIN;
-const SKIN_D: u32 = 0xd49e76 | mat::SKIN;
 
 fn mix(a: u32, b: u32, t: f32) -> u32 {
     let ch = |s: u32| {
@@ -39,47 +42,65 @@ fn metal(col: u32) -> (u32, u32, u32) {
 }
 
 /// Draws into one hand: the right, or (mirrored) the left for the second of a pair.
+/// Coordinates are in plan units unless a method says it works in voxels.
 struct Hand<'a> {
     s: &'a mut Sculpt,
     left: bool,
 }
 
 impl Hand<'_> {
-    fn set(&mut self, x: i32, y: i32, z: i32, c: u32) {
-        let x = if self.left { W - 1 - x } else { x };
+    /// One voxel, in voxels.
+    fn fine(&mut self, x: i32, y: i32, z: i32, c: u32) {
+        let x = if self.left { W * K - 1 - x } else { x };
         self.s.set(x, y, z, c);
+    }
+    /// One plan unit: a block of two voxels a side.
+    fn set(&mut self, x: i32, y: i32, z: i32, c: u32) {
+        self.cuboid(x, y, z, x, y, z, c);
     }
     #[allow(clippy::too_many_arguments)]
     fn cuboid(&mut self, x0: i32, y0: i32, z0: i32, x1: i32, y1: i32, z1: i32, c: u32) {
-        for y in y0..=y1 {
-            for z in z0..=z1 {
-                for x in x0..=x1 {
-                    self.set(x, y, z, c);
+        for y in y0 * K..(y1 + 1) * K {
+            for z in z0 * K..(z1 + 1) * K {
+                for x in x0 * K..(x1 + 1) * K {
+                    self.fine(x, y, z, c);
                 }
             }
         }
     }
-    /// The haft or grip in the fist: two voxels square, from y0 to y1.
+    /// The haft or grip in the fist, from y0 to y1: rounded off at its corners.
     fn grip(&mut self, y0: i32, y1: i32, c: u32) {
-        self.cuboid(26, y0, 8, 27, y1, 9, c);
-    }
-    /// A blade rising from y0 to y1: its centre line (in z) and half-width at each height,
-    /// its body colour, and the bright edge along the front.
-    fn blade(&mut self, y0: i32, y1: i32, center: impl Fn(f32) -> f32, half: impl Fn(f32) -> f32, body: u32, edge: u32) {
-        for y in y0..=y1 {
-            let t = (y - y0) as f32 / (y1 - y0).max(1) as f32;
-            let (c, h) = (center(t), half(t));
-            let (z0, z1) = ((c - h).round() as i32, (c + h).round() as i32);
-            for z in z0..=z1 {
-                let col = if z == z1 || y == y1 { edge } else { body };
-                self.cuboid(26, y, z, 27, y, z, col);
+        for y in y0 * K..(y1 + 1) * K {
+            for z in 16..=19 {
+                for x in 52..=55 {
+                    let corner = (x == 52 || x == 55) && (z == 16 || z == 19);
+                    if !corner {
+                        self.fine(x, y, z, c);
+                    }
+                }
             }
         }
     }
-    /// The fist closed round the grip.
-    fn fist(&mut self) {
-        self.cuboid(24, 13, 6, 27, 16, 10, SKIN);
-        self.cuboid(24, 13, 10, 27, 13, 10, SKIN_D);
+    /**
+     * A blade rising from y0 to y1 (plan units): its centre line (in z) and
+     * half-width at each height, traced voxel by voxel. It is ground thinner
+     * toward the edge, which is a bright line along the front (and the tip).
+     */
+    fn blade(&mut self, y0: i32, y1: i32, center: impl Fn(f32) -> f32, half: impl Fn(f32) -> f32, body: u32, edge: u32) {
+        let (fy0, fy1) = (y0 * K, (y1 + 1) * K - 1);
+        for y in fy0..=fy1 {
+            let t = (y - fy0) as f32 / (fy1 - fy0).max(1) as f32;
+            let (c, h) = (center(t) * K as f32 + 0.5, half(t) * K as f32 + 0.5);
+            let (z0, z1) = ((c - h).round() as i32, (c + h).round() as i32);
+            for z in z0..=z1 {
+                let bevel = z1 - z < 2 || z - z0 < 1;
+                let col = if z == z1 || y == fy1 { edge } else { body };
+                let xs = if bevel { 53..=54 } else { 52..=55 };
+                for x in xs {
+                    self.fine(x, y, z, col);
+                }
+            }
+        }
     }
 }
 
@@ -271,43 +292,43 @@ fn weapon(h: &mut Hand, form: Form, col: u32) {
     }
 }
 
-/// How far a hero's fist is from Ragnar's (right hand, or left), in his own grid.
+/// How far a hero's fist is from Ragnar's (right hand, or left), in voxels of his own grid.
 fn grip_shift(hero: HeroKind, left: bool) -> (i32, i32, i32) {
     match (hero, left) {
         (HeroKind::Ragnar, _) => (0, 0, 0),
-        (_, false) => (11, -2, 1),
-        (_, true) => (7, -2, 1),
+        (_, false) => (22, -4, 2),
+        (_, true) => (14, -4, 2),
     }
 }
 
 /**
  * A weapon of `form` and `col` in `hero`'s hand, in his grid: sculpted in
- * Ragnar's and carried over to the other heroes' fists (who keep their own
- * hands, so the sculpted fist is left out for them).
+ * Ragnar's and carried over to the other heroes' fists. Each hero's fist is
+ * his own, sculpted round where the grip goes.
  */
 pub fn weapon_for(hero: HeroKind, form: Form, col: u32, left: bool) -> Collected {
     let mut c = hero_weapon(form, col, left);
-    if hero != HeroKind::Ragnar {
-        let (dx, dy, dz) = grip_shift(hero, left);
-        c.voxels.retain(|v| v.c >> 24 != mat::SKIN >> 24);
-        for v in c.voxels.iter_mut() {
-            v.x += dx;
-            v.y += dy;
-            v.z += dz;
-        }
+    let (dx, dy, dz) = grip_shift(hero, left);
+    for v in c.voxels.iter_mut() {
+        // Held at the ready: leaning forward from the fist, so the blade clears the arm.
+        let lean = ((v.y - FIST_Y) as f32 * LEAN).round() as i32;
+        v.x += dx;
+        v.y += dy;
+        v.z += dz + lean;
     }
     c
 }
 
+/// The height of the middle of Ragnar's fist, in voxels, and how far a held weapon
+/// leans forward for each voxel it rises above it.
+const FIST_Y: i32 = 30;
+const LEAN: f32 = 0.42;
+
 /// A weapon of `form` and `col` as a model of its own, in Ragnar's grid: in his right
-/// hand (the fist included), or the second of a pair in his left.
+/// hand, or the second of a pair in his left.
 pub fn hero_weapon(form: Form, col: u32, left: bool) -> Collected {
-    let mut s = Sculpt::new(W, H, D);
-    {
-        let mut h = Hand { s: &mut s, left };
-        weapon(&mut h, form, col);
-        h.fist();
-    }
+    let mut s = Sculpt::new(W * K, H * K, D * K);
+    weapon(&mut Hand { s: &mut s, left }, form, col);
     s.finish(0.03)
 }
 
@@ -324,7 +345,11 @@ pub fn back_shield(s: &mut Sculpt, form: Form, col: u32, tier: u8) {
     back_shield_at(s, form, col, tier, (0, 0, 0));
 }
 
-/// The same shield carved `at` voxels away from where Ragnar's hangs (for another hero's back).
+/**
+ * The same shield carved `at` voxels away from where Ragnar's hangs (for
+ * another hero's back), traced voxel by voxel: its face two voxels thick at
+ * z 2..3, the rim and boss standing out to z 0.
+ */
 pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, i32, i32)) {
     let (ox, oy, oz) = at;
     let stuff = if tier <= 4 && !matches!(form, Form::Mirror) { mat::WOOD } else { mat::METAL };
@@ -332,34 +357,41 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
     let face_d = mix(col, 0x000000, 0.28) | stuff;
     let face_l = mix(col, 0xffffff, 0.35) | stuff;
     let rim = if tier >= 8 { GOLD } else { IRON };
-    for y in 8..=34 {
-        for x in 3..=26 {
-            let (dx, dy) = (x as f32 - 14.5, y as f32 - 21.0);
+    let rim_l = if tier >= 8 { mix(0xf2c53d, 0xffffff, 0.4) | mat::GOLD } else { 0x8a929c | mat::METAL };
+    let rivet = 0xe4e9ee | mat::METAL;
+    // Its middle and scale in voxels (the plan's shield is 18 units across, centred at 14.5, 21).
+    let (cx, cy) = (29.5f32, 42.5f32);
+    for y in 16..=69 {
+        for x in 6..=53 {
+            // Distance from the middle, in plan units.
+            let (dx, dy) = ((x as f32 - cx) / K as f32, (y as f32 - cy) / K as f32);
             let r = (dx * dx + dy * dy).sqrt();
+            let a = dy.atan2(dx);
             let (c, raised) = match form {
                 Form::Round | Form::Spiral | Form::Mirror => {
                     if r > 9.0 {
                         continue;
                     }
-                    let edge = r > 8.0;
-                    let boss = r < 2.3;
+                    let edge = r > 8.1;
+                    let boss = r < 2.4;
                     let c = if edge {
-                        if form == Form::Mirror { GOLD } else { rim }
+                        let studded = (a / std::f32::consts::TAU * 24.0).rem_euclid(1.0) < 0.2 && r > 8.4;
+                        if form == Form::Mirror { GOLD } else if studded { rivet } else if r > 8.7 { rim } else { rim_l }
                     } else if boss {
-                        if form == Form::Mirror { face_l } else { mix(STEEL, col, 0.3) | mat::METAL }
+                        if form == Form::Mirror { face_l } else if r < 1.1 { rim_l } else { mix(STEEL, col, 0.3) | mat::METAL }
                     } else {
                         match form {
                             Form::Spiral => {
-                                let a = dy.atan2(dx) / std::f32::consts::TAU;
-                                if (a + r / 3.2).rem_euclid(1.0) < 0.3 { face_d } else { face }
+                                if (a / std::f32::consts::TAU + r / 3.2).rem_euclid(1.0) < 0.3 { face_d } else { face }
                             }
                             Form::Mirror => {
-                                if (dx + dy).abs() < 1.2 && r < 6.5 { 0xffffff | mat::METAL } else { face }
+                                if (dx + dy).abs() < 0.9 && r < 6.5 { 0xffffff | mat::METAL } else { face }
                             }
                             _ => {
-                                if (r - 5.4).abs() < 0.45 && (x + y) % 3 == 0 {
-                                    0xe4e9ee | mat::METAL
-                                } else if x % 4 == 0 {
+                                // Planks behind a riveted iron ring.
+                                if (r - 5.4).abs() < 0.3 {
+                                    if (a / std::f32::consts::TAU * 16.0).rem_euclid(1.0) < 0.25 { rivet } else { rim }
+                                } else if (x - 6) % 8 == 0 {
                                     face_d
                                 } else {
                                     face
@@ -370,14 +402,14 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
                     (c, edge || boss)
                 }
                 Form::Kite => {
-                    let half = if y >= 22 { 9.0 } else { 9.0 * (y as f32 - 8.0) / 14.0 + 0.8 };
-                    if dx.abs() > half || y > 33 {
+                    let half = if dy >= 1.0 { 9.0 } else { 9.0 * (dy + 13.0) / 14.0 + 0.8 };
+                    if dx.abs() > half || dy > 12.5 {
                         continue;
                     }
-                    let edge = dx.abs() > half - 1.2 || y == 33;
+                    let edge = dx.abs() > half - 1.1 || dy > 11.6;
                     let c = if edge {
-                        rim
-                    } else if dx.abs() < 0.8 || y == 26 {
+                        if (x + y) % 5 == 0 { rivet } else { rim }
+                    } else if dx.abs() < 0.6 || (dy - 5.0).abs() < 0.5 {
                         face_l
                     } else if (dx >= 0.0) != (dy >= 5.0) {
                         face
@@ -388,17 +420,17 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
                 }
                 _ => {
                     // A standing shield: planks between iron bands, a crest in the middle.
-                    if !(5..=24).contains(&x) {
+                    if !(-9.5..=9.5).contains(&dx) || !(-13.0..=13.0).contains(&dy) {
                         continue;
                     }
-                    let edge = x == 5 || x == 24 || y == 8 || y == 34;
-                    let band = y == 12 || y == 30;
+                    let edge = dx.abs() > 8.8 || dy.abs() > 12.3;
+                    let band = (dy + 9.0).abs() < 0.5 || (dy - 9.0).abs() < 0.5;
                     let crest = r < 2.6;
                     let c = if edge || band {
-                        rim
+                        if (x + y) % 6 == 0 { rivet } else { rim }
                     } else if crest {
-                        face_l
-                    } else if (x - 5) % 5 == 0 {
+                        if r < 1.4 { rim_l } else { face_l }
+                    } else if (x - 10) % 10 == 0 {
                         face_d
                     } else {
                         face
@@ -406,9 +438,13 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
                     (c, edge || crest)
                 }
             };
-            s.set(x + ox, y + oy, 1 + oz, c);
+            for z in 2..=3 {
+                s.set(x + ox, y + oy, z + oz, c);
+            }
             if raised {
-                s.set(x + ox, y + oy, oz, c);
+                for z in 0..=1 {
+                    s.set(x + ox, y + oy, z + oz, c);
+                }
             }
         }
     }
@@ -428,7 +464,7 @@ mod tests {
                 let w = hero_weapon(n.form, n.color, false);
                 assert!(w.voxels.len() > 60, "{} has too few voxels: {}", n.name, w.voxels.len());
                 let n = node(hero, Tree::Shield, tier);
-                let mut s = Sculpt::new(W, H, D);
+                let mut s = Sculpt::new(W * K, H * K, D * K);
                 back_shield(&mut s, n.form, n.color, tier);
                 assert!(s.finish(0.0).voxels.len() > 150, "{} is too small", n.name);
             }

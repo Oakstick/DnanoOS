@@ -1433,9 +1433,9 @@ impl WorldView {
     fn emit_soul(&self, f: &mut Frame, kind: crate::logic::heroes::HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
         use crate::logic::heroes::HeroKind;
         let rig = match kind {
-            HeroKind::Mehmed => &self.models.souls[0],
-            HeroKind::Ragnar => &self.models.souls[1],
-            HeroKind::Miyamoto => &self.models.souls[2],
+            HeroKind::Ragnar => &self.models.ragnar,
+            HeroKind::Mehmed => &self.models.mehmed,
+            HeroKind::Miyamoto => &self.models.miyamoto,
         };
         let r = ease_out(rise);
         let hover = (time * 1.6).sin() * 0.035;

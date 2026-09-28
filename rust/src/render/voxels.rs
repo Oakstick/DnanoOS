@@ -132,6 +132,44 @@ impl Rig {
     pub fn index(&self, name: &str) -> Option<usize> {
         self.parts.iter().position(|p| p.name == name)
     }
+
+    /**
+     * The same rig at half the resolution, for when its detail cannot be seen:
+     * every cell two voxels a side becomes one voxel of their average colour
+     * (and the commonest material among them), about a quarter as many cubes.
+     */
+    pub fn coarse(&self) -> Rig {
+        let size = self.size * 2.0;
+        let parts = self
+            .parts
+            .iter()
+            .map(|p| {
+                // Each cell's summed colour, how many voxels fell in it, and their materials.
+                type Cell = (Vec3, u32, Vec<f32>);
+                let mut cells: std::collections::HashMap<(i32, i32, i32), Cell> = std::collections::HashMap::new();
+                for (j, (off, c)) in p.cubes.iter().enumerate() {
+                    let key = ((off.x / size).floor() as i32, (off.y / size).floor() as i32, (off.z / size).floor() as i32);
+                    let cell = cells.entry(key).or_insert((Vec3::ZERO, 0, Vec::new()));
+                    cell.0 += *c;
+                    cell.1 += 1;
+                    cell.2.push(p.shade.get(j).copied().unwrap_or(0.0));
+                }
+                let mut keys: Vec<_> = cells.keys().copied().collect();
+                keys.sort_unstable();
+                let (mut cubes, mut shade) = (Vec::new(), Vec::new());
+                for k in keys {
+                    let (sum, n, shades) = &cells[&k];
+                    let at = (Vec3::new(k.0 as f32, k.1 as f32, k.2 as f32) + Vec3::splat(0.5)) * size;
+                    cubes.push((at, *sum / *n as f32));
+                    let common = shades.iter().copied().max_by_key(|m| shades.iter().filter(|o| *o == m).count()).unwrap_or(0.0);
+                    shade.push(common);
+                }
+                let min_y = cubes.iter().map(|(q, _)| q.y - size / 2.0).fold(f32::INFINITY, f32::min);
+                RigPart { name: p.name, rest: p.rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
+            })
+            .collect();
+        Rig { size, parts }
+    }
 }
 
 fn in_box(v: &Voxel, b: &VoxelBox) -> bool {
@@ -200,6 +238,21 @@ fn make_part(c: &Collected, name: &'static str, list: &[Voxel], pivot: [f32; 3],
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_coarse_rig_keeps_its_parts_with_far_fewer_cubes() {
+        let fine = build_rig(&crate::render::heroes::ragnar_hd(None), crate::render::heroes::RAGNAR_HD_RIG, 0.0125);
+        let coarse = fine.coarse();
+        assert_eq!(coarse.size, 0.025);
+        assert_eq!(coarse.parts.len(), fine.parts.len());
+        let count = |r: &Rig| r.parts.iter().map(|p| p.cubes.len()).sum::<usize>();
+        assert!(count(&coarse) * 3 < count(&fine), "{} coarse against {} fine", count(&coarse), count(&fine));
+        for (a, b) in coarse.parts.iter().zip(&fine.parts) {
+            assert_eq!(a.rest, b.rest);
+            assert_eq!(a.cubes.len(), a.shade.len());
+            assert!(!a.cubes.is_empty(), "{} lost its cubes", a.name);
+        }
+    }
 
     #[test]
     fn rigs_claim_every_voxel_once() {

@@ -7,157 +7,13 @@
 //! `Sculpt::part`) that the story animates. Models face +z; coordinates are
 //! voxels, y up.
 
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
 use glam::Vec3;
 
+use super::carve::*;
 use super::characters::{mat, Sculpt};
 use super::voxels::{Collected, PartDef};
-
-fn nz(x: i32, y: i32, z: i32) -> f32 {
-    let mut h = (x as u32).wrapping_mul(0x9e37_79b1) ^ (y as u32).wrapping_mul(0x85eb_ca77) ^ (z as u32).wrapping_mul(0xc2b2_ae3d);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x2c1b_3c6d);
-    h ^= h >> 12;
-    (h & 0xffff) as f32 / 65535.0
-}
-
-const NEIGHBORS: [(i32, i32, i32); 6] = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)];
-
-fn ball(s: &mut Sculpt, c: Vec3, r: Vec3, color: u32) {
-    s.ellipsoid((c.x, c.y, c.z), (r.x, r.y, r.z), 0, color);
-}
-
-/// A limb, tail or horn along a path of (point, radius) knots.
-fn limb(s: &mut Sculpt, knots: &[(Vec3, f32)], c: u32) {
-    for w in knots.windows(2) {
-        let (a, b) = (w[0].0, w[1].0);
-        s.capsule((a.x, a.y, a.z), (b.x, b.y, b.z), w[0].1, w[1].1, c);
-    }
-}
-
-fn v(x: f32, y: f32, z: f32) -> Vec3 {
-    Vec3::new(x, y, z)
-}
-
-/// An upright elliptical column from `y0` to `y1`.
-#[allow(clippy::too_many_arguments)]
-fn column(s: &mut Sculpt, cx: f32, cz: f32, rx: f32, rz: f32, y0: i32, y1: i32, c: u32) {
-    for y in y0..=y1 {
-        for z in (cz - rz).floor() as i32..=(cz + rz).ceil() as i32 {
-            for x in (cx - rx).floor() as i32..=(cx + rx).ceil() as i32 {
-                let (dx, dz) = ((x as f32 - cx) / rx, (z as f32 - cz) / rz);
-                if dx * dx + dz * dz <= 1.0 {
-                    s.set(x, y, z, c);
-                }
-            }
-        }
-    }
-}
-
-/// The frontmost filled z at (x, y), if any: where a face's features go on a round head.
-fn front(s: &Sculpt, x: i32, y: i32, d: i32) -> Option<i32> {
-    (0..d).rev().find(|&z| s.get(x, y, z).is_some())
-}
-
-/// Paints the frontmost voxel at (x, y), or sets one `out` voxels in front of it.
-fn face(s: &mut Sculpt, x: i32, y: i32, d: i32, out: i32, c: u32) {
-    if let Some(z) = front(s, x, y, d) {
-        if out == 0 {
-            s.recolor(x, y, z, c);
-        } else {
-            s.set(x, y, z + out, c);
-        }
-    }
-}
-
-/// Whether a filled voxel shows: one of its faces is open.
-fn open(s: &Sculpt, x: i32, y: i32, z: i32) -> bool {
-    s.get(x, y, z).is_some() && NEIGHBORS.iter().any(|&(dx, dy, dz)| s.get(x + dx, y + dy, z + dz).is_none())
-}
-
-/// Angle round an upright axis at (cx, cz), from 0 to 1.
-fn turn(x: i32, z: i32, cx: f32, cz: f32) -> f32 {
-    ((z as f32 - cz).atan2(x as f32 - cx) + PI) / TAU
-}
-
-/// Scales a colour's brightness (keeping its material byte).
-fn scale(c: u32, k: f32) -> u32 {
-    let ch = |s: u32| ((((c >> s) & 255) as f32 * k).clamp(0.0, 255.0) as u32) << s;
-    ch(16) | ch(8) | ch(0) | (c & 0xff00_0000)
-}
-
-/// A rosier version of a skin tone, for cheeks.
-fn blush(c: u32) -> u32 {
-    let (r, g, b) = ((c >> 16) & 255, (c >> 8) & 255, c & 255);
-    ((r + 10).min(255) << 16) | ((g * 84 / 100) << 8) | (b * 80 / 100) | (c & 0xff00_0000)
-}
-
-/**
- * Shaggy fur: strands standing out of the open faces of `coat` and hanging
- * down, up to `len` voxels long, the longest ending in `tip`. Each strand
- * belongs to the part of the voxel it grows from.
- */
-#[allow(clippy::too_many_arguments)]
-fn shag(s: &mut Sculpt, dims: (i32, i32, i32), coat: u32, tuft: u32, tip: u32, density: f32, len: i32) {
-    let (w, h, d) = dims;
-    let mut add = vec![];
-    for y in 1..h {
-        for z in 0..d {
-            for x in 0..w {
-                if s.get(x, y, z) != Some(coat) {
-                    continue;
-                }
-                let tag = s.tag_at(x, y, z);
-                for (i, (dx, dy, dz)) in [(1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1), (0, -1, 0)].into_iter().enumerate() {
-                    if s.get(x + dx, y + dy, z + dz).is_some() || nz(x * 3 + dx, y * 5 + dy, z * 7 + dz) <= 1.0 - density {
-                        continue;
-                    }
-                    let n = (1 + (nz(x + 17, y * 3, z + i as i32) * len as f32) as i32).min(len);
-                    for k in 0..n {
-                        let c = if n > 1 && k == n - 1 { tip } else { tuft };
-                        add.push((x + dx, y + dy - k, z + dz, c, tag));
-                    }
-                }
-            }
-        }
-    }
-    for (x, y, z, c, tag) in add {
-        if s.get(x, y, z).is_none() {
-            s.part(tag);
-            s.set(x, y, z, c);
-        }
-    }
-    s.part(0);
-}
-
-/**
- * A wide sleeve along `knots`, open at its end: the cloth hollowed out at the
- * cuff and its inside in the shadow of `lining`, so a hand can come out of it.
- */
-fn sleeve(s: &mut Sculpt, knots: &[(Vec3, f32)], cloth: u32, lining: u32) {
-    limb(s, knots, cloth);
-    let n = knots.len();
-    let (a, b, r) = (knots[n - 2].0, knots[n - 1].0, knots[n - 1].1);
-    let dir = (b - a).normalize();
-    let reach = r + 1.5;
-    for y in (b.y - reach).floor() as i32..=(b.y + reach).ceil() as i32 {
-        for z in (b.z - reach).floor() as i32..=(b.z + reach).ceil() as i32 {
-            for x in (b.x - reach).floor() as i32..=(b.x + reach).ceil() as i32 {
-                let p = Vec3::new(x as f32, y as f32, z as f32) - b;
-                let along = p.dot(dir);
-                let radial = (p - dir * along).length();
-                if radial < r - 1.5 {
-                    if along > 0.6 {
-                        s.clear(x, y, z);
-                    } else if along > -1.2 {
-                        s.recolor(x, y, z, lining);
-                    }
-                }
-            }
-        }
-    }
-}
 
 // --------------------------------------------------------------- the boys
 
@@ -262,29 +118,8 @@ const KIDS: [Kid; 4] = [
 pub const KID_SIZE: (i32, i32, i32) = (36, 64, 26);
 /// Where each leg stands across the grid.
 const KID_LEGS: [f32; 2] = [12.0, 23.0];
-
-const EYE_WHITE: u32 = 0xf2eee6;
-const GLINT: u32 = 0xffffff;
-const PUPIL: u32 = 0x120e0c;
+/// The line of lashes over a child's eye.
 const LASH: u32 = 0x2a1c16;
-
-/**
- * A child's eye, its outer corner at column `outer` and its lower row at `y`:
- * the white at the corner, the iris inward (`inward` is +1 or -1) with its
- * pupil and a glint of light, and a line of lashes over it.
- */
-fn kid_eye(s: &mut Sculpt, outer: i32, y: i32, inward: i32, d: i32, iris: u32) {
-    let at = |k: i32| outer + k * inward;
-    face(s, at(0), y, d, 0, EYE_WHITE);
-    face(s, at(0), y + 1, d, 0, EYE_WHITE);
-    face(s, at(1), y, d, 0, iris);
-    face(s, at(2), y, d, 0, iris);
-    face(s, at(1), y + 1, d, 0, GLINT);
-    face(s, at(2), y + 1, d, 0, PUPIL);
-    for k in 0..3 {
-        face(s, at(k), y + 2, d, 0, LASH);
-    }
-}
 
 /**
  * One of the four friends (0 is the one Krampus takes): a big round head
@@ -550,8 +385,8 @@ pub fn kid(which: usize) -> Collected {
         }
     }
     // The face: eyes with a glint, brows, a button nose, a small mouth, rosy cheeks.
-    kid_eye(&mut s, 12, 43, 1, d, k.eyes);
-    kid_eye(&mut s, 23, 43, -1, d, k.eyes);
+    eye(&mut s, 12, 43, 1, d, k.eyes, LASH);
+    eye(&mut s, 23, 43, -1, d, k.eyes, LASH);
     for x in [12, 13, 14, 21, 22, 23] {
         face(&mut s, x, 47, d, 0, hair_d);
     }

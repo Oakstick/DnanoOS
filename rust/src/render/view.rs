@@ -467,13 +467,14 @@ struct Models {
     hero: Rig,
     hero_key: (crate::logic::heroes::HeroKind, u8, Option<u8>),
     thrown: Rig,
-    /// The two heroes waiting to be unlocked, for the character screen.
+    /// The other two heroes as they are shown on the title and character screens, as
+    /// souls in Scene I and as ancestral spirits (Ragnar is `ragnar`).
     mehmed: Rig,
     miyamoto: Rig,
-    /// Scene I's cast: the four friends, the old gatekeeper, his dog, Krampus as a shadow,
-    /// and the warriors' souls (Mehmed, Ragnar, Miyamoto) the old man offers.
+    /// Mehmed's and Miyamoto's ancestral spirits: the same at half the resolution, see-through.
+    spirits: [Rig; 2],
+    /// Scene I's cast: the four friends, the old gatekeeper, his dog, and Krampus as a shadow.
     kids: [Rig; 4],
-    souls: [Rig; 3],
     old_man: Rig,
     dog: Rig,
     krampus: Rig,
@@ -520,13 +521,13 @@ impl Models {
                 0.07,
             ),
             boulder: build_rig(&meadow::boulder(), &[], 0.09),
-            mehmed: build_rig(&characters::mehmed(), characters::MEHMED_RIG, VOXEL / 2.0),
-            miyamoto: build_rig(&characters::miyamoto(), characters::MIYAMOTO_RIG, VOXEL / 2.0),
+            mehmed: forge::hero_model(crate::logic::heroes::HeroKind::Mehmed, 1, Some(1)),
+            miyamoto: forge::hero_model(crate::logic::heroes::HeroKind::Miyamoto, 1, Some(1)),
+            spirits: [crate::logic::heroes::HeroKind::Mehmed, crate::logic::heroes::HeroKind::Miyamoto].map(|h| forge::hero_model(h, 1, Some(1)).coarse()),
             kids: [0, 1, 2, 3].map(|i| build_rig(&super::cast::kid(i), super::cast::KID_RIG, story::KID_VOXEL)),
             old_man: build_rig(&super::cast::old_man(), super::cast::OLD_MAN_RIG, story::OLD_MAN_VOXEL),
             dog: build_rig(&super::cast::dog(), super::cast::DOG_RIG, story::DOG_VOXEL),
             krampus: build_rig(&super::cast::krampus_shade(), super::cast::KRAMPUS_RIG, story::KRAMPUS_VOXEL),
-            souls: [crate::logic::heroes::HeroKind::Mehmed, ragnar, crate::logic::heroes::HeroKind::Miyamoto].map(|h| forge::hero_model(h, 1, Some(1))),
         }
     }
 

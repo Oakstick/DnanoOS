@@ -13,7 +13,7 @@ use glam::Vec3;
 
 use super::overlay::{rgba, Align, Overlay};
 use super::view::STEP;
-use super::characters::{bog_slime, draugr, raven, ragnar};
+use super::characters::{bog_slime, draugr, raven};
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen};
 use crate::logic::progression::{self, Tree};
@@ -72,9 +72,9 @@ fn sprites() -> &'static Sprites {
     static S: OnceLock<Sprites> = OnceLock::new();
     S.get_or_init(|| Sprites {
         portraits: [
-            sprite_from(&ragnar()),
-            cropped(sprite_from(&super::characters::mehmed_hd(None))),
-            cropped(sprite_from(&super::characters::miyamoto_hd(None))),
+            cropped(sprite_from(&super::heroes::ragnar_hd(None))),
+            cropped(sprite_from(&super::heroes::mehmed_hd(None))),
+            cropped(sprite_from(&super::heroes::miyamoto_hd(None))),
         ],
         krampus: sprite_from(&crate::render::view::krampus()),
         cast: vec![

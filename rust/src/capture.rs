@@ -16,7 +16,7 @@
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
 //! where `pause` skips it).
 //! `--iso` renders the whole level from an isometric map camera instead;
-//! `--closeup [angle]` a portrait of Ragnar (angle in degrees around him, 0 = his front);
+//! `--closeup [angle] [distance]` a portrait of the hero (angle in degrees around him, 0 = his front);
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
 //! (and `rise` times the distance above it, 0.28 unless given); `--bench N` then times N
 //! more draws of the same frame; `--all-heroes` shows the locked heroes in colour on the
@@ -211,6 +211,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     if let Some(i) = args.iter().position(|a| a == "--closeup") {
         let deg: f32 = args.get(i + 1).and_then(|a| a.parse().ok()).unwrap_or(20.0);
+        let dist: f32 = args.get(i + 2).and_then(|a| a.parse().ok()).unwrap_or(2.1);
         let p = game.hero.pos();
         let y = game.hero.altitude as f32 * crate::render::view::STEP;
         let face = match game.hero.facing {
@@ -219,7 +220,7 @@ pub fn run(args: &[String]) -> i32 {
             Dir::Left => -std::f32::consts::FRAC_PI_2,
             Dir::Right => std::f32::consts::FRAC_PI_2,
         };
-        game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62, p.y as f32), face + deg.to_radians(), 2.1);
+        game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62 + (2.1 - dist).max(0.0) * 0.12, p.y as f32), face + deg.to_radians(), dist);
     }
     if let Some(v) = arg(&args, "--view") {
         let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
