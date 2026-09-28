@@ -293,6 +293,13 @@ impl Score {
         self.lives == 0
     }
 
+    /// Picks up a saved adventure: its score and lives, and the next extra life above that score.
+    pub fn resume(&mut self, score: u32, lives: u32) {
+        self.score = score;
+        self.lives = lives.clamp(1, MAX_LIVES);
+        self.next_life_at = (score / 10_000 + 1) * 10_000;
+    }
+
     pub fn reset(&mut self) {
         self.score = 0;
         self.lives = MAX_LIVES;

@@ -137,12 +137,12 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused => {
             o.rect(0.0, 0.0, o.width, o.height, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.65]);
-            let top = menu_rects(Screen::Paused, 1, o.width, o.height)[0][1];
+            let top = menu_rects(Screen::Paused, &[MenuItem::Resume], o.width, o.height)[0][1];
             o.text("PAUSED", o.width / 2.0, top - t * 2.6, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
             o.text("Esc or Start to resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center, false);
             draw_menu(o, g, t);
             // Where the story stands: the road down after Krampus, below the last button.
-            let rects = menu_rects(Screen::Paused, g.menu_items().len(), o.width, o.height);
+            let rects = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height);
             let y = rects.last().map(|r| r[1] + r[3]).unwrap_or(o.height / 2.0) + t * 1.4;
             o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
             o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
@@ -858,19 +858,35 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
 
 /// Button rectangles `[x, y, w, h]` for a menu, in logical pixels. The title
 /// menu is a row along the bottom; the pause menu is a centered column.
-pub fn menu_rects(screen: Screen, count: usize, w: f32, h: f32) -> Vec<[f32; 4]> {
+pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f32; 4]> {
     let t = tile_for(w, h);
     let bh = t * 1.3;
+    let count = items.len();
     match screen {
+        Screen::Title if items.contains(&MenuItem::StartOver) => {
+            // The two answers side by side at the foot of the "start over?" panel.
+            let [px, py, pw, ph] = reset_panel(w, h);
+            let (bw, bh, gap) = ((pw - t * 2.2) / 2.0, t * 1.4, t * 0.6);
+            let y = py + ph - bh - t * 0.8;
+            (0..count).map(|i| [px + (pw - 2.0 * bw - gap) / 2.0 + i as f32 * (bw + gap), y, bw, bh]).collect()
+        }
         Screen::Title => {
-            // A big START in the middle below the line-up; Quit (desktop) small in the corner.
-            let (bw, bh) = (t * 9.0, t * 1.9);
-            let mut out = vec![[w / 2.0 - bw / 2.0, h * 0.875 - bh / 2.0, bw, bh]];
-            if count > 1 {
-                let (qw, qh) = (t * 4.6, t * 1.1);
-                out.push([w - qw - t * 0.6, h - qh - t * 0.6, qw, qh]);
-            }
-            out
+            // Continue and Start side by side in the middle below the line-up; Quit (desktop) small in the corner.
+            let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
+            let big = items.iter().filter(|i| **i != MenuItem::Quit).count();
+            let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
+            items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    if *item == MenuItem::Quit {
+                        let (qw, qh) = (t * 4.6, t * 1.1);
+                        [w - qw - t * 0.6, h - qh - t * 0.6, qw, qh]
+                    } else {
+                        [x0 + i as f32 * (bw + gap), h * 0.875 - bh / 2.0, bw, bh]
+                    }
+                })
+                .collect()
         }
         _ => {
             let bw = t * 9.0;
@@ -881,26 +897,34 @@ pub fn menu_rects(screen: Screen, count: usize, w: f32, h: f32) -> Vec<[f32; 4]>
     }
 }
 
+/// The panel that asks whether to start over, in the middle of the title.
+fn reset_panel(w: f32, h: f32) -> [f32; 4] {
+    let t = tile_for(w, h);
+    let (pw, ph) = ((t * 22.0).min(w - t * 1.2), t * 7.4);
+    [w / 2.0 - pw / 2.0, h / 2.0 - ph / 2.0, pw, ph]
+}
+
 /// The current screen's buttons, with the highlighted one outlined in gold.
 fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
     let items = g.menu_items();
-    let rects = menu_rects(g.screen, items.len(), o.width, o.height);
+    let rects = menu_rects(g.screen, &items, o.width, o.height);
     let pulse = 0.75 + (g.time as f32 * 4.0).sin() * 0.25;
     for (i, (item, r)) in items.iter().zip(rects).enumerate() {
         let selected = i == g.menu_index;
-        let quit = matches!(item, MenuItem::Quit | MenuItem::QuitToTitle);
+        let quit = matches!(item, MenuItem::Quit | MenuItem::QuitToTitle | MenuItem::StartOver);
         let bg = if selected { [1.0, 1.0, 1.0, 0.14] } else { [1.0, 1.0, 1.0, 0.05] };
         o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);
         o.rect(r[0], r[1], r[2], r[3], bg);
         let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
         let color = if selected { if quit { 0xff8a8a } else { GOLD } } else { TEXT_DIM };
-        let big = *item == MenuItem::Play;
-        if big {
-            // The start button glows gold and breathes.
+        let big = matches!(item, MenuItem::Play | MenuItem::Continue);
+        if big && selected {
+            // The highlighted big button glows gold and breathes.
             o.rect_outline(r[0] - t * 0.12, r[1] - t * 0.12, r[2] + t * 0.24, r[3] + t * 0.24, (t * 0.05).max(1.0), rgba(GOLD, 0.35 * pulse));
         }
-        o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * if big { 1.15 } else { 0.55 }, rgba(if big { GOLD } else { color }, 1.0), Align::Center, true);
+        let color = if big && !selected { SAND } else { color };
+        o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * if big { 1.15 } else { 0.55 }, rgba(color, 1.0), Align::Center, true);
     }
 }
 
@@ -977,6 +1001,34 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         false,
     );
 
+    // Under the buttons: where Continue leads, and that Start begins anew.
+    if !g.confirm_reset && g.can_continue() {
+        let items = g.menu_items();
+        let rects = menu_rects(g.screen, &items, w, h);
+        for (item, r) in items.iter().zip(&rects) {
+            let note = match item {
+                MenuItem::Continue => g.continue_caption().unwrap_or_else(|| "Choose a hero and keep what is earned".to_string()),
+                MenuItem::Play => "A new adventure, all reset".to_string(),
+                _ => continue,
+            };
+            o.wrap_text(&note, r[0] + r[2] / 2.0, r[1] + r[3] + t * 0.5, r[2], t * 0.55, t * 0.42, rgba(TEXT_DIM, 1.0));
+        }
+    }
+    if g.confirm_reset {
+        o.rect(0.0, 0.0, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.6]);
+        let [px, py, pw, ph] = reset_panel(w, h);
+        panel(o, px, py, pw, ph, t);
+        o.text("START OVER?", w / 2.0, py + t * 1.35, t * 1.1, rgba(GOLD, 1.0), Align::Center, true);
+        o.wrap_text(
+            "Every hero's weapons, shields, paths and elixirs, the silver, the runes and the adventure under way will be lost.",
+            w / 2.0,
+            py + t * 2.6,
+            pw - t * 2.4,
+            t * 0.72,
+            t * 0.5,
+            rgba(SAND, 1.0),
+        );
+    }
     draw_menu(o, g, t);
     o.text(&format!("Best {}", g.score.high), w - t * 0.6, h * 0.035, t * 0.5, rgba(TEXT_DIM, 1.0), Align::Right, false);
 }

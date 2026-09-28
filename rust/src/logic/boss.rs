@@ -10,9 +10,9 @@
 use super::rng::Rng;
 use super::types::{dist_sq, V};
 
-/// Health of the first Cyclops (about two dozen blows of a first-tier blade); each later one
+/// Health of the first Cyclops (about thirty blows of a first-tier blade); each later one
 /// has `CYCLOPS_HP_STEP` more, and from the second on its hide turns a point of every blow.
-pub const CYCLOPS_HP: i32 = 24;
+pub const CYCLOPS_HP: i32 = 32;
 pub const CYCLOPS_HP_STEP: i32 = 12;
 /// How far from its center the body reaches, in tiles (for hits both ways).
 pub const BODY_RADIUS: f64 = 0.85;
@@ -25,7 +25,7 @@ pub const SKY: f64 = 7.0;
 const ARRIVE_SECONDS: f64 = 1.8;
 const MAX_SPEED: f64 = 2.7;
 const DIVE_SPEED: f64 = 10.0;
-const DAZED_SECONDS: f64 = 2.4;
+const DAZED_SECONDS: f64 = 2.0;
 const DYING_SECONDS: f64 = 2.6;
 /// Brief immunity after a hit, so one blow never lands twice.
 const HIT_GRACE: f64 = 0.12;

@@ -65,6 +65,11 @@ pub fn tour_seen() -> bool {
     platform::load(TOUR_KEY).map(|v| v.trim() == "1").unwrap_or(false)
 }
 
+/// Starting over: the tour is owed again.
+pub fn forget_tour() {
+    platform::save(TOUR_KEY, "0");
+}
+
 impl Game {
     /// The stops for the current dungeon: the hero, one of each thing, then each foe.
     fn tour_stops(&self) -> Vec<TourStop> {

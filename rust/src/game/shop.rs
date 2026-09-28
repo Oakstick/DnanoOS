@@ -269,6 +269,7 @@ impl Game {
         self.shop.flourish = 1.0;
         self.note(what, color);
         self.save_progress();
+        self.remember_belt();
     }
 
     fn press_shop(&mut self, b: ShopButton) {
@@ -290,6 +291,7 @@ impl Game {
                 } else {
                     let next = self.dungeon + 1;
                     self.load_level(next);
+                    self.checkpoint(super::save::Stage::Dungeon(next));
                     self.enter(Screen::Ready);
                 }
                 self.juice.fade = 1.0;

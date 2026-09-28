@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod save;
 mod select;
 mod shop;
 mod story;
@@ -198,7 +199,13 @@ pub struct Juice {
 /// A button on the title or pause menu.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuItem {
+    /// A new adventure (on the title; with something saved, it asks first).
     Play,
+    /// Back into the saved adventure.
+    Continue,
+    /// The answers to "start over?".
+    StartOver,
+    KeepProgress,
     Resume,
     /// The gatekeeper's promise: call him, and his wares open wherever you are.
     CallOldMan,
@@ -211,6 +218,9 @@ impl MenuItem {
     pub fn label(self) -> &'static str {
         match self {
             MenuItem::Play => "START",
+            MenuItem::Continue => "CONTINUE",
+            MenuItem::StartOver => "START OVER",
+            MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
@@ -340,6 +350,10 @@ pub struct Game {
     /// Scene I while it plays, and whether Play on the title shows it (tests go straight to the heroes).
     pub story: Option<Story>,
     pub intro: bool,
+    /// The adventure saved at the start of the last stage reached, for Continue.
+    pub saved_run: Option<save::Run>,
+    /// The title is asking whether to wipe everything and start over.
+    pub confirm_reset: bool,
 }
 
 impl Game {
@@ -428,6 +442,8 @@ impl Game {
             select_denied: 0.0,
             story: None,
             intro: !cfg!(test),
+            saved_run: save::load_run(),
+            confirm_reset: false,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -613,6 +629,7 @@ impl Game {
         self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare axe
         self.load_level(0);
         self.juice.score_shown = 0.0;
+        self.checkpoint(save::Stage::Dungeon(0));
         if self.tour_pending {
             self.begin_tour();
         } else {
@@ -698,6 +715,7 @@ impl Game {
     fn enter(&mut self, screen: Screen) {
         self.screen = screen;
         self.menu_index = 0;
+        self.confirm_reset = false;
         // The backing track steps back when the game does, and under the fanfare.
         self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared));
         if screen == Screen::Title {
@@ -762,9 +780,14 @@ impl Game {
         match self.screen {
             Screen::Title => match self.menu_choice() {
                 Some(MenuItem::Quit) => self.quit_requested = true,
-                // Play (or a tap anywhere else on the title) starts the story, then the character screen.
-                Some(_) => self.play_from_title(),
-                None if self.input.was_pressed(&[Action::Tap]) => self.play_from_title(),
+                Some(MenuItem::Continue) => self.continue_game(),
+                Some(MenuItem::StartOver) => self.answer_reset(true),
+                Some(MenuItem::KeepProgress) => self.answer_reset(false),
+                // Start begins a new adventure: the story, then the character screen.
+                Some(_) => self.start_from_title(),
+                None if self.confirm_reset && self.input.was_pressed(&[Action::Pause]) => self.answer_reset(false),
+                // With nothing saved, a tap anywhere on the title starts too.
+                None if !self.can_continue() && self.input.was_pressed(&[Action::Tap]) => self.play_from_title(),
                 None => {}
             },
             Screen::Story => self.update_story(dt),
@@ -816,6 +839,7 @@ impl Game {
                 if self.screen_timer <= 0.0 {
                     let next = self.dungeon;
                     self.load_boss(next);
+                    self.checkpoint(save::Stage::Arena(next));
                     self.juice.fade = 1.0;
                     self.enter(Screen::Ready);
                 }
@@ -877,7 +901,8 @@ impl Game {
     pub fn menu_items(&self) -> Vec<MenuItem> {
         let quit = cfg!(not(target_arch = "wasm32"));
         let mut items = match self.screen {
-            Screen::Title => vec![MenuItem::Play],
+            Screen::Title if self.confirm_reset => return self.title_items(),
+            Screen::Title => self.title_items(),
             Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::QuitToTitle],
             _ => return Vec::new(),
         };
@@ -897,7 +922,7 @@ impl Game {
         if items.is_empty() {
             return None;
         }
-        let rects = crate::render::hud::menu_rects(self.screen, items.len(), self.viewport.0, self.viewport.1);
+        let rects = crate::render::hud::menu_rects(self.screen, &items, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
         let n = items.len();
         let horizontal = self.screen == Screen::Title;
@@ -1639,6 +1664,7 @@ impl Game {
                 self.events.push(GameEvent::BossSlain);
                 self.victory_timer = Some(VICTORY_DELAY);
                 self.save_progress();
+                self.checkpoint(save::Stage::Shop(self.dungeon));
             }
         }
     }
@@ -3169,7 +3195,7 @@ mod tests {
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Paused);
         assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::QuitToTitle, MenuItem::Quit]);
-        let r = crate::render::hud::menu_rects(Screen::Paused, 4, g.viewport.0, g.viewport.1)[2];
+        let r = crate::render::hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[2];
         g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
         g.input.mouse_button(winit::event::MouseButton::Left, true);
         g.update(crate::app::STEP);
@@ -3215,6 +3241,7 @@ mod tests {
         assert!(g.level.data.boss);
         assert!(g.boss.is_some());
         assert!(g.enemies.is_empty());
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Arena(0)), "the arena is a checkpoint");
     }
 
     #[test]
@@ -3256,6 +3283,7 @@ mod tests {
         assert!(g.progress.silver >= COINS_BOSS, "the boss pays out");
         assert!(g.progress.runes >= RUNES_BOSS, "and leaves rune fragments");
         assert!((0..4).any(|t| g.progress.hero(g.hero_kind).relics[t] != 0), "and a relic");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Shop(0)), "Continue would bring back the old man");
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Shop, "the old man comes after the boss");
@@ -3268,6 +3296,68 @@ mod tests {
         assert!(!g.level.data.boss);
         assert_eq!(g.dungeon, 1);
         assert!(g.potions.is_empty() && g.diamonds.is_empty(), "no free gear after the first dungeon");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(1)));
+    }
+
+    #[test]
+    fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
+        let mut g = Game::new();
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Quit], "nothing to continue yet");
+        start_from_title(&mut g);
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(0)), "an adventure is saved from its start");
+
+        // Mehmed reaches the Cyclops with silver, a score, two lives and two bottles.
+        g.hero_kind = HeroKind::Mehmed;
+        g.progress.silver = 500;
+        g.score.resume(7000, 2);
+        g.belt = vec![PotionKind::Health, PotionKind::Life];
+        g.checkpoint(save::Stage::Arena(0));
+        g.enter(Screen::Title);
+        assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Quit]);
+        g.hero_kind = HeroKind::Ragnar;
+        g.score.reset();
+        g.belt.clear();
+        g.load_level(0);
+        // Continue is highlighted first.
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Ready, "no story and no character screen");
+        assert!(g.level.data.boss && g.boss.is_some());
+        assert_eq!((g.hero_kind, g.hero.kind), (HeroKind::Mehmed, HeroKind::Mehmed));
+        assert_eq!((g.score.score, g.score.lives), (7000, 2));
+        assert_eq!(g.belt, vec![PotionKind::Health, PotionKind::Life]);
+
+        // Start asks first, with "keep my progress" highlighted: Enter loses nothing.
+        g.enter(Screen::Title);
+        g.menu_index = 1;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert!(g.confirm_reset);
+        assert_eq!(g.menu_items(), vec![MenuItem::StartOver, MenuItem::KeepProgress]);
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert!(!g.confirm_reset);
+        assert_eq!((g.screen, g.progress.silver), (Screen::Title, 500));
+        assert!(g.saved_run.is_some());
+        // Esc backs out too.
+        g.menu_index = 1;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        assert!(!g.confirm_reset && g.saved_run.is_some());
+        // Start over: everything goes, and the new adventure begins (with the heroes, the story being off in tests).
+        g.menu_index = 1;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        g.menu_index = 0;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Select);
+        assert_eq!(g.progress, Progress::default());
+        assert!(g.saved_run.is_none());
+        g.enter(Screen::Title);
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Quit]);
     }
 
     #[test]
