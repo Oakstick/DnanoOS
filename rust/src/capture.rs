@@ -140,9 +140,12 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
 
 pub fn run(args: &[String]) -> i32 {
     std::env::set_var("VH_NO_AUDIO", "1");
-    // Keep test runs from touching the player's high score and settings.
+    // Keep test runs from touching the player's save, and start each from a clean one
+    // (a saved adventure would put Continue first on the title). VH_SAVE_DIR keeps a save.
     if std::env::var_os("VH_SAVE_DIR").is_none() {
-        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("void-harvest-capture"));
+        let dir = std::env::temp_dir().join("void-harvest-capture");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var("VH_SAVE_DIR", dir);
     }
     let path = arg(args, "--capture").unwrap_or("capture.png").to_string();
     let (w, h) = arg(args, "--size")
