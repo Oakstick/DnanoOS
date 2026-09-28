@@ -23,11 +23,25 @@ pub struct Sculpt {
     h: i32,
     d: i32,
     cells: Vec<Option<u32>>,
+    /// Which rig part each cell was set for (see `part`); 0 leaves it to the rig's boxes.
+    tags: Vec<u8>,
+    tag: u8,
 }
 
 impl Sculpt {
     pub fn new(w: i32, h: i32, d: i32) -> Self {
-        Self { w, h, d, cells: vec![None; (w * h * d) as usize] }
+        let n = (w * h * d) as usize;
+        Self { w, h, d, cells: vec![None; n], tags: vec![0; n], tag: 0 }
+    }
+
+    /// Voxels set from now on belong to rig part `tag` (the tag-th `PartDef`; 0 is the body,
+    /// or whatever the rig's boxes say). Recolouring keeps a voxel's part.
+    pub fn part(&mut self, tag: u8) {
+        self.tag = tag;
+    }
+
+    pub fn tag_at(&self, x: i32, y: i32, z: i32) -> u8 {
+        self.idx(x, y, z).map(|i| self.tags[i]).unwrap_or(0)
     }
 
     fn idx(&self, x: i32, y: i32, z: i32) -> Option<usize> {
@@ -40,6 +54,16 @@ impl Sculpt {
     pub fn set(&mut self, x: i32, y: i32, z: i32, c: u32) {
         if let Some(i) = self.idx(x, y, z) {
             self.cells[i] = Some(c);
+            self.tags[i] = self.tag;
+        }
+    }
+
+    /// Recolours a filled voxel, keeping its part.
+    pub fn recolor(&mut self, x: i32, y: i32, z: i32, c: u32) {
+        if let Some(i) = self.idx(x, y, z) {
+            if self.cells[i].is_some() {
+                self.cells[i] = Some(c);
+            }
         }
     }
 
@@ -68,9 +92,11 @@ impl Sculpt {
     /// Ellipsoid around a (possibly fractional) center, clipped to `y >= ymin`.
     #[allow(clippy::too_many_arguments)]
     pub fn ellipsoid(&mut self, c: (f32, f32, f32), r: (f32, f32, f32), ymin: i32, color: u32) {
-        for y in ymin.max(0)..self.h {
-            for z in 0..self.d {
-                for x in 0..self.w {
+        let span = |c: f32, r: f32, n: i32| ((c - r).floor().max(0.0) as i32, ((c + r).ceil() as i32).min(n - 1));
+        let ((x0, x1), (y0, y1), (z0, z1)) = (span(c.0, r.0, self.w), span(c.1, r.1, self.h), span(c.2, r.2, self.d));
+        for y in y0.max(ymin)..=y1 {
+            for z in z0..=z1 {
+                for x in x0..=x1 {
                     let dx = (x as f32 - c.0) / r.0;
                     let dy = (y as f32 - c.1) / r.1;
                     let dz = (z as f32 - c.2) / r.2;
@@ -112,7 +138,7 @@ impl Sculpt {
                 for x in 0..self.w {
                     if let Some(c) = self.get(x, y, z) {
                         if let Some(n) = f(x, y, z, c) {
-                            self.set(x, y, z, n);
+                            self.recolor(x, y, z, n);
                         }
                     }
                 }
@@ -120,21 +146,23 @@ impl Sculpt {
         }
     }
 
-    /// Finishes the model: jitters colors a few percent and drops fully enclosed voxels.
+    /// Finishes the model: jitters colors a few percent and drops fully enclosed voxels
+    /// (a voxel against another part is kept, since that part may swing away from it).
     pub fn finish(self, jitter: f32) -> Collected {
         let mut voxels = Vec::new();
         for y in 0..self.h {
             for z in 0..self.d {
                 for x in 0..self.w {
                     let Some(c) = self.get(x, y, z) else { continue };
+                    let tag = self.tag_at(x, y, z);
                     let hidden = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
                         .iter()
-                        .all(|(dx, dy, dz)| self.get(x + dx, y + dy, z + dz).is_some());
+                        .all(|(dx, dy, dz)| self.get(x + dx, y + dy, z + dz).is_some() && self.tag_at(x + dx, y + dy, z + dz) == tag);
                     if hidden {
                         continue;
                     }
                     let k = 1.0 + (noise(x, y, z) - 0.5) * 2.0 * jitter;
-                    voxels.push(Voxel { x, y, z, c: scale(c, k) });
+                    voxels.push(Voxel { x, y, z, c: scale(c, k), part: tag });
                 }
             }
         }

@@ -470,8 +470,10 @@ struct Models {
     /// The two heroes waiting to be unlocked, for the character screen.
     mehmed: Rig,
     miyamoto: Rig,
-    /// Scene I's cast: the four friends, the old gatekeeper, his dog, and Krampus as a shadow.
+    /// Scene I's cast: the four friends, the old gatekeeper, his dog, Krampus as a shadow,
+    /// and the warriors' souls (Mehmed, Ragnar, Miyamoto) the old man offers.
     kids: [Rig; 4],
+    souls: [Rig; 3],
     old_man: Rig,
     dog: Rig,
     krampus: Rig,
@@ -524,6 +526,7 @@ impl Models {
             old_man: build_rig(&super::cast::old_man(), super::cast::OLD_MAN_RIG, story::OLD_MAN_VOXEL),
             dog: build_rig(&super::cast::dog(), super::cast::DOG_RIG, story::DOG_VOXEL),
             krampus: build_rig(&super::cast::krampus_shade(), super::cast::KRAMPUS_RIG, story::KRAMPUS_VOXEL),
+            souls: [crate::logic::heroes::HeroKind::Mehmed, ragnar, crate::logic::heroes::HeroKind::Miyamoto].map(|h| forge::hero_model(h, 1, Some(1))),
         }
     }
 
@@ -2219,34 +2222,38 @@ fn push_field(out: &mut Vec<Instance>, mesh: &Mesh, pos: Vec3, rot_y: f32, scale
     }
 }
 
+/// A voxel cube `size` across at `off` in a posed part's frame `pm`: the same as
+/// `pm * translation(off) * scale(size)`, without two matrix products per cube.
+#[inline]
+pub(super) fn voxel_matrix(pm: &Mat4, size: f32, off: Vec3) -> Mat4 {
+    Mat4::from_cols(pm.x_axis * size, pm.y_axis * size, pm.z_axis * size, pm.transform_point3(off).extend(1.0))
+}
+
 fn emit_mesh(out: &mut Vec<Instance>, mesh: &Mesh, base: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
-    let s = Mat4::from_scale(Vec3::splat(mesh.size));
     for (off, c) in &mesh.cubes {
-        out.push(Instance::new(base * Mat4::from_translation(*off) * s, *c * tint, alpha, emissive, SHADE_LIT));
+        out.push(Instance::new(voxel_matrix(&base, mesh.size, *off), *c * tint, alpha, emissive, SHADE_LIT));
     }
 }
 
 fn emit_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
-    let s = Mat4::from_scale(Vec3::splat(rig.size));
     for (i, part) in rig.parts.iter().enumerate() {
         let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
         for (j, (off, c)) in part.cubes.iter().enumerate() {
             let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
-            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, *c * tint, alpha, emissive, shade));
+            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c * tint, alpha, emissive, shade));
         }
     }
 }
 
 /// Like `emit_rig`, but drained of colour to grey and tinted (a hero not yet unlocked).
 fn emit_rig_grey(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
-    let s = Mat4::from_scale(Vec3::splat(rig.size));
     for (i, part) in rig.parts.iter().enumerate() {
         let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
         for (j, (off, c)) in part.cubes.iter().enumerate() {
             let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
             // Like a statue in pale stone: the colours' lightness kept, squeezed into a narrow range.
             let grey = 0.1 + 0.3 * c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).sqrt();
-            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, Vec3::splat(grey) * tint, 1.0, Vec3::ZERO, shade));
+            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), Vec3::splat(grey) * tint, 1.0, Vec3::ZERO, shade));
         }
     }
 }

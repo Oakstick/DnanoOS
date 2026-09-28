@@ -849,7 +849,8 @@ impl Gpu {
 
         // ---- instances: opaque by mesh, the early see-through ones, see-through by mesh, additive
         let order_t = [MeshKind::Disc, MeshKind::Annulus, MeshKind::Ring, MeshKind::Cube, MeshKind::Sphere, MeshKind::Tube, MeshKind::Cylinder];
-        let mut all: Vec<Instance> = Vec::new();
+        let total = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>() + frame.transparent_early.len() + frame.additive.len() + frame.glow.len();
+        let mut all: Vec<Instance> = Vec::with_capacity(total);
         let mut ranges: Vec<(u8, usize, u32, u32)> = Vec::new(); // (pipeline, mesh, start, count)
         for k in 0..MESH_KINDS {
             let list = &frame.opaque[k];
@@ -1048,10 +1049,14 @@ impl Gpu {
         self.draw(&tv, view, frame, overlay, logical);
         let _ = self.device.poll(wgpu::PollType::Wait);
         let start = std::time::Instant::now();
+        let mut cpu = 0.0;
         for _ in 0..n {
+            let t = std::time::Instant::now();
             self.draw(&tv, view, frame, overlay, logical);
+            cpu += t.elapsed().as_secs_f64();
             let _ = self.device.poll(wgpu::PollType::Wait);
         }
+        eprintln!("bench: {:.2} ms of it recording and uploading on the CPU", cpu * 1000.0 / n.max(1) as f64);
         start.elapsed().as_secs_f64() * 1000.0 / n.max(1) as f64
     }
 

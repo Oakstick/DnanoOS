@@ -17,6 +17,8 @@ pub struct Voxel {
     pub y: i32,
     pub z: i32,
     pub c: u32,
+    /// The rig part it was sculpted for (1 is the first `PartDef`), or 0 to cut it by boxes.
+    pub part: u8,
 }
 
 pub struct Collected {
@@ -44,7 +46,7 @@ pub fn collect(model: &VoxelModel) -> Collected {
                     .find(|(k, _)| *k == key)
                     .map(|(_, c)| *c)
                     .unwrap_or_else(|| panic!("voxel palette missing key {key:?}"));
-                voxels.push(Voxel { x: x as i32, y: y as i32, z: z as i32, c });
+                voxels.push(Voxel { x: x as i32, y: y as i32, z: z as i32, c, part: 0 });
             }
         }
     }
@@ -99,7 +101,8 @@ pub fn sprite_from(c: &Collected) -> Sprite {
 /// Inclusive voxel box.
 pub type VoxelBox = ([i32; 3], [i32; 3]);
 
-/// A named, independently rotating part of a model, cut from its voxels by boxes.
+/// A named, independently rotating part of a model, cut from its voxels by boxes
+/// (or claimed by the voxels sculpted for it: see `Sculpt::part`).
 pub struct PartDef {
     pub name: &'static str,
     pub boxes: &'static [VoxelBox],
@@ -142,7 +145,8 @@ pub fn build_rig(c: &Collected, defs: &[PartDef], size: f32) -> Rig {
     let mut buckets: Vec<Vec<Voxel>> = vec![Vec::new(); defs.len()];
     let mut body = Vec::new();
     for v in &c.voxels {
-        match defs.iter().position(|d| d.boxes.iter().any(|b| in_box(v, b))) {
+        let tagged = (v.part as usize).checked_sub(1).filter(|&i| i < defs.len());
+        match tagged.or_else(|| defs.iter().position(|d| d.boxes.iter().any(|b| in_box(v, b)))) {
             Some(i) => buckets[i].push(*v),
             None => body.push(*v),
         }

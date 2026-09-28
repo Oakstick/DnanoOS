@@ -18,10 +18,10 @@ pub(super) const GRAVEYARD: Vec3 = Vec3::new(-160.0, 0.0, -40.0);
 pub(super) const GATEWAY: Vec3 = Vec3::new(-200.0, 0.0, -40.0);
 
 /// Voxel sizes of the cast, in world units.
-pub(super) const KID_VOXEL: f32 = 0.023;
-pub(super) const OLD_MAN_VOXEL: f32 = 0.024;
-pub(super) const DOG_VOXEL: f32 = 0.026;
-pub(super) const KRAMPUS_VOXEL: f32 = 0.03;
+pub(super) const KID_VOXEL: f32 = 0.0115;
+pub(super) const OLD_MAN_VOXEL: f32 = 0.012;
+pub(super) const DOG_VOXEL: f32 = 0.013;
+pub(super) const KRAMPUS_VOXEL: f32 = 0.015;
 
 /// Material shade modes for plain blocks (5 + the material's number).
 const SHADE_METAL: f32 = 6.0;
@@ -108,23 +108,21 @@ fn pivot_of(defs: &[PartDef], name: &str) -> [f32; 3] {
 
 /// Like `emit_rig`, but screen-door faded by `alpha` (a shadow thinning into fog), all plain lit.
 fn emit_rig_faded(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, alpha: f32) {
-    let s = Mat4::from_scale(Vec3::splat(rig.size));
     for (i, part) in rig.parts.iter().enumerate() {
         let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
         for (off, c) in &part.cubes {
-            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, *c, alpha, Vec3::ZERO, SHADE_DITHER));
+            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c, alpha, Vec3::ZERO, SHADE_DITHER));
         }
     }
 }
 
 /// A warrior's soul: the model drawn see-through in glowing spirit light, its colours kept only as shading.
 fn emit_rig_ghost(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32) {
-    let s = Mat4::from_scale(Vec3::splat(rig.size));
     for (i, part) in rig.parts.iter().enumerate() {
         let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
         for (off, c) in &part.cubes {
             let l = c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).sqrt();
-            out.push(Instance::new(pm * Mat4::from_translation(*off) * s, tint * (0.2 + 0.55 * l), alpha, Vec3::ZERO, SHADE_UNLIT));
+            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), tint * (0.2 + 0.55 * l), alpha, Vec3::ZERO, SHADE_UNLIT));
         }
     }
 }
@@ -943,7 +941,8 @@ impl WorldView {
                 // The lantern's glow still catches the boy.
                 f.lights.push(Light { pos: hand + Vec3::new(0.35, 0.1, 0.7), color: lin(0xffc080) * 1.0 * alpha, distance: 1.3 });
                 // The boy in his claws: held round the middle, kicking and flailing.
-                let waist = (Vec3::from(cast::KID_WAIST) - Vec3::new(8.5, 0.0, 6.0)) * KID_VOXEL;
+                let (kw, _, kd) = cast::KID_SIZE;
+                let waist = (Vec3::from(cast::KID_WAIST) - Vec3::new((kw - 1) as f32 / 2.0, 0.0, (kd - 1) as f32 / 2.0)) * KID_VOXEL;
                 let root = Mat4::from_translation(hand) * Mat4::from_rotation_y(yaw + PI * 0.5) * Mat4::from_rotation_z(-1.1 + (time * 9.0).sin() * 0.12) * Mat4::from_translation(-waist);
                 if alpha > 0.5 {
                     self.emit_kid(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO);
@@ -1349,7 +1348,7 @@ impl WorldView {
         pose.rot[tail].y = (time * (4.0 + wag * 6.0)).sin() * (0.15 + wag * 0.5);
         pose.rot[tail].x = -0.5 * strain + 0.6 * calm;
         let forward = Vec3::new(yaw.sin(), 0.0, yaw.cos());
-        let sink = calm * 8.5 * DOG_VOXEL;
+        let sink = calm * 17.0 * DOG_VOXEL;
         let root = Mat4::from_translation(feet + forward * (lunge * 0.1) + Vec3::new(0.0, -sink + breathe * 0.004, 0.0))
             * Mat4::from_rotation_y(yaw)
             * Mat4::from_rotation_x(0.1 * strain + lunge * 0.05);
@@ -1424,7 +1423,8 @@ impl WorldView {
             f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.035)), lin(0xff6a30) * 2.0, eyes, Vec3::ZERO, SHADE_UNLIT));
         }
         let ahead = (root.transform_vector3(Vec3::Z)).normalize_or(Vec3::Z);
-        f.lights.push(Light { pos: mid + ahead * 0.7, color: lin(0xff2a10) * 0.6 * eyes, distance: 1.6 });
+        // Their light falls ahead of him, on what he comes for more than on his own face.
+        f.lights.push(Light { pos: mid + ahead * 1.2 - Vec3::new(0.0, 0.35, 0.0), color: lin(0xff2a10) * 0.6 * eyes, distance: 1.8 });
         rig_point(rig, &pose, root, ar, pivot_of(cast::KRAMPUS_RIG, "armR"), cast::KRAMPUS_HAND)
     }
 
@@ -1433,9 +1433,9 @@ impl WorldView {
     fn emit_soul(&self, f: &mut Frame, kind: crate::logic::heroes::HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
         use crate::logic::heroes::HeroKind;
         let rig = match kind {
-            HeroKind::Ragnar => &self.models.ragnar,
-            HeroKind::Mehmed => &self.models.mehmed,
-            HeroKind::Miyamoto => &self.models.miyamoto,
+            HeroKind::Mehmed => &self.models.souls[0],
+            HeroKind::Ragnar => &self.models.souls[1],
+            HeroKind::Miyamoto => &self.models.souls[2],
         };
         let r = ease_out(rise);
         let hover = (time * 1.6).sin() * 0.035;

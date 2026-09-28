@@ -232,6 +232,14 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
     game.view.emit(&game.scene(), &mut frame);
+    // A story shot sets its own camera as it draws; aim again afterwards so `--view` can frame the cast.
+    if let Some(v) = arg(&args, "--view") {
+        let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
+        if n.len() >= 5 && game.screen == crate::game::Screen::Story {
+            let target = glam::Vec3::new(n[0], n[1], n[2]);
+            game.view.set_closeup_rise(target, n[3].to_radians(), n[4], n.get(5).copied().unwrap_or(0.28));
+        }
+    }
     if iso {
         // Only the lights near Ragnar reach the GPU; lift the ambient so the far corners read.
         let a = &mut frame.atmosphere;
@@ -251,7 +259,8 @@ pub fn run(args: &[String]) -> i32 {
     }
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {
-            eprintln!("wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances", game.screen, game.view.static_cubes.len());
+            let dynamic: usize = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>() + frame.additive.len() + frame.glow.len();
+            eprintln!("wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances, {dynamic} drawn this frame", game.screen, game.view.static_cubes.len());
             0
         }
         Err(e) => {

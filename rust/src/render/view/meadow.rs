@@ -522,13 +522,12 @@ impl WorldView {
         let body_emissive = Vec3::splat(flash * 0.5) + lin(0xff2a2a) * rage + Vec3::splat(if dying > 0.0 && (time * 14.0).sin() > 0.3 { 0.6 * dying } else { 0.0 });
         let tint = if flash > 0.0 { Vec3::ONE.lerp(Vec3::new(1.0, 0.55, 0.55), flash) } else { Vec3::ONE };
         let iris_emissive = lin(BOLT) * glow * 0.9 + body_emissive;
-        let s = Mat4::from_scale(Vec3::splat(rig.size));
         let out = &mut f.opaque[MeshKind::Cube as usize];
         for (i, part) in rig.parts.iter().enumerate() {
             let em = if part.name == "iris" { iris_emissive } else { body_emissive };
             let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
             for (off, c) in &part.cubes {
-                out.push(Instance::new(pm * Mat4::from_translation(*off) * s, *c * tint, 1.0, em, SHADE_LIT));
+                out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c * tint, 1.0, em, SHADE_LIT));
             }
         }
         // Stars circling a dazed head.
