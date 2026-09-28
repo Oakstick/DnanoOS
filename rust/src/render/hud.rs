@@ -13,7 +13,7 @@ use glam::Vec3;
 
 use super::overlay::{rgba, Align, Overlay};
 use super::view::STEP;
-use super::characters::{bog_slime, draugr, raven};
+use super::foes::{bog_slime, draugr, raven};
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen};
 use crate::logic::progression::{self, Tree};

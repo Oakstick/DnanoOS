@@ -148,6 +148,15 @@ impl Sculpt {
     /// Finishes the model: jitters colors a few percent and drops fully enclosed voxels
     /// (a voxel against another part is kept, since that part may swing away from it).
     pub fn finish(self, jitter: f32) -> Collected {
+        self.finish_on(jitter, false)
+    }
+
+    /// Like `finish`, for a model that never leaves the floor: its underside is hidden too.
+    pub fn finish_grounded(self, jitter: f32) -> Collected {
+        self.finish_on(jitter, true)
+    }
+
+    fn finish_on(self, jitter: f32, grounded: bool) -> Collected {
         let mut voxels = Vec::new();
         for y in 0..self.h {
             for z in 0..self.d {
@@ -156,7 +165,9 @@ impl Sculpt {
                     let tag = self.tag_at(x, y, z);
                     let hidden = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
                         .iter()
-                        .all(|(dx, dy, dz)| self.get(x + dx, y + dy, z + dz).is_some() && self.tag_at(x + dx, y + dy, z + dz) == tag);
+                        .all(|(dx, dy, dz)| {
+                            (grounded && y + dy < 0) || (self.get(x + dx, y + dy, z + dz).is_some() && self.tag_at(x + dx, y + dy, z + dz) == tag)
+                        });
                     if hidden {
                         continue;
                     }
@@ -473,190 +484,8 @@ pub mod mat {
     pub const IVORY: u32 = 6 << 24;
     pub const WOOD: u32 = 7 << 24;
     pub const GOLD: u32 = 8 << 24;
-}
-
-// --------------------------------------------------------------------- draugr
-
-/// The draugr: an undead viking, 13 wide, 7 deep, 21 tall.
-pub fn draugr() -> Collected {
-    const BONE: u32 = 0xe2d6bc;
-    const BONE_S: u32 = 0xb4a286;
-    const CAVITY: u32 = 0x1f1a16;
-    const GLOW: u32 = 0x6ff0ff;
-    const RUST: u32 = 0x7a5a42;
-    const RUST_L: u32 = 0x9c7052;
-    const RAG: u32 = 0x3b3744;
-    const HORN: u32 = 0xcdbf98;
-    const BLADE: u32 = 0x8d8a86;
-    let mut s = Sculpt::new(13, 21, 7);
-    // Feet and leg bones with knobbly knees.
-    for x in [4, 8] {
-        s.cuboid(x - 1, 0, 2, x, 0, 4, BONE);
-        for y in 1..=6 {
-            s.set(x, y, 3, BONE);
-        }
-        s.cuboid(x - 1, 3, 3, x, 3, 3, BONE_S);
-    }
-    // Pelvis, spine, and a ribcage of solid bands over a dark hollow.
-    s.cuboid(3, 7, 2, 9, 7, 4, BONE);
-    for y in 8..=14 {
-        s.set(6, y, 2, BONE_S);
-    }
-    s.cuboid(4, 9, 2, 8, 13, 4, CAVITY);
-    for y in [9, 11, 13] {
-        for x in 3..=9 {
-            s.set(x, y, 1, BONE);
-            s.set(x, y, 5, BONE);
-        }
-        for z in 1..=5 {
-            s.set(3, y, z, BONE);
-            s.set(9, y, z, BONE);
-        }
-    }
-    for y in 9..=13 {
-        s.set(6, y, 5, BONE_S); // sternum
-    }
-    // Scraps of rusted mail still clinging on.
-    s.paint(|x, y, z, c| if c == BONE && y >= 9 && y <= 13 && (x * 7 + y * 3 + z) % 5 == 0 { Some(RUST) } else { None });
-    // A tattered cloak on the back, full of holes and ragged at the hem.
-    for y in 5..=13 {
-        for x in 3..=9 {
-            let hole = noise(x, y, 99) < 0.22 || (y < 7 && (x + y) % 2 == 0);
-            if !hole {
-                s.set(x, y, 0, RAG);
-            }
-        }
-    }
-    // Shoulders, arms, clawed hands.
-    s.cuboid(2, 14, 2, 10, 14, 4, BONE);
-    for x in [1, 11] {
-        for y in 7..=13 {
-            s.set(x, y, 3, BONE);
-        }
-        s.cuboid(x, 6, 3, x, 6, 4, BONE_S);
-    }
-    // A notched, rusted blade in the right hand.
-    for y in 1..=5 {
-        s.set(11, y, 4, BLADE);
-    }
-    s.set(11, 2, 4, RUST);
-    s.cuboid(11, 6, 3, 11, 6, 5, RUST_L);
-    // Neck, skull with glowing eyes and a gap-toothed jaw.
-    s.set(6, 15, 3, BONE_S);
-    s.cuboid(4, 16, 1, 8, 19, 5, BONE);
-    s.set(5, 18, 5, GLOW);
-    s.set(7, 18, 5, GLOW);
-    s.set(6, 17, 5, CAVITY);
-    for x in 4..=8 {
-        s.set(x, 16, 5, if x % 2 == 0 { BONE } else { CAVITY });
-    }
-    // Rusted helmet with one broken horn.
-    s.ellipsoid((6.0, 19.0, 3.0), (2.8, 2.2, 2.7), 19, RUST);
-    s.paint(|x, y, z, c| if c == RUST && y == 20 && (x + z) % 2 == 0 { Some(RUST_L) } else { None });
-    for (x, y) in [(3, 19), (2, 20)] {
-        s.set(x, y, 3, HORN);
-    }
-    s.set(9, 19, 3, HORN);
-    s.finish(0.06)
-}
-
-pub const DRAUGR_RIG: &[PartDef] = &[
-    PartDef { name: "leftLeg", boxes: &[([3, 0, 1], [5, 6, 6])], pivot: [4.0, 7.0, 3.0] },
-    PartDef { name: "rightLeg", boxes: &[([7, 0, 1], [9, 6, 6])], pivot: [8.0, 7.0, 3.0] },
-    PartDef { name: "leftArm", boxes: &[([0, 0, 1], [2, 13, 6])], pivot: [1.5, 14.0, 3.0] },
-    PartDef { name: "rightArm", boxes: &[([10, 0, 1], [12, 13, 6])], pivot: [10.5, 14.0, 3.0] },
-    PartDef { name: "head", boxes: &[([1, 15, 0], [11, 20, 6])], pivot: [6.0, 15.0, 3.0] },
-];
-
-// --------------------------------------------------------------------- ravens
-
-/// A raven with its wings spread: 19 wide, 11 deep, 7 tall. `night` is the
-/// larger, red-eyed night raven.
-pub fn raven(night: bool) -> Collected {
-    let (black, sheen, under, eye) =
-        if night { (0x2a1838, 0x5c2f80, 0x1a0f24, 0xff3a3a) } else { (0x1c1e26, 0x33415e, 0x101117, 0xffd23a) };
-    const BEAK: u32 = 0x5f5d58;
-    const BEAK_D: u32 = 0x3b3a37;
-    let mut s = Sculpt::new(19, 7, 11);
-    s.ellipsoid((9.0, 3.0, 5.0), (2.3, 2.1, 3.3), 0, black);
-    s.paint(|_x, y, _z, c| if c == black && y <= 1 { Some(under) } else if c == black && y >= 4 { Some(sheen) } else { None });
-    s.ellipsoid((9.0, 4.0, 8.0), (1.7, 1.6, 1.6), 0, black);
-    s.set(9, 4, 10, BEAK);
-    s.set(9, 3, 10, BEAK_D);
-    s.set(9, 4, 9, BEAK);
-    s.set(8, 5, 9, eye);
-    s.set(10, 5, 9, eye);
-    // Tail fan.
-    s.cuboid(8, 2, 0, 10, 3, 1, black);
-    s.cuboid(7, 3, 0, 11, 3, 0, sheen);
-    // Talons.
-    for x in [8, 10] {
-        s.set(x, 0, 5, BEAK_D);
-    }
-    // Wings: broad at the body, narrowing to fingered primaries at the tips.
-    for i in 0..7 {
-        let z0 = 2 + i / 3;
-        let z1 = 7 - i / 2;
-        let y = 3 + i / 3;
-        for (x, _) in [(6 - i, ()), (12 + i, ())] {
-            for z in z0..=z1 {
-                let c = if z == z1 { sheen } else if i >= 4 && z == z0 { under } else { black };
-                s.set(x, y, z, c);
-            }
-            if i % 2 == 0 && i >= 2 {
-                s.set(x, y, z0 - 1, sheen); // primary feather tips
-            }
-            if i < 2 {
-                s.set(x, y - 1, (z0 + z1) / 2, under);
-            }
-        }
-    }
-    s.finish(0.07)
-}
-
-/// Wings hinge where they meet the body.
-pub const RAVEN_RIG: &[PartDef] = &[
-    PartDef { name: "leftWing", boxes: &[([0, 0, 0], [6, 6, 10])], pivot: [7.0, 3.5, 5.0] },
-    PartDef { name: "rightWing", boxes: &[([12, 0, 0], [18, 6, 10])], pivot: [11.0, 3.5, 5.0] },
-];
-
-// ----------------------------------------------------------------- bog slime
-
-/// A bog slime: a glossy dome with bubbles, big eyes and a gummy grin. 11 x 8 x 11.
-pub fn bog_slime() -> Collected {
-    const GREEN: u32 = 0x3fe05a;
-    const DEEP: u32 = 0x1f8a33;
-    const LIGHT: u32 = 0xa6ffb6;
-    const GLOSS: u32 = 0xeefff0;
-    const BUBBLE: u32 = 0x8cffa0;
-    const WHITE: u32 = 0xf4f4f8;
-    const PUPIL: u32 = 0x14161c;
-    const MOUTH: u32 = 0x2c0e14;
-    let mut s = Sculpt::new(11, 8, 11);
-    s.ellipsoid((5.0, -0.5, 5.0), (5.3, 7.8, 5.3), 0, GREEN);
-    s.paint(|x, y, z, _c| {
-        if y <= 1 {
-            Some(DEEP)
-        } else if y >= 5 && x <= 4 && z <= 5 {
-            Some(LIGHT)
-        } else if noise(x, y, z) < 0.07 {
-            Some(BUBBLE)
-        } else {
-            None
-        }
-    });
-    s.set(3, 6, 4, GLOSS);
-    s.set(4, 6, 3, GLOSS);
-    s.set(4, 7, 4, GLOSS);
-    // Eyes pop out of the front.
-    for x0 in [2, 6] {
-        s.cuboid(x0, 4, 10, x0 + 2, 5, 10, WHITE);
-        s.set(x0 + 1, 4, 10, PUPIL);
-        s.set(x0 + 1, 5, 10, PUPIL);
-    }
-    s.cuboid(4, 2, 9, 6, 2, 10, MOUTH);
-    s.set(5, 2, 10, WHITE);
-    s.finish(0.05)
+    /// Wet, glossy goo.
+    pub const SLIME: u32 = 9 << 24;
 }
 
 // ----------------------------------------------------------------- blacksmith
@@ -733,220 +562,10 @@ pub const BLACKSMITH_RIG: &[PartDef] = &[
     PartDef { name: "head", boxes: &[([3, 15, 0], [13, 22, 11])], pivot: [8.0, 15.0, 6.0] },
 ];
 
-// -------------------------------------------------------------------- cyclops
-
-mod cyc {
-    pub const SKIN: u32 = 0x9a4f86;
-    pub const SKIN_D: u32 = 0x6e3160;
-    pub const SKIN_L: u32 = 0xc987b0;
-    pub const WART: u32 = 0x5a2450;
-    pub const SCLERA: u32 = 0xf4eedc;
-    pub const SCLERA_D: u32 = 0xdcd2b8;
-    pub const VEIN: u32 = 0xd23a3a;
-    pub const IRIS: u32 = 0xffb21e;
-    pub const IRIS_D: u32 = 0xd8641a;
-    pub const PUPIL: u32 = 0x160810;
-    pub const SHINE: u32 = 0xffffff;
-    pub const MAW: u32 = 0x2a0a16;
-    pub const TOOTH: u32 = 0xf2ead0;
-    pub const HORN: u32 = 0xeadfc2;
-    pub const HORN_D: u32 = 0x9c8a66;
-    pub const MEMBRANE: u32 = 0x4e1f47;
-    pub const BONE: u32 = 0x8c5a7e;
-    pub const LASH: u32 = 0x1c0a18;
-}
-
-/// The Cyclops' grid: 45 wide (wings spread), 34 tall (horns), 29 deep.
-pub const CYCLOPS_SIZE: (i32, i32, i32) = (45, 34, 29);
-/// Center of the great eye in its voxel grid; the iris and lids pivot here.
-pub const CYCLOPS_EYE: [f32; 3] = [22.0, 18.0, 15.5];
-const EYE_R: f32 = 9.3;
-
-/**
- * The Cyclops: a round, warty, mauve body that is mostly one enormous eye,
- * a jagged grin under it, curling horns, stubby bat wings and four
- * tentacles dangling beneath. The iris and the lids are separate layers
- * (`cyclops_iris`, `cyclops_lid`) so it can look around and blink.
- */
-pub fn cyclops() -> Collected {
-    use cyc::*;
-    let (w, h, d) = CYCLOPS_SIZE;
-    let [ex, ey, ez] = CYCLOPS_EYE;
-    let mut s = Sculpt::new(w, h, d);
-    // Body.
-    s.ellipsoid((ex, ey, 13.0), (12.0, 11.5, 11.5), 0, SKIN);
-    s.paint(|x, y, z, _| {
-        let n = noise(x, y, z);
-        if (y as f32) < ey - 7.0 {
-            Some(if n < 0.3 { SKIN } else { SKIN_L })
-        } else if n < 0.06 {
-            Some(WART)
-        } else if (y as f32) > ey + 6.0 && (z as f32) < 12.0 {
-            Some(SKIN_D)
-        } else {
-            None
-        }
-    });
-    // The eye bulges out of the front.
-    s.ellipsoid((ex, ey, ez), (EYE_R, EYE_R, EYE_R), 0, SCLERA);
-    s.paint(|x, y, z, c| {
-        if c != SCLERA {
-            return None;
-        }
-        let (dx, dy, dz) = (x as f32 - ex, y as f32 - ey, z as f32 - ez);
-        let r = (dx * dx + dy * dy + dz * dz).sqrt();
-        let front = dz / r.max(0.01);
-        // Bloodshot toward the rim, clean around the iris.
-        if front < 0.8 && noise(x, y, z) < 0.13 {
-            Some(VEIN)
-        } else if front < 0.45 {
-            Some(SCLERA_D)
-        } else {
-            None
-        }
-    });
-    // A jagged grin below the eye.
-    s.paint(|x, y, z, _| {
-        let dx = (x as f32 - ex).abs();
-        if !(6..=9).contains(&y) || dx > 6.5 - (9 - y) as f32 * 0.8 || z < 16 {
-            return None;
-        }
-        let tooth = (y == 9 && x % 2 == 0) || (y == 6 && x % 2 == 1);
-        Some(if tooth { TOOTH } else { MAW })
-    });
-    // Horns, curling up and out.
-    for side in [-1.0f32, 1.0] {
-        for i in 0..9 {
-            let k = i as f32 / 8.0;
-            let cx = ex + side * (6.0 + k * 5.0 + (k * 2.6).sin() * 1.5);
-            let cy = 27.0 + k * 6.0 - k * k * 1.5;
-            let cz = 11.5 + k * 2.5;
-            let r = 1.9 - k * 1.3;
-            let c = if k > 0.7 { HORN_D } else { HORN };
-            s.ellipsoid((cx, cy, cz), (r, r, r), 0, c);
-        }
-    }
-    // Stubby bat wings, flat membranes on bony fingers.
-    for side in [-1i32, 1] {
-        for i in 0..11 {
-            let x = ex as i32 + side * (11 + i);
-            let top = 23 + i / 3;
-            let bottom = 22 - ((10 - i) as f32 * 0.8) as i32 + if i % 4 == 3 { 2 } else { 0 };
-            for y in bottom..=top {
-                let c = if y == top || (i % 4 == 0 && y > bottom) { BONE } else { MEMBRANE };
-                s.set(x, y, 10, c);
-                if i < 4 {
-                    s.set(x, y, 11, c);
-                }
-            }
-        }
-    }
-    // Four tentacles hanging beneath, curling at the tips.
-    for (k, &(tx, tz)) in TENTACLES.iter().enumerate() {
-        for y in 0..6 {
-            let curl = if y < 2 { (2 - y) as f32 * 0.8 * if k % 2 == 0 { 1.0 } else { -1.0 } } else { 0.0 };
-            let r = 1.0 + y as f32 * 0.22;
-            let c = if y % 2 == 0 { SKIN_D } else { SKIN };
-            s.ellipsoid((tx + curl, y as f32, tz), (r, 0.7, r), y, c);
-        }
-    }
-    s.finish(0.06)
-}
-
-const TENTACLES: [(f32, f32); 4] = [(16.0, 9.0), (28.0, 9.0), (18.0, 17.0), (26.0, 17.0)];
-
-/// The iris and slit pupil: a cap sitting just proud of the eye's front.
-pub fn cyclops_iris() -> Collected {
-    use cyc::*;
-    let (w, h, d) = CYCLOPS_SIZE;
-    let [ex, ey, ez] = CYCLOPS_EYE;
-    let mut s = Sculpt::new(w, h, d);
-    for y in 0..h {
-        for z in 0..d {
-            for x in 0..w {
-                let (dx, dy, dz) = (x as f32 - ex, y as f32 - ey, z as f32 - ez);
-                let r = (dx * dx + dy * dy + dz * dz).sqrt();
-                if r <= EYE_R || r > EYE_R + 1.2 || dz <= 0.0 {
-                    continue;
-                }
-                let off = (dx * dx + dy * dy).sqrt();
-                if off > 4.6 {
-                    continue;
-                }
-                let c = if dx.abs() < 0.9 && dy.abs() < 3.6 {
-                    PUPIL
-                } else if off > 3.6 {
-                    IRIS_D
-                } else {
-                    IRIS
-                };
-                s.set(x, y, z, c);
-            }
-        }
-    }
-    s.set(ex as i32 - 2, ey as i32 + 2, (ez + EYE_R + 0.8) as i32, SHINE);
-    s.finish(0.05)
-}
-
-/// An eyelid shell: `top` covers the eye from above, else from below. At rest it is folded back.
-pub fn cyclops_lid(top: bool) -> Collected {
-    use cyc::*;
-    let (w, h, d) = CYCLOPS_SIZE;
-    let [ex, ey, ez] = CYCLOPS_EYE;
-    let mut s = Sculpt::new(w, h, d);
-    for y in 0..h {
-        for z in 0..d {
-            for x in 0..w {
-                let (dx, dy, dz) = (x as f32 - ex, y as f32 - ey, z as f32 - ez);
-                let r = (dx * dx + dy * dy + dz * dz).sqrt();
-                if r <= EYE_R + 1.2 || r > EYE_R + 2.3 || dz <= -2.0 {
-                    continue;
-                }
-                let elev = (dy / r).asin();
-                let edge = if top { 0.62 } else { -0.72 };
-                let inside = if top { elev > edge } else { elev < edge };
-                if !inside {
-                    continue;
-                }
-                let rim = (elev - edge).abs() < 0.12;
-                s.set(x, y, z, if rim { SKIN_L } else if noise(x, y, z) < 0.08 { WART } else { SKIN });
-                if top && rim && dz > 2.0 && x % 2 == 0 {
-                    s.set(x, y - 1, z + 1, LASH);
-                }
-            }
-        }
-    }
-    s.finish(0.05)
-}
-
-/// Wings hinge at the body; tentacles hang from their roots.
-pub const CYCLOPS_RIG: &[PartDef] = &[
-    PartDef { name: "leftWing", boxes: &[([0, 10, 0], [10, 30, 28])], pivot: [10.5, 22.0, 10.5] },
-    PartDef { name: "rightWing", boxes: &[([34, 10, 0], [44, 30, 28])], pivot: [33.5, 22.0, 10.5] },
-    PartDef { name: "tentacle0", boxes: &[([12, 0, 5], [20, 5, 13])], pivot: [16.0, 6.0, 9.0] },
-    PartDef { name: "tentacle1", boxes: &[([24, 0, 5], [32, 5, 13])], pivot: [28.0, 6.0, 9.0] },
-    PartDef { name: "tentacle2", boxes: &[([14, 0, 14], [21, 5, 21])], pivot: [18.0, 6.0, 17.0] },
-    PartDef { name: "tentacle3", boxes: &[([23, 0, 14], [30, 5, 21])], pivot: [26.0, 6.0, 17.0] },
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::render::voxels::build_rig;
-
-    #[test]
-    fn the_cyclops_has_an_eye_that_moves_and_lids_that_blink() {
-        let r = crate::render::voxels::build_layered_rig(
-            &cyclops(),
-            CYCLOPS_RIG,
-            &[("iris", &cyclops_iris(), CYCLOPS_EYE), ("lidTop", &cyclops_lid(true), CYCLOPS_EYE), ("lidBottom", &cyclops_lid(false), CYCLOPS_EYE)],
-            0.07,
-        );
-        for name in ["body", "iris", "lidTop", "lidBottom", "leftWing", "rightWing", "tentacle0", "tentacle3"] {
-            let i = r.index(name).unwrap_or_else(|| panic!("no {name}"));
-            assert!(r.parts[i].cubes.len() > 10, "{name} has {} cubes", r.parts[i].cubes.len());
-        }
-    }
 
     #[test]
     fn every_character_is_sculpted_and_rigged() {
@@ -955,10 +574,6 @@ mod tests {
             (ragnar_geared(3, Some(ShieldKind::Dreadnought)), RAGNAR_RIG),
             (ragnar_geared(2, None), RAGNAR_RIG),
             (blacksmith(), BLACKSMITH_RIG),
-            (draugr(), DRAUGR_RIG),
-            (raven(false), RAVEN_RIG),
-            (raven(true), RAVEN_RIG),
-            (bog_slime(), &[] as &[PartDef]),
         ] {
             assert!(model.voxels.len() > 100, "too few voxels: {}", model.voxels.len());
             let r = build_rig(&model, rig, 0.05);

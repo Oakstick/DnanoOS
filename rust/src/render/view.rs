@@ -9,7 +9,6 @@ use std::f32::consts::{PI, TAU};
 use bytemuck::{Pod, Zeroable};
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
 
-use super::characters;
 use super::voxels::*;
 use crate::logic::enemy::{Enemy, EnemyKind, EnemyMode};
 use crate::logic::grid::Grid;
@@ -113,6 +112,9 @@ const MAX_PARTICLES: usize = 700;
 const TRAUMA_DECAY: f32 = 1.9;
 const SHAKE_DISTANCE: f32 = 0.13;
 pub const FOV_DEGREES: f32 = 50.0;
+/// Past this distance from the camera a foe is drawn from its coarse copy: its fine voxels
+/// would be a pixel or two across there, and a dungeon can hold a dozen foes.
+const FOE_DETAIL_DISTANCE: f32 = 6.0;
 pub const NEAR: f32 = 0.1;
 pub const FAR: f32 = 80.0;
 
@@ -448,6 +450,8 @@ struct Models {
     bat: Rig,
     vampire: Rig,
     slime: Rig,
+    /// The same four at half the resolution, for foes far from the camera.
+    foes_far: [Rig; 4],
     medkit: Mesh,
     bomb: Mesh,
     arrow: Mesh,
@@ -490,15 +494,22 @@ impl Models {
             }
         }
         let ragnar = crate::logic::heroes::HeroKind::Ragnar;
+        use super::foes::{bog_slime, draugr, raven, DRAUGR_RIG, RAVEN_RIG};
+        let skeleton = build_rig(&draugr(), DRAUGR_RIG, 0.0125);
+        let bat = build_rig(&raven(false), RAVEN_RIG, 0.0105);
+        let vampire = build_rig(&raven(true), RAVEN_RIG, 0.0125);
+        let slime = build_rig(&bog_slime(), &[], 0.01875);
+        let foes_far = [skeleton.coarse(), bat.coarse(), vampire.coarse(), slime.coarse()];
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
             hero: forge::hero_model(ragnar, 1, Some(1)),
             hero_key: (ragnar, 1, Some(1)),
             thrown: forge::thrown_model(ragnar, 1),
-            skeleton: build_rig(&characters::draugr(), characters::DRAUGR_RIG, 0.05),
-            bat: build_rig(&characters::raven(false), characters::RAVEN_RIG, 0.042),
-            vampire: build_rig(&characters::raven(true), characters::RAVEN_RIG, 0.05),
-            slime: build_rig(&characters::bog_slime(), &[], 0.075),
+            skeleton,
+            bat,
+            vampire,
+            slime,
+            foes_far,
             medkit: super::props::medkit(),
             bomb: super::props::bomb(),
             arrow: super::props::arrow(),
@@ -510,16 +521,15 @@ impl Models {
             key: gate::golden_key(),
             pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
-            cyclops: build_layered_rig(
-                &characters::cyclops(),
-                characters::CYCLOPS_RIG,
-                &[
-                    ("iris", &characters::cyclops_iris(), characters::CYCLOPS_EYE),
-                    ("lidTop", &characters::cyclops_lid(true), characters::CYCLOPS_EYE),
-                    ("lidBottom", &characters::cyclops_lid(false), characters::CYCLOPS_EYE),
-                ],
-                0.07,
-            ),
+            cyclops: {
+                use super::foes::{cyclops, cyclops_iris, cyclops_lid, CYCLOPS_EYE, CYCLOPS_RIG, CYCLOPS_VOXEL};
+                build_layered_rig(
+                    &cyclops(),
+                    CYCLOPS_RIG,
+                    &[("iris", &cyclops_iris(), CYCLOPS_EYE), ("lid", &cyclops_lid(), CYCLOPS_EYE)],
+                    CYCLOPS_VOXEL,
+                )
+            },
             boulder: build_rig(&meadow::boulder(), &[], 0.09),
             mehmed: forge::hero_model(crate::logic::heroes::HeroKind::Mehmed, 1, Some(1)),
             miyamoto: forge::hero_model(crate::logic::heroes::HeroKind::Miyamoto, 1, Some(1)),
@@ -538,6 +548,14 @@ impl Models {
             RigId::Vampire => &self.vampire,
             RigId::Slime => &self.slime,
         }
+    }
+
+    /// A foe as it is drawn from `distance` away: in full detail near the camera, coarser far off.
+    fn foe_at(&self, id: RigId, distance: f32) -> &Rig {
+        if distance < FOE_DETAIL_DISTANCE {
+            return self.rig(id);
+        }
+        &self.foes_far[id as usize]
     }
 }
 
@@ -855,6 +873,11 @@ impl WorldView {
 
         self.static_dirty = true;
         self.initialized = false;
+    }
+
+    /// Drops every enemy's view (the capture's line-up of foes replaces them).
+    pub fn clear_enemies(&mut self) {
+        self.enemy_views.clear();
     }
 
     /// Adds a view for an enemy; call again for enemies that arrive mid-level. Order must match the game's list.
@@ -1854,10 +1877,19 @@ impl WorldView {
             let group = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw);
             if v.visible {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
-                emit_rig(&mut f.opaque[cube], self.models.rig(v.rig), &v.pose, root, v.mat_color, 1.0, v.emissive);
+                let rig = self.models.foe_at(v.rig, v.group_pos.distance(self.cam_pos));
+                emit_rig(&mut f.opaque[cube], rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
             }
             if v.light_intensity > 0.0 {
-                f.lights.push(Light { pos: v.group_pos + Vec3::new(0.0, 0.6, 0.0), color: v.light_color * v.light_intensity, distance: 4.0 });
+                // Inside the body, so it lights the ground round the foe and not the foe; a draugr's is low,
+                // under his open ribs.
+                let lift = match v.kind {
+                    EnemyKind::Skeleton => 0.2,
+                    EnemyKind::Bat => 0.13,
+                    EnemyKind::Vampire => 0.16,
+                    EnemyKind::Slime => 0.3,
+                };
+                f.lights.push(Light { pos: v.group_pos + Vec3::new(0.0, lift, 0.0), color: v.light_color * v.light_intensity, distance: 4.0 });
             }
             if s.enemies[i].is_confused() && v.visible {
                 for k in 0..3 {

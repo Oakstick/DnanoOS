@@ -2886,6 +2886,23 @@ impl Game {
     }
 
     /// Test and capture hook: an enemy's touch.
+    /// Capture hook: `rows` rows of one of each foe standing a few tiles before the hero, facing him.
+    pub fn debug_foes(&mut self, rows: usize) {
+        let specs = default_enemy_specs(&self.level.grid);
+        let p = self.hero.occupied();
+        self.enemies.clear();
+        self.view.clear_enemies();
+        for (i, kind) in [EnemyKind::Skeleton, EnemyKind::Bat, EnemyKind::Vampire, EnemyKind::Slime].repeat(rows.max(1)).into_iter().enumerate() {
+            let Some(spec) = specs.iter().find(|s| s.kind == kind) else { continue };
+            let (col, row) = ((i % 4) as i32, (i / 4) as i32);
+            let mut e = Enemy::new(spec, P::new(p.x - 3 + col * 2, p.y - 2 - row * 2), self.level.data.enemy_speed);
+            e.b.mode = EnemyMode::Chase;
+            e.m.dir = Dir::Down;
+            self.view.add_enemy(&e);
+            self.enemies.push(e);
+        }
+    }
+
     /// A fresh slime trail along the tiles around Ragnar, for screenshots.
     pub fn debug_goo(&mut self) {
         let p = self.hero.occupied();

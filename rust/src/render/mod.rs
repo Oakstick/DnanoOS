@@ -4,6 +4,7 @@ pub mod armory;
 mod carve;
 pub mod cast;
 pub mod characters;
+pub mod foes;
 pub mod gpu;
 pub mod heroes;
 pub mod hud;

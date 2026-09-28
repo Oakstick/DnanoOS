@@ -509,11 +509,8 @@ impl WorldView {
         let blink_t = (time * 0.31 + 0.2).fract();
         let blink = if blink_t < 0.04 { (blink_t / 0.04 * PI).sin() } else { 0.0 };
         let shut = (b.squint() as f32).max(blink);
-        if let Some(i) = rig.index("lidTop") {
-            pose.rot[i].x = 1.05 * shut;
-        }
-        if let Some(i) = rig.index("lidBottom") {
-            pose.rot[i].x = -0.55 * shut;
+        if let Some(i) = rig.index("lid") {
+            pose.rot[i].x = 1.2 * shut;
         }
 
         let flash = b.flash as f32;
@@ -521,13 +518,15 @@ impl WorldView {
         let rage = if b.phase() >= 3 { 0.1 + (time * 6.0).sin().abs() * 0.1 } else { 0.0 };
         let body_emissive = Vec3::splat(flash * 0.5) + lin(0xff2a2a) * rage + Vec3::splat(if dying > 0.0 && (time * 14.0).sin() > 0.3 { 0.6 * dying } else { 0.0 });
         let tint = if flash > 0.0 { Vec3::ONE.lerp(Vec3::new(1.0, 0.55, 0.55), flash) } else { Vec3::ONE };
-        let iris_emissive = lin(BOLT) * glow * 0.9 + body_emissive;
+        // The iris smoulders even at rest, so the eye reads with the light behind it.
+        let iris_emissive = lin(0xffb21e) * 0.04 + lin(BOLT) * glow * 0.9 + body_emissive;
         let out = &mut f.opaque[MeshKind::Cube as usize];
         for (i, part) in rig.parts.iter().enumerate() {
             let em = if part.name == "iris" { iris_emissive } else { body_emissive };
             let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-            for (off, c) in &part.cubes {
-                out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c * tint, 1.0, em, SHADE_LIT));
+            for (j, (off, c)) in part.cubes.iter().enumerate() {
+                let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
+                out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c * tint, 1.0, em, shade));
             }
         }
         // Stars circling a dazed head.
@@ -597,7 +596,7 @@ impl WorldView {
 /// Seconds a slam's dust ring takes to spread and fade.
 const RING_SECONDS: f32 = 0.55;
 /// Height of the eye's center above the model root, world units.
-const CYCLOPS_EYE_Y: f32 = 18.0 * 0.07;
+const CYCLOPS_EYE_Y: f32 = crate::render::foes::CYCLOPS_EYE[1] * crate::render::foes::CYCLOPS_VOXEL;
 
 /// A rough grey boulder for the Cyclops to throw.
 pub fn boulder() -> crate::render::voxels::Collected {
