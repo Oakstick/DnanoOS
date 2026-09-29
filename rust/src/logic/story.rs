@@ -7,8 +7,8 @@
 //! the underworld, where an old gatekeeper and his dog Quitmer keep an iron
 //! door. The two of them slept while Krampus slipped past; out of guilt the
 //! old man lends the boys the souls of three great warriors (Ragnar the
-//! viking, Mehmed the janissary and Miyamoto the samurai) and promises they
-//! can always call him for help. From there the road only goes down, depth
+//! viking, Mehmed the janissary and Miyamoto the samurai), swears to ask the
+//! archangels to send them help, and promises to come whenever they call. From there the road only goes down, depth
 //! by depth, to Satan himself: Krampus is his son.
 
 /// Who says a line.
@@ -128,12 +128,14 @@ const GRAVEYARD: Card = Card { title: "THE OLD GRAVEYARD", sub: "Dusk" };
 const GATEWAY: Card = Card { title: "THE DUNGEON GATEWAY", sub: "The threshold of the underworld" };
 
 /// The line in which the old man names the three warriors, whose souls rise as he does.
-pub const SOULS_LINE: &str = "You can borrow the souls of the 3 great warriors: Ragnar (the Viking), Mehmed (the Janissary), and Miyamoto (the Samurai).";
-/// His promise, made out of guilt: the help that goes with the boys all the way down.
-pub const PROMISE_LINE: &str = "Ok then. I feel a great adventure starting... I feel guilty about this, so you can always call me for help.";
+pub const SOULS_LINE: &str =
+    "Then you will not go alone. Rise, old souls... Ragnar (the Viking)... Mehmed (the Janissary)... Miyamoto (the Samurai). Will you carry them?";
+/// His promise, made out of guilt: the archangels' help (their shrines in every dungeon), and his own.
+pub const PROMISE_LINE: &str =
+    "So it begins... This is my failure, and I feel the guilt of it. I will ask the archangels to send you help. And call me whenever you need - I will come.";
 /// The last words: the road down to Satan, and why.
 pub const ROUTE_LINE: &str =
-    "The boys take up the warrior souls and begin their journey down into the depths of the underworld, tracking their stolen friend straight to Satan - since Krampus is his son.";
+    "The boys took up the warrior souls and went down into the dark, depth by depth, after their stolen friend. The trail led to Satan himself... for Krampus is his son.";
 
 /// Scene I, "The Threshold", beat by beat.
 pub const SCENE_ONE: &[Beat] = &[
@@ -141,25 +143,25 @@ pub const SCENE_ONE: &[Beat] = &[
     // EXT. GRAVEYARD - DUSK
     Beat::action(Shot::Establish, 7.4, Some(GRAVEYARD)),
     Beat::action(Shot::Taken, 4.6, None),
-    Beat::say(Shot::Scream, Speaker::Boys, "screaming", "He took him!"),
+    Beat::say(Shot::Scream, Speaker::Boys, "screaming", "NO! He took him! LET HIM GO!"),
     Beat::action(Shot::Pursuit, 3.4, None),
     // INT. DUNGEON GATEWAY - CONTINUOUS
     Beat::action(Shot::Arrive, 5.6, Some(GATEWAY)),
-    Beat::say(Shot::Snarl, Speaker::Dog, "snarls viciously", "Grrrrr... RRRAHH!"),
-    Beat::say(Shot::Easy, Speaker::OldMan, "", "Easy, Quitmer."),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "turning to the boys", "Why are you here? You cannot be here."),
-    Beat::say(Shot::Boys, Speaker::Boys, "", "A creature stole our friend."),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "", "Ah... Krampus. I must have fallen asleep. He is too sneaky."),
-    Beat::say(Shot::Boys, Speaker::Boys, "", "We need to get our friend back."),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "", "This is the world of death. You cannot enter."),
-    Beat::say(Shot::Boys, Speaker::Boys, "", "Why did you let Krampus out?"),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "", "My dog and I fell asleep."),
-    Beat::say(Shot::Boys, Speaker::Boys, "", "We need our friend back. There has to be a way."),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "", "There is only one way. But if you die here, you cannot return."),
-    Beat::say(Shot::Boys, Speaker::Boys, "", "We will do anything for our friend."),
+    Beat::say(Shot::Snarl, Speaker::Dog, "snarls viciously", "GRRRRR... RRRAAAHH!"),
+    Beat::say(Shot::Easy, Speaker::OldMan, "hoarsely", "Easy, Quitmer... easy. Down, old friend."),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "turning to the boys", "Living children... at my door? No. No, no. You cannot be here. Nothing warm passes this gate."),
+    Beat::say(Shot::Boys, Speaker::Boys, "breathless", "A monster came out of the fog - horns, chains, bells... It dragged our friend into the graves!"),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "", "Horns and bells... Krampus. So he slipped past me. I closed my eyes for one moment... one moment."),
+    Beat::say(Shot::Boys, Speaker::Boys, "", "Then help us! We have to get him back!"),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "", "Beyond this door lies the world of the dead. The living do not walk there... not for long."),
+    Beat::say(Shot::Boys, Speaker::Boys, "angrily", "You were supposed to guard it! How could you let him out?"),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "looking away", "Quitmer and I have kept this door a thousand years... and tonight, of all nights, we slept."),
+    Beat::say(Shot::Boys, Speaker::Boys, "", "We are not going home without him. There has to be a way!"),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "gravely", "There is one way. Only one. But hear me: die down there, and you will never see the sun again."),
+    Beat::say(Shot::Boys, Speaker::Boys, "", "Then we will not die. Whatever it takes - we are going."),
     Beat::say(Shot::Souls, Speaker::OldMan, "", SOULS_LINE),
-    Beat::say(Shot::Boys, Speaker::Boys, "", "We do."),
-    Beat::say(Shot::Promise, Speaker::OldMan, "", PROMISE_LINE),
+    Beat::say(Shot::Boys, Speaker::Boys, "", "We will. For our friend."),
+    Beat::say(Shot::Promise, Speaker::OldMan, "heavily", PROMISE_LINE),
     Beat::say(Shot::Descent, Speaker::Narrator, "", ROUTE_LINE),
 ];
 
@@ -295,8 +297,9 @@ mod tests {
     fn the_old_man_promises_help_and_the_road_leads_down_to_satan() {
         let promise = SCENE_ONE[first(Shot::Promise).unwrap()];
         assert_eq!(promise.speaker, Speaker::OldMan);
-        assert!(promise.line.contains("you can always call me for help"));
-        assert!(promise.line.contains("guilty"));
+        assert!(promise.line.contains("call me"));
+        assert!(promise.line.contains("guilt"));
+        assert!(promise.line.contains("I will ask the archangels to send you help"));
         let last = SCENE_ONE.last().unwrap();
         assert_eq!(last.shot, Shot::Descent);
         assert!(last.line.contains("Satan") && last.line.contains("Krampus is his son"));
