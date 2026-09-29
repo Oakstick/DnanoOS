@@ -88,6 +88,35 @@ const HITSTOP_KILL: f64 = 0.05;
 const STREAK_SECONDS: f64 = 2.5;
 /// Every third kill in a streak is BRUTAL: a big shake and double points for a while.
 pub const BRUTAL_STREAK: u32 = 3;
+
+/**
+ * What a streak is called, tier by tier: at 3 kills, 6, 9, and 12 or more.
+ * Each call picks one of its tier's words (never the one just shouted), so a
+ * long fight does not keep saying BRUTAL; at the top, the hero's own war cry
+ * joins them.
+ */
+pub const STREAK_CALLS: [&[&str]; 4] = [
+    &["BRUTAL!", "SAVAGE!", "RUTHLESS!", "VICIOUS!", "BLOODY!"],
+    &["MERCILESS!", "FEROCIOUS!", "BLOODBATH!", "RELENTLESS!"],
+    &["RAMPAGE!", "MASSACRE!", "UNSTOPPABLE!", "CARNAGE!"],
+    &["GODLIKE!", "LEGENDARY!", "ANNIHILATION!"],
+];
+/// Each tier's colour: red, then orange, violet and gold.
+const STREAK_COLORS: [u32; 4] = [0xff3a2a, 0xff7a1a, 0xc04aff, 0xffd23a];
+
+/// The streak's tier: 0 at 3 kills, 1 at 6, 2 at 9, 3 from 12 on.
+pub fn streak_tier(streak: u32) -> usize {
+    ((streak / BRUTAL_STREAK).saturating_sub(1) as usize).min(STREAK_CALLS.len() - 1)
+}
+
+/// A hero's own cry, added to the top tier's words.
+fn war_cry(hero: HeroKind) -> &'static str {
+    match hero {
+        HeroKind::Ragnar => "BERSERKER!",
+        HeroKind::Mehmed => "FURY OF THE SULTAN!",
+        HeroKind::Miyamoto => "WAY OF THE SWORD!",
+    }
+}
 pub const DOUBLE_POINTS_SECONDS: f64 = 10.0;
 /// Tiles walked between footsteps.
 const STRIDE_TILES: f64 = 0.5;
@@ -301,6 +330,8 @@ pub struct Game {
     /// Seconds of freeze-frame left.
     hitstop: f64,
     kill_streak: u32,
+    /// The last streak call shouted, so the next is another.
+    last_call: &'static str,
     streak_timer: f64,
     step_dist: f64,
     was_airborne: bool,
@@ -427,6 +458,7 @@ impl Game {
             juice: Juice::default(),
             hitstop: 0.0,
             kill_streak: 0,
+            last_call: "",
             streak_timer: 0.0,
             step_dist: 0.0,
             was_airborne: false,
@@ -2497,20 +2529,30 @@ impl Game {
      * the world holds for a beat, and every point is doubled for a while.
      */
     fn brutal(&mut self) {
+        let tier = streak_tier(self.kill_streak);
+        let mut calls: Vec<&'static str> = STREAK_CALLS[tier].to_vec();
+        if tier == STREAK_CALLS.len() - 1 {
+            calls.push(war_cry(self.hero_kind));
+        }
+        calls.retain(|&c| c != self.last_call);
+        let call = self.rng.pick(&calls);
+        self.last_call = call;
+        let color = STREAK_COLORS[tier];
         self.double_points = DOUBLE_POINTS_SECONDS;
-        self.view.shake(0.85);
-        self.hitstop = 0.14;
+        // The longer the streak, the harder the jolt and the longer the world holds.
+        self.view.shake(0.85 + 0.1 * tier as f32);
+        self.hitstop = 0.14 + 0.02 * tier as f64;
         self.juice.brutal = 1.0;
-        self.audio.play(Sfx::Brutal);
+        self.audio.play_brutal(tier as u32);
         self.juice.banner = Some(Banner {
-            text: "BRUTAL!".into(),
+            text: call.into(),
             sub: format!("x{} KILL STREAK   DOUBLE POINTS FOR {} SECONDS", self.kill_streak, DOUBLE_POINTS_SECONDS as u32),
-            color: 0xff3a2a,
-            life: 2.2,
-            max: 2.2,
+            color,
+            life: 2.2 + 0.2 * tier as f32,
+            max: 2.2 + 0.2 * tier as f32,
         });
         let hp = self.hero.pos();
-        self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.8, 0xff5a3a, 30);
+        self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.8 + 0.1 * tier as f32, color, 30 + 10 * tier);
     }
 
     /// Silver in the purse, and the counter jumps.
@@ -4122,12 +4164,40 @@ mod tests {
         assert_eq!(g.double_points, 0.0);
         g.slay_enemy(2);
         assert!(g.double_points > 0.0, "no BRUTAL on the third kill");
-        assert_eq!(g.juice.banner.as_ref().map(|b| b.text.as_str()), Some("BRUTAL!"));
+        let call = g.juice.banner.as_ref().map(|b| b.text.clone()).unwrap();
+        assert!(STREAK_CALLS[0].contains(&call.as_str()), "{call} is one of the first tier's calls");
         // The third kill already counts double: 100 + 100 + 200.
         assert_eq!(g.score.score - before, 400);
         let mid = g.score.score;
         g.debug_collect_key();
         assert_eq!(g.score.score - mid, POINTS_NODULE * 2, "nuggets count double too");
+    }
+
+    #[test]
+    fn streak_calls_vary_and_grow_fiercer_as_the_streak_goes_on() {
+        assert_eq!((streak_tier(3), streak_tier(6), streak_tier(9), streak_tier(12), streak_tier(30)), (0, 1, 2, 3, 3));
+        let mut g = playing();
+        let mut heard = Vec::new();
+        for _ in 0..40 {
+            g.kill_streak = 3;
+            g.brutal();
+            heard.push(g.juice.banner.as_ref().unwrap().text.clone());
+        }
+        assert!(heard.windows(2).all(|w| w[0] != w[1]), "never the same call twice running");
+        let mut kinds = heard.clone();
+        kinds.sort();
+        kinds.dedup();
+        assert!(kinds.len() >= 3, "more than one word: {kinds:?}");
+        // A long streak calls from the top tier, where the hero's war cry is heard too.
+        let mut cried = false;
+        for _ in 0..60 {
+            g.kill_streak = 12;
+            g.brutal();
+            let call = g.juice.banner.as_ref().unwrap().text.clone();
+            assert!(STREAK_CALLS[3].contains(&call.as_str()) || call == war_cry(g.hero_kind), "{call}");
+            cried |= call == war_cry(g.hero_kind);
+        }
+        assert!(cried, "the hero's own cry comes up");
     }
 
     #[test]

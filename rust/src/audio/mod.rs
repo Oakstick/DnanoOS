@@ -377,6 +377,22 @@ impl AudioManager {
         });
     }
 
+    /**
+     * A kill streak's sting, fiercer with each tier: the horn stab climbs a
+     * minor third, a fourth and a fifth up, and from the third tier a crash of
+     * cymbals and a second, higher horn join it.
+     */
+    pub fn play_brutal(&mut self, tier: u32) {
+        let offset = self.rng.next() * 2.0;
+        self.with(|s| {
+            let t = s.now;
+            s.var_pitch = [1.0, 2f64.powf(3.0 / 12.0), 2f64.powf(5.0 / 12.0), 2f64.powf(7.0 / 12.0)][tier.min(3) as usize];
+            s.var_gain = 1.0;
+            brutal(s, t, offset, tier);
+            s.var_pitch = 1.0;
+        });
+    }
+
     pub fn play(&mut self, sfx: Sfx) {
         if sfx == Sfx::Nodule {
             self.pickup_pitch = (self.pickup_pitch + 1) % 2;
@@ -545,22 +561,7 @@ impl AudioManager {
                     );
                     sweep(s, t, 180.0, 90.0, 0.5, Wave::Sine, 0.08);
                 }
-                Sfx::Brutal => {
-                    // A crushing impact, a war-horn stab and a gong-like ring.
-                    sweep(s, t, 110.0, 30.0, 0.7, Wave::Sine, 0.6);
-                    s.push(
-                        Voice::new(t, t + 0.5, Wave::Noise { rate: 0.6, offset }, Env::constant(1.0), Env::ramp(t, 0.45, 0.001, 0.45), Bus::Sfx)
-                            .filtered(synth::FilterKind::Lowpass, 700.0, 1.0),
-                    );
-                    for (i, f) in [146.83, 220.0, 293.66].into_iter().enumerate() {
-                        let gain = Env::points(vec![(t + 0.05, 0.0001), (t + 0.12, 0.09), (t + 0.7, 0.05), (t + 1.2, 0.001)]);
-                        s.push(Voice::new(t + 0.05, t + 1.25, Wave::Saw, Env::constant(f * (1.0 + i as f64 * 0.002)), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 1400.0, 1.5));
-                    }
-                    for (f, g) in [(523.0, 0.06), (523.0 * 2.76, 0.03), (523.0 * 5.4, 0.015)] {
-                        let gain = Env::points(vec![(t + 0.05, 0.0001), (t + 0.07, g), (t + 1.5, 0.0005)]);
-                        s.push(Voice::new(t + 0.05, t + 1.55, Wave::Sine, Env::constant(f), gain, Bus::Sfx));
-                    }
-                }
+                Sfx::Brutal => brutal(s, t, offset, 0),
                 Sfx::Zap => {
                     s.push(
                         Voice::new(t, t + 0.22, Wave::Noise { rate: 2.0, offset }, Env::constant(1.0), Env::ramp(t, 0.2 * vg, 0.001, 0.2), Bus::Sfx)
@@ -848,6 +849,43 @@ impl AudioManager {
     }
 }
 
+/// The streak sting (see `play_brutal`); `s.var_pitch` carries the tier's key.
+fn brutal(s: &mut Synth, t: f64, offset: f64, tier: u32) {
+    let (vp, vg) = (s.var_pitch, s.var_gain);
+    // A crushing impact, a war-horn stab and a gong-like ring.
+    sweep(s, t, 110.0, 30.0, 0.7, Wave::Sine, 0.6);
+    s.push(
+        Voice::new(t, t + 0.5, Wave::Noise { rate: 0.6, offset }, Env::constant(1.0), Env::ramp(t, 0.45 * vg, 0.001, 0.45), Bus::Sfx)
+            .filtered(synth::FilterKind::Lowpass, 700.0, 1.0),
+    );
+    for (i, f) in [146.83, 220.0, 293.66].into_iter().enumerate() {
+        let gain = Env::points(vec![(t + 0.05, 0.0001), (t + 0.12, 0.09), (t + 0.7, 0.05), (t + 1.2, 0.001)]);
+        s.push(Voice::new(t + 0.05, t + 1.25, Wave::Saw, Env::constant(f * vp * (1.0 + i as f64 * 0.002)), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 1400.0, 1.5));
+    }
+    for (f, g) in [(523.0, 0.06), (523.0 * 2.76, 0.03), (523.0 * 5.4, 0.015)] {
+        let gain = Env::points(vec![(t + 0.05, 0.0001), (t + 0.07, g), (t + 1.5, 0.0005)]);
+        s.push(Voice::new(t + 0.05, t + 1.55, Wave::Sine, Env::constant(f * vp), gain, Bus::Sfx));
+    }
+    if tier >= 2 {
+        // A crash of cymbals over it, and a second horn an octave up.
+        s.push(
+            Voice::new(t + 0.04, t + 1.1, Wave::Noise { rate: 1.9, offset: offset + 0.4 }, Env::constant(1.0), Env::ramp(t + 0.04, 0.2 * vg, 0.001, 1.0), Bus::Sfx)
+                .filtered(synth::FilterKind::Highpass, 3800.0, 0.7),
+        );
+        for f in [293.66, 440.0] {
+            let gain = Env::points(vec![(t + 0.1, 0.0001), (t + 0.16, 0.05), (t + 0.8, 0.03), (t + 1.3, 0.001)]);
+            s.push(Voice::new(t + 0.1, t + 1.35, Wave::Saw, Env::constant(f * 2.0 * vp), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 2200.0, 1.5));
+        }
+    }
+    if tier >= 3 {
+        // At the top, a war drum rolls in under it.
+        for k in 0..4 {
+            let at = t + 0.3 + k as f64 * 0.13;
+            s.push(Voice::new(at, at + 0.3, Wave::Sine, Env::ramp(at, 120.0, 45.0, 0.25), Env::ramp(at, 0.35 * vg, 0.001, 0.28), Bus::Sfx));
+        }
+    }
+}
+
 /**
  * A monster's bellow: a stack of detuned saws sliding down under a growl of
  * filtered noise, with a slow wobble. `pitch` lowers it (larger is deeper
@@ -1032,6 +1070,10 @@ mod tests {
         for sfx in all {
             a.play(sfx);
             render(&format!("{sfx:?}"));
+        }
+        for tier in 0..4 {
+            a.play_brutal(tier);
+            render(&format!("streak sting {tier}"));
         }
         for voice in [Speech::Child, Speech::Old, Speech::Beast, Speech::Narrator] {
             a.play_voice(voice);
