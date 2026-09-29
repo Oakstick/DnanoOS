@@ -23,7 +23,7 @@ pub use tour::{Tour, TourArt, TourStop, TOUR_STOP_SECONDS};
 use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
 use crate::logic::boss::{BossEvent, BossShot, Cyclops, ShotKind, BODY_RADIUS, CONTACT_RADIUS, CYCLOPS_HP, CYCLOPS_HP_STEP, POINTS_CYCLOPS};
-use crate::logic::enemy::{default_enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView};
+use crate::logic::enemy::{enemy_specs, Enemy, EnemyContext, EnemyKind, EnemyMode, GlobalMode, HeroView, WITCH_CAST_EVERY, WITCH_CAST_RANGE};
 use crate::logic::gear::{self, ShieldGear, BELT_SLOTS, COINS_BOSS, COINS_KEY, COINS_KILL, RUNES_BOSS, RUNES_SHRINE, RUNE_DROP};
 use crate::logic::heroes::HeroKind;
 use crate::logic::progression::{self, path, Progress, Tree};
@@ -71,6 +71,10 @@ const MAX_ENEMIES: usize = 12;
 /// Every key raises the cap on foes by this many.
 const MAX_ENEMIES_PER_KEY: usize = 2;
 const SPAWN_CYCLE: [EnemyKind; 4] = [EnemyKind::Bat, EnemyKind::Slime, EnemyKind::Vampire, EnemyKind::Skeleton];
+/// The realms' reinforcements (the witches bring their own minions).
+const SPAWN_CYCLE_TWO: [EnemyKind; 5] = [EnemyKind::LargeBat, EnemyKind::Helmeted, EnemyKind::Werewolf, EnemyKind::Witch, EnemyKind::Blemmyes];
+/// Seconds a wounded foe staggers, harmless, before it comes on again.
+const WOUND_STAGGER: f64 = 0.8;
 /// The music quickens one step for every this many keys.
 pub const KEYS_PER_TEMPO_STEP: u32 = 2;
 /// Seconds the gate's doors take to swing open.
@@ -601,7 +605,7 @@ impl Game {
         self.equip_from_progress();
         // No foes in a boss arena (but the boss), nor in the Portals of Hell.
         let hell = self.level.data.theme == crate::logic::level::Theme::Hell;
-        let specs = if self.level.data.boss || hell { Vec::new() } else { default_enemy_specs(&self.level.grid) };
+        let specs = if self.level.data.boss || hell { Vec::new() } else { enemy_specs(&self.level.grid, if index == 0 { 1 } else { 2 }) };
         self.enemies = specs
             .iter()
             .enumerate()
@@ -693,7 +697,7 @@ impl Game {
         for (i, e) in self.enemies.iter_mut().enumerate() {
             match graves.get(i % graves.len().max(1)) {
                 // Draugr climb out of the churchyard rather than the hollow.
-                Some(&g) if e.kind() == EnemyKind::Skeleton => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
+                Some(&g) if e.kind().reassembles() => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
                 _ => e.reset(self.nest_slots.get(i).copied().unwrap_or(center)),
             }
         }
@@ -1337,6 +1341,7 @@ impl Game {
             };
             self.enemies[i].update(dt, &mut ctx);
         }
+        self.update_witches(dt);
         self.update_spawns(dt);
         self.update_slime_trails(dt);
 
@@ -1345,6 +1350,45 @@ impl Game {
             return;
         }
         self.update_effects(dt);
+    }
+
+    /// Which cast haunts this level: the Garden's (1), or the realms' (2).
+    fn foe_stage(&self) -> u8 {
+        if self.dungeon == 0 {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// A witch on the hunt cackles now and then and conjures a minion at her feet.
+    fn update_witches(&mut self, dt: f64) {
+        let hp = self.hero.pos();
+        let cap = self.max_enemies() + 2;
+        for i in 0..self.enemies.len() {
+            let e = &mut self.enemies[i];
+            if e.kind() != EnemyKind::Witch || !e.is_dangerous() {
+                continue;
+            }
+            e.b.cast -= dt;
+            if e.b.cast > 0.0 || dist_sq(e.pos(), hp) > WITCH_CAST_RANGE * WITCH_CAST_RANGE {
+                continue;
+            }
+            e.b.cast = WITCH_CAST_EVERY;
+            if self.enemies.len() >= cap {
+                continue;
+            }
+            let at = self.enemies[i].occupied();
+            let spec = enemy_specs(&self.level.grid, 2).into_iter().find(|s| s.kind == EnemyKind::Minion).unwrap();
+            let mut minion = Enemy::new(&spec, at, self.level.data.enemy_speed);
+            minion.b.mode = EnemyMode::Chase;
+            minion.b.name = format!("{}'s minion", self.enemies[i].b.name);
+            self.view.add_enemy(&minion);
+            self.enemies.push(minion);
+            self.audio.play(Sfx::Cackle);
+            self.view.sparkle(&self.level.grid, at.x as f64, at.y as f64, 0.8, 0xb066ff, 24);
+            self.floater(at.x as f64, at.y as f64 - 1.0, "HEE HEE HEE!", 1.4, Some(0xd08cff));
+        }
     }
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
@@ -1357,13 +1401,15 @@ impl Game {
             return;
         }
         self.spawn_timer = self.spawn_every();
-        let kind = SPAWN_CYCLE[self.spawned % SPAWN_CYCLE.len()];
-        let mut spec = default_enemy_specs(&self.level.grid).into_iter().find(|s| s.kind == kind).unwrap();
+        let stage = self.foe_stage();
+        let cycle: &[EnemyKind] = if stage == 1 { &SPAWN_CYCLE } else { &SPAWN_CYCLE_TWO };
+        let kind = cycle[self.spawned % cycle.len()];
+        let mut spec = enemy_specs(&self.level.grid, stage).into_iter().find(|s| s.kind == kind).unwrap();
         spec.exit_delay = 0.5;
-        spec.name = format!("{} {}", spec.name, self.spawned / SPAWN_CYCLE.len() + 2);
+        spec.name = format!("{} {}", spec.name, self.spawned / cycle.len() + 2);
         let graves = self.grave_spawns();
         let mut enemy = Enemy::new(&spec, self.level.nest_center, self.level.data.enemy_speed);
-        let risen = if kind == EnemyKind::Skeleton && !graves.is_empty() {
+        let risen = if kind.reassembles() && !graves.is_empty() {
             // A draugr claws its way up out of a grave.
             let g = graves[((self.rng.next() * graves.len() as f64) as usize).min(graves.len() - 1)];
             enemy.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS);
@@ -2128,7 +2174,7 @@ impl Game {
             self.view.shake(0.14 + 0.02 * self.hero.blade as f32);
         }
         for i in hits {
-            self.slay_enemy(i);
+            self.strike_enemy(i);
         }
         let mut struck_boss = false;
         if let Some(bp) = self.boss_target() {
@@ -2252,7 +2298,7 @@ impl Game {
         for &(_, i) in near.iter().take(left) {
             let p = self.enemies[i].pos();
             self.view.rain(&self.level.grid, p, color);
-            self.slay_enemy(i);
+            self.strike_enemy(i);
         }
         if near.is_empty() && left == blade.arrows {
             // Nothing in range: the volley falls ahead of him.
@@ -2644,6 +2690,43 @@ impl Game {
         self.floater(hp.x, hp.y, label, 1.3, Some(def.color));
     }
 
+    /// A blow of the hero's lands on foe `i`: it falls, unless it is tough enough to take another,
+    /// in which case it staggers (the loup-garou howls and comes on faster instead).
+    fn strike_enemy(&mut self, i: usize) {
+        if self.enemies[i].hits_left() <= 1 {
+            self.slay_enemy(i);
+            return;
+        }
+        let p = self.enemies[i].pos();
+        let kind = self.enemies[i].kind();
+        self.enemies[i].wound();
+        self.hitstop = self.hitstop.max(HITSTOP_KILL * 0.6);
+        match kind {
+            EnemyKind::Werewolf => {
+                self.audio.play(Sfx::Howl);
+                self.view.sparkle(&self.level.grid, p.x, p.y, 0.6, 0xff3a2a, 14);
+                self.floater(p.x, p.y - 0.9, "IT HOWLS!", 1.4, Some(0xff6a4a));
+            }
+            EnemyKind::Helmeted => {
+                self.audio.play(Sfx::Clang);
+                self.view.spark(&self.level.grid, p.x, p.y, 0xffe0a0);
+                self.floater(p.x, p.y - 0.9, "CLANG!", 1.2, Some(0xc8d0da));
+                self.enemies[i].scare(&self.level.grid, WOUND_STAGGER);
+            }
+            EnemyKind::Witch => {
+                self.audio.play(Sfx::Shriek);
+                self.view.sparkle(&self.level.grid, p.x, p.y, 0.6, 0xb066ff, 14);
+                self.enemies[i].scare(&self.level.grid, WOUND_STAGGER);
+            }
+            _ => {
+                self.audio.play(Sfx::Growl);
+                self.view.spark(&self.level.grid, p.x, p.y, 0xff8a6a);
+                self.floater(p.x, p.y - 0.9, format!("{} MORE", self.enemies[i].hits_left()), 1.0, Some(0xffb090));
+                self.enemies[i].scare(&self.level.grid, WOUND_STAGGER * 0.7);
+            }
+        }
+    }
+
     fn slay_enemy(&mut self, i: usize) {
         let base = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.earn(COINS_KILL);
@@ -2726,7 +2809,7 @@ impl Game {
                     if grace {
                         self.turn_foe(e);
                     } else {
-                        self.slay_enemy(e);
+                        self.strike_enemy(e);
                     }
                     self.projectiles[i].struck.insert(e);
                     self.audio.play(Sfx::ArrowHit);
@@ -2880,7 +2963,11 @@ impl Game {
                 self.slay_enemy(i);
                 continue;
             }
-            let died = self.hurt_hero(CONTACT_DAMAGE);
+            let bite = self.enemies[i].kind().bite();
+            if bite > 1 {
+                self.view.shake(0.3);
+            }
+            let died = self.hurt_hero(CONTACT_DAMAGE * bite);
             if self.hero.blocked_hit {
                 self.hero.blocked_hit = false;
                 let ward = self.hero.shield.map(|s| progression::ward(s.tier));
@@ -3132,14 +3219,17 @@ impl Game {
 
     /// Capture hook: `rows` rows of one of each foe standing a few tiles before the hero, facing him.
     pub fn debug_foes(&mut self, rows: usize) {
-        let specs = default_enemy_specs(&self.level.grid);
+        let stage = self.foe_stage();
+        let specs = enemy_specs(&self.level.grid, stage);
+        let kinds = EnemyKind::of_stage(stage);
+        let n = kinds.len();
         let p = self.hero.occupied();
         self.enemies.clear();
         self.view.clear_enemies();
-        for (i, kind) in [EnemyKind::Skeleton, EnemyKind::Bat, EnemyKind::Vampire, EnemyKind::Slime].repeat(rows.max(1)).into_iter().enumerate() {
+        for (i, kind) in kinds.repeat(rows.max(1)).into_iter().enumerate() {
             let Some(spec) = specs.iter().find(|s| s.kind == kind) else { continue };
-            let (col, row) = ((i % 4) as i32, (i / 4) as i32);
-            let mut e = Enemy::new(spec, P::new(p.x - 3 + col * 2, p.y - 2 - row * 2), self.level.data.enemy_speed);
+            let (col, row) = ((i % n) as i32, (i / n) as i32);
+            let mut e = Enemy::new(spec, P::new(p.x - (n as i32 - 1) + col * 2, p.y - 2 - row * 2), self.level.data.enemy_speed);
             e.b.mode = EnemyMode::Chase;
             e.m.dir = Dir::Down;
             self.view.add_enemy(&e);
@@ -3589,9 +3679,82 @@ mod tests {
         assert_eq!(g.hub.as_ref().unwrap().seal, 1.0);
     }
 
+    #[test]
+    fn the_realms_foes_are_tougher_than_the_gardens() {
+        use crate::logic::enemy::WOLF_FURY_SPEED;
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+        let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
+        assert_eq!(kinds, EnemyKind::STAGE_TWO.to_vec(), "the second stage's cast haunts a realm");
+        g.enter(Screen::Playing);
+        let o = g.hero.occupied();
+        g.enemies.clear();
+        g.view.clear_enemies();
+        // A blemmyes takes three blows, staggering after each, and bites twice as hard.
+        let brute = foe_at(&mut g, EnemyKind::Blemmyes, P::new(o.x, o.y - 1));
+        g.hero.facing = Dir::Up;
+        for left in [2u8, 1] {
+            g.hitstop = 0.0;
+            g.perform_attack();
+            assert_eq!(g.enemies[brute].hits_left(), left);
+            assert!(g.enemies[brute].is_stunned(), "it staggers");
+            assert!(!fell(&g, brute));
+            for _ in 0..(WOUND_STAGGER / crate::app::STEP + 2.0) as usize {
+                g.update(crate::app::STEP);
+                g.hero.invuln = 1.0;
+            }
+            g.enemies[brute].b.mode = EnemyMode::Chase;
+            g.enemies[brute].m.teleport(P::new(o.x, o.y - 1));
+        }
+        g.hitstop = 0.0;
+        g.perform_attack();
+        assert!(fell(&g, brute), "the third blow fells it");
+        let hp = g.hero.hp;
+        g.hero.invuln = 0.0;
+        g.hero.shield = None; // bare, so the whole bite lands
+        let brute = foe_at(&mut g, EnemyKind::Blemmyes, o);
+        g.resolve_contact();
+        assert_eq!(hp - g.hero.hp, 2 * crate::logic::hero::CONTACT_DAMAGE, "its touch hurts double");
+        g.enemies[brute].kill();
+        // The loup-garou howls at the first cut and runs faster, and the helmeted skeleton's cap rings.
+        let wolf = foe_at(&mut g, EnemyKind::Werewolf, P::new(o.x, o.y - 1));
+        g.hitstop = 0.0;
+        g.perform_attack();
+        assert!(!fell(&g, wolf) && !g.enemies[wolf].is_stunned(), "wounded, it comes on");
+        assert!(g.enemies[wolf].b.fury > 0.0);
+        g.hitstop = 0.0;
+        g.update(crate::app::STEP);
+        let quick = g.enemies[wolf].m.speed;
+        g.enemies[wolf].b.fury = 0.0;
+        g.update(crate::app::STEP);
+        assert!((quick / g.enemies[wolf].m.speed - WOLF_FURY_SPEED).abs() < 0.01, "faster in its fury");
+        g.enemies[wolf].kill();
+        let helm = foe_at(&mut g, EnemyKind::Helmeted, P::new(o.x, o.y - 1));
+        g.hitstop = 0.0;
+        g.perform_attack();
+        assert_eq!((g.enemies[helm].hits_left(), fell(&g, helm)), (1, false), "the helmet turns the first blow");
+        g.hitstop = 0.0;
+        g.enemies[helm].b.mode = EnemyMode::Chase;
+        g.perform_attack();
+        assert_eq!(g.enemies[helm].mode(), EnemyMode::Scattered, "and it falls to pieces at the second, to rise again");
+        // A witch keeps her distance and conjures a minion once she has the hero in reach.
+        g.enemies.clear();
+        g.view.clear_enemies();
+        let witch = foe_at(&mut g, EnemyKind::Witch, P::new(o.x, o.y - 4));
+        g.enemies[witch].b.cast = 0.1;
+        g.hero.invuln = 1.0;
+        for _ in 0..30 {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        assert!(g.enemies.iter().any(|e| e.kind() == EnemyKind::Minion && e.is_dangerous()), "a minion appears at her feet");
+    }
+
     /// A foe of `kind` hunting at `at`, in the game and in the view.
     fn foe_at(g: &mut Game, kind: EnemyKind, at: P) -> usize {
-        let spec = default_enemy_specs(&g.level.grid).into_iter().find(|s| s.kind == kind).unwrap();
+        let grid = &g.level.grid;
+        let spec = enemy_specs(grid, 1).into_iter().chain(enemy_specs(grid, 2)).find(|s| s.kind == kind).unwrap();
         let mut e = Enemy::new(&spec, at, g.level.data.enemy_speed);
         e.b.mode = EnemyMode::Chase;
         g.view.add_enemy(&e);

@@ -86,8 +86,12 @@ pub enum Sfx {
     Stinger,
     /// Falling through into the underworld (and the way back slamming shut).
     Portal,
-    /// Quitmer's snarl.
+    /// Quitmer's snarl (and a wounded brute's).
     Growl,
+    /// A witch's cackle as she conjures.
+    Cackle,
+    /// The loup-garou's howl, wounded.
+    Howl,
     /// His chain snapping taut.
     Chain,
     /// Quitmer settling down with a whine.
@@ -634,6 +638,25 @@ impl AudioManager {
                             .filtered(synth::FilterKind::Highpass, 2400.0, 0.8),
                     );
                 }
+                Sfx::Cackle => {
+                    // A witch's laugh: five cracked "hee"s tumbling down in pitch.
+                    for k in 0..5 {
+                        let at = t + k as f64 * 0.13;
+                        let f = (880.0 - k as f64 * 70.0) * vp;
+                        let freq = Env::points(vec![(at, f * 1.25), (at + 0.04, f), (at + 0.11, f * 0.85)]);
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.015, 0.09 * vg), (at + 0.09, 0.05 * vg), (at + 0.12, 0.001)]);
+                        s.push(Voice::new(at, at + 0.13, Wave::Saw, freq, gain, Bus::Sfx).vibrato(24.0, 0.04).filtered(synth::FilterKind::Bandpass, 1600.0, 1.4));
+                    }
+                }
+                Sfx::Howl => {
+                    // A wolf's howl: rising into a long held note that wavers and falls away.
+                    let freq = Env::points(vec![(t, 260.0 * vp), (t + 0.35, 520.0 * vp), (t + 1.1, 540.0 * vp), (t + 1.6, 380.0 * vp)]);
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.2, 0.08 * vg), (t + 1.0, 0.07 * vg), (t + 1.65, 0.001)]);
+                    s.push(Voice::new(t, t + 1.7, Wave::Saw, freq, gain, Bus::Sfx).vibrato(5.5, 0.03).filtered(synth::FilterKind::Lowpass, 1400.0, 1.2));
+                    let high = Env::points(vec![(t, 520.0 * vp), (t + 0.35, 1040.0 * vp), (t + 1.1, 1080.0 * vp), (t + 1.6, 760.0 * vp)]);
+                    let soft = Env::points(vec![(t, 0.0001), (t + 0.25, 0.025 * vg), (t + 1.0, 0.02 * vg), (t + 1.65, 0.001)]);
+                    s.push(Voice::new(t, t + 1.7, Wave::Sine, high, soft, Bus::Sfx).vibrato(5.5, 0.03));
+                }
                 Sfx::Stinger => {
                     // A boom and a clash of close, sour notes.
                     s.push(Voice::new(t, t + 1.5, Wave::Sine, Env::ramp(t, 70.0, 28.0, 1.2), Env::ramp(t, 0.5 * vg, 0.001, 1.4), Bus::Sfx));
@@ -1053,7 +1076,7 @@ mod tests {
         a.hush();
         let all = [
             Sfx::Toll, Sfx::Caw, Sfx::Kick, Sfx::Clang, Sfx::Bells, Sfx::Shriek, Sfx::Stinger, Sfx::Portal,
-            Sfx::Growl, Sfx::Chain, Sfx::Whimper, Sfx::Soul, Sfx::DoorGrind, Sfx::Wind, Sfx::Drip,
+            Sfx::Growl, Sfx::Chain, Sfx::Whimper, Sfx::Soul, Sfx::DoorGrind, Sfx::Wind, Sfx::Drip, Sfx::Cackle, Sfx::Howl,
             // (and the archangels' powers)
             Sfx::MichaelFire, Sfx::MichaelTurn, Sfx::GabrielThunder, Sfx::RaphaelBeam, Sfx::UrielWave,
         ];

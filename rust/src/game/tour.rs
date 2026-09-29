@@ -205,6 +205,12 @@ impl Game {
                 EnemyKind::Bat => ("RAVEN", "Fast, and it flies over pits and ledges where you cannot follow.", 0xc9a0ff),
                 EnemyKind::Vampire => ("NIGHT RAVEN", "The raven's red-eyed kin: bigger, bolder, and it hunts where the raven drives you.", 0xff6a6a),
                 EnemyKind::Slime => ("BOG SLIME", "Slow, but it leaves a trail of slime behind it that slows you down.", 0x5cff6a),
+                EnemyKind::Witch => ("WITCH", "She keeps her distance and cackles up minions to do her biting. Two blows fell her; the first only makes her shriek.", 0xb066ff),
+                EnemyKind::Minion => ("WITCH MINION", "Knee-high, quick and eager. One blow is enough, but they come in numbers.", 0xd08cff),
+                EnemyKind::Helmeted => ("HELMETED SKELETON", "A draugr's cousin in an iron cap: the first blow rings off the helmet. It hears your footsteps, and rises again when it falls.", 0xff5a4a),
+                EnemyKind::Werewolf => ("LOUP-GAROU", "Fast, and faster still once wounded: the first cut only makes it howl.", 0xc0885a),
+                EnemyKind::Blemmyes => ("BLEMMYES", "A headless brute with his face in his chest. Slow, but he takes three blows, and his hand hits twice as hard.", 0xe8b494),
+                EnemyKind::LargeBat => ("LARGE BAT", "Flies over everything, swerving as it comes, and swoops at where you are going.", 0xc04a70),
             };
             stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });
         }

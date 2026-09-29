@@ -85,6 +85,12 @@ fn sprites() -> &'static Sprites {
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
             (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
             (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail slows you too."),
+            (sprite_from(&super::foes2::witch()), "Witch", 0xb066ff, "Keeps her distance and conjures minions. Two blows."),
+            (sprite_from(&super::foes2::minion()), "Witch Minion", 0xd08cff, "Small and quick; they come in numbers."),
+            (sprite_from(&super::foes2::helmeted_skeleton()), "Helmeted Skeleton", 0xff5a4a, "The first blow rings off its helmet. Rises again."),
+            (sprite_from(&super::foes2::loup_garou()), "Loup-Garou", 0xc0885a, "Fast, and faster once wounded."),
+            (sprite_from(&super::foes2::blemmyes()), "Blemmyes", 0xe8b494, "Three blows to fell, and his hand hits twice as hard."),
+            (sprite_from(&super::foes2::large_bat()), "Large Bat", 0xc04a70, "Flies over everything, swerving as it comes."),
         ],
     })
 }
@@ -882,6 +888,12 @@ fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: cra
                 EnemyKind::Skeleton => 0,
                 EnemyKind::Bat | EnemyKind::Vampire => 1,
                 EnemyKind::Slime => 2,
+                EnemyKind::Witch => 3,
+                EnemyKind::Minion => 4,
+                EnemyKind::Helmeted => 5,
+                EnemyKind::Werewolf => 6,
+                EnemyKind::Blemmyes => 7,
+                EnemyKind::LargeBat => 8,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;

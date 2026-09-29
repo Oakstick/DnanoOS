@@ -4,12 +4,66 @@ use super::pathing::{route_toward, step_toward};
 use super::rng::Rng;
 use super::types::{dist_sq, manhattan, Dir, Tile, CARDINALS, P, V};
 
+/// The foes, stage by stage: the first four haunt the Garden of Krampus, the rest the seven realms.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum EnemyKind {
     Skeleton,
     Bat,
     Vampire,
     Slime,
+    /// The witch: keeps her distance and conjures minions.
+    Witch,
+    /// Her minion: small, quick, and one blow is enough.
+    Minion,
+    /// The helmeted skeleton: the first blow rings off its iron cap.
+    Helmeted,
+    /// The loup-garou: fast, and faster once wounded.
+    Werewolf,
+    /// The blemmyes: a headless brute, three blows to fell, and his touch hurts twice as much.
+    Blemmyes,
+    /// The large bat: swerving as it flies.
+    LargeBat,
+}
+
+impl EnemyKind {
+    pub const STAGE_ONE: [EnemyKind; 4] = [EnemyKind::Skeleton, EnemyKind::Bat, EnemyKind::Vampire, EnemyKind::Slime];
+    pub const STAGE_TWO: [EnemyKind; 6] = [EnemyKind::Helmeted, EnemyKind::LargeBat, EnemyKind::Witch, EnemyKind::Minion, EnemyKind::Werewolf, EnemyKind::Blemmyes];
+
+    /// The cast of a stage: 1 for the Garden, 2 for the realms.
+    pub fn of_stage(stage: u8) -> &'static [EnemyKind] {
+        if stage <= 1 {
+            &Self::STAGE_ONE
+        } else {
+            &Self::STAGE_TWO
+        }
+    }
+
+    /// Flies over pits and ledges.
+    pub fn flies(self) -> bool {
+        matches!(self, EnemyKind::Bat | EnemyKind::Vampire | EnemyKind::LargeBat)
+    }
+
+    /// Falls to pieces when slain, and pulls itself together again; hunts by ear.
+    pub fn reassembles(self) -> bool {
+        matches!(self, EnemyKind::Skeleton | EnemyKind::Helmeted)
+    }
+
+    /// Blows of the hero's it takes to fell.
+    pub fn toughness(self) -> u8 {
+        match self {
+            EnemyKind::Blemmyes => 3,
+            EnemyKind::Witch | EnemyKind::Helmeted | EnemyKind::Werewolf => 2,
+            _ => 1,
+        }
+    }
+
+    /// How many ordinary bites its touch is worth.
+    pub fn bite(self) -> i32 {
+        match self {
+            EnemyKind::Blemmyes => 2,
+            _ => 1,
+        }
+    }
 }
 
 /**
@@ -88,6 +142,16 @@ pub const RAGE_SPEED: f64 = 0.35;
 pub const RAGE_DIRECT: f64 = 0.6;
 /// Seconds a slain skeleton lies in pieces before pulling itself back together.
 pub const REASSEMBLE_SECONDS: f64 = 3.0;
+/// A wounded loup-garou runs this much faster, for this long.
+pub const WOLF_FURY_SPEED: f64 = 1.45;
+pub const WOLF_FURY_SECONDS: f64 = 4.0;
+/// A witch conjures her first minion this long after she starts hunting, then one every so often,
+/// as long as the hero is within reach.
+pub const WITCH_CAST_FIRST: f64 = 5.0;
+pub const WITCH_CAST_EVERY: f64 = 9.0;
+pub const WITCH_CAST_RANGE: f64 = 12.0;
+/// How often the large bat swerves off its line at a crossing.
+const BAT_SWERVE: f64 = 0.25;
 
 /// Everything but the mover, so the step callback can think while the mover moves.
 #[derive(Clone, Debug)]
@@ -109,6 +173,12 @@ pub struct Brain {
     pub confused: f64,
     /// Seconds left fighting on the hero's side, turned by Michael's fire (0: a foe).
     pub ally: f64,
+    /// Blows it can still take before it falls.
+    pub hits: u8,
+    /// Seconds of a wounded loup-garou's fury.
+    pub fury: f64,
+    /// Seconds before a witch conjures again.
+    pub cast: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -120,7 +190,7 @@ pub struct Enemy {
 impl Enemy {
     pub fn new(spec: &EnemySpec, start: P, base_speed: f64) -> Self {
         let mut m = Mover::new(start, base_speed);
-        m.flying = matches!(spec.kind, EnemyKind::Bat | EnemyKind::Vampire);
+        m.flying = spec.kind.flies();
         Self {
             m,
             b: Brain {
@@ -138,8 +208,30 @@ impl Enemy {
                 dread: 0.0,
                 confused: 0.0,
                 ally: 0.0,
+                hits: spec.kind.toughness(),
+                fury: 0.0,
+                cast: WITCH_CAST_FIRST,
             },
         }
+    }
+
+    /// Blows it can still take.
+    pub fn hits_left(&self) -> u8 {
+        self.b.hits
+    }
+
+    /// A blow of the hero's lands: it falls, unless it is tough enough to take another (a
+    /// loup-garou only grows furious). True when this one fells it.
+    pub fn wound(&mut self) -> bool {
+        if self.b.hits > 1 {
+            self.b.hits -= 1;
+            if self.b.kind == EnemyKind::Werewolf {
+                self.b.fury = WOLF_FURY_SECONDS;
+            }
+            return false;
+        }
+        self.kill();
+        true
     }
 
     pub fn kind(&self) -> EnemyKind {
@@ -197,6 +289,9 @@ impl Enemy {
         self.b.mode = EnemyMode::Nest;
         self.b.exit_timer = self.b.initial_exit_delay;
         self.b.scatter_timer = 0.0;
+        self.b.hits = self.b.kind.toughness();
+        self.b.fury = 0.0;
+        self.b.cast = WITCH_CAST_FIRST;
     }
 
     /// Climbs up out of the ground at `at`: in pieces at first (as a slain draugr lies), whole after `seconds`.
@@ -252,7 +347,10 @@ impl Enemy {
      * few seconds; everything else returns to the crypt to respawn.
      */
     pub fn kill(&mut self) {
-        if self.b.kind == EnemyKind::Skeleton {
+        // Whole again when it comes back.
+        self.b.hits = self.b.kind.toughness();
+        self.b.fury = 0.0;
+        if self.b.kind.reassembles() {
             let at = self.m.occupied();
             self.m.teleport(at);
             self.b.mode = EnemyMode::Scattered;
@@ -271,6 +369,7 @@ impl Enemy {
         let grid = ctx.grid;
         let b = &mut self.b;
         b.confused = (b.confused - dt).max(0.0);
+        b.fury = (b.fury - dt).max(0.0);
         if b.dread > 0.0 {
             b.dread -= dt;
             if b.dread <= 0.0 && b.mode == EnemyMode::Frenzied && !ctx.frenzy_active {
@@ -303,6 +402,9 @@ impl Enemy {
         if matches!(b.mode, EnemyMode::Scatter | EnemyMode::Chase) {
             // Enraged, they run up to a third faster.
             mult *= 1.0 + RAGE_SPEED * ctx.rage;
+        }
+        if b.fury > 0.0 && b.mode == EnemyMode::Chase {
+            mult *= WOLF_FURY_SPEED;
         }
         self.m.speed = b.base_speed * b.speed_factor * mult;
         let allow_nest = matches!(b.mode, EnemyMode::Eaten | EnemyMode::Leaving);
@@ -391,6 +493,10 @@ impl Brain {
         if self.mode == EnemyMode::Frenzied || self.confused > 0.0 {
             return ctx.rng.pick(&options);
         }
+        // The large bat swerves: now and then it takes any way at all.
+        if self.kind == EnemyKind::LargeBat && self.mode == EnemyMode::Chase && ctx.rng.next() < BAT_SWERVE {
+            return ctx.rng.pick(&options);
+        }
 
         let mut best = options[0];
         let mut best_d = f64::INFINITY;
@@ -433,13 +539,28 @@ impl Brain {
             return d;
         }
         let hp = ctx.hero.pos;
-        if ctx.rage >= RAGE_DIRECT && self.kind != EnemyKind::Skeleton {
+        if ctx.rage >= RAGE_DIRECT && !self.kind.reassembles() {
             // Enraged: no more flanking or ambushes, straight for him.
             return hp;
         }
         match self.kind {
             // Eyeless but sharp-eared: makes for the last place it heard footsteps, and searches on from there.
-            EnemyKind::Skeleton => ctx.hero.heard_pos,
+            EnemyKind::Skeleton | EnemyKind::Helmeted => ctx.hero.heard_pos,
+            // Straight for him.
+            EnemyKind::Minion | EnemyKind::Werewolf | EnemyKind::Blemmyes => hp,
+            // Swoops at where he is heading, but short of it, and swerves on the way.
+            EnemyKind::LargeBat => {
+                let v = ctx.hero.dir.vecf();
+                V::new(hp.x + v.x * 3.0, hp.y + v.y * 3.0)
+            }
+            // Keeps her distance: comes on when far, backs off to her corner when close.
+            EnemyKind::Witch => {
+                if manhattan(own_pos, hp) > 7.0 {
+                    hp
+                } else {
+                    self.scatter_target.v()
+                }
+            }
             // Swoops at where the hero is heading.
             EnemyKind::Bat => {
                 let v = ctx.hero.dir.vecf();
@@ -464,6 +585,42 @@ impl Brain {
     }
 }
 
+/// The foes of a stage: the Garden's four, or the realms' six.
+pub fn enemy_specs(grid: &Grid, stage: u8) -> Vec<EnemySpec> {
+    if stage <= 1 {
+        return default_enemy_specs(grid);
+    }
+    let w = grid.width - 1;
+    let h = grid.height - 1;
+    vec![
+        EnemySpec {
+            kind: EnemyKind::Helmeted, name: "Helmeted Skeleton".into(), color: 0xff5a4a,
+            scatter_target: P::new(w - 2, 0), exit_delay: 0.0, speed_factor: 1.05,
+        },
+        EnemySpec {
+            kind: EnemyKind::LargeBat, name: "Large Bat".into(), color: 0xc04a70,
+            scatter_target: P::new(2, 0), exit_delay: 2.0, speed_factor: 1.2,
+        },
+        EnemySpec {
+            kind: EnemyKind::Witch, name: "Witch".into(), color: 0xb066ff,
+            scatter_target: P::new(w, h), exit_delay: 4.0, speed_factor: 0.95,
+        },
+        EnemySpec {
+            kind: EnemyKind::Minion, name: "Witch Minion".into(), color: 0xd08cff,
+            scatter_target: P::new(0, h), exit_delay: 5.5, speed_factor: 1.25,
+        },
+        EnemySpec {
+            kind: EnemyKind::Werewolf, name: "Loup-Garou".into(), color: 0xc0885a,
+            scatter_target: P::new(w, h / 2), exit_delay: 7.0, speed_factor: 1.3,
+        },
+        EnemySpec {
+            kind: EnemyKind::Blemmyes, name: "Blemmyes".into(), color: 0xe8b494,
+            scatter_target: P::new(0, h / 2), exit_delay: 9.0, speed_factor: 0.72,
+        },
+    ]
+}
+
+/// The Garden's foes (the first stage).
 pub fn default_enemy_specs(grid: &Grid) -> Vec<EnemySpec> {
     let w = grid.width - 1;
     let h = grid.height - 1;

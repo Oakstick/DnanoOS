@@ -386,6 +386,12 @@ enum RigId {
     Bat,
     Vampire,
     Slime,
+    Witch,
+    Minion,
+    Helmeted,
+    Werewolf,
+    Blemmyes,
+    LargeBat,
 }
 
 struct EnemyView {
@@ -498,7 +504,14 @@ struct Models {
     vampire: Rig,
     slime: Rig,
     /// The same four at half the resolution, for foes far from the camera.
-    foes_far: [Rig; 4],
+    witch: Rig,
+    minion: Rig,
+    helmeted: Rig,
+    werewolf: Rig,
+    blemmyes: Rig,
+    large_bat: Rig,
+    /// Every foe's coarse copy, in `RigId` order.
+    foes_far: Vec<Rig>,
     medkit: Mesh,
     bomb: Mesh,
     arrow: Mesh,
@@ -559,7 +572,25 @@ impl Models {
         let bat = build_rig(&raven(false), RAVEN_RIG, 0.0105);
         let vampire = build_rig(&raven(true), RAVEN_RIG, 0.0125);
         let slime = build_rig(&bog_slime(), &[], 0.01875);
-        let foes_far = [skeleton.coarse(), bat.coarse(), vampire.coarse(), slime.coarse()];
+        use super::foes2::{blemmyes, helmeted_skeleton, large_bat, loup_garou, minion, witch, BAT_RIG, BLEMMYES_RIG, HELMET_RIG, WITCH_RIG, WOLF_RIG};
+        let witch = build_rig(&witch(), WITCH_RIG, 0.0125);
+        let minion = build_rig(&minion(), &[], 0.014);
+        let helmeted = build_rig(&helmeted_skeleton(), HELMET_RIG, 0.0125);
+        let werewolf = build_rig(&loup_garou(), WOLF_RIG, 0.0135);
+        let blemmyes = build_rig(&blemmyes(), BLEMMYES_RIG, 0.0145);
+        let large_bat = build_rig(&large_bat(), BAT_RIG, 0.011);
+        let foes_far = vec![
+            skeleton.coarse(),
+            bat.coarse(),
+            vampire.coarse(),
+            slime.coarse(),
+            witch.coarse(),
+            minion.coarse(),
+            helmeted.coarse(),
+            werewolf.coarse(),
+            blemmyes.coarse(),
+            large_bat.coarse(),
+        ];
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
             hero: forge::hero_model(ragnar, 1, Some(1)),
@@ -569,6 +600,12 @@ impl Models {
             bat,
             vampire,
             slime,
+            witch,
+            minion,
+            helmeted,
+            werewolf,
+            blemmyes,
+            large_bat,
             foes_far,
             medkit: super::props::medkit(),
             bomb: super::props::bomb(),
@@ -614,6 +651,12 @@ impl Models {
             RigId::Bat => &self.bat,
             RigId::Vampire => &self.vampire,
             RigId::Slime => &self.slime,
+            RigId::Witch => &self.witch,
+            RigId::Minion => &self.minion,
+            RigId::Helmeted => &self.helmeted,
+            RigId::Werewolf => &self.werewolf,
+            RigId::Blemmyes => &self.blemmyes,
+            RigId::LargeBat => &self.large_bat,
         }
     }
 
@@ -973,6 +1016,12 @@ impl WorldView {
             EnemyKind::Bat => (RigId::Bat, 0.55),
             EnemyKind::Vampire => (RigId::Vampire, 0.65),
             EnemyKind::Slime => (RigId::Slime, 0.0),
+            EnemyKind::Witch => (RigId::Witch, 0.0),
+            EnemyKind::Minion => (RigId::Minion, 0.0),
+            EnemyKind::Helmeted => (RigId::Helmeted, 0.0),
+            EnemyKind::Werewolf => (RigId::Werewolf, 0.0),
+            EnemyKind::Blemmyes => (RigId::Blemmyes, 0.0),
+            EnemyKind::LargeBat => (RigId::LargeBat, 0.6),
         };
         let pose = Pose::rest(self.models.rig(rig));
         let base = lin(e.b.color);
@@ -1480,17 +1529,50 @@ impl WorldView {
             v.phase += dt * e.m.speed as f32 * 2.2;
         }
         match v.kind {
-            EnemyKind::Skeleton => {
+            EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Witch | EnemyKind::Blemmyes => {
+                // A walk: the blemmyes lumbers, the witch strides, the skeletons stalk.
+                let (stride, swing) = match v.kind {
+                    EnemyKind::Blemmyes => (0.6, 0.35),
+                    EnemyKind::Witch => (0.7, 0.3),
+                    _ => (0.85, 0.5),
+                };
                 let s = v.phase.sin();
-                v.pose.rot_x(rig, "leftLeg", s * 0.85);
-                v.pose.rot_x(rig, "rightLeg", -s * 0.85);
-                v.pose.rot_x(rig, "leftArm", -s * 0.5);
-                v.pose.rot_x(rig, "rightArm", s * 0.5);
+                v.pose.rot_x(rig, "leftLeg", s * stride);
+                v.pose.rot_x(rig, "rightLeg", -s * stride);
+                v.pose.rot_x(rig, "leftArm", -s * swing);
+                v.pose.rot_x(rig, "rightArm", s * swing);
                 v.pose.rot_x(rig, "head", (v.phase * 2.0).sin() * 0.1);
-                v.root_rot.z = v.phase.sin() * 0.06;
+                v.root_rot.z = v.phase.sin() * if v.kind == EnemyKind::Blemmyes { 0.1 } else { 0.06 };
             }
-            EnemyKind::Bat | EnemyKind::Vampire => {
-                let beat = time * 15.0 + i as f32 * 2.0;
+            EnemyKind::Minion => {
+                // Scurries in hops, its hat bobbing.
+                let t = if moving { v.phase * 1.6 } else { time * 3.0 + i as f32 };
+                let hop = t.sin();
+                v.root_scale = Vec3::new(1.0 - hop * 0.06, 1.0 + hop * 0.1, 1.0 - hop * 0.06);
+                v.root_rot.z = (t * 0.5).sin() * 0.12;
+                if moving {
+                    v.group_pos.y += hop.max(0.0) * 0.12;
+                }
+            }
+            EnemyKind::Werewolf => {
+                // A gallop: the front legs together, the back legs half a beat behind, the head low, the tail streaming.
+                let t = v.phase * 1.2;
+                let (front, back) = (t.sin(), (t - 1.2).sin());
+                v.pose.rot_x(rig, "frontLeftLeg", front * 0.7);
+                v.pose.rot_x(rig, "frontRightLeg", (t + 0.4).sin() * 0.7);
+                v.pose.rot_x(rig, "backLeftLeg", -back * 0.7);
+                v.pose.rot_x(rig, "backRightLeg", -(t - 0.8).sin() * 0.7);
+                v.pose.rot_x(rig, "head", if moving { 0.15 + front * 0.08 } else { (time * 1.5).sin() * 0.05 });
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 6.0 + i as f32).sin() * 0.3;
+                }
+                v.root_rot.x = if moving { front * 0.05 } else { 0.0 };
+                if moving {
+                    v.group_pos.y += front.max(0.0) * 0.08;
+                }
+            }
+            EnemyKind::Bat | EnemyKind::Vampire | EnemyKind::LargeBat => {
+                let beat = time * if v.kind == EnemyKind::LargeBat { 9.0 } else { 15.0 } + i as f32 * 2.0;
                 let flap = beat.sin() * 0.8;
                 if let Some(l) = rig.index("leftWing") {
                     v.pose.rot[l].z = -flap;
@@ -1998,10 +2080,12 @@ impl WorldView {
                 // Inside the body, so it lights the ground round the foe and not the foe; a draugr's is low,
                 // under his open ribs.
                 let lift = match v.kind {
-                    EnemyKind::Skeleton => 0.2,
-                    EnemyKind::Bat => 0.13,
+                    EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Minion => 0.2,
+                    EnemyKind::Bat | EnemyKind::LargeBat => 0.13,
                     EnemyKind::Vampire => 0.16,
-                    EnemyKind::Slime => 0.3,
+                    EnemyKind::Slime | EnemyKind::Werewolf => 0.3,
+                    EnemyKind::Witch => 0.4,
+                    EnemyKind::Blemmyes => 0.5,
                 };
                 f.lights.push(Light { pos: v.group_pos + Vec3::new(0.0, lift, 0.0), color: v.light_color * v.light_intensity, distance: 4.0 });
             }
@@ -2009,7 +2093,10 @@ impl WorldView {
                 // A halo over the turned.
                 let top = match v.kind {
                     EnemyKind::Skeleton => 1.18,
+                    EnemyKind::Witch => 1.3,
+                    EnemyKind::Helmeted | EnemyKind::Blemmyes => 1.05,
                     EnemyKind::Slime => 0.78,
+                    EnemyKind::Werewolf | EnemyKind::Minion => 0.68,
                     _ => 0.32,
                 };
                 let blue = lin(crate::logic::angels::Archangel::Michael.color());
