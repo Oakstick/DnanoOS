@@ -1480,9 +1480,9 @@ mod tests {
         for z in 0..40 {
             for x in 0..40 {
                 let (_, e) = lava_look(x as f32 * 1.3, z as f32 * 1.3);
-                if e.x > 1.0 {
+                if e.x > 0.6 {
                     hot += 1;
-                } else if e.x < 0.2 {
+                } else if e.x < 0.1 {
                     crust += 1;
                 }
             }
