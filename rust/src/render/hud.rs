@@ -21,7 +21,10 @@ use crate::logic::items::{weapon, weapon_label, WeaponKind};
 use crate::render::icons::{icon, Icon};
 
 mod controls;
+mod map;
 mod shop;
+
+pub use map::map_rects;
 mod story;
 pub use shop::{shop_row_at, shop_rects};
 use crate::logic::systems::MAX_LIVES;
@@ -139,6 +142,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             if g.show_controls {
                 controls::draw_controls(o, g, t);
             }
+            if g.show_map {
+                map::draw_map(o, g, t);
+            }
         }
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused => {
@@ -155,6 +161,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o.wrap_text(crate::logic::story::objective(), o.width / 2.0, y + t * 1.7, (t * 26.0).min(o.width - t * 2.0), t * 0.75, t * 0.5, rgba(TEXT_DIM, 1.0));
             if g.show_controls {
                 controls::draw_controls(o, g, t);
+            }
+            if g.show_map {
+                map::draw_map(o, g, t);
             }
         }
         Screen::Won => draw_screen(
@@ -953,7 +962,7 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
         Screen::Title => {
             // Continue and Start side by side in the middle below the line-up; Quit (desktop) small in the corner.
             let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
-            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls)).count();
+            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls | MenuItem::Map)).count();
             let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
             items
                 .iter()
@@ -965,6 +974,10 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
                     } else if *item == MenuItem::Controls {
                         let (cw, ch) = (t * 4.6, t * 1.1);
                         [t * 0.6, h - ch - t * 0.6, cw, ch]
+                    } else if *item == MenuItem::Map {
+                        // Beside the controller button in the corner.
+                        let (cw, ch) = (t * 4.6, t * 1.1);
+                        [t * 0.6 + cw + t * 0.4, h - ch - t * 0.6, cw, ch]
                     } else {
                         [x0 + i as f32 * (bw + gap), h * 0.875 - bh / 2.0, bw, bh]
                     }

@@ -276,7 +276,8 @@ impl Hero {
     }
     /// A blow of `base` damage as his elixirs make it: strength and fury add to it, Ragnarok doubles it.
     pub fn blow(&self, base: i32) -> i32 {
-        let mut d = base;
+        // Mehmed's blows land harder (at least one more).
+        let mut d = (base as f64 * self.kind.might()).ceil() as i32;
         if self.fx.strength > 0.0 {
             d += STRENGTH_BONUS;
         }
@@ -292,7 +293,8 @@ impl Hero {
         d
     }
     fn cooldown_scale(&self) -> f64 {
-        let mut s = 1.0;
+        // Miyamoto strikes again sooner than the others.
+        let mut s = self.kind.tempo();
         if self.path >= 1 {
             s *= path::RAGE_COOLDOWN;
         }
@@ -315,7 +317,8 @@ impl Hero {
     /// His health cap: more from path level 2 (for Ragnar, only while a shield is with him).
     pub fn health_cap(&self) -> i32 {
         let guard = self.path >= 2 && (self.kind != HeroKind::Ragnar || self.shield.is_some());
-        HERO_MAX_HP + if guard { path::GUARD_HP } else { 0 }
+        // Mehmed can take more than Ragnar, Miyamoto less.
+        (HERO_MAX_HP as f64 * self.kind.vigor()).round() as i32 + if guard { path::GUARD_HP } else { 0 }
     }
     /// Spends stamina for a blow or a blink; false (and winded) if he has too little.
     fn spend(&mut self, cost: f64) -> bool {

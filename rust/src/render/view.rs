@@ -2531,6 +2531,7 @@ mod tests {
         spots.sort_by_key(|p| (p.y, p.x));
         let spot = *spots.first().expect("a tree with room south of it");
         g.hero.m.teleport(spot);
+        g.hero.altitude = grid.elevation(spot.x, spot.y) as f64;
         g.hero.facing = Dir::Down;
         g.view.aim_along(Dir::Down);
         for _ in 0..300 {

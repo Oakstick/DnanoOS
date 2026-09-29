@@ -151,7 +151,7 @@ impl Game {
                 TourStop {
                     target: at(d.tile, 0.4),
                     title: "ARCHANGEL'S SHRINE",
-                    body: "Strike it to switch between Michael (blue), Gabriel (green), Raphael (purple) and Uriel (red); step on it for that archangel's power, used with R or LT. It rests a minute after, and Uriel grants his only once in ten minutes.",
+                    body: "Strike it to switch between Michael (blue), Gabriel (green), Raphael (purple) and Uriel (red); step on it for that archangel's power, used with R or LT. Each archangel gives once a level, and Uriel only once in ten minutes.",
                     color: 0xe8dcc0,
                     art: TourArt::AngelShrine,
                 }

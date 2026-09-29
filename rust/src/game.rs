@@ -5,7 +5,11 @@ use std::f64::consts::PI;
 
 mod angels;
 mod controls;
+mod map;
 mod save;
+
+pub use map::map_stops;
+pub use save::Stage;
 mod select;
 mod shop;
 mod story;
@@ -202,6 +206,8 @@ pub enum MenuItem {
     KeepProgress,
     /// The controller page: what every button does.
     Controls,
+    /// The map: jump to any dungeon or Cyclops (for testing, for now).
+    Map,
     Resume,
     /// The gatekeeper's promise: call him, and his wares open wherever you are.
     CallOldMan,
@@ -218,6 +224,7 @@ impl MenuItem {
             MenuItem::StartOver => "START OVER",
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Controls => "CONTROLLER",
+            MenuItem::Map => "MAP",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
@@ -353,6 +360,9 @@ pub struct Game {
     pub confirm_reset: bool,
     /// The controller page is open over the title or the pause menu.
     pub show_controls: bool,
+    /// The map page is open over the title or the pause menu; which stop is highlighted.
+    pub show_map: bool,
+    pub map_index: usize,
     /// The archangel's blessing he carries (from dungeon to dungeon), if any.
     pub blessing: Option<crate::logic::angels::Blessing>,
     /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
@@ -453,6 +463,8 @@ impl Game {
             saved_run: save::load_run(),
             confirm_reset: false,
             show_controls: false,
+            show_map: false,
+            map_index: 0,
             blessing: None,
             uriel_rest: 0.0,
             refused_at: -10.0,
@@ -532,7 +544,8 @@ impl Game {
         let carried = if self.hero.alive && self.hero.holding_pickup() { Some((self.hero.weapon, self.hero.ammo)) } else { None };
         // His shield, dents and all, goes with him, and so does the way he moves (free or on the grid).
         let (shield, free_move) = (self.hero.shield, self.hero.free_move);
-        self.hero = Hero::new(self.level.hero_spawn, self.level.data.hero_speed);
+        // Each hero runs at his own pace: Miyamoto quicker than Ragnar, Mehmed slower.
+        self.hero = Hero::new(self.level.hero_spawn, self.level.data.hero_speed * self.hero_kind.speed());
         self.hero.shield = shield;
         self.hero.free_move = free_move;
         self.equip_from_progress();
@@ -605,6 +618,10 @@ impl Game {
     /// Puts everyone back at spawn without touching collected gold.
     fn reset_round(&mut self) {
         self.hero.respawn(self.level.hero_spawn);
+        // On his tile's own height from the first frame: the start can be raised (the fountain's terrace),
+        // and until he moves nothing else lifts him out of the stone.
+        let spawn = self.level.hero_spawn;
+        self.hero.altitude = self.level.grid.elevation(spawn.x, spawn.y) as f64;
         self.hero.face(self.start_facing);
         self.view.aim_along(self.hero.facing);
         self.juice.coins.clear();
@@ -741,6 +758,7 @@ impl Game {
         self.menu_index = 0;
         self.confirm_reset = false;
         self.show_controls = false;
+        self.show_map = false;
         // The backing track steps back when the game does, and under the fanfare.
         self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared));
         if screen == Screen::Title {
@@ -804,9 +822,11 @@ impl Game {
 
         match self.screen {
             Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
+            Screen::Title | Screen::Paused if self.show_map => self.update_map(),
             Screen::Title => match self.menu_choice() {
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 Some(MenuItem::Controls) => self.open_controls(),
+                Some(MenuItem::Map) => self.open_map(),
                 Some(MenuItem::Continue) => self.continue_game(),
                 Some(MenuItem::StartOver) => self.answer_reset(true),
                 Some(MenuItem::KeepProgress) => self.answer_reset(false),
@@ -845,6 +865,7 @@ impl Game {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
                 Some(MenuItem::Controls) => self.open_controls(),
+                Some(MenuItem::Map) => self.open_map(),
                 Some(MenuItem::QuitToTitle) => self.enter(Screen::Title),
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 _ => {}
@@ -932,7 +953,7 @@ impl Game {
         let mut items = match self.screen {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
-            Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::QuitToTitle],
+            Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle],
             _ => return Vec::new(),
         };
         if quit {
@@ -1024,7 +1045,7 @@ impl Game {
         if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
             self.cheat_to_shop();
         }
-        if self.input.was_pressed(&[Action::Call]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !self.show_controls {
+        if self.input.was_pressed(&[Action::Call]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !self.show_controls && !self.show_map {
             self.call_old_man();
         }
         if self.input.was_pressed(&[Action::Fullscreen]) {
@@ -1034,8 +1055,8 @@ impl Game {
             self.audio.unlock();
             self.audio.toggle_mute();
         }
-        // With the controller page open, Esc and Start close it instead (see `update_controls`).
-        if self.input.was_pressed(&[Action::Pause]) && !self.show_controls {
+        // With the controller page or the map open, Esc and Start close it instead.
+        if self.input.was_pressed(&[Action::Pause]) && !self.show_controls && !self.show_map {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
                 // A controller's Menu button is Confirm as well: it must not pick Resume at once.
@@ -3276,9 +3297,9 @@ mod tests {
     fn the_menus_can_quit() {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
-        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
-        // Right twice, then Enter, on the title picks Quit.
-        for _ in 0..2 {
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit]);
+        // Right three times, then Enter, on the title picks Quit.
+        for _ in 0..3 {
             g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
             g.update(crate::app::STEP);
             g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
@@ -3289,17 +3310,82 @@ mod tests {
         assert!(g.quit_requested);
         assert_eq!(g.screen, Screen::Title);
 
-        // Pause offers Resume / Call the Old Man / Controller / Quit to Title / Quit Game; clicking a button picks it.
+        // Pause offers Resume / Call the Old Man / Controller / Map / Quit to Title / Quit Game; clicking a button picks it.
         let mut g = playing();
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Paused);
-        assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::QuitToTitle, MenuItem::Quit]);
-        let r = crate::render::hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[3];
+        assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle, MenuItem::Quit]);
+        let r = crate::render::hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[4];
         g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
         g.input.mouse_button(winit::event::MouseButton::Left, true);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Title);
+    }
+
+    #[test]
+    fn he_stands_on_his_raised_start_through_the_tour_and_the_countdown() {
+        let mut g = Game::new();
+        start_from_title(&mut g);
+        assert_eq!(g.screen, Screen::Ready);
+        let spawn = g.level.hero_spawn;
+        let floor = g.level.grid.elevation(spawn.x, spawn.y) as f64;
+        assert!(floor > 0.0, "the first start is on the fountain's terrace");
+        assert_eq!(g.hero.altitude, floor, "not sunk into the stone before he moves");
+    }
+
+    #[test]
+    fn the_map_jumps_to_any_dungeon_or_cyclops() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        let stops = map_stops();
+        assert_eq!(stops.len(), 2 * crate::logic::levels::levels().len(), "each dungeon and its Cyclops");
+        assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
+        // From the title: MAP, down to the third stop (Dungeon II), go.
+        g.menu_index = g.menu_items().iter().position(|&m| m == MenuItem::Map).unwrap();
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert!(g.show_map);
+        for _ in 0..2 {
+            g.input.nav = Some(Dir::Down);
+            g.update(crate::app::STEP);
+        }
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert!(!g.show_map);
+        assert_eq!((g.screen, g.dungeon, g.boss.is_some()), (Screen::Ready, 1, false));
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(1)), "Continue comes back here");
+        // From the pause menu, to a Cyclops; Esc closes the map without going anywhere.
+        g.enter(Screen::Paused);
+        g.open_map();
+        assert_eq!(stops[g.map_index].stage, save::Stage::Dungeon(1), "where he is, highlighted");
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        assert_eq!((g.show_map, g.screen), (false, Screen::Paused));
+        g.map_jump(save::Stage::Arena(0));
+        assert_eq!((g.screen, g.dungeon, g.boss.is_some()), (Screen::Ready, 0, true));
+    }
+
+    #[test]
+    fn mehmed_is_slow_and_sturdy_and_hits_hard_miyamoto_quick_and_frail_and_strikes_fast() {
+        let mut g = Game::new();
+        // Bare heroes: no path skills to add health or quicken the blade.
+        g.progress = Progress::default();
+        let mut seen = Vec::new();
+        for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
+            g.hero_kind = hero;
+            g.load_level(0);
+            assert!(g.hero.try_attack());
+            seen.push((hero, g.hero.max_hp, g.hero.hp, g.hero.m.speed, g.hero.blow(3), g.hero.attack_cooldown));
+        }
+        let [(_, r_max, r_hp, r_speed, r_blow, _), (_, m_max, m_hp, m_speed, m_blow, _), (_, y_max, _, y_speed, y_blow, y_cool)] = seen[..] else { unreachable!() };
+        assert_eq!((r_max, m_max, y_max), (100, 120, 80), "health 1 : 1.2 : 0.8");
+        assert_eq!((r_hp, m_hp), (100, 120), "and each begins with it full");
+        assert!((m_speed / r_speed - 0.9).abs() < 1e-9 && (y_speed / r_speed - 1.1).abs() < 1e-9, "speed 1 : 0.9 : 1.1");
+        assert!(m_blow > r_blow && y_blow == r_blow, "Mehmed hits harder: {m_blow} against {r_blow}");
+        // Miyamoto's blade waits a fifth less than it would for anyone else.
+        let own = crate::logic::progression::blade(HeroKind::Miyamoto, g.hero.blade).cooldown;
+        assert!((y_cool - own * crate::logic::heroes::MIYAMOTO_TEMPO).abs() < 1e-9, "{y_cool} against {own}");
     }
 
     /// A foe of `kind` hunting at `at`, in the game and in the view.
@@ -3610,7 +3696,7 @@ mod tests {
     #[test]
     fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
         let mut g = Game::new();
-        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit], "nothing to continue yet");
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit], "nothing to continue yet");
         start_from_title(&mut g);
         assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(0)), "an adventure is saved from its start");
 
@@ -3621,7 +3707,7 @@ mod tests {
         g.belt = vec![PotionKind::Health, PotionKind::Life];
         g.checkpoint(save::Stage::Arena(0));
         g.enter(Screen::Title);
-        assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+        assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit]);
         g.hero_kind = HeroKind::Ragnar;
         g.score.reset();
         g.belt.clear();
@@ -3665,7 +3751,7 @@ mod tests {
         assert_eq!(g.progress, Progress::default());
         assert!(g.saved_run.is_none());
         g.enter(Screen::Title);
-        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit]);
     }
 
     #[test]
