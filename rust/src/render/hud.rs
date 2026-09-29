@@ -20,6 +20,7 @@ use crate::logic::progression::{self, Tree};
 use crate::logic::items::{weapon, weapon_label, WeaponKind};
 use crate::render::icons::{icon, Icon};
 
+mod controls;
 mod shop;
 mod story;
 pub use shop::{shop_row_at, shop_rects};
@@ -133,7 +134,12 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         draw_feedback(o, g, t);
     }
     match g.screen {
-        Screen::Title => draw_title(o, g, t),
+        Screen::Title => {
+            draw_title(o, g, t);
+            if g.show_controls {
+                controls::draw_controls(o, g, t);
+            }
+        }
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused => {
             o.rect(0.0, 0.0, o.width, o.height, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.65]);
@@ -147,6 +153,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
             o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
             o.wrap_text(crate::logic::story::objective(), o.width / 2.0, y + t * 1.7, (t * 26.0).min(o.width - t * 2.0), t * 0.75, t * 0.5, rgba(TEXT_DIM, 1.0));
+            if g.show_controls {
+                controls::draw_controls(o, g, t);
+            }
         }
         Screen::Won => draw_screen(
             o,
@@ -873,7 +882,7 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
         Screen::Title => {
             // Continue and Start side by side in the middle below the line-up; Quit (desktop) small in the corner.
             let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
-            let big = items.iter().filter(|i| **i != MenuItem::Quit).count();
+            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls)).count();
             let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
             items
                 .iter()
@@ -882,6 +891,9 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
                     if *item == MenuItem::Quit {
                         let (qw, qh) = (t * 4.6, t * 1.1);
                         [w - qw - t * 0.6, h - qh - t * 0.6, qw, qh]
+                    } else if *item == MenuItem::Controls {
+                        let (cw, ch) = (t * 4.6, t * 1.1);
+                        [t * 0.6, h - ch - t * 0.6, cw, ch]
                     } else {
                         [x0 + i as f32 * (bw + gap), h * 0.875 - bh / 2.0, bw, bh]
                     }

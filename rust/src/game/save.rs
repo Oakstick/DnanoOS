@@ -206,15 +206,15 @@ impl Game {
         }
     }
 
-    /// The title's buttons: Continue (when there is something to continue) and Start,
-    /// or the two answers while it asks whether to start over.
+    /// The title's buttons: Continue (when there is something to continue), Start and the
+    /// controller page, or the two answers while it asks whether to start over.
     pub(super) fn title_items(&self) -> Vec<MenuItem> {
         if self.confirm_reset {
             vec![MenuItem::StartOver, MenuItem::KeepProgress]
         } else if self.can_continue() {
-            vec![MenuItem::Continue, MenuItem::Play]
+            vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls]
         } else {
-            vec![MenuItem::Play]
+            vec![MenuItem::Play, MenuItem::Controls]
         }
     }
 }

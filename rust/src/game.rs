@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod controls;
 mod save;
 mod select;
 mod shop;
@@ -206,6 +207,8 @@ pub enum MenuItem {
     /// The answers to "start over?".
     StartOver,
     KeepProgress,
+    /// The controller page: what every button does.
+    Controls,
     Resume,
     /// The gatekeeper's promise: call him, and his wares open wherever you are.
     CallOldMan,
@@ -221,6 +224,7 @@ impl MenuItem {
             MenuItem::Continue => "CONTINUE",
             MenuItem::StartOver => "START OVER",
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
+            MenuItem::Controls => "CONTROLLER",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
@@ -354,6 +358,8 @@ pub struct Game {
     pub saved_run: Option<save::Run>,
     /// The title is asking whether to wipe everything and start over.
     pub confirm_reset: bool,
+    /// The controller page is open over the title or the pause menu.
+    pub show_controls: bool,
 }
 
 impl Game {
@@ -444,6 +450,7 @@ impl Game {
             intro: !cfg!(test),
             saved_run: save::load_run(),
             confirm_reset: false,
+            show_controls: false,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -721,6 +728,7 @@ impl Game {
         self.screen = screen;
         self.menu_index = 0;
         self.confirm_reset = false;
+        self.show_controls = false;
         // The backing track steps back when the game does, and under the fanfare.
         self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared));
         if screen == Screen::Title {
@@ -783,8 +791,10 @@ impl Game {
         self.handle_global_keys();
 
         match self.screen {
+            Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
             Screen::Title => match self.menu_choice() {
                 Some(MenuItem::Quit) => self.quit_requested = true,
+                Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Continue) => self.continue_game(),
                 Some(MenuItem::StartOver) => self.answer_reset(true),
                 Some(MenuItem::KeepProgress) => self.answer_reset(false),
@@ -822,6 +832,7 @@ impl Game {
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
+                Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::QuitToTitle) => self.enter(Screen::Title),
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 _ => {}
@@ -908,7 +919,7 @@ impl Game {
         let mut items = match self.screen {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
-            Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::QuitToTitle],
+            Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::QuitToTitle],
             _ => return Vec::new(),
         };
         if quit {
@@ -999,7 +1010,7 @@ impl Game {
         if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
             self.cheat_to_shop();
         }
-        if self.input.was_pressed(&[Action::Call]) && matches!(self.screen, Screen::Playing | Screen::Paused) {
+        if self.input.was_pressed(&[Action::Call]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !self.show_controls {
             self.call_old_man();
         }
         if self.input.was_pressed(&[Action::Fullscreen]) {
@@ -1009,7 +1020,8 @@ impl Game {
             self.audio.unlock();
             self.audio.toggle_mute();
         }
-        if self.input.was_pressed(&[Action::Pause]) {
+        // With the controller page open, Esc and Start close it instead (see `update_controls`).
+        if self.input.was_pressed(&[Action::Pause]) && !self.show_controls {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
             } else if self.screen == Screen::Paused {
@@ -3215,23 +3227,26 @@ mod tests {
     fn the_menus_can_quit() {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
-        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Quit]);
-        // Right, then Enter, on the title picks Quit.
-        g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
-        g.update(crate::app::STEP);
-        g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+        // Right twice, then Enter, on the title picks Quit.
+        for _ in 0..2 {
+            g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
+            g.update(crate::app::STEP);
+            g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
+            g.update(crate::app::STEP);
+        }
         g.input.key_down(winit::keyboard::KeyCode::Enter, false);
         g.update(crate::app::STEP);
         assert!(g.quit_requested);
         assert_eq!(g.screen, Screen::Title);
 
-        // Pause offers Resume / Call the Old Man / Quit to Title / Quit Game; clicking a button picks it.
+        // Pause offers Resume / Call the Old Man / Controller / Quit to Title / Quit Game; clicking a button picks it.
         let mut g = playing();
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Paused);
-        assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::QuitToTitle, MenuItem::Quit]);
-        let r = crate::render::hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[2];
+        assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::QuitToTitle, MenuItem::Quit]);
+        let r = crate::render::hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[3];
         g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
         g.input.mouse_button(winit::event::MouseButton::Left, true);
         g.update(crate::app::STEP);
@@ -3375,7 +3390,7 @@ mod tests {
     #[test]
     fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
         let mut g = Game::new();
-        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Quit], "nothing to continue yet");
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit], "nothing to continue yet");
         start_from_title(&mut g);
         assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(0)), "an adventure is saved from its start");
 
@@ -3386,7 +3401,7 @@ mod tests {
         g.belt = vec![PotionKind::Health, PotionKind::Life];
         g.checkpoint(save::Stage::Arena(0));
         g.enter(Screen::Title);
-        assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Quit]);
+        assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
         g.hero_kind = HeroKind::Ragnar;
         g.score.reset();
         g.belt.clear();
@@ -3430,7 +3445,34 @@ mod tests {
         assert_eq!(g.progress, Progress::default());
         assert!(g.saved_run.is_none());
         g.enter(Screen::Title);
-        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Quit]);
+        assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+    }
+
+    #[test]
+    fn the_controller_page_opens_from_the_title_and_the_pause_menu() {
+        let mut g = Game::new();
+        g.menu_index = g.menu_items().iter().position(|&i| i == MenuItem::Controls).unwrap();
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert!(g.show_controls && g.screen == Screen::Title);
+        // B closes it, back on the title with the button still highlighted.
+        g.input.inject(Action::Bomb);
+        g.update(crate::app::STEP);
+        assert!(!g.show_controls && g.screen == Screen::Title);
+        assert_eq!(g.menu_items()[g.menu_index], MenuItem::Controls);
+
+        // From the pause menu, Esc closes the page and leaves the game paused.
+        let mut g = playing();
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        g.menu_index = g.menu_items().iter().position(|&i| i == MenuItem::Controls).unwrap();
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert!(g.show_controls && g.screen == Screen::Paused);
+        g.input.inject(Action::Pause);
+        g.update(crate::app::STEP);
+        assert!(!g.show_controls);
+        assert_eq!(g.screen, Screen::Paused, "still paused");
     }
 
     #[test]
