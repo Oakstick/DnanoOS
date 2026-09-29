@@ -55,13 +55,13 @@ pub fn golden_key() -> Mesh {
  * a gold shaft and bit. Lit from the upper left, its facets go from rose to
  * wine red.
  */
-pub fn red_diamond_key() -> Mesh {
+pub const RED_GEM: u32 = 0xe0203a;
+
+/// A diamond key with a stone of `gem`: the Cyclops' red one, or a sin's in its colour.
+pub fn diamond_key(gem: u32) -> Mesh {
     const G: u32 = 0xf2c53d;
     const G_D: u32 = 0xc8942a;
-    const R_L: u32 = 0xff7a8a;
-    const R: u32 = 0xe0203a;
-    const R_D: u32 = 0x9a0c24;
-    const R_DD: u32 = 0x640818;
+    let (r_l, r, r_d, r_dd) = (mix_hex(gem, 0xffffff, 0.4), gem, mix_hex(gem, 0, 0.35), mix_hex(gem, 0, 0.6));
     let mut s = Sculpt::new(15, 34, 7);
     // The diamond: a lozenge in x-y, thick in the middle, its facets shaded by which way they face.
     let (cx, cy) = (7.0f32, 25.5f32);
@@ -78,20 +78,20 @@ pub fn red_diamond_key() -> Mesh {
                 let c = if d > 0.86 {
                     G // a gold setting round the stone
                 } else if (dx < 0.0) == (dy > 0.0) {
-                    if front { R_L } else { R }
+                    if front { r_l } else { r }
                 } else if dy > 0.0 {
-                    if front { R } else { R_D }
+                    if front { r } else { r_d }
                 } else if front {
-                    R_D
+                    r_d
                 } else {
-                    R_DD
+                    r_dd
                 };
                 s.set(x, y, z, c);
             }
         }
     }
     // A table facet glinting in the middle.
-    s.cuboid(6, 25, 6, 8, 26, 6, R_L);
+    s.cuboid(6, 25, 6, 8, 26, 6, r_l);
     s.set(6, 27, 6, 0xffe0e6);
     // Collar, shaft and bit.
     s.cuboid(5, 15, 2, 9, 17, 4, G_D);
@@ -227,12 +227,12 @@ impl WorldView {
         }
         // ---- the Cyclops' red diamond key, lying where it fell: larger, redder, a tall beam over it
         if let Some(p) = s.red_key {
-            let red = lin(RED_KEY);
+            let red = lin(s.realm.map(|r| r.color()).unwrap_or(RED_KEY));
             let base = Vec3::new(p.x as f32, floor_at(s.grid, p.x as f32, p.y as f32), p.y as f32);
             let bob = (time * 2.0).sin() * 0.07;
             let at = base + Vec3::new(0.0, 0.45 + bob, 0.0);
             let spin = Quat::from_rotation_y(time * 1.6);
-            let m = &self.models.red_key;
+            let m = &self.models.keys[s.realm.map(|r| r.index() + 1).unwrap_or(0)];
             for (off, c) in &m.cubes {
                 let pm = Mat4::from_scale_rotation_translation(Vec3::splat(m.size), spin, at + spin * *off - Vec3::new(0.0, 0.36, 0.0));
                 f.opaque[cube_i].push(Instance::new(pm, *c, 1.0, *c * 0.12, 13.0));
@@ -255,7 +255,7 @@ impl WorldView {
         let o = Vec3::new(g.tile.x as f32, floor, g.tile.y as f32);
         let open = g.keys >= g.total && g.total > 0;
         // The estate's gate takes golden keys; the arena's, the Cyclops' red one.
-        let (lamp, lamp_glow) = if g.red { (lin(RED_KEY), lin(0xff4050)) } else { (lin(GOLD), lin(0xffc040)) };
+        let (lamp, lamp_glow) = if g.red { (lin(g.key), lin(mix_hex(g.key, 0xffffff, 0.2))) } else { (lin(GOLD), lin(0xffc040)) };
         // Doors: planks, iron straps and studs, a ring pull; they swing in, away from you.
         let swing = g.door.clamp(0.0, 1.0);
         let angle = (swing * swing * (3.0 - 2.0 * swing)) * 1.75;

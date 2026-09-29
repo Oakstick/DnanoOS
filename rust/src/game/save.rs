@@ -9,6 +9,7 @@ use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::progression::Progress;
+use crate::logic::sins::{Sin, SINS};
 use crate::logic::types::PotionKind;
 use crate::platform;
 
@@ -40,6 +41,12 @@ pub enum Stage {
     Shop(usize),
     /// In the Portals of Hell.
     Hub,
+    /// In the realm of a sin.
+    Realm(Sin),
+    /// In the court of its prince.
+    Court(Sin),
+    /// The prince is slain: at the old man's wares, before the way back to the hub.
+    SinShop(Sin),
 }
 
 /// A checkpoint of the adventure under way.
@@ -55,7 +62,8 @@ pub struct Run {
 }
 
 impl Run {
-    /// A line for the save file: "v2 hero stage dungeon score lives belt sins".
+    /// A line for the save file: "v2 hero stage dungeon score lives belt sins" (for a realm, its
+    /// court or the wares after it, the number is the sin's).
     /// (A "v1" line, from before the Portals of Hell, has no sins and still loads.)
     pub fn encode(&self) -> String {
         let (kind, n) = match self.stage {
@@ -63,6 +71,9 @@ impl Run {
             Stage::Arena(n) => ('a', n),
             Stage::Shop(n) => ('s', n),
             Stage::Hub => ('h', 0),
+            Stage::Realm(s) => ('r', s.index()),
+            Stage::Court(s) => ('c', s.index()),
+            Stage::SinShop(s) => ('e', s.index()),
         };
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
@@ -83,6 +94,9 @@ impl Run {
             "a" => Stage::Arena(n),
             "s" => Stage::Shop(n),
             "h" => Stage::Hub,
+            "r" => Stage::Realm(*SINS.get(n)?),
+            "c" => Stage::Court(*SINS.get(n)?),
+            "e" => Stage::SinShop(*SINS.get(n)?),
             _ => return None,
         };
         let score = f.next()?.parse().ok()?;
@@ -118,6 +132,9 @@ impl Game {
             Stage::Arena(n) => format!("the Cyclops of dungeon {}", n + 1),
             Stage::Shop(_) => "the old man's wares".to_string(),
             Stage::Hub => "the Portals of Hell".to_string(),
+            Stage::Realm(s) => format!("the realm of {}", s.name()),
+            Stage::Court(s) => format!("the court of {}", s.prince()),
+            Stage::SinShop(_) => "the old man's wares".to_string(),
         };
         Some(format!("{}, {place}", run.hero.name()))
     }
@@ -179,6 +196,19 @@ impl Game {
             Stage::Hub => {
                 self.load_hub();
                 self.enter(Screen::Ready);
+            }
+            Stage::Realm(s) => {
+                self.load_realm(s);
+                self.enter(Screen::Ready);
+            }
+            Stage::Court(s) => {
+                self.load_court(s);
+                self.enter(Screen::Ready);
+            }
+            Stage::SinShop(s) => {
+                // Leaving the wares goes back to the hub with the sin's key.
+                self.load_court(s);
+                self.open_shop();
             }
         }
         self.juice.fade = 1.0;
@@ -246,6 +276,9 @@ mod tests {
             Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0 },
             Run { hero: HeroKind::Mehmed, stage: Stage::Shop(4), score: 99, lives: 1, belt: vec![PotionKind::Ragnarok], sins: 0b101_0011 },
             Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Wrath), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
+            Run { hero: HeroKind::Miyamoto, stage: Stage::Court(Sin::Lust), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
+            Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01 },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));

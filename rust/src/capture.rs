@@ -13,7 +13,8 @@
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
 //! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
 //! `foes:N` (N rows of one of each foe before him, best in the Cyclops' open meadow),
-//! `dungeon:N` (straight into dungeon N, 0 being the first), `bless:N` (an archangel's blessing:
+//! `dungeon:N` (straight into dungeon N, 0 being the first), `map` (the map page), `hub`, `realm:N` and `court:N`
+//! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
 //! 0 Michael .. 3 Uriel) and `angel` (use it),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
@@ -49,6 +50,9 @@ enum Cmd {
     Hub,
     /// The sins whose keys he holds, as a bit set (127 for all seven).
     Sins(u8),
+    Realm(usize),
+    Map,
+    Court(usize),
     /// The Cyclops falls at once.
     Slay,
     Shop,
@@ -109,6 +113,9 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "daze" => Cmd::Daze,
             "at" => Cmd::At(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0), parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "hub" => Cmd::Hub,
+            "map" => Cmd::Map,
+            "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
             "shop" => Cmd::Shop,
@@ -202,6 +209,9 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Daze => game.debug_daze_boss(),
                 Cmd::At(x, y) => game.hero.place(crate::logic::types::P::new(x, y)),
                 Cmd::Hub => game.map_jump(crate::game::Stage::Hub),
+                Cmd::Map => game.open_map(),
+                Cmd::Realm(n) => game.map_jump(crate::game::Stage::Realm(crate::logic::sins::SINS[n.min(6)])),
+                Cmd::Court(n) => game.map_jump(crate::game::Stage::Court(crate::logic::sins::SINS[n.min(6)])),
                 Cmd::Sins(n) => game.sins_cleared = n & crate::logic::sins::ALL_SINS,
                 Cmd::Slay => game.debug_wound_boss(1000),
                 Cmd::Shop => game.open_shop(),

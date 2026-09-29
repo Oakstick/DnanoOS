@@ -170,8 +170,15 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o,
             t,
             &[
-                line("THE CYCLOPS IS SLAIN", 2.0, GOLD),
-                line(format!("The way down lies open. {} goes deeper.", g.hero_kind.name()), 0.9, SAND),
+                line(format!("{} IS SLAIN", g.boss_name()), 2.0, GOLD),
+                line(
+                    match g.realm {
+                        Some(sin) => format!("The key of {} is {}'s. Back to the Portals of Hell.", sin.name(), g.hero_kind.name()),
+                        None => format!("The way down lies open. {} goes deeper.", g.hero_kind.name()),
+                    },
+                    0.9,
+                    SAND,
+                ),
                 line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
                 line(
@@ -228,17 +235,18 @@ fn draw_boss_bar(o: &mut Overlay, g: &Game, t: f32) {
     let x0 = w / 2.0 - bw / 2.0;
     let y0 = margin + t * 0.35;
     let time = g.time as f32;
+    let who = g.boss_name();
     let name = match b.phase() {
-        1 => "THE CYCLOPS",
-        2 => "THE CYCLOPS - ENRAGED",
-        _ => "THE CYCLOPS - FURIOUS",
+        1 => who,
+        2 => format!("{who} - ENRAGED"),
+        _ => format!("{who} - FURIOUS"),
     };
     let name_color = match b.phase() {
         1 => SAND,
         2 => 0xff8a2a,
         _ => 0xff4d4d,
     };
-    o.text(name, w / 2.0, y0 + t * 0.2, t * 0.62, rgba(name_color, 1.0), Align::Center, true);
+    o.text(&name, w / 2.0, y0 + t * 0.2, t * 0.62, rgba(name_color, 1.0), Align::Center, true);
     let by = y0 + t * 0.75;
     let bh = t * 0.55;
     let frac = b.hp as f32 / b.max_hp as f32;
@@ -390,14 +398,15 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
         }
     } else if let Some(b) = &g.boss {
         // The fight, then the key, then the gate.
+        let key = g.realm.map(|s| format!("THE KEY OF {}", s.title())).unwrap_or_else(|| "THE RED KEY".to_string());
         let (text, color) = if b.alive() {
-            ("BOSS FIGHT", 0xff8a2a)
+            ("BOSS FIGHT".to_string(), 0xff8a2a)
         } else if g.red_key.is_some() {
-            ("TAKE THE RED KEY", 0xff4a5a)
+            (format!("TAKE {key}"), g.key_color())
         } else {
-            ("RED KEY: TO THE GATE", 0xff4a5a)
+            (format!("{key}: TO THE GATE"), g.key_color())
         };
-        o.text(text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
+        o.text(&text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);
@@ -747,8 +756,8 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let y = h * 0.42;
     o.circle(w / 2.0, y, t * 3.2 * pop, [1.0, 1.0, 1.0, 0.05 * alpha]);
     o.text(&n.to_string(), w / 2.0, y, t * 5.0 * pop, rgba(GOLD, alpha), Align::Center, true);
-    let ready = if g.boss.is_some() { "THE CYCLOPS AWAITS" } else { "GET READY" };
-    o.text(ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
+    let ready = if g.boss.is_some() { format!("{} AWAITS", g.boss_name()) } else { "GET READY".to_string() };
+    o.text(&ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
     // The level's name, large and gold across the top, as the count begins.
     let name = g.level.data.name.to_uppercase();
     let fit = w * 0.86 / (name.chars().count().max(1) as f32 * o.measure("M", 1.0));
@@ -829,6 +838,12 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
 fn where_line(g: &Game) -> String {
     if g.hub.is_some() {
         "DEPTH II: SEVEN DOORS, SEVEN SINS".to_string()
+    } else if let Some(sin) = g.realm {
+        if g.boss.is_some() {
+            format!("THE REALM OF {}: {} GUARDS ITS KEY", sin.title(), sin.prince().to_uppercase())
+        } else {
+            format!("THE REALM OF {}: EIGHT KEYS OPEN THE WAY TO ITS PRINCE", sin.title())
+        }
     } else {
         crate::logic::story::depth_line(g.dungeon, g.boss.is_some())
     }

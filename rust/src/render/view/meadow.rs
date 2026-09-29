@@ -52,6 +52,12 @@ pub fn meadow_atmosphere() -> Atmosphere {
     }
 }
 
+/// What a sin's colour does to a hide: most of the way to it, kept bright.
+fn sin_skin(hex: u32) -> Vec3 {
+    let c = lin(hex);
+    Vec3::ONE.lerp(c / c.max_element().max(1e-3), 0.75)
+}
+
 fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3) {
     let m = Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos);
     out.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
@@ -504,6 +510,8 @@ impl WorldView {
         let rage = if b.phase() >= 3 { 0.1 + (time * 6.0).sin().abs() * 0.1 } else { 0.0 };
         let body_emissive = Vec3::splat(flash * 0.5) + lin(0xff2a2a) * rage + Vec3::splat(if dying > 0.0 && (time * 14.0).sin() > 0.3 { 0.6 * dying } else { 0.0 });
         let tint = if flash > 0.0 { Vec3::ONE.lerp(Vec3::new(1.0, 0.55, 0.55), flash) } else { Vec3::ONE };
+        // A prince: the Cyclops' hide in his sin's colour.
+        let tint = tint * self.tint.map(sin_skin).unwrap_or(Vec3::ONE);
         // The iris smoulders even at rest, so the eye reads with the light behind it.
         let iris_emissive = lin(0xffb21e) * 0.04 + lin(BOLT) * glow * 0.9 + body_emissive;
         let out = &mut f.opaque[MeshKind::Cube as usize];

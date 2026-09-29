@@ -197,6 +197,16 @@ pub struct Light {
 }
 
 /// The sky, fog and ambient light a level is drawn under.
+/// `a` mixed `k` of the way to `b`, both sRGB hex.
+pub(crate) fn mix_hex(a: u32, b: u32, k: f32) -> u32 {
+    let ch = |s: u32| {
+        let x = ((a >> s) & 255) as f32;
+        let y = ((b >> s) & 255) as f32;
+        ((x + (y - x) * k.clamp(0.0, 1.0)) as u32) << s
+    };
+    ch(16) | ch(8) | ch(0)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Atmosphere {
     /// Sky and fog color, sRGB hex.
@@ -222,6 +232,19 @@ pub struct Atmosphere {
 
 impl Atmosphere {
     /// The dungeons: a moonlit forest at night.
+    /// The same sky under a sin's colour, for its realm and its prince's court.
+    pub fn tinted(mut self, hex: u32) -> Self {
+        let c = lin(hex);
+        let toward = |v: Vec3, k: f32| v.lerp(c * (v.max_element().max(0.02) / c.max_element().max(1e-3)), k);
+        self.background = mix_hex(self.background, hex, 0.35);
+        self.hemi_sky = toward(self.hemi_sky, 0.5);
+        self.hemi_ground = toward(self.hemi_ground, 0.3);
+        self.ambient = toward(self.ambient, 0.45);
+        self.sun = toward(self.sun, 0.3);
+        self.cloud_tint = toward(self.cloud_tint, 0.5);
+        self
+    }
+
     pub fn forest() -> Self {
         Self {
             background: BACKGROUND,
@@ -310,6 +333,8 @@ pub struct SceneState<'a> {
     pub fires: &'a [(P, f64)],
     /// The red diamond key the Cyclops dropped, while it lies on the grass.
     pub red_key: Option<P>,
+    /// The sin whose realm or court this is: its colour on the key he drops.
+    pub realm: Option<crate::logic::sins::Sin>,
     /// The Portals of Hell, while he is there.
     pub hub: Option<HubView>,
 }
@@ -332,6 +357,8 @@ pub struct GateView {
     pub door: f32,
     /// The arena's gate: one lock, for the Cyclops' red diamond key.
     pub red: bool,
+    /// That one key's colour: the red diamond's, or the sin's.
+    pub key: u32,
 }
 
 // ---------------------------------------------------------------- views
@@ -482,7 +509,8 @@ struct Models {
     tree: Mesh,
     key: Mesh,
     /// The Cyclops' red diamond key.
-    red_key: Mesh,
+    /// The diamond keys the bosses drop: the Cyclops' red one, then one in each sin's colour.
+    keys: Vec<Mesh>,
     /// The meadow's hedge ring, its bushes, and the forest's darker bushes: four shapes of each.
     hedges: Vec<Mesh>,
     bushes: Vec<Mesh>,
@@ -551,7 +579,7 @@ impl Models {
             diamond: super::props::gem(),
             tree: super::props::pine(),
             key: gate::golden_key(),
-            red_key: gate::red_diamond_key(),
+            keys: std::iter::once(gate::RED_GEM).chain(crate::logic::sins::SINS.iter().map(|s| s.color())).map(gate::diamond_key).collect(),
             hedges: (0..4).map(crate::render::foliage::hedge_block).collect(),
             bushes: (0..4).map(|v| crate::render::foliage::bush(v, crate::render::foliage::MEADOW)).collect(),
             forest_bushes: (0..4).map(|v| crate::render::foliage::small_bush(v, crate::render::foliage::FOREST)).collect(),
@@ -623,6 +651,8 @@ pub struct WorldView {
     pub meadow: bool,
     /// The Portals of Hell: platforms over a sea of lava.
     pub hell: bool,
+    /// A sin's realm or its prince's court: the sin's colour over the sky and the light.
+    pub tint: Option<u32>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -748,6 +778,7 @@ impl WorldView {
             rock_index: HashMap::new(),
             meadow: false,
             hell: false,
+            tint: None,
             water: Vec::new(),
             garden: None,
             fountain: None,
@@ -824,8 +855,9 @@ impl WorldView {
 
     #[allow(clippy::too_many_arguments)]
     pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: crate::logic::level::Theme, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
-        let meadow = theme == crate::logic::level::Theme::Meadow;
+        let meadow = theme.is_meadow();
         self.hell = theme == crate::logic::level::Theme::Hell;
+        self.tint = theme.sin().map(|s| s.color());
         self.garden = garden.cloned();
         self.fountain = None;
         self.wisps = None;
@@ -1837,6 +1869,9 @@ impl WorldView {
         } else {
             Atmosphere::forest()
         };
+        if let Some(c) = self.tint.filter(|_| !self.showcase) {
+            f.atmosphere = f.atmosphere.tinted(c);
+        }
         // Seer's Sight (path 3) sees through the dark.
         let nv = if s.hero.sees() { 0.6 } else { 0.0 };
         if nv > 0.0 && !self.meadow && !self.hell && !self.showcase {

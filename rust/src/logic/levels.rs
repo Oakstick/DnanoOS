@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use super::level::{LevelData, Theme};
 use super::rng::Rng;
+use super::sins::Sin;
 use super::types::PotionKind;
 
 /// Everyone moves at this fraction of the original tuning.
@@ -789,6 +790,33 @@ pub fn boss_arena(index: usize) -> LevelData {
         boss: true,
         theme: Theme::Meadow,
     }
+}
+
+/**
+ * The realm of a sin: for now an estate of its own seed, named for the realm,
+ * as hard as dungeon `tier` (one deeper for every sin's key already held).
+ * Its own ground, foes and sky come with its phase of the roadmap.
+ */
+pub fn realm_level(sin: Sin, tier: usize) -> LevelData {
+    let base = level_for(tier);
+    let layout = decorate_estate(&compose_estate(&QUADRANT), 20 + sin.index() as u32);
+    LevelData {
+        name: sin.realm().to_string(),
+        rows: Layout::strings(&layout.rows),
+        heights: Layout::strings(&layout.heights),
+        boss: false,
+        theme: Theme::Realm(sin),
+        ..base
+    }
+}
+
+/// The prince's court beyond the realm's gate: for now the Cyclops' meadow under the sin's sky,
+/// and the prince a Cyclops in the sin's colour.
+pub fn sin_arena(sin: Sin, tier: usize) -> LevelData {
+    let mut data = boss_arena(tier);
+    data.name = format!("The Court of {}", sin.prince());
+    data.theme = Theme::Court(sin);
+    data
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 //! The Portals of Hell in play (the layout is `logic::hub`). No foes come
 //! here. A portal's doors swing open as he comes up to them, showing the
-//! swirl of its sin's realm; a realm he has cleared keeps its doors shut with
+//! swirl of its sin's realm, and pushing through them takes him into the
+//! realm (`game::realm`); a realm he has cleared keeps its doors shut with
 //! its key in the lock. With all seven keys the seal breaks: the ground
 //! shakes, the wall of fire round the volcano dies and four causeways rise
 //! out of the lava to the House of the Devil.
@@ -84,20 +85,12 @@ impl Game {
                 h.hint = 3.0;
                 self.floater(front.x as f64, front.y as f64 - 0.8, format!("{} IS CONQUERED", gate.sin.name().to_uppercase()), 1.6, Some(gate.sin.color()));
             }
-            // Through the open doors: the realm beyond. (The realms themselves come next; for now he is turned back.)
-            if h.doors[i] >= 1.0 && near && self.hero.occupied() == front && self.facing_gate(gate) && h.hint <= 0.0 {
-                h.hint = 3.5;
-                self.audio.play(Sfx::Portal);
+            // Through the open doors: into the realm beyond.
+            if h.doors[i] >= 1.0 && near && self.hero.occupied() == front && self.facing_gate(gate) {
                 self.view.shake(0.3);
-                let color = gate.sin.color();
-                self.view.sparkle(&self.level.grid, gate.tile.x as f64, gate.tile.y as f64, 1.2, color, 40);
-                self.juice.banner = Some(Banner {
-                    text: gate.sin.realm().to_uppercase(),
-                    sub: format!("{} WAITS BEYOND   THE WAY THROUGH OPENS SOON", gate.sin.prince().to_uppercase()),
-                    color,
-                    life: 3.0,
-                    max: 3.0,
-                });
+                self.view.sparkle(&self.level.grid, gate.tile.x as f64, gate.tile.y as f64, 1.2, gate.sin.color(), 40);
+                self.enter_realm(gate.sin);
+                return;
             }
         }
         // The seal of the seven: every key held, and it breaks.

@@ -1,6 +1,6 @@
 # The Portals of Hell: roadmap
 
-Status: phases 0 and 1 are done (the engine groundwork and the hub itself, plus a polish round on the hub's art); phase 2 is next. Two changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it, and the bridges are three tiles wide rather than two, so they sit centred on the platforms. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
+Status: phases 0, 1 and 2 are done (the engine groundwork, the hub with a polish round on its art, and the whole loop with stand-ins); the realms (phases 3 to 9) are next, Greed first. Decisions 1 to 3 were settled on the proposals: a realm and its prince behind each portal, the hub straight after the Garden's Cyclops (the Cisterns and the Bone Vaults are off the road), and free order with difficulty following the keys held. Changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it; the bridges are three tiles wide rather than two, so they sit centred on the platforms; and the stand-in realms are fresh estate seeds rather than the retired layouts. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
 
 ## The idea
 
@@ -86,7 +86,7 @@ Done when every current level plays exactly as it does now and all tests pass.
 
 Done when the hub is playable, reads like the concept art and holds 60 fps, with captures of every door.
 
-### Phase 2: the whole loop, with stand-ins (M)
+### Phase 2: the whole loop, with stand-ins (M) — done
 
 - **After the Garden:** Cyclops I's gate leads to the old man, then to the hub.
 - **One portal's loop:**

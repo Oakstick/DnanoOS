@@ -293,10 +293,7 @@ impl Game {
                     // Back where he called from: the dungeon waited.
                     self.enter(Screen::Ready);
                 } else {
-                    let next = self.dungeon + 1;
-                    self.load_level(next);
-                    self.checkpoint(super::save::Stage::Dungeon(next));
-                    self.enter(Screen::Ready);
+                    self.after_shop();
                 }
                 self.juice.fade = 1.0;
                 self.input.consume(Action::Attack);

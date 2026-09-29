@@ -1,4 +1,5 @@
 use super::grid::Grid;
+use super::sins::Sin;
 use super::types::{js_round, PotionKind, Tile, P};
 
 /**
@@ -27,13 +28,32 @@ pub struct LevelData {
     pub theme: Theme,
 }
 
-/// A level's look: the moonlit estates and dungeons, the Cyclops' meadow, the lava of the Portals of Hell.
+/// A level's look: the moonlit estates and dungeons, the Cyclops' meadow, the lava of the Portals
+/// of Hell, and a sin's realm and its prince's court (for now the estate and the meadow under the
+/// sin's colour).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Theme {
     #[default]
     Estate,
     Meadow,
     Hell,
+    Realm(Sin),
+    Court(Sin),
+}
+
+impl Theme {
+    /// The sin whose realm or court this is.
+    pub fn sin(self) -> Option<Sin> {
+        match self {
+            Theme::Realm(s) | Theme::Court(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// A boss arena's sunny meadow: the Cyclops', or a prince's court.
+    pub fn is_meadow(self) -> bool {
+        matches!(self, Theme::Meadow | Theme::Court(_))
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -1,14 +1,14 @@
 //! The map, from MAP on the title or the pause menu: every stop on the road
-//! down (each dungeon and the Cyclops' arena after it), and a jump straight
-//! to any of them. For testing for now. It lies over the screen (drawn by
+//! down (the Garden and its Cyclops, the Portals of Hell, then each sin's
+//! realm and its prince's court), and a jump straight to any of them. For testing for now. It lies over the screen (drawn by
 //! `render::hud::map`) until B, Esc or Start puts it away.
 
 use super::save::Stage;
 use super::{Game, MenuItem, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
-use crate::logic::levels::{level_for, levels};
-use crate::logic::story::roman;
+use crate::logic::levels::level_for;
+use crate::logic::sins::SINS;
 use crate::logic::types::Dir;
 
 /// One stop on the map: where it goes and what it is called.
@@ -17,32 +17,34 @@ pub struct MapStop {
     pub label: String,
 }
 
-/// The road down: each authored dungeon, then the Cyclops' arena after it, with the
-/// Portals of Hell after the first Cyclops.
+/// The road down: the Garden and its Cyclops, the Portals of Hell, then each sin's realm and
+/// its prince's court (in any order in play; here in the order of the doors).
 pub fn map_stops() -> Vec<MapStop> {
-    let mut stops: Vec<MapStop> = (0..levels().len())
-        .flat_map(|n| {
-            let depth = roman(n + 1);
-            let name = level_for(n).name;
-            // "Dungeon II: The Cisterns" is named by the depth already.
-            let name = name.split_once(": ").map(|(_, rest)| rest.to_string()).unwrap_or(name);
-            [
-                MapStop { stage: Stage::Dungeon(n), label: format!("DEPTH {depth} - {}", name.to_uppercase()) },
-                MapStop { stage: Stage::Arena(n), label: format!("DEPTH {depth} - THE CYCLOPS") },
-            ]
-        })
-        .collect();
-    stops.insert(2.min(stops.len()), MapStop { stage: Stage::Hub, label: "DEPTH II - THE PORTALS OF HELL".to_string() });
+    let mut stops = vec![
+        MapStop { stage: Stage::Dungeon(0), label: format!("DEPTH I - {}", level_for(0).name.to_uppercase()) },
+        MapStop { stage: Stage::Arena(0), label: "DEPTH I - THE CYCLOPS".to_string() },
+        MapStop { stage: Stage::Hub, label: "DEPTH II - THE PORTALS OF HELL".to_string() },
+    ];
+    for sin in SINS {
+        stops.push(MapStop { stage: Stage::Realm(sin), label: format!("{} - {}", sin.title(), sin.realm().to_uppercase()) });
+        stops.push(MapStop { stage: Stage::Court(sin), label: format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase()) });
+    }
     stops
 }
 
 impl Game {
-    pub(super) fn open_map(&mut self) {
+    pub fn open_map(&mut self) {
         self.show_map = true;
         // The stop he is at now is highlighted (the first one from the title).
         let here = if self.screen == Screen::Paused {
             Some(if self.hub.is_some() {
                 Stage::Hub
+            } else if let Some(sin) = self.realm {
+                if self.boss.is_some() {
+                    Stage::Court(sin)
+                } else {
+                    Stage::Realm(sin)
+                }
             } else if self.boss.is_some() {
                 Stage::Arena(self.dungeon)
             } else {
@@ -72,9 +74,13 @@ impl Game {
         let n = stops.len();
         let rects = crate::render::hud::map_rects(n, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
+        // Two columns past ten stops: left and right step a column over.
+        let rows = if n > 10 { n.div_ceil(2) } else { n };
         match self.input.nav {
             Some(Dir::Up) => self.map_index = (self.map_index + n - 1) % n,
             Some(Dir::Down) => self.map_index = (self.map_index + 1) % n,
+            Some(Dir::Left) => self.map_index = (self.map_index + n - rows) % n,
+            Some(Dir::Right) => self.map_index = (self.map_index + rows) % n,
             _ => {}
         }
         if self.input.was_pressed(&[Action::TabPrev]) {
@@ -124,17 +130,19 @@ impl Game {
             self.juice.score_shown = 0.0;
             self.new_kit();
         }
-        match stage {
-            Stage::Dungeon(n) => self.load_level(n),
-            Stage::Arena(n) | Stage::Shop(n) => self.load_boss(n),
-            Stage::Hub => self.load_hub(),
-        }
-        self.checkpoint(stage);
-        self.juice.fade = 1.0;
-        // The first time in the Portals of Hell, the tour shows him round the seven doors.
-        if stage == Stage::Hub && !super::tour::hub_tour_seen() {
-            self.begin_tour();
+        if stage == Stage::Hub {
+            // The first time in the Portals of Hell, the tour shows him round the seven doors.
+            self.arrive_in_hub();
         } else {
+            match stage {
+                Stage::Dungeon(n) => self.load_level(n),
+                Stage::Arena(n) | Stage::Shop(n) => self.load_boss(n),
+                Stage::Realm(s) => self.load_realm(s),
+                Stage::Court(s) | Stage::SinShop(s) => self.load_court(s),
+                Stage::Hub => unreachable!(),
+            }
+            self.checkpoint(stage);
+            self.juice.fade = 1.0;
             self.enter(Screen::Ready);
         }
         for a in [Action::Confirm, Action::Jump, Action::Attack, Action::Tap] {

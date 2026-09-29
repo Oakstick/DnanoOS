@@ -7,6 +7,7 @@ mod angels;
 mod controls;
 mod hub;
 mod map;
+mod realm;
 mod save;
 
 pub use map::map_stops;
@@ -411,6 +412,8 @@ pub struct Game {
     pub sins_cleared: u8,
     /// The Portals of Hell, while he is there.
     pub hub: Option<hub::HubState>,
+    /// The sin whose realm, or whose prince's court, he is in.
+    pub realm: Option<crate::logic::sins::Sin>,
 }
 
 impl Game {
@@ -512,6 +515,7 @@ impl Game {
             angels_used: [false; 4],
             sins_cleared: 0,
             hub: None,
+            realm: None,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -656,6 +660,7 @@ impl Game {
         }
         self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.theme, self.garden.as_ref(), self.level.gate);
         self.hub = None;
+        self.realm = self.level.data.theme.sin();
         if hell {
             self.open_hub();
         }
@@ -939,9 +944,15 @@ impl Game {
                 self.screen_timer -= dt;
                 self.update_effects(dt);
                 if self.screen_timer <= 0.0 {
-                    let next = self.dungeon;
-                    self.load_boss(next);
-                    self.checkpoint(save::Stage::Arena(next));
+                    // The Cyclops' meadow, or the court of the realm's prince.
+                    if let Some(sin) = self.realm {
+                        self.load_court(sin);
+                        self.checkpoint(save::Stage::Court(sin));
+                    } else {
+                        let next = self.dungeon;
+                        self.load_boss(next);
+                        self.checkpoint(save::Stage::Arena(next));
+                    }
                     self.juice.fade = 1.0;
                     self.enter(Screen::Ready);
                 }
@@ -976,7 +987,7 @@ impl Game {
             puddles: &self.puddles,
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
-            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some() }),
+            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some(), key: self.key_color() }),
             relic: self.relic_shrine,
             decoy: self.decoy.map(|(p, _)| p),
             hero_kind: self.hero_kind,
@@ -984,6 +995,7 @@ impl Game {
             fires: &self.fires,
             angels_spent: self.angels_spent(),
             red_key: self.red_key,
+            realm: self.realm,
             hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
         };
         self.view.update(dt, &state);
@@ -1070,7 +1082,7 @@ impl Game {
             puddles: &self.puddles,
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
-            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some() }),
+            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some(), key: self.key_color() }),
             relic: self.relic_shrine,
             decoy: self.decoy.map(|(p, _)| p),
             hero_kind: self.hero_kind,
@@ -1078,6 +1090,7 @@ impl Game {
             fires: &self.fires,
             angels_spent: self.angels_spent(),
             red_key: self.red_key,
+            realm: self.realm,
             hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
         }
     }
@@ -1231,6 +1244,9 @@ impl Game {
         self.collect();
         self.update_gate(dt);
         self.update_hub(dt);
+        if self.screen != Screen::Playing {
+            return; // through a portal: the realm waits for its countdown
+        }
         self.visit_shrines();
         self.visit_potions();
         self.visit_relic_shrine();
@@ -1531,7 +1547,7 @@ impl Game {
         self.juice.banner = Some(Banner {
             text: "THE GATE IS UNLOCKED".into(),
             sub: if arena { "IN THE NORTH HEDGE: GO THROUGH AND ON DOWN".into() } else { "FIND IT IN THE NORTH WALL AND GO THROUGH".into() },
-            color: if arena { RED_KEY_COLOR } else { 0xf2c53d },
+            color: if arena { self.key_color() } else { 0xf2c53d },
             life: 3.0,
             max: 3.0,
         });
@@ -1554,8 +1570,8 @@ impl Game {
             self.gate_hint = 3.0;
             self.audio.play(Sfx::Denied);
             let (text, color) = match &self.boss {
-                Some(b) if b.alive() => ("LOCKED: THE CYCLOPS HOLDS THE KEY".to_string(), RED_KEY_COLOR),
-                Some(_) => ("LOCKED: TAKE THE RED DIAMOND KEY".to_string(), RED_KEY_COLOR),
+                Some(b) if b.alive() => (format!("LOCKED: {} HOLDS THE KEY", self.boss_name()), self.key_color()),
+                Some(_) => (format!("LOCKED: TAKE {}", self.key_name()), self.key_color()),
                 None => (format!("LOCKED  {}/{} KEYS", self.keys_got, self.keys_total), 0xf2c53d),
             };
             self.floater(g.x as f64, g.y as f64 + 0.6, text, 1.6, Some(color));
@@ -1600,7 +1616,10 @@ impl Game {
         self.events.push(GameEvent::Won);
         self.juice.banner = Some(Banner {
             text: "THROUGH THE GATE".into(),
-            sub: "SOMETHING VAST STIRS IN THE MEADOW...".into(),
+            sub: match self.realm {
+                Some(sin) => format!("{} WAITS IN HIS COURT...", sin.prince().to_uppercase()),
+                None => "SOMETHING VAST STIRS IN THE MEADOW...".into(),
+            },
             color: 0xf2c53d,
             life: CLEARED_SECONDS as f32,
             max: CLEARED_SECONDS as f32,
@@ -1734,10 +1753,11 @@ impl Game {
         self.red_key = None;
         self.keys_got = self.keys_total;
         let (x, y) = (k.x as f64, k.y as f64);
-        self.view.sparkle(&self.level.grid, x, y, 1.0, RED_KEY_COLOR, 50);
-        self.view.flash_light(&self.level.grid, k.v(), RED_KEY_COLOR);
+        let color = self.key_color();
+        self.view.sparkle(&self.level.grid, x, y, 1.0, color, 50);
+        self.view.flash_light(&self.level.grid, k.v(), color);
         self.audio.play(Sfx::Milestone);
-        self.floater(x, y - 0.8, "RED DIAMOND KEY", 2.0, Some(RED_KEY_COLOR));
+        self.floater(x, y - 0.8, self.key_name(), 2.0, Some(color));
         self.unlock_gate();
     }
 
@@ -1755,7 +1775,8 @@ impl Game {
             .min_by(|a, b| dist_sq(a.v(), at).total_cmp(&dist_sq(b.v(), at)));
         self.red_key = spot;
         if let Some(k) = spot {
-            self.view.sparkle(&self.level.grid, k.x as f64, k.y as f64, 1.2, RED_KEY_COLOR, 40);
+            let color = self.key_color();
+            self.view.sparkle(&self.level.grid, k.x as f64, k.y as f64, 1.2, color, 40);
         }
     }
 
@@ -1787,7 +1808,7 @@ impl Game {
             BossEvent::Enraged(phase) => {
                 self.audio.set_tempo_step(phase as u32);
                 self.juice.banner = Some(Banner {
-                    text: if phase == 2 { "THE CYCLOPS IS ENRAGED".into() } else { "THE CYCLOPS IS FURIOUS".into() },
+                    text: format!("{} IS {}", self.boss_name(), if phase == 2 { "ENRAGED" } else { "FURIOUS" }),
                     sub: if phase == 2 { "IT DIVES NOW   DODGE, THEN STRIKE WHILE IT IS DAZED".into() } else { "FINISH IT!".into() },
                     color: if phase == 2 { 0xff8a2a } else { 0xff4d4d },
                     life: 2.2,
@@ -1822,17 +1843,23 @@ impl Game {
                 // Its downfall gives up a relic of the old heroes.
                 self.take_relic(p);
                 self.events.push(GameEvent::BossSlain);
-                // It drops the red diamond key to the gate in the north hedge.
+                // It drops its key to the gate in the north hedge: the red diamond, or the sin's.
                 self.drop_red_key(p);
                 self.juice.banner = Some(Banner {
-                    text: "THE CYCLOPS IS SLAIN".into(),
-                    sub: "TAKE ITS RED DIAMOND KEY TO THE GATE IN THE NORTH HEDGE".into(),
-                    color: RED_KEY_COLOR,
+                    text: format!("{} IS SLAIN", self.boss_name()),
+                    sub: format!("TAKE {} TO THE GATE IN THE NORTH HEDGE", self.key_name()),
+                    color: self.key_color(),
                     life: 3.5,
                     max: 3.5,
                 });
                 self.save_progress();
-                self.checkpoint(save::Stage::Shop(self.dungeon));
+                if let Some(sin) = self.realm {
+                    // The sin is conquered: its key is his, for the seal.
+                    self.sins_cleared |= sin.bit();
+                    self.checkpoint(save::Stage::SinShop(sin));
+                } else {
+                    self.checkpoint(save::Stage::Shop(self.dungeon));
+                }
             }
         }
     }
@@ -3455,10 +3482,10 @@ mod tests {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
         let stops = map_stops();
-        assert_eq!(stops.len(), 2 * crate::logic::levels::levels().len() + 1, "each dungeon and its Cyclops, and the Portals of Hell");
+        assert_eq!(stops.len(), 3 + 2 * 7, "the Garden and its Cyclops, the Portals of Hell, and each realm and its prince");
         assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
         assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
-        // From the title: MAP, down to the fourth stop (Dungeon II), go.
+        // From the title: MAP, down to the fourth stop (the realm of Pride), go.
         g.menu_index = g.menu_items().iter().position(|&m| m == MenuItem::Map).unwrap();
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
@@ -3471,11 +3498,12 @@ mod tests {
         g.update(crate::app::STEP);
         assert!(!g.show_map);
         assert_eq!((g.screen, g.dungeon, g.boss.is_some()), (Screen::Ready, 1, false));
-        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(1)), "Continue comes back here");
+        assert_eq!(g.realm, Some(crate::logic::sins::Sin::Pride));
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(crate::logic::sins::Sin::Pride)), "Continue comes back here");
         // From the pause menu, to a Cyclops; Esc closes the map without going anywhere.
         g.enter(Screen::Paused);
         g.open_map();
-        assert_eq!(stops[g.map_index].stage, save::Stage::Dungeon(1), "where he is, highlighted");
+        assert_eq!(stops[g.map_index].stage, save::Stage::Realm(crate::logic::sins::Sin::Pride), "where he is, highlighted");
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!((g.show_map, g.screen), (false, Screen::Paused));
@@ -3525,6 +3553,7 @@ mod tests {
         let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Greed).unwrap();
         let i = Sin::Greed.index();
         g.hero.m.teleport(greed.front());
+        g.hero.face(greed.facing); // looking away from the doors, or he would go through
         for _ in 0..(1.5 / crate::app::STEP) as usize {
             g.update(crate::app::STEP);
         }
@@ -3868,16 +3897,100 @@ mod tests {
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Shop, "the old man comes after the boss");
-        // Leave him: on to dungeon II, where only the old man sells gear.
+        // Leave him: down into the Portals of Hell.
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         g.input.inject(Action::Pause);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Ready);
-        assert!(!g.level.data.boss);
-        assert_eq!(g.dungeon, 1);
-        assert!(g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel), "no free gear after the first dungeon, only the archangels");
-        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(1)));
+        assert!(g.hub.is_some() && !g.level.data.boss, "the Garden's Cyclops slain, the Portals of Hell open");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Hub));
+    }
+
+    #[test]
+    fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins_key() {
+        use crate::logic::hub;
+        use crate::logic::sins::Sin;
+        const STEP: f64 = crate::app::STEP;
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        g.map_jump(save::Stage::Hub);
+        g.enter(Screen::Playing);
+        // Into Greed's portal: up to the doors, pushing on them as they open.
+        let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Greed).unwrap();
+        g.hero.m.teleport(greed.front());
+        g.hero.face(greed.facing.opposite());
+        for _ in 0..(1.5 / STEP) as usize {
+            g.update(STEP);
+        }
+        assert_eq!(g.screen, Screen::Ready, "through the portal");
+        assert_eq!((g.realm, g.dungeon, g.level.data.boss), (Some(Sin::Greed), 1, false), "the realm of Greed, as hard as the first dungeon after the Garden");
+        assert_eq!(g.level.data.name, Sin::Greed.realm());
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Greed)));
+        assert_eq!(g.keys_total, 8, "eight golden keys open its gate");
+        assert!(g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel), "gear only from the old man; the archangels stand here too");
+        // Its gate leads to the prince's court.
+        g.enter(Screen::Playing);
+        g.cheat_to_gate();
+        let gate = g.gate.unwrap();
+        g.hero.m.teleport(P::new(gate.x, gate.y + 1));
+        for _ in 0..(3.0 / STEP) as usize {
+            g.update(STEP);
+            g.hero.invuln = 1.0;
+        }
+        g.hero.m.teleport(gate);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Cleared);
+        for _ in 0..((CLEARED_SECONDS + 0.1) / STEP) as usize {
+            g.update(STEP);
+        }
+        assert_eq!((g.screen, g.realm, g.boss.is_some()), (Screen::Ready, Some(Sin::Greed), true), "Mammon's court");
+        assert_eq!(g.boss_name(), "MAMMON");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Court(Sin::Greed)));
+        // The prince falls and drops the key of Greed.
+        for _ in 0..((READY_SECONDS + 2.5) / STEP) as usize {
+            g.update(STEP);
+            g.hero.invuln = 1.0;
+        }
+        assert_eq!(g.screen, Screen::Playing);
+        g.debug_wound_boss(1000);
+        g.hero.m.teleport(P::new(crate::logic::levels::ARENA_HERO.0, crate::logic::levels::ARENA_HERO.1));
+        for _ in 0..(6.0 / STEP) as usize {
+            g.update(STEP);
+            g.hero.invuln = 1.0;
+        }
+        let key = g.red_key.expect("the prince drops the key of Greed");
+        assert_eq!(g.sins_cleared, Sin::Greed.bit(), "Greed is conquered");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::SinShop(Sin::Greed)));
+        g.hero.m.teleport(key);
+        g.update(STEP);
+        assert!(g.red_key.is_none() && g.gate_open, "the key of Greed opens the court's gate");
+        let gate = g.gate.unwrap();
+        g.hero.m.teleport(P::new(gate.x, gate.y + 1));
+        for _ in 0..(3.0 / STEP) as usize {
+            g.update(STEP);
+        }
+        g.hero.m.teleport(gate);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Won);
+        // The old man, and then back before the portal, now sealed, with the next realm one deeper.
+        g.input.inject(Action::Confirm);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Shop);
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(g.hub.is_some(), "back in the Portals of Hell");
+        assert_eq!(g.hero.occupied(), greed.front(), "before the portal he went through");
+        assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.sins)), Some((save::Stage::Hub, Sin::Greed.bit())));
+        assert_eq!(g.realm_tier(), 2, "the next realm is one deeper");
+        g.enter(Screen::Playing);
+        for _ in 0..(1.5 / STEP) as usize {
+            g.update(STEP);
+        }
+        assert_eq!(g.hub.as_ref().unwrap().doors[Sin::Greed.index()], 0.0, "and Greed's doors stay shut");
     }
 
     #[test]
