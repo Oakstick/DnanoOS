@@ -269,6 +269,15 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             m.metal = 1.0;
             m.albedo *= 0.85;
         }
+        case 10: {
+            // Polished marble: a high gloss, faint veins wandering through it.
+            let c = uv * 3.0 + vec2<f32>(seed * 7.0, seed * 3.0);
+            let vein = abs(sin(c.x * 2.1 + sin(c.y * 3.7 + seed * 9.0) * 1.6 + sin(c.y * 1.3) * 0.8));
+            let v = smoothstep(0.93, 1.0, vein);
+            m.albedo *= mix(1.0, 0.86, v * detail);
+            m.spec = 0.9;
+            m.shine = 70.0;
+        }
         default: {}
     }
     return m;

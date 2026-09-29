@@ -214,6 +214,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             ],
             0.65,
         ),
+        Screen::Toll => draw_toll(o, g, t),
         Screen::Cleared => {
             // The fanfare's last moments fade to black on the way to the boss.
             let k = (1.0 - g.screen_timer as f32 / 0.9).clamp(0.0, 1.0);
@@ -414,6 +415,13 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
             (format!("{key}: TO THE GATE"), g.key_color())
         };
         o.text(&text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
+    } else if g.in_vault() {
+        // The hoard: what he carries out of the vaults, for Mammon to ask his toll on.
+        let cp = j.coin_punch;
+        let gold = format!("{}", g.hoard.gold);
+        let gs = small * 1.3 * (1.0 + 0.3 * cp);
+        o.text(&gold, rc, ty, gs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
+        o.text("HOARD", rc - o.measure(&gold, gs) - t * 0.3, ty, small, rgba(0xffc85a, 1.0), Align::Right, true);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);
@@ -845,6 +853,8 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
 fn where_line(g: &Game) -> String {
     if g.hub.is_some() {
         "DEPTH II: SEVEN DOORS, SEVEN SINS".to_string()
+    } else if g.in_vault() {
+        "THE VAULTS OF MAMMON: TAKE ALL YOU CAN CARRY, AND SEE WHAT IT COSTS YOU AT THE FAR PORTAL".to_string()
     } else if g.level.data.theme == crate::logic::level::Theme::Gym {
         "ONE OF EVERY FOE, STAGE BY STAGE: THEY RISE AGAIN WHEN THEY FALL".to_string()
     } else if let Some(sin) = g.realm {
@@ -1137,6 +1147,31 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
         let color = if big && !selected { SAND } else { color };
         o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * if big { 1.15 } else { 0.55 }, rgba(color, 1.0), Align::Center, true);
     }
+}
+
+/// Mammon's toll, before the far portal of his vaults: what he carries, and the choice.
+fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
+    o.rect(0.0, 0.0, o.width, o.height, [0.06, 0.03, 0.0, 0.72]);
+    let top = menu_rects(Screen::Toll, &[MenuItem::DropAll], o.width, o.height)[0][1];
+    let pulse = 0.9 + (g.time as f32 * 3.0).sin() * 0.1;
+    o.text("MAMMON'S TOLL", o.width / 2.0, top - t * 3.7, t * 1.45, rgba(GOLD, pulse), Align::Center, true);
+    let h = g.hoard;
+    let carried = if h.is_empty() {
+        "You carry nothing out of the vaults.".to_string()
+    } else {
+        format!("You carry {} gold: {} coins, {} heaps, {} chests, {} gems.", h.gold, h.coins, h.piles, h.chests, h.gems)
+    };
+    o.text(&carried, o.width / 2.0, top - t * 2.45, t * 0.62, rgba(SAND, 1.0), Align::Center, true);
+    o.wrap_text(
+        "The portal to Mammon's court opens only for the empty-handed. Keep what you carry and the vaults close on you: the realm begins again, every coin back where it lay.",
+        o.width / 2.0,
+        top - t * 1.75,
+        (t * 26.0).min(o.width - t * 2.0),
+        t * 0.72,
+        t * 0.5,
+        rgba(TEXT_DIM, 1.0),
+    );
+    draw_menu(o, g, t);
 }
 
 /// Centered overlay for ready, pause, win, and game over screens.

@@ -185,6 +185,11 @@ pub struct Brain {
     pub cast: f64,
     /// Ground it never leaves (the gym's platforms: only the hero crosses the bridges).
     pub keep: Option<Rect>,
+    /// The room it holds, in the Vaults of Mammon: it idles there (`keep`) until the hero comes near,
+    /// hunts him while he stays close, and goes back when he is gone.
+    pub den: Option<Rect>,
+    /// On its way back to its den.
+    pub returning: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -221,8 +226,16 @@ impl Enemy {
                 fury: 0.0,
                 cast: WITCH_CAST_FIRST,
                 keep: None,
+                den: None,
+                returning: false,
             },
         }
+    }
+
+    /// Sets its pace before its first step (a kept foe's easy pace included), so nothing catches it
+    /// at the mover's bare speed.
+    pub fn prime(&mut self) {
+        self.m.speed = self.b.base_speed * self.b.speed_factor * if self.b.keep.is_some() { KEEP_PACE } else { 1.0 };
     }
 
     /// Blows it can still take.
@@ -255,6 +268,29 @@ impl Enemy {
     }
     pub fn occupied(&self) -> P {
         self.m.occupied()
+    }
+
+    /// Idling in its den, not yet roused (the Vaults of Mammon).
+    pub fn lurking(&self) -> bool {
+        self.b.den.is_some() && self.b.keep.is_some()
+    }
+
+    /// Roused: it leaves its idling and hunts (nothing changes for a foe without a den).
+    pub fn rouse(&mut self) {
+        if self.b.den.is_some() {
+            self.b.keep = None;
+            self.b.returning = false;
+            if matches!(self.b.mode, EnemyMode::Scatter | EnemyMode::Chase) {
+                self.b.mode = EnemyMode::Chase;
+            }
+        }
+    }
+
+    /// Gives up the hunt and makes for its den; back in it, it idles again.
+    pub fn go_home(&mut self) {
+        if self.b.den.is_some() && self.b.keep.is_none() {
+            self.b.returning = true;
+        }
     }
 
     /// Free-roaming and able to hurt the hero (not one turned to his side).
@@ -451,6 +487,11 @@ impl Brain {
         let grid = ctx.grid;
         let mut may_reverse = false;
 
+        // Home again: it settles back to idling in its den.
+        if self.returning && self.den.is_some_and(|d| d.contains(tile)) {
+            self.returning = false;
+            self.keep = self.den;
+        }
         if self.mode == EnemyMode::Leaving && tile == ctx.nest_exit {
             self.mode = if ctx.frenzy_active { EnemyMode::Frenzied } else { ctx.global_mode.mode() };
             self.target = self.compute_target(ctx, own_pos);
@@ -553,6 +594,12 @@ impl Brain {
         }
         if self.ally > 0.0 {
             return ctx.quarry.unwrap_or(ctx.hero.pos);
+        }
+        if self.returning {
+            if let Some(d) = self.den {
+                let (cx, cy) = d.center();
+                return V::new(cx as f64, cy as f64);
+            }
         }
         if ctx.hero_hidden {
             return self.scatter_target.v();

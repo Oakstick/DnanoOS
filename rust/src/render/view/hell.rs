@@ -703,7 +703,7 @@ impl WorldView {
     }
 
     /// A portal gate's stonework: a black arch with bands of its sin's colour, its name in gold letters, a gem and horns over it, braziers before it.
-    fn build_portal_arch(&mut self, g: &Gate) {
+    pub(super) fn build_portal_arch(&mut self, g: &Gate) {
         let root = gate_root(g);
         let color = lin(g.sin.color());
         let trim = color * 0.55;
@@ -832,13 +832,21 @@ impl WorldView {
     }
 
     fn emit_portals(&self, hv: &HubView, time: f32, hero: Vec3, f: &mut Frame) {
-        let cube_i = MeshKind::Cube as usize;
         for g in hub::gates() {
             let i = g.sin.index();
-            let root = gate_root(&g);
+            self.emit_portal(&g, hv.doors[i], hv.sins & g.sin.bit() != 0, time, hero, f);
+        }
+    }
+
+    /// One portal: its doors `door` of the way open, the sin's key in the lock when `cleared`, the
+    /// braziers, and the realm swirling beyond the open doors.
+    pub(super) fn emit_portal(&self, g: &Gate, door: f32, cleared: bool, time: f32, hero: Vec3, f: &mut Frame) {
+        let cube_i = MeshKind::Cube as usize;
+        {
+            let i = g.sin.index();
+            let root = gate_root(g);
             let color = lin(g.sin.color());
-            let cleared = hv.sins & g.sin.bit() != 0;
-            let door = hv.doors[i].clamp(0.0, 1.0);
+            let door = door.clamp(0.0, 1.0);
             let angle = door * door * (3.0 - 2.0 * door) * 1.65;
             // The reliefs only where the camera can make them out (the tour flies it to each door).
             let spot = Vec3::new(g.tile.x as f32, 1.2, g.tile.y as f32);

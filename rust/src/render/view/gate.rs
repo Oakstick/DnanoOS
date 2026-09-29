@@ -249,8 +249,8 @@ impl WorldView {
             f.lights.push(Light { pos: at + Vec3::new(0.2, 0.6, 0.3), color: red * 2.5, distance: 4.0 });
         }
 
-        // ---- the gate
-        let Some(g) = s.gate else { return };
+        // ---- the gate (the vaults' far portal is drawn with the vaults)
+        let Some(g) = s.gate.filter(|_| self.vault.is_none()) else { return };
         let floor = s.grid.elevation(g.tile.x, g.tile.y + 1) as f32 * STEP;
         let o = Vec3::new(g.tile.x as f32, floor, g.tile.y as f32);
         let open = g.keys >= g.total && g.total > 0;

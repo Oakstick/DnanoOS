@@ -16,7 +16,9 @@ mod select;
 mod shop;
 mod story;
 mod tour;
+mod vault;
 pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState};
+pub use vault::Hoard;
 pub use story::{Story, STORY_FADE, TYPE_DELAY};
 pub use tour::{Tour, TourArt, TourStop, TOUR_STOP_SECONDS};
 
@@ -57,6 +59,8 @@ pub enum Screen {
     Shop,
     /// The first-run tour of the dungeon, before the first countdown.
     Tour,
+    /// Before the far portal of the Vaults of Mammon: drop everything, or keep it?
+    Toll,
     GameOver,
 }
 
@@ -251,6 +255,9 @@ pub enum MenuItem {
     QuitToTitle,
     /// Leave the game entirely. Desktop only: a browser tab cannot close itself.
     Quit,
+    /// Mammon's toll: leave the hoard and go through, or keep it and start the vaults again.
+    DropAll,
+    KeepAll,
 }
 
 impl MenuItem {
@@ -266,6 +273,8 @@ impl MenuItem {
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
+            MenuItem::DropAll => "DROP EVERYTHING",
+            MenuItem::KeepAll => "KEEP EVERYTHING",
         }
     }
 }
@@ -418,6 +427,13 @@ pub struct Game {
     pub hub: Option<hub::HubState>,
     /// The sin whose realm, or whose prince's court, he is in.
     pub realm: Option<crate::logic::sins::Sin>,
+    /// The Vaults of Mammon, while he is in them: their rooms, packs and gold.
+    pub vault: Option<crate::logic::vault::Vault>,
+    /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
+    pub hoard: Hoard,
+    toll_asked: bool,
+    /// The camera as it was before the vaults turned it to the top view.
+    camera_before_vault: Option<CameraMode>,
 }
 
 impl Game {
@@ -520,6 +536,10 @@ impl Game {
             sins_cleared: 0,
             hub: None,
             realm: None,
+            vault: None,
+            hoard: Hoard::default(),
+            toll_asked: false,
+            camera_before_vault: None,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -544,6 +564,13 @@ impl Game {
         self.score.level = index;
         self.dungeon = index;
         self.level = parse_level(&data);
+        self.vault = None;
+        let vault_level = data.theme == crate::logic::level::Theme::Realm(crate::logic::sins::Sin::Greed);
+        if !vault_level {
+            if let Some(mode) = self.camera_before_vault.take() {
+                self.view.camera_mode = mode;
+            }
+        }
         if self.level.data.boss {
             // In the arena he starts at the south edge, facing the Cyclops.
             self.start_facing = Dir::Up;
@@ -552,6 +579,9 @@ impl Game {
             self.start_facing = Dir::Up;
         } else if self.level.data.theme == crate::logic::level::Theme::Gym {
             // In the gym he arrives at the west end, facing the foes.
+            self.start_facing = Dir::Right;
+        } else if vault_level {
+            // In the Vaults of Mammon he comes through the west portal, facing into the antechamber.
             self.start_facing = Dir::Right;
         } else {
             // Ragnar starts in the heart of the dungeon, facing its longest corridor.
@@ -609,7 +639,7 @@ impl Game {
         // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
         let hell = self.level.data.theme == crate::logic::level::Theme::Hell;
         let gym = self.level.data.theme == crate::logic::level::Theme::Gym;
-        let specs = if self.level.data.boss || hell || gym { Vec::new() } else { enemy_specs(&self.level.grid, self.foe_stage_of(index)) };
+        let specs = if self.level.data.boss || hell || gym || vault_level { Vec::new() } else { enemy_specs(&self.level.grid, self.foe_stage_of(index)) };
         self.enemies = specs
             .iter()
             .enumerate()
@@ -617,6 +647,9 @@ impl Game {
             .collect();
         if gym {
             self.enemies = self.gym_garrison();
+        }
+        if vault_level {
+            self.enter_vault();
         }
         self.boss = if self.level.data.boss {
             let (x0, y0, x1, y1) = ARENA;
@@ -661,7 +694,7 @@ impl Game {
         self.poison = (0, 0.0, 0.0);
         self.fires.clear();
         self.spirits.clear();
-        self.relic_shrine = if self.level.data.boss || hell || gym { None } else { self.hidden_shrine_spot() };
+        self.relic_shrine = if self.level.data.boss || hell || gym || vault_level { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         if let Some(g) = self.level.gate {
@@ -669,7 +702,7 @@ impl Game {
                 self.level.grid.set_landmark(g.x + dx, g.y, true);
             }
         }
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.theme, self.garden.as_ref(), self.level.gate);
+        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.theme, self.garden.as_ref(), self.level.gate, self.vault.as_ref());
         self.hub = None;
         self.realm = self.level.data.theme.sin();
         if hell {
@@ -703,7 +736,8 @@ impl Game {
         let graves = self.grave_spawns();
         for (i, e) in self.enemies.iter_mut().enumerate() {
             match (e.post, graves.get(i % graves.len().max(1))) {
-                // The gym's foes pull themselves together at their posts.
+                // The vaults' packs go back to idling in their rooms; the gym's foes pull themselves together at their posts.
+                (Some(_), _) if e.b.den.is_some() => Self::settle(e, e.b.den.unwrap()),
                 (Some(post), _) => e.rise_at(post, crate::logic::enemy::REASSEMBLE_SECONDS),
                 // Draugr climb out of the churchyard rather than the hollow.
                 (None, Some(&g)) if e.kind().reassembles() => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
@@ -830,7 +864,7 @@ impl Game {
         self.show_controls = false;
         self.show_map = false;
         // The backing track steps back when the game does, and under the fanfare.
-        self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared));
+        self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared | Screen::Toll));
         if screen == Screen::Title {
             self.audio.set_tempo_step(0);
         }
@@ -932,6 +966,11 @@ impl Game {
                     self.tick(dt);
                 }
             }
+            Screen::Toll => {
+                if let Some(choice) = self.menu_choice() {
+                    self.pay_toll(choice);
+                }
+            }
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
@@ -1010,6 +1049,7 @@ impl Game {
             red_key: self.red_key,
             realm: self.realm,
             hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
+            loot: self.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -1034,6 +1074,7 @@ impl Game {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
             Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle],
+            Screen::Toll => return vec![MenuItem::DropAll, MenuItem::KeepAll],
             _ => return Vec::new(),
         };
         if quit {
@@ -1105,6 +1146,7 @@ impl Game {
             red_key: self.red_key,
             realm: self.realm,
             hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
+            loot: self.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
         }
     }
 
@@ -1352,6 +1394,7 @@ impl Game {
         }
         self.update_witches(dt);
         self.update_gym(dt);
+        self.update_vault(dt);
         self.update_spawns(dt);
         self.update_slime_trails(dt);
 
@@ -1382,6 +1425,7 @@ impl Game {
                 e.post = Some(post);
                 e.b.keep = Some(crate::logic::gym::platform(stage as usize - 1));
                 e.b.mode = EnemyMode::Chase;
+                e.prime();
                 e
             })
             .collect()
@@ -1415,10 +1459,13 @@ impl Game {
     /// A witch on the hunt cackles now and then and conjures a minion at her feet.
     fn update_witches(&mut self, dt: f64) {
         let hp = self.hero.pos();
-        let cap = self.max_enemies() + 2;
+        // In the vaults the packs are many: the witches may add a dozen minions between them.
+        let vault = self.vault.is_some();
+        let minions = self.enemies.iter().filter(|e| e.kind() == EnemyKind::Minion).count();
+        let cap = if vault { if minions < 12 { usize::MAX } else { 0 } } else { self.max_enemies() + 2 };
         for i in 0..self.enemies.len() {
             let e = &mut self.enemies[i];
-            if e.kind() != EnemyKind::Witch || !e.is_dangerous() {
+            if e.kind() != EnemyKind::Witch || !e.is_dangerous() || e.lurking() || e.b.returning {
                 continue;
             }
             e.b.cast -= dt;
@@ -1435,6 +1482,7 @@ impl Game {
             minion.b.mode = EnemyMode::Chase;
             minion.b.keep = self.enemies[i].b.keep;
             minion.b.name = format!("{}'s minion", self.enemies[i].b.name);
+            minion.prime();
             self.view.add_enemy(&minion);
             self.enemies.push(minion);
             self.audio.play(Sfx::Cackle);
@@ -1445,8 +1493,8 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     fn update_spawns(&mut self, dt: f64) {
-        if self.boss.is_some() || self.hub.is_some() || self.level.data.theme == crate::logic::level::Theme::Gym {
-            return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's are all there
+        if self.boss.is_some() || self.hub.is_some() || self.level.data.theme == crate::logic::level::Theme::Gym || self.vault.is_some() {
+            return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's and the vaults' are all there
         }
         self.spawn_timer -= dt;
         if self.spawn_timer > 0.0 || self.enemies.len() >= self.max_enemies() {
@@ -1664,6 +1712,13 @@ impl Game {
         self.gate_hint = (self.gate_hint - dt).max(0.0);
         let hp = self.hero.pos();
         let near = (hp.x - g.x as f64).abs() < 1.2 && (hp.y - g.y as f64).abs() < 1.7;
+        if near && !self.gate_open && self.vault.is_some() {
+            // The far portal of the vaults asks Mammon's toll instead of keys.
+            if !self.toll_asked {
+                self.ask_toll();
+            }
+            return;
+        }
         if near && !self.gate_open && self.gate_hint <= 0.0 {
             self.gate_hint = 3.0;
             self.audio.play(Sfx::Denied);
@@ -1727,6 +1782,10 @@ impl Game {
 
     /// F2: every key found at once, and Ragnar at the gate (testing cheat).
     pub fn cheat_to_gate(&mut self) {
+        if self.vault.is_some() {
+            self.cheat_to_vault_exit();
+            return;
+        }
         let Some(g) = self.gate else { return };
         for (x, y, t) in self.level.grid.cells().collect::<Vec<_>>() {
             if t == Tile::Nodule {
@@ -2745,6 +2804,7 @@ impl Game {
     /// A blow of the hero's lands on foe `i`: it falls, unless it is tough enough to take another,
     /// in which case it staggers (the loup-garou howls and comes on faster instead).
     fn strike_enemy(&mut self, i: usize) {
+        self.wake_pack_of(i);
         if self.enemies[i].hits_left() <= 1 {
             self.slay_enemy(i);
             return;
@@ -2780,6 +2840,7 @@ impl Game {
     }
 
     fn slay_enemy(&mut self, i: usize) {
+        self.wake_pack_of(i);
         let base = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.earn(COINS_KILL);
         self.enemies[i].kill();
@@ -3773,8 +3834,8 @@ mod tests {
         }
         assert_eq!(g.hero.hp, hp, "unhurt in the gym");
         assert!(g.enemies.iter().filter(|e| e.post.is_some()).all(|e| e.b.keep.is_some()));
-        // Off the road, the realms keep the first stage's cast for now.
-        g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+        // Off the road, the stand-in realms keep the first stage's cast for now (Greed's vaults have both).
+        g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Sloth));
         assert!(g.enemies.iter().all(|e| EnemyKind::STAGE_ONE.contains(&e.kind())));
         g.map_jump(save::Stage::Gym);
         g.enter(Screen::Playing);
@@ -3843,7 +3904,8 @@ mod tests {
         let hp = g.hero.hp;
         g.hero.invuln = 0.0;
         g.hero.shield = None; // bare, so the whole bite lands
-        foe_at(&mut g, EnemyKind::Blemmyes, g.hero.occupied());
+        let at = g.hero.occupied();
+        foe_at(&mut g, EnemyKind::Blemmyes, at);
         g.resolve_contact();
         assert_eq!(hp - g.hero.hp, 2 * crate::logic::hero::CONTACT_DAMAGE, "its touch hurts double");
     }
@@ -4176,17 +4238,17 @@ mod tests {
         let mut g = Game::new();
         g.map_jump(save::Stage::Hub);
         g.enter(Screen::Playing);
-        // Into Greed's portal: up to the doors, pushing on them as they open.
-        let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Greed).unwrap();
+        // Into Sloth's portal: up to the doors, pushing on them as they open.
+        let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Sloth).unwrap();
         g.hero.m.teleport(greed.front());
         g.hero.face(greed.facing.opposite());
         for _ in 0..(1.5 / STEP) as usize {
             g.update(STEP);
         }
         assert_eq!(g.screen, Screen::Ready, "through the portal");
-        assert_eq!((g.realm, g.dungeon, g.level.data.boss), (Some(Sin::Greed), 1, false), "the realm of Greed, as hard as the first dungeon after the Garden");
-        assert_eq!(g.level.data.name, Sin::Greed.realm());
-        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Greed)));
+        assert_eq!((g.realm, g.dungeon, g.level.data.boss), (Some(Sin::Sloth), 1, false), "the realm of Sloth, as hard as the first dungeon after the Garden");
+        assert_eq!(g.level.data.name, Sin::Sloth.realm());
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Sloth)));
         assert_eq!(g.keys_total, 8, "eight golden keys open its gate");
         assert!(g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel), "gear only from the old man; the archangels stand here too");
         // Its gate leads to the prince's court.
@@ -4204,9 +4266,9 @@ mod tests {
         for _ in 0..((CLEARED_SECONDS + 0.1) / STEP) as usize {
             g.update(STEP);
         }
-        assert_eq!((g.screen, g.realm, g.boss.is_some()), (Screen::Ready, Some(Sin::Greed), true), "Mammon's court");
-        assert_eq!(g.boss_name(), "MAMMON");
-        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Court(Sin::Greed)));
+        assert_eq!((g.screen, g.realm, g.boss.is_some()), (Screen::Ready, Some(Sin::Sloth), true), "Belphegor's court");
+        assert_eq!(g.boss_name(), "BELPHEGOR");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Court(Sin::Sloth)));
         // The prince falls and drops the key of Greed.
         for _ in 0..((READY_SECONDS + 2.5) / STEP) as usize {
             g.update(STEP);
@@ -4219,12 +4281,12 @@ mod tests {
             g.update(STEP);
             g.hero.invuln = 1.0;
         }
-        let key = g.red_key.expect("the prince drops the key of Greed");
-        assert_eq!(g.sins_cleared, Sin::Greed.bit(), "Greed is conquered");
-        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::SinShop(Sin::Greed)));
+        let key = g.red_key.expect("the prince drops the key of Sloth");
+        assert_eq!(g.sins_cleared, Sin::Sloth.bit(), "Sloth is conquered");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::SinShop(Sin::Sloth)));
         g.hero.m.teleport(key);
         g.update(STEP);
-        assert!(g.red_key.is_none() && g.gate_open, "the key of Greed opens the court's gate");
+        assert!(g.red_key.is_none() && g.gate_open, "the key of Sloth opens the court's gate");
         let gate = g.gate.unwrap();
         g.hero.m.teleport(P::new(gate.x, gate.y + 1));
         for _ in 0..(3.0 / STEP) as usize {
@@ -4244,13 +4306,13 @@ mod tests {
         assert_eq!(g.screen, Screen::Ready);
         assert!(g.hub.is_some(), "back in the Portals of Hell");
         assert_eq!(g.hero.occupied(), greed.front(), "before the portal he went through");
-        assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.sins)), Some((save::Stage::Hub, Sin::Greed.bit())));
+        assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.sins)), Some((save::Stage::Hub, Sin::Sloth.bit())));
         assert_eq!(g.realm_tier(), 2, "the next realm is one deeper");
         g.enter(Screen::Playing);
         for _ in 0..(1.5 / STEP) as usize {
             g.update(STEP);
         }
-        assert_eq!(g.hub.as_ref().unwrap().doors[Sin::Greed.index()], 0.0, "and Greed's doors stay shut");
+        assert_eq!(g.hub.as_ref().unwrap().doors[Sin::Sloth.index()], 0.0, "and Sloth's doors stay shut");
     }
 
     #[test]

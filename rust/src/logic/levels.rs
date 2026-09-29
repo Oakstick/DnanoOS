@@ -799,6 +799,10 @@ pub fn boss_arena(index: usize) -> LevelData {
  */
 pub fn realm_level(sin: Sin, tier: usize) -> LevelData {
     let base = level_for(tier);
+    if sin == Sin::Greed {
+        // The Vaults of Mammon are built (see `vault`); the rest are stand-ins for now.
+        return super::vault::Vault::generate(super::vault::SEED).level(&base);
+    }
     let layout = decorate_estate(&compose_estate(&QUADRANT), 20 + sin.index() as u32);
     LevelData {
         name: sin.realm().to_string(),

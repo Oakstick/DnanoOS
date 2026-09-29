@@ -29,6 +29,7 @@ mod hell;
 mod meadow;
 mod select;
 mod story;
+mod vault;
 pub use fountain::krampus;
 pub use select::SelectView;
 pub use story::StoryView;
@@ -337,6 +338,8 @@ pub struct SceneState<'a> {
     pub realm: Option<crate::logic::sins::Sin>,
     /// The Portals of Hell, while he is there.
     pub hub: Option<HubView>,
+    /// The gold of the Vaults of Mammon: where each piece lies, and whether he has taken it.
+    pub loot: &'a [crate::logic::vault::Loot],
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -519,6 +522,10 @@ struct Models {
     fireball: Mesh,
     crescent: Mesh,
     diamond: Mesh,
+    /// The vaults' gold: a stack of coins, a heap of them, a chest (body and lid).
+    coin: Mesh,
+    pile: Mesh,
+    chest: (Mesh, Mesh),
     tree: Mesh,
     key: Mesh,
     /// The Cyclops' red diamond key.
@@ -614,6 +621,9 @@ impl Models {
             fireball: super::props::fireball(),
             crescent: super::props::crescent(),
             diamond: super::props::gem(),
+            coin: vault::coin(),
+            pile: vault::pile(),
+            chest: vault::chest(),
             tree: super::props::pine(),
             key: gate::golden_key(),
             keys: std::iter::once(gate::RED_GEM).chain(crate::logic::sins::SINS.iter().map(|s| s.color())).map(gate::diamond_key).collect(),
@@ -698,6 +708,8 @@ pub struct WorldView {
     pub tint: Option<u32>,
     /// The gym: the hub's lava and platforms, but none of its landmarks.
     pub gym: bool,
+    /// The Vaults of Mammon, while he is in them.
+    vault: Option<vault::VaultView>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -824,6 +836,7 @@ impl WorldView {
             meadow: false,
             hell: false,
             tint: None,
+            vault: None,
             gym: false,
             water: Vec::new(),
             garden: None,
@@ -900,11 +913,13 @@ impl WorldView {
     // ---------------------------------------------------------------- build
 
     #[allow(clippy::too_many_arguments)]
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: crate::logic::level::Theme, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
+    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: crate::logic::level::Theme, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>, vault: Option<&crate::logic::vault::Vault>) {
         let meadow = theme.is_meadow();
         self.hell = theme.is_hell();
         self.gym = theme == crate::logic::level::Theme::Gym;
-        self.tint = theme.sin().map(|s| s.color());
+        // A sin's colour over the sky, but for the vaults, which have their own gold light.
+        self.tint = theme.sin().filter(|_| vault.is_none()).map(|s| s.color());
+        self.vault = None;
         self.garden = garden.cloned();
         self.fountain = None;
         self.wisps = None;
@@ -933,15 +948,17 @@ impl WorldView {
             l.intensity = 0.0;
         }
         self.meadow = meadow;
-        if self.hell {
+        if let Some(v) = vault {
+            self.build_vault(grid, v);
+        } else if self.hell {
             self.build_hell(grid);
         } else if meadow {
             self.build_meadow(grid);
         } else {
             self.build_forest(grid);
         }
-        if let Some(g) = gate {
-            // Eight lock lamps for the estate's keys; one for the Cyclops' red key.
+        if let Some(g) = gate.filter(|_| vault.is_none()) {
+            // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
         // A thread of smoke above every candle.
@@ -1188,6 +1205,16 @@ impl WorldView {
                 break;
             }
             self.update_enemy(i, e, s, dtf, time);
+        }
+        // The vaults' chests stand open once taken.
+        if let Some(vv) = &mut self.vault {
+            for (i, l) in s.loot.iter().enumerate() {
+                if l.taken {
+                    if let Some(a) = vv.opened.get_mut(i) {
+                        *a += dtf;
+                    }
+                }
+            }
         }
         for (i, d) in s.diamonds.iter().enumerate() {
             if d.active {
@@ -1948,6 +1975,8 @@ impl WorldView {
         }
         f.atmosphere = if self.showcase {
             Atmosphere::forest()
+        } else if self.vault.is_some() {
+            vault::vault_atmosphere()
         } else if self.hell {
             hell::hell_atmosphere()
         } else if self.meadow {
@@ -1960,7 +1989,7 @@ impl WorldView {
         }
         // Seer's Sight (path 3) sees through the dark.
         let nv = if s.hero.sees() { 0.6 } else { 0.0 };
-        if nv > 0.0 && !self.meadow && !self.hell && !self.showcase {
+        if nv > 0.0 && !self.meadow && !self.hell && !self.showcase && self.vault.is_none() {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
             a.hemi_sky *= 1.0 + 1.4 * nv;
@@ -2017,6 +2046,9 @@ impl WorldView {
         if self.hell {
             hero_light *= 0.45; // the lava lights him from below
         }
+        if self.vault.is_some() {
+            hero_light *= 0.5; // candlelight everywhere
+        }
         // His lantern rides well above the horned helmet, so it lights him without bleaching him.
         let to_cam = {
             let d = self.cam_pos - hero_pos;
@@ -2069,10 +2101,13 @@ impl WorldView {
             f.transparent[MeshKind::Disc as usize].push(Instance::new(m, Vec3::ZERO, 0.45 * sh, Vec3::ZERO, SHADE_UNLIT));
         }
 
-        // --- enemies
+        // --- enemies (those lost in the fog are not drawn at all: the vaults hold dozens)
         for (i, v) in self.enemy_views.iter().enumerate() {
             if i >= s.enemies.len() {
                 break;
+            }
+            if v.group_pos.distance(self.cam_pos) > f.atmosphere.fog_far + 4.0 {
+                continue;
             }
             let group = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw);
             if v.visible {
@@ -2282,6 +2317,10 @@ impl WorldView {
             // Lava below instead of the sea of cloud.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
             self.emit_hell(s, time, hero_pos, f);
+        } else if self.vault.is_some() {
+            // Underground: no sea of cloud, and no fireflies.
+            f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
+            self.emit_vault(s, time, hero_pos, f);
         } else {
             emit_cloud_sea(grid, f, self.cam_pos);
         }
@@ -2291,7 +2330,7 @@ impl WorldView {
         self.emit_smoke(time, f);
         let mote_color = lin(MOTE);
         for (i, b) in self.mote_base.iter().enumerate() {
-            if self.meadow || self.hell {
+            if self.meadow || self.hell || self.vault.is_some() {
                 break;
             }
             let fi = i as f32;

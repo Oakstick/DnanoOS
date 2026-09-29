@@ -22,3 +22,4 @@ pub mod sins;
 pub mod story;
 pub mod systems;
 pub mod types;
+pub mod vault;
