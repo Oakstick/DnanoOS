@@ -35,7 +35,7 @@ pub(super) struct Zap {
 }
 
 /// A line segment as a stretched cube from `a` to `b`.
-fn segment(a: Vec3, b: Vec3, thick: f32) -> Mat4 {
+pub(super) fn segment(a: Vec3, b: Vec3, thick: f32) -> Mat4 {
     let d = b - a;
     let len = d.length().max(1e-4);
     let rot = Quat::from_rotation_arc(Vec3::Y, d / len);
@@ -340,6 +340,21 @@ impl WorldView {
                         f.additive.push(Instance::new(segment(a, b, 0.025), lin(0xbfe8ff) * 1.8, 0.9, Vec3::ZERO, SHADE_UNLIT));
                     }
                 }
+            }
+            RangedKind::Grace => {
+                // Michael's fire: a blue flame with a white heart, sparks streaming off it.
+                let blue = lin(crate::logic::angels::Archangel::Michael.color());
+                let pulse = 1.0 + (time * 18.0).sin() * 0.12;
+                glow_orb(f, pos, 0.55 * pulse, blue, 0.75);
+                let m = Mat4::from_translation(pos) * Mat4::from_rotation_y(time * 9.0) * Mat4::from_rotation_x(time * 7.0) * Mat4::from_scale(Vec3::splat(0.14 * pulse));
+                f.additive.push(Instance::new(m, Vec3::ONE.lerp(blue, 0.3) * 2.4, 0.95, Vec3::ZERO, SHADE_UNLIT));
+                for k in 0..4 {
+                    let t = (time * 16.0 + k as f32 * 2.3).floor();
+                    let h = |q: f32| (t * 12.9898 + q * 78.233).sin().fract() - 0.5;
+                    let a = pos + Vec3::new(h(1.0), h(2.0), h(3.0)) * 0.35;
+                    f.additive.push(Instance::new(segment(a, a + Vec3::new(h(4.0), h(5.0), h(6.0)) * 0.2, 0.03), blue * 2.0, 0.9, Vec3::ZERO, SHADE_UNLIT));
+                }
+                f.lights.push(Light { pos, color: blue * 5.0, distance: 3.2 });
             }
             RangedKind::Wave => {
                 // A pale crescent of force skimming the floor.

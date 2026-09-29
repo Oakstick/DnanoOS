@@ -101,17 +101,17 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
     // ---- what each does, called out to either side (drawn under the buttons, so each line meets its button's edge)
     let face_at = |dx: f32, dy: f32| [face[0] + dx * u, face[1] + dy * u];
     let left = [
-        Callout { at: lt_at, name: "LT", color: SHINE, does: "Next potion on the belt" },
+        Callout { at: lt_at, name: "LT", color: SHINE, does: "The archangel's power" },
         Callout { at: lb_at, name: "LB", color: SHINE, does: "Bifrost Step, once learned" },
         Callout { at: view, name: "View", color: SHINE, does: "Call the old man" },
-        Callout { at: ls, name: "Left stick", color: SHINE, does: "Run, any way you point" },
+        Callout { at: ls, name: "Left stick", color: SHINE, does: "Run; press: switch camera" },
         Callout { at: dpad, name: "D-pad", color: SHINE, does: "Run; choose in menus" },
     ];
     let right = [
         Callout { at: rt_at, name: "RT", color: SHINE, does: "Attack" },
         Callout { at: rb_at, name: "RB", color: SHINE, does: "Drink the chosen potion" },
         Callout { at: menu, name: "Menu", color: SHINE, does: "Pause and resume; pick in menus" },
-        Callout { at: face_at(0.0, -1.3), name: "Y", color: Y_YELLOW, does: "Switch camera: behind or above" },
+        Callout { at: face_at(0.0, -1.3), name: "Y", color: Y_YELLOW, does: "Next potion on the belt" },
         Callout { at: face_at(1.3, 0.0), name: "B", color: B_RED, does: "Drop a bomb" },
         Callout { at: face_at(-1.3, 0.0), name: "X", color: X_BLUE, does: "Attack" },
         Callout { at: face_at(0.0, 1.3), name: "A", color: A_GREEN, does: "Jump; pick in menus" },

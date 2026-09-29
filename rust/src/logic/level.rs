@@ -31,7 +31,7 @@ pub struct ParsedLevel {
     pub hero_spawn: P,
     pub enemy_spawn: P,
     pub nest_center: P,
-    pub weapon_shrines: Vec<P>,
+    pub angel_shrines: Vec<P>,
     pub item_shrines: Vec<P>,
     pub potions: Vec<(P, PotionKind)>,
     /// The gate to the boss, set in the outer wall; it opens when every key is found.
@@ -48,7 +48,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
     let mut hero_spawn = None;
     let mut enemy_spawn = None;
     let mut nest_tiles = Vec::new();
-    let mut weapon_shrines = Vec::new();
+    let mut angel_shrines = Vec::new();
     let mut item_shrines = Vec::new();
     let mut potions = Vec::new();
     let mut gate = None;
@@ -90,7 +90,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
                     Tile::Nest
                 }
                 'W' => {
-                    weapon_shrines.push(p);
+                    angel_shrines.push(p);
                     Tile::Open
                 }
                 'I' => {
@@ -191,7 +191,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
         hero_spawn,
         enemy_spawn,
         nest_center,
-        weapon_shrines,
+        angel_shrines,
         item_shrines,
         potions,
         gate,

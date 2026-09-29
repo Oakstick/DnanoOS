@@ -1,5 +1,6 @@
 //! Game rules, free of any rendering or platform code.
 
+pub mod angels;
 pub mod boss;
 pub mod enemy;
 pub mod garden;

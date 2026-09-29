@@ -806,7 +806,7 @@ mod tests {
         assert_eq!(level.potions.len(), 6);
         assert!(level.potions.iter().all(|(_, k)| *k == PotionKind::Health));
         assert_eq!(level.grid.count(Tile::Charge), 0, "no green crosses");
-        assert_eq!(level.weapon_shrines.len(), 4);
+        assert_eq!(level.angel_shrines.len(), 4);
         assert_eq!(level.item_shrines.len(), 4);
         assert_eq!(level.grid.count(Tile::Nest), 8, "one hollow");
         let gate = level.gate.expect("a gate");
@@ -860,7 +860,7 @@ mod tests {
                     assert!(seen.contains(&crate::logic::types::P::new(x, y)), "dungeon {index}: pickup at {x},{y} unreachable");
                 }
             }
-            for p in level.weapon_shrines.iter().chain(&level.item_shrines).chain(level.potions.iter().map(|(p, _)| p)) {
+            for p in level.angel_shrines.iter().chain(&level.item_shrines).chain(level.potions.iter().map(|(p, _)| p)) {
                 assert!(seen.contains(p), "dungeon {index}: {p:?} unreachable");
             }
         }

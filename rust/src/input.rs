@@ -31,7 +31,7 @@ pub enum Action {
     FreeMove,
     /// Q / RB: drink the selected potion on the belt.
     Drink,
-    /// Tab / LT: select the next potion (in the shop: the next tab).
+    /// Tab / Y: select the next potion (in the shop: the next tab).
     NextPotion,
     /// 1..5: drink the potion in that belt slot.
     Slot(u8),
@@ -41,6 +41,8 @@ pub enum Action {
     Step,
     /// H / Back: call the old gatekeeper, and his wares open.
     Call,
+    /// R / LT: one use of the archangel's blessing he carries.
+    Angel,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -124,6 +126,7 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         KeyE => Action::Attack,
         KeyF => Action::Step,
         KeyH => Action::Call,
+        KeyR => Action::Angel,
         KeyB | KeyL | ShiftLeft | ShiftRight => Action::Bomb,
         F11 => Action::Fullscreen,
         _ => return None,

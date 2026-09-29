@@ -30,7 +30,8 @@ impl Game {
     pub(super) fn update_select(&mut self, dt: f64) {
         self.select_age += dt;
         self.select_denied = (self.select_denied - dt).max(0.0);
-        if self.input.was_pressed(&[Action::Pause]) {
+        // Esc goes back; a controller's Menu button (Pause and Confirm at once) begins instead.
+        if self.input.was_pressed(&[Action::Pause]) && !self.input.was_pressed(&[Action::Confirm]) {
             self.enter(Screen::Title);
             return;
         }

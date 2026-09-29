@@ -402,6 +402,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 
     // ---- bottom middle: weapon, shield and potions
     draw_loadout(o, g, t, fs, small);
+    draw_blessing(o, g, t, small);
 
     // ---- bottom right: bombs and where you are
     let bh = t * 2.0;
@@ -444,6 +445,50 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
  * shield and how much it has left; right, the potion belt with the one Q
  * drinks outlined. Running potion effects sit in a row just above it.
  */
+/**
+ * The archangel's blessing he carries, bottom left: whose it is in their
+ * colour, a pip for every use left, and the key; and while Uriel rests, how
+ * long until he grants his again.
+ */
+fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
+    if g.blessing.is_none() && g.uriel_rest <= 0.0 {
+        return;
+    }
+    let h = o.height;
+    let margin = t * 0.4;
+    let (pw, ph) = (t * 9.4, t * 2.6);
+    let (x0, y0) = (margin, h - margin - ph);
+    panel(o, x0, y0, pw, ph, t);
+    let time = g.time as f32;
+    match g.blessing {
+        Some(b) => {
+            let color = b.angel.color();
+            // A haloed emblem in their colour.
+            let (ex, ey, r) = (x0 + t * 1.3, y0 + ph / 2.0, t * 0.75);
+            o.circle(ex, ey, r * (1.0 + (time * 3.0).sin() * 0.04), rgba(color, 0.9));
+            o.circle(ex, ey, r * 0.55, rgba(0xf0ebe0, 1.0));
+            o.arc(ex, ey - r * 0.85, r * 0.55, 0.0, std::f32::consts::TAU, (t * 0.08).max(1.2), rgba(0xffe070, 1.0));
+            let tx = x0 + t * 2.5;
+            o.text(&b.angel.name().to_uppercase(), tx, y0 + t * 0.75, small * 1.1, rgba(color, 1.0), Align::Left, true);
+            let pip = t * 0.34;
+            for i in 0..b.angel.charges() {
+                let px = tx + i as f32 * (pip + t * 0.18);
+                let c = if i < b.charges { rgba(color, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
+                o.rect(px, y0 + t * 1.55 - pip / 2.0, pip, pip, c);
+            }
+            o.text("R / LT", x0 + pw - t * 0.4, y0 + t * 1.55, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Right, true);
+        }
+        None => {
+            o.text("NO BLESSING", x0 + t * 0.5, y0 + t * 0.9, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
+        }
+    }
+    if g.uriel_rest > 0.0 {
+        let left = g.uriel_rest.ceil() as u32;
+        let red = crate::logic::angels::Archangel::Uriel.color();
+        o.text(&format!("URIEL RESTS {}:{:02}", left / 60, left % 60), x0 + t * 0.5, y0 - t * 0.35, t * 0.42, rgba(red, 0.9), Align::Left, true);
+    }
+}
+
 fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
     let (w, h) = (o.width, o.height);
     let hero = &g.hero;
@@ -780,7 +825,18 @@ fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: cra
         TourArt::Nugget => fit(o, icon(Icon::Key)),
         TourArt::Gate => fit(o, icon(Icon::Lock)),
         TourArt::Potion(k) => fit(o, icon(Icon::Potion(crate::logic::heroes::HeroKind::Ragnar, k))),
-        TourArt::WeaponShrine => fit(o, icon(Icon::Pickup(crate::logic::items::RangedKind::Trishot))),
+        TourArt::AngelShrine => {
+            // Four flags in the archangels' colours round a haloed figure.
+            let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+            for (k, a) in crate::logic::angels::ARCHANGELS.iter().enumerate() {
+                let fx = x + size * (0.14 + 0.24 * k as f32);
+                o.rect(fx, y + size * 0.18, size * 0.02, size * 0.62, rgba(0x8a6a3a, alpha));
+                o.rect(fx + size * 0.02, y + size * 0.18, size * 0.12, size * 0.14, rgba(a.color(), alpha));
+            }
+            o.circle(cx, cy + size * 0.12, size * 0.1, rgba(0xf0ebe0, alpha));
+            o.rect(cx - size * 0.08, cy + size * 0.2, size * 0.16, size * 0.22, rgba(0xf0ebe0, alpha));
+            o.arc(cx, cy - size * 0.02, size * 0.08, 0.0, std::f32::consts::TAU, (size * 0.02).max(1.5), rgba(0xffe070, alpha));
+        }
         TourArt::ItemShrine => fit(o, icon(Icon::Node(crate::logic::heroes::HeroKind::Ragnar, Tree::Shield, 2))),
         TourArt::Cross => {
             let c = rgba(0x4cf06a, alpha);
@@ -847,7 +903,22 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
         let (tx, ty) = (d.tile.x as f32, d.tile.y as f32);
         if let Some((x, y)) = view.project(Vec3::new(tx, floor_at(grid, tx, ty) + 1.25, ty), w, h) {
             let offer = d.current();
-            o.text(&offer.name().to_uppercase(), x, y, t * 0.52, rgba(offer.color(), 1.0), Align::Center, true);
+            let spent = match offer {
+                crate::logic::items::Offer::Angel(a) => g.angels_spent()[a.index()].then_some(a),
+                _ => None,
+            };
+            if let Some(a) = spent {
+                // One who has given this level (or Uriel resting): the name greyed; Uriel's rest counted down.
+                let text = if a == crate::logic::angels::Archangel::Uriel && !g.angels_used[a.index()] {
+                    let left = g.uriel_rest.ceil() as u32;
+                    format!("URIEL {}:{:02}", left / 60, left % 60)
+                } else {
+                    a.name().to_uppercase()
+                };
+                o.text(&text, x, y, t * 0.52, rgba(0x7a7a80, 1.0), Align::Center, true);
+            } else {
+                o.text(&offer.name().to_uppercase(), x, y, t * 0.52, rgba(offer.color(), 1.0), Align::Center, true);
+            }
         }
     }
     for f in &g.floaters {
@@ -1004,7 +1075,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
 
     // One line on how to play, tucked under the button.
     o.text(
-        "WASD or the left stick to run   Left click / X attack   Right click / B bomb   Space / A jump   H / Back call the old man   Esc pause",
+        "WASD or the left stick to run   Left click / X attack   Right click / B bomb   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
         w / 2.0,
         h * 0.965,
         t * 0.45,

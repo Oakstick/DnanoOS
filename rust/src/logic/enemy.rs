@@ -65,6 +65,8 @@ pub struct EnemyContext<'a> {
     pub rage: f64,
     /// A decoy (Loki's trick) the hunters chase in the hero's place.
     pub decoy: Option<V>,
+    /// For a foe turned to the hero's side: the nearest foe it hunts (none: it follows the hero).
+    pub quarry: Option<V>,
     pub rng: &'a mut Rng,
 }
 
@@ -105,6 +107,8 @@ pub struct Brain {
     pub dread: f64,
     /// Seconds left wandering at random, still dangerous (Loki's trick).
     pub confused: f64,
+    /// Seconds left fighting on the hero's side, turned by Michael's fire (0: a foe).
+    pub ally: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -133,6 +137,7 @@ impl Enemy {
                 initial_exit_delay: spec.exit_delay,
                 dread: 0.0,
                 confused: 0.0,
+                ally: 0.0,
             },
         }
     }
@@ -150,9 +155,22 @@ impl Enemy {
         self.m.occupied()
     }
 
-    /// Free-roaming and able to hurt the hero.
+    /// Free-roaming and able to hurt the hero (not one turned to his side).
     pub fn is_dangerous(&self) -> bool {
-        matches!(self.b.mode, EnemyMode::Scatter | EnemyMode::Chase)
+        matches!(self.b.mode, EnemyMode::Scatter | EnemyMode::Chase) && self.b.ally <= 0.0
+    }
+
+    /// Turned by Michael's fire: it hunts the other foes, and nothing of the hero's hurts it.
+    pub fn is_ally(&self) -> bool {
+        self.b.ally > 0.0
+    }
+
+    /// Michael's fire strikes it: for `seconds` it fights on the hero's side.
+    pub fn turn(&mut self, seconds: f64) {
+        self.b.ally = seconds;
+        self.b.mode = EnemyMode::Chase;
+        self.b.dread = 0.0;
+        self.b.confused = 0.0;
     }
 
     /// Stunned: harmless and worth chain points.
@@ -275,7 +293,8 @@ impl Enemy {
             b.mode = EnemyMode::Leaving;
         }
         if matches!(b.mode, EnemyMode::Scatter | EnemyMode::Chase) {
-            b.mode = ctx.global_mode.mode();
+            // One turned to the hero's side is always on the hunt.
+            b.mode = if b.ally > 0.0 { EnemyMode::Chase } else { ctx.global_mode.mode() };
         }
 
         let own_pos = self.m.pos();
@@ -394,6 +413,9 @@ impl Brain {
             EnemyMode::Chase => {}
             _ => return self.scatter_target.v(),
         }
+        if self.ally > 0.0 {
+            return ctx.quarry.unwrap_or(ctx.hero.pos);
+        }
         if ctx.hero_hidden {
             return self.scatter_target.v();
         }
@@ -488,6 +510,7 @@ mod tests {
                 hero_hidden: false,
                 rage: 0.0,
                 decoy: None,
+                quarry: None,
                 rng: &mut rng,
             };
             bat.update(1.0 / 120.0, &mut ctx);

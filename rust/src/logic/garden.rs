@@ -363,7 +363,7 @@ mod tests {
     fn garden() -> (Grid, GardenPlan, P) {
         let level = parse_level(&level_for(0));
         let mut keep = vec![level.hero_spawn, level.enemy_spawn];
-        keep.extend(level.weapon_shrines.iter().chain(&level.item_shrines).copied());
+        keep.extend(level.angel_shrines.iter().chain(&level.item_shrines).copied());
         keep.extend(level.potions.iter().map(|(p, _)| *p));
         keep.extend(level.gate);
         let plan = plan(&level.grid, &keep).expect("room for the fountain");

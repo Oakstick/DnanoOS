@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod angels;
 mod controls;
 mod save;
 mod select;
@@ -360,6 +361,15 @@ pub struct Game {
     pub confirm_reset: bool,
     /// The controller page is open over the title or the pause menu.
     pub show_controls: bool,
+    /// The archangel's blessing he carries (from dungeon to dungeon), if any.
+    pub blessing: Option<crate::logic::angels::Blessing>,
+    /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
+    pub uriel_rest: f64,
+    refused_at: f64,
+    /// Uriel's wave while it rolls out.
+    pub holy_wave: Option<angels::HolyWave>,
+    /// Which archangels have given their blessing in this level (each gives once).
+    pub angels_used: [bool; 4],
 }
 
 impl Game {
@@ -451,6 +461,11 @@ impl Game {
             saved_run: save::load_run(),
             confirm_reset: false,
             show_controls: false,
+            blessing: None,
+            uriel_rest: 0.0,
+            refused_at: -10.0,
+            holy_wave: None,
+            angels_used: [false; 4],
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -497,7 +512,7 @@ impl Game {
         } else if index == 0 {
             let l = &self.level;
             let mut keep = vec![l.hero_spawn, l.enemy_spawn];
-            keep.extend(l.weapon_shrines.iter().chain(&l.item_shrines).copied());
+            keep.extend(l.angel_shrines.iter().chain(&l.item_shrines).copied());
             keep.extend(l.potions.iter().map(|(p, _)| *p));
             keep.extend(l.gate);
             self.garden = crate::logic::garden::plan(&l.grid, &keep);
@@ -546,12 +561,13 @@ impl Game {
         };
         self.boss_shots.clear();
         self.victory_timer = None;
+        self.angels_used = [false; 4];
         self.diamonds = self
             .level
-            .weapon_shrines
+            .angel_shrines
             .iter()
             .enumerate()
-            .map(|(i, &t)| Diamond::new(DiamondKind::Weapon, t, i))
+            .map(|(i, &t)| Diamond::new(DiamondKind::Angel, t, i))
             .chain(self.level.item_shrines.iter().enumerate().map(|(i, &t)| Diamond::new(DiamondKind::Item, t, i)))
             .collect();
         self.potions = self.level.potions.iter().map(|&(t, k)| Potion::new(t, k)).collect();
@@ -560,9 +576,10 @@ impl Game {
             self.potions.clear();
         }
         if index >= 1 {
-            // From the second dungeon on, gear only comes from the old gatekeeper.
+            // From the second dungeon on, gear only comes from the old gatekeeper;
+            // the archangels' shrines stand in every dungeon.
             self.potions.clear();
-            self.diamonds.clear();
+            self.diamonds.retain(|d| d.kind == DiamondKind::Angel);
         }
         self.boss_bleed = 0.0;
         self.decoy = None;
@@ -637,6 +654,9 @@ impl Game {
 
     fn start_game(&mut self) {
         self.score.reset();
+        self.blessing = None;
+        self.uriel_rest = 0.0;
+        self.holy_wave = None;
         self.new_kit();
         self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare axe
         self.load_level(0);
@@ -701,7 +721,7 @@ impl Game {
         }
         let taken: Vec<P> = self
             .level
-            .weapon_shrines
+            .angel_shrines
             .iter()
             .chain(&self.level.item_shrines)
             .copied()
@@ -862,7 +882,7 @@ impl Game {
             }
             Screen::Won => {
                 // The boss is down: off to the old gatekeeper.
-                if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
+                if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Tap]) {
                     self.open_shop();
                     self.juice.fade = 1.0;
                     self.input.consume(Action::Attack);
@@ -872,7 +892,7 @@ impl Game {
             Screen::Shop => self.update_shop(dt),
             Screen::Tour => self.update_tour(dt),
             Screen::GameOver => {
-                if self.input.was_pressed(&[Action::Confirm, Action::Tap]) {
+                if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Tap]) {
                     self.enter(Screen::Title);
                 }
             }
@@ -896,6 +916,7 @@ impl Game {
             hero_kind: self.hero_kind,
             spirits: &self.spirits,
             fires: &self.fires,
+            angels_spent: self.angels_spent(),
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -987,6 +1008,7 @@ impl Game {
             hero_kind: self.hero_kind,
             spirits: &self.spirits,
             fires: &self.fires,
+            angels_spent: self.angels_spent(),
         }
     }
 
@@ -1024,6 +1046,9 @@ impl Game {
         if self.input.was_pressed(&[Action::Pause]) && !self.show_controls {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
+                // A controller's Menu button is Confirm as well: it must not pick Resume at once.
+                self.input.consume(Action::Confirm);
+                self.input.consume(Action::Jump);
             } else if self.screen == Screen::Paused {
                 self.enter(Screen::Playing);
             }
@@ -1149,6 +1174,9 @@ impl Game {
         if self.input.was_pressed(&[Action::Step]) {
             self.bifrost_step();
         }
+        if self.input.was_pressed(&[Action::Angel]) {
+            self.invoke_blessing();
+        }
         if self.hero.winded {
             self.hero.winded = false;
             let hp = self.hero.pos();
@@ -1175,6 +1203,7 @@ impl Game {
             }
         }
         self.update_projectiles(dt);
+        self.update_angels(dt);
         self.update_bombs(dt);
         for d in self.diamonds.iter_mut() {
             d.update(dt);
@@ -1204,6 +1233,7 @@ impl Game {
         };
         for i in 0..self.enemies.len() {
             let skeleton_pos = self.enemies.iter().find(|e| e.kind() == EnemyKind::Skeleton).map(|e| e.pos());
+            let quarry = if self.enemies[i].is_ally() { self.quarry_for(self.enemies[i].pos()) } else { None };
             let mut ctx = EnemyContext {
                 grid: &self.level.grid,
                 hero,
@@ -1215,6 +1245,7 @@ impl Game {
                 hero_hidden: self.hero.invisible(),
                 rage: self.rage(),
                 decoy: self.decoy.map(|(p, _)| p),
+                quarry,
                 rng: &mut self.rng,
             };
             self.enemies[i].update(dt, &mut ctx);
@@ -1778,8 +1809,21 @@ impl Game {
 
     /// A blow to the Cyclops from any weapon, with all the feedback it deserves.
     fn wound_boss(&mut self, amount: i32, at: V) -> bool {
+        self.damage_boss(amount, at, false)
+    }
+
+    /// An archangel's blow: exactly `amount`, dazed or not.
+    fn smite_boss(&mut self, amount: i32, at: V) -> bool {
+        let landed = self.damage_boss(amount, at, true);
+        if landed {
+            self.floater(at.x, at.y - 1.1, format!("-{amount}"), 1.2, Some(0xfff1a8));
+        }
+        landed
+    }
+
+    fn damage_boss(&mut self, amount: i32, at: V, exact: bool) -> bool {
         let mut events = std::mem::take(&mut self.boss_events);
-        let landed = self.boss.as_mut().map(|b| b.hit(amount, &mut events)).unwrap_or(false);
+        let landed = self.boss.as_mut().map(|b| if exact { b.smite(amount, &mut events) } else { b.hit(amount, &mut events) }).unwrap_or(false);
         let dying = self.boss.as_ref().map(|b| !b.alive()).unwrap_or(false);
         if landed {
             let grid = &self.level.grid;
@@ -1817,13 +1861,17 @@ impl Game {
         }
         let o = self.hero.occupied();
         for i in 0..self.diamonds.len() {
-            let d = &mut self.diamonds[i];
+            let d = &self.diamonds[i];
             if !d.active || d.tile != o {
                 continue;
             }
-            let chosen = d.take();
+            if let Offer::Angel(angel) = d.current() {
+                self.receive_blessing(i, angel);
+                continue;
+            }
+            let chosen = self.diamonds[i].take();
             match chosen {
-                Offer::Weapon(w) => self.hero.equip(w),
+                Offer::Angel(_) => {}
                 Offer::Item(ItemKind::Shield) => self.hero.grant_shield(),
                 Offer::Item(ItemKind::Invincible) => self.hero.grant_invincibility(),
                 Offer::Item(ItemKind::Speed) => self.hero.grant_speed(),
@@ -2517,8 +2565,13 @@ impl Game {
                 let (pos, radius) = (self.projectiles[i].pos, self.projectiles[i].def.hit_radius);
                 let hits = find_projectile_hits(pos, radius, &self.enemies, &self.projectiles[i].struck);
                 let mut hit_at = hits.first().map(|_| pos);
+                let grace = self.projectiles[i].kind == crate::logic::items::RangedKind::Grace;
                 for e in hits {
-                    self.slay_enemy(e);
+                    if grace {
+                        self.turn_foe(e);
+                    } else {
+                        self.slay_enemy(e);
+                    }
                     self.projectiles[i].struck.insert(e);
                     self.audio.play(Sfx::ArrowHit);
                     if !self.projectiles[i].def.pierce {
@@ -2536,7 +2589,11 @@ impl Game {
                         if !self.projectiles[i].def.pierce {
                             self.projectiles[i].alive = false;
                         }
-                        self.strike_boss(base, at);
+                        if grace {
+                            self.smite_boss(base, at);
+                        } else {
+                            self.strike_boss(base, at);
+                        }
                         hit_at = Some(at);
                         if let crate::logic::items::RangedKind::Hurled(h, t) = self.projectiles[i].kind {
                             if progression::blade(h, t).throw.map(|t| t.stagger).unwrap_or(false) {
@@ -2970,7 +3027,7 @@ pub fn center_spawn(level: &ParsedLevel) -> (P, Dir) {
     let g = &level.grid;
     let (cx, cy) = ((g.width - 1) as f64 / 2.0, (g.height - 1) as f64 / 2.0);
     let taken: Vec<P> = level
-        .weapon_shrines
+        .angel_shrines
         .iter()
         .chain(level.item_shrines.iter())
         .copied()
@@ -3253,6 +3310,177 @@ mod tests {
         assert_eq!(g.screen, Screen::Title);
     }
 
+    /// A foe of `kind` hunting at `at`, in the game and in the view.
+    fn foe_at(g: &mut Game, kind: EnemyKind, at: P) -> usize {
+        let spec = default_enemy_specs(&g.level.grid).into_iter().find(|s| s.kind == kind).unwrap();
+        let mut e = Enemy::new(&spec, at, g.level.data.enemy_speed);
+        e.b.mode = EnemyMode::Chase;
+        g.view.add_enemy(&e);
+        g.enemies.push(e);
+        g.enemies.len() - 1
+    }
+
+    fn fell(g: &Game, i: usize) -> bool {
+        matches!(g.enemies[i].mode(), EnemyMode::Eaten | EnemyMode::Scattered)
+    }
+
+    /// Into the Cyclops' open meadow, with no foes but those placed; he stands at the south edge facing north.
+    fn meadow() -> Game {
+        let mut g = playing();
+        g.load_boss(0);
+        g.enemies.clear();
+        g.view.clear_enemies();
+        g.enter(Screen::Playing);
+        g
+    }
+
+    #[test]
+    fn an_archangels_shrine_switches_when_struck_and_blesses_whoever_steps_on_it() {
+        use crate::logic::angels::{Archangel, Blessing};
+        let mut g = playing();
+        let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).expect("an archangel's shrine");
+        assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Michael));
+        // It holds still until struck.
+        for _ in 0..600 {
+            g.diamonds[i].update(crate::app::STEP);
+        }
+        assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Michael));
+        g.diamonds[i].cycle();
+        assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Gabriel));
+        g.hero.m.teleport(g.diamonds[i].tile);
+        g.visit_shrines();
+        assert_eq!(g.blessing, Some(Blessing { angel: Archangel::Gabriel, charges: 3 }));
+        // Each archangel gives once a level: Gabriel again, at this shrine or another, is refused.
+        g.blessing = None;
+        let other = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel && d.tile != g.diamonds[i].tile).unwrap();
+        while g.diamonds[other].current() != Offer::Angel(Archangel::Gabriel) {
+            g.diamonds[other].cycle();
+        }
+        g.hero.m.teleport(g.diamonds[other].tile);
+        g.visit_shrines();
+        assert_eq!(g.blessing, None, "Gabriel has given this level");
+        // The other three, then every shrine stands grey.
+        for angel in [Archangel::Michael, Archangel::Raphael, Archangel::Uriel] {
+            while g.diamonds[other].current() != Offer::Angel(angel) {
+                g.diamonds[other].cycle();
+            }
+            g.visit_shrines();
+            assert_eq!(g.blessing.map(|b| b.angel), Some(angel));
+        }
+        assert!(g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel).all(|d| !d.active), "all four have given: grey");
+        g.blessing = Some(Blessing::of(Archangel::Gabriel));
+        // The archangels stand in every dungeon.
+        g.load_level(1);
+        assert_eq!(g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel && d.active).count(), 4, "fresh in the next level");
+        assert_eq!(g.angels_used, [false; 4]);
+        assert_eq!(g.blessing.map(|b| b.charges), Some(3), "the blessing goes with him");
+    }
+
+    #[test]
+    fn gabriels_thunder_strikes_every_foe_within_ten_tiles() {
+        use crate::logic::angels::{Archangel, Blessing};
+        let mut g = meadow();
+        let o = g.hero.occupied();
+        let near = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 4));
+        let far = foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 7, o.y - 11));
+        g.blessing = Some(Blessing::of(Archangel::Gabriel));
+        g.invoke_blessing();
+        assert!(fell(&g, near) && !fell(&g, far));
+        assert_eq!(g.blessing.map(|b| b.charges), Some(2));
+    }
+
+    #[test]
+    fn raphaels_beam_fells_all_in_its_path_and_nothing_beside_it() {
+        use crate::logic::angels::{Archangel, Blessing};
+        let mut g = meadow();
+        let o = g.hero.occupied();
+        g.hero.face(Dir::Up);
+        let ahead = [foe_at(&mut g, EnemyKind::Slime, P::new(o.x, o.y - 2)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x, o.y - 4))];
+        let beside = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 3));
+        g.blessing = Some(Blessing::of(Archangel::Raphael));
+        g.invoke_blessing();
+        assert!(ahead.iter().all(|&i| fell(&g, i)) && !fell(&g, beside));
+        g.invoke_blessing();
+        assert_eq!(g.blessing, None, "two uses, then it is spent");
+    }
+
+    #[test]
+    fn uriels_wave_rolls_out_over_everything_and_uriel_then_rests() {
+        use crate::logic::angels::{Archangel, Blessing, URIEL_REST};
+        let mut g = meadow();
+        let o = g.hero.occupied();
+        let foes = [foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 1, o.y - 1)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 8, o.y - 12))];
+        g.blessing = Some(Blessing::of(Archangel::Uriel));
+        g.invoke_blessing();
+        assert!(!fell(&g, foes[1]), "the far one only when the wave reaches it");
+        for _ in 0..(1.6 / crate::app::STEP) as usize {
+            g.update_angels(crate::app::STEP);
+        }
+        assert!(foes.iter().all(|&i| fell(&g, i)));
+        assert!((g.uriel_rest - URIEL_REST).abs() < 2.0, "ten minutes' rest");
+        // Meanwhile his shrines turn the hero away.
+        let mut g = playing();
+        g.uriel_rest = 100.0;
+        let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).unwrap();
+        for _ in 0..3 {
+            g.diamonds[i].cycle();
+        }
+        g.hero.m.teleport(g.diamonds[i].tile);
+        g.visit_shrines();
+        assert_eq!(g.blessing, None);
+        assert!(g.diamonds[i].active);
+    }
+
+    #[test]
+    fn michaels_fire_turns_a_foe_that_then_hunts_the_others() {
+        use crate::logic::angels::{Archangel, Blessing};
+        let mut g = meadow();
+        let o = g.hero.occupied();
+        g.hero.face(Dir::Up);
+        let turned = foe_at(&mut g, EnemyKind::Slime, P::new(o.x, o.y - 3));
+        g.blessing = Some(Blessing::of(Archangel::Michael));
+        g.invoke_blessing();
+        for _ in 0..(1.0 / crate::app::STEP) as usize {
+            g.update_projectiles(crate::app::STEP);
+        }
+        assert!(g.enemies[turned].is_ally() && !g.enemies[turned].is_dangerous(), "turned to his side");
+        assert_eq!(g.blessing.map(|b| b.charges), Some(3));
+        // A foe that comes within its reach dies.
+        let at = g.enemies[turned].occupied();
+        let foe = foe_at(&mut g, EnemyKind::Bat, at);
+        g.update_angels(crate::app::STEP);
+        assert!(fell(&g, foe));
+        assert!(!fell(&g, turned));
+    }
+
+    #[test]
+    fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
+        use crate::logic::angels::{Archangel, Blessing};
+        let mut g = playing();
+        g.input.key_down(winit::keyboard::KeyCode::F1, false);
+        g.update(crate::app::STEP);
+        for _ in 0..((READY_SECONDS + 2.2) / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        let hp0 = g.boss.as_ref().unwrap().hp;
+        assert_eq!(g.boss.as_ref().unwrap().max_hp, 50);
+        let bp = g.boss.as_ref().unwrap().pos;
+        g.hero.m.teleport(P::new(bp.x.round() as i32, bp.y.round() as i32 + 4));
+        g.blessing = Some(Blessing::of(Archangel::Gabriel));
+        g.invoke_blessing();
+        assert_eq!(g.boss.as_ref().unwrap().hp, hp0 - 5);
+        // Dazed, it would take double from a blade, but an archangel's blow is what it is.
+        g.debug_daze_boss();
+        for _ in 0..20 {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        let hp1 = g.boss.as_ref().unwrap().hp;
+        g.invoke_blessing();
+        assert_eq!(g.boss.as_ref().unwrap().hp, hp1 - 5);
+    }
+
     #[test]
     fn one_swing_fells_every_foe_it_sweeps_through() {
         let mut g = playing();
@@ -3372,7 +3600,7 @@ mod tests {
         assert_eq!(g.screen, Screen::Ready);
         assert!(!g.level.data.boss);
         assert_eq!(g.dungeon, 1);
-        assert!(g.potions.is_empty() && g.diamonds.is_empty(), "no free gear after the first dungeon");
+        assert!(g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel), "no free gear after the first dungeon, only the archangels");
         assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(1)));
     }
 
@@ -3446,6 +3674,24 @@ mod tests {
         assert!(g.saved_run.is_none());
         g.enter(Screen::Title);
         assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+    }
+
+    #[test]
+    fn the_controllers_menu_button_opens_the_pause_menu_and_it_stays_open() {
+        let mut g = playing();
+        // Menu is Pause and Confirm at once.
+        g.input.inject(Action::Pause);
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Paused);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Paused, "not resumed straight away");
+        assert!(g.menu_items().contains(&MenuItem::CallOldMan), "the old man's wares from the menu");
+        // Menu again resumes.
+        g.input.inject(Action::Pause);
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        assert_eq!(g.screen, Screen::Playing);
     }
 
     #[test]

@@ -20,6 +20,7 @@ use crate::logic::systems::{Frenzy, PuddleField, PUDDLE_SECONDS};
 use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
 
 mod forest;
+mod angels;
 mod forge;
 mod fountain;
 mod garden;
@@ -301,6 +302,9 @@ pub struct SceneState<'a> {
     pub hero_kind: crate::logic::heroes::HeroKind,
     /// The ancestral spirits at his side.
     pub spirits: &'a [crate::game::Spirit],
+    /// The archangels who cannot be had now (each gives once a level; Uriel also rests):
+    /// a shrine showing one of them stands grey.
+    pub angels_spent: [bool; 4],
     /// Holy fire burning on tiles, seconds left each.
     pub fires: &'a [(P, f64)],
 }
@@ -477,6 +481,8 @@ struct Models {
     miyamoto: Rig,
     /// Mehmed's and Miyamoto's ancestral spirits: the same at half the resolution, see-through.
     spirits: [Rig; 2],
+    /// An archangel's shrine as it honours each of the four (plinth and statue).
+    angel_shrines: [Rig; 4],
     /// Scene I's cast: the four friends, the old gatekeeper, his dog, and Krampus as a shadow.
     kids: [Rig; 4],
     old_man: Rig,
@@ -534,6 +540,7 @@ impl Models {
             mehmed: forge::hero_model(crate::logic::heroes::HeroKind::Mehmed, 1, Some(1)),
             miyamoto: forge::hero_model(crate::logic::heroes::HeroKind::Miyamoto, 1, Some(1)),
             spirits: [crate::logic::heroes::HeroKind::Mehmed, crate::logic::heroes::HeroKind::Miyamoto].map(|h| forge::hero_model(h, 1, Some(1)).coarse()),
+            angel_shrines: crate::logic::angels::ARCHANGELS.map(|a| build_rig(&angels::angel_shrine(a), &[], angels::SHRINE_VOXEL)),
             kids: [0, 1, 2, 3].map(|i| build_rig(&super::cast::kid(i), super::cast::KID_RIG, story::KID_VOXEL)),
             old_man: build_rig(&super::cast::old_man(), super::cast::OLD_MAN_RIG, story::OLD_MAN_VOXEL),
             dog: build_rig(&super::cast::dog(), super::cast::DOG_RIG, story::DOG_VOXEL),
@@ -670,6 +677,10 @@ pub struct WorldView {
     tour_angle: f32,
     was_forge: bool,
     zaps: Vec<forge::Zap>,
+    /// Gabriel's thunderbolts, Raphael's beams, Uriel's waves.
+    bolts: Vec<angels::Bolt>,
+    beams: Vec<angels::Beam>,
+    waves: Vec<angels::Wave>,
     /// Arrows of a heavenly bow falling, and sun-blade flashes fading (where, how much is left, colour).
     rains: Vec<forge::Falling>,
     flashes: Vec<(Vec3, f32, Vec3)>,
@@ -763,6 +774,9 @@ impl WorldView {
             tour_angle: 0.0,
             was_forge: false,
             zaps: Vec::new(),
+            bolts: Vec::new(),
+            beams: Vec::new(),
+            waves: Vec::new(),
             rains: Vec::new(),
             flashes: Vec::new(),
             ghosts: Vec::new(),
@@ -1059,6 +1073,7 @@ impl WorldView {
         }
         self.update_meadow(dtf);
         self.update_forge_fx(dtf, hero);
+        self.update_angel_fx(dtf);
         self.update_camera(dtf, s.grid, hero);
         if !self.showcase {
             self.update_tree_fade(dtf, hero);
@@ -1280,7 +1295,13 @@ impl WorldView {
             v.emissive = Vec3::ZERO;
             return;
         }
-        if e.is_stunned() {
+        if e.is_ally() {
+            // Turned by Michael's fire: washed in blue light.
+            let blue = lin(crate::logic::angels::Archangel::Michael.color());
+            v.mat_color = Vec3::new(0.72, 0.84, 1.3);
+            v.emissive = blue * (0.3 + (time * 4.0).sin() * 0.08);
+            v.light_color = blue;
+        } else if e.is_stunned() {
             let warn = frenzy.warning() && ((time * 8.0).floor() as i64).rem_euclid(2) == 0;
             v.mat_color = lin(if warn { STUN_WARN } else { STUN });
             v.emissive = lin(STUN) * (0.5 + (time * 12.0).sin() * 0.3);
@@ -1898,6 +1919,17 @@ impl WorldView {
                 };
                 f.lights.push(Light { pos: v.group_pos + Vec3::new(0.0, lift, 0.0), color: v.light_color * v.light_intensity, distance: 4.0 });
             }
+            if s.enemies[i].is_ally() && v.visible {
+                // A halo over the turned.
+                let top = match v.kind {
+                    EnemyKind::Skeleton => 1.18,
+                    EnemyKind::Slime => 0.78,
+                    _ => 0.32,
+                };
+                let blue = lin(crate::logic::angels::Archangel::Michael.color());
+                let m = Mat4::from_translation(v.group_pos + Vec3::new(0.0, top, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.2, 0.2, 1.0));
+                f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, blue * 2.4, 0.85, Vec3::ZERO, SHADE_UNLIT));
+            }
             if s.enemies[i].is_confused() && v.visible {
                 for k in 0..3 {
                     let a = time * 5.0 + k as f32 * TAU / 3.0;
@@ -1920,9 +1952,15 @@ impl WorldView {
         // --- shrines
         let mut shrine_points = Vec::new();
         for (i, d) in s.diamonds.iter().enumerate() {
+            if d.kind == DiamondKind::Angel {
+                if let Some(lit) = self.emit_angel_shrine(d, grid, &s.angels_spent, time, f) {
+                    shrine_points.push(lit);
+                }
+                continue;
+            }
             let base = Vec3::new(d.tile.x as f32, floor_at(grid, d.tile.x as f32, d.tile.y as f32), d.tile.y as f32);
-            let (stone, runes) = &self.models.pedestals[if d.kind == DiamondKind::Weapon { 0 } else { 1 }];
-            let rune = lin(if d.kind == DiamondKind::Weapon { 0x6ab8ff } else { 0xffc84a });
+            let (stone, runes) = &self.models.pedestals[1];
+            let rune = lin(0xffc84a);
             let rune_glow = if d.active { 0.6 + (time * 2.5 + d.tile.x as f32).sin().abs() * 0.6 } else { 0.1 };
             emit_mesh(&mut f.opaque[cube], stone, Mat4::from_translation(base), Vec3::ONE, 1.0, Vec3::ZERO);
             emit_mesh(&mut f.opaque[cube], runes, Mat4::from_translation(base), Vec3::ONE, 1.0, rune * rune_glow);
@@ -1959,6 +1997,7 @@ impl WorldView {
         }
         self.emit_spirits(s, time, f);
         self.emit_fires(s, time, f);
+        self.emit_angel_fx(time, f);
 
         // --- potions
         for p in s.potions {

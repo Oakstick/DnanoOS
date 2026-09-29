@@ -10,9 +10,9 @@
 use super::rng::Rng;
 use super::types::{dist_sq, V};
 
-/// Health of the first Cyclops (about thirty blows of a first-tier blade); each later one
+/// Health of the first Cyclops (fifty blows of a first-tier blade, fewer with the archangels' help); each later one
 /// has `CYCLOPS_HP_STEP` more, and from the second on its hide turns a point of every blow.
-pub const CYCLOPS_HP: i32 = 32;
+pub const CYCLOPS_HP: i32 = 50;
 pub const CYCLOPS_HP_STEP: i32 = 12;
 /// How far from its center the body reaches, in tiles (for hits both ways).
 pub const BODY_RADIUS: f64 = 0.85;
@@ -294,11 +294,16 @@ impl Cyclops {
      * The last blow starts the death throes.
      */
     pub fn hit(&mut self, amount: i32, events: &mut Vec<BossEvent>) -> bool {
+        let amount = if self.dazed() { amount * 2 } else { amount };
+        self.smite(amount, events)
+    }
+
+    /// A blow for exactly `amount`, dazed or not (an archangel's). Returns true if it landed.
+    pub fn smite(&mut self, amount: i32, events: &mut Vec<BossEvent>) -> bool {
         if !self.vulnerable() {
             return false;
         }
         let before = self.phase();
-        let amount = if self.dazed() { amount * 2 } else { amount };
         self.hp = (self.hp - amount).max(0);
         self.flash = 1.0;
         self.grace = HIT_GRACE;

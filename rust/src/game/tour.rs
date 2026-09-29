@@ -28,7 +28,7 @@ pub enum TourArt {
     Gate,
     Cross,
     Potion(PotionKind),
-    WeaponShrine,
+    AngelShrine,
     ItemShrine,
     Pit,
     Enemy(EnemyKind),
@@ -143,17 +143,17 @@ impl Game {
             });
         }
         for d in &self.diamonds {
-            let weapon = d.kind == crate::logic::items::DiamondKind::Weapon;
-            if stops.iter().any(|s| s.art == if weapon { TourArt::WeaponShrine } else { TourArt::ItemShrine }) {
+            let angel = d.kind == crate::logic::items::DiamondKind::Angel;
+            if stops.iter().any(|s| s.art == if angel { TourArt::AngelShrine } else { TourArt::ItemShrine }) {
                 continue;
             }
-            stops.push(if weapon {
+            stops.push(if angel {
                 TourStop {
                     target: at(d.tile, 0.4),
-                    title: "WEAPON SHRINE",
-                    body: "Strike it to change its gift, step on it to take it. The weapon replaces your own until its ammo runs out.",
-                    color: 0x9ad1ff,
-                    art: TourArt::WeaponShrine,
+                    title: "ARCHANGEL'S SHRINE",
+                    body: "Strike it to switch between Michael (blue), Gabriel (green), Raphael (purple) and Uriel (red); step on it for that archangel's power, used with R or LT. It rests a minute after, and Uriel grants his only once in ten minutes.",
+                    color: 0xe8dcc0,
+                    art: TourArt::AngelShrine,
                 }
             } else {
                 TourStop {

@@ -1,5 +1,6 @@
 //! Weapons, shrine boons, potions, bombs and shrines: the small rule objects.
 
+use super::angels::{Archangel, ARCHANGELS};
 use super::gear;
 use super::heroes::HeroKind;
 use super::progression::{self, Tree};
@@ -20,6 +21,8 @@ pub enum RangedKind {
     Hurled(HeroKind, u8),
     /// The piercing wave a tier-3 blade sends down the line with each swing.
     Wave,
+    /// Michael's blue fire: the foe it strikes turns to fight on the hero's side.
+    Grace,
 }
 
 /// Everything the hero can hold: his armory blade swung, or a ranged weapon (his own thrown one, or a shrine's).
@@ -96,6 +99,10 @@ pub fn weapon(kind: RangedKind) -> WeaponDef {
             }
         }
         RangedKind::Wave => WeaponDef { name: "Wave", color: 0x9ad1ff, speed: 14.0, range: 7.0, hit_radius: 0.7, pierce: true, damage: 3, ..base },
+        RangedKind::Grace => WeaponDef {
+            name: "Michael's Fire", color: Archangel::Michael.color(), speed: 11.0, range: 16.0, hit_radius: 0.6,
+            damage: Archangel::Michael.boss_damage(), homing: true, ..base
+        },
     }
 }
 
@@ -222,27 +229,28 @@ pub const DIAMOND_RESPAWN_SECONDS: f64 = 25.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DiamondKind {
-    Weapon,
+    /// An archangel's shrine: it honours one of the four until struck (see `logic::angels`).
+    Angel,
     Item,
 }
 
 /// What a shrine is showing.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Offer {
-    Weapon(RangedKind),
+    Angel(Archangel),
     Item(ItemKind),
 }
 
 impl Offer {
     pub fn name(self) -> &'static str {
         match self {
-            Offer::Weapon(w) => weapon(w).name,
+            Offer::Angel(a) => a.name(),
             Offer::Item(i) => item(i).name,
         }
     }
     pub fn color(self) -> u32 {
         match self {
-            Offer::Weapon(w) => weapon(w).color,
+            Offer::Angel(a) => a.color(),
             Offer::Item(i) => item(i).color,
         }
     }
@@ -278,14 +286,14 @@ impl Diamond {
 
     fn len_of(kind: DiamondKind) -> usize {
         match kind {
-            DiamondKind::Weapon => WEAPON_ORDER.len(),
+            DiamondKind::Angel => ARCHANGELS.len(),
             DiamondKind::Item => ITEM_ORDER.len(),
         }
     }
 
     pub fn current(&self) -> Offer {
         match self.kind {
-            DiamondKind::Weapon => Offer::Weapon(WEAPON_ORDER[self.index]),
+            DiamondKind::Angel => Offer::Angel(ARCHANGELS[self.index]),
             DiamondKind::Item => Offer::Item(ITEM_ORDER[self.index]),
         }
     }
@@ -304,7 +312,8 @@ impl Diamond {
         self.cycle_timer = DIAMOND_CYCLE_SECONDS;
     }
 
-    /// Take the showing option; the shrine goes dormant until it respawns.
+    /// Take the showing option; the shrine goes dormant until it respawns. (An archangel's shrine is
+    /// never taken: each archangel gives once a level, see `game::angels`.)
     pub fn take(&mut self) -> Offer {
         let chosen = self.current();
         self.active = false;
@@ -319,6 +328,10 @@ impl Diamond {
                 self.active = true;
                 self.cycle_timer = DIAMOND_CYCLE_SECONDS;
             }
+            return;
+        }
+        // An archangel's shrine holds still until struck; the item shrine turns on its own.
+        if self.kind == DiamondKind::Angel {
             return;
         }
         self.cycle_timer -= dt;
