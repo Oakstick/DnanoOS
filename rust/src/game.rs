@@ -3239,6 +3239,24 @@ mod tests {
     }
 
     #[test]
+    fn one_swing_fells_every_foe_it_sweeps_through() {
+        let mut g = playing();
+        // Two foes side by side just ahead of him, as in a corridor two tiles wide, and one behind.
+        let o = g.hero.occupied();
+        g.hero.face(Dir::Up);
+        let spots = [P::new(o.x, o.y - 1), P::new(o.x + 1, o.y - 1), P::new(o.x, o.y + 2)];
+        for (e, &at) in g.enemies.iter_mut().zip(&spots) {
+            e.m.teleport(at);
+            e.b.mode = EnemyMode::Chase;
+        }
+        g.hitstop = 0.0;
+        g.perform_attack();
+        let fell = |g: &Game, i: usize| matches!(g.enemies[i].mode(), EnemyMode::Eaten | EnemyMode::Scattered);
+        assert!(fell(&g, 0) && fell(&g, 1), "both foes ahead fall to one blow");
+        assert!(!fell(&g, 2), "the one behind him is untouched");
+    }
+
+    #[test]
     fn those_waiting_in_the_hollow_stand_in_it() {
         let g = playing();
         for p in &g.nest_slots[1..] {

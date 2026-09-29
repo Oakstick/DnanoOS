@@ -14,6 +14,15 @@ pub const ATTACK_REACH: f64 = 1.2;
 /// Half-width of the swing to either side, in tiles.
 pub const ATTACK_HALF_WIDTH: f64 = 0.7;
 pub const POINTS_KILL: u32 = 100;
+/// How far the trail of a swing sweeps to either side of the aim, in radians: as far as the slash drawn.
+pub const SWEEP_HALF_ANGLE: f64 = 1.15;
+/// A foe's body to a blade: the blow lands if any of it is in the arc.
+pub const FOE_RADIUS: f64 = 0.4;
+
+/// The radius of the arc a swing's trail sweeps (and is drawn at), for a blade reaching `reach`.
+pub fn sweep_radius(reach: f64) -> f64 {
+    1.08 + (reach - 1.2) * 0.54
+}
 
 /// `aim` below is the unit vector a blow goes along (`Hero::aim`): any way in free movement.
 fn in_swing(hero: V, aim: V, p: V) -> bool {
@@ -40,14 +49,30 @@ pub fn tile_in_reach(hero: V, aim: V, tile: P) -> bool {
     in_swing(hero, aim, tile.v())
 }
 
-/// Is `p` (of `radius`) inside the arc of a swing reaching `reach` ahead, `half_width` to each side and `behind` back?
+/**
+ * Is `p` (of `radius`) caught by a swing: inside its reach (`reach` ahead,
+ * `half_width` to each side, `behind` back), or anywhere in the arc its trail
+ * sweeps round him (`sweep_radius`, `SWEEP_HALF_ANGLE` either side of the aim)?
+ */
 pub fn in_blade_arc(hero: V, aim: V, p: V, reach: f64, half_width: f64, behind: f64, radius: f64) -> bool {
     let f = aim;
     let dx = p.x - hero.x;
     let dy = p.y - hero.y;
     let along = dx * f.x + dy * f.y;
     let across = (dx * f.y - dy * f.x).abs();
-    along >= -behind - radius * 0.5 && along <= reach + radius && across <= half_width + radius * 0.8
+    if along >= -behind - radius * 0.5 && along <= reach + radius && across <= half_width + radius * 0.8 {
+        return true;
+    }
+    let dist = (dx * dx + dy * dy).sqrt();
+    if dist > sweep_radius(reach) + radius {
+        return false;
+    }
+    if dist <= radius {
+        return true;
+    }
+    // Off the aim by no more than the sweep, give or take the body's own width.
+    let off = (along / dist).clamp(-1.0, 1.0).acos();
+    off <= SWEEP_HALF_ANGLE + (radius / dist).min(1.0).asin()
 }
 
 /// Indices of targetable enemies caught by such a swing.
@@ -55,7 +80,7 @@ pub fn find_blade_targets(hero: V, aim: V, enemies: &[Enemy], reach: f64, half_w
     enemies
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.is_targetable() && in_blade_arc(hero, aim, e.pos(), reach, half_width, behind, 0.0))
+        .filter(|(_, e)| e.is_targetable() && in_blade_arc(hero, aim, e.pos(), reach, half_width, behind, FOE_RADIUS))
         .map(|(i, _)| i)
         .collect()
 }
@@ -312,6 +337,22 @@ impl Score {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_swing_catches_every_foe_its_trail_sweeps_through() {
+        let hero = V::new(5.0, 5.0);
+        let up = V::new(0.0, -1.0);
+        let (reach, half, behind) = (1.2, 0.7, 0.25);
+        let caught = |p: V| in_blade_arc(hero, up, p, reach, half, behind, FOE_RADIUS);
+        // Side by side in a corridor two tiles wide, both ahead of him: one blow takes both.
+        assert!(caught(V::new(5.0, 4.0)) && caught(V::new(6.0, 4.0)));
+        // Beside him and a little ahead, where the slash begins.
+        assert!(caught(V::new(6.0, 4.6)));
+        // Not straight beside him, behind him, or out of reach ahead.
+        assert!(!caught(V::new(6.2, 5.0)) && !caught(V::new(5.0, 6.2)) && !caught(V::new(5.0, 2.8)));
+        // A spear's long thrust is no wider for it.
+        assert!(!in_blade_arc(hero, up, V::new(6.8, 3.0), 2.3, 0.55, 0.2, FOE_RADIUS));
+    }
 
     #[test]
     fn a_blow_reaches_whichever_way_it_is_aimed() {

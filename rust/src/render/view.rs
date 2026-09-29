@@ -1839,8 +1839,9 @@ impl WorldView {
             let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
             let side = self.slash_side;
             // The trail grows with the blade's reach and takes its colour.
-            let reach = crate::logic::progression::blade(s.hero_kind, hero.blade).swing.map(|s| s.0).unwrap_or(1.2) as f32;
-            let size = 1.0 + (reach - 1.2) * 0.5;
+            // (The ring is drawn at 1.08 across; a blade's swing lands wherever the trail sweeps, see `in_blade_arc`.)
+            let reach = crate::logic::progression::blade(s.hero_kind, hero.blade).swing.map(|s| s.0).unwrap_or(1.2);
+            let size = (crate::logic::systems::sweep_radius(reach) / 1.08) as f32;
             let axe_color = if hero.blade <= 1 {
                 lin(SLASH)
             } else {
