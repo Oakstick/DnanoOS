@@ -1,9 +1,11 @@
 //! The archangels in the world. Their shrines: an octagonal marble plinth
 //! banded in gold, a little marble angel on it with wings half raised,
 //! holding Michael's sword, Gabriel's horn, Raphael's staff or Uriel's flame,
-//! a halo over it and four flags about it waving in that archangel's colour
-//! (grey and hanging still when that archangel has given this level, or all
-//! four have). And their powers:
+//! a halo over it, and the archangel's light baked into the place: the
+//! marble glowing faintly in their colour, a soft shaft falling on the statue
+//! and a pool of that light on the floor round it, steady as a lamp (all gone
+//! grey and dark when that archangel has given this level, or all four
+//! have). And their powers:
 //! Gabriel's thunderbolts, Raphael's beam and Uriel's wave. Michael's fire
 //! flies as a shot (`emit_forged_shot`); the foes it turns glow blue and
 //! wear a halo (`update_enemy`, the enemies' emitter).
@@ -62,7 +64,7 @@ mod stone {
 
 /**
  * A shrine of `angel`: the plinth and the statue on it, holding the
- * archangel's own sign. Faces +z; the halo and the flags are drawn apart.
+ * archangel's own sign. Faces +z; the halo and the light are drawn apart.
  */
 pub fn angel_shrine(angel: Archangel) -> Collected {
     use stone::*;
@@ -321,11 +323,12 @@ impl WorldView {
 
     /**
      * An archangel's shrine: the plinth and statue of whoever it honours now
-     * (turned to face a path beside it), the halo, the four flags waving, a
-     * light in their colour. Resting (or Uriel resting), it stands grey and
-     * still. Returns where it stands and its colour, for the label.
+     * (turned to face a path beside it), the halo, and their light baked into
+     * the spot: a faint glow in the marble, a shaft from above, a pool on the
+     * floor. It does not flicker. Spent, it stands grey and dark. Returns
+     * where it stands and its colour, for the light pool and the label.
      */
-    pub(super) fn emit_angel_shrine(&self, d: &Diamond, grid: &Grid, spent: &[bool; 4], time: f32, f: &mut Frame) -> Option<(Vec3, Vec3)> {
+    pub(super) fn emit_angel_shrine(&self, d: &Diamond, grid: &Grid, spent: &[bool; 4], f: &mut Frame) -> Option<(Vec3, Vec3)> {
         let Offer::Angel(angel) = d.current() else { return None };
         let (x, y) = (d.tile.x, d.tile.y);
         let base = Vec3::new(x as f32, floor_at(grid, x as f32, y as f32), y as f32);
@@ -340,35 +343,23 @@ impl WorldView {
         let rig = &self.models.angel_shrines[angel.index()];
         let root = Mat4::from_translation(base) * Mat4::from_rotation_y(yaw);
         let tint = if lit { Vec3::ONE } else { Vec3::splat(0.62) };
-        emit_rig(&mut f.opaque[MeshKind::Cube as usize], rig, &Pose::rest(rig), root, tint, 1.0, Vec3::ZERO);
+        // Lit, the marble itself holds a little of their light.
+        let inner = if lit { color * 0.1 } else { Vec3::ZERO };
+        emit_rig(&mut f.opaque[MeshKind::Cube as usize], rig, &Pose::rest(rig), root, tint, 1.0, inner);
         // The halo over the statue's head.
         let head = root.transform_point3(Vec3::new(0.0, (HEAD[1] + 3.8) * SHRINE_VOXEL, (HEAD[2] - 13.5 - 0.6) * SHRINE_VOXEL));
-        let glow = if lit { 0.8 + (time * 3.0 + x as f32).sin() * 0.2 } else { 0.15 };
+        let glow = if lit { 1.0 } else { 0.15 };
         let m = Mat4::from_translation(head) * Mat4::from_rotation_x(-PI / 2.0 + 0.35) * Mat4::from_scale(Vec3::new(0.075, 0.075, 1.0));
         f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, color * 2.5 * glow, 0.85, Vec3::ZERO, SHADE_UNLIT));
-        // Four flags on gold-tipped poles at the corners of the tile.
-        let cube = MeshKind::Cube as usize;
-        for (k, &(sx, sz)) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].iter().enumerate() {
-            let foot = base + Vec3::new(sx * 0.42, 0.0, sz * 0.42);
-            let top = foot + Vec3::new(0.0, 1.02, 0.0);
-            f.opaque[cube].push(Instance::new(forge::segment(foot, top, 0.028), lin(0x8a6a3a), 1.0, Vec3::ZERO, SHADE_LIT));
-            f.opaque[cube].push(Instance::new(Mat4::from_translation(top + Vec3::new(0.0, 0.03, 0.0)) * Mat4::from_scale(Vec3::splat(0.05)), lin(0xe8b84a), 1.0, Vec3::ZERO, SHADE_LIT));
-            // The banner streams out away from the statue, rippling; resting, it hangs.
-            let out = Vec3::new(sx, 0.0, sz).normalize();
-            let (cols, rows) = (6, 7); // 0.22 by 0.26
-            for c in 0..cols {
-                let u = (c as f32 + 0.5) / cols as f32;
-                let wave = if lit { (time * 5.0 - u * 5.0 + k as f32).sin() * 0.05 * u } else { 0.0 };
-                let droop = if lit { u * 0.04 } else { u * 0.22 };
-                let across = Vec3::new(-out.z, 0.0, out.x);
-                for r in 0..rows {
-                    let vv = (r as f32 + 0.5) / rows as f32;
-                    let p = top + out * (u * 0.22 * if lit { 1.0 } else { 0.55 }) + across * wave - Vec3::new(0.0, 0.06 + vv * 0.26 + droop, 0.0);
-                    let stripe = r == rows - 1 || r == 0;
-                    let c = if stripe { color * 0.55 } else { color };
-                    let m = Mat4::from_translation(p) * Mat4::from_rotation_y(out.x.atan2(out.z)) * Mat4::from_scale(Vec3::new(0.012, 0.04, 0.04));
-                    f.opaque[cube].push(Instance::new(m, c, 1.0, if lit { color * 0.25 } else { Vec3::ZERO }, SHADE_LIT));
-                }
+        if lit {
+            // A pool of their light on the floor, brightest at the plinth's foot ...
+            let pool = |r: f32| Mat4::from_translation(base + Vec3::new(0.0, 0.03, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::splat(r));
+            f.glow.push(Instance::new(pool(1.9), color, 0.45, Vec3::ZERO, SHADE_GLOW));
+            f.glow.push(Instance::new(pool(0.9), Vec3::ONE.lerp(color, 0.6), 0.35, Vec3::ZERO, SHADE_GLOW));
+            // ... and a soft shaft of it about the statue, fading as it rises.
+            for k in 0..7 {
+                let fade = 1.0 - k as f32 / 7.0;
+                glow_orb(f, base + Vec3::new(0.0, 0.25 + k as f32 * 0.38, 0.0), 0.62, color, 0.16 * fade * fade);
             }
         }
         if lit {

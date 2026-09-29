@@ -97,7 +97,7 @@ impl Game {
     fn michaels_fire(&mut self) {
         let hp = self.hero.pos();
         self.projectiles.push(Projectile::new(hp, self.hero.aim(), RangedKind::Grace));
-        self.audio.play(Sfx::Zap);
+        self.audio.play(Sfx::MichaelFire);
         self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, Archangel::Michael.color(), 14);
     }
 
@@ -106,7 +106,7 @@ impl Game {
         self.enemies[i].turn(ALLY_SECONDS);
         let p = self.enemies[i].pos();
         let color = Archangel::Michael.color();
-        self.audio.play(Sfx::Heal);
+        self.audio.play(Sfx::MichaelTurn);
         self.view.sparkle(&self.level.grid, p.x, p.y, 1.0, color, 30);
         self.floater(p.x, p.y - 0.8, "TURNED", 1.2, Some(color));
     }
@@ -117,8 +117,7 @@ impl Game {
         let color = Archangel::Gabriel.color();
         let grid = &self.level.grid;
         self.view.shake(1.0);
-        self.audio.play(Sfx::Explode);
-        self.audio.play(Sfx::Zap);
+        self.audio.play(Sfx::GabrielThunder);
         // A few bolts about him for the look of it, even with nothing near.
         for k in 0..4 {
             let a = k as f64 * std::f64::consts::FRAC_PI_2 + self.rng.next();
@@ -159,8 +158,7 @@ impl Game {
         let color = Archangel::Raphael.color();
         self.view.beam(grid, hp, end, color);
         self.view.shake(0.5);
-        self.audio.play(Sfx::Zap);
-        self.audio.play(Sfx::BossBolt);
+        self.audio.play(Sfx::RaphaelBeam);
         let doomed: Vec<usize> = (0..self.enemies.len())
             .filter(|&i| self.enemies[i].is_targetable() && from_segment(hp, end, self.enemies[i].pos()) <= BEAM_HALF_WIDTH + FOE_RADIUS * 0.5)
             .collect();
@@ -182,8 +180,7 @@ impl Game {
         let color = Archangel::Uriel.color();
         self.view.holy_wave(&self.level.grid, hp, color);
         self.view.shake(0.8);
-        self.audio.play(Sfx::Explode);
-        self.audio.play(Sfx::BossSlam);
+        self.audio.play(Sfx::UrielWave);
         self.floater(hp.x, hp.y - 1.0, "URIEL'S WAVE", 1.6, Some(color));
     }
 

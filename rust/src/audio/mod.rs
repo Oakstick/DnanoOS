@@ -100,6 +100,17 @@ pub enum Sfx {
     Wind,
     /// Water dripping in the dungeon.
     Drip,
+    // ---- the archangels' powers, each with its own voice
+    /// Michael's fire: a blade ringing out in blue flame.
+    MichaelFire,
+    /// A foe turned by it: a soft chord of grace.
+    MichaelTurn,
+    /// Gabriel's horn, then the crack and long roll of his thunder.
+    GabrielThunder,
+    /// Raphael's beam singing out.
+    RaphaelBeam,
+    /// Uriel's wave: a deep boom and a roaring wall of fire.
+    UrielWave,
 }
 
 /// Whose voice a line of the story types out in: each has its own blip.
@@ -740,6 +751,86 @@ impl AudioManager {
                     sweep(s, t + 0.13, 1900.0, 900.0, 0.05, Wave::Sine, 0.012);
                     sweep(s, t + 0.27, 1900.0, 900.0, 0.05, Wave::Sine, 0.004);
                 }
+                Sfx::MichaelFire => {
+                    // Steel ringing out, a rushing breath of flame, and a pure fifth climbing with it.
+                    blip(s, t, 2093.0, 0.4, Wave::Sine, 0.05);
+                    blip(s, t, 2093.0 * 2.76, 0.22, Wave::Sine, 0.02);
+                    s.push(
+                        Voice::new(t, t + 0.45, Wave::Noise { rate: 1.4, offset }, Env::constant(1.0), Env::points(vec![(t, 0.0001), (t + 0.06, 0.14 * vg), (t + 0.44, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 1500.0 * vp, 0.9),
+                    );
+                    sweep(s, t, 523.25, 1046.5, 0.32, Wave::Triangle, 0.1);
+                    sweep(s, t, 783.99, 1568.0, 0.32, Wave::Sine, 0.06);
+                }
+                Sfx::MichaelTurn => {
+                    // A major chord blooming upward, with a bell over it: the foe's heart turned.
+                    for (i, f) in [659.25, 830.61, 987.77, 1318.5].into_iter().enumerate() {
+                        let at = t + i as f64 * 0.05;
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.03, 0.05 * vg), (at + 0.8, 0.0005)]);
+                        s.push(Voice::new(at, at + 0.82, Wave::Sine, Env::constant(f * vp), gain, Bus::Sfx).vibrato(5.0, 0.006));
+                    }
+                    blip(s, t + 0.2, 2637.0, 0.3, Wave::Sine, 0.025);
+                }
+                Sfx::GabrielThunder => {
+                    // Gabriel's horn: two brassy notes a fourth apart ...
+                    for (k, (f, d)) in [(293.66, 0.16), (392.0, 0.45)].into_iter().enumerate() {
+                        let at = t + k as f64 * 0.15;
+                        for (ratio, g) in [(1.0, 0.07), (1.004, 0.05), (2.0, 0.03)] {
+                            let gain = Env::points(vec![(at, 0.0001), (at + 0.03, g * vg), (at + d, g * 0.6 * vg), (at + d + 0.06, 0.001)]);
+                            s.push(Voice::new(at, at + d + 0.08, Wave::Saw, Env::constant(f * ratio * vp), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 1800.0, 1.2));
+                        }
+                    }
+                    // ... then the crack overhead and the thunder rolling away.
+                    let c = t + 0.55;
+                    s.push(
+                        Voice::new(c, c + 0.16, Wave::Noise { rate: 2.0, offset }, Env::constant(1.0), Env::ramp(c, 0.45 * vg, 0.001, 0.14), Bus::Sfx)
+                            .filtered(synth::FilterKind::Highpass, 1800.0, 0.8),
+                    );
+                    let mut roll = vec![(c, 0.0001), (c + 0.04, 0.5 * vg)];
+                    for k in 1..20 {
+                        let at = c + 0.05 + k as f64 * 0.11;
+                        let fall = 1.0 - k as f64 / 20.0;
+                        roll.push((at, if k % 3 == 0 { 0.45 * fall * vg } else { 0.22 * fall * vg }));
+                    }
+                    roll.push((c + 2.4, 0.0005));
+                    s.push(Voice::new(c, c + 2.45, Wave::Noise { rate: 0.35, offset: offset + 0.5 }, Env::constant(1.0), Env::points(roll), Bus::Sfx).filtered(synth::FilterKind::Lowpass, 300.0, 1.0));
+                    s.push(Voice::new(c, c + 2.0, Wave::Sine, Env::ramp(c, 70.0, 28.0, 1.8), Env::ramp(c, 0.5 * vg, 0.001, 1.9), Bus::Sfx));
+                }
+                Sfx::RaphaelBeam => {
+                    // A breath of charge, then the beam singing: a humming chord of saws, a sizzle, a high clear tone.
+                    sweep(s, t, 200.0, 1200.0, 0.1, Wave::Sine, 0.08);
+                    let shape = |g: f64| Env::points(vec![(t + 0.08, 0.0001), (t + 0.12, g * vg), (t + 0.6, g * 0.6 * vg), (t + 0.9, 0.001)]);
+                    for f in [110.0, 110.7, 220.0, 330.0] {
+                        s.push(Voice::new(t + 0.08, t + 0.92, Wave::Saw, Env::constant(f * vp), shape(0.05), Bus::Sfx).vibrato(9.0, 0.01).filtered(synth::FilterKind::Lowpass, 1600.0, 2.0));
+                    }
+                    s.push(Voice::new(t + 0.08, t + 0.92, Wave::Noise { rate: 1.8, offset }, Env::constant(1.0), shape(0.07), Bus::Sfx).filtered(synth::FilterKind::Highpass, 3000.0, 0.8));
+                    for f in [880.0, 1320.0] {
+                        s.push(Voice::new(t + 0.08, t + 0.92, Wave::Sine, Env::constant(f * vp), shape(0.03), Bus::Sfx).vibrato(6.0, 0.008));
+                    }
+                }
+                Sfx::UrielWave => {
+                    // A deep boom, a roaring wall of fire rushing out, crackling, and a low brass chord swelling under it all.
+                    s.push(Voice::new(t, t + 1.8, Wave::Sine, Env::ramp(t, 60.0, 24.0, 1.6), Env::ramp(t, 0.6 * vg, 0.001, 1.7), Bus::Sfx));
+                    s.push(
+                        Voice::new(t, t + 0.9, Wave::Noise { rate: 0.9, offset }, Env::constant(1.0), Env::points(vec![(t, 0.0001), (t + 0.1, 0.2 * vg), (t + 0.85, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 1400.0 * vp, 0.8),
+                    );
+                    s.push(
+                        Voice::new(t, t + 1.9, Wave::Noise { rate: 0.6, offset: offset + 0.3 }, Env::constant(1.0), Env::points(vec![(t, 0.0001), (t + 0.3, 0.3 * vg), (t + 1.85, 0.001)]), Bus::Sfx)
+                            .filtered(synth::FilterKind::Lowpass, 500.0, 1.0),
+                    );
+                    for k in 0..10 {
+                        let at = t + 0.1 + k as f64 * 0.13 + (k * 37 % 11) as f64 * 0.01;
+                        s.push(
+                            Voice::new(at, at + 0.05, Wave::Noise { rate: 1.5, offset: offset + k as f64 * 0.2 }, Env::constant(1.0), Env::ramp(at, 0.07 * vg, 0.001, 0.04), Bus::Sfx)
+                                .filtered(synth::FilterKind::Bandpass, 2500.0 + (k * 311 % 900) as f64, 1.2),
+                        );
+                    }
+                    for f in [73.42, 110.0, 146.83, 220.0] {
+                        let gain = Env::points(vec![(t, 0.0001), (t + 0.5, 0.06 * vg), (t + 1.4, 0.04 * vg), (t + 2.4, 0.001)]);
+                        s.push(Voice::new(t, t + 2.45, Wave::Saw, Env::constant(f * vp), gain, Bus::Sfx).filtered(synth::FilterKind::Lowpass, 900.0, 1.5));
+                    }
+                }
                 Sfx::BossHit => {
                     // A wet thwack: a thump, a squelch, a bright tick of impact.
                     sweep(s, t, 170.0, 70.0, 0.14, Wave::Sine, 0.34);
@@ -925,6 +1016,8 @@ mod tests {
         let all = [
             Sfx::Toll, Sfx::Caw, Sfx::Kick, Sfx::Clang, Sfx::Bells, Sfx::Shriek, Sfx::Stinger, Sfx::Portal,
             Sfx::Growl, Sfx::Chain, Sfx::Whimper, Sfx::Soul, Sfx::DoorGrind, Sfx::Wind, Sfx::Drip,
+            // (and the archangels' powers)
+            Sfx::MichaelFire, Sfx::MichaelTurn, Sfx::GabrielThunder, Sfx::RaphaelBeam, Sfx::UrielWave,
         ];
         let render = |what: &str| {
             let mut buf = vec![0.0f32; 48_000 * 2];

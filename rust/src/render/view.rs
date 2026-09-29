@@ -1953,7 +1953,7 @@ impl WorldView {
         let mut shrine_points = Vec::new();
         for (i, d) in s.diamonds.iter().enumerate() {
             if d.kind == DiamondKind::Angel {
-                if let Some(lit) = self.emit_angel_shrine(d, grid, &s.angels_spent, time, f) {
+                if let Some(lit) = self.emit_angel_shrine(d, grid, &s.angels_spent, f) {
                     shrine_points.push(lit);
                 }
                 continue;
@@ -2153,7 +2153,7 @@ impl WorldView {
         let shrine_pos: Vec<Vec3> = shrine_points.iter().map(|(p, _)| *p).collect();
         for p in nearest(&shrine_pos, focus, LIGHT_POOL_SHRINES) {
             let color = shrine_points.iter().find(|(q, _)| *q == p).map(|(_, c)| *c).unwrap_or(Vec3::ONE);
-            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.9, 0.0), color: color * (4.0 + (time * 4.0).sin()), distance: 5.0 });
+            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.9, 0.0), color: color * 4.0, distance: 5.0 });
         }
         for l in &self.effect_lights {
             if l.intensity > 0.0 {

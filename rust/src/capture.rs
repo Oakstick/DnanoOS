@@ -280,8 +280,10 @@ pub fn run(args: &[String]) -> i32 {
             let dynamic: usize = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>() + frame.additive.len() + frame.glow.len();
             let at = game.hero.pos();
             let boss = game.boss.as_ref().map(|b| format!(", boss at {:.1},{:.2},{:.1}", b.pos.x, b.hover, b.pos.y)).unwrap_or_default();
+            let shrines: Vec<String> = game.diamonds.iter().filter(|d| d.kind == crate::logic::items::DiamondKind::Angel).map(|d| format!("{},{}", d.tile.x, d.tile.y)).collect();
+            let shrines = if shrines.is_empty() { String::new() } else { format!(", archangels' shrines at {}", shrines.join(" ")) };
             eprintln!(
-                "wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances, {dynamic} drawn this frame, hero at {:.1},{:.1}{boss}",
+                "wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances, {dynamic} drawn this frame, hero at {:.1},{:.1}{boss}{shrines}",
                 game.screen,
                 game.view.static_cubes.len(),
                 at.x,
