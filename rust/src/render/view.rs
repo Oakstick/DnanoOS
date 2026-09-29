@@ -25,6 +25,7 @@ mod forge;
 mod fountain;
 mod garden;
 mod gate;
+mod hell;
 mod meadow;
 mod select;
 mod story;
@@ -309,6 +310,17 @@ pub struct SceneState<'a> {
     pub fires: &'a [(P, f64)],
     /// The red diamond key the Cyclops dropped, while it lies on the grass.
     pub red_key: Option<P>,
+    /// The Portals of Hell, while he is there.
+    pub hub: Option<HubView>,
+}
+
+/// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
+/// order of `logic::sins::SINS`), the sins whose keys he holds, and how far the causeways have risen.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HubView {
+    pub doors: [f32; 7],
+    pub sins: u8,
+    pub seal: f32,
 }
 
 /// The gate to the boss as the view needs it: where, how many locks are lit, how far the doors have swung.
@@ -475,6 +487,10 @@ struct Models {
     hedges: Vec<Mesh>,
     bushes: Vec<Mesh>,
     forest_bushes: Vec<Mesh>,
+    /// The seven portal doors of the Portals of Hell, each a pair of leaves carrying its sin in relief,
+    /// and the sin's name in letters for the lintel.
+    portal_doors: Vec<[Mesh; 2]>,
+    portal_names: Vec<Mesh>,
     /// Shrine pedestals: weapon (blue runes) and item (gold runes).
     pedestals: [(Mesh, Mesh); 2],
     bottles: HashMap<u32, Mesh>,
@@ -539,6 +555,8 @@ impl Models {
             hedges: (0..4).map(crate::render::foliage::hedge_block).collect(),
             bushes: (0..4).map(|v| crate::render::foliage::bush(v, crate::render::foliage::MEADOW)).collect(),
             forest_bushes: (0..4).map(|v| crate::render::foliage::small_bush(v, crate::render::foliage::FOREST)).collect(),
+            portal_doors: crate::logic::sins::SINS.iter().map(|&s| hell::portal_doors(s)).collect(),
+            portal_names: crate::logic::sins::SINS.iter().map(|&s| hell::carved_name(s.title())).collect(),
             pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
             cyclops: {
@@ -603,6 +621,8 @@ pub struct WorldView {
     rock_index: HashMap<P, (usize, usize)>,
     /// A boss arena: the sunny meadow instead of the night forest.
     pub meadow: bool,
+    /// The Portals of Hell: platforms over a sea of lava.
+    pub hell: bool,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -727,6 +747,7 @@ impl WorldView {
             static_dirty: true,
             rock_index: HashMap::new(),
             meadow: false,
+            hell: false,
             water: Vec::new(),
             garden: None,
             fountain: None,
@@ -802,7 +823,9 @@ impl WorldView {
     // ---------------------------------------------------------------- build
 
     #[allow(clippy::too_many_arguments)]
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], meadow: bool, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
+    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: crate::logic::level::Theme, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
+        let meadow = theme == crate::logic::level::Theme::Meadow;
+        self.hell = theme == crate::logic::level::Theme::Hell;
         self.garden = garden.cloned();
         self.fountain = None;
         self.wisps = None;
@@ -831,7 +854,9 @@ impl WorldView {
             l.intensity = 0.0;
         }
         self.meadow = meadow;
-        if meadow {
+        if self.hell {
+            self.build_hell(grid);
+        } else if meadow {
             self.build_meadow(grid);
         } else {
             self.build_forest(grid);
@@ -1803,10 +1828,18 @@ impl WorldView {
             self.emit_select(sel, s, f);
             return;
         }
-        f.atmosphere = if self.meadow && !self.showcase { meadow_atmosphere() } else { Atmosphere::forest() };
+        f.atmosphere = if self.showcase {
+            Atmosphere::forest()
+        } else if self.hell {
+            hell::hell_atmosphere()
+        } else if self.meadow {
+            meadow_atmosphere()
+        } else {
+            Atmosphere::forest()
+        };
         // Seer's Sight (path 3) sees through the dark.
         let nv = if s.hero.sees() { 0.6 } else { 0.0 };
-        if nv > 0.0 && !self.meadow && !self.showcase {
+        if nv > 0.0 && !self.meadow && !self.hell && !self.showcase {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
             a.hemi_sky *= 1.0 + 1.4 * nv;
@@ -1859,6 +1892,9 @@ impl WorldView {
         }
         if self.meadow {
             hero_light *= 0.25; // broad daylight; the lantern barely shows
+        }
+        if self.hell {
+            hero_light *= 0.45; // the lava lights him from below
         }
         // His lantern rides well above the horned helmet, so it lights him without bleaching him.
         let to_cam = {
@@ -2116,14 +2152,20 @@ impl WorldView {
         if self.meadow {
             self.emit_meadow(time, f);
         }
-        emit_cloud_sea(grid, f, self.cam_pos);
+        if self.hell {
+            // Lava below instead of the sea of cloud.
+            f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
+            self.emit_hell(s, time, hero_pos, f);
+        } else {
+            emit_cloud_sea(grid, f, self.cam_pos);
+        }
         self.emit_garden(time, f);
         self.emit_fountain(time, f);
         self.emit_gate_and_keys(s, time, hero_pos, f);
         self.emit_smoke(time, f);
         let mote_color = lin(MOTE);
         for (i, b) in self.mote_base.iter().enumerate() {
-            if self.meadow {
+            if self.meadow || self.hell {
                 break;
             }
             let fi = i as f32;

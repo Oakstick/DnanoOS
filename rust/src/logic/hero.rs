@@ -1011,6 +1011,15 @@ impl Hero {
         self.hp = (self.hp + amount).min(self.max_hp);
     }
 
+    /// Picks him up and sets him down on `at` (a debugging hook): nothing else changes.
+    pub fn place(&mut self, at: P) {
+        self.m.teleport(at);
+        self.free_pos = at.v();
+        self.free_vel = V::new(0.0, 0.0);
+        self.synced = at;
+        self.jump = None;
+    }
+
     /// New life: full health, bare sword, all boons gone. Death costs everything.
     pub fn respawn(&mut self, at: P) {
         self.m.teleport(at);

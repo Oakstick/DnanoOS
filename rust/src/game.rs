@@ -5,6 +5,7 @@ use std::f64::consts::PI;
 
 mod angels;
 mod controls;
+mod hub;
 mod map;
 mod save;
 
@@ -406,6 +407,10 @@ pub struct Game {
     pub holy_wave: Option<angels::HolyWave>,
     /// Which archangels have given their blessing in this level (each gives once).
     pub angels_used: [bool; 4],
+    /// The sins whose keys he holds (one bit each, `Sin::bit`).
+    pub sins_cleared: u8,
+    /// The Portals of Hell, while he is there.
+    pub hub: Option<hub::HubState>,
 }
 
 impl Game {
@@ -505,6 +510,8 @@ impl Game {
             refused_at: -10.0,
             holy_wave: None,
             angels_used: [false; 4],
+            sins_cleared: 0,
+            hub: None,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -531,6 +538,9 @@ impl Game {
         self.level = parse_level(&data);
         if self.level.data.boss {
             // In the arena he starts at the south edge, facing the Cyclops.
+            self.start_facing = Dir::Up;
+        } else if self.level.data.theme == crate::logic::level::Theme::Hell {
+            // In the Portals of Hell he comes in from the cliffs to the south, facing the volcano.
             self.start_facing = Dir::Up;
         } else {
             // Ragnar starts in the heart of the dungeon, facing its longest corridor.
@@ -585,7 +595,9 @@ impl Game {
         self.hero.shield = shield;
         self.hero.free_move = free_move;
         self.equip_from_progress();
-        let specs = if self.level.data.boss { Vec::new() } else { default_enemy_specs(&self.level.grid) };
+        // No foes in a boss arena (but the boss), nor in the Portals of Hell.
+        let hell = self.level.data.theme == crate::logic::level::Theme::Hell;
+        let specs = if self.level.data.boss || hell { Vec::new() } else { default_enemy_specs(&self.level.grid) };
         self.enemies = specs
             .iter()
             .enumerate()
@@ -634,7 +646,7 @@ impl Game {
         self.poison = (0, 0.0, 0.0);
         self.fires.clear();
         self.spirits.clear();
-        self.relic_shrine = if self.level.data.boss { None } else { self.hidden_shrine_spot() };
+        self.relic_shrine = if self.level.data.boss || hell { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         if let Some(g) = self.level.gate {
@@ -642,7 +654,11 @@ impl Game {
                 self.level.grid.set_landmark(g.x + dx, g.y, true);
             }
         }
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.boss, self.garden.as_ref(), self.level.gate);
+        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.theme, self.garden.as_ref(), self.level.gate);
+        self.hub = None;
+        if hell {
+            self.open_hub();
+        }
         self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         self.reset_round();
         if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
@@ -852,7 +868,8 @@ impl Game {
             .as_ref()
             .filter(|b| b.alive() && matches!(self.screen, Screen::Playing | Screen::Paused))
             .filter(|b| !matches!(b.state, crate::logic::boss::BossState::Hidden))
-            .map(|b| glam::Vec3::new(b.pos.x as f32, 0.0, b.pos.y as f32));
+            .map(|b| glam::Vec3::new(b.pos.x as f32, 0.0, b.pos.y as f32))
+            .or_else(|| self.hub_focus());
         self.input.poll(dt);
         self.handle_global_keys();
 
@@ -967,6 +984,7 @@ impl Game {
             fires: &self.fires,
             angels_spent: self.angels_spent(),
             red_key: self.red_key,
+            hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -1060,6 +1078,7 @@ impl Game {
             fires: &self.fires,
             angels_spent: self.angels_spent(),
             red_key: self.red_key,
+            hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
         }
     }
 
@@ -1211,6 +1230,7 @@ impl Game {
         self.footsteps(before);
         self.collect();
         self.update_gate(dt);
+        self.update_hub(dt);
         self.visit_shrines();
         self.visit_potions();
         self.visit_relic_shrine();
@@ -1313,8 +1333,8 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     fn update_spawns(&mut self, dt: f64) {
-        if self.boss.is_some() {
-            return; // the arena belongs to the Cyclops
+        if self.boss.is_some() || self.hub.is_some() {
+            return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell
         }
         self.spawn_timer -= dt;
         if self.spawn_timer > 0.0 || self.enemies.len() >= self.max_enemies() {
@@ -3435,14 +3455,15 @@ mod tests {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
         let stops = map_stops();
-        assert_eq!(stops.len(), 2 * crate::logic::levels::levels().len(), "each dungeon and its Cyclops");
+        assert_eq!(stops.len(), 2 * crate::logic::levels::levels().len() + 1, "each dungeon and its Cyclops, and the Portals of Hell");
         assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
-        // From the title: MAP, down to the third stop (Dungeon II), go.
+        assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
+        // From the title: MAP, down to the fourth stop (Dungeon II), go.
         g.menu_index = g.menu_items().iter().position(|&m| m == MenuItem::Map).unwrap();
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
         assert!(g.show_map);
-        for _ in 0..2 {
+        for _ in 0..3 {
             g.input.nav = Some(Dir::Down);
             g.update(crate::app::STEP);
         }
@@ -3482,6 +3503,61 @@ mod tests {
         // Miyamoto's blade waits a fifth less than it would for anyone else.
         let own = crate::logic::progression::blade(HeroKind::Miyamoto, g.hero.blade).cooldown;
         assert!((y_cool - own * crate::logic::heroes::MIYAMOTO_TEMPO).abs() < 1e-9, "{y_cool} against {own}");
+    }
+
+    #[test]
+    fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
+        use crate::logic::hub;
+        use crate::logic::sins::{Sin, ALL_SINS};
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        g.map_jump(save::Stage::Hub);
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(g.hub.is_some() && g.enemies.is_empty() && g.boss.is_none(), "a calm hub: no foes");
+        assert_eq!(g.hero.occupied(), hub::arrival(), "he comes in from outside");
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Hub));
+        g.enter(Screen::Playing);
+        for _ in 0..(10.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.enemies.len(), 0, "and none come later");
+        // Before Greed's gate its doors swing open; walking away, they close.
+        let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Greed).unwrap();
+        let i = Sin::Greed.index();
+        g.hero.m.teleport(greed.front());
+        for _ in 0..(1.5 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.hub.as_ref().unwrap().doors[i] >= 1.0, "the doors open as he comes");
+        g.hero.m.teleport(hub::arrival());
+        for _ in 0..(1.5 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "and close behind him");
+        // A realm he has cleared keeps its doors shut.
+        g.sins_cleared = Sin::Greed.bit();
+        g.hero.m.teleport(greed.front());
+        for _ in 0..(1.5 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
+        // All seven keys: the seal breaks and the causeways rise to the House of the Devil.
+        let lane = hub::causeways()[2];
+        let p = crate::logic::types::P::new(lane.x0 + 1, lane.y0 + 1);
+        assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");
+        g.sins_cleared = ALL_SINS;
+        for _ in 0..((crate::game::hub::SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert_eq!(g.hub.as_ref().unwrap().seal, 1.0);
+        assert!(hub::causeways().iter().all(|c| c.tiles().all(|t| g.level.grid.is_walkable(t.x, t.y, false))), "the causeways are up");
+        let seen = crate::logic::pathing::reachable(&g.level.grid, hub::arrival(), true, false);
+        let door = hub::house_door();
+        assert!(seen.contains(&crate::logic::types::P::new(door.x, door.y + 1)), "the way to the House is open");
+        // Coming back later, the causeways already stand.
+        g.checkpoint(save::Stage::Hub);
+        g.load_hub();
+        assert_eq!(g.hub.as_ref().unwrap().seal, 1.0);
     }
 
     /// A foe of `kind` hunting at `at`, in the game and in the view.

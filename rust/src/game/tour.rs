@@ -14,8 +14,9 @@ use crate::logic::types::{PotionKind, Tile, P};
 use crate::platform;
 use crate::render::view::floor_at;
 
-/// Settings key that records the tour has been seen.
+/// Settings keys that record the tours have been seen: the first dungeon's, and the Portals of Hell's.
 const TOUR_KEY: &str = "vh.tour_done";
+const HUB_TOUR_KEY: &str = "vh.tour_hub";
 /// Seconds a stop holds before moving on by itself.
 pub const TOUR_STOP_SECONDS: f64 = 3.3;
 
@@ -32,6 +33,12 @@ pub enum TourArt {
     ItemShrine,
     Pit,
     Enemy(EnemyKind),
+    /// A portal gate of the Portals of Hell, in its sin's colour.
+    Portal(u32),
+    /// The Seal of the Seven: its sockets, lit for the keys he holds.
+    Seal,
+    /// The volcano and the House of the Devil.
+    Volcano,
 }
 
 #[derive(Clone, Debug)]
@@ -39,7 +46,7 @@ pub struct TourStop {
     /// The point the camera circles, in world space.
     pub target: Vec3,
     pub title: &'static str,
-    pub body: &'static str,
+    pub body: String,
     pub color: u32,
     pub art: TourArt,
 }
@@ -65,14 +72,23 @@ pub fn tour_seen() -> bool {
     platform::load(TOUR_KEY).map(|v| v.trim() == "1").unwrap_or(false)
 }
 
-/// Starting over: the tour is owed again.
+/// Has this player been shown round the Portals of Hell?
+pub fn hub_tour_seen() -> bool {
+    cfg!(test) || platform::load(HUB_TOUR_KEY).map(|v| v.trim() == "1").unwrap_or(false)
+}
+
+/// Starting over: the tours are owed again.
 pub fn forget_tour() {
     platform::save(TOUR_KEY, "0");
+    platform::save(HUB_TOUR_KEY, "0");
 }
 
 impl Game {
     /// The stops for the current dungeon: the hero, one of each thing, then each foe.
     fn tour_stops(&self) -> Vec<TourStop> {
+        if self.hub.is_some() {
+            return self.hub_tour_stops();
+        }
         let g = &self.level.grid;
         let at = |p: P, lift: f32| Vec3::new(p.x as f32, floor_at(g, p.x as f32, p.y as f32) + lift, p.y as f32);
         let spawn = self.level.hero_spawn;
@@ -93,7 +109,8 @@ impl Game {
                 crate::logic::heroes::HeroKind::Ragnar => "That's you: a viking with a blade, a round shield, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
                 crate::logic::heroes::HeroKind::Mehmed => "That's you: a janissary with a blade, a kalkan, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
                 crate::logic::heroes::HeroKind::Miyamoto => "That's you: a samurai with a blade, a tate, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
-            },
+            }
+            .into(),
             color: 0xf2e3c4,
             art: TourArt::Hero,
         }];
@@ -101,7 +118,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(f.p, 1.3),
                 title: "THE KRAMPUS FOUNTAIN",
-                body: "The heart of the garden. Its four channels run out to every side of the estate: cross them by the bridges, which slimes will not set foot on.",
+                body: "The heart of the garden. Its four channels run out to every side of the estate: cross them by the bridges, which slimes will not set foot on.".into(),
                 color: 0x5cd4ff,
                 art: TourArt::Fountain,
             });
@@ -110,7 +127,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(p, 0.2),
                 title: "GOLDEN KEY",
-                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 coins at the old gatekeeper's. Look for their golden glow.",
+                body: "Eight are hidden across the estate. Each one lights a lock on the gate and is worth 30 coins at the old gatekeeper's. Look for their golden glow.".into(),
                 color: 0xf2c53d,
                 art: TourArt::Nugget,
             });
@@ -119,7 +136,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(P::new(gate.x, gate.y + 1), 1.0),
                 title: "THE GATE",
-                body: "In the north wall. With all eight keys its doors swing open: go through to face the Cyclops.",
+                body: "In the north wall. With all eight keys its doors swing open: go through to face the Cyclops.".into(),
                 color: 0xf2c53d,
                 art: TourArt::Gate,
             });
@@ -128,7 +145,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(p, 0.3),
                 title: "GREEN CROSS",
-                body: "Walk over it to restore 50 health.",
+                body: "Walk over it to restore 50 health.".into(),
                 color: 0x5cff6a,
                 art: TourArt::Cross,
             });
@@ -137,7 +154,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(pot.tile, 0.2),
                 title: "POTION",
-                body: "Bottles go on your belt, up to five. Drink with Q, or 1 to 5 for a slot. Only the first dungeon has them lying around; after that, buy them from the old gatekeeper.",
+                body: "Bottles go on your belt, up to five. Drink with Q, or 1 to 5 for a slot. Only the first dungeon has them lying around; after that, buy them from the old gatekeeper.".into(),
                 color: pot.def(self.hero_kind).color,
                 art: TourArt::Potion(pot.kind),
             });
@@ -151,7 +168,7 @@ impl Game {
                 TourStop {
                     target: at(d.tile, 0.4),
                     title: "ARCHANGEL'S SHRINE",
-                    body: "Strike it to switch between Michael (blue), Gabriel (green), Raphael (purple) and Uriel (red); step on it for that archangel's power, used with R or LT. Each archangel gives once a level, and Uriel only once in ten minutes.",
+                    body: "Strike it to switch between Michael (blue), Gabriel (green), Raphael (purple) and Uriel (red); step on it for that archangel's power, used with R or LT. Each archangel gives once a level, and Uriel only once in ten minutes.".into(),
                     color: 0xe8dcc0,
                     art: TourArt::AngelShrine,
                 }
@@ -159,7 +176,7 @@ impl Game {
                 TourStop {
                     target: at(d.tile, 0.4),
                     title: "ITEM SHRINE",
-                    body: "Offers a shield repair, a spell of invincibility, or a burst of speed. Strike to change, step on to take.",
+                    body: "Offers a shield repair, a spell of invincibility, or a burst of speed. Strike to change, step on to take.".into(),
                     color: 0xffd84a,
                     art: TourArt::ItemShrine,
                 }
@@ -169,7 +186,7 @@ impl Game {
             stops.push(TourStop {
                 target: at(p, 0.0),
                 title: "PIT",
-                body: "You cannot walk over a pit. Jump it with Space; a jump also climbs one ledge and leaps over foes.",
+                body: "You cannot walk over a pit. Jump it with Space; a jump also climbs one ledge and leaps over foes.".into(),
                 color: 0xc8b89a,
                 art: TourArt::Pit,
             });
@@ -189,8 +206,56 @@ impl Game {
                 EnemyKind::Vampire => ("NIGHT RAVEN", "The raven's red-eyed kin: bigger, bolder, and it hunts where the raven drives you.", 0xff6a6a),
                 EnemyKind::Slime => ("BOG SLIME", "Slow, but it leaves a trail of slime behind it that slows you down.", 0x5cff6a),
             };
-            stops.push(TourStop { target, title, body, color, art: TourArt::Enemy(e.kind()) });
+            stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });
         }
+        stops
+    }
+
+    /// The Portals of Hell: where he came in, the Seal of the Seven, each of the seven doors, and the House of the Devil.
+    fn hub_tour_stops(&self) -> Vec<TourStop> {
+        use crate::logic::hub;
+        let g = &self.level.grid;
+        let at = |p: P, lift: f32| Vec3::new(p.x as f32, floor_at(g, p.x as f32, p.y as f32) + lift, p.y as f32);
+        let mut stops = vec![
+            TourStop {
+                target: at(hub::arrival(), 0.5),
+                title: "THE PORTALS OF HELL",
+                body: "Down from the Cyclops' meadow into the pit of the underworld. Eight platforms float over the lava round the House of the Devil, joined by wooden bridges.".into(),
+                color: 0xff6a3a,
+                art: TourArt::Hero,
+            },
+            TourStop {
+                target: at(hub::altar(), 0.9),
+                title: "THE SEAL OF THE SEVEN",
+                body: "A socket for each sin's key. Take a key from the prince of every realm: with all seven, the seal breaks and the way to the House of the Devil rises from the lava.".into(),
+                color: 0xffb040,
+                art: TourArt::Seal,
+            },
+        ];
+        for gate in hub::gates() {
+            let sin = gate.sin;
+            stops.push(TourStop {
+                target: at(gate.tile, 1.3),
+                title: sin.title(),
+                body: format!(
+                    "Behind this door lies {}, where {} keeps the key of {}. On the door, {}. Walk up to it and it opens.",
+                    sin.realm(),
+                    sin.prince(),
+                    sin.name().to_lowercase(),
+                    sin.door()
+                ),
+                color: sin.color(),
+                art: TourArt::Portal(sin.color()),
+            });
+        }
+        let (cx, cy) = hub::volcano().center();
+        stops.push(TourStop {
+            target: Vec3::new(cx, 2.4, cy + 2.0),
+            title: "THE HOUSE OF THE DEVIL",
+            body: "Where Krampus carried your friend, to his father. A wall of fire guards the volcano until the seal of the seven is broken.".into(),
+            color: 0xff3a2a,
+            art: TourArt::Volcano,
+        });
         stops
     }
 
@@ -230,7 +295,7 @@ impl Game {
     fn finish_tour(&mut self) {
         self.tour = None;
         self.tour_pending = false;
-        platform::save(TOUR_KEY, "1");
+        platform::save(if self.hub.is_some() { HUB_TOUR_KEY } else { TOUR_KEY }, "1");
         self.enter(Screen::Ready);
     }
 }

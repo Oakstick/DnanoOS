@@ -38,6 +38,8 @@ pub enum Stage {
     Arena(usize),
     /// Cyclops `n` is slain: at the old man's wares, before dungeon `n + 1`.
     Shop(usize),
+    /// In the Portals of Hell.
+    Hub,
 }
 
 /// A checkpoint of the adventure under way.
@@ -48,24 +50,29 @@ pub struct Run {
     pub score: u32,
     pub lives: u32,
     pub belt: Vec<PotionKind>,
+    /// The sins whose keys he holds (`Sin::bit`).
+    pub sins: u8,
 }
 
 impl Run {
-    /// A line for the save file: "v1 hero stage dungeon score lives belt".
+    /// A line for the save file: "v2 hero stage dungeon score lives belt sins".
+    /// (A "v1" line, from before the Portals of Hell, has no sins and still loads.)
     pub fn encode(&self) -> String {
         let (kind, n) = match self.stage {
             Stage::Dungeon(n) => ('d', n),
             Stage::Arena(n) => ('a', n),
             Stage::Shop(n) => ('s', n),
+            Stage::Hub => ('h', 0),
         };
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
-        format!("v1 {} {kind} {n} {} {} {belt}", self.hero.slot(), self.score, self.lives)
+        format!("v2 {} {kind} {n} {} {} {belt} {}", self.hero.slot(), self.score, self.lives, self.sins)
     }
 
     pub fn decode(text: &str) -> Option<Run> {
         let mut f = text.split_whitespace();
-        if f.next()? != "v1" {
+        let version = f.next()?;
+        if version != "v1" && version != "v2" {
             return None;
         }
         let hero = *ROSTER.get(f.next()?.parse::<usize>().ok()?)?;
@@ -75,6 +82,7 @@ impl Run {
             "d" => Stage::Dungeon(n),
             "a" => Stage::Arena(n),
             "s" => Stage::Shop(n),
+            "h" => Stage::Hub,
             _ => return None,
         };
         let score = f.next()?.parse().ok()?;
@@ -83,7 +91,8 @@ impl Run {
             "-" => Vec::new(),
             list => list.split(',').map(|i| i.parse::<usize>().ok().and_then(|i| BREWS.get(i).copied())).collect::<Option<_>>()?,
         };
-        Some(Run { hero, stage, score, lives, belt })
+        let sins = if version == "v2" { f.next()?.parse::<u8>().ok()? & crate::logic::sins::ALL_SINS } else { 0 };
+        Some(Run { hero, stage, score, lives, belt, sins })
     }
 }
 
@@ -108,13 +117,14 @@ impl Game {
             Stage::Dungeon(n) => format!("dungeon {}", n + 1),
             Stage::Arena(n) => format!("the Cyclops of dungeon {}", n + 1),
             Stage::Shop(_) => "the old man's wares".to_string(),
+            Stage::Hub => "the Portals of Hell".to_string(),
         };
         Some(format!("{}, {place}", run.hero.name()))
     }
 
     /// Saves the adventure as it stands, at the start of `stage`.
     pub(super) fn checkpoint(&mut self, stage: Stage) {
-        let run = Run { hero: self.hero_kind, stage, score: self.score.score, lives: self.score.lives, belt: self.belt.clone() };
+        let run = Run { hero: self.hero_kind, stage, score: self.score.score, lives: self.score.lives, belt: self.belt.clone(), sins: self.sins_cleared };
         self.write_run(Some(run));
     }
 
@@ -151,6 +161,7 @@ impl Game {
         self.juice.score_shown = run.score as f64;
         self.new_kit();
         self.belt = run.belt;
+        self.sins_cleared = run.sins;
         match run.stage {
             Stage::Dungeon(n) => {
                 self.load_level(n);
@@ -164,6 +175,10 @@ impl Game {
                 // Leaving the wares goes on to the next dungeon, as it did.
                 self.load_level(n);
                 self.open_shop();
+            }
+            Stage::Hub => {
+                self.load_hub();
+                self.enter(Screen::Ready);
             }
         }
         self.juice.fade = 1.0;
@@ -200,6 +215,7 @@ impl Game {
         self.save_progress();
         self.write_run(None);
         self.hero_kind = HeroKind::Ragnar;
+        self.sins_cleared = 0;
         if !cfg!(test) {
             super::tour::forget_tour();
             self.tour_pending = true;
@@ -226,13 +242,16 @@ mod tests {
     #[test]
     fn a_run_survives_the_save_file() {
         let runs = [
-            Run { hero: HeroKind::Miyamoto, stage: Stage::Arena(2), score: 12_345, lives: 2, belt: vec![PotionKind::Health, PotionKind::Life, PotionKind::Spirit] },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new() },
-            Run { hero: HeroKind::Mehmed, stage: Stage::Shop(4), score: 99, lives: 1, belt: vec![PotionKind::Ragnarok] },
+            Run { hero: HeroKind::Miyamoto, stage: Stage::Arena(2), score: 12_345, lives: 2, belt: vec![PotionKind::Health, PotionKind::Life, PotionKind::Spirit], sins: 0 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0 },
+            Run { hero: HeroKind::Mehmed, stage: Stage::Shop(4), score: 99, lives: 1, belt: vec![PotionKind::Ragnarok], sins: 0b101_0011 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));
         }
+        // A save from before the Portals of Hell still loads, with no sins cleared.
+        assert_eq!(Run::decode("v1 1 d 2 450 3 -").map(|r| (r.stage, r.sins)), Some((Stage::Dungeon(2), 0)));
         assert_eq!(Run::decode(""), None, "a wiped save holds no run");
         assert_eq!(Run::decode("v1 7 d 0 0 3 -"), None);
     }

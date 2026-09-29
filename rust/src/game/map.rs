@@ -17,9 +17,10 @@ pub struct MapStop {
     pub label: String,
 }
 
-/// The road down: each authored dungeon, then the Cyclops' arena after it.
+/// The road down: each authored dungeon, then the Cyclops' arena after it, with the
+/// Portals of Hell after the first Cyclops.
 pub fn map_stops() -> Vec<MapStop> {
-    (0..levels().len())
+    let mut stops: Vec<MapStop> = (0..levels().len())
         .flat_map(|n| {
             let depth = roman(n + 1);
             let name = level_for(n).name;
@@ -30,7 +31,9 @@ pub fn map_stops() -> Vec<MapStop> {
                 MapStop { stage: Stage::Arena(n), label: format!("DEPTH {depth} - THE CYCLOPS") },
             ]
         })
-        .collect()
+        .collect();
+    stops.insert(2.min(stops.len()), MapStop { stage: Stage::Hub, label: "DEPTH II - THE PORTALS OF HELL".to_string() });
+    stops
 }
 
 impl Game {
@@ -38,7 +41,13 @@ impl Game {
         self.show_map = true;
         // The stop he is at now is highlighted (the first one from the title).
         let here = if self.screen == Screen::Paused {
-            Some(if self.boss.is_some() { Stage::Arena(self.dungeon) } else { Stage::Dungeon(self.dungeon) })
+            Some(if self.hub.is_some() {
+                Stage::Hub
+            } else if self.boss.is_some() {
+                Stage::Arena(self.dungeon)
+            } else {
+                Stage::Dungeon(self.dungeon)
+            })
         } else {
             None
         };
@@ -118,10 +127,16 @@ impl Game {
         match stage {
             Stage::Dungeon(n) => self.load_level(n),
             Stage::Arena(n) | Stage::Shop(n) => self.load_boss(n),
+            Stage::Hub => self.load_hub(),
         }
         self.checkpoint(stage);
         self.juice.fade = 1.0;
-        self.enter(Screen::Ready);
+        // The first time in the Portals of Hell, the tour shows him round the seven doors.
+        if stage == Stage::Hub && !super::tour::hub_tour_seen() {
+            self.begin_tour();
+        } else {
+            self.enter(Screen::Ready);
+        }
         for a in [Action::Confirm, Action::Jump, Action::Attack, Action::Tap] {
             self.input.consume(a);
         }

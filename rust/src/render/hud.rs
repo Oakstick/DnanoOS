@@ -157,7 +157,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             let rects = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height);
             let y = rects.last().map(|r| r[1] + r[3]).unwrap_or(o.height / 2.0) + t * 1.4;
             o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
-            o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
+            o.text(&where_line(g), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
             o.wrap_text(crate::logic::story::objective(), o.width / 2.0, y + t * 1.7, (t * 26.0).min(o.width - t * 2.0), t * 0.75, t * 0.5, rgba(TEXT_DIM, 1.0));
             if g.show_controls {
                 controls::draw_controls(o, g, t);
@@ -376,7 +376,19 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let punch = j.key_punch;
     let ncolor = if punch > 0.0 { mix_rgb(GOLD, 0xffffff, punch * 0.7) } else { GOLD };
     let (tx, ty) = key_target(w, h);
-    if let Some(b) = &g.boss {
+    if g.hub.is_some() {
+        // The seven sins' keys: a gem in each one's colour, lit for those he holds.
+        let held = crate::logic::sins::SINS.iter().filter(|s| g.sins_cleared & s.bit() != 0).count();
+        let gs = small * 0.55;
+        let gap = gs * 2.6;
+        let x0 = rc - gap * 6.0 - gs;
+        o.text(&format!("SIN KEYS {held}/7"), x0 - t * 0.4, ty, small, rgba(0xff8a5a, 1.0), Align::Right, true);
+        for (i, sin) in crate::logic::sins::SINS.iter().enumerate() {
+            let got = g.sins_cleared & sin.bit() != 0;
+            let x = x0 + i as f32 * gap;
+            o.circle(x + gs, ty, gs, rgba(if got { sin.color() } else { 0x3a3440 }, if got { 1.0 } else { 0.8 }));
+        }
+    } else if let Some(b) = &g.boss {
         // The fight, then the key, then the gate.
         let (text, color) = if b.alive() {
             ("BOSS FIGHT", 0xff8a2a)
@@ -741,7 +753,7 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let name = g.level.data.name.to_uppercase();
     let fit = w * 0.86 / (name.chars().count().max(1) as f32 * o.measure("M", 1.0));
     let ny = h * 0.2;
-    o.text(&crate::logic::story::depth_line(g.dungeon, g.boss.is_some()), w / 2.0, ny - t * 1.9, t * 0.55, rgba(SAND, 1.0), Align::Center, true);
+    o.text(&where_line(g), w / 2.0, ny - t * 1.9, t * 0.55, rgba(SAND, 1.0), Align::Center, true);
     draw_logo_word(o, &name, w / 2.0, ny, (t * 2.0).min(fit), g.time as f32);
     draw_ornament(o, w / 2.0, ny + t * 1.55, t * 12.0, t, g.time as f32);
 }
@@ -795,7 +807,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     // The title types itself out.
     let shown = ((st * 60.0) as usize).min(stop.title.len());
     o.text(&stop.title[..shown], tx, cy + t * 1.0, t * 1.0, rgba(stop.color, fade), Align::Left, true);
-    wrap_left(o, stop.body, tx, cy + t * 2.1, cw - (tx - cx) - t * 0.6, t * 0.62, t * 0.5, rgba(TEXT, fade));
+    wrap_left(o, &stop.body, tx, cy + t * 2.1, cw - (tx - cx) - t * 0.6, t * 0.62, t * 0.5, rgba(TEXT, fade));
 
     // Progress dots and the way on.
     let n = tour.stops.len();
@@ -811,6 +823,29 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     o.text("Enter / click / A: next     Esc: skip the tour", w - t * 0.8, h - bar_h / 2.0, t * 0.5, rgba(TEXT_DIM, k), Align::Right, false);
     o.text("ADVENTURES OF THE ANCIENT BLADES", t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Left, false);
     o.text(&format!("{} / {}", tour.index + 1, n), w - t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Right, false);
+}
+
+/// Where the road down stands, for the countdown and the pause screen.
+fn where_line(g: &Game) -> String {
+    if g.hub.is_some() {
+        "DEPTH II: SEVEN DOORS, SEVEN SINS".to_string()
+    } else {
+        crate::logic::story::depth_line(g.dungeon, g.boss.is_some())
+    }
+}
+
+/// A doorway in `color`: a dark arch with a swirl in it.
+fn draw_portal_icon(o: &mut Overlay, x: f32, y: f32, size: f32, color: u32, alpha: f32) {
+    let (cx, w) = (x + size / 2.0, size * 0.5);
+    o.rect(cx - w / 2.0 - size * 0.08, y + size * 0.2, size * 0.08, size * 0.66, rgba(0x2e2638, alpha));
+    o.rect(cx + w / 2.0, y + size * 0.2, size * 0.08, size * 0.66, rgba(0x2e2638, alpha));
+    o.rect(cx - w / 2.0 - size * 0.12, y + size * 0.12, w + size * 0.24, size * 0.1, rgba(0x2e2638, alpha));
+    o.rect(cx - w / 2.0, y + size * 0.22, w, size * 0.64, rgba(0x0a0608, alpha));
+    for k in 0..3 {
+        let r = size * (0.08 + k as f32 * 0.07);
+        o.arc(cx, y + size * 0.54, r, k as f32, k as f32 + 4.2, (size * 0.03).max(1.5), rgba(color, alpha * (1.0 - k as f32 * 0.2)));
+    }
+    o.circle(cx, y + size * 0.54, size * 0.04, rgba(0xffffff, alpha));
 }
 
 /// The picture on a tour card: a portrait of a foe, or an icon of a thing.
@@ -864,6 +899,29 @@ fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: cra
             o.circle(x + size / 2.0, y + size / 2.0, size * 0.38, rgba(0x2a1e12, alpha));
             o.circle(x + size / 2.0, y + size / 2.0, size * 0.3, rgba(0x050406, alpha));
         }
+        TourArt::Portal(color) => draw_portal_icon(o, x, y, size, color, alpha),
+        TourArt::Seal => {
+            // Seven sockets round a seal stone, each in its sin's colour.
+            let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+            o.circle(cx, cy, size * 0.36, rgba(0x2e2638, alpha));
+            o.circle(cx, cy, size * 0.12, rgba(0x6a1a10, alpha));
+            for (i, sin) in crate::logic::sins::SINS.iter().enumerate() {
+                let a = i as f32 / 7.0 * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+                o.circle(cx + a.cos() * size * 0.25, cy + a.sin() * size * 0.25, size * 0.055, rgba(sin.color(), alpha));
+            }
+        }
+        TourArt::Volcano => {
+            let (cx, base) = (x + size / 2.0, y + size * 0.85);
+            for k in 0..8 {
+                let t = k as f32 / 8.0;
+                let w = size * (0.8 - t * 0.6);
+                o.rect(cx - w / 2.0, base - (k + 1) as f32 * size * 0.07, w, size * 0.075, rgba(0x2e2a2c, alpha));
+            }
+            o.rect(cx - size * 0.05, base - size * 0.56, size * 0.1, size * 0.5, rgba(0xff5a1a, alpha * 0.8));
+            o.circle(cx, base - size * 0.62, size * 0.1, rgba(0xff8a2a, alpha));
+            o.rect(cx - size * 0.12, base - size * 0.3, size * 0.24, size * 0.3, rgba(0x1c1622, alpha));
+            o.rect(cx - size * 0.04, base - size * 0.16, size * 0.08, size * 0.16, rgba(0xff3010, alpha));
+        }
     }
 }
 
@@ -911,6 +969,25 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
         }
         if let Some(r) = g.relic_shrine {
             mark(o, r.x, r.y, 0x9ad1ff);
+        }
+    }
+    // The Portals of Hell: each gate's sin named over it as he comes near; a conquered one says so.
+    if g.hub.is_some() && matches!(g.screen, Screen::Playing | Screen::Ready) {
+        let hp = g.hero.pos();
+        for gate in crate::logic::hub::gates() {
+            let (tx, ty) = (gate.tile.x as f32, gate.tile.y as f32);
+            let d = ((hp.x as f32 - tx).powi(2) + (hp.y as f32 - ty).powi(2)).sqrt();
+            if d > 11.0 {
+                continue;
+            }
+            let fade = (1.0 - (d - 7.0) / 4.0).clamp(0.0, 1.0);
+            if let Some((x, y)) = view.project(Vec3::new(tx, 4.7, ty), w, h) {
+                let sin = gate.sin;
+                o.text(sin.title(), x, y, t * 0.8, rgba(sin.color(), fade), Align::Center, true);
+                let conquered = g.sins_cleared & sin.bit() != 0;
+                let sub = if conquered { "CONQUERED".to_string() } else { sin.realm().to_uppercase() };
+                o.text(&sub, x, y + t * 0.75, t * 0.45, rgba(if conquered { 0xffc860 } else { SAND }, fade), Align::Center, false);
+            }
         }
     }
     for d in &g.diamonds {

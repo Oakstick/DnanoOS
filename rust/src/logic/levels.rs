@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::level::LevelData;
+use super::level::{LevelData, Theme};
 use super::rng::Rng;
 use super::types::PotionKind;
 
@@ -659,6 +659,7 @@ fn estate(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_secon
         enemy_speed,
         frenzy_seconds,
         boss: false,
+        theme: Theme::Estate,
     }
 }
 
@@ -673,6 +674,7 @@ fn dungeon(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seco
         enemy_speed,
         frenzy_seconds,
         boss: false,
+        theme: Theme::Estate,
     }
 }
 
@@ -708,6 +710,7 @@ pub fn level_for(index: usize) -> LevelData {
         hero_speed: (base.hero_speed + extra * 0.2 * SPEED_SCALE).min(9.0 * SPEED_SCALE),
         frenzy_seconds: (base.frenzy_seconds - extra * 0.5).max(2.0),
         boss: false,
+        theme: Theme::Estate,
     }
 }
 
@@ -784,6 +787,7 @@ pub fn boss_arena(index: usize) -> LevelData {
         enemy_speed: base.enemy_speed,
         frenzy_seconds: base.frenzy_seconds,
         boss: true,
+        theme: Theme::Meadow,
     }
 }
 

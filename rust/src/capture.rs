@@ -43,6 +43,12 @@ enum Cmd {
     Hurt,
     Wound(i32),
     Daze,
+    /// Sets him down on a tile.
+    At(i32, i32),
+    /// Into the Portals of Hell.
+    Hub,
+    /// The sins whose keys he holds, as a bit set (127 for all seven).
+    Sins(u8),
     /// The Cyclops falls at once.
     Slay,
     Shop,
@@ -101,6 +107,9 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "nugget" => Cmd::Nugget,
             "boss" => Cmd::Press(Action::Cheat),
             "daze" => Cmd::Daze,
+            "at" => Cmd::At(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0), parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "hub" => Cmd::Hub,
+            "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
             "shop" => Cmd::Shop,
             "tour" => Cmd::Tour,
@@ -191,6 +200,9 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Hurt => game.debug_hurt(),
                 Cmd::Wound(n) => game.debug_wound_boss(n),
                 Cmd::Daze => game.debug_daze_boss(),
+                Cmd::At(x, y) => game.hero.place(crate::logic::types::P::new(x, y)),
+                Cmd::Hub => game.map_jump(crate::game::Stage::Hub),
+                Cmd::Sins(n) => game.sins_cleared = n & crate::logic::sins::ALL_SINS,
                 Cmd::Slay => game.debug_wound_boss(1000),
                 Cmd::Shop => game.open_shop(),
                 Cmd::Tour => game.tour_pending = true,

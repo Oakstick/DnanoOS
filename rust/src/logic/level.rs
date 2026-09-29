@@ -23,6 +23,17 @@ pub struct LevelData {
     pub frenzy_seconds: f64,
     /// A boss arena: no nuggets, no hollow, one big foe.
     pub boss: bool,
+    /// How it looks, and what lives there.
+    pub theme: Theme,
+}
+
+/// A level's look: the moonlit estates and dungeons, the Cyclops' meadow, the lava of the Portals of Hell.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Theme {
+    #[default]
+    Estate,
+    Meadow,
+    Hell,
 }
 
 #[derive(Clone, Debug)]
@@ -36,6 +47,8 @@ pub struct ParsedLevel {
     pub potions: Vec<(P, PotionKind)>,
     /// The gate to the boss, set in the outer wall; it opens when every key is found.
     pub gate: Option<P>,
+    /// The hub's portal gates ('1' to '7'): where each stands, and its sin's index.
+    pub portals: Vec<(P, usize)>,
     pub data: LevelData,
 }
 
@@ -52,6 +65,8 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
     let mut item_shrines = Vec::new();
     let mut potions = Vec::new();
     let mut gate = None;
+    let mut portals = Vec::new();
+    let mut bridges = Vec::new();
 
     assert!(
         data.heights.is_empty() || data.heights.len() as i32 == height,
@@ -71,6 +86,15 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
                 'D' => {
                     gate = Some(p);
                     Tile::Rock
+                }
+                '1'..='7' => {
+                    portals.push((p, c as usize - '1' as usize));
+                    Tile::Rock
+                }
+                // A wooden bridge over lava or water.
+                '=' => {
+                    bridges.push(p);
+                    Tile::Open
                 }
                 '.' => Tile::Nodule,
                 'o' => Tile::Charge,
@@ -186,8 +210,12 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
         P::new(js_round(sx / n) as i32, js_round(sy / n) as i32)
     };
 
+    let mut grid = Grid::new(width, height, tiles, heights, ramps);
+    for b in bridges {
+        grid.set_bridge(b.x, b.y, true);
+    }
     ParsedLevel {
-        grid: Grid::new(width, height, tiles, heights, ramps),
+        grid,
         hero_spawn,
         enemy_spawn,
         nest_center,
@@ -195,6 +223,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
         item_shrines,
         potions,
         gate,
+        portals,
         data: data.clone(),
     }
 }

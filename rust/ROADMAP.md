@@ -1,6 +1,6 @@
 # The Portals of Hell: roadmap
 
-Status: planned, not started. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
+Status: phases 0 and 1 are done (the engine groundwork and the hub itself); phase 2 is next. Two changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it, and the bridges are three tiles wide rather than two, so they sit centred on the platforms. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
 
 ## The idea
 
@@ -50,7 +50,7 @@ Wrath's prince is Amon rather than Satan, because Satan is the last boss.
 
 ## Phases
 
-### Phase 0: groundwork in the engine (M)
+### Phase 0: groundwork in the engine (M) — done
 
 - **Sins:** `logic/sins.rs` defines `Sin`, with its name, colour, emblem, prince and realm.
 - **Where the adventure stands:** a `Place` (Garden, Meadow, Hub, Realm(sin), SinArena(sin), DevilHouse) sits beside the difficulty tier (today's `dungeon` number).
@@ -61,7 +61,7 @@ Wrath's prince is Amon rather than Satan, because Satan is the last boss.
 
 Done when every current level plays exactly as it does now and all tests pass.
 
-### Phase 1: the hub (L)
+### Phase 1: the hub (L) — done
 
 1. **Layout:** `portals_of_hell()` builds the grid. Tests check:
    - there are eight platforms;
