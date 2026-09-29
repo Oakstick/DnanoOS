@@ -1,4 +1,5 @@
 use super::grid::Grid;
+use super::hub::Rect;
 use super::mover::Mover;
 use super::pathing::{route_toward, step_toward};
 use super::rng::Rng;
@@ -179,6 +180,8 @@ pub struct Brain {
     pub fury: f64,
     /// Seconds before a witch conjures again.
     pub cast: f64,
+    /// Ground it never leaves (the gym's platforms: only the hero crosses the bridges).
+    pub keep: Option<Rect>,
 }
 
 #[derive(Clone, Debug)]
@@ -214,6 +217,7 @@ impl Enemy {
                 hits: spec.kind.toughness(),
                 fury: 0.0,
                 cast: WITCH_CAST_FIRST,
+                keep: None,
             },
         }
     }
@@ -466,7 +470,7 @@ impl Brain {
             .filter(|&d| grid.can_move(tile, d, allow_nest, flying))
             .filter(|&d| {
                 let n = grid.neighbor(tile, d);
-                !(avoid_bridges && grid.is_bridge(n.x, n.y))
+                !(avoid_bridges && grid.is_bridge(n.x, n.y)) && self.keep.is_none_or(|k| k.contains(n))
             })
             .collect();
         // Hunting (and leaving the hollow), they take the shortest way through the maze, turning
@@ -491,7 +495,8 @@ impl Brain {
             });
         }
         if options.is_empty() {
-            return current;
+            // Nowhere to go within its keep: it stands (elsewhere, it keeps on, into a wall or a turn).
+            return if self.keep.is_some() { Dir::None } else { current };
         }
         if self.mode == EnemyMode::Frenzied || self.confused > 0.0 {
             return ctx.rng.pick(&options);

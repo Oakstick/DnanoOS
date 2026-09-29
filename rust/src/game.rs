@@ -1380,6 +1380,7 @@ impl Game {
                 let spec = enemy_specs(&self.level.grid, stage).into_iter().find(|s| s.kind == kind).unwrap();
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
                 e.post = Some(post);
+                e.b.keep = Some(crate::logic::gym::platform(stage as usize - 1));
                 e.b.mode = EnemyMode::Chase;
                 e
             })
@@ -1432,6 +1433,7 @@ impl Game {
             let spec = enemy_specs(&self.level.grid, 2).into_iter().find(|s| s.kind == EnemyKind::Minion).unwrap();
             let mut minion = Enemy::new(&spec, at, self.level.data.enemy_speed);
             minion.b.mode = EnemyMode::Chase;
+            minion.b.keep = self.enemies[i].b.keep;
             minion.b.name = format!("{}'s minion", self.enemies[i].b.name);
             self.view.add_enemy(&minion);
             self.enemies.push(minion);
@@ -2995,6 +2997,9 @@ impl Game {
         if self.hero.invisible() || self.hero.airborne() {
             return; // they cannot find what they cannot see, or reach what sails overhead
         }
+        if self.level.data.theme == crate::logic::level::Theme::Gym {
+            return; // in the gym nothing lays a claw on him
+        }
         let hp = self.hero.pos();
         let ho = self.hero.occupied();
         for i in 0..self.enemies.len() {
@@ -3753,6 +3758,20 @@ mod tests {
             g.hero.invuln = 1.0;
         }
         assert!(g.enemies[1].is_dangerous(), "back on its feet");
+        // The foes keep to their platforms while he crosses the bridge, and nothing there can hurt him.
+        let second = crate::logic::gym::platform(1);
+        g.hero.m.teleport(P::new(second.x0 + 1, (second.y0 + second.y1) / 2));
+        let hp = g.hero.hp;
+        for _ in 0..(8.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+            for e in &g.enemies {
+                if let Some(keep) = e.b.keep {
+                    assert!(keep.contains(e.occupied()), "{} left its platform", e.b.name);
+                }
+            }
+        }
+        assert_eq!(g.hero.hp, hp, "unhurt in the gym");
+        assert!(g.enemies.iter().filter(|e| e.post.is_some()).all(|e| e.b.keep.is_some()));
         // Off the road, the realms keep the first stage's cast for now.
         g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
         assert!(g.enemies.iter().all(|e| EnemyKind::STAGE_ONE.contains(&e.kind())));
@@ -3780,12 +3799,6 @@ mod tests {
         g.hitstop = 0.0;
         g.perform_attack();
         assert!(fell(&g, brute), "the third blow fells it");
-        let hp = g.hero.hp;
-        g.hero.invuln = 0.0;
-        g.hero.shield = None; // bare, so the whole bite lands
-        let brute = foe_at(&mut g, EnemyKind::Blemmyes, o);
-        g.resolve_contact();
-        assert_eq!(hp - g.hero.hp, 2 * crate::logic::hero::CONTACT_DAMAGE, "its touch hurts double");
         g.enemies.clear(); // (a slain foe with no post leaves the gym's list)
         g.view.clear_enemies();
         // The loup-garou howls at the first cut and runs faster, and the helmeted skeleton's cap rings.
@@ -3821,6 +3834,17 @@ mod tests {
             g.hero.invuln = 1.0;
         }
         assert!(g.enemies.iter().any(|e| e.kind() == EnemyKind::Minion && e.is_dangerous()), "a minion appears at her feet");
+        // Out in a realm (the gym hurts no one), the blemmyes' touch hurts double.
+        g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+        g.enter(Screen::Playing);
+        g.enemies.clear();
+        g.view.clear_enemies();
+        let hp = g.hero.hp;
+        g.hero.invuln = 0.0;
+        g.hero.shield = None; // bare, so the whole bite lands
+        foe_at(&mut g, EnemyKind::Blemmyes, g.hero.occupied());
+        g.resolve_contact();
+        assert_eq!(hp - g.hero.hp, 2 * crate::logic::hero::CONTACT_DAMAGE, "its touch hurts double");
     }
 
     /// A foe of `kind` hunting at `at`, in the game and in the view.
