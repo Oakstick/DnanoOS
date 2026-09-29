@@ -376,8 +376,16 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let punch = j.key_punch;
     let ncolor = if punch > 0.0 { mix_rgb(GOLD, 0xffffff, punch * 0.7) } else { GOLD };
     let (tx, ty) = key_target(w, h);
-    if g.boss.is_some() {
-        o.text("BOSS FIGHT", rc, ty, small, rgba(0xff8a2a, 1.0), Align::Right, true);
+    if let Some(b) = &g.boss {
+        // The fight, then the key, then the gate.
+        let (text, color) = if b.alive() {
+            ("BOSS FIGHT", 0xff8a2a)
+        } else if g.red_key.is_some() {
+            ("TAKE THE RED KEY", 0xff4a5a)
+        } else {
+            ("RED KEY: TO THE GATE", 0xff4a5a)
+        };
+        o.text(text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);

@@ -97,7 +97,9 @@ const DYING_SECONDS: f64 = 1.8;
 /// The fanfare and the fade into the boss arena.
 pub const CLEARED_SECONDS: f64 = 3.4;
 /// After the Cyclops bursts, a beat to take it in before the victory screen.
-const VICTORY_DELAY: f64 = 1.6;
+/// How close he must come to the Cyclops' red diamond key to take it, and its colour.
+const RED_KEY_REACH: f64 = 0.7;
+const RED_KEY_COLOR: u32 = 0xff2a44;
 /// The shop cheat tops the purse up to this, so there is something to spend.
 const CHEAT_COINS: u32 = 1000;
 /// ...and the runes up to this.
@@ -311,7 +313,8 @@ pub struct Game {
     pub boss_shots: Vec<BossShot>,
     boss_events: Vec<BossEvent>,
     /// Counts down to the victory screen once the boss is dead.
-    victory_timer: Option<f64>,
+    /// Where the Cyclops' red diamond key lies, until he takes it.
+    pub red_key: Option<P>,
     /// Silver, rune fragments and every hero's unlocked trees: kept between adventures.
     pub progress: Progress,
     /// Potions carried on his belt, and the one Q (or RB) drinks.
@@ -432,7 +435,7 @@ impl Game {
             boss: None,
             boss_shots: Vec::new(),
             boss_events: Vec::new(),
-            victory_timer: None,
+            red_key: None,
             // Tests start from nothing; the game from the saved progress.
             progress: if cfg!(test) { Progress::default() } else { crate::platform::load("vh.progress").and_then(|s| Progress::decode(&s)).unwrap_or_default() },
             belt: Vec::new(),
@@ -524,7 +527,8 @@ impl Game {
                 crate::logic::garden::apply(&mut self.level.grid, plan);
             }
         }
-        self.keys_total = self.level.grid.count(Tile::Nodule) as u32;
+        // The estate's gate takes its golden keys; the arena's, the one red key the Cyclops drops.
+        self.keys_total = if self.level.data.boss { 1 } else { self.level.grid.count(Tile::Nodule) as u32 };
         self.keys_got = 0;
         self.gate = self.level.gate;
         self.gate_open = false;
@@ -565,7 +569,7 @@ impl Game {
             None
         };
         self.boss_shots.clear();
-        self.victory_timer = None;
+        self.red_key = None;
         self.angels_used = [false; 4];
         self.diamonds = self
             .level
@@ -923,13 +927,14 @@ impl Game {
             puddles: &self.puddles,
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
-            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32 }),
+            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some() }),
             relic: self.relic_shrine,
             decoy: self.decoy.map(|(p, _)| p),
             hero_kind: self.hero_kind,
             spirits: &self.spirits,
             fires: &self.fires,
             angels_spent: self.angels_spent(),
+            red_key: self.red_key,
         };
         self.view.update(dt, &state);
         self.input.flush();
@@ -1015,13 +1020,14 @@ impl Game {
             puddles: &self.puddles,
             boss: self.boss.as_ref(),
             boss_shots: &self.boss_shots,
-            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32 }),
+            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some() }),
             relic: self.relic_shrine,
             decoy: self.decoy.map(|(p, _)| p),
             hero_kind: self.hero_kind,
             spirits: &self.spirits,
             fires: &self.fires,
             angels_spent: self.angels_spent(),
+            red_key: self.red_key,
         }
     }
 
@@ -1469,10 +1475,11 @@ impl Game {
         self.audio.play(Sfx::Win);
         let hp = self.hero.pos();
         self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, 0xf2c53d, 40);
+        let arena = self.boss.is_some();
         self.juice.banner = Some(Banner {
             text: "THE GATE IS UNLOCKED".into(),
-            sub: "FIND IT IN THE NORTH WALL AND GO THROUGH".into(),
-            color: 0xf2c53d,
+            sub: if arena { "IN THE NORTH HEDGE: GO THROUGH AND ON DOWN".into() } else { "FIND IT IN THE NORTH WALL AND GO THROUGH".into() },
+            color: if arena { RED_KEY_COLOR } else { 0xf2c53d },
             life: 3.0,
             max: 3.0,
         });
@@ -1494,7 +1501,12 @@ impl Game {
         if near && !self.gate_open && self.gate_hint <= 0.0 {
             self.gate_hint = 3.0;
             self.audio.play(Sfx::Denied);
-            self.floater(g.x as f64, g.y as f64 + 0.6, format!("LOCKED  {}/{} KEYS", self.keys_got, self.keys_total), 1.6, Some(0xf2c53d));
+            let (text, color) = match &self.boss {
+                Some(b) if b.alive() => ("LOCKED: THE CYCLOPS HOLDS THE KEY".to_string(), RED_KEY_COLOR),
+                Some(_) => ("LOCKED: TAKE THE RED DIAMOND KEY".to_string(), RED_KEY_COLOR),
+                None => (format!("LOCKED  {}/{} KEYS", self.keys_got, self.keys_total), 0xf2c53d),
+            };
+            self.floater(g.x as f64, g.y as f64 + 0.6, text, 1.6, Some(color));
         }
         if near && self.gate_open && !self.door_opening {
             self.door_opening = true;
@@ -1510,7 +1522,14 @@ impl Game {
             }
         }
         if self.door >= 1.0 && self.hero.occupied() == g {
-            self.win();
+            if self.boss.is_some() {
+                // Out of the Cyclops' meadow: the victory, and then the old man.
+                self.gate_open = false;
+                self.audio.play(Sfx::Win);
+                self.enter(Screen::Won);
+            } else {
+                self.win();
+            }
         }
     }
 
@@ -1651,13 +1670,40 @@ impl Game {
                 }
             }
         }
-        if let Some(t) = &mut self.victory_timer {
-            *t -= dt;
-            if *t <= 0.0 {
-                self.victory_timer = None;
-                self.audio.play(Sfx::Win);
-                self.enter(Screen::Won);
-            }
+        self.take_red_key();
+    }
+
+    /// Walking over the red diamond key the Cyclops dropped: the arena's gate is unlocked.
+    fn take_red_key(&mut self) {
+        let Some(k) = self.red_key else { return };
+        if !self.hero.alive || dist_sq(self.hero.pos(), k.v()) > RED_KEY_REACH * RED_KEY_REACH {
+            return;
+        }
+        self.red_key = None;
+        self.keys_got = self.keys_total;
+        let (x, y) = (k.x as f64, k.y as f64);
+        self.view.sparkle(&self.level.grid, x, y, 1.0, RED_KEY_COLOR, 50);
+        self.view.flash_light(&self.level.grid, k.v(), RED_KEY_COLOR);
+        self.audio.play(Sfx::Milestone);
+        self.floater(x, y - 0.8, "RED DIAMOND KEY", 2.0, Some(RED_KEY_COLOR));
+        self.unlock_gate();
+    }
+
+    /**
+     * The Cyclops' red diamond key falls where it died, or on the nearest
+     * open grass if it died over stone or water: a tile he can walk onto.
+     */
+    fn drop_red_key(&mut self, at: V) {
+        let (x0, y0, x1, y1) = ARENA;
+        let g = &self.level.grid;
+        let spot = g
+            .cells()
+            .filter(|&(x, y, t)| x >= x0 && x <= x1 && y >= y0 && y <= y1 && matches!(t, Tile::Open | Tile::Charge) && g.is_walkable(x, y, false))
+            .map(|(x, y, _)| P::new(x, y))
+            .min_by(|a, b| dist_sq(a.v(), at).total_cmp(&dist_sq(b.v(), at)));
+        self.red_key = spot;
+        if let Some(k) = spot {
+            self.view.sparkle(&self.level.grid, k.x as f64, k.y as f64, 1.2, RED_KEY_COLOR, 40);
         }
     }
 
@@ -1724,7 +1770,15 @@ impl Game {
                 // Its downfall gives up a relic of the old heroes.
                 self.take_relic(p);
                 self.events.push(GameEvent::BossSlain);
-                self.victory_timer = Some(VICTORY_DELAY);
+                // It drops the red diamond key to the gate in the north hedge.
+                self.drop_red_key(p);
+                self.juice.banner = Some(Banner {
+                    text: "THE CYCLOPS IS SLAIN".into(),
+                    sub: "TAKE ITS RED DIAMOND KEY TO THE GATE IN THE NORTH HEDGE".into(),
+                    color: RED_KEY_COLOR,
+                    life: 3.5,
+                    max: 3.5,
+                });
                 self.save_progress();
                 self.checkpoint(save::Stage::Shop(self.dungeon));
             }
@@ -3657,10 +3711,36 @@ mod tests {
                 g.hero.invuln = 1.0;
             }
         }
+        // Back at the south edge while it falls (so he does not pick the key up at once).
+        g.hero.m.teleport(P::new(crate::logic::levels::ARENA_HERO.0, crate::logic::levels::ARENA_HERO.1));
         for _ in 0..(6.0 / crate::app::STEP) as usize {
             g.update(crate::app::STEP);
             g.hero.invuln = 1.0;
         }
+        // It drops a red diamond key; the gate in the north hedge stays shut without it.
+        assert_eq!(g.screen, Screen::Playing, "no victory yet: the key and the gate first");
+        let key = g.red_key.expect("the Cyclops drops a red diamond key");
+        assert!(g.level.grid.is_walkable(key.x, key.y, false), "on grass he can reach");
+        let gate = g.gate.expect("a gate in the arena");
+        assert_eq!((gate.x, gate.y), crate::logic::levels::ARENA_GATE);
+        let front = P::new(gate.x, gate.y + 1);
+        assert!(g.level.grid.is_walkable(front.x, front.y, false), "the way to the gate is clear");
+        g.hero.m.teleport(front);
+        for _ in 0..(2.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert!(!g.gate_open && g.door == 0.0, "locked without the key");
+        // He takes the key: the gate unlocks, and its doors open as he comes to it.
+        g.hero.m.teleport(key);
+        g.update(crate::app::STEP);
+        assert!(g.red_key.is_none() && g.gate_open, "the red key opens the gate");
+        g.hero.m.teleport(front);
+        for _ in 0..(3.0 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.door >= 1.0, "the doors swing open");
+        g.hero.m.teleport(gate);
+        g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Won);
         assert!(g.events.contains(&GameEvent::BossSlain));
         assert!(g.progress.silver >= COINS_BOSS, "the boss pays out");

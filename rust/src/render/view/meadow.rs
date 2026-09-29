@@ -6,6 +6,7 @@
 use super::*;
 use crate::logic::boss::{BossShot, BossState, Cyclops, ShotKind};
 use crate::logic::levels::ARENA;
+use crate::render::foliage::HEDGE_VOXEL;
 
 mod pal {
     pub const GRASS_A: u32 = 0x6cbf3e;
@@ -14,8 +15,6 @@ mod pal {
     pub const GRASS_TIP: u32 = 0x9ee05a;
     pub const DIRT_B: u32 = 0x7d5b34;
     pub const PEBBLE: u32 = 0xa8a294;
-    pub const HEDGE_A: u32 = 0x3f8f32;
-    pub const HEDGE_B: u32 = 0x367f2b;
     pub const STONE: u32 = 0xb3ada0;
     pub const STONE_D: u32 = 0x8f8a80;
     pub const MOSS: u32 = 0x5f9a38;
@@ -26,11 +25,6 @@ mod pal {
     pub const WATER: u32 = 0x3f9fdc;
     pub const BED: u32 = 0x6a6448;
     pub const FLOWERS: [u32; 5] = [0xf8f8f0, 0xffe066, 0xff8ad8, 0x8fb4ff, 0xff6a5a];
-    pub const BUSH: [u32; 3] = [0x56bc40, 0x62c848, 0x4aad3a];
-    pub const BUSH_LIGHT: u32 = 0x94e466;
-    pub const FOREST_BUSH: [u32; 3] = [0x2f6b2a, 0x3a7a2e, 0x285a22];
-    pub const FOREST_BUSH_LIGHT: u32 = 0x5a9a3a;
-    pub const BERRIES: [u32; 3] = [0xd8262e, 0xf8f8f0, 0xffb0d8];
     pub const BUTTERFLIES: [u32; 4] = [0xf8f8f0, 0xffe066, 0xff9a3a, 0x7ab8ff];
     pub const BOLT: u32 = 0xff7a2a;
     pub const BOLT_CORE: u32 = 0xfff1c0;
@@ -179,13 +173,27 @@ impl WorldView {
                 }
                 continue;
             }
+            // The gatehouse stands here (its towers either side): no hedge through it.
+            if self.gate_tile.is_some_and(|g| g.y == y && (g.x - x).abs() <= 1) {
+                continue;
+            }
             let edge = grid.get(x - 1, y) != Tile::Rock || grid.get(x + 1, y) != Tile::Rock || grid.get(x, y - 1) != Tile::Rock || grid.get(x, y + 1) != Tile::Rock;
-            let tall = if edge { 0.75 + hash(hx, hy) as f32 * 0.25 } else { 0.95 + hash(hx, hy) as f32 * 0.3 };
-            let shade = hash(hx + 11.0, hy + 5.0) as f32;
-            let c = offset_hsl(lin(if shade < 0.5 { HEDGE_A } else { HEDGE_B }), 0.0, 0.0, (shade - 0.5) * 0.06);
+            // A leafy hedge block, a little over a tile across so neighbours grow into one hedge. Deep in the
+            // ring only its crown can be seen, so only the crown is kept.
+            let variant = (hash(hx * 3.7, hy * 2.9) * 4.0) as usize % 4;
+            let turn = (hash(hx + 11.0, hy + 5.0) * 4.0).floor() as f32 * PI / 2.0;
+            let mesh = &self.models.hedges[variant];
+            let top = mesh.cubes.iter().map(|(p, _)| p.y).fold(0.0f32, f32::max);
+            let tall = top + HEDGE_VOXEL * 0.5;
+            let keep_above = if edge { -1.0 } else { top * 0.6 };
+            let shade = 0.95 + hash(hx + 3.0, hy + 7.0) as f32 * 0.1;
             let start = self.static_cubes.len();
-            cube(&mut self.static_cubes, Vec3::new(xf, tall / 2.0, yf), Vec3::new(1.0, tall, 1.0), 0.0, c);
-            self.rock_index.insert(tile_key(x, y), (start, 1));
+            let q = Quat::from_rotation_y(turn);
+            for (off, c) in mesh.cubes.iter().filter(|(p, _)| p.y > keep_above) {
+                let m = Mat4::from_scale_rotation_translation(Vec3::splat(mesh.size), q, Vec3::new(xf, 0.0, yf) + q * *off);
+                self.static_cubes.push(Instance::new(m, *c * shade, 1.0, Vec3::ZERO, SHADE_LIT));
+            }
+            self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
             if edge && hash(hx * 5.0 + 1.0, hy * 3.0 + 2.0) < 0.55 {
                 trees.push((P::new(x, y), Vec3::new(xf, tall - 0.05, yf), hash(hx, hy) as f32 * TAU, 0.9 + hash(hy, hx) as f32 * 0.6));
             }
@@ -217,6 +225,10 @@ impl WorldView {
                 if !rock(x + dx, y + dy) {
                     continue;
                 }
+                // Nothing grows in front of the gatehouse.
+                if self.gate_tile.is_some_and(|g| (g.x - x).abs() <= 1 && y - g.y <= 1) {
+                    continue;
+                }
                 let arena_rock = in_arena(x + dx, y + dy);
                 let chance = if arena_rock { 0.65 } else { 0.5 };
                 let h = hash(x as f64 * 3.1 + dx as f64 * 7.0, y as f64 * 2.3 + dy as f64 * 5.0);
@@ -231,41 +243,15 @@ impl WorldView {
         }
     }
 
-    /// A round leafy bush: a mound of overlapping leaf blocks, lighter on top, now and then with berries or blossoms.
+    /// A round leafy bush (a voxel sculpt: clumps of leaves, a ragged fringe, sunlit crown, some with
+    /// berries or blossoms), in one of four shapes, turned and sized where it grows.
     pub(super) fn build_bush(&mut self, at: Vec3, size: f32, forest: bool) {
-        let (leaves, light) = if forest { (FOREST_BUSH, FOREST_BUSH_LIGHT) } else { (BUSH, BUSH_LIGHT) };
         let (hx, hy) = (at.x as f64 * 13.0, at.z as f64 * 17.0);
-        let blobs = 11;
-        for k in 0..blobs {
-            let hk = hash(hx + k as f64 * 1.9, hy - k as f64 * 2.7) as f32;
-            let hj = hash(hy + k as f64 * 3.3, hx + k as f64) as f32;
-            let a = k as f32 / blobs as f32 * TAU + hk;
-            // A dome: blobs on the rim sit low, the ones near the middle high.
-            let r = if k == 0 { 0.0 } else if k < 7 { 0.15 + hj * 0.05 } else { 0.07 + hj * 0.04 };
-            let s = (if k < 7 { 0.15 } else { 0.18 } + hk * 0.07) * size;
-            let y = if k == 0 { 0.24 } else if k < 7 { 0.09 + hj * 0.05 } else { 0.2 + hj * 0.06 } * size;
-            let p = at + Vec3::new(a.cos() * r * size, y, a.sin() * r * size);
-            let c = lin(leaves[(hk * 3.0) as usize % 3]) * (0.9 + hj * 0.2);
-            let m = Mat4::from_translation(p) * Mat4::from_rotation_y(a) * Mat4::from_rotation_x((hk - 0.5) * 0.6) * Mat4::from_scale(Vec3::new(s, s * 0.85, s));
-            self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
-        }
-        // Sunlit leaves on the crown.
-        for k in 0..3 {
-            let hk = hash(hx - k as f64 * 5.0, hy + k as f64 * 4.0) as f32;
-            let a = hk * TAU;
-            let p = at + Vec3::new(a.cos() * 0.07 * size, (0.33 + hk * 0.03) * size, a.sin() * 0.07 * size);
-            cube(&mut self.static_cubes, p, Vec3::new(0.14, 0.06, 0.14) * size, a, lin(light));
-        }
-        let flavor = hash(hx * 0.5, hy * 0.5);
-        if flavor < 0.45 {
-            let berry = lin(BERRIES[(flavor * 20.0) as usize % 3]);
-            for k in 0..5 {
-                let hk = hash(hx + k as f64 * 7.0, hy + 3.0) as f32;
-                let a = hk * TAU;
-                let p = at + Vec3::new(a.cos() * 0.2 * size, (0.12 + hk * 0.18) * size, a.sin() * 0.2 * size);
-                cube(&mut self.static_cubes, p, Vec3::splat(0.045), 0.0, berry);
-            }
-        }
+        let variant = (hash(hx * 0.5, hy * 0.5) * 4.0) as usize % 4;
+        let turn = hash(hy, hx) as f32 * TAU;
+        let shade = 0.94 + hash(hx + 1.0, hy - 1.0) as f32 * 0.12;
+        let mesh = if forest { &self.models.forest_bushes[variant] } else { &self.models.bushes[variant] };
+        push_field(&mut self.static_cubes, mesh, at, turn, size, Vec3::splat(shade), Vec3::ZERO, SHADE_LIT);
     }
 
     /// A plank bridge over the stream, crossing it the short way.

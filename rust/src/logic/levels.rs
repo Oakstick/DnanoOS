@@ -719,7 +719,9 @@ pub const STREAM_ROW: i32 = 12;
 pub const BRIDGES: [i32; 3] = [7, 13, 19];
 const PILLARS: [(i32, i32); 6] = [(7, 5), (19, 5), (10, 9), (16, 9), (7, 16), (19, 16)];
 /// Low brick walls, as runs of tiles: (x0, x1, y).
-const LOW_WALLS: [(i32, i32, i32); 5] = [(4, 6, 8), (20, 22, 8), (11, 12, 15), (14, 15, 15), (12, 14, 3)];
+const LOW_WALLS: [(i32, i32, i32); 5] = [(4, 6, 8), (20, 22, 8), (11, 12, 15), (14, 15, 15), (12, 14, 4)];
+/// The gate out of the arena, in the north hedge: the Cyclops' red diamond key opens it.
+pub const ARENA_GATE: (i32, i32) = (13, 2);
 /// Where Ragnar and the Cyclops start.
 pub const ARENA_HERO: (i32, i32) = (13, 18);
 pub const ARENA_BOSS: (i32, i32) = (13, 6);
@@ -729,7 +731,8 @@ pub const ARENA_BOSS: (i32, i32) = (13, 6);
  * the labyrinth in the middle torn out and turned into a sunny meadow. A
  * stream crosses it under three bridges; stone pillars and low brick walls
  * give cover from what the Cyclops throws. The ring keeps its green crosses,
- * and a weapon shrine and an item shrine flank the start.
+ * and a weapon shrine and an item shrine flank the start. A gate stands in
+ * the north hedge: the Cyclops drops the red diamond key that opens it.
  */
 pub fn boss_arena(index: usize) -> LevelData {
     let base = classic_dungeon(index);
@@ -761,6 +764,13 @@ pub fn boss_arena(index: usize) -> LevelData {
             rows[y as usize][x as usize] = '#';
         }
     }
+    // The gatehouse in the north hedge, solid hedge beside and behind it.
+    let (gx, gy) = (ARENA_GATE.0 as usize, ARENA_GATE.1 as usize);
+    for x in gx - 1..=gx + 1 {
+        rows[gy][x] = '#';
+        rows[gy - 1][x] = '#';
+    }
+    rows[gy][gx] = 'D';
     rows[ARENA_HERO.1 as usize][ARENA_HERO.0 as usize] = 'P';
     rows[ARENA_BOSS.1 as usize][ARENA_BOSS.0 as usize] = 'G';
     rows[ARENA_HERO.1 as usize][(ARENA_HERO.0 - 4) as usize] = 'W';

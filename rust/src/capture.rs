@@ -43,6 +43,8 @@ enum Cmd {
     Hurt,
     Wound(i32),
     Daze,
+    /// The Cyclops falls at once.
+    Slay,
     Shop,
     Tour,
     Streak,
@@ -99,6 +101,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "nugget" => Cmd::Nugget,
             "boss" => Cmd::Press(Action::Cheat),
             "daze" => Cmd::Daze,
+            "slay" => Cmd::Slay,
             "shop" => Cmd::Shop,
             "tour" => Cmd::Tour,
             "streak" => Cmd::Streak,
@@ -188,6 +191,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Hurt => game.debug_hurt(),
                 Cmd::Wound(n) => game.debug_wound_boss(n),
                 Cmd::Daze => game.debug_daze_boss(),
+                Cmd::Slay => game.debug_wound_boss(1000),
                 Cmd::Shop => game.open_shop(),
                 Cmd::Tour => game.tour_pending = true,
                 Cmd::Streak => game.debug_streak(),
@@ -282,6 +286,7 @@ pub fn run(args: &[String]) -> i32 {
             let boss = game.boss.as_ref().map(|b| format!(", boss at {:.1},{:.2},{:.1}", b.pos.x, b.hover, b.pos.y)).unwrap_or_default();
             let shrines: Vec<String> = game.diamonds.iter().filter(|d| d.kind == crate::logic::items::DiamondKind::Angel).map(|d| format!("{},{}", d.tile.x, d.tile.y)).collect();
             let shrines = if shrines.is_empty() { String::new() } else { format!(", archangels' shrines at {}", shrines.join(" ")) };
+            let shrines = shrines + &game.red_key.map(|k| format!(", red key at {},{}", k.x, k.y)).unwrap_or_default();
             eprintln!(
                 "wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances, {dynamic} drawn this frame, hero at {:.1},{:.1}{boss}{shrines}",
                 game.screen,

@@ -307,6 +307,8 @@ pub struct SceneState<'a> {
     pub angels_spent: [bool; 4],
     /// Holy fire burning on tiles, seconds left each.
     pub fires: &'a [(P, f64)],
+    /// The red diamond key the Cyclops dropped, while it lies on the grass.
+    pub red_key: Option<P>,
 }
 
 /// The gate to the boss as the view needs it: where, how many locks are lit, how far the doors have swung.
@@ -316,6 +318,8 @@ pub struct GateView {
     pub keys: u32,
     pub total: u32,
     pub door: f32,
+    /// The arena's gate: one lock, for the Cyclops' red diamond key.
+    pub red: bool,
 }
 
 // ---------------------------------------------------------------- views
@@ -465,6 +469,12 @@ struct Models {
     diamond: Mesh,
     tree: Mesh,
     key: Mesh,
+    /// The Cyclops' red diamond key.
+    red_key: Mesh,
+    /// The meadow's hedge ring, its bushes, and the forest's darker bushes: four shapes of each.
+    hedges: Vec<Mesh>,
+    bushes: Vec<Mesh>,
+    forest_bushes: Vec<Mesh>,
     /// Shrine pedestals: weapon (blue runes) and item (gold runes).
     pedestals: [(Mesh, Mesh); 2],
     bottles: HashMap<u32, Mesh>,
@@ -525,6 +535,10 @@ impl Models {
             diamond: super::props::gem(),
             tree: super::props::pine(),
             key: gate::golden_key(),
+            red_key: gate::red_diamond_key(),
+            hedges: (0..4).map(crate::render::foliage::hedge_block).collect(),
+            bushes: (0..4).map(|v| crate::render::foliage::bush(v, crate::render::foliage::MEADOW)).collect(),
+            forest_bushes: (0..4).map(|v| crate::render::foliage::small_bush(v, crate::render::foliage::FOREST)).collect(),
             pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
             cyclops: {
@@ -823,7 +837,8 @@ impl WorldView {
             self.build_forest(grid);
         }
         if let Some(g) = gate {
-            self.build_gate(grid, g);
+            // Eight lock lamps for the estate's keys; one for the Cyclops' red key.
+            self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
         // A thread of smoke above every candle.
         let wisps: Vec<(Vec3, f32)> = self.candles.iter().map(|c| (*c + Vec3::new(0.0, 0.12, 0.0), 0.35)).collect();

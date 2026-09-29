@@ -5,6 +5,7 @@ mod carve;
 pub mod cast;
 pub mod characters;
 pub mod foes;
+pub mod foliage;
 pub mod gpu;
 pub mod heroes;
 pub mod hud;
