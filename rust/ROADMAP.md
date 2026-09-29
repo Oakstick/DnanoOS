@@ -1,6 +1,6 @@
 # The Portals of Hell: roadmap
 
-Status: phases 0 and 1 are done (the engine groundwork and the hub itself); phase 2 is next. Two changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it, and the bridges are three tiles wide rather than two, so they sit centred on the platforms. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
+Status: phases 0 and 1 are done (the engine groundwork and the hub itself, plus a polish round on the hub's art); phase 2 is next. Two changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it, and the bridges are three tiles wide rather than two, so they sit centred on the platforms. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
 
 ## The idea
 
