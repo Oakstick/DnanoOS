@@ -153,6 +153,9 @@ pub const WITCH_CAST_EVERY: f64 = 9.0;
 pub const WITCH_CAST_RANGE: f64 = 12.0;
 /// How often the large bat swerves off its line at a crossing.
 const BAT_SWERVE: f64 = 0.25;
+/// A foe kept to its platform (the gym) only wanders it, at this share of its pace, and mostly straight on.
+const KEEP_PACE: f64 = 0.7;
+const KEEP_STRAIGHT: f64 = 0.7;
 
 /// Everything but the mover, so the step callback can think while the mover moves.
 #[derive(Clone, Debug)]
@@ -413,6 +416,9 @@ impl Enemy {
         if b.fury > 0.0 && b.mode == EnemyMode::Chase {
             mult *= WOLF_FURY_SPEED;
         }
+        if b.keep.is_some() {
+            mult *= KEEP_PACE;
+        }
         self.m.speed = b.base_speed * b.speed_factor * mult;
         let allow_nest = matches!(b.mode, EnemyMode::Eaten | EnemyMode::Leaving);
         let flying = self.m.flying;
@@ -473,6 +479,15 @@ impl Brain {
                 !(avoid_bridges && grid.is_bridge(n.x, n.y)) && self.keep.is_none_or(|k| k.contains(n))
             })
             .collect();
+        // Kept to a platform, it does not hunt: it wanders, keeping on mostly, turning now and then.
+        if self.keep.is_some() && matches!(self.mode, EnemyMode::Chase | EnemyMode::Scatter) {
+            if options.contains(&current) && ctx.rng.next() < KEEP_STRAIGHT {
+                return current;
+            }
+            let ahead: Vec<Dir> = options.iter().copied().filter(|&d| d != current.opposite()).collect();
+            let pick = if ahead.is_empty() { &options } else { &ahead };
+            return if pick.is_empty() { Dir::None } else { ctx.rng.pick(pick) };
+        }
         // Hunting (and leaving the hollow), they take the shortest way through the maze, turning
         // back if that is the way: greedy steps toward the target only circle the blocks.
         if matches!(self.mode, EnemyMode::Chase | EnemyMode::Scatter | EnemyMode::Leaving) && self.confused <= 0.0 {

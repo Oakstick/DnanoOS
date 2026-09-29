@@ -3767,6 +3767,7 @@ mod tests {
             for e in &g.enemies {
                 if let Some(keep) = e.b.keep {
                     assert!(keep.contains(e.occupied()), "{} left its platform", e.b.name);
+                    assert!(e.m.speed <= e.b.base_speed * e.b.speed_factor * 0.75, "{} wanders at an easy pace", e.b.name);
                 }
             }
         }
