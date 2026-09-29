@@ -131,6 +131,17 @@ impl WorldView {
     pub(super) fn build_hell(&mut self, grid: &Grid) {
         self.water.clear();
         self.build_lava_sea(grid);
+        if self.gym {
+            // The gym: its platforms and bridges over the same lava, nothing else.
+            use crate::logic::gym;
+            for k in 0..gym::STAGES {
+                self.build_platform(grid, Platform { rect: gym::platform(k), col: k as i32, row: 0, sin: None });
+            }
+            for b in gym::bridges() {
+                self.build_wood_bridge(b);
+            }
+            return;
+        }
         for pl in hub::platforms() {
             self.build_platform(grid, pl);
         }
@@ -185,10 +196,11 @@ impl WorldView {
     /// Lava under and round everything: fine near the platforms, coarser further out.
     fn build_lava_sea(&mut self, grid: &Grid) {
         let out = &mut self.static_cubes;
-        let n = hub::HUB_SIZE;
-        for y in 0..n {
-            for x in 0..n {
-                if grid.get(x, y) != Tile::Pit && !(x == n - 1 || y == n - 1 || x == 0 || y == 0) {
+        let (gw, gh) = (grid.width, grid.height);
+        let n = gw.max(gh);
+        for y in 0..gh {
+            for x in 0..gw {
+                if grid.get(x, y) != Tile::Pit && !(x == gw - 1 || y == gh - 1 || x == 0 || y == 0) {
                     continue;
                 }
                 for (sx, sz) in [(-0.25f32, -0.25f32), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)] {
@@ -801,6 +813,10 @@ impl WorldView {
     /// The hub's moving parts: the doors and their portals, the braziers, the seal's gems, the causeways and the fire wall,
     /// lava bubbling and falling, embers and ash in the air, and demons wheeling far off.
     pub(super) fn emit_hell(&self, s: &SceneState, time: f32, hero: Vec3, f: &mut Frame) {
+        if self.gym {
+            self.emit_lava_life(s.grid, time, hero, f);
+            return;
+        }
         let hv = s.hub.unwrap_or_default();
         self.emit_portals(&hv, time, hero, f);
         self.emit_seal(&hv, time, f);
@@ -1039,8 +1055,8 @@ impl WorldView {
                 }
             }
         }
-        // Lava falls pouring off the platforms' outer edges.
-        for (i, (top, out)) in LAVA_FALLS.iter().enumerate() {
+        // Lava falls pouring off the platforms' outer edges (the hub's; the gym has none).
+        for (i, (top, out)) in LAVA_FALLS.iter().enumerate().filter(|_| !self.gym) {
             let p = Vec3::new(top.0, -0.2, top.1);
             let dist = p.distance(hero);
             if dist > 40.0 {

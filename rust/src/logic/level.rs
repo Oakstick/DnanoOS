@@ -39,6 +39,8 @@ pub enum Theme {
     Hell,
     Realm(Sin),
     Court(Sin),
+    /// The gym: platforms over lava, one of every foe (drawn like the Portals of Hell).
+    Gym,
 }
 
 impl Theme {
@@ -53,6 +55,11 @@ impl Theme {
     /// A boss arena's sunny meadow: the Cyclops', or a prince's court.
     pub fn is_meadow(self) -> bool {
         matches!(self, Theme::Meadow | Theme::Court(_))
+    }
+
+    /// Platforms over a sea of lava: the Portals of Hell, or the gym.
+    pub fn is_hell(self) -> bool {
+        matches!(self, Theme::Hell | Theme::Gym)
     }
 }
 

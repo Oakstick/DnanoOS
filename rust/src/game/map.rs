@@ -29,7 +29,15 @@ pub fn map_stops() -> Vec<MapStop> {
         stops.push(MapStop { stage: Stage::Realm(sin), label: format!("{} - {}", sin.title(), sin.realm().to_uppercase()) });
         stops.push(MapStop { stage: Stage::Court(sin), label: format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase()) });
     }
+    stops.push(MapStop { stage: Stage::Gym, label: "THE GYM - ONE OF EVERY FOE".to_string() });
     stops
+}
+
+impl Game {
+    /// The gym: one of every foe, stage by stage, on platforms over the lava.
+    pub fn load_gym(&mut self) {
+        self.load(crate::logic::gym::gym(), 1);
+    }
 }
 
 impl Game {
@@ -39,6 +47,8 @@ impl Game {
         let here = if self.screen == Screen::Paused {
             Some(if self.hub.is_some() {
                 Stage::Hub
+            } else if self.level.data.theme == crate::logic::level::Theme::Gym {
+                Stage::Gym
             } else if let Some(sin) = self.realm {
                 if self.boss.is_some() {
                     Stage::Court(sin)
@@ -139,6 +149,7 @@ impl Game {
                 Stage::Arena(n) | Stage::Shop(n) => self.load_boss(n),
                 Stage::Realm(s) => self.load_realm(s),
                 Stage::Court(s) | Stage::SinShop(s) => self.load_court(s),
+                Stage::Gym => self.load_gym(),
                 Stage::Hub => unreachable!(),
             }
             self.checkpoint(stage);

@@ -696,6 +696,8 @@ pub struct WorldView {
     pub hell: bool,
     /// A sin's realm or its prince's court: the sin's colour over the sky and the light.
     pub tint: Option<u32>,
+    /// The gym: the hub's lava and platforms, but none of its landmarks.
+    pub gym: bool,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -822,6 +824,7 @@ impl WorldView {
             meadow: false,
             hell: false,
             tint: None,
+            gym: false,
             water: Vec::new(),
             garden: None,
             fountain: None,
@@ -899,7 +902,8 @@ impl WorldView {
     #[allow(clippy::too_many_arguments)]
     pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: crate::logic::level::Theme, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>) {
         let meadow = theme.is_meadow();
-        self.hell = theme == crate::logic::level::Theme::Hell;
+        self.hell = theme.is_hell();
+        self.gym = theme == crate::logic::level::Theme::Gym;
         self.tint = theme.sin().map(|s| s.color());
         self.garden = garden.cloned();
         self.fountain = None;

@@ -47,6 +47,8 @@ pub enum Stage {
     Court(Sin),
     /// The prince is slain: at the old man's wares, before the way back to the hub.
     SinShop(Sin),
+    /// The gym, with one of every foe.
+    Gym,
 }
 
 /// A checkpoint of the adventure under way.
@@ -74,6 +76,7 @@ impl Run {
             Stage::Realm(s) => ('r', s.index()),
             Stage::Court(s) => ('c', s.index()),
             Stage::SinShop(s) => ('e', s.index()),
+            Stage::Gym => ('g', 0),
         };
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
@@ -97,6 +100,7 @@ impl Run {
             "r" => Stage::Realm(*SINS.get(n)?),
             "c" => Stage::Court(*SINS.get(n)?),
             "e" => Stage::SinShop(*SINS.get(n)?),
+            "g" => Stage::Gym,
             _ => return None,
         };
         let score = f.next()?.parse().ok()?;
@@ -135,6 +139,7 @@ impl Game {
             Stage::Realm(s) => format!("the realm of {}", s.name()),
             Stage::Court(s) => format!("the court of {}", s.prince()),
             Stage::SinShop(_) => "the old man's wares".to_string(),
+            Stage::Gym => "the gym".to_string(),
         };
         Some(format!("{}, {place}", run.hero.name()))
     }
@@ -210,6 +215,10 @@ impl Game {
                 self.load_court(s);
                 self.open_shop();
             }
+            Stage::Gym => {
+                self.load_gym();
+                self.enter(Screen::Ready);
+            }
         }
         self.juice.fade = 1.0;
     }
@@ -279,6 +288,7 @@ mod tests {
             Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Wrath), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
             Run { hero: HeroKind::Miyamoto, stage: Stage::Court(Sin::Lust), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
             Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0 },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));

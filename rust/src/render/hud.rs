@@ -180,6 +180,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 line(
                     match g.realm {
                         Some(sin) => format!("The key of {} is {}'s. Back to the Portals of Hell.", sin.name(), g.hero_kind.name()),
+                        None if g.dungeon == 0 => format!("The Portals of Hell open below. {} goes down.", g.hero_kind.name()),
                         None => format!("The way down lies open. {} goes deeper.", g.hero_kind.name()),
                     },
                     0.9,
@@ -844,6 +845,8 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
 fn where_line(g: &Game) -> String {
     if g.hub.is_some() {
         "DEPTH II: SEVEN DOORS, SEVEN SINS".to_string()
+    } else if g.level.data.theme == crate::logic::level::Theme::Gym {
+        "ONE OF EVERY FOE, STAGE BY STAGE: THEY RISE AGAIN WHEN THEY FALL".to_string()
     } else if let Some(sin) = g.realm {
         if g.boss.is_some() {
             format!("THE REALM OF {}: {} GUARDS ITS KEY", sin.title(), sin.prince().to_uppercase())

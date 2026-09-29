@@ -550,6 +550,9 @@ impl Game {
         } else if self.level.data.theme == crate::logic::level::Theme::Hell {
             // In the Portals of Hell he comes in from the cliffs to the south, facing the volcano.
             self.start_facing = Dir::Up;
+        } else if self.level.data.theme == crate::logic::level::Theme::Gym {
+            // In the gym he arrives at the west end, facing the foes.
+            self.start_facing = Dir::Right;
         } else {
             // Ragnar starts in the heart of the dungeon, facing its longest corridor.
             let (spawn, facing) = center_spawn(&self.level);
@@ -603,14 +606,18 @@ impl Game {
         self.hero.shield = shield;
         self.hero.free_move = free_move;
         self.equip_from_progress();
-        // No foes in a boss arena (but the boss), nor in the Portals of Hell.
+        // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
         let hell = self.level.data.theme == crate::logic::level::Theme::Hell;
-        let specs = if self.level.data.boss || hell { Vec::new() } else { enemy_specs(&self.level.grid, if index == 0 { 1 } else { 2 }) };
+        let gym = self.level.data.theme == crate::logic::level::Theme::Gym;
+        let specs = if self.level.data.boss || hell || gym { Vec::new() } else { enemy_specs(&self.level.grid, self.foe_stage_of(index)) };
         self.enemies = specs
             .iter()
             .enumerate()
             .map(|(i, s)| Enemy::new(s, self.nest_slots.get(i).copied().unwrap_or(c), self.level.data.enemy_speed))
             .collect();
+        if gym {
+            self.enemies = self.gym_garrison();
+        }
         self.boss = if self.level.data.boss {
             let (x0, y0, x1, y1) = ARENA;
             let hp = CYCLOPS_HP + CYCLOPS_HP_STEP * index as i32;
@@ -654,7 +661,7 @@ impl Game {
         self.poison = (0, 0.0, 0.0);
         self.fires.clear();
         self.spirits.clear();
-        self.relic_shrine = if self.level.data.boss || hell { None } else { self.hidden_shrine_spot() };
+        self.relic_shrine = if self.level.data.boss || hell || gym { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         if let Some(g) = self.level.gate {
@@ -695,9 +702,11 @@ impl Game {
         let center = self.level.nest_center;
         let graves = self.grave_spawns();
         for (i, e) in self.enemies.iter_mut().enumerate() {
-            match graves.get(i % graves.len().max(1)) {
+            match (e.post, graves.get(i % graves.len().max(1))) {
+                // The gym's foes pull themselves together at their posts.
+                (Some(post), _) => e.rise_at(post, crate::logic::enemy::REASSEMBLE_SECONDS),
                 // Draugr climb out of the churchyard rather than the hollow.
-                Some(&g) if e.kind().reassembles() => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
+                (None, Some(&g)) if e.kind().reassembles() => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
                 _ => e.reset(self.nest_slots.get(i).copied().unwrap_or(center)),
             }
         }
@@ -1342,6 +1351,7 @@ impl Game {
             self.enemies[i].update(dt, &mut ctx);
         }
         self.update_witches(dt);
+        self.update_gym(dt);
         self.update_spawns(dt);
         self.update_slime_trails(dt);
 
@@ -1352,12 +1362,52 @@ impl Game {
         self.update_effects(dt);
     }
 
-    /// Which cast haunts this level: the Garden's (1), or the realms' (2).
+    /// Which cast haunts this level. For now only the Garden's: the second stage's foes train in
+    /// the gym until the realms are built, and every level keeps the first stage's cast.
     fn foe_stage(&self) -> u8 {
-        if self.dungeon == 0 {
-            1
-        } else {
-            2
+        self.foe_stage_of(self.dungeon)
+    }
+
+    fn foe_stage_of(&self, _dungeon: usize) -> u8 {
+        1
+    }
+
+    /// The gym's foes: one of every kind, stage by stage, each at its post.
+    fn gym_garrison(&self) -> Vec<Enemy> {
+        crate::logic::gym::garrison()
+            .into_iter()
+            .map(|(kind, stage, post)| {
+                let spec = enemy_specs(&self.level.grid, stage).into_iter().find(|s| s.kind == kind).unwrap();
+                let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
+                e.post = Some(post);
+                e.b.mode = EnemyMode::Chase;
+                e
+            })
+            .collect()
+    }
+
+    /// In the gym a slain foe rises again at its post; a conjured minion, with no post, is gone for good.
+    fn update_gym(&mut self, dt: f64) {
+        if self.level.data.theme != crate::logic::level::Theme::Gym {
+            return;
+        }
+        let _ = dt;
+        let mut gone = false;
+        for e in self.enemies.iter_mut() {
+            if e.mode() != EnemyMode::Eaten {
+                continue;
+            }
+            match e.post {
+                Some(post) => e.rise_at(post, crate::logic::enemy::REASSEMBLE_SECONDS),
+                None => gone = true,
+            }
+        }
+        if gone {
+            self.enemies.retain(|e| e.mode() != EnemyMode::Eaten);
+            self.view.clear_enemies();
+            for e in &self.enemies {
+                self.view.add_enemy(e);
+            }
         }
     }
 
@@ -1393,8 +1443,8 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     fn update_spawns(&mut self, dt: f64) {
-        if self.boss.is_some() || self.hub.is_some() {
-            return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell
+        if self.boss.is_some() || self.hub.is_some() || self.level.data.theme == crate::logic::level::Theme::Gym {
+            return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's are all there
         }
         self.spawn_timer -= dt;
         if self.spawn_timer > 0.0 || self.enemies.len() >= self.max_enemies() {
@@ -3572,7 +3622,7 @@ mod tests {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
         let stops = map_stops();
-        assert_eq!(stops.len(), 3 + 2 * 7, "the Garden and its Cyclops, the Portals of Hell, and each realm and its prince");
+        assert_eq!(stops.len(), 3 + 2 * 7 + 1, "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, and the gym");
         assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
         assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
         // From the title: MAP, down to the fourth stop (the realm of Pride), go.
@@ -3684,9 +3734,29 @@ mod tests {
         use crate::logic::enemy::WOLF_FURY_SPEED;
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
-        g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+        g.map_jump(save::Stage::Gym);
         let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
-        assert_eq!(kinds, EnemyKind::STAGE_TWO.to_vec(), "the second stage's cast haunts a realm");
+        assert_eq!(kinds, [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice()].concat(), "one of every foe, stage by stage, in the gym");
+        assert_eq!(g.hero.occupied(), crate::logic::gym::arrival());
+        assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Gym));
+        g.enter(Screen::Playing);
+        // A slain foe rises again at its post.
+        let post = g.enemies[1].post.expect("a post");
+        g.slay_enemy(1);
+        for _ in 0..((crate::logic::enemy::REASSEMBLE_SECONDS - 0.2) / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        assert_eq!((g.enemies[1].mode(), g.enemies[1].occupied()), (EnemyMode::Scattered, post), "in pieces at its post");
+        for _ in 0..(0.5 / crate::app::STEP) as usize {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        assert!(g.enemies[1].is_dangerous(), "back on its feet");
+        // Off the road, the realms keep the first stage's cast for now.
+        g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+        assert!(g.enemies.iter().all(|e| EnemyKind::STAGE_ONE.contains(&e.kind())));
+        g.map_jump(save::Stage::Gym);
         g.enter(Screen::Playing);
         let o = g.hero.occupied();
         g.enemies.clear();
@@ -3716,7 +3786,8 @@ mod tests {
         let brute = foe_at(&mut g, EnemyKind::Blemmyes, o);
         g.resolve_contact();
         assert_eq!(hp - g.hero.hp, 2 * crate::logic::hero::CONTACT_DAMAGE, "its touch hurts double");
-        g.enemies[brute].kill();
+        g.enemies.clear(); // (a slain foe with no post leaves the gym's list)
+        g.view.clear_enemies();
         // The loup-garou howls at the first cut and runs faster, and the helmeted skeleton's cap rings.
         let wolf = foe_at(&mut g, EnemyKind::Werewolf, P::new(o.x, o.y - 1));
         g.hitstop = 0.0;
@@ -3729,7 +3800,8 @@ mod tests {
         g.enemies[wolf].b.fury = 0.0;
         g.update(crate::app::STEP);
         assert!((quick / g.enemies[wolf].m.speed - WOLF_FURY_SPEED).abs() < 0.01, "faster in its fury");
-        g.enemies[wolf].kill();
+        g.enemies.clear();
+        g.view.clear_enemies();
         let helm = foe_at(&mut g, EnemyKind::Helmeted, P::new(o.x, o.y - 1));
         g.hitstop = 0.0;
         g.perform_attack();

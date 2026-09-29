@@ -8,6 +8,7 @@ pub mod gear;
 pub mod grid;
 pub mod hero;
 pub mod heroes;
+pub mod gym;
 pub mod hub;
 pub mod items;
 pub mod level;

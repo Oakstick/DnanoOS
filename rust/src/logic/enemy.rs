@@ -185,6 +185,8 @@ pub struct Brain {
 pub struct Enemy {
     pub m: Mover,
     pub b: Brain,
+    /// Where it stands in the gym, and rises again when slain (none: it comes from the hollow).
+    pub post: Option<P>,
 }
 
 impl Enemy {
@@ -193,6 +195,7 @@ impl Enemy {
         m.flying = spec.kind.flies();
         Self {
             m,
+            post: None,
             b: Brain {
                 kind: spec.kind,
                 name: spec.name.clone(),

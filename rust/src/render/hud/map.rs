@@ -43,6 +43,7 @@ pub fn draw_map(o: &mut Overlay, g: &Game, t: f32) {
             Stage::Realm(s) | Stage::Court(s) => s.color(),
             Stage::Arena(_) => 0xe0604a,
             Stage::Hub => 0xff5a2a,
+            Stage::Gym => 0x9ad1ff,
             _ => GOLD,
         };
         o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);

@@ -52,6 +52,7 @@ enum Cmd {
     Sins(u8),
     Realm(usize),
     Map,
+    Gym,
     Court(usize),
     /// The Cyclops falls at once.
     Slay,
@@ -114,6 +115,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "at" => Cmd::At(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0), parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "hub" => Cmd::Hub,
             "map" => Cmd::Map,
+            "gym" => Cmd::Gym,
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -210,6 +212,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::At(x, y) => game.hero.place(crate::logic::types::P::new(x, y)),
                 Cmd::Hub => game.map_jump(crate::game::Stage::Hub),
                 Cmd::Map => game.open_map(),
+                Cmd::Gym => game.map_jump(crate::game::Stage::Gym),
                 Cmd::Realm(n) => game.map_jump(crate::game::Stage::Realm(crate::logic::sins::SINS[n.min(6)])),
                 Cmd::Court(n) => game.map_jump(crate::game::Stage::Court(crate::logic::sins::SINS[n.min(6)])),
                 Cmd::Sins(n) => game.sins_cleared = n & crate::logic::sins::ALL_SINS,
