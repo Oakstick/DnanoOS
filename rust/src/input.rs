@@ -43,6 +43,9 @@ pub enum Action {
     Call,
     /// R / LT: one use of the archangel's blessing he carries.
     Angel,
+    /// LT / RT in the old man's wares: the tab before, the tab after.
+    TabPrev,
+    TabNext,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.

@@ -5,7 +5,7 @@
 //! archangel gives once a level; when all four have, the shrines stand grey.
 //!
 //! - Michael (blue): four bolts of blue fire; a foe struck turns to fight on
-//!   your side for a while.
+//!   your side for ten seconds.
 //! - Gabriel (green): three thunderclaps; every foe within ten tiles is
 //!   struck dead, a boss loses five.
 //! - Raphael (purple): two beams; everything in their path dies, a boss loses ten.
@@ -35,7 +35,7 @@ pub const WAVE_SPEED: f64 = 14.0;
 /// Seconds of play between two of Uriel's blessings.
 pub const URIEL_REST: f64 = 600.0;
 /// Seconds a foe turned by Michael's fire fights on the hero's side.
-pub const ALLY_SECONDS: f64 = 30.0;
+pub const ALLY_SECONDS: f64 = 10.0;
 /// A turned foe kills a foe it touches within this many tiles.
 pub const ALLY_REACH: f64 = 0.7;
 

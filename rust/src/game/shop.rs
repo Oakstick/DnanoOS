@@ -183,8 +183,12 @@ impl Game {
             Some(Dir::Right) if self.shop.row == 0 => self.switch_tab(1),
             _ => {}
         }
-        if self.input.was_pressed(&[Action::NextPotion]) {
+        // LT and RT (or Tab, Y) page through the trees.
+        if self.input.was_pressed(&[Action::NextPotion, Action::TabNext]) {
             self.switch_tab(1);
+        }
+        if self.input.was_pressed(&[Action::TabPrev]) {
+            self.switch_tab(-1);
         }
         let rows = self.shop_rows();
         let n = rows.len();
@@ -223,7 +227,7 @@ impl Game {
             } else if let Some(r) = row_hit(p) {
                 self.shop.row = r;
             }
-        } else if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Attack]) {
+        } else if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Attack]) && !self.input.was_pressed(&[Action::TabNext]) {
             pressed = Some(rows[self.shop.row].buttons[self.shop.col.min(rows[self.shop.row].buttons.len() - 1)].clone());
         }
         if self.input.was_pressed(&[Action::Pause]) {

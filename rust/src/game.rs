@@ -64,23 +64,15 @@ const SPAWN_EVERY_ENRAGED: f64 = 0.25;
 const MAX_ENEMIES: usize = 12;
 /// Every key raises the cap on foes by this many.
 const MAX_ENEMIES_PER_KEY: usize = 2;
-/// Past this much rage the foes stop scattering and hunt without rest.
-const RAGE_NO_SCATTER: f64 = 0.5;
 const SPAWN_CYCLE: [EnemyKind; 4] = [EnemyKind::Bat, EnemyKind::Slime, EnemyKind::Vampire, EnemyKind::Skeleton];
 /// The music quickens one step for every this many keys.
 pub const KEYS_PER_TEMPO_STEP: u32 = 2;
 /// Seconds the gate's doors take to swing open.
 const DOOR_SECONDS: f64 = 1.6;
 
-/// Alternating scatter/chase schedule in seconds. Frozen while enemies are stunned.
-const MODE_SCHEDULE: [(GlobalMode, f64); 6] = [
-    (GlobalMode::Scatter, 7.0),
-    (GlobalMode::Chase, 20.0),
-    (GlobalMode::Scatter, 7.0),
-    (GlobalMode::Chase, 20.0),
-    (GlobalMode::Scatter, 5.0),
-    (GlobalMode::Chase, f64::INFINITY),
-];
+/// The foes' schedule: they hunt the hero from the start and never break off to
+/// wander to their corners (as the arcade ghosts did). Frozen while they are stunned.
+const MODE_SCHEDULE: [(GlobalMode, f64); 1] = [(GlobalMode::Chase, f64::INFINITY)];
 
 /// The countdown before play: 3, 2, 1, then GO.
 pub const READY_SECONDS: f64 = 3.0;
@@ -407,7 +399,7 @@ impl Game {
             rng: Rng::from_time(),
             cam_dir: Dir::None,
             latch: None,
-            global_mode: GlobalMode::Scatter,
+            global_mode: GlobalMode::Chase,
             mode_index: 0,
             mode_timer: MODE_SCHEDULE[0].1,
             screen_timer: 0.0,
@@ -1358,9 +1350,9 @@ impl Game {
             return;
         }
         self.mode_timer -= dt;
-        if self.global_mode == GlobalMode::Scatter && self.rage() >= RAGE_NO_SCATTER {
-            // Half the keys gone: no more breathers, they hunt from here on.
-            self.mode_timer = 0.0;
+        if self.global_mode != GlobalMode::Chase {
+            // They hunt without a break: anything that set them scattering gives way to the hunt.
+            self.global_mode = GlobalMode::Chase;
         }
         if self.mode_timer <= 0.0 && self.mode_index < MODE_SCHEDULE.len() - 1 {
             self.mode_index += 1;
@@ -3192,7 +3184,7 @@ mod tests {
             g.update(crate::app::STEP);
         }
         assert!(g.enemies.len() > before, "a new foe arrived");
-        // Half the keys: no more scattering, shorter waits, more foes allowed.
+        // Half the keys: shorter waits, more foes allowed; and they never scatter.
         g.keys_got = g.keys_total / 2;
         assert!(g.spawn_every() < calm_wait && g.max_enemies() > calm_cap);
         g.global_mode = GlobalMode::Scatter;
@@ -3674,6 +3666,43 @@ mod tests {
         assert!(g.saved_run.is_none());
         g.enter(Screen::Title);
         assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+    }
+
+    #[test]
+    fn a_foe_across_the_maze_finds_the_hero_rather_than_circling() {
+        let mut g = playing();
+        g.enemies.clear();
+        g.view.clear_enemies();
+        let hero = g.hero.occupied();
+        // Somewhere well away by the paths.
+        let far = crate::logic::pathing::reachable(&g.level.grid, hero, false, false)
+            .into_iter()
+            .filter(|p| (p.x - hero.x).abs() + (p.y - hero.y).abs() >= 14 && g.level.grid.get(p.x, p.y) == Tile::Open)
+            .min_by_key(|p| ((p.x - hero.x).abs() + (p.y - hero.y).abs(), p.y, p.x))
+            .unwrap();
+        let i = foe_at(&mut g, EnemyKind::Skeleton, far);
+        let mut closest = f64::INFINITY;
+        for _ in 0..(15.0 / crate::app::STEP) as usize {
+            g.hero.invuln = 1.0;
+            g.update(crate::app::STEP);
+            closest = closest.min(dist_sq(g.enemies[i].pos(), g.hero.pos()).sqrt());
+        }
+        assert!(closest < 1.5, "it came no closer than {closest}");
+    }
+
+    #[test]
+    fn lt_and_rt_page_through_the_old_mans_wares() {
+        let mut g = playing();
+        g.open_shop();
+        let first = g.shop.tab;
+        g.input.inject(Action::TabNext);
+        g.input.inject(Action::Attack); // RT is Attack as well; it must not buy
+        g.update(crate::app::STEP);
+        let second = g.shop.tab;
+        assert_ne!(first, second);
+        g.input.inject(Action::TabPrev);
+        g.update(crate::app::STEP);
+        assert_eq!(g.shop.tab, first);
     }
 
     #[test]

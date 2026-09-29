@@ -1,6 +1,6 @@
 use super::grid::Grid;
 use super::mover::Mover;
-use super::pathing::step_toward;
+use super::pathing::{route_toward, step_toward};
 use super::rng::Rng;
 use super::types::{dist_sq, manhattan, Dir, Tile, CARDINALS, P, V};
 
@@ -364,6 +364,15 @@ impl Brain {
                 !(avoid_bridges && grid.is_bridge(n.x, n.y))
             })
             .collect();
+        // Hunting (and leaving the hollow), they take the shortest way through the maze, turning
+        // back if that is the way: greedy steps toward the target only circle the blocks.
+        if matches!(self.mode, EnemyMode::Chase | EnemyMode::Scatter | EnemyMode::Leaving) && self.confused <= 0.0 {
+            if let Some(step) = route_toward(grid, tile, self.target, flying, allow_nest, avoid_bridges) {
+                if options.contains(&step) {
+                    return step;
+                }
+            }
+        }
         if !may_reverse {
             let no_reverse: Vec<Dir> = options.iter().copied().filter(|&d| d != current.opposite()).collect();
             if !no_reverse.is_empty() {
@@ -429,14 +438,8 @@ impl Brain {
             return hp;
         }
         match self.kind {
-            // Eyeless but sharp-eared: homes on the last place it heard footsteps.
-            EnemyKind::Skeleton => {
-                if ctx.hero.heard_age < HEARING_MEMORY * (1.0 + 4.0 * ctx.rage) {
-                    ctx.hero.heard_pos
-                } else {
-                    self.scatter_target.v()
-                }
-            }
+            // Eyeless but sharp-eared: makes for the last place it heard footsteps, and searches on from there.
+            EnemyKind::Skeleton => ctx.hero.heard_pos,
             // Swoops at where the hero is heading.
             EnemyKind::Bat => {
                 let v = ctx.hero.dir.vecf();
