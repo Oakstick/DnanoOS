@@ -84,8 +84,10 @@ pub enum DamageResult {
 
 #[derive(Clone, Copy, Debug)]
 struct JumpState {
-    /// Where the leap started (a tile center in grid movement, anywhere in free movement).
+    /// Where the leap starts and lands (tile centers in grid movement, anywhere in free movement),
+    /// and the tile it lands on.
     from_pos: V,
+    to_pos: V,
     to: P,
     from_h: f64,
     to_h: f64,
@@ -179,9 +181,13 @@ pub struct Hero {
     free_pos: V,
     free_vel: V,
     synced: P,
-    /// Which way he faces in free movement: an angle in the grid's x/y plane.
+    /// Which way he faces, as an angle in the grid's x/y plane: any way in free movement,
+    /// one of the four in grid movement.
     pub heading: f64,
 }
+
+/// How far apart the points are that a free leap or dash checks along its way, in tiles.
+const FREE_PROBE: f64 = 0.05;
 
 /// His body's radius against walls in free movement, in tiles.
 pub const FREE_RADIUS: f64 = 0.3;
@@ -332,6 +338,57 @@ impl Hero {
     pub fn occupied(&self) -> P {
         self.m.occupied()
     }
+
+    /// The way his blows, shots, leaps and dashes go: a unit vector along his
+    /// heading in free movement, straight along one of the four on the grid.
+    pub fn aim(&self) -> V {
+        if self.free_move {
+            V::new(self.heading.cos(), self.heading.sin())
+        } else {
+            self.facing.or_down().vecf()
+        }
+    }
+
+    /// Turns him to face `d` (at a spawn, a cheat, a test).
+    pub fn face(&mut self, d: Dir) {
+        self.facing = d;
+        self.heading = angle_of(d);
+    }
+
+    /// A dash in free movement: along his heading, up to `tiles`, stopping short of whatever
+    /// he could not walk into, and ending wherever that is rather than on a tile center.
+    fn dash_free(&mut self, grid: &Grid, tiles: f64, cost: f64) -> Option<(V, V)> {
+        let before = self.pos();
+        let aim = self.aim();
+        let mut at = before;
+        let mut tile = self.occupied();
+        let mut gone = 0.0;
+        while gone < tiles {
+            let next = V::new(at.x + aim.x * FREE_PROBE, at.y + aim.y * FREE_PROBE);
+            let t = grid.wrap(P::new(next.x.round() as i32, next.y.round() as i32));
+            if t != tile && free_blocked(grid, tile, t.x, t.y) {
+                break;
+            }
+            at = next;
+            tile = t;
+            gone += FREE_PROBE;
+        }
+        if gone < 0.3 || !self.spend(cost) {
+            return None;
+        }
+        self.m.teleport(tile);
+        self.free_pos = at;
+        self.free_vel = V::new(0.0, 0.0);
+        self.synced = tile;
+        self.push_out(grid);
+        self.altitude = free_floor(grid, self.free_pos);
+        self.vel = 0.0;
+        if !self.invisible() {
+            self.heard_pos = self.free_pos;
+            self.heard_age = 0.0;
+        }
+        Some((before, self.free_pos))
+    }
     pub fn dir(&self) -> Dir {
         self.m.dir
     }
@@ -357,14 +414,16 @@ impl Hero {
             None => self.m.pos(),
             Some(j) => {
                 let t = j.t / JUMP_SECONDS;
-                V::new(j.from_pos.x + (j.to.x as f64 - j.from_pos.x) * t, j.from_pos.y + (j.to.y as f64 - j.from_pos.y) * t)
+                V::new(j.from_pos.x + (j.to_pos.x - j.from_pos.x) * t, j.from_pos.y + (j.to_pos.y - j.from_pos.y) * t)
             }
         }
     }
 
     /**
-     * Leap in the facing direction: two tiles when the landing is clear (over a
-     * pit, an enemy, or up one level), one tile otherwise, or a hop in place.
+     * Leap the way he faces: two tiles when the landing is clear (over a pit,
+     * an enemy, or up one level), one tile otherwise, or a hop in place. On
+     * the grid it goes tile to tile; in free movement it follows his heading
+     * and lands wherever it comes down.
      */
     pub fn try_jump(&mut self, grid: &Grid) -> bool {
         if !self.alive || self.jump.is_some() {
@@ -372,7 +431,12 @@ impl Hero {
         }
         let from_pos = self.pos();
         let from = self.m.occupied();
-        let to = grid.jump_landing(from, self.facing).unwrap_or(from);
+        let (to, to_pos) = if self.free_move {
+            free_landing(grid, from_pos, self.aim()).unwrap_or((from, from_pos))
+        } else {
+            let to = grid.jump_landing(from, self.facing).unwrap_or(from);
+            (to, to.v())
+        };
         if self.kind == HeroKind::Miyamoto && self.path >= 3 {
             // Wind Step: every leap is a dodge.
             self.invuln = self.invuln.max(path::DODGE_SECONDS);
@@ -382,6 +446,7 @@ impl Hero {
         self.m.dir = Dir::None;
         self.jump = Some(JumpState {
             from_pos,
+            to_pos,
             to,
             from_h: grid.elevation(from.x, from.y) as f64,
             to_h: grid.elevation(to.x, to.y) as f64,
@@ -463,12 +528,16 @@ impl Hero {
                 self.m.tile = j.to;
                 self.m.offset = 0.0;
                 self.jump = None;
-                self.free_pos = j.to.v();
+                self.free_pos = j.to_pos;
                 self.synced = j.to;
-                self.altitude = grid.elevation(j.to.x, j.to.y) as f64;
+                self.altitude = if self.free_move { free_floor(grid, j.to_pos) } else { grid.elevation(j.to.x, j.to.y) as f64 };
+                if self.free_move {
+                    // Come down against a wall's edge: step clear of it.
+                    self.push_out(grid);
+                }
                 self.vel *= LANDING_KEEP;
                 if !self.invisible() {
-                    self.heard_pos = j.to.v();
+                    self.heard_pos = j.to_pos;
                     self.heard_age = 0.0;
                 }
             }
@@ -484,6 +553,7 @@ impl Hero {
             if self.m.dir != Dir::None {
                 self.facing = self.m.dir;
             }
+            self.heading = angle_of(self.facing);
             self.altitude = self.m.elevation_on(grid);
             self.free_pos = self.m.pos();
             self.synced = self.m.tile;
@@ -790,6 +860,9 @@ impl Hero {
         if !self.alive || self.jump.is_some() {
             return None;
         }
+        if self.free_move {
+            return self.dash_free(grid, tiles as f64, cost);
+        }
         let from = self.occupied();
         let mut to = from;
         for _ in 0..tiles {
@@ -945,7 +1018,7 @@ impl Hero {
         self.heard_age = 0.0;
         self.alive = true;
         self.motion = 0.0;
-        self.facing = Dir::Down;
+        self.face(Dir::Down);
         self.hp = self.health_cap();
         self.invuln = 0.0;
         self.attack_cooldown = 0.0;
@@ -987,6 +1060,46 @@ fn free_blocked(grid: &Grid, from: P, x: i32, y: i32) -> bool {
     }
     let climb = grid.elevation(n.x, n.y) - grid.elevation(from.x, from.y);
     climb > 0 && !(climb == 1 && (grid.is_ramp(from.x, from.y) || grid.is_ramp(n.x, n.y)))
+}
+
+/// The angle of one of the four directions in the grid's x/y plane (Down is +y).
+fn angle_of(d: Dir) -> f64 {
+    let v = d.or_down().vecf();
+    v.y.atan2(v.x)
+}
+
+/**
+ * Where a free leap from `from` along `aim` comes down: two tiles on if that
+ * spot is floor no more than a level up and nothing but pits, foes or low
+ * ground lies between (no rock), else one tile on, else nowhere. Returns the
+ * landing tile and point.
+ */
+fn free_landing(grid: &Grid, from: V, aim: V) -> Option<(P, V)> {
+    let start = grid.wrap(P::new(from.x.round() as i32, from.y.round() as i32));
+    let base = grid.elevation(start.x, start.y);
+    let at = |d: f64| V::new(from.x + aim.x * d, from.y + aim.y * d);
+    let tile = |p: V| grid.wrap(P::new(p.x.round() as i32, p.y.round() as i32));
+    for reach in [2.0, 1.0] {
+        let land = at(reach);
+        let t = tile(land);
+        if t == start || !grid.is_walkable(t.x, t.y, false) || grid.elevation(t.x, t.y) - base > 1 {
+            continue;
+        }
+        let mut d = FREE_PROBE;
+        let mut clear = true;
+        while d < reach {
+            let q = tile(at(d));
+            if grid.get(q.x, q.y) == crate::logic::types::Tile::Rock {
+                clear = false;
+                break;
+            }
+            d += FREE_PROBE;
+        }
+        if clear {
+            return Some((t, land));
+        }
+    }
+    None
 }
 
 /// The floor height (in levels) under a free-moving point: level ground, or partway up a ramp.
@@ -1038,6 +1151,96 @@ mod tests {
     }
 
     const DT: f64 = 1.0 / 120.0;
+
+    /// A walled room, open inside.
+    fn room(w: i32, h: i32) -> Grid {
+        let mut tiles = vec![Tile::Rock; (w * h) as usize];
+        for y in 1..h - 1 {
+            for x in 1..w - 1 {
+                tiles[(y * w + x) as usize] = Tile::Open;
+            }
+        }
+        Grid::new(w, h, tiles, vec![0; (w * h) as usize], vec![false; (w * h) as usize])
+    }
+
+    fn run(h: &mut Hero, g: &Grid, seconds: f64) {
+        for _ in 0..(seconds / DT) as usize {
+            h.update(DT, g, Dir::None);
+        }
+    }
+
+    #[test]
+    fn in_free_movement_he_aims_and_leaps_any_way() {
+        let g = room(12, 12);
+        let mut h = Hero::new(P::new(4, 4), 5.0);
+        h.free_move = true;
+        // A nudge down and to the right, not at 45 degrees, then let go.
+        h.wish = V::new(1.0, 0.5);
+        run(&mut h, &g, 0.05);
+        h.wish = V::new(0.0, 0.0);
+        run(&mut h, &g, 0.5);
+        let aim = h.aim();
+        let want = V::new(2.0 / 5f64.sqrt(), 1.0 / 5f64.sqrt());
+        assert!((aim.x - want.x).abs() < 1e-6 && (aim.y - want.y).abs() < 1e-6, "aims where he turned: {aim:?}");
+        assert_eq!(h.facing, Dir::Right, "the nearest of the four, for whatever still wants one");
+        // A leap follows the aim two tiles and comes down where it lands, not on a tile center.
+        let from = h.pos();
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        let to = h.pos();
+        assert!(((to.x - from.x) - want.x * 2.0).abs() < 0.05 && ((to.y - from.y) - want.y * 2.0).abs() < 0.05, "{from:?} -> {to:?}");
+        assert!((to.x - to.x.round()).abs() > 0.05 || (to.y - to.y.round()).abs() > 0.05, "snapped to a tile center: {to:?}");
+        assert_eq!(h.occupied(), P::new(to.x.round() as i32, to.y.round() as i32));
+        // On the grid the aim is one of the four, as before.
+        h.free_move = false;
+        h.face(Dir::Up);
+        assert_eq!((h.aim().x, h.aim().y), (0.0, -1.0));
+    }
+
+    #[test]
+    fn a_free_leap_clears_a_pit_but_not_a_wall() {
+        let mut g = room(10, 7);
+        for y in 1..6 {
+            g.set(4, y, Tile::Pit);
+        }
+        let mut h = Hero::new(P::new(3, 3), 5.0);
+        h.free_move = true;
+        // Slightly off the row, heading a little upward: over the pit and down on the far side.
+        h.heading = -0.15f64;
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        let to = h.pos();
+        assert!(to.x > 4.5 && h.occupied().x == 5, "over the pit: {to:?}");
+        // Into the wall: one tile would do, two would not; right against it, a hop in place.
+        let mut h = Hero::new(P::new(7, 3), 5.0);
+        h.free_move = true;
+        h.heading = 0.0;
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.occupied(), P::new(8, 3));
+        assert!(h.pos().x <= 8.5 - FREE_RADIUS + 1e-6, "kept out of the wall: {:?}", h.pos());
+    }
+
+    #[test]
+    fn a_free_dash_goes_any_way_and_stops_short_of_a_wall() {
+        let g = room(8, 8);
+        let mut h = Hero::new(P::new(2, 2), 5.0);
+        h.free_move = true;
+        h.path = 5;
+        h.stamina = STAMINA_MAX;
+        // Bifrost Step, mostly right and a little down: three tiles along it.
+        h.heading = 1f64.atan2(3.0);
+        let (from, to) = h.try_step(&g).expect("a step");
+        let d = ((to.x - from.x).powi(2) + (to.y - from.y).powi(2)).sqrt();
+        assert!((d - 3.0).abs() < 0.1, "went {d}");
+        assert_eq!(h.pos(), to);
+        // Straight at the wall two tiles off, it stops short, still in the room.
+        h.step_cooldown = 0.0;
+        h.stamina = STAMINA_MAX;
+        h.heading = 0.0;
+        let (_, to) = h.try_step(&g).expect("a step");
+        assert!(to.x <= 6.5 - FREE_RADIUS + 1e-6 && to.x > 5.5, "{to:?}");
+    }
 
     #[test]
     fn turns_on_the_spot_before_walking() {

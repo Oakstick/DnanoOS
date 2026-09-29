@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::enemy::Enemy;
 use super::grid::Grid;
-use super::types::{dist_sq, Dir, Tile, P, V};
+use super::types::{dist_sq, Tile, P, V};
 use crate::platform;
 
 // ------------------------------------------------------------------- combat
@@ -15,8 +15,9 @@ pub const ATTACK_REACH: f64 = 1.2;
 pub const ATTACK_HALF_WIDTH: f64 = 0.7;
 pub const POINTS_KILL: u32 = 100;
 
-fn in_swing(hero: V, facing: Dir, p: V) -> bool {
-    let f = facing.or_down().vecf();
+/// `aim` below is the unit vector a blow goes along (`Hero::aim`): any way in free movement.
+fn in_swing(hero: V, aim: V, p: V) -> bool {
+    let f = aim;
     let dx = p.x - hero.x;
     let dy = p.y - hero.y;
     let along = dx * f.x + dy * f.y; // distance in front of the hero
@@ -25,8 +26,8 @@ fn in_swing(hero: V, facing: Dir, p: V) -> bool {
 }
 
 /// Does a swing reach a big body of `radius` tiles centered at `p`?
-pub fn in_swing_reach(hero: V, facing: Dir, p: V, radius: f64) -> bool {
-    let f = facing.or_down().vecf();
+pub fn in_swing_reach(hero: V, aim: V, p: V, radius: f64) -> bool {
+    let f = aim;
     let dx = p.x - hero.x;
     let dy = p.y - hero.y;
     let along = dx * f.x + dy * f.y;
@@ -35,13 +36,13 @@ pub fn in_swing_reach(hero: V, facing: Dir, p: V, radius: f64) -> bool {
 }
 
 /// Objects on a tile the sword can reach: used to strike shrines.
-pub fn tile_in_reach(hero: V, facing: Dir, tile: P) -> bool {
-    in_swing(hero, facing, tile.v())
+pub fn tile_in_reach(hero: V, aim: V, tile: P) -> bool {
+    in_swing(hero, aim, tile.v())
 }
 
 /// Is `p` (of `radius`) inside the arc of a swing reaching `reach` ahead, `half_width` to each side and `behind` back?
-pub fn in_blade_arc(hero: V, facing: Dir, p: V, reach: f64, half_width: f64, behind: f64, radius: f64) -> bool {
-    let f = facing.or_down().vecf();
+pub fn in_blade_arc(hero: V, aim: V, p: V, reach: f64, half_width: f64, behind: f64, radius: f64) -> bool {
+    let f = aim;
     let dx = p.x - hero.x;
     let dy = p.y - hero.y;
     let along = dx * f.x + dy * f.y;
@@ -50,21 +51,21 @@ pub fn in_blade_arc(hero: V, facing: Dir, p: V, reach: f64, half_width: f64, beh
 }
 
 /// Indices of targetable enemies caught by such a swing.
-pub fn find_blade_targets(hero: V, facing: Dir, enemies: &[Enemy], reach: f64, half_width: f64, behind: f64) -> Vec<usize> {
+pub fn find_blade_targets(hero: V, aim: V, enemies: &[Enemy], reach: f64, half_width: f64, behind: f64) -> Vec<usize> {
     enemies
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.is_targetable() && in_blade_arc(hero, facing, e.pos(), reach, half_width, behind, 0.0))
+        .filter(|(_, e)| e.is_targetable() && in_blade_arc(hero, aim, e.pos(), reach, half_width, behind, 0.0))
         .map(|(i, _)| i)
         .collect()
 }
 
 /// Indices of targetable enemies caught by a sword swing.
-pub fn find_attack_targets(hero: V, facing: Dir, enemies: &[Enemy]) -> Vec<usize> {
+pub fn find_attack_targets(hero: V, aim: V, enemies: &[Enemy]) -> Vec<usize> {
     enemies
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.is_targetable() && in_swing(hero, facing, e.pos()))
+        .filter(|(_, e)| e.is_targetable() && in_swing(hero, aim, e.pos()))
         .map(|(i, _)| i)
         .collect()
 }
@@ -311,6 +312,16 @@ impl Score {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_blow_reaches_whichever_way_it_is_aimed() {
+        let hero = V::new(5.0, 5.0);
+        // A foe off on the diagonal: a blow aimed at it lands; one straight to the side does not.
+        let foe = V::new(5.8, 5.8);
+        let diagonal = V::new(std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2);
+        assert!(in_blade_arc(hero, diagonal, foe, 1.2, 0.7, 0.25, 0.0));
+        assert!(!in_blade_arc(hero, super::super::types::Dir::Right.vecf(), foe, 1.2, 0.7, 0.25, 0.0));
+    }
 
     #[test]
     fn frenzy_chain_doubles() {

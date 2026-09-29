@@ -3,7 +3,7 @@
 use super::gear;
 use super::heroes::HeroKind;
 use super::progression::{self, Tree};
-use super::types::{PotionKind, P};
+use super::types::{PotionKind, P, V};
 
 // ------------------------------------------------------------------ weapons
 
@@ -175,13 +175,21 @@ pub const BOMBS_PER_LIFE: u32 = 3;
  */
 #[derive(Clone, Debug)]
 pub struct Bomb {
+    /// The tile it burns on and blasts from.
     pub tile: P,
+    /// Where it lies: on the tile center, or at his feet when he moves freely.
+    pub at: V,
     pub fuse: f64,
 }
 
 impl Bomb {
     pub fn new(tile: P) -> Self {
-        Self { tile, fuse: BOMB_FUSE }
+        Self::dropped(tile, tile.v())
+    }
+
+    /// A bomb set down at `at`, burning on `tile`.
+    pub fn dropped(tile: P, at: V) -> Self {
+        Self { tile, at, fuse: BOMB_FUSE }
     }
 
     /// 0..1 how far the fuse has burned.

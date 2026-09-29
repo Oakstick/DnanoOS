@@ -512,10 +512,11 @@ impl Game {
 
         // Clearing a dungeon keeps the held weapon and its ammo; only death takes them.
         let carried = if self.hero.alive && self.hero.holding_pickup() { Some((self.hero.weapon, self.hero.ammo)) } else { None };
-        // His shield, dents and all, goes with him.
-        let shield = self.hero.shield;
+        // His shield, dents and all, goes with him, and so does the way he moves (free or on the grid).
+        let (shield, free_move) = (self.hero.shield, self.hero.free_move);
         self.hero = Hero::new(self.level.hero_spawn, self.level.data.hero_speed);
         self.hero.shield = shield;
+        self.hero.free_move = free_move;
         self.equip_from_progress();
         let specs = if self.level.data.boss { Vec::new() } else { default_enemy_specs(&self.level.grid) };
         self.enemies = specs
@@ -584,7 +585,7 @@ impl Game {
     /// Puts everyone back at spawn without touching collected gold.
     fn reset_round(&mut self) {
         self.hero.respawn(self.level.hero_spawn);
-        self.hero.facing = self.start_facing;
+        self.hero.face(self.start_facing);
         self.view.aim_along(self.hero.facing);
         self.juice.coins.clear();
         self.juice.banner = None;
@@ -1067,9 +1068,9 @@ impl Game {
     /// Free movement's direction in grid units: the held keys, turned to match the camera behind him.
     fn free_wish(&mut self) -> V {
         let (rx, ry) = self.input.move_vector();
-        // The chase camera swings round behind him only while he runs straight ahead; running
-        // diagonally, sideways or back it holds still, so each of the eight directions stays put.
-        self.view.follow_heading = ry < -0.99;
+        // The chase camera swings round behind him only while he runs (nearly) straight ahead;
+        // running diagonally, sideways or back it holds still, so a held direction stays put.
+        self.view.follow_heading = ry < -0.97;
         if self.view.camera_mode != CameraMode::Third {
             return V::new(rx, ry);
         }
@@ -1488,7 +1489,7 @@ impl Game {
         self.keys_got = self.keys_total;
         self.unlock_gate();
         self.hero.m.teleport(P::new(g.x, g.y + 2));
-        self.hero.facing = Dir::Up;
+        self.hero.face(Dir::Up);
     }
 
     /// F1: skip straight to the first Cyclops, from anywhere.
@@ -1853,7 +1854,7 @@ impl Game {
         let mut cycled = false;
         for i in 0..self.diamonds.len() {
             let d = &mut self.diamonds[i];
-            if d.active && tile_in_reach(hp, self.hero.facing, d.tile) {
+            if d.active && tile_in_reach(hp, self.hero.aim(), d.tile) {
                 d.cycle();
                 cycled = true;
                 let t = d.tile;
@@ -1899,11 +1900,11 @@ impl Game {
         }
         let Some((reach, half_width, behind)) = blade.swing else { return };
         let hp = self.hero.pos();
-        let facing = self.hero.facing;
-        let mut hits = find_blade_targets(hp, facing, &self.enemies, reach, half_width, behind);
+        let aim = self.hero.aim();
+        let mut hits = find_blade_targets(hp, aim, &self.enemies, reach, half_width, behind);
         if blade.burn > 0.0 {
             // Sacred flames lick beyond the blade's reach.
-            for i in find_blade_targets(hp, facing, &self.enemies, reach + 0.9, half_width + 0.8, behind) {
+            for i in find_blade_targets(hp, aim, &self.enemies, reach + 0.9, half_width + 0.8, behind) {
                 if !hits.contains(&i) {
                     let p = self.enemies[i].pos();
                     self.view.sparkle(&self.level.grid, p.x, p.y, 0.8, FIRE_COLOR, 16);
@@ -1920,7 +1921,7 @@ impl Game {
         }
         let mut struck_boss = false;
         if let Some(bp) = self.boss_target() {
-            if in_blade_arc(hp, facing, bp, reach, half_width, behind, BODY_RADIUS) {
+            if in_blade_arc(hp, aim, bp, reach, half_width, behind, BODY_RADIUS) {
                 struck_boss = self.strike_boss(blade.damage, bp);
             }
         }
@@ -1939,11 +1940,11 @@ impl Game {
             self.hero.grant_invisibility(self.hero.invisible_timer.max(blade.stealth));
         }
         if blade.fire_trail {
-            self.lay_fire(hp, facing);
+            self.lay_fire(hp, aim);
         }
         if blade.wave {
             // Angurvadel's stream of anguish: a wave of force down the line.
-            self.projectiles.extend(spawn_shots(crate::logic::items::RangedKind::Wave, hp, facing));
+            self.projectiles.extend(spawn_shots(crate::logic::items::RangedKind::Wave, hp, aim));
         }
         if blade.stun > 0.0 {
             self.stun_around(hp, progression::STUN_RADIUS, blade.stun);
@@ -2044,7 +2045,7 @@ impl Game {
         }
         if near.is_empty() && left == blade.arrows {
             // Nothing in range: the volley falls ahead of him.
-            let f = self.hero.facing.or_down().vecf();
+            let f = self.hero.aim();
             self.view.rain(&self.level.grid, V::new(hp.x + f.x * 3.0, hp.y + f.y * 3.0), color);
         }
     }
@@ -2072,13 +2073,18 @@ impl Game {
         }
     }
 
-    /// A greatsword's holy fire: the tiles ahead of him burn for a few seconds.
-    fn lay_fire(&mut self, from: V, facing: Dir) {
-        let o = P::new(from.x.round() as i32, from.y.round() as i32);
-        let (dx, dy) = facing.or_down().vec();
+    /// A greatsword's holy fire: the tiles ahead of him along `aim` burn for a few seconds.
+    fn lay_fire(&mut self, from: V, aim: V) {
         let g = &self.level.grid;
-        for k in 1..=3 {
-            let t = g.wrap(P::new(o.x + dx * k, o.y + dy * k));
+        let o = g.wrap(P::new(from.x.round() as i32, from.y.round() as i32));
+        let mut last = o;
+        for k in 1..=6 {
+            let d = k as f64 * 0.5;
+            let t = g.wrap(P::new((from.x + aim.x * d).round() as i32, (from.y + aim.y * d).round() as i32));
+            if t == last {
+                continue;
+            }
+            last = t;
             if !g.is_walkable(t.x, t.y, false) {
                 break;
             }
@@ -2462,7 +2468,7 @@ impl Game {
     /// Fires the held ranged weapon in the facing direction; the last shot hands the sword back.
     fn fire(&mut self) {
         let Some(kind) = self.hero.try_fire() else { return };
-        let shots = spawn_shots(kind, self.hero.pos(), self.hero.facing);
+        let shots = spawn_shots(kind, self.hero.pos(), self.hero.aim());
         self.projectiles.extend(shots);
         self.audio.play(Sfx::Arrow);
         if let crate::logic::items::RangedKind::Hurled(h, t) = kind {
@@ -2562,7 +2568,7 @@ impl Game {
         if self.bombs.iter().any(|b| b.tile == at) {
             return;
         }
-        self.bombs.push(Bomb::new(at));
+        self.bombs.push(Bomb::dropped(at, if self.hero.free_move { self.hero.pos() } else { at.v() }));
         self.bombs_left -= 1;
         self.audio.play(Sfx::Fuse);
     }
@@ -3314,6 +3320,17 @@ mod tests {
         assert_eq!(g.dungeon, 1);
         assert!(g.potions.is_empty() && g.diamonds.is_empty(), "no free gear after the first dungeon");
         assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(1)));
+    }
+
+    #[test]
+    fn free_movement_lasts_from_dungeon_to_dungeon() {
+        let mut g = Game::new();
+        g.hero.free_move = true;
+        start_from_title(&mut g);
+        assert!(g.hero.free_move, "beginning a game keeps it");
+        g.load_boss(0);
+        g.load_level(1);
+        assert!(g.hero.free_move, "and so does every level after");
     }
 
     #[test]

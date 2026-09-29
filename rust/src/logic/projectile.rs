@@ -40,10 +40,11 @@ pub struct Projectile {
 }
 
 impl Projectile {
-    pub fn new(start: V, dir: Dir, kind: RangedKind) -> Self {
+    /// A shot from `start` flying along `heading` (a unit vector, any way).
+    pub fn new(start: V, heading: V, kind: RangedKind) -> Self {
         Self {
             pos: start,
-            dir: dir.or_down(),
+            dir: Dir::nearest(heading),
             kind,
             def: weapon(kind),
             traveled: 0.0,
@@ -51,7 +52,7 @@ impl Projectile {
             returning: false,
             struck: HashSet::new(),
             spin: 0.0,
-            heading: dir.or_down().vecf(),
+            heading,
         }
     }
 
@@ -135,19 +136,18 @@ impl Projectile {
     }
 }
 
-/// Spawns the projectiles a weapon fires from a position and facing.
-pub fn spawn_shots(kind: RangedKind, from: V, facing: Dir) -> Vec<Projectile> {
+/// Spawns the projectiles a weapon fires from a position along `aim` (a unit vector, `Hero::aim`).
+pub fn spawn_shots(kind: RangedKind, from: V, aim: V) -> Vec<Projectile> {
     let def = weapon(kind);
-    let dir = facing.or_down();
-    let f = dir.vecf();
+    let f = aim;
     let right = V::new(-f.y, f.x);
     let mut shots = Vec::new();
     for &off in def.lateral {
-        shots.push(Projectile::new(V::new(from.x + right.x * off, from.y + right.y * off), dir, kind));
+        shots.push(Projectile::new(V::new(from.x + right.x * off, from.y + right.y * off), f, kind));
     }
     if def.spread {
-        let sides = if dir == Dir::Up || dir == Dir::Down { [Dir::Left, Dir::Right] } else { [Dir::Up, Dir::Down] };
-        for side in sides {
+        // Out to either side, square to the aim.
+        for side in [V::new(-right.x, -right.y), right] {
             shots.push(Projectile::new(from, side, kind));
         }
     }
@@ -160,14 +160,25 @@ mod tests {
 
     #[test]
     fn trishot_fires_three_ways() {
-        let shots = spawn_shots(RangedKind::Trishot, V::new(3.0, 3.0), Dir::Up);
+        let shots = spawn_shots(RangedKind::Trishot, V::new(3.0, 3.0), Dir::Up.vecf());
         let dirs: Vec<Dir> = shots.iter().map(|s| s.dir).collect();
         assert_eq!(dirs, vec![Dir::Up, Dir::Left, Dir::Right]);
     }
 
     #[test]
+    fn shots_fly_any_way_they_are_aimed() {
+        let aim = V::new(0.6, 0.8);
+        let shots = spawn_shots(RangedKind::Trishot, V::new(3.0, 3.0), aim);
+        assert_eq!((shots[0].heading.x, shots[0].heading.y), (0.6, 0.8));
+        // The side shots go square to it.
+        for s in &shots[1..] {
+            assert!((s.heading.x * aim.x + s.heading.y * aim.y).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn double_arrow_is_side_by_side() {
-        let shots = spawn_shots(RangedKind::Double, V::new(3.0, 3.0), Dir::Right);
+        let shots = spawn_shots(RangedKind::Double, V::new(3.0, 3.0), Dir::Right.vecf());
         assert_eq!(shots.len(), 2);
         assert!((shots[0].pos.y - shots[1].pos.y).abs() > 0.5);
     }

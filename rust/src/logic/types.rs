@@ -23,6 +23,17 @@ pub enum Dir {
 }
 
 impl Dir {
+    /// The one of the four closest to the way `v` points (Down for a zero vector).
+    pub fn nearest(v: V) -> Dir {
+        if v.x.abs() >= v.y.abs() && v.x != 0.0 {
+            if v.x > 0.0 { Dir::Right } else { Dir::Left }
+        } else if v.y < 0.0 {
+            Dir::Up
+        } else {
+            Dir::Down
+        }
+    }
+
     pub fn vec(self) -> (i32, i32) {
         match self {
             Dir::Up => (0, -1),

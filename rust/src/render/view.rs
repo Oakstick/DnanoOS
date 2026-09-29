@@ -1973,7 +1973,7 @@ impl WorldView {
         // --- bombs
         for b in s.bombs {
             let on = b.is_flash_on(s.time);
-            let pos = Vec3::new(b.tile.x as f32, floor_at(grid, b.tile.x as f32, b.tile.y as f32), b.tile.y as f32);
+            let pos = Vec3::new(b.at.x as f32, floor_at(grid, b.tile.x as f32, b.tile.y as f32), b.at.y as f32);
             let tint = if on { Vec3::ONE } else { lin(0x9a9a9a) };
             let glow = if on { Vec3::splat(0.9) } else { Vec3::ZERO };
             emit_mesh(&mut f.opaque[cube], &self.models.bomb, Mat4::from_translation(pos), tint, 1.0, glow);

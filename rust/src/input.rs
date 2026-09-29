@@ -323,9 +323,9 @@ impl Input {
     }
 
     /**
-     * Free movement's direction, one of eight (or none): held keys add up, so
-     * W and D together run diagonally and opposite keys cancel; the left stick
-     * snaps to the nearest of eight directions. Unit length.
+     * Free movement's direction (or none), unit length: held keys add up, so
+     * W and D together run diagonally and opposite keys cancel (eight ways);
+     * the left stick points any way at all.
      */
     pub fn move_vector(&self) -> (f64, f64) {
         let mut v = (0.0, 0.0);
@@ -336,7 +336,7 @@ impl Input {
         };
         let stick = self.pad.as_ref().filter(|p| p.dpad.is_none()).map(|p| p.left).filter(|&(x, y)| x.abs().max(y.abs()) >= MOVE_DEADZONE);
         if let Some((x, y)) = stick {
-            let a = ((y as f64).atan2(x as f64) / std::f64::consts::FRAC_PI_4).round() * std::f64::consts::FRAC_PI_4;
+            let a = (y as f64).atan2(x as f64);
             return (a.cos(), a.sin());
         }
         if self.pad_dir != Dir::None {
