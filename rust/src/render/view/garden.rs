@@ -457,7 +457,9 @@ impl WorldView {
         let (hx, hy) = (b.x as f64, b.y as f64);
         let low = grid.elevation(b.x, b.y) as f32 * STEP;
         // Which way the path runs (north-south for a river flowing west), and which end is higher.
-        let along_z = grid.get(b.x, b.y - 1) != Tile::Rock || grid.get(b.x, b.y + 1) != Tile::Rock;
+        // A path two tiles wide crosses on two bridge tiles side by side, one after the other along the water.
+        let path = |x: i32, y: i32| grid.get(x, y) != Tile::Rock && !grid.is_bridge(x, y);
+        let along_z = !(path(b.x - 1, b.y) || path(b.x + 1, b.y)) || path(b.x, b.y - 1) || path(b.x, b.y + 1);
         let (ax, az) = if along_z { (0.0f32, 1.0f32) } else { (1.0, 0.0) };
         let hi_end = if grid.is_ramp(b.x, b.y) {
             let a = if along_z { grid.elevation(b.x, b.y + 1) } else { grid.elevation(b.x + 1, b.y) };
@@ -479,9 +481,17 @@ impl WorldView {
             let hk = hash(hx + i as f64, hy * 3.0);
             cube(&mut self.static_cubes, at(u, 0.0, top - 0.06), dims(0.84, 0.12, 1.0 / 3.0 - 0.01), 0.0, jit(BRIDGE, hk, 0.06));
         }
-        // Spandrel walls under the deck, each with an arch ring of voussoirs.
+        // Spandrel walls under the deck, each with an arch ring of voussoirs; none on a side
+        // where the next bridge tile of a wide crossing carries the deck on.
         let water_top = low - WATER_DROP;
+        let widened = |side: f32| {
+            let s = if side < 0.0 { -1 } else { 1 };
+            if along_z { grid.is_bridge(b.x + s, b.y) } else { grid.is_bridge(b.x, b.y + s) }
+        };
         for side in [-0.42f32, 0.42] {
+            if widened(side) {
+                continue;
+            }
             for k in 0..9 {
                 let t = k as f32 / 8.0;
                 let u = -0.5 + t;

@@ -507,8 +507,12 @@ impl Game {
         self.gate_hint = 0.0;
         self.audio.set_tempo_step(0);
 
+        // Those waiting in the hollow stand along its middle row: at either end and in the middle.
         let c = self.level.nest_center;
-        self.nest_slots = vec![self.level.enemy_spawn, P::new(c.x - 2, c.y), P::new(c.x, c.y), P::new(c.x + 2, c.y)];
+        let g = &self.level.grid;
+        let row: Vec<P> = (0..g.width).map(|x| P::new(x, c.y)).filter(|p| g.get(p.x, p.y) == Tile::Nest && (p.x - c.x).abs() <= 3).collect();
+        let (first, last) = (row.first().copied().unwrap_or(c), row.last().copied().unwrap_or(c));
+        self.nest_slots = vec![self.level.enemy_spawn, first, c, last];
 
         // Clearing a dungeon keeps the held weapon and its ammo; only death takes them.
         let carried = if self.hero.alive && self.hero.holding_pickup() { Some((self.hero.weapon, self.hero.ammo)) } else { None };
@@ -1490,6 +1494,7 @@ impl Game {
         self.unlock_gate();
         self.hero.m.teleport(P::new(g.x, g.y + 2));
         self.hero.face(Dir::Up);
+        self.view.aim_along(Dir::Up);
     }
 
     /// F1: skip straight to the first Cyclops, from anywhere.
@@ -2892,6 +2897,14 @@ impl Game {
     }
 
     /// Test and capture hook: an enemy's touch.
+    /// Capture hook: straight into dungeon `index` (0 is the first) with a fresh kit, after a countdown.
+    pub fn debug_dungeon(&mut self, index: usize) {
+        self.score.reset();
+        self.new_kit();
+        self.load_level(index);
+        self.enter(Screen::Ready);
+    }
+
     /// Capture hook: `rows` rows of one of each foe standing a few tiles before the hero, facing him.
     pub fn debug_foes(&mut self, rows: usize) {
         let specs = default_enemy_specs(&self.level.grid);
@@ -3223,6 +3236,14 @@ mod tests {
         g.input.mouse_button(winit::event::MouseButton::Left, true);
         g.update(crate::app::STEP);
         assert_eq!(g.screen, Screen::Title);
+    }
+
+    #[test]
+    fn those_waiting_in_the_hollow_stand_in_it() {
+        let g = playing();
+        for p in &g.nest_slots[1..] {
+            assert_eq!(g.level.grid.get(p.x, p.y), Tile::Nest, "{p:?} is not in the hollow");
+        }
     }
 
     #[test]

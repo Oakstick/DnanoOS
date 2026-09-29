@@ -162,12 +162,13 @@ fn fountain_channels(grid: &Grid, keep: &[P]) -> Option<(RiverTile, Vec<Vec<Rive
                 if n.x == 0 || n.y == 0 || n.x == grid.width - 1 || n.y == grid.height - 1 {
                     break; // over the edge
                 }
-            } else if crosses(grid, n, d) {
-                course.push(n);
+                p = n;
+            } else if let Some(run) = crossing(grid, n, d) {
+                p = *run.last().unwrap();
+                course.extend(run);
             } else {
                 break;
             }
-            p = n;
         }
         // A channel never ends under a bridge.
         while course.last().is_some_and(|q| grid.get(q.x, q.y) != Tile::Rock) {
@@ -193,15 +194,27 @@ fn fountain_channels(grid: &Grid, keep: &[P]) -> Option<(RiverTile, Vec<Vec<Rive
     Some((RiverTile { p: c, level: top }, channels, bridges))
 }
 
-/// Can water running `d` cross the path at `p` square-on: the path running across the flow, wall ahead and behind?
-fn crosses(grid: &Grid, p: P, d: Dir) -> bool {
+/**
+ * The path water running `d` from `p` would cross square-on: a run of floor
+ * tiles (as wide as the path) each with the path going on to either side, wall
+ * before the run and after it. None if the water cannot cross there.
+ */
+fn crossing(grid: &Grid, p: P, d: Dir) -> Option<Vec<P>> {
     let (dx, dy) = d.vec();
     let path = |x: i32, y: i32| grid.is_walkable(x, y, false);
-    (open_floor(grid, p.x, p.y) || grid.is_ramp(p.x, p.y))
-        && grid.get(p.x - dx, p.y - dy) == Tile::Rock
-        && grid.get(p.x + dx, p.y + dy) == Tile::Rock
-        && path(p.x - dy, p.y - dx)
-        && path(p.x + dy, p.y + dx)
+    if grid.get(p.x - dx, p.y - dy) != Tile::Rock {
+        return None;
+    }
+    let mut run = vec![];
+    let mut q = p;
+    while (open_floor(grid, q.x, q.y) || grid.is_ramp(q.x, q.y)) && path(q.x - dy, q.y - dx) && path(q.x + dy, q.y + dx) {
+        run.push(q);
+        if run.len() > 3 {
+            return None;
+        }
+        q = P::new(q.x + dx, q.y + dy);
+    }
+    (!run.is_empty() && grid.get(q.x, q.y) == Tile::Rock).then_some(run)
 }
 
 /// Water lies at the lowest floor beside it, never above the water upstream; where it steps down, it falls over a weir.
@@ -280,8 +293,9 @@ fn place_features(grid: &Grid, plan: &mut GardenPlan) {
     blocks.sort_by_key(|b| (b[0].y, b[0].x));
     let hero_side = |b: &[P]| center(b);
 
-    // The churchyard: the biggest walled enclosure, away from the middle.
-    let mut big: Vec<usize> = (0..blocks.len()).filter(|&i| (8..=30).contains(&blocks[i].len())).collect();
+    // The churchyard: the biggest walled enclosure, away from the middle. (With corridors two
+    // tiles wide the enclosures are longer; the long walls quartering the estate are longer still.)
+    let mut big: Vec<usize> = (0..blocks.len()).filter(|&i| (10..=50).contains(&blocks[i].len())).collect();
     big.sort_by(|&a, &b| blocks[b].len().cmp(&blocks[a].len()).then(hero_side(&blocks[a]).0.total_cmp(&hero_side(&blocks[b]).0).reverse()));
     let mut used: HashSet<usize> = HashSet::new();
     if let Some(&g) = big.first() {
@@ -362,11 +376,13 @@ mod tests {
     fn four_channels_run_from_the_fountain_and_are_bridged_at_every_path() {
         let (grid, plan, _) = garden();
         let f = plan.fountain.expect("a fountain");
-        assert_eq!((f.p.x, f.p.y), (26, 22), "in the middle of the estate");
+        let (w, h) = (grid.width, grid.height);
+        let mid = P::new((w - 1) / 2, (h - 1) / 2);
+        assert_eq!(f.p, mid, "in the middle of the estate");
         assert_eq!(plan.channels.len(), 4);
-        // North stops short of the gate; east, south and west pour off the edge.
+        // North stops short of the gate, below the corridor in front of it; east, south and west pour off the edge.
         let ends: Vec<P> = plan.channels.iter().map(|c| c.last().unwrap().p).collect();
-        assert_eq!(ends, vec![P::new(26, 2), P::new(52, 22), P::new(26, 44), P::new(0, 22)]);
+        assert_eq!(ends, vec![P::new(mid.x, 3), P::new(w - 1, mid.y), P::new(mid.x, h - 1), P::new(0, mid.y)]);
         for c in &plan.channels {
             let first = c[0];
             assert_eq!((first.p.x - f.p.x).abs() + (first.p.y - f.p.y).abs(), 1, "it leaves the basin");

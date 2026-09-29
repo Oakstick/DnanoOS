@@ -1192,6 +1192,12 @@ impl WorldView {
         self.trees.iter().filter(|t| t.alive).map(|t| t.fade)
     }
 
+    /// Tiles with a tree standing on them (for tests).
+    #[cfg(test)]
+    pub fn tree_tiles(&self) -> Vec<P> {
+        self.tree_index.keys().copied().collect()
+    }
+
     fn update_effects(&mut self, dt: f32, _s: &SceneState) {
         let drag = 1.0 - (2.4 * dt).min(0.9);
         self.particles.retain_mut(|p| {
@@ -2466,15 +2472,25 @@ mod tests {
     #[test]
     fn trees_fade_out_of_the_way_at_spawn() {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
-        // At the web build's old spawn (2,4) the chase camera sits behind a wall tree;
-        // it must fade, and not much else.
+        // Standing right against a wall tree, south of it and facing south, the chase camera can only
+        // sit behind the tree (as at the web build's old spawn). It must fade, and not much else.
         let mut g = crate::game::Game::new();
         // Play on the title, then begin with Ragnar on the character screen.
         for _ in 0..2 {
             g.input.inject(crate::input::Action::Confirm);
             g.update(crate::app::STEP);
         }
-        g.hero.m.teleport(P::new(2, 4));
+        let grid = g.level.grid.clone();
+        let mut spots: Vec<P> = g
+            .view
+            .tree_tiles()
+            .into_iter()
+            .map(|t| P::new(t.x, t.y + 1))
+            .filter(|p| grid.is_walkable(p.x, p.y, false) && grid.is_walkable(p.x, p.y + 1, false))
+            .collect();
+        spots.sort_by_key(|p| (p.y, p.x));
+        let spot = *spots.first().expect("a tree with room south of it");
+        g.hero.m.teleport(spot);
         g.hero.facing = Dir::Down;
         g.view.aim_along(Dir::Down);
         for _ in 0..300 {

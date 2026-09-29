@@ -13,6 +13,7 @@
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
 //! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
 //! `foes:N` (N rows of one of each foe before him, best in the Cyclops' open meadow),
+//! `dungeon:N` (straight into dungeon N, 0 being the first),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
 //! where `pause` skips it).
@@ -47,6 +48,7 @@ enum Cmd {
     Goo,
     Gate,
     Foes(usize),
+    Dungeon(usize),
     /// Every tree owned up to tier N, that weapon in hand and that shield on his back.
     Arm(u8),
     Shield(u8),
@@ -100,6 +102,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "goo" => Cmd::Goo,
             "gate" => Cmd::Gate,
             "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "arm" => Cmd::Arm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "shield" => Cmd::Shield(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "runes" => Cmd::Runes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
@@ -186,6 +189,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Goo => game.debug_goo(),
                 Cmd::Gate => game.cheat_to_gate(),
                 Cmd::Foes(rows) => game.debug_foes(rows),
+                Cmd::Dungeon(n) => game.debug_dungeon(n),
                 Cmd::Arm(tier) => game.debug_arm(tier),
                 Cmd::Shield(tier) => {
                     game.hero.shield = (tier > 0).then(|| crate::logic::gear::ShieldGear::new(tier.min(crate::logic::progression::TIERS)));

@@ -17,8 +17,10 @@ pub const POTION_PLAN: [PotionKind; 5] =
 pub const PITS_PER_LEVEL: usize = 6;
 /// Manhattan distance kept between two pits.
 const MIN_PIT_SPACING: i32 = 6;
-/// Tiles per authored cell: corridors are this many tiles wide.
+/// Tiles per authored cell in the classic dungeon (the boss arenas' base).
 pub const WORLD_SCALE: usize = 1;
+/// Corridors in an estate are this many tiles wide; the walls between them keep their thickness.
+pub const CORRIDOR_WIDTH: usize = 2;
 
 /**
  * 14 x 12 base quadrant, mirrored into a 27 x 23 dungeon. Corridors are one
@@ -342,6 +344,64 @@ pub fn upscale(layout: &Layout, scale: usize) -> Layout {
 }
 
 /**
+ * How many tiles each column and row of an estate becomes: `width` for every
+ * one that carries a corridor in the quadrant it is mirrored from (a column
+ * where the path runs up and down, a row where it runs across), one for the
+ * rest, so the walls between corridors keep their thickness.
+ */
+pub fn estate_widths(width: usize) -> (Vec<usize>, Vec<usize>) {
+    let q: Vec<Vec<char>> = QUADRANT.iter().map(|r| r.chars().collect()).collect();
+    let (qw, qh) = (q[0].len(), q.len());
+    let open = |x: usize, y: usize| !matches!(q[y][x], '#' | 'N');
+    let qcols: Vec<usize> = (0..qw).map(|x| if (0..qh - 1).any(|y| open(x, y) && open(x, y + 1)) { width } else { 1 }).collect();
+    let qrows: Vec<usize> = (0..qh).map(|y| if (0..qw - 1).any(|x| open(x, y) && open(x + 1, y)) { width } else { 1 }).collect();
+    // A quadrant is mirrored into a dungeon, and the dungeon into the estate, sharing the middle line each time.
+    let mirror = |v: &[usize]| -> Vec<usize> { v.iter().chain(v.iter().rev().skip(1)).copied().collect() };
+    (mirror(&mirror(&qcols)), mirror(&mirror(&qrows)))
+}
+
+/**
+ * Widens the corridors of `layout`, repeating each column and row as many
+ * times as `cols` and `rows` say (see `estate_widths`). As in `upscale`, a pit
+ * becomes a trench right across the road; walls, floor, the hollow and the
+ * tunnels fill their widened cell; and a pickup, shrine or spawn sits once in
+ * it (the gate too, walled in beside it).
+ */
+pub fn widen(layout: &Layout, cols: &[usize], rows: &[usize]) -> Layout {
+    let src = &layout.rows;
+    assert_eq!((cols.len(), rows.len()), (src[0].len(), src.len()), "widths for every column and row");
+    let mut out_rows = Vec::new();
+    let mut out_heights = Vec::new();
+    for (y, row) in src.iter().enumerate() {
+        let fy = rows[y];
+        for dy in 0..fy {
+            let mut out = Vec::new();
+            let mut hout = Vec::new();
+            for (x, &c) in row.iter().enumerate() {
+                let fx = cols[x];
+                for dx in 0..fx {
+                    let middle = dx == fx / 2 && dy == fy / 2;
+                    out.push(match c {
+                        '#' | ' ' | 'N' | '-' => c,
+                        '~' if dx == fx / 2 => '~',
+                        '^' if dy == fy / 2 => '~',
+                        '~' | '^' => ' ',
+                        'D' if middle => 'D',
+                        'D' => '#',
+                        _ if middle => c,
+                        _ => ' ',
+                    });
+                    hout.push(layout.heights[y][x]);
+                }
+            }
+            out_rows.push(out);
+            out_heights.push(hout);
+        }
+    }
+    Layout { rows: out_rows, heights: out_heights }
+}
+
+/**
  * Replaces the coin carpet with `count` gold nuggets. Every '.' becomes plain
  * floor, then nuggets are placed on open tiles by a seeded shuffle with a
  * minimum spacing that relaxes only if the dungeon cannot fit them all.
@@ -585,7 +645,8 @@ pub fn decorate_estate(layout: &Layout, seed: u32) -> Layout {
     let pitted = place_pits(&layout, PITS_PER_LEVEL * 3, seed);
     let plan = vec![PotionKind::Health; 6];
     let rows = place_potions(&place_keys(&pitted.rows, KEYS_PER_LEVEL, seed), &plan, seed);
-    upscale(&Layout { rows, heights: pitted.heights }, WORLD_SCALE)
+    let (cols, widened) = estate_widths(CORRIDOR_WIDTH);
+    widen(&Layout { rows, heights: pitted.heights }, &cols, &widened)
 }
 
 fn estate(name: &str, seed: u32, hero_speed: f64, enemy_speed: f64, frenzy_seconds: f64) -> LevelData {
@@ -737,8 +798,9 @@ mod tests {
     #[test]
     fn the_estate_is_four_dungeons_with_eight_keys_and_a_gate() {
         let data = level_for(0);
-        assert_eq!(data.rows.len(), 45);
-        assert!(data.rows.iter().all(|r| r.chars().count() == 53));
+        // Four 27 x 23 dungeons (53 x 45 joined), every corridor two tiles wide.
+        assert_eq!(data.rows.len(), 61);
+        assert!(data.rows.iter().all(|r| r.chars().count() == 73));
         let level = parse_level(&data);
         assert_eq!(level.grid.count(Tile::Nodule), KEYS_PER_LEVEL);
         assert_eq!(level.potions.len(), 6);
@@ -746,26 +808,60 @@ mod tests {
         assert_eq!(level.grid.count(Tile::Charge), 0, "no green crosses");
         assert_eq!(level.weapon_shrines.len(), 4);
         assert_eq!(level.item_shrines.len(), 4);
-        assert_eq!(level.grid.count(Tile::Nest), 6, "one hollow");
+        assert_eq!(level.grid.count(Tile::Nest), 8, "one hollow");
         let gate = level.gate.expect("a gate");
-        assert_eq!((gate.x, gate.y), (26, 0));
+        assert_eq!((gate.x, gate.y), (36, 0));
         assert!(level.grid.is_walkable(gate.x, gate.y + 1, false), "a passage leads to the gate");
         // Two keys to each quarter.
         for q in 0..4 {
-            let n = level.grid.cells().filter(|&(x, y, t)| t == Tile::Nodule && (x > 26) as usize + 2 * (y > 22) as usize == q).count();
+            let n = level.grid.cells().filter(|&(x, y, t)| t == Tile::Nodule && (x > 36) as usize + 2 * (y > 30) as usize == q).count();
             assert_eq!(n, 2, "quarter {q}");
         }
     }
 
     #[test]
-    fn every_pickup_and_the_gate_are_reachable_with_jumps() {
+    fn every_corridor_is_two_tiles_wide_and_the_walls_keep_their_thickness() {
+        let q: Vec<Vec<char>> = QUADRANT.iter().map(|r| r.chars().collect()).collect();
+        let (cols, rows) = estate_widths(CORRIDOR_WIDTH);
+        assert_eq!((cols.len(), rows.len()), (53, 45));
+        // In the quadrant: the corridors running up and down, and across, are the widened ones.
+        assert_eq!(cols[..14].iter().enumerate().filter(|(_, &n)| n == 2).map(|(i, _)| i).collect::<Vec<_>>(), vec![1, 4, 7, 10, 12]);
+        assert_eq!(rows[..12].iter().enumerate().filter(|(_, &n)| n == 2).map(|(i, _)| i).collect::<Vec<_>>(), vec![1, 4, 7, 10]);
+        assert_eq!(q[2][2..4], ['#', '#'], "a wall block's columns stay one tile each");
+        // No stretch of open floor in the estate is a single tile wide across its whole run.
         let level = parse_level(&level_for(0));
-        let seen = reachable(&level.grid, level.hero_spawn, true, false);
-        let gate = level.gate.unwrap();
-        assert!(seen.contains(&crate::logic::types::P::new(gate.x, gate.y + 1)));
-        for (x, y, t) in level.grid.cells() {
-            if t == Tile::Nodule || t == Tile::Charge {
-                assert!(seen.contains(&crate::logic::types::P::new(x, y)), "pickup at {x},{y} unreachable");
+        let g = &level.grid;
+        let floor = |x: i32, y: i32| g.in_bounds(x, y) && g.get(x, y) != Tile::Rock && g.get(x, y) != Tile::Nest;
+        for y in 1..g.height - 1 {
+            let mut x = 1;
+            while x < g.width - 1 {
+                // A run across of three or more floor tiles is a corridor: it has floor above or below all along.
+                let start = x;
+                while floor(x, y) {
+                    x += 1;
+                }
+                if x - start >= 3 {
+                    assert!((start..x).all(|i| floor(i, y - 1) || floor(i, y + 1)), "row {y} from {start} to {x} is a lone tile wide");
+                }
+                x += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn every_pickup_and_the_gate_are_reachable_with_jumps() {
+        for index in 0..4 {
+            let level = parse_level(&level_for(index));
+            let seen = reachable(&level.grid, level.hero_spawn, true, false);
+            let gate = level.gate.unwrap();
+            assert!(seen.contains(&crate::logic::types::P::new(gate.x, gate.y + 1)), "dungeon {index}'s gate");
+            for (x, y, t) in level.grid.cells() {
+                if t == Tile::Nodule || t == Tile::Charge {
+                    assert!(seen.contains(&crate::logic::types::P::new(x, y)), "dungeon {index}: pickup at {x},{y} unreachable");
+                }
+            }
+            for p in level.weapon_shrines.iter().chain(&level.item_shrines).chain(level.potions.iter().map(|(p, _)| p)) {
+                assert!(seen.contains(p), "dungeon {index}: {p:?} unreachable");
             }
         }
     }
