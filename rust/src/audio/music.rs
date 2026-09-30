@@ -151,7 +151,7 @@ impl Sequencer {
         }
 
         // --- lyre: plucked eighth-note arpeggios
-        if lyre_on && beat % 2 == 0 {
+        if lyre_on && beat.is_multiple_of(2) {
             let pattern = [0usize, 1, 2, 3, 2, 1, 2, 1];
             let tone = LYRE[bar][pattern[(beat / 2) % 8]];
             lyre(s, t, tone, 0.05 + 0.02 * intensity);

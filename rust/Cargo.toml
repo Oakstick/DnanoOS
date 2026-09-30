@@ -42,6 +42,13 @@ wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "Storage", "Node", "console", "CssStyleDeclaration"] }
 
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Grid code walks rows and columns by index on purpose.
+needless_range_loop = "allow"
+
 [build-dependencies]
 winresource = "0.1"
 

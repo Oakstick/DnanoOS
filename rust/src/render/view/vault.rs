@@ -111,7 +111,7 @@ pub fn pile() -> Mesh {
     s.ellipsoid((7.4, 1.2, 3.6), (2.6, 3.0, 2.6), 0, GOLD);
     s.paint(|x, y, z, _| {
         let n = ((x * 7 + y * 13 + z * 3) % 11) as f32 / 11.0;
-        Some(if n < 0.12 { GOLD_L } else if n > 0.8 { GOLD_D } else if y == 0 { GOLD_D } else { GOLD })
+        Some(if n < 0.12 { GOLD_L } else if n > 0.8 || y == 0 { GOLD_D } else { GOLD })
     });
     mesh_from(&s.finish(0.05), 0.06)
 }

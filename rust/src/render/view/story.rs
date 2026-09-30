@@ -1128,7 +1128,7 @@ impl WorldView {
             raise = smooth(0.6, 1.4, t) * 0.8;
             head = -0.5 * smooth(0.8, 1.6, t) * (1.0 - smooth(3.5, 4.5, t));
         }
-        if descent < 100.0 && descent >= 0.0 {
+        if (0.0..100.0).contains(&descent) {
             // Stepping aside for them; a hand raised to see them off.
             om_feet = OLD_MAN_AT.lerp(OLD_MAN_AT + Vec3::new(0.45, 0.0, 0.25), smooth(stage::DOOR - 0.6, stage::DOOR + 0.6, descent));
             om_yaw = yaw_to(om_feet, BOYS_MID.lerp(Vec3::new(0.0, 0.0, -3.4), smooth(stage::WALK, stage::WALK + 5.0, descent)));
@@ -1181,7 +1181,7 @@ impl WorldView {
                 look = (SOUL_AT[b].x - feet.x) * 0.3;
             }
             let mut glow = Vec3::ZERO;
-            if descent < 100.0 && descent >= 0.0 {
+            if (0.0..100.0).contains(&descent) {
                 let arrive_at = stage::SOULS_TAKEN + 1.2;
                 let g = (1.0 - (descent - arrive_at).abs() / 0.9).max(0.0) + if descent > arrive_at { 0.15 * (1.0 - smooth(arrive_at, arrive_at + 3.0, descent)) } else { 0.0 };
                 glow = lin(SOUL_TINT[b]) * g * 0.22;
@@ -1524,7 +1524,7 @@ impl WorldView {
                 (look + (eye - look) * push, look, d + OLD_MAN_AT + v(0.0, 0.95, 0.0))
             }
             Shot::Boys => {
-                let (eye, look) = if sv.said_before(Speaker::Boys) % 2 == 0 { (d + v(0.72, 0.82, -0.4), d + v(0.05, 0.48, 1.7)) } else { (d + v(-0.6, 0.78, -0.25), d + v(0.1, 0.5, 1.75)) };
+                let (eye, look) = if sv.said_before(Speaker::Boys).is_multiple_of(2) { (d + v(0.72, 0.82, -0.4), d + v(0.05, 0.48, 1.7)) } else { (d + v(-0.6, 0.78, -0.25), d + v(0.1, 0.5, 1.75)) };
                 let push = 1.0 - 0.06 * smooth(0.0, 5.0, t);
                 (look + (eye - look) * push, look, d + BOYS_MID + v(0.0, 0.5, 0.0))
             }

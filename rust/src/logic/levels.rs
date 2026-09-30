@@ -118,11 +118,10 @@ pub fn compose_dungeon(base: &[&str]) -> Layout {
                         grid[y][x] = '.';
                     }
                 }
-                '-' => {
-                    if x == mid_x {
+                '-'
+                    if x == mid_x => {
                         grid[y][x] = '.';
                     }
-                }
                 _ => {}
             }
         }

@@ -429,7 +429,8 @@ mod tests {
         i.hold_dir(Dir::Up, true);
         i.hold_dir(Dir::Right, true);
         let (x, y) = i.move_vector();
-        assert!((x - 0.7071).abs() < 1e-3 && (y + 0.7071).abs() < 1e-3, "up and right run diagonally: {x},{y}");
+        let d = std::f64::consts::FRAC_1_SQRT_2;
+        assert!((x - d).abs() < 1e-3 && (y + d).abs() < 1e-3, "up and right run diagonally: {x},{y}");
         i.hold_dir(Dir::Down, true);
         assert_eq!(i.move_vector(), (1.0, 0.0), "up and down cancel");
         i.clear_direction();

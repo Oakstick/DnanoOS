@@ -1,0 +1,2 @@
+# Drawing calls take a position, a size, a colour and a style: eight arguments is normal here.
+too-many-arguments-threshold = 8

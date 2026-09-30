@@ -203,7 +203,7 @@ impl Vault {
         rng.shuffle(&mut edges);
         let n = rooms.len();
         let mut group: Vec<usize> = (0..n).collect();
-        fn find(g: &mut Vec<usize>, i: usize) -> usize {
+        fn find(g: &mut [usize], i: usize) -> usize {
             let mut r = i;
             while g[r] != r {
                 r = g[r];

@@ -320,7 +320,7 @@ fn fountain_stone() -> (Mesh, Mesh) {
     let c = 19.5f32;
     let oct = |x: i32, z: i32| {
         let (dx, dz) = ((x as f32 - c).abs(), (z as f32 - c).abs());
-        dx.max(dz).max((dx + dz) * 0.7071)
+        dx.max(dz).max((dx + dz) * std::f32::consts::FRAC_1_SQRT_2)
     };
     let round = |x: i32, z: i32| ((x as f32 - c).powi(2) + (z as f32 - c).powi(2)).sqrt();
     for z in 0..40 {

@@ -266,8 +266,8 @@ impl WorldView {
                 let p = hinge + rot * Vec3::new(-side * local.x, local.y, local.z);
                 f.opaque[cube_i].push(Instance::new(Mat4::from_scale_rotation_translation(scale, rot, p), color, 1.0, Vec3::ZERO, SHADE_LIT));
             };
-            for k in 0..3 {
-                leaf(f, Vec3::new(0.07 + k as f32 * 0.14, 0.66, 0.0), Vec3::new(0.135, 1.32, 0.06), lin(OAK[k]));
+            for (k, oak) in OAK.iter().enumerate() {
+                leaf(f, Vec3::new(0.07 + k as f32 * 0.14, 0.66, 0.0), Vec3::new(0.135, 1.32, 0.06), lin(*oak));
             }
             for y in [0.25f32, 1.05] {
                 leaf(f, Vec3::new(0.21, y, 0.035), Vec3::new(0.42, 0.06, 0.02), lin(IRON));

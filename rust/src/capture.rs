@@ -270,7 +270,7 @@ pub fn run(args: &[String]) -> i32 {
         };
         game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62 + (2.1 - dist).max(0.0) * 0.12, p.y as f32), face + deg.to_radians(), dist);
     }
-    if let Some(v) = arg(&args, "--view") {
+    if let Some(v) = arg(args, "--view") {
         let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
         if n.len() >= 5 {
             let target = glam::Vec3::new(n[0], n[1], n[2]);
@@ -282,7 +282,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     game.view.emit(&game.scene(), &mut frame);
     // A story shot sets its own camera as it draws; aim again afterwards so `--view` can frame the cast.
-    if let Some(v) = arg(&args, "--view") {
+    if let Some(v) = arg(args, "--view") {
         let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
         if n.len() >= 5 && game.screen == crate::game::Screen::Story {
             let target = glam::Vec3::new(n[0], n[1], n[2]);
@@ -302,7 +302,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     gpu.sync_static(&mut game.view);
     let rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
-    if let Some(n) = arg(&args, "--bench").and_then(|n| n.parse::<u32>().ok()) {
+    if let Some(n) = arg(args, "--bench").and_then(|n| n.parse::<u32>().ok()) {
         let ms = gpu.bench(&game.view, &frame, &overlay.verts, (w as f32, h as f32), n);
         eprintln!("bench: {ms:.2} ms a frame over {n} frames ({:.0} fps)", 1000.0 / ms);
     }

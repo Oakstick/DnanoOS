@@ -412,9 +412,8 @@ fn back_shield(s: &mut Sculpt, kind: ShieldKind) {
                         continue;
                     }
                     if kind == ShieldKind::Round {
-                        if r < 1.2 {
-                            IRON
-                        } else if r > 3.6 {
+                        // The boss and the rim are iron; the boards between alternate.
+                        if !(1.2..=3.6).contains(&r) {
                             IRON
                         } else if x % 2 == 0 {
                             WOOD

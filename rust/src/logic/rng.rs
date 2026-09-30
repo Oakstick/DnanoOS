@@ -19,6 +19,8 @@ impl Rng {
         Self::new((ms ^ (ms >> 32)) as u32)
     }
 
+    /// The next number in [0, 1). (Not an `Iterator`: the stream never ends and never fails.)
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> f64 {
         self.s = self.s.wrapping_add(0x6d2b_79f5);
         let mut t = self.s;

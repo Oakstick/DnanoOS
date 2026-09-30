@@ -242,7 +242,7 @@ pub fn witch() -> Collected {
         for z in 0..d {
             for x in 0..w {
                 let r = ((x as f32 - cx).powi(2) / (12.0f32).powi(2) + (z as f32 - cz).powi(2) / (11.0f32).powi(2)).sqrt();
-                let wave = ((x as f32 * 0.5).sin() * 0.05) as f32;
+                let wave = (x as f32 * 0.5).sin() * 0.05;
                 if r <= 1.0 + wave {
                     s.set(x, y, z, if r > 0.92 { HAT_L } else { HAT });
                 }
@@ -467,7 +467,7 @@ pub fn helmeted_skeleton() -> Collected {
                     continue;
                 }
                 let dent = ((x as f32 - 14.0).powi(2) + (y as f32 - 68.0).powi(2) + (z as f32 - 12.0).powi(2)).sqrt() < 2.6;
-                let c = if y <= 64 { HELM_D } else if dent { HELM_D } else if nz(x, y, z) > 0.8 { HELM_L } else { HELM };
+                let c = if y <= 64 || dent { HELM_D } else if nz(x, y, z) > 0.8 { HELM_L } else { HELM };
                 s.set(x, y, z, c);
             }
         }
@@ -512,7 +512,7 @@ pub fn loup_garou() -> Collected {
         ball(&mut s, v(lx, 26.0, lz), v(4.2, 4.6, 5.0), FUR);
         s.capsule((lx, 26.0, lz), (lx, 15.0, lz + if back { -2.0 } else { 1.5 }), 3.6, 2.7, FUR);
         s.capsule((lx, 15.0, lz + if back { -2.0 } else { 1.5 }), (lx, 5.0, lz + if back { 1.0 } else { 0.5 }), 2.6, 2.2, FUR_D);
-        let pz = lz + if back { 2.5 } else { 2.5 };
+        let pz = lz + 2.5;
         ball(&mut s, v(lx, 2.4, pz), v(3.0, 2.3, 3.6), FUR_D);
         for f in [-1.6f32, 0.0, 1.6] {
             s.capsule((lx + f, 1.6, pz + 2.6), (lx + f * 1.2, 0.8, pz + 5.2), 0.7, 0.35, CLAW);

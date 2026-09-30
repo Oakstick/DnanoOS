@@ -31,7 +31,7 @@ fn in_swing(hero: V, aim: V, p: V) -> bool {
     let dy = p.y - hero.y;
     let along = dx * f.x + dy * f.y; // distance in front of the hero
     let across = (dx * f.y - dy * f.x).abs(); // lateral offset
-    along >= -0.25 && along <= ATTACK_REACH && across <= ATTACK_HALF_WIDTH
+    (-0.25..=ATTACK_REACH).contains(&along) && across <= ATTACK_HALF_WIDTH
 }
 
 /// Does a swing reach a big body of `radius` tiles centered at `p`?
@@ -255,6 +255,9 @@ impl PuddleField {
     }
     pub fn len(&self) -> usize {
         self.map.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
     }
     pub fn iter(&self) -> impl Iterator<Item = (P, f64)> + '_ {
         self.map.iter().map(|(&p, &l)| (p, l))

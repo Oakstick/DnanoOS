@@ -342,7 +342,7 @@ impl Cyclops {
     fn choose_attack(&mut self) -> Attack {
         self.cycle += 1;
         let phase = self.phase();
-        if phase >= 2 && self.cycle % 3 == 0 {
+        if phase >= 2 && self.cycle.is_multiple_of(3) {
             return Attack::Dive;
         }
         let pool: &[Attack] = match phase {

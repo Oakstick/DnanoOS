@@ -160,7 +160,6 @@ pub fn glow_orb(f: &mut Frame, at: Vec3, radius: f32, color: Vec3, strength: f32
 }
 
 /// How see-through a tree gets while it blocks the view of Ragnar.
-
 pub const TREE_FADE_MIN: f32 = 0.22;
 /// Fade speed, in full fades per second.
 const TREE_FADE_RATE: f32 = 6.0;
@@ -2717,66 +2716,6 @@ pub fn offset_hsl(c: Vec3, dh: f32, ds: f32, dl: f32) -> Vec3 {
     Vec3::new(hue(h + 1.0 / 3.0), hue(h), hue(h - 1.0 / 3.0))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hash_matches_the_web_build() {
-        // Values printed by the TypeScript hash().
-        assert!((hash(3.0, 7.0) - 0.060_723_933_158_442_38).abs() < 1e-12, "{}", hash(3.0, 7.0));
-        assert!((hash(26.0, 22.0) - 0.367_933_403_700_590_13).abs() < 1e-12, "{}", hash(26.0, 22.0));
-    }
-
-    #[test]
-    fn a_tree_on_the_sight_line_blocks_it() {
-        let tree = Tree { range: (0, 0), base: Vec3::new(2.0, 0.7, 3.0), radius: 0.35, height: 1.1, fade: 1.0, alive: true, shades: None };
-        let eye = Vec3::new(2.0, 3.1, 0.9);
-        assert!(tree.blocks(eye, Vec3::new(2.0, 0.6, 4.0)));
-        assert!(!tree.blocks(eye, Vec3::new(5.0, 0.6, 4.0)), "a tree off to the side does not block");
-        assert!(!tree.blocks(Vec3::new(2.0, 3.1, 5.0), Vec3::new(2.0, 0.6, 4.0)), "nor one behind him");
-    }
-
-    #[test]
-    fn trees_fade_out_of_the_way_at_spawn() {
-        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
-        // Standing right against a wall tree, south of it and facing south, the chase camera can only
-        // sit behind the tree (as at the web build's old spawn). It must fade, and not much else.
-        let mut g = crate::game::Game::new();
-        // Play on the title, then begin with Ragnar on the character screen.
-        for _ in 0..2 {
-            g.input.inject(crate::input::Action::Confirm);
-            g.update(crate::app::STEP);
-        }
-        let grid = g.level.grid.clone();
-        let mut spots: Vec<P> = g
-            .view
-            .tree_tiles()
-            .into_iter()
-            .map(|t| P::new(t.x, t.y + 1))
-            .filter(|p| grid.is_walkable(p.x, p.y, false) && grid.is_walkable(p.x, p.y + 1, false))
-            .collect();
-        spots.sort_by_key(|p| (p.y, p.x));
-        let spot = *spots.first().expect("a tree with room south of it");
-        g.hero.m.teleport(spot);
-        g.hero.altitude = grid.elevation(spot.x, spot.y) as f64;
-        g.hero.facing = Dir::Down;
-        g.view.aim_along(Dir::Down);
-        for _ in 0..300 {
-            g.update(crate::app::STEP);
-        }
-        assert!(g.view.tree_fades().filter(|&f| f < 0.5).count() >= 1, "no tree faded");
-        assert!(g.view.tree_fades().filter(|&f| f < 1.0).count() < 12, "only the blockers fade");
-    }
-
-    #[test]
-    fn hsl_offset_round_trips() {
-        let c = lin(0x3a6a32);
-        let d = offset_hsl(c, 0.0, 0.0, 0.0);
-        assert!((c - d).length() < 1e-5);
-    }
-}
-
 /// The dungeon floats on a sea of dark clouds: stacked mist layers under and around it. The
 /// upper layers only show outside the level and swallow its sides; the lowest hides the void.
 /// How far outside the island each rank of the smoke wall stands.
@@ -2891,5 +2830,65 @@ fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &st
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r));
             f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, goo_l, 1.0, glow, SHADE_GOO));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_matches_the_web_build() {
+        // Values printed by the TypeScript hash().
+        assert!((hash(3.0, 7.0) - 0.060_723_933_158_442_38).abs() < 1e-12, "{}", hash(3.0, 7.0));
+        assert!((hash(26.0, 22.0) - 0.367_933_403_700_590_13).abs() < 1e-12, "{}", hash(26.0, 22.0));
+    }
+
+    #[test]
+    fn a_tree_on_the_sight_line_blocks_it() {
+        let tree = Tree { range: (0, 0), base: Vec3::new(2.0, 0.7, 3.0), radius: 0.35, height: 1.1, fade: 1.0, alive: true, shades: None };
+        let eye = Vec3::new(2.0, 3.1, 0.9);
+        assert!(tree.blocks(eye, Vec3::new(2.0, 0.6, 4.0)));
+        assert!(!tree.blocks(eye, Vec3::new(5.0, 0.6, 4.0)), "a tree off to the side does not block");
+        assert!(!tree.blocks(Vec3::new(2.0, 3.1, 5.0), Vec3::new(2.0, 0.6, 4.0)), "nor one behind him");
+    }
+
+    #[test]
+    fn trees_fade_out_of_the_way_at_spawn() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        // Standing right against a wall tree, south of it and facing south, the chase camera can only
+        // sit behind the tree (as at the web build's old spawn). It must fade, and not much else.
+        let mut g = crate::game::Game::new();
+        // Play on the title, then begin with Ragnar on the character screen.
+        for _ in 0..2 {
+            g.input.inject(crate::input::Action::Confirm);
+            g.update(crate::app::STEP);
+        }
+        let grid = g.level.grid.clone();
+        let mut spots: Vec<P> = g
+            .view
+            .tree_tiles()
+            .into_iter()
+            .map(|t| P::new(t.x, t.y + 1))
+            .filter(|p| grid.is_walkable(p.x, p.y, false) && grid.is_walkable(p.x, p.y + 1, false))
+            .collect();
+        spots.sort_by_key(|p| (p.y, p.x));
+        let spot = *spots.first().expect("a tree with room south of it");
+        g.hero.m.teleport(spot);
+        g.hero.altitude = grid.elevation(spot.x, spot.y) as f64;
+        g.hero.facing = Dir::Down;
+        g.view.aim_along(Dir::Down);
+        for _ in 0..300 {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.view.tree_fades().filter(|&f| f < 0.5).count() >= 1, "no tree faded");
+        assert!(g.view.tree_fades().filter(|&f| f < 1.0).count() < 12, "only the blockers fade");
+    }
+
+    #[test]
+    fn hsl_offset_round_trips() {
+        let c = lin(0x3a6a32);
+        let d = offset_hsl(c, 0.0, 0.0, 0.0);
+        assert!((c - d).length() < 1e-5);
     }
 }

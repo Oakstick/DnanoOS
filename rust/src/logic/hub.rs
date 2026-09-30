@@ -19,6 +19,8 @@ pub const GAP: i32 = 7;
 pub const MARGIN: i32 = 6;
 /// Bridges and causeways are three tiles wide: the middle row or column of a side, and one either way.
 pub const SPAN_HALF: i32 = 1;
+// The lava gaps are wider than a jump (two tiles).
+const _: () = assert!(GAP > 2);
 
 /// A rectangle of tiles, inclusive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -266,8 +268,6 @@ mod tests {
         for c in causeways() {
             assert!(c.tiles().all(|p| g.get(p.x, p.y) == Tile::Pit), "causeway {c:?} is still under the lava");
         }
-        // The lava gaps are wider than a jump (two tiles).
-        assert!(GAP > 2);
     }
 
     #[test]

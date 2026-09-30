@@ -1222,7 +1222,7 @@ impl Relief {
             return;
         }
         let i = (y * DOOR_W + x) as usize;
-        if self.px[i].map_or(true, |(cd, _)| d >= cd) {
+        if self.px[i].is_none_or(|(cd, _)| d >= cd) {
             self.px[i] = Some((d, c));
         }
     }

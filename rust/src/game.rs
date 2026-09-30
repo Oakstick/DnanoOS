@@ -908,7 +908,7 @@ impl Game {
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
-        self.view.select = (self.screen == Screen::Select).then(|| crate::render::view::SelectView {
+        self.view.select = (self.screen == Screen::Select).then_some(crate::render::view::SelectView {
             index: self.select_index,
             age: self.select_age as f32,
             denied: self.select_denied as f32,
@@ -1642,7 +1642,7 @@ impl Game {
                 self.audio.play(Sfx::Anvil);
                 self.view.shake(0.25);
                 // Every other key the music presses on a little faster.
-                if self.keys_got % KEYS_PER_TEMPO_STEP == 0 {
+                if self.keys_got.is_multiple_of(KEYS_PER_TEMPO_STEP) {
                     self.audio.set_tempo_step(self.keys_got / KEYS_PER_TEMPO_STEP);
                 }
                 self.view.spark(&self.level.grid, ox, oy, 0xf2c53d);
@@ -2870,7 +2870,7 @@ impl Game {
         self.kill_streak = if self.streak_timer > 0.0 { self.kill_streak + 1 } else { 1 };
         self.streak_timer = STREAK_SECONDS;
         self.audio.play_kill(self.kill_streak - 1);
-        if self.kill_streak % BRUTAL_STREAK == 0 {
+        if self.kill_streak.is_multiple_of(BRUTAL_STREAK) {
             self.brutal();
         }
         let value = self.award(base);
