@@ -1,0 +1,358 @@
+//! Animation: the hero's stride, swing and jump, and each foe's gait, wingbeat or hop, how it
+//! turns, and a slain draugr falling apart and pulling itself together.
+
+use super::*;
+
+pub(super) const TURN_RATE_HERO: f32 = 14.0;
+
+const TURN_RATE_ENEMY: f32 = 10.0;
+
+const REASSEMBLE_START: f64 = 0.7;
+
+/// How long the sword's wind-up, strike and follow-through take on screen.
+pub const SLASH_SECONDS: f32 = 0.3;
+
+#[derive(Clone)]
+pub(super) struct Pose {
+    pub(super) pos: Vec<Vec3>,
+    pub(super) rot: Vec<Vec3>,
+}
+
+impl Pose {
+    pub(super) fn rest(rig: &Rig) -> Self {
+        Self { pos: rig.parts.iter().map(|p| p.rest).collect(), rot: vec![Vec3::ZERO; rig.parts.len()] }
+    }
+    pub(super) fn rot_x(&mut self, rig: &Rig, name: &str, angle: f32) {
+        if let Some(i) = rig.index(name) {
+            self.rot[i].x = angle;
+        }
+    }
+}
+
+pub(super) struct EnemyView {
+    pub(super) rig: RigId,
+    pub(super) pose: Pose,
+    pub(super) kind: EnemyKind,
+    pub(super) hover: f32,
+    pub(super) phase: f32,
+    /// Smoothed model heading.
+    pub(super) yaw: f32,
+    pub(super) group_pos: Vec3,
+    pub(super) root_rot: Vec3,
+    pub(super) root_scale: Vec3,
+    pub(super) visible: bool,
+    pub(super) base_color: Vec3,
+    pub(super) mat_color: Vec3,
+    pub(super) emissive: Vec3,
+    pub(super) light_color: Vec3,
+    pub(super) light_intensity: f32,
+    pub(super) scatter: Option<Vec<(Vec3, Vec3)>>,
+}
+
+impl WorldView {
+    /// Drops every enemy's view (the capture's line-up of foes replaces them).
+    pub fn clear_enemies(&mut self) {
+        self.enemy_views.clear();
+    }
+
+    /// Adds a view for an enemy; call again for enemies that arrive mid-level. Order must match the game's list.
+    pub fn add_enemy(&mut self, e: &Enemy) {
+        let (rig, hover) = match e.kind() {
+            EnemyKind::Skeleton => (RigId::Skeleton, 0.0),
+            EnemyKind::Bat => (RigId::Bat, 0.55),
+            EnemyKind::Vampire => (RigId::Vampire, 0.65),
+            EnemyKind::Slime => (RigId::Slime, 0.0),
+            EnemyKind::Witch => (RigId::Witch, 0.0),
+            EnemyKind::Minion => (RigId::Minion, 0.0),
+            EnemyKind::Helmeted => (RigId::Helmeted, 0.0),
+            EnemyKind::Werewolf => (RigId::Werewolf, 0.0),
+            EnemyKind::Blemmyes => (RigId::Blemmyes, 0.0),
+            EnemyKind::LargeBat => (RigId::LargeBat, 0.6),
+        };
+        let pose = Pose::rest(self.models.rig(rig));
+        let base = lin(e.b.color);
+        self.enemy_views.push(EnemyView {
+            rig,
+            pose,
+            kind: e.kind(),
+            hover,
+            phase: self.rng.nextf() * 6.0,
+            yaw: 0.0,
+            group_pos: Vec3::ZERO,
+            root_rot: Vec3::ZERO,
+            root_scale: Vec3::ONE,
+            visible: false,
+            base_color: base,
+            mat_color: Vec3::ONE,
+            emissive: Vec3::ZERO,
+            light_color: base,
+            light_intensity: 0.0,
+            scatter: None,
+        });
+    }
+
+    /// Starts the sword's slash animation; swings alternate forehand and backhand.
+    pub fn sword_slash(&mut self) {
+        self.slash_t = 0.0;
+        self.slash_side = -self.slash_side;
+    }
+
+    pub(super) fn update_enemy(&mut self, i: usize, e: &Enemy, s: &SceneState, dt: f32, time: f32) {
+        let grid = s.grid;
+        let frenzy = s.frenzy;
+        let ep = e.pos();
+        let ground = if e.m.flying {
+            floor_at(grid, ep.x as f32, ep.y as f32)
+        } else {
+            let mut m = e.m.clone();
+            m.elevation_on(grid) as f32 * STEP
+        };
+        {
+            let v = &mut self.enemy_views[i];
+            v.group_pos = Vec3::new(ep.x as f32, ground + v.hover + (time * 5.0 + i as f32 * 1.7).sin() * 0.05, ep.y as f32);
+            if e.m.dir != Dir::None {
+                v.yaw = lerp_angle(v.yaw, dir_to_rotation(e.m.dir), 1.0 - (-TURN_RATE_ENEMY * dt).exp());
+            }
+        }
+        self.animate_enemy(i, e, dt, time);
+        let v = &mut self.enemy_views[i];
+        // Waiting in the hollow they are out of sight, except when the tour shows them off.
+        let hidden = e.mode() == EnemyMode::Eaten || (e.mode() == EnemyMode::Nest && self.tour.is_none());
+        v.visible = !hidden;
+        if e.mode() == EnemyMode::Scattered {
+            v.light_intensity = 0.6;
+            v.light_color = v.base_color;
+            v.mat_color = Vec3::ONE;
+            v.emissive = Vec3::ZERO;
+            return;
+        }
+        if e.is_ally() {
+            // Turned by Michael's fire: washed in blue light.
+            let blue = lin(Archangel::Michael.color());
+            v.mat_color = Vec3::new(0.72, 0.84, 1.3);
+            v.emissive = blue * (0.3 + (time * 4.0).sin() * 0.08);
+            v.light_color = blue;
+        } else if e.is_stunned() {
+            let warn = frenzy.warning() && ((time * 8.0).floor() as i64).rem_euclid(2) == 0;
+            v.mat_color = lin(if warn { STUN_WARN } else { STUN });
+            v.emissive = lin(STUN) * (0.5 + (time * 12.0).sin() * 0.3);
+            v.light_color = lin(STUN);
+        } else {
+            v.mat_color = Vec3::ONE;
+            v.emissive = Vec3::ZERO;
+            v.light_color = v.base_color;
+        }
+        v.light_intensity = if hidden { 0.0 } else { 2.5 };
+    }
+
+    /// Legs and arms swing in opposition while moving; the sword arm does the slash; a tuck in the air.
+    pub(super) fn animate_hero(&mut self, hero: &Hero) {
+        let rig = &self.models.hero;
+        let p = &mut self.hero_pose;
+        let motion = hero.motion as f32;
+        let stride = self.hero_phase.sin() * motion;
+        if hero.airborne() {
+            let tuck = (hero.jump_progress() as f32 * PI).sin();
+            p.rot_x(rig, "leftLeg", -0.9 * tuck);
+            p.rot_x(rig, "rightLeg", -0.9 * tuck);
+            p.rot_x(rig, "shieldArm", -0.6 * tuck);
+            p.rot_x(rig, "swordArm", 0.4 * tuck);
+            p.rot_x(rig, "head", -0.15 * tuck);
+            self.hero_root_rot.x = 0.2 * tuck;
+            self.sync_hands();
+            return;
+        }
+        p.rot_x(rig, "leftLeg", stride * 0.75);
+        p.rot_x(rig, "rightLeg", -stride * 0.75);
+        p.rot_x(rig, "shieldArm", -stride * 0.35);
+        let swing = if hero.swinging() { (hero.swing_progress() as f32 * PI).sin() * 1.7 } else { stride * 0.35 };
+        p.rot_x(rig, "swordArm", swing);
+        p.rot_x(rig, "head", motion * 0.08 + if hero.swinging() { 0.15 } else { 0.0 });
+        self.hero_root_rot.x = motion * if hero.hasted() { 0.14 } else { 0.07 };
+        self.hero_root_rot.y = 0.0;
+        self.hero_lunge = 0.0;
+        if self.slash_t >= 0.0 {
+            self.pose_slash();
+        }
+        self.sync_hands();
+    }
+
+    /// The weapons (layered parts of his rig) move with the arms that hold them.
+    pub(super) fn sync_hands(&mut self) {
+        let rig = &self.models.hero;
+        for (arm, held) in [("swordArm", "blade"), ("shieldArm", "offhand")] {
+            if let (Some(a), Some(b)) = (rig.index(arm), rig.index(held)) {
+                self.hero_pose.rot[b] = self.hero_pose.rot[a];
+            }
+        }
+    }
+
+    /**
+     * The sword slash, keyed like a hand animation: a quick wind-up that lifts
+     * the blade back over the shoulder, a fast strike that sweeps it across
+     * and down with the hips turning into it and a small lunge, then an eased
+     * follow-through back to guard. Mirrored on alternate swings.
+     */
+    pub(super) fn pose_slash(&mut self) {
+        // (time, arm pitch, arm roll, body twist, lunge); roll and twist mirror with the side.
+        const KEYS: [(f32, f32, f32, f32, f32); 4] = [
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            (0.2, -2.3, 0.55, 0.38, -0.03),
+            (0.47, 1.55, -0.75, -0.5, 0.1),
+            (1.0, 0.0, 0.0, 0.0, 0.0),
+        ];
+        let p = (self.slash_t / SLASH_SECONDS).clamp(0.0, 1.0);
+        let k = KEYS.iter().rposition(|k| k.0 <= p).unwrap_or(0).min(KEYS.len() - 2);
+        let (a, b) = (KEYS[k], KEYS[k + 1]);
+        let u = ((p - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
+        // The strike snaps (ease-out cubic); wind-up and recovery ease in and out.
+        let e = if k == 1 { 1.0 - (1.0 - u).powi(3) } else { u * u * (3.0 - 2.0 * u) };
+        let mix = |x: f32, y: f32| x + (y - x) * e;
+        let side = self.slash_side;
+        let rig = &self.models.hero;
+        if let Some(i) = rig.index("swordArm") {
+            self.hero_pose.rot[i].x = mix(a.1, b.1);
+            self.hero_pose.rot[i].z = mix(a.2, b.2) * side;
+        }
+        let guard = (p * PI).sin();
+        self.hero_pose.rot_x(rig, "shieldArm", -0.55 * guard);
+        self.hero_pose.rot_x(rig, "head", 0.12 * guard);
+        self.hero_root_rot.y = mix(a.3, b.3) * side;
+        self.hero_lunge = mix(a.4, b.4);
+    }
+
+    pub(super) fn animate_enemy(&mut self, i: usize, e: &Enemy, dt: f32, time: f32) {
+        if e.mode() == EnemyMode::Scattered {
+            self.animate_scatter(i, e, dt);
+            return;
+        }
+        let models = &self.models;
+        let v = &mut self.enemy_views[i];
+        let rig = models.rig(v.rig);
+        if v.scatter.is_some() {
+            // Reassembled: snap every bone home.
+            v.pose = Pose::rest(rig);
+            v.scatter = None;
+        }
+        let moving = e.m.dir != Dir::None && e.mode() != EnemyMode::Nest;
+        if moving {
+            v.phase += dt * e.m.speed as f32 * 2.2;
+        }
+        match v.kind {
+            EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Witch | EnemyKind::Blemmyes => {
+                // A walk: the blemmyes lumbers, the witch strides, the skeletons stalk.
+                let (stride, swing) = match v.kind {
+                    EnemyKind::Blemmyes => (0.6, 0.35),
+                    EnemyKind::Witch => (0.7, 0.3),
+                    _ => (0.85, 0.5),
+                };
+                let s = v.phase.sin();
+                v.pose.rot_x(rig, "leftLeg", s * stride);
+                v.pose.rot_x(rig, "rightLeg", -s * stride);
+                v.pose.rot_x(rig, "leftArm", -s * swing);
+                v.pose.rot_x(rig, "rightArm", s * swing);
+                v.pose.rot_x(rig, "head", (v.phase * 2.0).sin() * 0.1);
+                v.root_rot.z = v.phase.sin() * if v.kind == EnemyKind::Blemmyes { 0.1 } else { 0.06 };
+            }
+            EnemyKind::Minion => {
+                // Scurries in hops, its hat bobbing.
+                let t = if moving { v.phase * 1.6 } else { time * 3.0 + i as f32 };
+                let hop = t.sin();
+                v.root_scale = Vec3::new(1.0 - hop * 0.06, 1.0 + hop * 0.1, 1.0 - hop * 0.06);
+                v.root_rot.z = (t * 0.5).sin() * 0.12;
+                if moving {
+                    v.group_pos.y += hop.max(0.0) * 0.12;
+                }
+            }
+            EnemyKind::Werewolf => {
+                // A gallop: the front legs together, the back legs half a beat behind, the head low, the tail streaming.
+                let t = v.phase * 1.2;
+                let (front, back) = (t.sin(), (t - 1.2).sin());
+                v.pose.rot_x(rig, "frontLeftLeg", front * 0.7);
+                v.pose.rot_x(rig, "frontRightLeg", (t + 0.4).sin() * 0.7);
+                v.pose.rot_x(rig, "backLeftLeg", -back * 0.7);
+                v.pose.rot_x(rig, "backRightLeg", -(t - 0.8).sin() * 0.7);
+                v.pose.rot_x(rig, "head", if moving { 0.15 + front * 0.08 } else { (time * 1.5).sin() * 0.05 });
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 6.0 + i as f32).sin() * 0.3;
+                }
+                v.root_rot.x = if moving { front * 0.05 } else { 0.0 };
+                if moving {
+                    v.group_pos.y += front.max(0.0) * 0.08;
+                }
+            }
+            EnemyKind::Bat | EnemyKind::Vampire | EnemyKind::LargeBat => {
+                let beat = time * if v.kind == EnemyKind::LargeBat { 9.0 } else { 15.0 } + i as f32 * 2.0;
+                let flap = beat.sin() * 0.8;
+                if let Some(l) = rig.index("leftWing") {
+                    v.pose.rot[l].z = -flap;
+                }
+                if let Some(r) = rig.index("rightWing") {
+                    v.pose.rot[r].z = flap;
+                }
+                v.root_rot.x = if moving { 0.3 } else { 0.05 };
+                v.group_pos.y += beat.sin() * 0.035;
+            }
+            EnemyKind::Slime => {
+                let t = if moving { v.phase } else { time * 2.5 + i as f32 };
+                let sq = t.sin();
+                v.root_scale = Vec3::new(1.0 - sq * 0.14, 1.0 + sq * 0.3, 1.0 - sq * 0.14);
+                if moving {
+                    v.group_pos.y += sq.max(0.0) * 0.2;
+                }
+                v.root_rot.x = if moving { 0.12 } else { 0.0 };
+            }
+        }
+    }
+
+    /// Bones burst outward and tumble to the floor, lie still, then glide back to their rest pose.
+    pub(super) fn animate_scatter(&mut self, i: usize, e: &Enemy, dt: f32) {
+        let models = &self.models;
+        let rng = &mut self.rng;
+        let v = &mut self.enemy_views[i];
+        let rig = models.rig(v.rig);
+        v.root_rot = Vec3::ZERO;
+        v.root_scale = Vec3::ONE;
+        if v.scatter.is_none() {
+            v.scatter = Some(
+                rig.parts
+                    .iter()
+                    .map(|p| {
+                        let a = rng.nextf() * TAU;
+                        let sp = if p.name == "body" { 0.3 } else { 0.8 + rng.nextf() * 1.1 };
+                        (
+                            Vec3::new(a.cos() * sp, 2.5 + rng.nextf() * 2.5, a.sin() * sp),
+                            Vec3::new((rng.nextf() - 0.5) * 16.0, (rng.nextf() - 0.5) * 16.0, (rng.nextf() - 0.5) * 16.0),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+        let progress = e.scatter_progress();
+        let scatter = v.scatter.as_mut().unwrap();
+        if progress < REASSEMBLE_START {
+            for (pi, part) in rig.parts.iter().enumerate() {
+                let (vel, spin) = &mut scatter[pi];
+                let floor_y = -part.min_y + 0.02;
+                vel.y -= GRAVITY * dt;
+                v.pose.pos[pi] += *vel * dt;
+                if v.pose.pos[pi].y < floor_y {
+                    v.pose.pos[pi].y = floor_y;
+                    vel.y *= -0.3;
+                    vel.x *= 0.5;
+                    vel.z *= 0.5;
+                    *spin *= 0.4;
+                }
+                v.pose.rot[pi] += *spin * dt;
+            }
+        } else {
+            let t = ((progress - REASSEMBLE_START) / (1.0 - REASSEMBLE_START)) as f32;
+            let k = 1.0 - (-dt * (6.0 + t * 30.0)).exp();
+            for (pi, part) in rig.parts.iter().enumerate() {
+                v.pose.pos[pi] = v.pose.pos[pi].lerp(part.rest, k);
+                v.pose.rot[pi] *= 1.0 - k;
+            }
+            v.root_rot.z = (t * 60.0).sin() * 0.04 * (1.0 - t);
+        }
+    }
+}
