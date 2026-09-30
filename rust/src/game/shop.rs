@@ -376,3 +376,18 @@ impl Game {
         }
     }
 }
+
+impl Game {
+    /**
+     * The gatekeeper's promise: wherever he is, the hero can call for help and
+     * the old man's wares open (the dungeon waits).
+     */
+    pub fn call_old_man(&mut self) {
+        self.audio.play(Sfx::Whoosh);
+        self.shop = ShopState { called: true, ..ShopState::default() };
+        self.enter(Screen::Shop);
+        self.juice.fade = 1.0;
+        self.input.consume(Action::Attack);
+        self.input.consume(Action::Confirm);
+    }
+}
