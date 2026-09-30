@@ -10,14 +10,26 @@ use bytemuck::{Pod, Zeroable};
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
 
 use super::voxels::*;
+use crate::game::Spirit;
+use crate::logic::angels::{Archangel, ARCHANGELS};
+use crate::logic::boss::{BossShot, Cyclops};
 use crate::logic::enemy::{Enemy, EnemyKind, EnemyMode};
+use crate::logic::garden::GardenPlan;
+use crate::logic::gear::ALL_POTIONS;
 use crate::logic::grid::Grid;
 use crate::logic::hero::Hero;
+use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::items::{Bomb, Diamond, DiamondKind, Potion, RangedKind};
+use crate::logic::level::Theme;
 use crate::logic::projectile::Projectile;
 use crate::logic::rng::Rng;
+use crate::logic::sins::{Sin, SINS};
 use crate::logic::systems::{Frenzy, PuddleField, PUDDLE_SECONDS};
-use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P};
+use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P, V};
+use crate::logic::vault::{Loot, Vault};
+use crate::logic::{gear, progression, systems};
+use crate::render::foliage;
+use crate::render::foliage::{FOREST, MEADOW};
 
 mod angels;
 mod animation;
@@ -40,20 +52,23 @@ mod story;
 mod vault;
 
 pub use animation::SLASH_SECONDS;
-pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR};
-pub use fade::TREE_FADE_MIN;
-pub use fountain::krampus;
-pub use frame::{Atmosphere, Frame, Instance, Light, MESH_KINDS, MeshKind, SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER, glow_orb};
-pub use meadow::meadow_atmosphere;
-pub use select::SelectView;
-pub use story::StoryView;
 use animation::{EnemyView, Pose, TURN_RATE_HERO};
 use camera::chase;
-use effects::{Blast, Debris, EffectLight, GRAVITY, Particle};
+pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR};
+use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
+pub use fade::TREE_FADE_MIN;
+pub use fountain::krampus;
 use frame::mix_hex;
+pub use frame::{
+    glow_orb, Atmosphere, Frame, Instance, Light, MeshKind, MESH_KINDS, SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET,
+    SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
+};
+pub use meadow::meadow_atmosphere;
 use models::{Models, RigId};
+pub use select::SelectView;
 use showcase::STAGE;
+pub use story::StoryView;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
 pub mod colors {
@@ -79,27 +94,6 @@ pub mod colors {
     pub const MOTE: u32 = 0xe4ff6a;
 }
 use colors::*;
-use crate::game::Spirit;
-use crate::logic::angels::ARCHANGELS;
-use crate::logic::angels::Archangel;
-use crate::logic::boss::BossShot;
-use crate::logic::boss::Cyclops;
-use crate::logic::garden::GardenPlan;
-use crate::logic::gear;
-use crate::logic::gear::ALL_POTIONS;
-use crate::logic::heroes::HeroKind;
-use crate::logic::heroes::ROSTER;
-use crate::logic::level::Theme;
-use crate::logic::progression;
-use crate::logic::sins::SINS;
-use crate::logic::sins::Sin;
-use crate::logic::systems;
-use crate::logic::types::V;
-use crate::logic::vault::Loot;
-use crate::logic::vault::Vault;
-use crate::render::foliage;
-use crate::render::foliage::FOREST;
-use crate::render::foliage::MEADOW;
 
 /// World units per elevation level.
 pub const STEP: f32 = 0.55;
@@ -410,7 +404,16 @@ impl WorldView {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: Theme, garden: Option<&GardenPlan>, gate: Option<P>, vault: Option<&Vault>) {
+    pub fn build_level(
+        &mut self,
+        grid: &Grid,
+        enemies: &[Enemy],
+        diamonds: &[Diamond],
+        theme: Theme,
+        garden: Option<&GardenPlan>,
+        gate: Option<P>,
+        vault: Option<&Vault>,
+    ) {
         let meadow = theme.is_meadow();
         self.hell = theme.is_hell();
         self.gym = theme == Theme::Gym;
@@ -509,13 +512,7 @@ impl WorldView {
 
         // Fireflies drifting over the forest.
         self.mote_base = (0..MOTE_COUNT)
-            .map(|_| {
-                Vec3::new(
-                    self.rng.nextf() * grid.width as f32,
-                    0.6 + self.rng.nextf() * 1.4,
-                    self.rng.nextf() * grid.height as f32,
-                )
-            })
+            .map(|_| Vec3::new(self.rng.nextf() * grid.width as f32, 0.6 + self.rng.nextf() * 1.4, self.rng.nextf() * grid.height as f32))
             .collect();
 
         self.static_dirty = true;
@@ -597,7 +594,8 @@ impl WorldView {
             }
         }
         self.hero_phase += dtf * hero.motion as f32 * if hero.hasted() { 17.0 } else { 13.0 };
-        let turn_to = if hero.free_move { (hero.heading.cos() as f32).atan2(hero.heading.sin() as f32) } else { dir_to_rotation(hero.facing) };
+        let turn_to =
+            if hero.free_move { (hero.heading.cos() as f32).atan2(hero.heading.sin() as f32) } else { dir_to_rotation(hero.facing) };
         self.hero_yaw = lerp_angle(self.hero_yaw, turn_to, 1.0 - (-TURN_RATE_HERO * dtf).exp());
         self.animate_hero(hero);
 
@@ -633,7 +631,6 @@ impl WorldView {
         }
         self.update_shake(dtf);
     }
-
 }
 
 impl Default for WorldView {
@@ -730,10 +727,7 @@ pub fn dir_to_rotation(d: Dir) -> f32 {
 
 /// The `count` points closest to `focus` in the ground plane, nearest first.
 fn nearest(points: &[Vec3], focus: Vec3, count: usize) -> Vec<Vec3> {
-    let mut v: Vec<(f32, Vec3)> = points
-        .iter()
-        .map(|p| ((p.x - focus.x).powi(2) + (p.z - focus.z).powi(2), *p))
-        .collect();
+    let mut v: Vec<(f32, Vec3)> = points.iter().map(|p| ((p.x - focus.x).powi(2) + (p.z - focus.z).powi(2), *p)).collect();
     if v.len() > count {
         v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         v.truncate(count);

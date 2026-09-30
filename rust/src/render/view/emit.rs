@@ -33,7 +33,17 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame, eye: Vec3) {
     let center = Vec3::new(w / 2.0 - 0.5, 0.0, h / 2.0 - 0.5);
     let size = (w.max(h) + 70.0) * 2.0;
     // (height, opacity, seed), lowest first so they blend back to front.
-    let layers = [(-1.6, 1.0, 0.0), (-1.2, 0.9, 1.0), (-0.8, 0.85, 2.0), (-0.45, 0.8, 3.0), (-0.1, 0.8, 4.0), (0.15, 0.75, 5.0), (0.4, 0.65, 6.0), (0.7, 0.5, 7.0), (1.0, 0.35, 8.0)];
+    let layers = [
+        (-1.6, 1.0, 0.0),
+        (-1.2, 0.9, 1.0),
+        (-0.8, 0.85, 2.0),
+        (-0.45, 0.8, 3.0),
+        (-0.1, 0.8, 4.0),
+        (0.15, 0.75, 5.0),
+        (0.4, 0.65, 6.0),
+        (0.7, 0.5, 7.0),
+        (1.0, 0.35, 8.0),
+    ];
     for (y, alpha, seed) in layers {
         let m = Mat4::from_translation(center + Vec3::new(0.0, y, 0.0)) * Mat4::from_scale(Vec3::new(size, 0.002, size));
         f.transparent[MeshKind::Cube as usize].push(Instance::new(m, tint, alpha, Vec3::new(seed, y, 0.0), SHADE_CLOUD));
@@ -89,7 +99,10 @@ fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &st
     let glow = lin(0x5cff6a) * 0.14;
     let mut lift = 0.012;
     let mut blob = |f: &mut Frame, x: f32, z: f32, rx: f32, rz: f32, rot: f32, color: Vec3| {
-        let m = Mat4::from_translation(Vec3::new(x, floor + lift, z)) * Mat4::from_rotation_y(rot) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(rx, rz, 1.0));
+        let m = Mat4::from_translation(Vec3::new(x, floor + lift, z))
+            * Mat4::from_rotation_y(rot)
+            * Mat4::from_rotation_x(-PI / 2.0)
+            * Mat4::from_scale(Vec3::new(rx, rz, 1.0));
         f.opaque[disc].push(Instance::new(m, color, 1.0, glow, SHADE_GOO));
         lift += 0.0015;
     };
@@ -243,9 +256,17 @@ impl WorldView {
         let to_cam = {
             let d = self.cam_pos - hero_pos;
             let flat = Vec3::new(d.x, 0.0, d.z);
-            if flat.length_squared() > 1e-4 { flat.normalize() } else { Vec3::Z }
+            if flat.length_squared() > 1e-4 {
+                flat.normalize()
+            } else {
+                Vec3::Z
+            }
         };
-        f.lights.push(Light { pos: hero_pos + Vec3::new(0.0, 2.3, 0.0) + to_cam * 0.9, color: light_color * hero_light * 2.2, distance: 8.5 });
+        f.lights.push(Light {
+            pos: hero_pos + Vec3::new(0.0, 2.3, 0.0) + to_cam * 0.9,
+            color: light_color * hero_light * 2.2,
+            distance: 8.5,
+        });
 
         if self.slash_t >= 0.0 {
             // The blade's trail: a bright leading arc and fading echoes behind it, swept across the front.
@@ -322,7 +343,11 @@ impl WorldView {
                     EnemyKind::Witch => 0.4,
                     EnemyKind::Blemmyes => 0.5,
                 };
-                f.lights.push(Light { pos: v.group_pos + Vec3::new(0.0, lift, 0.0), color: v.light_color * v.light_intensity, distance: 4.0 });
+                f.lights.push(Light {
+                    pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
+                    color: v.light_color * v.light_intensity,
+                    distance: 4.0,
+                });
             }
             if s.enemies[i].is_ally() && v.visible {
                 // A halo over the turned.
@@ -335,14 +360,22 @@ impl WorldView {
                     _ => 0.32,
                 };
                 let blue = lin(Archangel::Michael.color());
-                let m = Mat4::from_translation(v.group_pos + Vec3::new(0.0, top, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.2, 0.2, 1.0));
+                let m = Mat4::from_translation(v.group_pos + Vec3::new(0.0, top, 0.0))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::new(0.2, 0.2, 1.0));
                 f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, blue * 2.4, 0.85, Vec3::ZERO, SHADE_UNLIT));
             }
             if s.enemies[i].is_confused() && v.visible {
                 for k in 0..3 {
                     let a = time * 5.0 + k as f32 * TAU / 3.0;
                     let p = v.group_pos + Vec3::new(a.cos() * 0.28, 1.0 + (time * 7.0 + k as f32).sin() * 0.04, a.sin() * 0.28);
-                    f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05)), lin(0xc89aff) * 1.6, 0.9, Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(
+                        Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05)),
+                        lin(0xc89aff) * 1.6,
+                        0.9,
+                        Vec3::ZERO,
+                        SHADE_UNLIT,
+                    ));
                 }
             }
         }
@@ -397,8 +430,17 @@ impl WorldView {
             let (stone, runes) = &self.models.pedestals[0];
             let rune = lin(0x9ad1ff);
             emit_mesh(&mut f.opaque[cube], stone, Mat4::from_translation(base), Vec3::ONE, 1.0, Vec3::ZERO);
-            emit_mesh(&mut f.opaque[cube], runes, Mat4::from_translation(base), Vec3::ONE, 1.0, rune * (0.8 + (time * 3.0).sin().abs() * 0.8));
-            let m = Mat4::from_translation(base + Vec3::new(0.0, 0.55 + (time * 2.0).sin() * 0.07, 0.0)) * Mat4::from_rotation_y(time * 1.4) * Mat4::from_scale(Vec3::new(0.2, 0.26, 0.1));
+            emit_mesh(
+                &mut f.opaque[cube],
+                runes,
+                Mat4::from_translation(base),
+                Vec3::ONE,
+                1.0,
+                rune * (0.8 + (time * 3.0).sin().abs() * 0.8),
+            );
+            let m = Mat4::from_translation(base + Vec3::new(0.0, 0.55 + (time * 2.0).sin() * 0.07, 0.0))
+                * Mat4::from_rotation_y(time * 1.4)
+                * Mat4::from_scale(Vec3::new(0.2, 0.26, 0.1));
             f.opaque[cube].push(Instance::new(m, lin(0x8a8e96), 1.0, rune * 0.5, SHADE_LIT));
             glow_orb(f, base + Vec3::new(0.0, 0.6, 0.0), 0.7, rune, 0.35);
             f.lights.push(Light { pos: base + Vec3::new(0.0, 0.9, 0.0), color: rune * 5.0, distance: 3.5 });
@@ -453,7 +495,13 @@ impl WorldView {
                 let ph = (s.time as f32 * 9.0 + k as f32 * 0.25).fract();
                 let a = k as f32 * 1.9 + (s.time as f32 * 3.0).floor();
                 let p = tip + Vec3::new(a.cos() * ph * 0.12, ph * 0.12, a.sin() * ph * 0.12);
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03)), lin(0xffc040) * 1.8, 1.0 - ph, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03)),
+                    lin(0xffc040) * 1.8,
+                    1.0 - ph,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
         }
 
@@ -590,7 +638,11 @@ impl WorldView {
             glow_orb(f, p, 0.24, lin(0xffb060), 0.2 * flick);
         }
         for p in nearest(remedy_points, focus, LIGHT_POOL_REMEDIES) {
-            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.45, 0.0), color: lin(REMEDY) * (4.0 + (time * 5.0).sin() * 1.5), distance: 5.0 });
+            f.lights.push(Light {
+                pos: p + Vec3::new(0.0, 0.45, 0.0),
+                color: lin(REMEDY) * (4.0 + (time * 5.0).sin() * 1.5),
+                distance: 5.0,
+            });
         }
         let shrine_pos: Vec<Vec3> = shrine_points.iter().map(|(p, _)| *p).collect();
         for p in nearest(&shrine_pos, focus, LIGHT_POOL_SHRINES) {

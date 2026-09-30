@@ -9,11 +9,10 @@ use super::{Game, Screen};
 use crate::audio::Sfx;
 use crate::logic::angels::*;
 use crate::logic::boss::BODY_RADIUS;
-use crate::logic::items::RangedKind;
+use crate::logic::items::{DiamondKind, RangedKind};
 use crate::logic::projectile::Projectile;
 use crate::logic::systems::FOE_RADIUS;
 use crate::logic::types::{dist_sq, Tile, P, V};
-use crate::logic::items::DiamondKind;
 
 /// Uriel's wave rolling out from where it was sent: how far it has come, and whether the boss has felt it.
 #[derive(Clone, Copy, Debug)]
@@ -161,7 +160,9 @@ impl Game {
         self.view.shake(0.5);
         self.audio.play(Sfx::RaphaelBeam);
         let doomed: Vec<usize> = (0..self.enemies.len())
-            .filter(|&i| self.enemies[i].is_targetable() && from_segment(hp, end, self.enemies[i].pos()) <= BEAM_HALF_WIDTH + FOE_RADIUS * 0.5)
+            .filter(|&i| {
+                self.enemies[i].is_targetable() && from_segment(hp, end, self.enemies[i].pos()) <= BEAM_HALF_WIDTH + FOE_RADIUS * 0.5
+            })
             .collect();
         for i in doomed {
             self.slay_enemy(i);

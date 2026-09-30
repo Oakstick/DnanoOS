@@ -10,8 +10,8 @@ use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::gear::{self, ShieldGear, BELT_SLOTS};
 use crate::logic::progression::{self, Refusal, Tree, TIERS, TREES};
-use crate::logic::types::{Dir, PotionKind};
 use crate::logic::systems::MAX_LIVES;
+use crate::logic::types::{Dir, PotionKind};
 use crate::render::hud;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -150,7 +150,11 @@ impl Game {
                 let tier = self.hero.shield.map(|s| s.tier).unwrap_or(h.carry);
                 let fraction = self.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
                 let p = progression::repair_price(tier, fraction);
-                let b = if p == 0 { button(ShopAction::Repair, "GOOD AS NEW", 0, 0, false) } else { button(ShopAction::Repair, format!("MEND {p}"), p, 0, true) };
+                let b = if p == 0 {
+                    button(ShopAction::Repair, "GOOD AS NEW", 0, 0, false)
+                } else {
+                    button(ShopAction::Repair, format!("MEND {p}"), p, 0, true)
+                };
                 rows.push(ShopRow { kind: RowKind::Repair, buttons: vec![b] });
             }
             Tree::Elixir => {

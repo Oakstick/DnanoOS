@@ -30,12 +30,12 @@ mod pal {
     pub const BOLT_CORE: u32 = 0xfff1c0;
     pub const DUST: u32 = 0xe8d8b0;
 }
-use pal::*;
 use crate::render::characters::Sculpt;
 use crate::render::foes::CYCLOPS_EYE;
 use crate::render::foes::CYCLOPS_VOXEL;
 use crate::render::props;
 use crate::render::voxels::Collected;
+use pal::*;
 
 /// Dusk over the meadow: a low golden sun in the west under a sky going from
 /// flame to violet, the first stars out overhead, mauve clouds below.
@@ -68,7 +68,6 @@ fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3
     out.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
 }
 
-
 fn in_arena(x: i32, y: i32) -> bool {
     let (x0, y0, x1, y1) = ARENA;
     x >= x0 && x <= x1 && y >= y0 && y <= y1
@@ -99,7 +98,13 @@ impl WorldView {
                 // Stream bed, banks, and (on a bridge) the deck.
                 let along_x = pit(x - 1, y) || pit(x + 1, y);
                 self.water.push((P::new(x, y), along_x));
-                cube(&mut self.static_cubes, Vec3::new(xf, -0.37, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(BED) * (0.9 + hash(hx, hy) as f32 * 0.2));
+                cube(
+                    &mut self.static_cubes,
+                    Vec3::new(xf, -0.37, yf),
+                    Vec3::new(1.0, 0.1, 1.0),
+                    0.0,
+                    lin(BED) * (0.9 + hash(hx, hy) as f32 * 0.2),
+                );
                 for d in CARDINALS {
                     let (dx, dy) = d.vec();
                     let (nx, ny) = (x + dx, y + dy);
@@ -116,9 +121,19 @@ impl WorldView {
                             continue;
                         }
                         let off = (k as f32 - 1.0) * 0.32 + (hk - 0.7) * 0.2;
-                        let p = if dx != 0 { Vec3::new(c.x - dx as f32 * 0.04, 0.0, c.z + off) } else { Vec3::new(c.x + off, 0.0, c.z - dy as f32 * 0.04) };
+                        let p = if dx != 0 {
+                            Vec3::new(c.x - dx as f32 * 0.04, 0.0, c.z + off)
+                        } else {
+                            Vec3::new(c.x + off, 0.0, c.z - dy as f32 * 0.04)
+                        };
                         let sz = 0.1 + hk * 0.08;
-                        cube(&mut self.static_cubes, p, Vec3::new(sz, sz * 0.6, sz * 0.9), hk * 3.0, lin(if hk > 0.8 { STONE } else { PEBBLE }));
+                        cube(
+                            &mut self.static_cubes,
+                            p,
+                            Vec3::new(sz, sz * 0.6, sz * 0.9),
+                            hk * 3.0,
+                            lin(if hk > 0.8 { STONE } else { PEBBLE }),
+                        );
                     }
                 }
                 if bridge(x, y) {
@@ -188,7 +203,10 @@ impl WorldView {
             if self.gate_tile.is_some_and(|g| g.y == y && (g.x - x).abs() <= 1) {
                 continue;
             }
-            let edge = grid.get(x - 1, y) != Tile::Rock || grid.get(x + 1, y) != Tile::Rock || grid.get(x, y - 1) != Tile::Rock || grid.get(x, y + 1) != Tile::Rock;
+            let edge = grid.get(x - 1, y) != Tile::Rock
+                || grid.get(x + 1, y) != Tile::Rock
+                || grid.get(x, y - 1) != Tile::Rock
+                || grid.get(x, y + 1) != Tile::Rock;
             // A leafy hedge block, a little over a tile across so neighbours grow into one hedge. Deep in the
             // ring only its crown can be seen, so only the crown is kept.
             let variant = (hash(hx * 3.7, hy * 2.9) * 4.0) as usize % 4;
@@ -213,7 +231,15 @@ impl WorldView {
             let start = self.static_cubes.len();
             push_field(&mut self.static_cubes, &tree, pos, rot, scale, tree_tint, Vec3::ZERO, SHADE_LIT);
             self.tree_index.insert(key, self.trees.len());
-            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: 0.26 * scale + 0.05, height: 1.02 * scale, fade: 1.0, alive: true, shades: None });
+            self.trees.push(Tree {
+                range: (start, self.static_cubes.len() - start),
+                base: pos,
+                radius: 0.26 * scale + 0.05,
+                height: 1.02 * scale,
+                fade: 1.0,
+                alive: true,
+                shades: None,
+            });
         }
 
         // The stream in its stone channel, under stone bridges; and mist over it all.
@@ -320,12 +346,24 @@ impl WorldView {
             for k in 0..3 {
                 let hk = hash(hx * 9.0 + k as f64, hy * 4.0) as f32;
                 let off = Vec3::new((hk - 0.5) * 0.3, 0.0, (hash(hy, hx + k as f64) as f32 - 0.5) * 0.3);
-                cube(&mut self.static_cubes, Vec3::new(xf, top + 0.05 + hk * 0.08, yf) + off, Vec3::new(0.2, 0.12 + hk * 0.1, 0.2), hk * 4.0, lin(STONE));
+                cube(
+                    &mut self.static_cubes,
+                    Vec3::new(xf, top + 0.05 + hk * 0.08, yf) + off,
+                    Vec3::new(0.2, 0.12 + hk * 0.1, 0.2),
+                    hk * 4.0,
+                    lin(STONE),
+                );
             }
             let a = hash(hx, hy) as f32 * TAU;
             let fallen = Vec3::new(xf + a.cos() * 0.62, 0.13, yf + a.sin() * 0.62);
             cube(&mut self.static_cubes, fallen, Vec3::new(0.5, 0.26, 0.28), a, lin(STONE_D));
-            cube(&mut self.static_cubes, fallen + Vec3::new(a.sin() * 0.2, -0.05, -a.cos() * 0.2), Vec3::new(0.22, 0.16, 0.2), a + 0.7, lin(STONE));
+            cube(
+                &mut self.static_cubes,
+                fallen + Vec3::new(a.sin() * 0.2, -0.05, -a.cos() * 0.2),
+                Vec3::new(0.22, 0.16, 0.2),
+                a + 0.7,
+                lin(STONE),
+            );
         } else {
             cube(&mut self.static_cubes, Vec3::new(xf, top + 0.07, yf), Vec3::new(0.74, 0.14, 0.74), 0.0, lin(STONE));
             cube(&mut self.static_cubes, Vec3::new(xf, top + 0.17, yf), Vec3::new(0.62, 0.06, 0.62), 0.0, lin(STONE_D));
@@ -343,11 +381,25 @@ impl WorldView {
             let a = hk * TAU;
             let n = Vec3::new(a.cos(), 0.0, a.sin());
             let h = 0.25 + hash(hy * 3.0, hx + k as f64) as f32 * 0.5;
-            cube(&mut self.static_cubes, Vec3::new(xf, h, yf) + n * 0.27, Vec3::new(0.14, 0.1 + hk * 0.1, 0.05), a + PI / 2.0, lin(MOSS) * (0.9 + hk * 0.2));
+            cube(
+                &mut self.static_cubes,
+                Vec3::new(xf, h, yf) + n * 0.27,
+                Vec3::new(0.14, 0.1 + hk * 0.1, 0.05),
+                a + PI / 2.0,
+                lin(MOSS) * (0.9 + hk * 0.2),
+            );
         }
         let len = self.static_cubes.len() - start;
         self.tree_index.insert(tile_key(x, y), self.trees.len());
-        self.trees.push(Tree { range: (start, len), base: Vec3::new(xf, 0.0, yf), radius: 0.42, height: top, fade: 1.0, alive: true, shades: None });
+        self.trees.push(Tree {
+            range: (start, len),
+            base: Vec3::new(xf, 0.0, yf),
+            radius: 0.42,
+            height: top,
+            fade: 1.0,
+            alive: true,
+            shades: None,
+        });
     }
 
     /// One tile of low brick wall: a mortar core, three staggered courses of bricks, coping on top.
@@ -373,7 +425,13 @@ impl WorldView {
         }
         for k in 0..2 {
             let hk = hash(hx * 3.0 + k as f64, hy * 11.0) as f32;
-            cube(&mut self.static_cubes, at(Vec3::new(-0.25 + k as f32 * 0.5, 0.435, 0.0)), Vec3::new(0.49, 0.07, 0.4), turn, lin(STONE) * (0.9 + hk * 0.15));
+            cube(
+                &mut self.static_cubes,
+                at(Vec3::new(-0.25 + k as f32 * 0.5, 0.435, 0.0)),
+                Vec3::new(0.49, 0.07, 0.4),
+                turn,
+                lin(STONE) * (0.9 + hk * 0.15),
+            );
         }
     }
 
@@ -422,7 +480,9 @@ impl WorldView {
             let fi = i as f32;
             let bx = x0 as f32 + hash(fi as f64, 3.0) as f32 * (x1 - x0) as f32;
             let bz = y0 as f32 + hash(fi as f64, 7.0) as f32 * (y1 - y0) as f32;
-            let path = |t: f32| Vec3::new(bx + (t * 0.3 + fi).sin() * 2.2, 0.55 + (t * 1.3 + fi).sin() * 0.25, bz + (t * 0.23 + fi * 1.7).cos() * 2.2);
+            let path = |t: f32| {
+                Vec3::new(bx + (t * 0.3 + fi).sin() * 2.2, 0.55 + (t * 1.3 + fi).sin() * 0.25, bz + (t * 0.23 + fi * 1.7).cos() * 2.2)
+            };
             let p = path(time);
             let ahead = path(time + 0.05) - p;
             let heading = ahead.x.atan2(ahead.z);
@@ -442,7 +502,11 @@ impl WorldView {
         // Pollen in the sunlight.
         for (i, b) in self.mote_base.iter().enumerate().take(70) {
             let fi = i as f32;
-            let p = Vec3::new(b.x + (time * 0.3 + fi).sin() * 0.5, b.y * 0.8 + (time * 0.5 + fi * 0.7).sin() * 0.2, b.z + (time * 0.25 + fi * 1.3).cos() * 0.5);
+            let p = Vec3::new(
+                b.x + (time * 0.3 + fi).sin() * 0.5,
+                b.y * 0.8 + (time * 0.5 + fi * 0.7).sin() * 0.2,
+                b.z + (time * 0.25 + fi * 1.3).cos() * 0.5,
+            );
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03));
             f.additive.push(Instance::new(m, lin(0xfff6c8), 0.3 + (time * 1.5 + fi).sin() * 0.15, Vec3::ZERO, SHADE_UNLIT));
         }
@@ -470,7 +534,8 @@ impl WorldView {
         let yaw = PI / 2.0 - b.look as f32;
         let tilt = if dazed { (time * 3.0).sin() * 0.25 } else { 0.0 };
         let swell = 1.0 + dying * 0.25 + if dying > 0.0 { (time * 30.0).sin() * 0.04 * dying } else { 0.0 };
-        let root = Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(tilt) * Mat4::from_scale(Vec3::splat(swell));
+        let root =
+            Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(tilt) * Mat4::from_scale(Vec3::splat(swell));
 
         let mut pose = Pose::rest(rig);
         let beat = if dazed { 3.0 } else { 9.0 };
@@ -513,7 +578,9 @@ impl WorldView {
         let flash = b.flash as f32;
         let glow = b.glow() as f32;
         let rage = if b.phase() >= 3 { 0.1 + (time * 6.0).sin().abs() * 0.1 } else { 0.0 };
-        let body_emissive = Vec3::splat(flash * 0.5) + lin(0xff2a2a) * rage + Vec3::splat(if dying > 0.0 && (time * 14.0).sin() > 0.3 { 0.6 * dying } else { 0.0 });
+        let body_emissive = Vec3::splat(flash * 0.5)
+            + lin(0xff2a2a) * rage
+            + Vec3::splat(if dying > 0.0 && (time * 14.0).sin() > 0.3 { 0.6 * dying } else { 0.0 });
         let tint = if flash > 0.0 { Vec3::ONE.lerp(Vec3::new(1.0, 0.55, 0.55), flash) } else { Vec3::ONE };
         // A prince: the Cyclops' hide in his sin's colour.
         let tint = tint * self.tint.map(sin_skin).unwrap_or(Vec3::ONE);
@@ -533,14 +600,19 @@ impl WorldView {
             for k in 0..5 {
                 let a = time * 4.0 + k as f32 * TAU / 5.0;
                 let p = pos + Vec3::new(a.cos() * 1.0, 2.75 + (time * 6.0 + k as f32).sin() * 0.1, a.sin() * 1.0);
-                let m = Mat4::from_translation(p) * Mat4::from_rotation_y(a * 2.0) * Mat4::from_rotation_z(0.785) * Mat4::from_scale(Vec3::splat(0.2));
+                let m = Mat4::from_translation(p)
+                    * Mat4::from_rotation_y(a * 2.0)
+                    * Mat4::from_rotation_z(0.785)
+                    * Mat4::from_scale(Vec3::splat(0.2));
                 f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(0xffd23a), 1.0, lin(0xffc020) * 0.8, SHADE_LIT));
             }
         }
         // Its shadow, smaller and fainter the higher it flies.
         let lift = (b.hover as f32).max(0.0);
         let k = (1.0 - lift / 8.0).clamp(0.25, 1.0);
-        let m = Mat4::from_translation(Vec3::new(pos.x, 0.02, pos.z)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(1.05 * k, 1.05 * k, 1.0));
+        let m = Mat4::from_translation(Vec3::new(pos.x, 0.02, pos.z))
+            * Mat4::from_rotation_x(-PI / 2.0)
+            * Mat4::from_scale(Vec3::new(1.05 * k, 1.05 * k, 1.0));
         f.transparent[MeshKind::Disc as usize].push(Instance::new(m, Vec3::ZERO, 0.4 * k, Vec3::ZERO, SHADE_UNLIT));
         // The eye lights the grass when it charges.
         let eye = root.transform_point3(Vec3::new(0.0, CYCLOPS_EYE_Y, 2.4));
@@ -577,9 +649,21 @@ impl WorldView {
                     let r = s.kind.radius() as f32;
                     let axis = Vec3::new(v.z, 0.0, -v.x).normalize_or_zero();
                     let spin = if axis == Vec3::ZERO { Quat::IDENTITY } else { Quat::from_axis_angle(axis, -(s.rolled as f32) / r) };
-                    let root = Mat4::from_translation(p + Vec3::new(0.0, r, 0.0)) * Mat4::from_quat(spin) * Mat4::from_translation(Vec3::new(0.0, -r, 0.0));
-                    emit_rig(&mut f.opaque[MeshKind::Cube as usize], &self.models.boulder, &Pose::rest(&self.models.boulder), root, Vec3::ONE, 1.0, Vec3::ZERO);
-                    let m = Mat4::from_translation(p + Vec3::new(0.0, 0.02, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.42, 0.42, 1.0));
+                    let root = Mat4::from_translation(p + Vec3::new(0.0, r, 0.0))
+                        * Mat4::from_quat(spin)
+                        * Mat4::from_translation(Vec3::new(0.0, -r, 0.0));
+                    emit_rig(
+                        &mut f.opaque[MeshKind::Cube as usize],
+                        &self.models.boulder,
+                        &Pose::rest(&self.models.boulder),
+                        root,
+                        Vec3::ONE,
+                        1.0,
+                        Vec3::ZERO,
+                    );
+                    let m = Mat4::from_translation(p + Vec3::new(0.0, 0.02, 0.0))
+                        * Mat4::from_rotation_x(-PI / 2.0)
+                        * Mat4::from_scale(Vec3::new(0.42, 0.42, 1.0));
                     f.transparent[MeshKind::Disc as usize].push(Instance::new(m, Vec3::ZERO, 0.35, Vec3::ZERO, SHADE_UNLIT));
                 }
             }
@@ -604,7 +688,15 @@ pub fn boulder() -> Collected {
     s.ellipsoid((4.0, 4.0, 4.0), (4.3, 3.9, 4.1), 0, 0x9a948a);
     s.paint(|x, y, z, _| {
         let n = hash(x as f64 * 1.7 + z as f64, y as f64 * 2.3) as f32;
-        Some(if n < 0.25 { 0x7a766e } else if n > 0.85 { 0xb8b2a6 } else if n > 0.78 { 0x6f8f3a } else { 0x9a948a })
+        Some(if n < 0.25 {
+            0x7a766e
+        } else if n > 0.85 {
+            0xb8b2a6
+        } else if n > 0.78 {
+            0x6f8f3a
+        } else {
+            0x9a948a
+        })
     });
     s.finish(0.08)
 }

@@ -51,9 +51,23 @@ pub fn draw_map(o: &mut Overlay, g: &Game, t: f32) {
         let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.16] };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
         o.rect(r[0], r[1], t * 0.14, r[3], rgba(mark, if selected { 1.0 } else { 0.5 }));
-        let color = if selected { GOLD } else if arena { 0xd8a898 } else { TEXT_DIM };
+        let color = if selected {
+            GOLD
+        } else if arena {
+            0xd8a898
+        } else {
+            TEXT_DIM
+        };
         o.text(&stop.label, r[0] + t * 0.8, r[1] + r[3] / 2.0, t * 0.58, rgba(color, 1.0), Align::Left, true);
     }
     let bottom = rects.iter().map(|r| r[1] + r[3]).max_by(f32::total_cmp).unwrap_or(h / 2.0);
-    o.text("Up / Down / Left / Right or LT / RT: choose     Enter or A: go     Esc or B: back", w / 2.0, bottom + t * 1.2, t * 0.48, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    o.text(
+        "Up / Down / Left / Right or LT / RT: choose     Enter or A: go     Esc or B: back",
+        w / 2.0,
+        bottom + t * 1.2,
+        t * 0.48,
+        rgba(TEXT_DIM, 1.0),
+        Align::Center,
+        false,
+    );
 }

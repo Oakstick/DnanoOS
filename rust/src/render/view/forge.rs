@@ -4,15 +4,14 @@
 //! blinks.
 
 use super::*;
+use crate::logic::angels::Archangel;
 use crate::logic::heroes::HeroKind;
-use crate::render::heroes;
 use crate::logic::items::RangedKind;
 use crate::logic::progression::{self, Tree};
-use crate::logic::angels::Archangel;
 use crate::logic::types::V;
-use crate::render::armory;
 use crate::render::characters::mat::SKIN;
 use crate::render::voxels::Collected;
+use crate::render::{armory, heroes};
 
 /// The heroes' voxels: a quarter of a tile's voxel, as fine as Scene I's cast.
 const HERO_VOXEL: f32 = VOXEL / 4.0;
@@ -111,7 +110,12 @@ impl WorldView {
         let ground = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32) + 0.3, at.y as f32);
         for k in 0..3 {
             let off = Vec3::new((self.rng.nextf() - 0.5) * 0.5, 0.0, (self.rng.nextf() - 0.5) * 0.5);
-            self.rains.push(Falling { top: ground + off + Vec3::new(0.6, 7.0, 0.3), bottom: ground + off, life: RAIN_SECONDS + k as f32 * 0.06, color: lin(color) });
+            self.rains.push(Falling {
+                top: ground + off + Vec3::new(0.6, 7.0, 0.3),
+                bottom: ground + off,
+                life: RAIN_SECONDS + k as f32 * 0.06,
+                color: lin(color),
+            });
         }
         self.sparkle(grid, at.x, at.y, 0.4, color, 12);
     }
@@ -159,7 +163,13 @@ impl WorldView {
     pub(super) fn emit_hero_fx(&self, hero: &Hero, pos: Vec3, time: f32, f: &mut Frame) {
         let cube = MeshKind::Cube as usize;
         let spark = |f: &mut Frame, p: Vec3, size: f32, c: u32, a: f32| {
-            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size)), lin(c) * 1.5, a, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size)),
+                lin(c) * 1.5,
+                a,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
         };
         if hero.alive {
             // Afterimages from haste.
@@ -185,7 +195,13 @@ impl WorldView {
                     let a = k as f32 * 2.4;
                     let p = pos + Vec3::new(a.cos() * 0.3, 0.2 + rise * 1.2, a.sin() * 0.3);
                     for s in [Vec3::new(0.09, 0.03, 0.03), Vec3::new(0.03, 0.09, 0.03)] {
-                        f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(s), lin(0xa6f0ff), 0.8 * (1.0 - rise), Vec3::ZERO, SHADE_UNLIT));
+                        f.additive.push(Instance::new(
+                            Mat4::from_translation(p) * Mat4::from_scale(s),
+                            lin(0xa6f0ff),
+                            0.8 * (1.0 - rise),
+                            Vec3::ZERO,
+                            SHADE_UNLIT,
+                        ));
                     }
                 }
             }
@@ -194,7 +210,13 @@ impl WorldView {
                 for k in 0..10 {
                     let a = k as f32 * TAU / 10.0 + time * 1.5;
                     let rise = (time * 2.2 + k as f32 * 0.31).fract();
-                    spark(f, pos + Vec3::new(a.cos() * 0.42, rise * 0.9, a.sin() * 0.42), 0.07 * (1.0 - rise * 0.5), if k % 2 == 0 { 0xff7a2a } else { 0xffd23a }, 0.85 * (1.0 - rise));
+                    spark(
+                        f,
+                        pos + Vec3::new(a.cos() * 0.42, rise * 0.9, a.sin() * 0.42),
+                        0.07 * (1.0 - rise * 0.5),
+                        if k % 2 == 0 { 0xff7a2a } else { 0xffd23a },
+                        0.85 * (1.0 - rise),
+                    );
                 }
                 f.lights.push(Light { pos: pos + Vec3::new(0.0, 0.5, 0.0), color: lin(0xff7a2a) * 4.0, distance: 3.5 });
             }
@@ -212,7 +234,13 @@ impl WorldView {
             if hero.bark > 0 {
                 // A shield potion's hardened skin: a faint shell round him.
                 let m = Mat4::from_translation(pos + Vec3::new(0.0, 0.5, 0.0)) * Mat4::from_scale(Vec3::new(0.45, 0.6, 0.45));
-                f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, lin(0x9aa4b0), 0.12 + 0.04 * (time * 3.0).sin(), Vec3::ZERO, SHADE_UNLIT));
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(
+                    m,
+                    lin(0x9aa4b0),
+                    0.12 + 0.04 * (time * 3.0).sin(),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             if hero.blade >= progression::SEALED_FROM {
                 // A sealed blade hums with its own light.
@@ -275,7 +303,10 @@ impl WorldView {
             let p = Vec3::new(x, floor_at(s.grid, x, z) + 0.25 + bob, z);
             let yaw = ((hp.x - sp.pos.x) as f32).atan2((hp.y - sp.pos.y) as f32) + PI * 0.5 * (1.0 - sp.strike as f32);
             let lunge = sp.strike as f32 * 0.25;
-            let root = Mat4::from_translation(p) * Mat4::from_rotation_y(yaw) * Mat4::from_translation(Vec3::new(0.0, 0.0, lunge)) * Mat4::from_scale(Vec3::splat(0.8));
+            let root = Mat4::from_translation(p)
+                * Mat4::from_rotation_y(yaw)
+                * Mat4::from_translation(Vec3::new(0.0, 0.0, lunge))
+                * Mat4::from_scale(Vec3::splat(0.8));
             let a = 0.32 + 0.08 * (time * 5.0 + i as f32).sin();
             emit_rig(&mut f.transparent[cube], rig, &Pose::rest(rig), root, lin(0xa8c8ff), a, lin(0x6a9aff) * 0.5);
             glow_orb(f, p + Vec3::new(0.0, 0.8, 0.0), 0.7, lin(0x8ab0ff), 0.18);
@@ -292,7 +323,13 @@ impl WorldView {
                 let rise = (time * 2.4 + j as f32 * 0.19 + n as f32 * 0.37).fract();
                 let p = base + Vec3::new(a.cos() * 0.3 * (1.0 - rise), rise * 0.8, a.sin() * 0.3 * (1.0 - rise));
                 let c = if j % 3 == 0 { 0xfff1a8 } else { 0xff9a3a };
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.09 * (1.0 - rise * 0.6))), lin(c) * 1.6, 0.9 * (1.0 - rise) * k, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.09 * (1.0 - rise * 0.6))),
+                    lin(c) * 1.6,
+                    0.9 * (1.0 - rise) * k,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             glow_orb(f, base + Vec3::new(0.0, 0.3, 0.0), 0.6, lin(0xffb050), 0.35 * k);
             if n % 2 == 0 {
@@ -330,7 +367,15 @@ impl WorldView {
                 } else {
                     group * Mat4::from_rotation_x(time * 18.0) * Mat4::from_translation(Vec3::new(0.0, -0.55, 0.0))
                 };
-                emit_rig(&mut f.opaque[cube], rig, &Pose::rest(rig), spin * Mat4::from_translation(Vec3::new(-0.13, 0.0, 0.0)), Vec3::ONE, 1.0, Vec3::ZERO);
+                emit_rig(
+                    &mut f.opaque[cube],
+                    rig,
+                    &Pose::rest(rig),
+                    spin * Mat4::from_translation(Vec3::new(-0.13, 0.0, 0.0)),
+                    Vec3::ONE,
+                    1.0,
+                    Vec3::ZERO,
+                );
                 let n = progression::node(hero, Tree::Armory, tier);
                 if tier >= progression::SEALED_FROM {
                     f.lights.push(Light { pos, color: lin(n.color) * 4.0, distance: 3.0 });
@@ -351,13 +396,22 @@ impl WorldView {
                 let blue = lin(Archangel::Michael.color());
                 let pulse = 1.0 + (time * 18.0).sin() * 0.12;
                 glow_orb(f, pos, 0.55 * pulse, blue, 0.75);
-                let m = Mat4::from_translation(pos) * Mat4::from_rotation_y(time * 9.0) * Mat4::from_rotation_x(time * 7.0) * Mat4::from_scale(Vec3::splat(0.14 * pulse));
+                let m = Mat4::from_translation(pos)
+                    * Mat4::from_rotation_y(time * 9.0)
+                    * Mat4::from_rotation_x(time * 7.0)
+                    * Mat4::from_scale(Vec3::splat(0.14 * pulse));
                 f.additive.push(Instance::new(m, Vec3::ONE.lerp(blue, 0.3) * 2.4, 0.95, Vec3::ZERO, SHADE_UNLIT));
                 for k in 0..4 {
                     let t = (time * 16.0 + k as f32 * 2.3).floor();
                     let h = |q: f32| (t * 12.9898 + q * 78.233).sin().fract() - 0.5;
                     let a = pos + Vec3::new(h(1.0), h(2.0), h(3.0)) * 0.35;
-                    f.additive.push(Instance::new(segment(a, a + Vec3::new(h(4.0), h(5.0), h(6.0)) * 0.2, 0.03), blue * 2.0, 0.9, Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(
+                        segment(a, a + Vec3::new(h(4.0), h(5.0), h(6.0)) * 0.2, 0.03),
+                        blue * 2.0,
+                        0.9,
+                        Vec3::ZERO,
+                        SHADE_UNLIT,
+                    ));
                 }
                 f.lights.push(Light { pos, color: blue * 5.0, distance: 3.2 });
             }

@@ -1,16 +1,16 @@
 //! The boss fight: the Cyclops (or a prince standing in for one), what it throws, how it is
 //! wounded, burned, bled and poisoned, and the key it drops.
 
-use super::{BLEED_TICK, Banner, FIRE_COLOR, Game, GameEvent, POISON_TICK, Screen, save};
+use super::{save, Banner, Game, GameEvent, Screen, BLEED_TICK, FIRE_COLOR, POISON_TICK};
 use crate::audio::Sfx;
-use crate::logic::progression;
-use crate::logic::boss::{BossEvent, CONTACT_RADIUS, POINTS_CYCLOPS, ShotKind};
+use crate::logic::boss::{BossEvent, ShotKind, CONTACT_RADIUS, POINTS_CYCLOPS};
 use crate::logic::gear::{COINS_BOSS, RUNES_BOSS};
 use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::heroes::HeroKind;
 use crate::logic::levels::ARENA;
+use crate::logic::progression;
 use crate::logic::progression::path;
-use crate::logic::types::{P, Tile, V, dist_sq};
+use crate::logic::types::{dist_sq, Tile, P, V};
 
 /// How close he must come to the Cyclops' red diamond key to take it.
 const RED_KEY_REACH: f64 = 0.7;
@@ -121,7 +121,9 @@ impl Game {
         let g = &self.level.grid;
         let spot = g
             .cells()
-            .filter(|&(x, y, t)| x >= x0 && x <= x1 && y >= y0 && y <= y1 && matches!(t, Tile::Open | Tile::Charge) && g.is_walkable(x, y, false))
+            .filter(|&(x, y, t)| {
+                x >= x0 && x <= x1 && y >= y0 && y <= y1 && matches!(t, Tile::Open | Tile::Charge) && g.is_walkable(x, y, false)
+            })
             .map(|(x, y, _)| P::new(x, y))
             .min_by(|a, b| dist_sq(a.v(), at).total_cmp(&dist_sq(b.v(), at)));
         self.red_key = spot;
@@ -320,7 +322,8 @@ impl Game {
 
     pub(super) fn damage_boss(&mut self, amount: i32, at: V, exact: bool) -> bool {
         let mut events = std::mem::take(&mut self.boss_events);
-        let landed = self.boss.as_mut().map(|b| if exact { b.smite(amount, &mut events) } else { b.hit(amount, &mut events) }).unwrap_or(false);
+        let landed =
+            self.boss.as_mut().map(|b| if exact { b.smite(amount, &mut events) } else { b.hit(amount, &mut events) }).unwrap_or(false);
         let dying = self.boss.as_ref().map(|b| !b.alive()).unwrap_or(false);
         if landed {
             let grid = &self.level.grid;

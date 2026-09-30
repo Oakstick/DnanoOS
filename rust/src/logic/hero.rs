@@ -1,14 +1,12 @@
 use super::gear::ShieldGear;
-use super::heroes::HeroKind;
 use super::grid::Grid;
+use super::heroes::HeroKind;
 use super::items::{item, weapon, ItemKind, RangedKind, WeaponKind, SPEED_BOOST};
-use super::progression::{self, path, STAMINA_MAX, STAMINA_PER_BLOW, STAMINA_REGEN, STAMINA_REST};
 use super::mover::Mover;
+use super::progression::{self, path, STAMINA_MAX, STAMINA_PER_BLOW, STAMINA_REGEN, STAMINA_REST};
 use super::types::{Dir, P, V};
 use crate::logic::gear;
-use crate::logic::types::CARDINALS;
-use crate::logic::types::PotionKind;
-use crate::logic::types::Tile;
+use crate::logic::types::{PotionKind, Tile, CARDINALS};
 
 /// Seconds a jump takes, and how high (in levels) the arc peaks above the straight line.
 pub const JUMP_SECONDS: f64 = 0.42;
@@ -610,7 +608,17 @@ impl Hero {
         if len > 1e-3 {
             self.heading = self.wish.y.atan2(self.wish.x);
             let (c, s) = (self.heading.cos(), self.heading.sin());
-            self.facing = if c.abs() >= s.abs() { if c > 0.0 { Dir::Right } else { Dir::Left } } else if s > 0.0 { Dir::Down } else { Dir::Up };
+            self.facing = if c.abs() >= s.abs() {
+                if c > 0.0 {
+                    Dir::Right
+                } else {
+                    Dir::Left
+                }
+            } else if s > 0.0 {
+                Dir::Down
+            } else {
+                Dir::Up
+            };
         }
         // Move one axis at a time so he slides along whatever stops him.
         self.free_pos.x += self.free_vel.x * dt;
@@ -654,7 +662,8 @@ impl Hero {
                     continue;
                 }
                 // Nearest point of that tile's square to his center.
-                let (cx, cy) = (self.free_pos.x.clamp(nx as f64 - 0.5, nx as f64 + 0.5), self.free_pos.y.clamp(ny as f64 - 0.5, ny as f64 + 0.5));
+                let (cx, cy) =
+                    (self.free_pos.x.clamp(nx as f64 - 0.5, nx as f64 + 0.5), self.free_pos.y.clamp(ny as f64 - 0.5, ny as f64 + 0.5));
                 let (ex, ey) = (self.free_pos.x - cx, self.free_pos.y - cy);
                 let dist = (ex * ex + ey * ey).sqrt();
                 if dist >= FREE_RADIUS {
@@ -948,7 +957,11 @@ impl Hero {
     /// Puts armory tier `tier` in his hand: swung, or thrown if it is a throwing weapon.
     pub fn arm(&mut self, tier: u8) {
         self.blade = tier.clamp(1, progression::TIERS);
-        self.main = if progression::blade(self.kind, self.blade).throw.is_some() { WeaponKind::Ranged(RangedKind::Hurled(self.kind, self.blade)) } else { WeaponKind::Sword };
+        self.main = if progression::blade(self.kind, self.blade).throw.is_some() {
+            WeaponKind::Ranged(RangedKind::Hurled(self.kind, self.blade))
+        } else {
+            WeaponKind::Sword
+        };
         let pickup = self.holding_pickup() && self.ammo > 0;
         if !pickup {
             self.weapon = self.main;

@@ -3,8 +3,8 @@
 
 use super::Game;
 use crate::audio::Sfx;
-use crate::logic::types::{CARDINALS, Dir, V, dist_sq, relative_dir};
-use crate::render::view::{CameraMode, dir_to_yaw};
+use crate::logic::types::{dist_sq, relative_dir, Dir, CARDINALS, V};
+use crate::render::view::{dir_to_yaw, CameraMode};
 use std::f64::consts::PI;
 
 /// Tiles walked between footsteps.

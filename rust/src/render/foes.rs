@@ -228,7 +228,9 @@ pub fn draugr() -> Collected {
                 if !shell {
                     continue;
                 }
-                let tear = z as f32 > cz && (37..=54).contains(&y) && (x as f32) < cx + 3.0 + (y as f32 * 1.3).sin() * 1.6 - ((y - 45) as f32).powi(2) * 0.06;
+                let tear = z as f32 > cz
+                    && (37..=54).contains(&y)
+                    && (x as f32) < cx + 3.0 + (y as f32 * 1.3).sin() * 1.6 - ((y - 45) as f32).powi(2) * 0.06;
                 let hole = nz(x, y, z) < 0.07;
                 let hem = y <= 29 && nz(x, 0, z) < 0.4;
                 if tear || hole || hem {
@@ -279,7 +281,13 @@ pub fn draugr() -> Collected {
             if y < hem || nz(x / 2, y / 2, 3) < 0.13 {
                 continue;
             }
-            let c = if y < hem + 2 || fold < -0.5 { RAG_D } else if fold > 0.7 { RAG_L } else { RAG };
+            let c = if y < hem + 2 || fold < -0.5 {
+                RAG_D
+            } else if fold > 0.7 {
+                RAG_L
+            } else {
+                RAG
+            };
             s.set(x, y, z, c);
         }
     }
@@ -425,10 +433,36 @@ pub fn draugr() -> Collected {
     // A gap-toothed grin, the jaw hanging a little open.
     for x in (cx - 4.0) as i32..=(cx + 4.0) as i32 {
         let gap = nz(x, 5, 5) < 0.2;
-        face(&mut s, x, 62, d, 0, if gap { CAVITY } else if x % 2 == 0 { TOOTH } else { BONE_S });
+        face(
+            &mut s,
+            x,
+            62,
+            d,
+            0,
+            if gap {
+                CAVITY
+            } else if x % 2 == 0 {
+                TOOTH
+            } else {
+                BONE_S
+            },
+        );
         face(&mut s, x, 61, d, 0, CAVITY);
         if (x as f32 - cx).abs() < 3.5 {
-            face(&mut s, x, 60, d, 0, if nz(x, 6, 6) < 0.25 { CAVITY } else if x % 2 == 1 { TOOTH } else { BONE_S });
+            face(
+                &mut s,
+                x,
+                60,
+                d,
+                0,
+                if nz(x, 6, 6) < 0.25 {
+                    CAVITY
+                } else if x % 2 == 1 {
+                    TOOTH
+                } else {
+                    BONE_S
+                },
+            );
         }
     }
     // The helmet: rusted iron over the crown, a riveted brow band, a ridge, a nose guard.
@@ -473,7 +507,16 @@ pub fn draugr() -> Collected {
         }
     }
     // One horn whole, curling up; the other snapped off short.
-    limb(&mut s, &[(v(cx - 7.4, 74.6, 14.0), 2.4), (v(cx - 11.4, 76.6, 14.6), 2.0), (v(cx - 14.4, 79.6, 15.6), 1.5), (v(cx - 15.4, 82.4, 17.0), 0.8)], HORN);
+    limb(
+        &mut s,
+        &[
+            (v(cx - 7.4, 74.6, 14.0), 2.4),
+            (v(cx - 11.4, 76.6, 14.6), 2.0),
+            (v(cx - 14.4, 79.6, 15.6), 1.5),
+            (v(cx - 15.4, 82.4, 17.0), 0.8),
+        ],
+        HORN,
+    );
     limb(&mut s, &[(v(cx + 7.4, 74.6, 14.0), 2.4), (v(cx + 11.0, 76.2, 14.4), 2.0)], HORN);
     s.paint(|x, y, z, c| {
         if c != HORN {
@@ -562,7 +605,13 @@ fn feather(s: &mut Sculpt, a: (f32, f32), b: (f32, f32), wa: f32, wb: f32, y: im
             if dist > half {
                 continue;
             }
-            let c = if dist < 0.5 && t < 0.9 { shaft } else if dist > half - 0.8 { edge } else { vane };
+            let c = if dist < 0.5 && t < 0.9 {
+                shaft
+            } else if dist > half - 0.8 {
+                edge
+            } else {
+                vane
+            };
             s.set(x, y(x as f32).round() as i32, z, c);
         }
     }
@@ -742,7 +791,8 @@ pub fn raven(night: bool) -> Collected {
                     continue;
                 }
                 let (y, z) = (ey + dy, ez + dz);
-                let found = if side < 0 { (0..w).find(|&x| s.get(x, y, z).is_some()) } else { (0..w).rev().find(|&x| s.get(x, y, z).is_some()) };
+                let found =
+                    if side < 0 { (0..w).find(|&x| s.get(x, y, z).is_some()) } else { (0..w).rev().find(|&x| s.get(x, y, z).is_some()) };
                 let Some(x) = found else { continue };
                 if s.tag_at(x, y, z) != 0 {
                     continue;
@@ -933,7 +983,18 @@ pub fn bog_slime() -> Collected {
             for k in 0..deep {
                 s.clear(x, y, z - k);
             }
-            s.recolor(x, y, z - deep, if (y as f32) < mid - half + 1.2 { TONGUE } else if deep > 3 { THROAT } else { MOUTH });
+            s.recolor(
+                x,
+                y,
+                z - deep,
+                if (y as f32) < mid - half + 1.2 {
+                    TONGUE
+                } else if deep > 3 {
+                    THROAT
+                } else {
+                    MOUTH
+                },
+            );
         }
     }
     if let Some(z) = front(&s, 24, 13, d) {
@@ -957,7 +1018,13 @@ pub fn bog_slime() -> Collected {
             }
             let Some(top) = (0..h - 3).rev().find(|&y| s.get(x, y, z).is_some()) else { continue };
             let vein = r > 1.5 && ((ang * 9.0 / TAU).fract() < 0.12);
-            let c = if r > 6.6 { PAD_D } else if vein { PAD_L } else { PAD };
+            let c = if r > 6.6 {
+                PAD_D
+            } else if vein {
+                PAD_L
+            } else {
+                PAD
+            };
             s.set(x, top + 1, z, c);
             if x == lx as i32 && z == lz as i32 {
                 ly = top + 1;
@@ -1098,8 +1165,16 @@ pub fn cyclops() -> Collected {
                 }
                 let x = (ex + side * u).round() as i32;
                 let veined = tips.iter().any(|&t| to_segment(wrist, t, u, y as f32) < 0.6)
-                    || [0.3f32, 0.6].iter().any(|&k| to_segment(wrist, (body.0 + (tips[2].0 - body.0) * k, body.1 + (tips[2].1 - body.1) * k), u, y as f32) < 0.5);
-                let c = if veined { MEMBRANE_V } else if nz(x / 3, y / 3, 1) > 0.6 { MEMBRANE_L } else { MEMBRANE };
+                    || [0.3f32, 0.6].iter().any(|&k| {
+                        to_segment(wrist, (body.0 + (tips[2].0 - body.0) * k, body.1 + (tips[2].1 - body.1) * k), u, y as f32) < 0.5
+                    });
+                let c = if veined {
+                    MEMBRANE_V
+                } else if nz(x / 3, y / 3, 1) > 0.6 {
+                    MEMBRANE_L
+                } else {
+                    MEMBRANE
+                };
                 s.set(x, y, 20, c);
                 s.set(x, y, 21, if veined { MEMBRANE_V } else { MEMBRANE });
             }
@@ -1119,9 +1194,17 @@ pub fn cyclops() -> Collected {
         let n = nz(x, y, z);
         let patch = nz(x / 4, y / 4, z / 4);
         Some(if (y as f32) < ey - 14.0 + (nz(x / 2, 0, z / 2) - 0.5) * 6.0 {
-            if n < 0.3 { SKIN } else { SKIN_L }
+            if n < 0.3 {
+                SKIN
+            } else {
+                SKIN_L
+            }
         } else if (y as f32) > ey + 12.0 && (z as f32) < 24.0 {
-            if patch > 0.6 { SKIN_M } else { SKIN_D }
+            if patch > 0.6 {
+                SKIN_M
+            } else {
+                SKIN_D
+            }
         } else if patch > 0.7 {
             SKIN_M
         } else {
@@ -1173,7 +1256,11 @@ pub fn cyclops() -> Collected {
                 let bp = phi + if nz(k, step, 4) > 0.5 { 0.12 } else { -0.12 };
                 for j in 0..4 {
                     let t2 = theta - j as f32 * 0.05;
-                    let q = Vec3::new(ex + t2.sin() * (bp + (bp - phi) * j as f32).cos() * r, ey + t2.sin() * (bp + (bp - phi) * j as f32).sin() * r, ez + t2.cos() * r);
+                    let q = Vec3::new(
+                        ex + t2.sin() * (bp + (bp - phi) * j as f32).cos() * r,
+                        ey + t2.sin() * (bp + (bp - phi) * j as f32).sin() * r,
+                        ez + t2.cos() * r,
+                    );
                     let (x, y, z) = (q.x.round() as i32, q.y.round() as i32, q.z.round() as i32);
                     if matches!(s.get(x, y, z), Some(SCLERA) | Some(SCLERA_D)) {
                         s.recolor(x, y, z, VEIN);
@@ -1204,7 +1291,18 @@ pub fn cyclops() -> Collected {
                 s.clear(x, y, z - k);
             }
             let tongue = (y as f32) < lo + 2.0 && (x as f32 - ex).abs() < 8.0;
-            s.recolor(x, y, z - deep, if tongue { TONGUE } else if deep > 4 { THROAT } else { MAW });
+            s.recolor(
+                x,
+                y,
+                z - deep,
+                if tongue {
+                    TONGUE
+                } else if deep > 4 {
+                    THROAT
+                } else {
+                    MAW
+                },
+            );
             lips.push((x, y, z));
         }
     }
@@ -1240,7 +1338,18 @@ pub fn cyclops() -> Collected {
             let c = (ex + side * (12.0 + k * 10.0 + (k * 2.6).sin() * 3.0), 54.0 + k * 12.0 - k * k * 3.0, 23.5 + k * 5.0);
             let r = 3.9 - k * 2.7;
             let ring = (k * 9.0).fract() < 0.22;
-            s.ellipsoid(c, (r, r, r), 0, if k > 0.74 { HORN_D } else if ring { HORN_R } else { HORN });
+            s.ellipsoid(
+                c,
+                (r, r, r),
+                0,
+                if k > 0.74 {
+                    HORN_D
+                } else if ring {
+                    HORN_R
+                } else {
+                    HORN
+                },
+            );
         }
     }
 
@@ -1299,7 +1408,11 @@ pub fn cyclops_iris() -> Collected {
                 } else if off > 8.4 {
                     LIMBUS
                 } else if off > 6.8 {
-                    if streak { IRIS } else { IRIS_D }
+                    if streak {
+                        IRIS
+                    } else {
+                        IRIS_D
+                    }
                 } else if streak {
                     IRIS_L
                 } else {
@@ -1342,7 +1455,20 @@ pub fn cyclops_lid() -> Collected {
                 }
                 let rim = (elev - edge).abs() < 0.08;
                 let crease = (elev - edge).abs() > 0.2 && (elev - edge).abs() < 0.26;
-                s.set(x, y, z, if rim { SKIN_L } else if crease { SKIN_D } else if nz(x, y, z) < 0.06 { WART } else { SKIN });
+                s.set(
+                    x,
+                    y,
+                    z,
+                    if rim {
+                        SKIN_L
+                    } else if crease {
+                        SKIN_D
+                    } else if nz(x, y, z) < 0.06 {
+                        WART
+                    } else {
+                        SKIN
+                    },
+                );
             }
         }
     }

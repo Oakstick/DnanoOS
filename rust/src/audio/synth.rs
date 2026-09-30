@@ -14,7 +14,10 @@ pub enum Wave {
     Saw,
     Triangle,
     /// The shared noise buffer, read at `rate` from `offset` seconds in.
-    Noise { rate: f64, offset: f64 },
+    Noise {
+        rate: f64,
+        offset: f64,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -159,20 +162,7 @@ pub struct Voice {
 
 impl Voice {
     pub fn new(start: f64, stop: f64, wave: Wave, freq: Env, gain: Env, bus: Bus) -> Self {
-        Self {
-            start,
-            stop,
-            wave,
-            freq,
-            detune: 1.0,
-            vibrato: None,
-            gain,
-            filter: None,
-            bus,
-            biquad: None,
-            phase: 0.0,
-            started: false,
-        }
+        Self { start, stop, wave, freq, detune: 1.0, vibrato: None, gain, filter: None, bus, biquad: None, phase: 0.0, started: false }
     }
 
     pub fn detune_cents(mut self, cents: f64) -> Self {

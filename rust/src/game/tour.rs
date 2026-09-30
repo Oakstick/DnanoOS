@@ -10,12 +10,11 @@ use super::{Game, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::enemy::EnemyKind;
-use crate::logic::types::{PotionKind, Tile, P};
-use crate::platform;
-use crate::render::view::floor_at;
-use crate::logic;
 use crate::logic::heroes::HeroKind;
 use crate::logic::items::DiamondKind;
+use crate::logic::types::{PotionKind, Tile, P};
+use crate::render::view::floor_at;
+use crate::{logic, platform};
 
 /// Settings keys that record the tours have been seen: the first dungeon's, and the Portals of Hell's.
 const TOUR_KEY: &str = "vh.tour_done";
@@ -154,7 +153,8 @@ impl Game {
                 art: TourArt::Cross,
             });
         }
-        if let Some(pot) = self.potions.iter().filter(|p| !p.taken).min_by_key(|p| (p.tile.x - spawn.x).abs() + (p.tile.y - spawn.y).abs()) {
+        if let Some(pot) = self.potions.iter().filter(|p| !p.taken).min_by_key(|p| (p.tile.x - spawn.x).abs() + (p.tile.y - spawn.y).abs())
+        {
             stops.push(TourStop {
                 target: at(pot.tile, 0.2),
                 title: "POTION",
@@ -262,7 +262,9 @@ impl Game {
         stops.push(TourStop {
             target: Vec3::new(cx, 2.4, cy + 2.0),
             title: "THE HOUSE OF THE DEVIL",
-            body: "Where Krampus carried your friend, to his father. A wall of fire guards the volcano until the seal of the seven is broken.".into(),
+            body:
+                "Where Krampus carried your friend, to his father. A wall of fire guards the volcano until the seal of the seven is broken."
+                    .into(),
             color: 0xff3a2a,
             art: TourArt::Volcano,
         });

@@ -48,7 +48,20 @@ fn wrap(o: &Overlay, text: &str, max: f32, size: f32) -> Vec<String> {
  * jostles the letters (a scream, a snarl).
  */
 #[allow(clippy::too_many_arguments)]
-fn typed(o: &mut Overlay, text: &str, shown: usize, x: f32, y: f32, max: f32, size: f32, lh: f32, color: [f32; 4], align: Align, shake: f32, time: f32) {
+fn typed(
+    o: &mut Overlay,
+    text: &str,
+    shown: usize,
+    x: f32,
+    y: f32,
+    max: f32,
+    size: f32,
+    lh: f32,
+    color: [f32; 4],
+    align: Align,
+    shake: f32,
+    time: f32,
+) {
     let mut left = shown;
     for (i, line) in wrap(o, text, max, size).iter().enumerate() {
         if left == 0 {
@@ -160,7 +173,20 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
                 let y0 = top - t * 1.2 + v * (h - top + t * 1.2);
                 o.rect(0.0, y0, w, (h - top + t * 1.2) / bands as f32 + 1.0, [0.0, 0.0, 0.0, 0.55 * v * appear]);
             }
-            typed(o, beat.line, shown, w / 2.0, top + lh * 0.5, max, size, lh, rgba(voice_color(beat.speaker), appear), Align::Center, 0.0, time);
+            typed(
+                o,
+                beat.line,
+                shown,
+                w / 2.0,
+                top + lh * 0.5,
+                max,
+                size,
+                lh,
+                rgba(voice_color(beat.speaker), appear),
+                Align::Center,
+                0.0,
+                time,
+            );
             if st.line_done() {
                 let pulse = 0.5 + 0.5 * (time * 4.0).sin();
                 o.text("ENTER  CONTINUE", w / 2.0, h - bar / 2.0, t * 0.45, rgba(TEXT_DIM, pulse), Align::Center, false);

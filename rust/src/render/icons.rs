@@ -8,12 +8,11 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use super::voxels::Sprite;
+use crate::logic::gear::ALL_POTIONS;
 use crate::logic::heroes::{HeroKind, ROSTER};
-use crate::logic::items::RangedKind;
+use crate::logic::items::{RangedKind, WEAPON_ORDER};
 use crate::logic::progression::{self, Form, Tree, TIERS, TREES};
 use crate::logic::types::PotionKind;
-use crate::logic::gear::ALL_POTIONS;
-use crate::logic::items::WEAPON_ORDER;
 
 const N: i32 = 16;
 const OUTLINE: u32 = 0x160e0a;
@@ -381,7 +380,17 @@ fn item(form: Form, col: u32) -> Sprite {
                         continue;
                     }
                     let rim = dx > half - 1.2 || y == 1;
-                    c.set(x, y, if rim { d } else if dx < 0.8 || y == 6 { l } else { m });
+                    c.set(
+                        x,
+                        y,
+                        if rim {
+                            d
+                        } else if dx < 0.8 || y == 6 {
+                            l
+                        } else {
+                            m
+                        },
+                    );
                 }
             }
         }
@@ -617,7 +626,17 @@ fn gem(hero: HeroKind) -> Sprite {
                 for x in 0..N {
                     let dx = x as f32 - 7.5;
                     if dx.abs() <= half {
-                        let col = if y < 6 { if dx < 0.0 { 0x9af0e8 } else { 0x2ad0c8 } } else if dx < -1.0 { 0x2ad0c8 } else { 0x16908a };
+                        let col = if y < 6 {
+                            if dx < 0.0 {
+                                0x9af0e8
+                            } else {
+                                0x2ad0c8
+                            }
+                        } else if dx < -1.0 {
+                            0x2ad0c8
+                        } else {
+                            0x16908a
+                        };
                         c.set(x, y, col);
                     }
                 }
@@ -628,11 +647,27 @@ fn gem(hero: HeroKind) -> Sprite {
         HeroKind::Miyamoto => {
             let mut c = Canvas::new();
             for y in 1..15 {
-                let half = if y < 4 { (y - 1) as f32 * 1.1 + 0.5 } else if y > 11 { (15 - y) as f32 * 1.1 + 0.5 } else { 3.5 };
+                let half = if y < 4 {
+                    (y - 1) as f32 * 1.1 + 0.5
+                } else if y > 11 {
+                    (15 - y) as f32 * 1.1 + 0.5
+                } else {
+                    3.5
+                };
                 for x in 0..N {
                     let dx = x as f32 - 7.5;
                     if dx.abs() <= half {
-                        c.set(x, y, if dx < -1.0 { 0xf0e8ff } else if dx < 1.5 { 0xc8b0ff } else { 0x8a70d0 });
+                        c.set(
+                            x,
+                            y,
+                            if dx < -1.0 {
+                                0xf0e8ff
+                            } else if dx < 1.5 {
+                                0xc8b0ff
+                            } else {
+                                0x8a70d0
+                            },
+                        );
                     }
                 }
             }

@@ -15,11 +15,11 @@ use crate::game::{Game, Screen};
 use crate::input::{Action, PadState};
 use crate::logic::types::Dir;
 use crate::platform;
+use crate::render::characters::ragnar;
 use crate::render::gpu::Gpu;
 use crate::render::hud;
 use crate::render::overlay::Overlay;
 use crate::render::view::Frame;
-use crate::render::characters::ragnar;
 use crate::render::voxels::sprite_from;
 #[cfg(feature = "steam")]
 use crate::steam::Steam;
@@ -147,10 +147,11 @@ impl App {
                 actions.extend(acts.iter().copied());
             }
         }
-        let dpad = [(Button::DPadUp, Dir::Up), (Button::DPadDown, Dir::Down), (Button::DPadLeft, Dir::Left), (Button::DPadRight, Dir::Right)]
-            .into_iter()
-            .find(|(b, _)| pad.is_pressed(*b))
-            .map(|(_, d)| d);
+        let dpad =
+            [(Button::DPadUp, Dir::Up), (Button::DPadDown, Dir::Down), (Button::DPadLeft, Dir::Left), (Button::DPadRight, Dir::Right)]
+                .into_iter()
+                .find(|(b, _)| pad.is_pressed(*b))
+                .map(|(_, d)| d);
         // gilrs reports y up; the game uses the web convention, y down.
         Some(PadState {
             actions,

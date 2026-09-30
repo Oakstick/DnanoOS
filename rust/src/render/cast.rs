@@ -208,7 +208,15 @@ pub fn kid(which: usize) -> Collected {
         let (dx, dz) = (x as f32 - cx, z as f32 - cz);
         let front = dz > 3.5;
         if (26..=27).contains(&y) {
-            return Some(if front && (16..=19).contains(&x) { if (17..=18).contains(&x) { trim_d } else { brass } } else { trim_d });
+            return Some(if front && (16..=19).contains(&x) {
+                if (17..=18).contains(&x) {
+                    trim_d
+                } else {
+                    brass
+                }
+            } else {
+                trim_d
+            });
         }
         if front && (16..=19).contains(&x) {
             return Some(if y <= 25 && (17..=18).contains(&x) { coat_d } else { trim });
@@ -221,13 +229,25 @@ pub fn kid(which: usize) -> Collected {
                 return Some(trim);
             }
             let fold = (dz.atan2(dx) * 7.0).sin();
-            return Some(if fold > 0.8 { coat_d } else if fold < -0.85 { coat_l } else { coat });
+            return Some(if fold > 0.8 {
+                coat_d
+            } else if fold < -0.85 {
+                coat_l
+            } else {
+                coat
+            });
         }
         if y == 33 && dx.abs() > 6.0 {
             return Some(coat_d); // the shoulder seams
         }
         let n = nz(x, y, z);
-        Some(if n < 0.06 { coat_d } else if n > 0.95 { coat_l } else { coat })
+        Some(if n < 0.06 {
+            coat_d
+        } else if n > 0.95 {
+            coat_l
+        } else {
+            coat
+        })
     });
     for by in [29, 32] {
         for (x, y) in [(17, by), (18, by), (17, by + 1), (18, by + 1)] {
@@ -373,7 +393,13 @@ pub fn kid(which: usize) -> Collected {
             return None;
         }
         let n = nz(x, y / 3, z);
-        Some(if n < 0.28 { hair_d } else if n > 0.8 { hair_l } else { hair })
+        Some(if n < 0.28 {
+            hair_d
+        } else if n > 0.8 {
+            hair_l
+        } else {
+            hair
+        })
     });
     // Ears.
     for (ex, outer) in [(6.9f32, 6), (28.1, 29)] {
@@ -572,7 +598,13 @@ pub fn old_man() -> Collected {
         if y <= 4 && n < 0.25 + (4 - y) as f32 * 0.18 {
             return Some(ROBE_DIRT);
         }
-        Some(if f > 0.6 { ROBE_L } else if f < -0.6 || n < 0.05 { ROBE_D } else { ROBE })
+        Some(if f > 0.6 {
+            ROBE_L
+        } else if f < -0.6 || n < 0.05 {
+            ROBE_D
+        } else {
+            ROBE
+        })
     });
     // A ragged hem.
     for z in 0..d {
@@ -591,7 +623,13 @@ pub fn old_man() -> Collected {
         for x in 34..=41 {
             let Some(z) = front(&s, x, y, d) else { continue };
             let edge = y == 10 || y == 19 || x == 34 || x == 41;
-            let c = if edge && (x + y) % 2 == 0 { STITCH } else if nz(x, y, 5) < 0.2 { PATCH_D } else { PATCH };
+            let c = if edge && (x + y) % 2 == 0 {
+                STITCH
+            } else if nz(x, y, 5) < 0.2 {
+                PATCH_D
+            } else {
+                PATCH
+            };
             s.set(x, y, z + 1, c);
         }
     }
@@ -618,7 +656,13 @@ pub fn old_man() -> Collected {
         if c != HOOD {
             return None;
         }
-        Some(if y == 56 && (x + z) % 3 == 0 { STITCH } else if nz(x, y, z) < 0.1 { HOOD_D } else { HOOD })
+        Some(if y == 56 && (x + z) % 3 == 0 {
+            STITCH
+        } else if nz(x, y, z) < 0.1 {
+            HOOD_D
+        } else {
+            HOOD
+        })
     });
 
     // ---- the rope belt: twisted, knotted at his side, its frayed ends hanging
@@ -626,7 +670,13 @@ pub fn old_man() -> Collected {
     for y in 34..=37 {
         for z in 0..d {
             for x in 0..w {
-                if s.get(x, y, z).is_none() && [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dz)| s.get(x + dx, y, z + dz) == Some(ROBE) || s.get(x + dx, y, z + dz) == Some(ROBE_D) || s.get(x + dx, y, z + dz) == Some(ROBE_L)) {
+                if s.get(x, y, z).is_none()
+                    && [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dz)| {
+                        s.get(x + dx, y, z + dz) == Some(ROBE)
+                            || s.get(x + dx, y, z + dz) == Some(ROBE_D)
+                            || s.get(x + dx, y, z + dz) == Some(ROBE_L)
+                    })
+                {
                     rope.push((x, y, z));
                 }
             }
@@ -649,7 +699,9 @@ pub fn old_man() -> Collected {
             }
         }
     }
-    s.paint(|x, y, _z, c| if c == ROPE && x > (kx - 3.0) as i32 && x < (kx + 3.0) as i32 && y < 33 && y % 2 == 0 { Some(ROPE_D) } else { None });
+    s.paint(
+        |x, y, _z, c| if c == ROPE && x > (kx - 3.0) as i32 && x < (kx + 3.0) as i32 && y < 33 && y % 2 == 0 { Some(ROPE_D) } else { None },
+    );
     // The ring of keys at his left hip, hung from the belt by a thong.
     let (rx, ry, rz) = (42.5f32, 27.0f32, 26);
     s.capsule((rx, 34.0, rz as f32 + 0.5), (rx, 30.0, rz as f32 + 0.5), 0.6, 0.6, LEATHER);
@@ -663,7 +715,12 @@ pub fn old_man() -> Collected {
         let z = rz + 1;
         for k in 0..12 {
             let a = k as f32 / 12.0 * TAU;
-            s.set((kx as f32 + a.cos() * 1.4).round() as i32, (top as f32 - 1.5 + a.sin() * 1.4).round() as i32, z, if i == 1 { RUST } else { IRON });
+            s.set(
+                (kx as f32 + a.cos() * 1.4).round() as i32,
+                (top as f32 - 1.5 + a.sin() * 1.4).round() as i32,
+                z,
+                if i == 1 { RUST } else { IRON },
+            );
         }
         for y in top - 3 - len..=top - 3 {
             s.set(kx, y, z, IRON_L);
@@ -683,7 +740,13 @@ pub fn old_man() -> Collected {
         let (ax, az) = (sx + (fy * 0.19).sin() * 0.5, sz + (fy * 0.13 + 1.0).cos() * 0.4);
         let knot = knots.iter().any(|&k| (fy - k).abs() < 1.6);
         let wrap = (38..=41).contains(&y) || (49..=53).contains(&y);
-        let r = if knot { 2.3 } else if wrap { 2.0 } else { 1.55 };
+        let r = if knot {
+            2.3
+        } else if wrap {
+            2.0
+        } else {
+            1.55
+        };
         for z in (az - r).floor() as i32..=(az + r).ceil() as i32 {
             for x in (ax - r).floor() as i32..=(ax + r).ceil() as i32 {
                 let (dx, dz) = (x as f32 - ax, z as f32 - az);
@@ -692,9 +755,17 @@ pub fn old_man() -> Collected {
                 }
                 let a = dz.atan2(dx);
                 let c = if wrap {
-                    if ((a / TAU * 8.0) as i32 + y) % 3 == 0 { LEATHER_D } else { LEATHER }
+                    if ((a / TAU * 8.0) as i32 + y) % 3 == 0 {
+                        LEATHER_D
+                    } else {
+                        LEATHER
+                    }
                 } else if knot {
-                    if (fy - knots.iter().fold(0.0, |b, &k| if (fy - k).abs() < 1.6 { k } else { b })).abs() < 0.5 { STAFF_L } else { STAFF_D }
+                    if (fy - knots.iter().fold(0.0, |b, &k| if (fy - k).abs() < 1.6 { k } else { b })).abs() < 0.5 {
+                        STAFF_L
+                    } else {
+                        STAFF_D
+                    }
                 } else if (a * 3.0 + fy * 0.12).sin() > 0.55 {
                     STAFF_D
                 } else {
@@ -772,7 +843,17 @@ pub fn old_man() -> Collected {
         s.set(x, y, z, ROBE_L);
     }
     // The beard, from under his chin to his belt (the face fills in behind it).
-    limb(&mut s, &[(v(cx, 66.0, 26.4), 7.0), (v(cx, 58.0, 28.6), 7.6), (v(cx, 48.0, 30.0), 5.8), (v(cx, 40.0, 30.8), 3.4), (v(cx + 0.6, 35.0, 31.2), 1.2)], BEARD);
+    limb(
+        &mut s,
+        &[
+            (v(cx, 66.0, 26.4), 7.0),
+            (v(cx, 58.0, 28.6), 7.6),
+            (v(cx, 48.0, 30.0), 5.8),
+            (v(cx, 40.0, 30.8), 3.4),
+            (v(cx + 0.6, 35.0, 31.2), 1.2),
+        ],
+        BEARD,
+    );
     for y in 69..h {
         for z in 0..d {
             for x in 0..w {
@@ -874,7 +955,13 @@ pub fn old_man() -> Collected {
         // Long wavy strands, each its own shade from top to bottom, greyer toward the tip.
         let strand = x + ((y as f32 * 0.22 + z as f32 * 0.3).sin() * 1.3).round() as i32;
         let n = nz(strand, z / 3, y / 16) - if y < 46 { 0.12 } else { 0.0 };
-        Some(if c == BEARD_L || n > 0.72 { BEARD_L } else if n < 0.24 { BEARD_D } else { BEARD })
+        Some(if c == BEARD_L || n > 0.72 {
+            BEARD_L
+        } else if n < 0.24 {
+            BEARD_D
+        } else {
+            BEARD
+        })
     });
     s.finish(0.025)
 }
@@ -1011,7 +1098,9 @@ pub fn dog() -> Collected {
     s.paint(|x, y, z, c| if c == COAT && y < 60 && (z >= 104 || (z >= 101 && nz(x, y, z) > 0.5)) { Some(MASK) } else { None });
     // A broad wet nose, its nostrils.
     ball(&mut s, v(cx, 52.2, 114.0), v(4.2, 2.8, 1.8), NOSE);
-    s.paint(|x, y, z, c| if c == NOSE && y >= 54 && z >= 114 && (x as f32 - cx).abs() < 1.5 && (x + y) % 2 == 0 { Some(NOSE_L) } else { None });
+    s.paint(
+        |x, y, z, c| if c == NOSE && y >= 54 && z >= 114 && (x as f32 - cx).abs() < 1.5 && (x + y) % 2 == 0 { Some(NOSE_L) } else { None },
+    );
     for x in [21, 26] {
         face(&mut s, x, 51, d, 0, 0x050404);
     }
@@ -1048,13 +1137,21 @@ pub fn dog() -> Collected {
     }
     // Cropped ears standing up.
     for side in [-1.0f32, 1.0] {
-        limb(&mut s, &[(v(cx + side * 8.8, 63.0, 94.0), 3.4), (v(cx + side * 10.0, 68.0, 92.4), 1.9), (v(cx + side * 10.4, 70.8, 91.6), 0.8)], COAT_D);
+        limb(
+            &mut s,
+            &[(v(cx + side * 8.8, 63.0, 94.0), 3.4), (v(cx + side * 10.0, 68.0, 92.4), 1.9), (v(cx + side * 10.4, 70.8, 91.6), 0.8)],
+            COAT_D,
+        );
     }
     let mut inner = vec![];
     for y in 63..=68 {
         for z in 92..100 {
             for x in 0..w {
-                if s.get(x, y, z) == Some(COAT_D) && (x as f32 - cx).abs() > 7.5 && s.get(x, y, z + 1).is_none() && (x as f32 - cx).abs() < 10.5 {
+                if s.get(x, y, z) == Some(COAT_D)
+                    && (x as f32 - cx).abs() > 7.5
+                    && s.get(x, y, z + 1).is_none()
+                    && (x as f32 - cx).abs() < 10.5
+                {
                     inner.push((x, y, z));
                 }
             }
@@ -1098,7 +1195,13 @@ pub fn dog() -> Collected {
         if fy < 24.0 && fz > 40.0 && fz < 72.0 {
             return Some(COAT_L);
         }
-        Some(if stripe > 0.62 { COAT_D } else if n > 0.92 { COAT_L } else { COAT })
+        Some(if stripe > 0.62 {
+            COAT_D
+        } else if n > 0.92 {
+            COAT_L
+        } else {
+            COAT
+        })
     });
     shag(&mut s, (w, h, d), COAT, COAT_D, COAT_L, 0.07, 2);
     s.finish(0.03)
@@ -1224,7 +1327,13 @@ fn horn(s: &mut Sculpt, knots: &[(Vec3, f32)], base: u32, ring: u32, tip: u32) {
             let u = along / total;
             let ridge = (along / 2.4).fract() < 0.32 && u < 0.8;
             let r = ra + (rb - ra) * t + if ridge { 0.45 } else { 0.0 };
-            let c = if u > 0.8 { tip } else if ridge { ring } else { base };
+            let c = if u > 0.8 {
+                tip
+            } else if ridge {
+                ring
+            } else {
+                base
+            };
             s.ellipsoid((p.x, p.y, p.z), (r, r, r), 0, c);
         }
         run += len;
@@ -1315,14 +1424,20 @@ pub fn krampus_shade() -> Collected {
         birch(&mut s, base, tip, i);
     }
     for side in [-1.0f32, 1.0] {
-        limb(&mut s, &[(v(cx + side * 10.0, 88.0, 27.0), 1.3), (v(cx + side * 12.0, 87.0, 40.0), 1.3), (v(cx + side * 12.4, 72.0, 53.0), 1.3)], STRAP);
+        limb(
+            &mut s,
+            &[(v(cx + side * 10.0, 88.0, 27.0), 1.3), (v(cx + side * 12.0, 87.0, 40.0), 1.3), (v(cx + side * 12.4, 72.0, 53.0), 1.3)],
+            STRAP,
+        );
         s.cuboid((cx + side * 12.4) as i32 - 1, 70, 54, (cx + side * 12.4) as i32 + 1, 72, 54, BELL);
     }
 
     // ---- chains round his waist and across his chest, link by link, hung with bells
     // (height, half-width, half-depth, middle's depth, tilt)
     let chains = [(54.0f32, 16.8f32, 12.6f32, 37.5f32, 0.0f32), (72.0, 19.4, 14.2, 43.0, 0.35)];
-    let on_chain = |(cy, crx, crz, oz, tilt): (f32, f32, f32, f32, f32), a: f32| v(cx + a.cos() * crx, cy + (a * 2.0).sin() * 1.2 + a.cos() * tilt * 12.0, oz + a.sin() * crz);
+    let on_chain = |(cy, crx, crz, oz, tilt): (f32, f32, f32, f32, f32), a: f32| {
+        v(cx + a.cos() * crx, cy + (a * 2.0).sin() * 1.2 + a.cos() * tilt * 12.0, oz + a.sin() * crz)
+    };
     for ch in chains {
         let n = 28;
         for i in 0..n {
@@ -1390,7 +1505,17 @@ pub fn krampus_shade() -> Collected {
         face(&mut s, x, 91, d, 0, MAW);
     }
     // The long tongue lolling out and down over his chest, a groove down its middle.
-    limb(&mut s, &[(v(cx, 86.0, 68.0), 2.6), (v(cx, 83.0, 73.0), 2.2), (v(cx + 1.2, 77.0, 75.6), 1.8), (v(cx, 70.0, 76.4), 1.4), (v(cx - 0.6, 65.0, 75.4), 1.0)], TONGUE);
+    limb(
+        &mut s,
+        &[
+            (v(cx, 86.0, 68.0), 2.6),
+            (v(cx, 83.0, 73.0), 2.2),
+            (v(cx + 1.2, 77.0, 75.6), 1.8),
+            (v(cx, 70.0, 76.4), 1.4),
+            (v(cx - 0.6, 65.0, 75.4), 1.0),
+        ],
+        TONGUE,
+    );
     s.paint(|x, y, z, c| if c == TONGUE && (x == 45 || x == 46) && y < 84 && z > 74 && nz(x, y, z) > 0.3 { Some(TONGUE_D) } else { None });
     // A heavy brow over ember eyes with a goat's slit pupils.
     ball(&mut s, v(cx, 99.6, 63.6), v(8.8, 2.2, 3.2), HIDE_D);
@@ -1403,16 +1528,40 @@ pub fn krampus_shade() -> Collected {
                 }
                 s.set(x, y, 64, HIDE_D);
                 let mid = (x as f32 - ex).abs() < 1.0;
-                s.set(x, y, 65, if y == 98 && mid { SLIT } else if y == 99 { EYE_L } else { EYE });
+                s.set(
+                    x,
+                    y,
+                    65,
+                    if y == 98 && mid {
+                        SLIT
+                    } else if y == 99 {
+                        EYE_L
+                    } else {
+                        EYE
+                    },
+                );
             }
         }
     }
     for side in [-1.0f32, 1.0] {
         // Goat's ears sticking out.
-        limb(&mut s, &[(v(cx + side * 8.4, 97.0, 54.0), 2.8), (v(cx + side * 13.6, 99.6, 52.0), 1.8), (v(cx + side * 17.6, 101.6, 50.0), 0.8)], HIDE_D);
+        limb(
+            &mut s,
+            &[(v(cx + side * 8.4, 97.0, 54.0), 2.8), (v(cx + side * 13.6, 99.6, 52.0), 1.8), (v(cx + side * 17.6, 101.6, 50.0), 0.8)],
+            HIDE_D,
+        );
         // Great horns: up and back, curling round and forward at the tips, ridged along their length.
         let k = |dx: f32, y: f32, z: f32, r: f32| (v(cx + side * dx, y, z), r);
-        let knots = [k(5.2, 102.0, 57.0, 4.2), k(9.6, 110.0, 53.0, 3.8), k(15.6, 117.0, 47.0, 3.2), k(22.0, 121.0, 43.0, 2.7), k(28.0, 120.0, 42.0, 2.2), k(32.4, 114.0, 44.8, 1.8), k(33.0, 108.0, 49.6, 1.3), k(30.4, 104.8, 53.6, 0.9)];
+        let knots = [
+            k(5.2, 102.0, 57.0, 4.2),
+            k(9.6, 110.0, 53.0, 3.8),
+            k(15.6, 117.0, 47.0, 3.2),
+            k(22.0, 121.0, 43.0, 2.7),
+            k(28.0, 120.0, 42.0, 2.2),
+            k(32.4, 114.0, 44.8, 1.8),
+            k(33.0, 108.0, 49.6, 1.3),
+            k(30.4, 104.8, 53.6, 0.9),
+        ];
         horn(&mut s, &knots, HORN, HORN_D, HORN_TIP);
     }
     limb(&mut s, &[(v(cx, 82.0, 62.0), 3.6), (v(cx, 76.0, 61.0), 2.2), (v(cx, 71.0, 59.6), 1.0)], FUR_L); // a goatee
@@ -1424,7 +1573,13 @@ pub fn krampus_shade() -> Collected {
             return None;
         }
         let n = nz(x, y / 3, z);
-        Some(if n < 0.25 { FUR_D } else if n > 0.86 { FUR_L } else { FUR })
+        Some(if n < 0.25 {
+            FUR_D
+        } else if n > 0.86 {
+            FUR_L
+        } else {
+            FUR
+        })
     });
     shag(&mut s, (w, h, d), FUR, FUR_D, FUR_TIP, 0.3, 3);
     shag(&mut s, (w, h, d), FUR_D, FUR, FUR_TIP, 0.16, 2);
@@ -1469,7 +1624,12 @@ mod tests {
 
     #[test]
     fn the_cast_stays_within_its_grids() {
-        for (name, m, (w, h, d)) in [("kid", kid(0), KID_SIZE), ("old man", old_man(), OLD_MAN_SIZE), ("dog", dog(), DOG_SIZE), ("krampus", krampus_shade(), KRAMPUS_SIZE)] {
+        for (name, m, (w, h, d)) in [
+            ("kid", kid(0), KID_SIZE),
+            ("old man", old_man(), OLD_MAN_SIZE),
+            ("dog", dog(), DOG_SIZE),
+            ("krampus", krampus_shade(), KRAMPUS_SIZE),
+        ] {
             assert_eq!((m.width, m.height, m.depth), (w, h, d), "{name}");
             eprintln!("{name}: {} voxels", m.voxels.len());
         }

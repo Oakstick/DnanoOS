@@ -539,7 +539,16 @@ impl Cyclops {
 
     /// Fires whatever `attack` has due by `t`. Returns shots fired so far and whether it is over.
     #[allow(clippy::too_many_arguments)]
-    fn volley(&mut self, t: f64, attack: Attack, fired: u32, phase: u8, hero: V, shots: &mut Vec<BossShot>, events: &mut Vec<BossEvent>) -> (u32, bool) {
+    fn volley(
+        &mut self,
+        t: f64,
+        attack: Attack,
+        fired: u32,
+        phase: u8,
+        hero: V,
+        shots: &mut Vec<BossShot>,
+        events: &mut Vec<BossEvent>,
+    ) -> (u32, bool) {
         let at = self.muzzle();
         let aim = self.angle_to(hero);
         match attack {

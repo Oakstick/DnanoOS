@@ -4,17 +4,14 @@
 use super::feedback::STREAK_SECONDS;
 use super::{Game, BRUTAL_STREAK, MODE_SCHEDULE, WOUND_STAGGER};
 use crate::audio::Sfx;
-use crate::logic::progression;
-use crate::logic::enemy::{Enemy, EnemyKind, EnemyMode, GlobalMode, WITCH_CAST_EVERY, WITCH_CAST_RANGE, enemy_specs};
+use crate::logic::enemy::{enemy_specs, Enemy, EnemyKind, EnemyMode, GlobalMode, REASSEMBLE_SECONDS, WITCH_CAST_EVERY, WITCH_CAST_RANGE};
 use crate::logic::gear::{COINS_KILL, RUNE_DROP};
 use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::heroes::HeroKind;
 use crate::logic::progression::path;
 use crate::logic::systems::{POINTS_KILL, PUDDLE_SECONDS};
-use crate::logic::types::{P, Tile, dist_sq};
-use crate::logic::enemy::REASSEMBLE_SECONDS;
-use crate::logic::gym;
-use crate::logic::types::CARDINALS;
+use crate::logic::types::{dist_sq, Tile, CARDINALS, P};
+use crate::logic::{gym, progression};
 
 /// Seconds between reinforcements (the first comes after `SPAWN_FIRST`).
 const SPAWN_EVERY: f64 = 25.0;
@@ -32,7 +29,8 @@ const MAX_ENEMIES_PER_KEY: usize = 2;
 const SPAWN_CYCLE: [EnemyKind; 4] = [EnemyKind::Bat, EnemyKind::Slime, EnemyKind::Vampire, EnemyKind::Skeleton];
 
 /// The realms' reinforcements (the witches bring their own minions).
-const SPAWN_CYCLE_TWO: [EnemyKind; 5] = [EnemyKind::LargeBat, EnemyKind::Helmeted, EnemyKind::Werewolf, EnemyKind::Witch, EnemyKind::Blemmyes];
+const SPAWN_CYCLE_TWO: [EnemyKind; 5] =
+    [EnemyKind::LargeBat, EnemyKind::Helmeted, EnemyKind::Werewolf, EnemyKind::Witch, EnemyKind::Blemmyes];
 
 /// Freeze-frame on a kill, the classic "impact" beat.
 const HITSTOP_KILL: f64 = 0.05;
@@ -104,7 +102,15 @@ impl Game {
         // In the vaults the packs are many: the witches may add a dozen minions between them.
         let vault = self.vault.is_some();
         let minions = self.enemies.iter().filter(|e| e.kind() == EnemyKind::Minion).count();
-        let cap = if vault { if minions < 12 { usize::MAX } else { 0 } } else { self.max_enemies() + 2 };
+        let cap = if vault {
+            if minions < 12 {
+                usize::MAX
+            } else {
+                0
+            }
+        } else {
+            self.max_enemies() + 2
+        };
         for i in 0..self.enemies.len() {
             let e = &mut self.enemies[i];
             if e.kind() != EnemyKind::Witch || !e.is_dangerous() || e.lurking() || e.b.returning {

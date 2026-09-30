@@ -11,14 +11,13 @@
 use super::save::Stage;
 use super::{Banner, Game, MenuItem, Screen};
 use crate::audio::Sfx;
+use crate::input::Action;
 use crate::logic::enemy::{enemy_specs, Enemy, EnemyMode};
 use crate::logic::hub::Rect;
 use crate::logic::sins::Sin;
-use crate::logic::types::{dist_sq, Dir, P};
+use crate::logic::types::{dist_sq, Dir, P, V};
 use crate::logic::vault::{LootKind, Vault, LEASH, SEED, WAKE_RANGE};
 use crate::render::view::CameraMode;
-use crate::input::Action;
-use crate::logic::types::V;
 
 /// What he carries out of the vaults: its worth, and what it is made of.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -234,7 +233,11 @@ impl Game {
                 self.view.dust(&self.level.grid, hp.x, hp.y, 0xf2c53d, 24, 2.0);
                 self.juice.banner = Some(Banner {
                     text: "THE HOARD LIES WHERE IT FELL".into(),
-                    sub: if was.is_empty() { "EMPTY-HANDED HE CAME, AND EMPTY-HANDED HE GOES THROUGH".into() } else { format!("{} GOLD LEFT BEHIND   THE PORTAL TO MAMMON'S COURT OPENS", was.gold) },
+                    sub: if was.is_empty() {
+                        "EMPTY-HANDED HE CAME, AND EMPTY-HANDED HE GOES THROUGH".into()
+                    } else {
+                        format!("{} GOLD LEFT BEHIND   THE PORTAL TO MAMMON'S COURT OPENS", was.gold)
+                    },
                     color: 0xf2c53d,
                     life: 3.5,
                     max: 3.5,

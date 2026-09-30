@@ -3,11 +3,11 @@
 
 use super::{Banner, FlyingCoin, Game, GameEvent, KEYS_PER_TEMPO_STEP};
 use crate::audio::Sfx;
-use crate::logic::{gear, progression};
 use crate::logic::gear::{BELT_SLOTS, COINS_KEY, RUNES_SHRINE};
 use crate::logic::items::{ItemKind, Offer};
 use crate::logic::systems::{POINTS_CHARGE, POINTS_NODULE};
 use crate::logic::types::{PotionKind, Tile, V};
+use crate::logic::{gear, progression};
 use crate::render::view::floor_at;
 
 /// Health a green cross gives back, capped at Ragnar's maximum.
@@ -146,7 +146,13 @@ impl Game {
         self.progress.runes += RUNES_SHRINE;
         self.audio.play(Sfx::Milestone);
         self.view.sparkle(&self.level.grid, t.x as f64, t.y as f64, 1.0, 0x9ad1ff, 50);
-        self.floater(t.x as f64, t.y as f64 + 0.6, format!("+{RUNES_SHRINE} {}", progression::gems(self.hero_kind, RUNES_SHRINE)), 1.8, Some(0x9ad1ff));
+        self.floater(
+            t.x as f64,
+            t.y as f64 + 0.6,
+            format!("+{RUNES_SHRINE} {}", progression::gems(self.hero_kind, RUNES_SHRINE)),
+            1.8,
+            Some(0x9ad1ff),
+        );
         self.take_relic(t.v());
         self.save_progress();
     }
@@ -172,7 +178,12 @@ impl Game {
             sub: if now {
                 format!("{} {} OF {} IS YOURS", tree.step(), tier, tree.title(hero).to_uppercase())
             } else {
-                format!("{} {} OF {} UNSEALED   IT IS YOURS ONCE THE TIERS BEFORE IT ARE", tree.step(), tier, tree.title(hero).to_uppercase())
+                format!(
+                    "{} {} OF {} UNSEALED   IT IS YOURS ONCE THE TIERS BEFORE IT ARE",
+                    tree.step(),
+                    tier,
+                    tree.title(hero).to_uppercase()
+                )
             },
             color: n.color,
             life: 3.2,

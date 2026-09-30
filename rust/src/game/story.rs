@@ -7,8 +7,7 @@
 use super::{Game, Screen};
 use crate::audio::{Sfx, Speech};
 use crate::input::Action;
-use crate::logic::story::{first, pause_after, stage, Beat, Shot, Speaker, SCENE_ONE, SOULS_LINE};
-use crate::logic::story::Place;
+use crate::logic::story::{first, pause_after, stage, Beat, Place, Shot, Speaker, SCENE_ONE, SOULS_LINE};
 
 /// Letters a second the typewriter shows.
 pub const TYPE_RATE: f64 = 42.0;

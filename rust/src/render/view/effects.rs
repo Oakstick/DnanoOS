@@ -68,19 +68,24 @@ impl WorldView {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn burst(&mut self, grid: &Grid, x: f32, y: f32, color: u32, intensity: f32, radius: f32, seconds: f32, scale: f32, start_radius: f32) {
+    pub(super) fn burst(
+        &mut self,
+        grid: &Grid,
+        x: f32,
+        y: f32,
+        color: u32,
+        intensity: f32,
+        radius: f32,
+        seconds: f32,
+        scale: f32,
+        start_radius: f32,
+    ) {
         let h = floor_at(grid, x, y);
         let li = self.effect_cursor % LIGHT_POOL_EFFECTS;
         self.effect_cursor += 1;
         let id = self.next_blast_id;
         self.next_blast_id += 1;
-        self.effect_lights[li] = EffectLight {
-            pos: Vec3::new(x, h + 0.8, y),
-            color: lin(color),
-            intensity,
-            distance: radius,
-            owner: id,
-        };
+        self.effect_lights[li] = EffectLight { pos: Vec3::new(x, h + 0.8, y), color: lin(color), intensity, distance: radius, owner: id };
         self.blasts.push(Blast {
             id,
             light: li,

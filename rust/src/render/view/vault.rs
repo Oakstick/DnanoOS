@@ -95,7 +95,18 @@ pub fn coin() -> Mesh {
             for x in 0..7 {
                 let d = ((x as f32 - cx).powi(2) + (z as f32 - cz).powi(2)).sqrt();
                 if d <= 2.6 {
-                    s.set(x, y, z, if d > 2.0 { GOLD_D } else if y == 3 { GOLD_L } else { GOLD });
+                    s.set(
+                        x,
+                        y,
+                        z,
+                        if d > 2.0 {
+                            GOLD_D
+                        } else if y == 3 {
+                            GOLD_L
+                        } else {
+                            GOLD
+                        },
+                    );
                 }
             }
         }
@@ -111,7 +122,13 @@ pub fn pile() -> Mesh {
     s.ellipsoid((7.4, 1.2, 3.6), (2.6, 3.0, 2.6), 0, GOLD);
     s.paint(|x, y, z, _| {
         let n = ((x * 7 + y * 13 + z * 3) % 11) as f32 / 11.0;
-        Some(if n < 0.12 { GOLD_L } else if n > 0.8 || y == 0 { GOLD_D } else { GOLD })
+        Some(if n < 0.12 {
+            GOLD_L
+        } else if n > 0.8 || y == 0 {
+            GOLD_D
+        } else {
+            GOLD
+        })
     });
     mesh_from(&s.finish(0.05), 0.06)
 }
@@ -123,7 +140,13 @@ pub fn chest() -> (Mesh, Mesh) {
     b.paint(|x, y, z, c| {
         let band = x == 2 || x == 9 || x == 5 || x == 6;
         let edge = y == 0 || z == 0 || z == 7 || x == 0 || x == 11;
-        Some(if band { GOLD_D } else if edge && (y + z) % 2 == 0 { WOOD_L } else { c })
+        Some(if band {
+            GOLD_D
+        } else if edge && (y + z) % 2 == 0 {
+            WOOD_L
+        } else {
+            c
+        })
     });
     // Inside: gold to the brim, seen when the lid opens.
     for z in 1..7 {
@@ -141,7 +164,15 @@ pub fn chest() -> (Mesh, Mesh) {
         };
         l.cuboid(0, y, inset, 11, y, 7 - inset, WOOD);
     }
-    l.paint(|x, y, _, c| Some(if x == 2 || x == 9 || x == 5 || x == 6 { GOLD_D } else if y == 3 { WOOD_L } else { c }));
+    l.paint(|x, y, _, c| {
+        Some(if x == 2 || x == 9 || x == 5 || x == 6 {
+            GOLD_D
+        } else if y == 3 {
+            WOOD_L
+        } else {
+            c
+        })
+    });
     // The lock plate on the front.
     l.cuboid(5, 0, 7, 6, 1, 7, GOLD);
     let size = 0.055;
@@ -164,13 +195,15 @@ impl WorldView {
         let hall = v.rooms.iter().find(|r| r.kind == RoomKind::Hall).map(|r| r.rect).unwrap_or(Rect { x0: 0, y0: 0, x1: 0, y1: 0 });
         let carpet: Vec<(Rect, bool)> = v.corridors.iter().map(|c| (*c, c.along_x())).collect();
         let is_carpet = |p: P| -> Option<bool> {
-            carpet.iter().find(|(c, _)| c.contains(p)).map(|(c, along)| {
-                if *along {
-                    p.y == (c.y0 + c.y1) / 2
-                } else {
-                    p.x == (c.x0 + c.x1) / 2
-                }
-            })
+            carpet.iter().find(|(c, _)| c.contains(p)).map(
+                |(c, along)| {
+                    if *along {
+                        p.y == (c.y0 + c.y1) / 2
+                    } else {
+                        p.x == (c.x0 + c.x1) / 2
+                    }
+                },
+            )
         };
         let mut lamps: Vec<Vec3> = Vec::new();
 
@@ -194,11 +227,25 @@ impl WorldView {
                     let c = if black { lin(BLACK) * (0.9 + h as f32 * 0.2) } else { marble(h) };
                     cube(out, Vec3::new(xf, -0.06, yf), Vec3::new(0.97, 0.12, 0.97), 0.0, c, SHADE_MARBLE);
                     if black && h > 0.7 {
-                        cube(out, Vec3::new(xf + (h as f32 - 0.85) * 0.8, 0.004, yf), Vec3::new(0.5, 0.01, 0.03), h as f32 * PI, lin(BLACK_L), SHADE_LIT);
+                        cube(
+                            out,
+                            Vec3::new(xf + (h as f32 - 0.85) * 0.8, 0.004, yf),
+                            Vec3::new(0.5, 0.01, 0.03),
+                            h as f32 * PI,
+                            lin(BLACK_L),
+                            SHADE_LIT,
+                        );
                     }
                 } else if on_edge {
                     // A border of darker marble round every room, a gold line along its inner edge.
-                    cube(out, Vec3::new(xf, -0.06, yf), Vec3::new(0.97, 0.12, 0.97), 0.0, lin(MARBLE_D) * (0.94 + h as f32 * 0.08), SHADE_MARBLE);
+                    cube(
+                        out,
+                        Vec3::new(xf, -0.06, yf),
+                        Vec3::new(0.97, 0.12, 0.97),
+                        0.0,
+                        lin(MARBLE_D) * (0.94 + h as f32 * 0.08),
+                        SHADE_MARBLE,
+                    );
                     for d in CARDINALS {
                         let n = p.step(d);
                         let inner = rect.contains(n) && !(n.x == rect.x0 || n.x == rect.x1 || n.y == rect.y0 || n.y == rect.y1);
@@ -215,7 +262,14 @@ impl WorldView {
                     if h > 0.82 {
                         // A grey vein across the slab.
                         let a = hash(hx * 5.0, hy * 7.0) as f32 * PI;
-                        cube(out, Vec3::new(xf + (h as f32 - 0.9) * 0.6, 0.004, yf + (hash(hy, hx) as f32 - 0.5) * 0.4), Vec3::new(0.6, 0.01, 0.025), a, lin(VEIN), SHADE_LIT);
+                        cube(
+                            out,
+                            Vec3::new(xf + (h as f32 - 0.9) * 0.6, 0.004, yf + (hash(hy, hx) as f32 - 0.5) * 0.4),
+                            Vec3::new(0.6, 0.01, 0.025),
+                            a,
+                            lin(VEIN),
+                            SHADE_LIT,
+                        );
                     }
                 }
             } else {
@@ -223,7 +277,14 @@ impl WorldView {
                 cube(out, Vec3::new(xf, -0.06, yf), Vec3::new(0.97, 0.12, 0.97), 0.0, marble(h), SHADE_MARBLE);
                 match is_carpet(p) {
                     Some(true) => {
-                        cube(out, Vec3::new(xf, 0.01, yf), Vec3::new(1.0, 0.02, 1.0), 0.0, lin(if h > 0.5 { CARPET } else { CARPET_D }), SHADE_LIT);
+                        cube(
+                            out,
+                            Vec3::new(xf, 0.01, yf),
+                            Vec3::new(1.0, 0.02, 1.0),
+                            0.0,
+                            lin(if h > 0.5 { CARPET } else { CARPET_D }),
+                            SHADE_LIT,
+                        );
                     }
                     Some(false) => {
                         // The border tiles: a gold thread along the carpet's edge.
@@ -253,10 +314,14 @@ impl WorldView {
             }
             let (xf, yf) = (x as f32, y as f32);
             let (hx, hy) = (x as f64, y as f64);
-            let open: Vec<Dir> = CARDINALS.iter().copied().filter(|d| {
-                let n = p.step(*d);
-                grid.in_bounds(n.x, n.y) && !rock(n.x, n.y)
-            }).collect();
+            let open: Vec<Dir> = CARDINALS
+                .iter()
+                .copied()
+                .filter(|d| {
+                    let n = p.step(*d);
+                    grid.in_bounds(n.x, n.y) && !rock(n.x, n.y)
+                })
+                .collect();
             if open.is_empty() {
                 continue; // solid rock, out of sight
             }
@@ -270,7 +335,15 @@ impl WorldView {
             self.rock_index.insert(tile_key(x, y), (start, len));
             // Walls and columns dissolve when they stand between the camera and him, as the woods' trees do.
             let shades: Vec<f32> = self.static_cubes[start..start + len].iter().map(|i| i.emissive[3]).collect();
-            self.trees.push(Tree { range: (start, len), base: Vec3::new(xf, 0.0, yf), radius: 0.72, height: WALL_H + 0.4, fade: 1.0, alive: true, shades: Some(shades) });
+            self.trees.push(Tree {
+                range: (start, len),
+                base: Vec3::new(xf, 0.0, yf),
+                radius: 0.72,
+                height: WALL_H + 0.4,
+                fade: 1.0,
+                alive: true,
+                shades: Some(shades),
+            });
         }
 
         // ---- beyond the walls: the dark tops of the rock they are cut from, so every wall looks thick
@@ -278,23 +351,34 @@ impl WorldView {
             if t != Tile::Rock {
                 continue;
             }
-            let faces_floor = |q: P| CARDINALS.iter().any(|d| {
-                let n = q.step(*d);
-                grid.in_bounds(n.x, n.y) && !rock(n.x, n.y)
-            });
+            let faces_floor = |q: P| {
+                CARDINALS.iter().any(|d| {
+                    let n = q.step(*d);
+                    grid.in_bounds(n.x, n.y) && !rock(n.x, n.y)
+                })
+            };
             let p = P::new(x, y);
             if faces_floor(p) {
                 continue;
             }
-            let behind_a_wall = (-1..=1).any(|dy| (-1..=1).any(|dx| {
-                let q = P::new(x + dx, y + dy);
-                grid.in_bounds(q.x, q.y) && rock(q.x, q.y) && faces_floor(q)
-            }));
+            let behind_a_wall = (-1..=1).any(|dy| {
+                (-1..=1).any(|dx| {
+                    let q = P::new(x + dx, y + dy);
+                    grid.in_bounds(q.x, q.y) && rock(q.x, q.y) && faces_floor(q)
+                })
+            });
             if !behind_a_wall {
                 continue;
             }
             let h = hash(x as f64 * 2.1, y as f64 * 1.3) as f32;
-            cube(&mut self.static_cubes, Vec3::new(x as f32, WALL_H - 0.03, y as f32), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(BLACK_L) * (0.7 + h * 0.2), SHADE_MARBLE);
+            cube(
+                &mut self.static_cubes,
+                Vec3::new(x as f32, WALL_H - 0.03, y as f32),
+                Vec3::new(1.0, 0.1, 1.0),
+                0.0,
+                lin(BLACK_L) * (0.7 + h * 0.2),
+                SHADE_MARBLE,
+            );
         }
 
         // ---- lamps: candelabra in the rooms' corners, sconces along the corridors
@@ -366,20 +450,19 @@ impl WorldView {
         for g in &gates {
             let (dx, dy) = g.facing.vec();
             self.static_cubes.push(Instance::new(
-                Mat4::from_scale_rotation_translation(Vec3::new(1.0, 0.1, 1.0), Quat::IDENTITY, Vec3::new(g.tile.x as f32 - dx as f32 * 0.5, -0.06, g.tile.y as f32 - dy as f32 * 0.5)),
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(1.0, 0.1, 1.0),
+                    Quat::IDENTITY,
+                    Vec3::new(g.tile.x as f32 - dx as f32 * 0.5, -0.06, g.tile.y as f32 - dy as f32 * 0.5),
+                ),
                 lin(BLACK),
                 1.0,
                 Vec3::ZERO,
                 SHADE_LIT,
             ));
         }
-        self.vault = Some(VaultView {
-            loot: v.loot.iter().map(|l| (l.at, l.kind)).collect(),
-            opened: vec![0.0; v.loot.len()],
-            lamps,
-            gates,
-            idol,
-        });
+        self.vault =
+            Some(VaultView { loot: v.loot.iter().map(|l| (l.at, l.kind)).collect(), opened: vec![0.0; v.loot.len()], lamps, gates, idol });
     }
 
     /// A wall block: white marble on a black plinth under a gilt cornice, a gold pilaster now and then.
@@ -400,8 +483,22 @@ impl WorldView {
                 let face = Vec3::new(xf + dx as f32 * 0.55, 0.0, yf + dy as f32 * 0.55);
                 let flat = if dx != 0 { Vec3::new(0.12, 1.0, 0.36) } else { Vec3::new(0.36, 1.0, 0.12) };
                 cube(out, face + Vec3::new(0.0, 0.16, 0.0), Vec3::new(flat.x * 1.3, 0.14, flat.z * 1.3), 0.0, lin(BLACK_L), SHADE_MARBLE);
-                cube(out, face + Vec3::new(0.0, WALL_H / 2.0 - 0.05, 0.0), Vec3::new(flat.x, WALL_H - 0.5, flat.z), 0.0, lin(GOLD), SHADE_GOLD);
-                cube(out, face + Vec3::new(0.0, WALL_H - 0.24, 0.0), Vec3::new(flat.x * 1.4, 0.12, flat.z * 1.4), 0.0, lin(GOLD_L), SHADE_GOLD);
+                cube(
+                    out,
+                    face + Vec3::new(0.0, WALL_H / 2.0 - 0.05, 0.0),
+                    Vec3::new(flat.x, WALL_H - 0.5, flat.z),
+                    0.0,
+                    lin(GOLD),
+                    SHADE_GOLD,
+                );
+                cube(
+                    out,
+                    face + Vec3::new(0.0, WALL_H - 0.24, 0.0),
+                    Vec3::new(flat.x * 1.4, 0.12, flat.z * 1.4),
+                    0.0,
+                    lin(GOLD_L),
+                    SHADE_GOLD,
+                );
             }
         }
     }
@@ -413,7 +510,14 @@ impl WorldView {
         cube(out, base + Vec3::new(0.0, 0.25, 0.0), Vec3::new(0.66, 0.1, 0.66), PI / 4.0, lin(GOLD_D), SHADE_GOLD);
         for k in 0..7 {
             let y = 0.3 + k as f32 * 0.22;
-            cube(out, base + Vec3::new(0.0, y + 0.11, 0.0), Vec3::new(0.46, 0.22, 0.46), k as f32 * PI / 8.0 + h, lin(GOLD) * (0.95 + 0.05 * (k % 2) as f32), SHADE_GOLD);
+            cube(
+                out,
+                base + Vec3::new(0.0, y + 0.11, 0.0),
+                Vec3::new(0.46, 0.22, 0.46),
+                k as f32 * PI / 8.0 + h,
+                lin(GOLD) * (0.95 + 0.05 * (k % 2) as f32),
+                SHADE_GOLD,
+            );
         }
         cube(out, base + Vec3::new(0.0, 1.9, 0.0), Vec3::new(0.7, 0.12, 0.7), PI / 4.0, lin(GOLD_L), SHADE_GOLD);
         cube(out, base + Vec3::new(0.0, 2.02, 0.0), Vec3::new(0.9, 0.12, 0.9), 0.0, lin(MARBLE_D), SHADE_MARBLE);
@@ -437,7 +541,14 @@ impl WorldView {
         let (dx, dy) = d.vec();
         let out = &mut self.static_cubes;
         let back = at - Vec3::new(dx as f32 * 0.05, 0.0, dy as f32 * 0.05);
-        cube(out, back - Vec3::new(0.0, 0.12, 0.0), Vec3::new(if dx != 0 { 0.05 } else { 0.16 }, 0.3, if dx != 0 { 0.16 } else { 0.05 }), 0.0, lin(GOLD_D), SHADE_GOLD);
+        cube(
+            out,
+            back - Vec3::new(0.0, 0.12, 0.0),
+            Vec3::new(if dx != 0 { 0.05 } else { 0.16 }, 0.3, if dx != 0 { 0.16 } else { 0.05 }),
+            0.0,
+            lin(GOLD_D),
+            SHADE_GOLD,
+        );
         cube(out, at, Vec3::new(0.14, 0.04, 0.14), 0.0, lin(GOLD), SHADE_GOLD);
         cube(out, at + Vec3::new(0.0, 0.08, 0.0), Vec3::new(0.05, 0.12, 0.05), 0.0, lin(0xf4ecd8), SHADE_LIT);
     }
@@ -468,13 +579,27 @@ impl WorldView {
             cube(out, base + Vec3::new(side * 0.1, y0 + 0.92, 0.2), Vec3::new(0.08, 0.05, 0.02), 0.0, lin(0xe0203a), SHADE_LIT);
             for k in 0..4 {
                 let t = k as f32 / 3.0;
-                cube(out, base + Vec3::new(side * (0.2 + 0.12 * t), y0 + 1.02 + 0.2 * t - 0.05 * t * t, -0.05 * t), Vec3::splat(0.1 - 0.02 * t), side * t, gd, SHADE_GOLD);
+                cube(
+                    out,
+                    base + Vec3::new(side * (0.2 + 0.12 * t), y0 + 1.02 + 0.2 * t - 0.05 * t * t, -0.05 * t),
+                    Vec3::splat(0.1 - 0.02 * t),
+                    side * t,
+                    gd,
+                    SHADE_GOLD,
+                );
             }
         }
         // A crown of coins.
         for k in 0..6 {
             let a = k as f32 / 6.0 * TAU;
-            cube(out, base + Vec3::new(a.cos() * 0.17, y0 + 1.08, a.sin() * 0.17), Vec3::new(0.06, 0.08, 0.02), -a, lin(GOLD_L), SHADE_GOLD);
+            cube(
+                out,
+                base + Vec3::new(a.cos() * 0.17, y0 + 1.08, a.sin() * 0.17),
+                Vec3::new(0.06, 0.08, 0.02),
+                -a,
+                lin(GOLD_L),
+                SHADE_GOLD,
+            );
         }
     }
 
@@ -521,7 +646,8 @@ impl WorldView {
                     let age = vv.opened.get(i).copied().unwrap_or(0.0);
                     let open = if taken { (age / LID_SECONDS).min(1.0) } else { 0.0 };
                     let angle = -(open * open * (3.0 - 2.0 * open)) * 1.9;
-                    let hinge = m * Mat4::from_translation(Vec3::new(0.0, 6.0 * body.size, -3.5 * body.size)) * Mat4::from_rotation_x(angle);
+                    let hinge =
+                        m * Mat4::from_translation(Vec3::new(0.0, 6.0 * body.size, -3.5 * body.size)) * Mat4::from_rotation_x(angle);
                     for (off, c) in &lid.cubes {
                         let shade = if c.x > 0.3 { SHADE_GOLD } else { SHADE_WOOD };
                         f.opaque[cube_i].push(Instance::new(voxel_matrix(&hinge, lid.size, *off), *c, 1.0, Vec3::ZERO, shade));
@@ -534,7 +660,13 @@ impl WorldView {
                             let t = (open * 1.6 + k as f32 * 0.13).fract();
                             let a = k as f32 * 2.4 + seed;
                             let sp = base + Vec3::new(a.cos() * 0.35 * t, 0.35 + t * 0.8 - t * t * 0.9, a.sin() * 0.35 * t);
-                            f.additive.push(Instance::new(Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.04)), lin(GOLD_L), 0.8 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+                            f.additive.push(Instance::new(
+                                Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.04)),
+                                lin(GOLD_L),
+                                0.8 * (1.0 - t),
+                                Vec3::ZERO,
+                                SHADE_UNLIT,
+                            ));
                         }
                     }
                 }
@@ -545,14 +677,24 @@ impl WorldView {
                     let spin = Quat::from_rotation_y(time * 1.4 + seed);
                     let m = &self.models.diamond;
                     for (off, col) in &m.cubes {
-                        let pm = Mat4::from_scale_rotation_translation(Vec3::splat(m.size * 0.8), spin, at + spin * (*off * 0.8) - Vec3::new(0.0, 0.28, 0.0));
+                        let pm = Mat4::from_scale_rotation_translation(
+                            Vec3::splat(m.size * 0.8),
+                            spin,
+                            at + spin * (*off * 0.8) - Vec3::new(0.0, 0.28, 0.0),
+                        );
                         f.opaque[cube_i].push(Instance::new(pm, *col * c * 1.4, 1.0, c * 0.35, SHADE_LIT));
                     }
                     glow_orb(f, at, 0.3 + (time * 3.0 + seed).sin() * 0.03, c, 0.25);
                     for k in 0..3 {
                         let a = time * 1.5 + k as f32 * TAU / 3.0 + seed;
                         let sp = at + Vec3::new(a.cos() * 0.26, (a * 1.7).sin() * 0.12, a.sin() * 0.26);
-                        f.additive.push(Instance::new(Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.03)), Vec3::ONE.lerp(c, 0.5), 0.8, Vec3::ZERO, SHADE_UNLIT));
+                        f.additive.push(Instance::new(
+                            Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.03)),
+                            Vec3::ONE.lerp(c, 0.5),
+                            0.8,
+                            Vec3::ZERO,
+                            SHADE_UNLIT,
+                        ));
                     }
                     lit.push((at, c * 2.5));
                 }
@@ -572,7 +714,13 @@ impl WorldView {
                 let p = *l + Vec3::new((fi * 1.9 + k as f32).sin() * 0.03, t * 0.16, (fi * 2.7).cos() * 0.03);
                 let size = 0.06 * (1.0 - t) + 0.02;
                 let c = lin(FLAME).lerp(lin(FLAME_TIP), t);
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(size, size * 1.6, size)), c, 0.55 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(size, size * 1.6, size)),
+                    c,
+                    0.55 * (1.0 - t),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             glow_orb(f, *l + Vec3::new(0.0, 0.05, 0.0), 0.3, lin(FLAME), 0.18 + 0.03 * (time * 9.0 + fi).sin());
         }

@@ -163,11 +163,10 @@ impl Sculpt {
                 for x in 0..self.w {
                     let Some(c) = self.get(x, y, z) else { continue };
                     let tag = self.tag_at(x, y, z);
-                    let hidden = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
-                        .iter()
-                        .all(|(dx, dy, dz)| {
-                            (grounded && y + dy < 0) || (self.get(x + dx, y + dy, z + dz).is_some() && self.tag_at(x + dx, y + dy, z + dz) == tag)
-                        });
+                    let hidden = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)].iter().all(|(dx, dy, dz)| {
+                        (grounded && y + dy < 0)
+                            || (self.get(x + dx, y + dy, z + dz).is_some() && self.tag_at(x + dx, y + dy, z + dz) == tag)
+                    });
                     if hidden {
                         continue;
                     }
@@ -286,7 +285,7 @@ pub fn ragnar_geared(axe_level: u8, shield: Option<ShieldKind>) -> Collected {
     s.set(6, 18, 5, BEARD_D);
     s.set(8, 18, 5, BEARD_D);
     s.set(7, 16, 6, SKIN_D); // nose
-    // The beard: full cheeks, a mustache, two braids with gold beads.
+                             // The beard: full cheeks, a mustache, two braids with gold beads.
     s.cuboid(5, 15, 5, 9, 16, 5, BEARD);
     s.cuboid(5, 13, 6, 9, 16, 6, BEARD);
     s.cuboid(6, 12, 6, 8, 12, 6, BEARD);
@@ -539,13 +538,13 @@ pub fn blacksmith() -> Collected {
     s.set(4, 18, 6, SKIN_D);
     s.set(12, 18, 6, SKIN_D);
     s.set(7, 21, 8, 0xf0c0a0); // shine on the scalp
-    // Bushy brows and eyes.
+                               // Bushy brows and eyes.
     s.cuboid(6, 19, 9, 7, 19, 9, BEARD);
     s.cuboid(9, 19, 9, 10, 19, 9, BEARD);
     s.set(6, 18, 9, EYE);
     s.set(10, 18, 9, EYE);
     s.set(8, 17, 10, SKIN_D); // nose
-    // The great beard, down over the chest.
+                              // The great beard, down over the chest.
     s.cuboid(5, 12, 8, 11, 17, 9, BEARD);
     s.cuboid(6, 10, 9, 10, 13, 10, BEARD);
     s.cuboid(7, 9, 10, 9, 10, 10, BEARD);

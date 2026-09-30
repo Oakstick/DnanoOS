@@ -1,19 +1,19 @@
 //! The hero's fighting: the swing and what his blade carries, arrows and thrown weapons, bombs,
 //! holy fire, the spirits at his side, Loki's trick, lightning and the Bifrost step.
 
-use super::{BLEED_TICK, FIRE_COLOR, Game, POISON_TICK};
+use super::{Game, BLEED_TICK, FIRE_COLOR, POISON_TICK};
 use crate::audio::Sfx;
-use crate::logic::progression;
 use crate::logic::boss::BODY_RADIUS;
 use crate::logic::heroes::HeroKind;
-use crate::logic::items::Bomb;
-use crate::logic::progression::{Tree, path};
-use crate::logic::projectile::{ShotState, spawn_shots};
-use crate::logic::systems::{BREAK_RADIUS, CHAIN_DELAY_MAX, CHAIN_DELAY_MIN, blast_damage, break_rocks, find_blade_targets, find_projectile_hits, in_blade_arc, in_blast, tile_in_reach};
-use crate::logic::types::{P, V, dist_sq};
-use crate::logic::items;
-use crate::logic::items::RangedKind;
-use crate::logic::items::WeaponKind;
+use crate::logic::items::{Bomb, RangedKind, WeaponKind};
+use crate::logic::progression::{path, Tree};
+use crate::logic::projectile::{spawn_shots, ShotState};
+use crate::logic::systems::{
+    blast_damage, break_rocks, find_blade_targets, find_projectile_hits, in_blade_arc, in_blast, tile_in_reach, BREAK_RADIUS,
+    CHAIN_DELAY_MAX, CHAIN_DELAY_MIN,
+};
+use crate::logic::types::{dist_sq, P, V};
+use crate::logic::{items, progression};
 
 /// Damage the Cyclops takes from a bomb (the weapons carry their own).
 const BOMB_DAMAGE: i32 = 6;
@@ -140,7 +140,8 @@ impl Game {
             self.set_boss_alight(blade.burn);
         }
         if blade.poison && struck_boss {
-            self.poison = ((self.poison.0 + 1).min(POISON_MAX), POISON_SECONDS, if self.poison.0 == 0 { POISON_TICK } else { self.poison.2 });
+            self.poison =
+                ((self.poison.0 + 1).min(POISON_MAX), POISON_SECONDS, if self.poison.0 == 0 { POISON_TICK } else { self.poison.2 });
         }
         if blade.blood > 0 && (landed_any || struck_boss) {
             // Muramasa drinks from the hand that holds it.
@@ -232,7 +233,8 @@ impl Game {
         self.view.flash_light(&self.level.grid, hp, 0xfff1c0);
         self.view.shake(0.4);
         self.audio.play(Sfx::Zap);
-        let doomed: Vec<usize> = self.enemies.iter().enumerate().filter(|(_, e)| e.is_targetable() && dist_sq(e.pos(), hp) <= r * r).map(|(i, _)| i).collect();
+        let doomed: Vec<usize> =
+            self.enemies.iter().enumerate().filter(|(_, e)| e.is_targetable() && dist_sq(e.pos(), hp) <= r * r).map(|(i, _)| i).collect();
         for i in doomed {
             self.slay_enemy(i);
         }

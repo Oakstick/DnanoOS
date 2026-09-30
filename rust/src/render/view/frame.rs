@@ -47,11 +47,7 @@ pub fn glow_orb(f: &mut Frame, at: Vec3, radius: f32, color: Vec3, strength: f32
 
 impl Instance {
     pub fn new(m: Mat4, color: Vec3, alpha: f32, emissive: Vec3, shade: f32) -> Self {
-        Self {
-            m: m.to_cols_array(),
-            color: [color.x, color.y, color.z, alpha],
-            emissive: [emissive.x, emissive.y, emissive.z, shade],
-        }
+        Self { m: m.to_cols_array(), color: [color.x, color.y, color.z, alpha], emissive: [emissive.x, emissive.y, emissive.z, shade] }
     }
 }
 

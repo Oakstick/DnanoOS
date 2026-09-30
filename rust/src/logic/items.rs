@@ -32,7 +32,6 @@ pub enum WeaponKind {
     Ranged(RangedKind),
 }
 
-
 #[derive(Clone, Copy, Debug)]
 pub struct WeaponDef {
     pub name: &'static str,
@@ -62,46 +61,98 @@ pub struct WeaponDef {
     pub burn: bool,
 }
 
-pub const WEAPON_ORDER: [RangedKind; 6] = [
-    RangedKind::Arrow,
-    RangedKind::Double,
-    RangedKind::Trishot,
-    RangedKind::Boomerang,
-    RangedKind::Fireball,
-    RangedKind::Crescent,
-];
+pub const WEAPON_ORDER: [RangedKind; 6] =
+    [RangedKind::Arrow, RangedKind::Double, RangedKind::Trishot, RangedKind::Boomerang, RangedKind::Fireball, RangedKind::Crescent];
 
 pub fn weapon(kind: RangedKind) -> WeaponDef {
     let base = WeaponDef {
-        name: "", color: 0xffffff, ammo: 6, speed: 14.0, range: 14.0, hit_radius: 0.5,
-        pierce: false, returns: false, lateral: &[0.0], spread: false, cooldown: 0.3,
-        damage: 1, homing: false, burn: false,
+        name: "",
+        color: 0xffffff,
+        ammo: 6,
+        speed: 14.0,
+        range: 14.0,
+        hit_radius: 0.5,
+        pierce: false,
+        returns: false,
+        lateral: &[0.0],
+        spread: false,
+        cooldown: 0.3,
+        damage: 1,
+        homing: false,
+        burn: false,
     };
     match kind {
         RangedKind::Arrow => WeaponDef { name: "Arrow", color: 0xe0c9a6, ammo: 7, cooldown: 0.25, ..base },
         RangedKind::Double => WeaponDef { name: "Double Arrow", color: 0xf2e3c4, ammo: 7, lateral: &[-0.28, 0.28], ..base },
-        RangedKind::Trishot => WeaponDef { name: "Tri-Shot", color: 0x9ad1ff, speed: 13.0, range: 12.0, spread: true, cooldown: 0.35, ..base },
+        RangedKind::Trishot => {
+            WeaponDef { name: "Tri-Shot", color: 0x9ad1ff, speed: 13.0, range: 12.0, spread: true, cooldown: 0.35, ..base }
+        }
         RangedKind::Boomerang => WeaponDef {
-            name: "Boomerang", color: 0xc98f4a, ammo: 5, speed: 10.0, range: 5.0, hit_radius: 0.6,
-            pierce: true, returns: true, cooldown: 0.4, damage: 2, ..base
+            name: "Boomerang",
+            color: 0xc98f4a,
+            ammo: 5,
+            speed: 10.0,
+            range: 5.0,
+            hit_radius: 0.6,
+            pierce: true,
+            returns: true,
+            cooldown: 0.4,
+            damage: 2,
+            ..base
         },
         RangedKind::Fireball => WeaponDef {
-            name: "Fireball", color: 0xff8a2a, ammo: 5, speed: 8.0, range: 12.0, hit_radius: 0.6, pierce: true, cooldown: 0.45, damage: 2, ..base
+            name: "Fireball",
+            color: 0xff8a2a,
+            ammo: 5,
+            speed: 8.0,
+            range: 12.0,
+            hit_radius: 0.6,
+            pierce: true,
+            cooldown: 0.45,
+            damage: 2,
+            ..base
         },
-        RangedKind::Crescent => WeaponDef { name: "Crescent", color: 0x8fe7ff, speed: 16.0, range: 6.0, hit_radius: 0.9, pierce: true, ..base },
+        RangedKind::Crescent => {
+            WeaponDef { name: "Crescent", color: 0x8fe7ff, speed: 16.0, range: 6.0, hit_radius: 0.9, pierce: true, ..base }
+        }
         RangedKind::Hurled(hero, tier) => {
             let b = progression::blade(hero, tier);
-            let t = b.throw.unwrap_or(progression::Throw { speed: 12.0, range: 6.0, radius: 0.6, returns: true, homing: false, pierce: true, stagger: false });
+            let t = b.throw.unwrap_or(progression::Throw {
+                speed: 12.0,
+                range: 6.0,
+                radius: 0.6,
+                returns: true,
+                homing: false,
+                pierce: true,
+                stagger: false,
+            });
             let color = progression::node(hero, Tree::Armory, tier).color;
             WeaponDef {
-                name: "Thrown", color, speed: t.speed, range: t.range, hit_radius: t.radius, pierce: t.pierce, returns: t.returns,
-                cooldown: b.cooldown, damage: b.damage, homing: t.homing, ..base
+                name: "Thrown",
+                color,
+                speed: t.speed,
+                range: t.range,
+                hit_radius: t.radius,
+                pierce: t.pierce,
+                returns: t.returns,
+                cooldown: b.cooldown,
+                damage: b.damage,
+                homing: t.homing,
+                ..base
             }
         }
-        RangedKind::Wave => WeaponDef { name: "Wave", color: 0x9ad1ff, speed: 14.0, range: 7.0, hit_radius: 0.7, pierce: true, damage: 3, ..base },
+        RangedKind::Wave => {
+            WeaponDef { name: "Wave", color: 0x9ad1ff, speed: 14.0, range: 7.0, hit_radius: 0.7, pierce: true, damage: 3, ..base }
+        }
         RangedKind::Grace => WeaponDef {
-            name: "Michael's Fire", color: Archangel::Michael.color(), speed: 11.0, range: 16.0, hit_radius: 0.6,
-            damage: Archangel::Michael.boss_damage(), homing: true, ..base
+            name: "Michael's Fire",
+            color: Archangel::Michael.color(),
+            speed: 11.0,
+            range: 16.0,
+            hit_radius: 0.6,
+            damage: Archangel::Michael.boss_damage(),
+            homing: true,
+            ..base
         },
     }
 }
@@ -274,14 +325,7 @@ pub struct Diamond {
 impl Diamond {
     pub fn new(kind: DiamondKind, tile: P, start_index: usize) -> Self {
         let len = Self::len_of(kind);
-        Self {
-            tile,
-            kind,
-            index: start_index % len,
-            active: true,
-            cycle_timer: DIAMOND_CYCLE_SECONDS,
-            respawn_timer: 0.0,
-        }
+        Self { tile, kind, index: start_index % len, active: true, cycle_timer: DIAMOND_CYCLE_SECONDS, respawn_timer: 0.0 }
     }
 
     fn len_of(kind: DiamondKind) -> usize {

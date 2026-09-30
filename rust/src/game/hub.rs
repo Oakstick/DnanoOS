@@ -83,7 +83,13 @@ impl Game {
             }
             if near && cleared && h.hint <= 0.0 {
                 h.hint = 3.0;
-                self.floater(front.x as f64, front.y as f64 - 0.8, format!("{} IS CONQUERED", gate.sin.name().to_uppercase()), 1.6, Some(gate.sin.color()));
+                self.floater(
+                    front.x as f64,
+                    front.y as f64 - 0.8,
+                    format!("{} IS CONQUERED", gate.sin.name().to_uppercase()),
+                    1.6,
+                    Some(gate.sin.color()),
+                );
             }
             // Through the open doors: into the realm beyond.
             if h.doors[i] >= 1.0 && near && self.hero.occupied() == front && self.facing_gate(gate) {

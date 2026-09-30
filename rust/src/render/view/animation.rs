@@ -195,12 +195,8 @@ impl WorldView {
      */
     pub(super) fn pose_slash(&mut self) {
         // (time, arm pitch, arm roll, body twist, lunge); roll and twist mirror with the side.
-        const KEYS: [(f32, f32, f32, f32, f32); 4] = [
-            (0.0, 0.0, 0.0, 0.0, 0.0),
-            (0.2, -2.3, 0.55, 0.38, -0.03),
-            (0.47, 1.55, -0.75, -0.5, 0.1),
-            (1.0, 0.0, 0.0, 0.0, 0.0),
-        ];
+        const KEYS: [(f32, f32, f32, f32, f32); 4] =
+            [(0.0, 0.0, 0.0, 0.0, 0.0), (0.2, -2.3, 0.55, 0.38, -0.03), (0.47, 1.55, -0.75, -0.5, 0.1), (1.0, 0.0, 0.0, 0.0, 0.0)];
         let p = (self.slash_t / SLASH_SECONDS).clamp(0.0, 1.0);
         let k = KEYS.iter().rposition(|k| k.0 <= p).unwrap_or(0).min(KEYS.len() - 2);
         let (a, b) = (KEYS[k], KEYS[k + 1]);

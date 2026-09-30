@@ -20,16 +20,7 @@ const SOLID: u32 = 0;
 /// Glyph cell holding the heart.
 const HEART: u32 = 127;
 
-const HEART_BITS: [u8; 8] = [
-    0b0011_0110,
-    0b0111_1111,
-    0b0111_1111,
-    0b0111_1111,
-    0b0011_1110,
-    0b0001_1100,
-    0b0000_1000,
-    0b0000_0000,
-];
+const HEART_BITS: [u8; 8] = [0b0011_0110, 0b0111_1111, 0b0111_1111, 0b0111_1111, 0b0011_1110, 0b0001_1100, 0b0000_1000, 0b0000_0000];
 
 /// The atlas: every ASCII glyph of the public-domain font8x8, magnified 4x, one byte per texel.
 pub fn build_atlas() -> Vec<u8> {
@@ -147,11 +138,7 @@ impl Overlay {
         let len = (dx * dx + dy * dy).sqrt().max(1e-4);
         let (nx, ny) = (-dy / len * width / 2.0, dx / len * width / 2.0);
         let uv = Self::solid_uv();
-        self.quad(
-            [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]],
-            [uv; 4],
-            color,
-        );
+        self.quad([[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]], [uv; 4], color);
         self.circle(a[0], a[1], width / 2.0, color);
         self.circle(b[0], b[1], width / 2.0, color);
     }

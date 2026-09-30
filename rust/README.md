@@ -25,6 +25,26 @@ cargo test                       # rules, level generation, movement, audio, inp
 
 Serve `web/` over http (for example `python -m http.server 5174 --directory web`) after `build-web.ps1`. Browsers will not load wasm from `file://`.
 
+## Code layout and checks
+
+The layers are described at the top of `src/lib.rs`: `logic` holds the rules with no rendering, audio or input in it; `game` ties the layers together (and still calls the view directly, the one coupling left to untangle), one module per part of the rules (the list is at the top of `src/game.rs`); `render/view` turns the state into draws, one module per concern (frame, models, camera, animation, effects, emit, and one per level look).
+
+Before committing, run every check at once. It fails on a formatting difference, on any clippy warning (desktop, tests and web), or on a failing test:
+
+```
+powershell -File check.ps1
+```
+
+For a change that should not alter what the game does, such as a refactor, compare the capture suite before and after. It renders 26 seeded captures covering every stage and the main systems, and a render matches when the frame logs are identical and the pictures differ only by GPU noise:
+
+```
+python tools/capture_suite.py render before
+python tools/capture_suite.py render after
+python tools/capture_suite.py compare before after
+```
+
+Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.toml` (`[lints]`) and `clippy.toml`.
+
 ## Controls
 
 | | Keyboard and mouse | Controller |

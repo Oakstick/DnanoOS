@@ -9,9 +9,9 @@ use crate::game::{RowKind, ShopAction, ShopRow};
 use crate::logic::gear::BELT_SLOTS;
 use crate::logic::progression::{self, Tree, TIERS};
 use crate::logic::story::roman;
-use crate::render::icons::{icon, Icon};
 use crate::logic::systems::MAX_LIVES;
 use crate::logic::types::PotionKind;
+use crate::render::icons::{icon, Icon};
 
 struct Layout {
     /// Panel x, y, width, height.
@@ -75,7 +75,11 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
     let l = layout(rows, w, h);
     rows.iter().enumerate().position(|(i, r)| {
         let b = l.rows[i];
-        matches!(r.kind, RowKind::Tier(..) | RowKind::Repair | RowKind::Life) && p.0 >= b[0] && p.0 <= b[0] + b[2] && p.1 >= b[1] && p.1 <= b[1] + b[3]
+        matches!(r.kind, RowKind::Tier(..) | RowKind::Repair | RowKind::Life)
+            && p.0 >= b[0]
+            && p.0 <= b[0] + b[2]
+            && p.1 >= b[1]
+            && p.1 <= b[1] + b[3]
     })
 }
 
@@ -108,7 +112,15 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     o.rect_outline(x0, y0, pw, ph, (t * 0.08).max(1.5), rgba(0x6a7a9a, 0.9));
     o.rect_outline(x0 + t * 0.15, y0 + t * 0.15, pw - t * 0.3, ph - t * 0.3, 1.0, rgba(0x3a4458, 0.8));
     let flourish = g.shop.flourish;
-    o.text("THE OLD GATEKEEPER", x0 + t * 0.7, y0 + t * 1.15, t * (0.95 + flourish * 0.08), rgba(mix_rgb(0xa8c4e8, 0xffffff, flourish * 0.6), 1.0), Align::Left, true);
+    o.text(
+        "THE OLD GATEKEEPER",
+        x0 + t * 0.7,
+        y0 + t * 1.15,
+        t * (0.95 + flourish * 0.08),
+        rgba(mix_rgb(0xa8c4e8, 0xffffff, flourish * 0.6), 1.0),
+        Align::Left,
+        true,
+    );
     // Silver and runes.
     let cs = t * 0.85;
     let mut cx = x0 + pw - t * 0.7;
@@ -138,14 +150,28 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 let n = progression::node(hero, tr, tier);
                 let owned = prog.has(tr, tier);
                 let next = prog.next(tr) == Some(tier);
-                let bg = if owned { [0.55, 0.45, 0.25, 0.14] } else if next { [0.4, 0.55, 0.8, 0.12] } else { [1.0, 1.0, 1.0, 0.03] };
+                let bg = if owned {
+                    [0.55, 0.45, 0.25, 0.14]
+                } else if next {
+                    [0.4, 0.55, 0.8, 0.12]
+                } else {
+                    [1.0, 1.0, 1.0, 0.03]
+                };
                 o.rect(rect[0], rect[1], rect[2], rect[3], bg);
                 if selected {
                     o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
                 }
                 let mut x = rect[0] + t * 0.3;
                 let cy = rect[1] + rect[3] / 2.0;
-                o.text(&roman(tier as usize), x + t * 0.55, cy, small * 0.9, rgba(if owned { GOLD } else { TEXT_DIM }, 1.0), Align::Center, true);
+                o.text(
+                    &roman(tier as usize),
+                    x + t * 0.55,
+                    cy,
+                    small * 0.9,
+                    rgba(if owned { GOLD } else { TEXT_DIM }, 1.0),
+                    Align::Center,
+                    true,
+                );
                 x += t * 1.3;
                 let iw = t * 1.2;
                 let (tint, alpha) = if owned || next { (None, 1.0) } else { (Some(0x2a2a30), 0.8) };
@@ -159,7 +185,15 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 if progression::sealed(tier) && !owned {
                     let rw = t * 0.7;
                     let found = prog.found(tr, tier);
-                    draw_sprite(o, icon(Icon::Gem(g.hero_kind)), x + o.measure(&name, size) + t * 0.25, cy - rw / 2.0, rw / 16.0, if found { None } else { Some(0x4a5060) }, 1.0);
+                    draw_sprite(
+                        o,
+                        icon(Icon::Gem(g.hero_kind)),
+                        x + o.measure(&name, size) + t * 0.25,
+                        cy - rw / 2.0,
+                        rw / 16.0,
+                        if found { None } else { Some(0x4a5060) },
+                        1.0,
+                    );
                 }
             }
             RowKind::Repair => {
@@ -199,7 +233,11 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
             if selected && b.enabled {
                 o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.12]);
             }
-            let edge = if selected && (row.kind == RowKind::Tabs || row.kind == RowKind::Leave) { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.16] };
+            let edge = if selected && (row.kind == RowKind::Tabs || row.kind == RowKind::Leave) {
+                rgba(GOLD, pulse)
+            } else {
+                [1.0, 1.0, 1.0, 0.16]
+            };
             o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), edge);
             let color = if !b.enabled {
                 0x7f7a70
@@ -226,7 +264,15 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 draw_sprite(o, icon(Icon::Money(g.hero_kind)), lx, cy - iw / 2.0, iw / 16.0, None, if afford { 1.0 } else { 0.5 });
                 if b.runes > 0 {
                     lx += iw + t * 0.2;
-                    o.text(&rune_part, lx, cy, size, rgba(if g.progress.runes >= b.runes { 0x9ad1ff } else { 0xff7a6a }, 1.0), Align::Left, true);
+                    o.text(
+                        &rune_part,
+                        lx,
+                        cy,
+                        size,
+                        rgba(if g.progress.runes >= b.runes { 0x9ad1ff } else { 0xff7a6a }, 1.0),
+                        Align::Left,
+                        true,
+                    );
                     lx += o.measure(&rune_part, size);
                     draw_sprite(o, icon(Icon::Gem(g.hero_kind)), lx, cy - iw / 2.0, iw / 16.0, None, 1.0);
                 }
@@ -289,7 +335,15 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     let name = n.name.to_uppercase();
     let size = if o.measure(&name, t * 0.8) > tw { t * 0.62 } else { t * 0.8 };
     o.text(&name, tx, c[1] + pad + t * 0.4, size, rgba(n.color, 1.0), Align::Left, true);
-    o.text(&format!("{} {}  -  {}", tree.step(), roman(tier as usize), tree.title(hero).to_uppercase()), tx, c[1] + pad + t * 1.2, small * 0.85, rgba(SAND, 1.0), Align::Left, false);
+    o.text(
+        &format!("{} {}  -  {}", tree.step(), roman(tier as usize), tree.title(hero).to_uppercase()),
+        tx,
+        c[1] + pad + t * 1.2,
+        small * 0.85,
+        rgba(SAND, 1.0),
+        Align::Left,
+        false,
+    );
     let ly = wrap_left(o, n.lore, tx, c[1] + pad + t * 1.95, tw, t * 0.55, small * 0.88, rgba(TEXT_DIM, 1.0));
     let ay = (ly + t * 0.25).max(c[1] + pad + iw + t * 0.3);
     o.text(&n.ability.to_uppercase(), c[0] + pad, ay, small, rgba(GOLD, 1.0), Align::Left, true);
@@ -306,7 +360,14 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         match tree {
             Tree::Armory if prog.wield == tier => ("IN YOUR HAND".to_string(), GOLD),
             Tree::Shield if g.hero.shield.map(|s| s.tier) == Some(tier) => ("ON YOUR ARM".to_string(), GOLD),
-            Tree::Elixir => (format!("BREWED - {} {} A BOTTLE", progression::bottle_price(progression::ELIXIRS[(tier - 1) as usize]), progression::coin(hero)), 0x7dff9a),
+            Tree::Elixir => (
+                format!(
+                    "BREWED - {} {} A BOTTLE",
+                    progression::bottle_price(progression::ELIXIRS[(tier - 1) as usize]),
+                    progression::coin(hero)
+                ),
+                0x7dff9a,
+            ),
             _ => ("YOURS".to_string(), 0x7dff9a),
         }
     } else if prog.found(tree, tier) {
@@ -319,7 +380,16 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         (format!("TAKE {} {} FIRST", tree.step(), roman(tier as usize - 1)), TEXT_DIM)
     } else if progression::sealed(tier) {
         let p = progression::price(tree, tier);
-        (format!("SEALED - {} {} AND {} {}, OR FIND ITS RELIC", p.silver, progression::coin(hero), p.runes, progression::gems(hero, p.runes)), 0x9ad1ff)
+        (
+            format!(
+                "SEALED - {} {} AND {} {}, OR FIND ITS RELIC",
+                p.silver,
+                progression::coin(hero),
+                p.runes,
+                progression::gems(hero, p.runes)
+            ),
+            0x9ad1ff,
+        )
     } else {
         (format!("{} {}", progression::price(tree, tier).silver, progression::coin(hero)), GOLD)
     };

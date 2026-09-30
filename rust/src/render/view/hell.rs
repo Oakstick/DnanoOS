@@ -42,10 +42,10 @@ mod pal {
     pub const EMBER: u32 = 0xff7a20;
     pub const WINDOW: u32 = 0xff3010;
 }
-use pal::*;
 use crate::logic;
 use crate::logic::sins::ALL_SINS;
 use crate::logic::types::Dir;
+use pal::*;
 
 /// The lava's surface, far below the platforms.
 const LAVA_Y: f32 = -2.45;
@@ -78,11 +78,23 @@ pub fn hell_atmosphere() -> Atmosphere {
 }
 
 fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3) {
-    out.push(Instance::new(Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos), color, 1.0, Vec3::ZERO, SHADE_LIT));
+    out.push(Instance::new(
+        Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos),
+        color,
+        1.0,
+        Vec3::ZERO,
+        SHADE_LIT,
+    ));
 }
 
 fn glowing(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3, emissive: Vec3) {
-    out.push(Instance::new(Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos), color, 1.0, emissive, SHADE_LIT));
+    out.push(Instance::new(
+        Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos),
+        color,
+        1.0,
+        emissive,
+        SHADE_LIT,
+    ));
 }
 
 /// Smooth value noise, 0 to 1.
@@ -180,7 +192,9 @@ impl WorldView {
                 let t = s as f32 / 6.0;
                 let hs = hash(fk + s as f64, 2.0);
                 let sz = wide * (1.0 - t * 0.85) * (0.85 + hs as f32 * 0.3);
-                let p = Vec3::new(x, LAVA_Y + tall * (t + 0.08), z) + lean * t + Vec3::new((hs as f32 - 0.5) * 0.5, 0.0, (hash(s as f64, fk) as f32 - 0.5) * 0.5);
+                let p = Vec3::new(x, LAVA_Y + tall * (t + 0.08), z)
+                    + lean * t
+                    + Vec3::new((hs as f32 - 0.5) * 0.5, 0.0, (hash(s as f64, fk) as f32 - 0.5) * 0.5);
                 cube(out, p, Vec3::new(sz, tall / 6.0 + 0.15, sz * 0.8), turn + t * 0.9, stone(hs, &BASALT) * 0.7);
             }
             // A lesser spike beside it.
@@ -188,10 +202,23 @@ impl WorldView {
             for s in 0..3 {
                 let t = s as f32 / 3.0;
                 let sz = wide * 0.5 * (1.0 - t * 0.8);
-                cube(out, Vec3::new(x, LAVA_Y + tall * 0.45 * (t + 0.15), z) + side, Vec3::new(sz, tall * 0.15 + 0.1, sz * 0.8), turn + 1.0 + t, stone(hash(fk, s as f64 + 8.0), &BASALT) * 0.65);
+                cube(
+                    out,
+                    Vec3::new(x, LAVA_Y + tall * 0.45 * (t + 0.15), z) + side,
+                    Vec3::new(sz, tall * 0.15 + 0.1, sz * 0.8),
+                    turn + 1.0 + t,
+                    stone(hash(fk, s as f64 + 8.0), &BASALT) * 0.65,
+                );
             }
             if hash(fk, 17.0) < 0.35 {
-                glowing(out, Vec3::new(x, LAVA_Y + tall * 0.35, z + wide * 0.4), Vec3::new(0.12, tall * 0.4, 0.08), turn, lin(LAVA_DEEP), lin(LAVA) * 1.2);
+                glowing(
+                    out,
+                    Vec3::new(x, LAVA_Y + tall * 0.35, z + wide * 0.4),
+                    Vec3::new(0.12, tall * 0.4, 0.08),
+                    turn,
+                    lin(LAVA_DEEP),
+                    lin(LAVA) * 1.2,
+                );
             }
         }
     }
@@ -262,7 +289,13 @@ impl WorldView {
                 // A scorched flagstone, dusted with ash.
                 cube(out, Vec3::new(x, -0.06, z), Vec3::new(0.95, 0.12, 0.95), tilt, stone(hash(hx, hy), &SLAB) * 0.55);
                 let a = hash(hx * 2.0, hy * 9.0) as f32;
-                cube(out, Vec3::new(x + (a - 0.5) * 0.3, 0.004, z + (hash(hy * 4.0, hx) as f32 - 0.5) * 0.3), Vec3::new(0.3 + a * 0.3, 0.008, 0.25 + a * 0.2), a * PI, lin(ASH) * 0.8);
+                cube(
+                    out,
+                    Vec3::new(x + (a - 0.5) * 0.3, 0.004, z + (hash(hy * 4.0, hx) as f32 - 0.5) * 0.3),
+                    Vec3::new(0.3 + a * 0.3, 0.008, 0.25 + a * 0.2),
+                    a * PI,
+                    lin(ASH) * 0.8,
+                );
             } else {
                 cube(out, Vec3::new(x, -0.06, z), Vec3::new(0.95, 0.12, 0.95), tilt, stone(hash(hx, hy), &SLAB));
                 if hk > 0.96 {
@@ -277,7 +310,13 @@ impl WorldView {
         for k in 1..=3 {
             let inset = 1.3 * k as f32;
             let top = -1.12 - 0.36 * (k - 1) as f32;
-            cube(out, Vec3::new(cx, top - 0.23, cz), Vec3::new(w - 2.0 * inset, 0.46, h - 2.0 * inset), 0.0, lin(BASALT[k as usize % 4]) * 0.9);
+            cube(
+                out,
+                Vec3::new(cx, top - 0.23, cz),
+                Vec3::new(w - 2.0 * inset, 0.46, h - 2.0 * inset),
+                0.0,
+                lin(BASALT[k as usize % 4]) * 0.9,
+            );
         }
         // Jagged rock hanging beneath, longest in the middle.
         for k in 0..38 {
@@ -285,7 +324,13 @@ impl WorldView {
             let b = hash(seed * 1.3 - k as f64 * 2.1, seed + k as f64 * 5.7) as f32;
             let (px, pz) = (r.x0 as f32 - 0.3 + a * (w - 0.4), r.y0 as f32 - 0.3 + b * (h - 0.4));
             let edge = ((px - cx).abs() / (w / 2.0)).max((pz - cz).abs() / (h / 2.0));
-            let base = if edge > 0.8 { -1.1 } else if edge > 0.55 { -1.5 } else { -1.9 };
+            let base = if edge > 0.8 {
+                -1.1
+            } else if edge > 0.55 {
+                -1.5
+            } else {
+                -1.9
+            };
             let long = 0.5 + hash(seed + k as f64, 3.0) as f32 * 1.2 * (1.2 - edge * 0.6);
             let size = 0.45 + hash(seed - k as f64, 7.0) as f32 * 0.6;
             let turn = a * TAU;
@@ -293,7 +338,13 @@ impl WorldView {
                 let t = s as f32 / 4.0;
                 let sz = size * (1.0 - t * 0.8);
                 let y = base - long * (t + 0.125);
-                cube(out, Vec3::new(px + (b - 0.5) * 0.1 * t, y, pz + (a - 0.5) * 0.1 * t), Vec3::new(sz, long / 4.0 + 0.02, sz * 0.85), turn + t, stone(hash(seed + s as f64, k as f64), &BASALT) * 0.85);
+                cube(
+                    out,
+                    Vec3::new(px + (b - 0.5) * 0.1 * t, y, pz + (a - 0.5) * 0.1 * t),
+                    Vec3::new(sz, long / 4.0 + 0.02, sz * 0.85),
+                    turn + t,
+                    stone(hash(seed + s as f64, k as f64), &BASALT) * 0.85,
+                );
             }
         }
         // Veins of lava glowing in the platform's sides.
@@ -390,8 +441,18 @@ impl WorldView {
                 for j in 0..links {
                     let t = (j + 1) as f32 / links as f32;
                     let swing = (hk as f32 * 9.0 + t * 3.0).sin() * 0.2 * t;
-                    let b = Vec3::new(p.x as f32 + ox * (0.64 + t * 0.2) + oz * swing, 0.02 - t * 1.5, p.y as f32 + oz * (0.64 + t * 0.2) + ox * swing);
-                    out.push(Instance::new(forge::segment(a, b, if j % 2 == 0 { 0.055 } else { 0.035 }), lin(if j % 2 == 0 { CHAIN } else { CHAIN_D }), 1.0, Vec3::ZERO, SHADE_LIT));
+                    let b = Vec3::new(
+                        p.x as f32 + ox * (0.64 + t * 0.2) + oz * swing,
+                        0.02 - t * 1.5,
+                        p.y as f32 + oz * (0.64 + t * 0.2) + ox * swing,
+                    );
+                    out.push(Instance::new(
+                        forge::segment(a, b, if j % 2 == 0 { 0.055 } else { 0.035 }),
+                        lin(if j % 2 == 0 { CHAIN } else { CHAIN_D }),
+                        1.0,
+                        Vec3::ZERO,
+                        SHADE_LIT,
+                    ));
                     a = b;
                 }
                 if hk < 0.315 {
@@ -426,7 +487,14 @@ impl WorldView {
                 for f in 0..4 {
                     let a = f as f32 * PI / 2.0;
                     let n = Vec3::new(a.cos(), 0.0, a.sin());
-                    glowing(out, Vec3::new(x, top + 0.16, z) + n * 0.265, Vec3::new(0.2, 0.05, 0.02), a + PI / 2.0, lin(0x5a0a06), lin(0xff2a0a) * 0.9);
+                    glowing(
+                        out,
+                        Vec3::new(x, top + 0.16, z) + n * 0.265,
+                        Vec3::new(0.2, 0.05, 0.02),
+                        a + PI / 2.0,
+                        lin(0x5a0a06),
+                        lin(0xff2a0a) * 0.9,
+                    );
                 }
             }
             top += 0.32;
@@ -434,7 +502,13 @@ impl WorldView {
         if broken {
             for k in 0..3 {
                 let hk = hash(hx * 9.0 + k as f64, hy * 4.0) as f32;
-                cube(out, Vec3::new(x + (hk - 0.5) * 0.3, top + 0.06 + hk * 0.06, z + (hash(hy, hx + k as f64) as f32 - 0.5) * 0.3), Vec3::new(0.2, 0.12 + hk * 0.1, 0.2), hk * 4.0, lin(BASALT[0]));
+                cube(
+                    out,
+                    Vec3::new(x + (hk - 0.5) * 0.3, top + 0.06 + hk * 0.06, z + (hash(hy, hx + k as f64) as f32 - 0.5) * 0.3),
+                    Vec3::new(0.2, 0.12 + hk * 0.1, 0.2),
+                    hk * 4.0,
+                    lin(BASALT[0]),
+                );
             }
             let a = hash(hx, hy) as f32 * TAU;
             cube(out, Vec3::new(x + a.cos() * 0.66, 0.15, z + a.sin() * 0.66), Vec3::new(0.5, 0.3, 0.3), a, lin(BASALT[2]));
@@ -449,7 +523,15 @@ impl WorldView {
         }
         let len = self.static_cubes.len() - start;
         self.tree_index.insert(tile_key(p.x, p.y), self.trees.len());
-        self.trees.push(Tree { range: (start, len), base: Vec3::new(x, 0.0, z), radius: 0.4, height: top, fade: 1.0, alive: true, shades: None });
+        self.trees.push(Tree {
+            range: (start, len),
+            base: Vec3::new(x, 0.0, z),
+            radius: 0.4,
+            height: top,
+            fade: 1.0,
+            alive: true,
+            shades: None,
+        });
     }
 
     /// A wooden bridge over the lava: planks (some charred, a few gone) on two stringers, posts and sagging rope rails, a lantern halfway.
@@ -526,7 +608,13 @@ impl WorldView {
         for p in l.tiles() {
             let (x, z) = (p.x as f32, p.y as f32);
             let hk = hash(p.x as f64 * 2.3, p.y as f64 * 1.9);
-            cube(out, Vec3::new(x, -0.07 + (hk as f32 - 0.5) * 0.03, z), Vec3::new(0.97, 0.14, 0.97), hk as f32 * 0.2, stone(hk, &BASALT) * 1.1);
+            cube(
+                out,
+                Vec3::new(x, -0.07 + (hk as f32 - 0.5) * 0.03, z),
+                Vec3::new(0.97, 0.14, 0.97),
+                hk as f32 * 0.2,
+                stone(hk, &BASALT) * 1.1,
+            );
         }
         let (cx, _) = l.center();
         let (w, len) = ((l.x1 - l.x0 + 1) as f32, (l.y1 - l.y0 + 1) as f32);
@@ -536,7 +624,13 @@ impl WorldView {
             let a = hash(k as f64 * 3.1, 5.0) as f32;
             let b = hash(k as f64 * 1.7, 9.0) as f32;
             let long = 0.6 + a * 1.1;
-            cube(out, Vec3::new(cx + (a - 0.5) * w, -1.3 - long / 2.0, l.y0 as f32 + b * len), Vec3::new(0.6 - a * 0.3, long, 0.6), a * TAU, lin(BASALT[0]) * 0.85);
+            cube(
+                out,
+                Vec3::new(cx + (a - 0.5) * w, -1.3 - long / 2.0, l.y0 as f32 + b * len),
+                Vec3::new(0.6 - a * 0.3, long, 0.6),
+                a * TAU,
+                lin(BASALT[0]) * 0.85,
+            );
         }
         // Behind him the way back has fallen in: boulders heaped across the ledge's end.
         let end = l.y1 as f32 + 0.6;
@@ -544,13 +638,25 @@ impl WorldView {
             let hk = hash(k as f64 * 5.1, 3.0) as f32;
             let hj = hash(k as f64 * 2.7, 8.0) as f32;
             let size = 0.6 + hk * 0.7;
-            cube(out, Vec3::new(cx - 1.8 + k as f32 * 0.6, size * 0.4, end + hj * 0.6), Vec3::new(size, size * 0.9, size * 0.8), hk * 3.0, stone(hk as f64, &BASALT) * 1.1);
+            cube(
+                out,
+                Vec3::new(cx - 1.8 + k as f32 * 0.6, size * 0.4, end + hj * 0.6),
+                Vec3::new(size, size * 0.9, size * 0.8),
+                hk * 3.0,
+                stone(hk as f64, &BASALT) * 1.1,
+            );
         }
         // Beyond the rockfall the old path runs on to the cliffs of the world above.
         cube(out, Vec3::new(cx, -0.75, end + 3.0), Vec3::new(w + 0.4, 1.4, 5.0), 0.0, lin(BASALT[3]));
         for k in 0..6 {
             let z = end + 1.2 + k as f32 * 0.8;
-            cube(out, Vec3::new(cx, -0.07, z), Vec3::new(w, 0.14, 0.75), (hash(k as f64, 4.0) as f32 - 0.5) * 0.1, stone(hash(k as f64, 6.0), &BASALT) * 1.1);
+            cube(
+                out,
+                Vec3::new(cx, -0.07, z),
+                Vec3::new(w, 0.14, 0.75),
+                (hash(k as f64, 4.0) as f32 - 0.5) * 0.1,
+                stone(hash(k as f64, 6.0), &BASALT) * 1.1,
+            );
         }
         // The cliff face: great blocks of rock rising out of the lava along the south, the cave in their middle.
         let face_z = hub::HUB_SIZE as f32 + 4.0;
@@ -562,8 +668,20 @@ impl WorldView {
                 continue; // the cave mouth
             }
             let tall = 5.5 + hk * 3.5 - ((x - cx).abs() / 14.0) * 2.5;
-            cube(out, Vec3::new(x, LAVA_Y + tall / 2.0, face_z + 1.0 + hj * 0.6), Vec3::new(1.3, tall, 2.4), (hk - 0.5) * 0.3, stone(hk as f64, &BASALT));
-            cube(out, Vec3::new(x + (hj - 0.5) * 0.4, LAVA_Y + tall + 0.35, face_z + 1.3), Vec3::new(0.9, 0.7, 1.6), hj * 2.0, stone(hj as f64, &BASALT) * 1.1);
+            cube(
+                out,
+                Vec3::new(x, LAVA_Y + tall / 2.0, face_z + 1.0 + hj * 0.6),
+                Vec3::new(1.3, tall, 2.4),
+                (hk - 0.5) * 0.3,
+                stone(hk as f64, &BASALT),
+            );
+            cube(
+                out,
+                Vec3::new(x + (hj - 0.5) * 0.4, LAVA_Y + tall + 0.35, face_z + 1.3),
+                Vec3::new(0.9, 0.7, 1.6),
+                hj * 2.0,
+                stone(hj as f64, &BASALT) * 1.1,
+            );
         }
         // The cave: dark within, a lintel of rock over it, torches either side.
         cube(out, Vec3::new(cx, 1.2, face_z + 1.1), Vec3::new(3.6, 2.6, 0.2), 0.0, lin(VOID));
@@ -571,7 +689,13 @@ impl WorldView {
         for side in [-1.0f32, 1.0] {
             cube(out, Vec3::new(cx + side * 2.2, 1.0, face_z + 0.9), Vec3::new(1.0, 3.0, 1.8), side * 0.08, lin(BASALT[1]));
             let torch = Vec3::new(cx + side * 1.75, 1.35, face_z + 0.1);
-            out.push(Instance::new(forge::segment(torch - Vec3::new(0.0, 0.45, 0.0), torch, 0.07), lin(WOOD_D), 1.0, Vec3::ZERO, SHADE_LIT));
+            out.push(Instance::new(
+                forge::segment(torch - Vec3::new(0.0, 0.45, 0.0), torch, 0.07),
+                lin(WOOD_D),
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ));
             self.candles.push(torch + Vec3::new(0.0, 0.1, 0.0));
             self.smoke.push((torch + Vec3::new(0.0, 0.2, 0.0), 0.5));
         }
@@ -607,15 +731,23 @@ impl WorldView {
                     cube(out, Vec3::new(x, LAVA_Y - 0.2 + tall / 2.0, z), Vec3::new(0.52, tall, 0.52), 0.0, color);
                     // Lava rivers running down its flanks, and the crater's pool.
                     let a = dz.atan2(dx);
-                    let on_river = r > crater + 0.3 && rivers.iter().any(|&ra| {
-                        let da = (a - ra - 0.22 * (r * 0.9).sin()).rem_euclid(TAU);
-                        da.min(TAU - da) < 0.11 + 0.1 * (r / radius)
-                    });
+                    let on_river = r > crater + 0.3
+                        && rivers.iter().any(|&ra| {
+                            let da = (a - ra - 0.22 * (r * 0.9).sin()).rem_euclid(TAU);
+                            da.min(TAU - da) < 0.11 + 0.1 * (r / radius)
+                        });
                     if r < crater {
                         glowing(out, Vec3::new(x, top + 0.03, z), Vec3::new(0.5, 0.06, 0.5), 0.0, lin(LAVA_DEEP), lin(LAVA_HOT) * 2.2);
                     } else if on_river {
                         // Tall enough to bridge the step down to the next block, so the river runs unbroken.
-                        glowing(out, Vec3::new(x, top - 0.14, z), Vec3::new(0.52, 0.44, 0.52), 0.0, lin(LAVA_DEEP), lin(LAVA) * (1.4 + hk * 0.6));
+                        glowing(
+                            out,
+                            Vec3::new(x, top - 0.14, z),
+                            Vec3::new(0.52, 0.44, 0.52),
+                            0.0,
+                            lin(LAVA_DEEP),
+                            lin(LAVA) * (1.4 + hk * 0.6),
+                        );
                     }
                 }
                 dx += step;
@@ -631,7 +763,9 @@ impl WorldView {
     /// The House of the Devil: a black keep in the volcano's face, horned spires, red windows, an iron door under a skull.
     fn build_house(&mut self, cx: f32, face: f32) {
         let out = &mut self.static_cubes;
-        let hall = |out: &mut Vec<Instance>, x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32, c: u32| cube(out, Vec3::new(x, y, z), Vec3::new(sx, sy, sz), 0.0, lin(c));
+        let hall = |out: &mut Vec<Instance>, x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32, c: u32| {
+            cube(out, Vec3::new(x, y, z), Vec3::new(sx, sy, sz), 0.0, lin(c))
+        };
         // Plinth and steps down to where the causeway will arrive.
         hall(out, cx, -0.2, face - 1.6, 6.2, 0.5, 3.8, BASALT[3]);
         for k in 0..3 {
@@ -649,7 +783,13 @@ impl WorldView {
         }
         for k in 0..7 {
             let x = cx - 1.8 + k as f32 * 0.6;
-            out.push(Instance::new(forge::segment(Vec3::new(x, 3.2, face - 0.1), Vec3::new(x, 3.75, face - 0.1), 0.07), lin(IRON), 1.0, Vec3::ZERO, SHADE_LIT));
+            out.push(Instance::new(
+                forge::segment(Vec3::new(x, 3.2, face - 0.1), Vec3::new(x, 3.75, face - 0.1), 0.07),
+                lin(IRON),
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ));
         }
         // Red windows.
         for (x, y) in [(cx - 1.35, 2.3), (cx + 1.35, 2.3), (cx - 1.35, 1.1), (cx + 1.35, 1.1)] {
@@ -662,7 +802,13 @@ impl WorldView {
             hall(out, tx, 5.05, face - 0.9, 1.35, 0.14, 1.35, OBSIDIAN_L);
             for k in 0..6 {
                 let s = 1.0 - k as f32 * 0.16;
-                cube(out, Vec3::new(tx, 5.3 + k as f32 * 0.26, face - 0.9), Vec3::new(0.9 * s, 0.27, 0.9 * s), PI / 4.0, lin(if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN }));
+                cube(
+                    out,
+                    Vec3::new(tx, 5.3 + k as f32 * 0.26, face - 0.9),
+                    Vec3::new(0.9 * s, 0.27, 0.9 * s),
+                    PI / 4.0,
+                    lin(if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN }),
+                );
             }
             glowing(out, Vec3::new(tx, 3.6, face - 0.3), Vec3::new(0.14, 0.6, 0.06), 0.0, lin(0x3a0804), lin(WINDOW) * 2.0);
             horn(out, Vec3::new(tx + side * 0.4, 4.9, face - 0.9), side, 1.0);
@@ -672,7 +818,13 @@ impl WorldView {
         hall(out, sx, 4.9, sz, 1.4, 3.4, 1.4, OBSIDIAN);
         for k in 0..7 {
             let s = 1.0 - k as f32 * 0.13;
-            cube(out, Vec3::new(sx, 6.7 + k as f32 * 0.3, sz), Vec3::new(1.1 * s, 0.31, 1.1 * s), PI / 4.0, lin(if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN }));
+            cube(
+                out,
+                Vec3::new(sx, 6.7 + k as f32 * 0.3, sz),
+                Vec3::new(1.1 * s, 0.31, 1.1 * s),
+                PI / 4.0,
+                lin(if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN }),
+            );
         }
         for side in [-1.0f32, 1.0] {
             horn(out, Vec3::new(sx + side * 0.55, 6.2, sz), side, 1.6);
@@ -686,12 +838,24 @@ impl WorldView {
                 let t = k as f32 / 4.0;
                 let a = t * 0.95;
                 let p = Vec3::new(side * (0.95 * a.cos() - 0.23), 2.2 + 0.7 * a.sin(), 0.02);
-                out.push(Instance::new(Mat4::from_translation(door_c + p) * Mat4::from_rotation_z(-side * a) * Mat4::from_scale(Vec3::new(0.14, 0.12, 0.12)), lin(0x4a0c08), 1.0, lin(WINDOW) * 0.6, SHADE_LIT));
+                out.push(Instance::new(
+                    Mat4::from_translation(door_c + p) * Mat4::from_rotation_z(-side * a) * Mat4::from_scale(Vec3::new(0.14, 0.12, 0.12)),
+                    lin(0x4a0c08),
+                    1.0,
+                    lin(WINDOW) * 0.6,
+                    SHADE_LIT,
+                ));
             }
             cube(out, door_c + Vec3::new(side * 0.33, 1.1, -0.04), Vec3::new(0.64, 2.2, 0.08), 0.0, lin(IRON));
             for k in 0..4 {
                 for j in 0..2 {
-                    cube(out, door_c + Vec3::new(side * (0.18 + j as f32 * 0.28), 0.35 + k as f32 * 0.5, 0.02), Vec3::splat(0.06), PI / 4.0, lin(IRON_L));
+                    cube(
+                        out,
+                        door_c + Vec3::new(side * (0.18 + j as f32 * 0.28), 0.35 + k as f32 * 0.5, 0.02),
+                        Vec3::splat(0.06),
+                        PI / 4.0,
+                        lin(IRON_L),
+                    );
                 }
             }
         }
@@ -717,7 +881,12 @@ impl WorldView {
         // A ring of rune stones set in the tile before the doors, where he stands to go through.
         for k in 0..10 {
             let a = k as f32 / 10.0 * TAU;
-            let m = root * Mat4::from_scale_rotation_translation(Vec3::new(0.14, 0.02, 0.05), Quat::from_rotation_y(-a - PI / 2.0), Vec3::new(a.cos() * 0.4, 0.008, 1.0 + a.sin() * 0.4));
+            let m = root
+                * Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.14, 0.02, 0.05),
+                    Quat::from_rotation_y(-a - PI / 2.0),
+                    Vec3::new(a.cos() * 0.4, 0.008, 1.0 + a.sin() * 0.4),
+                );
             out.push(Instance::new(m, trim, 1.0, glow, SHADE_LIT));
         }
         // Dark behind the doors (set back, so the leaves swing clear of it).
@@ -737,7 +906,13 @@ impl WorldView {
                 let t = (k + 1) as f32 / 6.0;
                 let local = Vec3::new(side * (1.05 + 0.35 * t + 0.1 * t * t), 3.1 + 0.75 * t, -0.15 * t * t);
                 let q = root.transform_point3(local);
-                out.push(Instance::new(forge::segment(p, q, 0.16 * (1.0 - t * 0.75)), if k >= 4 { lin(HORN_D) } else { lin(HORN) }, 1.0, Vec3::ZERO, SHADE_LIT));
+                out.push(Instance::new(
+                    forge::segment(p, q, 0.16 * (1.0 - t * 0.75)),
+                    if k >= 4 { lin(HORN_D) } else { lin(HORN) },
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
                 p = q;
             }
             // A brazier before the pillar.
@@ -749,9 +924,19 @@ impl WorldView {
         put(out, root, Vec3::new(0.0, 3.22, 0.3), Vec3::new(2.3, 0.04, 0.02), trim, glow);
         for k in 0..4 {
             let w = 2.0 - k as f32 * 0.5;
-            put(out, root, Vec3::new(0.0, 3.3 + k as f32 * 0.18, 0.0), Vec3::new(w, 0.18, 0.5), lin(if k % 2 == 0 { OBSIDIAN } else { OBSIDIAN_L }), Vec3::ZERO);
+            put(
+                out,
+                root,
+                Vec3::new(0.0, 3.3 + k as f32 * 0.18, 0.0),
+                Vec3::new(w, 0.18, 0.5),
+                lin(if k % 2 == 0 { OBSIDIAN } else { OBSIDIAN_L }),
+                Vec3::ZERO,
+            );
         }
-        let gem = root * Mat4::from_translation(Vec3::new(0.0, 4.15, 0.0)) * Mat4::from_rotation_z(PI / 4.0) * Mat4::from_scale(Vec3::splat(0.24));
+        let gem = root
+            * Mat4::from_translation(Vec3::new(0.0, 4.15, 0.0))
+            * Mat4::from_rotation_z(PI / 4.0)
+            * Mat4::from_scale(Vec3::splat(0.24));
         out.push(Instance::new(gem, color, 1.0, color * 1.2, SHADE_LIT));
         // The sin's name in gold letters across the lintel.
         let name = &self.models.portal_names[g.sin.index()];
@@ -771,13 +956,23 @@ impl WorldView {
         for (k, (r, top, h)) in [(1.35f32, 0.04f32, 0.04f32), (0.95, 0.09, 0.05), (0.62, 0.17, 0.08)].iter().enumerate() {
             for s in 0..4 {
                 let turn = s as f32 * PI / 4.0;
-                cube(out, c + Vec3::new(0.0, top - h / 2.0, 0.0), Vec3::new(r * 2.0, *h, r * 0.83), turn, lin(BASALT[1 + k % 2]) * (1.0 - k as f32 * 0.06));
+                cube(
+                    out,
+                    c + Vec3::new(0.0, top - h / 2.0, 0.0),
+                    Vec3::new(r * 2.0, *h, r * 0.83),
+                    turn,
+                    lin(BASALT[1 + k % 2]) * (1.0 - k as f32 * 0.06),
+                );
             }
         }
         // A ring of red runes inlaid in the second step, running socket to socket.
         for k in 0..16 {
             let a = k as f32 / 16.0 * TAU;
-            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.24, 0.012, 0.03), Quat::from_rotation_y(-a - PI / 2.0), c + Vec3::new(a.cos() * 0.8, 0.095, a.sin() * 0.8));
+            let m = Mat4::from_scale_rotation_translation(
+                Vec3::new(0.24, 0.012, 0.03),
+                Quat::from_rotation_y(-a - PI / 2.0),
+                c + Vec3::new(a.cos() * 0.8, 0.095, a.sin() * 0.8),
+            );
             out.push(Instance::new(m, lin(0x2a0606), 1.0, lin(0xff2a0a) * 0.35, SHADE_LIT));
         }
         // The seven sockets: an obsidian block, an iron collar, and a dark hole where the gem will sit.
@@ -794,14 +989,27 @@ impl WorldView {
             for f in 0..4 {
                 let a = f as f32 * PI / 2.0;
                 let n = Vec3::new(a.cos(), 0.0, a.sin());
-                glowing(out, c + Vec3::new(0.0, y, 0.0) + n * 0.255, Vec3::new(0.3, 0.05, 0.02), a + PI / 2.0, lin(0x5a0a06), lin(0xff2a0a) * 0.9);
+                glowing(
+                    out,
+                    c + Vec3::new(0.0, y, 0.0) + n * 0.255,
+                    Vec3::new(0.3, 0.05, 0.02),
+                    a + PI / 2.0,
+                    lin(0x5a0a06),
+                    lin(0xff2a0a) * 0.9,
+                );
             }
         }
         // The seal itself on the south face: seven dim gems round a red eye.
         for (i, sin) in SINS.iter().enumerate() {
             let a = i as f32 / 7.0 * TAU - PI / 2.0;
             let g = c + Vec3::new(a.cos() * 0.14, 0.75 + a.sin() * 0.14, 0.26);
-            out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::splat(0.035), Quat::from_rotation_z(PI / 4.0), g), lin(sin.color()) * 0.6, 1.0, lin(sin.color()) * 0.35, SHADE_LIT));
+            out.push(Instance::new(
+                Mat4::from_scale_rotation_translation(Vec3::splat(0.035), Quat::from_rotation_z(PI / 4.0), g),
+                lin(sin.color()) * 0.6,
+                1.0,
+                lin(sin.color()) * 0.35,
+                SHADE_LIT,
+            ));
         }
         glowing(out, c + Vec3::new(0.0, 0.75, 0.26), Vec3::new(0.06, 0.06, 0.02), PI / 4.0, lin(0x3a0604), lin(0xff2a0a) * 1.4);
         cube(out, c + Vec3::new(0.0, 1.32, 0.0), Vec3::new(0.64, 0.1, 0.64), 0.0, lin(OBSIDIAN_L));
@@ -860,7 +1068,8 @@ impl WorldView {
                 let hinge = Vec3::new(side * 0.62, 0.0, 0.02);
                 let turn = if side < 0.0 { angle } else { -angle };
                 let pm = root * Mat4::from_translation(hinge) * Mat4::from_rotation_y(turn);
-                let plate = pm * Mat4::from_scale_rotation_translation(Vec3::new(0.6, 2.4, 0.06), Quat::IDENTITY, Vec3::new(-side * 0.3, 1.2, -0.03));
+                let plate = pm
+                    * Mat4::from_scale_rotation_translation(Vec3::new(0.6, 2.4, 0.06), Quat::IDENTITY, Vec3::new(-side * 0.3, 1.2, -0.03));
                 f.opaque[cube_i].push(Instance::new(plate, lin(IRON), 1.0, Vec3::ZERO, SHADE_LIT));
                 if near {
                     let m = &leaves[k];
@@ -872,12 +1081,18 @@ impl WorldView {
             }
             // A cleared realm's key, set in the lock between the leaves.
             if cleared {
-                let lock = root * Mat4::from_translation(Vec3::new(0.0, 1.2, 0.1)) * Mat4::from_rotation_z(PI / 4.0) * Mat4::from_scale(Vec3::splat(0.14));
+                let lock = root
+                    * Mat4::from_translation(Vec3::new(0.0, 1.2, 0.1))
+                    * Mat4::from_rotation_z(PI / 4.0)
+                    * Mat4::from_scale(Vec3::splat(0.14));
                 f.opaque[cube_i].push(Instance::new(lock, color, 1.0, color * 1.5, SHADE_LIT));
                 glow_orb(f, root.transform_point3(Vec3::new(0.0, 1.2, 0.2)), 0.35, color, 0.4);
             }
             // The rune ring before the doors, glowing brighter as they open.
-            let ring = root * Mat4::from_translation(Vec3::new(0.0, 0.03, 1.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::splat(0.42 + 0.03 * (time * 3.0 + i as f32).sin()));
+            let ring = root
+                * Mat4::from_translation(Vec3::new(0.0, 0.03, 1.0))
+                * Mat4::from_rotation_x(-PI / 2.0)
+                * Mat4::from_scale(Vec3::splat(0.42 + 0.03 * (time * 3.0 + i as f32).sin()));
             f.transparent[MeshKind::Ring as usize].push(Instance::new(ring, color, 0.1 + 0.5 * door, Vec3::ZERO, SHADE_UNLIT));
             // The realm swirling beyond the open doors.
             if door > 0.0 {
@@ -891,7 +1106,13 @@ impl WorldView {
                         let r = 0.05 + t * 0.52;
                         let p = centre + Vec3::new(a.cos() * r, a.sin() * r * 1.75, 0.02);
                         let c = Vec3::ONE.lerp(color, t);
-                        f.additive.push(Instance::new(root * Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.06 + 0.04 * (1.0 - t))), c, 0.7 * door * (1.0 - t * 0.5), Vec3::ZERO, SHADE_UNLIT));
+                        f.additive.push(Instance::new(
+                            root * Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.06 + 0.04 * (1.0 - t))),
+                            c,
+                            0.7 * door * (1.0 - t * 0.5),
+                            Vec3::ZERO,
+                            SHADE_UNLIT,
+                        ));
                     }
                 }
                 glow_orb(f, root.transform_point3(centre + Vec3::new(0.0, 0.0, 0.3)), 1.1, color, 0.35 * door);
@@ -906,13 +1127,23 @@ impl WorldView {
                     let p = b + Vec3::new((fk * 1.9).sin() * 0.07, t * 0.42, (fk * 2.7).cos() * 0.07);
                     let size = 0.1 * (1.0 - t) + 0.02;
                     let c = fire * (1.1 - 0.6 * t);
-                    f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(size, size * 1.5, size)), c, 0.45 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(
+                        Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(size, size * 1.5, size)),
+                        c,
+                        0.45 * (1.0 - t),
+                        Vec3::ZERO,
+                        SHADE_UNLIT,
+                    ));
                 }
                 glow_orb(f, b + Vec3::new(0.0, 0.15, 0.0), 0.35, fire, 0.18);
             }
             if near {
                 let flick = 3.0 + (time * 9.0 + i as f32).sin() * 0.4;
-                f.lights.push(Light { pos: root.transform_point3(Vec3::new(0.0, 1.6, 1.0)), color: fire * flick * (1.0 + door * 1.5), distance: 5.5 });
+                f.lights.push(Light {
+                    pos: root.transform_point3(Vec3::new(0.0, 1.6, 1.0)),
+                    color: fire * flick * (1.0 + door * 1.5),
+                    distance: 5.5,
+                });
             }
         }
     }
@@ -930,7 +1161,10 @@ impl WorldView {
             let a = i as f32 / 7.0 * TAU - PI / 2.0;
             let at = c + Vec3::new(a.cos() * SEAL_RING, 0.02 + (time * 2.0 + i as f32).sin() * 0.015, a.sin() * SEAL_RING);
             let color = lin(sin.color());
-            let m = Mat4::from_translation(at) * Mat4::from_rotation_y(time + i as f32) * Mat4::from_rotation_z(PI / 4.0) * Mat4::from_scale(Vec3::splat(0.09));
+            let m = Mat4::from_translation(at)
+                * Mat4::from_rotation_y(time + i as f32)
+                * Mat4::from_rotation_z(PI / 4.0)
+                * Mat4::from_scale(Vec3::splat(0.09));
             f.opaque[MeshKind::Cube as usize].push(Instance::new(m, color, 1.0, color * 1.6, SHADE_LIT));
             glow_orb(f, at, 0.18, color, 0.5);
         }
@@ -966,18 +1200,40 @@ impl WorldView {
                     let size = if along { Vec3::new(0.98, 0.4, wide) } else { Vec3::new(wide, 0.4, 0.98) };
                     let hk = hash(at.x as f64 * 3.0, at.z as f64 * 5.0);
                     let hot = (1.0 - u) * 2.0;
-                    f.opaque[cube_i].push(Instance::new(Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, Vec3::new(at.x, top - 0.2, at.z)), stone(hk, &SLAB), 1.0, lin(LAVA) * hot, SHADE_LIT));
+                    f.opaque[cube_i].push(Instance::new(
+                        Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, Vec3::new(at.x, top - 0.2, at.z)),
+                        stone(hk, &SLAB),
+                        1.0,
+                        lin(LAVA) * hot,
+                        SHADE_LIT,
+                    ));
                     let below = top - 0.4 - LAVA_Y + 0.2;
                     if below > 0.05 {
                         let pillar = if along { Vec3::new(0.9, below, wide * 0.7) } else { Vec3::new(wide * 0.7, below, 0.9) };
-                        f.opaque[cube_i].push(Instance::new(Mat4::from_scale_rotation_translation(pillar, Quat::IDENTITY, Vec3::new(at.x, LAVA_Y - 0.2 + below / 2.0, at.z)), stone(hk, &BASALT) * 0.8, 1.0, lin(LAVA) * hot * 0.5, SHADE_LIT));
+                        f.opaque[cube_i].push(Instance::new(
+                            Mat4::from_scale_rotation_translation(
+                                pillar,
+                                Quat::IDENTITY,
+                                Vec3::new(at.x, LAVA_Y - 0.2 + below / 2.0, at.z),
+                            ),
+                            stone(hk, &BASALT) * 0.8,
+                            1.0,
+                            lin(LAVA) * hot * 0.5,
+                            SHADE_LIT,
+                        ));
                     }
                     if u < 1.0 {
                         // Lava pouring off it as it comes up.
                         for j in 0..3 {
                             let tt = (time * 1.7 + j as f32 * 0.33 + hk as f32).fract();
                             let p = Vec3::new(at.x + (j as f32 - 1.0) * 0.4, top - 0.4 - tt * 1.2, at.z + (hk as f32 - 0.5) * 0.6);
-                            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.08, 0.3, 0.08)), lin(LAVA_HOT), 0.8 * (1.0 - tt), Vec3::ZERO, SHADE_UNLIT));
+                            f.additive.push(Instance::new(
+                                Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.08, 0.3, 0.08)),
+                                lin(LAVA_HOT),
+                                0.8 * (1.0 - tt),
+                                Vec3::ZERO,
+                                SHADE_UNLIT,
+                            ));
                         }
                     }
                 }
@@ -1008,7 +1264,13 @@ impl WorldView {
             // A bed of fire at the foot, and tongues of flame licking up out of it, each on its own clock.
             let base = *p + Vec3::new(0.0, 0.3, 0.0);
             let breathe = 0.8 + (time * 4.0 + fk).sin() * 0.2;
-            f.additive.push(Instance::new(Mat4::from_translation(base) * Mat4::from_scale(Vec3::new(0.45, 0.35 * breathe, 0.45)), lin(LAVA_HOT).lerp(lin(0xff5a10), 0.5), 0.14 * fade, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(base) * Mat4::from_scale(Vec3::new(0.45, 0.35 * breathe, 0.45)),
+                lin(LAVA_HOT).lerp(lin(0xff5a10), 0.5),
+                0.14 * fade,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
             if k % 3 == 0 {
                 glow_orb(f, base, 1.2, lin(LAVA), 0.12 * fade);
             }
@@ -1023,7 +1285,13 @@ impl WorldView {
                 let c = lin(LAVA_HOT).lerp(lin(0xc01808), tt * tt);
                 let sway = Vec3::new((fk + fj * 2.0 + time * 2.5).sin() * 0.25 * tt, 0.0, (fk * 1.3 + time * 2.0 + fj).cos() * 0.25 * tt);
                 let q = base + Vec3::new(0.0, rise, 0.0) + sway;
-                f.additive.push(Instance::new(Mat4::from_translation(q) * Mat4::from_scale(Vec3::new(w, w * 1.8, w)), c, 0.3 * (1.0 - tt * tt) * fade, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(q) * Mat4::from_scale(Vec3::new(w, w * 1.8, w)),
+                    c,
+                    0.3 * (1.0 - tt * tt) * fade,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
         }
         let (cx, cz) = v.center();
@@ -1057,12 +1325,20 @@ impl WorldView {
                 f.opaque[sphere].push(Instance::new(m, lin(LAVA_DEEP), 1.0, lin(LAVA) * (1.2 + t), SHADE_LIT));
             } else {
                 let k2 = (t - 0.8) / 0.2;
-                let m = Mat4::from_translation(p + Vec3::new(0.0, 0.02, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::splat(0.2 + k2 * 0.5));
+                let m = Mat4::from_translation(p + Vec3::new(0.0, 0.02, 0.0))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::splat(0.2 + k2 * 0.5));
                 f.transparent[MeshKind::Ring as usize].push(Instance::new(m, lin(LAVA_HOT), 0.8 * (1.0 - k2), Vec3::ZERO, SHADE_UNLIT));
                 for j in 0..4 {
                     let a = j as f32 * TAU / 4.0 + fk;
                     let q = p + Vec3::new(a.cos() * k2 * 0.4, 0.3 * (PI * k2).sin(), a.sin() * k2 * 0.4);
-                    f.additive.push(Instance::new(Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.05)), lin(LAVA_HOT), 1.0 - k2, Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(
+                        Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.05)),
+                        lin(LAVA_HOT),
+                        1.0 - k2,
+                        Vec3::ZERO,
+                        SHADE_UNLIT,
+                    ));
                 }
             }
         }
@@ -1080,8 +1356,15 @@ impl WorldView {
                 let y = -0.3 + (LAVA_Y + 0.3) * t;
                 let flow = ((time * 2.6 - t * 3.0 + i as f32).sin() * 0.5 + 0.5) * 0.6 + 0.6;
                 let q = p + o * (0.1 + 0.45 * t * t) + Vec3::new(0.0, y + 0.3, 0.0);
-                let m = Mat4::from_translation(q) * Mat4::from_scale(Vec3::new(0.34 - t * 0.08, (LAVA_Y.abs() / n as f32) + 0.06, 0.34 - t * 0.08));
-                f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(LAVA_DEEP), 1.0, lin(LAVA).lerp(lin(LAVA_HOT), flow - 0.6) * flow * 1.6, SHADE_LIT));
+                let m = Mat4::from_translation(q)
+                    * Mat4::from_scale(Vec3::new(0.34 - t * 0.08, (LAVA_Y.abs() / n as f32) + 0.06, 0.34 - t * 0.08));
+                f.opaque[MeshKind::Cube as usize].push(Instance::new(
+                    m,
+                    lin(LAVA_DEEP),
+                    1.0,
+                    lin(LAVA).lerp(lin(LAVA_HOT), flow - 0.6) * flow * 1.6,
+                    SHADE_LIT,
+                ));
             }
             let foot = p + o * 0.6 + Vec3::new(0.0, LAVA_Y + 0.3, 0.0);
             glow_orb(f, foot, 0.8, lin(LAVA_HOT), 0.35);
@@ -1100,7 +1383,13 @@ impl WorldView {
             let y = LAVA_Y + t * 9.0;
             let p = Vec3::new(bx + (time * 0.8 + fk).sin() * 0.4 * t, y, bz + (time * 0.6 + fk * 1.7).cos() * 0.4 * t);
             let a = (1.0 - t) * (0.6 + 0.4 * (time * 13.0 + fk).sin().abs());
-            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03 + 0.02 * (1.0 - t))), lin(if k % 3 == 0 { LAVA_HOT } else { EMBER }) * 1.6, a, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03 + 0.02 * (1.0 - t))),
+                lin(if k % 3 == 0 { LAVA_HOT } else { EMBER }) * 1.6,
+                a,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
         }
         // Ash drifting down.
         for k in 0..70 {
@@ -1109,7 +1398,10 @@ impl WorldView {
             let bx = hero.x + (hash(fk as f64 * 3.7, 1.0) as f32 - 0.5) * 30.0;
             let bz = hero.z + (hash(2.0, fk as f64 * 1.9) as f32 - 0.5) * 30.0;
             let p = Vec3::new(bx + (time * 0.4 + fk).sin() * 0.8, 9.0 - t * 11.0, bz + (time * 0.3 + fk).cos() * 0.8);
-            let m = Mat4::from_translation(p) * Mat4::from_rotation_y(time + fk) * Mat4::from_rotation_x(time * 1.3 + fk) * Mat4::from_scale(Vec3::new(0.06, 0.01, 0.05));
+            let m = Mat4::from_translation(p)
+                * Mat4::from_rotation_y(time + fk)
+                * Mat4::from_rotation_x(time * 1.3 + fk)
+                * Mat4::from_scale(Vec3::new(0.06, 0.01, 0.05));
             f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0x6a6260), 0.7, Vec3::ZERO, SHADE_LIT));
         }
     }
@@ -1135,7 +1427,10 @@ impl WorldView {
                     * Mat4::from_scale(Vec3::new(1.5, 0.04, 0.7));
                 f.opaque[cube_i].push(Instance::new(wing, lin(0x1c0a0a), 1.0, Vec3::ZERO, SHADE_LIT));
             }
-            let eyes = Mat4::from_translation(p) * Mat4::from_rotation_y(heading) * Mat4::from_translation(Vec3::new(0.0, 0.05, 0.48)) * Mat4::from_scale(Vec3::new(0.2, 0.05, 0.05));
+            let eyes = Mat4::from_translation(p)
+                * Mat4::from_rotation_y(heading)
+                * Mat4::from_translation(Vec3::new(0.0, 0.05, 0.48))
+                * Mat4::from_scale(Vec3::new(0.2, 0.05, 0.05));
             f.opaque[cube_i].push(Instance::new(eyes, lin(0xff2a0a), 1.0, lin(0xff2a0a) * 3.0, SHADE_LIT));
         }
     }
@@ -1166,20 +1461,44 @@ fn bones(out: &mut Vec<Instance>, at: Vec3, h: f64) {
             for (off, turn) in [(Vec3::new(0.0, 0.03, 0.0), 0.0f32), (Vec3::new(0.05, 0.06, 0.08), 0.7)] {
                 let r = Quat::from_rotation_y(a + turn);
                 let p = at + q * off;
-                out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.36, 0.04, 0.045), r, p), lin(BONE), 1.0, Vec3::ZERO, SHADE_LIT));
+                out.push(Instance::new(
+                    Mat4::from_scale_rotation_translation(Vec3::new(0.36, 0.04, 0.045), r, p),
+                    lin(BONE),
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
                 for s in [-1.0f32, 1.0] {
-                    out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.06, 0.06, 0.08), r, p + r * Vec3::new(s * 0.18, 0.0, 0.0)), lin(BONE_D), 1.0, Vec3::ZERO, SHADE_LIT));
+                    out.push(Instance::new(
+                        Mat4::from_scale_rotation_translation(Vec3::new(0.06, 0.06, 0.08), r, p + r * Vec3::new(s * 0.18, 0.0, 0.0)),
+                        lin(BONE_D),
+                        1.0,
+                        Vec3::ZERO,
+                        SHADE_LIT,
+                    ));
                 }
             }
         }
         _ => {
-            out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.05, 0.05, 0.42), q, at + Vec3::new(0.0, 0.03, 0.0)), lin(BONE_D), 1.0, Vec3::ZERO, SHADE_LIT));
+            out.push(Instance::new(
+                Mat4::from_scale_rotation_translation(Vec3::new(0.05, 0.05, 0.42), q, at + Vec3::new(0.0, 0.03, 0.0)),
+                lin(BONE_D),
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ));
             for k in 0..4 {
                 let z = -0.14 + k as f32 * 0.09;
                 for s in [-1.0f32, 1.0] {
                     let p = at + q * Vec3::new(s * 0.1, 0.07, z);
                     let r = q * Quat::from_rotation_z(s * 0.9);
-                    out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.18, 0.025, 0.03), r, p), lin(BONE), 1.0, Vec3::ZERO, SHADE_LIT));
+                    out.push(Instance::new(
+                        Mat4::from_scale_rotation_translation(Vec3::new(0.18, 0.025, 0.03), r, p),
+                        lin(BONE),
+                        1.0,
+                        Vec3::ZERO,
+                        SHADE_LIT,
+                    ));
                 }
             }
         }
@@ -1189,10 +1508,32 @@ fn bones(out: &mut Vec<Instance>, at: Vec3, h: f64) {
 /// A skull, `size` times the ordinary.
 fn skull(out: &mut Vec<Instance>, at: Vec3, size: f32) {
     let s = size;
-    out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.16, 0.14, 0.18) * s, Quat::IDENTITY, at + Vec3::new(0.0, 0.03, 0.0) * s), lin(BONE), 1.0, Vec3::ZERO, SHADE_LIT));
-    out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.11, 0.05, 0.08) * s, Quat::IDENTITY, at + Vec3::new(0.0, -0.05, 0.07) * s), lin(BONE_D), 1.0, Vec3::ZERO, SHADE_LIT));
+    out.push(Instance::new(
+        Mat4::from_scale_rotation_translation(Vec3::new(0.16, 0.14, 0.18) * s, Quat::IDENTITY, at + Vec3::new(0.0, 0.03, 0.0) * s),
+        lin(BONE),
+        1.0,
+        Vec3::ZERO,
+        SHADE_LIT,
+    ));
+    out.push(Instance::new(
+        Mat4::from_scale_rotation_translation(Vec3::new(0.11, 0.05, 0.08) * s, Quat::IDENTITY, at + Vec3::new(0.0, -0.05, 0.07) * s),
+        lin(BONE_D),
+        1.0,
+        Vec3::ZERO,
+        SHADE_LIT,
+    ));
     for side in [-1.0f32, 1.0] {
-        out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.045, 0.04, 0.02) * s, Quat::IDENTITY, at + Vec3::new(side * 0.04, 0.04, 0.09) * s), lin(0x1a1414), 1.0, Vec3::ZERO, SHADE_LIT));
+        out.push(Instance::new(
+            Mat4::from_scale_rotation_translation(
+                Vec3::new(0.045, 0.04, 0.02) * s,
+                Quat::IDENTITY,
+                at + Vec3::new(side * 0.04, 0.04, 0.09) * s,
+            ),
+            lin(0x1a1414),
+            1.0,
+            Vec3::ZERO,
+            SHADE_LIT,
+        ));
     }
 }
 
@@ -1312,7 +1653,13 @@ pub fn portal_doors(sin: Sin) -> [Mesh; 2] {
     emblem(&mut r, sin);
     let mut left = Vec::new();
     let mut right = Vec::new();
-    let depth = |x: i32, y: i32| if x < 0 || y < 0 || x >= DOOR_W || y >= DOOR_H { 0 } else { r.px[(y * DOOR_W + x) as usize].map_or(0, |(d, _)| d) };
+    let depth = |x: i32, y: i32| {
+        if x < 0 || y < 0 || x >= DOOR_W || y >= DOOR_H {
+            0
+        } else {
+            r.px[(y * DOOR_W + x) as usize].map_or(0, |(d, _)| d)
+        }
+    };
     for y in 0..DOOR_H {
         for x in 0..DOOR_W {
             let Some((d, c)) = r.px[(y * DOOR_W + x) as usize] else { continue };
@@ -1328,7 +1675,10 @@ pub fn portal_doors(sin: Sin) -> [Mesh; 2] {
                 if x < DOOR_W / 2 {
                     left.push((Vec3::new((x as f32 + 0.5) * DOOR_VOXEL, up * DOOR_VOXEL, z), color * (0.9 + 0.1 * layer as f32)));
                 } else {
-                    right.push((Vec3::new(-((DOOR_W - x) as f32 - 0.5) * DOOR_VOXEL, up * DOOR_VOXEL, z), color * (0.9 + 0.1 * layer as f32)));
+                    right.push((
+                        Vec3::new(-((DOOR_W - x) as f32 - 0.5) * DOOR_VOXEL, up * DOOR_VOXEL, z),
+                        color * (0.9 + 0.1 * layer as f32),
+                    ));
                 }
             }
         }
@@ -1375,7 +1725,10 @@ fn emblem(r: &mut Relief, sin: Sin) {
         Sin::Envy => {
             // A great slit-pupilled eye in the coils of a serpent, lesser eyes watching from the corners.
             let (g, gd, white, black) = (0x3ad06a, 0x1e7a3a, 0xd8e0b8, 0x0c100c);
-            let lens = |x: f32, y: f32, s: f32| (x - cx).powi(2) + (y - (40.0 - 10.0 * s)).powi(2) <= (15.0 * s).powi(2) && (x - cx).powi(2) + (y - (40.0 + 10.0 * s)).powi(2) <= (15.0 * s).powi(2);
+            let lens = |x: f32, y: f32, s: f32| {
+                (x - cx).powi(2) + (y - (40.0 - 10.0 * s)).powi(2) <= (15.0 * s).powi(2)
+                    && (x - cx).powi(2) + (y - (40.0 + 10.0 * s)).powi(2) <= (15.0 * s).powi(2)
+            };
             r.fill(2, gd, |x, y| lens(x, y, 1.0));
             r.fill(2, white, |x, y| lens(x, y, 0.85));
             r.disc(cx, 40.0, 5.4, 3, g);
@@ -1409,14 +1762,24 @@ fn emblem(r: &mut Relief, sin: Sin) {
             for s in [-1.0f32, 1.0] {
                 r.line(cx - s * 14.0, 72.0, cx + s * 11.0, 22.0, 1.8, 1, wood);
                 let (ax, ay) = (cx + s * 11.0, 24.0);
-                r.fill(2, steel, |x, y| (x - ax).powi(2) + (y - ay).powi(2) <= 36.0 && (x - (ax - s * 3.5)).powi(2) + (y - ay).powi(2) > 16.0 && (x - ax) * s > -1.0);
+                r.fill(2, steel, |x, y| {
+                    (x - ax).powi(2) + (y - ay).powi(2) <= 36.0
+                        && (x - (ax - s * 3.5)).powi(2) + (y - ay).powi(2) > 16.0
+                        && (x - ax) * s > -1.0
+                });
             }
             for k in 0..11 {
                 let a = PI * 0.95 + k as f32 / 10.0 * PI * 1.1;
                 let (bx, by) = (cx + a.cos() * 10.0, 40.0 + a.sin() * 10.0);
                 let (tx, ty) = (cx + a.cos() * (19.0 + (k % 2) as f32 * 3.0), 40.0 + a.sin() * (19.0 + (k % 2) as f32 * 3.0));
                 let n = (-a.sin(), a.cos());
-                r.tri((bx - n.0 * 3.0, by - n.1 * 3.0), (bx + n.0 * 3.0, by + n.1 * 3.0), (tx, ty), 1, if k % 2 == 0 { orange } else { yellow });
+                r.tri(
+                    (bx - n.0 * 3.0, by - n.1 * 3.0),
+                    (bx + n.0 * 3.0, by + n.1 * 3.0),
+                    (tx, ty),
+                    1,
+                    if k % 2 == 0 { orange } else { yellow },
+                );
                 r.tri((bx - n.0 * 1.5, by - n.1 * 1.5), (bx + n.0 * 1.5, by + n.1 * 1.5), ((bx + tx) / 2.0, (by + ty) / 2.0), 2, red);
             }
             r.disc(cx, 41.0, 9.5, 2, rd);
@@ -1521,9 +1884,13 @@ fn emblem(r: &mut Relief, sin: Sin) {
         }
         Sin::Gluttony => {
             // A fanged maw swallowing a feast.
-            let (lips, dark, fang, tongue, meat, bone, grape, gold, apple, leaf) = (0xa8301a, 0x1a0806, 0xe8e0c8, 0xd0506a, 0xc07a3a, 0xe8dcc0, 0x7a3a9a, 0xf2c53d, 0xd82a2a, 0x3a8a3a);
+            let (lips, dark, fang, tongue, meat, bone, grape, gold, apple, leaf) =
+                (0xa8301a, 0x1a0806, 0xe8e0c8, 0xd0506a, 0xc07a3a, 0xe8dcc0, 0x7a3a9a, 0xf2c53d, 0xd82a2a, 0x3a8a3a);
             // The lips a rim round the dark of the mouth.
-            r.fill(2, lips, |x, y| ((x - cx) / 16.0).powi(2) + ((y - 52.0) / 14.0).powi(2) <= 1.0 && ((x - cx) / 12.5).powi(2) + ((y - 52.0) / 10.5).powi(2) > 1.0);
+            r.fill(2, lips, |x, y| {
+                ((x - cx) / 16.0).powi(2) + ((y - 52.0) / 14.0).powi(2) <= 1.0
+                    && ((x - cx) / 12.5).powi(2) + ((y - 52.0) / 10.5).powi(2) > 1.0
+            });
             r.ellipse(cx, 52.0, 12.5, 10.5, 1, dark);
             r.ellipse(cx, 58.0, 6.5, 3.2, 2, tongue);
             for k in 0..6 {
@@ -1539,7 +1906,9 @@ fn emblem(r: &mut Relief, sin: Sin) {
             r.tri((26.0, 10.0), (33.0, 10.0), (29.5, 16.0), 3, gold);
             r.line(29.5, 16.0, 29.5, 20.0, 0.9, 3, gold);
             r.rect(27.5, 20.0, 31.5, 21.0, 3, gold);
-            for (k, (gx, gy)) in [(0.0f32, 0.0f32), (-1.6, 1.8), (1.6, 1.8), (0.0, 3.6), (-1.6, 3.8), (1.6, 3.8), (0.0, 5.6)].iter().enumerate() {
+            for (k, (gx, gy)) in
+                [(0.0f32, 0.0f32), (-1.6, 1.8), (1.6, 1.8), (0.0, 3.6), (-1.6, 3.8), (1.6, 3.8), (0.0, 5.6)].iter().enumerate()
+            {
                 r.disc(cx + gx, 30.0 + gy, 1.25, 3, if k % 2 == 0 { grape } else { 0x5a2a7a });
             }
             r.line(cx, 29.0, cx + 1.0, 27.0, 0.6, 3, leaf);

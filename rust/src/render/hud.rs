@@ -11,13 +11,13 @@ use std::sync::OnceLock;
 
 use glam::Vec3;
 
+use super::foes::{bog_slime, draugr, raven};
 use super::overlay::{rgba, Align, Overlay};
 use super::view::STEP;
-use super::foes::{bog_slime, draugr, raven};
 use super::voxels::{sprite_from, Sprite};
-use crate::game::{Game, MenuItem, Screen};
+use crate::game::{Game, MenuItem, Screen, TourArt, DOUBLE_POINTS_SECONDS, TOUR_STOP_SECONDS};
+use crate::logic::items::{weapon, weapon_label, Offer, WeaponKind};
 use crate::logic::progression::{self, Tree};
-use crate::logic::items::{weapon, weapon_label, WeaponKind};
 use crate::render::icons::{icon, Icon};
 
 mod controls;
@@ -26,28 +26,18 @@ mod shop;
 
 pub use map::map_rects;
 mod story;
-pub use shop::{shop_row_at, shop_rects};
-use crate::logic::systems::MAX_LIVES;
-use crate::render::view::floor_at;
-use crate::game::DOUBLE_POINTS_SECONDS;
-use crate::game::TOUR_STOP_SECONDS;
-use crate::game::TourArt;
-use crate::logic::angels::ARCHANGELS;
-use crate::logic::angels::Archangel;
+use crate::logic::angels::{Archangel, ARCHANGELS};
 use crate::logic::boss::BossState;
 use crate::logic::enemy::EnemyKind;
-use crate::logic::gear;
-use crate::logic::gear::BELT_SLOTS;
-use crate::logic::gear::COINS_BOSS;
-use crate::logic::gear::RUNES_BOSS;
-use crate::logic::heroes::HeroKind;
-use crate::logic::heroes::ROSTER;
-use crate::logic::hub;
-use crate::logic::items::Offer;
+use crate::logic::gear::{BELT_SLOTS, COINS_BOSS, RUNES_BOSS};
+use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::sins::SINS;
-use crate::logic::types::PotionKind;
-use crate::logic::types::Tile;
+use crate::logic::systems::MAX_LIVES;
+use crate::logic::types::{PotionKind, Tile};
+use crate::logic::{gear, hub};
 use crate::render::view;
+use crate::render::view::floor_at;
+pub use shop::{shop_rects, shop_row_at};
 
 const LAYOUT_COLS: f32 = 64.0;
 const LAYOUT_ROWS: f32 = 36.0;
@@ -106,7 +96,12 @@ fn sprites() -> &'static Sprites {
             (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail slows you too."),
             (sprite_from(&super::foes2::witch()), "Witch", 0xb066ff, "Keeps her distance and conjures minions. Two blows."),
             (sprite_from(&super::foes2::minion()), "Witch Minion", 0xd08cff, "Small and quick; they come in numbers."),
-            (sprite_from(&super::foes2::helmeted_skeleton()), "Helmeted Skeleton", 0xff5a4a, "The first blow rings off its helmet. Rises again."),
+            (
+                sprite_from(&super::foes2::helmeted_skeleton()),
+                "Helmeted Skeleton",
+                0xff5a4a,
+                "The first blow rings off its helmet. Rises again.",
+            ),
             (sprite_from(&super::foes2::loup_garou()), "Loup-Garou", 0xc0885a, "Fast, and faster once wounded."),
             (sprite_from(&super::foes2::blemmyes()), "Blemmyes", 0xe8b494, "Three blows to fell, and his hand hits twice as hard."),
             (sprite_from(&super::foes2::large_bat()), "Large Bat", 0xc04a70, "Flies over everything, swerving as it comes."),
@@ -183,7 +178,15 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             let y = rects.last().map(|r| r[1] + r[3]).unwrap_or(o.height / 2.0) + t * 1.4;
             o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
             o.text(&where_line(g), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
-            o.wrap_text(crate::logic::story::objective(), o.width / 2.0, y + t * 1.7, (t * 26.0).min(o.width - t * 2.0), t * 0.75, t * 0.5, rgba(TEXT_DIM, 1.0));
+            o.wrap_text(
+                crate::logic::story::objective(),
+                o.width / 2.0,
+                y + t * 1.7,
+                (t * 26.0).min(o.width - t * 2.0),
+                t * 0.75,
+                t * 0.5,
+                rgba(TEXT_DIM, 1.0),
+            );
             if g.show_controls {
                 controls::draw_controls(o, g, t);
             }
@@ -281,14 +284,28 @@ fn draw_boss_bar(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(x0 - 3.0, by - 3.0, bw + 6.0, bh + 6.0, [0.0, 0.0, 0.0, 0.8]);
     o.rect(x0, by, bw, bh, [1.0, 1.0, 1.0, 0.1]);
     o.rect(x0, by, bw * trail, bh, [1.0, 0.95, 0.85, 0.8]);
-    let color = if b.flash > 0.3 { 0xffffff } else if b.dazed() { mix_rgb(0xc24bd8, 0xffe066, (time * 8.0).sin() * 0.5 + 0.5) } else { 0xc24bd8 };
+    let color = if b.flash > 0.3 {
+        0xffffff
+    } else if b.dazed() {
+        mix_rgb(0xc24bd8, 0xffe066, (time * 8.0).sin() * 0.5 + 0.5)
+    } else {
+        0xc24bd8
+    };
     o.rect(x0, by, bw * frac, bh, rgba(color, 1.0));
     o.rect(x0, by, bw * frac, bh * 0.3, [1.0, 1.0, 1.0, 0.2]);
     for k in [1.0f32 / 3.0, 2.0 / 3.0] {
         o.rect(x0 + bw * k - 1.0, by - t * 0.1, 2.0, bh + t * 0.2, [0.0, 0.0, 0.0, 0.85]);
     }
     if b.dazed() {
-        o.text("DAZED - STRIKE NOW!", w / 2.0, by + bh + t * 0.55, t * 0.55, rgba(0xffe066, 0.7 + (time * 10.0).sin() * 0.3), Align::Center, true);
+        o.text(
+            "DAZED - STRIKE NOW!",
+            w / 2.0,
+            by + bh + t * 0.55,
+            t * 0.55,
+            rgba(0xffe066, 0.7 + (time * 10.0).sin() * 0.3),
+            Align::Center,
+            true,
+        );
     }
 }
 
@@ -361,10 +378,23 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let ghost = hero.invisible();
     let golden = hero.invincible() && ((time * 6.0).floor() as i64).rem_euclid(2) == 0;
     let hurt_red = j.hurt > 0.5 && ((time * 20.0).floor() as i64).rem_euclid(2) == 0;
-    let tint = if golden { Some(0xffd84a) } else if hurt_red { Some(0xff5a5a) } else { None };
+    let tint = if golden {
+        Some(0xffd84a)
+    } else if hurt_red {
+        Some(0xff5a5a)
+    } else {
+        None
+    };
     draw_sprite(o, portrait, px0, py0, scale, tint, if ghost { 0.4 } else { 1.0 });
     if hero.shield.is_some() {
-        o.rect_outline(px0 - t * 0.15, py0 - t * 0.1, portrait_w + t * 0.3, portrait_h + t * 0.2, (t * 0.08).max(1.0), [127.0 / 255.0, 215.0 / 255.0, 1.0, 0.9]);
+        o.rect_outline(
+            px0 - t * 0.15,
+            py0 - t * 0.1,
+            portrait_w + t * 0.3,
+            portrait_h + t * 0.2,
+            (t * 0.08).max(1.0),
+            [127.0 / 255.0, 215.0 / 255.0, 1.0, 0.9],
+        );
     }
 
     let row_a = margin + t * 0.8;
@@ -397,7 +427,13 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let sy = by + bh + t * 0.22;
     let sh = (t * 0.22).max(4.0);
     o.rect(cx0 - 1.0, sy - 1.0, bar_w + 2.0, sh + 2.0, [0.0, 0.0, 0.0, 0.7]);
-    let scolor = if hero.tireless() { 0xff9a3a } else if sfrac < 0.2 && (time * 6.0).sin() > 0.0 { 0x4a7aa8 } else { 0x7ad8ff };
+    let scolor = if hero.tireless() {
+        0xff9a3a
+    } else if sfrac < 0.2 && (time * 6.0).sin() > 0.0 {
+        0x4a7aa8
+    } else {
+        0x7ad8ff
+    };
     o.rect(cx0, sy, bar_w * if hero.tireless() { 1.0 } else { sfrac }, sh, rgba(scolor, 1.0));
 
     // ---- top right: score
@@ -452,7 +488,15 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
             let got = i < g.keys_shown();
             let pop = if got && i + 1 == g.keys_shown() { 1.0 + 0.5 * punch } else { 1.0 };
             let s = ks * pop;
-            draw_sprite(o, icon(Icon::Key), x0 + i as f32 * gap - (s - ks) / 2.0, ty - s / 2.0, s / 16.0, if got { None } else { Some(0x3a3a44) }, if got { 1.0 } else { 0.75 });
+            draw_sprite(
+                o,
+                icon(Icon::Key),
+                x0 + i as f32 * gap - (s - ks) / 2.0,
+                ty - s / 2.0,
+                s / 16.0,
+                if got { None } else { Some(0x3a3a44) },
+                if got { 1.0 } else { 0.75 },
+            );
         }
     }
     if punch > 0.0 {
@@ -557,7 +601,15 @@ fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
     if g.uriel_rest > 0.0 {
         let left = g.uriel_rest.ceil() as u32;
         let red = Archangel::Uriel.color();
-        o.text(&format!("URIEL RESTS {}:{:02}", left / 60, left % 60), x0 + t * 0.5, y0 - t * 0.35, t * 0.42, rgba(red, 0.9), Align::Left, true);
+        o.text(
+            &format!("URIEL RESTS {}:{:02}", left / 60, left % 60),
+            x0 + t * 0.5,
+            y0 - t * 0.35,
+            t * 0.42,
+            rgba(red, 0.9),
+            Align::Left,
+            true,
+        );
     }
 }
 
@@ -619,7 +671,21 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
             o.text(&name, bx, y0 + t * 0.75, size, rgba(def.color, 1.0), Align::Left, true);
             let frac = sh.fraction();
             let low = frac < 0.3 && (time * 5.0).sin() > 0.0;
-            bar(o, bx, y0 + t * 1.45, t * 4.2, t * 0.32, frac, if frac > 0.3 { 0x9ad1ff } else if low { 0xff4a3a } else { 0xff8a6a });
+            bar(
+                o,
+                bx,
+                y0 + t * 1.45,
+                t * 4.2,
+                t * 0.32,
+                frac,
+                if frac > 0.3 {
+                    0x9ad1ff
+                } else if low {
+                    0xff4a3a
+                } else {
+                    0xff8a6a
+                },
+            );
         }
         None => {
             o.text("NO SHIELD", sx, y0 + ph / 2.0, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
@@ -638,7 +704,14 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
             draw_sprite(o, icon(Icon::Potion(hk, k)), x + slot * 0.08, y + slot * 0.08, slot * 0.84 / 16.0, None, 1.0);
         }
         let sel = i == g.belt_index && i < g.belt.len();
-        o.rect_outline(x, y, slot, slot, if sel { (t * 0.08).max(1.5) } else { 1.0 }, if sel { rgba(GOLD, 0.95) } else { [1.0, 1.0, 1.0, 0.18] });
+        o.rect_outline(
+            x,
+            y,
+            slot,
+            slot,
+            if sel { (t * 0.08).max(1.5) } else { 1.0 },
+            if sel { rgba(GOLD, 0.95) } else { [1.0, 1.0, 1.0, 0.18] },
+        );
         o.text(&format!("{}", i + 1), x + slot / 2.0, y + slot + t * 0.35, t * 0.36, rgba(TEXT_DIM, 1.0), Align::Center, false);
     }
     if let Some(&k) = g.belt.get(g.belt_index) {
@@ -857,7 +930,13 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     let dy = cy + chh - t * 0.55;
     for i in 0..n {
         let on = i == tour.index;
-        let c = if on { rgba(stop.color, fade) } else if i < tour.index { [1.0, 1.0, 1.0, 0.5 * fade] } else { [1.0, 1.0, 1.0, 0.18 * fade] };
+        let c = if on {
+            rgba(stop.color, fade)
+        } else if i < tour.index {
+            [1.0, 1.0, 1.0, 0.5 * fade]
+        } else {
+            [1.0, 1.0, 1.0, 0.18 * fade]
+        };
         let r = if on { t * 0.16 } else { t * 0.11 };
         o.circle(tx + i as f32 * t * 0.5, dy, r, c);
     }
@@ -903,8 +982,8 @@ fn draw_portal_icon(o: &mut Overlay, x: f32, y: f32, size: f32, color: u32, alph
 
 /// The picture on a tour card: a portrait of a foe, or an icon of a thing.
 fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, size: f32, alpha: f32) {
-    use TourArt;
     use EnemyKind;
+    use TourArt;
     o.rect(x, y, size, size, [1.0, 1.0, 1.0, 0.06 * alpha]);
     let sp = sprites();
     let fit = |o: &mut Overlay, s: &Sprite| {
@@ -1157,14 +1236,37 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
         o.rect(r[0], r[1], r[2], r[3], bg);
         let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
-        let color = if selected { if quit { 0xff8a8a } else { GOLD } } else { TEXT_DIM };
+        let color = if selected {
+            if quit {
+                0xff8a8a
+            } else {
+                GOLD
+            }
+        } else {
+            TEXT_DIM
+        };
         let big = matches!(item, MenuItem::Play | MenuItem::Continue);
         if big && selected {
             // The highlighted big button glows gold and breathes.
-            o.rect_outline(r[0] - t * 0.12, r[1] - t * 0.12, r[2] + t * 0.24, r[3] + t * 0.24, (t * 0.05).max(1.0), rgba(GOLD, 0.35 * pulse));
+            o.rect_outline(
+                r[0] - t * 0.12,
+                r[1] - t * 0.12,
+                r[2] + t * 0.24,
+                r[3] + t * 0.24,
+                (t * 0.05).max(1.0),
+                rgba(GOLD, 0.35 * pulse),
+            );
         }
         let color = if big && !selected { SAND } else { color };
-        o.text(item.label(), r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * if big { 1.15 } else { 0.55 }, rgba(color, 1.0), Align::Center, true);
+        o.text(
+            item.label(),
+            r[0] + r[2] / 2.0,
+            r[1] + r[3] / 2.0,
+            t * if big { 1.15 } else { 0.55 },
+            rgba(color, 1.0),
+            Align::Center,
+            true,
+        );
     }
 }
 
@@ -1218,7 +1320,13 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     for i in 0..bands {
         let y0 = h * i as f32 / bands as f32;
         let v = i as f32 / (bands - 1) as f32;
-        let a = if v < 0.3 { 0.8 - v / 0.3 * 0.62 } else if v < 0.76 { 0.18 } else { 0.18 + (v - 0.76) / 0.24 * 0.6 };
+        let a = if v < 0.3 {
+            0.8 - v / 0.3 * 0.62
+        } else if v < 0.76 {
+            0.18
+        } else {
+            0.18 + (v - 0.76) / 0.24 * 0.6
+        };
         o.rect(0.0, y0, w, h / bands as f32 + 1.0, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, a]);
     }
     // Side vignettes behind the panels.
@@ -1373,7 +1481,13 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
     let bands = 24;
     for i in 0..bands {
         let v = i as f32 / (bands - 1) as f32;
-        let a = if v < 0.2 { 0.78 - v / 0.2 * 0.6 } else if v < 0.7 { 0.18 } else { 0.18 + (v - 0.7) / 0.3 * 0.62 };
+        let a = if v < 0.2 {
+            0.78 - v / 0.2 * 0.6
+        } else if v < 0.7 {
+            0.18
+        } else {
+            0.18 + (v - 0.7) / 0.3 * 0.62
+        };
         o.rect(0.0, h * i as f32 / bands as f32, w, h / bands as f32 + 1.0, [2.0 / 255.0, 3.0 / 255.0, 6.0 / 255.0, a]);
     }
 
@@ -1405,14 +1519,30 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
             (false, _) => 0x8c929c,
         };
         let cx = px + pw / 2.0;
-        o.text(&kind.name().to_uppercase(), cx, py + ph * 0.36, t * if picked { 0.95 } else { 0.8 }, rgba(name_color, 1.0), Align::Center, true);
+        o.text(
+            &kind.name().to_uppercase(),
+            cx,
+            py + ph * 0.36,
+            t * if picked { 0.95 } else { 0.8 },
+            rgba(name_color, 1.0),
+            Align::Center,
+            true,
+        );
         o.text(kind.title(), cx, py + ph * 0.74, t * 0.5, rgba(if open { TEXT_DIM } else { 0x6c727c }, 1.0), Align::Center, false);
         if !open {
             // A padlock on the plate's shoulder, and the word under it.
             let lock = icon(Icon::Lock);
             let scale = (t * 1.1) / lock.height.max(1) as f32;
             draw_sprite(o, lock, px - lock.width as f32 * scale * 0.4, py - lock.height as f32 * scale * 0.45, scale, Some(0xb4bcc8), 1.0);
-            o.text("LOCKED", cx, py + ph + t * 0.45, t * 0.48, rgba(if picked && g.select_denied > 0.0 { 0xff6a6a } else { 0x8c929c }, 1.0), Align::Center, true);
+            o.text(
+                "LOCKED",
+                cx,
+                py + ph + t * 0.45,
+                t * 0.48,
+                rgba(if picked && g.select_denied > 0.0 { 0xff6a6a } else { 0x8c929c }, 1.0),
+                Align::Center,
+                true,
+            );
         }
     }
 
@@ -1423,9 +1553,21 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
         let hover = g.input.cursor.is_some_and(|p| Rect(r).contains(p));
         o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);
         let main = label == "BEGIN";
-        let edge = if main && live { rgba(GOLD, 0.75 + (time * 4.0).sin() * 0.25) } else if hover { [1.0, 1.0, 1.0, 0.4] } else { [1.0, 1.0, 1.0, 0.18] };
+        let edge = if main && live {
+            rgba(GOLD, 0.75 + (time * 4.0).sin() * 0.25)
+        } else if hover {
+            [1.0, 1.0, 1.0, 0.4]
+        } else {
+            [1.0, 1.0, 1.0, 0.18]
+        };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
-        let color = if !live { 0x5c626c } else if main { GOLD } else { TEXT_DIM };
+        let color = if !live {
+            0x5c626c
+        } else if main {
+            GOLD
+        } else {
+            TEXT_DIM
+        };
         o.text(label, r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.7, rgba(color, 1.0), Align::Center, true);
     }
     o.text("Left / Right choose     Enter begin     Esc back", w / 2.0, h * 0.985, t * 0.45, rgba(TEXT_DIM, 1.0), Align::Center, false);

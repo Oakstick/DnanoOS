@@ -9,10 +9,10 @@
 //! to shot.
 
 use super::*;
+use crate::logic::heroes::HeroKind;
 use crate::logic::story::{first, stage, Place, Shot, Speaker, SCENE_ONE};
 use crate::render::cast;
 use crate::render::voxels::PartDef;
-use crate::logic::heroes::HeroKind;
 
 /// Where the two sets stand, well away from everything else.
 pub(super) const GRAVEYARD: Vec3 = Vec3::new(-160.0, 0.0, -40.0);
@@ -159,7 +159,14 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
         if z < -1.6 {
             break;
         }
-        block(&mut out, at((a - 0.5) * 0.7, 0.005, z + (b - 0.5) * 0.2), Vec3::new(0.3 + a * 0.2, 0.04, 0.25 + b * 0.15), Quat::from_rotation_y(a * 3.0), lin(0x6a665e) * (0.8 + 0.3 * b), SHADE_LIT);
+        block(
+            &mut out,
+            at((a - 0.5) * 0.7, 0.005, z + (b - 0.5) * 0.2),
+            Vec3::new(0.3 + a * 0.2, 0.04, 0.25 + b * 0.15),
+            Quat::from_rotation_y(a * 3.0),
+            lin(0x6a665e) * (0.8 + 0.3 * b),
+            SHADE_LIT,
+        );
     }
 
     // ---- the churchyard wall, stone in courses with a coping on top, the gate gap in the middle
@@ -174,10 +181,24 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
                 let xc = side * (x + off + len / 2.0);
                 let moss = row == 0 && k > 0.55;
                 let c = if moss { lin(0x56603e) } else { lin(0x6e6a62) * (0.75 + 0.35 * k) };
-                block(&mut out, at(xc, 0.125 + row as f32 * 0.235, -2.0 + (k - 0.5) * 0.02), Vec3::new(len - 0.02, 0.22, 0.38), flat, c, SHADE_LIT);
+                block(
+                    &mut out,
+                    at(xc, 0.125 + row as f32 * 0.235, -2.0 + (k - 0.5) * 0.02),
+                    Vec3::new(len - 0.02, 0.22, 0.38),
+                    flat,
+                    c,
+                    SHADE_LIT,
+                );
             }
             let k = h(x as f64, 99.0 + side as f64);
-            block(&mut out, at(side * (x + 0.25), 1.0, -2.0), Vec3::new(0.52, 0.1, 0.48), Quat::from_rotation_y((k - 0.5) * 0.05), lin(0x7a766c) * (0.8 + 0.25 * k), SHADE_LIT);
+            block(
+                &mut out,
+                at(side * (x + 0.25), 1.0, -2.0),
+                Vec3::new(0.52, 0.1, 0.48),
+                Quat::from_rotation_y((k - 0.5) * 0.05),
+                lin(0x7a766c) * (0.8 + 0.25 * k),
+                SHADE_LIT,
+            );
             x += 0.5;
             n += 1;
         }
@@ -188,7 +209,14 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
             let bent = h(bx as f64 * 5.0, side as f64) > 0.93;
             let tilt = if bent { Quat::from_rotation_z(side * 0.25) } else { flat };
             block(&mut out, at(side * bx, 1.4, -2.0), Vec3::new(0.035, 0.7, 0.035), tilt, iron, SHADE_METAL);
-            block(&mut out, at(side * bx, 1.78, -2.0) + tilt * Vec3::new(0.0, 0.02, 0.0), Vec3::new(0.07, 0.07, 0.035), tilt * Quat::from_rotation_z(0.785), iron, SHADE_METAL);
+            block(
+                &mut out,
+                at(side * bx, 1.78, -2.0) + tilt * Vec3::new(0.0, 0.02, 0.0),
+                Vec3::new(0.07, 0.07, 0.035),
+                tilt * Quat::from_rotation_z(0.785),
+                iron,
+                SHADE_METAL,
+            );
             bx += 0.16;
         }
         for y in [1.15f32, 1.62] {
@@ -201,18 +229,38 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
         block(&mut out, at(x, 0.15, -2.0), Vec3::new(0.7, 0.3, 0.7), flat, lin(0x625e56), SHADE_LIT);
         for k in 0..6 {
             let v = h(k as f64, side as f64 * 3.0);
-            block(&mut out, at(x, 0.47 + k as f32 * 0.34, -2.0), Vec3::new(0.54, 0.33, 0.54), Quat::from_rotation_y((v - 0.5) * 0.04), lin(0x76726a) * (0.82 + 0.25 * v), SHADE_LIT);
+            block(
+                &mut out,
+                at(x, 0.47 + k as f32 * 0.34, -2.0),
+                Vec3::new(0.54, 0.33, 0.54),
+                Quat::from_rotation_y((v - 0.5) * 0.04),
+                lin(0x76726a) * (0.82 + 0.25 * v),
+                SHADE_LIT,
+            );
         }
         block(&mut out, at(x, 2.4, -2.0), Vec3::new(0.72, 0.12, 0.72), flat, lin(0x827e74), SHADE_LIT);
         block(&mut out, at(x, 2.5, -2.0), Vec3::new(0.5, 0.08, 0.5), flat, lin(0x7a766c), SHADE_LIT);
-        out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::splat(0.19), flat, at(x, 2.73, -2.0)), lin(0x7e7a70), 1.0, Vec3::ZERO, SHADE_LIT));
+        out.push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::splat(0.19), flat, at(x, 2.73, -2.0)),
+            lin(0x7e7a70),
+            1.0,
+            Vec3::ZERO,
+            SHADE_LIT,
+        ));
         // Ivy creeping up the left pillar.
         if side < 0.0 {
             for k in 0..40 {
                 let (a, b) = (h(k as f64, 31.0), h(k as f64, 37.0));
                 let y = 0.2 + a * 1.8;
                 let face = if b > 0.5 { 0.28 } else { -0.28 };
-                block(&mut out, at(x + (b - 0.5) * 0.5, y, -2.0 + face), Vec3::new(0.08, 0.07, 0.03), Quat::from_rotation_z(a * 4.0), lin(0x2e4a26) * (0.8 + 0.4 * b), SHADE_LIT);
+                block(
+                    &mut out,
+                    at(x + (b - 0.5) * 0.5, y, -2.0 + face),
+                    Vec3::new(0.08, 0.07, 0.03),
+                    Quat::from_rotation_z(a * 4.0),
+                    lin(0x2e4a26) * (0.8 + 0.4 * b),
+                    SHADE_LIT,
+                );
             }
         }
     }
@@ -221,7 +269,14 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
         let t = i as f32 / 40.0;
         let x = -1.08 + 2.16 * t;
         let y = 2.28 + (t * PI).sin() * 0.5;
-        block(&mut out, at(x, y, -2.0), Vec3::new(0.07, 0.04, 0.04), Quat::from_rotation_z(((t - 0.5) * PI).cos() * 0.0 + (0.5 - t) * 1.2), iron, SHADE_METAL);
+        block(
+            &mut out,
+            at(x, y, -2.0),
+            Vec3::new(0.07, 0.04, 0.04),
+            Quat::from_rotation_z(((t - 0.5) * PI).cos() * 0.0 + (0.5 - t) * 1.2),
+            iron,
+            SHADE_METAL,
+        );
         if i % 5 == 0 && i > 0 && i < 40 {
             let top = 2.28 + (t * PI).sin() * 0.5;
             block(&mut out, at(x, (2.24 + top) / 2.0, -2.0), Vec3::new(0.025, top - 2.24, 0.025), flat, iron, SHADE_METAL);
@@ -231,7 +286,14 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
     for k in 0..8 {
         let a = k as f32 / 8.0 * TAU;
         for side in [-1.0f32, 1.0] {
-            block(&mut out, at(side * 0.45 + a.cos() * 0.09, 2.45 + a.sin() * 0.09, -2.0), Vec3::new(0.03, 0.03, 0.03), flat, iron, SHADE_METAL);
+            block(
+                &mut out,
+                at(side * 0.45 + a.cos() * 0.09, 2.45 + a.sin() * 0.09, -2.0),
+                Vec3::new(0.03, 0.03, 0.03),
+                flat,
+                iron,
+                SHADE_METAL,
+            );
         }
     }
     block(&mut out, at(0.0, 3.0, -2.0), Vec3::new(0.04, 0.38, 0.04), flat, iron, SHADE_METAL);
@@ -259,7 +321,14 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
     block(&mut out, m(0.0, 0.1, 0.0), Vec3::new(2.4, 0.2, 2.6), flat, lin(0x5e5a52), SHADE_LIT);
     block(&mut out, m(0.0, 0.95, -0.1), Vec3::new(2.0, 1.5, 2.2), flat, lin(0x6a665e), SHADE_LIT);
     for side in [-1.0f32, 1.0] {
-        block(&mut out, m(side * 0.55, 2.02, -0.1), Vec3::new(1.25, 0.1, 2.4), Quat::from_rotation_z(side * -0.5), lin(0x4e4a44), SHADE_LIT);
+        block(
+            &mut out,
+            m(side * 0.55, 2.02, -0.1),
+            Vec3::new(1.25, 0.1, 2.4),
+            Quat::from_rotation_z(side * -0.5),
+            lin(0x4e4a44),
+            SHADE_LIT,
+        );
         block(&mut out, m(side * 0.72, 0.86, 1.1), Vec3::new(0.16, 1.32, 0.16), flat, lin(0x7a766e), SHADE_LIT);
     }
     for k in 0..5 {
@@ -269,7 +338,11 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
     block(&mut out, m(0.0, 0.72, 1.0), Vec3::new(0.62, 1.05, 0.06), flat, lin(0x060506), SHADE_UNLIT);
     block(&mut out, m(0.0, 1.35, 1.03), Vec3::new(0.8, 0.12, 0.06), flat, lin(0x6e6a62), SHADE_LIT);
     // ---- bare trees in the churchyard, and a big crooked one outside the wall
-    for (i, &(x, z, height)) in [(-5.4f32, -3.9f32, 3.4f32), (5.1, -5.7, 3.9), (-8.3, -10.6, 4.4), (7.8, -11.8, 4.1), (-3.9, 1.2, 4.6), (9.2, 0.4, 3.6)].iter().enumerate() {
+    for (i, &(x, z, height)) in
+        [(-5.4f32, -3.9f32, 3.4f32), (5.1, -5.7, 3.9), (-8.3, -10.6, 4.4), (7.8, -11.8, 4.1), (-3.9, 1.2, 4.6), (9.2, 0.4, 3.6)]
+            .iter()
+            .enumerate()
+    {
         dead_tree(&mut out, at(x, 0.0, z), height, i as f64 * 7.3 + 1.0);
     }
     // ---- the chapel beyond, a bell tower, one window lit
@@ -296,9 +369,17 @@ pub(super) fn graveyard_set() -> Vec<Instance> {
             continue;
         }
         for k in 0..4 {
-            let lean = Quat::from_rotation_z((h(i as f64, k as f64) - 0.5) * 0.7) * Quat::from_rotation_x((h(k as f64, i as f64) - 0.5) * 0.6);
+            let lean =
+                Quat::from_rotation_z((h(i as f64, k as f64) - 0.5) * 0.7) * Quat::from_rotation_x((h(k as f64, i as f64) - 0.5) * 0.6);
             let tall = 0.14 + h(i as f64 * 3.0, k as f64) * 0.2;
-            block(&mut out, at(x + k as f32 * 0.03, tall / 2.0, z), Vec3::new(0.02, tall, 0.02), lean, lin(0x6a7040) * (0.6 + 0.5 * b), SHADE_LIT);
+            block(
+                &mut out,
+                at(x + k as f32 * 0.03, tall / 2.0, z),
+                Vec3::new(0.02, tall, 0.02),
+                lean,
+                lin(0x6a7040) * (0.6 + 0.5 * b),
+                SHADE_LIT,
+            );
         }
     }
     for i in 0..60 {
@@ -318,7 +399,14 @@ fn grave(out: &mut Vec<Instance>, p: Vec3, k: f32, j: f32) {
     let put = |out: &mut Vec<Instance>, off: Vec3, s: Vec3, c: Vec3| block(out, p + lean * off, s, lean, c, SHADE_LIT);
     // A low mound of earth in front of most.
     if j > 0.25 {
-        block(out, p + Vec3::new(0.0, 0.02, 0.5), Vec3::new(0.42, 0.07, 0.75), Quat::from_rotation_y((k - 0.5) * 0.2), lin(0x3a3226) * (0.8 + 0.3 * k), SHADE_GRASS);
+        block(
+            out,
+            p + Vec3::new(0.0, 0.02, 0.5),
+            Vec3::new(0.42, 0.07, 0.75),
+            Quat::from_rotation_y((k - 0.5) * 0.2),
+            lin(0x3a3226) * (0.8 + 0.3 * k),
+            SHADE_GRASS,
+        );
     }
     match (k * 5.0) as i32 {
         0 | 1 => {
@@ -397,7 +485,14 @@ fn dead_tree(out: &mut Vec<Instance>, base: Vec3, height: f32, seed: f64) {
     for r in 0..4 {
         let a = r as f32 / 4.0 * TAU + seed as f32;
         let d = Vec3::new(a.cos(), -0.25, a.sin());
-        block(out, base + d * 0.18 + Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.09, 0.4, 0.09), Quat::from_rotation_arc(Vec3::Y, d), bark, SHADE_LIT);
+        block(
+            out,
+            base + d * 0.18 + Vec3::new(0.0, 0.05, 0.0),
+            Vec3::new(0.09, 0.4, 0.09),
+            Quat::from_rotation_arc(Vec3::Y, d),
+            bark,
+            SHADE_LIT,
+        );
     }
 }
 
@@ -415,7 +510,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
             let (x, z) = (gx as f32 * 0.62, gz as f32 * 0.62 + 0.3);
             let wet = h(gx as f64 * 0.7, gz as f64 * 0.9 + 3.0) > 0.7;
             let c = if wet { lin(0x2a2c30) * (0.8 + 0.3 * k) } else { lin(0x46423c) * (0.72 + 0.4 * k) };
-            block(&mut out, at(x, -0.1 + (k - 0.5) * 0.025, z), Vec3::new(0.59, 0.2, 0.59), Quat::from_rotation_y((k - 0.5) * 0.03), c, if wet { SHADE_METAL } else { SHADE_LIT });
+            block(
+                &mut out,
+                at(x, -0.1 + (k - 0.5) * 0.025, z),
+                Vec3::new(0.59, 0.2, 0.59),
+                Quat::from_rotation_y((k - 0.5) * 0.03),
+                c,
+                if wet { SHADE_METAL } else { SHADE_LIT },
+            );
         }
     }
     block(&mut out, at(0.0, -0.25, 0.3), Vec3::new(9.4, 0.2, 8.4), flat, lin(0x141210), SHADE_LIT);
@@ -435,7 +537,13 @@ pub(super) fn gateway_set() -> Vec<Instance> {
                 if let Some((gc, half, gh)) = gap {
                     // How wide the opening is at this course's height (a half-ellipse above the springing).
                     let rise = half * 0.55 + 0.16;
-                    let open = if y - 0.17 < gh { half + 0.14 } else if y - 0.17 < gh + rise { (half + 0.14) * (1.0 - ((y - 0.17 - gh) / rise).powi(2)).max(0.0).sqrt() } else { 0.0 };
+                    let open = if y - 0.17 < gh {
+                        half + 0.14
+                    } else if y - 0.17 < gh + rise {
+                        (half + 0.14) * (1.0 - ((y - 0.17 - gh) / rise).powi(2)).max(0.0).sqrt()
+                    } else {
+                        0.0
+                    };
                     if open > 0.0 && b > gc - open && a < gc + open {
                         if (a + b) / 2.0 < gc {
                             b = gc - open;
@@ -450,7 +558,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
                 let mid = (a + b) / 2.0;
                 let wet = k > 0.82;
                 let c = if wet { lin(0x2e3a30) * (0.8 + 0.3 * k) } else { stone(k) };
-                block(out, from + along * mid + Vec3::new(0.0, y, 0.0), (along.abs() * (b - a - 0.02)) + Vec3::new(0.0, 0.32, 0.0) + (Vec3::ONE - along.abs() - Vec3::Y) * (0.34 + k * 0.05), flat, c, SHADE_LIT);
+                block(
+                    out,
+                    from + along * mid + Vec3::new(0.0, y, 0.0),
+                    (along.abs() * (b - a - 0.02)) + Vec3::new(0.0, 0.32, 0.0) + (Vec3::ONE - along.abs() - Vec3::Y) * (0.34 + k * 0.05),
+                    flat,
+                    c,
+                    SHADE_LIT,
+                );
             }
         }
     };
@@ -469,7 +584,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
         }
         for side in [-1.0f32, 1.0] {
             for k in 0..7 {
-                block(&mut out, at(side * (half + 0.12), 0.17 + k as f32 * 0.34, gc_z), Vec3::new(0.26, 0.32, 0.42), flat, stone(0.8 + (k % 2) as f32 * 0.15), SHADE_LIT);
+                block(
+                    &mut out,
+                    at(side * (half + 0.12), 0.17 + k as f32 * 0.34, gc_z),
+                    Vec3::new(0.26, 0.32, 0.42),
+                    flat,
+                    stone(0.8 + (k % 2) as f32 * 0.15),
+                    SHADE_LIT,
+                );
             }
         }
     }
@@ -492,19 +614,40 @@ pub(super) fn gateway_set() -> Vec<Instance> {
     for &(x, z) in &[(-3.35f32, -1.3f32), (3.35, -1.3), (-3.35, 2.0), (3.35, 2.0)] {
         block(&mut out, at(x, 0.12, z), Vec3::new(0.8, 0.24, 0.8), flat, stone(0.6), SHADE_LIT);
         for k in 0..12 {
-            block(&mut out, at(x, 0.4 + k as f32 * 0.34, z), Vec3::new(0.6, 0.33, 0.6), Quat::from_rotation_y((h(k as f64, x as f64) - 0.5) * 0.05), stone(0.55 + 0.2 * h(k as f64, z as f64)), SHADE_LIT);
+            block(
+                &mut out,
+                at(x, 0.4 + k as f32 * 0.34, z),
+                Vec3::new(0.6, 0.33, 0.6),
+                Quat::from_rotation_y((h(k as f64, x as f64) - 0.5) * 0.05),
+                stone(0.55 + 0.2 * h(k as f64, z as f64)),
+                SHADE_LIT,
+            );
         }
         block(&mut out, at(x, 4.2, z), Vec3::new(0.78, 0.2, 0.78), flat, stone(0.7), SHADE_LIT);
         // A torch bracket on the inner face.
         let inward = -x.signum();
         block(&mut out, at(x + inward * 0.36, 1.72, z), Vec3::new(0.12, 0.06, 0.06), flat, lin(0x222226), SHADE_METAL);
-        block(&mut out, at(x + inward * 0.42, 1.82, z), Vec3::new(0.05, 0.32, 0.05), Quat::from_rotation_z(inward * -0.25), lin(0x4a3220), SHADE_WOOD);
+        block(
+            &mut out,
+            at(x + inward * 0.42, 1.82, z),
+            Vec3::new(0.05, 0.32, 0.05),
+            Quat::from_rotation_z(inward * -0.25),
+            lin(0x4a3220),
+            SHADE_WOOD,
+        );
     }
     for z in [-1.3f32, 2.0] {
         for i in 0..=18 {
             let a = i as f32 / 18.0 * PI;
             let p = at(-a.cos() * 3.35, 4.3 + a.sin() * 0.9, z);
-            block(&mut out, p, Vec3::new(0.46, 0.3, 0.5), Quat::from_rotation_z(a - PI / 2.0), stone(0.5 + 0.2 * h(i as f64, z as f64)), SHADE_LIT);
+            block(
+                &mut out,
+                p,
+                Vec3::new(0.46, 0.3, 0.5),
+                Quat::from_rotation_z(a - PI / 2.0),
+                stone(0.5 + 0.2 * h(i as f64, z as f64)),
+                SHADE_LIT,
+            );
         }
     }
     // ---- the old man's corner: a three-legged stool, a clay mug on the floor, a blanket
@@ -512,7 +655,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
     block(&mut out, st + Vec3::new(0.0, 0.42, 0.0), Vec3::new(0.4, 0.06, 0.4), Quat::from_rotation_y(0.3), lin(0x5a3e24), SHADE_WOOD);
     for k in 0..3 {
         let a = k as f32 / 3.0 * TAU + 0.3;
-        block(&mut out, st + Vec3::new(a.cos() * 0.13, 0.2, a.sin() * 0.13), Vec3::new(0.05, 0.42, 0.05), Quat::from_rotation_z(a.cos() * 0.12) * Quat::from_rotation_x(-a.sin() * 0.12), lin(0x4a3220), SHADE_WOOD);
+        block(
+            &mut out,
+            st + Vec3::new(a.cos() * 0.13, 0.2, a.sin() * 0.13),
+            Vec3::new(0.05, 0.42, 0.05),
+            Quat::from_rotation_z(a.cos() * 0.12) * Quat::from_rotation_x(-a.sin() * 0.12),
+            lin(0x4a3220),
+            SHADE_WOOD,
+        );
     }
     block(&mut out, st + Vec3::new(0.34, 0.06, 0.32), Vec3::new(0.09, 0.12, 0.09), flat, lin(0x8a5a3a), SHADE_LIT);
     block(&mut out, st + Vec3::new(0.0, 0.47, 0.0), Vec3::new(0.34, 0.04, 0.3), Quat::from_rotation_y(0.2), lin(0x6a3a2a), SHADE_CLOTH);
@@ -527,7 +677,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
     block(&mut out, bowl + Vec3::new(0.0, 0.095, 0.0), Vec3::new(0.24, 0.012, 0.24), flat, lin(0x1a1614), SHADE_LIT);
     block(&mut out, bowl + Vec3::new(0.05, 0.12, 0.02), Vec3::new(0.22, 0.04, 0.04), Quat::from_rotation_y(0.6), lin(0xd8ceb4), SHADE_LIT);
     for side in [-1.0f32, 1.0] {
-        block(&mut out, bowl + Vec3::new(0.05, 0.12, 0.02) + Quat::from_rotation_y(0.6) * Vec3::new(side * 0.12, 0.0, 0.0), Vec3::splat(0.06), flat, lin(0xe0d6bc), SHADE_LIT);
+        block(
+            &mut out,
+            bowl + Vec3::new(0.05, 0.12, 0.02) + Quat::from_rotation_y(0.6) * Vec3::new(side * 0.12, 0.0, 0.0),
+            Vec3::splat(0.06),
+            flat,
+            lin(0xe0d6bc),
+            SHADE_LIT,
+        );
     }
     for k in 0..12 {
         let a = k as f32 / 12.0 * TAU;
@@ -537,7 +694,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
     // Bones and a skull by the wall; chains hanging on the side walls; skulls in niches.
     for i in 0..9 {
         let (a, b) = (h(i as f64, 41.0), h(i as f64, 43.0));
-        block(&mut out, at(-3.6 + a * 1.2, 0.02, -3.1 + b * 0.8), Vec3::new(0.2, 0.035, 0.035), Quat::from_rotation_y(a * 5.0), lin(0xcfc4a8) * (0.8 + 0.2 * b), SHADE_LIT);
+        block(
+            &mut out,
+            at(-3.6 + a * 1.2, 0.02, -3.1 + b * 0.8),
+            Vec3::new(0.2, 0.035, 0.035),
+            Quat::from_rotation_y(a * 5.0),
+            lin(0xcfc4a8) * (0.8 + 0.2 * b),
+            SHADE_LIT,
+        );
     }
     block(&mut out, at(-3.1, 0.07, -2.9), Vec3::new(0.14, 0.13, 0.15), Quat::from_rotation_y(0.7), lin(0xd4caae), SHADE_LIT);
     for &(x, z) in &[(-4.38f32, 0.4f32), (4.38, -0.2), (4.38, 3.2)] {
@@ -559,7 +723,14 @@ pub(super) fn gateway_set() -> Vec<Instance> {
         let y = -0.12 - k as f32 * 0.26;
         block(&mut out, at(0.0, y, z), Vec3::new(1.9, 0.26, 0.44), flat, lin(0x2e221e) * (0.8 + 0.2 * h(k as f64, 3.0)), SHADE_LIT);
         for side in [-1.0f32, 1.0] {
-            block(&mut out, at(side * 1.15, y + 1.3, z), Vec3::new(0.4, 2.8, 0.44), flat, lin(0x241c18) * (0.7 + 0.3 * h(k as f64, side as f64)), SHADE_LIT);
+            block(
+                &mut out,
+                at(side * 1.15, y + 1.3, z),
+                Vec3::new(0.4, 2.8, 0.44),
+                flat,
+                lin(0x241c18) * (0.7 + 0.3 * h(k as f64, side as f64)),
+                SHADE_LIT,
+            );
         }
         block(&mut out, at(0.0, y + 3.1, z), Vec3::new(2.3, 0.3, 0.44), flat, lin(0x0e0a09), SHADE_LIT);
     }
@@ -577,7 +748,8 @@ fn mist_sheets(origin: Vec3, x: (i32, i32), z: (i32, i32), layers: &[(f32, f32)]
                 continue;
             }
             for (i, &(lift, alpha)) in layers.iter().enumerate() {
-                let m = Mat4::from_translation(origin + Vec3::new(gx as f32, lift, gz as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
+                let m =
+                    Mat4::from_translation(origin + Vec3::new(gx as f32, lift, gz as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
                 out.push(Instance::new(m, lin(0xb4b8c8), alpha * k, Vec3::new(20.0 + i as f32, lift, 0.0), SHADE_CLOUD));
             }
         }
@@ -587,7 +759,13 @@ fn mist_sheets(origin: Vec3, x: (i32, i32), z: (i32, i32), layers: &[(f32, f32)]
 
 pub(super) fn graveyard_mist() -> Vec<Instance> {
     // Thick among the graves, thinning out past the wall.
-    mist_sheets(GRAVEYARD, (-13, 13), (-17, 6), &[(0.08, 0.6), (0.25, 0.52), (0.48, 0.4), (0.8, 0.28), (1.25, 0.16)], |_x, z| if z <= -2 { 1.0 } else { (1.0 - (z as f32 + 2.0) / 7.0).max(0.25) })
+    mist_sheets(GRAVEYARD, (-13, 13), (-17, 6), &[(0.08, 0.6), (0.25, 0.52), (0.48, 0.4), (0.8, 0.28), (1.25, 0.16)], |_x, z| {
+        if z <= -2 {
+            1.0
+        } else {
+            (1.0 - (z as f32 + 2.0) / 7.0).max(0.25)
+        }
+    })
 }
 
 pub(super) fn gateway_mist() -> Vec<Instance> {
@@ -669,7 +847,10 @@ const BOYS_MID: Vec3 = Vec3::new(0.05, 0.0, 1.7);
 pub(super) enum Act {
     Stand,
     /// Running, or walking with `pace` below 1: the stride's phase.
-    Run { phase: f32, pace: f32 },
+    Run {
+        phase: f32,
+        pace: f32,
+    },
     /// A kick: seconds since the foot met the ball (negative while winding up).
     Kick(f32),
     Peer,
@@ -776,7 +957,13 @@ impl WorldView {
         };
         if let Some(p) = ball {
             let spin = Quat::from_rotation_x(-p.z * 9.0) * Quat::from_rotation_z(p.x * 9.0);
-            f.opaque[MeshKind::Sphere as usize].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::splat(BALL_R), spin, at(p)), lin(0x9a5a2e), 1.0, Vec3::ZERO, SHADE_LIT));
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(
+                Mat4::from_scale_rotation_translation(Vec3::splat(BALL_R), spin, at(p)),
+                lin(0x9a5a2e),
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ));
             // A darker band round it.
             let band = Mat4::from_scale_rotation_translation(Vec3::new(BALL_R * 1.02, BALL_R * 0.3, BALL_R * 1.02), spin, at(p));
             f.opaque[MeshKind::Sphere as usize].push(Instance::new(band, lin(0x4a2a16), 1.0, Vec3::ZERO, SHADE_LIT));
@@ -795,7 +982,13 @@ impl WorldView {
             let q = Quat::from_rotation_y(side * open);
             for &(off, size) in gate_leaf().iter() {
                 let local = Vec3::new(-side * off.x, off.y, off.z);
-                f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(size, q, hinge + q * local), lin(0x1c1c20), 1.0, Vec3::ZERO, SHADE_METAL));
+                f.opaque[cube].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(size, q, hinge + q * local),
+                    lin(0x1c1c20),
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_METAL,
+                ));
             }
         }
 
@@ -811,9 +1004,27 @@ impl WorldView {
         }
         let swing = (time * 1.3).sin() * 0.06 + if (stage::RUSH..stage::GONE).contains(&taken) { (time * 17.0).sin() * 0.12 } else { 0.0 };
         let lq = Quat::from_rotation_x(swing);
-        f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.02, 0.12, 0.02), lq, lamp + lq * Vec3::new(0.0, 0.14, 0.0)), lin(0x1c1c20), 1.0, Vec3::ZERO, SHADE_METAL));
-        f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.15, 0.2, 0.15), lq, lamp), lin(0xffd49a), 1.0, lin(0xffa040) * 2.2 * flick, SHADE_LIT));
-        f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.19, 0.04, 0.19), lq, lamp + lq * Vec3::new(0.0, 0.12, 0.0)), lin(0x1c1c20), 1.0, Vec3::ZERO, SHADE_METAL));
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.02, 0.12, 0.02), lq, lamp + lq * Vec3::new(0.0, 0.14, 0.0)),
+            lin(0x1c1c20),
+            1.0,
+            Vec3::ZERO,
+            SHADE_METAL,
+        ));
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.15, 0.2, 0.15), lq, lamp),
+            lin(0xffd49a),
+            1.0,
+            lin(0xffa040) * 2.2 * flick,
+            SHADE_LIT,
+        ));
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.19, 0.04, 0.19), lq, lamp + lq * Vec3::new(0.0, 0.12, 0.0)),
+            lin(0x1c1c20),
+            1.0,
+            Vec3::ZERO,
+            SHADE_METAL,
+        ));
         glow_orb(f, lamp, 0.7, lin(0xffa050), 0.3 * flick);
         f.lights.push(Light { pos: lamp + Vec3::new(0.0, -0.15, 0.35), color: lin(0xffb060) * 4.2 * flick, distance: 5.5 });
         // A soft warm fill on the friends from where the camera stands, so faces read against the sunset.
@@ -825,7 +1036,11 @@ impl WorldView {
             let off = taken - stage::EYES - i as f32 * 0.12;
             let (pos, flap, yaw) = if off > 0.0 {
                 let dir = Vec3::new([0.6, 1.0, -0.9][i], 0.0, -1.0).normalize();
-                (perch + dir * off * 3.2 + Vec3::new(0.0, off * 1.6 + off * off * 0.4, 0.0), (time * 34.0 + i as f32).sin(), dir.x.atan2(dir.z))
+                (
+                    perch + dir * off * 3.2 + Vec3::new(0.0, off * 1.6 + off * off * 0.4, 0.0),
+                    (time * 34.0 + i as f32).sin(),
+                    dir.x.atan2(dir.z),
+                )
             } else {
                 (perch, -0.2, [0.4, -0.9, 2.6][i] + (time * 0.7 + i as f32 * 2.0).sin() * 0.5)
             };
@@ -836,7 +1051,13 @@ impl WorldView {
         }
 
         // ---- the friends
-        let establish = if shot == Shot::Establish { t } else if shot == Shot::Title { 0.0 } else { 100.0 };
+        let establish = if shot == Shot::Establish {
+            t
+        } else if shot == Shot::Title {
+            0.0
+        } else {
+            100.0
+        };
         let ball_now = ball.unwrap_or(BALL_REST);
         for i in 0..4 {
             let home = KID_HOME[i];
@@ -944,7 +1165,10 @@ impl WorldView {
                 // The boy in his claws: held round the middle, kicking and flailing.
                 let (kw, _, kd) = cast::KID_SIZE;
                 let waist = (Vec3::from(cast::KID_WAIST) - Vec3::new((kw - 1) as f32 / 2.0, 0.0, (kd - 1) as f32 / 2.0)) * KID_VOXEL;
-                let root = Mat4::from_translation(hand) * Mat4::from_rotation_y(yaw + PI * 0.5) * Mat4::from_rotation_z(-1.1 + (time * 9.0).sin() * 0.12) * Mat4::from_translation(-waist);
+                let root = Mat4::from_translation(hand)
+                    * Mat4::from_rotation_y(yaw + PI * 0.5)
+                    * Mat4::from_rotation_z(-1.1 + (time * 9.0).sin() * 0.12)
+                    * Mat4::from_translation(-waist);
                 if alpha > 0.5 {
                     self.emit_kid(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO);
                 } else {
@@ -957,9 +1181,17 @@ impl WorldView {
             for n in 0..40 {
                 let fk = n as f32;
                 let age = (time * 1.1 + fk * 0.37).fract();
-                let p = at(pos) + back * (age * (0.3 + run * 1.2)) + Vec3::new((fk * 2.3).sin() * 0.35, 0.15 + (fk * 0.61).fract() * 0.9 + age * 0.25, (fk * 1.7).cos() * 0.3);
+                let p = at(pos)
+                    + back * (age * (0.3 + run * 1.2))
+                    + Vec3::new((fk * 2.3).sin() * 0.35, 0.15 + (fk * 0.61).fract() * 0.9 + age * 0.25, (fk * 1.7).cos() * 0.3);
                 let size = 0.05 + age * 0.13;
-                f.transparent[MeshKind::Sphere as usize].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::splat(size), Quat::IDENTITY, p), lin(0x040306), alpha.max(0.3) * 0.13 * (1.0 - age) * (0.3 + 0.7 * run.max(reach)), Vec3::ZERO, SHADE_UNLIT));
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(Vec3::splat(size), Quat::IDENTITY, p),
+                    lin(0x040306),
+                    alpha.max(0.3) * 0.13 * (1.0 - age) * (0.3 + 0.7 * run.max(reach)),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
         }
         // A cold wind of leaves and grit when he strikes.
@@ -967,9 +1199,23 @@ impl WorldView {
             for n in 0..30 {
                 let fk = n as f32;
                 let u = ((taken - stage::RUSH) * 0.8 + fk * 0.113).fract();
-                let p = at(Vec3::new(-2.5 + u * 5.0 + (fk * 3.1).sin() * 0.4, 0.1 + ((u * 6.0 + fk).sin() * 0.5 + 0.5) * 0.8, -1.8 + (fk * 1.9).cos() * 1.5 + u * 2.0));
+                let p = at(Vec3::new(
+                    -2.5 + u * 5.0 + (fk * 3.1).sin() * 0.4,
+                    0.1 + ((u * 6.0 + fk).sin() * 0.5 + 0.5) * 0.8,
+                    -1.8 + (fk * 1.9).cos() * 1.5 + u * 2.0,
+                ));
                 let c = [0x8a4a1e, 0x9a6a24, 0x3a2a1a][n % 3];
-                f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.06, 0.008, 0.04), Quat::from_rotation_x(u * 20.0 + fk) * Quat::from_rotation_y(fk), p), lin(c), 1.0, Vec3::ZERO, SHADE_LIT));
+                f.opaque[cube].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(
+                        Vec3::new(0.06, 0.008, 0.04),
+                        Quat::from_rotation_x(u * 20.0 + fk) * Quat::from_rotation_y(fk),
+                        p,
+                    ),
+                    lin(c),
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
             }
         }
     }
@@ -978,7 +1224,15 @@ impl WorldView {
         let cube = MeshKind::Cube as usize;
         let q = Quat::from_rotation_y(yaw);
         let black = lin(0x101014);
-        let put = |f: &mut Frame, off: Vec3, s: Vec3, r: Quat, c: Vec3| f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(s, q * r, pos + q * off), c, 1.0, Vec3::ZERO, SHADE_LIT));
+        let put = |f: &mut Frame, off: Vec3, s: Vec3, r: Quat, c: Vec3| {
+            f.opaque[cube].push(Instance::new(
+                Mat4::from_scale_rotation_translation(s, q * r, pos + q * off),
+                c,
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ))
+        };
         put(f, Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.07, 0.07, 0.15), Quat::from_rotation_x(-0.3), black);
         let hq = Quat::from_rotation_y(head);
         put(f, Vec3::new(0.0, 0.1, 0.08), Vec3::splat(0.055), hq, black);
@@ -1018,19 +1272,38 @@ impl WorldView {
             for k in 0..7 {
                 let r = (0.25 + k as f32 * 0.12) * open_k;
                 let spin = time * (2.0 + k as f32 * 0.6) * if k % 2 == 0 { 1.0 } else { -1.0 };
-                let m = Mat4::from_translation(c + Vec3::new(0.0, 0.0, -0.01 * k as f32)) * Mat4::from_rotation_z(spin) * Mat4::from_scale(Vec3::new(r * 1.25, r * 1.7, 1.0));
-                f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, lin(if k % 2 == 0 { 0xb8a0ff } else { 0x7ae0ff }) * 1.6, 0.45 * open_k, Vec3::ZERO, SHADE_UNLIT));
+                let m = Mat4::from_translation(c + Vec3::new(0.0, 0.0, -0.01 * k as f32))
+                    * Mat4::from_rotation_z(spin)
+                    * Mat4::from_scale(Vec3::new(r * 1.25, r * 1.7, 1.0));
+                f.transparent[MeshKind::Annulus as usize].push(Instance::new(
+                    m,
+                    lin(if k % 2 == 0 { 0xb8a0ff } else { 0x7ae0ff }) * 1.6,
+                    0.45 * open_k,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
-            let disc = Mat4::from_translation(c + Vec3::new(0.0, 0.0, 0.02)) * Mat4::from_scale(Vec3::new(0.82 * open_k, 1.12 * open_k, 1.0));
+            let disc =
+                Mat4::from_translation(c + Vec3::new(0.0, 0.0, 0.02)) * Mat4::from_scale(Vec3::new(0.82 * open_k, 1.12 * open_k, 1.0));
             f.transparent[MeshKind::Disc as usize].push(Instance::new(disc, lin(0x4a3a8a), 0.85 * open_k, Vec3::ZERO, SHADE_UNLIT));
             glow_orb(f, c, 0.9 + flash * 2.2, lin(0xa898ff), 0.16 * open_k + flash * 0.7);
-            f.lights.push(Light { pos: c + Vec3::new(0.0, 0.0, -0.5), color: lin(0xb8a8ff) * (4.0 * open_k + 16.0 * flash), distance: 6.0 });
+            f.lights.push(Light {
+                pos: c + Vec3::new(0.0, 0.0, -0.5),
+                color: lin(0xb8a8ff) * (4.0 * open_k + 16.0 * flash),
+                distance: 6.0,
+            });
             // Wisps of the graveyard's fog pouring through.
             for n in 0..16 {
                 let fk = n as f32;
                 let u = (time * 0.9 + fk * 0.21).fract();
                 let p = c + Vec3::new((fk * 2.1).sin() * 0.5 * (1.0 - u), -0.9 + (fk * 1.3).cos() * 0.2 + u * 0.3, -u * 1.6);
-                f.transparent[MeshKind::Sphere as usize].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::splat(0.12 + u * 0.25), Quat::IDENTITY, p), lin(0xb4a8c8), 0.2 * (1.0 - u) * open_k, Vec3::ZERO, SHADE_LIT));
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(Vec3::splat(0.12 + u * 0.25), Quat::IDENTITY, p),
+                    lin(0xb4a8c8),
+                    0.2 * (1.0 - u) * open_k,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
             }
         }
 
@@ -1044,7 +1317,16 @@ impl WorldView {
             let kind = [HeroKind::Mehmed, HeroKind::Ragnar, HeroKind::Miyamoto][i];
             let boy = self.story_boy_feet(sv, i);
             let base = SOUL_AT[i].lerp(boy + Vec3::new(0.0, 0.2, 0.0), ease_in(taken_k)) + Vec3::new(0.0, (taken_k * PI).sin() * 0.6, 0.0);
-            self.emit_soul(f, kind, at(base), yaw_to(SOUL_AT[i], BOYS_MID), rise, 1.0 - taken_k * 0.85, lin(SOUL_TINT[i]), time + i as f32 * 1.3);
+            self.emit_soul(
+                f,
+                kind,
+                at(base),
+                yaw_to(SOUL_AT[i], BOYS_MID),
+                rise,
+                1.0 - taken_k * 0.85,
+                lin(SOUL_TINT[i]),
+                time + i as f32 * 1.3,
+            );
         }
 
         // ---- Quitmer
@@ -1091,8 +1373,15 @@ impl WorldView {
             let u = n as f32 / links as f32;
             let mut p = ring + span * u - Vec3::new(0.0, sag * (u * PI).sin(), 0.0);
             p.y = p.y.max(GATEWAY.y + 0.02);
-            let q = Quat::from_rotation_arc(Vec3::Z, span.normalize_or(Vec3::Z)) * if n % 2 == 0 { Quat::IDENTITY } else { Quat::from_rotation_z(PI / 2.0) };
-            f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.035, 0.012, 0.06), q, p), lin(0x3a3c40), 1.0, Vec3::ZERO, SHADE_METAL));
+            let q = Quat::from_rotation_arc(Vec3::Z, span.normalize_or(Vec3::Z))
+                * if n % 2 == 0 { Quat::IDENTITY } else { Quat::from_rotation_z(PI / 2.0) };
+            f.opaque[cube].push(Instance::new(
+                Mat4::from_scale_rotation_translation(Vec3::new(0.035, 0.012, 0.06), q, p),
+                lin(0x3a3c40),
+                1.0,
+                Vec3::ZERO,
+                SHADE_METAL,
+            ));
         }
 
         // ---- the old man
@@ -1156,7 +1445,12 @@ impl WorldView {
                 let from = Vec3::new(LAND[b].x * 0.6, 0.55, 3.95);
                 let p = from.lerp(LAND[b], ease_out(u)) + Vec3::new(0.0, (u * PI).sin() * 0.25, 0.0);
                 let spin = u * (PI * 2.0 + PI * 0.5);
-                root = Some(Mat4::from_translation(at(p) + Vec3::new(0.0, 0.1, 0.0)) * Mat4::from_rotation_y(PI) * Mat4::from_rotation_x(spin) * Mat4::from_translation(Vec3::new(0.0, -0.1, 0.0)));
+                root = Some(
+                    Mat4::from_translation(at(p) + Vec3::new(0.0, 0.1, 0.0))
+                        * Mat4::from_rotation_y(PI)
+                        * Mat4::from_rotation_x(spin)
+                        * Mat4::from_translation(Vec3::new(0.0, -0.1, 0.0)),
+                );
                 act = Act::Flail(time);
             } else if tumble < 1.9 {
                 let up = smooth(1.3, 1.9, tumble);
@@ -1184,7 +1478,8 @@ impl WorldView {
             let mut glow = Vec3::ZERO;
             if (0.0..100.0).contains(&descent) {
                 let arrive_at = stage::SOULS_TAKEN + 1.2;
-                let g = (1.0 - (descent - arrive_at).abs() / 0.9).max(0.0) + if descent > arrive_at { 0.15 * (1.0 - smooth(arrive_at, arrive_at + 3.0, descent)) } else { 0.0 };
+                let g = (1.0 - (descent - arrive_at).abs() / 0.9).max(0.0)
+                    + if descent > arrive_at { 0.15 * (1.0 - smooth(arrive_at, arrive_at + 3.0, descent)) } else { 0.0 };
                 glow = lin(SOUL_TINT[b]) * g * 0.22;
                 if descent > stage::WALK {
                     let walk = descent - stage::WALK - b as f32 * 0.25;
@@ -1205,16 +1500,28 @@ impl WorldView {
             let fall = 0.55;
             if u < fall {
                 let y = 3.6 - (u / fall).powi(2) * 3.6;
-                f.additive.push(Instance::new(Mat4::from_translation(at(Vec3::new(x, y, z))) * Mat4::from_scale(Vec3::new(0.012, 0.035, 0.012)), lin(0xa8c8e8), 0.7, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(at(Vec3::new(x, y, z))) * Mat4::from_scale(Vec3::new(0.012, 0.035, 0.012)),
+                    lin(0xa8c8e8),
+                    0.7,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             } else if u < fall + 0.8 {
                 let r = (u - fall) / 0.8;
-                let m = Mat4::from_translation(at(Vec3::new(x, 0.012, z))) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.05 + r * 0.25, 0.05 + r * 0.25, 1.0));
+                let m = Mat4::from_translation(at(Vec3::new(x, 0.012, z)))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::new(0.05 + r * 0.25, 0.05 + r * 0.25, 1.0));
                 f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, lin(0xa8b8c8), 0.45 * (1.0 - r), Vec3::ZERO, SHADE_UNLIT));
             }
         }
         for k in 0..30 {
             let fk = k as f32;
-            let p = at(Vec3::new(((fk * 0.618).fract() - 0.5) * 7.0 + (time * 0.15 + fk).sin() * 0.25, 0.3 + (fk * 0.37).fract() * 2.8 + (time * 0.2 + fk * 1.3).sin() * 0.12, ((fk * 0.29).fract() - 0.5) * 6.0));
+            let p = at(Vec3::new(
+                ((fk * 0.618).fract() - 0.5) * 7.0 + (time * 0.15 + fk).sin() * 0.25,
+                0.3 + (fk * 0.37).fract() * 2.8 + (time * 0.2 + fk * 1.3).sin() * 0.12,
+                ((fk * 0.29).fract() - 0.5) * 6.0,
+            ));
             glow_orb(f, p, 0.02, lin(0xffe0b0), 0.25 + 0.2 * (time * 1.7 + fk).sin());
         }
     }
@@ -1269,7 +1576,8 @@ impl WorldView {
             }
             Act::Kick(k) => {
                 // Wind up, swing through, follow through.
-                let swing = if k < 0.0 { 0.9 * smooth(-0.25, -0.05, k) } else { 0.9 - 2.2 * smooth(0.0, 0.12, k) + 1.3 * smooth(0.15, 0.45, k) };
+                let swing =
+                    if k < 0.0 { 0.9 * smooth(-0.25, -0.05, k) } else { 0.9 - 2.2 * smooth(0.0, 0.12, k) + 1.3 * smooth(0.15, 0.45, k) };
                 pose.rot[lb].x = swing;
                 pose.rot[aa].x = -0.5 * (1.0 - smooth(0.2, 0.45, k));
                 pose.rot[ab].x = 0.4 * (1.0 - smooth(0.2, 0.45, k));
@@ -1322,7 +1630,13 @@ impl WorldView {
         let root = root * Mat4::from_translation(Vec3::new(0.0, bob, 0.0)) * Mat4::from_rotation_x(lean);
         emit_rig(&mut f.opaque[MeshKind::Cube as usize], &self.models.kids[which.min(3)], &pose, root, Vec3::ONE, 1.0, glow);
         if glow.length_squared() > 0.0001 {
-            glow_orb(f, root.transform_point3(Vec3::new(0.0, 0.35, 0.0)), 0.75, glow.normalize_or_zero(), (glow.length() * 2.5).min(1.0) * 0.45);
+            glow_orb(
+                f,
+                root.transform_point3(Vec3::new(0.0, 0.35, 0.0)),
+                0.75,
+                glow.normalize_or_zero(),
+                (glow.length() * 2.5).min(1.0) * 0.45,
+            );
         }
     }
 
@@ -1332,11 +1646,24 @@ impl WorldView {
      * collar's ring is, for the chain.
      */
     #[allow(clippy::too_many_arguments)]
-    fn emit_dog(&self, f: &mut Frame, feet: Vec3, yaw: f32, strain: f32, lunge: f32, calm: f32, snap: f32, sleep: f32, wag: f32, time: f32) -> Vec3 {
+    fn emit_dog(
+        &self,
+        f: &mut Frame,
+        feet: Vec3,
+        yaw: f32,
+        strain: f32,
+        lunge: f32,
+        calm: f32,
+        snap: f32,
+        sleep: f32,
+        wag: f32,
+        time: f32,
+    ) -> Vec3 {
         let rig = &self.models.dog;
         let mut pose = Pose::rest(rig);
         let idx = |n: &str| rig.index(n).unwrap_or(0);
-        let (jaw, head, fa, fb, ha, hb, tail) = (idx("jaw"), idx("head"), idx("foreA"), idx("foreB"), idx("hindA"), idx("hindB"), idx("tail"));
+        let (jaw, head, fa, fb, ha, hb, tail) =
+            (idx("jaw"), idx("head"), idx("foreA"), idx("foreB"), idx("hindA"), idx("hindB"), idx("tail"));
         let breathe = (time * if sleep > 0.5 { 1.4 } else { 2.6 }).sin();
         // Braced legs and a lowered head when he strains; legs folded flat when he lies.
         pose.rot[fa].x = -0.4 * strain - 1.5 * calm;
@@ -1393,7 +1720,19 @@ impl WorldView {
      * the fog as `alpha` falls. Returns where the claws of his right hand are.
      */
     #[allow(clippy::too_many_arguments)]
-    fn emit_krampus(&self, f: &mut Frame, feet: Vec3, yaw: f32, run: f32, phase: f32, reach: f32, lift: f32, rear: f32, alpha: f32, time: f32) -> Vec3 {
+    fn emit_krampus(
+        &self,
+        f: &mut Frame,
+        feet: Vec3,
+        yaw: f32,
+        run: f32,
+        phase: f32,
+        reach: f32,
+        lift: f32,
+        rear: f32,
+        alpha: f32,
+        time: f32,
+    ) -> Vec3 {
         let rig = &self.models.krampus;
         let mut pose = Pose::rest(rig);
         let idx = |n: &str| rig.index(n).unwrap_or(0);
@@ -1407,7 +1746,8 @@ impl WorldView {
         pose.rot[al].z = 0.3 * rear;
         pose.rot[hd].x = -0.35 * rear + (time * 3.0).sin() * 0.05;
         pose.rot[hd].y = (time * 1.7).sin() * 0.1 * (1.0 - run);
-        let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(0.28 * run - 0.25 * rear + 0.1 * reach);
+        let root =
+            Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(0.28 * run - 0.25 * rear + 0.1 * reach);
         let cube = MeshKind::Cube as usize;
         if alpha >= 0.99 {
             emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
@@ -1421,7 +1761,13 @@ impl WorldView {
             let p = rig_point(rig, &pose, root, hd, pivot_of(cast::KRAMPUS_RIG, "head"), e);
             mid += p * 0.5;
             glow_orb(f, p, 0.12, lin(0xff3010), 1.4 * eyes);
-            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.035)), lin(0xff6a30) * 2.0, eyes, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.035)),
+                lin(0xff6a30) * 2.0,
+                eyes,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
         }
         let ahead = (root.transform_vector3(Vec3::Z)).normalize_or(Vec3::Z);
         // Their light falls ahead of him, on what he comes for more than on his own face.
@@ -1445,10 +1791,19 @@ impl WorldView {
         let pose = Pose::rest(rig);
         // Thinner up close, where many layers of it would pile up into a white glare.
         let near = (self.cam_pos.distance(base + Vec3::new(0.0, 0.6, 0.0)) / 3.6).clamp(0.4, 1.0);
-        emit_rig_ghost(&mut f.transparent[MeshKind::Cube as usize], rig, &pose, root, tint * (1.0 + 0.15 * (time * 3.0).sin()), 0.24 * r * near);
+        emit_rig_ghost(
+            &mut f.transparent[MeshKind::Cube as usize],
+            rig,
+            &pose,
+            root,
+            tint * (1.0 + 0.15 * (time * 3.0).sin()),
+            0.24 * r * near,
+        );
         glow_orb(f, base + Vec3::new(0.0, 0.6 * scale, 0.0), 1.1 * scale, tint, 0.18 * r);
         // A ring of light on the floor where it rose, and motes streaming up.
-        let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.012, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.45, 0.45, 1.0));
+        let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.012, 0.0))
+            * Mat4::from_rotation_x(-PI / 2.0)
+            * Mat4::from_scale(Vec3::new(0.45, 0.45, 1.0));
         f.glow.push(Instance::new(ring, tint, 0.35 * r * (1.0 - (1.0 - scale) * 1.2).max(0.0), Vec3::ZERO, SHADE_GLOW));
         for k in 0..10 {
             let fk = k as f32;
@@ -1525,7 +1880,11 @@ impl WorldView {
                 (look + (eye - look) * push, look, d + OLD_MAN_AT + v(0.0, 0.95, 0.0))
             }
             Shot::Boys => {
-                let (eye, look) = if sv.said_before(Speaker::Boys).is_multiple_of(2) { (d + v(0.72, 0.82, -0.4), d + v(0.05, 0.48, 1.7)) } else { (d + v(-0.6, 0.78, -0.25), d + v(0.1, 0.5, 1.75)) };
+                let (eye, look) = if sv.said_before(Speaker::Boys).is_multiple_of(2) {
+                    (d + v(0.72, 0.82, -0.4), d + v(0.05, 0.48, 1.7))
+                } else {
+                    (d + v(-0.6, 0.78, -0.25), d + v(0.1, 0.5, 1.75))
+                };
                 let push = 1.0 - 0.06 * smooth(0.0, 5.0, t);
                 (look + (eye - look) * push, look, d + BOYS_MID + v(0.0, 0.5, 0.0))
             }
@@ -1535,7 +1894,11 @@ impl WorldView {
             }
             Shot::Descent => {
                 let u = smooth(stage::WALK, stage::WALK + 9.0, t);
-                (lerp3(d + v(0.0, 1.3, 3.85), d + v(0.0, 1.25, 1.2), u), lerp3(d + v(0.0, 0.6, -2.2), d + v(0.0, 0.2, -5.0), u), d + v(0.0, 0.7, 0.4).lerp(d + v(0.0, 0.8, -3.2), u))
+                (
+                    lerp3(d + v(0.0, 1.3, 3.85), d + v(0.0, 1.25, 1.2), u),
+                    lerp3(d + v(0.0, 0.6, -2.2), d + v(0.0, 0.2, -5.0), u),
+                    d + v(0.0, 0.7, 0.4).lerp(d + v(0.0, 0.8, -3.2), u),
+                )
             }
         };
         (eye + sway, look + sway * 0.5, focus)
@@ -1607,15 +1970,33 @@ fn gateway_lights(f: &mut Frame, time: f32) {
             let a = time * 4.0 + k as f32 * 1.1 + n as f32;
             let rise = (time * 3.0 + k as f32 * 0.37).fract();
             let p = base + Vec3::new(a.cos() * 0.035 * (1.0 - rise), rise * 0.22, a.sin() * 0.035 * (1.0 - rise));
-            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.06 * (1.0 - rise * 0.6))), lin(if k % 2 == 0 { 0xffa040 } else { 0xffd070 }) * 1.5, 0.85 * (1.0 - rise), Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.06 * (1.0 - rise * 0.6))),
+                lin(if k % 2 == 0 { 0xffa040 } else { 0xffd070 }) * 1.5,
+                0.85 * (1.0 - rise),
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
         }
         glow_orb(f, base + Vec3::new(0.0, 0.08, 0.0), 0.55, lin(0xff9a40), 0.3 * fl);
         f.lights.push(Light { pos: base + Vec3::new(inward * 0.15, 0.1, 0.0), color: lin(0xffb074) * 4.6 * fl, distance: 6.0 });
     }
     // The old man's lantern by his stool.
     let lantern = at(Vec3::new(2.4, 0.13, -2.25));
-    f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.14, 0.2, 0.14), Quat::from_rotation_y(0.4), lantern), lin(0xffd49a), 1.0, lin(0xffa040) * 1.8, SHADE_LIT));
-    f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.17, 0.03, 0.17), Quat::from_rotation_y(0.4), lantern + Vec3::new(0.0, 0.11, 0.0)), lin(0x222226), 1.0, Vec3::ZERO, SHADE_METAL));
+    f.opaque[cube].push(Instance::new(
+        Mat4::from_scale_rotation_translation(Vec3::new(0.14, 0.2, 0.14), Quat::from_rotation_y(0.4), lantern),
+        lin(0xffd49a),
+        1.0,
+        lin(0xffa040) * 1.8,
+        SHADE_LIT,
+    ));
+    f.opaque[cube].push(Instance::new(
+        Mat4::from_scale_rotation_translation(Vec3::new(0.17, 0.03, 0.17), Quat::from_rotation_y(0.4), lantern + Vec3::new(0.0, 0.11, 0.0)),
+        lin(0x222226),
+        1.0,
+        Vec3::ZERO,
+        SHADE_METAL,
+    ));
     glow_orb(f, lantern, 0.45, lin(0xffa050), 0.25);
     f.lights.push(Light { pos: lantern + Vec3::new(0.0, 0.3, 0.2), color: lin(0xffb060) * 2.5, distance: 3.5 });
     // Cool fills on faces from the front and on the old man and the dog; a faint red seeping under the door.
@@ -1634,11 +2015,24 @@ fn gateway_door(f: &mut Frame, open: f32, time: f32) {
         let q = Quat::from_rotation_y(-side * open);
         for &(off, size, c, mat) in door_leaf().iter() {
             let local = Vec3::new(-side * off.x, off.y, off.z);
-            f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(size, q, hinge + q * local), lin(c), 1.0, Vec3::ZERO, mat));
+            f.opaque[cube].push(Instance::new(
+                Mat4::from_scale_rotation_translation(size, q, hinge + q * local),
+                lin(c),
+                1.0,
+                Vec3::ZERO,
+                mat,
+            ));
         }
     }
     let red = 0.35 + open * 3.0;
-    glowing(&mut f.opaque[cube], at(Vec3::new(0.0, 0.015, -3.36)), Vec3::new(1.85, 0.02, 0.04), Quat::IDENTITY, lin(0x300800), lin(0xff3a10) * (0.8 + 0.3 * (time * 2.0).sin()) * (1.0 - open / 1.45));
+    glowing(
+        &mut f.opaque[cube],
+        at(Vec3::new(0.0, 0.015, -3.36)),
+        Vec3::new(1.85, 0.02, 0.04),
+        Quat::IDENTITY,
+        lin(0x300800),
+        lin(0xff3a10) * (0.8 + 0.3 * (time * 2.0).sin()) * (1.0 - open / 1.45),
+    );
     f.lights.push(Light { pos: at(Vec3::new(0.0, 0.3, -3.3 - open * 0.4)), color: lin(0xff4a1a) * red, distance: 3.0 + open * 3.5 });
     if open > 0.05 {
         f.lights.push(Light { pos: at(Vec3::new(0.0, -1.5, -6.5)), color: lin(0xff3a0a) * 8.0 * open, distance: 7.0 });
@@ -1648,7 +2042,13 @@ fn gateway_door(f: &mut Frame, open: f32, time: f32) {
             let fk = n as f32;
             let u = (time * 0.35 + fk * 0.13).fract();
             let p = at(Vec3::new((fk * 1.7).sin() * 0.7, -1.4 + u * 3.5, -6.0 + u * 3.0 + (fk * 2.3).cos() * 0.3));
-            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.025)), lin(0xff8a30) * 1.6, (1.0 - u) * open * 0.8, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.025)),
+                lin(0xff8a30) * 1.6,
+                (1.0 - u) * open * 0.8,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
         }
     }
 }
@@ -1695,7 +2095,9 @@ impl WorldView {
         if let Some(i) = rig.index("head") {
             pose.rot[i].x = 0.08 + breathe * 0.02;
         }
-        let root = Mat4::from_translation(at(WARES_HERO)) * Mat4::from_rotation_y(yaw_to(WARES_HERO, WARES_OLD_MAN)) * Mat4::from_scale(Vec3::new(1.0, 1.0 + breathe * 0.006, 1.0));
+        let root = Mat4::from_translation(at(WARES_HERO))
+            * Mat4::from_rotation_y(yaw_to(WARES_HERO, WARES_OLD_MAN))
+            * Mat4::from_scale(Vec3::new(1.0, 1.0 + breathe * 0.006, 1.0));
         emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
         f.lights.push(Light { pos: at(WARES_HERO + Vec3::new(0.6, 1.8, 1.4)), color: lin(0xffe0c0) * 3.0, distance: 4.0 });
     }

@@ -28,7 +28,8 @@ pub enum EnemyKind {
 
 impl EnemyKind {
     pub const STAGE_ONE: [EnemyKind; 4] = [EnemyKind::Skeleton, EnemyKind::Bat, EnemyKind::Vampire, EnemyKind::Slime];
-    pub const STAGE_TWO: [EnemyKind; 6] = [EnemyKind::Helmeted, EnemyKind::LargeBat, EnemyKind::Witch, EnemyKind::Minion, EnemyKind::Werewolf, EnemyKind::Blemmyes];
+    pub const STAGE_TWO: [EnemyKind; 6] =
+        [EnemyKind::Helmeted, EnemyKind::LargeBat, EnemyKind::Witch, EnemyKind::Minion, EnemyKind::Werewolf, EnemyKind::Blemmyes];
 
     /// The cast of a stage: 1 for the Garden, 2 for the realms.
     pub fn of_stage(stage: u8) -> &'static [EnemyKind] {
@@ -664,28 +665,52 @@ pub fn enemy_specs(grid: &Grid, stage: u8) -> Vec<EnemySpec> {
     let h = grid.height - 1;
     vec![
         EnemySpec {
-            kind: EnemyKind::Helmeted, name: "Helmeted Skeleton".into(), color: 0xff5a4a,
-            scatter_target: P::new(w - 2, 0), exit_delay: 0.0, speed_factor: 1.05,
+            kind: EnemyKind::Helmeted,
+            name: "Helmeted Skeleton".into(),
+            color: 0xff5a4a,
+            scatter_target: P::new(w - 2, 0),
+            exit_delay: 0.0,
+            speed_factor: 1.05,
         },
         EnemySpec {
-            kind: EnemyKind::LargeBat, name: "Large Bat".into(), color: 0xc04a70,
-            scatter_target: P::new(2, 0), exit_delay: 2.0, speed_factor: 1.2,
+            kind: EnemyKind::LargeBat,
+            name: "Large Bat".into(),
+            color: 0xc04a70,
+            scatter_target: P::new(2, 0),
+            exit_delay: 2.0,
+            speed_factor: 1.2,
         },
         EnemySpec {
-            kind: EnemyKind::Witch, name: "Witch".into(), color: 0xb066ff,
-            scatter_target: P::new(w, h), exit_delay: 4.0, speed_factor: 0.95,
+            kind: EnemyKind::Witch,
+            name: "Witch".into(),
+            color: 0xb066ff,
+            scatter_target: P::new(w, h),
+            exit_delay: 4.0,
+            speed_factor: 0.95,
         },
         EnemySpec {
-            kind: EnemyKind::Minion, name: "Witch Minion".into(), color: 0xd08cff,
-            scatter_target: P::new(0, h), exit_delay: 5.5, speed_factor: 1.25,
+            kind: EnemyKind::Minion,
+            name: "Witch Minion".into(),
+            color: 0xd08cff,
+            scatter_target: P::new(0, h),
+            exit_delay: 5.5,
+            speed_factor: 1.25,
         },
         EnemySpec {
-            kind: EnemyKind::Werewolf, name: "Loup-Garou".into(), color: 0xc0885a,
-            scatter_target: P::new(w, h / 2), exit_delay: 7.0, speed_factor: 1.3,
+            kind: EnemyKind::Werewolf,
+            name: "Loup-Garou".into(),
+            color: 0xc0885a,
+            scatter_target: P::new(w, h / 2),
+            exit_delay: 7.0,
+            speed_factor: 1.3,
         },
         EnemySpec {
-            kind: EnemyKind::Blemmyes, name: "Blemmyes".into(), color: 0xe8b494,
-            scatter_target: P::new(0, h / 2), exit_delay: 9.0, speed_factor: 0.72,
+            kind: EnemyKind::Blemmyes,
+            name: "Blemmyes".into(),
+            color: 0xe8b494,
+            scatter_target: P::new(0, h / 2),
+            exit_delay: 9.0,
+            speed_factor: 0.72,
         },
     ]
 }
@@ -696,20 +721,36 @@ pub fn default_enemy_specs(grid: &Grid) -> Vec<EnemySpec> {
     let h = grid.height - 1;
     vec![
         EnemySpec {
-            kind: EnemyKind::Skeleton, name: "Draugr".into(), color: 0xe9e9f2,
-            scatter_target: P::new(w - 2, 0), exit_delay: 0.0, speed_factor: 1.0,
+            kind: EnemyKind::Skeleton,
+            name: "Draugr".into(),
+            color: 0xe9e9f2,
+            scatter_target: P::new(w - 2, 0),
+            exit_delay: 0.0,
+            speed_factor: 1.0,
         },
         EnemySpec {
-            kind: EnemyKind::Bat, name: "Raven".into(), color: 0x9a5cff,
-            scatter_target: P::new(2, 0), exit_delay: 2.5, speed_factor: 1.12,
+            kind: EnemyKind::Bat,
+            name: "Raven".into(),
+            color: 0x9a5cff,
+            scatter_target: P::new(2, 0),
+            exit_delay: 2.5,
+            speed_factor: 1.12,
         },
         EnemySpec {
-            kind: EnemyKind::Vampire, name: "Night Raven".into(), color: 0x4f6dff,
-            scatter_target: P::new(w, h), exit_delay: 5.0, speed_factor: 1.05,
+            kind: EnemyKind::Vampire,
+            name: "Night Raven".into(),
+            color: 0x4f6dff,
+            scatter_target: P::new(w, h),
+            exit_delay: 5.0,
+            speed_factor: 1.05,
         },
         EnemySpec {
-            kind: EnemyKind::Slime, name: "Bog Slime".into(), color: 0x5cff6a,
-            scatter_target: P::new(0, h), exit_delay: 7.5, speed_factor: 0.8,
+            kind: EnemyKind::Slime,
+            name: "Bog Slime".into(),
+            color: 0x5cff6a,
+            scatter_target: P::new(0, h),
+            exit_delay: 7.5,
+            speed_factor: 0.8,
         },
     ]
 }

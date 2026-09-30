@@ -1,0 +1,4 @@
+# The code favours dense lines; 140 keeps them readable without wrapping every call.
+max_width = 140
+use_small_heuristics = "Max"
+newline_style = "Unix"

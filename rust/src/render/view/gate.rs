@@ -78,9 +78,17 @@ pub fn diamond_key(gem: u32) -> Mesh {
                 let c = if d > 0.86 {
                     G // a gold setting round the stone
                 } else if (dx < 0.0) == (dy > 0.0) {
-                    if front { r_l } else { r }
+                    if front {
+                        r_l
+                    } else {
+                        r
+                    }
                 } else if dy > 0.0 {
-                    if front { r } else { r_d }
+                    if front {
+                        r
+                    } else {
+                        r_d
+                    }
                 } else if front {
                     r_d
                 } else {
@@ -143,10 +151,22 @@ impl WorldView {
             let top = base + 7.0 * 0.38;
             cube(out, t + Vec3::new(0.0, top + 0.04, 0.0), Vec3::new(0.84, 0.08, 0.84), q, lin(STONE_D));
             for (mx, mz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0), (0.0, 1.0), (0.0, -1.0), (1.0, 0.0), (-1.0, 0.0)] {
-                cube(out, t + Vec3::new(mx * 0.33, top + 0.19, mz * 0.33), Vec3::new(0.16, 0.22, 0.16), q, stone(hash(mx as f64, mz as f64 + side as f64)));
+                cube(
+                    out,
+                    t + Vec3::new(mx * 0.33, top + 0.19, mz * 0.33),
+                    Vec3::new(0.16, 0.22, 0.16),
+                    q,
+                    stone(hash(mx as f64, mz as f64 + side as f64)),
+                );
             }
             for (k, w) in [0.5f32, 0.4, 0.3, 0.2, 0.11].iter().enumerate() {
-                cube(out, t + Vec3::new(0.0, top + 0.15 + k as f32 * 0.16, 0.0), Vec3::new(*w, 0.16, *w), Quat::from_rotation_y(0.785), lin(SLATE));
+                cube(
+                    out,
+                    t + Vec3::new(0.0, top + 0.15 + k as f32 * 0.16, 0.0),
+                    Vec3::new(*w, 0.16, *w),
+                    Quat::from_rotation_y(0.785),
+                    lin(SLATE),
+                );
             }
             cube(out, t + Vec3::new(0.0, top + 1.0, 0.0), Vec3::new(0.05, 0.12, 0.05), q, lin(GOLD));
             // Arrow slits.
@@ -218,7 +238,13 @@ impl WorldView {
             for k in 0..4 {
                 let a = time * 1.5 + k as f32 * TAU / 4.0;
                 let sp = at + Vec3::new(a.cos() * 0.3, (a * 1.7).sin() * 0.15, a.sin() * 0.3);
-                f.additive.push(Instance::new(Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.035)), lin(0xfff0a0), 0.8, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.035)),
+                    lin(0xfff0a0),
+                    0.8,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             lit.push(at);
         }
@@ -244,7 +270,13 @@ impl WorldView {
             for k in 0..6 {
                 let a = time * 1.3 + k as f32 * TAU / 6.0;
                 let sp = at + Vec3::new(a.cos() * 0.38, 0.1 + (a * 1.7).sin() * 0.2, a.sin() * 0.38);
-                f.additive.push(Instance::new(Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.04)), lin(0xffb0bc), 0.85, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.04)),
+                    lin(0xffb0bc),
+                    0.85,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             f.lights.push(Light { pos: at + Vec3::new(0.2, 0.6, 0.3), color: red * 2.5, distance: 4.0 });
         }
@@ -264,7 +296,13 @@ impl WorldView {
             let rot = Quat::from_rotation_y(-side * angle);
             let leaf = |f: &mut Frame, local: Vec3, scale: Vec3, color: Vec3| {
                 let p = hinge + rot * Vec3::new(-side * local.x, local.y, local.z);
-                f.opaque[cube_i].push(Instance::new(Mat4::from_scale_rotation_translation(scale, rot, p), color, 1.0, Vec3::ZERO, SHADE_LIT));
+                f.opaque[cube_i].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(scale, rot, p),
+                    color,
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
             };
             for (k, oak) in OAK.iter().enumerate() {
                 leaf(f, Vec3::new(0.07 + k as f32 * 0.14, 0.66, 0.0), Vec3::new(0.135, 1.32, 0.06), lin(*oak));
@@ -284,9 +322,21 @@ impl WorldView {
             let pulse = if open { 0.75 + (time * 4.0 + i as f32).sin() * 0.25 } else { 1.0 };
             let size = if g.red { 0.12 } else { 0.075 };
             let (c, e) = if lit { (lamp, lamp_glow * 2.2 * pulse) } else { (lin(if g.red { 0x4a2026 } else { 0x3a3830 }), Vec3::ZERO) };
-            f.opaque[cube_i].push(Instance::new(Mat4::from_translation(p) * Mat4::from_rotation_z(if g.red { PI / 4.0 } else { 0.0 }) * Mat4::from_scale(Vec3::splat(size)), c, 1.0, e, SHADE_LIT));
+            f.opaque[cube_i].push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_rotation_z(if g.red { PI / 4.0 } else { 0.0 }) * Mat4::from_scale(Vec3::splat(size)),
+                c,
+                1.0,
+                e,
+                SHADE_LIT,
+            ));
             if lit {
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size * 2.1)), lamp_glow, 0.18 * pulse, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size * 2.1)),
+                    lamp_glow,
+                    0.18 * pulse,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
         }
         // Brazier flames.
@@ -298,7 +348,13 @@ impl WorldView {
                 let p = b + Vec3::new((fk * 1.9).sin() * 0.07, t * 0.35, (fk * 2.7).cos() * 0.07);
                 let size = 0.1 * (1.0 - t) + 0.02;
                 let color = lin(if t < 0.4 { 0xffd060 } else { 0xff6a20 });
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size)), color, 0.8 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size)),
+                    color,
+                    0.8 * (1.0 - t),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             let flick = 3.2 + (time * 11.0 + side).sin() * 0.4 + (time * 23.0).sin() * 0.2;
             f.lights.push(Light { pos: b + Vec3::new(0.0, 0.35, 0.25), color: lin(0xff9a40) * flick * 0.7, distance: 4.0 });
@@ -325,7 +381,9 @@ impl WorldView {
                 let fk = k as f32 + i as f32 * 3.1;
                 let t = (time * (0.18 + 0.06 * strength) + k as f32 / n as f32).fract();
                 let drift = Vec3::new(0.35 + (fk * 1.3).sin() * 0.1, 0.0, 0.12);
-                let p = base + drift * t * (1.0 + strength) + Vec3::new((time * 0.8 + fk).sin() * 0.06 * t, t * (0.9 + 1.4 * strength), (time * 0.6 + fk * 1.7).cos() * 0.06 * t);
+                let p = base
+                    + drift * t * (1.0 + strength)
+                    + Vec3::new((time * 0.8 + fk).sin() * 0.06 * t, t * (0.9 + 1.4 * strength), (time * 0.6 + fk * 1.7).cos() * 0.06 * t);
                 let r = (0.04 + t * 0.2) * strength.sqrt();
                 let a = 0.16 * (PI * t).sin().powf(0.8) * strength.sqrt();
                 let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r));
@@ -339,7 +397,13 @@ impl WorldView {
                     let sway = Vec3::new((fk * 1.7 + time * 0.9).sin() * 0.16, 0.0, (fk * 2.3 + time * 0.7).cos() * 0.16) * t;
                     let p = base - Vec3::new(0.0, 0.12, 0.0) + sway + Vec3::new(0.22 * t, t * 1.8, 0.08 * t);
                     let a = (1.0 - t) * (0.55 + 0.45 * (time * 17.0 + fk).sin().abs());
-                    f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.022)), lin(0xffa040) * 1.6, a, Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(
+                        Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.022)),
+                        lin(0xffa040) * 1.6,
+                        a,
+                        Vec3::ZERO,
+                        SHADE_UNLIT,
+                    ));
                 }
                 glow_orb(f, base - Vec3::new(0.0, 0.1, 0.0), 0.45, lin(0xff8a30), 0.22);
             }

@@ -87,12 +87,7 @@ pub fn find_blade_targets(hero: V, aim: V, enemies: &[Enemy], reach: f64, half_w
 
 /// Indices of targetable enemies caught by a sword swing.
 pub fn find_attack_targets(hero: V, aim: V, enemies: &[Enemy]) -> Vec<usize> {
-    enemies
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.is_targetable() && in_swing(hero, aim, e.pos()))
-        .map(|(i, _)| i)
-        .collect()
+    enemies.iter().enumerate().filter(|(_, e)| e.is_targetable() && in_swing(hero, aim, e.pos())).map(|(i, _)| i).collect()
 }
 
 /// Targetable enemies within `radius` of a point, nearest first, skipping any in `exclude`.

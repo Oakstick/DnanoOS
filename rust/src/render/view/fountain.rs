@@ -45,8 +45,8 @@ mod pal {
     pub const CHAIN: u32 = 0x8a9098 | mat::METAL;
     pub const STRAP: u32 = 0x5a3e24 | mat::LEATHER;
 }
-use pal::*;
 use crate::render::voxels::Collected;
+use pal::*;
 
 /// Stone voxels of the basin, pedestal and bowl.
 const STONE_VOXEL: f32 = 0.025;
@@ -177,7 +177,11 @@ pub fn krampus() -> Collected {
     ball(&mut s, v(cx, 34.5, 18.8), Vec3::new(8.6, 5.5, 6.0), COAT);
     ball(&mut s, v(cx, 38.3, 19.6), Vec3::new(10.2, 3.4, 5.2), COAT);
     // A tail with a tuft.
-    limb(&mut s, &[(v(cx, 23.5, 11.5), 1.2), (v(cx + 2.0, 20.5, 8.5), 1.0), (v(cx + 5.0, 21.0, 5.5), 0.8), (v(cx + 6.5, 24.5, 4.5), 0.6)], COAT);
+    limb(
+        &mut s,
+        &[(v(cx, 23.5, 11.5), 1.2), (v(cx + 2.0, 20.5, 8.5), 1.0), (v(cx + 5.0, 21.0, 5.5), 0.8), (v(cx + 6.5, 24.5, 4.5), 0.6)],
+        COAT,
+    );
     ball(&mut s, v(cx + 6.8, 26.0, 4.5), Vec3::splat(1.8), COAT_L);
 
     // ---- a wicker basket of switches strapped to his back
@@ -188,7 +192,18 @@ pub fn krampus() -> Collected {
                 let wall = z == 4 || z == 11 || x == bx0 || x == bx1 || y == 27;
                 if wall {
                     let band = y == 27 || y == 34 || y == 41;
-                    s.set(x, y + G, z, if band { BRONZE_D } else if (x + y + z) % 2 == 0 { WICKER } else { WICKER_D });
+                    s.set(
+                        x,
+                        y + G,
+                        z,
+                        if band {
+                            BRONZE_D
+                        } else if (x + y + z) % 2 == 0 {
+                            WICKER
+                        } else {
+                            WICKER_D
+                        },
+                    );
                 }
             }
         }
@@ -200,7 +215,11 @@ pub fn krampus() -> Collected {
         capsule(&mut s, base, tip, 0.55, 0.35, |_| if i % 2 == 0 { GILT_D } else { GILT });
     }
     for side in [-1.0f32, 1.0] {
-        limb(&mut s, &[(v(cx + side * 4.5, 41.0, 11.0), 0.8), (v(cx + side * 5.5, 41.8, 17.0), 0.8), (v(cx + side * 5.5, 36.0, 25.2), 0.8)], STRAP);
+        limb(
+            &mut s,
+            &[(v(cx + side * 4.5, 41.0, 11.0), 0.8), (v(cx + side * 5.5, 41.8, 17.0), 0.8), (v(cx + side * 5.5, 36.0, 25.2), 0.8)],
+            STRAP,
+        );
     }
 
     // ---- a chain slung round his waist, with bells
@@ -243,10 +262,26 @@ pub fn krampus() -> Collected {
             s.set(x, 46 + G, z, EYE);
         }
         // Goat's ears, sticking out.
-        limb(&mut s, &[(v(cx + side * 4.0, 46.5, 22.0), 1.4), (v(cx + side * 6.5, 47.8, 21.0), 0.9), (v(cx + side * 8.5, 49.0, 20.0), 0.4)], BRONZE);
+        limb(
+            &mut s,
+            &[(v(cx + side * 4.0, 46.5, 22.0), 1.4), (v(cx + side * 6.5, 47.8, 21.0), 0.9), (v(cx + side * 8.5, 49.0, 20.0), 0.4)],
+            BRONZE,
+        );
         // Ram's horns: up, back and out, curling down and forward at the tips.
         let k = |dx: f32, y: f32, z: f32, r: f32| (v(cx + side * dx, y, z), r);
-        horn(&mut s, &[k(2.5, 49.0, 23.0, 1.9), k(4.5, 52.5, 21.0, 1.7), k(7.5, 55.5, 18.5, 1.45), k(10.5, 57.0, 16.8, 1.2), k(13.3, 56.2, 16.5, 1.0), k(15.2, 53.5, 17.8, 0.8), k(15.4, 50.8, 20.0, 0.6), k(14.2, 49.4, 21.8, 0.4)]);
+        horn(
+            &mut s,
+            &[
+                k(2.5, 49.0, 23.0, 1.9),
+                k(4.5, 52.5, 21.0, 1.7),
+                k(7.5, 55.5, 18.5, 1.45),
+                k(10.5, 57.0, 16.8, 1.2),
+                k(13.3, 56.2, 16.5, 1.0),
+                k(15.2, 53.5, 17.8, 0.8),
+                k(15.4, 50.8, 20.0, 0.6),
+                k(14.2, 49.4, 21.8, 0.4),
+            ],
+        );
     }
     limb(&mut s, &[(v(cx, 40.2, 27.0), 1.8), (v(cx, 37.5, 26.6), 1.2), (v(cx, 35.5, 25.8), 0.6)], COAT_L); // goatee
 
@@ -257,7 +292,18 @@ pub fn krampus() -> Collected {
     limb(&mut s, &[(v(cx + 12.3, 46.8, 23.6), 2.2), (v(cx + 12.4, 47.8, 24.1), 2.2)], CHAIN); // a shackle
     ball(&mut s, v(cx + 12.6, 50.0, 25.2), Vec3::splat(1.9), BRONZE);
     let fist = v(cx + 12.6, 50.3, 25.2);
-    for (i, d) in [(0.15f32, 1.0f32, -0.35f32), (0.35, 1.0, -0.2), (-0.05, 1.0, -0.15), (0.25, 1.0, 0.05), (0.5, 0.95, -0.4), (0.05, 1.0, -0.5), (0.4, 1.0, 0.15)].iter().enumerate() {
+    for (i, d) in [
+        (0.15f32, 1.0f32, -0.35f32),
+        (0.35, 1.0, -0.2),
+        (-0.05, 1.0, -0.15),
+        (0.25, 1.0, 0.05),
+        (0.5, 0.95, -0.4),
+        (0.05, 1.0, -0.5),
+        (0.4, 1.0, 0.15),
+    ]
+    .iter()
+    .enumerate()
+    {
         let dir = Vec3::new(d.0, d.1, d.2).normalize();
         let base = fist + Vec3::new((i as f32 - 3.0) * 0.3, -1.2, 0.0);
         let len = 6.5 + (i % 3) as f32;
@@ -336,9 +382,22 @@ fn fountain_stone() -> (Mesh, Mesh) {
             }
             for y in 1..=11 {
                 if (15.8..=18.6).contains(&o) {
-                    let panel = (3..=9).contains(&y) && o > 17.9 && ((x as f32 - c).abs() - (z as f32 - c).abs()).abs() > 3.0 || (3..=9).contains(&y) && o > 17.9 && (x as f32 - c).abs() < 5.0 || (3..=9).contains(&y) && o > 17.9 && (z as f32 - c).abs() < 5.0;
+                    let panel = (3..=9).contains(&y) && o > 17.9 && ((x as f32 - c).abs() - (z as f32 - c).abs()).abs() > 3.0
+                        || (3..=9).contains(&y) && o > 17.9 && (x as f32 - c).abs() < 5.0
+                        || (3..=9).contains(&y) && o > 17.9 && (z as f32 - c).abs() < 5.0;
                     let moss = y <= 2 && nz(x, y, z) > 0.55;
-                    s.set(x, y, z, if moss { MOSS } else if panel { PANEL } else { STONE });
+                    s.set(
+                        x,
+                        y,
+                        z,
+                        if moss {
+                            MOSS
+                        } else if panel {
+                            PANEL
+                        } else {
+                            STONE
+                        },
+                    );
                 }
             }
             if (15.2..=19.2).contains(&o) {
@@ -424,7 +483,13 @@ impl WorldView {
         let base = Vec3::new(xf, floor, zf);
         let out = &mut self.static_cubes;
         // Solid ground under it, paved.
-        out.push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(1.0, floor + 1.2, 1.0), Quat::IDENTITY, Vec3::new(xf, (floor - 1.2) / 2.0, zf)), lin(PAVER_D), 1.0, Vec3::ZERO, SHADE_LIT));
+        out.push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(1.0, floor + 1.2, 1.0), Quat::IDENTITY, Vec3::new(xf, (floor - 1.2) / 2.0, zf)),
+            lin(PAVER_D),
+            1.0,
+            Vec3::ZERO,
+            SHADE_LIT,
+        ));
         let start = out.len();
         let (stone, glass) = fountain_stone();
         push_field(out, &stone, base, 0.0, 1.0, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
@@ -449,8 +514,16 @@ impl WorldView {
                     let (u, w) = (x as f32 + (i as f32 - 1.0) / 3.0, y as f32 + (j as f32 - 1.0) / 3.0);
                     let ring = ((u - xf).powi(2) + (w - zf).powi(2)).sqrt();
                     let h = hash(u as f64 * 7.0, w as f64 * 5.0);
-                    let color = if (ring * 3.0) as i32 % 3 == 0 { lin(PAVER_D) } else { lin(PAVER[(h * 3.0) as usize % 3]) * (0.95 + h as f32 * 0.1) };
-                    let m = Mat4::from_scale_rotation_translation(Vec3::new(0.31, 0.03, 0.31), Quat::from_rotation_y((h as f32 - 0.5) * 0.06), Vec3::new(u, top + 0.012, w));
+                    let color = if (ring * 3.0) as i32 % 3 == 0 {
+                        lin(PAVER_D)
+                    } else {
+                        lin(PAVER[(h * 3.0) as usize % 3]) * (0.95 + h as f32 * 0.1)
+                    };
+                    let m = Mat4::from_scale_rotation_translation(
+                        Vec3::new(0.31, 0.03, 0.31),
+                        Quat::from_rotation_y((h as f32 - 0.5) * 0.06),
+                        Vec3::new(u, top + 0.012, w),
+                    );
                     self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
                 }
             }
@@ -469,7 +542,13 @@ impl WorldView {
             for (k, (along, hgt, across)) in [(0.47f32, 0.05f32, 0.1f32), (0.5, 0.03, 0.08)].iter().enumerate() {
                 let size = if dir.x != 0.0 { Vec3::new(0.08, *hgt, *across * 2.0) } else { Vec3::new(*across * 2.0, *hgt, 0.08) };
                 let at = base + Vec3::new(dir.x * along, 0.01 + k as f32 * 0.03, dir.y * along);
-                self.static_cubes.push(Instance::new(Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at), lin(STONE_D), 1.0, Vec3::ZERO, SHADE_LIT));
+                self.static_cubes.push(Instance::new(
+                    Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at),
+                    lin(STONE_D),
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
             }
             outlets.push((lip, water, dir));
         }
@@ -480,7 +559,13 @@ impl WorldView {
     pub(super) fn emit_fountain(&self, time: f32, f: &mut Frame) {
         let Some(fv) = &self.fountain else { return };
         let o = fv.base;
-        let (disc, sphere, tube, annulus, cube) = (MeshKind::Disc as usize, MeshKind::Sphere as usize, MeshKind::Tube as usize, MeshKind::Annulus as usize, MeshKind::Cube as usize);
+        let (disc, sphere, tube, annulus, cube) = (
+            MeshKind::Disc as usize,
+            MeshKind::Sphere as usize,
+            MeshKind::Tube as usize,
+            MeshKind::Annulus as usize,
+            MeshKind::Cube as usize,
+        );
         let flat = Mat4::from_rotation_x(-PI / 2.0);
         let water_tint = lin(0x1d4a54);
         let jet_tint = lin(0xcfeef6);
@@ -496,7 +581,8 @@ impl WorldView {
         // The veil: the bowl brims over all round, a thin sheet flaring as it falls.
         let top = o.y + BOWL_RIM;
         let fall = top - basin_y;
-        let m = Mat4::from_translation(Vec3::new(o.x, (top + basin_y) / 2.0, o.z)) * Mat4::from_scale(Vec3::new(BOWL_R + 0.004, fall, BOWL_R + 0.004));
+        let m = Mat4::from_translation(Vec3::new(o.x, (top + basin_y) / 2.0, o.z))
+            * Mat4::from_scale(Vec3::new(BOWL_R + 0.004, fall, BOWL_R + 0.004));
         f.transparent[tube].push(Instance::new(m, lin(0xd4e8ee), 0.5, Vec3::ZERO, SHADE_WATER));
 
         // Four jets arc in from the basin's sides and land in the bowl at his hooves.
@@ -508,13 +594,29 @@ impl WorldView {
             let land = Vec3::new(o.x + ca * 0.17, bowl_y, o.z + sa * 0.17);
             let lift = 0.62 + (time * 1.3 + k as f32 * 1.7).sin() * 0.04;
             let seed = k as f32 * 3.7;
-            water_rope(f, sphere, |t| start.lerp(land, t) + Vec3::new(0.0, 4.0 * lift * t * (1.0 - t), 0.0), 16, 0.011, 0.014, jet_tint, 0.62, seed);
+            water_rope(
+                f,
+                sphere,
+                |t| start.lerp(land, t) + Vec3::new(0.0, 4.0 * lift * t * (1.0 - t), 0.0),
+                16,
+                0.011,
+                0.014,
+                jet_tint,
+                0.62,
+                seed,
+            );
             splashes.push((land, 0.7));
             // Glints running down the jet.
             for g in 0..3 {
                 let t = (time * 0.9 + g as f32 / 3.0 + k as f32 * 0.21).fract();
                 let p = start.lerp(land, t) + Vec3::new(0.0, 4.0 * lift * t * (1.0 - t), 0.0);
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.012)), lin(0xe8fbff), 0.7, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.012)),
+                    lin(0xe8fbff),
+                    0.7,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             // A nozzle of gilt at the rim.
             let m = Mat4::from_translation(start - Vec3::new(0.0, 0.015, 0.0)) * Mat4::from_scale(Vec3::new(0.03, 0.03, 0.03));
@@ -525,7 +627,17 @@ impl WorldView {
         let tip = o + Vec3::new(0.0, STATUE_BASE, 0.0) + TONGUE_TIP;
         let hit = Vec3::new(o.x, basin_y, o.z - 0.37);
         let wobble = (time * 7.0).sin() * 0.004;
-        water_rope(f, sphere, |t| tip.lerp(hit, t * t) + Vec3::new(wobble * t, 0.0, -0.02 * (t * PI).sin()), 12, 0.006, 0.011, jet_tint * 0.7, 0.42, 11.0);
+        water_rope(
+            f,
+            sphere,
+            |t| tip.lerp(hit, t * t) + Vec3::new(wobble * t, 0.0, -0.02 * (t * PI).sin()),
+            12,
+            0.006,
+            0.011,
+            jet_tint * 0.7,
+            0.42,
+            11.0,
+        );
         splashes.push((hit, 1.0));
 
         // Rings spreading where the water lands, droplets thrown up, spray drifting off.
@@ -542,7 +654,13 @@ impl WorldView {
                 let a = seed * 2.4 + (time * 0.5).floor();
                 let up = 0.09 * strength;
                 let q = p + Vec3::new(a.cos() * ph * 0.06, 4.0 * up * ph * (1.0 - ph), a.sin() * ph * 0.06);
-                f.transparent[sphere].push(Instance::new(Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.007)), jet_tint, 0.7 * (1.0 - ph), Vec3::ZERO, SHADE_UNLIT));
+                f.transparent[sphere].push(Instance::new(
+                    Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.007)),
+                    jet_tint,
+                    0.7 * (1.0 - ph),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
         }
         for k in 0..10 {
@@ -560,7 +678,13 @@ impl WorldView {
             let drop = (lip.y - water).max(0.02);
             let at = Vec3::new(lip.x + dir.x * 0.03, water + drop / 2.0, lip.z + dir.y * 0.03);
             let size = if dir.x != 0.0 { Vec3::new(0.002, drop, 0.16) } else { Vec3::new(0.16, drop, 0.002) };
-            f.transparent[cube].push(Instance::new(Mat4::from_translation(at) * Mat4::from_scale(size), lin(0xc8dce4), 0.8, Vec3::ZERO, SHADE_WATER));
+            f.transparent[cube].push(Instance::new(
+                Mat4::from_translation(at) * Mat4::from_scale(size),
+                lin(0xc8dce4),
+                0.8,
+                Vec3::ZERO,
+                SHADE_WATER,
+            ));
             self.foam(Vec3::new(at.x + dir.x * 0.1, water + 0.02, at.z + dir.y * 0.1), time, 20.0 + i as f32, f);
         }
 
@@ -578,7 +702,17 @@ impl WorldView {
  * stretched drops, each turned along the path, narrowing from `r0` to `r1`.
  */
 #[allow(clippy::too_many_arguments)]
-fn water_rope(f: &mut Frame, sphere: usize, at: impl Fn(f32) -> Vec3, segments: usize, r0: f32, r1: f32, color: Vec3, alpha: f32, seed: f32) {
+fn water_rope(
+    f: &mut Frame,
+    sphere: usize,
+    at: impl Fn(f32) -> Vec3,
+    segments: usize,
+    r0: f32,
+    r1: f32,
+    color: Vec3,
+    alpha: f32,
+    seed: f32,
+) {
     for i in 0..segments {
         let (t0, t1) = (i as f32 / segments as f32, (i + 1) as f32 / segments as f32);
         let (a, b) = (at(t0), at(t1));
@@ -588,7 +722,8 @@ fn water_rope(f: &mut Frame, sphere: usize, at: impl Fn(f32) -> Vec3, segments: 
             continue;
         }
         let r = r0 + (r1 - r0) * (t0 + t1) / 2.0;
-        let m = Mat4::from_scale_rotation_translation(Vec3::new(r, len * 0.85, r), Quat::from_rotation_arc(Vec3::Y, d / len), (a + b) / 2.0);
+        let m =
+            Mat4::from_scale_rotation_translation(Vec3::new(r, len * 0.85, r), Quat::from_rotation_arc(Vec3::Y, d / len), (a + b) / 2.0);
         f.transparent[sphere].push(Instance::new(m, color, alpha, Vec3::new(seed + i as f32 * 0.37, 0.0, 0.0), SHADE_JET));
     }
 }

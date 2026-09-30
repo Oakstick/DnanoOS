@@ -99,7 +99,11 @@ impl WorldView {
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
         let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
         self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
-        if self.showcase != self.was_showcase || self.forge != self.was_forge || self.select.is_some() != self.was_select || self.story.is_some() != self.was_story {
+        if self.showcase != self.was_showcase
+            || self.forge != self.was_forge
+            || self.select.is_some() != self.was_select
+            || self.story.is_some() != self.was_story
+        {
             self.was_showcase = self.showcase;
             self.was_forge = self.forge;
             self.was_select = self.select.is_some();

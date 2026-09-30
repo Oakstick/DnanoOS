@@ -7,10 +7,10 @@ use super::save::Stage;
 use super::{Game, MenuItem, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
+use crate::logic::gym;
 use crate::logic::levels::level_for;
 use crate::logic::sins::SINS;
 use crate::logic::types::Dir;
-use crate::logic::gym;
 use crate::render::hud;
 
 /// One stop on the map: where it goes and what it is called.

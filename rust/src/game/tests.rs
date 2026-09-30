@@ -2,33 +2,22 @@
 
 use super::feedback::war_cry;
 use super::*;
-use crate::logic::enemy::{enemy_specs, EnemyMode};
-use crate::logic::gear::{ShieldGear, COINS_BOSS, RUNES_BOSS, RUNES_SHRINE};
-use crate::logic::heroes::HeroKind;
-use crate::logic::items::{DiamondKind, Offer};
-use crate::logic::progression::{self, Tree};
-use crate::logic::systems::POINTS_NODULE;
-use crate::logic::types::{dist_sq, Tile};
 use crate::game::hub::SEAL_SECONDS;
 use crate::input::PadState;
 use crate::logic;
-use crate::logic::enemy::REASSEMBLE_SECONDS;
-use crate::logic::enemy::WOLF_FURY_SPEED;
-use crate::logic::gym;
-use crate::logic::hero::CONTACT_DAMAGE;
-use crate::logic::hero::HEALTH_POTION;
-use crate::logic::heroes::MIYAMOTO_TEMPO;
-use crate::logic::heroes::ROSTER;
-use crate::logic::items::RangedKind;
-use crate::logic::items::WeaponKind;
-use crate::logic::levels::ARENA_GATE;
-use crate::logic::levels::ARENA_HERO;
-use crate::logic::pathing;
+use crate::logic::enemy::{enemy_specs, EnemyMode, REASSEMBLE_SECONDS, WOLF_FURY_SPEED};
+use crate::logic::gear::{ShieldGear, COINS_BOSS, RUNES_BOSS, RUNES_SHRINE};
+use crate::logic::hero::{CONTACT_DAMAGE, HEALTH_POTION};
+use crate::logic::heroes::{HeroKind, MIYAMOTO_TEMPO, ROSTER};
+use crate::logic::items::{DiamondKind, Offer, RangedKind, WeaponKind};
+use crate::logic::levels::{ARENA_GATE, ARENA_HERO};
+use crate::logic::progression::{self, Tree};
 use crate::logic::sins::Sin;
 use crate::logic::story::SCENE_ONE;
-use crate::logic::types::P;
-use crate::render::hud;
-use crate::render::view;
+use crate::logic::systems::POINTS_NODULE;
+use crate::logic::types::{dist_sq, Tile, P};
+use crate::logic::{gym, pathing};
+use crate::render::{hud, view};
 
 /// Play on the title, then begin with the hero on the character screen (Ragnar).
 fn start_from_title(g: &mut Game) {
@@ -263,7 +252,10 @@ fn the_menus_can_quit() {
     g.input.inject(Action::Pause);
     g.update(crate::app::STEP);
     assert_eq!(g.screen, Screen::Paused);
-    assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle, MenuItem::Quit]);
+    assert_eq!(
+        g.menu_items(),
+        vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle, MenuItem::Quit]
+    );
     let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[4];
     g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
     g.input.mouse_button(winit::event::MouseButton::Left, true);
@@ -328,7 +320,10 @@ fn mehmed_is_slow_and_sturdy_and_hits_hard_miyamoto_quick_and_frail_and_strikes_
         assert!(g.hero.try_attack());
         seen.push((hero, g.hero.max_hp, g.hero.hp, g.hero.m.speed, g.hero.blow(3), g.hero.attack_cooldown));
     }
-    let [(_, r_max, r_hp, r_speed, r_blow, _), (_, m_max, m_hp, m_speed, m_blow, _), (_, y_max, _, y_speed, y_blow, y_cool)] = seen[..] else { unreachable!() };
+    let [(_, r_max, r_hp, r_speed, r_blow, _), (_, m_max, m_hp, m_speed, m_blow, _), (_, y_max, _, y_speed, y_blow, y_cool)] = seen[..]
+    else {
+        unreachable!()
+    };
     assert_eq!((r_max, m_max, y_max), (100, 120, 80), "health 1 : 1.2 : 0.8");
     assert_eq!((r_hp, m_hp), (100, 120), "and each begins with it full");
     assert!((m_speed / r_speed - 0.9).abs() < 1e-9 && (y_speed / r_speed - 1.1).abs() < 1e-9, "speed 1 : 0.9 : 1.1");
@@ -401,7 +396,11 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     let mut g = Game::new();
     g.map_jump(save::Stage::Gym);
     let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
-    assert_eq!(kinds, [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice()].concat(), "one of every foe, stage by stage, in the gym");
+    assert_eq!(
+        kinds,
+        [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice()].concat(),
+        "one of every foe, stage by stage, in the gym"
+    );
     assert_eq!(g.hero.occupied(), gym::arrival());
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Gym));
     g.enter(Screen::Playing);
@@ -845,11 +844,18 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
         g.update(STEP);
     }
     assert_eq!(g.screen, Screen::Ready, "through the portal");
-    assert_eq!((g.realm, g.dungeon, g.level.data.boss), (Some(Sin::Sloth), 1, false), "the realm of Sloth, as hard as the first dungeon after the Garden");
+    assert_eq!(
+        (g.realm, g.dungeon, g.level.data.boss),
+        (Some(Sin::Sloth), 1, false),
+        "the realm of Sloth, as hard as the first dungeon after the Garden"
+    );
     assert_eq!(g.level.data.name, Sin::Sloth.realm());
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Sloth)));
     assert_eq!(g.keys_total, 8, "eight golden keys open its gate");
-    assert!(g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel), "gear only from the old man; the archangels stand here too");
+    assert!(
+        g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel),
+        "gear only from the old man; the archangels stand here too"
+    );
     // Its gate leads to the prince's court.
     g.enter(Screen::Playing);
     g.cheat_to_gate();

@@ -218,14 +218,7 @@ fn make_part(c: &Collected, name: &'static str, list: &[Voxel], pivot: [f32; 3],
         let cubes: Vec<(Vec3, Vec3)> = list
             .iter()
             .map(|v| {
-                (
-                    Vec3::new(
-                        (v.x as f32 - pivot[0]) * size,
-                        (v.y as f32 + 0.5 - pivot[1]) * size,
-                        (v.z as f32 - pivot[2]) * size,
-                    ),
-                    lin(v.c),
-                )
+                (Vec3::new((v.x as f32 - pivot[0]) * size, (v.y as f32 + 0.5 - pivot[1]) * size, (v.z as f32 - pivot[2]) * size), lin(v.c))
             })
             .collect();
         let min_y = cubes.iter().map(|(p, _)| p.y - size / 2.0).fold(f32::INFINITY, f32::min);

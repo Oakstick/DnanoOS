@@ -68,11 +68,18 @@ impl WorldView {
             let (hx, hy) = (x as f64, y as f64);
             let h = floor_y(x, y);
             // One even green, barely varied tile to tile (a touch lighter on higher ground).
-            let road = if t == Tile::Nest { lin(HOLLOW) } else { jit(GRASS, hash(hx, hy), 0.025) * (1.0 + grid.elevation(x, y) as f32 * 0.05) };
+            let road =
+                if t == Tile::Nest { lin(HOLLOW) } else { jit(GRASS, hash(hx, hy), 0.025) * (1.0 + grid.elevation(x, y) as f32 * 0.05) };
             if h > 0.0 {
                 // Raised ground: an earthen cliff with the grass on top.
                 let body = h - 0.04;
-                cube(&mut self.static_cubes, Vec3::new(xf, body / 2.0 - 0.05, yf), Vec3::new(1.0, body + 0.1, 1.0), 0.0, jit(CLIFF, hash(hx + 2.0, hy), 0.08));
+                cube(
+                    &mut self.static_cubes,
+                    Vec3::new(xf, body / 2.0 - 0.05, yf),
+                    Vec3::new(1.0, body + 0.1, 1.0),
+                    0.0,
+                    jit(CLIFF, hash(hx + 2.0, hy), 0.08),
+                );
                 if t == Tile::Nest {
                     cube(&mut self.static_cubes, Vec3::new(xf, h - 0.02, yf), Vec3::new(1.0, 0.04, 1.0), 0.0, road);
                 } else {
@@ -168,11 +175,21 @@ impl WorldView {
             let base = floor_y(x, y);
             let top = base + MOUND_H;
             let start = self.static_cubes.len();
-            cube(&mut self.static_cubes, Vec3::new(xf, (top - 0.1) / 2.0, yf), Vec3::new(1.0, top + 0.1, 1.0), 0.0, jit(if hash(hx + 11.0, hy + 5.0) < 0.5 { MOUND } else { MOUND_D }, hash(hx, hy), 0.08));
-            let roads: Vec<Dir> = CARDINALS.iter().copied().filter(|d| {
-                let (dx, dy) = d.vec();
-                grid.in_bounds(x + dx, y + dy) && !rock(x + dx, y + dy)
-            }).collect();
+            cube(
+                &mut self.static_cubes,
+                Vec3::new(xf, (top - 0.1) / 2.0, yf),
+                Vec3::new(1.0, top + 0.1, 1.0),
+                0.0,
+                jit(if hash(hx + 11.0, hy + 5.0) < 0.5 { MOUND } else { MOUND_D }, hash(hx, hy), 0.08),
+            );
+            let roads: Vec<Dir> = CARDINALS
+                .iter()
+                .copied()
+                .filter(|d| {
+                    let (dx, dy) = d.vec();
+                    grid.in_bounds(x + dx, y + dy) && !rock(x + dx, y + dy)
+                })
+                .collect();
             for &d in &roads {
                 self.build_fence(xf, yf, top, d, hx, hy);
             }
@@ -210,7 +227,11 @@ impl WorldView {
                     _ => 2,
                 };
                 let scale = 0.85 + hash(hy, hx) as f32 * 0.6 + if edge { 0.0 } else { 0.2 };
-                let off = if edge { Vec3::ZERO } else { Vec3::new((hash(hx + 1.0, hy) as f32 - 0.5) * 0.3, 0.0, (hash(hx, hy + 1.0) as f32 - 0.5) * 0.3) };
+                let off = if edge {
+                    Vec3::ZERO
+                } else {
+                    Vec3::new((hash(hx + 1.0, hy) as f32 - 0.5) * 0.3, 0.0, (hash(hx, hy + 1.0) as f32 - 0.5) * 0.3)
+                };
                 trees.push((P::new(x, y), Vec3::new(xf, top - 0.02, yf) + off, hash(hx, hy) as f32 * TAU, scale, kind));
             }
         }
@@ -219,7 +240,15 @@ impl WorldView {
             push_field(&mut self.static_cubes, &species[kind], pos, rot, scale, white, Vec3::ZERO, SHADE_LIT);
             let (r, h) = extents[kind];
             self.tree_index.insert(key, self.trees.len());
-            self.trees.push(Tree { range: (start, self.static_cubes.len() - start), base: pos, radius: r * scale + 0.05, height: h * scale, fade: 1.0, alive: true, shades: None });
+            self.trees.push(Tree {
+                range: (start, self.static_cubes.len() - start),
+                base: pos,
+                radius: r * scale + 0.05,
+                height: h * scale,
+                fade: 1.0,
+                alive: true,
+                shades: None,
+            });
         }
         for (spot, d) in lanterns {
             let (dx, dy) = d.vec();
@@ -240,7 +269,9 @@ impl WorldView {
         let (dx, dy) = d.vec();
         let turn = if dx != 0 { PI / 2.0 } else { 0.0 };
         // Along the edge: local u runs along it, the fence sits 0.38 out toward the road.
-        let at = |u: f32, h: f32| Vec3::new(x + dx as f32 * 0.38 + if dx != 0 { 0.0 } else { u }, h, y + dy as f32 * 0.38 + if dx != 0 { u } else { 0.0 });
+        let at = |u: f32, h: f32| {
+            Vec3::new(x + dx as f32 * 0.38 + if dx != 0 { 0.0 } else { u }, h, y + dy as f32 * 0.38 + if dx != 0 { u } else { 0.0 })
+        };
         for course in 0..2 {
             let shift = if course % 2 == 0 { 0.0 } else { 0.11 };
             let mut u: f32 = -0.5 + shift;
@@ -252,7 +283,13 @@ impl WorldView {
                 if b - a > 0.05 {
                     let hgt = COURSE * (0.85 + hk * 0.3);
                     let c = jit(STONES[(hk * 4.0) as usize % 4], hk as f64, 0.08);
-                    cube(&mut self.static_cubes, at((a + b) / 2.0, top + course as f32 * COURSE + hgt / 2.0), Vec3::new(b - a - 0.015, hgt, 0.22 - hk * 0.04), turn + (hk - 0.5) * 0.12, c);
+                    cube(
+                        &mut self.static_cubes,
+                        at((a + b) / 2.0, top + course as f32 * COURSE + hgt / 2.0),
+                        Vec3::new(b - a - 0.015, hgt, 0.22 - hk * 0.04),
+                        turn + (hk - 0.5) * 0.12,
+                        c,
+                    );
                 }
                 u += len;
                 k += 1;

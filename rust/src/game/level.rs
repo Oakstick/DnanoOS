@@ -1,21 +1,18 @@
 //! Loading a level and starting a round: the level itself, the hero's kit, the foes at their
 //! places, the hidden relic shrine, and where he starts.
 
-use super::{Game, MODE_SCHEDULE, SPAWN_FIRST, Screen, save};
-use crate::logic::boss::{CYCLOPS_HP, CYCLOPS_HP_STEP, Cyclops};
-use crate::logic::enemy::{Enemy, enemy_specs};
+use super::{save, Game, Screen, MODE_SCHEDULE, SPAWN_FIRST};
+use crate::logic::boss::{Cyclops, CYCLOPS_HP, CYCLOPS_HP_STEP};
+use crate::logic::enemy::{enemy_specs, Enemy, REASSEMBLE_SECONDS};
+use crate::logic::garden;
 use crate::logic::gear::ShieldGear;
 use crate::logic::hero::Hero;
-use crate::logic::items::{BOMBS_PER_LIFE, Diamond, DiamondKind, Potion};
-use crate::logic::level::{ParsedLevel, parse_level};
-use crate::logic::levels::{ARENA, boss_arena, level_for};
-use crate::logic::types::{CARDINALS, Dir, P, PotionKind, Tile, V, manhattan};
-use std::collections::HashMap;
-use crate::logic::enemy::REASSEMBLE_SECONDS;
-use crate::logic::garden;
-use crate::logic::items::WeaponKind;
-use crate::logic::level::LevelData;
+use crate::logic::items::{Diamond, DiamondKind, Potion, WeaponKind, BOMBS_PER_LIFE};
+use crate::logic::level::{parse_level, LevelData, ParsedLevel};
+use crate::logic::levels::{boss_arena, level_for, ARENA};
+use crate::logic::types::{manhattan, Dir, PotionKind, Tile, CARDINALS, P, V};
 use crate::platform;
+use std::collections::HashMap;
 
 /**
  * The open floor tile nearest the dungeon's center (never a shrine, bottle,
@@ -25,13 +22,8 @@ use crate::platform;
 pub fn center_spawn(level: &ParsedLevel) -> (P, Dir) {
     let g = &level.grid;
     let (cx, cy) = ((g.width - 1) as f64 / 2.0, (g.height - 1) as f64 / 2.0);
-    let taken: Vec<P> = level
-        .angel_shrines
-        .iter()
-        .chain(level.item_shrines.iter())
-        .copied()
-        .chain(level.potions.iter().map(|(p, _)| *p))
-        .collect();
+    let taken: Vec<P> =
+        level.angel_shrines.iter().chain(level.item_shrines.iter()).copied().chain(level.potions.iter().map(|(p, _)| *p)).collect();
     let mut best = level.hero_spawn;
     let mut best_d = f64::INFINITY;
     for (x, y, t) in g.cells() {
@@ -132,7 +124,8 @@ impl Game {
         // Those waiting in the hollow stand along its middle row: at either end and in the middle.
         let c = self.level.nest_center;
         let g = &self.level.grid;
-        let row: Vec<P> = (0..g.width).map(|x| P::new(x, c.y)).filter(|p| g.get(p.x, p.y) == Tile::Nest && (p.x - c.x).abs() <= 3).collect();
+        let row: Vec<P> =
+            (0..g.width).map(|x| P::new(x, c.y)).filter(|p| g.get(p.x, p.y) == Tile::Nest && (p.x - c.x).abs() <= 3).collect();
         let (first, last) = (row.first().copied().unwrap_or(c), row.last().copied().unwrap_or(c));
         self.nest_slots = vec![self.level.enemy_spawn, first, c, last];
 
@@ -148,7 +141,11 @@ impl Game {
         // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
         let hell = self.theme().is_hub();
         let gym = self.theme().is_gym();
-        let specs = if self.level.data.boss || hell || gym || vault_level { Vec::new() } else { enemy_specs(&self.level.grid, self.foe_stage_of(index)) };
+        let specs = if self.level.data.boss || hell || gym || vault_level {
+            Vec::new()
+        } else {
+            enemy_specs(&self.level.grid, self.foe_stage_of(index))
+        };
         self.enemies = specs
             .iter()
             .enumerate()
@@ -211,7 +208,15 @@ impl Game {
                 self.level.grid.set_landmark(g.x + dx, g.y, true);
             }
         }
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.theme(), self.garden.as_ref(), self.level.gate, self.vault.as_ref());
+        self.view.build_level(
+            &self.level.grid,
+            &self.enemies,
+            &self.diamonds,
+            self.theme(),
+            self.garden.as_ref(),
+            self.level.gate,
+            self.vault.as_ref(),
+        );
         self.hub = None;
         self.realm = self.theme().sin();
         if hell {

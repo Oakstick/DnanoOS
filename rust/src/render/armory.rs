@@ -146,7 +146,24 @@ fn weapon(h: &mut Hand, form: Form, col: u32) {
             for y in 8..=17 {
                 h.grip(y, y, if y % 2 == 0 { 0x1c1a1e | mat::LEATHER } else { 0xeeeae0 | mat::CLOTH });
             }
-            for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (2, 0), (0, 1), (1, 1), (0, -1), (1, -1), (0, 2), (1, 2), (0, -2), (1, -2), (-1, 1), (2, 1), (-1, -1), (2, -1)] {
+            for (dx, dz) in [
+                (0, 0),
+                (1, 0),
+                (-1, 0),
+                (2, 0),
+                (0, 1),
+                (1, 1),
+                (0, -1),
+                (1, -1),
+                (0, 2),
+                (1, 2),
+                (0, -2),
+                (1, -2),
+                (-1, 1),
+                (2, 1),
+                (-1, -1),
+                (2, -1),
+            ] {
                 h.cuboid(26 + dx, 18, 8 + dz, 26 + dx, 18, 9 + dz, dark);
             }
             h.blade(19, 43, |t| 8.5 + 2.0 * t * t, |t| taper(t, 1.0, 0.85), body, edge);
@@ -376,21 +393,47 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
                     let boss = r < 2.4;
                     let c = if edge {
                         let studded = (a / std::f32::consts::TAU * 24.0).rem_euclid(1.0) < 0.2 && r > 8.4;
-                        if form == Form::Mirror { GOLD } else if studded { rivet } else if r > 8.7 { rim } else { rim_l }
+                        if form == Form::Mirror {
+                            GOLD
+                        } else if studded {
+                            rivet
+                        } else if r > 8.7 {
+                            rim
+                        } else {
+                            rim_l
+                        }
                     } else if boss {
-                        if form == Form::Mirror { face_l } else if r < 1.1 { rim_l } else { mix(STEEL, col, 0.3) | mat::METAL }
+                        if form == Form::Mirror {
+                            face_l
+                        } else if r < 1.1 {
+                            rim_l
+                        } else {
+                            mix(STEEL, col, 0.3) | mat::METAL
+                        }
                     } else {
                         match form {
                             Form::Spiral => {
-                                if (a / std::f32::consts::TAU + r / 3.2).rem_euclid(1.0) < 0.3 { face_d } else { face }
+                                if (a / std::f32::consts::TAU + r / 3.2).rem_euclid(1.0) < 0.3 {
+                                    face_d
+                                } else {
+                                    face
+                                }
                             }
                             Form::Mirror => {
-                                if (dx + dy).abs() < 0.9 && r < 6.5 { 0xffffff | mat::METAL } else { face }
+                                if (dx + dy).abs() < 0.9 && r < 6.5 {
+                                    0xffffff | mat::METAL
+                                } else {
+                                    face
+                                }
                             }
                             _ => {
                                 // Planks behind a riveted iron ring.
                                 if (r - 5.4).abs() < 0.3 {
-                                    if (a / std::f32::consts::TAU * 16.0).rem_euclid(1.0) < 0.25 { rivet } else { rim }
+                                    if (a / std::f32::consts::TAU * 16.0).rem_euclid(1.0) < 0.25 {
+                                        rivet
+                                    } else {
+                                        rim
+                                    }
                                 } else if (x - 6) % 8 == 0 {
                                     face_d
                                 } else {
@@ -408,7 +451,11 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
                     }
                     let edge = dx.abs() > half - 1.1 || dy > 11.6;
                     let c = if edge {
-                        if (x + y) % 5 == 0 { rivet } else { rim }
+                        if (x + y) % 5 == 0 {
+                            rivet
+                        } else {
+                            rim
+                        }
                     } else if dx.abs() < 0.6 || (dy - 5.0).abs() < 0.5 {
                         face_l
                     } else if (dx >= 0.0) != (dy >= 5.0) {
@@ -427,9 +474,17 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
                     let band = (dy + 9.0).abs() < 0.5 || (dy - 9.0).abs() < 0.5;
                     let crest = r < 2.6;
                     let c = if edge || band {
-                        if (x + y) % 6 == 0 { rivet } else { rim }
+                        if (x + y) % 6 == 0 {
+                            rivet
+                        } else {
+                            rim
+                        }
                     } else if crest {
-                        if r < 1.4 { rim_l } else { face_l }
+                        if r < 1.4 {
+                            rim_l
+                        } else {
+                            face_l
+                        }
                     } else if (x - 10) % 10 == 0 {
                         face_d
                     } else {

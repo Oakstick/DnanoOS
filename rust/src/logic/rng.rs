@@ -12,10 +12,7 @@ impl Rng {
 
     /// Seeded from the clock, for behavior that should differ run to run.
     pub fn from_time() -> Self {
-        let ms = web_time::SystemTime::now()
-            .duration_since(web_time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(1);
+        let ms = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(1);
         Self::new((ms ^ (ms >> 32)) as u32)
     }
 

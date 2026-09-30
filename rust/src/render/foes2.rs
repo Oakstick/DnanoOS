@@ -171,7 +171,18 @@ pub fn witch() -> Collected {
                 if hem {
                     continue;
                 }
-                s.set(x, y, z, if fold > 0.72 { ROBE_D } else if fold < 0.2 { ROBE_L } else { ROBE });
+                s.set(
+                    x,
+                    y,
+                    z,
+                    if fold > 0.72 {
+                        ROBE_D
+                    } else if fold < 0.2 {
+                        ROBE_L
+                    } else {
+                        ROBE
+                    },
+                );
             }
         }
     }
@@ -191,7 +202,12 @@ pub fn witch() -> Collected {
         s.part(3 + i as u8);
         let out = if i == 0 { -1.0 } else { 1.0 };
         ball(&mut s, v(ax, 56.0, 13.0), Vec3::splat(3.4), ROBE);
-        sleeve(&mut s, &[(v(ax, 56.0, 13.0), 3.2), (v(ax + out * 1.5, 46.0, 15.0), 2.9), (v(ax + out * 1.2, 40.0, 17.5), 3.4)], ROBE, ROBE_D);
+        sleeve(
+            &mut s,
+            &[(v(ax, 56.0, 13.0), 3.2), (v(ax + out * 1.5, 46.0, 15.0), 2.9), (v(ax + out * 1.2, 40.0, 17.5), 3.4)],
+            ROBE,
+            ROBE_D,
+        );
         ball(&mut s, v(ax + out * 1.2, 38.6, 18.5), v(2.0, 1.9, 2.1), WITCH_SKIN);
         for (k, f) in [-1.2f32, -0.4, 0.4, 1.2].into_iter().enumerate() {
             let len = 22.2 - (k as f32 - 1.5).abs() * 0.5;
@@ -259,7 +275,13 @@ pub fn witch() -> Collected {
             for x in 0..w {
                 let q = ((x as f32 - hx) / r).powi(2) + ((z as f32 - cz) / (r * 0.95)).powi(2);
                 if q <= 1.0 {
-                    let c = if y <= 76 { BAND } else if (x as f32) < hx - r * 0.4 { HAT_L } else { HAT };
+                    let c = if y <= 76 {
+                        BAND
+                    } else if (x as f32) < hx - r * 0.4 {
+                        HAT_L
+                    } else {
+                        HAT
+                    };
                     s.set(x, hy.round() as i32, z, c);
                 }
             }
@@ -467,7 +489,13 @@ pub fn helmeted_skeleton() -> Collected {
                     continue;
                 }
                 let dent = ((x as f32 - 14.0).powi(2) + (y as f32 - 68.0).powi(2) + (z as f32 - 12.0).powi(2)).sqrt() < 2.6;
-                let c = if y <= 64 || dent { HELM_D } else if nz(x, y, z) > 0.8 { HELM_L } else { HELM };
+                let c = if y <= 64 || dent {
+                    HELM_D
+                } else if nz(x, y, z) > 0.8 {
+                    HELM_L
+                } else {
+                    HELM
+                };
                 s.set(x, y, z, c);
             }
         }
@@ -628,7 +656,18 @@ pub fn blemmyes() -> Collected {
                 if hem {
                     continue;
                 }
-                s.set(x, y, z, if y >= 29 { ROPE } else if nz(x, y, z) < 0.25 { CLOTH_D } else { CLOTH });
+                s.set(
+                    x,
+                    y,
+                    z,
+                    if y >= 29 {
+                        ROPE
+                    } else if nz(x, y, z) < 0.25 {
+                        CLOTH_D
+                    } else {
+                        CLOTH
+                    },
+                );
             }
         }
     }
@@ -763,7 +802,13 @@ pub fn large_bat() -> Collected {
                     continue; // a hole
                 }
                 let vein = ((x as f32 * 0.35 + z as f32 * 0.2).sin() * (z as f32 * 0.5).cos()).abs() < 0.08;
-                let c = if vein { VEIN } else if nz(x, 2, z) < 0.3 { MEMBRANE_D } else { MEMBRANE };
+                let c = if vein {
+                    VEIN
+                } else if nz(x, 2, z) < 0.3 {
+                    MEMBRANE_D
+                } else {
+                    MEMBRANE
+                };
                 s.set(x, y.round() as i32, z, c);
             }
         }

@@ -124,7 +124,12 @@ pub fn apply(grid: &mut Grid, plan: &GardenPlan) {
     for b in &plan.bridges {
         grid.set_bridge(b.x, b.y, true);
     }
-    let scenery = plan.water().map(|r| r.p).chain(plan.fountain.map(|f| f.p)).chain(plan.graveyard.iter().copied()).chain(plan.temples.iter().flatten().copied());
+    let scenery = plan
+        .water()
+        .map(|r| r.p)
+        .chain(plan.fountain.map(|f| f.p))
+        .chain(plan.graveyard.iter().copied())
+        .chain(plan.temples.iter().flatten().copied());
     for p in scenery {
         if grid.get(p.x, p.y) == Tile::Rock {
             grid.set_landmark(p.x, p.y, true);
@@ -311,7 +316,9 @@ fn place_features(grid: &Grid, plan: &mut GardenPlan) {
 
     // Temples on two square lawns, far from each other and from the churchyard.
     let squares: Vec<usize> = (0..blocks.len()).filter(|&i| !used.contains(&i) && is_square(&blocks[i])).collect();
-    let far = |c: (f64, f64), others: &[(f64, f64)]| others.iter().map(|o| (c.0 - o.0).powi(2) + (c.1 - o.1).powi(2)).fold(f64::INFINITY, f64::min);
+    let far = |c: (f64, f64), others: &[(f64, f64)]| {
+        others.iter().map(|o| (c.0 - o.0).powi(2) + (c.1 - o.1).powi(2)).fold(f64::INFINITY, f64::min)
+    };
     let mut anchors: Vec<(f64, f64)> = vec![];
     if !plan.graveyard.is_empty() {
         anchors.push(center(&plan.graveyard));
@@ -338,7 +345,8 @@ fn place_features(grid: &Grid, plan: &mut GardenPlan) {
         }
     }
     // Wayside shrines: wall tiles by the paths, spread across the garden.
-    let mut candidates: Vec<P> = (0..blocks.len()).filter(|i| !used.contains(i)).flat_map(|i| blocks[i].iter().copied()).filter(|&p| faces_path(grid, p)).collect();
+    let mut candidates: Vec<P> =
+        (0..blocks.len()).filter(|i| !used.contains(i)).flat_map(|i| blocks[i].iter().copied()).filter(|&p| faces_path(grid, p)).collect();
     candidates.sort_by_key(|p| (p.y, p.x));
     let mut spots: Vec<(f64, f64)> = anchors.clone();
     for _ in 0..shrine_count {
@@ -423,7 +431,10 @@ mod tests {
             for d in CARDINALS {
                 let (dx, dy) = d.vec();
                 let from = P::new(b.x - dx, b.y - dy);
-                if !grid.is_walkable(from.x, from.y, false) || grid.is_bridge(from.x, from.y) || grid.elevation(from.x, from.y) != grid.elevation(b.x, b.y) {
+                if !grid.is_walkable(from.x, from.y, false)
+                    || grid.is_bridge(from.x, from.y)
+                    || grid.elevation(from.x, from.y) != grid.elevation(b.x, b.y)
+                {
                     continue;
                 }
                 let mut m = Mover::new(from, 1.0);

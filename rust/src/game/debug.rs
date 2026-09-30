@@ -1,14 +1,14 @@
 //! Testing cheats and debug hooks: F1, F2 and 0 on the keyboard, and the capture tool's commands.
 
-use super::{CHEAT_COINS, Game, Screen};
+use super::{Game, Screen, CHEAT_COINS};
 use crate::input::Action;
-use crate::logic::progression;
-use crate::logic::enemy::{Enemy, EnemyKind, EnemyMode, enemy_specs};
+use crate::logic::boss::BossState;
+use crate::logic::enemy::{enemy_specs, Enemy, EnemyKind, EnemyMode};
 use crate::logic::gear::ShieldGear;
 use crate::logic::hero::CONTACT_DAMAGE;
+use crate::logic::progression;
 use crate::logic::systems::PUDDLE_SECONDS;
-use crate::logic::types::{Dir, P, PotionKind, Tile};
-use crate::logic::boss::BossState;
+use crate::logic::types::{Dir, PotionKind, Tile, P};
 
 /// ...and the runes up to this.
 const CHEAT_RUNES: u32 = 10;

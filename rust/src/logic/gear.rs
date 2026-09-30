@@ -88,7 +88,8 @@ pub const ALL_POTIONS: [PotionKind; 11] = [
 ];
 
 /// Potions lying in the first dungeon, in order of the bottles it places.
-pub const FOUND_POTIONS: [PotionKind; 5] = [PotionKind::Life, PotionKind::Health, PotionKind::Strength, PotionKind::Haste, PotionKind::Stamina];
+pub const FOUND_POTIONS: [PotionKind; 5] =
+    [PotionKind::Life, PotionKind::Health, PotionKind::Strength, PotionKind::Haste, PotionKind::Stamina];
 
 // ------------------------------------------------------------ silver and runes
 

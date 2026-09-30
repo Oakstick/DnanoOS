@@ -78,7 +78,8 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
     }
 
     // The body: a rounded slab, two lobes and the grips, rimmed first and then filled.
-    let shapes: [(f32, f32, f32); 6] = [(-5.6, -1.4, 3.4), (5.6, -1.4, 3.4), (-6.3, 2.4, 3.0), (6.3, 2.4, 3.0), (-7.0, 4.3, 2.3), (7.0, 4.3, 2.3)];
+    let shapes: [(f32, f32, f32); 6] =
+        [(-5.6, -1.4, 3.4), (5.6, -1.4, 3.4), (-6.3, 2.4, 3.0), (6.3, 2.4, 3.0), (-7.0, 4.3, 2.3), (7.0, 4.3, 2.3)];
     for pass in 0..2 {
         let (grow, color) = if pass == 0 { (lw, EDGE) } else { (0.0, BODY) };
         for &(x, y, r) in &shapes {

@@ -67,7 +67,11 @@ impl Tree {
 
     /// What a level of the tree is called ("TIER 4", "LEVEL 4").
     pub fn step(self) -> &'static str {
-        if self == Tree::Path { "LEVEL" } else { "TIER" }
+        if self == Tree::Path {
+            "LEVEL"
+        } else {
+            "TIER"
+        }
     }
 }
 
@@ -130,7 +134,13 @@ const RAGNAR_ARMORY: [Entry; 10] = [
     Entry("Tyr's Rune-Etched Axe", "Dedicated to the One-Armed God; strikes true against chaos.", "Binding Oath", 0xe0c070, Axe),
     Entry("Dwarven Masterwork Dual Axes", "Forged deep within Svartalfheim by master smith brothers.", "Spinning Fury", 0xff9a4a, TwinAxes),
     Entry("Laevateinn Wand-Sword", "Harvested from the tree of death, harboring dark arcane flames.", "Loki's Trick", 0x9a4aff, Wand),
-    Entry("Mistilteinn Magic Blade", "The shining branch that once felled Baldr; radiates pure fatal light.", "Baleful Glow", 0xc8ff9a, Sword),
+    Entry(
+        "Mistilteinn Magic Blade",
+        "The shining branch that once felled Baldr; radiates pure fatal light.",
+        "Baleful Glow",
+        0xc8ff9a,
+        Sword,
+    ),
     Entry("Gram, Sigurd's Bane", "The dragon-slayer, split and reforged to cleave through scales.", "Dragon-Blood Cleave", 0xe0303a, Sword),
     Entry("Gungnir, Odin's Spear", "The celestial spear that never misses its chosen mark.", "All-Father's Guidance", 0xffd84a, Spear),
     Entry("Mjolnir, Thor's Hammer", "The ultimate thunder-bringer forged in dying star-fire.", "Thunderstrike", 0x7ae8ff, Hammer),
@@ -178,29 +188,119 @@ const RAGNAR_ELIXIR: [Entry; 10] = [
 // -------------------------------------------------------------- Mehmed
 
 const MEHMED_ARMORY: [Entry; 10] = [
-    Entry("Bronze Yatagan", "A standard-issue curved short sword of the frontier guards bearing simple crescent stamps.", "Swift Crescent", 0xd89a5a, Knife),
+    Entry(
+        "Bronze Yatagan",
+        "A standard-issue curved short sword of the frontier guards bearing simple crescent stamps.",
+        "Swift Crescent",
+        0xd89a5a,
+        Knife,
+    ),
     Entry("Iron Kilic", "A traditional cavalry sabre forged for sweeping battlefield maneuvers.", "Saber Sweep", 0xa8b8c8, Saber),
-    Entry("Steel Pata Guard", "A gauntlet-sword combination offering unbreakable wrist control and piercing power.", "Gauntlet Thrust", 0x9ad1ff, Sword),
-    Entry("Dervish Crescent Blade", "A sacred blade blessed with whirling dervish devotion, humming with spiritual kinetic force.", "Whirling Devotion", 0xf2e3c4, Saber),
-    Entry("Koroglu's Steel Flintlock", "The legendary bandit hero's firearm, firing enchanted lead slugs that never miss.", "Bandit's Shot", 0x8a8a94, Gun),
-    Entry("Janissary Mace of Conquest", "A heavy flanged iron mace designed to shatter armor and fortifications.", "Shattering Blow", 0xc8c8d8, Mace),
-    Entry("Zulfikar-Infused Greatsword", "A sacred double-pointed divine blade modeled after Ali's legendary sword.", "Divine Split", 0x6ae8a0, Forked),
-    Entry("Simurg Feather Bow", "A composite bow strung with a tail feather of the mythical bird of wisdom.", "Simurg's Gaze", 0xff9a4a, Bow),
-    Entry("Masterwork Djezzar Saber", "Folded steel carved with ancient victory runes from the imperial archives.", "Imperial Authority", 0xeef4ff, Saber),
-    Entry("Kaf Dagi Sun-Blade", "Forged from meteoric iron at the edge of the mythical Mount Qaf, channeling eternal light.", "Mountain of Light", 0xffd84a, Sword),
+    Entry(
+        "Steel Pata Guard",
+        "A gauntlet-sword combination offering unbreakable wrist control and piercing power.",
+        "Gauntlet Thrust",
+        0x9ad1ff,
+        Sword,
+    ),
+    Entry(
+        "Dervish Crescent Blade",
+        "A sacred blade blessed with whirling dervish devotion, humming with spiritual kinetic force.",
+        "Whirling Devotion",
+        0xf2e3c4,
+        Saber,
+    ),
+    Entry(
+        "Koroglu's Steel Flintlock",
+        "The legendary bandit hero's firearm, firing enchanted lead slugs that never miss.",
+        "Bandit's Shot",
+        0x8a8a94,
+        Gun,
+    ),
+    Entry(
+        "Janissary Mace of Conquest",
+        "A heavy flanged iron mace designed to shatter armor and fortifications.",
+        "Shattering Blow",
+        0xc8c8d8,
+        Mace,
+    ),
+    Entry(
+        "Zulfikar-Infused Greatsword",
+        "A sacred double-pointed divine blade modeled after Ali's legendary sword.",
+        "Divine Split",
+        0x6ae8a0,
+        Forked,
+    ),
+    Entry(
+        "Simurg Feather Bow",
+        "A composite bow strung with a tail feather of the mythical bird of wisdom.",
+        "Simurg's Gaze",
+        0xff9a4a,
+        Bow,
+    ),
+    Entry(
+        "Masterwork Djezzar Saber",
+        "Folded steel carved with ancient victory runes from the imperial archives.",
+        "Imperial Authority",
+        0xeef4ff,
+        Saber,
+    ),
+    Entry(
+        "Kaf Dagi Sun-Blade",
+        "Forged from meteoric iron at the edge of the mythical Mount Qaf, channeling eternal light.",
+        "Mountain of Light",
+        0xffd84a,
+        Sword,
+    ),
 ];
 
 const MEHMED_PATH: [Entry; 10] = [
     Entry("Ocak Discipline", "Strict military training instilling unbreakable battlefield focus.", "Drill Adrenaline", 0xff5a3a, Rune(0)),
     Entry("Kalkan Guard", "Large battle shield formation rooted in imperial vanguard tactics.", "Iron Rampart", 0x8fb4ff, Rune(1)),
     Entry("Anatolian Seer Sight", "Mystical intuition inspired by legendary dervish visions.", "Hizir's Guidance", 0xc89aff, Rune(2)),
-    Entry("Mehteran War Chant", "Traditional marching drums and zurna frequencies that inspire fierce morale.", "Janissary Hymn", 0xffd27a, Rune(3)),
-    Entry("Alp Step", "Legendary warrior footwork allowing lightning-fast evasion and tactical repositioning.", "Zephyr Dash", 0xe8d09a, Rune(4)),
-    Entry("Devshirme Critical Focus", "Unflinching precision forged through a lifetime of elite martial trial.", "Vanguard's Strike", 0xb8c0cc, Rune(5)),
-    Entry("Koroglu's Defiance", "Rebellious spirit drawn from mountain folklore, shaking off suppression.", "Rebel Heart", 0xff8a2a, Rune(6)),
-    Entry("Heroic Last Stand", "Oath-bound defense that converts mortal peril into explosive retaliation.", "Blood of the Empire", 0xc8202a, Rune(7)),
+    Entry(
+        "Mehteran War Chant",
+        "Traditional marching drums and zurna frequencies that inspire fierce morale.",
+        "Janissary Hymn",
+        0xffd27a,
+        Rune(3),
+    ),
+    Entry(
+        "Alp Step",
+        "Legendary warrior footwork allowing lightning-fast evasion and tactical repositioning.",
+        "Zephyr Dash",
+        0xe8d09a,
+        Rune(4),
+    ),
+    Entry(
+        "Devshirme Critical Focus",
+        "Unflinching precision forged through a lifetime of elite martial trial.",
+        "Vanguard's Strike",
+        0xb8c0cc,
+        Rune(5),
+    ),
+    Entry(
+        "Koroglu's Defiance",
+        "Rebellious spirit drawn from mountain folklore, shaking off suppression.",
+        "Rebel Heart",
+        0xff8a2a,
+        Rune(6),
+    ),
+    Entry(
+        "Heroic Last Stand",
+        "Oath-bound defense that converts mortal peril into explosive retaliation.",
+        "Blood of the Empire",
+        0xc8202a,
+        Rune(7),
+    ),
     Entry("Ancestor's Call", "Invoking the protective spirits of past empire commanders.", "Janissary Vanguard", 0xa8c4ff, Rune(8)),
-    Entry("Rose Garden Restoration", "Channeling pure spiritual healing from the mystical gardens of paradise.", "Eternal Blossom", 0xff8ab0, Rune(9)),
+    Entry(
+        "Rose Garden Restoration",
+        "Channeling pure spiritual healing from the mystical gardens of paradise.",
+        "Eternal Blossom",
+        0xff8ab0,
+        Rune(9),
+    ),
 ];
 
 const MEHMED_SHIELD: [Entry; 10] = [
@@ -209,11 +309,23 @@ const MEHMED_SHIELD: [Entry; 10] = [
     Entry("Silk-Wound Kalkan", "Its threads draw tight again after every blow.", "Self-Mend", 0xd8483a, Spiral),
     Entry("Janissary Steel Kalkan", "Pressed steel with a sharp rim for pushing back.", "Rim Strike", 0xa8b0bc, Round),
     Entry("Crescent Buckler", "A steel crescent that catches arrows in its horns.", "Arrow Ward", 0xd8d8e0, Round),
-    Entry("Mirror of Iskender", "Alexander's polished mirror, turning every strike back on its sender.", "Iskender's Mirror", 0x9ad1ff, Mirror),
+    Entry(
+        "Mirror of Iskender",
+        "Alexander's polished mirror, turning every strike back on its sender.",
+        "Iskender's Mirror",
+        0x9ad1ff,
+        Mirror,
+    ),
     Entry("Seljuk Star Shield", "Its eight-pointed star rings like a bell when struck.", "Ringing Star", 0x3a8ad8, Round),
     Entry("Rumeli Bastion", "Plated like the walls of the Rumelian fortress; it will not fall.", "Unbreachable", 0x8fa8c8, Kite),
     Entry("Ejderha Scale Shield", "Dragon scales that burn whatever touches them.", "Dragon Scales", 0x4a8a4a, Kite),
-    Entry("Seal of Suleyman", "The wise king's ring-seal set in gold; blows that strike it heal the bearer.", "Seal of Wisdom", 0xffd84a, Round),
+    Entry(
+        "Seal of Suleyman",
+        "The wise king's ring-seal set in gold; blows that strike it heal the bearer.",
+        "Seal of Wisdom",
+        0xffd84a,
+        Round,
+    ),
 ];
 
 const MEHMED_ELIXIR: [Entry; 10] = [
@@ -236,12 +348,36 @@ const MIYAMOTO_ARMORY: [Entry; 10] = [
     Entry("Oni-Slayer Nodachi", "A massive field-clearing sword designed to sever ogre limbs.", "Heavy Sweep", 0xa8b8c8, Sword),
     Entry("Tengu Wind-Blade", "Infused with mountain spirit air, humming with kinetic force.", "Gale Dash", 0x9af0d0, Saber),
     Entry("Kusanagi-no-Tsurugi Fragment", "A jagged shard of the legendary Grass-Cutter sword.", "Divine Ignition", 0xff9a4a, Knife),
-    Entry("Dual Ninjato of the Shadow", "Matched short blades forged for silent, lightning-fast execution.", "Shadow Spin", 0x7a7a9a, TwinBlades),
-    Entry("Yari of the Shifting Serpent", "A venom-tipped spear associated with the mythical Yamata no Orochi.", "Venom Thrust", 0x6ae86a, Spear),
+    Entry(
+        "Dual Ninjato of the Shadow",
+        "Matched short blades forged for silent, lightning-fast execution.",
+        "Shadow Spin",
+        0x7a7a9a,
+        TwinBlades,
+    ),
+    Entry(
+        "Yari of the Shifting Serpent",
+        "A venom-tipped spear associated with the mythical Yamata no Orochi.",
+        "Venom Thrust",
+        0x6ae86a,
+        Spear,
+    ),
     Entry("Muramasa Cursed Blade", "A blade driven by bloodlust that feeds on its wielder's vitality.", "Blood Drinker", 0xc83a5a, Katana),
     Entry("Yumi of the Heavenly Bow", "A composite spirit-wood bow that calls down celestial arrows.", "Storm of Feathers", 0xc8e0ff, Bow),
-    Entry("Masamune Masterpiece Katana", "Forged with absolute purity, cutting only what the wielder truly intends.", "Purity Strike", 0xeef4ff, Katana),
-    Entry("Amaterasu's Sun-Forged Blade", "Channeling the blinding solar light of the celestial sun goddess.", "Solar Flash", 0xffd84a, Sword),
+    Entry(
+        "Masamune Masterpiece Katana",
+        "Forged with absolute purity, cutting only what the wielder truly intends.",
+        "Purity Strike",
+        0xeef4ff,
+        Katana,
+    ),
+    Entry(
+        "Amaterasu's Sun-Forged Blade",
+        "Channeling the blinding solar light of the celestial sun goddess.",
+        "Solar Flash",
+        0xffd84a,
+        Sword,
+    ),
 ];
 
 const MIYAMOTO_PATH: [Entry; 10] = [
@@ -263,11 +399,23 @@ const MIYAMOTO_SHIELD: [Entry; 10] = [
     Entry("Rope-Bound Tate", "Hemp that tightens as it dries, mending its gaps.", "Self-Mend", 0xa08a5a, Tate),
     Entry("Tetsu Kote Guard", "Iron armguards that strike as they block.", "Rim Strike", 0x8a8a94, Round),
     Entry("Temple Gate Shield", "Cut from the heavy doors of a mountain temple.", "Arrow Ward", 0x8a3a2a, Tate),
-    Entry("Yata no Kagami", "The sun goddess's sacred mirror: what strikes it sees itself, and turns back.", "Mirror of Truth", 0x9ad1ff, Mirror),
+    Entry(
+        "Yata no Kagami",
+        "The sun goddess's sacred mirror: what strikes it sees itself, and turns back.",
+        "Mirror of Truth",
+        0x9ad1ff,
+        Mirror,
+    ),
     Entry("Oni-Face Shield", "A demon's snarl beaten into iron; foes reel when it rings.", "Demon's Snarl", 0xd84a3a, Round),
     Entry("Himeji Wall", "Plastered like the White Heron castle, that never fell.", "Unfallen", 0xeeeae0, Tate),
     Entry("Dragon-Scale Tate", "Scales shed by a river dragon, cold and cutting.", "Dragon Scales", 0x4a8a8a, Tate),
-    Entry("Shield of Hachiman", "Blessed by the god of war, protector of warriors: its blocks renew the bearer.", "Hachiman's Blessing", 0xffd84a, Round),
+    Entry(
+        "Shield of Hachiman",
+        "Blessed by the god of war, protector of warriors: its blocks renew the bearer.",
+        "Hachiman's Blessing",
+        0xffd84a,
+        Round,
+    ),
 ];
 
 const MIYAMOTO_ELIXIR: [Entry; 10] = [
@@ -438,7 +586,11 @@ pub fn gems(hero: HeroKind, n: u32) -> String {
         HeroKind::Mehmed => ("TURQUOISE GEM", "TURQUOISE GEMS"),
         HeroKind::Miyamoto => ("SPIRIT CRYSTAL", "SPIRIT CRYSTALS"),
     };
-    if n == 1 { one.to_string() } else { many.to_string() }
+    if n == 1 {
+        one.to_string()
+    } else {
+        many.to_string()
+    }
 }
 
 /// Where a dungeon hides its relic: a shrine, a vault, a grotto.
@@ -604,22 +756,48 @@ pub fn blade(hero: HeroKind, tier: u8) -> Blade {
     match hero {
         HeroKind::Ragnar => match t {
             1 => base,
-            2 => Blade { damage: 2, swing: None, throw: Some(Throw { speed: 11.0, range: 6.0, radius: 0.7, returns: true, homing: false, pierce: true, stagger: false }), cooldown: 0.45, ..base },
+            2 => Blade {
+                damage: 2,
+                swing: None,
+                throw: Some(Throw { speed: 11.0, range: 6.0, radius: 0.7, returns: true, homing: false, pierce: true, stagger: false }),
+                cooldown: 0.45,
+                ..base
+            },
             3 => Blade { damage: 3, swing: Some((1.4, 0.8, 0.25)), cooldown: 0.5, wave: true, ..base },
             4 => Blade { damage: 3, swing: Some((1.5, 0.95, 0.3)), cooldown: 0.48, stun: 2.5, ..base },
             5 => Blade { damage: 3, swing: whirl, cooldown: 0.46, ..base },
             6 => Blade { damage: 4, swing: Some((1.6, 1.0, 0.3)), cooldown: 0.45, trick: true, ..base },
             7 => Blade { damage: 5, swing: Some((1.7, 1.1, 0.35)), cooldown: 0.45, pierce_armor: true, ..base },
             8 => Blade { damage: 5, swing: Some((1.8, 1.3, 0.5)), cooldown: 0.5, bleed: 5.0, ..base },
-            9 => Blade { damage: 6, swing: None, throw: Some(Throw { speed: 15.0, range: 14.0, radius: 0.65, returns: false, homing: true, pierce: true, stagger: false }), cooldown: 0.55, crit: true, ..base },
-            _ => Blade { damage: 7, swing: None, throw: Some(Throw { speed: 17.0, range: 7.0, radius: 0.8, returns: true, homing: false, pierce: true, stagger: false }), cooldown: 0.5, chain: 5, ..base },
+            9 => Blade {
+                damage: 6,
+                swing: None,
+                throw: Some(Throw { speed: 15.0, range: 14.0, radius: 0.65, returns: false, homing: true, pierce: true, stagger: false }),
+                cooldown: 0.55,
+                crit: true,
+                ..base
+            },
+            _ => Blade {
+                damage: 7,
+                swing: None,
+                throw: Some(Throw { speed: 17.0, range: 7.0, radius: 0.8, returns: true, homing: false, pierce: true, stagger: false }),
+                cooldown: 0.5,
+                chain: 5,
+                ..base
+            },
         },
         HeroKind::Mehmed => match t {
             1 => Blade { cooldown: 0.34, ..base },
             2 => Blade { damage: 2, swing: wide, cooldown: 0.5, ..base },
             3 => Blade { damage: 3, swing: Some((1.4, 0.6, 0.2)), cooldown: 0.5, wave: true, ..base },
             4 => Blade { damage: 3, swing: whirl, cooldown: 0.46, ..base },
-            5 => Blade { damage: 4, swing: None, throw: Some(Throw { speed: 22.0, range: 12.0, radius: 0.45, returns: false, homing: false, pierce: false, stagger: true }), cooldown: 0.7, ..base },
+            5 => Blade {
+                damage: 4,
+                swing: None,
+                throw: Some(Throw { speed: 22.0, range: 12.0, radius: 0.45, returns: false, homing: false, pierce: false, stagger: true }),
+                cooldown: 0.7,
+                ..base
+            },
             6 => Blade { damage: 5, swing: Some((1.5, 1.0, 0.3)), cooldown: 0.5, pierce_armor: true, ..base },
             7 => Blade { damage: 5, swing: Some((1.9, 1.6, 0.6)), cooldown: 0.55, fire_trail: true, ..base },
             8 => Blade { damage: 2, swing: None, cooldown: 0.8, arrows: 5, burn: 3.0, ..base },

@@ -68,7 +68,8 @@ pub fn medkit() -> Mesh {
         }
     }
     s.paint(|x, y, z, _| {
-        let plus = (z == 4) && ((x == 7 && (2..=12).contains(&y)) || (y == 7 && (2..=12).contains(&x)) || ((6..=8).contains(&x) && (6..=8).contains(&y)));
+        let plus = (z == 4)
+            && ((x == 7 && (2..=12).contains(&y)) || (y == 7 && (2..=12).contains(&x)) || ((6..=8).contains(&x) && (6..=8).contains(&y)));
         let edge = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| {
             let (nx, ny) = (x + dx, y + dy);
             let inside = ((5..=9).contains(&nx) && (0..=14).contains(&ny)) || ((0..=14).contains(&nx) && (5..=9).contains(&ny));
@@ -100,7 +101,11 @@ pub fn bomb() -> Mesh {
         // Light from the upper left front.
         let lit = (-dx * 0.4 + dy * 0.7 + dz * 0.5) / r;
         Some(if (y == 5 || y == 6) && r > 4.5 {
-            if (x + z) % 3 == 0 { 0xa8b0bc } else { 0x4a505c }
+            if (x + z) % 3 == 0 {
+                0xa8b0bc
+            } else {
+                0x4a505c
+            }
         } else if lit > 0.85 {
             0xb8c0cc
         } else if lit > 0.55 {
@@ -232,7 +237,13 @@ pub fn crescent() -> Mesh {
             if !(8.0..=11.5).contains(&r) {
                 continue;
             }
-            let c = if r > 10.6 { 0xf4ffff } else if r < 8.8 { 0x5ab8e0 } else { 0x8fe7ff };
+            let c = if r > 10.6 {
+                0xf4ffff
+            } else if r < 8.8 {
+                0x5ab8e0
+            } else {
+                0x8fe7ff
+            };
             s.set(x, 0, z, c);
             if r > 8.8 && r < 10.8 {
                 s.set(x, 1, z, 0xbff4ff);
@@ -461,7 +472,12 @@ pub fn oak() -> Mesh {
     }
     s.set(7, 5, 5, 0x4a3018);
     s.set(4, 6, 6, 0x4a3018);
-    for (c, r) in [((5.5, 9.0, 5.5), (4.4, 3.2, 4.4)), ((3.5, 8.2, 4.5), (2.6, 2.2, 2.6)), ((7.6, 8.4, 6.8), (2.6, 2.3, 2.5)), ((5.5, 11.2, 5.0), (2.8, 2.2, 2.8))] {
+    for (c, r) in [
+        ((5.5, 9.0, 5.5), (4.4, 3.2, 4.4)),
+        ((3.5, 8.2, 4.5), (2.6, 2.2, 2.6)),
+        ((7.6, 8.4, 6.8), (2.6, 2.3, 2.5)),
+        ((5.5, 11.2, 5.0), (2.8, 2.2, 2.8)),
+    ] {
         s.ellipsoid(c, r, 6, MID);
     }
     s.paint(|x, y, z, c| {
@@ -507,7 +523,13 @@ pub fn birch() -> Mesh {
             return None;
         }
         let n = noise(x, y, z);
-        Some(if n < 0.3 { 0x9ac84a } else if n > 0.8 { 0x5a8a2a } else { LEAF })
+        Some(if n < 0.3 {
+            0x9ac84a
+        } else if n > 0.8 {
+            0x5a8a2a
+        } else {
+            LEAF
+        })
     });
     for y in 7..16 {
         for z in 0..7 {

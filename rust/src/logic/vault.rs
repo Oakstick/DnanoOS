@@ -142,12 +142,7 @@ const PLAN: [((i32, i32, i32, i32), RoomKind); 19] = [
 
 /// The tiles a range of cells covers.
 fn cells(c: (i32, i32, i32, i32)) -> Rect {
-    Rect {
-        x0: MARGIN + c.0 * CELL_W,
-        y0: MARGIN + c.1 * CELL_H,
-        x1: MARGIN + (c.2 + 1) * CELL_W - 1,
-        y1: MARGIN + (c.3 + 1) * CELL_H - 1,
-    }
+    Rect { x0: MARGIN + c.0 * CELL_W, y0: MARGIN + c.1 * CELL_H, x1: MARGIN + (c.2 + 1) * CELL_W - 1, y1: MARGIN + (c.3 + 1) * CELL_H - 1 }
 }
 
 fn overlap(a0: i32, a1: i32, b0: i32, b1: i32) -> Option<(i32, i32)> {
@@ -247,14 +242,24 @@ impl Vault {
         let mut corridors: Vec<Rect> = Vec::new();
         for &(a, b) in &kept {
             let (ra, rb) = (rooms[a].rect, rooms[b].rect);
-            let (left, right) = if ra.x1 < rb.x0 { (ra, rb) } else if rb.x1 < ra.x0 { (rb, ra) } else { (ra, rb) };
+            let (left, right) = if ra.x1 < rb.x0 {
+                (ra, rb)
+            } else if rb.x1 < ra.x0 {
+                (rb, ra)
+            } else {
+                (ra, rb)
+            };
             let side_by_side = left.x1 < right.x0;
             let (up, down) = if ra.y1 < rb.y0 { (ra, rb) } else { (rb, ra) };
-            let pieces: Vec<Rect> = if side_by_side && overlap(left.y0 + 1, left.y1 - 1, right.y0 + 1, right.y1 - 1).is_some_and(|(lo, hi)| hi - lo + 1 >= CORRIDOR) {
+            let pieces: Vec<Rect> = if side_by_side
+                && overlap(left.y0 + 1, left.y1 - 1, right.y0 + 1, right.y1 - 1).is_some_and(|(lo, hi)| hi - lo + 1 >= CORRIDOR)
+            {
                 let (lo, hi) = overlap(left.y0 + 1, left.y1 - 1, right.y0 + 1, right.y1 - 1).unwrap();
                 let y0 = lo + rng.index((hi - lo + 2 - CORRIDOR) as usize) as i32;
                 vec![Rect { x0: left.x1 + 1, y0, x1: right.x0 - 1, y1: y0 + CORRIDOR - 1 }]
-            } else if !side_by_side && overlap(up.x0 + 1, up.x1 - 1, down.x0 + 1, down.x1 - 1).is_some_and(|(lo, hi)| hi - lo + 1 >= CORRIDOR) {
+            } else if !side_by_side
+                && overlap(up.x0 + 1, up.x1 - 1, down.x0 + 1, down.x1 - 1).is_some_and(|(lo, hi)| hi - lo + 1 >= CORRIDOR)
+            {
                 let (lo, hi) = overlap(up.x0 + 1, up.x1 - 1, down.x0 + 1, down.x1 - 1).unwrap();
                 let x0 = lo + rng.index((hi - lo + 2 - CORRIDOR) as usize) as i32;
                 vec![Rect { x0, y0: up.y1 + 1, x1: x0 + CORRIDOR - 1, y1: down.y0 - 1 }]
@@ -264,19 +269,13 @@ impl Vault {
                 let x = (right.x0 + right.x1) / 2;
                 let ya = y.min(if right.y0 > y { right.y0 - 1 } else { right.y1 + 1 });
                 let yb = y.max(if right.y0 > y { right.y0 - 1 } else { right.y1 + 1 });
-                vec![
-                    Rect { x0: left.x1 + 1, y0: y - 1, x1: x + 1, y1: y + 1 },
-                    Rect { x0: x - 1, y0: ya - 1, x1: x + 1, y1: yb + 1 },
-                ]
+                vec![Rect { x0: left.x1 + 1, y0: y - 1, x1: x + 1, y1: y + 1 }, Rect { x0: x - 1, y0: ya - 1, x1: x + 1, y1: yb + 1 }]
             } else {
                 let x = (up.x0 + up.x1) / 2;
                 let y = (down.y0 + down.y1) / 2;
                 let xa = x.min(if down.x0 > x { down.x0 - 1 } else { down.x1 + 1 });
                 let xb = x.max(if down.x0 > x { down.x0 - 1 } else { down.x1 + 1 });
-                vec![
-                    Rect { x0: x - 1, y0: up.y1 + 1, x1: x + 1, y1: y + 1 },
-                    Rect { x0: xa - 1, y0: y - 1, x1: xb + 1, y1: y + 1 },
-                ]
+                vec![Rect { x0: x - 1, y0: up.y1 + 1, x1: x + 1, y1: y + 1 }, Rect { x0: xa - 1, y0: y - 1, x1: xb + 1, y1: y + 1 }]
             };
             for r in pieces {
                 let r = Rect { x0: r.x0.max(1), y0: r.y0.max(1), x1: r.x1.min(width - 2), y1: r.y1.min(height - 2) };
@@ -292,13 +291,17 @@ impl Vault {
             let (w, h) = (rect.x1 - rect.x0 + 1, rect.y1 - rect.y0 + 1);
             match r.kind {
                 RoomKind::Hall => {
-                    for (fx, fy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75), (0.5, 0.25), (0.5, 0.75), (0.25, 0.5), (0.75, 0.5)] {
-                        pillars.push(P::new(rect.x0 + (fx * (w - 1) as f32).round() as i32, rect.y0 + (fy * (h - 1) as f32).round() as i32));
+                    for (fx, fy) in
+                        [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75), (0.5, 0.25), (0.5, 0.75), (0.25, 0.5), (0.75, 0.5)]
+                    {
+                        pillars
+                            .push(P::new(rect.x0 + (fx * (w - 1) as f32).round() as i32, rect.y0 + (fy * (h - 1) as f32).round() as i32));
                     }
                 }
                 RoomKind::Chamber if w >= 14 && h >= 14 => {
                     for (fx, fy) in [(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)] {
-                        pillars.push(P::new(rect.x0 + (fx * (w - 1) as f32).round() as i32, rect.y0 + (fy * (h - 1) as f32).round() as i32));
+                        pillars
+                            .push(P::new(rect.x0 + (fx * (w - 1) as f32).round() as i32, rect.y0 + (fy * (h - 1) as f32).round() as i32));
                     }
                 }
                 _ => {}
@@ -330,7 +333,13 @@ impl Vault {
         let mut queue = std::collections::VecDeque::from([entry]);
         while let Some(i) = queue.pop_front() {
             for &(a, b) in &kept {
-                let o = if a == i { b } else if b == i { a } else { continue };
+                let o = if a == i {
+                    b
+                } else if b == i {
+                    a
+                } else {
+                    continue;
+                };
                 if dist[o] == usize::MAX {
                     dist[o] = dist[i] + 1;
                     queue.push_back(o);
@@ -365,7 +374,13 @@ impl Vault {
                 RoomKind::Hall => (area / 8, 8, 6, 4),
                 RoomKind::Exit => (area / 10, 3, 3, 2),
             };
-            let take = |want: usize, wall: bool, kind: &mut dyn FnMut(&mut Rng) -> LootKind, rng: &mut Rng, spots: &mut Vec<P>, loot: &mut Vec<Loot>, busy: &mut Vec<P>| {
+            let take = |want: usize,
+                        wall: bool,
+                        kind: &mut dyn FnMut(&mut Rng) -> LootKind,
+                        rng: &mut Rng,
+                        spots: &mut Vec<P>,
+                        loot: &mut Vec<Loot>,
+                        busy: &mut Vec<P>| {
                 let mut got = 0;
                 let mut i = 0;
                 while got < want && i < spots.len() {

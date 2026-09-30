@@ -61,7 +61,14 @@ pub(super) fn cavern() -> Vec<Instance> {
             block(&mut out, at(x, top - 0.1, z), Vec3::new(0.68, 0.2, 0.68), Quat::from_rotation_y((k - 0.5) * 0.06), c, Vec3::ZERO);
             // A crack across some of them.
             if k > 0.6 {
-                block(&mut out, at(x + (k - 0.8) * 0.3, top + 0.002, z), Vec3::new(0.02, 0.01, 0.5), Quat::from_rotation_y(k * 3.0), lin(0x1c1816), Vec3::ZERO);
+                block(
+                    &mut out,
+                    at(x + (k - 0.8) * 0.3, top + 0.002, z),
+                    Vec3::new(0.02, 0.01, 0.5),
+                    Quat::from_rotation_y(k * 3.0),
+                    lin(0x1c1816),
+                    Vec3::ZERO,
+                );
             }
         }
     }
@@ -71,7 +78,14 @@ pub(super) fn cavern() -> Vec<Instance> {
         let x = (a - 0.5) * 13.0;
         let z = -3.4 + b * 1.8 + if x.abs() > 4.2 { b * 4.0 } else { 0.0 };
         let size = 0.2 + h(i as f64, 5.0) * 0.5;
-        block(&mut out, at(x, -0.2 + size * 0.3, z), Vec3::new(size, size * 0.7, size * 0.9), Quat::from_rotation_y(a * 6.0), lin(ROCK[i % 4]), Vec3::ZERO);
+        block(
+            &mut out,
+            at(x, -0.2 + size * 0.3, z),
+            Vec3::new(size, size * 0.7, size * 0.9),
+            Quat::from_rotation_y(a * 6.0),
+            lin(ROCK[i % 4]),
+            Vec3::ZERO,
+        );
     }
     block(&mut out, at(0.0, -0.45, -1.0), Vec3::new(16.0, 0.5, 12.0), flat, lin(ROCK[2]), Vec3::ZERO);
 
@@ -82,7 +96,14 @@ pub(super) fn cavern() -> Vec<Instance> {
             let size = 0.8 + k * 0.6;
             let x = gx as f32 * 0.85 + (k - 0.5) * 0.3;
             let z = -4.0 - k * 0.9 - (gx as f32).abs() * 0.05;
-            block(&mut out, at(x, gy as f32 * 0.82 + size * 0.3, z), Vec3::splat(size), Quat::from_rotation_y((k - 0.5) * 0.8), lin(ROCK[(gx + gy).rem_euclid(4) as usize]) * (0.8 + k * 0.4), Vec3::ZERO);
+            block(
+                &mut out,
+                at(x, gy as f32 * 0.82 + size * 0.3, z),
+                Vec3::splat(size),
+                Quat::from_rotation_y((k - 0.5) * 0.8),
+                lin(ROCK[(gx + gy).rem_euclid(4) as usize]) * (0.8 + k * 0.4),
+                Vec3::ZERO,
+            );
         }
     }
     for side in [-1.0f32, 1.0] {
@@ -91,7 +112,14 @@ pub(super) fn cavern() -> Vec<Instance> {
                 let k = h(gz as f64 * 2.9 + side as f64 * 5.0, gy as f64 * 1.3);
                 let size = 0.9 + k * 0.7;
                 let x = side * (5.4 + k * 0.8 + (gz as f32 + 4.0) * 0.12);
-                block(&mut out, at(x, gy as f32 * 0.82 + size * 0.3, gz as f32 * 0.9 - 0.5), Vec3::splat(size), Quat::from_rotation_y(k * 2.0), lin(ROCK[(gz + gy).rem_euclid(4) as usize]) * (0.75 + k * 0.4), Vec3::ZERO);
+                block(
+                    &mut out,
+                    at(x, gy as f32 * 0.82 + size * 0.3, gz as f32 * 0.9 - 0.5),
+                    Vec3::splat(size),
+                    Quat::from_rotation_y(k * 2.0),
+                    lin(ROCK[(gz + gy).rem_euclid(4) as usize]) * (0.75 + k * 0.4),
+                    Vec3::ZERO,
+                );
             }
         }
     }
@@ -103,7 +131,14 @@ pub(super) fn cavern() -> Vec<Instance> {
         for k in 0..4 {
             let t = k as f32 / 4.0;
             let w = 0.34 * (1.0 - t) + 0.05;
-            block(&mut out, at(x, 6.0 - len * t, z), Vec3::new(w, len / 4.0 + 0.02, w), Quat::from_rotation_y(a * 5.0 + k as f32), lin(ROCK[(i + k) % 4]), Vec3::ZERO);
+            block(
+                &mut out,
+                at(x, 6.0 - len * t, z),
+                Vec3::new(w, len / 4.0 + 0.02, w),
+                Quat::from_rotation_y(a * 5.0 + k as f32),
+                lin(ROCK[(i + k) % 4]),
+                Vec3::ZERO,
+            );
         }
     }
     // Channels in the wall down which the lava pours, and the crusted basins below.
@@ -111,24 +146,54 @@ pub(super) fn cavern() -> Vec<Instance> {
         for side in [-1.0f32, 1.0] {
             for k in 0..8 {
                 let y = k as f32 * (top / 8.0);
-                block(&mut out, at(x + side * 0.42, y + 0.3, z + 0.1), Vec3::new(0.26, top / 8.0 + 0.05, 0.4), Quat::from_rotation_y(side * 0.2), lin(ROCK[k % 4]) * 0.8, Vec3::ZERO);
+                block(
+                    &mut out,
+                    at(x + side * 0.42, y + 0.3, z + 0.1),
+                    Vec3::new(0.26, top / 8.0 + 0.05, 0.4),
+                    Quat::from_rotation_y(side * 0.2),
+                    lin(ROCK[k % 4]) * 0.8,
+                    Vec3::ZERO,
+                );
             }
         }
         for k in 0..10 {
             let a = k as f32 / 10.0 * TAU;
-            block(&mut out, at(x + a.cos() * 0.75, 0.02, z + 0.55 + a.sin() * 0.45), Vec3::new(0.32, 0.18, 0.3), Quat::from_rotation_y(a), lin(CRUST), Vec3::ZERO);
+            block(
+                &mut out,
+                at(x + a.cos() * 0.75, 0.02, z + 0.55 + a.sin() * 0.45),
+                Vec3::new(0.32, 0.18, 0.3),
+                Quat::from_rotation_y(a),
+                lin(CRUST),
+                Vec3::ZERO,
+            );
         }
     }
     // Crystal clusters: on the floor to the right, high on the right wall, a few to the left.
-    for &(x, y, z, count, size) in &[(3.5f32, 0.0f32, -1.3f32, 7u32, 1.0f32), (4.3, 2.3, -3.1, 6, 0.8), (-4.1, 0.0, -2.2, 4, 0.6), (2.6, 0.0, -3.2, 3, 0.55)] {
+    for &(x, y, z, count, size) in
+        &[(3.5f32, 0.0f32, -1.3f32, 7u32, 1.0f32), (4.3, 2.3, -3.1, 6, 0.8), (-4.1, 0.0, -2.2, 4, 0.6), (2.6, 0.0, -3.2, 3, 0.55)]
+    {
         for k in 0..count {
             let (a, b) = (h(x as f64 + k as f64, y as f64 + 3.0), h(z as f64 * 3.0 + k as f64, 11.0));
             let tall = (0.35 + a * 0.55) * size;
             let tilt = Quat::from_rotation_z((b - 0.5) * 0.9) * Quat::from_rotation_x((a - 0.5) * 0.7);
             let base = at(x + (a - 0.5) * 0.6 * size, y, z + (b - 0.5) * 0.5 * size);
             let c = if k % 3 == 0 { lin(CRYSTAL_D) } else { lin(CRYSTAL) };
-            block(&mut out, base + tilt * Vec3::new(0.0, tall * 0.5, 0.0), Vec3::new(0.11 * size, tall, 0.11 * size), tilt * Quat::from_rotation_y(0.785), c, lin(CRYSTAL) * 0.9);
-            block(&mut out, base + tilt * Vec3::new(0.0, tall + 0.03, 0.0), Vec3::splat(0.06 * size), tilt * Quat::from_rotation_y(0.785), lin(0xd8f6ff), lin(CRYSTAL) * 1.4);
+            block(
+                &mut out,
+                base + tilt * Vec3::new(0.0, tall * 0.5, 0.0),
+                Vec3::new(0.11 * size, tall, 0.11 * size),
+                tilt * Quat::from_rotation_y(0.785),
+                c,
+                lin(CRYSTAL) * 0.9,
+            );
+            block(
+                &mut out,
+                base + tilt * Vec3::new(0.0, tall + 0.03, 0.0),
+                Vec3::splat(0.06 * size),
+                tilt * Quat::from_rotation_y(0.785),
+                lin(0xd8f6ff),
+                lin(CRYSTAL) * 1.4,
+            );
         }
     }
     // A timber beam across the roof, a rope and pulley hanging from it.
@@ -166,7 +231,8 @@ impl WorldView {
                     let vein = (phase.sin() * 0.5 + 0.5).powf(2.2);
                     let glow = lin(0xc83a0a).lerp(lin(LAVA_HOT), vein) * (0.6 + vein * 2.6);
                     let wobble = (y * 3.0 + strand as f32).sin() * 0.02;
-                    let m = Mat4::from_translation(at(x + sx + wobble, y + seg_h * 0.5 + 0.15, z + 0.12 + strand as f32 % 2.0 * 0.02)) * Mat4::from_scale(Vec3::new(0.17, seg_h + 0.02, 0.14));
+                    let m = Mat4::from_translation(at(x + sx + wobble, y + seg_h * 0.5 + 0.15, z + 0.12 + strand as f32 % 2.0 * 0.02))
+                        * Mat4::from_scale(Vec3::new(0.17, seg_h + 0.02, 0.14));
                     f.opaque[cube].push(Instance::new(m, lin(0x3a0c04), 1.0, glow, SHADE_LIT));
                 }
             }
@@ -174,7 +240,13 @@ impl WorldView {
             for k in 0..6 {
                 let t = (time * 0.35 + k as f32 / 6.0 + n as f32 * 0.3).fract();
                 let p = at(x + ((k as f32 * 1.7).sin()) * 0.15, top * (1.0 - t) + 0.2, z + 0.22);
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.14, 0.26, 0.05)), lin(LAVA_HOT) * 1.5, 0.55, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.14, 0.26, 0.05)),
+                    lin(LAVA_HOT) * 1.5,
+                    0.55,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             // The basin: a crusted pool, cracks of molten rock glowing through it.
             for gx in 0..5 {
@@ -183,14 +255,26 @@ impl WorldView {
                     let hot = ((time * 0.9 + k * 6.0).sin() * 0.5 + 0.5) * 0.7 + 0.3;
                     let p = at(x - 0.52 + gx as f32 * 0.26, 0.02, z + 0.3 + gz as f32 * 0.25);
                     let m = Mat4::from_translation(p) * Mat4::from_rotation_y(k * 2.0) * Mat4::from_scale(Vec3::new(0.24, 0.06, 0.22));
-                    f.opaque[cube].push(Instance::new(m, lin(0x2a0a04), 1.0, lin(LAVA).lerp(lin(LAVA_HOT), hot * 0.6) * (0.9 + hot * 1.6), SHADE_LIT));
+                    f.opaque[cube].push(Instance::new(
+                        m,
+                        lin(0x2a0a04),
+                        1.0,
+                        lin(LAVA).lerp(lin(LAVA_HOT), hot * 0.6) * (0.9 + hot * 1.6),
+                        SHADE_LIT,
+                    ));
                 }
             }
             for k in 0..5 {
                 let ph = (time * 0.8 + k as f32 * 0.37 + n as f32).fract();
                 let a = k as f32 * 2.3 + n as f32;
                 let p = at(x + a.cos() * 0.45, 0.07 + ph * 0.05, z + 0.55 + a.sin() * 0.25);
-                f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05 + ph * 0.06)), lin(LAVA_HOT), 0.8 * (1.0 - ph), Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05 + ph * 0.06)),
+                    lin(LAVA_HOT),
+                    0.8 * (1.0 - ph),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
             glow_orb(f, at(x, 1.2, z + 0.5), 1.6, lin(LAVA), 0.22);
             glow_orb(f, at(x, top * 0.6, z + 0.3), 1.1, lin(LAVA), 0.16);
@@ -202,9 +286,19 @@ impl WorldView {
             let fk = k as f32;
             let src = LAVA_FALLS[k % 2];
             let t = (time * (0.12 + (fk * 0.37).fract() * 0.08) + fk * 0.618).fract();
-            let p = at(src.0 * (1.0 - t * 0.7) + (fk * 1.3 + time * 0.7).sin() * 0.5, 0.2 + t * 4.5, src.1 + 0.8 + t * 3.0 + (fk * 2.1).cos() * 0.6);
+            let p = at(
+                src.0 * (1.0 - t * 0.7) + (fk * 1.3 + time * 0.7).sin() * 0.5,
+                0.2 + t * 4.5,
+                src.1 + 0.8 + t * 3.0 + (fk * 2.1).cos() * 0.6,
+            );
             let a = (1.0 - t) * (0.5 + 0.5 * (time * 9.0 + fk).sin().abs());
-            f.additive.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.022)), lin(0xffa040) * 1.6, a, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.022)),
+                lin(0xffa040) * 1.6,
+                a,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
         }
         // ---- the crystals' glow, and a lantern on its chain swaying from the beam
         for &(x, y, z, r) in &[(3.5f32, 0.5f32, -1.3f32, 1.1f32), (4.3, 2.7, -3.1, 0.9), (-4.1, 0.3, -2.2, 0.6)] {
@@ -215,9 +309,16 @@ impl WorldView {
         let swing = (time * 0.9).sin() * 0.12;
         let pivot = at(-1.9, 4.5, -1.8);
         let lantern = pivot + Vec3::new(swing.sin() * 1.1, -1.1 * swing.cos(), 0.0);
-        let chain = Mat4::from_scale_rotation_translation(Vec3::new(0.02, 1.1, 0.02), Quat::from_rotation_z(swing), (pivot + lantern) * 0.5);
+        let chain =
+            Mat4::from_scale_rotation_translation(Vec3::new(0.02, 1.1, 0.02), Quat::from_rotation_z(swing), (pivot + lantern) * 0.5);
         f.opaque[cube].push(Instance::new(chain, lin(IRON), 1.0, Vec3::ZERO, SHADE_LIT));
-        f.opaque[cube].push(Instance::new(Mat4::from_scale_rotation_translation(Vec3::new(0.16, 0.2, 0.16), Quat::from_rotation_z(swing), lantern), lin(0xffd080), 1.0, lin(0xffb050) * 2.4, SHADE_LIT));
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.16, 0.2, 0.16), Quat::from_rotation_z(swing), lantern),
+            lin(0xffd080),
+            1.0,
+            lin(0xffb050) * 2.4,
+            SHADE_LIT,
+        ));
         glow_orb(f, lantern, 0.5, lin(0xffb060), 0.25);
         f.lights.push(Light { pos: lantern, color: lin(0xffb060) * 3.5, distance: 5.0 });
 
@@ -250,7 +351,9 @@ impl WorldView {
             // A pool of light at the picked hero's feet: gold if he can be chosen, pale if not.
             if picked {
                 let (color, strength) = if kind.unlocked() { (lin(0xffd58a), 0.35) } else { (lin(0x9ab0d0), 0.18) };
-                let pool = Mat4::from_translation(feet + Vec3::new(0.0, 0.012, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.7, 0.7, 1.0));
+                let pool = Mat4::from_translation(feet + Vec3::new(0.0, 0.012, 0.0))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::new(0.7, 0.7, 1.0));
                 f.glow.push(Instance::new(pool, color, strength * (0.85 + 0.15 * (time * 3.0).sin()), Vec3::ZERO, SHADE_GLOW));
                 let spot = if kind.unlocked() { lin(0xfff0d8) * 6.0 } else { lin(0xa8bcdc) * 3.0 };
                 f.lights.push(Light { pos: feet + Vec3::new(0.2, 2.2, 1.3), color: spot * step.max(0.3), distance: 4.0 });
@@ -262,7 +365,11 @@ impl WorldView {
         // Dust hanging in the light.
         for k in 0..24 {
             let fk = k as f32;
-            let p = at(((fk * 0.618).fract() - 0.5) * 6.0 + (time * 0.2 + fk).sin() * 0.2, 0.4 + (fk * 0.37).fract() * 2.6 + (time * 0.3 + fk * 1.3).sin() * 0.1, ((fk * 0.29).fract() - 0.3) * 2.5);
+            let p = at(
+                ((fk * 0.618).fract() - 0.5) * 6.0 + (time * 0.2 + fk).sin() * 0.2,
+                0.4 + (fk * 0.37).fract() * 2.6 + (time * 0.3 + fk * 1.3).sin() * 0.1,
+                ((fk * 0.29).fract() - 0.3) * 2.5,
+            );
             glow_orb(f, p, 0.025, lin(0xfff0d0), 0.35 + 0.3 * (time * 1.7 + fk).sin());
         }
     }

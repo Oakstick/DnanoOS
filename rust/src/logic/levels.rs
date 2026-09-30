@@ -12,8 +12,7 @@ pub const NUGGETS_PER_LEVEL: usize = 25;
 /// Golden keys hidden across each estate; all of them open the gate to the boss.
 pub const KEYS_PER_LEVEL: usize = 8;
 /// Potion bottles per dungeon: one extra life, two shields, two invisibility.
-pub const POTION_PLAN: [PotionKind; 5] =
-    [PotionKind::Life, PotionKind::Health, PotionKind::Health, PotionKind::Haste, PotionKind::Haste];
+pub const POTION_PLAN: [PotionKind; 5] = [PotionKind::Life, PotionKind::Health, PotionKind::Health, PotionKind::Haste, PotionKind::Haste];
 /// Pits cut across corridors that must be jumped.
 pub const PITS_PER_LEVEL: usize = 6;
 /// Manhattan distance kept between two pits.
@@ -118,10 +117,9 @@ pub fn compose_dungeon(base: &[&str]) -> Layout {
                         grid[y][x] = '.';
                     }
                 }
-                '-'
-                    if x == mid_x => {
-                        grid[y][x] = '.';
-                    }
+                '-' if x == mid_x => {
+                    grid[y][x] = '.';
+                }
                 _ => {}
             }
         }
@@ -205,9 +203,7 @@ pub fn place_pits(layout: &Layout, count: usize, seed: u32) -> Layout {
     }
     let mut candidates: Vec<Cand> = Vec::new();
     {
-        let open = |x: i32, y: i32| {
-            x >= 0 && y >= 0 && x < w && y < h && matches!(grid[y as usize][x as usize], '.' | ' ')
-        };
+        let open = |x: i32, y: i32| x >= 0 && y >= 0 && x < w && y < h && matches!(grid[y as usize][x as usize], '.' | ' ');
         let rock = |x: i32, y: i32| x < 0 || y < 0 || x >= w || y >= h || grid[y as usize][x as usize] == '#';
         for y in 1..h - 1 {
             for x in 1..w - 1 {
@@ -250,9 +246,7 @@ pub fn place_pits(layout: &Layout, count: usize, seed: u32) -> Layout {
         }
     }
     let flood_size = |grid: &Vec<Vec<char>>| -> usize {
-        let passable = |x: i32, y: i32| {
-            x >= 0 && y >= 0 && x < w && y < h && !matches!(grid[y as usize][x as usize], '#' | '~' | '^')
-        };
+        let passable = |x: i32, y: i32| x >= 0 && y >= 0 && x < w && y < h && !matches!(grid[y as usize][x as usize], '#' | '~' | '^');
         let mut seen = HashSet::from([start]);
         let mut stack = vec![start];
         let mut n = 0;
@@ -407,8 +401,7 @@ pub fn widen(layout: &Layout, cols: &[usize], rows: &[usize]) -> Layout {
  * minimum spacing that relaxes only if the dungeon cannot fit them all.
  */
 pub fn place_nuggets(rows: &[Vec<char>], count: usize, seed: u32) -> Vec<Vec<char>> {
-    let mut grid: Vec<Vec<char>> =
-        rows.iter().map(|r| r.iter().map(|&c| if c == '.' { ' ' } else { c }).collect()).collect();
+    let mut grid: Vec<Vec<char>> = rows.iter().map(|r| r.iter().map(|&c| if c == '.' { ' ' } else { c }).collect()).collect();
     let mut open: Vec<(i32, i32)> = Vec::new();
     for (y, row) in grid.iter().enumerate() {
         for (x, &c) in row.iter().enumerate() {
@@ -556,7 +549,11 @@ pub fn compose_estate(base: &[&str]) -> Layout {
     // Passages through the shared column and row, wherever corridors meet across them.
     let walk = |g: &Vec<Vec<char>>, x: usize, y: usize| g[y][x] != '#';
     for y in 1..h - 1 {
-        if grid[y][mid_x] == '#' && walk(&grid, mid_x - 1, y) && walk(&grid, mid_x + 1, y) && [1, 4, 18, 21].contains(&(if y < mid_y { y } else { h - 1 - y })) {
+        if grid[y][mid_x] == '#'
+            && walk(&grid, mid_x - 1, y)
+            && walk(&grid, mid_x + 1, y)
+            && [1, 4, 18, 21].contains(&(if y < mid_y { y } else { h - 1 - y }))
+        {
             grid[y][mid_x] = '.';
             heights[y][mid_x] = heights[y][mid_x - 1];
         }
@@ -584,7 +581,9 @@ pub fn place_keys(rows: &[Vec<char>], count: usize, seed: u32) -> Vec<Vec<char>>
     let mut grid: Vec<Vec<char>> = rows.iter().map(|r| r.iter().map(|&c| if c == '.' { ' ' } else { c }).collect()).collect();
     let (w, h) = (grid[0].len() as i32, grid.len() as i32);
     let (cx, cy) = ((w - 1) / 2, (h - 1) / 2);
-    let open = |g: &Vec<Vec<char>>, x: i32, y: i32| x >= 0 && y >= 0 && x < w && y < h && !matches!(g[y as usize][x as usize], '#' | '~' | '^' | 'D');
+    let open = |g: &Vec<Vec<char>>, x: i32, y: i32| {
+        x >= 0 && y >= 0 && x < w && y < h && !matches!(g[y as usize][x as usize], '#' | '~' | '^' | 'D')
+    };
     let mut rng = Rng::new(seed.wrapping_mul(2654435761).wrapping_add(11));
     let mut cands: Vec<(i32, i32, f64)> = vec![];
     for y in 1..h - 1 {
@@ -592,10 +591,12 @@ pub fn place_keys(rows: &[Vec<char>], count: usize, seed: u32) -> Vec<Vec<char>>
             if grid[y as usize][x as usize] != ' ' || (x - cx).abs() + (y - cy).abs() < 12 || y <= 6 && (x - cx).abs() <= 6 {
                 continue;
             }
-            let busy = (-1..=1).any(|dy| (-1..=1).any(|dx| {
-                let c = grid[(y + dy) as usize][(x + dx) as usize];
-                !matches!(c, ' ' | '#' | '.')
-            }));
+            let busy = (-1..=1).any(|dy| {
+                (-1..=1).any(|dx| {
+                    let c = grid[(y + dy) as usize][(x + dx) as usize];
+                    !matches!(c, ' ' | '#' | '.')
+                })
+            });
             if busy {
                 continue;
             }

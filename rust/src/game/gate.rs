@@ -1,7 +1,7 @@
 //! The gate in the outer wall: locked until every key is found, then its doors swing open and
 //! stepping through wins the level.
 
-use super::{Banner, CLEARED_SECONDS, DOOR_SECONDS, Game, GameEvent, Screen};
+use super::{Banner, Game, GameEvent, Screen, CLEARED_SECONDS, DOOR_SECONDS};
 use crate::audio::Sfx;
 use crate::logic::types::Tile;
 
@@ -15,7 +15,11 @@ impl Game {
         let arena = self.boss.is_some();
         self.juice.banner = Some(Banner {
             text: "THE GATE IS UNLOCKED".into(),
-            sub: if arena { "IN THE NORTH HEDGE: GO THROUGH AND ON DOWN".into() } else { "FIND IT IN THE NORTH WALL AND GO THROUGH".into() },
+            sub: if arena {
+                "IN THE NORTH HEDGE: GO THROUGH AND ON DOWN".into()
+            } else {
+                "FIND IT IN THE NORTH WALL AND GO THROUGH".into()
+            },
             color: if arena { self.key_color() } else { 0xf2c53d },
             life: 3.0,
             max: 3.0,

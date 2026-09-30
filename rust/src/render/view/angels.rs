@@ -13,10 +13,10 @@
 use super::*;
 use crate::logic::angels::{Archangel, WAVE_RADIUS, WAVE_SPEED};
 use crate::logic::items::{Diamond, Offer};
+use crate::logic::types::V;
 use crate::render::carve::{ball, limb, v};
 use crate::render::characters::{mat, Sculpt};
 use crate::render::voxels::Collected;
-use crate::logic::types::V;
 
 /// The shrine's voxels: it stands about 0.9 tall on its tile.
 pub(super) const SHRINE_VOXEL: f32 = 0.0175;
@@ -165,7 +165,13 @@ pub fn angel_shrine(angel: Archangel) -> Collected {
                 let out = (px - cx).abs();
                 let z = (cz - 3.0 - out * 0.22).round() as i32;
                 let row = ((py - y0) * 0.5 + out * 0.3) as i32;
-                let c = if row % 3 == 0 { MARBLE_S } else if out > 8.0 && (x % 2 == 0) { MARBLE_D } else { MARBLE };
+                let c = if row % 3 == 0 {
+                    MARBLE_S
+                } else if out > 8.0 && (x % 2 == 0) {
+                    MARBLE_D
+                } else {
+                    MARBLE
+                };
                 s.set(x, y, z, c);
                 s.set(x, y, z - 1, MARBLE_S);
             }
@@ -281,7 +287,13 @@ impl WorldView {
                     let h = |n: f32| ((flick + b.seed) * 12.9898 + i as f32 * 4.7 + n * 78.233).sin().fract() - 0.5;
                     p += Vec3::new(h(1.0), 0.0, h(3.0)) * 0.9;
                 }
-                f.additive.push(Instance::new(forge::segment(prev, p, 0.06), Vec3::ONE.lerp(b.color, 0.45) * 1.6, k, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    forge::segment(prev, p, 0.06),
+                    Vec3::ONE.lerp(b.color, 0.45) * 1.6,
+                    k,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
                 f.additive.push(Instance::new(forge::segment(prev, p, 0.22), b.color, 0.3 * k, Vec3::ZERO, SHADE_UNLIT));
                 prev = p;
             }
@@ -291,7 +303,13 @@ impl WorldView {
         for b in &self.beams {
             let k = b.life / BEAM_SECONDS;
             let thick = 0.35 * k.sqrt();
-            f.additive.push(Instance::new(forge::segment(b.a, b.b, thick * 0.45), Vec3::ONE.lerp(b.color, 0.3) * 2.6, k, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(
+                forge::segment(b.a, b.b, thick * 0.45),
+                Vec3::ONE.lerp(b.color, 0.3) * 2.6,
+                k,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
             f.additive.push(Instance::new(forge::segment(b.a, b.b, thick * 1.6), b.color, 0.45 * k, Vec3::ZERO, SHADE_UNLIT));
             let len = (b.b - b.a).length();
             let n = (len / 2.5).ceil().max(1.0) as i32;
@@ -311,9 +329,16 @@ impl WorldView {
                 let a = i as f32 / posts as f32 * TAU;
                 let base = w.at + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
                 let tall = 0.9 + ((a * 5.0 + time * 9.0).sin() * 0.5 + 0.5) * 0.6;
-                f.additive.push(Instance::new(forge::segment(base, base + Vec3::new(0.0, tall, 0.0), 0.05 + r * 0.006), w.color * 1.1, 0.5 * fade, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(
+                    forge::segment(base, base + Vec3::new(0.0, tall, 0.0), 0.05 + r * 0.006),
+                    w.color * 1.1,
+                    0.5 * fade,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
             }
-            let m = Mat4::from_translation(w.at) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(r.max(0.1), r.max(0.1), 1.0));
+            let m =
+                Mat4::from_translation(w.at) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(r.max(0.1), r.max(0.1), 1.0));
             f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, w.color * 1.5, 0.5 * fade, Vec3::ZERO, SHADE_UNLIT));
             for i in 0..6 {
                 let a = i as f32 / 6.0 * TAU;
@@ -354,7 +379,11 @@ impl WorldView {
         f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, color * 2.5 * glow, 0.85, Vec3::ZERO, SHADE_UNLIT));
         if lit {
             // A pool of their light on the floor, brightest at the plinth's foot ...
-            let pool = |r: f32| Mat4::from_translation(base + Vec3::new(0.0, 0.03, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::splat(r));
+            let pool = |r: f32| {
+                Mat4::from_translation(base + Vec3::new(0.0, 0.03, 0.0))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::splat(r))
+            };
             f.glow.push(Instance::new(pool(1.9), color, 0.45, Vec3::ZERO, SHADE_GLOW));
             f.glow.push(Instance::new(pool(0.9), Vec3::ONE.lerp(color, 0.6), 0.35, Vec3::ZERO, SHADE_GLOW));
             // ... and a soft shaft of it about the statue, fading as it rises.

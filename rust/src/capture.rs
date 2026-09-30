@@ -27,27 +27,19 @@
 //! character screen.
 
 use crate::app::STEP;
-use crate::game::Game;
-use crate::input::Action;
-use crate::logic::types::Dir;
-use crate::render::gpu::Gpu;
-use crate::render::hud;
-use crate::render::overlay::Overlay;
-use crate::render::view::Frame;
 use crate::audio::synth::Synth;
-use crate::game::Screen;
-use crate::game::Stage;
-use crate::logic::angels::ARCHANGELS;
-use crate::logic::angels::Blessing;
-use crate::logic::gear::ALL_POTIONS;
-use crate::logic::gear::ShieldGear;
+use crate::game::{Game, Screen, Stage};
+use crate::input::Action;
+use crate::logic::angels::{Blessing, ARCHANGELS};
+use crate::logic::gear::{ShieldGear, ALL_POTIONS};
 use crate::logic::items::DiamondKind;
 use crate::logic::progression::TIERS;
-use crate::logic::sins::ALL_SINS;
-use crate::logic::sins::SINS;
-use crate::logic::types::P;
-use crate::render::characters;
-use crate::render::voxels;
+use crate::logic::sins::{ALL_SINS, SINS};
+use crate::logic::types::{Dir, P};
+use crate::render::gpu::Gpu;
+use crate::render::overlay::Overlay;
+use crate::render::view::Frame;
+use crate::render::{characters, hud, voxels};
 
 fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
@@ -282,7 +274,11 @@ pub fn run(args: &[String]) -> i32 {
             Dir::Left => -std::f32::consts::FRAC_PI_2,
             Dir::Right => std::f32::consts::FRAC_PI_2,
         };
-        game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62 + (2.1 - dist).max(0.0) * 0.12, p.y as f32), face + deg.to_radians(), dist);
+        game.view.set_closeup(
+            glam::Vec3::new(p.x as f32, y + 0.62 + (2.1 - dist).max(0.0) * 0.12, p.y as f32),
+            face + deg.to_radians(),
+            dist,
+        );
     }
     if let Some(v) = arg(args, "--view") {
         let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
@@ -322,10 +318,13 @@ pub fn run(args: &[String]) -> i32 {
     }
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {
-            let dynamic: usize = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>() + frame.additive.len() + frame.glow.len();
+            let dynamic: usize = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>()
+                + frame.additive.len()
+                + frame.glow.len();
             let at = game.hero.pos();
             let boss = game.boss.as_ref().map(|b| format!(", boss at {:.1},{:.2},{:.1}", b.pos.x, b.hover, b.pos.y)).unwrap_or_default();
-            let shrines: Vec<String> = game.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel).map(|d| format!("{},{}", d.tile.x, d.tile.y)).collect();
+            let shrines: Vec<String> =
+                game.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel).map(|d| format!("{},{}", d.tile.x, d.tile.y)).collect();
             let shrines = if shrines.is_empty() { String::new() } else { format!(", archangels' shrines at {}", shrines.join(" ")) };
             let shrines = shrines + &game.red_key.map(|k| format!(", red key at {},{}", k.x, k.y)).unwrap_or_default();
             eprintln!(

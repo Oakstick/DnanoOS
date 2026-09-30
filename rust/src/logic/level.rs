@@ -110,10 +110,7 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
     let mut portals = Vec::new();
     let mut bridges = Vec::new();
 
-    assert!(
-        data.heights.is_empty() || data.heights.len() as i32 == height,
-        "level heights row count mismatch"
-    );
+    assert!(data.heights.is_empty() || data.heights.len() as i32 == height, "level heights row count mismatch");
 
     for (y, row) in data.rows.iter().enumerate() {
         let y = y as i32;
@@ -256,16 +253,5 @@ pub fn parse_level(data: &LevelData) -> ParsedLevel {
     for b in bridges {
         grid.set_bridge(b.x, b.y, true);
     }
-    ParsedLevel {
-        grid,
-        hero_spawn,
-        enemy_spawn,
-        nest_center,
-        angel_shrines,
-        item_shrines,
-        potions,
-        gate,
-        portals,
-        data: data.clone(),
-    }
+    ParsedLevel { grid, hero_spawn, enemy_spawn, nest_center, angel_shrines, item_shrines, potions, gate, portals, data: data.clone() }
 }

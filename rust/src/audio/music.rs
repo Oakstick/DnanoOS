@@ -198,8 +198,15 @@ fn stomp(s: &mut Synth, t: f64, vol: f64) {
         let v = if i == 2 { vol } else { vol * 0.55 };
         let len = if i == 2 { 0.14 } else { 0.03 };
         s.push(
-            Voice::new(t + d, t + d + len + 0.02, Wave::Noise { rate: 1.2, offset }, Env::constant(1.0), Env::ramp(t + d, v, 0.001, len), Bus::Music)
-                .filtered(FilterKind::Bandpass, 1150.0, 0.9),
+            Voice::new(
+                t + d,
+                t + d + len + 0.02,
+                Wave::Noise { rate: 1.2, offset },
+                Env::constant(1.0),
+                Env::ramp(t + d, v, 0.001, len),
+                Bus::Music,
+            )
+            .filtered(FilterKind::Bandpass, 1150.0, 0.9),
         );
     }
 }
@@ -233,11 +240,11 @@ fn shout(s: &mut Synth, t: f64) {
 /// Hurdy-gurdy drone: a buzzing saw, softened, with a slow swell and a slight beat.
 fn drone(s: &mut Synth, t: f64, semitones: f64, dur: f64, vol: f64) {
     let gain = Env::points(vec![(t, vol * 0.7), (t + 0.08, vol), (t + dur - 0.1, vol * 0.9), (t + dur, 0.001)]);
-    s.push(
-        Voice::new(t, t + dur + 0.02, Wave::Saw, Env::constant(hz(semitones)), gain, Bus::Music)
-            .detune_cents(3.0)
-            .filtered(FilterKind::Lowpass, 850.0, 2.0),
-    );
+    s.push(Voice::new(t, t + dur + 0.02, Wave::Saw, Env::constant(hz(semitones)), gain, Bus::Music).detune_cents(3.0).filtered(
+        FilterKind::Lowpass,
+        850.0,
+        2.0,
+    ));
 }
 
 /// A round plucked bass note under the drone.
@@ -249,7 +256,14 @@ fn bass(s: &mut Synth, t: f64, semitones: f64, dur: f64) {
 /// The lyre: a bright pluck that rings a moment, with a soft octave shimmer.
 fn lyre(s: &mut Synth, t: f64, semitones: f64, vol: f64) {
     let f = hz(semitones);
-    s.push(Voice::new(t, t + 0.7, Wave::Triangle, Env::constant(f), Env::points(vec![(t, 0.0001), (t + 0.003, vol), (t + 0.65, 0.001)]), Bus::Music));
+    s.push(Voice::new(
+        t,
+        t + 0.7,
+        Wave::Triangle,
+        Env::constant(f),
+        Env::points(vec![(t, 0.0001), (t + 0.003, vol), (t + 0.65, 0.001)]),
+        Bus::Music,
+    ));
     s.push(Voice::new(t, t + 0.35, Wave::Sine, Env::constant(f * 2.0), Env::ramp(t, vol * 0.35, 0.001, 0.3), Bus::Music));
 }
 
@@ -257,7 +271,9 @@ fn lyre(s: &mut Synth, t: f64, semitones: f64, vol: f64) {
 fn flute(s: &mut Synth, t: f64, semitones: f64, dur: f64) {
     let f = hz(semitones);
     let gain = Env::points(vec![(t, 0.0001), (t + 0.04, 0.085), (t + dur * 0.8, 0.07), (t + dur, 0.001)]);
-    s.push(Voice::new(t, t + dur + 0.03, Wave::Sine, Env::constant(f), gain, Bus::Music).vibrato(5.2, if dur > 0.25 { 0.007 } else { 0.0 }));
+    s.push(
+        Voice::new(t, t + dur + 0.03, Wave::Sine, Env::constant(f), gain, Bus::Music).vibrato(5.2, if dur > 0.25 { 0.007 } else { 0.0 }),
+    );
     let body = Env::points(vec![(t, 0.0001), (t + 0.04, 0.02), (t + dur, 0.001)]);
     s.push(Voice::new(t, t + dur + 0.03, Wave::Triangle, Env::constant(f * 2.0), body, Bus::Music));
     let offset = s.rng.next() * 1.5;

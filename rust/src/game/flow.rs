@@ -1,24 +1,20 @@
 //! The frame loop and the screens: which screen is up, what each one does with input, the menus,
 //! the keys that work everywhere, and the scene handed to the renderer.
 
-use super::{CLEARED_SECONDS, Game, MenuItem, READY_SECONDS, Screen, save};
-use crate::audio::Sfx;
+use super::{save, Game, MenuItem, Screen, CLEARED_SECONDS, READY_SECONDS};
+use crate::audio::{Sfx, Soundtrack};
 use crate::input::Action;
-use crate::logic::types::Dir;
-use crate::render::view::{CameraMode, GateView, HubView, SceneState};
-use crate::audio::Soundtrack;
 use crate::logic::boss::BossState;
+use crate::logic::types::Dir;
 use crate::platform;
 use crate::render::hud;
-use crate::render::view::SelectView;
-use crate::render::view::StoryView;
+use crate::render::view::{CameraMode, GateView, HubView, SceneState, SelectView, StoryView};
 
 /// How long "GO!" hangs on screen once play begins.
 const GO_SECONDS: f32 = 0.8;
 
 /// How long the hero's fall plays before the round restarts (or the game is over).
 const DYING_SECONDS: f64 = 1.8;
-
 
 /// What the renderer is handed each frame, built from the game's fields. A macro rather than a
 /// method, so `update` can hand it to `self.view` (borrowed mutably) while it borrows the rest.
@@ -37,7 +33,14 @@ macro_rules! scene_state {
             puddles: &$g.puddles,
             boss: $g.boss.as_ref(),
             boss_shots: &$g.boss_shots,
-            gate: $g.gate.map(|tile| GateView { tile, keys: $g.keys_got, total: $g.keys_total, door: $g.door as f32, red: $g.boss.is_some(), key: $g.key_color() }),
+            gate: $g.gate.map(|tile| GateView {
+                tile,
+                keys: $g.keys_got,
+                total: $g.keys_total,
+                door: $g.door as f32,
+                red: $g.boss.is_some(),
+                key: $g.key_color(),
+            }),
             relic: $g.relic_shrine,
             decoy: $g.decoy.map(|(p, _)| p),
             hero_kind: $g.hero_kind,
@@ -60,7 +63,8 @@ impl Game {
         self.show_controls = false;
         self.show_map = false;
         // The backing track steps back when the game does, and under the fanfare.
-        self.audio.duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared | Screen::Toll));
+        self.audio
+            .duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared | Screen::Toll));
         if screen == Screen::Title {
             self.audio.set_tempo_step(0);
         }
@@ -317,7 +321,11 @@ impl Game {
         if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
             self.cheat_to_shop();
         }
-        if self.input.was_pressed(&[Action::Call]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !self.show_controls && !self.show_map {
+        if self.input.was_pressed(&[Action::Call])
+            && matches!(self.screen, Screen::Playing | Screen::Paused)
+            && !self.show_controls
+            && !self.show_map
+        {
             self.call_old_man();
         }
         if self.input.was_pressed(&[Action::Fullscreen]) {

@@ -39,7 +39,16 @@ impl WorldView {
                 continue;
             }
             let r = 4.6 + (i % 2) as f32 * 0.9;
-            push_field(&mut f.opaque[cube], &self.models.tree, at(a.cos() * r, 0.0, a.sin() * r), a * 3.0, 1.9 + (i % 3) as f32 * 0.3, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
+            push_field(
+                &mut f.opaque[cube],
+                &self.models.tree,
+                at(a.cos() * r, 0.0, a.sin() * r),
+                a * 3.0,
+                1.9 + (i % 3) as f32 * 0.3,
+                Vec3::ONE,
+                Vec3::ZERO,
+                SHADE_LIT,
+            );
         }
         let braziers = [at(-2.9, 0.0, 0.2), at(2.9, 0.0, 0.2)];
         for p in braziers {
@@ -57,13 +66,15 @@ impl WorldView {
         }
 
         // The warriors on the dais, and in front of each the boy who will carry his soul.
-        let heroes = [(HeroKind::Mehmed, &self.models.mehmed), (HeroKind::Ragnar, &self.models.ragnar), (HeroKind::Miyamoto, &self.models.miyamoto)];
+        let heroes =
+            [(HeroKind::Mehmed, &self.models.mehmed), (HeroKind::Ragnar, &self.models.ragnar), (HeroKind::Miyamoto, &self.models.miyamoto)];
         for (i, (_, rig)) in heroes.iter().enumerate() {
             let x = (i as f32 - 1.0) * 1.3;
             let tint = lin(story::SOUL_TINT[i]);
             let feet = at(x, 0.27, -0.75);
             let breathe = 1.0 + (time * 2.0 + i as f32 * 1.7).sin() * 0.006;
-            let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(-x * 0.12) * Mat4::from_scale(Vec3::new(1.12, 1.12 * breathe, 1.12));
+            let root =
+                Mat4::from_translation(feet) * Mat4::from_rotation_y(-x * 0.12) * Mat4::from_scale(Vec3::new(1.12, 1.12 * breathe, 1.12));
             let mut pose = Pose::rest(rig);
             if let Some(hd) = rig.index("head") {
                 pose.rot[hd].y = (time * 0.5 + i as f32 * 2.0).sin() * 0.12;
@@ -72,7 +83,9 @@ impl WorldView {
             emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, aura);
             // His soul's light: a halo behind him, a ring at his feet, motes rising.
             glow_orb(f, feet + Vec3::new(0.0, 0.75, -0.35), 1.25, tint, 0.2 + 0.05 * (time * 1.3 + i as f32).sin());
-            let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.01, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.5, 0.5, 1.0));
+            let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.01, 0.0))
+                * Mat4::from_rotation_x(-PI / 2.0)
+                * Mat4::from_scale(Vec3::new(0.5, 0.5, 1.0));
             f.glow.push(Instance::new(ring, tint, 0.3, Vec3::ZERO, SHADE_GLOW));
             for k in 0..8 {
                 let fk = k as f32;

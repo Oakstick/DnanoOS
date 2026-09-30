@@ -30,7 +30,10 @@ pub const FOREST: Foliage = Foliage { deep: 0x1a3a16, dark: 0x255a20, mid: 0x2f6
 const FRUIT: [u32; 4] = [0xd8262e, 0xf8f8f0, 0xffb0d8, 0xffe066];
 
 fn noise(x: i32, y: i32, z: i32, seed: u32) -> f32 {
-    let mut h = (x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ (z as u32).wrapping_mul(0xcb1a_b31f) ^ seed.wrapping_mul(0x9e37_79b9);
+    let mut h = (x as u32).wrapping_mul(0x8da6_b343)
+        ^ (y as u32).wrapping_mul(0xd816_3841)
+        ^ (z as u32).wrapping_mul(0xcb1a_b31f)
+        ^ seed.wrapping_mul(0x9e37_79b9);
     h ^= h >> 13;
     h = h.wrapping_mul(0x85eb_ca6b);
     h ^= h >> 16;
@@ -135,11 +138,21 @@ fn sculpt(seed: u32, w: i32, h: i32, boxy: bool, clumps: usize, pal: Foliage, fr
         let color = if y == 0 || (height < 0.18 && n < 0.7) {
             pal.deep
         } else if open_above {
-            if n < 0.22 { pal.sun } else if n < 0.75 { pal.light } else { pal.mid }
+            if n < 0.22 {
+                pal.sun
+            } else if n < 0.75 {
+                pal.light
+            } else {
+                pal.mid
+            }
         } else if n < 0.08 {
             pal.light
         } else if height < 0.45 {
-            if n < 0.55 { pal.dark } else { pal.deep }
+            if n < 0.55 {
+                pal.dark
+            } else {
+                pal.deep
+            }
         } else if n < 0.6 {
             pal.mid
         } else {
@@ -198,7 +211,8 @@ mod tests {
             let b = bush(v, MEADOW);
             assert!(b.cubes.len() > 120 && b.cubes.len() < 700, "bush {v}: {} voxels", b.cubes.len());
             // More than a box: several shades of green.
-            let mut shades: Vec<[u32; 3]> = b.cubes.iter().map(|(_, c)| [(c.x * 64.0) as u32, (c.y * 64.0) as u32, (c.z * 64.0) as u32]).collect();
+            let mut shades: Vec<[u32; 3]> =
+                b.cubes.iter().map(|(_, c)| [(c.x * 64.0) as u32, (c.y * 64.0) as u32, (c.z * 64.0) as u32]).collect();
             shades.sort();
             shades.dedup();
             assert!(shades.len() >= 5, "bush {v} has {} shades", shades.len());

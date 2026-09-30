@@ -9,10 +9,9 @@ use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::progression::Progress;
-use crate::logic::sins::{Sin, SINS};
+use crate::logic::sins::{Sin, ALL_SINS, SINS};
 use crate::logic::types::PotionKind;
 use crate::platform;
-use crate::logic::sins::ALL_SINS;
 
 /// Where the adventure's checkpoint is saved.
 const RUN_KEY: &str = "vh.run";
@@ -148,7 +147,14 @@ impl Game {
 
     /// Saves the adventure as it stands, at the start of `stage`.
     pub(super) fn checkpoint(&mut self, stage: Stage) {
-        let run = Run { hero: self.hero_kind, stage, score: self.score.score, lives: self.score.lives, belt: self.belt.clone(), sins: self.sins_cleared };
+        let run = Run {
+            hero: self.hero_kind,
+            stage,
+            score: self.score.score,
+            lives: self.score.lives,
+            belt: self.belt.clone(),
+            sins: self.sins_cleared,
+        };
         self.write_run(Some(run));
     }
 
@@ -283,7 +289,14 @@ mod tests {
     #[test]
     fn a_run_survives_the_save_file() {
         let runs = [
-            Run { hero: HeroKind::Miyamoto, stage: Stage::Arena(2), score: 12_345, lives: 2, belt: vec![PotionKind::Health, PotionKind::Life, PotionKind::Spirit], sins: 0 },
+            Run {
+                hero: HeroKind::Miyamoto,
+                stage: Stage::Arena(2),
+                score: 12_345,
+                lives: 2,
+                belt: vec![PotionKind::Health, PotionKind::Life, PotionKind::Spirit],
+                sins: 0,
+            },
             Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0 },
             Run { hero: HeroKind::Mehmed, stage: Stage::Shop(4), score: 99, lives: 1, belt: vec![PotionKind::Ragnarok], sins: 0b101_0011 },
             Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f },

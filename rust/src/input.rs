@@ -223,7 +223,11 @@ impl Input {
                     let (dx, dy) = (x - sx, y - sy);
                     if dx.abs().max(dy.abs()) > 18.0 {
                         self.touch_dir = if dx.abs() > dy.abs() {
-                            if dx > 0.0 { Dir::Right } else { Dir::Left }
+                            if dx > 0.0 {
+                                Dir::Right
+                            } else {
+                                Dir::Left
+                            }
                         } else if dy > 0.0 {
                             Dir::Down
                         } else {
@@ -283,7 +287,11 @@ impl Input {
             let (x, y) = pad.left;
             if x.abs().max(y.abs()) >= MOVE_DEADZONE {
                 dir = if x.abs() > y.abs() {
-                    if x > 0.0 { Dir::Right } else { Dir::Left }
+                    if x > 0.0 {
+                        Dir::Right
+                    } else {
+                        Dir::Left
+                    }
                 } else if y > 0.0 {
                     Dir::Down
                 } else {

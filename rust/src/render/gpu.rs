@@ -87,7 +87,12 @@ struct Dyn {
 
 impl Dyn {
     fn new(device: &wgpu::Device, label: &'static str, usage: wgpu::BufferUsages, cap: u64) -> Self {
-        let buf = device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: cap, usage: usage | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: cap,
+            usage: usage | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         Self { buf, cap, usage, label }
     }
 
@@ -148,7 +153,14 @@ impl PostShared {
     }
 }
 
-fn texture(device: &wgpu::Device, label: &str, (w, h): (u32, u32), format: wgpu::TextureFormat, samples: u32, sampled: bool) -> wgpu::TextureView {
+fn texture(
+    device: &wgpu::Device,
+    label: &str,
+    (w, h): (u32, u32),
+    format: wgpu::TextureFormat,
+    samples: u32,
+    sampled: bool,
+) -> wgpu::TextureView {
     let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
     if sampled {
         usage |= wgpu::TextureUsages::TEXTURE_BINDING;
@@ -175,7 +187,8 @@ impl Targets {
         let gbuf = texture(device, "gbuf", full, HDR, 1, true);
         let ao = texture(device, "ao", half, AO, 1, true);
         let ao_blur = texture(device, "ao blur", half, AO, 1, true);
-        let bloom: Vec<_> = (0..BLOOM_LEVELS).map(|i| texture(device, "bloom", ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1)), HDR, 1, true)).collect();
+        let bloom: Vec<_> =
+            (0..BLOOM_LEVELS).map(|i| texture(device, "bloom", ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1)), HDR, 1, true)).collect();
         let b = &post.blank;
         let ssao_bind = post.bind(device, "ssao", [&gbuf, b, b, b]);
         let blur_bind = post.bind(device, "blur", [&ao, &gbuf, b, b]);
@@ -345,7 +358,8 @@ impl Gpu {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let shadow_view = shadow_tex.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+        let shadow_view = shadow_tex
+            .create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
         let layer = |i: u32| {
             shadow_tex.create_view(&wgpu::TextureViewDescriptor {
                 dimension: Some(wgpu::TextureViewDimension::D2),
@@ -369,7 +383,11 @@ impl Gpu {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Depth, view_dimension: wgpu::TextureViewDimension::D2Array, multisampled: false },
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
@@ -400,7 +418,12 @@ impl Gpu {
             entries: &[uniform_entry(3, wgpu::ShaderStages::VERTEX)],
         });
         let cascade_buf = || {
-            device.create_buffer(&wgpu::BufferDescriptor { label: Some("cascade"), size: 64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false })
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cascade"),
+                size: 64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
         };
         let cascade_bufs = [cascade_buf(), cascade_buf()];
         let shadow_bind = |buf: &wgpu::Buffer| {
@@ -431,7 +454,12 @@ impl Gpu {
         let shadow_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("shadow"),
             layout: Some(&shadow_pl),
-            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_shadow"), buffers: &vertex_layouts, compilation_options: Default::default() },
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_shadow"),
+                buffers: &vertex_layouts,
+                compilation_options: Default::default(),
+            },
             fragment: None,
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState {
@@ -449,7 +477,11 @@ impl Gpu {
         let scene_targets = |blend: Option<wgpu::BlendState>, gbuf: bool| {
             [
                 Some(wgpu::ColorTargetState { format: COLOR, blend, write_mask: wgpu::ColorWrites::ALL }),
-                Some(wgpu::ColorTargetState { format: HDR, blend: None, write_mask: if gbuf { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() } }),
+                Some(wgpu::ColorTargetState {
+                    format: HDR,
+                    blend: None,
+                    write_mask: if gbuf { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() },
+                }),
             ]
         };
         let scene_pipe = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
@@ -508,7 +540,12 @@ impl Gpu {
         let sky_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("sky"),
             layout: Some(&scene_pl),
-            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_sky"), buffers: &[], compilation_options: Default::default() },
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_sky"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_sky"),
@@ -532,7 +569,11 @@ impl Gpu {
         let tex_entry = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
             count: None,
         };
         let post_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -560,7 +601,12 @@ impl Gpu {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(entry),
                 layout: Some(&post_pl),
-                vertex: wgpu::VertexState { module: &post_shader, entry_point: Some("vs_post"), buffers: &[], compilation_options: Default::default() },
+                vertex: wgpu::VertexState {
+                    module: &post_shader,
+                    entry_point: Some("vs_post"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &post_shader,
                     entry_point: Some(entry),
@@ -575,7 +621,11 @@ impl Gpu {
             })
         };
         let add_all = wgpu::BlendState {
-            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
             alpha: wgpu::BlendComponent::OVER,
         };
         let ssao_pipe = post_pipe("fs_ssao", AO, None);
@@ -848,8 +898,12 @@ impl Gpu {
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));
 
         // ---- instances: opaque by mesh, the early see-through ones, see-through by mesh, additive
-        let order_t = [MeshKind::Disc, MeshKind::Annulus, MeshKind::Ring, MeshKind::Cube, MeshKind::Sphere, MeshKind::Tube, MeshKind::Cylinder];
-        let total = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>() + frame.transparent_early.len() + frame.additive.len() + frame.glow.len();
+        let order_t =
+            [MeshKind::Disc, MeshKind::Annulus, MeshKind::Ring, MeshKind::Cube, MeshKind::Sphere, MeshKind::Tube, MeshKind::Cylinder];
+        let total = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>()
+            + frame.transparent_early.len()
+            + frame.additive.len()
+            + frame.glow.len();
         let mut all: Vec<Instance> = Vec::with_capacity(total);
         let mut ranges: Vec<(u8, usize, u32, u32)> = Vec::new(); // (pipeline, mesh, start, count)
         for k in 0..MESH_KINDS {
@@ -936,7 +990,10 @@ impl Gpu {
                     Some(wgpu::RenderPassColorAttachment {
                         view: &self.rt.msaa_gbuf,
                         resolve_target: Some(&self.rt.gbuf),
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.0, g: 1.0, b: 0.0, a: 10000.0 }), store: wgpu::StoreOp::Discard },
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.0, g: 1.0, b: 0.0, a: 10000.0 }),
+                            store: wgpu::StoreOp::Discard,
+                        },
                     }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -979,13 +1036,23 @@ impl Gpu {
         }
 
         // ---- post
-        fn fullscreen(enc: &mut wgpu::CommandEncoder, label: &str, target: &wgpu::TextureView, pipe: &wgpu::RenderPipeline, bind: &wgpu::BindGroup, clear: bool) {
+        fn fullscreen(
+            enc: &mut wgpu::CommandEncoder,
+            label: &str,
+            target: &wgpu::TextureView,
+            pipe: &wgpu::RenderPipeline,
+            bind: &wgpu::BindGroup,
+            clear: bool,
+        ) {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(label),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: target,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: if clear { wgpu::LoadOp::Clear(wgpu::Color::BLACK) } else { wgpu::LoadOp::Load }, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: if clear { wgpu::LoadOp::Clear(wgpu::Color::BLACK) } else { wgpu::LoadOp::Load },
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,

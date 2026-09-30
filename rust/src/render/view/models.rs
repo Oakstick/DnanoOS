@@ -100,7 +100,9 @@ impl Models {
         let bat = build_rig(&raven(false), RAVEN_RIG, 0.0105);
         let vampire = build_rig(&raven(true), RAVEN_RIG, 0.0125);
         let slime = build_rig(&bog_slime(), &[], 0.01875);
-        use crate::render::foes2::{blemmyes, helmeted_skeleton, large_bat, loup_garou, minion, witch, BAT_RIG, BLEMMYES_RIG, HELMET_RIG, WITCH_RIG, WOLF_RIG};
+        use crate::render::foes2::{
+            blemmyes, helmeted_skeleton, large_bat, loup_garou, minion, witch, BAT_RIG, BLEMMYES_RIG, HELMET_RIG, WITCH_RIG, WOLF_RIG,
+        };
         let witch = build_rig(&witch(), WITCH_RIG, 0.0125);
         let minion = build_rig(&minion(), &[], 0.014);
         let helmeted = build_rig(&helmeted_skeleton(), HELMET_RIG, 0.0125);

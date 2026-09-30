@@ -51,7 +51,13 @@ fn strands(s: &mut Sculpt, of: &[u32], dark: u32, mid: u32, light: u32) {
         }
         let strand = x + ((y as f32 * 0.24 + z as f32 * 0.3).sin() * 1.3).round() as i32;
         let n = nz(strand, z / 3, y / 12);
-        Some(if n < 0.26 { dark } else if n > 0.74 { light } else { mid })
+        Some(if n < 0.26 {
+            dark
+        } else if n > 0.74 {
+            light
+        } else {
+            mid
+        })
     });
 }
 
@@ -178,7 +184,13 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
             return Some(TUNIC_D); // folds in the skirt
         }
         let n = nz(x, y, z);
-        Some(if n < 0.07 { TUNIC_D } else if n > 0.94 { TUNIC_L } else { TUNIC })
+        Some(if n < 0.07 {
+            TUNIC_D
+        } else if n > 0.94 {
+            TUNIC_L
+        } else {
+            TUNIC
+        })
     });
     // The red cloak down his back, hanging in folds, its hem ragged.
     for y in 28..=56 {
@@ -189,7 +201,13 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
             if y == 28 && nz(x, y, 0) > 0.6 {
                 continue;
             }
-            let c = if fold < -0.5 { CLOAK_D } else if fold > 0.7 { CLOAK_L } else { CLOAK };
+            let c = if fold < -0.5 {
+                CLOAK_D
+            } else if fold > 0.7 {
+                CLOAK_L
+            } else {
+                CLOAK
+            };
             s.set(x, y, z, c);
             s.set(x, y, z + 1, CLOAK);
         }
@@ -268,7 +286,13 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
             return None;
         }
         let n = nz(x, y / 2, z);
-        Some(if n < 0.28 { FUR_D } else if n > 0.74 { FUR_L } else { FUR })
+        Some(if n < 0.28 {
+            FUR_D
+        } else if n > 0.74 {
+            FUR_L
+        } else {
+            FUR
+        })
     });
     let bz = front(&s, 41, 58, d).unwrap_or(26);
     for k in 0..14 {
@@ -360,7 +384,13 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     for y in 44..=72 {
         let fy = y as f32;
         let z = 5.5 + (fy - 44.0) * 0.08;
-        let c = if (48..=49).contains(&y) { GOLD } else if y % 3 == 0 { BEARD_D } else { HAIR };
+        let c = if (48..=49).contains(&y) {
+            GOLD
+        } else if y % 3 == 0 {
+            BEARD_D
+        } else {
+            HAIR
+        };
         ball(&mut s, v(cx, fy, z), v(1.6, 0.8, 1.2), c);
     }
 
@@ -372,14 +402,26 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
         }
         let seg = (turn(x, z, cx, 15.8) * 72.0) as i32;
         if y <= 77 {
-            return Some(if y == 76 && seg % 3 == 0 { RIVET } else if y == 74 { BRONZE_D } else { BRONZE });
+            return Some(if y == 76 && seg % 3 == 0 {
+                RIVET
+            } else if y == 74 {
+                BRONZE_D
+            } else {
+                BRONZE
+            });
         }
         let strip = (x as f32 - cx).abs() < 1.1 || (z as f32 - 15.8).abs() < 1.1;
         if strip {
             return Some(if y % 4 == 0 { RIVET } else { BRONZE_D });
         }
         let n = nz(x, y, z);
-        Some(if n < 0.1 { HELM_D } else if n > 0.92 { HELM_L } else { HELM })
+        Some(if n < 0.1 {
+            HELM_D
+        } else if n > 0.92 {
+            HELM_L
+        } else {
+            HELM
+        })
     });
     ball(&mut s, v(cx, 88.6, 15.8), Vec3::splat(1.6), BRONZE);
     for y in 69..=77 {
@@ -397,7 +439,15 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
             let z = 15.8 - 2.4 * t;
             let ring = (t * 9.0).fract() < 0.16 && t > 0.15 && t < 0.82;
             let r = 3.5 * (1.0 - t) + 0.9 + if ring { 0.35 } else { 0.0 };
-            let color = if t < 0.08 { BRONZE } else if t > 0.82 { HORN_TIP } else if ring { HORN_M } else { HORN };
+            let color = if t < 0.08 {
+                BRONZE
+            } else if t > 0.82 {
+                HORN_TIP
+            } else if ring {
+                HORN_M
+            } else {
+                HORN
+            };
             ball(&mut s, v(x, y, z), Vec3::splat(r), color);
         }
     }
@@ -511,7 +561,13 @@ pub fn mehmed_hd(shield: Option<(Form, u32, u8)>) -> Collected {
             if fringe && x % 2 == 1 {
                 continue;
             }
-            let c = if fringe || y == 17 { GOLD_D } else if y % 4 == 0 { SASH_D } else { SASH };
+            let c = if fringe || y == 17 {
+                GOLD_D
+            } else if y % 4 == 0 {
+                SASH_D
+            } else {
+                SASH
+            };
             s.set(x, y, fz + 1, c);
         }
     }
@@ -646,7 +702,13 @@ pub fn mehmed_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     for y in 60..=109 {
         let half = if y >= 104 { 8.8 - (y - 104) as f32 * 0.6 } else { 8.8 };
         for x in (cx - half).round() as i32..=(cx + half).round() as i32 {
-            let c = if y <= 61 { GOLD_D } else if x % 6 == 0 { FELT_D } else { FELT };
+            let c = if y <= 61 {
+                GOLD_D
+            } else if x % 6 == 0 {
+                FELT_D
+            } else {
+                FELT
+            };
             s.set(x, y, 8, c);
             s.set(x, y, 9, FELT);
             if y >= 104 {
@@ -734,7 +796,11 @@ fn lame(y: i32, top: i32, u: i32, every: i32) -> u32 {
     if row == 5 {
         GOLD_D
     } else if u.rem_euclid(every) < 2 && row != 0 {
-        if row % 2 == 0 { LACING_L } else { LACING }
+        if row % 2 == 0 {
+            LACING_L
+        } else {
+            LACING
+        }
     } else {
         LACQUER
     }
@@ -767,7 +833,13 @@ pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
         for y in 6..=19 {
             for x in (lx - 5.0).round() as i32..=(lx + 5.0).round() as i32 {
                 let Some(fz) = front(&s, x, y, d) else { continue };
-                let c = if y >= 18 { GOLD } else if (x - lx.round() as i32).rem_euclid(4) == 0 { GOLD_D } else { BLACK };
+                let c = if y >= 18 {
+                    GOLD
+                } else if (x - lx.round() as i32).rem_euclid(4) == 0 {
+                    GOLD_D
+                } else {
+                    BLACK
+                };
                 s.set(x, y, fz + 1, c);
             }
         }
@@ -814,13 +886,32 @@ pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     for k in 0..8 {
         let t = k as f32 / 7.0;
         let p = v(34.2, 36.8, 34.4).lerp(v(36.4, 40.4, 40.0), t);
-        ball(&mut s, p, Vec3::splat(1.3), if k == 7 { GOLD } else if k % 2 == 0 { SAME } else { WRAP });
+        ball(
+            &mut s,
+            p,
+            Vec3::splat(1.3),
+            if k == 7 {
+                GOLD
+            } else if k % 2 == 0 {
+                SAME
+            } else {
+                WRAP
+            },
+        );
     }
 
     // ---- the dō: a cuirass of red lames edged in gold under a black breastplate, a gilt crest
     for y in 38..=59 {
         let rz = 9.6 + ((y - 38) as f32 / 21.0 * PI).sin() * 0.6;
-        let c = if y >= 56 { if y == 59 { GOLD } else { BLACK } } else { LACQUER };
+        let c = if y >= 56 {
+            if y == 59 {
+                GOLD
+            } else {
+                BLACK
+            }
+        } else {
+            LACQUER
+        };
         slab(&mut s, cx, cz, 17.2, rz, 2.8, y, y, c);
     }
     s.paint(|x, y, z, c| (c == LACQUER && (38..=55).contains(&y)).then(|| lame(y, 55, x + z, 6)));
@@ -952,7 +1043,13 @@ pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
                         continue;
                     }
                     let seg = (turn(x, z, cx, 20.0) * 90.0) as i32;
-                    let c = if y == top - 3 { GOLD_D } else if seg % 6 < 2 { LACING } else { LACQUER };
+                    let c = if y == top - 3 {
+                        GOLD_D
+                    } else if seg % 6 < 2 {
+                        LACING
+                    } else {
+                        LACQUER
+                    };
                     s.set(x, y, z, c);
                 }
             }
@@ -962,7 +1059,13 @@ pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     for (x0, x1) in [(32, 37), (58, 63)] {
         for y in 68..=75 {
             for z in 24..=29 {
-                let c = if y == 75 { GOLD } else if z >= 28 { GOLD_D } else { LACQUER };
+                let c = if y == 75 {
+                    GOLD
+                } else if z >= 28 {
+                    GOLD_D
+                } else {
+                    LACQUER
+                };
                 for x in x0..=x1 {
                     s.set(x, y, z, c);
                 }

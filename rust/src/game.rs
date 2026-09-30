@@ -34,13 +34,15 @@ mod save;
 mod select;
 mod shop;
 mod story;
-mod tour;
-mod vault;
 #[cfg(test)]
 mod tests;
+mod tour;
+mod vault;
 
 pub use combat::Spirit;
-pub use feedback::{streak_tier, Banner, Floater, FlyingCoin, Juice, BRUTAL_STREAK, COIN_FLIGHT_SECONDS, DOUBLE_POINTS_SECONDS, STREAK_CALLS};
+pub use feedback::{
+    streak_tier, Banner, Floater, FlyingCoin, Juice, BRUTAL_STREAK, COIN_FLIGHT_SECONDS, DOUBLE_POINTS_SECONDS, STREAK_CALLS,
+};
 pub use level::center_spawn;
 pub use map::map_stops;
 pub use save::Stage;
@@ -55,14 +57,14 @@ use crate::logic::boss::{BossEvent, BossShot, Cyclops};
 use crate::logic::enemy::{Enemy, EnemyContext, EnemyKind, GlobalMode, HeroView};
 use crate::logic::gear::BELT_SLOTS;
 use crate::logic::hero::Hero;
-use crate::logic::items::{BOMBS_PER_LIFE, Bomb, Diamond, Potion};
+use crate::logic::items::{Bomb, Diamond, Potion, BOMBS_PER_LIFE};
 use crate::logic::level::{parse_level, ParsedLevel, Theme};
 use crate::logic::levels::level_for;
 use crate::logic::progression::Progress;
 use crate::logic::projectile::Projectile;
 use crate::logic::rng::Rng;
 use crate::logic::systems::{Frenzy, PuddleField, Score};
-use crate::logic::types::{Dir, P, PotionKind, V};
+use crate::logic::types::{Dir, PotionKind, P, V};
 use crate::render::view::{CameraMode, WorldView};
 use std::collections::HashMap;
 
@@ -379,7 +381,11 @@ impl Game {
             boss_events: Vec::new(),
             red_key: None,
             // Tests start from nothing; the game from the saved progress.
-            progress: if cfg!(test) { Progress::default() } else { crate::platform::load("vh.progress").and_then(|s| Progress::decode(&s)).unwrap_or_default() },
+            progress: if cfg!(test) {
+                Progress::default()
+            } else {
+                crate::platform::load("vh.progress").and_then(|s| Progress::decode(&s)).unwrap_or_default()
+            },
             belt: Vec::new(),
             belt_index: 0,
             shop: ShopState::default(),
@@ -521,12 +527,7 @@ impl Game {
             self.audio.set_frenzy(false);
         }
 
-        let hero = HeroView {
-            pos: self.hero.pos(),
-            dir: self.hero.dir(),
-            heard_pos: self.hero.heard_pos,
-            heard_age: self.hero.heard_age,
-        };
+        let hero = HeroView { pos: self.hero.pos(), dir: self.hero.dir(), heard_pos: self.hero.heard_pos, heard_age: self.hero.heard_age };
         for i in 0..self.enemies.len() {
             let skeleton_pos = self.enemies.iter().find(|e| e.kind() == EnemyKind::Skeleton).map(|e| e.pos());
             let quarry = if self.enemies[i].is_ally() { self.quarry_for(self.enemies[i].pos()) } else { None };
@@ -558,7 +559,6 @@ impl Game {
         }
         self.update_effects(dt);
     }
-
 }
 
 impl Default for Game {

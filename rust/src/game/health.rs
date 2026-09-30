@@ -3,10 +3,10 @@
 
 use super::{Banner, Game, Screen};
 use crate::audio::Sfx;
-use crate::logic::progression;
 use crate::logic::hero::DamageResult;
 use crate::logic::heroes::HeroKind;
-use crate::logic::progression::{Tree, path};
+use crate::logic::progression;
+use crate::logic::progression::{path, Tree};
 
 impl Game {
     /**
@@ -23,7 +23,8 @@ impl Game {
             self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.0, 0x6ae86a, 50);
             self.juice.hp_flash = 1.0;
             self.juice.hp_flash_color = 0x5cff6a;
-            self.juice.banner = Some(Banner { text: n.ability.to_uppercase(), sub: "FULLY RESTORED".into(), color: 0x6ae86a, life: 2.0, max: 2.0 });
+            self.juice.banner =
+                Some(Banner { text: n.ability.to_uppercase(), sub: "FULLY RESTORED".into(), color: 0x6ae86a, life: 2.0, max: 2.0 });
         }
     }
 
@@ -67,7 +68,13 @@ impl Game {
                     self.audio.play(Sfx::Brutal);
                     self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.2, 0xc8202a, 50);
                     self.view.shake(0.6);
-                    self.juice.banner = Some(Banner { text: n.ability.to_uppercase(), sub: "YOU CANNOT DIE   TRIPLE DAMAGE".into(), color: 0xff4a3a, life: 2.2, max: 2.2 });
+                    self.juice.banner = Some(Banner {
+                        text: n.ability.to_uppercase(),
+                        sub: "YOU CANNOT DIE   TRIPLE DAMAGE".into(),
+                        color: 0xff4a3a,
+                        life: 2.2,
+                        max: 2.2,
+                    });
                     return false;
                 }
                 if !self.hero.alive && self.hero.path >= 9 && self.hero_kind == HeroKind::Ragnar && !self.revived {
@@ -79,7 +86,13 @@ impl Game {
                     let n = progression::node(self.hero_kind, Tree::Path, 9);
                     self.audio.play(Sfx::Heal);
                     self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.4, 0xfff1a8, 60);
-                    self.juice.banner = Some(Banner { text: n.ability.to_uppercase(), sub: "RAISED AGAIN WITH HALF YOUR HEALTH".into(), color: 0xfff1a8, life: 2.2, max: 2.2 });
+                    self.juice.banner = Some(Banner {
+                        text: n.ability.to_uppercase(),
+                        sub: "RAISED AGAIN WITH HALF YOUR HEALTH".into(),
+                        color: 0xfff1a8,
+                        life: 2.2,
+                        max: 2.2,
+                    });
                     return false;
                 }
                 if !self.hero.alive {

@@ -149,15 +149,45 @@ pub const SCENE_ONE: &[Beat] = &[
     Beat::action(Shot::Arrive, 5.6, Some(GATEWAY)),
     Beat::say(Shot::Snarl, Speaker::Dog, "snarls viciously", "GRRRRR... RRRAAAHH!"),
     Beat::say(Shot::Easy, Speaker::OldMan, "hoarsely", "Easy, Quitmer... easy. Down, old friend."),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "turning to the boys", "Living children... at my door? No. No, no. You cannot be here. Nothing warm passes this gate."),
-    Beat::say(Shot::Boys, Speaker::Boys, "breathless", "A monster came out of the fog - horns, chains, bells... It dragged our friend into the graves!"),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "", "Horns and bells... Krampus. So he slipped past me. I closed my eyes for one moment... one moment."),
+    Beat::say(
+        Shot::OldMan,
+        Speaker::OldMan,
+        "turning to the boys",
+        "Living children... at my door? No. No, no. You cannot be here. Nothing warm passes this gate.",
+    ),
+    Beat::say(
+        Shot::Boys,
+        Speaker::Boys,
+        "breathless",
+        "A monster came out of the fog - horns, chains, bells... It dragged our friend into the graves!",
+    ),
+    Beat::say(
+        Shot::OldMan,
+        Speaker::OldMan,
+        "",
+        "Horns and bells... Krampus. So he slipped past me. I closed my eyes for one moment... one moment.",
+    ),
     Beat::say(Shot::Boys, Speaker::Boys, "", "Then help us! We have to get him back!"),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "", "Beyond this door lies the world of the dead. The living do not walk there... not for long."),
+    Beat::say(
+        Shot::OldMan,
+        Speaker::OldMan,
+        "",
+        "Beyond this door lies the world of the dead. The living do not walk there... not for long.",
+    ),
     Beat::say(Shot::Boys, Speaker::Boys, "angrily", "You were supposed to guard it! How could you let him out?"),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "looking away", "Quitmer and I have kept this door a thousand years... and tonight, of all nights, we slept."),
+    Beat::say(
+        Shot::OldMan,
+        Speaker::OldMan,
+        "looking away",
+        "Quitmer and I have kept this door a thousand years... and tonight, of all nights, we slept.",
+    ),
     Beat::say(Shot::Boys, Speaker::Boys, "", "We are not going home without him. There has to be a way!"),
-    Beat::say(Shot::OldMan, Speaker::OldMan, "gravely", "There is one way. Only one. But hear me: die down there, and you will never see the sun again."),
+    Beat::say(
+        Shot::OldMan,
+        Speaker::OldMan,
+        "gravely",
+        "There is one way. Only one. But hear me: die down there, and you will never see the sun again.",
+    ),
     Beat::say(Shot::Boys, Speaker::Boys, "", "Then we will not die. Whatever it takes - we are going."),
     Beat::say(Shot::Souls, Speaker::OldMan, "", SOULS_LINE),
     Beat::say(Shot::Boys, Speaker::Boys, "", "We will. For our friend."),
@@ -244,8 +274,21 @@ pub const ROUTE: Route = Route {
 
 /// Roman numerals, for the depths.
 pub fn roman(mut n: usize) -> String {
-    const TABLE: [(usize, &str); 13] =
-        [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")];
+    const TABLE: [(usize, &str); 13] = [
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ];
     let mut out = String::new();
     for (v, s) in TABLE {
         while n >= v {
