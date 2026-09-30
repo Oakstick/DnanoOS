@@ -11,7 +11,7 @@
 //! the water always crosses paths square-on and never blocks one: every
 //! crossing becomes a bridge. Bridges are walkable by everyone but slimes.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use super::grid::Grid;
 use super::types::{Dir, Tile, CARDINALS, P};
@@ -96,7 +96,8 @@ pub fn plan(grid: &Grid, keep: &[P]) -> Option<GardenPlan> {
  * across it, in one row, flowing east to west. No scenery beyond that.
  */
 pub fn stream_plan(grid: &Grid) -> Option<GardenPlan> {
-    let mut rows: HashMap<i32, Vec<i32>> = HashMap::new();
+    // Ordered, so a tie between rows always goes the same way.
+    let mut rows: BTreeMap<i32, Vec<i32>> = BTreeMap::new();
     for (x, y, t) in grid.cells() {
         if t == Tile::Pit {
             rows.entry(y).or_default().push(x);

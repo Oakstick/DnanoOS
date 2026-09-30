@@ -1,6 +1,6 @@
 //! Pure rules: combat reach, explosions, the frenzy window, slime puddles and score.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use super::enemy::Enemy;
 use super::grid::Grid;
@@ -231,7 +231,8 @@ pub const PUDDLE_SECONDS: f64 = 8.0;
 /// Temporary slime marks left on tiles; each fades out on its own timer.
 #[derive(Clone, Debug, Default)]
 pub struct PuddleField {
-    map: HashMap<P, f64>,
+    /// Ordered, so the goo is always drawn in the same order.
+    map: BTreeMap<P, f64>,
 }
 
 impl PuddleField {

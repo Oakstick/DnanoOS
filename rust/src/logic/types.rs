@@ -73,7 +73,7 @@ impl Dir {
 pub const CARDINALS: [Dir; 4] = [Dir::Up, Dir::Left, Dir::Down, Dir::Right];
 
 /// Integer tile coordinate.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, Default)]
 pub struct P {
     pub x: i32,
     pub y: i32,

@@ -548,6 +548,13 @@ impl Game {
         g
     }
 
+    /// Seeds the game's and the view's random generators, so a scripted run (a capture) plays the
+    /// same every time.
+    pub fn reseed(&mut self, seed: u32) {
+        self.rng = Rng::new(seed);
+        self.view.reseed(seed.wrapping_add(1));
+    }
+
     // ---------------------------------------------------------------- setup
 
     /// Dungeon `index`: the labyrinth with its 25 nuggets.

@@ -735,7 +735,8 @@ pub struct WorldView {
     /// Static instance ranges rewritten since the last upload (tree fades).
     pub static_patches: Vec<(usize, usize)>,
     coin_ranges: HashMap<P, (usize, usize)>,
-    torches: HashMap<P, (Vec3, (usize, usize))>,
+    /// Ordered, so the nearest lanterns always light in the same order.
+    torches: std::collections::BTreeMap<P, (Vec3, (usize, usize))>,
     charges: Vec<(P, Vec3)>,
     mote_base: Vec<Vec3>,
     effect_lights: [EffectLight; LIGHT_POOL_EFFECTS],
@@ -852,7 +853,7 @@ impl WorldView {
             tree_index: HashMap::new(),
             static_patches: Vec::new(),
             coin_ranges: HashMap::new(),
-            torches: HashMap::new(),
+            torches: std::collections::BTreeMap::new(),
             charges: Vec::new(),
             mote_base: Vec::new(),
             effect_lights: [EffectLight::default(); LIGHT_POOL_EFFECTS],
@@ -908,6 +909,11 @@ impl WorldView {
             ghost_clock: 0.0,
             rng: Rng::from_time(),
         }
+    }
+
+    /// Seeds the view's random generator (particles, fireflies), for repeatable captures.
+    pub fn reseed(&mut self, seed: u32) {
+        self.rng = Rng::new(seed);
     }
 
     // ---------------------------------------------------------------- build

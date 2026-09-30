@@ -193,6 +193,8 @@ pub fn run(args: &[String]) -> i32 {
     };
     eprintln!("renderer: {}", gpu.backend);
     let mut game = Game::new();
+    // Fixed seeds, so the same script always renders the same picture.
+    game.reseed(1);
     game.viewport = (w as f32, h as f32);
     game.tour_pending = false;
     let mut next = 0;
