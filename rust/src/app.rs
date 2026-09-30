@@ -21,6 +21,8 @@ use crate::render::overlay::Overlay;
 use crate::render::view::Frame;
 use crate::render::characters::ragnar;
 use crate::render::voxels::sprite_from;
+#[cfg(feature = "steam")]
+use crate::steam::Steam;
 
 /// Fixed simulation step.
 pub const STEP: f64 = 1.0 / 120.0;
@@ -54,7 +56,7 @@ pub struct App {
     modifiers: ModifiersState,
     fullscreen: bool,
     #[cfg(feature = "steam")]
-    steam: Option<crate::steam::Steam>,
+    steam: Option<Steam>,
 }
 
 impl App {
@@ -85,7 +87,7 @@ impl App {
             modifiers: ModifiersState::empty(),
             fullscreen,
             #[cfg(feature = "steam")]
-            steam: crate::steam::Steam::init(),
+            steam: Steam::init(),
         }
     }
 

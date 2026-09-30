@@ -10,6 +10,8 @@ use crate::logic::gear::BELT_SLOTS;
 use crate::logic::progression::{self, Tree, TIERS};
 use crate::logic::story::roman;
 use crate::render::icons::{icon, Icon};
+use crate::logic::systems::MAX_LIVES;
+use crate::logic::types::PotionKind;
 
 struct Layout {
     /// Panel x, y, width, height.
@@ -177,8 +179,8 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 }
                 let cy = rect[1] + rect[3] / 2.0;
                 let iw = t * 1.2;
-                draw_sprite(o, icon(Icon::Potion(hero, crate::logic::types::PotionKind::Life)), rect[0] + t * 1.6, cy - iw / 2.0, iw / 16.0, None, 1.0);
-                let lives = format!("EXTRA LIFE   {}/{}", g.score.lives, crate::logic::systems::MAX_LIVES);
+                draw_sprite(o, icon(Icon::Potion(hero, PotionKind::Life)), rect[0] + t * 1.6, cy - iw / 2.0, iw / 16.0, None, 1.0);
+                let lives = format!("EXTRA LIFE   {}/{}", g.score.lives, MAX_LIVES);
                 o.text(&lives, rect[0] + t * 3.15, cy, small, rgba(0xff6d8d, 1.0), Align::Left, true);
             }
             RowKind::Tabs | RowKind::Leave => {}

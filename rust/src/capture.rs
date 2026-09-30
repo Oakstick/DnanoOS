@@ -34,6 +34,20 @@ use crate::render::gpu::Gpu;
 use crate::render::hud;
 use crate::render::overlay::Overlay;
 use crate::render::view::Frame;
+use crate::audio::synth::Synth;
+use crate::game::Screen;
+use crate::game::Stage;
+use crate::logic::angels::ARCHANGELS;
+use crate::logic::angels::Blessing;
+use crate::logic::gear::ALL_POTIONS;
+use crate::logic::gear::ShieldGear;
+use crate::logic::items::DiamondKind;
+use crate::logic::progression::TIERS;
+use crate::logic::sins::ALL_SINS;
+use crate::logic::sins::SINS;
+use crate::logic::types::P;
+use crate::render::characters;
+use crate::render::voxels;
 
 fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
@@ -211,13 +225,13 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Hurt => game.debug_hurt(),
                 Cmd::Wound(n) => game.debug_wound_boss(n),
                 Cmd::Daze => game.debug_daze_boss(),
-                Cmd::At(x, y) => game.hero.place(crate::logic::types::P::new(x, y)),
-                Cmd::Hub => game.map_jump(crate::game::Stage::Hub),
+                Cmd::At(x, y) => game.hero.place(P::new(x, y)),
+                Cmd::Hub => game.map_jump(Stage::Hub),
                 Cmd::Map => game.open_map(),
-                Cmd::Gym => game.map_jump(crate::game::Stage::Gym),
-                Cmd::Realm(n) => game.map_jump(crate::game::Stage::Realm(crate::logic::sins::SINS[n.min(6)])),
-                Cmd::Court(n) => game.map_jump(crate::game::Stage::Court(crate::logic::sins::SINS[n.min(6)])),
-                Cmd::Sins(n) => game.sins_cleared = n & crate::logic::sins::ALL_SINS,
+                Cmd::Gym => game.map_jump(Stage::Gym),
+                Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
+                Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
+                Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
                 Cmd::Slay => game.debug_wound_boss(1000),
                 Cmd::Shop => game.open_shop(),
                 Cmd::Tour => game.tour_pending = true,
@@ -226,22 +240,22 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Gate => game.cheat_to_gate(),
                 Cmd::Foes(rows) => game.debug_foes(rows),
                 Cmd::Dungeon(n) => game.debug_dungeon(n),
-                Cmd::Bless(n) => game.blessing = Some(crate::logic::angels::Blessing::of(crate::logic::angels::ARCHANGELS[n.min(3)])),
+                Cmd::Bless(n) => game.blessing = Some(Blessing::of(ARCHANGELS[n.min(3)])),
                 Cmd::Arm(tier) => game.debug_arm(tier),
                 Cmd::Shield(tier) => {
-                    game.hero.shield = (tier > 0).then(|| crate::logic::gear::ShieldGear::new(tier.min(crate::logic::progression::TIERS)));
+                    game.hero.shield = (tier > 0).then(|| ShieldGear::new(tier.min(TIERS)));
                 }
                 Cmd::Coins(n) => game.progress.silver = n,
                 Cmd::Runes(n) => game.progress.runes = n,
                 Cmd::Path(n) => {
                     let hero = game.hero_kind;
-                    game.progress.hero_mut(hero).owned[1] = n.min(crate::logic::progression::TIERS);
+                    game.progress.hero_mut(hero).owned[1] = n.min(TIERS);
                     game.equip_from_progress();
                 }
                 Cmd::Row(n) => game.shop.row = n,
                 Cmd::Call => game.call_old_man(),
                 // Drink brew number N (0 = tier 1 .. 9 = tier 10, 10 = an extra life) at once, to see its effect.
-                Cmd::Potion(i) => game.debug_drink(crate::logic::gear::ALL_POTIONS[i.min(10)]),
+                Cmd::Potion(i) => game.debug_drink(ALL_POTIONS[i.min(10)]),
             }
             next += 1;
         }
@@ -284,7 +298,7 @@ pub fn run(args: &[String]) -> i32 {
     // A story shot sets its own camera as it draws; aim again afterwards so `--view` can frame the cast.
     if let Some(v) = arg(args, "--view") {
         let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
-        if n.len() >= 5 && game.screen == crate::game::Screen::Story {
+        if n.len() >= 5 && game.screen == Screen::Story {
             let target = glam::Vec3::new(n[0], n[1], n[2]);
             game.view.set_closeup_rise(target, n[3].to_radians(), n[4], n.get(5).copied().unwrap_or(0.28));
         }
@@ -311,7 +325,7 @@ pub fn run(args: &[String]) -> i32 {
             let dynamic: usize = frame.opaque.iter().chain(frame.transparent.iter()).map(|l| l.len()).sum::<usize>() + frame.additive.len() + frame.glow.len();
             let at = game.hero.pos();
             let boss = game.boss.as_ref().map(|b| format!(", boss at {:.1},{:.2},{:.1}", b.pos.x, b.hover, b.pos.y)).unwrap_or_default();
-            let shrines: Vec<String> = game.diamonds.iter().filter(|d| d.kind == crate::logic::items::DiamondKind::Angel).map(|d| format!("{},{}", d.tile.x, d.tile.y)).collect();
+            let shrines: Vec<String> = game.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel).map(|d| format!("{},{}", d.tile.x, d.tile.y)).collect();
             let shrines = if shrines.is_empty() { String::new() } else { format!(", archangels' shrines at {}", shrines.join(" ")) };
             let shrines = shrines + &game.red_key.map(|k| format!(", red key at {},{}", k.x, k.y)).unwrap_or_default();
             eprintln!(
@@ -336,7 +350,7 @@ pub fn run(args: &[String]) -> i32 {
 /// `intensity` 0..1 previews the danger layers.
 pub fn write_music(path: &str, seconds: f64, intensity: f64) -> std::io::Result<()> {
     let rate = 48_000u32;
-    let mut synth = crate::audio::synth::Synth::new(rate as f64, 0.42);
+    let mut synth = Synth::new(rate as f64, 0.42);
     synth.music.running = true;
     synth.intensity = intensity;
     let mut buf = vec![0.0f32; (rate as f64 * seconds) as usize];
@@ -369,7 +383,7 @@ pub fn write_music(path: &str, seconds: f64, intensity: f64) -> std::io::Result<
 
 /// Writes the application icon (Ragnar's front view) as a multi-size .ico.
 pub fn write_icon(path: &str) -> std::io::Result<()> {
-    let sprite = crate::render::voxels::sprite_from(&crate::render::characters::ragnar());
+    let sprite = voxels::sprite_from(&characters::ragnar());
     let sizes = [16u32, 24, 32, 48, 64, 128, 256];
     let mut images = Vec::new();
     for &size in &sizes {

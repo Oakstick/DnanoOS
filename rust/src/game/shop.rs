@@ -11,6 +11,8 @@ use crate::input::Action;
 use crate::logic::gear::{self, ShieldGear, BELT_SLOTS};
 use crate::logic::progression::{self, Refusal, Tree, TIERS, TREES};
 use crate::logic::types::{Dir, PotionKind};
+use crate::logic::systems::MAX_LIVES;
+use crate::render::hud;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ShopAction {
@@ -195,7 +197,7 @@ impl Game {
         self.shop.row = self.shop.row.min(n - 1);
         self.shop.col = if self.shop.row == 0 { TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0) } else { 0 };
 
-        let rects = crate::render::hud::shop_rects(&rows, self.viewport.0, self.viewport.1);
+        let rects = hud::shop_rects(&rows, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| {
             for (r, row) in rects.iter().enumerate() {
                 for (c, b) in row.iter().enumerate() {
@@ -207,7 +209,7 @@ impl Game {
             None
         };
         // Hovering a tier's line (not only its button) shows it in the card.
-        let row_hit = |p: (f32, f32)| crate::render::hud::shop_row_at(&rows, self.viewport.0, self.viewport.1, p);
+        let row_hit = |p: (f32, f32)| hud::shop_row_at(&rows, self.viewport.0, self.viewport.1, p);
         if self.input.cursor_moved {
             if let Some(p) = self.input.cursor {
                 if let Some((r, c)) = hit(p) {
@@ -363,7 +365,7 @@ impl Game {
                 }
             }
             ShopAction::Life => {
-                if self.score.lives >= crate::logic::systems::MAX_LIVES {
+                if self.score.lives >= MAX_LIVES {
                     self.audio.play(Sfx::Denied);
                     self.note("YOUR LIVES ARE ALREADY FULL", 0xff6a6a);
                     return;

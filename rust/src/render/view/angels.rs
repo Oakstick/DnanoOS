@@ -16,6 +16,7 @@ use crate::logic::items::{Diamond, Offer};
 use crate::render::carve::{ball, limb, v};
 use crate::render::characters::{mat, Sculpt};
 use crate::render::voxels::Collected;
+use crate::logic::types::V;
 
 /// The shrine's voxels: it stands about 0.9 tall on its tile.
 pub(super) const SHRINE_VOXEL: f32 = 0.0175;
@@ -229,7 +230,7 @@ pub fn angel_shrine(angel: Archangel) -> Collected {
 
 impl WorldView {
     /// Gabriel's thunderbolt onto `at` (a tile position).
-    pub fn thunder(&mut self, grid: &Grid, at: crate::logic::types::V, color: u32) {
+    pub fn thunder(&mut self, grid: &Grid, at: V, color: u32) {
         let p = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32), at.y as f32);
         let seed = self.rng.nextf() * 100.0;
         self.bolts.push(Bolt { at: p, life: THUNDER_SECONDS, seed, color: lin(color) });
@@ -238,14 +239,14 @@ impl WorldView {
     }
 
     /// Raphael's beam from `from` to `to` (tile positions), at chest height.
-    pub fn beam(&mut self, grid: &Grid, from: crate::logic::types::V, to: crate::logic::types::V, color: u32) {
-        let lift = |p: crate::logic::types::V| Vec3::new(p.x as f32, floor_at(grid, p.x as f32, p.y as f32) + 0.55, p.y as f32);
+    pub fn beam(&mut self, grid: &Grid, from: V, to: V, color: u32) {
+        let lift = |p: V| Vec3::new(p.x as f32, floor_at(grid, p.x as f32, p.y as f32) + 0.55, p.y as f32);
         self.beams.push(Beam { a: lift(from), b: lift(to), life: BEAM_SECONDS, color: lin(color) });
         self.sparkle(grid, to.x, to.y, 1.0, color, 24);
     }
 
     /// Uriel's wave rolling out from `at`.
-    pub fn holy_wave(&mut self, grid: &Grid, at: crate::logic::types::V, color: u32) {
+    pub fn holy_wave(&mut self, grid: &Grid, at: V, color: u32) {
         let p = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32) + 0.05, at.y as f32);
         self.waves.push(Wave { at: p, t: 0.0, color: lin(color) });
     }

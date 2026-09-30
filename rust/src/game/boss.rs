@@ -12,8 +12,7 @@ use crate::logic::levels::ARENA;
 use crate::logic::progression::path;
 use crate::logic::types::{P, Tile, V, dist_sq};
 
-/// After the Cyclops bursts, a beat to take it in before the victory screen.
-/// How close he must come to the Cyclops' red diamond key to take it, and its colour.
+/// How close he must come to the Cyclops' red diamond key to take it.
 const RED_KEY_REACH: f64 = 0.7;
 
 /// From the second dungeon on the Cyclops' hide turns this much of every blow.

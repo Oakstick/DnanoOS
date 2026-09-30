@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::grid::Grid;
 use super::types::{Dir, CARDINALS, P};
+use crate::logic::types::V;
 
 /**
  * Every tile a walker can reach from `start`. With `can_jump`, jump landings
@@ -37,7 +38,7 @@ pub fn reachable(grid: &Grid, start: P, can_jump: bool, allow_nest: bool) -> Has
  * None when there is nowhere better to be. Hunters use this, so they search
  * the maze for the hero rather than circling the blocks between them.
  */
-pub fn route_toward(grid: &Grid, from: P, target: crate::logic::types::V, flying: bool, allow_nest: bool, avoid_bridges: bool) -> Option<Dir> {
+pub fn route_toward(grid: &Grid, from: P, target: V, flying: bool, allow_nest: bool, avoid_bridges: bool) -> Option<Dir> {
     let goal = P::new(target.x.round() as i32, target.y.round() as i32);
     let score = |p: P| (p.x - goal.x).pow(2) + (p.y - goal.y).pow(2);
     let mut first: HashMap<P, Dir> = HashMap::from([(from, Dir::None)]);

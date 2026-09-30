@@ -11,6 +11,9 @@ use crate::logic::progression::{Tree, path};
 use crate::logic::projectile::{ShotState, spawn_shots};
 use crate::logic::systems::{BREAK_RADIUS, CHAIN_DELAY_MAX, CHAIN_DELAY_MIN, blast_damage, break_rocks, find_blade_targets, find_projectile_hits, in_blade_arc, in_blast, tile_in_reach};
 use crate::logic::types::{P, V, dist_sq};
+use crate::logic::items;
+use crate::logic::items::RangedKind;
+use crate::logic::items::WeaponKind;
 
 /// Damage the Cyclops takes from a bomb (the weapons carry their own).
 const BOMB_DAMAGE: i32 = 6;
@@ -18,20 +21,25 @@ const BOMB_DAMAGE: i32 = 6;
 /// Chain lightning (a tier-10 weapon): how far each arc leaps from where it struck, and what it deals the Cyclops.
 const ZAP_RANGE: f64 = 4.5;
 
+/// What each arc of chain lightning deals the Cyclops.
 const ZAP_DAMAGE: i32 = 2;
 
 /// Venom (Miyamoto's serpent spear): the most stacks, how long they last after a hit, seconds between bites.
 const POISON_MAX: i32 = 5;
 
+/// How long venom lasts after the last hit that stacked it.
 const POISON_SECONDS: f64 = 6.0;
 
+/// How long flames burn on the Cyclops, and holy fire on a tile.
 const FIRE_SECONDS: f64 = 3.0;
 
 /// Loki's trick: how long foes stay befuddled, how long a decoy lasts and how often one appears.
 const CONFUSE_SECONDS: f64 = 4.0;
 
+/// How long a decoy of Loki's trick lasts.
 const DECOY_SECONDS: f64 = 5.0;
 
+/// Seconds between Loki's decoys.
 const DECOY_EVERY: f64 = 10.0;
 
 /// An ancestral spirit fighting beside the hero: where it floats, and seconds until its next blow.
@@ -147,7 +155,7 @@ impl Game {
         }
         if blade.wave {
             // Angurvadel's stream of anguish: a wave of force down the line.
-            self.projectiles.extend(spawn_shots(crate::logic::items::RangedKind::Wave, hp, aim));
+            self.projectiles.extend(spawn_shots(RangedKind::Wave, hp, aim));
         }
         if blade.stun > 0.0 {
             self.stun_around(hp, progression::STUN_RADIUS, blade.stun);
@@ -445,7 +453,7 @@ impl Game {
         let shots = spawn_shots(kind, self.hero.pos(), self.hero.aim());
         self.projectiles.extend(shots);
         self.audio.play(Sfx::Arrow);
-        if let crate::logic::items::RangedKind::Hurled(h, t) = kind {
+        if let RangedKind::Hurled(h, t) = kind {
             if progression::node(h, Tree::Armory, t).form == progression::Form::Gun {
                 // A crack and a puff of powder smoke.
                 let hp = self.hero.pos();
@@ -454,10 +462,10 @@ impl Game {
                 self.view.shake(0.12);
             }
         }
-        if !self.hero.holding_pickup() && self.hero.weapon != crate::logic::items::WeaponKind::Ranged(kind) {
+        if !self.hero.holding_pickup() && self.hero.weapon != WeaponKind::Ranged(kind) {
             // The shrine weapon ran dry; his own is back in hand.
             let hp = self.hero.pos();
-            let (name, color) = crate::logic::items::weapon_label(self.hero_kind, self.hero.weapon, self.hero.blade);
+            let (name, color) = items::weapon_label(self.hero_kind, self.hero.weapon, self.hero.blade);
             self.floater(hp.x, hp.y, name.to_uppercase(), 1.2, Some(color));
         }
     }
@@ -474,7 +482,7 @@ impl Game {
                 let (pos, radius) = (self.projectiles[i].pos, self.projectiles[i].def.hit_radius);
                 let hits = find_projectile_hits(pos, radius, &self.enemies, &self.projectiles[i].struck);
                 let mut hit_at = hits.first().map(|_| pos);
-                let grace = self.projectiles[i].kind == crate::logic::items::RangedKind::Grace;
+                let grace = self.projectiles[i].kind == RangedKind::Grace;
                 for e in hits {
                     if grace {
                         self.turn_foe(e);
@@ -504,7 +512,7 @@ impl Game {
                             self.strike_boss(base, at);
                         }
                         hit_at = Some(at);
-                        if let crate::logic::items::RangedKind::Hurled(h, t) = self.projectiles[i].kind {
+                        if let RangedKind::Hurled(h, t) = self.projectiles[i].kind {
                             if progression::blade(h, t).throw.map(|t| t.stagger).unwrap_or(false) {
                                 let staggered = self.boss.as_mut().and_then(|b| b.stagger().then_some(b.pos));
                                 if let Some(p) = staggered {
@@ -516,7 +524,7 @@ impl Game {
                 }
                 // Mjolnir: its first strike of each throw calls down chain lightning.
                 let chain = match self.projectiles[i].kind {
-                    crate::logic::items::RangedKind::Hurled(h, t) => progression::blade(h, t).chain,
+                    RangedKind::Hurled(h, t) => progression::blade(h, t).chain,
                     _ => 0,
                 };
                 if chain > 0 && !self.projectiles[i].struck.contains(&(usize::MAX - 1)) {

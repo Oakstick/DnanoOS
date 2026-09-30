@@ -41,6 +41,7 @@ pub(super) fn war_cry(hero: HeroKind) -> &'static str {
     }
 }
 
+/// How long a BRUTAL streak doubles every point.
 pub const DOUBLE_POINTS_SECONDS: f64 = 10.0;
 
 /// A collected nugget takes this long to fly into the HUD counter.

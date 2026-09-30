@@ -12,6 +12,7 @@ pub use track::Soundtrack;
 use synth::{Bus, Env, Synth, Voice, Wave};
 
 use crate::platform;
+use crate::logic::rng::Rng;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Sfx {
@@ -140,7 +141,7 @@ pub struct AudioManager {
     pub muted: bool,
     ducked: bool,
     tempo_step: u32,
-    rng: crate::logic::rng::Rng,
+    rng: Rng,
     foot: bool,
     soundtrack: Option<Soundtrack>,
     /// No music at all (the story plays over its own sounds) until the next soundtrack.
@@ -163,7 +164,7 @@ impl AudioManager {
             muted,
             ducked: false,
             tempo_step: 0,
-            rng: crate::logic::rng::Rng::from_time(),
+            rng: Rng::from_time(),
             foot: false,
             soundtrack: None,
             hushed: false,

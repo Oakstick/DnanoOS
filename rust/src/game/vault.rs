@@ -17,6 +17,8 @@ use crate::logic::sins::Sin;
 use crate::logic::types::{dist_sq, Dir, P};
 use crate::logic::vault::{LootKind, Vault, LEASH, SEED, WAKE_RANGE};
 use crate::render::view::CameraMode;
+use crate::input::Action;
+use crate::logic::types::V;
 
 /// What he carries out of the vaults: its worth, and what it is made of.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -122,7 +124,7 @@ impl Game {
                 continue;
             }
             let (cx, cy) = den.center();
-            let far = dist_sq(crate::logic::types::V::new(cx as f64, cy as f64), hp) > LEASH * LEASH;
+            let far = dist_sq(V::new(cx as f64, cy as f64), hp) > LEASH * LEASH;
             if far && !e.b.returning {
                 e.go_home();
             } else if e.b.returning && dist_sq(e.pos(), hp) < WAKE_RANGE * WAKE_RANGE {
@@ -213,9 +215,9 @@ impl Game {
         self.audio.play(Sfx::Toll);
         self.enter(Screen::Toll);
         self.menu_index = 0;
-        self.input.consume(crate::input::Action::Confirm);
-        self.input.consume(crate::input::Action::Jump);
-        self.input.consume(crate::input::Action::Attack);
+        self.input.consume(Action::Confirm);
+        self.input.consume(Action::Jump);
+        self.input.consume(Action::Attack);
     }
 
     /// His answer. Drop: the hoard is left where he stands and the portal opens. Keep: the vaults

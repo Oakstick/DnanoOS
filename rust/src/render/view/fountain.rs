@@ -46,6 +46,7 @@ mod pal {
     pub const STRAP: u32 = 0x5a3e24 | mat::LEATHER;
 }
 use pal::*;
+use crate::render::voxels::Collected;
 
 /// Stone voxels of the basin, pedestal and bowl.
 const STONE_VOXEL: f32 = 0.025;
@@ -141,7 +142,7 @@ fn shag(s: &mut Sculpt, dims: (i32, i32, i32), coat: u32, tuft: u32) {
  * The bronze Krampus, facing +z, standing on a rock: 44 x 64 x 34 voxels.
  * Body coordinates below run from his hooves; the rock lifts him 3 voxels.
  */
-pub fn krampus() -> crate::render::voxels::Collected {
+pub fn krampus() -> Collected {
     const W: i32 = 44;
     const H: i32 = 64;
     const D: i32 = 34;
@@ -391,7 +392,7 @@ fn fountain_stone() -> (Mesh, Mesh) {
 }
 
 /// Pushes a sculpt's voxels as static cubes, each shaded by its own material; eyes glow.
-fn push_statue(out: &mut Vec<Instance>, c: &crate::render::voxels::Collected, pos: Vec3, rot_y: f32) {
+fn push_statue(out: &mut Vec<Instance>, c: &Collected, pos: Vec3, rot_y: f32) {
     let q = Quat::from_rotation_y(rot_y);
     let (ox, oz) = ((c.width - 1) as f32 / 2.0, (c.depth - 1) as f32 / 2.0);
     for v in &c.voxels {

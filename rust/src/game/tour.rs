@@ -13,9 +13,13 @@ use crate::logic::enemy::EnemyKind;
 use crate::logic::types::{PotionKind, Tile, P};
 use crate::platform;
 use crate::render::view::floor_at;
+use crate::logic;
+use crate::logic::heroes::HeroKind;
+use crate::logic::items::DiamondKind;
 
 /// Settings keys that record the tours have been seen: the first dungeon's, and the Portals of Hell's.
 const TOUR_KEY: &str = "vh.tour_done";
+/// Remembers that the Portals of Hell's tour has been shown.
 const HUB_TOUR_KEY: &str = "vh.tour_hub";
 /// Seconds a stop holds before moving on by itself.
 pub const TOUR_STOP_SECONDS: f64 = 3.3;
@@ -101,14 +105,14 @@ impl Game {
         let mut stops = vec![TourStop {
             target: at(spawn, 0.5),
             title: match self.hero_kind {
-                crate::logic::heroes::HeroKind::Ragnar => "RAGNAR",
-                crate::logic::heroes::HeroKind::Mehmed => "MEHMED",
-                crate::logic::heroes::HeroKind::Miyamoto => "MIYAMOTO",
+                HeroKind::Ragnar => "RAGNAR",
+                HeroKind::Mehmed => "MEHMED",
+                HeroKind::Miyamoto => "MIYAMOTO",
             },
             body: match self.hero_kind {
-                crate::logic::heroes::HeroKind::Ragnar => "That's you: a viking with a blade, a round shield, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
-                crate::logic::heroes::HeroKind::Mehmed => "That's you: a janissary with a blade, a kalkan, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
-                crate::logic::heroes::HeroKind::Miyamoto => "That's you: a samurai with a blade, a tate, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+                HeroKind::Ragnar => "That's you: a viking with a blade, a round shield, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+                HeroKind::Mehmed => "That's you: a janissary with a blade, a kalkan, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
+                HeroKind::Miyamoto => "That's you: a samurai with a blade, a tate, and a friend to win back. Move with WASD or the stick, attack with left click, jump with Space, bomb with right click.",
             }
             .into(),
             color: 0xf2e3c4,
@@ -160,7 +164,7 @@ impl Game {
             });
         }
         for d in &self.diamonds {
-            let angel = d.kind == crate::logic::items::DiamondKind::Angel;
+            let angel = d.kind == DiamondKind::Angel;
             if stops.iter().any(|s| s.art == if angel { TourArt::AngelShrine } else { TourArt::ItemShrine }) {
                 continue;
             }
@@ -219,7 +223,7 @@ impl Game {
 
     /// The Portals of Hell: where he came in, the Seal of the Seven, each of the seven doors, and the House of the Devil.
     fn hub_tour_stops(&self) -> Vec<TourStop> {
-        use crate::logic::hub;
+        use logic::hub;
         let g = &self.level.grid;
         let at = |p: P, lift: f32| Vec3::new(p.x as f32, floor_at(g, p.x as f32, p.y as f32) + lift, p.y as f32);
         let mut stops = vec![

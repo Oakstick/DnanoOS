@@ -11,6 +11,11 @@ use crate::logic::level::{ParsedLevel, parse_level};
 use crate::logic::levels::{ARENA, boss_arena, level_for};
 use crate::logic::types::{CARDINALS, Dir, P, PotionKind, Tile, V, manhattan};
 use std::collections::HashMap;
+use crate::logic::enemy::REASSEMBLE_SECONDS;
+use crate::logic::garden;
+use crate::logic::items::WeaponKind;
+use crate::logic::level::LevelData;
+use crate::platform;
 
 /**
  * The open floor tile nearest the dungeon's center (never a shrine, bottle,
@@ -64,12 +69,12 @@ impl Game {
         self.load(boss_arena(index), index);
     }
 
-    pub(super) fn load(&mut self, data: crate::logic::level::LevelData, index: usize) {
+    pub(super) fn load(&mut self, data: LevelData, index: usize) {
         self.score.level = index;
         self.dungeon = index;
         self.level = parse_level(&data);
         self.vault = None;
-        let vault_level = data.theme == crate::logic::level::Theme::Realm(crate::logic::sins::Sin::Greed);
+        let vault_level = data.theme.is_vault();
         if !vault_level {
             if let Some(mode) = self.camera_before_vault.take() {
                 self.view.camera_mode = mode;
@@ -78,10 +83,10 @@ impl Game {
         if self.level.data.boss {
             // In the arena he starts at the south edge, facing the Cyclops.
             self.start_facing = Dir::Up;
-        } else if self.level.data.theme == crate::logic::level::Theme::Hell {
+        } else if self.theme().is_hub() {
             // In the Portals of Hell he comes in from the cliffs to the south, facing the volcano.
             self.start_facing = Dir::Up;
-        } else if self.level.data.theme == crate::logic::level::Theme::Gym {
+        } else if self.theme().is_gym() {
             // In the gym he arrives at the west end, facing the foes.
             self.start_facing = Dir::Right;
         } else if vault_level {
@@ -97,7 +102,7 @@ impl Game {
         self.garden = None;
         if self.level.data.boss {
             // The arena's stream runs in a stone channel under stone bridges too.
-            self.garden = crate::logic::garden::stream_plan(&self.level.grid);
+            self.garden = garden::stream_plan(&self.level.grid);
             if let Some(plan) = &self.garden {
                 for b in &plan.bridges {
                     self.level.grid.set_bridge(b.x, b.y, true);
@@ -109,9 +114,9 @@ impl Game {
             keep.extend(l.angel_shrines.iter().chain(&l.item_shrines).copied());
             keep.extend(l.potions.iter().map(|(p, _)| *p));
             keep.extend(l.gate);
-            self.garden = crate::logic::garden::plan(&l.grid, &keep);
+            self.garden = garden::plan(&l.grid, &keep);
             if let Some(plan) = &self.garden {
-                crate::logic::garden::apply(&mut self.level.grid, plan);
+                garden::apply(&mut self.level.grid, plan);
             }
         }
         // The estate's gate takes its golden keys; the arena's, the one red key the Cyclops drops.
@@ -141,8 +146,8 @@ impl Game {
         self.hero.free_move = free_move;
         self.equip_from_progress();
         // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
-        let hell = self.level.data.theme == crate::logic::level::Theme::Hell;
-        let gym = self.level.data.theme == crate::logic::level::Theme::Gym;
+        let hell = self.theme().is_hub();
+        let gym = self.theme().is_gym();
         let specs = if self.level.data.boss || hell || gym || vault_level { Vec::new() } else { enemy_specs(&self.level.grid, self.foe_stage_of(index)) };
         self.enemies = specs
             .iter()
@@ -206,15 +211,15 @@ impl Game {
                 self.level.grid.set_landmark(g.x + dx, g.y, true);
             }
         }
-        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.level.data.theme, self.garden.as_ref(), self.level.gate, self.vault.as_ref());
+        self.view.build_level(&self.level.grid, &self.enemies, &self.diamonds, self.theme(), self.garden.as_ref(), self.level.gate, self.vault.as_ref());
         self.hub = None;
-        self.realm = self.level.data.theme.sin();
+        self.realm = self.theme().sin();
         if hell {
             self.open_hub();
         }
         self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
         self.reset_round();
-        if let Some((crate::logic::items::WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
+        if let Some((WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
             self.hero.equip(w);
             self.hero.ammo = ammo;
         }
@@ -242,9 +247,9 @@ impl Game {
             match (e.post, graves.get(i % graves.len().max(1))) {
                 // The vaults' packs go back to idling in their rooms; the gym's foes pull themselves together at their posts.
                 (Some(_), _) if e.b.den.is_some() => Self::settle(e, e.b.den.unwrap()),
-                (Some(post), _) => e.rise_at(post, crate::logic::enemy::REASSEMBLE_SECONDS),
+                (Some(post), _) => e.rise_at(post, REASSEMBLE_SECONDS),
                 // Draugr climb out of the churchyard rather than the hollow.
-                (None, Some(&g)) if e.kind().reassembles() => e.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS),
+                (None, Some(&g)) if e.kind().reassembles() => e.rise_at(g, REASSEMBLE_SECONDS),
                 _ => e.reset(self.nest_slots.get(i).copied().unwrap_or(center)),
             }
         }
@@ -308,7 +313,7 @@ impl Game {
     /// Writes the silver, the runes and the unlocks to the save (not in tests).
     pub(super) fn save_progress(&self) {
         if !cfg!(test) {
-            crate::platform::save("vh.progress", &self.progress.encode());
+            platform::save("vh.progress", &self.progress.encode());
         }
     }
 

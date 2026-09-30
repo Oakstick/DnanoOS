@@ -12,6 +12,8 @@ use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::items::RangedKind;
 use crate::logic::progression::{self, Form, Tree, TIERS, TREES};
 use crate::logic::types::PotionKind;
+use crate::logic::gear::ALL_POTIONS;
+use crate::logic::items::WEAPON_ORDER;
 
 const N: i32 = 16;
 const OUTLINE: u32 = 0x160e0a;
@@ -126,7 +128,7 @@ pub fn icon(i: Icon) -> &'static Sprite {
                     m.insert(Icon::Node(hero, tree, tier), item(n.form, n.color));
                 }
             }
-            for kind in crate::logic::gear::ALL_POTIONS {
+            for kind in ALL_POTIONS {
                 let sprite = match progression::elixir_tier(kind) {
                     Some(tier) => {
                         let n = progression::node(hero, Tree::Elixir, tier);
@@ -137,7 +139,7 @@ pub fn icon(i: Icon) -> &'static Sprite {
                 m.insert(Icon::Potion(hero, kind), sprite);
             }
         }
-        for k in crate::logic::items::WEAPON_ORDER {
+        for k in WEAPON_ORDER {
             m.insert(Icon::Pickup(k), pickup(k));
         }
         for hero in ROSTER {

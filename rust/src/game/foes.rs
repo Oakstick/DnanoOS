@@ -12,17 +12,23 @@ use crate::logic::heroes::HeroKind;
 use crate::logic::progression::path;
 use crate::logic::systems::{POINTS_KILL, PUDDLE_SECONDS};
 use crate::logic::types::{P, Tile, dist_sq};
+use crate::logic::enemy::REASSEMBLE_SECONDS;
+use crate::logic::gym;
+use crate::logic::types::CARDINALS;
 
+/// Seconds between reinforcements (the first comes after `SPAWN_FIRST`).
 const SPAWN_EVERY: f64 = 25.0;
 
 /// With every key taken the wait between reinforcements shrinks, down to this share at the last.
 const SPAWN_EVERY_ENRAGED: f64 = 0.25;
 
+/// The most foes that roam at once before any key is taken.
 const MAX_ENEMIES: usize = 12;
 
 /// Every key raises the cap on foes by this many.
 const MAX_ENEMIES_PER_KEY: usize = 2;
 
+/// The Garden's reinforcements, in turn.
 const SPAWN_CYCLE: [EnemyKind; 4] = [EnemyKind::Bat, EnemyKind::Slime, EnemyKind::Vampire, EnemyKind::Skeleton];
 
 /// The realms' reinforcements (the witches bring their own minions).
@@ -34,8 +40,10 @@ const HITSTOP_KILL: f64 = 0.05;
 /// A shield's stagger (tier 7): how far and how long the foes around him reel.
 const STAGGER_RADIUS: f64 = 2.5;
 
+/// How long the foes around him reel from a shield's stagger.
 const STAGGER_SECONDS: f64 = 2.0;
 
+/// A foe this close (squared, in tiles) lays a claw on him.
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
 
 impl Game {
@@ -51,13 +59,13 @@ impl Game {
 
     /// The gym's foes: one of every kind, stage by stage, each at its post.
     pub(super) fn gym_garrison(&self) -> Vec<Enemy> {
-        crate::logic::gym::garrison()
+        gym::garrison()
             .into_iter()
             .map(|(kind, stage, post)| {
                 let spec = enemy_specs(&self.level.grid, stage).into_iter().find(|s| s.kind == kind).unwrap();
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
                 e.post = Some(post);
-                e.b.keep = Some(crate::logic::gym::platform(stage as usize - 1));
+                e.b.keep = Some(gym::platform(stage as usize - 1));
                 e.b.mode = EnemyMode::Chase;
                 e.prime();
                 e
@@ -67,7 +75,7 @@ impl Game {
 
     /// In the gym a slain foe rises again at its post; a conjured minion, with no post, is gone for good.
     pub(super) fn update_gym(&mut self, dt: f64) {
-        if self.level.data.theme != crate::logic::level::Theme::Gym {
+        if !self.theme().is_gym() {
             return;
         }
         let _ = dt;
@@ -77,7 +85,7 @@ impl Game {
                 continue;
             }
             match e.post {
-                Some(post) => e.rise_at(post, crate::logic::enemy::REASSEMBLE_SECONDS),
+                Some(post) => e.rise_at(post, REASSEMBLE_SECONDS),
                 None => gone = true,
             }
         }
@@ -127,7 +135,7 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     pub(super) fn update_spawns(&mut self, dt: f64) {
-        if self.boss.is_some() || self.hub.is_some() || self.level.data.theme == crate::logic::level::Theme::Gym || self.vault.is_some() {
+        if self.boss.is_some() || self.hub.is_some() || self.theme().is_gym() || self.vault.is_some() {
             return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's and the vaults' are all there
         }
         self.spawn_timer -= dt;
@@ -146,7 +154,7 @@ impl Game {
         let risen = if kind.reassembles() && !graves.is_empty() {
             // A draugr claws its way up out of a grave.
             let g = graves[((self.rng.next() * graves.len() as f64) as usize).min(graves.len() - 1)];
-            enemy.rise_at(g, crate::logic::enemy::REASSEMBLE_SECONDS);
+            enemy.rise_at(g, REASSEMBLE_SECONDS);
             Some(g)
         } else {
             None
@@ -189,7 +197,7 @@ impl Game {
         let g = &self.level.grid;
         let mut out: Vec<P> = vec![];
         for p in &plan.graveyard {
-            for d in crate::logic::types::CARDINALS {
+            for d in CARDINALS {
                 let n = g.neighbor(*p, d);
                 if g.is_walkable(n.x, n.y, false) && !g.is_bridge(n.x, n.y) && g.get(n.x, n.y) == Tile::Open && !out.contains(&n) {
                     out.push(n);
@@ -329,7 +337,7 @@ impl Game {
         if self.hero.invisible() || self.hero.airborne() {
             return; // they cannot find what they cannot see, or reach what sails overhead
         }
-        if self.level.data.theme == crate::logic::level::Theme::Gym {
+        if self.theme().is_gym() {
             return; // in the gym nothing lays a claw on him
         }
         let hp = self.hero.pos();

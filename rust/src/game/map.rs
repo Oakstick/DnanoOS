@@ -10,6 +10,8 @@ use crate::input::Action;
 use crate::logic::levels::level_for;
 use crate::logic::sins::SINS;
 use crate::logic::types::Dir;
+use crate::logic::gym;
+use crate::render::hud;
 
 /// One stop on the map: where it goes and what it is called.
 pub struct MapStop {
@@ -36,7 +38,7 @@ pub fn map_stops() -> Vec<MapStop> {
 impl Game {
     /// The gym: one of every foe, stage by stage, on platforms over the lava.
     pub fn load_gym(&mut self) {
-        self.load(crate::logic::gym::gym(), 1);
+        self.load(gym::gym(), 1);
     }
 }
 
@@ -47,7 +49,7 @@ impl Game {
         let here = if self.screen == Screen::Paused {
             Some(if self.hub.is_some() {
                 Stage::Hub
-            } else if self.level.data.theme == crate::logic::level::Theme::Gym {
+            } else if self.theme().is_gym() {
                 Stage::Gym
             } else if let Some(sin) = self.realm {
                 if self.boss.is_some() {
@@ -82,7 +84,7 @@ impl Game {
     pub(super) fn update_map(&mut self) {
         let stops = map_stops();
         let n = stops.len();
-        let rects = crate::render::hud::map_rects(n, self.viewport.0, self.viewport.1);
+        let rects = hud::map_rects(n, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
         // Two columns past ten stops: left and right step a column over.
         let rows = if n > 10 { n.div_ceil(2) } else { n };

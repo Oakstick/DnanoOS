@@ -8,6 +8,11 @@ use crate::logic::heroes::HeroKind;
 use crate::render::heroes;
 use crate::logic::items::RangedKind;
 use crate::logic::progression::{self, Tree};
+use crate::logic::angels::Archangel;
+use crate::logic::types::V;
+use crate::render::armory;
+use crate::render::characters::mat::SKIN;
+use crate::render::voxels::Collected;
 
 /// The heroes' voxels: a quarter of a tile's voxel, as fine as Scene I's cast.
 const HERO_VOXEL: f32 = VOXEL / 4.0;
@@ -60,11 +65,11 @@ pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
         HeroKind::Miyamoto => (heroes::miyamoto_hd(spec), heroes::MIYAMOTO_HD_RIG),
     };
     let pivot = |name: &str| defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3]);
-    let main = crate::render::armory::weapon_for(hero, w.form, w.color, false);
-    let off = if crate::render::armory::paired(w.form) {
-        crate::render::armory::weapon_for(hero, w.form, w.color, true)
+    let main = armory::weapon_for(hero, w.form, w.color, false);
+    let off = if armory::paired(w.form) {
+        armory::weapon_for(hero, w.form, w.color, true)
     } else {
-        crate::render::voxels::Collected { voxels: Vec::new(), width: body.width, depth: body.depth, height: body.height }
+        Collected { voxels: Vec::new(), width: body.width, depth: body.depth, height: body.height }
     };
     build_layered_rig(&body, defs, &[("blade", &main, pivot("swordArm")), ("offhand", &off, pivot("shieldArm"))], HERO_VOXEL)
 }
@@ -72,16 +77,16 @@ pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
 pub(super) fn thrown_model(hero: HeroKind, blade: u8) -> Rig {
     let w = progression::node(hero, Tree::Armory, blade);
-    let mut c = crate::render::armory::hero_weapon(w.form, w.color, false);
+    let mut c = armory::hero_weapon(w.form, w.color, false);
     // Drop the fist (skin), keep the weapon.
-    c.voxels.retain(|v| v.c >> 24 != crate::render::characters::mat::SKIN >> 24);
+    c.voxels.retain(|v| v.c >> 24 != SKIN >> 24);
     build_rig(&c, &[], HERO_VOXEL)
 }
 
 impl WorldView {
     /// A crackling arc from `from` to `to` (tile positions), at chest height.
-    pub fn zap(&mut self, grid: &Grid, from: crate::logic::types::V, to: crate::logic::types::V) {
-        let lift = |p: crate::logic::types::V| Vec3::new(p.x as f32, floor_at(grid, p.x as f32, p.y as f32) + 0.6, p.y as f32);
+    pub fn zap(&mut self, grid: &Grid, from: V, to: V) {
+        let lift = |p: V| Vec3::new(p.x as f32, floor_at(grid, p.x as f32, p.y as f32) + 0.6, p.y as f32);
         let seed = self.rng.nextf() * 100.0;
         self.zaps.push(Zap { a: lift(from), b: lift(to), life: ZAP_SECONDS, seed });
         self.sparkle(grid, to.x, to.y, 0.6, 0xbfe8ff, 10);
@@ -102,7 +107,7 @@ impl WorldView {
     }
 
     /// Arrows raining out of the sky onto `at` (a tile position), in `color`.
-    pub fn rain(&mut self, grid: &Grid, at: crate::logic::types::V, color: u32) {
+    pub fn rain(&mut self, grid: &Grid, at: V, color: u32) {
         let ground = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32) + 0.3, at.y as f32);
         for k in 0..3 {
             let off = Vec3::new((self.rng.nextf() - 0.5) * 0.5, 0.0, (self.rng.nextf() - 0.5) * 0.5);
@@ -112,7 +117,7 @@ impl WorldView {
     }
 
     /// A blinding flash of light at `at` (a sun-blade's), fading out over a moment.
-    pub fn flash_light(&mut self, grid: &Grid, at: crate::logic::types::V, color: u32) {
+    pub fn flash_light(&mut self, grid: &Grid, at: V, color: u32) {
         let p = Vec3::new(at.x as f32, floor_at(grid, at.x as f32, at.y as f32) + 1.0, at.y as f32);
         self.flashes.push((p, 1.0, lin(color)));
     }
@@ -343,7 +348,7 @@ impl WorldView {
             }
             RangedKind::Grace => {
                 // Michael's fire: a blue flame with a white heart, sparks streaming off it.
-                let blue = lin(crate::logic::angels::Archangel::Michael.color());
+                let blue = lin(Archangel::Michael.color());
                 let pulse = 1.0 + (time * 18.0).sin() * 0.12;
                 glow_orb(f, pos, 0.55 * pulse, blue, 0.75);
                 let m = Mat4::from_translation(pos) * Mat4::from_rotation_y(time * 9.0) * Mat4::from_rotation_x(time * 7.0) * Mat4::from_scale(Vec3::splat(0.14 * pulse));

@@ -56,7 +56,7 @@ use crate::logic::enemy::{Enemy, EnemyContext, EnemyKind, GlobalMode, HeroView};
 use crate::logic::gear::BELT_SLOTS;
 use crate::logic::hero::Hero;
 use crate::logic::items::{BOMBS_PER_LIFE, Bomb, Diamond, Potion};
-use crate::logic::level::{ParsedLevel, parse_level};
+use crate::logic::level::{parse_level, ParsedLevel, Theme};
 use crate::logic::levels::level_for;
 use crate::logic::progression::Progress;
 use crate::logic::projectile::Projectile;
@@ -107,11 +107,13 @@ pub const READY_SECONDS: f64 = 3.0;
 
 /// The fanfare and the fade into the boss arena.
 pub const CLEARED_SECONDS: f64 = 3.4;
+/// The Cyclops' red diamond key, on the HUD and the gate's lock lamp.
 const RED_KEY_COLOR: u32 = 0xff2a44;
 /// The shop cheat tops the purse up to this, so there is something to spend.
 const CHEAT_COINS: u32 = 1000;
 /// Bleeding (a tier-8 weapon) and burning: seconds between their bites.
 const BLEED_TICK: f64 = 0.5;
+/// Venom: seconds between its bites.
 const POISON_TICK: f64 = 1.0;
 /// Flames on the Cyclops (Kusanagi's fragment, the Simurg bow) and a greatsword's holy fire.
 const FIRE_COLOR: u32 = 0xff8a2a;
@@ -239,7 +241,6 @@ pub struct Game {
     pub boss: Option<Cyclops>,
     pub boss_shots: Vec<BossShot>,
     boss_events: Vec<BossEvent>,
-    /// Counts down to the victory screen once the boss is dead.
     /// Where the Cyclops' red diamond key lies, until he takes it.
     pub red_key: Option<P>,
     /// Silver, rune fragments and every hero's unlocked trees: kept between adventures.
@@ -427,6 +428,11 @@ impl Game {
         // Free movement is on unless the player turned it off (tests keep to the grid).
         g.hero.free_move = !cfg!(test) && crate::platform::load("vh.free_move").map(|v| v != "0").unwrap_or(true);
         g
+    }
+
+    /// How the level looks, and what lives there.
+    pub fn theme(&self) -> Theme {
+        self.level.data.theme
     }
 
     /// Seeds the game's and the view's random generators, so a scripted run (a capture) plays the

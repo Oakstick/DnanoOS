@@ -13,6 +13,7 @@ use crate::logic::items::RangedKind;
 use crate::logic::projectile::Projectile;
 use crate::logic::systems::FOE_RADIUS;
 use crate::logic::types::{dist_sq, Tile, P, V};
+use crate::logic::items::DiamondKind;
 
 /// Uriel's wave rolling out from where it was sent: how far it has come, and whether the boss has felt it.
 #[derive(Clone, Copy, Debug)]
@@ -63,7 +64,7 @@ impl Game {
         self.angels_used[angel.index()] = true;
         if self.angels_used.iter().all(|&u| u) {
             // All four have given: the shrines stand grey for the rest of the level.
-            for d in self.diamonds.iter_mut().filter(|d| d.kind == crate::logic::items::DiamondKind::Angel) {
+            for d in self.diamonds.iter_mut().filter(|d| d.kind == DiamondKind::Angel) {
                 d.active = false;
                 d.respawn_timer = f64::INFINITY;
             }

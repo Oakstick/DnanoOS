@@ -43,6 +43,9 @@ mod pal {
     pub const WINDOW: u32 = 0xff3010;
 }
 use pal::*;
+use crate::logic;
+use crate::logic::sins::ALL_SINS;
+use crate::logic::types::Dir;
 
 /// The lava's surface, far below the platforms.
 const LAVA_Y: f32 = -2.45;
@@ -111,7 +114,7 @@ fn stone(h: f64, set: &[u32]) -> Vec3 {
 }
 
 /// The yaw that turns a model built facing +z to face `d`.
-fn yaw_of(d: crate::logic::types::Dir) -> f32 {
+fn yaw_of(d: Dir) -> f32 {
     let (dx, dz) = d.vec();
     (dx as f32).atan2(dz as f32)
 }
@@ -133,7 +136,7 @@ impl WorldView {
         self.build_lava_sea(grid);
         if self.gym {
             // The gym: its platforms and bridges over the same lava, nothing else.
-            use crate::logic::gym;
+            use logic::gym;
             for k in 0..gym::STAGES {
                 self.build_platform(grid, Platform { rect: gym::platform(k), col: k as i32, row: 0, sin: None });
             }
@@ -934,7 +937,7 @@ impl WorldView {
         if held > 0 {
             f.lights.push(Light { pos: c + Vec3::new(0.0, 0.6, 0.0), color: lin(0xffb070) * (1.0 + held as f32 * 0.5), distance: 4.0 });
         }
-        if hv.sins & crate::logic::sins::ALL_SINS == crate::logic::sins::ALL_SINS {
+        if hv.sins & ALL_SINS == ALL_SINS {
             let beam = Mat4::from_translation(c + Vec3::new(0.0, 6.4, 0.0)) * Mat4::from_scale(Vec3::new(0.18, 10.0, 0.18));
             f.additive.push(Instance::new(beam, lin(0xffc070), 0.18 + (time * 2.0).sin() * 0.04, Vec3::ZERO, SHADE_UNLIT));
         }

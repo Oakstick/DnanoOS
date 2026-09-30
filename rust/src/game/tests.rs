@@ -9,6 +9,26 @@ use crate::logic::items::{DiamondKind, Offer};
 use crate::logic::progression::{self, Tree};
 use crate::logic::systems::POINTS_NODULE;
 use crate::logic::types::{dist_sq, Tile};
+use crate::game::hub::SEAL_SECONDS;
+use crate::input::PadState;
+use crate::logic;
+use crate::logic::enemy::REASSEMBLE_SECONDS;
+use crate::logic::enemy::WOLF_FURY_SPEED;
+use crate::logic::gym;
+use crate::logic::hero::CONTACT_DAMAGE;
+use crate::logic::hero::HEALTH_POTION;
+use crate::logic::heroes::MIYAMOTO_TEMPO;
+use crate::logic::heroes::ROSTER;
+use crate::logic::items::RangedKind;
+use crate::logic::items::WeaponKind;
+use crate::logic::levels::ARENA_GATE;
+use crate::logic::levels::ARENA_HERO;
+use crate::logic::pathing;
+use crate::logic::sins::Sin;
+use crate::logic::story::SCENE_ONE;
+use crate::logic::types::P;
+use crate::render::hud;
+use crate::render::view;
 
 /// Play on the title, then begin with the hero on the character screen (Ragnar).
 fn start_from_title(g: &mut Game) {
@@ -41,7 +61,7 @@ fn the_character_screen_offers_three_heroes_and_each_can_begin() {
     g.input.nav = Some(Dir::Left);
     g.update(crate::app::STEP);
     assert_eq!(g.select_hero(), HeroKind::Mehmed);
-    for hero in crate::logic::heroes::ROSTER {
+    for hero in ROSTER {
         g.enter(Screen::Title);
         g.open_select();
         g.select_index = hero.slot();
@@ -61,7 +81,7 @@ fn the_character_screen_offers_three_heroes_and_each_can_begin() {
 
 #[test]
 fn play_opens_scene_one_which_plays_every_beat_then_the_heroes() {
-    use crate::logic::story::SCENE_ONE;
+    use SCENE_ONE;
     let mut g = Game::new();
     g.intro = true;
     g.input.inject(Action::Confirm);
@@ -89,7 +109,7 @@ fn play_opens_scene_one_which_plays_every_beat_then_the_heroes() {
 
 #[test]
 fn a_press_shows_the_whole_line_before_moving_on_and_esc_skips_the_story() {
-    use crate::logic::story::{first, Shot};
+    use logic::story::{first, Shot};
     let mut g = Game::new();
     g.story_jump(first(Shot::Souls).unwrap(), 0.0);
     let st = g.story.as_mut().unwrap();
@@ -163,7 +183,7 @@ fn ragnar_starts_in_the_middle_after_a_countdown() {
     let (w, h) = (g.level.grid.width, g.level.grid.height);
     assert!((spawn.x - (w - 1) / 2).abs() <= 2 && (spawn.y - (h - 1) / 2).abs() <= 2, "spawn {spawn:?}");
     // Every pickup is still reachable from the new start.
-    let seen = crate::logic::pathing::reachable(&g.level.grid, spawn, true, false);
+    let seen = pathing::reachable(&g.level.grid, spawn, true, false);
     for (x, y, t) in g.level.grid.cells() {
         if t == Tile::Nodule || t == Tile::Charge {
             assert!(seen.contains(&P::new(x, y)), "pickup at {x},{y} unreachable from the center");
@@ -187,7 +207,7 @@ fn the_right_stick_turns_the_camera_and_it_stays_put() {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = playing();
     let start = g.view.cam_yaw;
-    let pad = |x: f32, y: f32| crate::input::PadState { right: (x, y), ..Default::default() };
+    let pad = |x: f32, y: f32| PadState { right: (x, y), ..Default::default() };
     g.input.set_pad(Some(pad(1.0, 0.0)));
     for _ in 0..60 {
         g.update(crate::app::STEP);
@@ -216,7 +236,7 @@ fn the_right_stick_turns_the_camera_and_it_stays_put() {
     for _ in 0..120 {
         g.update(crate::app::STEP);
     }
-    let behind = crate::render::view::dir_to_yaw(g.hero.facing);
+    let behind = view::dir_to_yaw(g.hero.facing);
     let off = (g.view.cam_yaw - behind).rem_euclid(std::f32::consts::TAU);
     assert!(off < 0.05 || off > std::f32::consts::TAU - 0.05, "not recentered: {off}");
 }
@@ -244,7 +264,7 @@ fn the_menus_can_quit() {
     g.update(crate::app::STEP);
     assert_eq!(g.screen, Screen::Paused);
     assert_eq!(g.menu_items(), vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle, MenuItem::Quit]);
-    let r = crate::render::hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[4];
+    let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[4];
     g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
     g.input.mouse_button(winit::event::MouseButton::Left, true);
     g.update(crate::app::STEP);
@@ -283,12 +303,12 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     g.update(crate::app::STEP);
     assert!(!g.show_map);
     assert_eq!((g.screen, g.dungeon, g.boss.is_some()), (Screen::Ready, 1, false));
-    assert_eq!(g.realm, Some(crate::logic::sins::Sin::Pride));
-    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(crate::logic::sins::Sin::Pride)), "Continue comes back here");
+    assert_eq!(g.realm, Some(Sin::Pride));
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Pride)), "Continue comes back here");
     // From the pause menu, to a Cyclops; Esc closes the map without going anywhere.
     g.enter(Screen::Paused);
     g.open_map();
-    assert_eq!(stops[g.map_index].stage, save::Stage::Realm(crate::logic::sins::Sin::Pride), "where he is, highlighted");
+    assert_eq!(stops[g.map_index].stage, save::Stage::Realm(Sin::Pride), "where he is, highlighted");
     g.input.inject(Action::Pause);
     g.update(crate::app::STEP);
     assert_eq!((g.show_map, g.screen), (false, Screen::Paused));
@@ -314,14 +334,14 @@ fn mehmed_is_slow_and_sturdy_and_hits_hard_miyamoto_quick_and_frail_and_strikes_
     assert!((m_speed / r_speed - 0.9).abs() < 1e-9 && (y_speed / r_speed - 1.1).abs() < 1e-9, "speed 1 : 0.9 : 1.1");
     assert!(m_blow > r_blow && y_blow == r_blow, "Mehmed hits harder: {m_blow} against {r_blow}");
     // Miyamoto's blade waits a fifth less than it would for anyone else.
-    let own = crate::logic::progression::blade(HeroKind::Miyamoto, g.hero.blade).cooldown;
-    assert!((y_cool - own * crate::logic::heroes::MIYAMOTO_TEMPO).abs() < 1e-9, "{y_cool} against {own}");
+    let own = progression::blade(HeroKind::Miyamoto, g.hero.blade).cooldown;
+    assert!((y_cool - own * MIYAMOTO_TEMPO).abs() < 1e-9, "{y_cool} against {own}");
 }
 
 #[test]
 fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
-    use crate::logic::hub;
-    use crate::logic::sins::{Sin, ALL_SINS};
+    use logic::hub;
+    use logic::sins::{Sin, ALL_SINS};
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
     g.map_jump(save::Stage::Hub);
@@ -357,17 +377,17 @@ fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
     assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
     // All seven keys: the seal breaks and the causeways rise to the House of the Devil.
     let lane = hub::causeways()[2];
-    let p = crate::logic::types::P::new(lane.x0 + 1, lane.y0 + 1);
+    let p = P::new(lane.x0 + 1, lane.y0 + 1);
     assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");
     g.sins_cleared = ALL_SINS;
-    for _ in 0..((crate::game::hub::SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
+    for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
     }
     assert_eq!(g.hub.as_ref().unwrap().seal, 1.0);
     assert!(hub::causeways().iter().all(|c| c.tiles().all(|t| g.level.grid.is_walkable(t.x, t.y, false))), "the causeways are up");
-    let seen = crate::logic::pathing::reachable(&g.level.grid, hub::arrival(), true, false);
+    let seen = pathing::reachable(&g.level.grid, hub::arrival(), true, false);
     let door = hub::house_door();
-    assert!(seen.contains(&crate::logic::types::P::new(door.x, door.y + 1)), "the way to the House is open");
+    assert!(seen.contains(&P::new(door.x, door.y + 1)), "the way to the House is open");
     // Coming back later, the causeways already stand.
     g.checkpoint(save::Stage::Hub);
     g.load_hub();
@@ -376,19 +396,19 @@ fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
 
 #[test]
 fn the_realms_foes_are_tougher_than_the_gardens() {
-    use crate::logic::enemy::WOLF_FURY_SPEED;
+    use WOLF_FURY_SPEED;
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
     g.map_jump(save::Stage::Gym);
     let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
     assert_eq!(kinds, [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice()].concat(), "one of every foe, stage by stage, in the gym");
-    assert_eq!(g.hero.occupied(), crate::logic::gym::arrival());
+    assert_eq!(g.hero.occupied(), gym::arrival());
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Gym));
     g.enter(Screen::Playing);
     // A slain foe rises again at its post.
     let post = g.enemies[1].post.expect("a post");
     g.slay_enemy(1);
-    for _ in 0..((crate::logic::enemy::REASSEMBLE_SECONDS - 0.2) / crate::app::STEP) as usize {
+    for _ in 0..((REASSEMBLE_SECONDS - 0.2) / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
         g.hero.invuln = 1.0;
     }
@@ -399,7 +419,7 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     }
     assert!(g.enemies[1].is_dangerous(), "back on its feet");
     // The foes keep to their platforms while he crosses the bridge, and nothing there can hurt him.
-    let second = crate::logic::gym::platform(1);
+    let second = gym::platform(1);
     g.hero.m.teleport(P::new(second.x0 + 1, (second.y0 + second.y1) / 2));
     let hp = g.hero.hp;
     for _ in 0..(8.0 / crate::app::STEP) as usize {
@@ -414,7 +434,7 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     assert_eq!(g.hero.hp, hp, "unhurt in the gym");
     assert!(g.enemies.iter().filter(|e| e.post.is_some()).all(|e| e.b.keep.is_some()));
     // Off the road, the stand-in realms keep the first stage's cast for now (Greed's vaults have both).
-    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Sloth));
+    g.map_jump(save::Stage::Realm(Sin::Sloth));
     assert!(g.enemies.iter().all(|e| EnemyKind::STAGE_ONE.contains(&e.kind())));
     g.map_jump(save::Stage::Gym);
     g.enter(Screen::Playing);
@@ -476,7 +496,7 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     }
     assert!(g.enemies.iter().any(|e| e.kind() == EnemyKind::Minion && e.is_dangerous()), "a minion appears at her feet");
     // Out in a realm (the gym hurts no one), the blemmyes' touch hurts double.
-    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    g.map_jump(save::Stage::Realm(Sin::Greed));
     g.enter(Screen::Playing);
     g.enemies.clear();
     g.view.clear_enemies();
@@ -486,7 +506,7 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     let at = g.hero.occupied();
     foe_at(&mut g, EnemyKind::Blemmyes, at);
     g.resolve_contact();
-    assert_eq!(hp - g.hero.hp, 2 * crate::logic::hero::CONTACT_DAMAGE, "its touch hurts double");
+    assert_eq!(hp - g.hero.hp, 2 * CONTACT_DAMAGE, "its touch hurts double");
 }
 
 /// A foe of `kind` hunting at `at`, in the game and in the view.
@@ -516,7 +536,7 @@ fn meadow() -> Game {
 
 #[test]
 fn an_archangels_shrine_switches_when_struck_and_blesses_whoever_steps_on_it() {
-    use crate::logic::angels::{Archangel, Blessing};
+    use logic::angels::{Archangel, Blessing};
     let mut g = playing();
     let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).expect("an archangel's shrine");
     assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Michael));
@@ -558,7 +578,7 @@ fn an_archangels_shrine_switches_when_struck_and_blesses_whoever_steps_on_it() {
 
 #[test]
 fn gabriels_thunder_strikes_every_foe_within_ten_tiles() {
-    use crate::logic::angels::{Archangel, Blessing};
+    use logic::angels::{Archangel, Blessing};
     let mut g = meadow();
     let o = g.hero.occupied();
     let near = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 4));
@@ -571,7 +591,7 @@ fn gabriels_thunder_strikes_every_foe_within_ten_tiles() {
 
 #[test]
 fn raphaels_beam_fells_all_in_its_path_and_nothing_beside_it() {
-    use crate::logic::angels::{Archangel, Blessing};
+    use logic::angels::{Archangel, Blessing};
     let mut g = meadow();
     let o = g.hero.occupied();
     g.hero.face(Dir::Up);
@@ -586,7 +606,7 @@ fn raphaels_beam_fells_all_in_its_path_and_nothing_beside_it() {
 
 #[test]
 fn uriels_wave_rolls_out_over_everything_and_uriel_then_rests() {
-    use crate::logic::angels::{Archangel, Blessing, URIEL_REST};
+    use logic::angels::{Archangel, Blessing, URIEL_REST};
     let mut g = meadow();
     let o = g.hero.occupied();
     let foes = [foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 1, o.y - 1)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 8, o.y - 12))];
@@ -613,7 +633,7 @@ fn uriels_wave_rolls_out_over_everything_and_uriel_then_rests() {
 
 #[test]
 fn michaels_fire_turns_a_foe_that_then_hunts_the_others() {
-    use crate::logic::angels::{Archangel, Blessing};
+    use logic::angels::{Archangel, Blessing};
     let mut g = meadow();
     let o = g.hero.occupied();
     g.hero.face(Dir::Up);
@@ -635,7 +655,7 @@ fn michaels_fire_turns_a_foe_that_then_hunts_the_others() {
 
 #[test]
 fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
-    use crate::logic::angels::{Archangel, Blessing};
+    use logic::angels::{Archangel, Blessing};
     let mut g = playing();
     g.input.key_down(winit::keyboard::KeyCode::F1, false);
     g.update(crate::app::STEP);
@@ -760,7 +780,7 @@ fn f1_jumps_to_the_boss_and_felling_it_leads_on() {
         }
     }
     // Back at the south edge while it falls (so he does not pick the key up at once).
-    g.hero.m.teleport(P::new(crate::logic::levels::ARENA_HERO.0, crate::logic::levels::ARENA_HERO.1));
+    g.hero.m.teleport(P::new(ARENA_HERO.0, ARENA_HERO.1));
     for _ in 0..(6.0 / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
         g.hero.invuln = 1.0;
@@ -770,7 +790,7 @@ fn f1_jumps_to_the_boss_and_felling_it_leads_on() {
     let key = g.red_key.expect("the Cyclops drops a red diamond key");
     assert!(g.level.grid.is_walkable(key.x, key.y, false), "on grass he can reach");
     let gate = g.gate.expect("a gate in the arena");
-    assert_eq!((gate.x, gate.y), crate::logic::levels::ARENA_GATE);
+    assert_eq!((gate.x, gate.y), ARENA_GATE);
     let front = P::new(gate.x, gate.y + 1);
     assert!(g.level.grid.is_walkable(front.x, front.y, false), "the way to the gate is clear");
     g.hero.m.teleport(front);
@@ -810,8 +830,8 @@ fn f1_jumps_to_the_boss_and_felling_it_leads_on() {
 
 #[test]
 fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins_key() {
-    use crate::logic::hub;
-    use crate::logic::sins::Sin;
+    use logic::hub;
+    use Sin;
     const STEP: f64 = crate::app::STEP;
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
@@ -855,7 +875,7 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     }
     assert_eq!(g.screen, Screen::Playing);
     g.debug_wound_boss(1000);
-    g.hero.m.teleport(P::new(crate::logic::levels::ARENA_HERO.0, crate::logic::levels::ARENA_HERO.1));
+    g.hero.m.teleport(P::new(ARENA_HERO.0, ARENA_HERO.1));
     for _ in 0..(6.0 / STEP) as usize {
         g.update(STEP);
         g.hero.invuln = 1.0;
@@ -973,7 +993,7 @@ fn a_foe_across_the_maze_finds_the_hero_rather_than_circling() {
     g.view.clear_enemies();
     let hero = g.hero.occupied();
     // Somewhere well away by the paths.
-    let far = crate::logic::pathing::reachable(&g.level.grid, hero, false, false)
+    let far = pathing::reachable(&g.level.grid, hero, false, false)
         .into_iter()
         .filter(|p| (p.x - hero.x).abs() + (p.y - hero.y).abs() >= 14 && g.level.grid.get(p.x, p.y) == Tile::Open)
         .min_by_key(|p| ((p.x - hero.x).abs() + (p.y - hero.y).abs(), p.y, p.x))
@@ -1070,10 +1090,10 @@ fn the_old_man_sells_each_tree_in_order_and_equips() {
     assert_eq!(g.progress.hero(g.hero_kind).owned(Tree::Armory), 1);
     press(&mut g, ShopAction::Unlock(Tree::Armory, 2));
     assert_eq!(g.hero.blade, 2, "a new weapon goes straight to hand");
-    assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Hurled(HeroKind::Ragnar, 2)), "Skofnung is thrown");
+    assert_eq!(g.hero.main, WeaponKind::Ranged(RangedKind::Hurled(HeroKind::Ragnar, 2)), "Skofnung is thrown");
     press(&mut g, ShopAction::Wield(1));
     assert_eq!(g.hero.blade, 1);
-    assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Sword);
+    assert_eq!(g.hero.main, WeaponKind::Sword);
     assert_eq!(g.progress.silver, 5000 - progression::price(Tree::Armory, 2).silver);
     g.shop.tab = Tree::Path;
     press(&mut g, ShopAction::Unlock(Tree::Path, 1));
@@ -1205,7 +1225,7 @@ fn the_janissary_has_a_squad_a_pistol_and_a_bow() {
     g.update_spirits(crate::app::STEP);
     assert_eq!(g.spirits.len(), 3, "a squad of three");
     g.debug_arm(5);
-    assert_eq!(g.hero.main, crate::logic::items::WeaponKind::Ranged(crate::logic::items::RangedKind::Hurled(HeroKind::Mehmed, 5)), "Koroglu's flintlock is shot");
+    assert_eq!(g.hero.main, WeaponKind::Ranged(RangedKind::Hurled(HeroKind::Mehmed, 5)), "Koroglu's flintlock is shot");
     // The Simurg bow rains arrows on the nearest foes.
     g.debug_arm(8);
     let hp = g.hero.pos();
@@ -1341,7 +1361,7 @@ fn potions_ride_on_the_belt_until_drunk() {
     g.hero.hp = 40;
     g.input.inject(Action::Slot(1));
     g.update(crate::app::STEP);
-    assert_eq!(g.hero.hp, 40 + crate::logic::hero::HEALTH_POTION);
+    assert_eq!(g.hero.hp, 40 + HEALTH_POTION);
     assert_eq!(g.belt, vec![PotionKind::Strength]);
     g.input.inject(Action::Drink);
     g.update(crate::app::STEP);

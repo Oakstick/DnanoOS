@@ -59,6 +59,27 @@ pub mod colors {
     pub const MOTE: u32 = 0xe4ff6a;
 }
 use colors::*;
+use crate::game::Spirit;
+use crate::logic::angels::ARCHANGELS;
+use crate::logic::angels::Archangel;
+use crate::logic::boss::BossShot;
+use crate::logic::boss::Cyclops;
+use crate::logic::garden::GardenPlan;
+use crate::logic::gear;
+use crate::logic::gear::ALL_POTIONS;
+use crate::logic::heroes::HeroKind;
+use crate::logic::heroes::ROSTER;
+use crate::logic::level::Theme;
+use crate::logic::progression;
+use crate::logic::sins::SINS;
+use crate::logic::sins::Sin;
+use crate::logic::systems;
+use crate::logic::types::V;
+use crate::logic::vault::Loot;
+use crate::logic::vault::Vault;
+use crate::render::foliage;
+use crate::render::foliage::FOREST;
+use crate::render::foliage::MEADOW;
 
 /// World units per elevation level.
 pub const STEP: f32 = 0.55;
@@ -315,17 +336,17 @@ pub struct SceneState<'a> {
     pub diamonds: &'a [Diamond],
     pub potions: &'a [Potion],
     pub puddles: &'a PuddleField,
-    pub boss: Option<&'a crate::logic::boss::Cyclops>,
-    pub boss_shots: &'a [crate::logic::boss::BossShot],
+    pub boss: Option<&'a Cyclops>,
+    pub boss_shots: &'a [BossShot],
     pub gate: Option<GateView>,
     /// This dungeon's hidden shrine, until its relic is taken.
     pub relic: Option<P>,
     /// A decoy of Loki's trick.
-    pub decoy: Option<crate::logic::types::V>,
+    pub decoy: Option<V>,
     /// Who is being played, for his weapon and shield models and his brews' colours.
-    pub hero_kind: crate::logic::heroes::HeroKind,
+    pub hero_kind: HeroKind,
     /// The ancestral spirits at his side.
-    pub spirits: &'a [crate::game::Spirit],
+    pub spirits: &'a [Spirit],
     /// The archangels who cannot be had now (each gives once a level; Uriel also rests):
     /// a shrine showing one of them stands grey.
     pub angels_spent: [bool; 4],
@@ -334,11 +355,11 @@ pub struct SceneState<'a> {
     /// The red diamond key the Cyclops dropped, while it lies on the grass.
     pub red_key: Option<P>,
     /// The sin whose realm or court this is: its colour on the key he drops.
-    pub realm: Option<crate::logic::sins::Sin>,
+    pub realm: Option<Sin>,
     /// The Portals of Hell, while he is there.
     pub hub: Option<HubView>,
     /// The gold of the Vaults of Mammon: where each piece lies, and whether he has taken it.
-    pub loot: &'a [crate::logic::vault::Loot],
+    pub loot: &'a [Loot],
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -546,7 +567,7 @@ struct Models {
     /// The hero as he is equipped now (weapon in hand, shield on his back), what that is,
     /// and his weapon on its own for when he throws it. Rebuilt when his gear changes.
     hero: Rig,
-    hero_key: (crate::logic::heroes::HeroKind, u8, Option<u8>),
+    hero_key: (HeroKind, u8, Option<u8>),
     thrown: Rig,
     /// The other two heroes as they are shown on the title and character screens, as
     /// souls in Scene I and as ancestral spirits (Ragnar is `ragnar`).
@@ -566,13 +587,13 @@ struct Models {
 impl Models {
     fn new() -> Self {
         let mut bottles = HashMap::new();
-        for hero in crate::logic::heroes::ROSTER {
-            for kind in crate::logic::gear::ALL_POTIONS {
-                let hex = crate::logic::gear::potion(hero, kind).color;
+        for hero in ROSTER {
+            for kind in ALL_POTIONS {
+                let hex = gear::potion(hero, kind).color;
                 bottles.entry(hex).or_insert_with(|| super::props::bottle(hex));
             }
         }
-        let ragnar = crate::logic::heroes::HeroKind::Ragnar;
+        let ragnar = HeroKind::Ragnar;
         use super::foes::{bog_slime, draugr, raven, DRAUGR_RIG, RAVEN_RIG};
         let skeleton = build_rig(&draugr(), DRAUGR_RIG, 0.0125);
         let bat = build_rig(&raven(false), RAVEN_RIG, 0.0105);
@@ -625,12 +646,12 @@ impl Models {
             chest: vault::chest(),
             tree: super::props::pine(),
             key: gate::golden_key(),
-            keys: std::iter::once(gate::RED_GEM).chain(crate::logic::sins::SINS.iter().map(|s| s.color())).map(gate::diamond_key).collect(),
-            hedges: (0..4).map(crate::render::foliage::hedge_block).collect(),
-            bushes: (0..4).map(|v| crate::render::foliage::bush(v, crate::render::foliage::MEADOW)).collect(),
-            forest_bushes: (0..4).map(|v| crate::render::foliage::small_bush(v, crate::render::foliage::FOREST)).collect(),
-            portal_doors: crate::logic::sins::SINS.iter().map(|&s| hell::portal_doors(s)).collect(),
-            portal_names: crate::logic::sins::SINS.iter().map(|&s| hell::carved_name(s.title())).collect(),
+            keys: std::iter::once(gate::RED_GEM).chain(SINS.iter().map(|s| s.color())).map(gate::diamond_key).collect(),
+            hedges: (0..4).map(foliage::hedge_block).collect(),
+            bushes: (0..4).map(|v| foliage::bush(v, MEADOW)).collect(),
+            forest_bushes: (0..4).map(|v| foliage::small_bush(v, FOREST)).collect(),
+            portal_doors: SINS.iter().map(|&s| hell::portal_doors(s)).collect(),
+            portal_names: SINS.iter().map(|&s| hell::carved_name(s.title())).collect(),
             pedestals: [super::props::pedestal(0x6ab8ff), super::props::pedestal(0xffc84a)],
             bottles,
             cyclops: {
@@ -643,10 +664,10 @@ impl Models {
                 )
             },
             boulder: build_rig(&meadow::boulder(), &[], 0.09),
-            mehmed: forge::hero_model(crate::logic::heroes::HeroKind::Mehmed, 1, Some(1)),
-            miyamoto: forge::hero_model(crate::logic::heroes::HeroKind::Miyamoto, 1, Some(1)),
-            spirits: [crate::logic::heroes::HeroKind::Mehmed, crate::logic::heroes::HeroKind::Miyamoto].map(|h| forge::hero_model(h, 1, Some(1)).coarse()),
-            angel_shrines: crate::logic::angels::ARCHANGELS.map(|a| build_rig(&angels::angel_shrine(a), &[], angels::SHRINE_VOXEL)),
+            mehmed: forge::hero_model(HeroKind::Mehmed, 1, Some(1)),
+            miyamoto: forge::hero_model(HeroKind::Miyamoto, 1, Some(1)),
+            spirits: [HeroKind::Mehmed, HeroKind::Miyamoto].map(|h| forge::hero_model(h, 1, Some(1)).coarse()),
+            angel_shrines: ARCHANGELS.map(|a| build_rig(&angels::angel_shrine(a), &[], angels::SHRINE_VOXEL)),
             kids: [0, 1, 2, 3].map(|i| build_rig(&super::cast::kid(i), super::cast::KID_RIG, story::KID_VOXEL)),
             old_man: build_rig(&super::cast::old_man(), super::cast::OLD_MAN_RIG, story::OLD_MAN_VOXEL),
             dog: build_rig(&super::cast::dog(), super::cast::DOG_RIG, story::DOG_VOXEL),
@@ -712,7 +733,7 @@ pub struct WorldView {
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
-    garden: Option<crate::logic::garden::GardenPlan>,
+    garden: Option<GardenPlan>,
     /// The Krampus fountain in the garden's middle.
     fountain: Option<fountain::FountainView>,
     /// Where the will-o'-the-wisps haunt: the churchyard's middle, at its turf.
@@ -918,10 +939,10 @@ impl WorldView {
     // ---------------------------------------------------------------- build
 
     #[allow(clippy::too_many_arguments)]
-    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: crate::logic::level::Theme, garden: Option<&crate::logic::garden::GardenPlan>, gate: Option<P>, vault: Option<&crate::logic::vault::Vault>) {
+    pub fn build_level(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond], theme: Theme, garden: Option<&GardenPlan>, gate: Option<P>, vault: Option<&Vault>) {
         let meadow = theme.is_meadow();
         self.hell = theme.is_hell();
-        self.gym = theme == crate::logic::level::Theme::Gym;
+        self.gym = theme == Theme::Gym;
         // A sin's colour over the sky, but for the vaults, which have their own gold light.
         self.tint = theme.sin().filter(|_| vault.is_none()).map(|s| s.color());
         self.vault = None;
@@ -1454,7 +1475,7 @@ impl WorldView {
         }
         if e.is_ally() {
             // Turned by Michael's fire: washed in blue light.
-            let blue = lin(crate::logic::angels::Archangel::Michael.color());
+            let blue = lin(Archangel::Michael.color());
             v.mat_color = Vec3::new(0.72, 0.84, 1.3);
             v.emissive = blue * (0.3 + (time * 4.0).sin() * 0.08);
             v.light_color = blue;
@@ -2070,12 +2091,12 @@ impl WorldView {
             let side = self.slash_side;
             // The trail grows with the blade's reach and takes its colour.
             // (The ring is drawn at 1.08 across; a blade's swing lands wherever the trail sweeps, see `in_blade_arc`.)
-            let reach = crate::logic::progression::blade(s.hero_kind, hero.blade).swing.map(|s| s.0).unwrap_or(1.2);
-            let size = (crate::logic::systems::sweep_radius(reach) / 1.08) as f32;
+            let reach = progression::blade(s.hero_kind, hero.blade).swing.map(|s| s.0).unwrap_or(1.2);
+            let size = (systems::sweep_radius(reach) / 1.08) as f32;
             let axe_color = if hero.blade <= 1 {
                 lin(SLASH)
             } else {
-                lin(crate::logic::progression::node(s.hero_kind, crate::logic::progression::Tree::Armory, hero.blade).color).lerp(Vec3::ONE, 0.35)
+                lin(progression::node(s.hero_kind, crate::logic::progression::Tree::Armory, hero.blade).color).lerp(Vec3::ONE, 0.35)
             };
             for k in 0..5 {
                 let qk = (q - k as f32 * 0.09).clamp(0.0, 1.0);
@@ -2143,7 +2164,7 @@ impl WorldView {
                     EnemyKind::Werewolf | EnemyKind::Minion => 0.68,
                     _ => 0.32,
                 };
-                let blue = lin(crate::logic::angels::Archangel::Michael.color());
+                let blue = lin(Archangel::Michael.color());
                 let m = Mat4::from_translation(v.group_pos + Vec3::new(0.0, top, 0.0)) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(0.2, 0.2, 1.0));
                 f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, blue * 2.4, 0.85, Vec3::ZERO, SHADE_UNLIT));
             }
@@ -2410,7 +2431,7 @@ impl WorldView {
      * braziers and fireflies round them, a warm key light, a cool rim.
      */
     fn emit_stage(&self, s: &SceneState, f: &mut Frame) {
-        use crate::logic::heroes::HeroKind;
+        use HeroKind;
         let time = s.time as f32;
         let cube = MeshKind::Cube as usize;
         let cyl = MeshKind::Cylinder as usize;

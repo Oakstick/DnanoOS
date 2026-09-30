@@ -31,6 +31,11 @@ mod pal {
     pub const DUST: u32 = 0xe8d8b0;
 }
 use pal::*;
+use crate::render::characters::Sculpt;
+use crate::render::foes::CYCLOPS_EYE;
+use crate::render::foes::CYCLOPS_VOXEL;
+use crate::render::props;
+use crate::render::voxels::Collected;
 
 /// Dusk over the meadow: a low golden sun in the west under a sky going from
 /// flame to violet, the first stars out overhead, mauve clouds below.
@@ -158,7 +163,7 @@ impl WorldView {
         }
 
         // Rock: pillars, low walls, and the hedge ring with its trees.
-        let tree = crate::render::props::pine();
+        let tree = props::pine();
         let tree_tint = Vec3::new(1.15, 1.35, 1.05);
         let mut trees: Vec<(P, Vec3, f32, f32)> = Vec::new();
         for (x, y, t) in grid.cells() {
@@ -590,11 +595,11 @@ impl WorldView {
 /// Seconds a slam's dust ring takes to spread and fade.
 const RING_SECONDS: f32 = 0.55;
 /// Height of the eye's center above the model root, world units.
-const CYCLOPS_EYE_Y: f32 = crate::render::foes::CYCLOPS_EYE[1] * crate::render::foes::CYCLOPS_VOXEL;
+const CYCLOPS_EYE_Y: f32 = CYCLOPS_EYE[1] * CYCLOPS_VOXEL;
 
 /// A rough grey boulder for the Cyclops to throw.
-pub fn boulder() -> crate::render::voxels::Collected {
-    use crate::render::characters::Sculpt;
+pub fn boulder() -> Collected {
+    use Sculpt;
     let mut s = Sculpt::new(9, 9, 9);
     s.ellipsoid((4.0, 4.0, 4.0), (4.3, 3.9, 4.1), 0, 0x9a948a);
     s.paint(|x, y, z, _| {

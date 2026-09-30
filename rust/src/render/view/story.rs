@@ -12,6 +12,7 @@ use super::*;
 use crate::logic::story::{first, stage, Place, Shot, Speaker, SCENE_ONE};
 use crate::render::cast;
 use crate::render::voxels::PartDef;
+use crate::logic::heroes::HeroKind;
 
 /// Where the two sets stand, well away from everything else.
 pub(super) const GRAVEYARD: Vec3 = Vec3::new(-160.0, 0.0, -40.0);
@@ -1040,7 +1041,7 @@ impl WorldView {
             if rise <= 0.0 || taken_k >= 1.0 {
                 continue;
             }
-            let kind = [crate::logic::heroes::HeroKind::Mehmed, crate::logic::heroes::HeroKind::Ragnar, crate::logic::heroes::HeroKind::Miyamoto][i];
+            let kind = [HeroKind::Mehmed, HeroKind::Ragnar, HeroKind::Miyamoto][i];
             let boy = self.story_boy_feet(sv, i);
             let base = SOUL_AT[i].lerp(boy + Vec3::new(0.0, 0.2, 0.0), ease_in(taken_k)) + Vec3::new(0.0, (taken_k * PI).sin() * 0.6, 0.0);
             self.emit_soul(f, kind, at(base), yaw_to(SOUL_AT[i], BOYS_MID), rise, 1.0 - taken_k * 0.85, lin(SOUL_TINT[i]), time + i as f32 * 1.3);
@@ -1430,8 +1431,8 @@ impl WorldView {
 
     /// A warrior's soul: rising out of the floor in a column of light, hovering, glowing.
     #[allow(clippy::too_many_arguments)]
-    fn emit_soul(&self, f: &mut Frame, kind: crate::logic::heroes::HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
-        use crate::logic::heroes::HeroKind;
+    fn emit_soul(&self, f: &mut Frame, kind: HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
+        use HeroKind;
         let rig = match kind {
             HeroKind::Ragnar => &self.models.ragnar,
             HeroKind::Mehmed => &self.models.mehmed,

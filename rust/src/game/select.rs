@@ -9,6 +9,7 @@ use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::types::Dir;
+use crate::render::hud;
 
 /// Seconds a refused pick shakes the locked hero's name plate.
 pub const DENIED_SECONDS: f64 = 0.45;
@@ -43,7 +44,7 @@ impl Game {
             _ => {}
         }
         // The pointer highlights the hero it rests on; the buttons begin or go back.
-        let layout = crate::render::hud::select_layout(self.viewport.0, self.viewport.1);
+        let layout = hud::select_layout(self.viewport.0, self.viewport.1);
         if self.input.cursor_moved && !self.input.mouse_captured {
             if let Some(i) = self.input.cursor.and_then(|p| layout.hero_at(p)) {
                 self.select_index = i;

@@ -29,6 +29,25 @@ mod story;
 pub use shop::{shop_row_at, shop_rects};
 use crate::logic::systems::MAX_LIVES;
 use crate::render::view::floor_at;
+use crate::game::DOUBLE_POINTS_SECONDS;
+use crate::game::TOUR_STOP_SECONDS;
+use crate::game::TourArt;
+use crate::logic::angels::ARCHANGELS;
+use crate::logic::angels::Archangel;
+use crate::logic::boss::BossState;
+use crate::logic::enemy::EnemyKind;
+use crate::logic::gear;
+use crate::logic::gear::BELT_SLOTS;
+use crate::logic::gear::COINS_BOSS;
+use crate::logic::gear::RUNES_BOSS;
+use crate::logic::heroes::HeroKind;
+use crate::logic::heroes::ROSTER;
+use crate::logic::hub;
+use crate::logic::items::Offer;
+use crate::logic::sins::SINS;
+use crate::logic::types::PotionKind;
+use crate::logic::types::Tile;
+use crate::render::view;
 
 const LAYOUT_COLS: f32 = 64.0;
 const LAYOUT_ROWS: f32 = 36.0;
@@ -63,8 +82,8 @@ fn cropped(s: Sprite) -> Sprite {
 }
 
 /// The hero's face for the HUD corner and the tour.
-fn portrait_of(hero: crate::logic::heroes::HeroKind) -> &'static Sprite {
-    use crate::logic::heroes::HeroKind;
+fn portrait_of(hero: HeroKind) -> &'static Sprite {
+    use HeroKind;
     &sprites().portraits[match hero {
         HeroKind::Ragnar => 0,
         HeroKind::Mehmed => 1,
@@ -80,7 +99,7 @@ fn sprites() -> &'static Sprites {
             cropped(sprite_from(&super::heroes::mehmed_hd(None))),
             cropped(sprite_from(&super::heroes::miyamoto_hd(None))),
         ],
-        krampus: sprite_from(&crate::render::view::krampus()),
+        krampus: sprite_from(&view::krampus()),
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
             (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
@@ -191,9 +210,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 line(
                     format!(
                         "+{} {}   +{} {}   and a relic of the old heroes",
-                        crate::logic::gear::COINS_BOSS + 100 * g.dungeon as u32,
+                        COINS_BOSS + 100 * g.dungeon as u32,
                         progression::coin(g.hero_kind).to_lowercase(),
-                        crate::logic::gear::RUNES_BOSS + g.dungeon as u32,
+                        RUNES_BOSS + g.dungeon as u32,
                         progression::gems(g.hero_kind, 2).to_lowercase()
                     ),
                     0.9,
@@ -234,7 +253,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
  */
 fn draw_boss_bar(o: &mut Overlay, g: &Game, t: f32) {
     let Some(b) = &g.boss else { return };
-    if matches!(b.state, crate::logic::boss::BossState::Hidden | crate::logic::boss::BossState::Dead) {
+    if matches!(b.state, BossState::Hidden | BossState::Dead) {
         return;
     }
     let w = o.width;
@@ -394,12 +413,12 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let (tx, ty) = key_target(w, h);
     if g.hub.is_some() {
         // The seven sins' keys: a gem in each one's colour, lit for those he holds.
-        let held = crate::logic::sins::SINS.iter().filter(|s| g.sins_cleared & s.bit() != 0).count();
+        let held = SINS.iter().filter(|s| g.sins_cleared & s.bit() != 0).count();
         let gs = small * 0.55;
         let gap = gs * 2.6;
         let x0 = rc - gap * 6.0 - gs;
         o.text(&format!("SIN KEYS {held}/7"), x0 - t * 0.4, ty, small, rgba(0xff8a5a, 1.0), Align::Right, true);
-        for (i, sin) in crate::logic::sins::SINS.iter().enumerate() {
+        for (i, sin) in SINS.iter().enumerate() {
             let got = g.sins_cleared & sin.bit() != 0;
             let x = x0 + i as f32 * gap;
             o.circle(x + gs, ty, gs, rgba(if got { sin.color() } else { 0x3a3440 }, if got { 1.0 } else { 0.8 }));
@@ -537,7 +556,7 @@ fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
     }
     if g.uriel_rest > 0.0 {
         let left = g.uriel_rest.ceil() as u32;
-        let red = crate::logic::angels::Archangel::Uriel.color();
+        let red = Archangel::Uriel.color();
         o.text(&format!("URIEL RESTS {}:{:02}", left / 60, left % 60), x0 + t * 0.5, y0 - t * 0.35, t * 0.42, rgba(red, 0.9), Align::Left, true);
     }
 }
@@ -611,7 +630,7 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
     let bx0 = x0 + t * 17.6;
     o.rect(bx0, y0 + t * 0.35, (t * 0.05).max(1.0), ph - t * 0.7, [1.0, 1.0, 1.0, 0.12]);
     let slot = t * 1.55;
-    for i in 0..crate::logic::gear::BELT_SLOTS {
+    for i in 0..BELT_SLOTS {
         let x = bx0 + t * 0.4 + i as f32 * (slot + t * 0.2);
         let y = y0 + t * 0.3;
         o.rect(x, y, slot, slot, [1.0, 1.0, 1.0, 0.06]);
@@ -623,20 +642,20 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
         o.text(&format!("{}", i + 1), x + slot / 2.0, y + slot + t * 0.35, t * 0.36, rgba(TEXT_DIM, 1.0), Align::Center, false);
     }
     if let Some(&k) = g.belt.get(g.belt_index) {
-        let def = crate::logic::gear::potion(hk, k);
+        let def = gear::potion(hk, k);
         o.text(&format!("Q  {}", def.name.to_uppercase()), bx0 + t * 0.4, y0 - t * 0.35, t * 0.42, rgba(def.color, 1.0), Align::Left, true);
     }
 
     // Running effects, each with a bar that drains as it wears off.
     let fx = &hero.fx;
     let mut effects: Vec<(Icon, f64, f64, u32)> = Vec::new();
-    let mut add = |kind: crate::logic::types::PotionKind, left: f64| {
+    let mut add = |kind: PotionKind, left: f64| {
         if left > 0.0 {
-            let d = crate::logic::gear::potion(hk, kind);
+            let d = gear::potion(hk, kind);
             effects.push((Icon::Potion(hk, kind), left, d.seconds.max(left), d.color));
         }
     };
-    use crate::logic::types::PotionKind as K;
+    use PotionKind as K;
     add(K::Invulnerability, hero.invincible_timer);
     add(K::Haste, fx.haste.max(hero.speed_timer));
     add(K::Strength, fx.strength);
@@ -649,7 +668,7 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
         effects.push((Icon::Node(hk, Tree::Path, 7), hero.heart, progression::path::HEART_SECONDS, n.color));
     }
     if hero.bark > 0 {
-        let d = crate::logic::gear::potion(hk, K::Bark);
+        let d = gear::potion(hk, K::Bark);
         effects.push((Icon::Potion(hk, K::Bark), hero.bark as f64, 50.0, d.color));
     }
     let ew = t * 1.1;
@@ -703,7 +722,7 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
         o.rect_outline(x, y, bw, t * 1.1, (t * 0.07).max(1.0), rgba(0xff5a3a, pulse));
         let secs = g.double_points.ceil() as u32;
         o.text(&format!("x2 POINTS  {secs}s"), x + bw / 2.0, y + t * 0.45, t * 0.6, rgba(0xffd0a0, 1.0), Align::Center, true);
-        let fr = (g.double_points / crate::game::DOUBLE_POINTS_SECONDS) as f32;
+        let fr = (g.double_points / DOUBLE_POINTS_SECONDS) as f32;
         o.rect(x + t * 0.3, y + t * 0.85, (bw - t * 0.6) * fr, t * 0.1, rgba(0xff5a3a, 1.0));
     }
 
@@ -842,7 +861,7 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
         let r = if on { t * 0.16 } else { t * 0.11 };
         o.circle(tx + i as f32 * t * 0.5, dy, r, c);
     }
-    let left = (crate::game::TOUR_STOP_SECONDS - tour.t).max(0.0) as f32 / crate::game::TOUR_STOP_SECONDS as f32;
+    let left = (TOUR_STOP_SECONDS - tour.t).max(0.0) as f32 / TOUR_STOP_SECONDS as f32;
     o.rect(cx, cy + chh - t * 0.08, cw * left, t * 0.08, rgba(stop.color, 0.6 * fade));
     o.text("Enter / click / A: next     Esc: skip the tour", w - t * 0.8, h - bar_h / 2.0, t * 0.5, rgba(TEXT_DIM, k), Align::Right, false);
     o.text("ADVENTURES OF THE ANCIENT BLADES", t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Left, false);
@@ -855,7 +874,7 @@ fn where_line(g: &Game) -> String {
         "DEPTH II: SEVEN DOORS, SEVEN SINS".to_string()
     } else if g.in_vault() {
         "THE VAULTS OF MAMMON: TAKE ALL YOU CAN CARRY, AND SEE WHAT IT COSTS YOU AT THE FAR PORTAL".to_string()
-    } else if g.level.data.theme == crate::logic::level::Theme::Gym {
+    } else if g.theme().is_gym() {
         "ONE OF EVERY FOE, STAGE BY STAGE: THEY RISE AGAIN WHEN THEY FALL".to_string()
     } else if let Some(sin) = g.realm {
         if g.boss.is_some() {
@@ -883,9 +902,9 @@ fn draw_portal_icon(o: &mut Overlay, x: f32, y: f32, size: f32, color: u32, alph
 }
 
 /// The picture on a tour card: a portrait of a foe, or an icon of a thing.
-fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: crate::game::TourArt, x: f32, y: f32, size: f32, alpha: f32) {
-    use crate::game::TourArt;
-    use crate::logic::enemy::EnemyKind;
+fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, size: f32, alpha: f32) {
+    use TourArt;
+    use EnemyKind;
     o.rect(x, y, size, size, [1.0, 1.0, 1.0, 0.06 * alpha]);
     let sp = sprites();
     let fit = |o: &mut Overlay, s: &Sprite| {
@@ -916,11 +935,11 @@ fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: cra
         }
         TourArt::Nugget => fit(o, icon(Icon::Key)),
         TourArt::Gate => fit(o, icon(Icon::Lock)),
-        TourArt::Potion(k) => fit(o, icon(Icon::Potion(crate::logic::heroes::HeroKind::Ragnar, k))),
+        TourArt::Potion(k) => fit(o, icon(Icon::Potion(HeroKind::Ragnar, k))),
         TourArt::AngelShrine => {
             // Four flags in the archangels' colours round a haloed figure.
             let (cx, cy) = (x + size / 2.0, y + size / 2.0);
-            for (k, a) in crate::logic::angels::ARCHANGELS.iter().enumerate() {
+            for (k, a) in ARCHANGELS.iter().enumerate() {
                 let fx = x + size * (0.14 + 0.24 * k as f32);
                 o.rect(fx, y + size * 0.18, size * 0.02, size * 0.62, rgba(0x8a6a3a, alpha));
                 o.rect(fx + size * 0.02, y + size * 0.18, size * 0.12, size * 0.14, rgba(a.color(), alpha));
@@ -929,7 +948,7 @@ fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: cra
             o.rect(cx - size * 0.08, cy + size * 0.2, size * 0.16, size * 0.22, rgba(0xf0ebe0, alpha));
             o.arc(cx, cy - size * 0.02, size * 0.08, 0.0, std::f32::consts::TAU, (size * 0.02).max(1.5), rgba(0xffe070, alpha));
         }
-        TourArt::ItemShrine => fit(o, icon(Icon::Node(crate::logic::heroes::HeroKind::Ragnar, Tree::Shield, 2))),
+        TourArt::ItemShrine => fit(o, icon(Icon::Node(HeroKind::Ragnar, Tree::Shield, 2))),
         TourArt::Cross => {
             let c = rgba(0x4cf06a, alpha);
             o.rect(x + size * 0.4, y + size * 0.15, size * 0.2, size * 0.7, c);
@@ -945,7 +964,7 @@ fn draw_tour_art(o: &mut Overlay, hero: crate::logic::heroes::HeroKind, art: cra
             let (cx, cy) = (x + size / 2.0, y + size / 2.0);
             o.circle(cx, cy, size * 0.36, rgba(0x2e2638, alpha));
             o.circle(cx, cy, size * 0.12, rgba(0x6a1a10, alpha));
-            for (i, sin) in crate::logic::sins::SINS.iter().enumerate() {
+            for (i, sin) in SINS.iter().enumerate() {
                 let a = i as f32 / 7.0 * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
                 o.circle(cx + a.cos() * size * 0.25, cy + a.sin() * size * 0.25, size * 0.055, rgba(sin.color(), alpha));
             }
@@ -999,8 +1018,8 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
         };
         for (x, y, tile) in grid.cells() {
             match tile {
-                crate::logic::types::Tile::Nodule => mark(o, x, y, GOLD),
-                crate::logic::types::Tile::Charge => mark(o, x, y, 0x5cff6a),
+                Tile::Nodule => mark(o, x, y, GOLD),
+                Tile::Charge => mark(o, x, y, 0x5cff6a),
                 _ => {}
             }
         }
@@ -1014,7 +1033,7 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
     // The Portals of Hell: each gate's sin named over it as he comes near; a conquered one says so.
     if g.hub.is_some() && matches!(g.screen, Screen::Playing | Screen::Ready) {
         let hp = g.hero.pos();
-        for gate in crate::logic::hub::gates() {
+        for gate in hub::gates() {
             let (tx, ty) = (gate.tile.x as f32, gate.tile.y as f32);
             let d = ((hp.x as f32 - tx).powi(2) + (hp.y as f32 - ty).powi(2)).sqrt();
             if d > 11.0 {
@@ -1038,12 +1057,12 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
         if let Some((x, y)) = view.project(Vec3::new(tx, floor_at(grid, tx, ty) + 1.25, ty), w, h) {
             let offer = d.current();
             let spent = match offer {
-                crate::logic::items::Offer::Angel(a) => g.angels_spent()[a.index()].then_some(a),
+                Offer::Angel(a) => g.angels_spent()[a.index()].then_some(a),
                 _ => None,
             };
             if let Some(a) = spent {
                 // One who has given this level (or Uriel resting): the name greyed; Uriel's rest counted down.
-                let text = if a == crate::logic::angels::Archangel::Uriel && !g.angels_used[a.index()] {
+                let text = if a == Archangel::Uriel && !g.angels_used[a.index()] {
                     let left = g.uriel_rest.ceil() as u32;
                     format!("URIEL {}:{:02}", left / 60, left % 60)
                 } else {
@@ -1347,7 +1366,7 @@ pub fn select_layout(w: f32, h: f32) -> SelectLayout {
  * picked), and Back and Begin.
  */
 fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
-    use crate::logic::heroes::ROSTER;
+    use ROSTER;
     let (w, h) = (o.width, o.height);
     let time = g.time as f32;
     // Darken the top and bottom so the words read over the cavern.

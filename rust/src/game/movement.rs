@@ -82,7 +82,7 @@ impl Game {
     }
 
     /// Footsteps while running, a thud and a puff of dust on landing.
-    pub(super) fn footsteps(&mut self, before: crate::logic::types::V) {
+    pub(super) fn footsteps(&mut self, before: V) {
         let airborne = self.hero.airborne();
         if self.was_airborne && !airborne {
             let hp = self.hero.pos();

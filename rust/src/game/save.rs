@@ -12,7 +12,9 @@ use crate::logic::progression::Progress;
 use crate::logic::sins::{Sin, SINS};
 use crate::logic::types::PotionKind;
 use crate::platform;
+use crate::logic::sins::ALL_SINS;
 
+/// Where the adventure's checkpoint is saved.
 const RUN_KEY: &str = "vh.run";
 
 /// Every brew, in the order the save names them.
@@ -109,7 +111,7 @@ impl Run {
             "-" => Vec::new(),
             list => list.split(',').map(|i| i.parse::<usize>().ok().and_then(|i| BREWS.get(i).copied())).collect::<Option<_>>()?,
         };
-        let sins = if version == "v2" { f.next()?.parse::<u8>().ok()? & crate::logic::sins::ALL_SINS } else { 0 };
+        let sins = if version == "v2" { f.next()?.parse::<u8>().ok()? & ALL_SINS } else { 0 };
         Some(Run { hero, stage, score, lives, belt, sins })
     }
 }

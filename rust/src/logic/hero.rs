@@ -5,6 +5,10 @@ use super::items::{item, weapon, ItemKind, RangedKind, WeaponKind, SPEED_BOOST};
 use super::progression::{self, path, STAMINA_MAX, STAMINA_PER_BLOW, STAMINA_REGEN, STAMINA_REST};
 use super::mover::Mover;
 use super::types::{Dir, P, V};
+use crate::logic::gear;
+use crate::logic::types::CARDINALS;
+use crate::logic::types::PotionKind;
+use crate::logic::types::Tile;
 
 /// Seconds a jump takes, and how high (in levels) the arc peaks above the straight line.
 pub const JUMP_SECONDS: f64 = 0.42;
@@ -961,9 +965,9 @@ impl Hero {
     }
 
     /// Drinks a potion with a timed or instant effect (Extra Life is the game's to handle).
-    pub fn drink(&mut self, kind: crate::logic::types::PotionKind) {
-        use crate::logic::types::PotionKind as K;
-        let secs = crate::logic::gear::potion_seconds(kind);
+    pub fn drink(&mut self, kind: PotionKind) {
+        use PotionKind as K;
+        let secs = gear::potion_seconds(kind);
         match kind {
             K::Health => {
                 self.heal(HEALTH_POTION);
@@ -1101,7 +1105,7 @@ fn free_landing(grid: &Grid, from: V, aim: V) -> Option<(P, V)> {
         let mut clear = true;
         while d < reach {
             let q = tile(at(d));
-            if grid.get(q.x, q.y) == crate::logic::types::Tile::Rock {
+            if grid.get(q.x, q.y) == Tile::Rock {
                 clear = false;
                 break;
             }
@@ -1121,9 +1125,9 @@ fn free_floor(grid: &Grid, p: V) -> f64 {
     if !grid.is_ramp(t.x, t.y) {
         return low as f64;
     }
-    for d in crate::logic::types::CARDINALS {
+    for d in CARDINALS {
         let n = grid.neighbor(t, d);
-        if grid.get(n.x, n.y) != crate::logic::types::Tile::Rock && !grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low {
+        if grid.get(n.x, n.y) != Tile::Rock && !grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low {
             let (dx, dy) = d.vec();
             let along = (p.x - t.x as f64) * dx as f64 + (p.y - t.y as f64) * dy as f64 + 0.5;
             return low as f64 + along.clamp(0.0, 1.0);

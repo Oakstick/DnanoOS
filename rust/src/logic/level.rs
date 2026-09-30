@@ -61,6 +61,21 @@ impl Theme {
     pub fn is_hell(self) -> bool {
         matches!(self, Theme::Hell | Theme::Gym)
     }
+
+    /// The Portals of Hell themselves (not the gym).
+    pub fn is_hub(self) -> bool {
+        self == Theme::Hell
+    }
+
+    /// The gym, with one of every foe.
+    pub fn is_gym(self) -> bool {
+        self == Theme::Gym
+    }
+
+    /// The Vaults of Mammon: Greed's realm, the one built so far.
+    pub fn is_vault(self) -> bool {
+        self == Theme::Realm(Sin::Greed)
+    }
 }
 
 #[derive(Clone, Debug)]

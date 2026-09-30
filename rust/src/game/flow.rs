@@ -5,12 +5,52 @@ use super::{CLEARED_SECONDS, Game, MenuItem, READY_SECONDS, Screen, save};
 use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::types::Dir;
-use crate::render::view::{CameraMode, SceneState};
+use crate::render::view::{CameraMode, GateView, HubView, SceneState};
+use crate::audio::Soundtrack;
+use crate::logic::boss::BossState;
+use crate::platform;
+use crate::render::hud;
+use crate::render::view::SelectView;
+use crate::render::view::StoryView;
 
 /// How long "GO!" hangs on screen once play begins.
 const GO_SECONDS: f32 = 0.8;
 
+/// How long the hero's fall plays before the round restarts (or the game is over).
 const DYING_SECONDS: f64 = 1.8;
+
+
+/// What the renderer is handed each frame, built from the game's fields. A macro rather than a
+/// method, so `update` can hand it to `self.view` (borrowed mutably) while it borrows the rest.
+macro_rules! scene_state {
+    ($g:expr) => {
+        SceneState {
+            grid: &$g.level.grid,
+            hero: &$g.hero,
+            enemies: &$g.enemies,
+            frenzy: &$g.frenzy,
+            time: $g.time,
+            bombs: &$g.bombs,
+            projectiles: &$g.projectiles,
+            diamonds: &$g.diamonds,
+            potions: &$g.potions,
+            puddles: &$g.puddles,
+            boss: $g.boss.as_ref(),
+            boss_shots: &$g.boss_shots,
+            gate: $g.gate.map(|tile| GateView { tile, keys: $g.keys_got, total: $g.keys_total, door: $g.door as f32, red: $g.boss.is_some(), key: $g.key_color() }),
+            relic: $g.relic_shrine,
+            decoy: $g.decoy.map(|(p, _)| p),
+            hero_kind: $g.hero_kind,
+            spirits: &$g.spirits,
+            fires: &$g.fires,
+            angels_spent: $g.angels_spent(),
+            red_key: $g.red_key,
+            realm: $g.realm,
+            hub: $g.hub.as_ref().map(|h| HubView { doors: h.doors.map(|d| d as f32), sins: $g.sins_cleared, seal: h.seal as f32 }),
+            loot: $g.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
+        }
+    };
+}
 
 impl Game {
     pub(super) fn enter(&mut self, screen: Screen) {
@@ -25,7 +65,7 @@ impl Game {
             self.audio.set_tempo_step(0);
         }
         // Dungeon I has its own recorded soundtrack; the title, the shop and the rest keep the synth tune.
-        use crate::audio::Soundtrack;
+        use Soundtrack;
         match screen {
             Screen::Title | Screen::Select | Screen::Shop => self.audio.set_soundtrack(Some(Soundtrack::Menu)),
             Screen::Ready | Screen::Tour => {
@@ -55,12 +95,12 @@ impl Game {
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
-        self.view.select = (self.screen == Screen::Select).then_some(crate::render::view::SelectView {
+        self.view.select = (self.screen == Screen::Select).then_some(SelectView {
             index: self.select_index,
             age: self.select_age as f32,
             denied: self.select_denied as f32,
         });
-        self.view.story = self.story.as_ref().filter(|_| self.screen == Screen::Story).map(|s| crate::render::view::StoryView {
+        self.view.story = self.story.as_ref().filter(|_| self.screen == Screen::Story).map(|s| StoryView {
             beat: s.beat,
             t: s.t as f32,
             age: s.age as f32,
@@ -73,7 +113,7 @@ impl Game {
             .boss
             .as_ref()
             .filter(|b| b.alive() && matches!(self.screen, Screen::Playing | Screen::Paused))
-            .filter(|b| !matches!(b.state, crate::logic::boss::BossState::Hidden))
+            .filter(|b| !matches!(b.state, BossState::Hidden))
             .map(|b| glam::Vec3::new(b.pos.x as f32, 0.0, b.pos.y as f32))
             .or_else(|| self.hub_focus());
         self.input.poll(dt);
@@ -180,31 +220,7 @@ impl Game {
                 }
             }
         }
-        let state = SceneState {
-            grid: &self.level.grid,
-            hero: &self.hero,
-            enemies: &self.enemies,
-            frenzy: &self.frenzy,
-            time: self.time,
-            bombs: &self.bombs,
-            projectiles: &self.projectiles,
-            diamonds: &self.diamonds,
-            potions: &self.potions,
-            puddles: &self.puddles,
-            boss: self.boss.as_ref(),
-            boss_shots: &self.boss_shots,
-            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some(), key: self.key_color() }),
-            relic: self.relic_shrine,
-            decoy: self.decoy.map(|(p, _)| p),
-            hero_kind: self.hero_kind,
-            spirits: &self.spirits,
-            fires: &self.fires,
-            angels_spent: self.angels_spent(),
-            red_key: self.red_key,
-            realm: self.realm,
-            hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
-            loot: self.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
-        };
+        let state = scene_state!(self);
         self.view.update(dt, &state);
         self.input.flush();
     }
@@ -247,7 +263,7 @@ impl Game {
         if items.is_empty() {
             return None;
         }
-        let rects = crate::render::hud::menu_rects(self.screen, &items, self.viewport.0, self.viewport.1);
+        let rects = hud::menu_rects(self.screen, &items, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
         let n = items.len();
         let horizontal = self.screen == Screen::Title;
@@ -276,32 +292,9 @@ impl Game {
         None
     }
 
+    /// Everything the renderer needs to draw this frame.
     pub fn scene(&self) -> SceneState<'_> {
-        SceneState {
-            grid: &self.level.grid,
-            hero: &self.hero,
-            enemies: &self.enemies,
-            frenzy: &self.frenzy,
-            time: self.time,
-            bombs: &self.bombs,
-            projectiles: &self.projectiles,
-            diamonds: &self.diamonds,
-            potions: &self.potions,
-            puddles: &self.puddles,
-            boss: self.boss.as_ref(),
-            boss_shots: &self.boss_shots,
-            gate: self.gate.map(|tile| crate::render::view::GateView { tile, keys: self.keys_got, total: self.keys_total, door: self.door as f32, red: self.boss.is_some(), key: self.key_color() }),
-            relic: self.relic_shrine,
-            decoy: self.decoy.map(|(p, _)| p),
-            hero_kind: self.hero_kind,
-            spirits: &self.spirits,
-            fires: &self.fires,
-            angels_spent: self.angels_spent(),
-            red_key: self.red_key,
-            realm: self.realm,
-            hub: self.hub.as_ref().map(|h| crate::render::view::HubView { doors: h.doors.map(|d| d as f32), sins: self.sins_cleared, seal: h.seal as f32 }),
-            loot: self.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
-        }
+        scene_state!(self)
     }
 
     pub(super) fn handle_global_keys(&mut self) {
@@ -316,7 +309,7 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::FreeMove]) {
             self.hero.free_move = !self.hero.free_move;
-            crate::platform::save("vh.free_move", if self.hero.free_move { "1" } else { "0" });
+            platform::save("vh.free_move", if self.hero.free_move { "1" } else { "0" });
             let p = self.hero.pos();
             let text = if self.hero.free_move { "FREE MOVEMENT" } else { "GRID MOVEMENT" };
             self.floater(p.x, p.y - 0.8, text, 1.4, Some(0xf2e3c4));

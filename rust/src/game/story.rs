@@ -8,6 +8,7 @@ use super::{Game, Screen};
 use crate::audio::{Sfx, Speech};
 use crate::input::Action;
 use crate::logic::story::{first, pause_after, stage, Beat, Shot, Speaker, SCENE_ONE, SOULS_LINE};
+use crate::logic::story::Place;
 
 /// Letters a second the typewriter shows.
 pub const TYPE_RATE: f64 = 42.0;
@@ -172,7 +173,7 @@ impl Game {
         }
         if gust {
             // The wind over the graves up above; water dripping in the dungeon below.
-            self.audio.play(if beat.shot.place() == crate::logic::story::Place::Graveyard { Sfx::Wind } else { Sfx::Drip });
+            self.audio.play(if beat.shot.place() == Place::Graveyard { Sfx::Wind } else { Sfx::Drip });
         }
         for _ in 0..risen {
             self.audio.play(Sfx::Soul);

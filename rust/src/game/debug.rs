@@ -8,6 +8,7 @@ use crate::logic::gear::ShieldGear;
 use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::systems::PUDDLE_SECONDS;
 use crate::logic::types::{Dir, P, PotionKind, Tile};
+use crate::logic::boss::BossState;
 
 /// ...and the runes up to this.
 const CHEAT_RUNES: u32 = 10;
@@ -106,7 +107,7 @@ impl Game {
     /// Capture hook: knock the boss down as if a dive had missed.
     pub fn debug_daze_boss(&mut self) {
         if let Some(b) = self.boss.as_mut().filter(|b| b.active()) {
-            b.state = crate::logic::boss::BossState::Dazed(0.0);
+            b.state = BossState::Dazed(0.0);
             b.hover = 0.05;
         }
     }
