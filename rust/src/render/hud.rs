@@ -1273,7 +1273,7 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
 /// Mammon's toll, before the far portal of his vaults: what he carries, and the choice.
 fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(0.0, 0.0, o.width, o.height, [0.06, 0.03, 0.0, 0.72]);
-    let top = menu_rects(Screen::Toll, &[MenuItem::DropAll], o.width, o.height)[0][1];
+    let top = menu_rects(Screen::Toll, &[MenuItem::KeepAll], o.width, o.height)[0][1];
     let pulse = 0.9 + (g.time as f32 * 3.0).sin() * 0.1;
     o.text("MAMMON'S TOLL", o.width / 2.0, top - t * 4.6, t * 1.45, rgba(GOLD, pulse), Align::Center, true);
     let h = g.hoard;
@@ -1286,15 +1286,17 @@ fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
         )
     };
     o.text(&carried, o.width / 2.0, top - t * 3.4, t * 0.62, rgba(SAND, 1.0), Align::Center, true);
-    o.wrap_text(
-        "The portal opens only for those who leave Mammon's gold, and what his chests gave you is yours to keep. Keep the gold and the vaults close on you: it all begins again, every coin and every chest's gift back where it was.",
+    // His offer, and nothing of what keeping costs: there is no chance, and keeping always begins the vaults again.
+    o.text(
+        "There is a chance for you to keep the gold.",
         o.width / 2.0,
-        top - t * 2.65,
-        (t * 26.0).min(o.width - t * 2.0),
-        t * 0.72,
-        t * 0.5,
-        rgba(TEXT_DIM, 1.0),
+        top - t * 2.45,
+        t * 0.7,
+        rgba(0xffe08a, pulse),
+        Align::Center,
+        true,
     );
+    o.text("Keep it, or leave it.", o.width / 2.0, top - t * 1.5, t * 0.55, rgba(TEXT_DIM, 1.0), Align::Center, false);
     draw_menu(o, g, t);
 }
 

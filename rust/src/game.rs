@@ -140,9 +140,10 @@ pub enum MenuItem {
     QuitToTitle,
     /// Leave the game entirely. Desktop only: a browser tab cannot close itself.
     Quit,
-    /// Mammon's toll: leave the hoard and go through, or keep it and start the vaults again.
-    DropAll,
+    /// Mammon's toll: keep the gold (he promises a chance; there is none, and the vaults begin
+    /// again), or leave it and go through.
     KeepAll,
+    DropAll,
 }
 
 impl MenuItem {
@@ -158,8 +159,8 @@ impl MenuItem {
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
-            MenuItem::DropAll => "DROP EVERYTHING",
-            MenuItem::KeepAll => "KEEP EVERYTHING",
+            MenuItem::KeepAll => "KEEP THE GOLD",
+            MenuItem::DropAll => "LEAVE IT",
         }
     }
 }

@@ -249,7 +249,8 @@ impl Game {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
             Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle],
-            Screen::Toll => return vec![MenuItem::DropAll, MenuItem::KeepAll],
+            // Keep first, and highlighted: Mammon would have it so.
+            Screen::Toll => return vec![MenuItem::KeepAll, MenuItem::DropAll],
             _ => return Vec::new(),
         };
         if quit {

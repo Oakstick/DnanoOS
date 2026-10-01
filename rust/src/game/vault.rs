@@ -6,11 +6,12 @@
 //! them, treasure heaps, chests and gems, all counted into his hoard. A chest
 //! also throws out one to three items as it opens (potions, weapons, boons,
 //! runes, bombs, in Diablo's four rarities), which land beside it and are his
-//! for the walking over. At the far portal Mammon takes his toll: leave the
-//! gold and the portal opens on his court, and what the chests gave him is
-//! his to keep; keep the gold and the vaults close, and he starts the realm
-//! again with every coin back where it lay and his kit as it was when he came
-//! in. F2 brings him straight to the far portal.
+//! for the walking over. At the far portal Mammon makes his offer: "There is
+//! a chance for you to keep the gold. Keep it, or leave it." It is a lie.
+//! Leave the gold and the portal opens on his court, and what the chests gave
+//! him is his to keep; keep it and the vaults close, every time, and he
+//! starts the realm again with every coin back where it lay and his kit as it
+//! was when he came in. F2 brings him straight to the far portal.
 
 use super::save::Stage;
 use super::{Banner, Game, MenuItem, Screen};
@@ -322,7 +323,7 @@ impl Game {
         }
     }
 
-    /// Before the far portal: Mammon's toll. Drop everything, or keep it.
+    /// Before the far portal: Mammon's offer. Keep the gold, or leave it.
     pub(super) fn ask_toll(&mut self) {
         self.toll_asked = true;
         self.audio.play(Sfx::Toll);
@@ -333,8 +334,9 @@ impl Game {
         self.input.consume(Action::Attack);
     }
 
-    /// His answer. Drop: the hoard is left where he stands and the portal opens. Keep: the vaults
-    /// close on him, and the realm begins again with every coin back where it lay.
+    /// His answer. Leave it: the hoard is left where he stands and the portal opens. Keep it: there
+    /// never was a chance; the vaults close on him, and the realm begins again with every coin back
+    /// where it lay.
     pub(super) fn pay_toll(&mut self, choice: MenuItem) {
         let hp = self.hero.pos();
         match choice {
@@ -371,8 +373,8 @@ impl Game {
                 self.checkpoint(Stage::Realm(Sin::Greed));
                 self.juice.fade = 1.0;
                 self.juice.banner = Some(Banner {
-                    text: "THE VAULTS CLOSE ON THE GREEDY".into(),
-                    sub: "EVERY COIN BACK WHERE IT LAY, EVERY CHEST SHUT   FROM THE BEGINNING".into(),
+                    text: "MAMMON LAUGHS: THERE WAS NEVER A CHANCE".into(),
+                    sub: "THE VAULTS CLOSE ON THE GREEDY   EVERY COIN BACK WHERE IT LAY".into(),
                     color: 0xff8a5a,
                     life: 4.0,
                     max: 4.0,
@@ -508,10 +510,9 @@ mod tests {
         assert_eq!(g.hero.occupied(), P::new(v.exit_gate.x - 1, v.exit_gate.y));
         g.update(STEP);
         assert_eq!(g.screen, Screen::Toll, "before the portal, the question");
-        assert_eq!(g.menu_items(), vec![MenuItem::DropAll, MenuItem::KeepAll]);
-        // Keep everything: the vaults close and the realm starts again, the coin back where it lay.
-        g.input.nav = Some(Dir::Down);
-        g.update(STEP);
+        assert_eq!(g.menu_items(), vec![MenuItem::KeepAll, MenuItem::DropAll]);
+        assert_eq!(g.menu_index, 0, "keeping is what he offers first");
+        // Keep it: there was never a chance; the vaults close and the realm starts again, the coin back where it lay.
         g.input.inject(Action::Confirm);
         g.update(STEP);
         assert_eq!(g.screen, Screen::Ready);
@@ -521,10 +522,12 @@ mod tests {
         for _ in 0..((READY_SECONDS + 0.1) / STEP) as usize {
             g.update(STEP);
         }
-        // Drop everything: the portal opens on Mammon's court.
+        // Leave it: the portal opens on Mammon's court.
         g.cheat_to_gate();
         g.update(STEP);
         assert_eq!(g.screen, Screen::Toll);
+        g.input.nav = Some(Dir::Down);
+        g.update(STEP);
         g.input.inject(Action::Confirm);
         g.update(STEP);
         assert_eq!(g.screen, Screen::Playing);
@@ -599,8 +602,6 @@ mod tests {
         g.cheat_to_gate();
         g.update(STEP);
         assert_eq!(g.screen, Screen::Toll);
-        g.input.nav = Some(Dir::Down);
-        g.update(STEP);
         g.input.inject(Action::Confirm);
         g.update(STEP);
         assert_eq!((g.progress.runes, g.belt.clone()), (3, vec![PotionKind::Health]));
@@ -622,10 +623,35 @@ mod tests {
         g.update(STEP);
         g.cheat_to_gate();
         g.update(STEP);
+        g.input.nav = Some(Dir::Down);
+        g.update(STEP);
         g.input.inject(Action::Confirm);
         g.update(STEP);
         assert_eq!(g.screen, Screen::Playing);
         assert!(g.hoard.is_empty() && g.gate_open);
         assert_eq!(g.progress.runes, 8, "the runes are his");
+    }
+
+    #[test]
+    fn mammon_promises_a_chance_to_keep_the_gold_but_keeping_always_begins_again() {
+        let mut g = in_the_vault();
+        let v = g.vault.clone().unwrap();
+        let coin = v.loot.iter().find(|l| l.kind == LootKind::Coin).unwrap();
+        for _ in 0..5 {
+            g.hero.place(coin.at);
+            g.update(STEP);
+            assert_eq!(g.hoard.gold, 10);
+            g.cheat_to_gate();
+            g.update(STEP);
+            assert_eq!(g.screen, Screen::Toll);
+            g.input.inject(Action::Confirm);
+            g.update(STEP);
+            assert_eq!(g.screen, Screen::Ready, "no chance, ever");
+            assert!(g.hoard.is_empty() && !g.gate_open);
+            assert_eq!(g.hero.occupied(), v.arrival);
+            for _ in 0..((READY_SECONDS + 0.1) / STEP) as usize {
+                g.update(STEP);
+            }
+        }
     }
 }
