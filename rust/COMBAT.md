@@ -57,8 +57,8 @@ Design limits the table must satisfy (each is a test in `combat::frames`):
 | Action | Frames | Rule |
 |---|---|---|
 | Guard (LB / Shift) | raise 2 f | Blocks hits from the front 180°. Walk speed × 0.55. Can't attack while raised. |
-| **Parry** | guard f2-f9 (8 f, 133 ms) | A hit landing in the window: no damage, no stamina. Attacker → *Deflected* 40 f and loses 50% of max poise. A hex bolt is **reflected** (×2 damage to foes). |
-| Block | after f9 | Stamina − damage. Hero → *Blockstun* 6 + dmg/3 f. |
+| **Parry** | guard f2-f9 (8 f, 133 ms) | A hit landing in the window: no damage, no stamina. Attacker → *Deflected* **60 f** (longer than any recovery, so a parry always opens more than a dodge) and loses 50% of max poise. A hex bolt is **reflected** (×1.5 damage to foes). |
+| Block | after f9 | Stamina − **0.7** × damage (the training buckler's 30% stability). Hero → *Blockstun* 6 + dmg/3 f. |
 | Guard break | block with stamina < cost | 50% damage through, hero → *GuardBroken* 48 f, stamina → 0. |
 | Evade (Space / A) | 25 f airborne + 6 f landing | The leap. **Airborne = i-frames** (f0-f24), then 6 f landing recovery. Cancels any startup frame, or recovery from its cancel frame. |
 | Hit taken | hitstun 10 + dmg/2 f | Then **30 f mercy** i-frames, so two attacks can't stack into one combo. The formula of §2 applies to him too: a foe that catches his recovery deals ×1.25, a broken guard ×1.5. |
@@ -70,8 +70,8 @@ Design limits the table must satisfy (each is a test in `combat::frames`):
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Slam | Brute | 42 (700 ms) | 6 | 48 (800 ms) | 96 | 30 | 1.8 | 35° | 30 f | 0 | 35 |
 | Sweep | Brute | 30 (500 ms) | 8 | 36 | 74 | 20 | 1.6 | 110° | 16 f | 0 | 35 |
-| Lunge | Skirmisher | 18 (300 ms) | 8 | 22 | 48 | 15 | 0.9 | 70° | 12 f | 2.6 tiles | 0 |
-| Hex Bolt | Hexer | 36 (600 ms) | 1 | 30 | 67 | 12 | bolt 7 t/s, 90 f | — | 30 f | 0 | 0 |
+| Lunge | Skirmisher | 18 (300 ms) | 8 | 22 | 48 | 18 | 0.9 | 70° | 12 f | 2.6 tiles | 0 |
+| Hex Bolt | Hexer | 36 (600 ms) | 1 | 30 | 67 | 15 | bolt 7 t/s (time-locked), 90 f | — | 30 f | 0 | 0 |
 
 * **Track**: for the first *track* startup frames the attacker turns toward the hero.
   After that its aim is **committed**: the last 12 f of a Slam and the last 6 f of a
@@ -115,13 +115,13 @@ Why these shapes:
 
 | Archetype | HP | Poise | What kills it | Expected TTK |
 |---|---|---|---|---|
-| Brute | 240 | 100 | Slam recovery 48 f fits L1+L2+L3 if the punish starts by f12. 85 poise per chain, so the 2nd punish breaks it; 90 f stagger at ×1.5 fits one full chain (≈ 52). | 4-5 punishes, **10-12 s** |
-| Skirmisher | 70 | 25 | Any hit flinches it; L2 breaks it (40 ≥ 25); L3 lands ×1.5. | 2 chains, **3-4 s** once caught |
-| Hexer | 45 | 20 | One chain + L1. The cost is reaching her. | **2 s** in reach |
+| Brute | 200 | 100 | Slam recovery 48 f fits L1+L2+L3 if the punish starts by f12; a parried slam opens 60 f at ×1.5. 85 poise per chain, so the 2nd punish breaks it; 90 f stagger at ×1.5 fits one full chain (≈ 52). | 4 punishes, **10-12 s** (measured: 11.6 s) |
+| Skirmisher | 80 | 25 | Any hit flinches it; L2 breaks it (40 ≥ 25); L3 lands ×1.5. It sidesteps the first swing it sees. | 2 chains, **3-4 s** once caught |
+| Hexer | 55 | 20 | One chain + L1, or a parried bolt (22) and a chain. The cost is reaching her. | **2-3 s** in reach |
 
-Foe pressure (if every attack landed): Brute 30 per 96 f = **18.8 DPS**, Skirmisher 15 per ~136 f
-≈ **6.6 DPS**, Hexer 12 per ~127 f ≈ **5.7 DPS**. With 3 threat points, the worst case is
-Brute + one other ≈ **25 DPS** against 100 HP: about 4 s of zero-skill play.
+Foe pressure (if every attack landed): Brute 30 per ~140 f ≈ **13 DPS**, Skirmisher 18 per ~136 f
+≈ **8 DPS**, Hexer 15 per ~127 f ≈ **7 DPS**. With 3 threat points, the worst case is
+Brute + one other ≈ **21 DPS** against 100 HP: about 5 s of zero-skill play.
 
 ---
 
@@ -189,11 +189,12 @@ score = 1.0 · clamp(1 − d/10, 0, 1)        closeness
 ```
 
 The **commit gate** backs the projection up. A foe holding a token may only begin its move if
-the frame it **lands** on is ≥ 18 f from every other committed landing. For a blow that frame is
-now + startup. For a hex bolt it is now + startup + flight (`duelist::lands_after`). Otherwise
-it holds for a few frames. *No two foe attacks land within 300 ms of each other*, and that is a
+the frame it **lands** on is ≥ 24 f (18 f + 6 f of slack) from every other committed landing.
+For a blow that frame is now + startup. For a lunge it adds the active frames it travels before
+it is near enough. For a hex bolt it adds the flight (`duelist::lands_after`). Otherwise the foe
+holds for a few frames. *No two foe attacks land within 300 ms of each other*, and that is a
 test (`the_gauntlet_never_lands_two_strikes_inside_the_reaction_window`, a minute of five foes
-against a hero who stands still).
+against a hero who stands still), and the bots measure it with the hero moving (§7).
 
 Lessons from the lab, now in the rules:
 
@@ -204,9 +205,13 @@ Lessons from the lab, now in the rules:
   (`ThreatManager::release`, a *spent* hold).
 * **The leash scales with the walk.** A flat 150 f timeout took the token back from a Brute
   still walking in. A token now lasts `max(150, eta + 60)` frames.
-* **Telemetry counts real landings.** A blow lands on its first active frame, a bolt when it
-  touches the hero. *Overlaps* counts landings inside the window, with one frame of slack for the
-  hero's drift while a bolt flies.
+* **Telemetry counts real landings.** A landing is the frame a strike reaches the hero, however
+  he meets it (hit, block, parry, evade). *Overlaps* counts landings inside the 18 f window.
+* **Plans keep slack.** A moving hero shifts landings by a few frames: a lunge closes sooner on a
+  hero walking into it. Plans 24 f apart land 18 f apart.
+* **Bolts are time-locked.** A bolt flies straight but paces itself (0.5× to 1.6× its speed) to
+  touch the hero on its planned frame. A hero walking into it no longer brings it in early. A
+  sidestep still dodges it.
 
 ### 4.2 Positional play: rings and sectors
 
@@ -229,12 +234,13 @@ can see them; his back fills only when the five sectors before it are taken. Foe
 | | **Brute** (Blemmyes) | **Skirmisher** (Loup-garou) | **Hexer** (Witch) |
 |---|---|---|---|
 | Question it asks | *Can you wait?* | *Can you read the timing?* | *Can you close the distance?* |
-| HP / Poise / Armor | 240 / 100 / 35 | 70 / 25 / 0 | 45 / 20 / 0 |
+| HP / Poise / Armor | 200 / 100 / 35 | 80 / 25 / 0 | 55 / 20 / 0 |
 | Stagger / Resolve | 90 f / 120 f | 50 f / 60 f | 60 f / 60 f |
 | Walk / Strafe (t/s) | 1.8 / 1.2 | 4.6 / 2.8 | 2.2 / 2.0 (retreat 3.2) |
 | Turn rate | 150°/s | 540°/s | 360°/s |
-| Moves | Slam (front), Sweep (when flanked within 1.3) | Lunge from 1.6-3.2 tiles, then 30 f backstep | Hex Bolt from ≤ 7.5 tiles |
-| Answer | evade the slam, punish the 48 f recovery, break it with L3 | parry the lunge (deflect 40 f) or punish its 22 f recovery | dash in between bolts; parry reflects |
+| Moves | Slam (front), Sweep (when flanked within 1.3) | Lunge from 1.6-3.2 tiles, then 30 f backstep; **sidesteps** a swing begun within 2.4 tiles (12 f hop at 8 t/s, then 120 f before the next) | Hex Bolt from ≤ 7.5 tiles |
+| Answer | evade the slam, punish the 48 f recovery, break it with L3 | don't open with a swing: parry the lunge (deflect 60 f) or punish its 22 f recovery | dash in between bolts; parry reflects |
+| Rest after a move | 70 f | 60 f | 75 f |
 | Radius | 0.5 | 0.38 | 0.35 |
 
 What was **subtracted** in the ring: contact damage, the old toughness counts, witches'
@@ -258,7 +264,10 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 * Losing restores the hero and restarts the bout. Winning moves on to the next.
 * **F5**: frame readout (hero state and frame, buffer, threat points, foe states, bout stats).
 * **F6**: skip to the next bout.
-* Captures: `ring` (into the ring), `bout:N`, `readout`.
+* When a bout ends, a **results card** shows its time against the target, the health lost, the
+  damage dealt, how the strikes were met (parried, blocked, evaded) and the mistakes (caught
+  mid-swing, guards broken). A line goes into `combat_log.csv` in the save folder.
+* Captures: `ring` (into the ring), `bout:N`, `readout`, `bot:K` (a bot plays: 0 novice, 1 adept, 2 expert).
 
 ---
 
@@ -268,7 +277,77 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 |---|---|---|
 | **0 Spec** | this document | numbers pinned by tests ✔ |
 | **1 The Ring** | `logic::combat` (frames, FSM, buffer, formulas, threat manager, archetypes), the gym's Sparring Ring, telegraphs, HP/poise bars, frame readout, five bouts | builds, tests green, five bouts playable ✔ |
-| 2 Tune | playtest the bouts; per-bout telemetry (TTK, damage taken, parries, blocks, evades, overlaps) on screen when a bout ends; change only the tables | TTK within ±20% of §2.1; zero overlaps; parry rate climbs with practice |
+| **2 Tune** | the balance harness (§7): three bot skills play every bout; telemetry on screen when a bout ends and in `combat_log.csv`; tables tuned in two rounds | expert TTK inside every target ✔, zero overlaps for a player who stands his ground ✔ (≈ 0.4 a minute for one who moves), the skill gradient of §7 ✔. Your own parry rate is in the log. |
 | 3 Hero kit | map blade tiers onto the move table (reach, arc, tempo scalars), shields onto guard stats (parry window, block cost), audit path skills against the FSM (cut what bypasses it) | every tier is the same three verbs with different numbers |
 | 4 Roll-out | the realms' foes become archetypes (Helmeted → Brute-lite, Large Bat → Skirmisher-flier), the Vaults' packs run through the threat manager, contact damage retired outside the Garden's chase levels | the Vaults play as a Diablo-like brawl with readable cadence |
 | 5 Bosses | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3 | the boss is a fourth archetype, not a special case |
+
+---
+
+## 7. Phase 2: the balance harness and the tuning log
+
+A human playtest gives one data point an hour. The harness gives forty-five in seven seconds.
+`game::bot` is a scripted player that drives the real controller path (a pad's stick and
+buttons into `Input`). It sees only what a player sees: a foe's tell from the frame its
+reaction delay has passed, bolts in flight, its own stamina.
+
+| Skill | Model |
+|---|---|
+| Novice | walks at the nearest foe and mashes attack; never guards |
+| Adept | holds the guard when it sees a strike coming (reaction 18 ± 4 f); attacks what is in reach, keeping a block's worth of stamina |
+| Expert | raises the guard to put each strike in the parry window (reaction 12 ± 2 f, timing ± 2 f); strikes only into openings, and never into a swing it could not guard out of before the next strike it has seen |
+
+Run it: `AdventuresOfTheAncientBlades.exe --balance N` (N seeds per bout and skill).
+`the_bouts_meet_their_balance_targets` pins the expert's times, the novice's losses and the
+adept's win over the Brute.
+
+### Targets
+
+* **Expert** wins every bout, inside the bout's target time (§2.1, ± 20%).
+* **Adept** beats the Brute and wins the early bouts at least half the time. The Gauntlet
+  may beat it.
+* **Novice** loses to the Brute (*can you wait?*), the Pack (*can you read the timing?*) and
+  everything after. The Hexer's Guard may fall to it.
+* **Overlaps**: none for a player who stands his ground, and rare for one who moves.
+
+### Round 0 (as built in phase 1), 3 seeds
+
+| Bout | Novice | Adept | Expert TTK (target) |
+|---|---|---|---|
+| Brute | 0% | 0% (5.5 guard breaks a bout) | 14.0 s (8-14) |
+| Pack | 100% | 100% | 6.7 s (5-10) |
+| Hexer's Guard | 100% | 100% | 4.7 s (5-10) |
+| Trio | 0% | 0%, 3 overlaps | 17.6 s (13-24) |
+| Gauntlet | 0% | 0%, 4 overlaps | 22.4 s (20-32) |
+
+### What changed, and why
+
+| Change | Why |
+|---|---|
+| Overlaps counted where strikes reach the hero | a lunge lands a few frames into its active window, and a bolt when it arrives |
+| Plans keep 6 f of slack (24 f apart) | a moving hero shifts landings by a few frames |
+| Bolts are time-locked | a hero walking into a bolt brought it in 12 f early |
+| A spent token keeps its landing slot | a Hexer's recovery ended with its bolt still flying |
+| Block costs 0.7 × damage, not 1.0 | the adept's guard broke on every slam (30 stamina) |
+| Deflect 40 → 60 f | a parried slam opened less than a dodged one (48 f recovery) |
+| Skirmisher: lunge 15 → 18, HP 70 → 80, the sidestep | a masher beat the Pack every time; now its first swing whiffs and the lunge lands in its recovery |
+| Brute: HP 240 → 200, rest 90 → 70 f | the expert took 14 s, the top of its target |
+| Hex bolt 12 → 15; reflect ×2 → ×1.5; Hexer HP 45 → 55 | two reflected bolts killed the Hexer, so the expert's Hexer's Guard ran 3.3 s |
+
+### Round 2 (now), 6 seeds
+
+| Bout | Novice | Adept | Expert TTK (target) | Expert health lost |
+|---|---|---|---|---|
+| Brute | 0% | 100%, 29 s | **11.6 s** (8-14) | 0 |
+| Pack | 0% | 50% | **6.2 s** (5-10) | 6 |
+| Hexer's Guard | 100% | 100% | **6.2 s** (5-10) | 0 |
+| Trio | 0% | 83% | **16.6 s** (13-24) | 15 |
+| Gauntlet | 0% | 0% | **25.9 s** (20-32), 100% wins | 38 |
+
+Overlaps: 0 for the expert in every bout; 3 for the adept across all its Trio and Gauntlet runs
+(about 0.4 a minute of fighting).
+
+What the numbers say for phase 3: the adept wins by turtling (43 blocks in a Trio, 77 s),
+because blocking is safe and every swing is a risk. When blade tiers arrive, blade **tempo**
+should shorten that risk, so a better blade rewards attacking rather than just making numbers
+bigger.

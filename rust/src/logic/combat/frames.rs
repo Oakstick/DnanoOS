@@ -93,7 +93,7 @@ pub const BOLT_LIFE: u16 = 90;
 pub const BOLT_RADIUS: f64 = 0.3;
 /// A parried bolt flies back this much faster, and deals this many times its damage to foes.
 pub const REFLECT_SPEED: f64 = 1.6;
-pub const REFLECT_DAMAGE: f64 = 2.0;
+pub const REFLECT_DAMAGE: f64 = 1.5;
 
 impl MoveId {
     pub const HERO: [MoveId; 3] = [MoveId::L1, MoveId::L2, MoveId::L3];
@@ -179,7 +179,7 @@ impl MoveId {
                 startup: 18,
                 active: 8,
                 recovery: 22,
-                damage: 15.0,
+                damage: 18.0,
                 reach: 0.9,
                 half_angle: deg(70.0),
                 track: 12,
@@ -192,7 +192,7 @@ impl MoveId {
                 startup: 36,
                 active: 1,
                 recovery: 30,
-                damage: 12.0,
+                damage: 15.0,
                 reach: BOLT_SPEED * BOLT_LIFE as f64 / 60.0,
                 half_angle: 0.0,
                 track: 30,

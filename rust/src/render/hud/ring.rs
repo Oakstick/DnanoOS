@@ -40,6 +40,52 @@ pub(super) fn draw_ring(o: &mut Overlay, g: &Game, t: f32) {
     if spar.readout && g.in_ring() {
         draw_readout(o, g, spar, t);
     }
+    if matches!(spar.phase, BoutPhase::Won(_) | BoutPhase::Lost(_)) && g.in_ring() {
+        draw_results(o, spar, t);
+    }
+}
+
+/// The results card, through the aftermath of a bout: its time against the target, what he took,
+/// and how he met what came at him.
+fn draw_results(o: &mut Overlay, spar: &Sparring, t: f32) {
+    let won = matches!(spar.phase, BoutPhase::Won(_));
+    let s = &spar.stats;
+    let bout = gym::BOUTS[spar.bout];
+    let secs = s.frames as f64 / 60.0;
+    let on_target = secs >= bout.target.0 && secs <= bout.target.1;
+    let (w, h) = (t * 17.0, t * 8.6);
+    let (x, y) = ((o.width - w) / 2.0, o.height * 0.7 - h / 2.0);
+    panel(o, x, y, w, h, t);
+    let cx = o.width / 2.0;
+    let (head, color) = if won { ("BOUT WON", GOLD) } else { ("DEFEATED", 0xff6a4a) };
+    o.text(head, cx, y + t * 1.0, t * 0.85, rgba(color, 1.0), Align::Center, true);
+    o.text(&spar.title(), cx, y + t * 1.75, t * 0.45, rgba(SAND, 0.95), Align::Center, false);
+    let time_color = if !won {
+        TEXT_DIM
+    } else if on_target {
+        0x7ad87a
+    } else {
+        0xffb050
+    };
+    let rows: [(String, String, u32); 6] = [
+        ("TIME".into(), format!("{secs:.1} s   (target {:.0}-{:.0} s)", bout.target.0, bout.target.1), time_color),
+        ("HEALTH LOST".into(), format!("{:.0}   in {} blows", s.taken, s.hurt), if s.taken <= 30.0 { 0x7ad87a } else { TEXT }),
+        ("DEALT".into(), format!("{:.0}   in {} blows,  {} poise breaks", s.dealt, s.hits, s.breaks), TEXT),
+        ("MET".into(), format!("{} parried,  {} blocked,  {} evaded", s.parries, s.blocks, s.evades), TEXT),
+        (
+            "MISTAKES".into(),
+            format!("{} caught mid-swing,  {} guards broken", s.caught, s.guard_breaks),
+            if s.caught + s.guard_breaks == 0 { 0x7ad87a } else { 0xffb050 },
+        ),
+        ("OVERLAPS".into(), format!("{}", s.overlaps), if s.overlaps == 0 { 0x7ad87a } else { 0xff4a3a }),
+    ];
+    let size = t * 0.46;
+    let mut ry = y + t * 2.9;
+    for (label, value, c) in rows {
+        o.text(&label, x + t * 0.8, ry, size, rgba(GOLD, 0.85), Align::Left, true);
+        o.text(&value, x + t * 5.0, ry, size, rgba(c, 0.95), Align::Left, false);
+        ry += t * 0.82;
+    }
 }
 
 /// Health and poise over each duelist; its state under them with the readout on.
@@ -92,8 +138,8 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
             let alive = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).count();
             (format!("{alive} LEFT  {:.1}s", spar.stats.frames as f64 / 60.0), TEXT_DIM)
         }
-        BoutPhase::Won(_) => ("WON - THE NEXT BOUT IS COMING".to_string(), GOLD),
-        BoutPhase::Lost(_) => ("DEFEATED - THE BOUT BEGINS AGAIN".to_string(), 0xff6a4a),
+        BoutPhase::Won(left) => (format!("THE NEXT BOUT IN {}", left.ceil() as u32), GOLD),
+        BoutPhase::Lost(left) => (format!("AGAIN IN {}", left.ceil() as u32), 0xff6a4a),
     };
     o.text(&spar.title(), w / 2.0, y, t * 0.75, rgba(GOLD, 0.95), Align::Center, true);
     o.text(&sub, w / 2.0, y + t * 0.8, t * 0.48, rgba(color, 0.95), Align::Center, false);

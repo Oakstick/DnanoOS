@@ -18,6 +18,13 @@ pub const KNOCKBACK: f64 = 3.0;
 pub const KNOCK_KEEP: f64 = 0.82;
 /// Frames the Skirmisher springs back after its lunge.
 pub const BACKSTEP: u16 = 30;
+/// The Skirmisher's sidestep: seen a swing begin within this reach, it hops back this many frames
+/// at this pace, then cannot again for `SIDESTEP_REST` frames. A mashed first swing whiffs, and
+/// its lunge comes into the recovery.
+pub const SIDESTEP_RANGE: f64 = 2.4;
+pub const SIDESTEP: u16 = 12;
+pub const SIDESTEP_SPEED: f64 = 8.0;
+pub const SIDESTEP_REST: u16 = 120;
 
 /// A hex bolt in flight (a parried one flies back at the foes).
 #[derive(Clone, Copy, Debug)]
@@ -31,6 +38,9 @@ pub struct Bolt {
     pub reflected: bool,
     /// It has reached the hero (struck, been blocked, or passed under his leap): it strikes once.
     pub touched: bool,
+    /// The frame it is due to reach him, as the threat manager planned it: it flies straight, and
+    /// paces itself to arrive then (a hero walking into it does not bring it sooner).
+    pub due: Option<u32>,
 }
 
 /// What a foe knows of the hero this frame.
@@ -39,6 +49,8 @@ pub struct Sense {
     pub hero: V,
     /// Which way he faces (unit).
     pub aim: V,
+    /// He is winding up a swing.
+    pub swing: bool,
 }
 
 /// The ground it fights on: no foe leaves `lo`..`hi`.
@@ -77,6 +89,9 @@ pub struct Duelist {
     pub knock: V,
     /// Frames of the white flash of a blow.
     pub flash: u16,
+    /// Frames left of a sidestep, and before the next may come.
+    pub sidestep: u16,
+    pub sidestep_rest: u16,
 }
 
 impl Duelist {
@@ -98,6 +113,8 @@ impl Duelist {
             backstep: 0,
             knock: V::new(0.0, 0.0),
             flash: 0,
+            sidestep: 0,
+            sidestep_rest: 0,
         }
     }
 
@@ -162,6 +179,7 @@ impl Duelist {
     pub fn step(&mut self) -> Vec<Event> {
         self.flash = self.flash.saturating_sub(1);
         self.rest = self.rest.saturating_sub(1);
+        self.sidestep_rest = self.sidestep_rest.saturating_sub(1);
         let ev = self.f.step();
         for e in &ev {
             if let Event::Ended(mv) = e {
@@ -208,7 +226,14 @@ impl Duelist {
             }
             State::Neutral => {
                 self.facing = turn_toward(self.facing, dir, turn);
-                if self.arch == Archetype::Hexer && d < FLEE {
+                if self.arch == Archetype::Skirmisher && s.swing && d <= SIDESTEP_RANGE && self.sidestep_rest == 0 {
+                    self.sidestep = SIDESTEP;
+                    self.sidestep_rest = SIDESTEP_REST;
+                }
+                if self.sidestep > 0 {
+                    self.sidestep -= 1;
+                    v = scale(dir, -SIDESTEP_SPEED);
+                } else if self.arch == Archetype::Hexer && d < FLEE {
                     v = self.flee(dir, st.retreat, arena);
                 } else if self.backstep > 0 {
                     self.backstep -= 1;
@@ -283,15 +308,21 @@ impl Duelist {
     }
 }
 
-/// Frames from beginning `mv` at `dist` tiles from the hero until it reaches him: its startup, and
-/// for a bolt (loosed half a tile ahead) the frames of flight until it touches him.
+/// Frames from beginning `mv` at `dist` tiles from the hero until it reaches him: its startup; for
+/// a lunge, the active frames it travels before it is near enough; for a bolt (loosed half a tile
+/// ahead), the frames of flight until it touches him.
 pub fn lands_after(mv: MoveId, dist: f64) -> u16 {
     let d = mv.data();
-    if !d.projectile {
-        return d.startup;
+    if d.projectile {
+        let travel = (dist - 0.5 - BOLT_RADIUS - HERO_RADIUS).max(0.0);
+        return d.startup + ((travel / BOLT_SPEED * FPS).ceil() as u16).saturating_sub(1);
     }
-    let travel = (dist - 0.5 - BOLT_RADIUS - HERO_RADIUS).max(0.0);
-    d.startup + ((travel / BOLT_SPEED * FPS).ceil() as u16).saturating_sub(1)
+    if d.travel > 0.0 {
+        let gap = (dist - d.reach - HERO_RADIUS).max(0.0);
+        let frames = (gap / (d.travel / d.active as f64)).ceil() as u16;
+        return d.startup + frames.saturating_sub(1).min(d.active - 1);
+    }
+    d.startup
 }
 
 #[cfg(test)]
@@ -305,7 +336,7 @@ mod tests {
     #[test]
     fn with_a_token_the_skirmisher_closes_in_and_lunges_from_its_range() {
         let mut d = Duelist::new(1, Archetype::Skirmisher, V::new(2.0, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(12.0, 8.0), aim: V::new(-1.0, 0.0) };
+        let s = Sense { hero: V::new(12.0, 8.0), aim: V::new(-1.0, 0.0), swing: false };
         assert_eq!(d.think(&s, &arena(), &[]), None);
         assert_eq!(d.pos.x, 2.0, "no token, no slot: it holds");
         d.token = true;
@@ -321,7 +352,7 @@ mod tests {
         let gap = 12.0 - d.pos.x;
         assert!((LUNGE_NEAR..=LUNGE_FAR + 1e-9).contains(&gap), "{gap}");
         // The lunge carries it 2.6 tiles over its active frames (with the hero out of its way).
-        let far = Sense { hero: V::new(15.5, 8.0), aim: V::new(-1.0, 0.0) };
+        let far = Sense { hero: V::new(15.5, 8.0), aim: V::new(-1.0, 0.0), swing: false };
         assert!(d.begin(MoveId::Lunge));
         let x0 = d.pos.x;
         let data = MoveId::Lunge.data();
@@ -345,7 +376,7 @@ mod tests {
     #[test]
     fn a_committed_slam_no_longer_follows_the_hero() {
         let mut d = Duelist::new(1, Archetype::Brute, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let mut s = Sense { hero: V::new(9.5, 8.0), aim: V::new(-1.0, 0.0) };
+        let mut s = Sense { hero: V::new(9.5, 8.0), aim: V::new(-1.0, 0.0), swing: false };
         assert_eq!(d.choose(&s), Some(MoveId::Slam));
         d.begin(MoveId::Slam);
         let track = MoveId::Slam.data().track;
@@ -368,11 +399,11 @@ mod tests {
     #[test]
     fn the_hexer_backs_away_from_a_hero_who_comes_close_and_slips_along_a_wall() {
         let mut d = Duelist::new(1, Archetype::Hexer, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(10.0, 8.0), aim: V::new(-1.0, 0.0) };
+        let s = Sense { hero: V::new(10.0, 8.0), aim: V::new(-1.0, 0.0), swing: false };
         d.think(&s, &arena(), &[]);
         assert!(d.pos.x < 8.0);
         let mut d = Duelist::new(1, Archetype::Hexer, V::new(0.6, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(2.5, 8.0), aim: V::new(-1.0, 0.0) };
+        let s = Sense { hero: V::new(2.5, 8.0), aim: V::new(-1.0, 0.0), swing: false };
         for _ in 0..20 {
             d.think(&s, &arena(), &[]);
         }
@@ -380,9 +411,35 @@ mod tests {
     }
 
     #[test]
+    fn the_skirmisher_sidesteps_a_swing_it_sees_but_not_twice_running() {
+        let mut d = Duelist::new(1, Archetype::Skirmisher, V::new(8.0, 8.0), V::new(1.0, 0.0));
+        let swing = Sense { hero: V::new(9.3, 8.0), aim: V::new(-1.0, 0.0), swing: true };
+        for _ in 0..SIDESTEP {
+            d.step();
+            d.think(&swing, &arena(), &[]);
+        }
+        let gap = 9.3 - d.pos.x;
+        assert!(gap > MoveId::L1.data().reach + d.radius() + 0.1, "out of the swing's reach: {gap}");
+        // Seen again at once, it holds its ground.
+        d.pos = V::new(8.0, 8.0);
+        d.think(&swing, &arena(), &[]);
+        assert!(d.pos.x >= 8.0 - 1e-9, "resting");
+    }
+
+    #[test]
+    fn a_strike_is_planned_for_the_frame_it_reaches_the_hero() {
+        assert_eq!(lands_after(MoveId::Slam, 1.5), 42);
+        // A lunge from 2.4 tiles: 1.2 to close at 0.325 a frame, so on its fourth active frame.
+        assert_eq!(lands_after(MoveId::Lunge, 2.4), 18 + 3);
+        assert_eq!(lands_after(MoveId::Lunge, 1.0), 18, "already close: its first");
+        // A bolt from 6.1 tiles: 5.0 to fly at 7/60 a frame, 43 frames counting the one it is loosed on.
+        assert_eq!(lands_after(MoveId::Hex, 6.1), 36 + 43 - 1);
+    }
+
+    #[test]
     fn waiting_foes_keep_their_distance_from_each_other() {
         let mut a = Duelist::new(1, Archetype::Skirmisher, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(14.0, 14.0), aim: V::new(-1.0, 0.0) };
+        let s = Sense { hero: V::new(14.0, 14.0), aim: V::new(-1.0, 0.0), swing: false };
         a.think(&s, &arena(), &[(V::new(8.2, 8.0), 0.38)]);
         assert!(a.pos.x < 8.0, "pushed apart");
     }

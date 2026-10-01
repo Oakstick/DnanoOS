@@ -21,9 +21,12 @@ pub const EVADE_LAND: u16 = 6;
 pub const EVADE_TOTAL: u16 = EVADE_AIR + EVADE_LAND;
 /// The hero's untouchable frames after a blow lands on him.
 pub const MERCY: u16 = 30;
-/// Frames a parried attacker reels, and the share of its poise it loses.
-pub const DEFLECT: u16 = 40;
+/// Frames a parried attacker reels (longer than any recovery, so a parry always opens more than a
+/// dodge), and the share of its poise it loses.
+pub const DEFLECT: u16 = 60;
 pub const PARRY_POISE: f64 = 0.5;
+/// Stamina a blocked blow costs, per point of its damage (the training buckler's stability, 30%).
+pub const BLOCK_COST: f64 = 0.7;
 /// Frames the hero reels when his guard breaks, and the share of the blow that gets through.
 pub const GUARD_BREAK: u16 = 48;
 pub const GUARD_BREAK_SHARE: f64 = 0.5;

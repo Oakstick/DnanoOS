@@ -14,8 +14,13 @@ use std::f64::consts::{PI, TAU};
 pub const CAPACITY: u8 = 3;
 /// Frames between two grants, at least.
 pub const CADENCE: u32 = 30;
-/// Frames between any two strikes' first active frames, at least (300 ms).
+/// Frames between any two strikes reaching the hero, at least (300 ms).
 pub const SPACING: u32 = 18;
+/// Frames more that plans keep apart: a strike lands a frame or few off its plan as the hero
+/// moves (a lunge closes sooner on a hero walking into it), so plans 24 frames apart land 18 apart.
+pub const SLACK: u32 = 6;
+/// How far apart plans are kept.
+const PLAN: u32 = SPACING + SLACK;
 /// Frames a token may go unspent past its projected strike before it returns (at least `TIMEOUT` in all).
 pub const TIMEOUT: u32 = 150;
 pub const LATE: u32 = 60;
@@ -116,7 +121,7 @@ impl ThreatManager {
                 continue;
             }
             let at = self.frame + r.eta;
-            if !self.holds.iter().all(|h| at.abs_diff(h.active_at) >= SPACING) {
+            if !self.holds.iter().all(|h| at.abs_diff(h.active_at) >= PLAN) {
                 continue;
             }
             let deadline = self.frame + TIMEOUT.max(r.eta + LATE);
@@ -139,7 +144,12 @@ impl ThreatManager {
     /// startup, and a bolt's flight)?
     pub fn may_commit(&self, id: u32, lands: u16) -> bool {
         let at = self.frame + lands as u32;
-        self.holds.iter().filter(|h| (h.id != id || h.spent) && h.committed).all(|h| at.abs_diff(h.active_at) >= SPACING)
+        self.holds.iter().filter(|h| (h.id != id || h.spent) && h.committed).all(|h| at.abs_diff(h.active_at) >= PLAN)
+    }
+
+    /// The frame the holder's committed strike lands on.
+    pub fn landing(&self, id: u32) -> Option<u32> {
+        self.holds.iter().find(|h| h.id == id && h.committed && !h.spent).map(|h| h.active_at)
     }
 
     /// The holder began its move: its strike lands on a fixed frame.
@@ -277,9 +287,9 @@ mod tests {
         for _ in 0..CADENCE {
             t.tick();
         }
-        // The first lands on frame 50; a strike landing on frame 30 + 30 = 60 is too near.
-        assert_eq!(t.grant(&[req(2, 1, 30)]), None);
-        assert_eq!(t.grant(&[req(2, 1, 38)]), Some(2), "frame 68 is clear of 50");
+        // The first lands on frame 50; a strike landing on frame 30 + 42 = 72 is too near (plans keep SPACING + SLACK).
+        assert_eq!(t.grant(&[req(2, 1, 42)]), None);
+        assert_eq!(t.grant(&[req(2, 1, 44)]), Some(2), "frame 74 is clear of 50");
         // The commit gate: a holder in range waits until its strike clears the committed one.
         let mut t = ThreatManager::new();
         t.grant(&[req(1, 1, 18)]);
@@ -289,12 +299,13 @@ mod tests {
         assert_eq!(t.grant(&[req(2, 1, 60)]), Some(2));
         t.commit(1, 18);
         assert!(!t.may_commit(2, 18), "both would land on frame 48");
-        for _ in 0..SPACING - 1 {
+        for _ in 0..PLAN - 1 {
             t.tick();
         }
         assert!(!t.may_commit(2, 18));
         t.tick();
-        assert!(t.may_commit(2, 18), "eighteen frames later it clears");
+        assert!(t.may_commit(2, 18), "twenty-four frames later it clears");
+        assert_eq!(t.landing(1), Some(48));
         // A bolt still in flight when its caster gives the token back keeps its landing clear.
         let mut t = ThreatManager::new();
         t.grant(&[req(1, 1, 40)]);
@@ -306,7 +317,7 @@ mod tests {
         }
         t.grant(&[req(2, 1, 200)]);
         assert!(!t.may_commit(2, 60), "frame 90 is the bolt's");
-        assert!(t.may_commit(2, 60 + SPACING as u16));
+        assert!(t.may_commit(2, 60 + PLAN as u16));
         for _ in 0..90 + SPACING - CADENCE {
             t.tick();
         }

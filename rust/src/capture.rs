@@ -61,6 +61,8 @@ enum Cmd {
     Gym,
     /// Into the gym's Sparring Ring, for bout N (1-based; 0 keeps the current one).
     Ring(usize),
+    /// A bot plays from here on (0 novice, 1 adept, 2 expert).
+    Bot(usize),
     Court(usize),
     /// The Cyclops falls at once.
     Slay,
@@ -136,6 +138,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "map" => Cmd::Map,
             "gym" => Cmd::Gym,
             "ring" | "bout" => Cmd::Ring(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "bot" => Cmd::Bot(parts.next().and_then(|v| v.parse().ok()).unwrap_or(2)),
             "readout" => Cmd::Press(Action::Readout),
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -228,6 +231,7 @@ pub fn run(args: &[String]) -> i32 {
     game.tour_pending = false;
     let mut next = 0;
     let mut t = 0.0;
+    let mut bot: Option<crate::game::bot::Bot> = None;
     while t < until {
         while next < script.len() && script[next].0 <= t {
             match script[next].1 {
@@ -245,6 +249,10 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Map => game.open_map(),
                 Cmd::Gym => game.map_jump(Stage::Gym),
                 Cmd::Ring(n) => game.debug_ring(n),
+                Cmd::Bot(k) => {
+                    game.hero.free_move = true;
+                    bot = Some(crate::game::bot::Bot::new(crate::game::bot::Skill::ALL[k.min(2)], 1));
+                }
                 Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
                 Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
                 Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
@@ -298,6 +306,10 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Potion(i) => game.debug_drink(ALL_POTIONS[i.min(10)]),
             }
             next += 1;
+        }
+        if let Some(b) = bot.as_mut() {
+            let pad = b.act(&game);
+            game.input.set_pad(Some(pad));
         }
         game.update(STEP);
         t += STEP;

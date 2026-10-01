@@ -43,7 +43,7 @@ impl Archetype {
     pub const fn stats(self) -> Stats {
         match self {
             Archetype::Brute => Stats {
-                hp: 240.0,
+                hp: 200.0,
                 poise: 100.0,
                 armor: 35.0,
                 stagger: 90,
@@ -55,10 +55,10 @@ impl Archetype {
                 ring: 3.6,
                 cost: 2,
                 radius: 0.5,
-                rest: 90,
+                rest: 70,
             },
             Archetype::Skirmisher => Stats {
-                hp: 70.0,
+                hp: 80.0,
                 poise: 25.0,
                 armor: 0.0,
                 stagger: 50,
@@ -73,7 +73,7 @@ impl Archetype {
                 rest: 60,
             },
             Archetype::Hexer => Stats {
-                hp: 45.0,
+                hp: 55.0,
                 poise: 20.0,
                 armor: 0.0,
                 stagger: 60,

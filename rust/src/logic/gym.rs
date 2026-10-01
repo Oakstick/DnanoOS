@@ -76,22 +76,25 @@ pub fn posts(k: usize) -> Vec<P> {
     out
 }
 
-/// A bout of the Sparring Ring: its name and its foes.
+/// A bout of the Sparring Ring: its name, its foes, and the seconds a skilled player should take
+/// to win it (COMBAT.md §2.1, give or take a fifth).
 #[derive(Clone, Copy, Debug)]
 pub struct Bout {
     pub name: &'static str,
     pub foes: &'static [Archetype],
+    pub target: (f64, f64),
 }
 
 /// The bouts, in order (COMBAT.md §5).
 pub const BOUTS: [Bout; 5] = [
-    Bout { name: "THE BRUTE", foes: &[Archetype::Brute] },
-    Bout { name: "THE PACK", foes: &[Archetype::Skirmisher, Archetype::Skirmisher] },
-    Bout { name: "THE HEXER'S GUARD", foes: &[Archetype::Hexer, Archetype::Skirmisher] },
-    Bout { name: "THE TRIO", foes: &[Archetype::Brute, Archetype::Skirmisher, Archetype::Hexer] },
+    Bout { name: "THE BRUTE", foes: &[Archetype::Brute], target: (8.0, 14.0) },
+    Bout { name: "THE PACK", foes: &[Archetype::Skirmisher, Archetype::Skirmisher], target: (5.0, 10.0) },
+    Bout { name: "THE HEXER'S GUARD", foes: &[Archetype::Hexer, Archetype::Skirmisher], target: (5.0, 10.0) },
+    Bout { name: "THE TRIO", foes: &[Archetype::Brute, Archetype::Skirmisher, Archetype::Hexer], target: (13.0, 24.0) },
     Bout {
         name: "THE GAUNTLET",
         foes: &[Archetype::Brute, Archetype::Skirmisher, Archetype::Skirmisher, Archetype::Hexer, Archetype::Hexer],
+        target: (20.0, 32.0),
     },
 ];
 

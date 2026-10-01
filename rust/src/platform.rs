@@ -43,6 +43,21 @@ mod imp {
         read_all().remove(key)
     }
 
+    /// Appends `line` to the log file `name` in the save folder, starting it with `header`.
+    pub fn append_line(name: &str, header: &str, line: &str) {
+        use std::io::Write;
+        let Some(dir) = save_dir() else { return };
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join(name);
+        let fresh = !path.exists();
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(path) {
+            if fresh {
+                let _ = writeln!(f, "{header}");
+            }
+            let _ = writeln!(f, "{line}");
+        }
+    }
+
     pub fn save(key: &str, value: &str) {
         let Some(dir) = save_dir() else { return };
         let mut map = read_all();
@@ -72,6 +87,22 @@ mod imp {
             let _ = s.set_item(key, value);
         }
     }
+
+    /// Keeps the last lines of the log `name` in storage, under its header.
+    pub fn append_line(name: &str, header: &str, line: &str) {
+        const KEEP: usize = 200;
+        let key = format!("vh.log.{name}");
+        let old = load(&key).unwrap_or_default();
+        let mut lines: Vec<&str> = old.lines().skip(1).collect();
+        lines.push(line);
+        let start = lines.len().saturating_sub(KEEP);
+        save(&key, &format!("{header}\n{}", lines[start..].join("\n")));
+    }
 }
 
 pub use imp::*;
+
+/// Seconds since 1970, for stamping logs.
+pub fn now_secs() -> u64 {
+    web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}

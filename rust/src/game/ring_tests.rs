@@ -230,3 +230,25 @@ fn the_gauntlet_never_lands_two_strikes_inside_the_reaction_window() {
         }
     }
 }
+
+/// The balance targets of COMBAT.md phase 2, played by the bots over three seeds: the expert wins
+/// every bout inside its target time, a novice cannot beat the Brute or the Gauntlet, an adept
+/// beats the Brute, and no strikes overlap for a player who stands his ground.
+#[test]
+fn the_bouts_meet_their_balance_targets() {
+    use super::bot::{summarize, Skill};
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let seeds = [1, 2, 3];
+    for (k, b) in gym::BOUTS.iter().enumerate() {
+        let s = summarize(k, Skill::Expert, &seeds);
+        assert_eq!(s.wins, s.runs, "the expert wins {}: {s:?}", b.name);
+        assert!(s.ttk >= b.target.0 && s.ttk <= b.target.1, "{} in {:.1} s, not {:?}: {s:?}", b.name, s.ttk, b.target);
+        assert_eq!(s.overlaps, 0, "{}: {s:?}", b.name);
+    }
+    for k in [0, 4] {
+        let s = summarize(k, Skill::Novice, &seeds);
+        assert_eq!(s.wins, 0, "a masher cannot beat {}: {s:?}", gym::BOUTS[k].name);
+    }
+    let s = summarize(0, Skill::Adept, &seeds);
+    assert_eq!(s.wins, s.runs, "a player who blocks beats the Brute: {s:?}");
+}

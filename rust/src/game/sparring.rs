@@ -10,7 +10,7 @@ use super::Game;
 use crate::audio::Sfx;
 use crate::logic::combat::duelist::{Arena, Bolt, Sense, HERO_RADIUS};
 use crate::logic::combat::frames::{BOLT_LIFE, BOLT_RADIUS, BOLT_SPEED, REFLECT_DAMAGE, REFLECT_SPEED};
-use crate::logic::combat::fsm::{Defense, Effect, Hit, State, GUARD_BREAK_SHARE};
+use crate::logic::combat::fsm::{Defense, Effect, Hit, State, BLOCK_COST, GUARD_BREAK_SHARE};
 use crate::logic::combat::threat::{assign_slots, Request, Waiter, REVOKE_REST};
 use crate::logic::combat::{math, secs, Duelist, Event, Fighter, FrameClock, Input, MoveId, Phase, Reel, ThreatManager};
 use crate::logic::enemy::{enemy_specs, Enemy, EnemyMode};
@@ -21,13 +21,19 @@ use crate::render::view::CameraMode;
 
 /// Seconds of the countdown before a bout, and of the pause after one is won or lost.
 pub const COUNTDOWN: f64 = 2.0;
-pub const AFTERMATH: f64 = 2.5;
+/// (Long enough to read the results card.)
+pub const AFTERMATH: f64 = 4.5;
 /// Frames between re-dealing the waiting foes' sectors.
 const SLOT_EVERY: u32 = 12;
 /// Freeze frames for a broken poise, a parry and a kill.
 const HITSTOP_BREAK: u16 = 8;
 const HITSTOP_PARRY: u16 = 8;
 const HITSTOP_KILL: u16 = 6;
+/// The combat log: one line per bout, in the save folder (the web build keeps the last lines in storage).
+pub const LOG_FILE: &str = "combat_log.csv";
+const LOG_HEADER: &str = "time,hero,tier,bout,result,secs,dealt,taken,hits,hurt,parries,blocks,evades,breaks,caught,guard_breaks,overlaps";
+/// The slowest and fastest a time-locked bolt flies, as shares of its speed.
+const BOLT_PACE: (f64, f64) = (0.5, 1.6);
 /// How far off his facing (radians) the soft lock turns his swing onto a foe.
 const ASSIST_ANGLE: f64 = 0.8;
 /// A blow from something outside the frame data (a spirit, holy fire): its damage and poise damage.
@@ -59,7 +65,10 @@ pub struct BoutStats {
     pub blocks: u32,
     pub evades: u32,
     pub breaks: u32,
-    /// Two foes' strikes landing inside the reaction window (the threat manager keeps this at 0).
+    /// Blows that caught him in his own swing, and guards broken.
+    pub caught: u32,
+    pub guard_breaks: u32,
+    /// Two foes' strikes reaching him inside the reaction window of each other.
     pub overlaps: u32,
 }
 
@@ -114,11 +123,10 @@ impl Sparring {
         }
     }
 
-    /// A foe's strike reached the hero on frame `f` (a blow's first active frame, a bolt's touch):
-    /// one landing inside the reaction window of another counts as an overlap.
+    /// A foe's strike reached the hero on frame `f` (a blow meeting him, a bolt touching him, however
+    /// he met it): one landing inside the reaction window of another counts as an overlap.
     fn land(&mut self, f: u32) {
-        // (A bolt's flight is planned from where the hero stood: a frame's slack for his drift.)
-        if self.strikes.iter().any(|&g| f.abs_diff(g) + 1 < crate::logic::combat::threat::SPACING) {
+        if self.strikes.iter().any(|&g| f.abs_diff(g) < crate::logic::combat::threat::SPACING) {
             self.stats.overlaps += 1;
         }
         self.strikes.push(f);
@@ -430,7 +438,8 @@ impl Game {
     /// The foes' frame: their fighters, the tokens, the sectors, their minds, their blows, the bolts, and the end of the bout.
     fn foes_frame(&mut self) {
         let hp = self.hero.pos();
-        let sense = Sense { hero: hp, aim: self.hero.aim() };
+        let swing = matches!(self.spar.as_ref().and_then(|s| s.hero.attack()), Some((_, Phase::Startup, _)));
+        let sense = Sense { hero: hp, aim: self.hero.aim(), swing };
         let (lo, hi) = gym::ring_bounds();
         let arena = Arena { lo, hi };
         let ids = self.duelists();
@@ -438,17 +447,12 @@ impl Game {
 
         // Their fighters: a hex looses its bolt; a move run its course gives its token back.
         let mut bolts = Vec::new();
-        let mut strikes = Vec::new();
         let mut released = Vec::new();
         for &i in &ids {
             let du = self.enemies[i].duel.as_mut().unwrap();
             for e in du.step() {
                 match e {
                     Event::Active(mv) => {
-                        // A blow lands now; a bolt when it reaches him (see `update_bolts`).
-                        if !mv.data().projectile {
-                            strikes.push(frame);
-                        }
                         if mv.data().projectile {
                             let at = math::add(du.pos, math::scale(du.aim, 0.5));
                             bolts.push(Bolt {
@@ -458,6 +462,7 @@ impl Game {
                                 damage: mv.data().damage,
                                 reflected: false,
                                 touched: false,
+                                due: self.spar.as_ref().and_then(|s| s.threat.landing(du.id)),
                             });
                         }
                     }
@@ -484,9 +489,6 @@ impl Game {
             spar.threat.release(id);
         }
         spar.bolts.extend(bolts);
-        for f in strikes {
-            spar.land(f);
-        }
 
         // Tokens: the waiting ask, the manager grants (one a frame at most); holders on their way update their plans.
         let mut requests = Vec::new();
@@ -572,13 +574,53 @@ impl Game {
 
         // The end of the bout.
         let alive = self.enemies.iter().filter_map(|e| e.duel.as_ref()).filter(|d| d.alive()).count();
-        let spar = self.spar.as_mut().unwrap();
-        if alive == 0 && spar.phase == BoutPhase::Fight {
-            spar.phase = BoutPhase::Won(AFTERMATH);
-            spar.last = Some((spar.bout, spar.stats));
-            let (secs_taken, taken) = (spar.stats.frames as f64 / 60.0, spar.stats.taken);
+        if alive == 0 && self.spar.as_ref().is_some_and(|s| s.phase == BoutPhase::Fight) {
+            self.finish_bout(true);
+        }
+    }
+
+    /**
+     * The bout is over: won (every foe down) or lost (his health gone). The results card shows
+     * its numbers through the aftermath, and a line goes into the combat log (`combat_log.csv`
+     * by the saves) so playtests leave data to tune from (COMBAT.md phase 2).
+     */
+    fn finish_bout(&mut self, won: bool) {
+        let hp = self.hero.pos();
+        let (hero, tier) = (self.hero_kind, self.hero.blade);
+        let Some(s) = self.spar.as_mut() else { return };
+        s.phase = if won { BoutPhase::Won(AFTERMATH) } else { BoutPhase::Lost(AFTERMATH) };
+        if won {
+            s.last = Some((s.bout, s.stats));
+        } else {
+            s.hero.state = State::Reel { kind: Reel::Staggered, left: 90, total: 90 };
+        }
+        let st = s.stats;
+        let line = format!(
+            "{},{},{},{},{},{:.2},{:.0},{:.0},{},{},{},{},{},{},{},{},{}",
+            crate::platform::now_secs(),
+            hero.name(),
+            tier,
+            s.bout + 1,
+            if won { "won" } else { "lost" },
+            st.frames as f64 / 60.0,
+            st.dealt,
+            st.taken,
+            st.hits,
+            st.hurt,
+            st.parries,
+            st.blocks,
+            st.evades,
+            st.breaks,
+            st.caught,
+            st.guard_breaks,
+            st.overlaps
+        );
+        crate::platform::append_line(LOG_FILE, LOG_HEADER, &line);
+        if won {
             self.audio.play(Sfx::Win);
-            self.floater(hp.x, hp.y - 1.4, format!("BOUT WON  {secs_taken:.1}s  -{taken} HP"), AFTERMATH, Some(0xffc860));
+        } else {
+            self.audio.play(Sfx::Death);
+            self.floater(hp.x, hp.y - 1.4, "DEFEATED", 1.5, Some(0xff6a4a));
         }
     }
 
@@ -592,8 +634,13 @@ impl Game {
         let from_front = math::dot(self.hero.aim(), math::norm(math::sub(from, hp))) > 0.0;
         let airborne = self.hero.airborne();
         let stamina = self.hero.stamina;
+        let swinging = self.spar.as_ref().is_some_and(|s| s.hero.attack().is_some());
         let Some(spar) = self.spar.as_mut() else { return Defense::Open };
-        let def = spar.hero.defend(airborne, from_front, stamina, damage);
+        // Whatever reaches him counts as a landing, however he meets it.
+        let f = spar.threat.frame;
+        spar.land(f);
+        let cost = damage * BLOCK_COST;
+        let def = spar.hero.defend(airborne, from_front, stamina, cost);
         let mut loss = 0.0;
         match def {
             Defense::Immune => {}
@@ -610,12 +657,13 @@ impl Game {
             }
             Defense::Blocked => {
                 spar.stats.blocks += 1;
-                self.hero.drain(damage);
+                self.hero.drain(cost);
                 self.audio.play(Sfx::Clang);
                 self.view.spark(&self.level.grid, hp.x, hp.y, 0xc8d0da);
                 self.floater(hp.x, hp.y - 0.9, "BLOCKED", 0.6, Some(0xc8d0da));
             }
             Defense::GuardBroken => {
+                spar.stats.guard_breaks += 1;
                 loss = (damage * GUARD_BREAK_SHARE).round();
                 self.hero.drain(self.hero.stamina);
                 self.audio.play(Sfx::ShieldBreak);
@@ -623,6 +671,9 @@ impl Game {
                 self.view.shake(0.3);
             }
             Defense::Open => {
+                if swinging {
+                    spar.stats.caught += 1;
+                }
                 let r = spar.hero.take_hit(&Hit { damage, poise: 0.0, hitstun: math::hero_hitstun(damage) });
                 loss = r.damage;
                 self.hitstop = self.hitstop.max(secs(hitstop));
@@ -634,17 +685,13 @@ impl Game {
             self.hero.hp = (self.hero.hp - loss as i32).max(0);
             self.floater(hp.x, hp.y - 0.5, format!("-{loss}"), 0.9, Some(0xff4a3a));
             let lost = self.hero.hp == 0;
+            let fighting = self.spar.as_ref().is_some_and(|s| s.phase == BoutPhase::Fight);
             if let Some(s) = self.spar.as_mut() {
                 s.stats.taken += loss;
                 s.stats.hurt += 1;
-                if lost && s.phase == BoutPhase::Fight {
-                    s.phase = BoutPhase::Lost(AFTERMATH);
-                    s.hero.state = State::Reel { kind: Reel::Staggered, left: 90, total: 90 };
-                }
             }
-            if lost {
-                self.audio.play(Sfx::Death);
-                self.floater(hp.x, hp.y - 1.4, "DEFEATED - AGAIN", AFTERMATH, Some(0xff6a4a));
+            if lost && fighting {
+                self.finish_bout(false);
             }
         }
         def
@@ -655,8 +702,19 @@ impl Game {
         let (lo, hi) = gym::ring_bounds();
         let hp = self.hero.pos();
         let Some(spar) = self.spar.as_mut() else { return };
+        let now = spar.threat.frame;
         let mut bolts = std::mem::take(&mut spar.bolts);
         for b in bolts.iter_mut() {
+            // Time-locked: on its way in, it paces itself to touch him on its planned frame.
+            if let (Some(due), false, false) = (b.due, b.reflected, b.touched) {
+                let dir = math::norm(b.vel);
+                let along = math::dot(dir, math::sub(hp, b.pos)) - BOLT_RADIUS - HERO_RADIUS;
+                if along > 0.0 {
+                    let frames = (due + 1).saturating_sub(now).max(1) as f64;
+                    let speed = (along / frames * 60.0).clamp(BOLT_SPEED * BOLT_PACE.0, BOLT_SPEED * BOLT_PACE.1);
+                    b.vel = math::scale(dir, speed);
+                }
+            }
             b.pos = math::add(b.pos, math::scale(b.vel, 1.0 / 60.0));
             b.life = b.life.saturating_sub(1);
             if b.pos.x < lo.x || b.pos.x > hi.x || b.pos.y < lo.y || b.pos.y > hi.y {
@@ -668,10 +726,6 @@ impl Game {
             if !b.reflected {
                 if !b.touched && math::len(math::sub(b.pos, hp)) <= BOLT_RADIUS + HERO_RADIUS {
                     b.touched = true;
-                    if let Some(s) = self.spar.as_mut() {
-                        let f = s.threat.frame;
-                        s.land(f);
-                    }
                     let from = math::sub(b.pos, b.vel);
                     if self.blow_on_hero(from, b.damage, 3) == Defense::Parried {
                         // Turned back at the foes, faster and twice as deadly.

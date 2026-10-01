@@ -17,6 +17,7 @@
 
 mod angels;
 mod boss;
+pub mod bot;
 mod combat;
 mod controls;
 mod debug;
