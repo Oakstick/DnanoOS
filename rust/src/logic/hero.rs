@@ -162,6 +162,9 @@ pub struct Hero {
     pub shield_broke: bool,
     /// The shield is raised (LB, or Shift, held): it takes the whole of every hit, and he walks slower.
     pub blocking: bool,
+    /// The share of his pace his fighting leaves him (the Sparring Ring's state machine: planted in
+    /// a swing, rooted while reeling); 1 elsewhere.
+    pub root: f64,
     /// How sharp the blade in his hand is, 0 to 1: a dull one bites the boss less (`gear::edge_power`).
     pub edge: f64,
     /// The outfit he wears, and how many skills of his path he has learned (each a ribbon on his arm).
@@ -238,6 +241,7 @@ impl Hero {
             shield: Some(ShieldGear::new(1)),
             shield_broke: false,
             blocking: false,
+            root: 1.0,
             edge: 1.0,
             outfit: 0,
             fx: Effects::default(),
@@ -530,7 +534,8 @@ impl Hero {
             * if self.fx.haste > 0.0 { HASTE_SPEED } else { 1.0 }
             * if self.fx.ragnarok > 0.0 { RAGNAROK_SPEED } else { 1.0 }
             * if self.slowed() { SLIME_SLOW } else { 1.0 }
-            * if self.blocking { BLOCK_SPEED } else { 1.0 };
+            * if self.blocking { BLOCK_SPEED } else { 1.0 }
+            * self.root;
         if !self.alive {
             return;
         }
@@ -613,7 +618,9 @@ impl Hero {
         }
         let len = (self.wish.x * self.wish.x + self.wish.y * self.wish.y).sqrt();
         let (tx, ty) = if len > 1e-3 { (self.wish.x / len * top, self.wish.y / len * top) } else { (0.0, 0.0) };
-        let rate = if len > 1e-3 { top / ACCEL_SECONDS } else { top / STOP_SECONDS };
+        // (Rooted by a swing he still stops at once: the rates never fall below half his own pace's.)
+        let brisk = top.max(self.base_speed * 0.5);
+        let rate = if len > 1e-3 { brisk / ACCEL_SECONDS } else { brisk / STOP_SECONDS };
         let (dx, dy) = (tx - self.free_vel.x, ty - self.free_vel.y);
         let d = (dx * dx + dy * dy).sqrt();
         let step = rate * dt * 1.6;
@@ -852,6 +859,17 @@ impl Hero {
             self.heart_cooldown = path::DEFIANCE_COOLDOWN;
         }
         DamageResult::Damaged
+    }
+
+    /// Spends `cost` stamina if he has it (false, and winded, if not).
+    pub fn exert(&mut self, cost: f64) -> bool {
+        self.spend(cost)
+    }
+
+    /// Takes `cost` stamina, as much as he has (a blow caught on his guard).
+    pub fn drain(&mut self, cost: f64) {
+        self.stamina = (self.stamina - cost).max(0.0);
+        self.stamina_rest = STAMINA_REST;
     }
 
     /// Starts a swing if the cooldown and his stamina allow. Returns true if a swing began.

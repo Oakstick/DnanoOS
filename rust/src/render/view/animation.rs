@@ -95,9 +95,43 @@ impl WorldView {
     pub fn sword_slash(&mut self) {
         self.slash_t = 0.0;
         self.slash_side = -self.slash_side;
+        self.slash_timing = None;
+    }
+
+    /// A slash keyed to a move's frame data: the wind-up fills its startup, the strike its active
+    /// frames, the follow-through its recovery (seconds each).
+    pub fn sword_slash_timed(&mut self, startup: f32, active: f32, recovery: f32) {
+        self.sword_slash();
+        self.slash_timing = Some([startup.max(1e-3), active.max(1e-3), recovery.max(1e-3)]);
+    }
+
+    /// How long the slash under way lasts.
+    pub(super) fn slash_len(&self) -> f32 {
+        self.slash_timing.map(|[s, a, r]| s + a + r).unwrap_or(SLASH_SECONDS)
+    }
+
+    /// The slash's progress through its keys, 0 to 1: the wind-up ends at 0.2, the strike at 0.47.
+    pub(super) fn slash_p(&self) -> f32 {
+        let t = self.slash_t.max(0.0);
+        match self.slash_timing {
+            None => (t / SLASH_SECONDS).clamp(0.0, 1.0),
+            Some([s, a, r]) => {
+                if t < s {
+                    0.2 * t / s
+                } else if t < s + a {
+                    0.2 + 0.27 * (t - s) / a
+                } else {
+                    (0.47 + 0.53 * (t - s - a) / r).min(1.0)
+                }
+            }
+        }
     }
 
     pub(super) fn update_enemy(&mut self, i: usize, e: &Enemy, s: &SceneState, dt: f32, time: f32) {
+        if let Some(d) = e.duel.as_deref() {
+            self.update_duelist(i, e, d, s, dt, time);
+            return;
+        }
         let grid = s.grid;
         let frenzy = s.frenzy;
         let ep = e.pos();
@@ -198,7 +232,7 @@ impl WorldView {
         // (time, arm pitch, arm roll, body twist, lunge); roll and twist mirror with the side.
         const KEYS: [(f32, f32, f32, f32, f32); 4] =
             [(0.0, 0.0, 0.0, 0.0, 0.0), (0.2, -2.3, 0.55, 0.38, -0.03), (0.47, 1.55, -0.75, -0.5, 0.1), (1.0, 0.0, 0.0, 0.0, 0.0)];
-        let p = (self.slash_t / SLASH_SECONDS).clamp(0.0, 1.0);
+        let p = self.slash_p();
         let k = KEYS.iter().rposition(|k| k.0 <= p).unwrap_or(0).min(KEYS.len() - 2);
         let (a, b) = (KEYS[k], KEYS[k + 1]);
         let u = ((p - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
@@ -231,9 +265,16 @@ impl WorldView {
             v.pose = Pose::rest(rig);
             v.scatter = None;
         }
-        let moving = e.m.dir != Dir::None && e.mode() != EnemyMode::Nest;
+        // (A duelist walks freely: its gait follows its velocity.)
+        let (moving, pace) = match e.duel.as_deref() {
+            Some(d) => {
+                let sp = (d.vel.x * d.vel.x + d.vel.y * d.vel.y).sqrt() as f32;
+                (sp > 0.3, sp)
+            }
+            None => (e.m.dir != Dir::None && e.mode() != EnemyMode::Nest, e.m.speed as f32),
+        };
         if moving {
-            v.phase += dt * e.m.speed as f32 * 2.2;
+            v.phase += dt * pace * 2.2;
         }
         match v.kind {
             EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Witch | EnemyKind::Blemmyes => {

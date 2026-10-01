@@ -152,6 +152,8 @@ impl WorldView {
             for k in 0..gym::STAGES {
                 self.build_platform(grid, Platform { rect: gym::platform(k), col: k as i32, row: 0, sin: None });
             }
+            self.build_platform(grid, Platform { rect: gym::ring(), col: -1, row: 0, sin: None });
+            self.build_ring_marks();
             for b in gym::bridges() {
                 self.build_wood_bridge(b);
             }
@@ -170,6 +172,20 @@ impl WorldView {
         }
         self.build_altar();
         self.build_far_rocks();
+    }
+
+    /// The Sparring Ring's floor markings: a circle of glowing inlay round its middle, and a smaller one at its heart.
+    fn build_ring_marks(&mut self) {
+        let r = logic::gym::ring();
+        let (cx, cz) = r.center();
+        let out = &mut self.static_cubes;
+        for (radius, n) in [(7.2f32, 72), (1.2, 16)] {
+            for k in 0..n {
+                let a = k as f32 * TAU / n as f32;
+                let p = Vec3::new(cx + a.cos() * radius, 0.004, cz + a.sin() * radius);
+                glowing(out, p, Vec3::new(0.05, 0.01, radius * TAU / n as f32 * 0.7), -a, lin(0x8a6a3a), lin(0xffb050) * 0.9);
+            }
+        }
     }
 
     /// Far off across the lava: spires and stacks of black rock standing out of the sea, dim in the fog.

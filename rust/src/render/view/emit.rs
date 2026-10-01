@@ -199,6 +199,7 @@ impl WorldView {
 
         let hero_pos = self.emit_hero(s, f);
         self.emit_foes(s, f);
+        self.emit_duels(s, f);
         let (remedy_points, shrine_points) = self.emit_pickups(s, f);
         self.emit_transients(s, f);
         self.emit_world(s, f, hero_pos);
@@ -288,7 +289,7 @@ impl WorldView {
 
         if self.slash_t >= 0.0 {
             // The blade's trail: a bright leading arc and fading echoes behind it, swept across the front.
-            let p = self.slash_t / SLASH_SECONDS;
+            let p = self.slash_p();
             let q = ((p - 0.17) / 0.33).clamp(0.0, 1.0);
             let env = if p < 0.15 { 0.0 } else { (1.0 - ((p - 0.15) / 0.55)).clamp(0.0, 1.0) };
             let side = self.slash_side;

@@ -1,3 +1,4 @@
+use super::combat::Duelist;
 use super::grid::Grid;
 use super::hub::Rect;
 use super::mover::Mover;
@@ -199,6 +200,9 @@ pub struct Enemy {
     pub b: Brain,
     /// Where it stands in the gym, and rises again when slain (none: it comes from the hollow).
     pub post: Option<P>,
+    /// A duelist of the Sparring Ring: it fights by frame data, walks freely, and its mind is
+    /// its own (the grid brain above sits idle).
+    pub duel: Option<Box<Duelist>>,
 }
 
 impl Enemy {
@@ -208,6 +212,7 @@ impl Enemy {
         Self {
             m,
             post: None,
+            duel: None,
             b: Brain {
                 kind: spec.kind,
                 name: spec.name.clone(),
@@ -265,10 +270,16 @@ impl Enemy {
         self.b.mode
     }
     pub fn pos(&self) -> V {
-        self.m.pos()
+        match &self.duel {
+            Some(d) => d.pos,
+            None => self.m.pos(),
+        }
     }
     pub fn occupied(&self) -> P {
-        self.m.occupied()
+        match &self.duel {
+            Some(d) => P::new(d.pos.x.round() as i32, d.pos.y.round() as i32),
+            None => self.m.occupied(),
+        }
     }
 
     /// Idling in its den, not yet roused (the Vaults of Mammon).
@@ -413,6 +424,9 @@ impl Enemy {
     }
 
     pub fn update(&mut self, dt: f64, ctx: &mut EnemyContext) {
+        if self.duel.is_some() {
+            return; // the Sparring Ring runs its duelists
+        }
         let grid = ctx.grid;
         let b = &mut self.b;
         b.confused = (b.confused - dt).max(0.0);

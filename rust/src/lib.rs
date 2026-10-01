@@ -8,8 +8,9 @@
 //!
 //! - `logic`: the rules as plain data and functions: the grid and movement, level generation
 //!   (estates, the arena, the hub, the gym, the Vaults of Mammon), the hero, the foes and their
-//!   brains, items, progression. No rendering, audio or input (only `platform`, to keep the high
-//!   score), so it is all unit-tested.
+//!   brains, items, progression, and `combat` (frame data, the fighter state machine, the threat
+//!   manager: COMBAT.md). No rendering, audio or input (only `platform`, to keep the high score),
+//!   so it is all unit-tested.
 //! - `platform`, `input`, `audio`: saves (a file, or browser storage); the keyboard, mouse and
 //!   controllers mapped to actions; the synthesized sounds and recorded music.
 //! - `render`: `view` turns a `SceneState` into instanced boxes and lights each frame; `gpu` draws

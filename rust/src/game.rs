@@ -7,6 +7,7 @@
 //! - `level`: loading a level and starting a round
 //! - `movement`: turning input into movement, footsteps
 //! - `combat`, `boss`, `foes`, `health`: blows, the boss fight, the foes, the hero's health
+//! - `sparring`: the gym's Sparring Ring, where fights go by frame data (`logic::combat`, COMBAT.md)
 //! - `pickups`, `gate`: what he picks up, the gate that ends a level
 //! - `feedback`: floating text, points, streaks and the screen's juice
 //! - `angels`, `hub`, `realm`, `vault`, `shop`, `map`, `story`, `tour`, `select`, `controls`,
@@ -30,9 +31,12 @@ mod map;
 mod movement;
 mod pickups;
 mod realm;
+#[cfg(test)]
+mod ring_tests;
 mod save;
 mod select;
 mod shop;
+pub mod sparring;
 mod story;
 #[cfg(test)]
 mod tests;
@@ -327,6 +331,8 @@ pub struct Game {
     vault_kit: (Vec<PotionKind>, u32),
     /// The camera as it was before the vaults turned it to the top view.
     camera_before_vault: Option<CameraMode>,
+    /// The gym's Sparring Ring: its bout, the hero's fighter, the threat manager (none elsewhere).
+    pub spar: Option<sparring::Sparring>,
 }
 
 impl Game {
@@ -441,6 +447,7 @@ impl Game {
             toll_asked: false,
             vault_kit: (Vec::new(), 0),
             camera_before_vault: None,
+            spar: None,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -466,8 +473,18 @@ impl Game {
 
         let wanted = self.resolve_wanted_dir();
         self.hero.wish = self.free_wish();
-        // LB or Shift held: the shield is raised (if he has one, and is on his feet).
-        self.hero.blocking = self.input.held(Action::Block) && self.hero.shield.is_some() && self.hero.alive && !self.hero.airborne();
+        // LB or Shift held: the shield is raised (if he has one, and is on his feet). In the Sparring
+        // Ring the guard (a training buckler) is his fighter's, and so are his attack and evade.
+        let guard = self.input.held(Action::Block) && self.hero.alive && !self.hero.airborne();
+        let ring = self.in_ring();
+        if ring {
+            let attack = self.input.was_pressed(&[Action::Attack, Action::Tap]);
+            let evade = self.input.was_pressed(&[Action::Jump]);
+            self.spar_input(attack, evade, guard);
+        } else {
+            self.hero.blocking = guard && self.hero.shield.is_some();
+            self.hero.root = 1.0;
+        }
         let before = self.hero.pos();
         self.hero.update(dt, &self.level.grid, wanted);
         self.footsteps(before);
@@ -485,13 +502,14 @@ impl Game {
         self.update_fires(dt);
         self.watch_health();
 
-        if self.input.was_pressed(&[Action::Attack, Action::Tap]) {
+        // (In the ring only the sword, the guard and the evade: COMBAT.md §4.3.)
+        if !ring && self.input.was_pressed(&[Action::Attack, Action::Tap]) {
             self.attack();
         }
-        if self.input.was_pressed(&[Action::Step]) {
+        if !ring && self.input.was_pressed(&[Action::Step]) {
             self.bifrost_step();
         }
-        if self.input.was_pressed(&[Action::Angel]) {
+        if !ring && self.input.was_pressed(&[Action::Angel]) {
             self.invoke_blessing();
         }
         if self.hero.winded {
@@ -501,10 +519,10 @@ impl Game {
                 self.floater(hp.x, hp.y - 0.6, "OUT OF BREATH", 0.9, Some(0x9ad1ff));
             }
         }
-        if self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
+        if !ring && self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
             self.audio.play(Sfx::Jump);
         }
-        if self.input.was_pressed(&[Action::Bomb]) {
+        if !ring && self.input.was_pressed(&[Action::Bomb]) {
             self.place_bomb();
         }
         if self.input.was_pressed(&[Action::NextPotion]) && !self.belt.is_empty() {
@@ -563,6 +581,7 @@ impl Game {
             self.enemies[i].update(dt, &mut ctx);
         }
         self.update_witches(dt);
+        self.update_sparring(dt);
         self.update_gym(dt);
         self.update_vault(dt);
         self.update_spawns(dt);

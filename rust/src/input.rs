@@ -48,6 +48,10 @@ pub enum Action {
     /// LT / RT in the old man's wares: the tab before, the tab after.
     TabPrev,
     TabNext,
+    /// F5: the Sparring Ring's frame readout on or off.
+    Readout,
+    /// F6: the Sparring Ring's next bout.
+    NextBout,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -119,6 +123,8 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         F2 => Action::KeyCheat,
         F4 => Action::FreeMove,
         F3 => Action::Fps,
+        F5 => Action::Readout,
+        F6 => Action::NextBout,
         KeyC => Action::Camera,
         KeyQ => Action::Drink,
         Tab => Action::NextPotion,

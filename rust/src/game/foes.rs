@@ -113,7 +113,7 @@ impl Game {
         };
         for i in 0..self.enemies.len() {
             let e = &mut self.enemies[i];
-            if e.kind() != EnemyKind::Witch || !e.is_dangerous() || e.lurking() || e.b.returning {
+            if e.kind() != EnemyKind::Witch || !e.is_dangerous() || e.lurking() || e.b.returning || e.duel.is_some() {
                 continue;
             }
             e.b.cast -= dt;
@@ -260,6 +260,10 @@ impl Game {
     /// A blow of the hero's lands on foe `i`: it falls, unless it is tough enough to take another,
     /// in which case it staggers (the loup-garou howls and comes on faster instead).
     pub(super) fn strike_enemy(&mut self, i: usize) {
+        if self.enemies[i].duel.is_some() {
+            self.stray_blow(i);
+            return;
+        }
         self.wake_pack_of(i);
         if self.enemies[i].hits_left() <= 1 {
             self.slay_enemy(i);
@@ -296,6 +300,10 @@ impl Game {
     }
 
     pub(super) fn slay_enemy(&mut self, i: usize) {
+        if self.enemies[i].duel.is_some() {
+            self.stray_blow(i);
+            return;
+        }
         self.wake_pack_of(i);
         let base = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
         self.earn(COINS_KILL);

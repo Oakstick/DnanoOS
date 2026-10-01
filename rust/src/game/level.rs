@@ -68,6 +68,10 @@ impl Game {
         self.patron_wait = 0.0;
         self.level = parse_level(&data);
         self.vault = None;
+        if let Some(mode) = self.spar.as_mut().and_then(|s| s.camera_before.take()) {
+            self.view.camera_mode = mode;
+        }
+        self.spar = data.theme.is_gym().then(super::sparring::Sparring::new);
         let vault_level = data.theme.is_vault();
         if !vault_level {
             if let Some(mode) = self.camera_before_vault.take() {

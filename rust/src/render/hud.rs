@@ -22,6 +22,7 @@ use crate::render::icons::{icon, Icon};
 
 mod controls;
 mod map;
+mod ring;
 mod shop;
 
 pub use controls::controls_tab_rects;
@@ -154,6 +155,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     }
     if g.screen != Screen::Title {
         draw_world_overlays(o, g, t);
+        ring::draw_ring(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
         draw_feedback(o, g, t);
     }

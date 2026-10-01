@@ -59,6 +59,8 @@ enum Cmd {
     Realm(usize),
     Map,
     Gym,
+    /// Into the gym's Sparring Ring, for bout N (1-based; 0 keeps the current one).
+    Ring(usize),
     Court(usize),
     /// The Cyclops falls at once.
     Slay,
@@ -133,6 +135,8 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "hub" => Cmd::Hub,
             "map" => Cmd::Map,
             "gym" => Cmd::Gym,
+            "ring" | "bout" => Cmd::Ring(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "readout" => Cmd::Press(Action::Readout),
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -240,6 +244,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Hub => game.map_jump(Stage::Hub),
                 Cmd::Map => game.open_map(),
                 Cmd::Gym => game.map_jump(Stage::Gym),
+                Cmd::Ring(n) => game.debug_ring(n),
                 Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
                 Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
                 Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,

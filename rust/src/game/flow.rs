@@ -52,6 +52,7 @@ macro_rules! scene_state {
             hub: $g.hub.as_ref().map(|h| HubView { doors: h.doors.map(|d| d as f32), sins: $g.sins_cleared, seal: h.seal as f32 }),
             loot: $g.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
             drops: $g.vault.as_ref().map(|v| v.drops.as_slice()).unwrap_or(&[]),
+            bolts: $g.spar.as_ref().map(|s| s.bolts.as_slice()).unwrap_or(&[]),
         }
     };
 }
@@ -309,6 +310,14 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::Cheat]) {
             self.cheat_to_boss();
+        }
+        if self.input.was_pressed(&[Action::Readout]) {
+            if let Some(s) = self.spar.as_mut() {
+                s.readout = !s.readout;
+            }
+        }
+        if self.input.was_pressed(&[Action::NextBout]) && self.screen == Screen::Playing {
+            self.next_bout();
         }
         if self.input.was_pressed(&[Action::KeyCheat]) && self.screen == Screen::Playing {
             self.cheat_to_gate();

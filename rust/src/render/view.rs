@@ -34,6 +34,7 @@ use crate::render::foliage::{FOREST, MEADOW};
 mod angels;
 mod animation;
 mod camera;
+mod duel;
 mod effects;
 mod emit;
 mod fade;
@@ -143,6 +144,8 @@ pub struct SceneState<'a> {
     pub loot: &'a [Loot],
     /// The items the vaults' chests have thrown out.
     pub drops: &'a [crate::logic::vault::Drop],
+    /// The Sparring Ring's hex bolts in flight.
+    pub bolts: &'a [crate::logic::combat::duelist::Bolt],
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -242,6 +245,8 @@ pub struct WorldView {
     slash_t: f32,
     /// +1 forehand, -1 backhand; alternates every swing.
     slash_side: f32,
+    /// A slash keyed to frame data (startup, active, recovery seconds); none for the plain one.
+    slash_timing: Option<[f32; 3]>,
     hero_lunge: f32,
     particles: Vec<Particle>,
     /// 0..1 accumulated impact, driving the screen shake.
@@ -357,6 +362,7 @@ impl WorldView {
             hero_root_rot: Vec3::ZERO,
             slash_t: -1.0,
             slash_side: 1.0,
+            slash_timing: None,
             hero_lunge: 0.0,
             particles: Vec::new(),
             trauma: 0.0,
@@ -592,8 +598,9 @@ impl WorldView {
         }
         if self.slash_t >= 0.0 {
             self.slash_t += dtf;
-            if self.slash_t > SLASH_SECONDS {
+            if self.slash_t > self.slash_len() {
                 self.slash_t = -1.0;
+                self.slash_timing = None;
             }
         }
         self.hero_phase += dtf * hero.motion as f32 * if hero.hasted() { 17.0 } else { 13.0 };

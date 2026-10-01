@@ -64,8 +64,23 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Mute / FPS / Fullscreen | M / F3 / F11, Alt+Enter | |
 | Cheat: straight to the Cyclops | F1 | |
 | Cheat: straight to the old man's wares (with 1000 silver and 10 runes) | 0 | |
+| Sparring Ring: frame readout / next bout | F5 / F6 | |
 
 The controls page (CONTROLLER on the title or the pause menu) shows either the controller or the keyboard and mouse: left and right, LT and RT, Tab or a click on its tabs switch between them, and it opens on the controller when one is plugged in.
+
+## The Sparring Ring: combat by frame data
+
+`COMBAT.md` is the combat specification and its roadmap: frame data for every move (startup, active, recovery), the formulas (power, damage with state multipliers and proration, poise and its breaks, hitstun decay), the fighter state machine with its input buffer and cancel rules, the threat manager (attack tokens, cadence, rings and sectors), and three archetypes built on foes already in the game. Phase 1 runs in the gym's **Sparring Ring**, west of the arrival platform (capture command `ring:N` for bout N):
+
+- **The hero** fights with three verbs. **Attack** is a string of three (L1 6/4/14 frames, L2 5/4/16, L3 9/5/22); a press anywhere in a swing comes out as the next hit on its cancel frame. **Guard** (hold LB or Shift): a parry in its frames 2-9, a block for stamina after that, a broken guard when the stamina runs out. **Evade** (the leap) cancels any startup and leaves him untouchable in the air. Swings plant him and turn onto the nearest foe (a soft lock). Nothing in the ring touches his real shield, lives or gold.
+- **The Brute** (the blemmyes): 240 HP, armor that light blows can't interrupt, a 42-frame slam and a sweep for a flanking hero. Wait it out, punish the 48-frame recovery, and break its poise with the third hit.
+- **The Skirmisher** (the loup-garou): fast, a 2.6-tile lunge with an 18-frame tell, then it springs back. Parry it or punish it.
+- **The Hexer** (the witch): keeps six tiles off and backs away from you; a hex bolt that a parry sends back at the foes for double.
+- **The threat manager** hands out attack tokens from three threat points (a Brute's costs two), no faster than one per 30 frames. No two strikes land within 18 frames (300 ms) of each other. Strikes are counted where they land, so a bolt's flight is included. The rest wait on a ring round you, to your sides and front.
+- **On screen**: the floor shows each attack's reach, filling through its startup and flashing in the commit frames. A foe glows through its wind-up, flashes on its strike and dims in its recovery (punish now). Each foe has health and poise bars, and token holders wear a red pip. **F5** shows the frame readout: your state and frame, the buffer, threat points in use, each foe's state, and the bout's numbers (damage, parries, blocks, evades, breaks, overlaps). **F6** skips to the next bout.
+- **Bouts**: the Brute; the Pack (two Skirmishers); the Hexer's Guard; the Trio; the Gauntlet (five). Lose and the bout begins again with you back on your feet. Win and the next one comes.
+
+Code: `src/logic/combat/` (the rules: `frames`, `math`, `fsm`, `threat`, `archetype`, `duelist`), `src/game/sparring.rs` (the bouts, hits both ways, bolts), `src/render/view/duel.rs` (poses, telegraphs, pips, bolts), `src/render/hud/ring.rs` (bars, banner, readout); tests in `src/game/ring_tests.rs`.
 
 ## The loadout
 
