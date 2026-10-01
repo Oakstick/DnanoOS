@@ -50,18 +50,34 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | | Keyboard and mouse | Controller |
 |---|---|---|
 | Move | WASD / arrows (relative to the camera) | Left stick, d-pad |
-| Aim camera | Mouse (click to capture) | Right stick (the camera stays where you aim it; click R3 to swing it back behind Ragnar) |
+| Aim camera | Mouse (click to capture) | Right stick (the camera stays where you aim it; click R3 to swing it back behind Ragnar, or, if you have not moved it, to switch the camera) |
 | Attack / fire | **Left click**, E | X, right trigger |
-| Bomb | **Right click**, B, Shift | B |
-| Bifrost Step (path level 5) | F | Left bumper |
+| Bomb | **Right click**, B | B |
+| Raise the shield (hold) | Shift | Left bumper |
+| Bifrost Step (path level 5) | F | Left stick press (L3) |
 | Call the old gatekeeper | H (or Call the Old Man on the pause menu) | Back |
 | Jump | Space | A |
-| Camera mode | C | Y |
-| Drink potion / next potion | Q (or 1-5 for a slot) / Tab | Right bumper / left trigger |
+| Camera mode | C | Right stick press (R3) |
+| Drink potion / next potion | Q (or 1-5 for a slot) / Tab | Right bumper / Y |
+| Archangel's power | R | Left trigger |
 | Pause | Esc | Start |
 | Mute / FPS / Fullscreen | M / F3 / F11, Alt+Enter | |
 | Cheat: straight to the Cyclops | F1 | |
 | Cheat: straight to the old man's wares (with 1000 silver and 10 runes) | 0 | |
+
+The controls page (CONTROLLER on the title or the pause menu) shows either the controller or the keyboard and mouse: left and right, LT and RT, Tab or a click on its tabs switch between them, and it opens on the controller when one is plugged in.
+
+## The loadout
+
+A fifth tab at the old gatekeeper's, LOADOUT, beside the four trees (`src/game/shop.rs`):
+
+- **Archangel's protection:** swear to one of the four archangels, free, and change at any time. His power is yours on R or LT whenever it has come back: Michael in 10 seconds, Gabriel 20, Raphael 30, Uriel 45. The HUD's corner shows his emblem filling as it returns, and a chime says when it has. A blessing taken at a shrine is used first while you carry one.
+- **Outfits:** four for each hero, recolouring his clothes (Ragnar: Berserker, Raven, Jarl, Frost; Mehmed: Janissary, Sultan's Guard, Midnight, Desert; Miyamoto: Crimson, Shadow, Jade, Ivory). Free, and seen at once on the hero in the crypt.
+- **Weapon decay:** every swing that lands wears the wielded blade's edge (each blade keeps its own), and its iron reddens with rust. A dull blade bites the boss less (down to four tenths, rusted through); under a fifth it is rusted and glances off one ordinary foe in three, which reels but stands. The HUD shows the edge under the weapon; SHARPEN puts it back for gold (as much as mending a shield).
+- **Shields break for good:** a shield worn to nothing is struck off (saved at once), and is no longer carried into an adventure or offered on the shields' tab until REFORGE forges it anew, for twice the price of mending it from nothing. Hold **LB** (or **Shift**) to raise it: it comes off his back and up before him, takes the whole of every blow (not only its share), but he walks at a little over half pace and cannot strike.
+- **Skill ribbons:** each skill of his path he has learned is a band round his shield arm, in that skill's colour, the first tied with hanging ends.
+
+Saves are now `v2` (the patron, the outfit, the broken shields and every blade's edge); a `v1` save still loads.
 
 ## What changed from the web version
 

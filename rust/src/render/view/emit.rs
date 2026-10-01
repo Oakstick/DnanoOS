@@ -236,9 +236,27 @@ impl WorldView {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
             let root = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
             let target = if ghost { &mut f.transparent[cube] } else { &mut f.opaque[cube] };
-            emit_rig(target, self.hero_rig(hero), &self.hero_pose, root, tint, alpha, emissive);
+            let rust = ((1.0 - hero.edge) as f32 * 0.9).clamp(0.0, 0.85);
+            match (&self.models.raised, hero.blocking) {
+                (Some((bare, shield)), true) => {
+                    // The shield comes off his back and up before him, on his shield arm's side.
+                    emit_hero_rig(target, bare, &self.hero_pose, root, tint, alpha, emissive, rust);
+                    let side = self.hero_pose.pos.get(3).map(|p| p.x * 0.55).unwrap_or(-0.12);
+                    let up = root * Mat4::from_translation(Vec3::new(side, 0.06, 0.12)) * Mat4::from_rotation_y(PI);
+                    emit_rig(target, shield, &Pose::rest(shield), up, tint, alpha, emissive);
+                }
+                _ => emit_hero_rig(target, self.hero_rig(hero), &self.hero_pose, root, tint, alpha, emissive, rust),
+            }
         }
         self.emit_hero_fx(hero, hero_pos, time, f);
+        if let (true, Some(sh)) = (hero.blocking && hero.alive, hero.shield) {
+            // A faint ward of its colour about the raised shield.
+            let color = lin(progression::node(s.hero_kind, progression::Tree::Shield, sh.tier).color);
+            let pulse = 0.9 + (time * 7.0).sin() * 0.1;
+            let ward =
+                hero_group * Mat4::from_translation(Vec3::new(0.0, 0.5, 0.5)) * Mat4::from_scale(Vec3::new(0.5 * pulse, 0.55 * pulse, 1.0));
+            f.transparent[MeshKind::Annulus as usize].push(Instance::new(ward, color * 1.4, 0.35, Vec3::ZERO, SHADE_UNLIT));
+        }
         let mut hero_light = if hero.alive { 8.0 } else { 0.0 };
         if ghost {
             hero_light = 3.0;
@@ -659,6 +677,22 @@ impl WorldView {
             if l.intensity > 0.0 {
                 f.lights.push(Light { pos: l.pos, color: l.color * l.intensity, distance: l.distance });
             }
+        }
+    }
+}
+
+/// The hero's rig, with `rust` (0 to 1) reddening the iron of his blades (their metal voxels).
+#[allow(clippy::too_many_arguments)]
+fn emit_hero_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3, rust: f32) {
+    const METAL: f32 = 6.0;
+    let rusty = Vec3::new(0.32, 0.12, 0.05);
+    for (i, part) in rig.parts.iter().enumerate() {
+        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
+        let blade = rust > 0.0 && matches!(part.name, "blade" | "offhand");
+        for (j, (off, c)) in part.cubes.iter().enumerate() {
+            let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
+            let c = if blade && shade == METAL { c.lerp(rusty, rust) } else { *c };
+            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), c * tint, alpha, emissive, shade));
         }
     }
 }

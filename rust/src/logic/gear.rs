@@ -34,6 +34,31 @@ impl ShieldGear {
     }
 }
 
+/// Silver to forge a broken shield anew: twice what mending it from nothing would cost.
+pub fn reforge_price(tier: u8) -> u32 {
+    2 * progression::repair_price(tier, 0.0)
+}
+
+// ------------------------------------------------------------------- blades
+
+/// Edge a blade loses (out of 100) with every swing that lands: keen to rusted in about 170 blows.
+pub const EDGE_LOSS: f64 = 0.6;
+/// Below this edge a blade is dull, and he is told so; below the second it is rusted.
+pub const DULL_EDGE: f64 = 0.4;
+pub const RUSTED_EDGE: f64 = 0.2;
+/// A rusted blade glances off an ordinary foe this often, staggering it instead of felling it.
+pub const GLANCE_CHANCE: f64 = 0.35;
+
+/// How hard a blade of `edge` (0 to 1) bites the boss: from four tenths rusted through to all of it keen.
+pub fn edge_power(edge: f64) -> f64 {
+    0.4 + 0.6 * edge.clamp(0.0, 1.0)
+}
+
+/// Silver to sharpen a blade of `tier` from `edge` back to keen (the shields' mending price).
+pub fn sharpen_price(tier: u8, edge: f64) -> u32 {
+    progression::repair_price(tier, edge as f32)
+}
+
 // ------------------------------------------------------------------ potions
 
 /// How many potions fit on his belt.

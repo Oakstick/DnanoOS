@@ -357,9 +357,13 @@ impl Game {
         self.view.mouse_look = aiming;
         let (dx, dy) = self.input.take_look();
         if self.input.was_pressed(&[Action::CameraReset]) {
-            // R3: swing the view back behind him and let it follow again.
-            self.input.pad_aiming = false;
-            self.view.recenter();
+            // R3: swing the view back behind him if the stick moved it; otherwise switch the camera.
+            if self.input.pad_aiming {
+                self.input.pad_aiming = false;
+                self.view.recenter();
+            } else {
+                self.view.camera_mode = if self.view.camera_mode == CameraMode::Third { CameraMode::Top } else { CameraMode::Third };
+            }
         }
         // Looking around is allowed during the countdown too.
         if aiming && matches!(self.screen, Screen::Playing | Screen::Ready) {

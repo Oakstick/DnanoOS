@@ -13,7 +13,8 @@ use glam::Vec3;
 
 use super::carve::*;
 use super::characters::{mat, Sculpt};
-use super::voxels::{Collected, PartDef};
+use super::voxels::{Collected, PartDef, Voxel};
+use crate::logic::heroes::HeroKind;
 use crate::logic::progression::Form;
 
 /// Every hero's rig parts, in the order of their `PartDef`s.
@@ -1096,6 +1097,141 @@ pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
 /// Miyamoto's joints.
 pub const MIYAMOTO_HD_RIG: &[PartDef] = &rig([39.5, 55.5], 20.0, 24.5, [21.5, 73.5], 52.0, 19.5, [47.5, 60.0, 20.5]);
 
+// ------------------------------------------------------------------ outfits and ribbons
+
+/// The outfits each hero can wear, chosen at the old man's: his own first.
+pub fn outfit_names(hero: HeroKind) -> [&'static str; 4] {
+    match hero {
+        HeroKind::Ragnar => ["Berserker", "Raven", "Jarl", "Frost"],
+        HeroKind::Mehmed => ["Janissary", "Sultan's Guard", "Midnight", "Desert"],
+        HeroKind::Miyamoto => ["Crimson", "Shadow", "Jade", "Ivory"],
+    }
+}
+
+/// What an outfit changes: each of the hero's own colours (with its material) and the colour it
+/// becomes. His own outfit changes nothing.
+fn outfit_swaps(hero: HeroKind, outfit: u8) -> Vec<(u32, u32)> {
+    let pairs =
+        |src: &[u32], dst: [u32; 10]| -> Vec<(u32, u32)> { src.iter().zip(dst).map(|(&s, d)| (s, d | (s & 0xff00_0000))).collect() };
+    match (hero, outfit) {
+        (HeroKind::Ragnar, 1..=3) => {
+            use viking::*;
+            let src = [TUNIC, TUNIC_D, TUNIC_L, TRIM, TRIM_R, CLOAK, CLOAK_D, CLOAK_L, TROUSER, TROUSER_D];
+            let dst = match outfit {
+                // Raven: black wool, a charcoal cloak, silver trim.
+                1 => [0x2a2a30, 0x1e1e24, 0x3a3a44, 0xb8bcc4, 0x4a4c56, 0x3a3c44, 0x2a2c32, 0x4a4c56, 0x2e2e34, 0x24242a],
+                // Jarl: crimson, a white cloak, gold trim.
+                2 => [0x8e1c24, 0x701620, 0xa8262e, 0xf2c53d, 0x2a4a8a, 0xd8d4c8, 0xbab6aa, 0xeae6dc, 0x5a3a24, 0x48301e],
+                // Frost: pale ice blue, a deep blue cloak, white trim.
+                _ => [0x9ab8d0, 0x7e9cb4, 0xb4d0e4, 0xe8eef4, 0x2a3870, 0x1e2a5a, 0x16204a, 0x2a3870, 0x5e6a78, 0x4e5866],
+            };
+            pairs(&src, dst)
+        }
+        (HeroKind::Mehmed, 1..=3) => {
+            use jan::*;
+            let src = [KAFTAN, KAFTAN_D, THREAD, ROBE, ROBE_D, SASH, SASH_D, FELT, FELT_D, BOOT];
+            let dst = match outfit {
+                // The Sultan's Guard: a crimson kaftan over white, a gold sash.
+                1 => [0x8e1c26, 0x6e141c, 0xf2c53d, 0xe2dccc, 0xc6bead, 0xc89a30, 0xa07a24, 0xf0ece0, 0xd6d0c0, 0x4a3a2a],
+                // Midnight: navy and gold, silver thread.
+                2 => [0x1a2650, 0x121c3e, 0xc8ccd4, 0xc8a040, 0xa08030, 0x2a3a7a, 0x1e2c60, 0x1e2440, 0x161a30, 0x1a1a22],
+                // Desert: sand and teal, a rust sash.
+                _ => [0xc8a874, 0xa88a5a, 0x8a5a2a, 0x1f8a8a, 0x166a6a, 0xb05a2a, 0x8a4420, 0xe8dcc0, 0xccbea0, 0x7a5a36],
+            };
+            pairs(&src, dst)
+        }
+        (HeroKind::Miyamoto, 1..=3) => {
+            use sam::*;
+            let src = [LACQUER, LACQUER_D, LACING, LACING_L, OBI, OBI_D, MASK, MASK_D, HAKAMA, HAKAMA_D];
+            let dst = match outfit {
+                // Shadow: black lacquer laced in red.
+                1 => [0x1e1c22, 0x141218, 0x8a1a22, 0xb0262e, 0x9a1e26, 0x7a1620, 0x26242a, 0x18161c, 0x2a1a1e, 0x1e1216],
+                // Jade: green lacquer laced in gold.
+                2 => [0x1f7a4a, 0x165a36, 0xb8902a, 0xd8b048, 0xb8902a, 0x8a6a20, 0x2a8a52, 0x1f6a3e, 0x2a3a30, 0x1e2a22],
+                // Ivory: white lacquer laced in black.
+                _ => [0xe8e2d4, 0xc8c2b4, 0x1c1a1e, 0x2e2c32, 0x24222a, 0x18161c, 0xece6d8, 0xccc6b8, 0x3a3844, 0x2c2a34],
+            };
+            pairs(&src, dst)
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Dresses a hero in `outfit`: every voxel of one of his own colours (shaded by the sculpt's
+/// jitter, so matched by its hue and a brightness within a few hundredths) takes the outfit's.
+pub fn dress(c: &mut Collected, hero: HeroKind, outfit: u8) {
+    let swaps = outfit_swaps(hero, outfit);
+    if swaps.is_empty() {
+        return;
+    }
+    let ch = |c: u32| [((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32];
+    for v in c.voxels.iter_mut() {
+        let rgb = ch(v.c);
+        let mut best: Option<(f32, f32, u32)> = None;
+        for &(src, dst) in &swaps {
+            if src >> 24 != v.c >> 24 {
+                continue;
+            }
+            let s = ch(src);
+            let k = (rgb[0] + rgb[1] + rgb[2]) / (s[0] + s[1] + s[2]).max(1.0);
+            if !(0.94..=1.06).contains(&k) {
+                continue;
+            }
+            let err = (0..3).map(|i| (rgb[i] - s[i] * k).abs()).fold(0.0, f32::max);
+            if err <= 3.5 && best.is_none_or(|b| err < b.0) {
+                best = Some((err, k, dst));
+            }
+        }
+        if let Some((_, k, dst)) = best {
+            v.c = scale(dst, k);
+        }
+    }
+}
+
+/// Ribbons on the shield arm for the skills of his path he has learned: one band round the upper
+/// arm for each, in that skill's colour, tied on its outer side with a tail hanging from the first.
+/// `shoulder_y` is the arm's joint; the bands run down from just below it.
+pub fn ribbons(c: &mut Collected, shoulder_y: f32, colors: &[u32]) {
+    use std::collections::HashSet;
+    if colors.is_empty() {
+        return;
+    }
+    let taken: HashSet<(i32, i32, i32)> = c.voxels.iter().map(|v| (v.x, v.y, v.z)).collect();
+    let arm: Vec<(i32, i32, i32)> = c.voxels.iter().filter(|v| v.part == SHIELD_ARM).map(|v| (v.x, v.y, v.z)).collect();
+    let Some(low) = arm.iter().map(|p| p.1).min() else { return };
+    let top = shoulder_y as i32 - 4;
+    let mut added = Vec::new();
+    let mut outer: Option<(i32, i32, i32)> = None;
+    for (k, &color) in colors.iter().enumerate() {
+        let y = top - 2 * k as i32;
+        if y < low + 8 {
+            break; // no further than the forearm
+        }
+        let ring: HashSet<(i32, i32)> = arm.iter().filter(|p| p.1 == y).map(|p| (p.0, p.2)).collect();
+        for &(x, z) in &ring {
+            for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let q = (x + dx, y, z + dz);
+                if !ring.contains(&(q.0, q.2)) && !taken.contains(&q) && !added.iter().any(|v: &Voxel| (v.x, v.y, v.z) == q) {
+                    added.push(Voxel { x: q.0, y: q.1, z: q.2, c: color | mat::CLOTH, part: SHIELD_ARM });
+                    if k == 0 && outer.is_none_or(|o| q.0 < o.0) {
+                        outer = Some(q);
+                    }
+                }
+            }
+        }
+    }
+    // The tail: the first ribbon's ends hanging down its outer side.
+    if let Some((x, y, z)) = outer {
+        for d in 1..=4 {
+            let q = (x - 1, y - d, z + (d % 2));
+            if !taken.contains(&q) {
+                added.push(Voxel { x: q.0, y: q.1, z: q.2, c: colors[0] | mat::CLOTH, part: SHIELD_ARM });
+            }
+        }
+    }
+    c.voxels.extend(added);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1130,6 +1266,42 @@ mod tests {
             if m != 12 {
                 assert!(shades.contains(&m), "no voxels of material {m}");
             }
+        }
+    }
+
+    #[test]
+    fn an_outfit_recolours_the_clothes_and_ribbons_band_the_shield_arm() {
+        for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
+            let body = || match hero {
+                HeroKind::Ragnar => ragnar_hd(None),
+                HeroKind::Mehmed => mehmed_hd(None),
+                HeroKind::Miyamoto => miyamoto_hd(None),
+            };
+            let own = body();
+            let mut dressed = body();
+            dress(&mut dressed, hero, 0);
+            assert!(own.voxels.iter().zip(&dressed.voxels).all(|(a, b)| a.c == b.c), "his own outfit changes nothing");
+            for outfit in 1..4 {
+                let mut d = body();
+                dress(&mut d, hero, outfit);
+                let changed = own.voxels.iter().zip(&d.voxels).filter(|(a, b)| a.c != b.c).count();
+                assert!(changed * 10 > own.voxels.len(), "{hero:?} outfit {outfit}: {changed} of {} voxels change", own.voxels.len());
+                assert!(
+                    own.voxels.iter().zip(&d.voxels).filter(|(a, _)| a.c >> 24 == mat::SKIN >> 24).all(|(a, b)| a.c == b.c),
+                    "skin stays"
+                );
+            }
+            let defs = match hero {
+                HeroKind::Ragnar => RAGNAR_HD_RIG,
+                HeroKind::Mehmed => MEHMED_HD_RIG,
+                HeroKind::Miyamoto => MIYAMOTO_HD_RIG,
+            };
+            let shoulder = defs.iter().find(|d| d.name == "shieldArm").unwrap().pivot[1];
+            let mut banded = body();
+            ribbons(&mut banded, shoulder, &[0xff0000, 0x00ff00, 0x0000ff]);
+            let added = banded.voxels.len() - own.voxels.len();
+            assert!(added >= 12, "{hero:?}: {added} ribbon voxels");
+            assert!(banded.voxels[own.voxels.len()..].iter().all(|v| v.part == SHIELD_ARM), "they move with the arm");
         }
     }
 }

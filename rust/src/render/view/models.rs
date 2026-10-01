@@ -64,7 +64,9 @@ pub(super) struct Models {
     /// The hero as he is equipped now (weapon in hand, shield on his back), what that is,
     /// and his weapon on its own for when he throws it. Rebuilt when his gear changes.
     pub(super) hero: Rig,
-    pub(super) hero_key: (HeroKind, u8, Option<u8>),
+    pub(super) hero_key: (HeroKind, forge::Kit),
+    /// The hero without the shield on his back, and the shield itself: drawn while he holds it up.
+    pub(super) raised: Option<(Rig, Rig)>,
     pub(super) thrown: Rig,
     /// The other two heroes as they are shown on the title and character screens, as
     /// souls in Scene I and as ancestral spirits (Ragnar is `ragnar`).
@@ -120,7 +122,8 @@ impl Models {
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
             hero: forge::hero_model(ragnar, 1, Some(1)),
-            hero_key: (ragnar, 1, Some(1)),
+            hero_key: (ragnar, forge::Kit::plain(1, Some(1))),
+            raised: None,
             thrown: forge::thrown_model(ragnar, 1),
             skeleton,
             bat,

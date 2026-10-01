@@ -80,6 +80,17 @@ enum Cmd {
     Path(u8),
     /// In the old man's wares: highlight row N.
     Row(usize),
+    /// The old man's wares, on the loadout tab.
+    Loadout,
+    /// The patron archangel (0 Michael .. 3 Uriel), the outfit, the blade's edge in percent.
+    Patron(usize),
+    Outfit(u8),
+    Edge(u8),
+    /// The controls page, and its keyboard tab.
+    Controls,
+    Keyboard,
+    /// The shield raised, and lowered.
+    Unblock,
     /// Call the old man from the dungeon.
     Call,
     Potion(usize),
@@ -139,6 +150,14 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "shield" => Cmd::Shield(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "runes" => Cmd::Runes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "path" => Cmd::Path(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
+            "loadout" => Cmd::Loadout,
+            "patron" => Cmd::Patron(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "outfit" => Cmd::Outfit(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "edge" => Cmd::Edge(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
+            "controls" => Cmd::Controls,
+            "keyboard" => Cmd::Keyboard,
+            "block" => Cmd::Press(Action::Block),
+            "unblock" => Cmd::Unblock,
             "row" => Cmd::Row(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "call" => Cmd::Call,
             "tab" => Cmd::Press(Action::NextPotion),
@@ -245,6 +264,30 @@ pub fn run(args: &[String]) -> i32 {
                     game.equip_from_progress();
                 }
                 Cmd::Row(n) => game.shop.row = n,
+                Cmd::Loadout => {
+                    game.open_shop();
+                    game.shop.loadout = true;
+                    game.shop.row = 1;
+                }
+                Cmd::Patron(n) => {
+                    let hero = game.hero_kind;
+                    game.progress.hero_mut(hero).patron = Some(crate::logic::angels::ARCHANGELS[n.min(3)]);
+                }
+                Cmd::Outfit(n) => {
+                    let hero = game.hero_kind;
+                    game.progress.hero_mut(hero).outfit = n.min(3);
+                    game.equip_from_progress();
+                }
+                Cmd::Edge(n) => {
+                    let hero = game.hero_kind;
+                    let h = game.progress.hero_mut(hero);
+                    let k = (h.wield - 1) as usize;
+                    h.edge[k] = n.min(100);
+                    game.equip_from_progress();
+                }
+                Cmd::Controls => game.open_controls(),
+                Cmd::Keyboard => game.controls_keyboard = true,
+                Cmd::Unblock => game.input.inject_release(Action::Block),
                 Cmd::Call => game.call_old_man(),
                 // Drink brew number N (0 = tier 1 .. 9 = tier 10, 10 = an extra life) at once, to see its effect.
                 Cmd::Potion(i) => game.debug_drink(ALL_POTIONS[i.min(10)]),

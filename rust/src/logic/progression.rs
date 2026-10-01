@@ -10,6 +10,7 @@
 //! fragments. What is unlocked, the silver and the runes are kept between
 //! adventures.
 
+use super::angels::Archangel;
 use super::heroes::HeroKind;
 use super::types::PotionKind;
 
@@ -479,7 +480,7 @@ pub fn effect(hero: HeroKind, tree: Tree, tier: u8) -> &'static str {
         "+50 health.",
         "Every jump is a dodge (a moment nothing can touch you), and the blink costs half its stamina.",
         "Stamina comes back 60% faster.",
-        "F or LB: a cloud of cherry blossoms carries you three tiles ahead.",
+        "F or L3 (press the left stick): a cloud of cherry blossoms carries you three tiles ahead.",
         "Blows from behind strike the Cyclops for triple damage, from the flank for double.",
         "When you are hurt: six seconds in which nothing slows you and your blows cost no stamina.",
         "Once per dungeon, when your health hits zero: six seconds in which you cannot die and deal triple damage.",
@@ -491,7 +492,7 @@ pub fn effect(hero: HeroKind, tree: Tree, tier: u8) -> &'static str {
         "+50 health.",
         "See hidden vaults and potions through walls, see in the dark, and land critical hits on the Cyclops.",
         "Stamina comes back 60% faster.",
-        "F or LB: a gust of desert wind carries you three tiles ahead.",
+        "F or L3 (press the left stick): a gust of desert wind carries you three tiles ahead.",
         "Blows from behind strike the Cyclops for triple damage, from the flank for double.",
         "When you are hurt: six seconds in which nothing slows you and your blows cost no stamina.",
         "Once per dungeon, when your health hits zero: six seconds in which you cannot die and deal triple damage.",
@@ -523,7 +524,7 @@ pub fn effect(hero: HeroKind, tree: Tree, tier: u8) -> &'static str {
         "+50 health while you carry a shield.",
         "See hidden shrines and potions through walls, see in the dark, and land critical hits on the Cyclops.",
         "Stamina comes back 60% faster.",
-        "F or LB: a flash of light carries you three tiles ahead.",
+        "F or L3 (press the left stick): a flash of light carries you three tiles ahead.",
         "Blows from behind strike the Cyclops for triple damage.",
         "When your stamina runs out: six seconds of free swings, and nothing slows you.",
         "Every kill sends the lesser foes around you fleeing in panic.",
@@ -944,15 +945,33 @@ pub struct HeroProgress {
     pub relics: [u16; 4],
     pub wield: u8,
     pub carry: u8,
+    /// The archangel he has sworn to at the old man's, whose power comes back to him on a timer.
+    pub patron: Option<Archangel>,
+    /// The outfit he wears (0 is his own; see `render::heroes::outfit_names`).
+    pub outfit: u8,
+    /// Bit `t` set: his shield of tier `t` broke, and must be reforged before he carries it again.
+    pub broken: u16,
+    /// How sharp each blade of his armory is, 0 (rusted through) to 100 (keen): index `tier - 1`.
+    pub edge: [u8; 10],
 }
 
 impl Default for HeroProgress {
     fn default() -> Self {
-        Self { owned: [1, 0, 1, 1], relics: [0; 4], wield: 1, carry: 1 }
+        Self { owned: [1, 0, 1, 1], relics: [0; 4], wield: 1, carry: 1, patron: None, outfit: 0, broken: 0, edge: [100; 10] }
     }
 }
 
 impl HeroProgress {
+    /// Is his shield of `tier` broken (to be reforged before it is carried again)?
+    pub fn is_broken(&self, tier: u8) -> bool {
+        self.broken & (1 << tier) != 0
+    }
+
+    /// How sharp his blade of `tier` is, 0 to 1.
+    pub fn sharpness(&self, tier: u8) -> f64 {
+        self.edge[(tier.clamp(1, TIERS) - 1) as usize] as f64 / 100.0
+    }
+
     pub fn owned(&self, tree: Tree) -> u8 {
         self.owned[tree.index()]
     }
@@ -1082,14 +1101,21 @@ impl Progress {
         best.map(|(t, _)| t)
     }
 
-    // A line of text for the save file: "silver runes | a p s e r0 r1 r2 r3 w c | ...".
+    // A line of text for the save file:
+    // "v2 silver runes | a p s e r0 r1 r2 r3 wield carry patron outfit broken edge1 .. edge10 | ...".
+    // (A "v1" line, from before the loadout, stops after carry and still loads.)
     pub fn encode(&self) -> String {
-        let mut out = format!("v1 {} {}", self.silver, self.runes);
+        let mut out = format!("v2 {} {}", self.silver, self.runes);
         for h in &self.heroes {
             out.push_str(&format!(
                 " | {} {} {} {} {} {} {} {} {} {}",
                 h.owned[0], h.owned[1], h.owned[2], h.owned[3], h.relics[0], h.relics[1], h.relics[2], h.relics[3], h.wield, h.carry
             ));
+            let patron = h.patron.map(|a| a.index() + 1).unwrap_or(0);
+            out.push_str(&format!(" {} {} {}", patron, h.outfit, h.broken));
+            for e in h.edge {
+                out.push_str(&format!(" {e}"));
+            }
         }
         out
     }
@@ -1097,14 +1123,24 @@ impl Progress {
     pub fn decode(text: &str) -> Option<Progress> {
         let mut parts = text.split('|');
         let mut head = parts.next()?.split_whitespace();
-        if head.next()? != "v1" {
-            return None;
-        }
+        let v2 = match head.next()? {
+            "v1" => false,
+            "v2" => true,
+            _ => return None,
+        };
         let mut p = Progress { silver: head.next()?.parse().ok()?, runes: head.next()?.parse().ok()?, ..Default::default() };
         for h in p.heroes.iter_mut() {
             let n: Vec<u32> = parts.next()?.split_whitespace().map(|v| v.parse().ok()).collect::<Option<_>>()?;
-            if n.len() != 10 {
+            if n.len() != if v2 { 23 } else { 10 } {
                 return None;
+            }
+            if v2 {
+                h.patron = (1..=4).contains(&n[10]).then(|| crate::logic::angels::ARCHANGELS[n[10] as usize - 1]);
+                h.outfit = (n[11] as u8).min(3);
+                h.broken = n[12] as u16;
+                for k in 0..10 {
+                    h.edge[k] = (n[13 + k] as u8).min(100);
+                }
             }
             for i in 0..4 {
                 h.owned[i] = (n[i] as u8).min(TIERS);
@@ -1123,6 +1159,25 @@ impl Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_loadout_is_saved_and_a_save_from_before_it_still_loads() {
+        let mut p = Progress { silver: 77, runes: 3, ..Default::default() };
+        let h = p.hero_mut(HeroKind::Mehmed);
+        h.patron = Some(Archangel::Raphael);
+        h.outfit = 2;
+        h.broken = 1 << 3;
+        h.edge[0] = 41;
+        let back = Progress::decode(&p.encode()).expect("it loads");
+        assert_eq!(back, p);
+        assert!(back.hero(HeroKind::Mehmed).is_broken(3) && !back.hero(HeroKind::Mehmed).is_broken(2));
+        assert!((back.hero(HeroKind::Mehmed).sharpness(1) - 0.41).abs() < 1e-9);
+        // A v1 save: no patron, his own outfit, nothing broken, every blade keen.
+        let old = Progress::decode("v1 5 1 | 2 0 1 1 0 0 0 0 2 1 | 1 0 1 1 0 0 0 0 1 1 | 1 0 1 1 0 0 0 0 1 1").expect("a v1 save");
+        assert_eq!(old.silver, 5);
+        assert_eq!(old.hero(HeroKind::Ragnar).wield, 2);
+        assert_eq!((old.hero(HeroKind::Ragnar).patron, old.hero(HeroKind::Ragnar).edge), (None, [100; 10]));
+    }
     use crate::logic::heroes::ROSTER;
 
     #[test]

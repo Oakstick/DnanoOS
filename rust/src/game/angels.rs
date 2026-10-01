@@ -77,20 +77,46 @@ impl Game {
         self.floater(x, y - 0.3, format!("{}   LT / R  x{}", angel.power().to_uppercase(), angel.charges()), 2.2, Some(0xe8dcc0));
     }
 
-    /// LT or R: one use of the blessing he carries.
+    /// LT or R: one use of a shrine's blessing if he carries one, and otherwise his patron's power,
+    /// if it has come back (Michael in ten seconds, Gabriel twenty, Raphael thirty, Uriel forty-five).
     pub(super) fn invoke_blessing(&mut self) {
-        let Some(mut b) = self.blessing else { return };
-        if !self.hero.alive || b.charges == 0 {
+        if !self.hero.alive {
             return;
         }
-        match b.angel {
+        if let Some(mut b) = self.blessing.filter(|b| b.charges > 0) {
+            self.call_angel(b.angel);
+            b.charges -= 1;
+            self.blessing = (b.charges > 0).then_some(b);
+            return;
+        }
+        let Some(angel) = self.progress.hero(self.hero_kind).patron else { return };
+        if self.patron_wait > 0.0 {
+            if self.time - self.refused_at > 1.0 {
+                self.refused_at = self.time;
+                self.audio.play(Sfx::Denied);
+                let hp = self.hero.pos();
+                self.floater(
+                    hp.x,
+                    hp.y - 0.9,
+                    format!("{} IN {}s", angel.name().to_uppercase(), self.patron_wait.ceil() as u32),
+                    1.0,
+                    Some(0x9a8a8a),
+                );
+            }
+            return;
+        }
+        self.call_angel(angel);
+        self.patron_wait = angel.recharge();
+    }
+
+    /// The archangel's power itself.
+    fn call_angel(&mut self, angel: Archangel) {
+        match angel {
             Archangel::Michael => self.michaels_fire(),
             Archangel::Gabriel => self.gabriels_thunder(),
             Archangel::Raphael => self.raphaels_beam(),
             Archangel::Uriel => self.uriels_wave(),
         }
-        b.charges -= 1;
-        self.blessing = (b.charges > 0).then_some(b);
     }
 
     /// Michael: a bolt of blue fire along his aim, seeking a foe.
@@ -189,6 +215,18 @@ impl Game {
     /// Each tick of play: Uriel rests, his wave rolls on, and the turned foes hunt until their time is up.
     pub(super) fn update_angels(&mut self, dt: f64) {
         self.uriel_rest = (self.uriel_rest - dt).max(0.0);
+        if self.patron_wait > 0.0 {
+            self.patron_wait = (self.patron_wait - dt).max(0.0);
+            if self.patron_wait == 0.0 {
+                // His patron's power is back: a chime, and a word over his head.
+                if let Some(angel) = self.progress.hero(self.hero_kind).patron {
+                    self.audio.play(Sfx::Milestone);
+                    let hp = self.hero.pos();
+                    self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.0, angel.color(), 16);
+                    self.floater(hp.x, hp.y - 1.1, format!("{} IS WITH YOU", angel.name().to_uppercase()), 1.2, Some(angel.color()));
+                }
+            }
+        }
         if let Some(mut w) = self.holy_wave.take() {
             w.radius += WAVE_SPEED * dt;
             let doomed: Vec<usize> = (0..self.enemies.len())

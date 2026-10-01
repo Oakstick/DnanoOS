@@ -69,6 +69,16 @@ impl Archangel {
         }
     }
 
+    /// Seconds a patron's power takes to come back (chosen at the old man's, see `HeroProgress::patron`).
+    pub fn recharge(self) -> f64 {
+        match self {
+            Archangel::Michael => 10.0,
+            Archangel::Gabriel => 20.0,
+            Archangel::Raphael => 30.0,
+            Archangel::Uriel => 45.0,
+        }
+    }
+
     /// What one use of it does to a boss.
     pub fn boss_damage(self) -> i32 {
         match self {
@@ -123,6 +133,8 @@ mod tests {
         let uses: Vec<_> = ARCHANGELS.iter().map(|a| a.charges()).collect();
         assert_eq!(uses, [4, 3, 2, 1]);
         assert_eq!(Archangel::Uriel.next(), Archangel::Michael);
+        let recharge: Vec<_> = ARCHANGELS.iter().map(|a| a.recharge()).collect();
+        assert_eq!(recharge, [10.0, 20.0, 30.0, 45.0], "Michael, Gabriel, Raphael, Uriel");
         assert_eq!((Archangel::Gabriel.boss_damage(), Archangel::Raphael.boss_damage(), Archangel::Uriel.boss_damage()), (5, 10, 40));
         // Blue, green, purple, red.
         let c = |a: Archangel| a.color();

@@ -96,6 +96,9 @@ struct JumpState {
     t: f64,
 }
 
+/// Behind a raised shield he walks at this share of his pace.
+pub const BLOCK_SPEED: f64 = 0.55;
+
 /**
  * The hero. Makes footstep noise while moving; enemies with hearing home in
  * on `heard_pos` rather than the true position. Fights with the blade of his
@@ -157,6 +160,12 @@ pub struct Hero {
     pub shield: Option<ShieldGear>,
     /// Set on the hit that breaks the shield; the game clears it.
     pub shield_broke: bool,
+    /// The shield is raised (LB, or Shift, held): it takes the whole of every hit, and he walks slower.
+    pub blocking: bool,
+    /// How sharp the blade in his hand is, 0 to 1: a dull one bites the boss less (`gear::edge_power`).
+    pub edge: f64,
+    /// The outfit he wears, and how many skills of his path he has learned (each a ribbon on his arm).
+    pub outfit: u8,
     /// Timed potion effects, seconds left each.
     pub fx: Effects,
     regen_carry: f64,
@@ -228,6 +237,9 @@ impl Hero {
             drain_carry: 0.0,
             shield: Some(ShieldGear::new(1)),
             shield_broke: false,
+            blocking: false,
+            edge: 1.0,
+            outfit: 0,
             fx: Effects::default(),
             regen_carry: 0.0,
             invincible_timer: 0.0,
@@ -517,7 +529,8 @@ impl Hero {
             * if self.hasted() { SPEED_BOOST } else { 1.0 }
             * if self.fx.haste > 0.0 { HASTE_SPEED } else { 1.0 }
             * if self.fx.ragnarok > 0.0 { RAGNAROK_SPEED } else { 1.0 }
-            * if self.slowed() { SLIME_SLOW } else { 1.0 };
+            * if self.slowed() { SLIME_SLOW } else { 1.0 }
+            * if self.blocking { BLOCK_SPEED } else { 1.0 };
         if !self.alive {
             return;
         }
@@ -808,7 +821,8 @@ impl Hero {
         }
         if let Some(s) = &mut self.shield {
             let w = progression::ward(s.tier);
-            let share = ((amount as f64) * w.block).round() as i32;
+            // Raised, the shield takes all of the blow; slung, its share.
+            let share = if self.blocking { amount } else { ((amount as f64) * w.block).round() as i32 };
             let floor = if w.unbreakable { 1 } else { 0 };
             let absorbed = share.min(s.durability - floor).max(0);
             s.durability -= absorbed;
@@ -842,7 +856,7 @@ impl Hero {
 
     /// Starts a swing if the cooldown and his stamina allow. Returns true if a swing began.
     pub fn try_attack(&mut self) -> bool {
-        if !self.alive || self.attack_cooldown > 0.0 || !self.spend(STAMINA_PER_BLOW) {
+        if !self.alive || self.blocking || self.attack_cooldown > 0.0 || !self.spend(STAMINA_PER_BLOW) {
             return false;
         }
         self.attack_cooldown = progression::blade(self.kind, self.blade).cooldown * self.cooldown_scale();

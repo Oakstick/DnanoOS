@@ -24,6 +24,7 @@ mod controls;
 mod map;
 mod shop;
 
+pub use controls::controls_tab_rects;
 pub use map::map_rects;
 mod story;
 use crate::logic::angels::{Archangel, ARCHANGELS};
@@ -567,7 +568,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
  * long until he grants his again.
  */
 fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
-    if g.blessing.is_none() && g.uriel_rest <= 0.0 {
+    let patron = g.progress.hero(g.hero_kind).patron;
+    if g.blessing.is_none() && g.uriel_rest <= 0.0 && patron.is_none() {
         return;
     }
     let h = o.height;
@@ -594,9 +596,37 @@ fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
             }
             o.text("R / LT", x0 + pw - t * 0.4, y0 + t * 1.55, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Right, true);
         }
-        None => {
-            o.text("NO BLESSING", x0 + t * 0.5, y0 + t * 0.9, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
-        }
+        None => match patron {
+            Some(a) => {
+                // The patron: his emblem filling as his power comes back, bright and breathing when it has.
+                let color = a.color();
+                let ready = g.patron_wait <= 0.0;
+                let fill = if ready { 1.0 } else { (1.0 - g.patron_wait / a.recharge()) as f32 };
+                let (ex, ey, r) = (x0 + t * 1.3, y0 + ph / 2.0, t * 0.75);
+                o.circle(ex, ey, r * 1.12, [0.0, 0.0, 0.0, 0.6]);
+                o.arc(
+                    ex,
+                    ey,
+                    r * 1.0,
+                    -std::f32::consts::FRAC_PI_2,
+                    -std::f32::consts::FRAC_PI_2 + fill * std::f32::consts::TAU,
+                    (t * 0.14).max(2.0),
+                    rgba(color, 1.0),
+                );
+                let core = if ready { 0.9 + (time * 4.0).sin() * 0.1 } else { 0.35 };
+                o.circle(ex, ey, r * 0.62, rgba(color, core));
+                o.circle(ex, ey, r * 0.34, rgba(0xf0ebe0, if ready { 1.0 } else { 0.5 }));
+                let tx = x0 + t * 2.5;
+                o.text(&a.name().to_uppercase(), tx, y0 + t * 0.75, small * 1.1, rgba(color, 1.0), Align::Left, true);
+                let (state, sc) =
+                    if ready { ("READY".to_string(), 0x7dff9a) } else { (format!("{}s", g.patron_wait.ceil() as u32), TEXT_DIM) };
+                o.text(&state, tx, y0 + t * 1.6, small, rgba(sc, 1.0), Align::Left, true);
+                o.text("R / LT", x0 + pw - t * 0.4, y0 + t * 1.55, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Right, true);
+            }
+            None => {
+                o.text("NO BLESSING", x0 + t * 0.5, y0 + t * 0.9, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
+            }
+        },
     }
     if g.uriel_rest > 0.0 {
         let left = g.uriel_rest.ceil() as u32;
@@ -654,6 +684,16 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
         let ready = if hero.weapon == WeaponKind::Sword { hero.attack_cooldown <= 0.0 } else { hero.fire_cooldown <= 0.0 };
         let (label, color) = if ready { ("READY", 0x7dff9a) } else { ("...", TEXT_DIM) };
         o.text(label, tx + o.measure(&tier, small) + t * 0.5, row2, small, rgba(color, 1.0), Align::Left, true);
+        // The blade's edge: keen gold, dulling amber, rusted red.
+        let edge = hero.edge as f32;
+        let ec = if hero.edge >= crate::logic::gear::DULL_EDGE {
+            0xe8c860
+        } else if hero.edge >= crate::logic::gear::RUSTED_EDGE {
+            0xd88a3a
+        } else {
+            0xc84a2a
+        };
+        bar(o, tx, y0 + t * 2.12, t * 6.2, t * 0.18, edge, ec);
     }
 
     // Shield.
@@ -688,8 +728,19 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
             );
         }
         None => {
-            o.text("NO SHIELD", sx, y0 + ph / 2.0, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
+            let p = g.progress.hero(hk);
+            if p.is_broken(p.carry) {
+                o.text("SHIELD DESTROYED", sx, y0 + t * 0.9, small, rgba(0xff8a6a, 1.0), Align::Left, true);
+                o.text("THE OLD MAN CAN REFORGE IT", sx, y0 + t * 1.65, small * 0.8, rgba(TEXT_DIM, 1.0), Align::Left, false);
+            } else {
+                o.text("NO SHIELD", sx, y0 + ph / 2.0, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
+            }
         }
+    }
+    if hero.blocking {
+        // Raised: a bright rim round the shield's corner of the panel.
+        o.rect_outline(sx0 + t * 0.15, y0 + t * 0.15, t * 7.8, ph - t * 0.3, (t * 0.08).max(1.5), rgba(0x9ad1ff, 0.9));
+        o.text("RAISED", sx0 + t * 7.7, y0 + t * 2.1, small * 0.8, rgba(0x9ad1ff, 1.0), Align::Right, true);
     }
 
     // The potion belt.
@@ -1370,7 +1421,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
 
     // One line on how to play, tucked under the button.
     o.text(
-        "WASD or the left stick to run   Left click / X attack   Right click / B bomb   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
+        "WASD or the left stick to run   Left click / X attack   Right click / B bomb   Shift / LB shield   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
         w / 2.0,
         h * 0.965,
         t * 0.45,

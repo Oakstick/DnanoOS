@@ -1386,3 +1386,219 @@ fn right_click_drops_a_bomb_and_left_click_swings() {
     g.update(crate::app::STEP);
     assert!(g.hero.swinging());
 }
+
+// ------------------------------------------------------------------ the loadout
+
+/// Clicks the shop button for `action` (the tab it lives on must be open).
+fn press_shop(g: &mut Game, action: ShopAction) {
+    let rows = g.shop_rows();
+    let (r, c) = rows
+        .iter()
+        .enumerate()
+        .find_map(|(r, row)| row.buttons.iter().position(|b| b.action == action).map(|c| (r, c)))
+        .expect("no such button");
+    let b = crate::render::hud::shop_rects(&rows, g.viewport.0, g.viewport.1)[r][c];
+    g.input.click = Some((b[0] + b[2] / 2.0, b[1] + b[3] / 2.0));
+    g.update(crate::app::STEP);
+}
+
+#[test]
+fn the_loadout_tab_swears_an_archangel_whose_power_comes_back_on_its_timer() {
+    use logic::angels::{Archangel, Blessing};
+    let mut g = playing();
+    g.open_shop();
+    press_shop(&mut g, ShopAction::Loadout);
+    assert!(g.shop.loadout);
+    let rows = g.shop_rows();
+    assert_eq!(rows.iter().find(|r| r.kind == RowKind::Patron).unwrap().buttons.len(), 4, "the four archangels");
+    assert_eq!(rows.iter().find(|r| r.kind == RowKind::Outfit).unwrap().buttons.len(), 4, "four outfits");
+    press_shop(&mut g, ShopAction::Patron(Archangel::Michael));
+    assert_eq!(g.progress.hero(g.hero_kind).patron, Some(Archangel::Michael));
+    press_shop(&mut g, ShopAction::Leave);
+    for _ in 0..((READY_SECONDS + 0.1) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    // Michael's fire, then ten seconds before it comes again.
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert!(g.projectiles.iter().any(|p| p.kind == RangedKind::Grace), "blue fire");
+    assert!((g.patron_wait - Archangel::Michael.recharge()).abs() < 0.05);
+    g.projectiles.clear();
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert!(g.projectiles.is_empty(), "not yet");
+    for _ in 0..(10.1 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    assert_eq!(g.patron_wait, 0.0, "back after ten seconds");
+    // A shrine's blessing is used first, and the patron's power waits its turn.
+    g.blessing = Some(Blessing::of(Archangel::Gabriel));
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert_eq!(g.blessing.map(|b| b.charges), Some(Archangel::Gabriel.charges() - 1));
+    assert_eq!(g.patron_wait, 0.0);
+    // Each archangel's own timer.
+    for a in logic::angels::ARCHANGELS {
+        g.progress.hero_mut(g.hero_kind).patron = Some(a);
+        g.blessing = None;
+        g.patron_wait = 0.0;
+        g.input.inject(Action::Angel);
+        g.update(crate::app::STEP);
+        assert!((g.patron_wait - a.recharge()).abs() < 0.05, "{a:?}");
+    }
+}
+
+#[test]
+fn blades_dull_as_they_strike_bite_the_boss_less_and_are_sharpened_for_gold() {
+    let mut g = meadow();
+    let k = (g.hero.blade - 1) as usize;
+    assert_eq!(g.progress.hero(g.hero_kind).edge[k], 100);
+    for _ in 0..100 {
+        g.dull_blade();
+    }
+    let edge = g.progress.hero(g.hero_kind).edge[k];
+    assert!((39..=41).contains(&edge), "worn down by about sixty: {edge}");
+    assert!((g.hero.edge - edge as f64 / 100.0).abs() < 1e-9, "the hero holds the same blade");
+    // A dull blade bites the boss less (into the fight as F1 goes, the Cyclops risen and awake).
+    let blow = |edge: f64| {
+        let mut b = playing();
+        b.input.key_down(winit::keyboard::KeyCode::F1, false);
+        b.update(crate::app::STEP);
+        for _ in 0..((READY_SECONDS + 2.2) / crate::app::STEP) as usize {
+            b.update(crate::app::STEP);
+            b.hero.invuln = 1.0;
+        }
+        let bp = b.boss.as_ref().unwrap().pos;
+        let hp = b.boss.as_ref().unwrap().hp;
+        b.hero.edge = edge;
+        assert!(b.strike_boss(10, bp), "the blow lands");
+        hp - b.boss.as_ref().unwrap().hp
+    };
+    let (keen, dull) = (blow(1.0), blow(0.0));
+    assert!(dull < keen, "keen {keen}, rusted {dull}");
+    // The old man puts the edge back, for gold.
+    g.equip_from_progress();
+    g.open_shop();
+    g.progress.silver = 1000;
+    press_shop(&mut g, ShopAction::Loadout);
+    let price = logic::gear::sharpen_price(g.hero.blade, g.hero.edge);
+    assert!(price > 0);
+    press_shop(&mut g, ShopAction::Sharpen);
+    assert_eq!(g.progress.hero(g.hero_kind).edge[k], 100);
+    assert_eq!(g.hero.edge, 1.0);
+    assert_eq!(g.progress.silver, 1000 - price);
+}
+
+#[test]
+fn a_rusted_blade_glances_off_some_foes_and_a_keen_one_never() {
+    let mut g = meadow();
+    let at = P::new(13, 16);
+    let mut felled = [0, 0];
+    for (k, edge) in [1.0, 0.05].into_iter().enumerate() {
+        for _ in 0..30 {
+            g.enemies.clear();
+            g.view.clear_enemies();
+            g.hero.place(P::new(13, 17));
+            g.hero.face(Dir::Up);
+            let i = foe_at(&mut g, EnemyKind::Bat, at);
+            g.hero.edge = edge;
+            g.perform_attack();
+            felled[k] += usize::from(fell(&g, i));
+        }
+    }
+    assert_eq!(felled[0], 30, "a keen blade fells every one");
+    assert!(felled[1] < 30, "a rusted one glances off some: {} of 30 fell", felled[1]);
+}
+
+#[test]
+fn a_shield_that_breaks_is_gone_until_the_old_man_reforges_it() {
+    let mut g = playing();
+    let tier = g.progress.hero(g.hero_kind).carry;
+    g.hero.shield = Some(ShieldGear { durability: 1, ..ShieldGear::new(tier) });
+    g.hero.invuln = 0.0;
+    g.hurt_hero(40);
+    assert!(g.hero.shield.is_none());
+    assert!(g.progress.hero(g.hero_kind).is_broken(tier), "struck off for good");
+    // A new adventure does not bring it back.
+    g.new_kit();
+    assert!(g.hero.shield.is_none());
+    // Nor can it be carried; it must be reforged.
+    g.open_shop();
+    g.progress.silver = 2000;
+    press_shop(&mut g, ShopAction::Tab(Tree::Shield));
+    assert!(g.shop_rows().iter().all(|r| r.buttons.iter().all(|b| b.action != ShopAction::Carry(tier))), "no carrying a broken shield");
+    press_shop(&mut g, ShopAction::Reforge);
+    assert_eq!(g.hero.shield.map(|s| s.tier), Some(tier));
+    assert!(!g.progress.hero(g.hero_kind).is_broken(tier));
+    assert_eq!(g.progress.silver, 2000 - logic::gear::reforge_price(tier));
+}
+
+#[test]
+fn lb_raises_the_shield_to_take_the_whole_blow_at_a_slower_walk() {
+    let mut g = meadow();
+    g.hero.shield = Some(ShieldGear::new(1));
+    g.update(crate::app::STEP);
+    let pace = g.hero.m.speed;
+    g.input.inject(Action::Block);
+    g.update(crate::app::STEP);
+    assert!(g.hero.blocking);
+    assert!(g.hero.m.speed < pace * 0.7, "slower: {} from {pace}", g.hero.m.speed);
+    let (hp, dur) = (g.hero.hp, g.hero.shield.unwrap().durability);
+    g.hero.invuln = 0.0;
+    g.hurt_hero(10);
+    assert_eq!(g.hero.hp, hp, "the raised shield takes it all");
+    assert!(g.hero.shield.unwrap().durability < dur);
+    // No swinging behind it.
+    g.hero.attack_cooldown = 0.0;
+    g.input.inject(Action::Attack);
+    g.update(crate::app::STEP);
+    assert!(!g.hero.swinging());
+    // Lowered, it takes only its share again.
+    g.input.inject_release(Action::Block);
+    g.update(crate::app::STEP);
+    assert!(!g.hero.blocking);
+    let hp = g.hero.hp;
+    g.hero.invuln = 0.0;
+    g.hurt_hero(10);
+    assert!(g.hero.hp < hp);
+}
+
+#[test]
+fn the_controls_page_switches_between_the_controller_and_the_keyboard() {
+    let mut g = Game::new();
+    g.open_controls();
+    assert!(g.show_controls);
+    let start = g.controls_keyboard;
+    g.input.nav = Some(Dir::Right);
+    g.update(crate::app::STEP);
+    assert_eq!(g.controls_keyboard, !start);
+    assert!(g.show_controls, "still open");
+    g.input.inject(Action::TabNext);
+    g.update(crate::app::STEP);
+    assert_eq!(g.controls_keyboard, start);
+    // A click on the keyboard's tab.
+    let tabs = crate::render::hud::controls_tab_rects(g.viewport.0, g.viewport.1);
+    g.input.click = Some((tabs[1][0] + 5.0, tabs[1][1] + 5.0));
+    g.update(crate::app::STEP);
+    assert!(g.controls_keyboard && g.show_controls);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert!(!g.show_controls, "Esc puts it away");
+}
+
+#[test]
+fn an_outfit_and_the_paths_ribbons_dress_the_hero() {
+    let mut g = playing();
+    g.open_shop();
+    press_shop(&mut g, ShopAction::Loadout);
+    press_shop(&mut g, ShopAction::Outfit(2));
+    assert_eq!((g.progress.hero(g.hero_kind).outfit, g.hero.outfit), (2, 2));
+    // A path learned is a ribbon on his arm: the model grows by them.
+    let plain = g.view.hero_voxels();
+    g.progress.hero_mut(g.hero_kind).owned[Tree::Path.index()] = 4;
+    g.equip_from_progress();
+    g.update(crate::app::STEP);
+    assert!(g.view.hero_voxels() > plain, "ribbons on his arm");
+}

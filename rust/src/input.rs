@@ -37,8 +37,10 @@ pub enum Action {
     Slot(u8),
     /// 0: straight to the old man's wares (testing cheat).
     ShopCheat,
-    /// F / LB: Bifrost Step, the path's blink (once it is learned).
+    /// F / L3 (the left stick pressed): Bifrost Step, the path's blink (once it is learned).
     Step,
+    /// Shift / LB, held: raise the shield.
+    Block,
     /// H / Back: call the old gatekeeper, and his wares open.
     Call,
     /// R / LT: one use of the archangel's blessing he carries.
@@ -130,7 +132,8 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         KeyF => Action::Step,
         KeyH => Action::Call,
         KeyR => Action::Angel,
-        KeyB | KeyL | ShiftLeft | ShiftRight => Action::Bomb,
+        KeyB | KeyL => Action::Bomb,
+        ShiftLeft | ShiftRight => Action::Block,
         F11 => Action::Fullscreen,
         _ => return None,
     })
@@ -402,6 +405,11 @@ impl Input {
     }
 
     /// Feeds a scripted press (for captures and tests).
+    /// Is `a` held down now (a key, a mouse button or a controller button)?
+    pub fn held(&self, a: Action) -> bool {
+        self.pressed.contains(&a)
+    }
+
     pub fn inject(&mut self, a: Action) {
         self.press(a);
     }

@@ -363,6 +363,8 @@ impl Game {
     pub(super) fn strike_boss(&mut self, base: i32, at: V) -> bool {
         let blade = progression::blade(self.hero_kind, self.hero.blade);
         let mut dmg = self.hero.blow(base);
+        // A dull blade bites less.
+        dmg = ((dmg as f64) * crate::logic::gear::edge_power(self.hero.edge)).round().max(1.0) as i32;
         if self.dungeon >= 1 && !blade.pierce_armor {
             dmg = (dmg - BOSS_ARMOR).max(1);
         }

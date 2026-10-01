@@ -164,7 +164,8 @@ impl WorldView {
         }
         p.rot_x(rig, "leftLeg", stride * 0.75);
         p.rot_x(rig, "rightLeg", -stride * 0.75);
-        p.rot_x(rig, "shieldArm", -stride * 0.35);
+        // Behind a raised shield his arm comes up across his front.
+        p.rot_x(rig, "shieldArm", if hero.blocking { -1.35 } else { -stride * 0.35 });
         let swing = if hero.swinging() { (hero.swing_progress() as f32 * PI).sin() * 1.7 } else { stride * 0.35 };
         p.rot_x(rig, "swordArm", swing);
         p.rot_x(rig, "head", motion * 0.08 + if hero.swinging() { 0.15 } else { 0.0 });

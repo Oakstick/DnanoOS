@@ -1,7 +1,8 @@
-//! The controller page, opened from the title or the pause menu: a gamepad
-//! drawn in the game's colours, every button called out by a line to what it
-//! does, and a note on the menus. Buttons go by their Xbox names; a line under
-//! the pad gives their PlayStation twins.
+//! The controls page, opened from the title or the pause menu: two tabs, the
+//! controller and the keyboard. The controller is a gamepad drawn in the
+//! game's colours, every button called out by a line to what it does (by
+//! their Xbox names; a line under the pad gives their PlayStation twins). The
+//! keyboard is every key as a keycap beside what it does.
 
 use super::*;
 
@@ -15,6 +16,54 @@ const B_RED: u32 = 0xe0544a;
 const X_BLUE: u32 = 0x4a8ee8;
 const Y_YELLOW: u32 = 0xf2c53d;
 const LINE: u32 = 0x9aa3b8;
+
+/// The two tabs at the top of the page: the controller, then the keyboard and mouse.
+pub fn controls_tab_rects(w: f32, h: f32) -> [[f32; 4]; 2] {
+    let t = tile_for(w, h);
+    let (bw, bh, gap) = (t * 8.0, t * 1.1, t * 0.4);
+    let y = t * 2.55;
+    [[w / 2.0 - bw - gap / 2.0, y, bw, bh], [w / 2.0 + gap / 2.0, y, bw, bh]]
+}
+
+/// The keyboard and mouse, as keycaps beside what they do, in two columns.
+fn draw_keyboard(o: &mut Overlay, t: f32) {
+    let (w, h) = (o.width, o.height);
+    let keys: [(&str, &str); 18] = [
+        ("W A S D", "Run (arrows too), relative to the camera"),
+        ("SPACE", "Jump; pick in menus"),
+        ("LEFT CLICK", "Attack (E too)"),
+        ("RIGHT CLICK", "Drop a bomb (B too)"),
+        ("SHIFT", "Hold: raise your shield"),
+        ("F", "Bifrost Step, once learned"),
+        ("R", "Archangel's power"),
+        ("Q", "Drink the chosen potion"),
+        ("TAB", "Next potion; shop: next tab"),
+        ("1 - 5", "Drink from that belt slot"),
+        ("MOUSE", "Look (click the game to capture it)"),
+        ("C", "Switch the camera"),
+        ("H", "Call the old man"),
+        ("ESC", "Pause and resume"),
+        ("ENTER", "Pick in menus"),
+        ("F4", "Free or grid movement"),
+        ("M", "Sound on or off"),
+        ("F11", "Fullscreen"),
+    ];
+    let size = (t * 0.52).max(11.0);
+    let (top, row) = (t * 5.0, ((h - t * 9.5) / 9.0).min(t * 1.35));
+    let col_w = (w * 0.42).min(t * 22.0);
+    let x0 = w / 2.0 - col_w - t * 0.5;
+    for (i, (key, does)) in keys.iter().enumerate() {
+        let (cx, cy) = (x0 + (i / 9) as f32 * (col_w + t * 1.0), top + (i % 9) as f32 * row);
+        // The keycap: a dark rounded key with a lighter rim and its name on it.
+        let kw = o.measure(key, size) + t * 0.9;
+        let (kx, ky, kh) = (cx, cy, row * 0.78);
+        o.rect(kx - 1.0, ky - 1.0, kw + 2.0, kh + 2.0, rgba(EDGE, 1.0));
+        o.rect(kx, ky, kw, kh, rgba(CAP, 1.0));
+        o.rect(kx, ky + kh * 0.82, kw, kh * 0.18, rgba(DARK, 0.6));
+        o.text(key, kx + kw / 2.0, ky + kh * 0.45, size, rgba(0xf0ebe0, 1.0), Align::Center, true);
+        o.text(does, kx + kw + t * 0.45, ky + kh * 0.45, size * 0.95, rgba(TEXT, 1.0), Align::Left, false);
+    }
+}
 
 /// Where the Back button sits on the controller page.
 fn controls_back_rect(w: f32, h: f32) -> [f32; 4] {
@@ -54,8 +103,21 @@ struct Callout {
 pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     o.rect(0.0, 0.0, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.9]);
-    o.text("CONTROLLER", w / 2.0, t * 1.9, t * 1.4, rgba(GOLD, 1.0), Align::Center, true);
-    o.text("Any controller works as soon as it is plugged in.", w / 2.0, t * 3.1, t * 0.5, rgba(SAND, 1.0), Align::Center, false);
+    o.text("CONTROLS", w / 2.0, t * 1.5, t * 1.3, rgba(GOLD, 1.0), Align::Center, true);
+    // The two tabs, the open one lit.
+    let pulse = 0.75 + (g.time as f32 * 4.0).sin() * 0.25;
+    for (k, (r, name)) in controls_tab_rects(w, h).iter().zip(["CONTROLLER", "KEYBOARD AND MOUSE"]).enumerate() {
+        let open = g.controls_keyboard == (k == 1);
+        o.rect(r[0], r[1], r[2], r[3], if open { [0.25, 0.32, 0.5, 0.95] } else { [0.02, 0.02, 0.03, 0.85] });
+        o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.06).max(1.0), if open { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.16] });
+        o.text(name, r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.5, rgba(if open { 0xffffff } else { TEXT_DIM }, 1.0), Align::Center, true);
+    }
+    o.text("Left and right, LT and RT, or Tab switch between them", w / 2.0, t * 4.2, t * 0.42, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    if g.controls_keyboard {
+        draw_keyboard(o, t);
+        draw_back(o, g, t);
+        return;
+    }
 
     // ---- the pad, about 20 units wide and 13 tall, centred a little above the middle
     let u = (w * 0.33).min(h * 0.58) / 20.0;
@@ -103,9 +165,9 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
     let face_at = |dx: f32, dy: f32| [face[0] + dx * u, face[1] + dy * u];
     let left = [
         Callout { at: lt_at, name: "LT", color: SHINE, does: "Archangel's power; shop: tab back" },
-        Callout { at: lb_at, name: "LB", color: SHINE, does: "Bifrost Step, once learned" },
+        Callout { at: lb_at, name: "LB", color: SHINE, does: "Hold: raise your shield" },
         Callout { at: view, name: "View", color: SHINE, does: "Call the old man" },
-        Callout { at: ls, name: "Left stick", color: SHINE, does: "Run; press: switch camera" },
+        Callout { at: ls, name: "Left stick", color: SHINE, does: "Run; press: Bifrost Step" },
         Callout { at: dpad, name: "D-pad", color: SHINE, does: "Run; choose in menus" },
     ];
     let right = [
@@ -116,7 +178,7 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
         Callout { at: face_at(1.3, 0.0), name: "B", color: B_RED, does: "Drop a bomb" },
         Callout { at: face_at(-1.3, 0.0), name: "X", color: X_BLUE, does: "Attack" },
         Callout { at: face_at(0.0, 1.3), name: "A", color: A_GREEN, does: "Jump; pick in menus" },
-        Callout { at: rs, name: "Right stick", color: SHINE, does: "Look; press for the view behind" },
+        Callout { at: rs, name: "Right stick", color: SHINE, does: "Look; press: recentre, or switch camera" },
     ];
     // Top to bottom by where they sit on the pad, so the lines out to them cross as little as they can.
     let mut left = left;
@@ -185,6 +247,12 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
         Align::Center,
         false,
     );
+    draw_back(o, g, t);
+}
+
+/// The Back button at the foot of the page.
+fn draw_back(o: &mut Overlay, g: &Game, t: f32) {
+    let (w, h) = (o.width, o.height);
     let r = controls_back_rect(w, h);
     let pulse = 0.75 + (g.time as f32 * 4.0).sin() * 0.25;
     o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);

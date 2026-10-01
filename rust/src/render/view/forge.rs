@@ -52,17 +52,65 @@ pub(super) fn segment(a: Vec3, b: Vec3, thick: f32) -> Mat4 {
  * back, or none. The weapons are layered parts ("blade", "offhand") that
  * follow the arms, pivoting where the arms do.
  */
-pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
-    let w = progression::node(hero, Tree::Armory, blade);
-    let spec = shield.map(|t| {
+/// How a hero is dressed and armed for his model: his blade's tier, the shield on his back, his
+/// outfit and the skills of his path (ribbons on his arm). (Rust is a tint, see `emit_hero_rig`.)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) struct Kit {
+    pub blade: u8,
+    pub shield: Option<u8>,
+    pub outfit: u8,
+    pub path: u8,
+}
+
+impl Kit {
+    pub fn plain(blade: u8, shield: Option<u8>) -> Self {
+        Self { blade, shield, outfit: 0, path: 0 }
+    }
+
+    /// The hero as he stands.
+    pub fn of(h: &Hero) -> Self {
+        Self { blade: h.blade, shield: h.shield.map(|s| s.tier), outfit: h.outfit, path: h.path }
+    }
+}
+
+/// A hero's sculpted body for `kit` (dressed, beribboned, the shield on his back if any) and his rig's parts.
+fn hero_body(hero: HeroKind, kit: Kit) -> (Collected, &'static [PartDef]) {
+    let spec = kit.shield.map(|t| {
         let n = progression::node(hero, Tree::Shield, t);
         (n.form, n.color, t)
     });
-    let (body, defs) = match hero {
+    let (mut body, defs) = match hero {
         HeroKind::Ragnar => (heroes::ragnar_hd(spec), heroes::RAGNAR_HD_RIG),
         HeroKind::Mehmed => (heroes::mehmed_hd(spec), heroes::MEHMED_HD_RIG),
         HeroKind::Miyamoto => (heroes::miyamoto_hd(spec), heroes::MIYAMOTO_HD_RIG),
     };
+    let shoulder = defs.iter().find(|d| d.name == "shieldArm").map(|d| d.pivot[1]).unwrap_or(0.0);
+    heroes::dress(&mut body, hero, kit.outfit);
+    let colors: Vec<u32> = (1..=kit.path.min(progression::TIERS)).map(|t| progression::node(hero, Tree::Path, t).color).collect();
+    heroes::ribbons(&mut body, shoulder, &colors);
+    (body, defs)
+}
+
+pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
+    hero_model_kit(hero, Kit::plain(blade, shield))
+}
+
+/// The hero without the shield on his back, and the shield on its own (in the same frame, still
+/// on his back): what is drawn while he holds it up before him. None if he has no shield.
+pub(super) fn raised_shield(hero: HeroKind, kit: Kit) -> Option<(Rig, Rig)> {
+    kit.shield?;
+    let (with, _) = hero_body(hero, kit);
+    let bare_kit = Kit { shield: None, ..kit };
+    let (bare, _) = hero_body(hero, bare_kit);
+    let plain: std::collections::HashSet<(i32, i32, i32, u32)> = bare.voxels.iter().map(|v| (v.x, v.y, v.z, v.c)).collect();
+    let voxels = with.voxels.iter().filter(|v| !plain.contains(&(v.x, v.y, v.z, v.c))).map(|v| Voxel { part: 0, ..*v }).collect();
+    let shield = Collected { voxels, width: with.width, depth: with.depth, height: with.height };
+    Some((hero_model_kit(hero, bare_kit), build_rig(&shield, &[], HERO_VOXEL)))
+}
+
+pub(super) fn hero_model_kit(hero: HeroKind, kit: Kit) -> Rig {
+    let w = progression::node(hero, Tree::Armory, kit.blade);
+    let (body, defs) = hero_body(hero, kit);
     let pivot = |name: &str| defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3]);
     let main = armory::weapon_for(hero, w.form, w.color, false);
     let off = if armory::paired(w.form) {
@@ -92,11 +140,18 @@ impl WorldView {
     }
 
     /// Rebuilds the hero's rig when he, his weapon or his shield changes.
+    /// How many voxels the hero's model has (for tests: an outfit or ribbons rebuild it).
+    #[cfg(test)]
+    pub fn hero_voxels(&self) -> usize {
+        self.models.hero.parts.iter().map(|p| p.cubes.len()).sum()
+    }
+
     pub(super) fn refit_hero(&mut self, hero: HeroKind, h: &Hero) {
-        let key = (hero, h.blade, h.shield.map(|s| s.tier));
+        let key = (hero, Kit::of(h));
         if key != self.models.hero_key {
-            self.models.hero = hero_model(key.0, key.1, key.2);
-            self.models.thrown = thrown_model(key.0, key.1);
+            self.models.hero = hero_model_kit(key.0, key.1);
+            self.models.raised = raised_shield(key.0, key.1);
+            self.models.thrown = thrown_model(key.0, key.1.blade);
             if key.0 != self.models.hero_key.0 {
                 // Another hero's joints sit elsewhere: start his pose afresh.
                 self.hero_pose = Pose::rest(&self.models.hero);

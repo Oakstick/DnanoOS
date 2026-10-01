@@ -6,11 +6,13 @@
 
 use super::*;
 use crate::game::{RowKind, ShopAction, ShopRow};
-use crate::logic::gear::BELT_SLOTS;
+use crate::logic::angels::ARCHANGELS;
+use crate::logic::gear::{self, BELT_SLOTS};
 use crate::logic::progression::{self, Tree, TIERS};
 use crate::logic::story::roman;
 use crate::logic::systems::MAX_LIVES;
 use crate::logic::types::PotionKind;
+use crate::render::heroes::outfit_names;
 use crate::render::icons::{icon, Icon};
 
 struct Layout {
@@ -34,7 +36,8 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
     let first = y0 + t * 4.9;
     let mut out_rows = Vec::new();
     let mut buttons = Vec::new();
-    let mut i = 0;
+    let mut y = first;
+    let mut wide_rows = false;
     for row in rows {
         let (rect, b): ([f32; 4], Vec<[f32; 4]>) = match row.kind {
             RowKind::Tabs => {
@@ -44,12 +47,22 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
                 let r = [x0 + pad, y0 + t * 2.3, inner, t * 1.3];
                 (r, (0..row.buttons.len()).map(|k| [r[0] + k as f32 * (bw + gap), r[1], bw, r[3]]).collect())
             }
-            RowKind::Tier(..) | RowKind::Repair | RowKind::Life => {
+            RowKind::Tier(..) | RowKind::Repair | RowKind::Life | RowKind::Sharpen => {
                 let extra = if matches!(row.kind, RowKind::Tier(..)) { 0.0 } else { t * 0.15 };
-                let r = [x0 + pad, first + i as f32 * (rh + t * 0.08) + extra, inner, rh];
-                i += 1;
+                let r = [x0 + pad, y + extra, inner, rh];
+                y += rh + t * 0.08;
                 let bw = t * 7.4;
                 (r, vec![[r[0] + r[2] - bw - t * 0.2, r[1] + (rh - t * 1.15) / 2.0, bw, t * 1.15]])
+            }
+            RowKind::Patron | RowKind::Outfit => {
+                // A title over a row of choices.
+                wide_rows = true;
+                let r = [x0 + pad, y + t * 0.1, inner, t * 2.6];
+                y += t * 2.85;
+                let gap = t * 0.2;
+                let n = row.buttons.len().max(1) as f32;
+                let bw = (inner - t * 0.4 - gap * (n - 1.0)) / n;
+                (r, (0..row.buttons.len()).map(|k| [r[0] + t * 0.2 + k as f32 * (bw + gap), r[1] + t * 1.25, bw, t * 1.1]).collect())
             }
             RowKind::Leave => {
                 let bw = t * 10.0;
@@ -60,7 +73,8 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
         out_rows.push(rect);
         buttons.push(b);
     }
-    let card_top = first + 11.0 * (rh + t * 0.08) + t * 0.3;
+    // The loadout's rows are fewer and taller: its card follows them.
+    let card_top = if wide_rows { y + t * 0.4 } else { first + 11.0 * (rh + t * 0.08) + t * 0.3 };
     let card = [x0 + pad, card_top, inner, (y0 + ph - t * 3.2 - card_top).max(t * 5.0)];
     Layout { panel: [x0, y0, pw, ph], rows: out_rows, buttons, card }
 }
@@ -75,7 +89,7 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
     let l = layout(rows, w, h);
     rows.iter().enumerate().position(|(i, r)| {
         let b = l.rows[i];
-        matches!(r.kind, RowKind::Tier(..) | RowKind::Repair | RowKind::Life)
+        matches!(r.kind, RowKind::Tier(..) | RowKind::Repair | RowKind::Life | RowKind::Sharpen | RowKind::Patron | RowKind::Outfit)
             && p.0 >= b[0]
             && p.0 <= b[0] + b[2]
             && p.1 >= b[1]
@@ -87,6 +101,9 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
 fn old_man_line(g: &Game) -> &'static str {
     if g.shop.called {
         return "\"You called, and I came. I told you I would. What do you need?\"";
+    }
+    if g.shop.loadout {
+        return "\"Swear to an angel, dress as you like, and keep that blade sharp. Rust has killed more heroes than monsters have.\"";
     }
     match g.shop.tab {
         Tree::Armory => "\"Old blades of old heroes. I kept them for the ones brave enough to go down.\"",
@@ -135,10 +152,15 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     cx -= o.measure(&silver, cs) + iw + t * 0.15;
     draw_sprite(o, icon(Icon::Money(g.hero_kind)), cx, y0 + t * 1.15 - iw / 2.0, iw / 16.0, None, 1.0);
 
-    // The tree's name and how far along it he is.
+    // The tree's name and how far along it he is (on the loadout: whose it is).
     let ty = y0 + t * 4.25;
-    o.text(&tree.title(hero).to_uppercase(), x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
-    o.text(&format!("{} / {}", prog.owned(tree), TIERS), x0 + pw - t * 0.7, ty, small, rgba(SAND, 1.0), Align::Right, true);
+    if g.shop.loadout {
+        o.text("LOADOUT", x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
+        o.text(&hero.name().to_uppercase(), x0 + pw - t * 0.7, ty, small, rgba(SAND, 1.0), Align::Right, true);
+    } else {
+        o.text(&tree.title(hero).to_uppercase(), x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
+        o.text(&format!("{} / {}", prog.owned(tree), TIERS), x0 + pw - t * 0.7, ty, small, rgba(SAND, 1.0), Align::Right, true);
+    }
 
     // The rows.
     let pulse = 0.75 + (time * 4.0).sin() * 0.25;
@@ -202,9 +224,48 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                     o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
                 }
                 let cy = rect[1] + rect[3] / 2.0;
-                o.text("MEND YOUR SHIELD", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(SAND, 1.0), Align::Left, true);
-                let frac = g.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
-                bar(o, rect[0] + t * 0.5, cy + t * 0.25, t * 7.0, t * 0.26, frac, if frac > 0.35 { 0x9ad1ff } else { 0xff6a4a });
+                if g.hero.shield.is_none() && prog.is_broken(prog.carry) {
+                    o.text("REFORGE YOUR SHIELD", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(SAND, 1.0), Align::Left, true);
+                    o.text("DESTROYED", rect[0] + t * 0.5, cy + t * 0.3, small * 0.85, rgba(0xff8a6a, 1.0), Align::Left, true);
+                } else {
+                    o.text("MEND YOUR SHIELD", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(SAND, 1.0), Align::Left, true);
+                    let frac = g.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
+                    bar(o, rect[0] + t * 0.5, cy + t * 0.25, t * 7.0, t * 0.26, frac, if frac > 0.35 { 0x9ad1ff } else { 0xff6a4a });
+                }
+            }
+            RowKind::Sharpen => {
+                o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.05]);
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                let edge = prog.sharpness(prog.wield);
+                o.text("SHARPEN YOUR BLADE", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(SAND, 1.0), Align::Left, true);
+                let c = if edge >= gear::DULL_EDGE {
+                    0xe8c860
+                } else if edge >= gear::RUSTED_EDGE {
+                    0xd88a3a
+                } else {
+                    0xc84a2a
+                };
+                bar(o, rect[0] + t * 0.5, cy + t * 0.25, t * 7.0, t * 0.26, edge as f32, c);
+            }
+            RowKind::Patron | RowKind::Outfit => {
+                o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.05]);
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let ty = rect[1] + t * 0.6;
+                let (title, now, color) = if row.kind == RowKind::Patron {
+                    match prog.patron {
+                        Some(a) => ("ARCHANGEL'S PROTECTION", format!("{} WATCHES OVER YOU", a.name().to_uppercase()), a.color()),
+                        None => ("ARCHANGEL'S PROTECTION", "NONE SWORN".to_string(), TEXT_DIM),
+                    }
+                } else {
+                    ("OUTFIT", outfit_names(hero)[prog.outfit.min(3) as usize].to_uppercase(), 0xe8dcc0)
+                };
+                o.text(title, rect[0] + t * 0.5, ty, small, rgba(SAND, 1.0), Align::Left, true);
+                o.text(&now, rect[0] + rect[2] - t * 0.5, ty, small * 0.9, rgba(color, 1.0), Align::Right, true);
             }
             RowKind::Life => {
                 o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.05]);
@@ -225,19 +286,23 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     for (r, row) in rows.iter().enumerate() {
         for (c, b) in row.buttons.iter().enumerate() {
             let rect = l.buttons[r][c];
-            let selected = r == g.shop.row && (c == g.shop.col || row.kind != RowKind::Tabs);
-            let active_tab = matches!(b.action, ShopAction::Tab(tab) if tab == g.shop.tab);
+            let selected = r == g.shop.row && (c == g.shop.col || row.buttons.len() == 1);
+            // The open tab, the archangel he is sworn to, the outfit he wears.
+            let active_tab = match b.action {
+                ShopAction::Tab(tab) => !g.shop.loadout && tab == g.shop.tab,
+                ShopAction::Loadout => g.shop.loadout,
+                ShopAction::Patron(a) => prog.patron == Some(a),
+                ShopAction::Outfit(k) => prog.outfit == k,
+                _ => false,
+            };
             let afford = b.price <= g.progress.silver && b.runes <= g.progress.runes;
             let base = if active_tab { [0.25, 0.32, 0.5, 0.95] } else { [0.02, 0.02, 0.03, 0.85] };
             o.rect(rect[0], rect[1], rect[2], rect[3], base);
             if selected && b.enabled {
                 o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.12]);
             }
-            let edge = if selected && (row.kind == RowKind::Tabs || row.kind == RowKind::Leave) {
-                rgba(GOLD, pulse)
-            } else {
-                [1.0, 1.0, 1.0, 0.16]
-            };
+            let edge =
+                if selected && (row.buttons.len() > 1 || row.kind == RowKind::Leave) { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.16] };
             o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), edge);
             let color = if !b.enabled {
                 0x7f7a70
@@ -248,7 +313,13 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
             } else {
                 TEXT
             };
-            let size = if row.kind == RowKind::Tabs { t * 0.58 } else { t * 0.5 };
+            let size = if row.kind == RowKind::Tabs {
+                t * 0.58
+            } else if row.buttons.len() > 1 {
+                t * 0.46
+            } else {
+                t * 0.5
+            };
             let cy = rect[1] + rect[3] / 2.0;
             if b.price > 0 || b.runes > 0 {
                 // The price, a coin, and the runes too for a sealed tier.
@@ -309,6 +380,122 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     wrap_left(o, old_man_line(g), t * 0.9, h - t * 1.2, bw - t * 1.0, t * 0.6, small * 0.95, rgba(TEXT, 1.0));
 }
 
+/// The loadout's card: the highlighted archangel, outfit, blade or shield.
+fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
+    let hero = g.hero_kind;
+    let prog = g.progress.hero(hero);
+    let small = (t * 0.5).max(11.0);
+    let pad = t * 0.5;
+    let (x, w) = (c[0] + pad, c[2] - pad * 2.0);
+    let mut y = c[1] + pad + t * 0.4;
+    let kind = rows.get(g.shop.row).map(|r| r.kind).unwrap_or(RowKind::Tabs);
+    let title = |o: &mut Overlay, y: f32, text: &str, color: u32| o.text(text, x, y, t * 0.75, rgba(color, 1.0), Align::Left, true);
+    match kind {
+        RowKind::Patron => {
+            let a = ARCHANGELS[g.shop.col.min(3)];
+            let sworn = prog.patron == Some(a);
+            let (ex, ey, r) = (c[0] + c[2] - pad - t * 1.0, y + t * 0.3, t * 0.8);
+            o.circle(ex, ey, r, rgba(a.color(), 0.9));
+            o.circle(ex, ey, r * 0.55, rgba(0xf0ebe0, 1.0));
+            o.arc(ex, ey - r * 0.85, r * 0.55, 0.0, std::f32::consts::TAU, (t * 0.08).max(1.2), rgba(0xffe070, 1.0));
+            title(o, y, &a.name().to_uppercase(), a.color());
+            y += t * 0.9;
+            y = wrap_left(o, a.power(), x, y, w - t * 2.4, t * 0.58, small, rgba(TEXT, 1.0)) + t * 0.2;
+            o.text(
+                &format!("RETURNS EVERY {} SECONDS   A BOSS LOSES {}", a.recharge() as u32, a.boss_damage()),
+                x,
+                y,
+                small * 0.9,
+                rgba(GOLD, 1.0),
+                Align::Left,
+                true,
+            );
+            y += t * 0.75;
+            wrap_left(
+                o,
+                "Call on him with R or LT. A blessing from a shrine is used first while you carry one; then his power, each time it comes back.",
+                x,
+                y,
+                w,
+                t * 0.55,
+                small * 0.85,
+                rgba(TEXT_DIM, 1.0),
+            );
+            let (s, sc) = if sworn { ("HE WATCHES OVER YOU", GOLD) } else { ("PRESS TO SWEAR TO HIM - IT COSTS NOTHING", 0x7dff9a) };
+            o.text(s, x, c[1] + c[3] - pad - t * 0.2, small * 0.9, rgba(sc, 1.0), Align::Left, true);
+        }
+        RowKind::Outfit => {
+            let k = g.shop.col.min(3);
+            let worn = prog.outfit as usize == k;
+            title(o, y, &outfit_names(hero)[k].to_uppercase(), 0xe8dcc0);
+            y += t * 0.9;
+            wrap_left(o, "Cloth and colours over the same steel: an outfit changes how he looks, and nothing else. Try it on and see him in the crypt.", x, y, w, t * 0.58, small, rgba(TEXT, 1.0));
+            let (s, sc) = if worn { ("YOU WEAR IT", GOLD) } else { ("PRESS TO WEAR IT - IT COSTS NOTHING", 0x7dff9a) };
+            o.text(s, x, c[1] + c[3] - pad - t * 0.2, small * 0.9, rgba(sc, 1.0), Align::Left, true);
+        }
+        RowKind::Sharpen => {
+            let n = progression::node(hero, Tree::Armory, prog.wield);
+            let edge = prog.sharpness(prog.wield);
+            title(o, y, &n.name.to_uppercase(), n.color);
+            y += t * 0.9;
+            o.text(
+                &format!("EDGE {}%   IT BITES THE BOSS AT {}%", (edge * 100.0).round(), (gear::edge_power(edge) * 100.0).round()),
+                x,
+                y,
+                small * 0.95,
+                rgba(GOLD, 1.0),
+                Align::Left,
+                true,
+            );
+            y += t * 0.75;
+            wrap_left(
+                o,
+                "Every blow that lands wears the edge away and rust creeps in. A dull blade bites the boss less; a rusted one glances off foes it should have felled. Gold puts the edge back.",
+                x,
+                y,
+                w,
+                t * 0.55,
+                small * 0.9,
+                rgba(TEXT, 1.0),
+            );
+        }
+        RowKind::Repair => {
+            let tier = g.hero.shield.map(|s| s.tier).unwrap_or(prog.carry);
+            let n = progression::node(hero, Tree::Shield, tier);
+            title(o, y, &n.name.to_uppercase(), n.color);
+            y += t * 0.9;
+            let text = if g.hero.shield.is_none() && prog.is_broken(tier) {
+                format!(
+                    "DESTROYED. A shield that breaks is gone: the old man forges it anew for {} {}.",
+                    gear::reforge_price(tier),
+                    progression::coin(hero)
+                )
+            } else {
+                format!(
+                    "Durability {} of {}. Hold LB or Shift to raise it: it takes the whole of every blow, but you walk slower and cannot strike. If it breaks, it is gone until it is reforged.",
+                    g.hero.shield.map(|s| s.durability).unwrap_or(0),
+                    progression::ward(tier).durability
+                )
+            };
+            wrap_left(o, &text, x, y, w, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
+        }
+        _ => {
+            title(o, y, "YOUR LOADOUT", GOLD);
+            y += t * 0.9;
+            wrap_left(
+                o,
+                "Swear to one archangel, whose power comes back to you on a timer: Michael in 10 seconds, Gabriel 20, Raphael 30, Uriel 45. Choose your outfit, sharpen your blade, and forge anew a shield that broke.",
+                x,
+                y,
+                w,
+                t * 0.58,
+                small * 0.95,
+                rgba(TEXT, 1.0),
+            );
+        }
+    }
+}
+
 /// The card for the highlighted row: the tier's legend, what it does, and what it takes.
 fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     let hero = g.hero_kind;
@@ -316,6 +503,10 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     let small = (t * 0.5).max(11.0);
     o.rect(c[0], c[1], c[2], c[3], [0.0, 0.0, 0.0, 0.35]);
     o.rect_outline(c[0], c[1], c[2], c[3], 1.0, [1.0, 1.0, 1.0, 0.12]);
+    if g.shop.loadout {
+        draw_loadout_card(o, g, t, c, rows);
+        return;
+    }
     let kind = rows.get(g.shop.row).map(|r| r.kind).unwrap_or(RowKind::Tabs);
     let (tree, tier) = match kind {
         RowKind::Tier(tr, tier) => (tr, tier),

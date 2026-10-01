@@ -2,21 +2,36 @@
 //! him (he promised he would come). Four tabs, one for each of the hero's
 //! trees (weapons, path, shields, elixirs), each a column of ten tiers:
 //! unlock the next, wield or carry what is owned, buy bottles of the elixirs
-//! learned. Driven by the keyboard, a controller or the mouse. The rows are
-//! built fresh from the hero's progress, so labels and prices always tell the truth.
+//! learned. A fifth, the loadout: the archangel he swears to (whose power
+//! comes back to him on a timer), the outfit he wears, his blade sharpened
+//! for gold, and a broken shield forged anew. Driven by the keyboard, a
+//! controller or the mouse. The rows are built fresh from the hero's
+//! progress, so labels and prices always tell the truth.
 
 use super::{Game, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
+use crate::logic::angels::{Archangel, ARCHANGELS};
 use crate::logic::gear::{self, ShieldGear, BELT_SLOTS};
 use crate::logic::progression::{self, Refusal, Tree, TIERS, TREES};
 use crate::logic::systems::MAX_LIVES;
 use crate::logic::types::{Dir, PotionKind};
+use crate::render::heroes::outfit_names;
 use crate::render::hud;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ShopAction {
     Tab(Tree),
+    /// The loadout tab.
+    Loadout,
+    /// Swear to an archangel: his power, on its timer.
+    Patron(Archangel),
+    /// Wear an outfit (0 is his own).
+    Outfit(u8),
+    /// Hone the blade in hand back to keen.
+    Sharpen,
+    /// Forge a broken shield anew.
+    Reforge,
     /// Pay for (or unseal with a relic) the next tier of a tree.
     Unlock(Tree, u8),
     /// Take an owned weapon in hand, or an owned shield on the arm.
@@ -34,6 +49,10 @@ pub enum ShopAction {
 pub enum RowKind {
     Tabs,
     Tier(Tree, u8),
+    /// The loadout: the archangels, the outfits, the whetstone.
+    Patron,
+    Outfit,
+    Sharpen,
     Repair,
     Life,
     Leave,
@@ -75,11 +94,13 @@ pub struct ShopState {
     pub flourish: f32,
     /// Called from inside a dungeon: leaving goes back to it rather than on to the next.
     pub called: bool,
+    /// The loadout tab is open (rather than the tree in `tab`).
+    pub loadout: bool,
 }
 
 impl Default for ShopState {
     fn default() -> Self {
-        Self { tab: Tree::Armory, row: 1, col: 0, note: None, flourish: 0.0, called: false }
+        Self { tab: Tree::Armory, row: 1, col: 0, note: None, flourish: 0.0, called: false, loadout: false }
     }
 }
 
@@ -95,10 +116,64 @@ impl Game {
         self.enter(Screen::Shop);
     }
 
-    /// The row to start on: the next tier to take in the open tab.
+    /// The row to start on: the next tier to take in the open tab (the archangels on the loadout).
     fn first_row_of_interest(&self) -> usize {
+        if self.shop.loadout {
+            return 1;
+        }
         let owned = self.progress.hero(self.hero_kind).owned(self.shop.tab);
         (owned as usize + 1).min(TIERS as usize)
+    }
+
+    /// The shield row: mend the one on his arm, or forge anew the one that broke.
+    fn shield_row(&self) -> ShopRow {
+        let h = self.progress.hero(self.hero_kind);
+        let tier = self.hero.shield.map(|s| s.tier).unwrap_or(h.carry);
+        let b = if self.hero.shield.is_none() && h.is_broken(tier) {
+            let p = gear::reforge_price(tier);
+            button(ShopAction::Reforge, format!("REFORGE {p}"), p, 0, true)
+        } else {
+            let fraction = self.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
+            let p = progression::repair_price(tier, fraction);
+            if p == 0 {
+                button(ShopAction::Repair, "GOOD AS NEW", 0, 0, false)
+            } else {
+                button(ShopAction::Repair, format!("MEND {p}"), p, 0, true)
+            }
+        };
+        ShopRow { kind: RowKind::Repair, buttons: vec![b] }
+    }
+
+    /// The loadout's rows: the archangels, the outfits, the whetstone, the shield.
+    fn loadout_rows(&self) -> Vec<ShopRow> {
+        let hero = self.hero_kind;
+        let h = self.progress.hero(hero);
+        let mut rows = Vec::new();
+        rows.push(ShopRow {
+            kind: RowKind::Patron,
+            buttons: ARCHANGELS
+                .iter()
+                .map(|&a| button(ShopAction::Patron(a), format!("{} {}s", a.name().to_uppercase(), a.recharge() as u32), 0, 0, true))
+                .collect(),
+        });
+        rows.push(ShopRow {
+            kind: RowKind::Outfit,
+            buttons: outfit_names(hero)
+                .iter()
+                .enumerate()
+                .map(|(i, n)| button(ShopAction::Outfit(i as u8), n.to_uppercase(), 0, 0, true))
+                .collect(),
+        });
+        let edge = h.sharpness(h.wield);
+        let p = gear::sharpen_price(h.wield, edge);
+        let sharpen = if p == 0 {
+            button(ShopAction::Sharpen, "KEEN", 0, 0, false)
+        } else {
+            button(ShopAction::Sharpen, format!("SHARPEN {p}"), p, 0, true)
+        };
+        rows.push(ShopRow { kind: RowKind::Sharpen, buttons: vec![sharpen] });
+        rows.push(self.shield_row());
+        rows
     }
 
     /// The rows of the current tab, top to bottom: tabs, ten tiers, extras, and the way out.
@@ -106,10 +181,15 @@ impl Game {
         let hero = self.hero_kind;
         let h = self.progress.hero(hero);
         let tree = self.shop.tab;
-        let mut rows = vec![ShopRow {
-            kind: RowKind::Tabs,
-            buttons: TREES.iter().map(|&t| button(ShopAction::Tab(t), t.label(), 0, 0, true)).collect(),
-        }];
+        let mut tabs: Vec<ShopButton> = TREES.iter().map(|&t| button(ShopAction::Tab(t), t.label(), 0, 0, true)).collect();
+        tabs.push(button(ShopAction::Loadout, "LOADOUT", 0, 0, true));
+        let mut rows = vec![ShopRow { kind: RowKind::Tabs, buttons: tabs }];
+        let leave = if self.shop.called { "BACK TO THE DUNGEON" } else { "DOWN INTO THE DARK" };
+        if self.shop.loadout {
+            rows.extend(self.loadout_rows());
+            rows.push(ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, leave, 0, 0, true)] });
+            return rows;
+        }
         for tier in 1..=TIERS {
             let b = if h.has(tree, tier) {
                 match tree {
@@ -119,7 +199,12 @@ impl Game {
                     }
                     Tree::Shield => {
                         let worn = self.hero.shield.map(|s| s.tier == tier).unwrap_or(false);
-                        button(ShopAction::Carry(tier), if worn { "ON YOUR ARM" } else { "CARRY" }, 0, 0, !worn)
+                        if h.is_broken(tier) && !worn {
+                            let p = gear::reforge_price(tier);
+                            button(ShopAction::Reforge, format!("REFORGE {p}"), p, 0, true)
+                        } else {
+                            button(ShopAction::Carry(tier), if worn { "ON YOUR ARM" } else { "CARRY" }, 0, 0, !worn)
+                        }
                     }
                     Tree::Path => button(ShopAction::Unlock(tree, tier), "LEARNED", 0, 0, false),
                     Tree::Elixir => {
@@ -146,24 +231,13 @@ impl Game {
             rows.push(ShopRow { kind: RowKind::Tier(tree, tier), buttons: vec![b] });
         }
         match tree {
-            Tree::Shield => {
-                let tier = self.hero.shield.map(|s| s.tier).unwrap_or(h.carry);
-                let fraction = self.hero.shield.map(|s| s.fraction()).unwrap_or(0.0);
-                let p = progression::repair_price(tier, fraction);
-                let b = if p == 0 {
-                    button(ShopAction::Repair, "GOOD AS NEW", 0, 0, false)
-                } else {
-                    button(ShopAction::Repair, format!("MEND {p}"), p, 0, true)
-                };
-                rows.push(ShopRow { kind: RowKind::Repair, buttons: vec![b] });
-            }
+            Tree::Shield => rows.push(self.shield_row()),
             Tree::Elixir => {
                 let p = progression::bottle_price(PotionKind::Life);
                 rows.push(ShopRow { kind: RowKind::Life, buttons: vec![button(ShopAction::Life, format!("BUY {p}"), p, 0, true)] });
             }
             _ => {}
         }
-        let leave = if self.shop.called { "BACK TO THE DUNGEON" } else { "DOWN INTO THE DARK" };
         rows.push(ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, leave, 0, 0, true)] });
         rows
     }
@@ -182,11 +256,15 @@ impl Game {
         let rows = self.shop_rows();
         let n = rows.len();
         self.shop.row = self.shop.row.min(n - 1);
+        let wide = rows[self.shop.row].buttons.len();
         match self.input.nav {
             Some(Dir::Up) => self.shop.row = (self.shop.row + n - 1) % n,
             Some(Dir::Down) => self.shop.row = (self.shop.row + 1) % n,
             Some(Dir::Left) if self.shop.row == 0 => self.switch_tab(-1),
             Some(Dir::Right) if self.shop.row == 0 => self.switch_tab(1),
+            // A row of several (the archangels, the outfits): left and right choose along it.
+            Some(Dir::Left) if wide > 1 => self.shop.col = (self.shop.col + wide - 1) % wide,
+            Some(Dir::Right) if wide > 1 => self.shop.col = (self.shop.col + 1) % wide,
             _ => {}
         }
         // LT and RT (or Tab, Y) page through the trees.
@@ -199,7 +277,14 @@ impl Game {
         let rows = self.shop_rows();
         let n = rows.len();
         self.shop.row = self.shop.row.min(n - 1);
-        self.shop.col = if self.shop.row == 0 { TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0) } else { 0 };
+        let wide = rows[self.shop.row].buttons.len();
+        self.shop.col = if self.shop.row == 0 {
+            self.tab_index()
+        } else if wide > 1 {
+            self.shop.col.min(wide - 1)
+        } else {
+            0
+        };
 
         let rects = hud::shop_rects(&rows, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| {
@@ -250,12 +335,31 @@ impl Game {
         }
     }
 
+    /// Which tab is open: a tree's (0..4), or the loadout (4).
+    fn tab_index(&self) -> usize {
+        if self.shop.loadout {
+            TREES.len()
+        } else {
+            TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0)
+        }
+    }
+
     fn switch_tab(&mut self, step: i32) {
-        let i = TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0) as i32;
-        self.shop.tab = TREES[(i + step).rem_euclid(TREES.len() as i32) as usize];
+        let n = TREES.len() as i32 + 1;
+        let i = (self.tab_index() as i32 + step).rem_euclid(n) as usize;
+        self.open_tab(i);
+    }
+
+    /// Opens tab `i`: a tree's, or the loadout after them.
+    fn open_tab(&mut self, i: usize) {
+        self.shop.loadout = i >= TREES.len();
+        if !self.shop.loadout {
+            self.shop.tab = TREES[i];
+        }
         if self.shop.row != 0 {
             self.shop.row = self.first_row_of_interest();
         }
+        self.shop.col = 0;
         self.audio.play(Sfx::Nodule);
     }
 
@@ -289,9 +393,55 @@ impl Game {
         }
         let hero = self.hero_kind;
         match b.action {
-            ShopAction::Tab(t) => {
-                self.shop.tab = t;
-                self.audio.play(Sfx::Nodule);
+            ShopAction::Tab(t) => self.open_tab(TREES.iter().position(|&x| x == t).unwrap_or(0)),
+            ShopAction::Loadout => self.open_tab(TREES.len()),
+            ShopAction::Patron(a) => {
+                if self.progress.hero(hero).patron == Some(a) {
+                    self.note(format!("{} ALREADY WATCHES OVER YOU", a.name().to_uppercase()), a.color());
+                    return;
+                }
+                self.progress.hero_mut(hero).patron = Some(a);
+                self.patron_wait = 0.0;
+                self.audio.play(Sfx::Milestone);
+                self.shop.flourish = 1.0;
+                self.note(
+                    format!("{} WATCHES OVER YOU - HIS POWER RETURNS EVERY {} SECONDS", a.name().to_uppercase(), a.recharge() as u32),
+                    a.color(),
+                );
+                self.save_progress();
+            }
+            ShopAction::Outfit(k) => {
+                self.progress.hero_mut(hero).outfit = k;
+                self.equip_from_progress();
+                self.audio.play(Sfx::Start);
+                self.note(format!("YOU WEAR THE {}", outfit_names(hero)[k as usize].to_uppercase()), 0xe8dcc0);
+                self.save_progress();
+            }
+            ShopAction::Sharpen => {
+                let h = *self.progress.hero(hero);
+                if self.pay(gear::sharpen_price(h.wield, h.sharpness(h.wield))) {
+                    self.progress.hero_mut(hero).edge[(h.wield - 1) as usize] = 100;
+                    self.equip_from_progress();
+                    let n = progression::node(hero, Tree::Armory, h.wield);
+                    self.sold(format!("{} IS KEEN AGAIN", n.name.to_uppercase()), n.color);
+                }
+            }
+            ShopAction::Reforge => {
+                let h = *self.progress.hero(hero);
+                // The broken one on his arm, or the one chosen on the shields' tab.
+                let tier = match rows_tier(&self.shop_rows(), self.shop.row) {
+                    Some(t) => t,
+                    None => h.carry,
+                };
+                if self.pay(gear::reforge_price(tier)) {
+                    let h = self.progress.hero_mut(hero);
+                    h.broken &= !(1 << tier);
+                    h.carry = tier;
+                    self.hero.shield = Some(ShieldGear::new(tier));
+                    self.equip_from_progress();
+                    let n = progression::node(hero, Tree::Shield, tier);
+                    self.sold(format!("{} FORGED ANEW - ON YOUR ARM", n.name.to_uppercase()), n.color);
+                }
             }
             ShopAction::Leave => {
                 self.audio.play(Sfx::Start);
@@ -308,6 +458,7 @@ impl Game {
                 Ok(_) => {
                     let n = progression::node(hero, tree, tier);
                     if tree == Tree::Shield {
+                        self.progress.hero_mut(hero).broken &= !(1 << tier);
                         self.hero.shield = Some(ShieldGear::new(tier));
                     }
                     self.equip_from_progress();
@@ -380,6 +531,14 @@ impl Game {
                 }
             }
         }
+    }
+}
+
+/// The shield tier a row of the shields' tab stands for (none for the other rows).
+fn rows_tier(rows: &[ShopRow], row: usize) -> Option<u8> {
+    match rows.get(row).map(|r| r.kind) {
+        Some(RowKind::Tier(Tree::Shield, t)) => Some(t),
+        _ => None,
     }
 }
 

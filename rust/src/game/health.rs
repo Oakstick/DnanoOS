@@ -37,7 +37,12 @@ impl Game {
             self.audio.play(Sfx::ShieldBreak);
             self.view.dust(&self.level.grid, hp.x, hp.y, 0x8a6a40, 16, 3.0);
             self.view.shake(0.3);
-            self.floater(hp.x, hp.y - 0.6, "SHIELD BROKEN", 1.4, Some(0xff8a6a));
+            // For good: it is struck off until the old man forges it anew.
+            let h = self.progress.hero_mut(self.hero_kind);
+            h.broken |= 1 << h.carry;
+            self.save_progress();
+            self.floater(hp.x, hp.y - 0.6, "SHIELD DESTROYED", 1.6, Some(0xff8a6a));
+            self.floater(hp.x, hp.y - 0.1, "THE OLD MAN CAN REFORGE IT", 1.8, Some(0xe8dcc0));
         }
         match result {
             DamageResult::Blocked => {

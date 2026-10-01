@@ -64,6 +64,8 @@ impl Game {
     pub(super) fn load(&mut self, data: LevelData, index: usize) {
         self.score.level = index;
         self.dungeon = index;
+        // Every level begins with the patron's power ready.
+        self.patron_wait = 0.0;
         self.level = parse_level(&data);
         self.vault = None;
         let vault_level = data.theme.is_vault();
@@ -301,8 +303,10 @@ impl Game {
     pub(super) fn new_kit(&mut self) {
         self.belt = vec![PotionKind::Health];
         self.belt_index = 0;
-        let carry = self.progress.hero(self.hero_kind).carry;
-        self.hero.shield = Some(ShieldGear::new(carry));
+        let h = self.progress.hero(self.hero_kind);
+        let carry = h.carry;
+        // A shield that broke stays broken until the old man reforges it.
+        self.hero.shield = (!h.is_broken(carry)).then(|| ShieldGear::new(carry));
         self.equip_from_progress();
     }
 
@@ -313,6 +317,8 @@ impl Game {
         self.hero.arm(h.wield);
         self.hero.path = h.path();
         self.hero.max_hp = self.hero.health_cap();
+        self.hero.edge = h.sharpness(h.wield);
+        self.hero.outfit = h.outfit;
     }
 
     /// Writes the silver, the runes and the unlocks to the save (not in tests).

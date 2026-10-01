@@ -302,6 +302,12 @@ pub struct Game {
     /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
     pub uriel_rest: f64,
     refused_at: f64,
+    /// Seconds until his patron archangel's power is his to call again (0: ready).
+    pub patron_wait: f64,
+    /// Wear carried between whole points of a blade's edge.
+    edge_carry: f64,
+    /// The controls page shows the keyboard rather than the controller.
+    pub controls_keyboard: bool,
     /// Uriel's wave while it rolls out.
     pub holy_wave: Option<angels::HolyWave>,
     /// Which archangels have given their blessing in this level (each gives once).
@@ -422,6 +428,9 @@ impl Game {
             blessing: None,
             uriel_rest: 0.0,
             refused_at: -10.0,
+            patron_wait: 0.0,
+            edge_carry: 0.0,
+            controls_keyboard: false,
             holy_wave: None,
             angels_used: [false; 4],
             sins_cleared: 0,
@@ -457,6 +466,8 @@ impl Game {
 
         let wanted = self.resolve_wanted_dir();
         self.hero.wish = self.free_wish();
+        // LB or Shift held: the shield is raised (if he has one, and is on his feet).
+        self.hero.blocking = self.input.held(Action::Block) && self.hero.shield.is_some() && self.hero.alive && !self.hero.airborne();
         let before = self.hero.pos();
         self.hero.update(dt, &self.level.grid, wanted);
         self.footsteps(before);

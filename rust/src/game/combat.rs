@@ -4,6 +4,7 @@
 use super::{Game, BLEED_TICK, FIRE_COLOR, POISON_TICK};
 use crate::audio::Sfx;
 use crate::logic::boss::BODY_RADIUS;
+use crate::logic::gear::{DULL_EDGE, EDGE_LOSS, GLANCE_CHANCE, RUSTED_EDGE};
 use crate::logic::heroes::HeroKind;
 use crate::logic::items::{Bomb, RangedKind, WeaponKind};
 use crate::logic::progression::{path, Tree};
@@ -58,8 +59,8 @@ impl Game {
      * has replaced it.
      */
     pub(super) fn attack(&mut self) {
-        if !self.hero.alive {
-            return;
+        if !self.hero.alive || self.hero.blocking {
+            return; // behind a raised shield he does not strike
         }
         let hp = self.hero.pos();
         let mut cycled = false;
@@ -127,14 +128,23 @@ impl Game {
         if landed_any {
             self.view.shake(0.14 + 0.02 * self.hero.blade as f32);
         }
+        // A rusted blade glances off now and then: the foe staggers, but stands.
+        let rusted = self.hero.edge < RUSTED_EDGE;
         for i in hits {
-            self.strike_enemy(i);
+            if rusted && self.enemies[i].hits_left() <= 1 && self.rng.next() < GLANCE_CHANCE {
+                self.glance(i);
+            } else {
+                self.strike_enemy(i);
+            }
         }
         let mut struck_boss = false;
         if let Some(bp) = self.boss_target() {
             if in_blade_arc(hp, aim, bp, reach, half_width, behind, BODY_RADIUS) {
                 struck_boss = self.strike_boss(blade.damage, bp);
             }
+        }
+        if landed_any || struck_boss {
+            self.dull_blade();
         }
         if blade.burn > 0.0 && struck_boss {
             self.set_boss_alight(blade.burn);
@@ -176,6 +186,40 @@ impl Game {
             }
             self.boss_bleed = blade.bleed;
         }
+    }
+
+    /// Every swing that lands takes a little off the blade's edge; he is told when it turns dull, and
+    /// again when it rusts. The old man sharpens it for gold.
+    pub(super) fn dull_blade(&mut self) {
+        let tier = self.hero.blade;
+        let before = self.hero.edge;
+        self.edge_carry += EDGE_LOSS;
+        let whole = self.edge_carry.floor();
+        self.edge_carry -= whole;
+        if whole <= 0.0 {
+            return;
+        }
+        let h = self.progress.hero_mut(self.hero_kind);
+        let k = (tier.clamp(1, 10) - 1) as usize;
+        h.edge[k] = h.edge[k].saturating_sub(whole as u8);
+        self.hero.edge = h.sharpness(tier);
+        let hp = self.hero.pos();
+        if before >= DULL_EDGE && self.hero.edge < DULL_EDGE {
+            self.floater(hp.x, hp.y - 1.0, "YOUR BLADE IS DULLING", 1.8, Some(0xc8a070));
+        } else if before >= RUSTED_EDGE && self.hero.edge < RUSTED_EDGE {
+            self.audio.play(Sfx::Denied);
+            self.floater(hp.x, hp.y - 1.0, "YOUR BLADE IS RUSTED - SHARPEN IT AT THE OLD MAN'S", 2.4, Some(0xc86a3a));
+        }
+    }
+
+    /// A rusted blade glances off foe `i`: a clang, and it reels, but it stands.
+    fn glance(&mut self, i: usize) {
+        self.wake_pack_of(i);
+        let p = self.enemies[i].pos();
+        self.audio.play(Sfx::Clang);
+        self.view.spark(&self.level.grid, p.x, p.y, 0xc87a4a);
+        self.floater(p.x, p.y - 0.9, "GLANCES OFF", 1.0, Some(0xc87a4a));
+        self.enemies[i].scare(&self.level.grid, 0.5);
     }
 
     /**
