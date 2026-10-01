@@ -1275,18 +1275,21 @@ fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(0.0, 0.0, o.width, o.height, [0.06, 0.03, 0.0, 0.72]);
     let top = menu_rects(Screen::Toll, &[MenuItem::DropAll], o.width, o.height)[0][1];
     let pulse = 0.9 + (g.time as f32 * 3.0).sin() * 0.1;
-    o.text("MAMMON'S TOLL", o.width / 2.0, top - t * 3.7, t * 1.45, rgba(GOLD, pulse), Align::Center, true);
+    o.text("MAMMON'S TOLL", o.width / 2.0, top - t * 4.6, t * 1.45, rgba(GOLD, pulse), Align::Center, true);
     let h = g.hoard;
     let carried = if h.is_empty() {
         "You carry nothing out of the vaults.".to_string()
     } else {
-        format!("You carry {} gold: {} coins, {} heaps, {} chests, {} gems.", h.gold, h.coins, h.piles, h.chests, h.gems)
+        format!(
+            "You carry {} gold: {} coins, {} heaps, {} treasures, {} chests, {} gems.",
+            h.gold, h.coins, h.piles, h.treasures, h.chests, h.gems
+        )
     };
-    o.text(&carried, o.width / 2.0, top - t * 2.45, t * 0.62, rgba(SAND, 1.0), Align::Center, true);
+    o.text(&carried, o.width / 2.0, top - t * 3.4, t * 0.62, rgba(SAND, 1.0), Align::Center, true);
     o.wrap_text(
-        "The portal to Mammon's court opens only for the empty-handed. Keep what you carry and the vaults close on you: the realm begins again, every coin back where it lay.",
+        "The portal opens only for those who leave Mammon's gold, and what his chests gave you is yours to keep. Keep the gold and the vaults close on you: it all begins again, every coin and every chest's gift back where it was.",
         o.width / 2.0,
-        top - t * 1.75,
+        top - t * 2.65,
         (t * 26.0).min(o.width - t * 2.0),
         t * 0.72,
         t * 0.5,

@@ -317,6 +317,7 @@ impl WorldView {
     /// The foes near enough to see: their bodies, the glow under them, a halo over the turned and
     /// stars round the befuddled.
     fn emit_foes(&self, s: &SceneState, f: &mut Frame) {
+        let view_proj = self.view_proj();
         let time = s.time as f32;
         let cube = MeshKind::Cube as usize;
         for (i, v) in self.enemy_views.iter().enumerate() {
@@ -324,6 +325,11 @@ impl WorldView {
                 break;
             }
             if v.group_pos.distance(self.cam_pos) > f.atmosphere.fog_far + 4.0 {
+                continue;
+            }
+            // Nor those out of the camera's view (with a margin for their size and the light they cast).
+            let clip = view_proj * (v.group_pos + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
+            if clip.w <= 0.0 || clip.x.abs() > clip.w * 1.25 + 1.0 || clip.y.abs() > clip.w * 1.25 + 1.0 {
                 continue;
             }
             let group = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw);

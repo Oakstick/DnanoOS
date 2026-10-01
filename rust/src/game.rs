@@ -316,6 +316,8 @@ pub struct Game {
     /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
     pub hoard: Hoard,
     toll_asked: bool,
+    /// His belt and rune fragments as he came into the vaults (restored if the vaults close on him).
+    vault_kit: (Vec<PotionKind>, u32),
     /// The camera as it was before the vaults turned it to the top view.
     camera_before_vault: Option<CameraMode>,
 }
@@ -427,6 +429,7 @@ impl Game {
             vault: None,
             hoard: Hoard::default(),
             toll_asked: false,
+            vault_kit: (Vec::new(), 0),
             camera_before_vault: None,
         };
         g.load_level(0);

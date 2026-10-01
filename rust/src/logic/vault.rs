@@ -4,16 +4,22 @@
 //! hero comes in through a portal in the west wall and the portal to Mammon's
 //! court stands in the east wall at the far end. Every room but the first is
 //! held by a pack of foes that idles there until he comes near, and every room
-//! is strewn with gold: coins, heaps of them, chests and rare gems, all of
-//! which he may take. At the far portal Mammon takes his toll (see
-//! `game::vault`): only the empty-handed go through.
+//! is strewn with gold: coins, heaps of them, treasure heaps, chests stacked
+//! against the walls and rare gems, all of which he may take. A chest also
+//! throws out one to three items as it opens, of four rarities as in Diablo
+//! (see `roll_drops`). At the far portal Mammon takes his toll (see
+//! `game::vault`): only those who leave his gold go through, and they keep
+//! what his chests gave them.
+
+use std::collections::HashSet;
 
 use super::enemy::EnemyKind;
 use super::hub::Rect;
+use super::items::{item, weapon, ItemKind, RangedKind};
 use super::level::{LevelData, Theme};
 use super::rng::Rng;
 use super::sins::Sin;
-use super::types::{CARDINALS, P};
+use super::types::{PotionKind, CARDINALS, P};
 
 /// The layout's seed: the vault is the same every time.
 pub const SEED: u32 = 4404;
@@ -33,8 +39,11 @@ pub const LEASH: f64 = 26.0;
 /// What a piece of loot is worth, in gold.
 pub const COIN_WORTH: u32 = 10;
 pub const PILE_WORTH: u32 = 50;
+pub const TREASURE_WORTH: u32 = 150;
 pub const CHEST_WORTH: u32 = 200;
 pub const GEM_WORTH: u32 = 500;
+/// Seconds an item takes to fly from its chest to where it lands (it can be taken once it has).
+pub const DROP_FLIGHT: f64 = 0.55;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RoomKind {
@@ -62,6 +71,8 @@ pub enum LootKind {
     Coin,
     /// A heap of them.
     Pile,
+    /// A treasure heap: gold coins with goblets, a crown and jewels in it.
+    Treasure,
     /// A treasure chest.
     Chest,
     /// A cut gem: ruby, sapphire or emerald (its colour).
@@ -73,6 +84,7 @@ impl LootKind {
         match self {
             LootKind::Coin => COIN_WORTH,
             LootKind::Pile => PILE_WORTH,
+            LootKind::Treasure => TREASURE_WORTH,
             LootKind::Chest => CHEST_WORTH,
             LootKind::Gem(_) => GEM_WORTH,
         }
@@ -87,6 +99,141 @@ pub struct Loot {
     pub at: P,
     pub kind: LootKind,
     pub taken: bool,
+}
+
+/// How rare an item from a chest is, with Diablo's colours: white, blue, yellow, orange.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
+pub enum Rarity {
+    Common,
+    Magic,
+    Rare,
+    Legendary,
+}
+
+impl Rarity {
+    pub fn color(self) -> u32 {
+        match self {
+            Rarity::Common => 0xf0ece0,
+            Rarity::Magic => 0x6a8cff,
+            Rarity::Rare => 0xffe24a,
+            Rarity::Legendary => 0xff8a2a,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Rarity::Common => "COMMON",
+            Rarity::Magic => "MAGIC",
+            Rarity::Rare => "RARE",
+            Rarity::Legendary => "LEGENDARY",
+        }
+    }
+}
+
+/// An item a chest throws out: a bottle for the belt, a ranged weapon, a shrine's boon, rune
+/// fragments, or bombs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DropItem {
+    Potion(PotionKind),
+    Weapon(RangedKind),
+    Boon(ItemKind),
+    Runes(u32),
+    Bombs(u32),
+}
+
+impl DropItem {
+    /// What it is called on the ground, in capitals (bottles are named with the hero's brews).
+    pub fn label(self, potion_name: impl Fn(PotionKind) -> &'static str) -> String {
+        match self {
+            DropItem::Potion(k) => potion_name(k).to_uppercase(),
+            DropItem::Weapon(w) => weapon(w).name.to_uppercase(),
+            DropItem::Boon(b) => item(b).name.to_uppercase(),
+            DropItem::Runes(1) => "A RUNE FRAGMENT".to_string(),
+            DropItem::Runes(n) => format!("{n} RUNE FRAGMENTS"),
+            DropItem::Bombs(1) => "A BOMB".to_string(),
+            DropItem::Bombs(n) => format!("{n} BOMBS"),
+        }
+    }
+}
+
+/// An item lying where a chest threw it (or still in the air).
+#[derive(Clone, Copy, Debug)]
+pub struct Drop {
+    /// Where it lands, and the chest it flew from.
+    pub at: P,
+    pub from: P,
+    pub item: DropItem,
+    pub rarity: Rarity,
+    /// Seconds since it was thrown.
+    pub age: f64,
+    pub taken: bool,
+}
+
+impl Drop {
+    /// On the ground, ready to be taken.
+    pub fn landed(&self) -> bool {
+        self.age >= DROP_FLIGHT
+    }
+}
+
+/// How rare a chest's item is: the deeper the room (`depth` 0 to 1), the better the odds.
+pub fn roll_rarity(rng: &mut Rng, depth: f64) -> Rarity {
+    let d = depth.clamp(0.0, 1.0);
+    let weights = [52.0 - 22.0 * d, 30.0, 14.0 + 12.0 * d, 4.0 + 10.0 * d];
+    let mut r = rng.next() * weights.iter().sum::<f64>();
+    for (k, w) in weights.iter().enumerate() {
+        if r < *w {
+            return [Rarity::Common, Rarity::Magic, Rarity::Rare, Rarity::Legendary][k];
+        }
+        r -= w;
+    }
+    Rarity::Legendary
+}
+
+/// An item of `rarity`.
+pub fn roll_item(rng: &mut Rng, rarity: Rarity) -> DropItem {
+    use DropItem::*;
+    let table: &[DropItem] = match rarity {
+        Rarity::Common => &[Potion(PotionKind::Health), Potion(PotionKind::Stamina), Bombs(1), Weapon(RangedKind::Arrow)],
+        Rarity::Magic => &[
+            Potion(PotionKind::Strength),
+            Potion(PotionKind::Haste),
+            Potion(PotionKind::Bark),
+            Weapon(RangedKind::Double),
+            Weapon(RangedKind::Boomerang),
+            Boon(ItemKind::Speed),
+            Bombs(2),
+        ],
+        Rarity::Rare => &[
+            Potion(PotionKind::Fury),
+            Potion(PotionKind::Fire),
+            Potion(PotionKind::Spirit),
+            Weapon(RangedKind::Trishot),
+            Weapon(RangedKind::Fireball),
+            Weapon(RangedKind::Crescent),
+            Boon(ItemKind::Shield),
+            Runes(2),
+        ],
+        Rarity::Legendary => &[
+            Potion(PotionKind::Invulnerability),
+            Potion(PotionKind::Ragnarok),
+            Potion(PotionKind::Life),
+            Boon(ItemKind::Invincible),
+            Runes(5),
+        ],
+    };
+    rng.pick(table)
+}
+
+/// What a chest throws out as it opens: one item, sometimes two, now and then three.
+pub fn roll_drops(rng: &mut Rng, depth: f64) -> Vec<(DropItem, Rarity)> {
+    let count = 1 + usize::from(rng.next() < 0.35) + usize::from(rng.next() < 0.1);
+    (0..count)
+        .map(|_| {
+            let rarity = roll_rarity(rng, depth);
+            (roll_item(rng, rarity), rarity)
+        })
+        .collect()
 }
 
 /// A pack of foes: the room it holds, and each foe's kind, stage and post.
@@ -106,6 +253,8 @@ pub struct Vault {
     /// Columns standing in the rooms (rock tiles).
     pub pillars: Vec<P>,
     pub loot: Vec<Loot>,
+    /// Items thrown out of the chests he has opened.
+    pub drops: Vec<Drop>,
     pub packs: Vec<Pack>,
     /// Where he arrives, and the portal behind him in the west wall.
     pub arrival: P,
@@ -354,7 +503,7 @@ impl Vault {
         // ---- loot and packs
         let mut loot: Vec<Loot> = Vec::new();
         let mut packs: Vec<Pack> = Vec::new();
-        let mut busy: Vec<P> = vec![arrival, spawn];
+        let mut busy: HashSet<P> = HashSet::from([arrival, spawn]);
         busy.extend(pillars.iter().copied());
         let floor = |tiles: &Vec<Vec<char>>, p: P| tiles[p.y as usize][p.x as usize] == ' ';
         for r in &rooms {
@@ -368,11 +517,12 @@ impl Vault {
             rng.shuffle(&mut edge);
             // Against the walls (a doorway's tile touches no wall on that side, so chests never block one).
             let by_wall = |p: P| CARDINALS.iter().any(|&d| tiles[p.step(d).y as usize][p.step(d).x as usize] == '#');
-            let (coins, piles, chests, gems) = match r.kind {
-                RoomKind::Entry => (4, 0, 0, 0),
-                RoomKind::Chamber => (6 + area / 14, 1 + rng.index(3), 1 + rng.index(2), usize::from(rng.next() < 0.4)),
-                RoomKind::Hall => (area / 8, 8, 6, 4),
-                RoomKind::Exit => (area / 10, 3, 3, 2),
+            // Gold everywhere: the treasury is carpeted with it.
+            let (coins, piles, treasures, chests, gems) = match r.kind {
+                RoomKind::Entry => (area / 8, 2, 0, 2, 0),
+                RoomKind::Chamber => (area / 4, 3 + rng.index(3), 1 + rng.index(2), 3 + rng.index(3), usize::from(rng.next() < 0.5)),
+                RoomKind::Hall => (area / 4, 14, 8, 16, 5),
+                RoomKind::Exit => (area / 4, 6, 3, 7, 2),
             };
             let take = |want: usize,
                         wall: bool,
@@ -380,7 +530,7 @@ impl Vault {
                         rng: &mut Rng,
                         spots: &mut Vec<P>,
                         loot: &mut Vec<Loot>,
-                        busy: &mut Vec<P>| {
+                        busy: &mut HashSet<P>| {
                 let mut got = 0;
                 let mut i = 0;
                 while got < want && i < spots.len() {
@@ -390,15 +540,41 @@ impl Vault {
                         continue;
                     }
                     spots.remove(i);
-                    busy.push(p);
+                    busy.insert(p);
                     loot.push(Loot { at: p, kind: kind(rng), taken: false });
                     got += 1;
                 }
             };
-            take(chests, true, &mut |_| LootKind::Chest, &mut rng, &mut edge, &mut loot, &mut busy);
+            // Chests stand in rows of two or three along the walls.
+            let mut placed = 0;
+            let mut i = 0;
+            while placed < chests && i < edge.len() {
+                let p = edge[i];
+                if !by_wall(p) || busy.contains(&p) {
+                    i += 1;
+                    continue;
+                }
+                let along = if p.x == rect.x0 || p.x == rect.x1 { (0, 1) } else { (1, 0) };
+                let row = 2 + rng.index(2);
+                for k in 0..row as i32 {
+                    let q = P::new(p.x + along.0 * k, p.y + along.1 * k);
+                    if placed < chests && rect.contains(q) && !inner.contains(q) && floor(&tiles, q) && !busy.contains(&q) && by_wall(q) {
+                        busy.insert(q);
+                        loot.push(Loot { at: q, kind: LootKind::Chest, taken: false });
+                        placed += 1;
+                    }
+                }
+                i += 1;
+            }
+            edge.retain(|p| !busy.contains(p));
             take(gems, false, &mut |rng: &mut Rng| LootKind::Gem(rng.pick(&GEMS)), &mut rng, &mut spots, &mut loot, &mut busy);
+            take(treasures, true, &mut |_| LootKind::Treasure, &mut rng, &mut edge, &mut loot, &mut busy);
             take(piles, true, &mut |_| LootKind::Pile, &mut rng, &mut edge, &mut loot, &mut busy);
+            take(piles, false, &mut |_| LootKind::Pile, &mut rng, &mut spots, &mut loot, &mut busy);
+            // The packs take their posts before the coins carpet the rest of the floor.
+            let mut posts_free: Vec<P> = spots.clone();
             take(coins, false, &mut |_| LootKind::Coin, &mut rng, &mut spots, &mut loot, &mut busy);
+            posts_free.retain(|p| !busy.contains(p));
             // The pack: more, and more of the second stage, the deeper the room.
             let count = match r.kind {
                 RoomKind::Entry => 0,
@@ -412,7 +588,7 @@ impl Vault {
             let stage_two = (r.depth * 0.9).min(0.85);
             let mut foes = Vec::new();
             let mut posts: Vec<P> = Vec::new();
-            for p in spots.iter().copied() {
+            for p in posts_free.iter().copied() {
                 if foes.len() >= count {
                     break;
                 }
@@ -431,7 +607,7 @@ impl Vault {
         }
 
         let rows = tiles.iter().map(|r| r.iter().collect()).collect();
-        Vault { width, height, rooms, corridors, pillars, loot, packs, arrival, entry_gate, exit_gate, idol, rows }
+        Vault { width, height, rooms, corridors, pillars, loot, drops: Vec::new(), packs, arrival, entry_gate, exit_gate, idol, rows }
     }
 
     /// The vault as a level, at the pace of `base`.
@@ -502,10 +678,18 @@ mod tests {
     fn the_vault_is_full_of_gold_and_held_by_packs_of_both_stages() {
         let v = Vault::generate(SEED);
         let count = |k: fn(LootKind) -> bool| v.loot.iter().filter(|l| k(l.kind)).count();
-        assert!(count(|k| k == LootKind::Coin) >= 150, "coins: {}", count(|k| k == LootKind::Coin));
-        assert!(count(|k| k == LootKind::Chest) >= 20, "chests");
+        assert!(count(|k| k == LootKind::Coin) >= 800, "coins: {}", count(|k| k == LootKind::Coin));
+        assert!(count(|k| k == LootKind::Chest) >= 60, "chests: {}", count(|k| k == LootKind::Chest));
+        assert!(count(|k| k == LootKind::Treasure) >= 20, "treasure heaps");
         assert!(count(|k| matches!(k, LootKind::Gem(_))) >= 8, "gems");
-        assert!(v.worth() > 10_000);
+        assert!(v.worth() > 30_000);
+        // Chests stand against the walls, most of them beside another.
+        let chests: HashSet<P> = v.loot.iter().filter(|l| l.kind == LootKind::Chest).map(|l| l.at).collect();
+        let paired = chests.iter().filter(|p| CARDINALS.iter().any(|&d| chests.contains(&p.step(d)))).count();
+        assert!(paired * 3 >= chests.len() * 2, "{paired} of {} chests stand in rows", chests.len());
+        // Foes never start on gold: they stand on bare floor.
+        let gold: HashSet<P> = v.loot.iter().map(|l| l.at).collect();
+        assert!(v.packs.iter().flat_map(|p| p.foes.iter()).all(|f| !gold.contains(&f.2)));
         let foes: Vec<(EnemyKind, u8)> = v.packs.iter().flat_map(|p| p.foes.iter().map(|f| (f.0, f.1))).collect();
         assert!(foes.len() >= 60, "{} foes", foes.len());
         assert!(foes.iter().any(|f| f.1 == 1) && foes.iter().any(|f| f.1 == 2));
@@ -517,5 +701,28 @@ mod tests {
         let two = deep.iter().flat_map(|p| p.foes.iter()).filter(|f| f.1 == 2).count();
         let all = deep.iter().map(|p| p.foes.len()).sum::<usize>();
         assert!(two * 2 >= all, "{two} of {all} deep foes are of the second stage");
+    }
+
+    #[test]
+    fn chests_throw_out_items_and_the_deep_rooms_give_rarer_ones() {
+        let mut rng = Rng::new(7);
+        let mut legendary = [0usize; 2];
+        for (k, depth) in [0.0, 1.0].into_iter().enumerate() {
+            for _ in 0..4000 {
+                let drops = roll_drops(&mut rng, depth);
+                assert!((1..=3).contains(&drops.len()));
+                legendary[k] += drops.iter().filter(|d| d.1 == Rarity::Legendary).count();
+            }
+        }
+        assert!(legendary[1] > legendary[0] * 2, "legendary at the entry {}, deep {}", legendary[0], legendary[1]);
+        // Every rarity has its own table, and every item has a name.
+        for r in [Rarity::Common, Rarity::Magic, Rarity::Rare, Rarity::Legendary] {
+            for _ in 0..50 {
+                let it = roll_item(&mut rng, r);
+                assert!(!it.label(|_| "Health").is_empty());
+            }
+        }
+        assert_eq!(DropItem::Runes(5).label(|_| ""), "5 RUNE FRAGMENTS");
+        assert_eq!(DropItem::Potion(PotionKind::Health).label(|_| "Minor Health Potion"), "MINOR HEALTH POTION", "named once");
     }
 }

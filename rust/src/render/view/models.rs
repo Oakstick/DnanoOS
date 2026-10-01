@@ -43,10 +43,6 @@ pub(super) struct Models {
     pub(super) fireball: Mesh,
     pub(super) crescent: Mesh,
     pub(super) diamond: Mesh,
-    /// The vaults' gold: a stack of coins, a heap of them, a chest (body and lid).
-    pub(super) coin: Mesh,
-    pub(super) pile: Mesh,
-    pub(super) chest: (Mesh, Mesh),
     pub(super) tree: Mesh,
     pub(super) key: Mesh,
     /// The Cyclops' red diamond key.
@@ -144,9 +140,6 @@ impl Models {
             fireball: crate::render::props::fireball(),
             crescent: crate::render::props::crescent(),
             diamond: crate::render::props::gem(),
-            coin: vault::coin(),
-            pile: vault::pile(),
-            chest: vault::chest(),
             tree: crate::render::props::pine(),
             key: gate::golden_key(),
             keys: std::iter::once(gate::RED_GEM).chain(SINS.iter().map(|s| s.color())).map(gate::diamond_key).collect(),

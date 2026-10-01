@@ -5,16 +5,21 @@
 //! cornices, gold pilasters along them and gold columns in the rooms;
 //! candelabra burning in every corner and sconces along the corridors; and
 //! Mammon's golden idol on its black plinth in the middle of the treasury,
-//! hugging a chest. The gold itself lies everywhere: coins, heaps, chests and
-//! cut gems, drawn each frame while they are still there to take. The
-//! portals in and out are Greed's, as in the Portals of Hell.
+//! hugging a chest. Every few blocks a wall holds a niche with a statue or a
+//! gold urn in it, or a painting in a gilt frame between velvet drapes (the
+//! models are in `vault_decor`). The gold lies everywhere: coins, heaps,
+//! treasure heaps and chests are part of the static scene, hidden as they are
+//! taken (a chest's lid swings open instead); gems spin, and the items the
+//! chests throw out fly, land and stand in a beam of their rarity's colour.
+//! The portals in and out are Greed's, as in the Portals of Hell.
 
+use super::vault_decor::{self, push_merged, Merged, CANVAS, CANVAS_PX};
 use super::*;
 use crate::logic::hub::{Gate, Rect};
+use crate::logic::items::item;
 use crate::logic::sins::Sin;
-use crate::logic::vault::{LootKind, RoomKind, Vault};
-use crate::render::characters::Sculpt;
-use crate::render::props::mesh_from;
+use crate::logic::vault::{DropItem, LootKind, Rarity, RoomKind, Vault, DROP_FLIGHT};
+use crate::render::characters::{mat, Sculpt};
 
 mod pal {
     pub const MARBLE: u32 = 0xeee6d6;
@@ -38,7 +43,6 @@ use pal::*;
 /// Polished gold and polished marble (see `voxel_surface` in the shader).
 pub const SHADE_GOLD: f32 = 13.0;
 pub const SHADE_MARBLE: f32 = 15.0;
-const SHADE_WOOD: f32 = 12.0;
 /// The walls stand this tall.
 const WALL_H: f32 = 1.6;
 /// Loot is drawn only this near the hero (tiles).
@@ -65,14 +69,69 @@ pub fn vault_atmosphere() -> Atmosphere {
     }
 }
 
-/// What the view keeps of the vault: where the gold lies and what it is, how long each chest has
-/// stood open, the lamps, and the two portals.
+/// What the view keeps of the vault: where the gold lies and what it is, each piece's static boxes
+/// (a chest's lid) to hide when it is taken, how each chest is turned and how long it has stood
+/// open, the lamps, the two portals, and the models.
 pub struct VaultView {
     pub loot: Vec<(P, LootKind)>,
+    ranges: Vec<(usize, usize)>,
+    hidden: Vec<bool>,
+    yaws: Vec<f32>,
     pub opened: Vec<f32>,
     pub lamps: Vec<Vec3>,
     pub gates: [Gate; 2],
     pub idol: Vec3,
+    art: VaultArt,
+}
+
+/// The vault's models, merged into boxes: the gold, the chest and its lid, the statues and urn,
+/// the paintings.
+struct VaultArt {
+    coin: Merged,
+    pile: Merged,
+    treasure: Merged,
+    chest: Merged,
+    lid: Merged,
+    statues: Vec<Merged>,
+    paintings: Vec<Merged>,
+}
+
+impl VaultArt {
+    fn new() -> Self {
+        let (chest, lid) = chest();
+        Self {
+            coin: coin(),
+            pile: pile(),
+            treasure: vault_decor::treasure(),
+            chest,
+            lid,
+            statues: vault_decor::statues(),
+            paintings: vault_decor::paintings(),
+        }
+    }
+}
+
+/// What dresses a wall's face: a painting, or a niche with a statue (or the urn).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Decor {
+    Painting(usize),
+    Niche(usize),
+}
+
+/// A chest's voxel, and its body's height and depth in voxels (the lid hinges at the back of the top).
+const CHEST_VOXEL: f32 = 0.055;
+const CHEST_H: f32 = 6.0;
+const CHEST_BACK: f32 = 3.5;
+
+/// A chest's lid as it stands `angle` open, on the chest at `m`.
+fn lid_matrix(m: Mat4, angle: f32) -> Mat4 {
+    m * Mat4::from_translation(Vec3::new(0.0, CHEST_H * CHEST_VOXEL, -CHEST_BACK * CHEST_VOXEL)) * Mat4::from_rotation_x(angle)
+}
+
+/// The turn that faces a model built facing +z toward `d`.
+fn yaw_to(d: Dir) -> f32 {
+    let (dx, dz) = d.vec();
+    (dx as f32).atan2(dz as f32)
 }
 
 fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3, shade: f32) {
@@ -87,7 +146,8 @@ fn marble(h: f64) -> Vec3 {
 // ------------------------------------------------------------------ meshes
 
 /// A little stack of gold coins.
-pub fn coin() -> Mesh {
+fn coin() -> Merged {
+    let (g, gd, gl) = (GOLD | mat::GOLD, GOLD_D | mat::GOLD, GOLD_L | mat::GOLD);
     let mut s = Sculpt::new(7, 4, 7);
     for y in 0..4 {
         let (cx, cz) = (3.0 + if y % 2 == 1 { 0.6 } else { 0.0 }, 3.0 - if y == 2 { 0.5 } else { 0.0 });
@@ -100,50 +160,53 @@ pub fn coin() -> Mesh {
                         y,
                         z,
                         if d > 2.0 {
-                            GOLD_D
+                            gd
                         } else if y == 3 {
-                            GOLD_L
+                            gl
                         } else {
-                            GOLD
+                            g
                         },
                     );
                 }
             }
         }
     }
-    mesh_from(&s.finish(0.03), 0.045)
+    vault_decor::merge(&s.finish(0.0), 0.045)
 }
 
 /// A heap of gold coins.
-pub fn pile() -> Mesh {
+fn pile() -> Merged {
+    let (g, gd, gl) = (GOLD | mat::GOLD, GOLD_D | mat::GOLD, GOLD_L | mat::GOLD);
     let mut s = Sculpt::new(11, 6, 11);
-    s.ellipsoid((5.0, 0.3, 5.0), (5.4, 4.6, 4.8), 0, GOLD);
-    s.ellipsoid((3.2, 0.8, 6.6), (3.0, 2.8, 2.6), 0, GOLD);
-    s.ellipsoid((7.4, 1.2, 3.6), (2.6, 3.0, 2.6), 0, GOLD);
+    s.ellipsoid((5.0, 0.3, 5.0), (5.4, 4.6, 4.8), 0, g);
+    s.ellipsoid((3.2, 0.8, 6.6), (3.0, 2.8, 2.6), 0, g);
+    s.ellipsoid((7.4, 1.2, 3.6), (2.6, 3.0, 2.6), 0, g);
     s.paint(|x, y, z, _| {
         let n = ((x * 7 + y * 13 + z * 3) % 11) as f32 / 11.0;
         Some(if n < 0.12 {
-            GOLD_L
+            gl
         } else if n > 0.8 || y == 0 {
-            GOLD_D
+            gd
         } else {
-            GOLD
+            g
         })
     });
-    mesh_from(&s.finish(0.05), 0.06)
+    vault_decor::merge(&s.finish(0.0), 0.06)
 }
 
-/// A treasure chest: the body, and the lid (hinged at its back edge, at the lid's origin).
-pub fn chest() -> (Mesh, Mesh) {
+/// A treasure chest facing +z: the body, and the lid (its origin on its back bottom edge, the hinge).
+fn chest() -> (Merged, Merged) {
+    let (wood, wood_l) = (WOOD | mat::WOOD, WOOD_L | mat::WOOD);
+    let (g, gd, gl) = (GOLD | mat::GOLD, GOLD_D | mat::GOLD, GOLD_L | mat::GOLD);
     let mut b = Sculpt::new(12, 6, 8);
-    b.cuboid(0, 0, 0, 11, 5, 7, WOOD);
+    b.cuboid(0, 0, 0, 11, 5, 7, wood);
     b.paint(|x, y, z, c| {
         let band = x == 2 || x == 9 || x == 5 || x == 6;
         let edge = y == 0 || z == 0 || z == 7 || x == 0 || x == 11;
         Some(if band {
-            GOLD_D
+            gd
         } else if edge && (y + z) % 2 == 0 {
-            WOOD_L
+            wood_l
         } else {
             c
         })
@@ -151,38 +214,28 @@ pub fn chest() -> (Mesh, Mesh) {
     // Inside: gold to the brim, seen when the lid opens.
     for z in 1..7 {
         for x in 1..11 {
-            b.set(x, 5, z, if (x * 3 + z * 5) % 7 == 0 { GOLD_L } else { GOLD });
+            b.set(x, 5, z, if (x * 3 + z * 5) % 7 == 0 { gl } else { g });
         }
     }
     let mut l = Sculpt::new(12, 4, 8);
     for y in 0..4 {
-        let inset = match y {
-            0 => 0,
-            1 => 1,
-            2 => 2,
-            _ => 3,
-        };
-        l.cuboid(0, y, inset, 11, y, 7 - inset, WOOD);
+        l.cuboid(0, y, y.min(3), 11, y, 7 - y.min(3), wood);
     }
     l.paint(|x, y, _, c| {
         Some(if x == 2 || x == 9 || x == 5 || x == 6 {
-            GOLD_D
+            gd
         } else if y == 3 {
-            WOOD_L
+            wood_l
         } else {
             c
         })
     });
     // The lock plate on the front.
-    l.cuboid(5, 0, 7, 6, 1, 7, GOLD);
-    let size = 0.055;
-    let body = mesh_from(&b.finish(0.03), size);
-    // The lid's cubes are shifted so its origin sits on its back bottom edge: the hinge.
-    let lid_c = l.finish(0.03);
-    let mut lid = mesh_from(&lid_c, size);
-    let back = -(lid_c.depth as f32 - 1.0) / 2.0 * size;
-    for (p, _) in lid.cubes.iter_mut() {
-        p.z -= back;
+    l.cuboid(5, 0, 7, 6, 1, 7, g);
+    let body = vault_decor::merge(&b.finish(0.0), CHEST_VOXEL);
+    let mut lid = vault_decor::merge(&l.finish(0.0), CHEST_VOXEL);
+    for b in lid.boxes.iter_mut() {
+        b.center.z += CHEST_BACK * CHEST_VOXEL;
     }
     (body, lid)
 }
@@ -303,6 +356,25 @@ impl WorldView {
             }
         }
 
+        // ---- where the corridors' sconces hang (those walls take no other decoration)
+        let mut sconces: Vec<(P, P, Dir)> = Vec::new();
+        for (c, along) in &carpet {
+            let len = if *along { c.x1 - c.x0 + 1 } else { c.y1 - c.y0 + 1 };
+            let mut k = 2;
+            while k < len - 1 {
+                let (tile, wall, dir) = if *along {
+                    (P::new(c.x0 + k, c.y0), P::new(c.x0 + k, c.y0 - 1), Dir::Down)
+                } else {
+                    (P::new(c.x0, c.y0 + k), P::new(c.x0 - 1, c.y0 + k), Dir::Right)
+                };
+                if rock(wall.x, wall.y) && !rock(tile.x, tile.y) {
+                    sconces.push((tile, wall, dir));
+                }
+                k += 6;
+            }
+        }
+        let art = VaultArt::new();
+
         // ---- walls and columns
         for (x, y, t) in grid.cells() {
             if t != Tile::Rock {
@@ -329,7 +401,26 @@ impl WorldView {
             if open.len() >= 3 {
                 self.build_gold_column(Vec3::new(xf, 0.0, yf), hash(hx, hy) as f32);
             } else {
-                self.build_wall_block(p, &open, hash(hx * 3.0, hy * 5.0));
+                // Every six blocks along a wall: a pilaster, a painting, a pilaster, a niche.
+                let lit_by_sconce = sconces.iter().any(|(_, w, _)| *w == p);
+                let decor: Vec<(Dir, Decor)> = open
+                    .iter()
+                    .filter_map(|&d| {
+                        let (dx, dy) = d.vec();
+                        let along = if dx == 0 { x } else { y };
+                        let pick = hash(hx * 1.3 + dx as f64 * 7.0, hy * 1.7 + dy as f64 * 5.0);
+                        match along.rem_euclid(6) {
+                            _ if lit_by_sconce => None,
+                            1 => Some((d, Decor::Painting((pick * art.paintings.len() as f64) as usize % art.paintings.len()))),
+                            // A niche looks out of a straight wall, and not away from the camera above.
+                            4 if open.len() == 1 && d != Dir::Up => {
+                                Some((d, Decor::Niche((pick * art.statues.len() as f64) as usize % art.statues.len())))
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                self.build_wall_block(p, &open, hash(hx * 3.0, hy * 5.0), &decor, &art);
             }
             let len = self.static_cubes.len() - start;
             self.rock_index.insert(tile_key(x, y), (start, len));
@@ -346,39 +437,55 @@ impl WorldView {
             });
         }
 
-        // ---- beyond the walls: the dark tops of the rock they are cut from, so every wall looks thick
-        for (x, y, t) in grid.cells() {
-            if t != Tile::Rock {
-                continue;
+        // ---- the solid rock between the halls, capped in dark marble at the walls' height, so the
+        // palace reads as solid from above (one box for each run of rock along a row)
+        let faces_floor = |q: P| {
+            CARDINALS.iter().any(|d| {
+                let n = q.step(*d);
+                grid.in_bounds(n.x, n.y) && !rock(n.x, n.y)
+            })
+        };
+        // Warm dark marble with a gold coffer grid every four tiles, like an ornate ceiling seen from above.
+        let cap = lin(0x5a4632) * 0.85;
+        let inlay = lin(GOLD_D) * 0.8;
+        for y in 0..grid.height {
+            let mut x = 0;
+            while x < grid.width {
+                let solid = |x: i32| rock(x, y) && !faces_floor(P::new(x, y));
+                if !solid(x) {
+                    x += 1;
+                    continue;
+                }
+                let x0 = x;
+                while x < grid.width && solid(x) {
+                    x += 1;
+                }
+                let n = (x - x0) as f32;
+                let cx = x0 as f32 + n / 2.0 - 0.5;
+                cube(&mut self.static_cubes, Vec3::new(cx, WALL_H - 0.03, y as f32), Vec3::new(n, 0.1, 1.0), 0.0, cap, SHADE_MARBLE);
+                if y.rem_euclid(4) == 0 {
+                    cube(
+                        &mut self.static_cubes,
+                        Vec3::new(cx, WALL_H + 0.025, y as f32 - 0.5),
+                        Vec3::new(n, 0.012, 0.05),
+                        0.0,
+                        inlay,
+                        SHADE_GOLD,
+                    );
+                }
+                for gx in x0..x {
+                    if gx.rem_euclid(4) == 0 {
+                        cube(
+                            &mut self.static_cubes,
+                            Vec3::new(gx as f32 - 0.5, WALL_H + 0.025, y as f32),
+                            Vec3::new(0.05, 0.012, 1.0),
+                            0.0,
+                            inlay,
+                            SHADE_GOLD,
+                        );
+                    }
+                }
             }
-            let faces_floor = |q: P| {
-                CARDINALS.iter().any(|d| {
-                    let n = q.step(*d);
-                    grid.in_bounds(n.x, n.y) && !rock(n.x, n.y)
-                })
-            };
-            let p = P::new(x, y);
-            if faces_floor(p) {
-                continue;
-            }
-            let behind_a_wall = (-1..=1).any(|dy| {
-                (-1..=1).any(|dx| {
-                    let q = P::new(x + dx, y + dy);
-                    grid.in_bounds(q.x, q.y) && rock(q.x, q.y) && faces_floor(q)
-                })
-            });
-            if !behind_a_wall {
-                continue;
-            }
-            let h = hash(x as f64 * 2.1, y as f64 * 1.3) as f32;
-            cube(
-                &mut self.static_cubes,
-                Vec3::new(x as f32, WALL_H - 0.03, y as f32),
-                Vec3::new(1.0, 0.1, 1.0),
-                0.0,
-                lin(BLACK_L) * (0.7 + h * 0.2),
-                SHADE_MARBLE,
-            );
         }
 
         // ---- lamps: candelabra in the rooms' corners, sconces along the corridors
@@ -416,24 +523,45 @@ impl WorldView {
                 }
             }
         }
-        for (c, along) in &carpet {
-            let len = if *along { c.x1 - c.x0 + 1 } else { c.y1 - c.y0 + 1 };
-            let mut k = 2;
-            while k < len - 1 {
-                // A sconce on the wall to one side, if there is wall there.
-                let (tile, wall, dir) = if *along {
-                    (P::new(c.x0 + k, c.y0), P::new(c.x0 + k, c.y0 - 1), Dir::Down)
-                } else {
-                    (P::new(c.x0, c.y0 + k), P::new(c.x0 - 1, c.y0 + k), Dir::Right)
-                };
-                if rock(wall.x, wall.y) && !rock(tile.x, tile.y) {
-                    let (dx, dy) = dir.vec();
-                    let at = Vec3::new(wall.x as f32 + dx as f32 * 0.55, 1.1, wall.y as f32 + dy as f32 * 0.55);
-                    self.build_sconce(at, dir);
-                    lamps.push(at + Vec3::new(0.0, 0.18, 0.0));
+        for &(_, wall, dir) in &sconces {
+            let (dx, dy) = dir.vec();
+            let at = Vec3::new(wall.x as f32 + dx as f32 * 0.55, 1.1, wall.y as f32 + dy as f32 * 0.55);
+            self.build_sconce(at, dir);
+            lamps.push(at + Vec3::new(0.0, 0.18, 0.0));
+        }
+
+        // ---- the gold, where it lies: static boxes, each piece's range hidden once it is taken
+        let mut ranges = vec![(0, 0); v.loot.len()];
+        let mut yaws = vec![0.0; v.loot.len()];
+        for (i, l) in v.loot.iter().enumerate() {
+            let base = Vec3::new(l.at.x as f32, 0.0, l.at.y as f32);
+            let seed = (l.at.x * 7 + l.at.y * 13) as f32;
+            let start = self.static_cubes.len();
+            let out = &mut self.static_cubes;
+            match l.kind {
+                LootKind::Coin => push_merged(out, &art.coin, Mat4::from_translation(base) * Mat4::from_rotation_y(seed), 0.08),
+                LootKind::Pile => push_merged(out, &art.pile, Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.7), 0.1),
+                LootKind::Treasure => {
+                    push_merged(out, &art.treasure, Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.3), 0.06)
                 }
-                k += 6;
+                LootKind::Chest => {
+                    // It faces away from the wall it stands against.
+                    let wall = CARDINALS.iter().copied().find(|d| {
+                        let n = l.at.step(*d);
+                        rock(n.x, n.y)
+                    });
+                    let yaw = wall.map(|d| yaw_to(d.opposite())).unwrap_or(0.0) + (seed * 0.37).sin() * 0.06;
+                    yaws[i] = yaw;
+                    let m = Mat4::from_translation(base) * Mat4::from_rotation_y(yaw);
+                    push_merged(out, &art.chest, m, 0.0);
+                    let lid = out.len();
+                    push_merged(out, &art.lid, lid_matrix(m, 0.0), 0.0);
+                    ranges[i] = (lid, out.len() - lid);
+                    continue;
+                }
+                LootKind::Gem(_) => {}
             }
+            ranges[i] = (start, self.static_cubes.len() - start);
         }
 
         // ---- Mammon's idol in the treasury, and the portals
@@ -461,27 +589,190 @@ impl WorldView {
                 SHADE_LIT,
             ));
         }
-        self.vault =
-            Some(VaultView { loot: v.loot.iter().map(|l| (l.at, l.kind)).collect(), opened: vec![0.0; v.loot.len()], lamps, gates, idol });
+        self.vault = Some(VaultView {
+            loot: v.loot.iter().map(|l| (l.at, l.kind)).collect(),
+            hidden: vec![false; v.loot.len()],
+            ranges,
+            yaws,
+            opened: vec![0.0; v.loot.len()],
+            lamps,
+            gates,
+            idol,
+            art,
+        });
     }
 
-    /// A wall block: white marble on a black plinth under a gilt cornice, a gold pilaster now and then.
-    fn build_wall_block(&mut self, p: P, open: &[Dir], h: f64) {
+    /// Hides a range of the static scene (a piece of gold he has taken), patching just those boxes.
+    pub(super) fn hide_static(&mut self, (start, len): (usize, usize)) {
+        if len == 0 {
+            return;
+        }
+        let hidden = (Mat4::from_translation(Vec3::new(0.0, -50.0, 0.0)) * Mat4::from_scale(Vec3::ZERO)).to_cols_array();
+        for inst in &mut self.static_cubes[start..start + len] {
+            inst.m = hidden;
+        }
+        self.static_patches.push((start, len));
+    }
+
+    /// Each frame: the gold he has taken leaves the static scene, and opened chests count their time.
+    pub(super) fn update_vault_view(&mut self, s: &SceneState, dt: f32) {
+        let mut hide = Vec::new();
+        if let Some(vv) = &mut self.vault {
+            for (i, l) in s.loot.iter().enumerate() {
+                if !l.taken || i >= vv.hidden.len() {
+                    continue;
+                }
+                vv.opened[i] += dt;
+                if !vv.hidden[i] {
+                    vv.hidden[i] = true;
+                    hide.push(vv.ranges[i]);
+                }
+            }
+        }
+        for r in hide {
+            self.hide_static(r);
+        }
+    }
+
+    /// A wall block: white marble on a black plinth under a gilt cornice, gold pilasters along it,
+    /// and on some faces a painting between velvet drapes, or a niche with a statue in it.
+    fn build_wall_block(&mut self, p: P, open: &[Dir], h: f64, decor: &[(Dir, Decor)], art: &VaultArt) {
         let (xf, yf) = (p.x as f32, p.y as f32);
+        let niche = decor.iter().find_map(|&(d, k)| if let Decor::Niche(i) = k { Some((d, i)) } else { None });
         let out = &mut self.static_cubes;
-        // The plinth, the block and the cornice.
-        cube(out, Vec3::new(xf, 0.09, yf), Vec3::new(1.0, 0.18, 1.0), 0.0, lin(BLACK) * (0.9 + h as f32 * 0.15), SHADE_MARBLE);
-        cube(out, Vec3::new(xf, WALL_H / 2.0 + 0.05, yf), Vec3::new(1.0, WALL_H - 0.3, 1.0), 0.0, marble(h) * 0.97, SHADE_MARBLE);
-        cube(out, Vec3::new(xf, WALL_H - 0.09, yf), Vec3::new(1.0, 0.06, 1.0), 0.0, lin(GOLD_D), SHADE_GOLD);
-        cube(out, Vec3::new(xf, WALL_H, yf), Vec3::new(1.08, 0.12, 1.08), 0.0, lin(MARBLE_D), SHADE_MARBLE);
-        // A course line in the marble.
-        cube(out, Vec3::new(xf, 0.82, yf), Vec3::new(1.004, 0.02, 1.004), 0.0, lin(VEIN) * 0.9, SHADE_LIT);
-        // Pilasters on the faces that look into a room or corridor, every fourth block.
-        if (p.x + p.y).rem_euclid(4) == 0 {
-            for &d in open {
-                let (dx, dy) = d.vec();
-                let face = Vec3::new(xf + dx as f32 * 0.55, 0.0, yf + dy as f32 * 0.55);
+        match niche {
+            None => {
+                // The plinth, the block and the cornice.
+                cube(out, Vec3::new(xf, 0.09, yf), Vec3::new(1.0, 0.18, 1.0), 0.0, lin(BLACK) * (0.9 + h as f32 * 0.15), SHADE_MARBLE);
+                cube(out, Vec3::new(xf, WALL_H / 2.0 + 0.05, yf), Vec3::new(1.0, WALL_H - 0.3, 1.0), 0.0, marble(h) * 0.97, SHADE_MARBLE);
+                cube(out, Vec3::new(xf, WALL_H - 0.09, yf), Vec3::new(1.0, 0.06, 1.0), 0.0, lin(GOLD_D), SHADE_GOLD);
+                cube(out, Vec3::new(xf, WALL_H, yf), Vec3::new(1.08, 0.12, 1.08), 0.0, lin(MARBLE_D), SHADE_MARBLE);
+                cube(out, Vec3::new(xf, 0.82, yf), Vec3::new(1.004, 0.02, 1.004), 0.0, lin(VEIN) * 0.9, SHADE_LIT);
+            }
+            Some((d, statue)) => {
+                // An alcove open to the face and to the sky: the back of the block, a pier either side.
+                let (dx, dz) = d.vec();
+                let (n, side) = (Vec3::new(dx as f32, 0.0, dz as f32), Vec3::new(dz as f32, 0.0, dx as f32).abs());
+                let c = Vec3::new(xf, 0.0, yf);
+                let span = |along_n: f32, across: f32| side * across + Vec3::new(n.x.abs(), 0.0, n.z.abs()) * along_n;
+                let back = c - n * 0.21;
+                let back_size = span(0.58, 1.0);
+                cube(out, back + Vec3::new(0.0, 0.09, 0.0), back_size + Vec3::new(0.0, 0.18, 0.0), 0.0, lin(BLACK), SHADE_MARBLE);
+                cube(
+                    out,
+                    back + Vec3::new(0.0, WALL_H / 2.0 + 0.05, 0.0),
+                    back_size + Vec3::new(0.0, WALL_H - 0.3, 0.0),
+                    0.0,
+                    marble(h) * 0.97,
+                    SHADE_MARBLE,
+                );
+                cube(
+                    out,
+                    back + Vec3::new(0.0, WALL_H, 0.0),
+                    span(0.62, 1.08) + Vec3::new(0.0, 0.12, 0.0),
+                    0.0,
+                    lin(MARBLE_D),
+                    SHADE_MARBLE,
+                );
+                // The alcove's back is lined in red velvet, a gold shell over the statue's head.
+                let lining = c + n * 0.075;
+                cube(out, lining + Vec3::new(0.0, 0.85, 0.0), span(0.02, 0.62) + Vec3::new(0.0, 1.3, 0.0), 0.0, lin(0x6a1218), SHADE_LIT);
+                for (k, w) in [0.56f32, 0.44, 0.3].iter().enumerate() {
+                    cube(
+                        out,
+                        lining + n * 0.02 + Vec3::new(0.0, 1.32 + k as f32 * 0.07, 0.0),
+                        span(0.03, *w) + Vec3::new(0.0, 0.07, 0.0),
+                        0.0,
+                        lin(GOLD),
+                        SHADE_GOLD,
+                    );
+                }
+                for s in [-1.0f32, 1.0] {
+                    let pier = c + n * 0.29 + side * (s * 0.41);
+                    cube(
+                        out,
+                        pier + Vec3::new(0.0, 0.09, 0.0),
+                        span(0.42, 0.18) + Vec3::new(0.0, 0.18, 0.0),
+                        0.0,
+                        lin(BLACK),
+                        SHADE_MARBLE,
+                    );
+                    cube(
+                        out,
+                        pier + Vec3::new(0.0, WALL_H / 2.0 + 0.05, 0.0),
+                        span(0.42, 0.18) + Vec3::new(0.0, WALL_H - 0.3, 0.0),
+                        0.0,
+                        marble(h) * 0.97,
+                        SHADE_MARBLE,
+                    );
+                    cube(
+                        out,
+                        pier + Vec3::new(0.0, WALL_H, 0.0),
+                        span(0.46, 0.22) + Vec3::new(0.0, 0.12, 0.0),
+                        0.0,
+                        lin(MARBLE_D),
+                        SHADE_MARBLE,
+                    );
+                    // A gold edge down the pier's face.
+                    cube(
+                        out,
+                        pier + n * 0.215 + side * (-s * 0.07) + Vec3::new(0.0, 0.8, 0.0),
+                        span(0.02, 0.03) + Vec3::new(0.0, 1.2, 0.0),
+                        0.0,
+                        lin(GOLD_L),
+                        SHADE_GOLD,
+                    );
+                }
+                // The plinth in the alcove, and the statue on it, looking out.
+                let at = c + n * 0.29;
+                cube(
+                    out,
+                    at + Vec3::new(0.0, 0.07, 0.0),
+                    span(0.4, 0.58) + Vec3::new(0.0, 0.14, 0.0),
+                    0.0,
+                    vault_decor::plinth_color(),
+                    SHADE_MARBLE,
+                );
+                cube(out, at + Vec3::new(0.0, 0.145, 0.0), span(0.42, 0.6) + Vec3::new(0.0, 0.015, 0.0), 0.0, lin(GOLD_D), SHADE_GOLD);
+                let m = Mat4::from_translation(at + Vec3::new(0.0, 0.15, 0.0)) * Mat4::from_rotation_y(yaw_to(d));
+                push_merged(out, &art.statues[statue], m, 0.02);
+            }
+        }
+        for &d in open {
+            let (dx, dy) = d.vec();
+            let along = if dx == 0 { p.x } else { p.y };
+            let n = Vec3::new(dx as f32, 0.0, dy as f32);
+            let face = Vec3::new(xf, 0.0, yf) + n * 0.5;
+            let yaw = yaw_to(d);
+            let painting = decor.iter().find_map(|&(fd, k)| if let (true, Decor::Painting(i)) = (fd == d, k) { Some(i) } else { None });
+            if let Some(i) = painting {
+                // A gilt frame, the canvas, a gold rod and a velvet valance over it, drapes either side.
+                let root = Mat4::from_translation(face) * Mat4::from_rotation_y(yaw);
+                let put = |out: &mut Vec<Instance>, at: Vec3, size: Vec3, color: u32, shade: f32| {
+                    out.push(Instance::new(
+                        root * Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at),
+                        lin(color),
+                        1.0,
+                        Vec3::ZERO,
+                        shade,
+                    ));
+                };
+                let (cw, ch) = (CANVAS.0 as f32 * CANVAS_PX, CANVAS.1 as f32 * CANVAS_PX);
+                let mid = 1.0;
+                put(out, Vec3::new(0.0, mid, 0.02), Vec3::new(cw + 0.12, ch + 0.12, 0.04), GOLD, SHADE_GOLD);
+                put(out, Vec3::new(0.0, mid + ch / 2.0 + 0.045, 0.045), Vec3::new(cw + 0.14, 0.03, 0.02), GOLD_L, SHADE_GOLD);
+                put(out, Vec3::new(0.0, mid - ch / 2.0 - 0.045, 0.045), Vec3::new(cw + 0.14, 0.03, 0.02), GOLD_D, SHADE_GOLD);
+                push_merged(out, &art.paintings[i], root * Mat4::from_translation(Vec3::new(0.0, mid - ch / 2.0, 0.045)), 0.04);
+                put(out, Vec3::new(0.0, 1.44, 0.05), Vec3::new(1.0, 0.025, 0.025), GOLD, SHADE_GOLD);
+                put(out, Vec3::new(0.0, 1.4, 0.07), Vec3::new(0.98, 0.08, 0.035), 0x7a1620, 6.0 + 2.0);
+                for s in [-1.0f32, 1.0] {
+                    put(out, Vec3::new(s * 0.45, 0.98, 0.065), Vec3::new(0.09, 0.86, 0.04), 0x8a1a22, 6.0 + 2.0);
+                    put(out, Vec3::new(s * 0.45, 0.9, 0.09), Vec3::new(0.1, 0.035, 0.02), GOLD_L, SHADE_GOLD);
+                }
+            } else if along.rem_euclid(3) == 0 && niche.is_none() {
+                // A gold pilaster.
                 let flat = if dx != 0 { Vec3::new(0.12, 1.0, 0.36) } else { Vec3::new(0.36, 1.0, 0.12) };
+                let face = Vec3::new(xf + dx as f32 * 0.55, 0.0, yf + dy as f32 * 0.55);
                 cube(out, face + Vec3::new(0.0, 0.16, 0.0), Vec3::new(flat.x * 1.3, 0.14, flat.z * 1.3), 0.0, lin(BLACK_L), SHADE_MARBLE);
                 cube(
                     out,
@@ -618,43 +909,22 @@ impl WorldView {
             let seed = (p.x * 7 + p.y * 13) as f32;
             match kind {
                 LootKind::Coin if !taken => {
-                    let m = Mat4::from_translation(base + Vec3::new(0.0, 0.0, 0.0)) * Mat4::from_rotation_y(seed);
-                    for (off, c) in &self.models.coin.cubes {
-                        f.opaque[cube_i].push(Instance::new(voxel_matrix(&m, self.models.coin.size, *off), *c, 1.0, *c * 0.08, SHADE_GOLD));
-                    }
-                    // A glint now and then.
+                    // A glint now and then (the coins themselves are in the static scene).
                     let g = ((time * 1.7 + seed).sin() * 0.5 + 0.5).powi(8);
                     if g > 0.2 {
                         glow_orb(f, base + Vec3::new(0.0, 0.14, 0.0), 0.12, lin(GOLD_L), 0.35 * g);
                     }
                 }
-                LootKind::Pile if !taken => {
-                    let m = Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.7);
-                    for (off, c) in &self.models.pile.cubes {
-                        f.opaque[cube_i].push(Instance::new(voxel_matrix(&m, self.models.pile.size, *off), *c, 1.0, *c * 0.1, SHADE_GOLD));
-                    }
-                    lit.push((base + Vec3::new(0.0, 0.4, 0.0), lin(GOLD) * 2.0));
-                }
+                LootKind::Pile | LootKind::Treasure if !taken => lit.push((base + Vec3::new(0.0, 0.4, 0.0), lin(GOLD) * 2.0)),
+                LootKind::Chest if !taken => lit.push((base + Vec3::new(0.0, 0.5, 0.0), lin(0xffd060) * 1.6)),
                 LootKind::Chest => {
-                    let (body, lid) = &self.models.chest;
-                    let yaw = if (p.x + p.y) % 2 == 0 { 0.0 } else { PI / 2.0 } + (seed * 0.37).sin() * 0.15;
-                    let m = Mat4::from_translation(base) * Mat4::from_rotation_y(yaw);
-                    for (off, c) in &body.cubes {
-                        let shade = if c.x > 0.3 { SHADE_GOLD } else { SHADE_WOOD };
-                        f.opaque[cube_i].push(Instance::new(voxel_matrix(&m, body.size, *off), *c, 1.0, Vec3::ZERO, shade));
-                    }
+                    // Its lid swings up and stays up.
                     let age = vv.opened.get(i).copied().unwrap_or(0.0);
-                    let open = if taken { (age / LID_SECONDS).min(1.0) } else { 0.0 };
+                    let open = (age / LID_SECONDS).min(1.0);
                     let angle = -(open * open * (3.0 - 2.0 * open)) * 1.9;
-                    let hinge =
-                        m * Mat4::from_translation(Vec3::new(0.0, 6.0 * body.size, -3.5 * body.size)) * Mat4::from_rotation_x(angle);
-                    for (off, c) in &lid.cubes {
-                        let shade = if c.x > 0.3 { SHADE_GOLD } else { SHADE_WOOD };
-                        f.opaque[cube_i].push(Instance::new(voxel_matrix(&hinge, lid.size, *off), *c, 1.0, Vec3::ZERO, shade));
-                    }
-                    if !taken {
-                        lit.push((base + Vec3::new(0.0, 0.5, 0.0), lin(0xffd060) * 1.6));
-                    } else if open < 1.0 {
+                    let m = Mat4::from_translation(base) * Mat4::from_rotation_y(vv.yaws[i]);
+                    push_merged(&mut f.opaque[cube_i], &vv.art.lid, lid_matrix(m, angle), 0.0);
+                    if open < 1.0 {
                         // Gold spilling as the lid goes up.
                         for k in 0..10 {
                             let t = (open * 1.6 + k as f32 * 0.13).fract();
@@ -701,6 +971,7 @@ impl WorldView {
                 _ => {}
             }
         }
+        self.emit_drops(s, time, f, &mut lit);
         // Candle flames on every lamp in sight; the nearest few light the marble.
         let mut lamp_points: Vec<Vec3> = Vec::new();
         for (i, l) in vv.lamps.iter().enumerate() {
@@ -740,5 +1011,99 @@ impl WorldView {
         let door = s.gate.map(|g| g.door).unwrap_or(0.0);
         self.emit_portal(&vv.gates[0], 0.0, false, time, hero, f);
         self.emit_portal(&vv.gates[1], door, false, time, hero, f);
+    }
+
+    /// The items the chests threw: flying in an arc to where they land, then turning over their
+    /// spot in a beam of their rarity's colour, a ring of it on the floor.
+    fn emit_drops(&self, s: &SceneState, time: f32, f: &mut Frame, lit: &mut Vec<(Vec3, Vec3)>) {
+        let cube_i = MeshKind::Cube as usize;
+        for (k, d) in s.drops.iter().enumerate() {
+            if d.taken {
+                continue;
+            }
+            let from = Vec3::new(d.from.x as f32, 0.0, d.from.y as f32);
+            let to = Vec3::new(d.at.x as f32, 0.0, d.at.y as f32);
+            let t = (d.age / DROP_FLIGHT).min(1.0) as f32;
+            let landed = t >= 1.0;
+            let fk = k as f32 * 1.7;
+            let pos = if landed {
+                to + Vec3::new(0.0, 0.3 + (time * 2.2 + fk).sin() * 0.04, 0.0)
+            } else {
+                from.lerp(to, t) + Vec3::new(0.0, 0.45 + 4.0 * t * (1.0 - t) * 0.9, 0.0)
+            };
+            let color = lin(d.rarity.color());
+            let spin = time * 1.6 + fk + if landed { 0.0 } else { t * 9.0 };
+            let m = Mat4::from_translation(pos) * Mat4::from_rotation_y(spin);
+            let glow = color * 0.25;
+            match d.item {
+                DropItem::Potion(kind) => {
+                    let hex = crate::logic::gear::potion(s.hero_kind, kind).color;
+                    if let Some(mesh) = self.models.bottles.get(&hex) {
+                        emit_mesh(
+                            &mut f.opaque[cube_i],
+                            mesh,
+                            m * Mat4::from_translation(Vec3::new(0.0, -0.2, 0.0)),
+                            Vec3::ONE,
+                            1.0,
+                            lin(hex) * 0.5,
+                        );
+                    }
+                }
+                DropItem::Weapon(w) => {
+                    let mesh = match w {
+                        RangedKind::Boomerang => &self.models.boomerang,
+                        RangedKind::Fireball => &self.models.fireball,
+                        RangedKind::Crescent => &self.models.crescent,
+                        _ => &self.models.arrow,
+                    };
+                    emit_mesh(&mut f.opaque[cube_i], mesh, m * Mat4::from_rotation_z(0.5), Vec3::ONE, 1.0, glow);
+                }
+                DropItem::Boon(b) => {
+                    let c = lin(item(b).color);
+                    emit_mesh(
+                        &mut f.opaque[cube_i],
+                        &self.models.diamond,
+                        m * Mat4::from_translation(Vec3::new(0.0, -0.2, 0.0)),
+                        c * 1.3,
+                        1.0,
+                        c * 0.4,
+                    );
+                }
+                DropItem::Runes(_) => {
+                    let c = lin(0x9ad1ff);
+                    emit_mesh(
+                        &mut f.opaque[cube_i],
+                        &self.models.diamond,
+                        m * Mat4::from_translation(Vec3::new(0.0, -0.2, 0.0)) * Mat4::from_scale(Vec3::splat(0.7)),
+                        c * 1.3,
+                        1.0,
+                        c * 0.5,
+                    );
+                }
+                DropItem::Bombs(_) => {
+                    emit_mesh(
+                        &mut f.opaque[cube_i],
+                        &self.models.bomb,
+                        m * Mat4::from_translation(Vec3::new(0.0, -0.25, 0.0)),
+                        Vec3::ONE,
+                        1.0,
+                        glow * 0.5,
+                    );
+                }
+            }
+            glow_orb(f, pos, 0.32, color, 0.22);
+            if landed {
+                // The beam, stronger the rarer; the legendary's pulses.
+                let strength = [0.05f32, 0.08, 0.12, 0.17][d.rarity as usize]
+                    * if d.rarity == Rarity::Legendary { 0.8 + 0.4 * (time * 4.0).sin().abs() } else { 1.0 };
+                let beam = Mat4::from_translation(to + Vec3::new(0.0, 2.6, 0.0)) * Mat4::from_scale(Vec3::new(0.07, 5.2, 0.07));
+                f.additive.push(Instance::new(beam, color, strength, Vec3::ZERO, SHADE_UNLIT));
+                let ring = Mat4::from_translation(to + Vec3::new(0.0, 0.03, 0.0))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::splat(0.3 + 0.02 * (time * 3.0 + fk).sin()));
+                f.transparent[MeshKind::Ring as usize].push(Instance::new(ring, color, 0.55, Vec3::ZERO, SHADE_UNLIT));
+            }
+            lit.push((pos, color * 2.2));
+        }
     }
 }

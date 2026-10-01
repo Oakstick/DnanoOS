@@ -50,6 +50,7 @@ mod select;
 mod showcase;
 mod story;
 mod vault;
+mod vault_decor;
 
 pub use animation::SLASH_SECONDS;
 use animation::{EnemyView, Pose, TURN_RATE_HERO};
@@ -140,6 +141,8 @@ pub struct SceneState<'a> {
     pub hub: Option<HubView>,
     /// The gold of the Vaults of Mammon: where each piece lies, and whether he has taken it.
     pub loot: &'a [Loot],
+    /// The items the vaults' chests have thrown out.
+    pub drops: &'a [crate::logic::vault::Drop],
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -605,16 +608,8 @@ impl WorldView {
             }
             self.update_enemy(i, e, s, dtf, time);
         }
-        // The vaults' chests stand open once taken.
-        if let Some(vv) = &mut self.vault {
-            for (i, l) in s.loot.iter().enumerate() {
-                if l.taken {
-                    if let Some(a) = vv.opened.get_mut(i) {
-                        *a += dtf;
-                    }
-                }
-            }
-        }
+        // The vaults' gold leaves the scene as it is taken; their chests stand open.
+        self.update_vault_view(s, dtf);
         for (i, d) in s.diamonds.iter().enumerate() {
             if d.active {
                 if let Some(a) = self.diamond_spin.get_mut(i) {

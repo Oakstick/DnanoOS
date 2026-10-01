@@ -51,6 +51,7 @@ macro_rules! scene_state {
             realm: $g.realm,
             hub: $g.hub.as_ref().map(|h| HubView { doors: h.doors.map(|d| d as f32), sins: $g.sins_cleared, seal: h.seal as f32 }),
             loot: $g.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
+            drops: $g.vault.as_ref().map(|v| v.drops.as_slice()).unwrap_or(&[]),
         }
     };
 }

@@ -6,7 +6,7 @@ use crate::audio::Sfx;
 use crate::logic::gear::{BELT_SLOTS, COINS_KEY, RUNES_SHRINE};
 use crate::logic::items::{ItemKind, Offer};
 use crate::logic::systems::{POINTS_CHARGE, POINTS_NODULE};
-use crate::logic::types::{PotionKind, Tile, V};
+use crate::logic::types::{PotionKind, Tile, P, V};
 use crate::logic::{gear, progression};
 use crate::render::view::floor_at;
 
@@ -123,16 +123,21 @@ impl Game {
             }
             self.potions[i].taken = true;
             let kind = self.potions[i].kind;
-            let def = self.potions[i].def(self.hero_kind);
-            self.view.spark(&self.level.grid, o.x as f64, o.y as f64, def.color);
-            // Onto the belt if there is room; an extra life (or a full belt) is drunk at once.
-            if kind != PotionKind::Life && self.belt.len() < BELT_SLOTS {
-                self.belt.push(kind);
-                self.audio.play(Sfx::Start);
-                self.floater(o.x as f64, o.y as f64, format!("{} POTION", def.name.to_uppercase()), 1.4, Some(def.color));
-            } else {
-                self.quaff(kind);
-            }
+            self.take_potion(kind, o);
+        }
+    }
+
+    /// A bottle picked up at `at`: onto the belt if there is room; an extra life (or a full belt)
+    /// is drunk at once.
+    pub(super) fn take_potion(&mut self, kind: PotionKind, at: P) {
+        let def = gear::potion(self.hero_kind, kind);
+        self.view.spark(&self.level.grid, at.x as f64, at.y as f64, def.color);
+        if kind != PotionKind::Life && self.belt.len() < BELT_SLOTS {
+            self.belt.push(kind);
+            self.audio.play(Sfx::Start);
+            self.floater(at.x as f64, at.y as f64, def.name.to_uppercase(), 1.4, Some(def.color));
+        } else {
+            self.quaff(kind);
         }
     }
 
