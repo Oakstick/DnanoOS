@@ -10,14 +10,22 @@
 //!   timing ± 2), and strikes only into openings (recovery, reeling, or a foe not winding up),
 //!   never into a swing it could not guard out of before the next strike it has seen.
 //!
+//! Against the later stages' legends (COMBAT.md §11) the adept and the expert also walk out of
+//! marks on the floor and lanes of ice (leaping when it is too late to walk), walk away from a
+//! call, step out of fire, leap a grab they cannot parry (the adept), strike Tepegöz only while
+//! his eye is in reach (the expert), and never strike a felled dragon begging for a second blow.
+//! Held, every skill strikes and strikes to struggle free. Nothing out of reach is a target.
+//!
 //! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
 //! kill and damage taken against the targets of COMBAT.md §2.1 (`gym::Bout::target`).
 
 use super::sparring::{BoutPhase, BoutStats};
 use super::Game;
 use crate::input::{Action, PadState};
+use crate::logic::combat::archetype::Power;
 use crate::logic::combat::duelist::HERO_RADIUS;
-use crate::logic::combat::frames::{BOLT_RADIUS, BOLT_SPEED};
+use crate::logic::combat::frames::{Shape, BOLT_RADIUS, BOLT_SPEED};
+use crate::logic::combat::fsm::GuardRule;
 use crate::logic::combat::Kit;
 use crate::logic::combat::{math, Phase, State};
 use crate::logic::gym;
@@ -55,12 +63,29 @@ impl Skill {
     }
 }
 
-/// A strike on its way to the hero: frames until it lands, and where it comes from.
+/// A strike on its way to the hero: frames until it lands, where it comes from, and what his
+/// guard can do about it.
 #[derive(Clone, Copy, Debug)]
 struct Threat {
     t: f64,
     from: V,
+    rule: GuardRule,
 }
+
+/// Ground he must be off before it falls (a mark, a lane of ice, fire): frames until it does,
+/// and the quickest way out.
+#[derive(Clone, Copy, Debug)]
+struct Dodge {
+    t: f64,
+    out: V,
+}
+
+/// Frames before a blow from the ground falls at which the bot leaps instead of walking.
+const LEAP_AT: f64 = 8.0;
+/// Frames ahead the bot looks to leave the ground a blow will fall on.
+const DODGE_AHEAD: f64 = 40.0;
+/// Frames before a grab the adept leaps it.
+const GRAB_LEAP: f64 = 9.0;
 
 /// Frames before impact the expert raises its guard (the hit then lands on guard frame 5 or so).
 const PARRY_LEAD: f64 = 6.0;
@@ -125,27 +150,45 @@ impl Bot {
                 let jitter = if spread == 0 { 0 } else { (self.rng.next() * (2 * spread + 1) as f64) as u16 };
                 entry.1 = base.saturating_add(jitter).saturating_sub(spread).max(1);
             }
-            let data = mv.data();
-            if frame < entry.1 || data.phase(frame) == Phase::Recovery {
+            let data = d.data(mv);
+            if frame < entry.1 || data.phase(frame) == Phase::Recovery || !data.strikes() {
                 continue;
             }
             let to = math::sub(hp, d.pos);
             let dist = math::len(to);
-            if data.projectile {
-                continue; // its bolt is watched in flight, below
+            if data.projectile || !data.parriable() {
+                continue; // its bolt is watched in flight, below; the ground's blows are dodged
             }
-            let aimed = math::dot(math::norm(to), d.aim).clamp(-1.0, 1.0).acos() <= data.half_angle + 0.35;
-            if !aimed || dist > data.reach + data.travel + HERO_RADIUS + 0.4 {
-                continue;
-            }
-            // A lunge lands once it has closed the gap.
-            let close = if data.travel > 0.0 {
-                ((dist - data.reach - HERO_RADIUS).max(0.0) / (data.travel / data.active as f64)).floor()
-            } else {
-                0.0
+            let start = (data.startup as f64 - frame as f64).max(0.0);
+            let off = math::dot(math::norm(to), d.aim).clamp(-1.0, 1.0).acos();
+            let t = match data.shape {
+                Shape::Lane { width } => {
+                    let along = math::dot(to, d.aim);
+                    let across = (dist * dist - along * along).max(0.0).sqrt();
+                    if along <= 0.0 || along > data.reach + HERO_RADIUS + 0.4 || across > width + HERO_RADIUS + 0.35 {
+                        continue;
+                    }
+                    // Its head gets to him that many frames into its active ones (less those gone).
+                    let head = ((along - HERO_RADIUS).max(0.0) / (data.reach / data.active as f64)).floor();
+                    start + (head - frame.saturating_sub(data.startup) as f64).max(0.0)
+                }
+                Shape::Quake { radius, .. } if dist <= radius + HERO_RADIUS + 0.3 => start,
+                _ => {
+                    let aimed = off <= data.half_angle + 0.35;
+                    if !aimed || dist > data.reach + data.travel + HERO_RADIUS + 0.4 {
+                        continue;
+                    }
+                    // A lunge lands once it has closed the gap.
+                    let close = if data.travel > 0.0 {
+                        ((dist - data.reach - HERO_RADIUS).max(0.0) / (data.travel / data.active as f64)).floor()
+                    } else {
+                        0.0
+                    };
+                    start + close
+                }
             };
-            let t = (data.startup as f64 - frame as f64).max(0.0) + close;
-            out.push(Threat { t, from: d.pos });
+            let rule = if data.blockable() { GuardRule::Full } else { GuardRule::ParryOnly };
+            out.push(Threat { t, from: d.pos, rule });
         }
         for b in &spar.bolts {
             if b.reflected || b.touched {
@@ -158,10 +201,90 @@ impl Bot {
             if along > 0.0 && across < BOLT_RADIUS + HERO_RADIUS + 0.1 {
                 let speed = math::len(b.vel).max(BOLT_SPEED * 0.25);
                 let t = ((along - BOLT_RADIUS - HERO_RADIUS).max(0.0) / (speed / 60.0)).floor();
-                out.push(Threat { t, from: math::sub(b.pos, b.vel) });
+                out.push(Threat { t, from: math::sub(b.pos, b.vel), rule: GuardRule::Full });
             }
         }
         out.sort_by(|a, b| a.t.total_cmp(&b.t));
+        out
+    }
+
+    /**
+     * The ground it has seen a blow is about to fall on, with him on it: marks on the floor (once
+     * its reaction has passed), a lane of ice coming down at him, Surtr's fire under his feet.
+     * The way out is straight away from a mark's middle, across a lane, off the fire.
+     */
+    fn dodges(&mut self, g: &Game) -> Vec<Dodge> {
+        let Some(spar) = g.brawl.as_ref() else { return Vec::new() };
+        let hp = g.hero.pos();
+        let now = spar.threat.frame;
+        let mut out = Vec::new();
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
+            let State::Attack { mv, frame } = d.f.state else { continue };
+            let data = d.data(mv);
+            if data.phase(frame) == Phase::Recovery || data.parriable() || !data.strikes() {
+                continue;
+            }
+            let started = now.saturating_sub(frame as u32);
+            let seen = self.noticed.get(&d.id).is_some_and(|&(at, delay)| at == started && delay > 0 && frame >= delay);
+            if !seen {
+                continue;
+            }
+            let t = (data.startup as f64 - frame as f64).max(0.0);
+            match data.shape {
+                Shape::Mark { radius, count } => {
+                    for m in &d.lore.marks[..(count as usize).min(3)] {
+                        let away = math::sub(hp, *m);
+                        if math::len(away) < radius + HERO_RADIUS + 0.35 {
+                            let out_dir = if math::len(away) < 0.05 {
+                                let a = math::norm(math::sub(hp, d.lore.from));
+                                V::new(-a.y, a.x)
+                            } else {
+                                math::norm(away)
+                            };
+                            out.push(Dodge { t, out: out_dir });
+                        }
+                    }
+                }
+                Shape::Lane { width } => {
+                    let to = math::sub(hp, d.pos);
+                    let along = math::dot(to, d.aim);
+                    let side = V::new(-d.aim.y, d.aim.x);
+                    let across = math::dot(to, side);
+                    if along > 0.0 && along < data.reach + HERO_RADIUS + 0.4 && across.abs() < width + HERO_RADIUS + 0.35 {
+                        out.push(Dodge { t, out: math::scale(side, if across >= 0.0 { 1.0 } else { -1.0 }) });
+                    }
+                }
+                _ => {}
+            }
+        }
+        for h in spar.hazards.iter().filter(|h| h.burns(hp, HERO_RADIUS + 0.1)) {
+            out.push(Dodge { t: 0.0, out: math::norm(math::sub(hp, h.pos)) });
+        }
+        for d in out.iter_mut() {
+            d.out = Self::keep_in(g, hp, d.out);
+        }
+        out.sort_by(|a, b| a.t.total_cmp(&b.t));
+        out
+    }
+
+    /// `out`, or the nearest way round from it that keeps him on the fight's floor (walking or
+    /// leaping off the ring calls the bout off).
+    fn keep_in(g: &Game, hp: V, out: V) -> V {
+        let inside = |p: V| {
+            if g.in_ring() {
+                let (lo, hi) = gym::ring_bounds();
+                p.x > lo.x + 0.8 && p.x < hi.x - 0.8 && p.y > lo.y + 0.8 && p.y < hi.y - 0.8
+            } else {
+                g.level.grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false)
+            }
+        };
+        let base = math::angle(out);
+        for k in [0.0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, std::f64::consts::PI] {
+            let dir = math::from_angle(base + k);
+            if inside(math::add(hp, math::scale(dir, 1.6))) {
+                return dir;
+            }
+        }
         out
     }
 
@@ -210,6 +333,59 @@ impl Bot {
         let hp = g.hero.pos();
         let threats = self.threats(g);
         let soonest = threats.first().copied();
+        let dodges = self.dodges(g);
+
+        // Held (pinned, or in a giant's hand): strike and strike, to struggle free.
+        if spar.ails.held.is_some() {
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+            return pad;
+        }
+        let can_leap = spar.ails.can_leap() && !g.hero.airborne();
+        let leap = |pad: &mut PadState, out: V| {
+            pad.left = (out.x as f32, out.y as f32);
+            if can_leap {
+                pad.actions.insert(Action::Jump);
+            }
+        };
+        let guard_lead = match self.skill {
+            Skill::Novice => -1.0,
+            Skill::Adept => BLOCK_LEAD,
+            Skill::Expert => self.lead,
+        };
+        let dodge = dodges.first().copied().filter(|d| self.skill != Skill::Novice && d.t <= DODGE_AHEAD);
+        if let Some(d) = dodge {
+            // A blow from the ground about to fall with him on it, and one to guard coming at the same
+            // time, or too late to walk out: the leap clears them all.
+            let both = soonest.is_some_and(|t| t.t <= guard_lead + 4.0 && d.t <= t.t + 12.0);
+            if d.t <= LEAP_AT || both {
+                leap(&mut pad, d.out);
+                self.attack_down = false;
+                return pad;
+            }
+        }
+        if self.skill != Skill::Novice && soonest.is_none_or(|t| t.t > guard_lead) {
+            // Off the ground a blow is about to fall on (the guard can wait).
+            if let Some(d) = dodge {
+                pad.left = (d.out.x as f32, d.out.y as f32);
+                self.attack_down = false;
+                return pad;
+            }
+            // Called by name: walk away against the call.
+            let caller = spar.ails.pull.and_then(|(id, _)| g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id));
+            if let Some(c) = caller {
+                let away = Self::keep_in(g, hp, math::norm(math::sub(hp, c.pos)));
+                pad.left = (away.x as f32, away.y as f32);
+                return pad;
+            }
+        }
+        // A grab no shield holds: the adept leaps it (the expert parries it below).
+        if let Some(t) = soonest.filter(|t| self.skill == Skill::Adept && t.rule == GuardRule::ParryOnly && t.t <= GRAB_LEAP) {
+            leap(&mut pad, math::norm(math::sub(hp, t.from)));
+            return pad;
+        }
 
         // Low on health, the adept and the expert drink from the belt.
         self.sip = self.sip.saturating_sub(1);
@@ -231,7 +407,7 @@ impl Bot {
             pad.left = (face.x as f32, face.y as f32);
             return pad;
         }
-        if self.guard_hold > 0 {
+        if self.guard_hold > 0 && dodge.is_none() {
             self.guard_hold -= 1;
             pad.actions.insert(Action::Block);
             if self.guard_hold == 0 {
@@ -239,10 +415,13 @@ impl Bot {
             }
             return pad;
         }
+        self.guard_hold = 0;
 
         // Offence: the most open foe (reeling, then recovering), then the nearest; in the vaults those
         // hunting him first, and when none is, the nearest pack asleep (to wake it).
-        let all: Vec<_> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).collect();
+        // (Nothing out of his reach is a target, nor a felled dragon begging to be struck again.)
+        let all: Vec<_> =
+            g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive() && !d.untouchable() && !d.begging()).collect();
         let hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
         // Between fights (or hurt), what lies near goes into the belt first: a potion, a weapon, a boon.
         let hurt = (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.6;
@@ -289,16 +468,36 @@ impl Bot {
             return pad;
         }
         let stamina = g.hero.stamina;
+        // A felled dragon in the way of the swing: a careful player holds his hand.
+        let begging_near = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .any(|d| d.begging() && math::len(math::sub(d.pos, hp)) < ENGAGE + d.radius() + 0.8);
         let swing = match self.skill {
             Skill::Novice => true,
+            _ if begging_near => false,
             // It keeps a block's worth in hand.
             Skill::Adept => stamina >= 16.0 + RESERVE,
             // Into openings only: never into a wind-up that would land on its swing.
-            // ...and never into a swing it could not guard out of before the next strike it has seen lands.
+            // ...and never into a swing it could not guard out of before the next strike it has seen lands;
+            // and Tepegöz only while his eye is in reach.
             Skill::Expert => {
                 let winding = matches!(target.f.attack(), Some((_, Phase::Startup | Phase::Active, _)));
-                let clear = soonest.is_none_or(|t| t.t > COMMIT);
-                stamina >= 16.0 && clear && (openness(target) < 2 || !winding)
+                // A press now commits it to the rest of this swing and the next one's cancel frame
+                // (from neutral, L1's); nothing it has seen may land before it can guard again, nor
+                // a blow from the ground fall before it could walk out.
+                let commit = match spar.hero.attack() {
+                    Some((mv, _, frame)) => {
+                        let d = spar.hero.data(mv);
+                        let next = d.chain.map(|c| spar.hero.data(c).cancel_frame()).unwrap_or(0);
+                        d.cancel_frame().saturating_sub(frame) as f64 + next as f64 + 2.0
+                    }
+                    None => COMMIT,
+                };
+                let clear = soonest.is_none_or(|t| t.t > commit) && dodges.first().is_none_or(|d| d.t > commit + DODGE_AHEAD * 0.5);
+                let warded = target.breed.power == Power::Ward && !target.exposed();
+                stamina >= 16.0 && clear && !warded && (openness(target) < 2 || !winding)
             }
         };
         if swing {
@@ -485,14 +684,27 @@ pub fn balance(seeds: &[u32]) -> String {
     out
 }
 
-/// The third stage's bouts (COMBAT.md §10) with every skill, and Ragnar's kit at each tier of
-/// `tiers` (1: a fresh Ragnar, as in `balance`).
-pub fn stage_three(seeds: &[u32], tiers: &[u8]) -> String {
+/// The kit tiers a stage's report plays: two below its bouts' own tier, theirs, and three above
+/// (within 1 to 10); the third stage's are 1, 4 and 7.
+pub fn stage_tiers(stage: u8) -> Vec<u8> {
+    if stage <= 3 {
+        return vec![1, 4, 7];
+    }
+    let tier = gym::bouts_of(stage).next().map(|k| gym::BOUTS[k].tier).unwrap_or(1);
+    let mut tiers = vec![tier.saturating_sub(2).max(1), tier, (tier + 3).min(progression::TIERS)];
+    tiers.dedup();
+    tiers
+}
+
+/// A stage's bouts (COMBAT.md §10, §11) with every skill, and Ragnar's kit at each tier of `tiers`
+/// (1: a fresh Ragnar, as in `balance`).
+pub fn stage_report(seeds: &[u32], stage: u8, tiers: &[u8]) -> String {
     let mut out = String::from(
         "bout                 tier  skill   win   ttk(s)  target    taken  hurt  parry block overlaps
 ",
     );
-    for (k, b) in gym::BOUTS.iter().enumerate().skip(gym::STAGE_THREE_BOUT) {
+    for k in gym::bouts_of(stage) {
+        let b = &gym::BOUTS[k];
         for &tier in tiers {
             let loadout = (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier));
             for skill in Skill::ALL {

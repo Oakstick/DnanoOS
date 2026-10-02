@@ -396,11 +396,8 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     let mut g = Game::new();
     g.map_jump(save::Stage::Gym);
     let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
-    assert_eq!(
-        kinds,
-        [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice(), EnemyKind::STAGE_THREE.as_slice()].concat(),
-        "one of every foe, stage by stage, in the gym"
-    );
+    let every: Vec<EnemyKind> = (1..=EnemyKind::STAGES).flat_map(|s| EnemyKind::of_stage(s).iter().copied()).collect();
+    assert_eq!(kinds, every, "one of every foe, stage by stage, in the gym");
     assert_eq!(g.hero.occupied(), gym::arrival());
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Gym));
     g.enter(Screen::Playing);

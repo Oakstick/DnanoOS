@@ -521,7 +521,7 @@ mod tests {
         }
         if slam {
             d.token = true;
-            assert!(d.begin(crate::logic::combat::MoveId::Slam));
+            assert!(d.begin(crate::logic::combat::MoveId::Slam, hp));
         }
         g
     }

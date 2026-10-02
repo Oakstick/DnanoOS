@@ -7,12 +7,18 @@ pub mod characters;
 pub mod foes;
 pub mod foes2;
 pub mod foes3;
+pub mod foes4;
+pub mod foes5;
+pub mod foes6;
+pub mod foes7;
 pub mod foliage;
 pub mod gpu;
 pub mod heroes;
 pub mod hud;
 pub mod icons;
 pub mod overlay;
+#[cfg(test)]
+pub mod preview;
 pub mod props;
 pub mod view;
 pub mod voxels;

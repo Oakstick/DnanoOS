@@ -47,6 +47,11 @@ pub(super) struct EnemyView {
     pub(super) light_color: Vec3,
     pub(super) light_intensity: f32,
     pub(super) scatter: Option<Vec<(Vec3, Vec3)>>,
+    /// How far the rokurokubi's head has flown out on her neck this frame (world units; 0 at rest):
+    /// the neck is drawn as a chain out to it.
+    pub(super) neck: f32,
+    /// Tepegöz's eye, lit (0 to 1) while it is within reach.
+    pub(super) eye: f32,
 }
 
 impl WorldView {
@@ -69,10 +74,28 @@ impl WorldView {
             EnemyKind::Blemmyes => (RigId::Blemmyes, 0.0),
             EnemyKind::LargeBat => (RigId::LargeBat, 0.6),
             EnemyKind::Tengu => (RigId::Tengu, 0.0),
-            EnemyKind::Oni => (RigId::Oni, 0.0),
+            EnemyKind::Rasetsu => (RigId::Rasetsu, 0.0),
             EnemyKind::DireWolf => (RigId::DireWolf, 0.0),
             EnemyKind::Jorogumo => (RigId::Jorogumo, 0.0),
             EnemyKind::Cobra => (RigId::Cobra, 0.0),
+            EnemyKind::Kappa => (RigId::Kappa, 0.0),
+            EnemyKind::Rokurokubi => (RigId::Rokurokubi, 0.0),
+            EnemyKind::Kitsune => (RigId::Kitsune, 0.0),
+            EnemyKind::Oni => (RigId::Oni, 0.0),
+            EnemyKind::Tulukus => (RigId::Tulukus, 0.0),
+            EnemyKind::Albasti => (RigId::Albasti, 0.0),
+            EnemyKind::Cin => (RigId::Cin, 0.0),
+            EnemyKind::Arcura => (RigId::Arcura, 0.0),
+            EnemyKind::Karakoncolos => (RigId::Karakoncolos, 0.0),
+            EnemyKind::FrostGiant => (RigId::FrostGiant, 0.0),
+            EnemyKind::Surtr => (RigId::Surtr, 0.0),
+            EnemyKind::Nidhogg => (RigId::Nidhogg, 0.0),
+            EnemyKind::Hel => (RigId::Hel, 0.0),
+            EnemyKind::Tepegoz => (RigId::Tepegoz, 0.0),
+            EnemyKind::Gashadokuro => (RigId::Gashadokuro, 0.0),
+            EnemyKind::Ejder => (RigId::Ejder, 0.0),
+            // (The ghost floats.)
+            EnemyKind::Goryo => (RigId::Goryo, 0.12),
         };
         let pose = Pose::rest(self.models.rig(rig));
         let base = lin(e.b.color);
@@ -93,6 +116,8 @@ impl WorldView {
             light_color: base,
             light_intensity: 0.0,
             scatter: None,
+            neck: 0.0,
+            eye: 0.0,
         });
     }
 
@@ -279,14 +304,38 @@ impl WorldView {
             None => (e.m.dir != Dir::None && e.mode() != EnemyMode::Nest, e.m.speed as f32),
         };
         if moving {
-            v.phase += dt * pace * 2.2;
+            // (A giant's legs are long: it steps slower for the same pace.)
+            let cadence = if crate::logic::combat::Breed::of(v.kind).radius > 0.7 { 0.55 } else { 1.0 };
+            v.phase += dt * pace * 2.2 * cadence;
         }
         match v.kind {
-            EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Witch | EnemyKind::Blemmyes | EnemyKind::Tengu | EnemyKind::Oni => {
-                // A walk: the blemmyes and the oni lumber, the witch and the tengu stride, the skeletons stalk.
+            EnemyKind::Skeleton
+            | EnemyKind::Helmeted
+            | EnemyKind::Witch
+            | EnemyKind::Blemmyes
+            | EnemyKind::Tengu
+            | EnemyKind::Rasetsu
+            | EnemyKind::Oni
+            | EnemyKind::Kappa
+            | EnemyKind::Karakoncolos
+            | EnemyKind::Albasti
+            | EnemyKind::Cin
+            | EnemyKind::Arcura
+            | EnemyKind::Tepegoz
+            | EnemyKind::Gashadokuro
+            | EnemyKind::FrostGiant
+            | EnemyKind::Surtr
+            | EnemyKind::Hel => {
+                // A walk: the blemmyes, the rasetsu and the oni lumber, the witch and the tengu stride,
+                // the kappa waddles, the skeletons stalk.
                 let (stride, swing) = match v.kind {
-                    EnemyKind::Blemmyes | EnemyKind::Oni => (0.6, 0.35),
-                    EnemyKind::Witch | EnemyKind::Tengu => (0.7, 0.3),
+                    EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Oni | EnemyKind::Karakoncolos => (0.6, 0.35),
+                    EnemyKind::Tepegoz | EnemyKind::Gashadokuro | EnemyKind::FrostGiant | EnemyKind::Surtr => (0.5, 0.3),
+                    EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
+                    EnemyKind::Albasti => (0.6, 0.22),
+                    // (Under a long robe: small steps.)
+                    EnemyKind::Cin | EnemyKind::Hel | EnemyKind::Goryo => (0.25, 0.15),
+                    EnemyKind::Kappa => (0.5, 0.2),
                     _ => (0.85, 0.5),
                 };
                 let s = v.phase.sin();
@@ -295,10 +344,70 @@ impl WorldView {
                 v.pose.rot_x(rig, "leftArm", -s * swing);
                 v.pose.rot_x(rig, "rightArm", s * swing);
                 v.pose.rot_x(rig, "head", (v.phase * 2.0).sin() * 0.1);
-                v.root_rot.z = v.phase.sin() * if matches!(v.kind, EnemyKind::Blemmyes | EnemyKind::Oni) { 0.1 } else { 0.06 };
+                v.root_rot.z = v.phase.sin()
+                    * match v.kind {
+                        EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Oni => 0.1,
+                        EnemyKind::Kappa => 0.14,
+                        _ => 0.06,
+                    };
                 if let Some(k) = rig.index("tail") {
                     v.pose.rot[k].y = (time * 2.6 + i as f32).sin() * 0.3;
                 }
+                // The water in the kappa's dish goes with its head; the gashadokuro's jaw too, hanging
+                // open and rattling.
+                follow(rig, &mut v.pose, "head", "water");
+                follow(rig, &mut v.pose, "head", "jaw");
+                if let Some(j) = rig.index("jaw") {
+                    v.pose.rot[j].x += 0.14 + (time * 7.0 + i as f32).sin().abs() * 0.08;
+                }
+            }
+            EnemyKind::Goryo => {
+                // It floats, bobbing; its sleeves drift, its head tilts.
+                let t = time * 1.2 + i as f32;
+                v.group_pos.y += t.sin() * 0.05;
+                v.pose.rot_x(rig, "leftArm", (t * 0.8).sin() * 0.08 - 0.05);
+                v.pose.rot_x(rig, "rightArm", (t * 0.8 + 1.3).sin() * 0.08 - 0.05);
+                v.pose.rot_x(rig, "head", (t * 0.6).sin() * 0.05);
+                v.root_rot.z = (t * 0.5).sin() * 0.04;
+                v.root_rot.x = if moving { 0.12 } else { 0.0 };
+            }
+            EnemyKind::Ejder => {
+                // Seven necks weaving out of time with one another; the legs plod; the tail sweeps.
+                let t = time * 1.3 + i as f32;
+                for k in 0..7 {
+                    if let Some(n) = rig.index(EJDER_NECKS[k]) {
+                        let p = t + k as f32 * 0.9;
+                        v.pose.rot[n] = Vec3::new(p.sin() * 0.08, 0.0, (p * 0.7).sin() * 0.06);
+                    }
+                }
+                let s = v.phase.sin();
+                let step = if moving { 0.4 } else { 0.0 };
+                v.pose.rot_x(rig, "frontLeftLeg", s * step);
+                v.pose.rot_x(rig, "backRightLeg", s * step);
+                v.pose.rot_x(rig, "frontRightLeg", -s * step);
+                v.pose.rot_x(rig, "backLeftLeg", -s * step);
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 1.6 + i as f32).sin() * 0.25;
+                }
+                v.root_rot.z = if moving { s * 0.04 } else { 0.0 };
+            }
+            EnemyKind::Rokurokubi => {
+                // She kneels still; her long neck weaves, her head turning on it.
+                let t = time * 1.1 + i as f32;
+                for name in ["neck", "head"] {
+                    if let Some(k) = rig.index(name) {
+                        v.pose.pos[k] = rig.parts[k].rest;
+                    }
+                }
+                if let Some(k) = rig.index("neck") {
+                    v.pose.rot[k] = Vec3::new((t * 0.7).sin() * 0.04, 0.0, t.sin() * 0.06);
+                }
+                if let Some(k) = rig.index("head") {
+                    v.pose.rot[k] = Vec3::new((t * 0.5).sin() * 0.06, (t * 0.8).sin() * 0.15, -t.sin() * 0.08);
+                }
+                v.pose.rot_x(rig, "leftArm", (time * 0.9).sin() * 0.04);
+                v.pose.rot_x(rig, "rightArm", (time * 0.9 + 1.0).sin() * 0.04);
+                v.root_rot.z = if moving { (v.phase * 2.0).sin() * 0.04 } else { 0.0 };
             }
             EnemyKind::Minion => {
                 // Scurries in hops, its hat bobbing.
@@ -310,7 +419,7 @@ impl WorldView {
                     v.group_pos.y += hop.max(0.0) * 0.12;
                 }
             }
-            EnemyKind::Werewolf | EnemyKind::DireWolf => {
+            EnemyKind::Werewolf | EnemyKind::DireWolf | EnemyKind::Kitsune => {
                 // A gallop: the front legs together, the back legs half a beat behind, the head low, the tail streaming.
                 let t = v.phase * 1.2;
                 let (front, back) = (t.sin(), (t - 1.2).sin());
@@ -326,6 +435,21 @@ impl WorldView {
                 if moving {
                     v.group_pos.y += front.max(0.0) * 0.08;
                 }
+            }
+            EnemyKind::Tulukus => {
+                // The owl stands and stalks on its talons, wings folded, its head turning on its neck.
+                let t = if moving { v.phase * 1.4 } else { time * 0.8 + i as f32 };
+                v.pose.rot_x(rig, "leftLeg", if moving { t.sin() * 0.45 } else { 0.0 });
+                v.pose.rot_x(rig, "rightLeg", if moving { -t.sin() * 0.45 } else { 0.0 });
+                if let Some(h) = rig.index("head") {
+                    v.pose.rot[h] = Vec3::new(0.0, (time * 0.5 + i as f32).sin() * 0.6, 0.0);
+                }
+                for (name, side) in [("leftWing", -1.0f32), ("rightWing", 1.0)] {
+                    if let Some(w) = rig.index(name) {
+                        v.pose.rot[w] = Vec3::new(0.0, 0.0, side * (time * 2.0 + i as f32).sin().max(0.0) * 0.05);
+                    }
+                }
+                v.root_rot.z = if moving { t.sin() * 0.08 } else { 0.0 };
             }
             EnemyKind::Bat | EnemyKind::Vampire | EnemyKind::LargeBat => {
                 let beat = time * if v.kind == EnemyKind::LargeBat { 9.0 } else { 15.0 } + i as f32 * 2.0;
@@ -359,6 +483,25 @@ impl WorldView {
                 if moving {
                     v.group_pos.y += (t * 2.0).sin().abs() * 0.015;
                 }
+            }
+            EnemyKind::Nidhogg => {
+                // The dragon sways on its coil, its neck weaving, its head riding on it; its tail lashes.
+                let t = if moving { v.phase * 1.1 } else { time * 1.1 + i as f32 };
+                if let Some(k) = rig.index("neck") {
+                    v.pose.rot[k] = Vec3::new((t * 0.5).sin() * 0.04, 0.0, t.sin() * if moving { 0.1 } else { 0.06 });
+                }
+                if let Some(k) = rig.index("head") {
+                    v.pose.pos[k] = rig.parts[k].rest;
+                }
+                follow(rig, &mut v.pose, "neck", "head");
+                if let Some(k) = rig.index("head") {
+                    v.pose.rot[k] += Vec3::new((t * 0.7).sin() * 0.06, 0.0, -t.sin() * 0.05);
+                }
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 2.0 + i as f32).sin() * 0.3;
+                }
+                v.root_rot.x = 0.0;
+                v.root_rot.y = if moving { (t * 0.8).sin() * 0.1 } else { 0.0 };
             }
             EnemyKind::Cobra => {
                 // It sways where it stands, hood and head weaving; moving, it slides from side to side.
@@ -438,3 +581,15 @@ impl WorldView {
         }
     }
 }
+
+/// `child` (a part sculpted apart from `parent` but riding on it: the water in the kappa's dish)
+/// turned with `parent` about `parent`'s joint.
+pub(super) fn follow(rig: &Rig, pose: &mut Pose, parent: &str, child: &str) {
+    let (Some(p), Some(c)) = (rig.index(parent), rig.index(child)) else { return };
+    let r = Quat::from_euler(EulerRot::XYZ, pose.rot[p].x, pose.rot[p].y, pose.rot[p].z);
+    pose.pos[c] = pose.pos[p] + r * (rig.parts[c].rest - rig.parts[p].rest);
+    pose.rot[c] = pose.rot[p];
+}
+
+/// The seven-headed dragon's necks, left to right.
+pub(super) const EJDER_NECKS: [&str; 7] = ["neck0", "neck1", "neck2", "neck3", "neck4", "neck5", "neck6"];

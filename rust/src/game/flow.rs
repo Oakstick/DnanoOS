@@ -53,6 +53,9 @@ macro_rules! scene_state {
             loot: $g.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
             drops: $g.vault.as_ref().map(|v| v.drops.as_slice()).unwrap_or(&[]),
             bolts: $g.brawl.as_ref().map(|b| b.bolts.as_slice()).unwrap_or(&[]),
+            hazards: $g.brawl.as_ref().map(|b| b.hazards.as_slice()).unwrap_or(&[]),
+            flashes: $g.brawl.as_ref().map(|b| b.flashes.as_slice()).unwrap_or(&[]),
+            ails: $g.brawl.as_ref().filter(|_| $g.brawling()).map(|b| b.ails).unwrap_or_default(),
         }
     };
 }
@@ -318,6 +321,9 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::NextBout]) && self.screen == Screen::Playing {
             self.next_bout();
+        }
+        if self.input.was_pressed(&[Action::NextStageBout]) && self.screen == Screen::Playing {
+            self.next_stage_bout();
         }
         if self.input.was_pressed(&[Action::KeyCheat]) && self.screen == Screen::Playing {
             self.cheat_to_gate();

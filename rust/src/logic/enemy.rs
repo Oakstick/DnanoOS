@@ -7,7 +7,8 @@ use super::rng::Rng;
 use super::types::{dist_sq, manhattan, Dir, Tile, CARDINALS, P, V};
 
 /// The foes, stage by stage: the first four haunt the Garden of Krampus, the next six the seven
-/// realms, and the last five are the third stage's (in the gym for now).
+/// realms; the third stage's five and the seventeen of stages four to seven (Japan's yōkai,
+/// Anatolia's night spirits, the legends, Ragnarök) train in the gym for now.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum EnemyKind {
     Skeleton,
@@ -28,14 +29,53 @@ pub enum EnemyKind {
     LargeBat,
     /// The tengu: a mountain goblin with a katana, quick on his feet.
     Tengu,
-    /// The oni: a horned red demon with a curved blade in each fist.
-    Oni,
+    /// The rasetsu: a horned red man-eater with a curved blade in each fist.
+    Rasetsu,
     /// The dire wolf: bigger than the loup-garou; it throws its whole body at you.
     DireWolf,
     /// The jorogumo: a spider-woman who hurls fire from afar.
     Jorogumo,
     /// The cobra: coiled, it rears and strikes.
     Cobra,
+    // ---- the fourth stage: the yōkai
+    /// The kappa: a river imp with a dish of water on its head; it charges like a sumo wrestler,
+    /// and bows back (spilling its dish, and its strength) when it is bowed to.
+    Kappa,
+    /// The rokurokubi: a woman whose neck stretches across the room, her head striking from afar.
+    Rokurokubi,
+    /// The kitsune: an evil fox that throws foxfire and hides among its illusions.
+    Kitsune,
+    /// The oni: a red ogre with an iron club that shakes the ground.
+    Oni,
+    // ---- the fifth stage: Anatolian nights
+    /// The tülükuş: an owl demon that dives without a sound; its hoot foretells a death.
+    Tulukus,
+    /// The albastı: a night hag who pounces and pins her prey like a nightmare on the chest.
+    Albasti,
+    /// The cin: a spirit of smokeless fire that strikes men dumb, and vanishes at will.
+    Cin,
+    /// The arçura: a forest spirit that makes roots burst from the ground, and changes its size.
+    Arcura,
+    /// The karakoncolos: a winter demon that calls its prey by name, then strikes.
+    Karakoncolos,
+    // ---- the sixth stage: the legends
+    /// Tepegöz: the one-eyed giant whose body no blade can cut; only his eye can be hurt.
+    Tepegoz,
+    /// The gashadokuro: a giant skeleton of the starved, heard before it is seen; it grabs.
+    Gashadokuro,
+    /// The yedi başlı ejder: a seven-headed dragon; struck down, it begs for a second blow.
+    Ejder,
+    /// The goryō: a wronged noble's ghost that calls down lightning, untouchable but in its wrath.
+    Goryo,
+    // ---- the seventh stage: Ragnarök
+    /// The frost giant: its blows chill; chilled twice, a man freezes solid.
+    FrostGiant,
+    /// Surtr: the fire giant whose flaming sword leaves the ground burning.
+    Surtr,
+    /// Níðhöggr: the dragon under the roots of the world; it burrows, and its bite is venom.
+    Nidhogg,
+    /// Hel: the half-dead queen of the dead; her bolts drain life, and she raises the dead.
+    Hel,
 }
 
 impl EnemyKind {
@@ -43,26 +83,32 @@ impl EnemyKind {
     pub const STAGE_TWO: [EnemyKind; 6] =
         [EnemyKind::Helmeted, EnemyKind::LargeBat, EnemyKind::Witch, EnemyKind::Minion, EnemyKind::Werewolf, EnemyKind::Blemmyes];
 
-    pub const STAGE_THREE: [EnemyKind; 5] = [EnemyKind::Tengu, EnemyKind::Oni, EnemyKind::DireWolf, EnemyKind::Jorogumo, EnemyKind::Cobra];
+    pub const STAGE_THREE: [EnemyKind; 5] =
+        [EnemyKind::Tengu, EnemyKind::Rasetsu, EnemyKind::DireWolf, EnemyKind::Jorogumo, EnemyKind::Cobra];
+    pub const STAGE_FOUR: [EnemyKind; 4] = [EnemyKind::Oni, EnemyKind::Kappa, EnemyKind::Rokurokubi, EnemyKind::Kitsune];
+    pub const STAGE_FIVE: [EnemyKind; 5] =
+        [EnemyKind::Karakoncolos, EnemyKind::Tulukus, EnemyKind::Albasti, EnemyKind::Cin, EnemyKind::Arcura];
+    pub const STAGE_SIX: [EnemyKind; 4] = [EnemyKind::Tepegoz, EnemyKind::Gashadokuro, EnemyKind::Ejder, EnemyKind::Goryo];
+    pub const STAGE_SEVEN: [EnemyKind; 4] = [EnemyKind::FrostGiant, EnemyKind::Surtr, EnemyKind::Nidhogg, EnemyKind::Hel];
+    /// The last stage.
+    pub const STAGES: u8 = 7;
 
-    /// The cast of a stage: 1 for the Garden, 2 for the realms, 3 for the stage after them.
+    /// The cast of a stage: 1 for the Garden, 2 for the realms, 3 to 7 for the stages after them.
     pub fn of_stage(stage: u8) -> &'static [EnemyKind] {
         match stage {
             0 | 1 => &Self::STAGE_ONE,
             2 => &Self::STAGE_TWO,
-            _ => &Self::STAGE_THREE,
+            3 => &Self::STAGE_THREE,
+            4 => &Self::STAGE_FOUR,
+            5 => &Self::STAGE_FIVE,
+            6 => &Self::STAGE_SIX,
+            _ => &Self::STAGE_SEVEN,
         }
     }
 
     /// The stage it belongs to.
     pub fn stage(self) -> u8 {
-        if Self::STAGE_ONE.contains(&self) {
-            1
-        } else if Self::STAGE_TWO.contains(&self) {
-            2
-        } else {
-            3
-        }
+        (1..Self::STAGES).find(|&s| Self::of_stage(s).contains(&self)).unwrap_or(Self::STAGES)
     }
 
     /// Flies over pits and ledges.
@@ -77,8 +123,11 @@ impl EnemyKind {
 
     /// Blows of the hero's it takes to fell.
     pub fn toughness(self) -> u8 {
+        if self.stage() >= 4 {
+            return 3;
+        }
         match self {
-            EnemyKind::Blemmyes | EnemyKind::Oni => 3,
+            EnemyKind::Blemmyes | EnemyKind::Rasetsu => 3,
             EnemyKind::Witch
             | EnemyKind::Helmeted
             | EnemyKind::Werewolf
@@ -93,7 +142,9 @@ impl EnemyKind {
     /// How many ordinary bites its touch is worth.
     pub fn bite(self) -> i32 {
         match self {
-            EnemyKind::Blemmyes | EnemyKind::Oni | EnemyKind::Cobra => 2,
+            EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Cobra => 2,
+            _ if self.stage() >= 6 => 3,
+            _ if self.stage() >= 4 => 2,
             _ => 1,
         }
     }
@@ -676,16 +727,34 @@ impl Brain {
             | EnemyKind::Werewolf
             | EnemyKind::Blemmyes
             | EnemyKind::Tengu
-            | EnemyKind::Oni
+            | EnemyKind::Rasetsu
             | EnemyKind::DireWolf
-            | EnemyKind::Cobra => hp,
+            | EnemyKind::Cobra
+            | EnemyKind::Kappa
+            | EnemyKind::Rokurokubi
+            | EnemyKind::Oni
+            | EnemyKind::Tulukus
+            | EnemyKind::Albasti
+            | EnemyKind::Karakoncolos
+            | EnemyKind::Tepegoz
+            | EnemyKind::Gashadokuro
+            | EnemyKind::Ejder
+            | EnemyKind::FrostGiant
+            | EnemyKind::Surtr
+            | EnemyKind::Nidhogg => hp,
             // Swoops at where he is heading, but short of it, and swerves on the way.
             EnemyKind::LargeBat => {
                 let v = ctx.hero.dir.vecf();
                 V::new(hp.x + v.x * 3.0, hp.y + v.y * 3.0)
             }
             // Keeps her distance: comes on when far, backs off to her corner when close.
-            EnemyKind::Witch | EnemyKind::Jorogumo => {
+            EnemyKind::Witch
+            | EnemyKind::Jorogumo
+            | EnemyKind::Kitsune
+            | EnemyKind::Cin
+            | EnemyKind::Arcura
+            | EnemyKind::Goryo
+            | EnemyKind::Hel => {
                 if manhattan(own_pos, hp) > 7.0 {
                     hp
                 } else {
@@ -716,13 +785,16 @@ impl Brain {
     }
 }
 
-/// The foes of a stage: the Garden's four, the realms' six, or the third stage's five.
+/// The foes of a stage: the Garden's four, the realms' six, the third stage's five, or a later one's.
 pub fn enemy_specs(grid: &Grid, stage: u8) -> Vec<EnemySpec> {
     if stage <= 1 {
         return default_enemy_specs(grid);
     }
-    if stage >= 3 {
+    if stage == 3 {
         return third_stage_specs(grid);
+    }
+    if stage >= 4 {
+        return later_stage_specs(grid, stage);
     }
     let w = grid.width - 1;
     let h = grid.height - 1;
@@ -832,8 +904,8 @@ pub fn third_stage_specs(grid: &Grid) -> Vec<EnemySpec> {
             speed_factor: 1.15,
         },
         EnemySpec {
-            kind: EnemyKind::Oni,
-            name: "Oni".into(),
+            kind: EnemyKind::Rasetsu,
+            name: "Rasetsu".into(),
             color: 0xd0402e,
             scatter_target: P::new(2, 0),
             exit_delay: 2.0,
@@ -864,6 +936,48 @@ pub fn third_stage_specs(grid: &Grid) -> Vec<EnemySpec> {
             speed_factor: 0.85,
         },
     ]
+}
+
+/// The foes of stages four to seven: each kind's name, colour and pace (their scatter corners and
+/// exits in turn, as the earlier casts have theirs).
+pub fn later_stage_specs(grid: &Grid, stage: u8) -> Vec<EnemySpec> {
+    let w = grid.width - 1;
+    let h = grid.height - 1;
+    let corners = [P::new(w - 2, 0), P::new(2, 0), P::new(w, h), P::new(0, h), P::new(w, h / 2)];
+    EnemyKind::of_stage(stage)
+        .iter()
+        .enumerate()
+        .map(|(i, &kind)| {
+            let (name, color, speed_factor) = match kind {
+                EnemyKind::Oni => ("Oni", 0xd8402c, 0.8),
+                EnemyKind::Kappa => ("Kappa", 0x5ab07a, 1.1),
+                EnemyKind::Rokurokubi => ("Rokurokubi", 0xe8d8e8, 0.85),
+                EnemyKind::Kitsune => ("Kitsune", 0xff8a3a, 1.25),
+                EnemyKind::Karakoncolos => ("Karakoncolos", 0x8ec8ff, 0.95),
+                EnemyKind::Tulukus => ("Tülükuş", 0xd09a5a, 1.2),
+                EnemyKind::Albasti => ("Albastı", 0xc0283a, 1.1),
+                EnemyKind::Cin => ("Cin", 0xffe6a0, 0.95),
+                EnemyKind::Arcura => ("Arçura", 0x6ad050, 0.9),
+                EnemyKind::Tepegoz => ("Tepegöz", 0xe8a070, 0.75),
+                EnemyKind::Gashadokuro => ("Gashadokuro", 0xdcd8b8, 0.75),
+                EnemyKind::Ejder => ("Yedi Başlı Ejder", 0x7ac04a, 0.8),
+                EnemyKind::Goryo => ("Goryō", 0x8ab0ff, 0.95),
+                EnemyKind::FrostGiant => ("Frost Giant", 0xa8dcff, 0.75),
+                EnemyKind::Surtr => ("Surtr", 0xff6a1a, 0.75),
+                EnemyKind::Nidhogg => ("Nidhogg", 0x8ad04a, 0.85),
+                EnemyKind::Hel => ("Hel", 0x7aa0e8, 0.9),
+                _ => unreachable!("an earlier stage's kind"),
+            };
+            EnemySpec {
+                kind,
+                name: name.into(),
+                color,
+                scatter_target: corners[i % corners.len()],
+                exit_delay: i as f64 * 2.0,
+                speed_factor,
+            }
+        })
+        .collect()
 }
 
 /// The spec of any kind, from its stage's.

@@ -65,7 +65,36 @@ fn main() {
         let n: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(3);
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
         let seeds: Vec<u32> = (1..=n).collect();
-        print!("{}", void_harvest::game::bot::stage_three(&seeds, &[1, 4, 7]));
+        print!("{}", void_harvest::game::bot::stage_report(&seeds, 3, &[1, 4, 7]));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--bout") {
+        // One bout, for a closer look: `--bout K SKILL TIER SEED` (K from 1, skill 0 novice, 1 adept,
+        // 2 expert); with VH_TRACE set, every blow and wound on the hero is printed as it comes.
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (k, skill, tier, seed) = (num(1, 1) as usize, num(2, 2), num(3, 1) as u8, num(4, 1));
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        let kit = (tier > 1).then(|| void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, tier));
+        let r = void_harvest::game::bot::play_bout_as(k.saturating_sub(1), skill, seed, kit);
+        println!(
+            "{} {skill:?} tier {tier} seed {seed}: won {} in {:.1} s, {:?}",
+            void_harvest::logic::gym::BOUTS[k.saturating_sub(1)].name,
+            r.won,
+            r.secs,
+            r.stats
+        );
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--stage") {
+        // COMBAT.md §11: stage S's bouts, every bot skill, Ragnar's kit at three tiers about the
+        // bouts' own, N seeds: `--stage S N`.
+        let stage: u8 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(4);
+        let n: u32 = args.get(i + 2).and_then(|s| s.parse().ok()).unwrap_or(3);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let seeds: Vec<u32> = (1..=n).collect();
+        let tiers = void_harvest::game::bot::stage_tiers(stage);
+        print!("{}", void_harvest::game::bot::stage_report(&seeds, stage, &tiers));
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--balance") {

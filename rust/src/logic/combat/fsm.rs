@@ -123,6 +123,15 @@ pub struct Received {
     pub effect: Effect,
 }
 
+/// What the guard can do against a blow: block it or parry it (most), only parry it (a grab:
+/// no shield holds it), or nothing at all (what bursts from the floor or falls from the sky).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GuardRule {
+    Full,
+    ParryOnly,
+    Bare,
+}
+
 /// How the hero met a blow that reached him.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Defense {
@@ -472,9 +481,10 @@ impl Fighter {
     /**
      * A blow reached the hero: in the air it passes under him, in his mercy frames it does nothing; on a raised
      * guard from the front it is parried (the window), blocked (if he has the `stamina` for its
-     * `cost`), or it breaks the guard. Otherwise he is open, and the owner applies the hit.
+     * `cost`), or it breaks the guard, as far as `rule` lets the guard count. Otherwise he is
+     * open, and the owner applies the hit.
      */
-    pub fn defend(&mut self, airborne: bool, from_front: bool, stamina: f64, cost: f64) -> Defense {
+    pub fn defend(&mut self, airborne: bool, from_front: bool, stamina: f64, cost: f64, rule: GuardRule) -> Defense {
         if airborne {
             return Defense::Evaded;
         }
@@ -482,11 +492,14 @@ impl Fighter {
             return Defense::Immune;
         }
         let State::Guard { frame } = self.state else { return Defense::Open };
-        if frame < GUARD_RAISE || !from_front {
+        if frame < GUARD_RAISE || !from_front || rule == GuardRule::Bare {
             return Defense::Open;
         }
         if frame <= self.parry_to {
             return Defense::Parried;
+        }
+        if rule == GuardRule::ParryOnly {
+            return Defense::Open;
         }
         if stamina + 1e-9 >= cost {
             let stun = math::blockstun(cost);
@@ -685,20 +698,20 @@ mod tests {
         let mut f = Fighter::hero();
         f.guard_held = true;
         f.step();
-        assert_eq!(f.defend(false, true, 100.0, 15.0), Defense::Open, "still rising on frame 0");
+        assert_eq!(f.defend(false, true, 100.0, 15.0, GuardRule::Full), Defense::Open, "still rising on frame 0");
         f.step();
         f.step();
-        assert_eq!(f.defend(false, true, 100.0, 15.0), Defense::Parried);
-        assert_eq!(f.defend(false, false, 100.0, 15.0), Defense::Open, "nothing from behind");
+        assert_eq!(f.defend(false, true, 100.0, 15.0, GuardRule::Full), Defense::Parried);
+        assert_eq!(f.defend(false, false, 100.0, 15.0, GuardRule::Full), Defense::Open, "nothing from behind");
         for _ in 0..8 {
             f.step();
         }
-        assert_eq!(f.defend(false, true, 100.0, 15.0), Defense::Blocked);
+        assert_eq!(f.defend(false, true, 100.0, 15.0, GuardRule::Full), Defense::Blocked);
         for _ in 0..30 {
             f.step();
         }
         assert!(matches!(f.state, State::Guard { frame } if frame > PARRY_TO), "the guard stays up, past its window");
-        assert_eq!(f.defend(false, true, 5.0, 15.0), Defense::GuardBroken);
+        assert_eq!(f.defend(false, true, 5.0, 15.0, GuardRule::Full), Defense::GuardBroken);
         assert!(f.vulnerable());
         // Lowered, it cannot be raised again at once.
         let mut f = Fighter::hero();
@@ -713,7 +726,7 @@ mod tests {
         }
         f.step();
         assert_eq!(f.state, State::Guard { frame: 0 });
-        assert_eq!(f.defend(true, true, 0.0, 99.0), Defense::Evaded, "in the air nothing reaches him");
+        assert_eq!(f.defend(true, true, 0.0, 99.0, GuardRule::Full), Defense::Evaded, "in the air nothing reaches him");
     }
 
     #[test]

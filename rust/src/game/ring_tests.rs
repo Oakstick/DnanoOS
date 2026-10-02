@@ -4,9 +4,10 @@
 
 use super::sparring::{BoutPhase, AFTERMATH, COUNTDOWN};
 use super::*;
+use crate::logic::combat::duelist::{PLEA_FRAMES, SPILL_FRAMES, WARD_SHARE};
 use crate::logic::combat::fsm::Reel;
 use crate::logic::combat::threat::CAPACITY;
-use crate::logic::combat::MoveId;
+use crate::logic::combat::{Breed, Duelist, MoveId};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::gym;
 use crate::logic::types::{Dir, V};
@@ -80,9 +81,10 @@ fn strike(g: &mut Game, mv: MoveId) {
     if let Some(b) = g.brawl.as_mut() {
         b.live = true;
     }
+    let hp = g.hero.pos();
     let d = duel_mut(g, 0);
     d.token = true;
-    assert!(d.begin(mv));
+    assert!(d.begin(mv, hp));
 }
 
 #[test]
@@ -239,15 +241,18 @@ fn the_gauntlet_never_lands_two_strikes_inside_the_reaction_window() {
 }
 
 /// The balance targets of COMBAT.md phase 2, played by the bots over three seeds: the expert wins
-/// every bout inside its target time, a novice cannot beat the Brute or the Gauntlet, an adept
-/// beats the Brute, and no strikes overlap for a player who stands his ground.
+/// every bout inside its target time (with the kit of the bout's tier), a novice cannot beat the
+/// Brute or the Gauntlet, an adept beats the Brute, and no strikes overlap for a player who stands
+/// his ground.
 #[test]
 fn the_bouts_meet_their_balance_targets() {
-    use super::bot::{summarize, Skill};
+    use super::bot::{summarize, summarize_as, Loadout, Skill};
+    use crate::logic::heroes::HeroKind;
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let seeds = [1, 2, 3];
     for (k, b) in gym::BOUTS.iter().enumerate() {
-        let s = summarize(k, Skill::Expert, &seeds);
+        let kit = (b.tier > 1).then(|| Loadout::all(HeroKind::Ragnar, b.tier));
+        let s = summarize_as(k, Skill::Expert, &seeds, kit);
         assert_eq!(s.wins, s.runs, "the expert wins {}: {s:?}", b.name);
         assert!(s.ttk >= b.target.0 && s.ttk <= b.target.1, "{} in {:.1} s, not {:?}: {s:?}", b.name, s.ttk, b.target);
         assert_eq!(s.overlaps, 0, "{}: {s:?}", b.name);
@@ -268,7 +273,7 @@ fn the_third_stage_wants_skill_or_better_gear() {
     use crate::logic::heroes::HeroKind;
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let seeds = [1, 2, 3];
-    for k in gym::STAGE_THREE_BOUT..gym::BOUTS.len() {
+    for k in gym::bouts_of(3) {
         let name = gym::BOUTS[k].name;
         let s = summarize(k, Skill::Novice, &seeds);
         assert_eq!(s.wins, 0, "a masher cannot beat {name} with the training sword: {s:?}");
@@ -328,4 +333,234 @@ fn the_vaults_are_a_brawl_a_skilled_player_can_clear_with_a_readable_cadence() {
         assert!(c.overlaps_per_minute() < 0.5, "{skill:?} at tier {tier}: {c:?}");
         assert!(c.peak <= 8, "a pack at a time: {c:?}");
     }
+}
+
+/// COMBAT.md §11: every later stage wants its kit. At the tier its bouts are measured with, a
+/// masher beats none of them; with three tiers more (or the last), a careful player wins them all,
+/// and no strikes overlap.
+#[test]
+fn every_later_stage_wants_skill_and_its_kit() {
+    use super::bot::{summarize_as, Loadout, Skill};
+    use crate::logic::heroes::HeroKind;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let seeds = [1, 2, 3];
+    for stage in 4..=EnemyKind::STAGES {
+        for k in gym::bouts_of(stage) {
+            let b = gym::BOUTS[k];
+            let s = summarize_as(k, Skill::Novice, &seeds, Some(Loadout::all(HeroKind::Ragnar, b.tier)));
+            assert_eq!(s.wins, 0, "a masher with a tier-{} kit cannot beat {}: {s:?}", b.tier, b.name);
+            let better = (b.tier + 3).min(crate::logic::progression::TIERS);
+            let s = summarize_as(k, Skill::Adept, &seeds, Some(Loadout::all(HeroKind::Ragnar, better)));
+            assert_eq!(s.wins, s.runs, "a careful player with a tier-{better} kit wins {}: {s:?}", b.name);
+            assert_eq!(s.overlaps, 0, "{}: {s:?}", b.name);
+        }
+    }
+}
+
+/// Bout 1's countdown with its foe replaced by a fresh `kind`, `gap` tiles in front of the hero
+/// (facing up), facing him, asking for no token; the fight on.
+fn legend(kind: EnemyKind, gap: f64) -> Game {
+    let mut g = face_off(1, gap);
+    g.hero.free_move = true;
+    let hp = g.hero.pos();
+    let d = duel_mut(&mut g, 0);
+    let id = d.id;
+    *d = Duelist::bred(id, Breed::of(kind), V::new(hp.x, hp.y - gap), V::new(0.0, 1.0));
+    d.rest = u16::MAX;
+    let k = (0..g.enemies.len()).find(|&k| g.enemies[k].duel.is_some()).unwrap();
+    g.enemies[k].b.kind = kind;
+    g.view.clear_enemies();
+    for e in &g.enemies {
+        g.view.add_enemy(e);
+    }
+    if let Some(s) = g.spar.as_mut() {
+        s.phase = BoutPhase::Fight;
+    }
+    if let Some(b) = g.brawl.as_mut() {
+        b.live = true;
+    }
+    g
+}
+
+fn ails(g: &Game) -> crate::logic::combat::ails::Ails {
+    g.brawl.as_ref().unwrap().ails
+}
+
+#[test]
+fn bowed_to_the_kappa_spills_its_dish_and_the_oni_shakes_the_ground_round_him() {
+    // A parried sumo charge: the kappa bows back, and its dish spills.
+    let mut g = legend(EnemyKind::Kappa, 2.4);
+    strike(&mut g, MoveId::Shove);
+    frames(&mut g, MoveId::Shove.data().startup - 2);
+    g.input.inject(Action::Block);
+    frames(&mut g, 14);
+    assert_eq!(g.brawl.as_ref().unwrap().stats.parries, 1);
+    let d = duel(&g, 0);
+    assert!(d.lore.spilled > SPILL_FRAMES - 30 && d.taken() > 1.0, "spilled: {:?}", d.lore);
+    // Blocked, the charge still shoves him back.
+    let mut g = legend(EnemyKind::Kappa, 2.4);
+    g.input.inject(Action::Block);
+    frames(&mut g, 20);
+    let y0 = g.hero.pos().y;
+    strike(&mut g, MoveId::Shove);
+    frames(&mut g, 50);
+    assert_eq!(g.brawl.as_ref().unwrap().stats.blocks, 1);
+    assert!(g.hero.pos().y > y0 + 0.4, "shoved back: {} from {y0}", g.hero.pos().y);
+    // The oni's club: behind him, out of its cone once its aim is set, the ground still throws him.
+    let mut g = legend(EnemyKind::Oni, 1.4);
+    let club = MoveId::Kanabo.data();
+    strike(&mut g, MoveId::Kanabo);
+    frames(&mut g, club.track + 1);
+    let at = duel(&g, 0).pos;
+    g.hero.place(P::new(at.x.round() as i32, (at.y - 1.6).round() as i32));
+    frames(&mut g, club.startup - club.track + 1);
+    let lost = g.hero.max_hp - g.hero.hp;
+    assert!(lost > 0 && lost < 25, "a share of the blow reached him: {lost}");
+}
+
+#[test]
+fn the_albasti_pins_him_and_striking_struggles_him_free_sooner() {
+    let held_for = |mash: bool| {
+        let mut g = legend(EnemyKind::Albasti, 2.4);
+        strike(&mut g, MoveId::Pounce);
+        frames(&mut g, MoveId::Pounce.data().startup + 4);
+        assert!(ails(&g).held.is_some_and(|h| h.pin), "pinned");
+        let mut n = 0;
+        while ails(&g).held.is_some() && n < 200 {
+            if mash && n % 2 == 0 {
+                g.input.inject(Action::Attack);
+            }
+            frames(&mut g, 1);
+            n += 1;
+        }
+        (n, g.hero.max_hp - g.hero.hp)
+    };
+    let (still, lost_still) = held_for(false);
+    let (struggling, lost_struggling) = held_for(true);
+    assert!(struggling < still - 20, "struggling frees him sooner: {struggling} against {still} frames");
+    assert!(lost_struggling < lost_still, "and costs him less: {lost_struggling} against {lost_still}");
+}
+
+#[test]
+fn the_dragon_begs_a_second_blow_brings_it_back_and_restraint_kills_it() {
+    let mut g = legend(EnemyKind::Ejder, 1.4);
+    duel_mut(&mut g, 0).hp = 4.0;
+    g.input.inject(Action::Attack);
+    frames(&mut g, 10);
+    let d = duel(&g, 0);
+    assert!(d.alive() && d.begging(), "felled, it begs");
+    assert!(matches!(phase(&g), BoutPhase::Fight), "the bout is not won while it begs");
+    // Struck again, it rises with a head grown back.
+    frames(&mut g, 30);
+    g.input.inject(Action::Attack);
+    frames(&mut g, 10);
+    let d = duel(&g, 0);
+    assert!(!d.begging() && d.hp > 0.0, "it rose: {:?}", d.lore);
+    // Felled again and left alone, it dies.
+    let hp = g.hero.pos();
+    let d = duel_mut(&mut g, 0);
+    d.hp = 4.0;
+    d.pos = V::new(hp.x, hp.y - 1.4);
+    d.slot = None;
+    frames(&mut g, 40);
+    let d = duel_mut(&mut g, 0);
+    d.pos = V::new(hp.x, hp.y - 1.4);
+    g.input.inject(Action::Attack);
+    frames(&mut g, 10);
+    assert!(duel(&g, 0).begging());
+    frames(&mut g, PLEA_FRAMES + 2);
+    // (A slain duelist leaves the ring at once.)
+    assert!(g.enemies.iter().all(|e| e.duel.is_none()), "struck once, it dies");
+    assert!(matches!(phase(&g), BoutPhase::Won(_)));
+}
+
+#[test]
+fn tepegoz_takes_a_share_of_a_blow_but_the_whole_of_it_on_his_eye() {
+    let mut g = legend(EnemyKind::Tepegoz, 1.6);
+    let full = duel(&g, 0).hp;
+    g.input.inject(Action::Attack);
+    frames(&mut g, MoveId::L1.data().startup + 1);
+    let warded = full - duel(&g, 0).hp;
+    assert!(warded > 0.0 && warded <= (10.0 * WARD_SHARE).ceil(), "warded: {warded}");
+    // Bent over after his slam, his eye in reach.
+    let mut g = legend(EnemyKind::Tepegoz, 1.6);
+    g.hero.place(P::new(g.hero.occupied().x + 3, g.hero.occupied().y));
+    strike(&mut g, MoveId::Slam);
+    frames(&mut g, MoveId::Slam.data().startup + 8);
+    let hp = g.hero.pos();
+    let at = duel(&g, 0).pos;
+    g.hero.face(if at.x < hp.x { crate::logic::types::Dir::Left } else { crate::logic::types::Dir::Right });
+    let d = duel_mut(&mut g, 0);
+    d.pos = V::new(hp.x + if at.x < hp.x { -1.2 } else { 1.2 }, hp.y);
+    let before = d.hp;
+    g.input.inject(Action::Attack);
+    frames(&mut g, MoveId::L1.data().startup + 1);
+    assert!(before - duel(&g, 0).hp >= 10.0, "the whole blow: {}", before - duel(&g, 0).hp);
+}
+
+#[test]
+fn the_cins_fire_strikes_him_dumb_roots_hold_him_and_chilled_twice_he_freezes() {
+    let mut g = legend(EnemyKind::Cin, 4.0);
+    strike(&mut g, MoveId::Smokeless);
+    frames(&mut g, 80);
+    assert!(g.hero.hp < g.hero.max_hp);
+    let mut g = legend(EnemyKind::Arcura, 4.0);
+    strike(&mut g, MoveId::Roots);
+    frames(&mut g, MoveId::Roots.data().startup + 2);
+    assert!(ails(&g).rooted > 0 && g.hero.root == 0.0, "rooted");
+    let mut g = legend(EnemyKind::FrostGiant, 1.6);
+    strike(&mut g, MoveId::Slam);
+    frames(&mut g, MoveId::Slam.data().startup + 2);
+    assert!(ails(&g).chill > 0, "chilled");
+    let d = duel_mut(&mut g, 0);
+    d.f = Breed::of(EnemyKind::FrostGiant).fighter();
+    d.token = false;
+    frames(&mut g, 40);
+    strike(&mut g, MoveId::Slam);
+    frames(&mut g, MoveId::Slam.data().startup + 2);
+    assert!(ails(&g).frozen > 0, "frozen solid: {:?}", ails(&g));
+}
+
+#[test]
+fn surtr_leaves_the_floor_burning_hel_raises_the_dead_and_they_fall_with_her() {
+    let mut g = legend(EnemyKind::Surtr, 2.0);
+    strike(&mut g, MoveId::Slam);
+    frames(&mut g, MoveId::Slam.data().startup + 1);
+    assert!(!g.brawl.as_ref().unwrap().hazards.is_empty(), "fire on the floor");
+    let mut g = legend(EnemyKind::Hel, 5.0);
+    strike(&mut g, MoveId::Raise);
+    frames(&mut g, MoveId::Raise.data().startup + 2);
+    let raised: Vec<u32> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.lore.master.is_some()).map(|d| d.id).collect();
+    assert_eq!(raised.len(), 2, "two draugr climb out of the floor");
+    duel_mut(&mut g, 0).hp = 1.0;
+    let hel = duel(&g, 0).pos;
+    g.hero.place(P::new(hel.x.round() as i32, (hel.y + 1.0).round() as i32));
+    g.hero.face(crate::logic::types::Dir::Up);
+    g.input.inject(Action::Attack);
+    frames(&mut g, 12);
+    // (A slain duelist leaves the ring at once.)
+    assert!(g.enemies.iter().all(|e| e.duel.is_none()), "Hel falls, and her dead with her");
+    assert!(matches!(phase(&g), BoutPhase::Won(_)));
+}
+
+#[test]
+fn the_kitsune_conjures_illusions_a_blow_undoes_and_the_call_draws_him_in() {
+    let mut g = legend(EnemyKind::Kitsune, 1.4);
+    let max = duel(&g, 0).max_hp;
+    duel_mut(&mut g, 0).hp = max * 0.72;
+    g.input.inject(Action::Attack);
+    frames(&mut g, MoveId::L1.data().startup + 1);
+    let illusions = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.lore.illusion && d.alive()).count();
+    assert_eq!(illusions, 2, "two illusions");
+    let fake = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.lore.illusion).map(|d| d.id).unwrap();
+    let k = (0..g.enemies.len()).find(|&k| g.enemies[k].duel.as_ref().is_some_and(|d| d.id == fake)).unwrap();
+    let hp = g.hero.pos();
+    g.call_duel_hit(k, hp);
+    assert!(!g.enemies[k].duel.as_ref().unwrap().alive(), "one blow and it is gone");
+    // The karakoncolos calls: he is drawn toward it.
+    let mut g = legend(EnemyKind::Karakoncolos, 5.0);
+    let y0 = g.hero.pos().y;
+    strike(&mut g, MoveId::Call);
+    frames(&mut g, MoveId::Call.data().startup + 30);
+    assert!(g.hero.pos().y < y0 - 0.8, "drawn in: {} from {y0}", g.hero.pos().y);
 }

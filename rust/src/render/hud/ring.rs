@@ -38,6 +38,9 @@ pub(super) fn draw_ring(o: &mut Overlay, g: &Game, t: f32) {
         return;
     }
     draw_bars(o, g, brawl, t);
+    if g.brawling() {
+        draw_ails(o, brawl, t);
+    }
     if let Some(spar) = g.spar.as_ref().filter(|_| g.in_ring()) {
         draw_banner(o, g, spar, brawl, t);
         if matches!(spar.phase, BoutPhase::Won(_) | BoutPhase::Lost(_)) {
@@ -127,6 +130,46 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
             };
             o.text(&line, x, y + bh * 2.6 + t * 0.35, t * 0.42, rgba(color, 0.95), Align::Center, true);
         }
+    }
+}
+
+/// What the legends have done to him, low across the middle of the screen: each ail and the
+/// seconds left of it (a hold says how to break it).
+fn draw_ails(o: &mut Overlay, brawl: &Brawl, t: f32) {
+    let a = &brawl.ails;
+    let secs = |f: u16| format!("{:.1}S", f as f32 / 60.0);
+    let mut parts: Vec<(String, u32)> = Vec::new();
+    if let Some(h) = a.held {
+        parts.push((if h.pin { "PINNED: STRIKE TO STRUGGLE FREE".to_string() } else { format!("SEIZED {}", secs(h.left)) }, 0xff6a5a));
+    }
+    if a.frozen > 0 {
+        parts.push((format!("FROZEN {}", secs(a.frozen)), 0xc8f0ff));
+    } else if a.chill > 0 {
+        parts.push((format!("CHILLED {}", secs(a.chill)), 0x9ad8ff));
+    }
+    if a.rooted > 0 {
+        parts.push((format!("ROOTED {}", secs(a.rooted)), 0x7ad860));
+    }
+    if a.venom > 0 {
+        parts.push((format!("VENOM {}", secs(a.venom)), 0x9ae05a));
+    }
+    if a.doom > 0 {
+        parts.push((format!("DOOMED {}", secs(a.doom)), 0xb08aff));
+    }
+    if a.pull.is_some() {
+        parts.push(("CALLED: WALK AWAY".to_string(), 0xa8d8ff));
+    }
+    if parts.is_empty() {
+        return;
+    }
+    let size = t * 0.5;
+    let gap = t * 0.9;
+    let width: f32 = parts.iter().map(|(p, _)| o.measure(p, size)).sum::<f32>() + gap * (parts.len() - 1) as f32;
+    let (mut x, y) = ((o.width - width) / 2.0, o.height * 0.78);
+    o.rect(x - t * 0.4, y - size * 0.7, width + t * 0.8, size * 1.4, [0.0, 0.0, 0.0, 0.5]);
+    for (p, c) in parts {
+        o.text(&p, x, y, size, rgba(c, 0.95), Align::Left, true);
+        x += o.measure(&p, size) + gap;
     }
 }
 

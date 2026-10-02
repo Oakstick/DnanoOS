@@ -145,6 +145,16 @@ impl Game {
         }
     }
 
+    /// F7: on to the first bout of the next stage's foes.
+    pub(super) fn next_stage_bout(&mut self) {
+        let inside = self.in_ring();
+        let Some(s) = self.spar.as_mut() else { return };
+        s.bout = gym::next_stage_bout(s.bout);
+        if inside {
+            self.start_bout();
+        }
+    }
+
     /// The ring's real-time flow: bouts begin, end, start over (the brawl runs their frames).
     pub(super) fn update_sparring(&mut self, dt: f64) {
         let inside = self.in_ring();

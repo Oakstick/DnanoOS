@@ -414,6 +414,26 @@ impl Hero {
         self.m.dir
     }
 
+    /// Carried `step` tiles in free movement by something other than his own feet (a sumo charge,
+    /// a call drawing him in, a giant's hand), sliding along whatever stops him. Nothing moves him
+    /// in the air, or on the grid.
+    pub fn shove(&mut self, grid: &Grid, step: V) {
+        if !self.alive || !self.free_move || self.jump.is_some() || (step.x == 0.0 && step.y == 0.0) {
+            return;
+        }
+        if self.m.tile != self.synced {
+            self.free_pos = self.m.tile.v();
+        }
+        self.free_pos.x += step.x;
+        self.push_out(grid);
+        self.free_pos.y += step.y;
+        self.push_out(grid);
+        let tile = grid.wrap(P::new(self.free_pos.x.round() as i32, self.free_pos.y.round() as i32));
+        self.m.tile = tile;
+        self.m.offset = 0.0;
+        self.synced = tile;
+    }
+
     /// 0..1 through the current jump, 0 on the ground.
     pub fn jump_progress(&self) -> f64 {
         self.jump.map(|j| j.t / JUMP_SECONDS).unwrap_or(0.0)

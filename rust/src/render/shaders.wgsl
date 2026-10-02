@@ -852,6 +852,10 @@ fn fs_scene(in: VOut) -> FOut {
             let rim = pow(1.0 - max(dot(sn, view_dir), 0.0), 4.0);
             rgb += g.moon_color.rgb * rim * (0.08 + 0.22 * max(dot(sn, g.moon_dir.xyz), 0.0)) * (0.5 + 0.5 * surf.albedo);
         }
+        if (mode > 15.5 && mode < 16.5) {
+            // Lit from within (`mat::GLOW`): its own colour, bright, whatever falls on it.
+            rgb = surf.albedo * 2.4 + in.emissive.rgb;
+        }
     }
     rgb = to_srgb(aces_filmic(rgb, g.params.y));
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);

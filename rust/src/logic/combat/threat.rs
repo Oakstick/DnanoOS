@@ -76,6 +76,9 @@ pub struct ThreatManager {
     pub frame: u32,
     holds: Vec<Hold>,
     last_grant: Option<u32>,
+    /// No token is granted, and no strike begun, before this frame: he is held (a grab, a pin)
+    /// and nothing else may fall on him meanwhile.
+    pub quiet_until: u32,
 }
 
 impl Default for ThreatManager {
@@ -86,7 +89,7 @@ impl Default for ThreatManager {
 
 impl ThreatManager {
     pub fn new() -> Self {
-        Self { capacity: CAPACITY, cadence: CADENCE, frame: 0, holds: Vec::new(), last_grant: None }
+        Self { capacity: CAPACITY, cadence: CADENCE, frame: 0, holds: Vec::new(), last_grant: None, quiet_until: 0 }
     }
 
     pub fn tick(&mut self) {
@@ -112,7 +115,7 @@ impl ThreatManager {
     /// Grants at most one token this frame: to the best-scored request that fits the pool and
     /// whose strike would land clear of every other's.
     pub fn grant(&mut self, requests: &[Request]) -> Option<u32> {
-        if self.last_grant.is_some_and(|t| self.frame - t < self.cadence) {
+        if self.frame < self.quiet_until || self.last_grant.is_some_and(|t| self.frame - t < self.cadence) {
             return None;
         }
         let mut order: Vec<&Request> = requests.iter().filter(|r| !self.holds(r.id)).collect();
@@ -145,6 +148,9 @@ impl ThreatManager {
     /// The commit gate: may the holder begin a move that lands `lands` frames from now (its
     /// startup, and a bolt's flight)?
     pub fn may_commit(&self, id: u32, lands: u16) -> bool {
+        if self.frame < self.quiet_until {
+            return false;
+        }
         let at = self.frame + lands as u32;
         self.holds.iter().filter(|h| (h.id != id || h.spent) && h.committed).all(|h| at.abs_diff(h.active_at) >= PLAN)
     }
@@ -180,6 +186,7 @@ impl ThreatManager {
     pub fn clear(&mut self) {
         self.holds.clear();
         self.last_grant = None;
+        self.quiet_until = 0;
     }
 }
 

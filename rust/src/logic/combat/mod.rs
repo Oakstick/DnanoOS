@@ -1,11 +1,13 @@
 //! The combat core, as COMBAT.md specifies it: frame data for every move (`frames`), the
 //! formulas (`math`), the one state machine the hero and every foe run (`fsm`), the threat
 //! manager that hands out attack tokens and places the waiting foes (`threat`), the three
-//! archetypes (`archetype`), a foe's mind (`duelist`), and the hero's gear as numbers (`kit`).
+//! archetypes and the later stages' breeds on them (`archetype`), a foe's mind (`duelist`), what
+//! the legends do to the hero (`ails`), and the hero's gear as numbers (`kit`).
 //!
 //! Pure logic on a fixed 60 Hz frame. The simulation steps at 120 Hz; `FrameClock` turns its
 //! steps into whole frames, so every number here is in the frames of a fighting-game table.
 
+pub mod ails;
 pub mod archetype;
 pub mod duelist;
 pub mod frames;

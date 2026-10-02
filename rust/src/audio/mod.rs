@@ -93,6 +93,8 @@ pub enum Sfx {
     Cackle,
     /// The loup-garou's howl, wounded.
     Howl,
+    /// The tülükuş's cry as it takes wing: an owl's two low notes, a death foretold.
+    Hoot,
     /// His chain snapping taut.
     Chain,
     /// Quitmer settling down with a whine.
@@ -849,6 +851,21 @@ impl AudioManager {
                     let soft = Env::points(vec![(t, 0.0001), (t + 0.25, 0.025 * vg), (t + 1.0, 0.02 * vg), (t + 1.65, 0.001)]);
                     s.push(Voice::new(t, t + 1.7, Wave::Sine, high, soft, Bus::Sfx).vibrato(5.5, 0.03));
                 }
+                Sfx::Hoot => {
+                    // An eagle-owl: a soft low "hoo", a breath, then a longer one falling away, with air in it.
+                    for (start, len, f0, f1) in [(0.0, 0.3, 330.0, 305.0), (0.45, 0.7, 320.0, 240.0)] {
+                        let a = t + start;
+                        let freq = Env::points(vec![(a, f0 * vp), (a + len, f1 * vp)]);
+                        let gain = Env::points(vec![(a, 0.0001), (a + 0.07, 0.12 * vg), (a + len * 0.6, 0.08 * vg), (a + len, 0.0005)]);
+                        s.push(Voice::new(a, a + len + 0.02, Wave::Sine, freq, gain, Bus::Sfx).vibrato(4.0, 0.012));
+                        let breath = Env::points(vec![(a, 0.0001), (a + 0.05, 0.02 * vg), (a + len, 0.0005)]);
+                        s.push(Voice::new(a, a + len, Wave::Noise { rate: 0.7, offset }, Env::constant(1.0), breath, Bus::Sfx).filtered(
+                            synth::FilterKind::Bandpass,
+                            f0 * 2.0 * vp,
+                            2.0,
+                        ));
+                    }
+                }
                 Sfx::Stinger => {
                     // A boom and a clash of close, sour notes.
                     s.push(Voice::new(t, t + 1.5, Wave::Sine, Env::ramp(t, 70.0, 28.0, 1.2), Env::ramp(t, 0.5 * vg, 0.001, 1.4), Bus::Sfx));
@@ -1502,6 +1519,7 @@ mod tests {
             Sfx::Drip,
             Sfx::Cackle,
             Sfx::Howl,
+            Sfx::Hoot,
             // (and the archangels' powers)
             Sfx::MichaelFire,
             Sfx::MichaelTurn,

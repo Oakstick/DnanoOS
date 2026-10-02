@@ -50,8 +50,9 @@ pub enum Action {
     TabNext,
     /// F5: the Sparring Ring's frame readout on or off.
     Readout,
-    /// F6: the Sparring Ring's next bout.
+    /// F6: the Sparring Ring's next bout; F7: the first of the next stage's.
     NextBout,
+    NextStageBout,
 }
 
 /// Past this much push a stick counts as held; a grid needs a decisive shove.
@@ -125,6 +126,7 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         F3 => Action::Fps,
         F5 => Action::Readout,
         F6 => Action::NextBout,
+        F7 => Action::NextStageBout,
         KeyC => Action::Camera,
         KeyQ => Action::Drink,
         Tab => Action::NextPotion,

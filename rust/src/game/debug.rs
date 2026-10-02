@@ -129,12 +129,15 @@ impl Game {
         let kinds = EnemyKind::of_stage(stage);
         let n = kinds.len();
         let p = self.hero.occupied();
+        // (Giants want room: twice the spacing.)
+        let gap = if kinds.iter().any(|&k| crate::logic::combat::Breed::of(k).radius > 0.7) { 4 } else { 2 };
         self.enemies.clear();
         self.view.clear_enemies();
         for (i, kind) in kinds.repeat(rows.max(1)).into_iter().enumerate() {
             let Some(spec) = specs.iter().find(|s| s.kind == kind) else { continue };
             let (col, row) = ((i % n) as i32, (i / n) as i32);
-            let mut e = Enemy::new(spec, P::new(p.x - (n as i32 - 1) + col * 2, p.y - 2 - row * 2), self.level.data.enemy_speed);
+            let at = P::new(p.x - (n as i32 - 1) * gap / 2 + col * gap, p.y - gap - row * gap);
+            let mut e = Enemy::new(spec, at, self.level.data.enemy_speed);
             e.b.mode = EnemyMode::Chase;
             e.m.dir = Dir::Down;
             self.view.add_enemy(&e);

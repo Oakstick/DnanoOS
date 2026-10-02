@@ -20,10 +20,27 @@ pub(super) enum RigId {
     Blemmyes,
     LargeBat,
     Tengu,
-    Oni,
+    Rasetsu,
     DireWolf,
     Jorogumo,
     Cobra,
+    Kappa,
+    Rokurokubi,
+    Kitsune,
+    Oni,
+    Tulukus,
+    Albasti,
+    Cin,
+    Arcura,
+    Karakoncolos,
+    FrostGiant,
+    Surtr,
+    Nidhogg,
+    Hel,
+    Tepegoz,
+    Gashadokuro,
+    Ejder,
+    Goryo,
 }
 
 pub(super) struct Models {
@@ -41,10 +58,30 @@ pub(super) struct Models {
     pub(super) large_bat: Rig,
     /// The third stage's five.
     pub(super) tengu: Rig,
-    pub(super) oni: Rig,
+    pub(super) rasetsu: Rig,
     pub(super) dire_wolf: Rig,
     pub(super) jorogumo: Rig,
     pub(super) cobra: Rig,
+    /// The fourth stage's four.
+    pub(super) kappa: Rig,
+    pub(super) rokurokubi: Rig,
+    pub(super) kitsune: Rig,
+    pub(super) oni: Rig,
+    /// The fifth stage's five, and the seventh's four.
+    pub(super) tulukus: Rig,
+    pub(super) albasti: Rig,
+    pub(super) cin: Rig,
+    pub(super) arcura: Rig,
+    pub(super) karakoncolos: Rig,
+    pub(super) frost_giant: Rig,
+    pub(super) surtr: Rig,
+    pub(super) nidhogg: Rig,
+    pub(super) hel: Rig,
+    /// The sixth stage's four.
+    pub(super) tepegoz: Rig,
+    pub(super) gashadokuro: Rig,
+    pub(super) ejder: Rig,
+    pub(super) goryo: Rig,
     /// Every foe's coarse copy, in `RigId` order.
     pub(super) foes_far: Vec<Rig>,
     pub(super) medkit: Mesh,
@@ -118,12 +155,35 @@ impl Models {
         let werewolf = build_rig(&loup_garou(), WOLF_RIG, 0.0135);
         let blemmyes = build_rig(&blemmyes(), BLEMMYES_RIG, 0.0145);
         let large_bat = build_rig(&large_bat(), BAT_RIG, 0.011);
-        use crate::render::foes3::{cobra, dire_wolf, jorogumo, oni, tengu, COBRA_RIG, DIRE_RIG, JORO_RIG, ONI_RIG, TENGU_RIG};
+        use crate::render::foes3::{cobra, dire_wolf, jorogumo, rasetsu, tengu, COBRA_RIG, DIRE_RIG, JORO_RIG, RASETSU_RIG, TENGU_RIG};
         let tengu = build_rig(&tengu(), TENGU_RIG, 0.0125);
-        let oni = build_rig(&oni(), ONI_RIG, 0.0125);
+        let rasetsu = build_rig(&rasetsu(), RASETSU_RIG, 0.0125);
         let dire_wolf = build_rig(&dire_wolf(), DIRE_RIG, 0.0125);
         let jorogumo = build_rig(&jorogumo(), JORO_RIG, 0.0125);
         let cobra = build_rig(&cobra(), COBRA_RIG, 0.0125);
+        use crate::render::foes4::{kappa, kitsune, oni, rokurokubi, KAPPA_RIG, KITSUNE_RIG, ONI_RIG, ROKURO_RIG};
+        let kappa = build_rig(&kappa(), KAPPA_RIG, 0.0125);
+        let rokurokubi = build_rig(&rokurokubi(), ROKURO_RIG, 0.0125);
+        let kitsune = build_rig(&kitsune(), KITSUNE_RIG, 0.0125);
+        let oni = build_rig(&oni(), ONI_RIG, 0.0135);
+        use crate::render::foes5::{
+            albasti, arcura, cin, karakoncolos, tulukus, ALBASTI_RIG, ARCURA_RIG, CIN_RIG, KARAKONCOLOS_RIG, TULUKUS_RIG,
+        };
+        let tulukus = build_rig(&tulukus(), TULUKUS_RIG, 0.0125);
+        let albasti = build_rig(&albasti(), ALBASTI_RIG, 0.0125);
+        let cin = build_rig(&cin(), CIN_RIG, 0.0125);
+        let arcura = build_rig(&arcura(), ARCURA_RIG, 0.0125);
+        let karakoncolos = build_rig(&karakoncolos(), KARAKONCOLOS_RIG, 0.013);
+        use crate::render::foes7::{frost_giant, hel, nidhogg, surtr, FROST_GIANT_RIG, HEL_RIG, NIDHOGG_RIG, SURTR_RIG};
+        let frost_giant = build_rig(&frost_giant(), FROST_GIANT_RIG, 0.02);
+        let surtr = build_rig(&surtr(), SURTR_RIG, 0.02);
+        let nidhogg = build_rig(&nidhogg(), NIDHOGG_RIG, 0.0175);
+        let hel = build_rig(&hel(), HEL_RIG, 0.0135);
+        use crate::render::foes6::{ejder, gashadokuro, goryo, tepegoz, EJDER_RIG, GASHADOKURO_RIG, GORYO_RIG, TEPEGOZ_RIG};
+        let tepegoz = build_rig(&tepegoz(), TEPEGOZ_RIG, 0.02);
+        let gashadokuro = build_rig(&gashadokuro(), GASHADOKURO_RIG, 0.025);
+        let ejder = build_rig(&ejder(), EJDER_RIG, 0.018);
+        let goryo = build_rig(&goryo(), GORYO_RIG, 0.0125);
         let foes_far = vec![
             skeleton.coarse(),
             bat.coarse(),
@@ -136,10 +196,27 @@ impl Models {
             blemmyes.coarse(),
             large_bat.coarse(),
             tengu.coarse(),
-            oni.coarse(),
+            rasetsu.coarse(),
             dire_wolf.coarse(),
             jorogumo.coarse(),
             cobra.coarse(),
+            kappa.coarse(),
+            rokurokubi.coarse(),
+            kitsune.coarse(),
+            oni.coarse(),
+            tulukus.coarse(),
+            albasti.coarse(),
+            cin.coarse(),
+            arcura.coarse(),
+            karakoncolos.coarse(),
+            frost_giant.coarse(),
+            surtr.coarse(),
+            nidhogg.coarse(),
+            hel.coarse(),
+            tepegoz.coarse(),
+            gashadokuro.coarse(),
+            ejder.coarse(),
+            goryo.coarse(),
         ];
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
@@ -158,10 +235,27 @@ impl Models {
             blemmyes,
             large_bat,
             tengu,
-            oni,
+            rasetsu,
             dire_wolf,
             jorogumo,
             cobra,
+            kappa,
+            rokurokubi,
+            kitsune,
+            oni,
+            tulukus,
+            albasti,
+            cin,
+            arcura,
+            karakoncolos,
+            frost_giant,
+            surtr,
+            nidhogg,
+            hel,
+            tepegoz,
+            gashadokuro,
+            ejder,
+            goryo,
             foes_far,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
@@ -214,10 +308,27 @@ impl Models {
             RigId::Blemmyes => &self.blemmyes,
             RigId::LargeBat => &self.large_bat,
             RigId::Tengu => &self.tengu,
-            RigId::Oni => &self.oni,
+            RigId::Rasetsu => &self.rasetsu,
             RigId::DireWolf => &self.dire_wolf,
             RigId::Jorogumo => &self.jorogumo,
             RigId::Cobra => &self.cobra,
+            RigId::Kappa => &self.kappa,
+            RigId::Rokurokubi => &self.rokurokubi,
+            RigId::Kitsune => &self.kitsune,
+            RigId::Oni => &self.oni,
+            RigId::Tulukus => &self.tulukus,
+            RigId::Albasti => &self.albasti,
+            RigId::Cin => &self.cin,
+            RigId::Arcura => &self.arcura,
+            RigId::Karakoncolos => &self.karakoncolos,
+            RigId::FrostGiant => &self.frost_giant,
+            RigId::Surtr => &self.surtr,
+            RigId::Nidhogg => &self.nidhogg,
+            RigId::Hel => &self.hel,
+            RigId::Tepegoz => &self.tepegoz,
+            RigId::Gashadokuro => &self.gashadokuro,
+            RigId::Ejder => &self.ejder,
+            RigId::Goryo => &self.goryo,
         }
     }
 

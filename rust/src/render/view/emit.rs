@@ -228,8 +228,16 @@ impl WorldView {
         if hero.fx.strength > 0.0 {
             emissive += lin(0xff2a1a) * (0.12 + (time * 6.0).sin().abs() * 0.12);
         }
-        // A shield potion's bark greys his skin a little.
-        let tint = if hero.bark > 0 { Vec3::new(0.82, 0.84, 0.88) } else { Vec3::ONE };
+        // A shield potion's bark greys his skin a little; chill blues it, venom greens it.
+        let mut tint = if hero.bark > 0 { Vec3::new(0.82, 0.84, 0.88) } else { Vec3::ONE };
+        let ails = s.ails;
+        if ails.chill > 0 || ails.frozen > 0 {
+            tint *= Vec3::new(0.72, 0.88, 1.2);
+            emissive += lin(0x6ab8ff) * if ails.frozen > 0 { 0.35 } else { 0.12 };
+        }
+        if ails.venom > 0 {
+            emissive += lin(0x6ad040) * (0.08 + (time * 5.0).sin().abs() * 0.1);
+        }
         if hero.fx.ragnarok > 0.0 {
             emissive += lin(0x9a2aff) * (0.1 + (time * 5.0).sin().abs() * 0.1);
         }
@@ -250,6 +258,7 @@ impl WorldView {
             }
         }
         self.emit_hero_fx(hero, hero_pos, time, f);
+        self.emit_ails(&ails, hero_pos, time, f);
         if let (true, Some(sh)) = (hero.blocking && hero.alive, hero.shield) {
             // A faint ward of its colour about the raised shield.
             let color = lin(progression::node(s.hero_kind, progression::Tree::Shield, sh.tier).color);
@@ -356,6 +365,19 @@ impl WorldView {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
                 let rig = self.models.foe_at(v.rig, v.group_pos.distance(self.cam_pos));
                 emit_rig(&mut f.opaque[cube], rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
+                if v.neck > 0.0 {
+                    emit_neck(&mut f.opaque[cube], rig, &v.pose, root, v.mat_color);
+                }
+                if v.eye > 0.0 {
+                    if let Some(h) = rig.index("head") {
+                        let pivot = Vec3::from(crate::render::foes6::TEPEGOZ_RIG[4].pivot);
+                        let eye = (Vec3::from(crate::render::foes6::TEPEGOZ_EYE) - pivot) * 0.02;
+                        let p = (root * Mat4::from_translation(v.pose.pos[h]) * euler(v.pose.rot[h])).transform_point3(eye);
+                        let pulse = 0.8 + (time * 10.0).sin().abs() * 0.4;
+                        glow_orb(f, p, 0.35, lin(0xfff0a0), 0.9 * pulse * v.eye);
+                        f.lights.push(Light { pos: p, color: lin(0xffe080) * 3.0 * v.eye, distance: 2.5 });
+                    }
+                }
             }
             if v.light_intensity > 0.0 {
                 // Inside the body, so it lights the ground round the foe and not the foe; a draugr's is low,
@@ -368,9 +390,18 @@ impl WorldView {
                     EnemyKind::Witch => 0.4,
                     EnemyKind::Blemmyes => 0.5,
                     EnemyKind::Tengu => 0.45,
-                    EnemyKind::Oni => 0.55,
+                    EnemyKind::Rasetsu => 0.55,
                     EnemyKind::DireWolf | EnemyKind::Cobra => 0.3,
                     EnemyKind::Jorogumo => 0.35,
+                    EnemyKind::Kappa | EnemyKind::Kitsune => 0.3,
+                    EnemyKind::Tulukus | EnemyKind::Rokurokubi | EnemyKind::Cin | EnemyKind::Albasti => 0.4,
+                    EnemyKind::Oni | EnemyKind::Karakoncolos | EnemyKind::Arcura | EnemyKind::Goryo | EnemyKind::Hel => 0.6,
+                    EnemyKind::Tepegoz
+                    | EnemyKind::Gashadokuro
+                    | EnemyKind::Ejder
+                    | EnemyKind::FrostGiant
+                    | EnemyKind::Surtr
+                    | EnemyKind::Nidhogg => 1.0,
                 };
                 f.lights.push(Light {
                     pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
@@ -681,6 +712,67 @@ impl WorldView {
         for l in &self.effect_lights {
             if l.intensity > 0.0 {
                 f.lights.push(Light { pos: l.pos, color: l.color * l.intensity, distance: l.distance });
+            }
+        }
+    }
+}
+
+/// The rokurokubi's neck stretched out to her flying head: a chain of its pale, ring-creased flesh
+/// from her collar, arching up a little on the way.
+fn emit_neck(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
+    const SKIN: f32 = 10.0;
+    let (Some(n), Some(h)) = (rig.index("neck"), rig.index("head")) else { return };
+    let from = root.transform_point3(rig.parts[n].rest + Vec3::new(0.0, 0.06, 0.0));
+    let to = root.transform_point3(pose.pos[h]);
+    let lift = Vec3::new(0.0, 0.25 + 0.06 * (to - from).length(), 0.0);
+    let mid = (from + to) * 0.5 + lift;
+    let steps = ((to - from).length() / 0.06).ceil().max(2.0) as i32;
+    let (r0, r1) = crate::render::foes4::ROKURO_NECK_RADII;
+    for k in 0..=steps {
+        let t = k as f32 / steps as f32;
+        let p = from * (1.0 - t) * (1.0 - t) + mid * 2.0 * t * (1.0 - t) + to * t * t;
+        // (Her voxels are 0.0125 a side, whichever copy of her is drawn.)
+        let r = (r0 + (r1 - r0) * t) * 0.025;
+        let c = if k % 3 == 0 { lin(0x9c8c7e) } else { lin(0xc6b8aa) };
+        out.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r)), c * tint, 1.0, Vec3::ZERO, SKIN));
+    }
+}
+
+impl WorldView {
+    /// What the legends have done to him, shown about him: a block of ice when frozen, roots about
+    /// his feet, the owl's dark sigil over his head, venom's bubbles, his name's call in rings.
+    fn emit_ails(&self, ails: &crate::logic::combat::ails::Ails, at: Vec3, time: f32, f: &mut Frame) {
+        if ails.frozen > 0 {
+            let m = Mat4::from_translation(at + Vec3::new(0.0, 0.5, 0.0))
+                * Mat4::from_rotation_y(0.4)
+                * Mat4::from_scale(Vec3::new(0.62, 1.08, 0.62));
+            f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0xc8f0ff), 0.45, lin(0x6ab8ff) * 0.3, SHADE_UNLIT));
+        }
+        if ails.rooted > 0 {
+            for k in 0..6 {
+                let a = k as f32 * TAU / 6.0 + 0.3;
+                let tall = 0.28 + 0.08 * (time * 3.0 + k as f32).sin();
+                let p = at + Vec3::new(a.cos() * 0.22, tall * 0.5, a.sin() * 0.22);
+                let m = Mat4::from_translation(p)
+                    * Mat4::from_rotation_y(a)
+                    * Mat4::from_rotation_z(0.35)
+                    * Mat4::from_scale(Vec3::new(0.06, tall, 0.06));
+                f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(0x5a3a1e), 1.0, Vec3::ZERO, SHADE_LIT));
+            }
+        }
+        if ails.doom > 0 {
+            let m = Mat4::from_translation(at + Vec3::new(0.0, 1.45 + (time * 3.0).sin() * 0.04, 0.0))
+                * Mat4::from_rotation_y(time * 2.0)
+                * Mat4::from_rotation_z(PI / 4.0)
+                * Mat4::from_scale(Vec3::splat(0.11));
+            f.additive.push(Instance::new(m, lin(0x9a5aff) * 2.0, 0.85, Vec3::ZERO, SHADE_UNLIT));
+        }
+        if ails.venom > 0 {
+            for k in 0..3 {
+                let t = (time * 0.9 + k as f32 / 3.0).fract();
+                let p = at + Vec3::new((k as f32 * 2.1).cos() * 0.2, 0.5 + t * 0.9, (k as f32 * 2.1).sin() * 0.2);
+                let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.045 * (1.0 - t * 0.5)));
+                f.additive.push(Instance::new(m, lin(0x8ad04a) * 1.8, 0.8 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
             }
         }
     }

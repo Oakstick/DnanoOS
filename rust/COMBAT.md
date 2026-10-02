@@ -263,16 +263,25 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | 3 The Hexer's Guard | Hexer + Skirmisher | zoning while pressured |
 | 4 The Trio | one of each | the whole triangle |
 | 5 The Gauntlet | Brute, Skirmisher ×2, Hexer ×2 | the threat manager under load |
-| 6 Steel | tengu + oni | melee: two blades, one token between them |
+| 6 Steel | tengu + rasetsu | melee: two blades, one token between them |
 | 7 Fang and Fire | dire wolf + cobra + jorogumo | bodies thrown at him while fire comes from afar |
 | 8 The Night Parade | the third stage's five | every way of attacking at once |
+| 9 The Iron Club | oni + kappa | an unstoppable club, a charge that shoves |
+| 10 The Fox's Wedding | the fourth stage's four | a neck across the room, foxfire and illusions |
+| 11 The Call in the Cold | karakoncolos + tülükuş | drawn in by a call; a dive from out of reach |
+| 12 Zemheri Nights | the fifth stage's five | pins, roots, a stun, a vanishing, all at once |
+| 13 The One Eye | Tepegöz | a body no blade cuts: strike the eye when it comes within reach |
+| 14 The Old Tales | the sixth stage's four | a grab, seven heads and a plea, lightning from a ghost |
+| 15 Fire and Ice | frost giant + Surtr | chill through the shield, fire on the floor |
+| 16 Ragnarök | the seventh stage's four | the end of the world: everything above, harder |
 
 Bouts 1-5 are the lab: the archetypes in their own bodies. Bouts 6-8 bring the third stage's
-foes, each a breed of an archetype (§10).
+foes, each a breed of an archetype (§10); bouts 9-16 the later stages', with their legends (§11),
+each measured with the kit of its stage (tiers 3, 5, 7 and 9).
 
 * Losing restores the hero and restarts the bout. Winning moves on to the next.
 * **F5**: frame readout (hero state and frame, buffer, threat points, each foe's way of attacking and its state, bout stats).
-* **F6**: skip to the next bout.
+* **F6**: skip to the next bout; **F7**: to the first bout of the next stage's foes.
 * When a bout ends, a **results card** shows its time against the target, the health lost, the
   damage dealt, how the strikes were met (parried, blocked, evaded) and the mistakes (caught
   mid-swing, guards broken). A line goes into `combat_log.csv` in the save folder.
@@ -290,6 +299,7 @@ foes, each a breed of an archetype (§10).
 | **3 Hero kit** | `combat::kit`: blade tiers as move-table scalars (power, poise, tempo, reach, arc, finisher), shields as guard stats (parry window, block cost, riposte, deflect, reflect), the path audited against the FSM (§8) | every tier is the same three verbs with different numbers ✔; each hero's tier 10 wins ≥ 2× faster than his tier 1 ✔; at every tier the heroes kill within 1.3× of each other on the Brute and the Trio ✔ |
 | **4 Roll-out** | every foe kind a breed of an archetype; the brawl (`game::brawl`) runs the Vaults of Mammon: packs of duelists asleep in their dens, one threat manager, real death, shield and blade wear, contact damage retired there (§9) | the expert clears the vaults with every kit, the adept from tier 4; zero overlaps in every crawl ✔ |
 | **Stage 3** | five new bodies, each a breed of an archetype; every stage's cast attacks all three ways (melee, body, distance); a third platform in the gym and three bouts in the ring (§10) | the expert wins them with the training sword, the adept with tier-4 gear, a masher with neither ✔ |
+| **Stages 4-7** | seventeen bodies from folklore, each a breed of an archetype with a move, a rider and a power of its own; new shapes (lane, marks, volley, quake), the hero's ails, holds, summons; four more platforms and eight bouts (§11) | at its stage's tier the expert wins every bout inside its target and a masher none; three tiers up (or the last) a careful player wins them all; zero overlaps ✔ |
 | 5 Bosses | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3 | the boss is a fourth archetype, not a special case |
 
 ---
@@ -644,7 +654,14 @@ Every stage's cast has all three (`every_stages_cast_attacks_all_three_ways`):
 |---|---|---|---|
 | 1 The Garden | draugr | raven, night raven | bog slime |
 | 2 The realms | helmeted skeleton, blemmyes | loup-garou, large bat, witch's minion | witch |
-| 3 | tengu, oni | dire wolf, cobra | jorogumo |
+| 3 | tengu, rasetsu | dire wolf, cobra | jorogumo |
+| 4 The yōkai | oni | kappa, rokurokubi | kitsune |
+| 5 Anatolian nights | karakoncolos | tülükuş, albastı | cin, arçura |
+| 6 The legends | Tepegöz, gashadokuro | yedi başlı ejder | goryō |
+| 7 Ragnarök | frost giant, Surtr | Níðhöggr | Hel |
+
+(The rasetsu, a man-eater of the Buddhist hells, was the stage-3 "oni" until the fourth stage
+brought the oni of the bestiary's own cards.)
 
 ### 10.1 The third stage's breeds
 
@@ -656,7 +673,7 @@ string.
 | Kind | Archetype (way) | Health | Damage | Poise | Pace | Cost | As it fights |
 |---|---|---|---|---|---|---|---|
 | Tengu | Brute (melee) | 1.0 (200) | 1.15 | 0.9 | 1.5 | 2 | a swordsman: closes in half again as fast as a brute; slam 35, sweep 23 |
-| Oni | Brute (melee) | 1.5 (300) | 1.2 | 1.25 | 1.0 | 2 | the heavy: the longest fight of the stage, armor 44; slam 36 |
+| Rasetsu | Brute (melee) | 1.5 (300) | 1.2 | 1.25 | 1.0 | 2 | the heavy: the longest fight of the stage, armor 44; slam 36 |
 | Dire wolf | Skirmisher (body) | 1.5 (120) | 1.2 | 1.3 | 1.1 | 1 | the pounce, harder and longer-lived than the loup-garou's; 22 |
 | Cobra | Skirmisher (body) | 1.25 (100) | 1.3 | 1.0 | 0.8 | 1 | slow on the ground, the hardest bite of the stage: 23 |
 | Jorogumo | Hexer (distance) | 1.6 (88) | 1.2 | 1.5 | 1.0 | 1 | fire bolts (orange, her own tell colour); backs away; 18 |
@@ -718,8 +735,242 @@ THE NIGHT PARADE        7  expert   100%    11.3    29-45       95   3.0    5.5 
 
 | Change | Why |
 |---|---|
-| The stage's damage trimmed: oni 1.3 → 1.2, dire wolf 1.25 → 1.2, cobra 1.4 → 1.3, jorogumo 1.3 → 1.2 | the expert first won the Night Parade with 1 health left (99 lost); now 38 |
+| The stage's damage trimmed: rasetsu 1.3 → 1.2, dire wolf 1.25 → 1.2, cobra 1.4 → 1.3, jorogumo 1.3 → 1.2 | the expert first won the Night Parade with 1 health left (99 lost); now 38 |
 
 Tools: `--stage-three N`. `the_bouts_meet_their_balance_targets` pins the expert's times in
 every bout, the third stage's included; `the_third_stage_wants_skill_or_better_gear` pins the
 masher's losses with the training sword and the adept's wins at tier 4.
+
+---
+
+## 11. Stages 4 to 7: seventeen bodies and their legends
+
+The brief: seventeen creatures from Japanese, Turkish and Turkic, and Norse folklore, sorted into
+four stages, their powers and attacks drawn from their legends. Every body is still a breed of an
+archetype, and so attacks one of the three ways (§10). Each also brings its legend in three
+parts, systematic as the archetypes are:
+
+* **A move of its own**: a variation on its archetype's verb. It is a lunge that shoves, a bolt that
+  stuns, or a slam that shakes the ground. It is frame data like any other move, held to the same
+  design limits.
+* **A rider**: what its blows carry besides their damage.
+* **A power**: one rule from its legend on top of the frame data.
+
+### 11.1 The stages
+
+| Stage | Theme | Melee | Body | Distance | Bouts (their kit's tier) |
+|---|---|---|---|---|---|
+| 4 The yōkai | Japan's folk demons | oni | kappa, rokurokubi | kitsune | The Iron Club, The Fox's Wedding (3) |
+| 5 Anatolian nights | Turkish and Turkic spirits of the dark | karakoncolos | tülükuş, albastı | cin, arçura | The Call in the Cold, Zemheri Nights (5) |
+| 6 The legends | two giants, a dragon and a ghost | Tepegöz, gashadokuro | yedi başlı ejder | goryō | The One Eye, The Old Tales (7) |
+| 7 Ragnarök | the Norse end of the world | frost giant, Surtr | Níðhöggr | Hel | Fire and Ice, Ragnarök (9) |
+
+Each stage's foes are tougher and hit harder than the stage before's, on average
+(`every_stage_is_stronger_than_the_last_and_every_breed_inside_its_archetypes_limits`). The
+giants' arms reach as far again as their girth outgrows a man's (`Breed::reach`). They are
+sculpted at a coarser voxel, 0.02 to 0.025, and stand two and a half to three tiles tall.
+
+### 11.2 The legends, one rule each
+
+| Body | The legend | In the ring |
+|---|---|---|
+| Oni | *oni ni kanabō*: an iron club in an oni's hand makes the strong unstoppable | **Kanabō**: a slam no blow interrupts (armor `UNSTOPPABLE`; only the parry stops it), and the ground shakes all round it: 45% of the blow out to 2.5 tiles |
+| Kappa | the dish of water on its head is its strength; bow to it and it bows back, and spills it | **Sumo Charge**: a lunge that shoves him 2.2 tiles back (1.1 through a block). Parried, it bows and its dish spills: for 6 s it takes ×1.75 damage at 60% of its pace |
+| Rokurokubi | by night her neck stretches across the room | **Neck Lash**: her head flies 4.6 tiles down a lane and back; she cannot use it on a hero who comes close |
+| Kitsune | foxfire (*kitsune-bi*), and illusions | **Foxfire**: three bolts in a fan, one strike to the threat manager. Wounded below 70% and again below 35%, it conjures two illusions and swaps places with one of them. One blow pops an illusion, its foxfire is harmless, and it casts no light |
+| Karakoncolos | on the coldest nights it calls people out by name in a loved one's voice | **The Call**: draws him in at 3 tiles a second for 45 frames (a third of that while he walks away), then it asks at once for the blow |
+| Tülükuş | an owl's cry foretells a death; it flies without a sound | **Dive**: up out of reach (no blow touches it) and down on its mark, which follows him at half his pace. Its cry as it takes wing dooms him: his next wound ×1.3 |
+| Albastı | the night hag who sits on a sleeper's chest | **Pounce**: a leap that pins him for 64 frames, a bite every 12; each strike of his struggles 8 frames off. She is a shadow with red eyes until she pounces |
+| Cin | made of smokeless fire, seen only when it wishes; *cin çarpması*, struck by a cin | **Smokeless Fire**: a bolt that strikes him dumb for 36 frames. Come within 2.6 tiles and it vanishes in smoke, to stand 6 tiles off (once every 5 s) |
+| Arçura | grows as tall as a tree or as small as a blade of grass; guards the forest | **Roots**: a ring on the floor; the roots burst up and hold him 70 frames (no walking, no leap). It grows to cast, and slips away half again as fast, shrunk to the grass |
+| Tepegöz | his mother the peri's ring made his body proof against blade and arrow; Basat struck his one eye | **The Ring**: 15% of every blow, damage and poise alike, unless his eye is within reach: in his recovery, or reeling. Then the whole blow lands, and his eye lights up |
+| Gashadokuro | the skeleton of the starved: a ringing in the ears, then its hands | **Grab**: two hands no shield holds (parry them, or leap); it holds him 40 frames and bites three times. A bell is its tell |
+| Yedi başlı ejder | the seven-headed dragon on the town's spring; felled, it begs *"Bir daha vur!"* | **Seven Heads**: four bites in one lunge (one strike; a parry stops them all). Felled, it begs for 150 frames: a second blow brings it back at a seventh of its health (a head grown again); restraint kills it ("my mother bore me but once") |
+| Goryō | the wrath of a wronged noble: Michizane's struck the palace as lightning | **Thunder**: three marks, one on him and one either side, then lightning. Nothing touches it but while it rages (in its moves) |
+| Frost giant | the rime-giants of Jötunheim | **Rime**: its blows chill, even through the shield (55% pace for 3 s; chilled again, frozen 50 frames). **Frost Wave**: a lane of ice spikes that neither shield nor parry turns |
+| Surtr | the fire giant of Muspelheim, whose sword burns the world | **Fire**: his slam and sweep leave fire on the floor for 3 s: 5 health every 20 frames he stands in it |
+| Níðhöggr | the dragon gnawing the roots of Yggdrasil from below | **Burrow**: into the floor, along under it (out of reach) and up beneath him on its mark. Its bites are venom: 3 health every half second for 2 s |
+| Hel | Loki's daughter, half living and half corpse, queen of the dead | **Raise the Dead**: two draugr climb out of the floor about him; they fall when she does. Her bolts drain: what they deal, she heals |
+
+### 11.3 Frame data of the legends' moves
+
+| Move | Startup | Active | Recovery | Damage | Shape | Rider |
+|---|---|---|---|---|---|---|
+| Sumo Charge | 22 | 8 | 26 | 16 | lunge, 2.8 travel | shove 2.2 |
+| Neck Lash | 28 | 10 | 30 | 18 | lane 4.6, 0.38 wide | |
+| Foxfire | 34 | 1 | 32 | 9 ×3 | volley of three, ±0.28 rad | |
+| Kanabō | 46 | 6 | 52 | 32 | cone; quake 2.3 at 45% | (unstoppable) |
+| Dive | 40 | 6 | 34 | 24 | mark 0.85 | |
+| Pounce | 26 | 8 | 34 | 12 | lunge, 3.0 travel | pin 64 |
+| Smokeless Fire | 36 | 1 | 30 | 14 | bolt | stun 36 |
+| Roots | 38 | 4 | 30 | 14 | mark 1.0 | root 70 |
+| The Call | 30 | 45 | 12 | | spell | pull |
+| Grab | 40 | 8 | 44 | 30 | cone 2.0, unblockable | grab 40 |
+| Seven Heads | 30 | 24 | 34 | 10 ×4 | cone, 1.0 travel, four bites | |
+| Thunder | 44 | 4 | 32 | 22 | three marks 0.85 | |
+| Frost Wave | 40 | 10 | 40 | 18 | lane 4.5, 0.55 wide, unblockable | chill |
+| Burrow | 60 | 6 | 40 | 26 | mark 1.0 | venom 120 |
+| Raise the Dead | 50 | 1 | 40 | | spell | raise 2 |
+
+Every move a foe may use is in `MoveId::FOE` and held to §0. Each is readable (18 frames or more),
+punishable (recovery past L1's 10), and parried on reaction (17 or more). Two new limits:
+
+* **What cannot be guarded gives time to step out of it.** A mark follows the hero at
+  `MARK_FOLLOW` (2.6 tiles a second, half his pace) through its tracking frames, then holds. A
+  hero who sets out on seeing it clears its radius and his own with a fifth to spare
+  (`what_cannot_be_guarded_gives_time_to_step_out_of_it`).
+* **A flurry's bites are spread over its active frames.**
+
+A move's range and angle to begin it are now in its data (`range`, `off`, `line`), and so is its
+rest between uses (`cooldown`). A foe takes the first move it knows whose conditions hold, so the
+lab's choices are the same table as before.
+
+### 11.4 What the guard can do, and what holds him
+
+* **Guarding:** most blows are blocked or parried. A grab is parried only (`GuardRule::ParryOnly`).
+  Marks on the floor and the wave of ice are neither (`GuardRule::Bare`): he walks out of them, or
+  leaps. The leap is airborne, and every blow passes under it.
+* **Holds:** while a pin or a grab holds him, the threat manager falls quiet (`quiet_until`). No
+  token is granted and no strike begun until the hold ends, and `SPACING` after.
+* **Counting strikes:** a volley lands as one strike, and so does a flurry; neither counts as an
+  overlap with itself.
+* **The ring's edge:** no shove, call or giant's hand carries him out of a bout (`carry_hero`).
+* **His ails** (`combat::ails`) are each a clock in frames: chill and frozen, rooted, doom, venom,
+  the fire underfoot, held, pulled, shoved. They show about him (a block of ice, roots at his feet,
+  a dark sigil, venom's bubbles) and in a line on screen.
+
+### 11.5 The breeds
+
+Multiples of the archetype (Brute 200 health, Skirmisher 80, Hexer 55):
+
+| Kind | Archetype | Health | Damage | Poise | Pace | Radius | Cost |
+|---|---|---|---|---|---|---|---|
+| Oni | Brute | 1.9 | 1.35 | 1.25 | 1.0 | 0.6 | 2 |
+| Kappa | Skirmisher | 1.9 | 1.35 | 1.4 | 0.95 | 0.42 | 1 |
+| Rokurokubi | Skirmisher | 1.7 | 1.4 | 1.2 | 0.7 | 0.4 | 1 |
+| Kitsune | Hexer | 2.0 | 1.35 | 1.5 | 1.3 | 0.38 | 1 |
+| Karakoncolos | Brute | 2.3 | 1.35 | 1.25 | 1.15 | 0.6 | 2 |
+| Tülükuş | Skirmisher | 2.2 | 1.5 | 1.3 | 1.1 | 0.42 | 1 |
+| Albastı | Skirmisher | 2.4 | 1.45 | 1.4 | 1.05 | 0.42 | 1 |
+| Cin | Hexer | 2.6 | 1.5 | 1.6 | 1.0 | 0.38 | 1 |
+| Arçura | Hexer | 2.8 | 1.45 | 1.8 | 0.95 | 0.45 | 1 |
+| Tepegöz | Brute | 4.0 | 1.7 | 1.25 | 0.85 | 0.85 | 2 |
+| Gashadokuro | Brute | 3.0 | 1.65 | 1.25 | 0.9 | 0.9 | 2 |
+| Yedi başlı ejder | Skirmisher | 4.0 | 1.6 | 1.6 | 0.75 | 0.9 | 2 |
+| Goryō | Hexer | 3.0 | 1.7 | 2.0 | 1.0 | 0.4 | 1 |
+| Frost giant | Brute | 3.6 | 1.9 | 1.25 | 0.9 | 0.9 | 2 |
+| Surtr | Brute | 4.0 | 2.0 | 1.25 | 0.85 | 0.95 | 2 |
+| Níðhöggr | Skirmisher | 5.0 | 1.7 | 1.6 | 0.85 | 0.8 | 2 |
+| Hel | Hexer | 4.0 | 1.9 | 2.0 | 1.0 | 0.42 | 1 |
+
+Every brute still flinches from the finisher in neutral (armor under 45), and every skirmisher is
+still slower than the hero.
+
+### 11.6 Results (`--stage S 3`: Ragnar's kit at the stage's tier, two below and three above)
+
+```
+bout                 tier  skill   win   ttk(s)  target    taken  hurt  parry block overlaps
+THE IRON CLUB           1  novice     0%     0.0      -        140   3.0    0.0   0.0    0
+THE IRON CLUB           1  adept      0%     0.0      -        148   7.0    7.7  16.3    0
+THE IRON CLUB           1  expert   100%    26.0    14-30        9   0.3   18.0   0.0    0
+THE IRON CLUB           3  novice     0%     0.0      -        177   4.0    0.0   0.0    0
+THE IRON CLUB           3  adept    100%    57.4      -         32   1.3    5.7  20.0    0
+THE IRON CLUB           3  expert   100%    18.4    14-30        8   0.3   11.3   0.0    0
+THE IRON CLUB           6  novice     0%     0.0      -        153   3.0    0.0   0.0    0
+THE IRON CLUB           6  adept    100%    18.3      -          0   0.0    1.0   7.7    0
+THE IRON CLUB           6  expert   100%     7.8    14-30       60   2.0    4.0   0.0    0
+THE FOX'S WEDDING       1  novice     0%     0.0      -        109   4.0    0.0   0.0    0
+THE FOX'S WEDDING       1  adept      0%     0.0      -        144   6.0    1.3   8.3    0
+THE FOX'S WEDDING       1  expert   100%    49.6    25-50       78   3.3   41.3   0.0    0
+THE FOX'S WEDDING       3  novice     0%     0.0      -        182   5.0    0.0   0.0    0
+THE FOX'S WEDDING       3  adept      0%     0.0      -        195   8.7    5.3  25.0    0
+THE FOX'S WEDDING       3  expert   100%    33.6    25-50       37   2.0   24.0   0.0    0
+THE FOX'S WEDDING       6  novice     0%     0.0      -        156   5.0    0.0   0.0    0
+THE FOX'S WEDDING       6  adept    100%    41.3      -         13   1.0    3.0  29.0    0
+THE FOX'S WEDDING       6  expert   100%    16.0    25-50       30   2.3   11.7   0.0    0
+THE CALL IN THE COLD    3  novice     0%     0.0      -        169   3.0    0.0   0.0    0
+THE CALL IN THE COLD    3  adept    100%    63.7      -         33   0.7    1.0  16.7    0
+THE CALL IN THE COLD    3  expert   100%    29.0    14-30       16   0.3    6.7   0.0    0
+THE CALL IN THE COLD    5  novice     0%     0.0      -        189   3.0    0.0   0.0    0
+THE CALL IN THE COLD    5  adept    100%    24.3      -         81   1.3    0.7   5.0    0
+THE CALL IN THE COLD    5  expert   100%    20.8    14-30       20   0.3    4.3   0.0    0
+THE CALL IN THE COLD    8  novice   100%     6.3      -        110   2.0    0.0   0.0    0
+THE CALL IN THE COLD    8  adept    100%    18.1      -         13   0.3    0.7   2.3    0
+THE CALL IN THE COLD    8  expert   100%     9.4    14-30        0   0.0    1.3   0.0    0
+ZEMHERİ NIGHTS          3  novice     0%     0.0      -        166   5.0    0.0   0.0    0
+ZEMHERİ NIGHTS          3  adept      0%     0.0      -        185   6.0    7.0  25.3    2
+ZEMHERİ NIGHTS          3  expert     0%     0.0    30-60      199   5.3   14.0   0.0    0
+ZEMHERİ NIGHTS          5  novice     0%     0.0      -        168   5.0    0.0   0.0    0
+ZEMHERİ NIGHTS          5  adept    100%    54.4      -         38   1.3    4.0  17.3    0
+ZEMHERİ NIGHTS          5  expert   100%    39.2    30-60       44   1.7   13.3   0.0    0
+ZEMHERİ NIGHTS          8  novice     0%     0.0      -        152   5.0    0.0   0.0    0
+ZEMHERİ NIGHTS          8  adept    100%    35.8      -         56   1.7    4.7  13.0    0
+ZEMHERİ NIGHTS          8  expert   100%    26.2    30-60       54   2.0   11.3   0.0    0
+THE ONE EYE             5  novice     0%     0.0      -        210   3.0    0.0   0.0    0
+THE ONE EYE             5  adept      0%     0.0      -          9   0.3    4.0  41.3    0
+THE ONE EYE             5  expert   100%    23.2    10-24        0   0.0   11.0   0.0    0
+THE ONE EYE             7  novice     0%     0.0      -        210   3.0    0.0   0.0    0
+THE ONE EYE             7  adept    100%    73.2      -          0   0.0    0.0  31.0    0
+THE ONE EYE             7  expert   100%    14.3    10-24        0   0.0    5.0   0.0    0
+THE ONE EYE            10  novice     0%     0.0      -        322   5.0    0.0   0.0    0
+THE ONE EYE            10  adept    100%    44.3      -         19   0.3    0.0  20.0    0
+THE ONE EYE            10  expert   100%    10.6    10-24        0   0.0    3.0   0.0    0
+THE OLD TALES           5  novice     0%     0.0      -        189   4.0    0.0   0.0    0
+THE OLD TALES           5  adept      0%     0.0      -         56   1.0    3.0  32.3    0
+THE OLD TALES           5  expert   100%    57.2    30-60       68   1.7   18.7   0.0    0
+THE OLD TALES           7  novice     0%     0.0      -        166   4.0    0.0   0.0    0
+THE OLD TALES           7  adept     33%    95.8      -         48   1.3    6.7  29.3    1
+THE OLD TALES           7  expert   100%    48.8    30-60       78   2.3   16.7   0.0    0
+THE OLD TALES          10  novice     0%     0.0      -        330   7.0    0.0   0.0    0
+THE OLD TALES          10  adept    100%    79.6      -         18   0.3    4.0  22.0    0
+THE OLD TALES          10  expert    67%    39.0    30-60       63   3.3   15.0   0.0    0
+FIRE AND ICE            7  novice     0%     0.0      -        204   4.0    0.0   0.0    0
+FIRE AND ICE            7  adept     33%    60.4      -        176  22.7    1.0  16.0    0
+FIRE AND ICE            7  expert   100%    30.8    20-40      110  11.7   10.3   0.0    0
+FIRE AND ICE            9  novice     0%     0.0      -        240  12.0    0.0   0.0    0
+FIRE AND ICE            9  adept    100%    52.6      -        137  18.3    0.3  16.0    0
+FIRE AND ICE            9  expert   100%    32.1    20-40      153  13.7   12.3   0.0    0
+FIRE AND ICE           10  novice     0%     0.0      -        300  18.0    0.0   0.0    0
+FIRE AND ICE           10  adept    100%    39.6      -         92   9.7    1.7  10.0    0
+FIRE AND ICE           10  expert   100%    29.0    20-40       90  11.7   10.3   0.0    0
+RAGNARÖK                7  novice     0%     0.0      -        173   9.0    0.0   0.0    0
+RAGNARÖK                7  adept      0%     0.0      -        196  22.3    3.7  21.7    0
+RAGNARÖK                7  expert   100%    53.3    30-60      127  10.0   19.7   0.0    0
+RAGNARÖK                9  novice     0%     0.0      -        285  18.0    0.0   0.0    0
+RAGNARÖK                9  adept    100%    85.5      -        158  20.7    6.0  27.0    0
+RAGNARÖK                9  expert   100%    50.9    30-60      187  14.0   20.7   0.0    0
+RAGNARÖK               10  novice     0%     0.0      -        329  16.0    0.0   0.0    0
+RAGNARÖK               10  adept    100%    72.2      -        211  25.7    5.7  27.0    0
+RAGNARÖK               10  expert   100%    41.8    30-60      307  17.7   19.3   0.0    0
+```
+
+* **At its stage's tier**, the expert wins every bout inside its target and a masher none.
+* **Three tiers up (or the last tier)**, a careful player wins them all.
+* **Zero overlaps** at each bout's tier, for every skill.
+
+These are pinned by `every_later_stage_wants_skill_and_its_kit` and
+`the_bouts_meet_their_balance_targets` (the expert with each bout's tier). The legend tests in
+`ring_tests` play each rule through the game. They cover the spilled dish and the shove through a
+block, the tremor behind the oni, the pin struggled short, the plea (a second blow revives, restraint
+kills), the ring and the eye, the stun, roots and freezing, fire and the dead falling with Hel, and
+the illusions and the call. `duelist` tests the marks following and holding, the dive and the burrow
+out of reach, the cin's vanishing, a giant's reach and the lane's head.
+
+### 11.7 What changed, and why
+
+| Change | Why |
+|---|---|
+| The expert bot counts how long a press really commits it (the rest of its swing to the cancel frame, and the next swing's) before pressing again | a slow folklore blow coming in mid-string (the neck lash, Surtr's slam) caught it in its own swing |
+| The bot counts a lane's head down through the active frames | it read the rokurokubi's head as 7 frames away all the way in, and never raised its guard |
+| The bot guards what lands first, then walks out of a mark; when both come at once, it leaps | walking out of the owl's mark, it took the karakoncolos's slam |
+| The bot's dodges and its walk away from the call keep to the ring | it walked off the ring, and the bout was called off |
+| The owl's doom ×1.5 → ×1.3; the karakoncolos's damage 1.5 → 1.35 | doomed, one slam took three quarters of a tier-8 kit's health |
+| Tepegöz's health 2.6 → 4.0; his bout's target 10-24 s | the expert killed him in 9 s at tier 7: no duel at all |
+| Níðhöggr's damage 1.9 → 1.7; venom 4 → 3; Surtr's fire 6 → 5 | with the last tier, a careful player lost Ragnarök one time in three |
+
+The expert's new care moved the lab's times a little (Steel 25.4 → 26.6 s, Fang and Fire 12.9 →
+11.5 s, the Night Parade 35.9 → 36.0 s), all still inside their targets.
+
+**Tools:**
+* `--stage S N` plays a stage's bouts with every skill at three kit tiers.
+* `--bout K SKILL TIER SEED` plays one bout. With `VH_TRACE=1` set, it prints every blow and wound on the hero as it comes: who struck, with what, how it was met, and his state.

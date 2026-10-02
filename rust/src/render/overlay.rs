@@ -12,7 +12,7 @@ pub struct OVertex {
 }
 
 pub const ATLAS_W: u32 = 512;
-pub const ATLAS_H: u32 = 256;
+pub const ATLAS_H: u32 = 512;
 const CELL: u32 = 32;
 const COLS: u32 = 16;
 /// Glyph cell used for solid fills (a fully set block).
@@ -22,7 +22,35 @@ const HEART: u32 = 127;
 
 const HEART_BITS: [u8; 8] = [0b0011_0110, 0b0111_1111, 0b0111_1111, 0b0111_1111, 0b0011_1110, 0b0001_1100, 0b0000_1000, 0b0000_0000];
 
-/// The atlas: every ASCII glyph of the public-domain font8x8, magnified 4x, one byte per texel.
+/// Letters past ASCII, in the atlas from cell 128 on: Turkish's, and the long o of Japanese names
+/// (the later stages' foes are the Tülükuş, the Arçura, Tepegöz, the Goryō...).
+const EXTRA: [char; 12] = ['Ç', 'ç', 'Ö', 'ö', 'Ü', 'ü', 'Ş', 'ş', 'İ', 'ı', 'Ō', 'ō'];
+const EXTRA_CELL: u32 = 128;
+
+/// An extra letter's glyph: font8x8's own where it has one, else its base letter with a cedilla
+/// under it, its dot taken off or put on, or a bar over it.
+fn extra_glyph(c: char) -> [u8; 8] {
+    use font8x8::legacy::{BASIC_LEGACY as BASIC, LATIN_LEGACY as LATIN};
+    let latin = |c: char| LATIN[c as usize - 0xa0];
+    let with = |base: char, row: usize, bits: u8| {
+        let mut g = BASIC[base as usize];
+        g[row] = bits;
+        g
+    };
+    match c {
+        'Ç' | 'ç' | 'Ö' | 'ö' | 'Ü' | 'ü' => latin(c),
+        'Ş' => with('S', 7, 0x0c),
+        'ş' => with('s', 7, 0x0c),
+        'İ' => [0x0c, 0x00, 0x1e, 0x0c, 0x0c, 0x0c, 0x1e, 0x00],
+        'ı' => with('i', 0, 0x00),
+        'Ō' => [0x3e, 0x00, 0x1c, 0x36, 0x63, 0x63, 0x36, 0x1c],
+        'ō' => with('o', 0, 0x1e),
+        _ => BASIC['?' as usize],
+    }
+}
+
+/// The atlas: every ASCII glyph of the public-domain font8x8, magnified 4x, one byte per texel,
+/// then the extra letters.
 pub fn build_atlas() -> Vec<u8> {
     let mut px = vec![0u8; (ATLAS_W * ATLAS_H) as usize];
     let scale = CELL / 8;
@@ -52,6 +80,9 @@ pub fn build_atlas() -> Vec<u8> {
     }
     put(&mut px, HEART, &HEART_BITS);
     put(&mut px, SOLID, &[0xff; 8]);
+    for (i, &c) in EXTRA.iter().enumerate() {
+        put(&mut px, EXTRA_CELL + i as u32, &extra_glyph(c));
+    }
     px
 }
 
@@ -191,7 +222,7 @@ impl Overlay {
             let code = match ch {
                 '♥' => HEART,
                 c if (c as u32) < 128 => c as u32,
-                _ => '?' as u32,
+                c => EXTRA.iter().position(|&e| e == c).map(|i| EXTRA_CELL + i as u32).unwrap_or('?' as u32),
             };
             if ch != ' ' && code != SOLID {
                 // Inset by a texel so bilinear sampling never bleeds in the neighboring glyph.
@@ -237,5 +268,23 @@ impl Overlay {
 impl Default for Overlay {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_later_stages_names_draw_in_their_own_letters() {
+        assert_eq!(build_atlas().len(), (ATLAS_W * ATLAS_H) as usize);
+        assert!(EXTRA_CELL + EXTRA.len() as u32 <= (ATLAS_W / CELL) * (ATLAS_H / CELL), "room in the atlas");
+        let unknown = extra_glyph('x');
+        for c in EXTRA {
+            assert!(extra_glyph(c) != unknown && extra_glyph(c).iter().any(|&b| b != 0), "{c}");
+        }
+        for name in ["TÜLÜKUŞ", "ARÇURA", "TEPEGÖZ", "GORYŌ", "YEDİ BAŞLI EJDER", "Albastı", "ZEMHERİ NIGHTS", "RAGNARÖK"] {
+            assert!(name.chars().all(|c| (c as u32) < 128 || EXTRA.contains(&c)), "{name}");
+        }
     }
 }

@@ -1,13 +1,13 @@
 //! The third stage's cast, sculpted as finely as the second (see `foes2`): the tengu, a
 //! red-faced mountain goblin with a nose as long as a hand and a white mane, in a pilgrim's
-//! jacket hung with pompoms, his katana held low; the oni, a horned red demon with a curved
+//! jacket hung with pompoms, his katana held low; the rasetsu, a horned red demon with a curved
 //! blade in each fist and a tufted tail; the dire wolf, grey and bigger than the loup-garou, a
 //! mane of spikes on its shoulders; the jorogumo, a pale spider-woman on eight long legs with a
 //! sickle in her hand; and the cobra, coiled, its hood spread over its open fangs. Each faces
 //! +z, stands in the middle of its grid (where its rig sets it down), and is sculpted in the
 //! parts its rig swings.
 //!
-//! Between them they fight all three ways (COMBAT.md §10): the tengu and the oni with their
+//! Between them they fight all three ways (COMBAT.md §10): the tengu and the rasetsu with their
 //! blades, the dire wolf and the cobra with their whole bodies, the jorogumo from afar.
 
 use std::f32::consts::{PI, TAU};
@@ -58,7 +58,7 @@ mod pal {
     pub const TSUBA: u32 = 0xc89c3c | mat::GOLD;
     pub const TSUBA_D: u32 = 0x8a6a26 | mat::GOLD;
     pub const SAYA: u32 = 0x1e1816 | mat::WOOD;
-    // The oni.
+    // The rasetsu.
     pub const O_SKIN: u32 = 0xb43a30 | mat::SKIN;
     pub const O_SKIN_D: u32 = 0x862a24 | mat::SKIN;
     pub const O_CLOTH: u32 = 0x962c26 | mat::CLOTH;
@@ -570,33 +570,33 @@ pub fn tengu() -> Collected {
     s.finish(0.04)
 }
 
-// ------------------------------------------------------------------------ oni
+// -------------------------------------------------------------------- rasetsu
 
-/// The oni's grid: 64 wide (his blades), 116 tall (his horns), 40 deep.
-pub const ONI_SIZE: (i32, i32, i32) = (64, 116, 40);
-const ONI_Z: f32 = 19.5;
+/// The rasetsu's grid: 64 wide (his blades), 116 tall (his horns), 40 deep.
+pub const RASETSU_SIZE: (i32, i32, i32) = (64, 116, 40);
+const RASETSU_Z: f32 = 19.5;
 
 /// Hips, shoulders and neck, and the tail at the small of his back; a blade in each fist.
-pub const ONI_RIG: &[PartDef] = &[
-    PartDef { name: "leftLeg", boxes: &[], pivot: [25.0, 40.0, ONI_Z] },
-    PartDef { name: "rightLeg", boxes: &[], pivot: [38.0, 40.0, ONI_Z] },
-    PartDef { name: "leftArm", boxes: &[], pivot: [16.0, 78.0, ONI_Z] },
-    PartDef { name: "rightArm", boxes: &[], pivot: [47.0, 78.0, ONI_Z] },
-    PartDef { name: "head", boxes: &[], pivot: [31.5, 84.0, ONI_Z] },
+pub const RASETSU_RIG: &[PartDef] = &[
+    PartDef { name: "leftLeg", boxes: &[], pivot: [25.0, 40.0, RASETSU_Z] },
+    PartDef { name: "rightLeg", boxes: &[], pivot: [38.0, 40.0, RASETSU_Z] },
+    PartDef { name: "leftArm", boxes: &[], pivot: [16.0, 78.0, RASETSU_Z] },
+    PartDef { name: "rightArm", boxes: &[], pivot: [47.0, 78.0, RASETSU_Z] },
+    PartDef { name: "head", boxes: &[], pivot: [31.5, 84.0, RASETSU_Z] },
     PartDef { name: "tail", boxes: &[], pivot: [31.5, 44.0, 12.5] },
 ];
 
 /**
- * The oni: a red demon a head taller than a man, horns ringed like a ram's sweeping up and out
+ * The rasetsu, a man-eater of the Buddhist hells: a red demon a head taller than a man, horns ringed like a ram's sweeping up and out
  * from his brow, pointed ears, deep-set yellow eyes under a scowl, fangs and a black goatee, his
  * black hair long down his back; a ragged red tunic open at the chest, a broad belt with a
  * skull for its buckle over a torn red kilt; leather bracers and shin straps, clawed feet, a
  * thin tail ending in a black tuft, and a curved blade in each fist.
  */
-pub fn oni() -> Collected {
-    let (w, h, d) = ONI_SIZE;
+pub fn rasetsu() -> Collected {
+    let (w, h, d) = RASETSU_SIZE;
     let mut s = Sculpt::new(w, h, d);
-    let (cx, cz) = (31.5f32, ONI_Z);
+    let (cx, cz) = (31.5f32, RASETSU_Z);
 
     // ---- legs: clawed feet, red cloth at the ankle, leather straps up the shin, baggy trousers
     for (i, lx) in [25.0f32, 38.0].into_iter().enumerate() {
@@ -1323,7 +1323,7 @@ mod tests {
     fn every_third_stage_foe_stands_in_the_middle_of_its_grid_and_inside_it() {
         for (name, c, size) in [
             ("tengu", tengu(), TENGU_SIZE),
-            ("oni", oni(), ONI_SIZE),
+            ("rasetsu", rasetsu(), RASETSU_SIZE),
             ("dire wolf", dire_wolf(), DIRE_SIZE),
             ("jorogumo", jorogumo(), JORO_SIZE),
             ("cobra", cobra(), COBRA_SIZE),

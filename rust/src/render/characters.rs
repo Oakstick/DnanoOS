@@ -484,6 +484,9 @@ pub mod mat {
     pub const GOLD: u32 = 8 << 24;
     /// Wet, glossy goo.
     pub const SLIME: u32 = 9 << 24;
+    /// Lit from within (fire, embers, a ghost's light, eyes that burn): drawn at its own
+    /// brightness whatever light falls on it.
+    pub const GLOW: u32 = 11 << 24;
 }
 
 // ----------------------------------------------------------------- blacksmith

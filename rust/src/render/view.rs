@@ -147,6 +147,10 @@ pub struct SceneState<'a> {
     pub drops: &'a [crate::logic::vault::Drop],
     /// The Sparring Ring's hex bolts in flight.
     pub bolts: &'a [crate::logic::combat::duelist::Bolt],
+    /// The floor burning where Surtr's sword fell, the legends' marks on the scene, and what ails him.
+    pub hazards: &'a [crate::logic::combat::ails::Hazard],
+    pub flashes: &'a [crate::logic::combat::ails::Flash],
+    pub ails: crate::logic::combat::ails::Ails,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -674,10 +678,14 @@ fn emit_mesh(out: &mut Vec<Instance>, mesh: &Mesh, base: Mat4, tint: Vec3, alpha
 }
 
 fn emit_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
+    // (A voxel lit from within, `mat::GLOW`, keeps its own light whatever tints the rest: eyes in
+    // a shadow, fire on a giant dimmed in his recovery.)
+    const GLOW: f32 = 16.0;
     for (i, part) in rig.parts.iter().enumerate() {
         let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
         for (j, (off, c)) in part.cubes.iter().enumerate() {
             let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
+            let tint = if shade == GLOW { Vec3::ONE } else { tint };
             out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c * tint, alpha, emissive, shade));
         }
     }
