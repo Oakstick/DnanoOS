@@ -23,7 +23,7 @@ use crate::logic::combat::{Breed, Duelist};
 use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
 use crate::logic::realms::{weight, Pack, Run};
 use crate::logic::sins::Sin;
-use crate::logic::types::V;
+use crate::logic::types::{Dir, V};
 use crate::render::view::CameraMode;
 
 /// A gauge a realm shows on the HUD: its name, how full of how much, and its colour. A count is
@@ -159,6 +159,21 @@ impl Game {
         self.view.clear_enemies();
         for e in &self.enemies {
             self.view.add_enemy(e);
+        }
+    }
+
+    /// The controls as the realm leaves them, before he moves this tick: his free-movement wish
+    /// (`hero.wish`, changed in place) and the way he is steered on the grid (returned).
+    pub(super) fn steer_run(&mut self, wanted: Dir) -> Dir {
+        let Some(sin) = self.run.as_ref().map(Run::sin) else { return wanted };
+        match sin {
+            Sin::Pride => self.steer_mirrors(wanted),
+            Sin::Envy => self.steer_grotto(wanted),
+            Sin::Wrath => self.steer_field(wanted),
+            Sin::Sloth => self.steer_mire(wanted),
+            Sin::Gluttony => self.steer_feast(wanted),
+            Sin::Lust => self.steer_thorns(wanted),
+            Sin::Greed => wanted,
         }
     }
 

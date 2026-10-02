@@ -3,6 +3,7 @@
 
 use super::super::Game;
 use super::Meter;
+use crate::logic::types::Dir;
 
 impl Game {
     /// As the realm is entered (its packs raised, the camera above).
@@ -13,6 +14,11 @@ impl Game {
 
     /// The realm's own rules each tick.
     pub(in crate::game) fn update_grotto(&mut self, _dt: f64) {}
+
+    /// The controls as the realm leaves them (`Game::steer_run`): untouched.
+    pub(in crate::game) fn steer_grotto(&mut self, wanted: Dir) -> Dir {
+        wanted
+    }
 
     /// After a fall, as he rises at the checkpoint (and as the realm is first entered).
     pub(in crate::game) fn reset_grotto(&mut self) {}

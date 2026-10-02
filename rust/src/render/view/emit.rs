@@ -360,6 +360,10 @@ impl WorldView {
             if v.group_pos.distance(self.cam_pos) > f.atmosphere.fog_far + 4.0 {
                 continue;
             }
+            // The Peerless wears his own likeness: the Hall of Mirrors draws it.
+            if v.kind == EnemyKind::Peerless {
+                continue;
+            }
             // Nor those out of the camera's view (with a margin for their size and the light they cast).
             let clip = view_proj * (v.group_pos + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
             if clip.w <= 0.0 || clip.x.abs() > clip.w * 1.25 + 1.0 || clip.y.abs() > clip.w * 1.25 + 1.0 {

@@ -5,6 +5,7 @@ use super::super::Game;
 use super::super::MenuItem;
 use super::Meter;
 use super::Offer;
+use crate::logic::types::Dir;
 
 impl Game {
     /// As the realm is entered (its packs raised, the camera above).
@@ -15,6 +16,11 @@ impl Game {
 
     /// The realm's own rules each tick.
     pub(in crate::game) fn update_mire(&mut self, _dt: f64) {}
+
+    /// The controls as the realm leaves them (`Game::steer_run`): untouched.
+    pub(in crate::game) fn steer_mire(&mut self, wanted: Dir) -> Dir {
+        wanted
+    }
 
     /// After a fall, as he rises at the checkpoint (and as the realm is first entered).
     pub(in crate::game) fn reset_mire(&mut self) {}

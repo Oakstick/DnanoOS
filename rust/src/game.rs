@@ -487,6 +487,8 @@ impl Game {
 
         let wanted = self.resolve_wanted_dir();
         self.hero.wish = self.free_wish();
+        // A realm may take the controls (a charm mirrors them, a berserk rage aims them).
+        let wanted = self.steer_run(wanted);
         // LB or Shift held: the shield is raised (if he has one, and is on his feet). Where fights go by
         // frame data (the Sparring Ring, the vaults) the guard is his fighter's, and so are his attack
         // and evade; a shrine weapon from a vault chest still fires as it always has.
