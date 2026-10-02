@@ -121,9 +121,10 @@ impl Game {
         self.enter(Screen::Ready);
     }
 
-    /// Capture hook: `rows` rows of one of each foe standing a few tiles before the hero, facing him.
-    pub fn debug_foes(&mut self, rows: usize) {
-        let stage = self.foe_stage();
+    /// Capture hook: `rows` rows of one of each foe of `stage` (none: this level's) standing a few
+    /// tiles before the hero, facing him.
+    pub fn debug_foes(&mut self, rows: usize, stage: Option<u8>) {
+        let stage = stage.unwrap_or_else(|| self.foe_stage());
         let specs = enemy_specs(&self.level.grid, stage);
         let kinds = EnemyKind::of_stage(stage);
         let n = kinds.len();

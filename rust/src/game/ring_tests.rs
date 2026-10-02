@@ -6,7 +6,8 @@ use super::sparring::{BoutPhase, AFTERMATH, COUNTDOWN};
 use super::*;
 use crate::logic::combat::fsm::Reel;
 use crate::logic::combat::threat::CAPACITY;
-use crate::logic::combat::{Archetype, MoveId};
+use crate::logic::combat::MoveId;
+use crate::logic::enemy::EnemyKind;
 use crate::logic::gym;
 use crate::logic::types::{Dir, V};
 use crate::render::view::CameraMode;
@@ -94,7 +95,7 @@ fn a_bout_begins_when_he_steps_into_the_ring_and_is_called_off_when_he_leaves() 
     g.update(crate::app::STEP);
     assert!(matches!(phase(&g), BoutPhase::Countdown(_)));
     assert_eq!(g.view.camera_mode, CameraMode::Top, "the ring is fought from above");
-    let kinds: Vec<Archetype> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).map(|d| d.arch).collect();
+    let kinds: Vec<EnemyKind> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).map(|d| d.breed.kind).collect();
     assert_eq!(kinds, gym::BOUTS[0].foes, "bout 1: the Brute");
     run(&mut g, COUNTDOWN + 0.1);
     assert_eq!(phase(&g), BoutPhase::Fight);
@@ -200,7 +201,7 @@ fn losing_puts_him_back_on_his_feet_and_winning_brings_the_next_bout() {
     assert!(matches!(phase(&g), BoutPhase::Won(_)), "{:?}", phase(&g));
     run(&mut g, AFTERMATH + 0.1);
     assert_eq!(g.spar.as_ref().unwrap().bout, 1);
-    let kinds: Vec<Archetype> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).map(|d| d.arch).collect();
+    let kinds: Vec<EnemyKind> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).map(|d| d.breed.kind).collect();
     assert_eq!(kinds, gym::BOUTS[1].foes, "the pack");
 }
 
@@ -257,6 +258,24 @@ fn the_bouts_meet_their_balance_targets() {
     }
     let s = summarize(0, Skill::Adept, &seeds);
     assert_eq!(s.wins, s.runs, "a player who blocks beats the Brute: {s:?}");
+}
+
+/// COMBAT.md §10: the third stage is stronger. With the training sword a masher beats none of its
+/// bouts (only the expert wins them, above); with a tier-4 kit a careful player wins them all.
+#[test]
+fn the_third_stage_wants_skill_or_better_gear() {
+    use super::bot::{summarize, summarize_as, Loadout, Skill};
+    use crate::logic::heroes::HeroKind;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let seeds = [1, 2, 3];
+    for k in gym::STAGE_THREE_BOUT..gym::BOUTS.len() {
+        let name = gym::BOUTS[k].name;
+        let s = summarize(k, Skill::Novice, &seeds);
+        assert_eq!(s.wins, 0, "a masher cannot beat {name} with the training sword: {s:?}");
+        let s = summarize_as(k, Skill::Adept, &seeds, Some(Loadout::all(HeroKind::Ragnar, 4)));
+        assert_eq!(s.wins, s.runs, "a careful player with tier-4 gear wins {name}: {s:?}");
+        assert_eq!(s.overlaps, 0, "{name}: {s:?}");
+    }
 }
 
 /// Phase 3 of COMBAT.md, played by the expert over three seeds: every hero's full kit at tier 10

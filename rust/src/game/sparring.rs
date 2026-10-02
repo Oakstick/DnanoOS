@@ -9,8 +9,8 @@ pub use super::brawl::BoutStats;
 use super::brawl::Field;
 use super::Game;
 use crate::audio::Sfx;
-use crate::logic::combat::{Duelist, Reel, State};
-use crate::logic::enemy::{enemy_specs, Enemy, EnemyMode};
+use crate::logic::combat::{Breed, Duelist, Reel, State};
+use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
 use crate::logic::gym;
 use crate::logic::types::{P, V};
 use crate::render::view::CameraMode;
@@ -90,14 +90,15 @@ impl Game {
         let kit = self.hero_kit();
         let (Some(spar), Some(b)) = (self.spar.as_mut(), self.brawl.as_mut()) else { return };
         let bout = gym::BOUTS[spar.bout];
-        let specs = enemy_specs(&self.level.grid, 2);
         let mut fresh = Vec::new();
-        for (arch, at) in bout.foes.iter().zip(gym::bout_spawns(bout.foes.len())) {
-            let spec = specs.iter().find(|s| s.kind == arch.kind()).expect("an archetype's body");
-            let mut e = Enemy::new(spec, P::new(at.x.round() as i32, at.y.round() as i32), self.level.data.enemy_speed);
+        for (&kind, at) in bout.foes.iter().zip(gym::bout_spawns(bout.foes.len())) {
+            let breed = Breed::of(kind);
+            let spec = spec_of(&self.level.grid, kind);
+            let mut e = Enemy::new(&spec, P::new(at.x.round() as i32, at.y.round() as i32), self.level.data.enemy_speed);
             e.b.mode = EnemyMode::Chase;
-            e.b.name = arch.name().to_string();
-            e.duel = Some(Box::new(Duelist::new(b.next_id(), *arch, at, V::new(1.0, 0.0))));
+            // (The lab's foes go by their archetypes, a stage's by their own names.)
+            e.b.name = if breed.arch.kind() == kind { breed.arch.name().to_string() } else { spec.name.to_uppercase() };
+            e.duel = Some(Box::new(Duelist::bred(b.next_id(), breed, at, V::new(1.0, 0.0))));
             fresh.push(e);
         }
         spar.phase = BoutPhase::Countdown(COUNTDOWN);

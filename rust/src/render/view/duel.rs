@@ -2,9 +2,11 @@
 //! faces its own way; its move plays on top of its gait (the wind-up is the tell, the strike
 //! snaps, the recovery hangs open), its colours tell its state, and the floor shows where its
 //! attack will land, filling as the startup runs and flashing in the commit frames. Token
-//! holders wear a red pip; hex bolts fly as violet sparks (gold, once parried back).
+//! holders wear a red pip; bolts fly as sparks in their caster's colour (the witch's violet, the
+//! bog slime's green, the jorogumo's fire; gold, once parried back).
 
 use super::*;
+use crate::logic::combat::duelist::FIRE_TINT;
 use crate::logic::combat::{Archetype, Duelist, MoveId, Phase, Reel, State};
 
 /// The commit flash: the last frames of a startup, when the aim no longer follows.
@@ -16,6 +18,28 @@ fn tell(arch: Archetype) -> u32 {
         Archetype::Brute => 0xff5a2a,
         Archetype::Skirmisher => 0xff3a6a,
         Archetype::Hexer => 0xb066ff,
+    }
+}
+
+/// A duelist's telegraph colour: its archetype's, or the jorogumo's fire.
+fn tell_of(d: &Duelist) -> u32 {
+    if d.breed.kind == EnemyKind::Jorogumo {
+        FIRE_TINT
+    } else {
+        tell(d.arch)
+    }
+}
+
+/// How high over the floor a third-stage foe's head is (the others keep their archetype's
+/// heights): its token pip floats there, its bars over that.
+pub fn crown(kind: EnemyKind) -> Option<f32> {
+    match kind {
+        EnemyKind::Tengu => Some(1.2),
+        EnemyKind::Oni => Some(1.5),
+        EnemyKind::DireWolf => Some(0.9),
+        EnemyKind::Jorogumo => Some(1.05),
+        EnemyKind::Cobra => Some(1.08),
+        _ => None,
     }
 }
 
@@ -39,7 +63,7 @@ impl WorldView {
         self.pose_duel(i, d, time);
         let v = &mut self.enemy_views[i];
         v.visible = d.alive();
-        let glow = lin(tell(d.arch));
+        let glow = lin(tell_of(d));
         v.mat_color = Vec3::ONE;
         v.emissive = Vec3::ZERO;
         v.light_color = v.base_color;
@@ -82,6 +106,7 @@ impl WorldView {
     fn pose_duel(&mut self, i: usize, d: &Duelist, time: f32) {
         let rig = self.models.rig(self.enemy_views[i].rig);
         let v = &mut self.enemy_views[i];
+        let cobra = v.kind == EnemyKind::Cobra;
         v.root_rot.y = 0.0;
         v.root_scale = Vec3::ONE;
         if d.arch != Archetype::Skirmisher {
@@ -125,6 +150,20 @@ impl WorldView {
                         };
                         v.pose.rot_x(rig, "leftArm", -1.5 * (1.0 - rec));
                         v.pose.rot_x(rig, "rightArm", -1.5 * (1.0 - rec));
+                    }
+                    MoveId::Lunge if cobra => {
+                        if strike == 0.0 {
+                            // Drawn back on its coil, the hood high.
+                            v.pose.rot_x(rig, "neck", -0.4 * wind);
+                            v.pose.rot_x(rig, "head", 0.25 * wind);
+                            v.root_scale = Vec3::new(1.0, 1.0 - 0.06 * wind, 1.0);
+                        } else {
+                            // The strike: thrown forward and down off the coil, its length stretched out.
+                            let out = snap * (1.0 - rec);
+                            v.pose.rot_x(rig, "neck", 0.85 * out);
+                            v.pose.rot_x(rig, "head", -0.3 * out);
+                            v.root_scale = Vec3::new(1.0, 1.0, 1.0 + 0.2 * out);
+                        }
                     }
                     MoveId::Lunge => {
                         if strike == 0.0 {
@@ -182,11 +221,11 @@ impl WorldView {
             let base = Vec3::new(d.pos.x as f32, floor_at(s.grid, d.pos.x as f32, d.pos.y as f32), d.pos.y as f32);
             if d.token {
                 // A red pip over the one whose turn it is.
-                let top = match d.arch {
+                let top = crown(d.breed.kind).unwrap_or(match d.arch {
                     Archetype::Brute => 1.25,
                     Archetype::Skirmisher => 0.95,
                     Archetype::Hexer => 1.55,
-                };
+                });
                 let m = Mat4::from_translation(base + Vec3::new(0.0, top + (time * 4.0).sin() * 0.04, 0.0))
                     * Mat4::from_rotation_y(time * 3.0)
                     * Mat4::from_rotation_z(PI / 4.0)
@@ -199,7 +238,7 @@ impl WorldView {
             if phase == Phase::Recovery {
                 continue;
             }
-            let color = lin(tell(d.arch));
+            let color = lin(tell_of(d));
             let fill = if phase == Phase::Active { 1.0 } else { frame as f32 / data.startup as f32 };
             let commit = phase == Phase::Startup && data.startup - frame <= COMMIT_FRAMES;
             let blink = if commit { 0.6 + (time * 40.0).sin().abs() * 0.6 } else { 0.0 };

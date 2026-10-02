@@ -367,6 +367,10 @@ impl WorldView {
                     EnemyKind::Slime | EnemyKind::Werewolf => 0.3,
                     EnemyKind::Witch => 0.4,
                     EnemyKind::Blemmyes => 0.5,
+                    EnemyKind::Tengu => 0.45,
+                    EnemyKind::Oni => 0.55,
+                    EnemyKind::DireWolf | EnemyKind::Cobra => 0.3,
+                    EnemyKind::Jorogumo => 0.35,
                 };
                 f.lights.push(Light {
                     pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
@@ -376,14 +380,14 @@ impl WorldView {
             }
             if s.enemies[i].is_ally() && v.visible {
                 // A halo over the turned.
-                let top = match v.kind {
+                let top = crown(v.kind).unwrap_or(match v.kind {
                     EnemyKind::Skeleton => 1.18,
                     EnemyKind::Witch => 1.3,
                     EnemyKind::Helmeted | EnemyKind::Blemmyes => 1.05,
                     EnemyKind::Slime => 0.78,
                     EnemyKind::Werewolf | EnemyKind::Minion => 0.68,
                     _ => 0.32,
-                };
+                });
                 let blue = lin(Archangel::Michael.color());
                 let m = Mat4::from_translation(v.group_pos + Vec3::new(0.0, top, 0.0))
                     * Mat4::from_rotation_x(-PI / 2.0)

@@ -107,6 +107,11 @@ fn sprites() -> &'static Sprites {
             (sprite_from(&super::foes2::loup_garou()), "Loup-Garou", 0xc0885a, "Fast, and faster once wounded."),
             (sprite_from(&super::foes2::blemmyes()), "Blemmyes", 0xe8b494, "Three blows to fell, and his hand hits twice as hard."),
             (sprite_from(&super::foes2::large_bat()), "Large Bat", 0xc04a70, "Flies over everything, swerving as it comes."),
+            (sprite_from(&super::foes3::tengu()), "Tengu", 0xe8503e, "Melee: quick to close in, his katana cuts high and wide."),
+            (sprite_from(&super::foes3::oni()), "Oni", 0xd0402e, "Melee: two curved blades, slow to start and hard to stagger."),
+            (sprite_from(&super::foes3::dire_wolf()), "Dire Wolf", 0xa4acb8, "Body: it circles, then throws itself at you."),
+            (sprite_from(&super::foes3::jorogumo()), "Jorogumo", 0xff8a3a, "Distance: she hurls fire and backs away from you."),
+            (sprite_from(&super::foes3::cobra()), "Cobra", 0x9ac84a, "Body: it rears back on its coil, then strikes."),
         ],
     })
 }
@@ -1058,6 +1063,11 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 EnemyKind::Werewolf => 6,
                 EnemyKind::Blemmyes => 7,
                 EnemyKind::LargeBat => 8,
+                EnemyKind::Tengu => 9,
+                EnemyKind::Oni => 10,
+                EnemyKind::DireWolf => 11,
+                EnemyKind::Jorogumo => 12,
+                EnemyKind::Cobra => 13,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;

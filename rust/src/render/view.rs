@@ -57,6 +57,7 @@ pub use animation::SLASH_SECONDS;
 use animation::{EnemyView, Pose, TURN_RATE_HERO};
 use camera::chase;
 pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR};
+pub use duel::crown;
 use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
 pub use fade::TREE_FADE_MIN;

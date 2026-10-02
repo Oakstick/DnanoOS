@@ -11,6 +11,7 @@ use super::fsm::{Event, Fighter, State};
 use super::math::{add, dot, len, norm, scale, sub, turn_toward};
 use super::threat::Slot;
 use super::FPS;
+use crate::logic::enemy::EnemyKind;
 use crate::logic::grid::Grid;
 use crate::logic::pathing::route_toward;
 use crate::logic::types::{CARDINALS, P, V};
@@ -30,9 +31,19 @@ pub const SIDESTEP_RANGE: f64 = 2.4;
 pub const SIDESTEP: u16 = 12;
 pub const SIDESTEP_SPEED: f64 = 8.0;
 pub const SIDESTEP_REST: u16 = 120;
-/// A hex bolt's colours: the witch's violet, the bog slime's green.
+/// A hex bolt's colours: the witch's violet, the bog slime's green, the jorogumo's fire.
 pub const HEX_TINT: u32 = 0xc070ff;
 pub const SPIT_TINT: u32 = 0x7aff5a;
+pub const FIRE_TINT: u32 = 0xff8a2a;
+
+/// The colour of `kind`'s bolts.
+pub fn bolt_tint(kind: EnemyKind) -> u32 {
+    match kind {
+        EnemyKind::Slime => SPIT_TINT,
+        EnemyKind::Jorogumo => FIRE_TINT,
+        _ => HEX_TINT,
+    }
+}
 
 /// A hex bolt in flight (a parried one flies back at the foes).
 #[derive(Clone, Copy, Debug)]
@@ -742,7 +753,7 @@ mod tests {
 
     #[test]
     fn a_foe_sleeps_in_its_den_hunts_when_woken_and_walks_home_when_called_off() {
-        let mut d = Duelist::bred(1, Breed::of(crate::logic::enemy::EnemyKind::Skeleton), V::new(4.0, 4.0), V::new(1.0, 0.0));
+        let mut d = Duelist::bred(1, Breed::of(EnemyKind::Skeleton), V::new(4.0, 4.0), V::new(1.0, 0.0));
         d.den = Some(Den { lo: V::new(2.0, 2.0), hi: V::new(8.0, 8.0), home: V::new(4.0, 4.0), awake: false, returning: false });
         d.token = true;
         let s = Sense { hero: V::new(10.0, 4.0), aim: V::new(-1.0, 0.0), swing: false };

@@ -398,7 +398,7 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
     assert_eq!(
         kinds,
-        [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice()].concat(),
+        [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice(), EnemyKind::STAGE_THREE.as_slice()].concat(),
         "one of every foe, stage by stage, in the gym"
     );
     assert_eq!(g.hero.occupied(), gym::arrival());

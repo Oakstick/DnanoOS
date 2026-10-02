@@ -19,6 +19,11 @@ pub(super) enum RigId {
     Werewolf,
     Blemmyes,
     LargeBat,
+    Tengu,
+    Oni,
+    DireWolf,
+    Jorogumo,
+    Cobra,
 }
 
 pub(super) struct Models {
@@ -34,6 +39,12 @@ pub(super) struct Models {
     pub(super) werewolf: Rig,
     pub(super) blemmyes: Rig,
     pub(super) large_bat: Rig,
+    /// The third stage's five.
+    pub(super) tengu: Rig,
+    pub(super) oni: Rig,
+    pub(super) dire_wolf: Rig,
+    pub(super) jorogumo: Rig,
+    pub(super) cobra: Rig,
     /// Every foe's coarse copy, in `RigId` order.
     pub(super) foes_far: Vec<Rig>,
     pub(super) medkit: Mesh,
@@ -107,6 +118,12 @@ impl Models {
         let werewolf = build_rig(&loup_garou(), WOLF_RIG, 0.0135);
         let blemmyes = build_rig(&blemmyes(), BLEMMYES_RIG, 0.0145);
         let large_bat = build_rig(&large_bat(), BAT_RIG, 0.011);
+        use crate::render::foes3::{cobra, dire_wolf, jorogumo, oni, tengu, COBRA_RIG, DIRE_RIG, JORO_RIG, ONI_RIG, TENGU_RIG};
+        let tengu = build_rig(&tengu(), TENGU_RIG, 0.0125);
+        let oni = build_rig(&oni(), ONI_RIG, 0.0125);
+        let dire_wolf = build_rig(&dire_wolf(), DIRE_RIG, 0.0125);
+        let jorogumo = build_rig(&jorogumo(), JORO_RIG, 0.0125);
+        let cobra = build_rig(&cobra(), COBRA_RIG, 0.0125);
         let foes_far = vec![
             skeleton.coarse(),
             bat.coarse(),
@@ -118,6 +135,11 @@ impl Models {
             werewolf.coarse(),
             blemmyes.coarse(),
             large_bat.coarse(),
+            tengu.coarse(),
+            oni.coarse(),
+            dire_wolf.coarse(),
+            jorogumo.coarse(),
+            cobra.coarse(),
         ];
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
@@ -135,6 +157,11 @@ impl Models {
             werewolf,
             blemmyes,
             large_bat,
+            tengu,
+            oni,
+            dire_wolf,
+            jorogumo,
+            cobra,
             foes_far,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
@@ -186,6 +213,11 @@ impl Models {
             RigId::Werewolf => &self.werewolf,
             RigId::Blemmyes => &self.blemmyes,
             RigId::LargeBat => &self.large_bat,
+            RigId::Tengu => &self.tengu,
+            RigId::Oni => &self.oni,
+            RigId::DireWolf => &self.dire_wolf,
+            RigId::Jorogumo => &self.jorogumo,
+            RigId::Cobra => &self.cobra,
         }
     }
 

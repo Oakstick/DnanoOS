@@ -6,7 +6,8 @@ use super::pathing::{route_toward, step_toward};
 use super::rng::Rng;
 use super::types::{dist_sq, manhattan, Dir, Tile, CARDINALS, P, V};
 
-/// The foes, stage by stage: the first four haunt the Garden of Krampus, the rest the seven realms.
+/// The foes, stage by stage: the first four haunt the Garden of Krampus, the next six the seven
+/// realms, and the last five are the third stage's (in the gym for now).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum EnemyKind {
     Skeleton,
@@ -25,6 +26,16 @@ pub enum EnemyKind {
     Blemmyes,
     /// The large bat: swerving as it flies.
     LargeBat,
+    /// The tengu: a mountain goblin with a katana, quick on his feet.
+    Tengu,
+    /// The oni: a horned red demon with a curved blade in each fist.
+    Oni,
+    /// The dire wolf: bigger than the loup-garou; it throws its whole body at you.
+    DireWolf,
+    /// The jorogumo: a spider-woman who hurls fire from afar.
+    Jorogumo,
+    /// The cobra: coiled, it rears and strikes.
+    Cobra,
 }
 
 impl EnemyKind {
@@ -32,12 +43,25 @@ impl EnemyKind {
     pub const STAGE_TWO: [EnemyKind; 6] =
         [EnemyKind::Helmeted, EnemyKind::LargeBat, EnemyKind::Witch, EnemyKind::Minion, EnemyKind::Werewolf, EnemyKind::Blemmyes];
 
-    /// The cast of a stage: 1 for the Garden, 2 for the realms.
+    pub const STAGE_THREE: [EnemyKind; 5] = [EnemyKind::Tengu, EnemyKind::Oni, EnemyKind::DireWolf, EnemyKind::Jorogumo, EnemyKind::Cobra];
+
+    /// The cast of a stage: 1 for the Garden, 2 for the realms, 3 for the stage after them.
     pub fn of_stage(stage: u8) -> &'static [EnemyKind] {
-        if stage <= 1 {
-            &Self::STAGE_ONE
+        match stage {
+            0 | 1 => &Self::STAGE_ONE,
+            2 => &Self::STAGE_TWO,
+            _ => &Self::STAGE_THREE,
+        }
+    }
+
+    /// The stage it belongs to.
+    pub fn stage(self) -> u8 {
+        if Self::STAGE_ONE.contains(&self) {
+            1
+        } else if Self::STAGE_TWO.contains(&self) {
+            2
         } else {
-            &Self::STAGE_TWO
+            3
         }
     }
 
@@ -54,8 +78,14 @@ impl EnemyKind {
     /// Blows of the hero's it takes to fell.
     pub fn toughness(self) -> u8 {
         match self {
-            EnemyKind::Blemmyes => 3,
-            EnemyKind::Witch | EnemyKind::Helmeted | EnemyKind::Werewolf => 2,
+            EnemyKind::Blemmyes | EnemyKind::Oni => 3,
+            EnemyKind::Witch
+            | EnemyKind::Helmeted
+            | EnemyKind::Werewolf
+            | EnemyKind::Tengu
+            | EnemyKind::DireWolf
+            | EnemyKind::Jorogumo
+            | EnemyKind::Cobra => 2,
             _ => 1,
         }
     }
@@ -63,7 +93,7 @@ impl EnemyKind {
     /// How many ordinary bites its touch is worth.
     pub fn bite(self) -> i32 {
         match self {
-            EnemyKind::Blemmyes => 2,
+            EnemyKind::Blemmyes | EnemyKind::Oni | EnemyKind::Cobra => 2,
             _ => 1,
         }
     }
@@ -642,14 +672,20 @@ impl Brain {
             // Eyeless but sharp-eared: makes for the last place it heard footsteps, and searches on from there.
             EnemyKind::Skeleton | EnemyKind::Helmeted => ctx.hero.heard_pos,
             // Straight for him.
-            EnemyKind::Minion | EnemyKind::Werewolf | EnemyKind::Blemmyes => hp,
+            EnemyKind::Minion
+            | EnemyKind::Werewolf
+            | EnemyKind::Blemmyes
+            | EnemyKind::Tengu
+            | EnemyKind::Oni
+            | EnemyKind::DireWolf
+            | EnemyKind::Cobra => hp,
             // Swoops at where he is heading, but short of it, and swerves on the way.
             EnemyKind::LargeBat => {
                 let v = ctx.hero.dir.vecf();
                 V::new(hp.x + v.x * 3.0, hp.y + v.y * 3.0)
             }
             // Keeps her distance: comes on when far, backs off to her corner when close.
-            EnemyKind::Witch => {
+            EnemyKind::Witch | EnemyKind::Jorogumo => {
                 if manhattan(own_pos, hp) > 7.0 {
                     hp
                 } else {
@@ -680,10 +716,13 @@ impl Brain {
     }
 }
 
-/// The foes of a stage: the Garden's four, or the realms' six.
+/// The foes of a stage: the Garden's four, the realms' six, or the third stage's five.
 pub fn enemy_specs(grid: &Grid, stage: u8) -> Vec<EnemySpec> {
     if stage <= 1 {
         return default_enemy_specs(grid);
+    }
+    if stage >= 3 {
+        return third_stage_specs(grid);
     }
     let w = grid.width - 1;
     let h = grid.height - 1;
@@ -777,6 +816,59 @@ pub fn default_enemy_specs(grid: &Grid) -> Vec<EnemySpec> {
             speed_factor: 0.8,
         },
     ]
+}
+
+/// The third stage's foes.
+pub fn third_stage_specs(grid: &Grid) -> Vec<EnemySpec> {
+    let w = grid.width - 1;
+    let h = grid.height - 1;
+    vec![
+        EnemySpec {
+            kind: EnemyKind::Tengu,
+            name: "Tengu".into(),
+            color: 0xe8503e,
+            scatter_target: P::new(w - 2, 0),
+            exit_delay: 0.0,
+            speed_factor: 1.15,
+        },
+        EnemySpec {
+            kind: EnemyKind::Oni,
+            name: "Oni".into(),
+            color: 0xd0402e,
+            scatter_target: P::new(2, 0),
+            exit_delay: 2.0,
+            speed_factor: 0.8,
+        },
+        EnemySpec {
+            kind: EnemyKind::DireWolf,
+            name: "Dire Wolf".into(),
+            color: 0xa4acb8,
+            scatter_target: P::new(w, h),
+            exit_delay: 4.0,
+            speed_factor: 1.35,
+        },
+        EnemySpec {
+            kind: EnemyKind::Jorogumo,
+            name: "Jorogumo".into(),
+            color: 0xff8a3a,
+            scatter_target: P::new(0, h),
+            exit_delay: 5.5,
+            speed_factor: 0.95,
+        },
+        EnemySpec {
+            kind: EnemyKind::Cobra,
+            name: "Cobra".into(),
+            color: 0x9ac84a,
+            scatter_target: P::new(w, h / 2),
+            exit_delay: 7.0,
+            speed_factor: 0.85,
+        },
+    ]
+}
+
+/// The spec of any kind, from its stage's.
+pub fn spec_of(grid: &Grid, kind: EnemyKind) -> EnemySpec {
+    enemy_specs(grid, kind.stage()).into_iter().find(|s| s.kind == kind).expect("every kind has its stage's spec")
 }
 
 #[cfg(test)]

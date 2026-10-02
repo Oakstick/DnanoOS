@@ -215,6 +215,11 @@ impl Game {
                 EnemyKind::Werewolf => ("LOUP-GAROU", "Fast, and faster still once wounded: the first cut only makes it howl.", 0xc0885a),
                 EnemyKind::Blemmyes => ("BLEMMYES", "A headless brute with his face in his chest. Slow, but he takes three blows, and his hand hits twice as hard.", 0xe8b494),
                 EnemyKind::LargeBat => ("LARGE BAT", "Flies over everything, swerving as it comes, and swoops at where you are going.", 0xc04a70),
+                EnemyKind::Tengu => ("TENGU", "A mountain goblin and a master of the sword. Melee: he closes in fast and his katana cuts high and wide. Wait out the swing, then strike while he recovers.", 0xe8503e),
+                EnemyKind::Oni => ("ONI", "A horned red demon with a curved blade in each fist. Melee: slow to start and hard to stagger. Block or leap the chop, then cut him down.", 0xd0402e),
+                EnemyKind::DireWolf => ("DIRE WOLF", "Bigger than the loup-garou, and it attacks with its whole body: it circles, crouches, then throws itself at you. Raise your guard as it springs.", 0xa4acb8),
+                EnemyKind::Jorogumo => ("JOROGUMO", "A spider-woman who fights from a distance, hurling fire and backing away when you come near. Close in on her.", 0xff8a3a),
+                EnemyKind::Cobra => ("COBRA", "Coiled and patient, it strikes with its body: it rears back, then lunges. Parry the bite as it lands.", 0x9ac84a),
             };
             stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });
         }

@@ -1,5 +1,5 @@
-//! Animation: the hero's stride, swing and jump, and each foe's gait, wingbeat or hop, how it
-//! turns, and a slain draugr falling apart and pulling itself together.
+//! Animation: the hero's stride, swing and jump, and each foe's gait, wingbeat, hop, scuttle or
+//! sway, how it turns, and a slain draugr falling apart and pulling itself together.
 
 use super::*;
 
@@ -68,6 +68,11 @@ impl WorldView {
             EnemyKind::Werewolf => (RigId::Werewolf, 0.0),
             EnemyKind::Blemmyes => (RigId::Blemmyes, 0.0),
             EnemyKind::LargeBat => (RigId::LargeBat, 0.6),
+            EnemyKind::Tengu => (RigId::Tengu, 0.0),
+            EnemyKind::Oni => (RigId::Oni, 0.0),
+            EnemyKind::DireWolf => (RigId::DireWolf, 0.0),
+            EnemyKind::Jorogumo => (RigId::Jorogumo, 0.0),
+            EnemyKind::Cobra => (RigId::Cobra, 0.0),
         };
         let pose = Pose::rest(self.models.rig(rig));
         let base = lin(e.b.color);
@@ -277,11 +282,11 @@ impl WorldView {
             v.phase += dt * pace * 2.2;
         }
         match v.kind {
-            EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Witch | EnemyKind::Blemmyes => {
-                // A walk: the blemmyes lumbers, the witch strides, the skeletons stalk.
+            EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Witch | EnemyKind::Blemmyes | EnemyKind::Tengu | EnemyKind::Oni => {
+                // A walk: the blemmyes and the oni lumber, the witch and the tengu stride, the skeletons stalk.
                 let (stride, swing) = match v.kind {
-                    EnemyKind::Blemmyes => (0.6, 0.35),
-                    EnemyKind::Witch => (0.7, 0.3),
+                    EnemyKind::Blemmyes | EnemyKind::Oni => (0.6, 0.35),
+                    EnemyKind::Witch | EnemyKind::Tengu => (0.7, 0.3),
                     _ => (0.85, 0.5),
                 };
                 let s = v.phase.sin();
@@ -290,7 +295,10 @@ impl WorldView {
                 v.pose.rot_x(rig, "leftArm", -s * swing);
                 v.pose.rot_x(rig, "rightArm", s * swing);
                 v.pose.rot_x(rig, "head", (v.phase * 2.0).sin() * 0.1);
-                v.root_rot.z = v.phase.sin() * if v.kind == EnemyKind::Blemmyes { 0.1 } else { 0.06 };
+                v.root_rot.z = v.phase.sin() * if matches!(v.kind, EnemyKind::Blemmyes | EnemyKind::Oni) { 0.1 } else { 0.06 };
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 2.6 + i as f32).sin() * 0.3;
+                }
             }
             EnemyKind::Minion => {
                 // Scurries in hops, its hat bobbing.
@@ -302,7 +310,7 @@ impl WorldView {
                     v.group_pos.y += hop.max(0.0) * 0.12;
                 }
             }
-            EnemyKind::Werewolf => {
+            EnemyKind::Werewolf | EnemyKind::DireWolf => {
                 // A gallop: the front legs together, the back legs half a beat behind, the head low, the tail streaming.
                 let t = v.phase * 1.2;
                 let (front, back) = (t.sin(), (t - 1.2).sin());
@@ -330,6 +338,42 @@ impl WorldView {
                 }
                 v.root_rot.x = if moving { 0.3 } else { 0.05 };
                 v.group_pos.y += beat.sin() * 0.035;
+            }
+            EnemyKind::Jorogumo => {
+                // Eight legs in two alternating fours, each lifting as it swings forward; her body
+                // sways over them, her arms poised.
+                let t = if moving { v.phase * 1.7 } else { time * 0.9 + i as f32 };
+                for (k, name) in crate::render::foes3::JORO_LEGS.iter().enumerate() {
+                    let side = if k.is_multiple_of(2) { -1.0 } else { 1.0 };
+                    let ph = t + ((k / 2 + k % 2) % 2) as f32 * PI;
+                    let (swing, lift) = if moving { (ph.sin() * 0.32, ph.cos().max(0.0) * 0.22) } else { ((ph * 0.5).sin() * 0.03, 0.0) };
+                    if let Some(j) = rig.index(name) {
+                        v.pose.rot[j].y = swing;
+                        v.pose.rot[j].z = side * lift;
+                    }
+                }
+                v.pose.rot_x(rig, "head", (time * 1.3 + i as f32).sin() * 0.05);
+                v.pose.rot_x(rig, "leftArm", (time * 1.1).sin() * 0.08);
+                v.pose.rot_x(rig, "rightArm", (time * 1.1 + 1.0).sin() * 0.08);
+                v.root_rot.z = if moving { (t * 2.0).sin() * 0.03 } else { 0.0 };
+                if moving {
+                    v.group_pos.y += (t * 2.0).sin().abs() * 0.015;
+                }
+            }
+            EnemyKind::Cobra => {
+                // It sways where it stands, hood and head weaving; moving, it slides from side to side.
+                let t = if moving { v.phase * 1.3 } else { time * 1.5 + i as f32 };
+                if let Some(k) = rig.index("neck") {
+                    v.pose.rot[k] = Vec3::new(0.0, 0.0, t.sin() * if moving { 0.12 } else { 0.07 });
+                }
+                if let Some(k) = rig.index("head") {
+                    v.pose.rot[k] = Vec3::new((t * 0.5).sin() * 0.05, 0.0, -t.sin() * 0.09);
+                }
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 2.5 + i as f32).sin() * 0.3;
+                }
+                v.root_rot.x = 0.0;
+                v.root_rot.y = if moving { (t * 0.8).sin() * 0.12 } else { 0.0 };
             }
             EnemyKind::Slime => {
                 let t = if moving { v.phase } else { time * 2.5 + i as f32 };

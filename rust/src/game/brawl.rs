@@ -9,7 +9,7 @@
 
 use super::Game;
 use crate::audio::Sfx;
-use crate::logic::combat::duelist::{Arena, Bolt, Den, Flow, GridTerrain, Sense, Terrain, HERO_RADIUS, HEX_TINT, SPIT_TINT};
+use crate::logic::combat::duelist::{bolt_tint, Arena, Bolt, Den, Flow, GridTerrain, Sense, Terrain, HERO_RADIUS};
 use crate::logic::combat::frames::{BOLT_LIFE, BOLT_RADIUS, BOLT_SPEED, REFLECT_POISE, REFLECT_SPEED};
 use crate::logic::combat::fsm::{Defense, Effect, Hit, State};
 use crate::logic::combat::kit::Kit;
@@ -46,6 +46,19 @@ pub const VAULT_HP: f64 = 0.85;
 pub const VAULT_DAMAGE: f64 = 0.8;
 /// The chance a foe slain in the vaults drops a health potion (Diablo's globes, by way of the chests' drops).
 pub const HEAL_DROP: f64 = 0.2;
+
+/// The cry a foe gives as it begins a strike (its tell, to the ear): the tengu's steel and the
+/// cobra's hiss, the dire wolf's growl, the jorogumo's shriek; the rest by their move.
+fn tell_sfx(kind: EnemyKind, mv: MoveId) -> Sfx {
+    match (kind, mv) {
+        (EnemyKind::Tengu | EnemyKind::Cobra, _) => Sfx::Whoosh,
+        (EnemyKind::DireWolf, _) => Sfx::Growl,
+        (EnemyKind::Jorogumo, _) => Sfx::Shriek,
+        (_, MoveId::Slam | MoveId::Sweep) => Sfx::Growl,
+        (_, MoveId::Lunge) => Sfx::Howl,
+        _ => Sfx::Cackle,
+    }
+}
 
 /// Where the brawl is fought.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -567,7 +580,7 @@ impl Game {
                                 reflected: false,
                                 touched: false,
                                 due: self.brawl.as_ref().and_then(|b| b.threat.landing(du.id)),
-                                tint: if du.breed.kind == EnemyKind::Slime { SPIT_TINT } else { HEX_TINT },
+                                tint: bolt_tint(du.breed.kind),
                             });
                         }
                     }
@@ -682,11 +695,7 @@ impl Game {
             let lands = du.lands_in(mv, hp);
             if b.threat.may_commit(du.id, lands) && du.begin(mv) {
                 b.threat.commit(du.id, lands);
-                let sfx = match mv {
-                    MoveId::Slam | MoveId::Sweep => Sfx::Growl,
-                    MoveId::Lunge => Sfx::Howl,
-                    _ => Sfx::Cackle,
-                };
+                let sfx = tell_sfx(du.breed.kind, mv);
                 self.audio.play(sfx);
             }
         }

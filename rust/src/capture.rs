@@ -12,7 +12,7 @@
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
 //! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
-//! `foes:N` (N rows of one of each foe before him, best in the Cyclops' open meadow),
+//! `foes:N[:S]` (N rows of one of each foe before him, of stage S if given, best in the Cyclops' open meadow),
 //! `dungeon:N` (straight into dungeon N, 0 being the first), `map` (the map page), `hub`, `realm:N` and `court:N`
 //! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
 //! 0 Michael .. 3 Uriel) and `angel` (use it),
@@ -71,7 +71,7 @@ enum Cmd {
     Streak,
     Goo,
     Gate,
-    Foes(usize),
+    Foes(usize, Option<u8>),
     Dungeon(usize),
     /// An archangel's blessing: 0 Michael, 1 Gabriel, 2 Raphael, 3 Uriel.
     Bless(usize),
@@ -149,7 +149,7 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "streak" => Cmd::Streak,
             "goo" => Cmd::Goo,
             "gate" => Cmd::Gate,
-            "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1), parts.next().and_then(|v| v.parse().ok())),
             "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "bless" => Cmd::Bless(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "angel" => Cmd::Press(Action::Angel),
@@ -262,7 +262,7 @@ pub fn run(args: &[String]) -> i32 {
                 Cmd::Streak => game.debug_streak(),
                 Cmd::Goo => game.debug_goo(),
                 Cmd::Gate => game.cheat_to_gate(),
-                Cmd::Foes(rows) => game.debug_foes(rows),
+                Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
                 Cmd::Dungeon(n) => game.debug_dungeon(n),
                 Cmd::Bless(n) => game.blessing = Some(Blessing::of(ARCHANGELS[n.min(3)])),
                 Cmd::Arm(tier) => game.debug_arm(tier),

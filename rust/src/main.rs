@@ -60,6 +60,14 @@ fn main() {
         print!("{}", void_harvest::game::bot::kit_sweep(&seeds));
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--stage-three") {
+        // COMBAT.md §10: the third stage's bouts, every bot skill, Ragnar's kit at tiers 1, 4 and 7, N seeds.
+        let n: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(3);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let seeds: Vec<u32> = (1..=n).collect();
+        print!("{}", void_harvest::game::bot::stage_three(&seeds, &[1, 4, 7]));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--balance") {
         // The balance harness (COMBAT.md phase 2): every bout of the Sparring Ring, every bot skill, N seeds.
         let n: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(3);

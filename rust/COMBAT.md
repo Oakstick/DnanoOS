@@ -263,9 +263,15 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | 3 The Hexer's Guard | Hexer + Skirmisher | zoning while pressured |
 | 4 The Trio | one of each | the whole triangle |
 | 5 The Gauntlet | Brute, Skirmisher ×2, Hexer ×2 | the threat manager under load |
+| 6 Steel | tengu + oni | melee: two blades, one token between them |
+| 7 Fang and Fire | dire wolf + cobra + jorogumo | bodies thrown at him while fire comes from afar |
+| 8 The Night Parade | the third stage's five | every way of attacking at once |
+
+Bouts 1-5 are the lab: the archetypes in their own bodies. Bouts 6-8 bring the third stage's
+foes, each a breed of an archetype (§10).
 
 * Losing restores the hero and restarts the bout. Winning moves on to the next.
-* **F5**: frame readout (hero state and frame, buffer, threat points, foe states, bout stats).
+* **F5**: frame readout (hero state and frame, buffer, threat points, each foe's way of attacking and its state, bout stats).
 * **F6**: skip to the next bout.
 * When a bout ends, a **results card** shows its time against the target, the health lost, the
   damage dealt, how the strikes were met (parried, blocked, evaded) and the mistakes (caught
@@ -283,6 +289,7 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | **2 Tune** | the balance harness (§7): three bot skills play every bout; telemetry on screen when a bout ends and in `combat_log.csv`; tables tuned in two rounds | expert TTK inside every target ✔, zero overlaps for a player who stands his ground ✔ (≈ 0.4 a minute for one who moves), the skill gradient of §7 ✔. Your own parry rate is in the log. |
 | **3 Hero kit** | `combat::kit`: blade tiers as move-table scalars (power, poise, tempo, reach, arc, finisher), shields as guard stats (parry window, block cost, riposte, deflect, reflect), the path audited against the FSM (§8) | every tier is the same three verbs with different numbers ✔; each hero's tier 10 wins ≥ 2× faster than his tier 1 ✔; at every tier the heroes kill within 1.3× of each other on the Brute and the Trio ✔ |
 | **4 Roll-out** | every foe kind a breed of an archetype; the brawl (`game::brawl`) runs the Vaults of Mammon: packs of duelists asleep in their dens, one threat manager, real death, shield and blade wear, contact damage retired there (§9) | the expert clears the vaults with every kit, the adept from tier 4; zero overlaps in every crawl ✔ |
+| **Stage 3** | five new bodies, each a breed of an archetype; every stage's cast attacks all three ways (melee, body, distance); a third platform in the gym and three bouts in the ring (§10) | the expert wins them with the training sword, the adept with tier-4 gear, a masher with neither ✔ |
 | 5 Bosses | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3 | the boss is a fourth archetype, not a special case |
 
 ---
@@ -617,3 +624,102 @@ the Trio: 100%). The expert's are unchanged to the decimal.
 
 Tools: `--crawl N`. `the_vaults_are_a_brawl_a_skilled_player_can_clear_with_a_readable_cadence`
 pins the expert's tier-4 clear and the adept's tier-7 clear, with no overlaps.
+
+---
+
+## 10. The third stage: five new bodies, three ways of attack
+
+The brief for every stage: some foes attack with their body, some in melee, some from a
+distance. Those are the three archetypes' ways of reaching the hero (`archetype::Attack`):
+
+| Way | Archetype | Its move | The question |
+|---|---|---|---|
+| Melee | Brute | a weapon swung at arm's length: the slam, the sweep | can you wait? |
+| Body | Skirmisher | its whole body thrown at him: the lunge | can you read the timing? |
+| Distance | Hexer | a bolt from afar | can you close the distance? |
+
+Every stage's cast has all three (`every_stages_cast_attacks_all_three_ways`):
+
+| Stage | Melee | Body | Distance |
+|---|---|---|---|
+| 1 The Garden | draugr | raven, night raven | bog slime |
+| 2 The realms | helmeted skeleton, blemmyes | loup-garou, large bat, witch's minion | witch |
+| 3 | tengu, oni | dire wolf, cobra | jorogumo |
+
+### 10.1 The third stage's breeds
+
+Stronger than the archetypes' own bodies (the second stage's), yet inside the archetypes' design
+limits: every brute still flinches from the training sword's finisher (its armor under the
+finisher's 45 poise), and every skirmisher is still slower than the hero and broken inside one
+string.
+
+| Kind | Archetype (way) | Health | Damage | Poise | Pace | Cost | As it fights |
+|---|---|---|---|---|---|---|---|
+| Tengu | Brute (melee) | 1.0 (200) | 1.15 | 0.9 | 1.5 | 2 | a swordsman: closes in half again as fast as a brute; slam 35, sweep 23 |
+| Oni | Brute (melee) | 1.5 (300) | 1.2 | 1.25 | 1.0 | 2 | the heavy: the longest fight of the stage, armor 44; slam 36 |
+| Dire wolf | Skirmisher (body) | 1.5 (120) | 1.2 | 1.3 | 1.1 | 1 | the pounce, harder and longer-lived than the loup-garou's; 22 |
+| Cobra | Skirmisher (body) | 1.25 (100) | 1.3 | 1.0 | 0.8 | 1 | slow on the ground, the hardest bite of the stage: 23 |
+| Jorogumo | Hexer (distance) | 1.6 (88) | 1.2 | 1.5 | 1.0 | 1 | fire bolts (orange, her own tell colour); backs away; 18 |
+
+No new moves: systematic reduction holds at fifteen bodies. Each has its own tell to the ear
+(the tengu's steel, the cobra's hiss, the dire wolf's growl, the jorogumo's shriek) and its own
+pose on the archetype's frames (the cobra rears back on its coil, then throws its neck forward).
+
+### 10.2 In the gym
+
+* A third platform east of the second holds the five at their posts, as the first two hold theirs.
+* The Sparring Ring has three bouts of them after the lab's five (§5): Steel, Fang and Fire,
+  and the Night Parade. Bouts now name their foes' bodies; the lab's are the archetypes' own
+  bodies (pinned), so bouts 1-5 play as before, to the decimal.
+
+### 10.3 Results (`--stage-three 6`: Ragnar's kit at tiers 1, 4 and 7)
+
+```
+bout                 tier  skill   win   ttk(s)  target    taken  hurt  parry block overlaps
+STEEL                   1  novice     0%     0.0      -        124   3.0    0.0   0.0    0
+STEEL                   1  adept    100%    93.9      -         33   1.7    1.5  36.7    0
+STEEL                   1  expert   100%    25.4    20-32        0   0.0   17.2   0.0    0
+STEEL                   4  novice     0%     0.0      -        159   4.0    0.0   0.0    0
+STEEL                   4  adept    100%    33.5      -          0   0.0    0.3  14.7    0
+STEEL                   4  expert   100%    12.3    20-32        0   0.0    7.0   0.0    0
+STEEL                   7  novice   100%     6.4      -          0   0.0    0.0   0.0    0
+STEEL                   7  adept    100%    16.0      -          0   0.0    0.3   6.7    0
+STEEL                   7  expert   100%     6.1    20-32        0   0.0    1.0   0.0    0
+FANG AND FIRE           1  novice     0%     0.0      -        117   5.0    0.0   0.0    0
+FANG AND FIRE           1  adept     17%    24.8      -        124   5.2    4.7   4.8    0
+FANG AND FIRE           1  expert   100%    12.9    10-16        0   0.0   11.5   0.0    0
+FANG AND FIRE           4  novice     0%     0.0      -        155   6.0    0.0   0.0    0
+FANG AND FIRE           4  adept    100%     9.2      -         62   2.5    3.3   1.3    0
+FANG AND FIRE           4  expert   100%     7.1    10-16       32   1.3    3.7   0.0    0
+FANG AND FIRE           7  novice   100%     6.3      -         93   4.0    0.0   0.0    0
+FANG AND FIRE           7  adept    100%     5.6      -         33   1.3    1.7   0.8    0
+FANG AND FIRE           7  expert   100%     3.7    10-16        0   0.0    2.0   0.0    0
+THE NIGHT PARADE        1  novice     0%     0.0      -        110   4.0    0.0   0.0    0
+THE NIGHT PARADE        1  adept      0%     0.0      -        148   6.5    5.8   7.5    0
+THE NIGHT PARADE        1  expert   100%    35.9    29-45       38   1.7   41.0   0.0    0
+THE NIGHT PARADE        4  novice     0%     0.0      -        166   6.0    0.0   0.0    0
+THE NIGHT PARADE        4  adept    100%    63.8      -         76   3.0    8.7  40.0    0
+THE NIGHT PARADE        4  expert   100%    18.9    29-45        5   0.2   18.3   0.0    0
+THE NIGHT PARADE        7  novice     0%     0.0      -        151   6.0    0.0   0.0    0
+THE NIGHT PARADE        7  adept    100%    37.5      -         41   1.7    3.5  23.7    0
+THE NIGHT PARADE        7  expert   100%    11.3    29-45       95   3.0    5.5   0.2    0
+```
+
+* **Skill or gear**: with the training sword only the expert wins the third stage's bouts (the
+  adept wins Steel only by turtling, 37 blocks in 94 s, and Fang and Fire one time in six); a
+  masher wins none. With a tier-4 kit the adept wins all three; at tier 7 even the masher beats
+  Steel and Fang and Fire, but not the Night Parade.
+* **Readable cadence**: zero overlaps everywhere; the threat manager paces fifteen bodies as it
+  paced three.
+* The tier-7 expert wins the Night Parade fastest (11 s) but trades more blows doing it (95
+  health lost, against 5 at tier 4).
+
+### 10.4 What changed, and why
+
+| Change | Why |
+|---|---|
+| The stage's damage trimmed: oni 1.3 → 1.2, dire wolf 1.25 → 1.2, cobra 1.4 → 1.3, jorogumo 1.3 → 1.2 | the expert first won the Night Parade with 1 health left (99 lost); now 38 |
+
+Tools: `--stage-three N`. `the_bouts_meet_their_balance_targets` pins the expert's times in
+every bout, the third stage's included; `the_third_stage_wants_skill_or_better_gear` pins the
+masher's losses with the training sword and the adept's wins at tier 4.

@@ -6,9 +6,9 @@
 //! their posts, so the gym never empties.
 //!
 //! West of the arrival platform lies the Sparring Ring, the combat lab of
-//! COMBAT.md: step in and a bout of the three archetypes begins.
+//! COMBAT.md: step in and a bout begins, first of the three archetypes, then
+//! of the third stage's foes.
 
-use super::combat::Archetype;
 use super::enemy::EnemyKind;
 use super::hub::Rect;
 use super::level::{LevelData, Theme};
@@ -16,7 +16,7 @@ use super::levels::SPEED_SCALE;
 use super::types::{P, V};
 
 /// How many stages of foes the gym holds (one platform each).
-pub const STAGES: usize = 2;
+pub const STAGES: usize = 3;
 pub const PLATFORM: i32 = 13;
 pub const GAP: i32 = 7;
 pub const MARGIN: i32 = 6;
@@ -76,27 +76,32 @@ pub fn posts(k: usize) -> Vec<P> {
     out
 }
 
-/// A bout of the Sparring Ring: its name, its foes, and the seconds a skilled player should take
-/// to win it (COMBAT.md §2.1, give or take a fifth).
+/// A bout of the Sparring Ring: its name, its foes (their bodies, each fighting as its breed),
+/// and the seconds a skilled player should take to win it (COMBAT.md §2.1, give or take a fifth).
 #[derive(Clone, Copy, Debug)]
 pub struct Bout {
     pub name: &'static str,
-    pub foes: &'static [Archetype],
+    pub foes: &'static [EnemyKind],
     pub target: (f64, f64),
 }
 
-/// The bouts, in order (COMBAT.md §5).
-pub const BOUTS: [Bout; 5] = [
-    Bout { name: "THE BRUTE", foes: &[Archetype::Brute], target: (8.0, 14.0) },
-    Bout { name: "THE PACK", foes: &[Archetype::Skirmisher, Archetype::Skirmisher], target: (5.0, 10.0) },
-    Bout { name: "THE HEXER'S GUARD", foes: &[Archetype::Hexer, Archetype::Skirmisher], target: (5.0, 10.0) },
-    Bout { name: "THE TRIO", foes: &[Archetype::Brute, Archetype::Skirmisher, Archetype::Hexer], target: (13.0, 24.0) },
-    Bout {
-        name: "THE GAUNTLET",
-        foes: &[Archetype::Brute, Archetype::Skirmisher, Archetype::Skirmisher, Archetype::Hexer, Archetype::Hexer],
-        target: (20.0, 32.0),
-    },
+use super::enemy::EnemyKind as K;
+
+/// The bouts, in order: the lab's five, the archetypes in their own bodies (COMBAT.md §5); then the
+/// third stage's three, its blades, its bodies thrown and its fire (§10).
+pub const BOUTS: [Bout; 8] = [
+    Bout { name: "THE BRUTE", foes: &[K::Blemmyes], target: (8.0, 14.0) },
+    Bout { name: "THE PACK", foes: &[K::Werewolf, K::Werewolf], target: (5.0, 10.0) },
+    Bout { name: "THE HEXER'S GUARD", foes: &[K::Witch, K::Werewolf], target: (5.0, 10.0) },
+    Bout { name: "THE TRIO", foes: &[K::Blemmyes, K::Werewolf, K::Witch], target: (13.0, 24.0) },
+    Bout { name: "THE GAUNTLET", foes: &[K::Blemmyes, K::Werewolf, K::Werewolf, K::Witch, K::Witch], target: (20.0, 32.0) },
+    Bout { name: "STEEL", foes: &[K::Tengu, K::Oni], target: (20.0, 32.0) },
+    Bout { name: "FANG AND FIRE", foes: &[K::DireWolf, K::Cobra, K::Jorogumo], target: (10.0, 16.0) },
+    Bout { name: "THE NIGHT PARADE", foes: &[K::Tengu, K::Oni, K::DireWolf, K::Cobra, K::Jorogumo], target: (29.0, 45.0) },
 ];
+
+/// The first of the third stage's bouts.
+pub const STAGE_THREE_BOUT: usize = 5;
 
 /// Where a bout's foes enter: in a file west of the ring's middle, facing east, six tiles from the hero.
 pub fn bout_spawns(n: usize) -> Vec<V> {
@@ -170,7 +175,25 @@ mod tests {
             assert!(level.grid.is_walkable(post.x, post.y, false));
             assert!(seen.contains(&post), "and he can walk to it");
         }
-        assert_eq!(garrison().len(), EnemyKind::STAGE_ONE.len() + EnemyKind::STAGE_TWO.len());
+        assert_eq!(garrison().len(), EnemyKind::STAGE_ONE.len() + EnemyKind::STAGE_TWO.len() + EnemyKind::STAGE_THREE.len());
+    }
+
+    #[test]
+    fn the_labs_bouts_are_the_archetypes_own_bodies_and_the_third_stages_bring_all_its_foes() {
+        use crate::logic::combat::{Archetype, Attack, Breed};
+        for b in &BOUTS[..STAGE_THREE_BOUT] {
+            assert!(b.foes.iter().all(|&k| Archetype::ALL.iter().any(|a| a.kind() == k)), "{}", b.name);
+        }
+        let third: Vec<EnemyKind> = BOUTS[STAGE_THREE_BOUT..].iter().flat_map(|b| b.foes.iter().copied()).collect();
+        for k in EnemyKind::STAGE_THREE {
+            assert!(third.contains(&k), "{k:?} has a bout");
+        }
+        assert!(third.iter().all(|k| k.stage() == 3));
+        // The last brings all five: every way of attacking at once.
+        let parade = BOUTS[BOUTS.len() - 1];
+        for way in [Attack::Melee, Attack::Body, Attack::Distance] {
+            assert!(parade.foes.iter().any(|&k| Breed::of(k).attack() == way), "{way:?}");
+        }
     }
 
     #[test]

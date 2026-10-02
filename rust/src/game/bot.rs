@@ -485,6 +485,41 @@ pub fn balance(seeds: &[u32]) -> String {
     out
 }
 
+/// The third stage's bouts (COMBAT.md §10) with every skill, and Ragnar's kit at each tier of
+/// `tiers` (1: a fresh Ragnar, as in `balance`).
+pub fn stage_three(seeds: &[u32], tiers: &[u8]) -> String {
+    let mut out = String::from(
+        "bout                 tier  skill   win   ttk(s)  target    taken  hurt  parry block overlaps
+",
+    );
+    for (k, b) in gym::BOUTS.iter().enumerate().skip(gym::STAGE_THREE_BOUT) {
+        for &tier in tiers {
+            let loadout = (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier));
+            for skill in Skill::ALL {
+                let s = summarize_as(k, skill, seeds, loadout);
+                let target =
+                    if skill == Skill::Expert { format!("{:>4.0}-{:<4.0}", b.target.0, b.target.1) } else { "    -    ".to_string() };
+                out += &format!(
+                    "{:<20} {:>4}  {:<7} {:>4.0}% {:>7.1}  {}  {:>5.0}  {:>4.1}  {:>5.1} {:>5.1} {:>4}
+",
+                    b.name,
+                    tier,
+                    skill.name(),
+                    s.win_rate() * 100.0,
+                    s.ttk,
+                    target,
+                    s.taken,
+                    s.hurt,
+                    s.parries,
+                    s.blocks,
+                    s.overlaps
+                );
+            }
+        }
+    }
+    out
+}
+
 /// The tiers the kit sweep plays.
 pub const SWEEP: [u8; 4] = [1, 4, 7, 10];
 

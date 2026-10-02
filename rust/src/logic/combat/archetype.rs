@@ -1,6 +1,8 @@
 //! The three archetypes (COMBAT.md §4.3), each asking the player one question: the Brute
 //! (*can you wait?*), the Skirmisher (*can you read the timing?*) and the Hexer (*can you
-//! close the distance?*). Each wears the body of a foe already in the game.
+//! close the distance?*). Each wears the body of a foe already in the game, and each reaches
+//! the hero its own way: the Brute's blows are melee, the Skirmisher throws its body, the
+//! Hexer strikes from a distance (§10: every stage's cast has all three).
 
 use super::frames::MoveId;
 use super::fsm::Fighter;
@@ -11,6 +13,25 @@ pub enum Archetype {
     Brute,
     Skirmisher,
     Hexer,
+}
+
+/// How an archetype's blows reach the hero: with a weapon swung at arm's length, with its whole
+/// body thrown at him, or from afar.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Attack {
+    Melee,
+    Body,
+    Distance,
+}
+
+impl Attack {
+    pub fn name(self) -> &'static str {
+        match self {
+            Attack::Melee => "MELEE",
+            Attack::Body => "BODY",
+            Attack::Distance => "DISTANCE",
+        }
+    }
 }
 
 /// An archetype's numbers.
@@ -90,6 +111,15 @@ impl Archetype {
         }
     }
 
+    /// How its blows reach him: the Brute swings, the Skirmisher throws itself, the Hexer casts.
+    pub const fn attack(self) -> Attack {
+        match self {
+            Archetype::Brute => Attack::Melee,
+            Archetype::Skirmisher => Attack::Body,
+            Archetype::Hexer => Attack::Distance,
+        }
+    }
+
     /// The body it wears.
     pub fn kind(self) -> EnemyKind {
         match self {
@@ -133,8 +163,8 @@ impl Archetype {
 }
 
 /**
- * A foe's body on an archetype (COMBAT.md §9): every kind in the game fights as one of the three,
- * its numbers scaled. Systematic reduction: three archetypes, ten bodies, no new moves.
+ * A foe's body on an archetype (COMBAT.md §9, §10): every kind in the game fights as one of the
+ * three, its numbers scaled. Systematic reduction: three archetypes, fifteen bodies, no new moves.
  */
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Breed {
@@ -168,8 +198,21 @@ impl Breed {
             K::Vampire => (Skirmisher, 0.6, 0.7, 0.6, 1.0, 0.32, 1),
             K::Bat => (Skirmisher, 0.45, 0.6, 0.5, 1.05, 0.3, 1),
             K::Slime => (Hexer, 0.8, 0.8, 0.8, 0.7, 0.38, 1),
+            // The third stage's, stronger than the archetypes' own: two blades (the tengu quick on
+            // his feet, the oni heavy), two bodies thrown (the dire wolf's pounce, the cobra's
+            // strike), and fire from afar (the jorogumo).
+            K::Tengu => (Brute, 1.0, 1.15, 0.9, 1.5, 0.42, 2),
+            K::Oni => (Brute, 1.5, 1.2, 1.25, 1.0, 0.52, 2),
+            K::DireWolf => (Skirmisher, 1.5, 1.2, 1.3, 1.1, 0.45, 1),
+            K::Cobra => (Skirmisher, 1.25, 1.3, 1.0, 0.8, 0.4, 1),
+            K::Jorogumo => (Hexer, 1.6, 1.2, 1.5, 1.0, 0.46, 1),
         };
         Breed { kind, arch, hp, damage, poise, speed, radius, cost }
+    }
+
+    /// How its blows reach the hero.
+    pub fn attack(&self) -> Attack {
+        self.arch.attack()
     }
 
     /// The archetype's numbers as this body has them.
@@ -241,6 +284,31 @@ mod tests {
             // Every brute keeps armor against the training sword's light blows... except the lightest.
             if b.arch == Archetype::Brute && b.poise >= 0.6 {
                 assert!(s.armor > MoveId::L1.data().poise, "{kind:?}");
+            }
+        }
+        // The third stage is stronger: every body hits harder than its archetype's own and none is
+        // frailer; yet every brute still flinches from the finisher, and every skirmisher is still
+        // slower than the hero and broken inside one string.
+        for kind in EnemyKind::STAGE_THREE {
+            let b = Breed::of(kind);
+            let s = b.stats();
+            assert!(b.hp >= 1.0 && b.damage > 1.0, "{kind:?}");
+            if b.arch == Archetype::Brute {
+                assert!(s.armor > MoveId::L1.data().poise && s.armor < MoveId::L3.data().poise, "{kind:?}: {}", s.armor);
+            }
+            if b.arch == Archetype::Skirmisher {
+                assert!(s.walk < 6.5 * 0.8, "{kind:?}: {}", s.walk);
+                assert!(s.poise <= MoveId::L1.data().poise + MoveId::L2.data().poise, "{kind:?}: {}", s.poise);
+            }
+        }
+    }
+
+    #[test]
+    fn every_stages_cast_attacks_all_three_ways() {
+        for stage in 1..=3 {
+            let ways: Vec<Attack> = EnemyKind::of_stage(stage).iter().map(|&k| Breed::of(k).attack()).collect();
+            for way in [Attack::Melee, Attack::Body, Attack::Distance] {
+                assert!(ways.contains(&way), "stage {stage} has no {way:?} attacker: {ways:?}");
             }
         }
     }

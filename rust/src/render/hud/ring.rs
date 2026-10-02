@@ -101,11 +101,11 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
         if !d.alive() || (brawl.field == Field::Vault && !d.engaged() && d.hp >= d.max_hp) {
             continue;
         }
-        let top = match d.arch {
+        let top = crate::render::view::crown(d.breed.kind).map(|c| c + 0.3).unwrap_or(match d.arch {
             crate::logic::combat::Archetype::Brute => 1.55,
             crate::logic::combat::Archetype::Skirmisher => 1.2,
             crate::logic::combat::Archetype::Hexer => 1.85,
-        };
+        });
         let p = Vec3::new(d.pos.x as f32, top, d.pos.y as f32);
         let Some((x, y)) = g.view.project(p, w, h) else { continue };
         let st = d.stats();
@@ -116,7 +116,8 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
         let pcolor = if d.f.resolve > 0 { 0xf0f0f0 } else { 0xf2c53d };
         bar(o, x - bw / 2.0, y + bh + 2.0, bw, (bh * 0.6).max(3.0), (d.f.poise / st.poise) as f32, pcolor);
         if brawl.readout {
-            let line = state_line(&d.f);
+            // How it attacks (melee, body or distance), and where it is in its frames.
+            let line = format!("{}  {}", d.breed.attack().name(), state_line(&d.f));
             let color = match d.f.attack() {
                 Some((_, Phase::Startup, _)) => 0xff9a5a,
                 Some((_, Phase::Active, _)) => 0xff4a3a,
