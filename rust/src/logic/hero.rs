@@ -165,6 +165,9 @@ pub struct Hero {
     /// The share of his pace his fighting leaves him (the Sparring Ring's state machine: planted in
     /// a swing, rooted while reeling); 1 elsewhere.
     pub root: f64,
+    /// The share of his pace a realm leaves him (mud, a full belly, a drowsy spell); 1 elsewhere.
+    /// The realm sets it every tick.
+    pub pace: f64,
     /// How sharp the blade in his hand is, 0 to 1: a dull one bites the boss less (`gear::edge_power`).
     pub edge: f64,
     /// The outfit he wears, and how many skills of his path he has learned (each a ribbon on his arm).
@@ -242,6 +245,7 @@ impl Hero {
             shield_broke: false,
             blocking: false,
             root: 1.0,
+            pace: 1.0,
             edge: 1.0,
             outfit: 0,
             fx: Effects::default(),
@@ -555,7 +559,8 @@ impl Hero {
             * if self.fx.ragnarok > 0.0 { RAGNAROK_SPEED } else { 1.0 }
             * if self.slowed() { SLIME_SLOW } else { 1.0 }
             * if self.blocking { BLOCK_SPEED } else { 1.0 }
-            * self.root;
+            * self.root
+            * self.pace;
         if !self.alive {
             return;
         }

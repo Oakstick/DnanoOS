@@ -46,6 +46,17 @@ impl Game {
             }
             return;
         }
+        if near && !self.gate_open && self.run.is_some() {
+            // The realms after the vaults seal theirs until their last trap has been survived.
+            if self.gate_hint <= 0.0 {
+                self.gate_hint = 3.0;
+                self.audio.play(Sfx::Denied);
+                let text = self.run_seal_hint();
+                let color = self.run.as_ref().map(|r| r.sin().color()).unwrap_or(0xffffff);
+                self.floater(g.x as f64, g.y as f64 + 0.6, text, 1.6, Some(color));
+            }
+            return;
+        }
         if near && !self.gate_open && self.gate_hint <= 0.0 {
             self.gate_hint = 3.0;
             self.audio.play(Sfx::Denied);

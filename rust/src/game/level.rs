@@ -68,6 +68,7 @@ impl Game {
         self.patron_wait = 0.0;
         self.level = parse_level(&data);
         self.vault = None;
+        self.run = None;
         if let Some(mode) = self.spar.as_mut().and_then(|s| s.camera_before.take()) {
             self.view.camera_mode = mode;
         }
@@ -75,7 +76,13 @@ impl Game {
         // (The vaults raise their own brawl as their packs are laid out.)
         self.brawl = data.theme.is_gym().then(|| super::brawl::Brawl::new(super::brawl::Field::Ring));
         let vault_level = data.theme.is_vault();
-        if !vault_level {
+        // One of the six realms after the vaults (`game::realms`).
+        let run_sin = match data.theme {
+            crate::logic::level::Theme::Realm(sin) if !vault_level => Some(sin),
+            _ => None,
+        };
+        let run_level = run_sin.is_some();
+        if !vault_level && !run_level {
             if let Some(mode) = self.camera_before_vault.take() {
                 self.view.camera_mode = mode;
             }
@@ -89,8 +96,9 @@ impl Game {
         } else if self.theme().is_gym() {
             // In the gym he arrives at the west end, facing the foes.
             self.start_facing = Dir::Right;
-        } else if vault_level {
-            // In the Vaults of Mammon he comes through the west portal, facing into the antechamber.
+        } else if vault_level || run_level {
+            // In the Vaults of Mammon he comes through the west portal, facing into the antechamber
+            // (and in the realms after them through their own portal: `enter_run` turns him).
             self.start_facing = Dir::Right;
         } else {
             // Ragnar starts in the heart of the dungeon, facing its longest corridor.
@@ -149,7 +157,7 @@ impl Game {
         // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
         let hell = self.theme().is_hub();
         let gym = self.theme().is_gym();
-        let specs = if self.level.data.boss || hell || gym || vault_level {
+        let specs = if self.level.data.boss || hell || gym || vault_level || run_level {
             Vec::new()
         } else {
             enemy_specs(&self.level.grid, self.foe_stage_of(index))
@@ -164,6 +172,9 @@ impl Game {
         }
         if vault_level {
             self.enter_vault();
+        }
+        if let Some(sin) = run_sin {
+            self.enter_run(sin);
         }
         self.boss = if self.level.data.boss {
             let (x0, y0, x1, y1) = ARENA;
@@ -208,7 +219,7 @@ impl Game {
         self.poison = (0, 0.0, 0.0);
         self.fires.clear();
         self.spirits.clear();
-        self.relic_shrine = if self.level.data.boss || hell || gym || vault_level { None } else { self.hidden_shrine_spot() };
+        self.relic_shrine = if self.level.data.boss || hell || gym || vault_level || run_level { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         if let Some(g) = self.level.gate {
@@ -224,6 +235,7 @@ impl Game {
             self.garden.as_ref(),
             self.level.gate,
             self.vault.as_ref(),
+            self.run.as_ref(),
         );
         self.hub = None;
         self.realm = self.theme().sin();
@@ -240,6 +252,10 @@ impl Game {
 
     /// Puts everyone back at spawn without touching collected gold.
     pub(super) fn reset_round(&mut self) {
+        // In a realm he rises where its rules have carried his checkpoint.
+        if let Some(r) = &self.run {
+            self.level.hero_spawn = r.base().checkpoint;
+        }
         self.hero.respawn(self.level.hero_spawn);
         // On his tile's own height from the first frame: the start can be raised (the fountain's terrace),
         // and until he moves nothing else lifts him out of the stone.
@@ -294,6 +310,7 @@ impl Game {
             b.reset(home);
         }
         self.boss_shots.clear();
+        self.reset_run();
     }
 
     pub(super) fn start_game(&mut self) {

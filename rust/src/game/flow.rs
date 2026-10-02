@@ -52,6 +52,7 @@ macro_rules! scene_state {
             hub: $g.hub.as_ref().map(|h| HubView { doors: h.doors.map(|d| d as f32), sins: $g.sins_cleared, seal: h.seal as f32 }),
             loot: $g.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
             drops: $g.vault.as_ref().map(|v| v.drops.as_slice()).unwrap_or(&[]),
+            run: $g.run.as_ref(),
             bolts: $g.brawl.as_ref().map(|b| b.bolts.as_slice()).unwrap_or(&[]),
             hazards: $g.brawl.as_ref().map(|b| b.hazards.as_slice()).unwrap_or(&[]),
             flashes: $g.brawl.as_ref().map(|b| b.flashes.as_slice()).unwrap_or(&[]),
@@ -171,7 +172,11 @@ impl Game {
             }
             Screen::Toll => {
                 if let Some(choice) = self.menu_choice() {
-                    self.pay_toll(choice);
+                    if self.vault.is_some() {
+                        self.pay_toll(choice);
+                    } else {
+                        self.answer_run_offer(choice);
+                    }
                 }
             }
             Screen::Paused => match self.menu_choice() {
@@ -253,8 +258,10 @@ impl Game {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
             Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle],
-            // Keep first, and highlighted: Mammon would have it so.
-            Screen::Toll => return vec![MenuItem::KeepAll, MenuItem::DropAll],
+            // Keep first, and highlighted: Mammon would have it so. (A prince's offer in the realms
+            // after the vaults puts the answer he would have first, too.)
+            Screen::Toll if self.vault.is_some() => return vec![MenuItem::KeepAll, MenuItem::DropAll],
+            Screen::Toll => return self.run_offer().map(|o| o.choices).unwrap_or_default(),
             _ => return Vec::new(),
         };
         if quit {

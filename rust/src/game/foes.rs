@@ -100,7 +100,7 @@ impl Game {
     pub(super) fn update_witches(&mut self, dt: f64) {
         let hp = self.hero.pos();
         // In the vaults the packs are many: the witches may add a dozen minions between them.
-        let vault = self.vault.is_some();
+        let vault = self.vault.is_some() || self.run.is_some();
         let minions = self.enemies.iter().filter(|e| e.kind() == EnemyKind::Minion).count();
         let cap = if vault {
             if minions < 12 {
@@ -141,7 +141,7 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     pub(super) fn update_spawns(&mut self, dt: f64) {
-        if self.boss.is_some() || self.hub.is_some() || self.theme().is_gym() || self.vault.is_some() {
+        if self.boss.is_some() || self.hub.is_some() || self.theme().is_gym() || self.vault.is_some() || self.run.is_some() {
             return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's and the vaults' are all there
         }
         self.spawn_timer -= dt;

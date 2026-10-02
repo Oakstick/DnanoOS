@@ -654,6 +654,18 @@ impl Duelist {
         }
     }
 
+    /// What a blow from `from` is worth on it: as `taken`, but nothing on an elf-maid's lovely
+    /// front (she is only to be struck from behind).
+    pub fn taken_from(&self, from: V) -> f64 {
+        if self.breed.power == Power::Hollow {
+            let to = V::new(from.x - self.pos.x, from.y - self.pos.y);
+            if to.x * self.facing.x + to.y * self.facing.y > 0.0 {
+                return 0.0;
+            }
+        }
+        self.taken()
+    }
+
     /// Lying felled, begging for a second blow (the ejder).
     pub fn begging(&self) -> bool {
         self.lore.plea > 0

@@ -511,7 +511,7 @@ impl Game {
             self.view.sparkle(&self.level.grid, p.x, p.y, 1.2, 0x9aff6a, 24);
             return;
         }
-        let share = du.taken();
+        let share = du.taken_from(from);
         hit.damage *= share;
         hit.poise *= share;
         let r = du.f.take_hit(&hit);
@@ -536,6 +536,7 @@ impl Game {
         let id = du.id;
         let mut stop = hitstop;
         let (text, color) = match r.effect {
+            _ if share == 0.0 => ("STRIKE FROM BEHIND".to_string(), 0xf0b0d0),
             _ if share < 1.0 => (format!("WARDED {}", r.damage), 0x8a929e),
             Effect::Broken => ("BREAK!".to_string(), 0xffd040),
             Effect::Armored => (format!("{}", r.damage), 0x9aa4b0),

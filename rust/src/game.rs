@@ -34,6 +34,7 @@ mod map;
 mod movement;
 mod pickups;
 mod realm;
+mod realms;
 #[cfg(test)]
 mod ring_tests;
 mod save;
@@ -52,6 +53,7 @@ pub use feedback::{
 };
 pub use level::center_spawn;
 pub use map::map_stops;
+pub use realms::{Meter, Offer};
 pub use save::Stage;
 pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState};
 pub use story::{Story, STORY_FADE, TYPE_DELAY};
@@ -151,6 +153,8 @@ pub enum MenuItem {
     /// again), or leave it and go through.
     KeepAll,
     DropAll,
+    /// An answer to a prince's offer in one of the realms after the vaults, in its own words.
+    Choice(&'static str),
 }
 
 impl MenuItem {
@@ -168,6 +172,7 @@ impl MenuItem {
             MenuItem::Quit => "QUIT GAME",
             MenuItem::KeepAll => "KEEP THE GOLD",
             MenuItem::DropAll => "LEAVE IT",
+            MenuItem::Choice(words) => words,
         }
     }
 }
@@ -327,6 +332,8 @@ pub struct Game {
     pub realm: Option<crate::logic::sins::Sin>,
     /// The Vaults of Mammon, while he is in them: their rooms, packs and gold.
     pub vault: Option<crate::logic::vault::Vault>,
+    /// One of the six realms after the vaults, while he is in it: its ground and its rules' state.
+    pub run: Option<crate::logic::realms::Run>,
     /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
     pub hoard: Hoard,
     toll_asked: bool,
@@ -448,6 +455,7 @@ impl Game {
             hub: None,
             realm: None,
             vault: None,
+            run: None,
             hoard: Hoard::default(),
             toll_asked: false,
             vault_kit: (Vec::new(), 0),
@@ -601,6 +609,7 @@ impl Game {
         }
         self.update_gym(dt);
         self.update_vault(dt);
+        self.update_run(dt);
         self.update_spawns(dt);
         self.update_slime_trails(dt);
 

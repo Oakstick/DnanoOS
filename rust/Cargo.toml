@@ -61,3 +61,12 @@ panic = "abort"
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# For iterating: optimised like release, but without its long link-time optimisation, so a change
+# rebuilds in seconds rather than minutes (`cargo build --profile quick`, `cargo test --profile quick`).
+[profile.quick]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+strip = false

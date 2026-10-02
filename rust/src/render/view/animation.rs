@@ -96,6 +96,12 @@ impl WorldView {
             EnemyKind::Ejder => (RigId::Ejder, 0.0),
             // (The ghost floats.)
             EnemyKind::Goryo => (RigId::Goryo, 0.12),
+            // The realms' own: the Peerless is drawn by the Hall of Mirrors in his own likeness
+            // (this is only its stand-in); Hel's servants, the gaki and the elf-maids have their own.
+            EnemyKind::Peerless => (RigId::Helmeted, 0.0),
+            EnemyKind::Ganglot => (RigId::Ganglot, 0.0),
+            EnemyKind::Gaki => (RigId::Gaki, 0.0),
+            EnemyKind::Ellepige => (RigId::Ellepige, 0.0),
         };
         let pose = Pose::rest(self.models.rig(rig));
         let base = lin(e.b.color);
@@ -325,7 +331,11 @@ impl WorldView {
             | EnemyKind::Gashadokuro
             | EnemyKind::FrostGiant
             | EnemyKind::Surtr
-            | EnemyKind::Hel => {
+            | EnemyKind::Hel
+            | EnemyKind::Peerless
+            | EnemyKind::Ganglot
+            | EnemyKind::Gaki
+            | EnemyKind::Ellepige => {
                 // A walk: the blemmyes, the rasetsu and the oni lumber, the witch and the tengu stride,
                 // the kappa waddles, the skeletons stalk.
                 let (stride, swing) = match v.kind {
@@ -334,7 +344,9 @@ impl WorldView {
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)
-                    EnemyKind::Cin | EnemyKind::Hel | EnemyKind::Goryo => (0.25, 0.15),
+                    EnemyKind::Cin | EnemyKind::Hel | EnemyKind::Goryo | EnemyKind::Ellepige => (0.25, 0.15),
+                    // (Hel's servants shuffle.)
+                    EnemyKind::Ganglot => (0.3, 0.12),
                     EnemyKind::Kappa => (0.5, 0.2),
                     _ => (0.85, 0.5),
                 };

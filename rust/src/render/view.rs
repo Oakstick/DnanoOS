@@ -47,6 +47,7 @@ mod gate;
 mod hell;
 mod meadow;
 mod models;
+mod realms;
 mod select;
 mod showcase;
 mod story;
@@ -145,6 +146,8 @@ pub struct SceneState<'a> {
     pub loot: &'a [Loot],
     /// The items the vaults' chests have thrown out.
     pub drops: &'a [crate::logic::vault::Drop],
+    /// One of the six realms after the vaults, while he is in it.
+    pub run: Option<&'a crate::logic::realms::Run>,
     /// The Sparring Ring's hex bolts in flight.
     pub bolts: &'a [crate::logic::combat::duelist::Bolt],
     /// The floor burning where Surtr's sword fell, the legends' marks on the scene, and what ails him.
@@ -208,6 +211,8 @@ pub struct WorldView {
     pub gym: bool,
     /// The Vaults of Mammon, while he is in them.
     vault: Option<vault::VaultView>,
+    /// One of the six realms after the vaults, while he is in it.
+    run_view: Option<realms::RunView>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -338,6 +343,7 @@ impl WorldView {
             hell: false,
             tint: None,
             vault: None,
+            run_view: None,
             gym: false,
             water: Vec::new(),
             garden: None,
@@ -427,13 +433,15 @@ impl WorldView {
         garden: Option<&GardenPlan>,
         gate: Option<P>,
         vault: Option<&Vault>,
+        run: Option<&crate::logic::realms::Run>,
     ) {
         let meadow = theme.is_meadow();
         self.hell = theme.is_hell();
         self.gym = theme == Theme::Gym;
-        // A sin's colour over the sky, but for the vaults, which have their own gold light.
-        self.tint = theme.sin().filter(|_| vault.is_none()).map(|s| s.color());
+        // A sin's colour over the sky, but for the vaults and the realms after them, which have their own light.
+        self.tint = theme.sin().filter(|_| vault.is_none() && run.is_none()).map(|s| s.color());
         self.vault = None;
+        self.run_view = None;
         self.garden = garden.cloned();
         self.fountain = None;
         self.wisps = None;
@@ -464,6 +472,8 @@ impl WorldView {
         self.meadow = meadow;
         if let Some(v) = vault {
             self.build_vault(grid, v);
+        } else if let Some(r) = run {
+            self.build_run(grid, r);
         } else if self.hell {
             self.build_hell(grid);
         } else if meadow {
@@ -471,7 +481,7 @@ impl WorldView {
         } else {
             self.build_forest(grid);
         }
-        if let Some(g) = gate.filter(|_| vault.is_none()) {
+        if let Some(g) = gate.filter(|_| vault.is_none() && run.is_none()) {
             // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
@@ -622,6 +632,7 @@ impl WorldView {
         }
         // The vaults' gold leaves the scene as it is taken; their chests stand open.
         self.update_vault_view(s, dtf);
+        self.update_run_view(s, dtf);
         for (i, d) in s.diamonds.iter().enumerate() {
             if d.active {
                 if let Some(a) = self.diamond_spin.get_mut(i) {

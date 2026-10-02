@@ -20,6 +20,10 @@ impl Game {
             self.cheat_to_vault_exit();
             return;
         }
+        if self.run.is_some() {
+            self.cheat_run();
+            return;
+        }
         let Some(g) = self.gate else { return };
         for (x, y, t) in self.level.grid.cells().collect::<Vec<_>>() {
             if t == Tile::Nodule {

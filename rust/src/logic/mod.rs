@@ -18,6 +18,7 @@ pub mod mover;
 pub mod pathing;
 pub mod progression;
 pub mod projectile;
+pub mod realms;
 pub mod rng;
 pub mod sins;
 pub mod story;

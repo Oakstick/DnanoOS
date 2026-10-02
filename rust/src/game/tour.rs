@@ -236,6 +236,10 @@ impl Game {
                 EnemyKind::FrostGiant => ("FROST GIANT", "A rime-giant of Jötunheim. Melee: its blows chill you even through your shield, and its wave of ice runs down a lane. Chilled twice, you freeze solid.", 0xa8dcff),
                 EnemyKind::Surtr => ("SURTR", "The fire giant of Muspelheim. Melee: his flaming sword reaches far, and the floor burns where it falls. Do not stand in the fire.", 0xff6a1a),
                 EnemyKind::Nidhogg => ("NIDHOGG", "The dragon that gnaws the roots of the world. Body: it burrows under the floor and bursts up beneath you, and its bite is venom. Leave the mark before the ground breaks.", 0x8ad04a),
+                EnemyKind::Peerless => ("THE PEERLESS", "Your own reflection, stepped out of the mirror. It never acts on its own: it repeats every move you make, a moment later.", 0xd8c8ff),
+                EnemyKind::Ganglot => ("GANGLÖT", "One of Hel's shrouded servants, Ganglati and Ganglöt: slow as a snail, and they never stop. The noise of killing them keeps you awake.", 0x9aa4b0),
+                EnemyKind::Gaki => ("GAKI", "A hungry ghost, all swollen belly and needle throat. Body: they swarm whoever smells of food.", 0xc8b49a),
+                EnemyKind::Ellepige => ("ELLEPIGE", "An elf-maid, lovely from the front and hollow as a kneading trough behind. No blow tells on her face: strike her back.", 0xf0e0ea),
                 EnemyKind::Hel => ("HEL", "Queen of the dead, half living and half corpse. Distance: her bolts drain your life into hers, and she raises the dead from the floor. When she falls, they fall with her.", 0x7aa0e8),
             };
             stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });

@@ -429,9 +429,10 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     }
     assert_eq!(g.hero.hp, hp, "unhurt in the gym");
     assert!(g.enemies.iter().filter(|e| e.post.is_some()).all(|e| e.b.keep.is_some()));
-    // Off the road, the stand-in realms keep the first stage's cast for now (Greed's vaults have both).
+    // Off the road, a realm after the vaults sends its own natives, no deeper than its tier allows.
     g.map_jump(save::Stage::Realm(Sin::Sloth));
-    assert!(g.enemies.iter().all(|e| EnemyKind::STAGE_ONE.contains(&e.kind())));
+    let natives = crate::logic::realms::natives(Sin::Sloth);
+    assert!(g.enemies.iter().all(|e| e.kind().realm_own() || natives.iter().any(|n| n.0 == e.kind() && n.1 <= 2)));
     g.map_jump(save::Stage::Gym);
     g.enter(Screen::Playing);
     let o = g.hero.occupied();
@@ -848,16 +849,18 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     );
     assert_eq!(g.level.data.name, Sin::Sloth.realm());
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Sloth)));
-    assert_eq!(g.keys_total, 8, "eight golden keys open its gate");
+    assert_eq!(g.keys_total, 0, "no keys: the realm's own trap seals its far portal");
+    assert!(g.run.is_some(), "the Grey Mire itself");
     assert!(
         g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel),
         "gear only from the old man; the archangels stand here too"
     );
-    // Its gate leads to the prince's court.
+    // Its far portal leads to the prince's court, once the realm's last trap has been survived.
     g.enter(Screen::Playing);
-    g.cheat_to_gate();
-    let gate = g.gate.unwrap();
-    g.hero.m.teleport(P::new(gate.x, gate.y + 1));
+    g.gate_open = true;
+    let exit = g.run.as_ref().unwrap().base().exit;
+    let gate = exit.tile;
+    g.hero.m.teleport(exit.front());
     for _ in 0..(3.0 / STEP) as usize {
         g.update(STEP);
         g.hero.invuln = 1.0;

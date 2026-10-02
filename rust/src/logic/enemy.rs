@@ -76,6 +76,15 @@ pub enum EnemyKind {
     Nidhogg,
     /// Hel: the half-dead queen of the dead; her bolts drain life, and she raises the dead.
     Hel,
+    // ---- the realms' own (REALMS.md), in no stage's cast
+    /// The Peerless: his own reflection, stepped out of the mirror at the top of Pride's spire.
+    Peerless,
+    /// Ganglati and Ganglöt: Hel's shrouded servants in the Grey Mire, snail-slow and never stopping.
+    Ganglot,
+    /// A gaki: a hungry ghost of the Rotting Feast, all swollen belly and needle throat.
+    Gaki,
+    /// An ellepige: an elf-maid of the Garden of Thorns, lovely from the front and hollow behind.
+    Ellepige,
 }
 
 impl EnemyKind {
@@ -92,6 +101,13 @@ impl EnemyKind {
     pub const STAGE_SEVEN: [EnemyKind; 4] = [EnemyKind::FrostGiant, EnemyKind::Surtr, EnemyKind::Nidhogg, EnemyKind::Hel];
     /// The last stage.
     pub const STAGES: u8 = 7;
+    /// The realms' own new foes, which belong to no stage.
+    pub const REALMS_OWN: [EnemyKind; 4] = [EnemyKind::Peerless, EnemyKind::Ganglot, EnemyKind::Gaki, EnemyKind::Ellepige];
+
+    /// One of the realms' own new foes.
+    pub fn realm_own(self) -> bool {
+        Self::REALMS_OWN.contains(&self)
+    }
 
     /// The cast of a stage: 1 for the Garden, 2 for the realms, 3 to 7 for the stages after them.
     pub fn of_stage(stage: u8) -> &'static [EnemyKind] {
@@ -741,7 +757,11 @@ impl Brain {
             | EnemyKind::Ejder
             | EnemyKind::FrostGiant
             | EnemyKind::Surtr
-            | EnemyKind::Nidhogg => hp,
+            | EnemyKind::Nidhogg
+            | EnemyKind::Peerless
+            | EnemyKind::Ganglot
+            | EnemyKind::Gaki
+            | EnemyKind::Ellepige => hp,
             // Swoops at where he is heading, but short of it, and swerves on the way.
             EnemyKind::LargeBat => {
                 let v = ctx.hero.dir.vecf();
@@ -980,9 +1000,24 @@ pub fn later_stage_specs(grid: &Grid, stage: u8) -> Vec<EnemySpec> {
         .collect()
 }
 
-/// The spec of any kind, from its stage's.
+/// The spec of any kind, from its stage's (or the realms' own).
 pub fn spec_of(grid: &Grid, kind: EnemyKind) -> EnemySpec {
+    if let Some(spec) = realm_foe_spec(kind) {
+        return spec;
+    }
     enemy_specs(grid, kind.stage()).into_iter().find(|s| s.kind == kind).expect("every kind has its stage's spec")
+}
+
+/// The realms' own foes: each kind's name, colour and pace (none for any other kind).
+pub fn realm_foe_spec(kind: EnemyKind) -> Option<EnemySpec> {
+    let (name, color, speed_factor) = match kind {
+        EnemyKind::Peerless => ("The Peerless", 0xd8c8ff, 1.0),
+        EnemyKind::Ganglot => ("Ganglöt", 0x9aa4b0, 0.45),
+        EnemyKind::Gaki => ("Gaki", 0xc8b49a, 1.05),
+        EnemyKind::Ellepige => ("Ellepige", 0xf0e0ea, 1.0),
+        _ => return None,
+    };
+    Some(EnemySpec { kind, name: name.into(), color, scatter_target: P::new(0, 0), exit_delay: 0.0, speed_factor })
 }
 
 #[cfg(test)]

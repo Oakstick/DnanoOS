@@ -169,6 +169,8 @@ impl WorldView {
             Atmosphere::forest()
         } else if self.vault.is_some() {
             vault::vault_atmosphere()
+        } else if let Some(a) = self.run_atmosphere(s) {
+            a
         } else if self.hell {
             hell::hell_atmosphere()
         } else if self.meadow {
@@ -181,7 +183,7 @@ impl WorldView {
         }
         // Seer's Sight (path 3) sees through the dark.
         let nv = if s.hero.sees() { 0.6 } else { 0.0 };
-        if nv > 0.0 && !self.meadow && !self.hell && !self.showcase && self.vault.is_none() {
+        if nv > 0.0 && !self.meadow && !self.hell && !self.showcase && self.vault.is_none() && self.run_view.is_none() {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
             a.hemi_sky *= 1.0 + 1.4 * nv;
@@ -279,6 +281,9 @@ impl WorldView {
         }
         if self.vault.is_some() {
             hero_light *= 0.5; // candlelight everywhere
+        }
+        if let Some(k) = self.run_lantern() {
+            hero_light *= k; // each realm has its own light
         }
         // His lantern rides well above the horned helmet, so it lights him without bleaching him.
         let to_cam = {
@@ -402,6 +407,7 @@ impl WorldView {
                     | EnemyKind::FrostGiant
                     | EnemyKind::Surtr
                     | EnemyKind::Nidhogg => 1.0,
+                    EnemyKind::Peerless | EnemyKind::Ganglot | EnemyKind::Gaki | EnemyKind::Ellepige => 0.45,
                 };
                 f.lights.push(Light {
                     pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
@@ -647,6 +653,10 @@ impl WorldView {
             // Underground: no sea of cloud, and no fireflies.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
             self.emit_vault(s, time, hero_pos, f);
+        } else if self.run_view.is_some() {
+            // A realm after the vaults: its own sky and life, no sea of cloud, no fireflies.
+            f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
+            self.emit_run(s, time, hero_pos, f);
         } else {
             emit_cloud_sea(grid, f, self.cam_pos);
         }
@@ -656,7 +666,7 @@ impl WorldView {
         self.emit_smoke(time, f);
         let mote_color = lin(MOTE);
         for (i, b) in self.mote_base.iter().enumerate() {
-            if self.meadow || self.hell || self.vault.is_some() {
+            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() {
                 break;
             }
             let fi = i as f32;

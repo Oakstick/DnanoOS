@@ -41,6 +41,10 @@ pub(super) enum RigId {
     Gashadokuro,
     Ejder,
     Goryo,
+    /// The realms' own (the Peerless is drawn as the hero).
+    Ganglot,
+    Gaki,
+    Ellepige,
 }
 
 pub(super) struct Models {
@@ -82,6 +86,10 @@ pub(super) struct Models {
     pub(super) gashadokuro: Rig,
     pub(super) ejder: Rig,
     pub(super) goryo: Rig,
+    /// The realms' own: Hel's servants, the gaki, the elf-maids.
+    pub(super) ganglot: Rig,
+    pub(super) gaki: Rig,
+    pub(super) ellepige: Rig,
     /// Every foe's coarse copy, in `RigId` order.
     pub(super) foes_far: Vec<Rig>,
     pub(super) medkit: Mesh,
@@ -184,6 +192,18 @@ impl Models {
         let gashadokuro = build_rig(&gashadokuro(), GASHADOKURO_RIG, 0.025);
         let ejder = build_rig(&ejder(), EJDER_RIG, 0.018);
         let goryo = build_rig(&goryo(), GORYO_RIG, 0.0125);
+        let ganglot = {
+            use crate::render::foes_mire::{ganglot, GANGLOT_RIG, GANGLOT_VOXEL};
+            build_rig(&ganglot(), GANGLOT_RIG, GANGLOT_VOXEL)
+        };
+        let gaki = {
+            use crate::render::foes_feast::{gaki, GAKI_RIG, GAKI_VOXEL};
+            build_rig(&gaki(), GAKI_RIG, GAKI_VOXEL)
+        };
+        let ellepige = {
+            use crate::render::foes_thorns::{ellepige, ELLEPIGE_RIG, ELLEPIGE_VOXEL};
+            build_rig(&ellepige(), ELLEPIGE_RIG, ELLEPIGE_VOXEL)
+        };
         let foes_far = vec![
             skeleton.coarse(),
             bat.coarse(),
@@ -217,6 +237,9 @@ impl Models {
             gashadokuro.coarse(),
             ejder.coarse(),
             goryo.coarse(),
+            ganglot.coarse(),
+            gaki.coarse(),
+            ellepige.coarse(),
         ];
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
@@ -256,6 +279,9 @@ impl Models {
             gashadokuro,
             ejder,
             goryo,
+            ganglot,
+            gaki,
+            ellepige,
             foes_far,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
@@ -329,6 +355,9 @@ impl Models {
             RigId::Gashadokuro => &self.gashadokuro,
             RigId::Ejder => &self.ejder,
             RigId::Goryo => &self.goryo,
+            RigId::Ganglot => &self.ganglot,
+            RigId::Gaki => &self.gaki,
+            RigId::Ellepige => &self.ellepige,
         }
     }
 

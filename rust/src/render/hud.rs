@@ -537,6 +537,9 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
         let gs = small * 1.3 * (1.0 + 0.3 * cp);
         o.text(&gold, rc, ty, gs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
         o.text("HOARD", rc - o.measure(&gold, gs) - t * 0.3, ty, small, rgba(0xffc85a, 1.0), Align::Right, true);
+    } else if g.in_run() {
+        // The realm's own gauges: the first in the panel, the rest stacked beneath it.
+        draw_run_meters(o, g, t, rc, ty, small);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);
@@ -1065,6 +1068,8 @@ fn where_line(g: &Game) -> String {
         "THE VAULTS OF MAMMON: TAKE ALL YOU CAN CARRY, AND SEE WHAT IT COSTS YOU AT THE FAR PORTAL".to_string()
     } else if g.theme().is_gym() {
         "ONE OF EVERY FOE, STAGE BY STAGE: THEY RISE AGAIN WHEN THEY FALL".to_string()
+    } else if let Some(line) = g.run_where().filter(|_| g.boss.is_none()) {
+        line
     } else if let Some(sin) = g.realm {
         if g.boss.is_some() {
             format!("THE REALM OF {}: {} GUARDS ITS KEY", sin.title(), sin.prince().to_uppercase())
@@ -1137,6 +1142,11 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 EnemyKind::Gashadokuro => 28,
                 EnemyKind::Ejder => 29,
                 EnemyKind::Goryo => 30,
+                // (The realms' own, for now in their kin's likeness.)
+                EnemyKind::Peerless => 5,
+                EnemyKind::Ganglot => 0,
+                EnemyKind::Gaki => 7,
+                EnemyKind::Ellepige => 3,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;
@@ -1402,8 +1412,60 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
     }
 }
 
+/// A realm's gauges (`Game::run_meters`), right-aligned at `right` from `y` down: a label and a bar,
+/// or a label and a number; a warning pulses.
+fn draw_run_meters(o: &mut Overlay, g: &Game, t: f32, right: f32, y: f32, small: f32) {
+    let bar_w = t * 4.2;
+    let bar_h = small * 0.55;
+    let pulse = 0.75 + (g.time as f32 * 8.0).sin().abs() * 0.25;
+    for (i, m) in g.run_meters().iter().enumerate() {
+        let y = y + i as f32 * small * 1.9;
+        let a = if m.warn { pulse } else { 1.0 };
+        if m.count {
+            let n = format!("{}", m.value.round() as i64);
+            let ns = small * 1.25;
+            o.text(&n, right, y, ns, rgba(m.color, a), Align::Right, true);
+            o.text(&m.label, right - o.measure(&n, ns) - t * 0.3, y, small, rgba(m.color, a), Align::Right, true);
+            continue;
+        }
+        let x = right - bar_w;
+        let k = if m.max > 0.0 { (m.value / m.max).clamp(0.0, 1.0) } else { 0.0 };
+        o.rect(x, y - bar_h / 2.0, bar_w, bar_h, [0.0, 0.0, 0.0, 0.55]);
+        o.rect(x, y - bar_h / 2.0, bar_w * k, bar_h, rgba(m.color, 0.9 * a));
+        o.rect_outline(x, y - bar_h / 2.0, bar_w, bar_h, t * 0.04, rgba(m.color, 0.6));
+        o.text(&m.label, x - t * 0.3, y, small, rgba(m.color, a), Align::Right, true);
+    }
+}
+
+/// A prince's offer in one of the realms after the vaults: its title, what is said, and the answers.
+fn draw_offer(o: &mut Overlay, g: &Game, t: f32) {
+    let Some(offer) = g.run_offer() else { return };
+    o.rect(0.0, 0.0, o.width, o.height, [0.02, 0.02, 0.04, 0.72]);
+    let top = menu_rects(Screen::Toll, &offer.choices, o.width, o.height).first().map(|r| r[1]).unwrap_or(o.height * 0.6);
+    let pulse = 0.9 + (g.time as f32 * 3.0).sin() * 0.1;
+    let n = offer.lines.len() as f32;
+    o.text(&offer.title, o.width / 2.0, top - t * (2.6 + n), t * 1.45, rgba(offer.color, pulse), Align::Center, true);
+    for (i, line) in offer.lines.iter().enumerate() {
+        let y = top - t * (1.5 + n - i as f32);
+        o.text(
+            line,
+            o.width / 2.0,
+            y,
+            t * 0.66,
+            rgba(if i == 0 { mix_rgb(offer.color, 0xffffff, 0.5) } else { SAND }, 1.0),
+            Align::Center,
+            true,
+        );
+    }
+    draw_menu(o, g, t);
+}
+
 /// Mammon's toll, before the far portal of his vaults: what he carries, and the choice.
 fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
+    if !g.in_vault() {
+        draw_offer(o, g, t);
+        return;
+    }
     o.rect(0.0, 0.0, o.width, o.height, [0.06, 0.03, 0.0, 0.72]);
     let top = menu_rects(Screen::Toll, &[MenuItem::KeepAll], o.width, o.height)[0][1];
     let pulse = 0.9 + (g.time as f32 * 3.0).sin() * 0.1;

@@ -196,6 +196,8 @@ pub enum Power {
     Fire,
     /// Hel's rule over the dead: those she raised fall when she does.
     Necromancy,
+    /// The elf-maid's back: lovely from the front, where no blow tells, and hollow behind.
+    Hollow,
 }
 
 /**
@@ -272,6 +274,15 @@ impl Breed {
             K::Surtr => (Brute, 4.0, 2.0, 1.25, 0.85, 0.95, 2),
             K::Nidhogg => (Skirmisher, 5.0, 1.7, 1.6, 0.85, 0.8, 2),
             K::Hel => (Hexer, 4.0, 1.9, 2.0, 1.0, 0.42, 1),
+            // The realms' own (REALMS.md), grown with the realm's tier as they are placed
+            // (`logic::realms::weight`). The Peerless fights with his own kit (`game::realms::mirrors`).
+            K::Peerless => (Brute, 1.6, 1.0, 1.25, 1.0, 0.4, 2),
+            // Hel's servants wade in, slow and hard to stop.
+            K::Ganglot => (Brute, 1.3, 0.9, 2.0, 0.45, 0.45, 1),
+            // The gaki swarm.
+            K::Gaki => (Skirmisher, 0.9, 0.95, 0.8, 1.05, 0.38, 1),
+            // The elf-maids: hollow behind, and only there to be struck.
+            K::Ellepige => (Skirmisher, 1.3, 1.1, 1.0, 1.0, 0.36, 1),
         };
         // A big body's arm reaches as far again as its girth outgrows a man's.
         let reach = if radius > 0.55 { (radius - 0.5) * 2.0 } else { 0.0 };
@@ -290,6 +301,7 @@ impl Breed {
             K::Surtr => (Rider::None, Power::Fire),
             K::Nidhogg => (Rider::Venom(120), Power::None),
             K::Hel => (Rider::Drain, Power::Necromancy),
+            K::Ellepige => (Rider::None, Power::Hollow),
             _ => (Rider::None, Power::None),
         };
         Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power }
