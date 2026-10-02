@@ -1536,8 +1536,9 @@ impl Game {
     }
 
     /// He loses `loss` health (shown in `color`): his second wind, if he has one, puts the end off
-    /// once; at none the vaults slay him and the ring's bout is lost.
-    fn wound_hero(&mut self, loss: f64, color: u32) {
+    /// once; at none the vaults slay him and the ring's bout is lost. (The realms after the vaults
+    /// wound him through it too: their fires, acids, thorns and falls.)
+    pub(super) fn wound_hero(&mut self, loss: f64, color: u32) {
         if loss <= 0.0 || !self.hero.alive {
             return;
         }
