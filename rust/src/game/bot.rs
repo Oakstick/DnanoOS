@@ -18,8 +18,11 @@ use super::Game;
 use crate::input::{Action, PadState};
 use crate::logic::combat::duelist::HERO_RADIUS;
 use crate::logic::combat::frames::{BOLT_RADIUS, BOLT_SPEED};
+use crate::logic::combat::Kit;
 use crate::logic::combat::{math, Phase, State};
 use crate::logic::gym;
+use crate::logic::heroes::{HeroKind, ROSTER};
+use crate::logic::progression::{self, Tree};
 use crate::logic::rng::Rng;
 use crate::logic::types::V;
 use std::collections::HashMap;
@@ -254,11 +257,50 @@ pub struct BoutResult {
 /// Seconds a bout may run before it counts as a timeout (neither won nor lost).
 pub const LIMIT: f64 = 120.0;
 
+/// A hero, with his blade, shield and path at their tiers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Loadout {
+    pub hero: HeroKind,
+    pub blade: u8,
+    pub shield: u8,
+    pub path: u8,
+}
+
+impl Loadout {
+    /// Every tree at `tier`.
+    pub fn all(hero: HeroKind, tier: u8) -> Self {
+        Self { hero, blade: tier, shield: tier, path: tier }
+    }
+
+    /// Puts it on the game's hero.
+    fn equip(&self, g: &mut Game) {
+        g.hero_kind = self.hero;
+        let h = g.progress.hero_mut(self.hero);
+        h.owned[Tree::Armory.index()] = self.blade;
+        h.owned[Tree::Shield.index()] = self.shield;
+        h.owned[Tree::Path.index()] = self.path;
+        h.wield = self.blade;
+        h.carry = self.shield;
+        g.hero.shield = Some(crate::logic::gear::ShieldGear::new(self.shield));
+        g.equip_from_progress();
+    }
+}
+
 /// Plays bout `bout` (0-based) with `skill`, seeded with `seed`, from a fresh game on a clean save.
 pub fn play_bout(bout: usize, skill: Skill, seed: u32) -> BoutResult {
+    play_bout_as(bout, skill, seed, None)
+}
+
+/// The same, with the hero and his kit of `loadout` (none: a fresh Ragnar).
+pub fn play_bout_as(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadout>) -> BoutResult {
     let mut g = Game::new();
     g.reseed(seed);
     g.debug_ring(bout + 1);
+    if let Some(l) = loadout {
+        // (After the jump, which takes the saved run's hero from the title.)
+        l.equip(&mut g);
+        g.start_bout();
+    }
     g.hero.free_move = true;
     let mut bot = Bot::new(skill, seed);
     let step = crate::app::STEP;
@@ -305,10 +347,15 @@ impl Summary {
 
 /// Plays `bout` with `skill` once per seed in `seeds`.
 pub fn summarize(bout: usize, skill: Skill, seeds: &[u32]) -> Summary {
+    summarize_as(bout, skill, seeds, None)
+}
+
+/// The same, with `loadout`.
+pub fn summarize_as(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>) -> Summary {
     let mut s = Summary::default();
     let mut win_secs = 0.0;
     for &seed in seeds {
-        let r = play_bout(bout, skill, seed);
+        let r = play_bout_as(bout, skill, seed, loadout);
         s.runs += 1;
         if r.won {
             s.wins += 1;
@@ -356,6 +403,136 @@ pub fn balance(seeds: &[u32]) -> String {
                 s.overlaps
             );
         }
+    }
+    out
+}
+
+/// The tiers the kit sweep plays.
+pub const SWEEP: [u8; 4] = [1, 4, 7, 10];
+
+/// Every hero at each tier of `SWEEP` (blade, shield and path alike): the expert's times on the
+/// Brute, the Trio and the Gauntlet, and how the adept fares on the Brute and the Trio (COMBAT.md §8).
+pub fn kit_sweep(seeds: &[u32]) -> String {
+    let mut out = String::from(
+        "hero      tier  tempo power reach parry cost | expert: brute   trio  gauntlet      | adept: brute (blocks)  trio (win, blocks)\n",
+    );
+    for hero in ROSTER {
+        for tier in SWEEP {
+            let l = Some(Loadout::all(hero, tier));
+            let k = Kit::of(hero, tier, 1.0, Some(tier), tier);
+            let eb = summarize_as(0, Skill::Expert, seeds, l);
+            let et = summarize_as(3, Skill::Expert, seeds, l);
+            let eg = summarize_as(4, Skill::Expert, seeds, l);
+            let ab = summarize_as(0, Skill::Adept, seeds, l);
+            let at = summarize_as(3, Skill::Adept, seeds, l);
+            out += &format!(
+                "{:<9} {:>4}  {:>5.2} {:>5.2} {:>5.1} {:>4}f {:>4.2} | {:>13.1} {:>6.1} {:>6.1} ({:>3.0}%) | {:>12.1} ({:>4.1})  {:>4.0}% {:>5.1}\n",
+                hero.name(),
+                tier,
+                k.strike.tempo,
+                k.strike.power,
+                k.strike.reach,
+                k.guard.parry,
+                k.guard.cost,
+                eb.ttk,
+                et.ttk,
+                eg.ttk,
+                eg.win_rate() * 100.0,
+                ab.ttk,
+                ab.blocks,
+                at.win_rate() * 100.0,
+                at.blocks
+            );
+        }
+    }
+    out
+}
+
+/// Every blade and shield as the ring reads it (COMBAT.md §8).
+pub fn kit_table() -> String {
+    let mut out = String::from("hero      tier blade                     tempo power poise reach  arc   finisher        traits\n");
+    for hero in ROSTER {
+        for tier in 1..=progression::TIERS {
+            let s = Kit::of(hero, tier, 1.0, None, 0).strike;
+            let l3 = Kit::of(hero, tier, 1.0, None, 0).moves()[2];
+            let finisher = if s.thrown.is_some() {
+                "thrown".to_string()
+            } else if s.whirl {
+                "whirl".to_string()
+            } else {
+                format!("{:.1} t", l3.reach)
+            };
+            let mut traits = Vec::new();
+            if s.pierce > 0.0 {
+                traits.push("pierce".to_string());
+            }
+            if s.crit > 0.0 {
+                traits.push(format!("crit +{:.2}", s.crit));
+            }
+            if s.blood > 0.0 {
+                traits.push(format!("blood {}", s.blood));
+            }
+            if s.finisher_power > 1.0 {
+                traits.push(format!("finisher x{}", s.finisher_power));
+            }
+            out += &format!(
+                "{:<9} {:>4} {:<25} {:>5.2} {:>5.2} {:>5.2} {:>+5.1} {:>+4.0}deg {:<15} {}\n",
+                hero.name(),
+                tier,
+                progression::node(hero, Tree::Armory, tier).name,
+                s.tempo,
+                s.power,
+                s.poise,
+                s.reach,
+                s.arc.to_degrees(),
+                finisher,
+                traits.join(", ")
+            );
+        }
+    }
+    out += "\ntier shield                    parry cost  riposte deflect reflect bolt-proof break\n";
+    for tier in 1..=progression::TIERS {
+        let g = crate::logic::combat::kit::Guard::of(tier);
+        out += &format!(
+            "{:>4} {:<25} {:>4}f {:>4.2} {:>7.0} {:>6}f {:>6.1}x {:<10} {:.0}%/{}f\n",
+            tier,
+            progression::node(HeroKind::Ragnar, Tree::Shield, tier).name,
+            g.parry,
+            g.cost,
+            g.riposte,
+            g.deflect,
+            g.reflect,
+            if g.bolt_proof { "yes" } else { "no" },
+            g.break_share * 100.0,
+            g.break_frames
+        );
+    }
+    out
+}
+
+/// What each part of a kit is worth: the expert's time on the Brute and the Trio with one tree
+/// raised at a time (`hero`, tier `tier`), against none raised.
+pub fn kit_parts(hero: HeroKind, tier: u8, seeds: &[u32]) -> String {
+    let parts = [
+        ("none", Loadout { hero, blade: 1, shield: 1, path: 0 }),
+        ("blade", Loadout { hero, blade: tier, shield: 1, path: 0 }),
+        ("shield", Loadout { hero, blade: 1, shield: tier, path: 0 }),
+        ("path", Loadout { hero, blade: 1, shield: 1, path: tier }),
+        ("all", Loadout::all(hero, tier)),
+    ];
+    let mut out = format!(
+        "{} tier {tier}: part   brute  trio
+",
+        hero.name()
+    );
+    for (name, l) in parts {
+        let b = summarize_as(0, Skill::Expert, seeds, Some(l));
+        let t = summarize_as(3, Skill::Expert, seeds, Some(l));
+        out += &format!(
+            "{:<20} {:>6.1} {:>5.1}
+",
+            name, b.ttk, t.ttk
+        );
     }
     out
 }

@@ -252,3 +252,40 @@ fn the_bouts_meet_their_balance_targets() {
     let s = summarize(0, Skill::Adept, &seeds);
     assert_eq!(s.wins, s.runs, "a player who blocks beats the Brute: {s:?}");
 }
+
+/// Phase 3 of COMBAT.md, played by the expert over three seeds: every hero's full kit at tier 10
+/// wins at least twice as fast as at tier 1, and at both ends the three heroes kill within 1.35x
+/// of each other.
+#[test]
+fn every_heros_kit_grows_and_the_heroes_stay_level() {
+    use super::bot::{summarize_as, Loadout, Skill};
+    use crate::logic::heroes::ROSTER;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let seeds = [1, 2, 3];
+    for bout in [0, 3] {
+        let mut ends = [[0.0; 3]; 2];
+        for (h, hero) in ROSTER.into_iter().enumerate() {
+            for (e, tier) in [1, 10].into_iter().enumerate() {
+                let s = summarize_as(bout, Skill::Expert, &seeds, Some(Loadout::all(hero, tier)));
+                assert_eq!(s.wins, s.runs, "{hero:?} tier {tier} wins {}: {s:?}", gym::BOUTS[bout].name);
+                ends[e][h] = s.ttk;
+            }
+            assert!(
+                ends[1][h] * 2.0 <= ends[0][h],
+                "{hero:?} on {}: {:.1} s at tier 10 against {:.1} s",
+                gym::BOUTS[bout].name,
+                ends[1][h],
+                ends[0][h]
+            );
+        }
+        for (e, times) in ends.iter().enumerate() {
+            let (lo, hi) = times.iter().fold((f64::MAX, 0.0f64), |(a, b), &t| (a.min(t), b.max(t)));
+            assert!(
+                hi <= lo * 1.35,
+                "{} at {}: the heroes take {times:?}",
+                gym::BOUTS[bout].name,
+                if e == 0 { "tier 1" } else { "tier 10" }
+            );
+        }
+    }
+}

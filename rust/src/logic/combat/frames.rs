@@ -93,6 +93,8 @@ pub const BOLT_LIFE: u16 = 90;
 pub const BOLT_RADIUS: f64 = 0.3;
 /// A parried bolt flies back this much faster, and deals this many times its damage to foes.
 pub const REFLECT_SPEED: f64 = 1.6;
+/// A parried bolt's poise damage to the foe it meets.
+pub const REFLECT_POISE: f64 = 30.0;
 pub const REFLECT_DAMAGE: f64 = 1.5;
 
 impl MoveId {

@@ -9,8 +9,9 @@
 use super::Game;
 use crate::audio::Sfx;
 use crate::logic::combat::duelist::{Arena, Bolt, Sense, HERO_RADIUS};
-use crate::logic::combat::frames::{BOLT_LIFE, BOLT_RADIUS, BOLT_SPEED, REFLECT_DAMAGE, REFLECT_SPEED};
-use crate::logic::combat::fsm::{Defense, Effect, Hit, State, BLOCK_COST, GUARD_BREAK_SHARE};
+use crate::logic::combat::frames::{BOLT_LIFE, BOLT_RADIUS, BOLT_SPEED, REFLECT_POISE, REFLECT_SPEED};
+use crate::logic::combat::fsm::{Defense, Effect, Hit, State};
+use crate::logic::combat::kit::Kit;
 use crate::logic::combat::threat::{assign_slots, Request, Waiter, REVOKE_REST};
 use crate::logic::combat::{math, secs, Duelist, Event, Fighter, FrameClock, Input, MoveId, Phase, Reel, ThreatManager};
 use crate::logic::enemy::{enemy_specs, Enemy, EnemyMode};
@@ -36,9 +37,6 @@ const LOG_HEADER: &str = "time,hero,tier,bout,result,secs,dealt,taken,hits,hurt,
 const BOLT_PACE: (f64, f64) = (0.5, 1.6);
 /// How far off his facing (radians) the soft lock turns his swing onto a foe.
 const ASSIST_ANGLE: f64 = 0.8;
-/// A blow from something outside the frame data (a spirit, holy fire): its damage and poise damage.
-const STRAY_DAMAGE: f64 = 8.0;
-const STRAY_POISE: f64 = 10.0;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BoutPhase {
@@ -95,6 +93,9 @@ pub struct Sparring {
     strikes: Vec<u32>,
     /// The camera before the ring turned it to the top view (the ring is fought from above, like the vaults).
     pub camera_before: Option<CameraMode>,
+    /// His gear as numbers (COMBAT.md §8), fixed for the bout, and whether his second wind is spent.
+    pub kit: Kit,
+    wind_used: bool,
 }
 
 impl Default for Sparring {
@@ -120,6 +121,8 @@ impl Sparring {
             next_id: 1,
             strikes: Vec::new(),
             camera_before: None,
+            kit: Kit::training(),
+            wind_used: false,
         }
     }
 
@@ -169,6 +172,7 @@ impl Game {
     /// The bout's foes take their places along the ring's west side, and the countdown starts.
     pub(super) fn start_bout(&mut self) {
         self.clear_duelists();
+        let kit = self.hero_kit();
         let Some(spar) = self.spar.as_mut() else { return };
         let bout = gym::BOUTS[spar.bout];
         let specs = enemy_specs(&self.level.grid, 2);
@@ -188,12 +192,15 @@ impl Game {
             spar.camera_before = Some(self.view.camera_mode);
             self.view.camera_mode = CameraMode::Top;
         }
-        spar.hero = Fighter::hero();
+        spar.kit = kit;
+        spar.hero = Fighter::with_kit(&kit);
+        spar.wind_used = false;
         let title = spar.title();
         for e in fresh {
             self.view.add_enemy(&e);
             self.enemies.push(e);
         }
+        self.hero.hp = self.hero.max_hp;
         let hp = self.hero.pos();
         self.floater(hp.x, hp.y - 1.4, title, COUNTDOWN, Some(0xffc860));
         self.audio.play(Sfx::Tick);
@@ -204,13 +211,18 @@ impl Game {
         self.clear_duelists();
         if let Some(s) = self.spar.as_mut() {
             s.phase = BoutPhase::Idle;
-            s.hero = Fighter::hero();
+            s.hero = Fighter::with_kit(&s.kit);
             if let Some(mode) = s.camera_before.take() {
                 self.view.camera_mode = mode;
             }
         }
         self.hero.root = 1.0;
         self.hero.blocking = false;
+    }
+
+    /// His blade, shield and path as the ring's numbers.
+    pub fn hero_kit(&self) -> Kit {
+        Kit::of(self.hero_kind, self.hero.blade, self.hero.edge, self.hero.shield.map(|s| s.tier), self.hero.path)
     }
 
     /// F6: on to the next bout.
@@ -279,15 +291,16 @@ impl Game {
 
     /// One 60 Hz frame of the ring: the hero's fighter, then (in a fight) the foes, their bolts and the threat manager.
     fn spar_frame(&mut self) {
-        let can_attack = self.hero.tireless() || self.hero.stamina + 1e-9 >= STAMINA_PER_BLOW;
+        let cost = self.spar.as_ref().map(|s| s.kit.swing_cost()).unwrap_or(STAMINA_PER_BLOW);
+        let can_attack = self.hero.tireless() || self.hero.stamina + 1e-9 >= cost;
         let Some(spar) = self.spar.as_mut() else { return };
         spar.hero.can_attack = can_attack;
         let events = spar.hero.step();
         for e in events {
             match e {
                 Event::Began(mv) => {
-                    self.hero.exert(STAMINA_PER_BLOW);
-                    let d = mv.data();
+                    self.hero.exert(cost);
+                    let d = self.spar.as_ref().map(|s| s.hero.data(mv)).unwrap_or(mv.data());
                     self.view.sword_slash_timed(secs(d.startup) as f32, secs(d.active) as f32, secs(d.recovery) as f32);
                     self.audio.play(Sfx::Slash);
                     let aim = self.assisted_aim(d.reach);
@@ -297,10 +310,24 @@ impl Game {
                     }
                 }
                 Event::Active(mv) => {
-                    // The aim is committed on the first active frame.
-                    let aim = self.assisted_aim(mv.data().reach);
+                    // The aim is committed on the first active frame; a thrown finisher flies down it.
+                    let d = self.spar.as_ref().map(|s| s.hero.data(mv)).unwrap_or(mv.data());
+                    let aim = self.assisted_aim(d.reach);
+                    let hp = self.hero.pos();
                     if let Some(s) = self.spar.as_mut() {
                         s.aim = aim;
+                        if let (true, Some(t)) = (d.projectile, s.kit.strike.thrown) {
+                            s.bolts.push(Bolt {
+                                pos: math::add(hp, math::scale(aim, 0.5)),
+                                vel: math::scale(aim, t.speed),
+                                life: (t.range / t.speed * 60.0) as u16,
+                                damage: d.damage,
+                                poise: d.poise,
+                                reflected: true,
+                                touched: false,
+                                due: None,
+                            });
+                        }
                     }
                 }
                 Event::Evade if self.hero.try_jump(&self.level.grid) => {
@@ -354,8 +381,11 @@ impl Game {
     fn hero_strikes(&mut self) {
         let Some(spar) = self.spar.as_ref() else { return };
         let Some((mv, Phase::Active, _)) = spar.hero.attack() else { return };
-        let d = mv.data();
-        let power = math::power(self.hero.blade, self.hero.edge);
+        let d = spar.hero.data(mv);
+        if d.projectile {
+            return; // thrown, not swung
+        }
+        let strike = spar.kit.strike;
         let hp = self.hero.pos();
         let aim = spar.aim;
         let targets: Vec<usize> = self
@@ -366,12 +396,22 @@ impl Game {
                 du.alive() && !spar.struck.contains(&du.id) && math::in_cone(hp, aim, du.pos, du.radius(), d.reach, d.half_angle)
             })
             .collect();
+        let landed = targets.len();
         for i in targets {
-            let id = self.enemies[i].duel.as_ref().unwrap().id;
+            let du = self.enemies[i].duel.as_ref().unwrap();
+            let id = du.id;
+            // From behind (or the flank), the fang or the flanking blow bites deeper.
+            let off = math::dot(du.facing, math::norm(math::sub(hp, du.pos))).clamp(-1.0, 1.0).acos();
+            let back = if off >= strike.back_from { strike.back } else { 1.0 };
             if let Some(s) = self.spar.as_mut() {
                 s.struck.push(id);
             }
-            self.duel_hit(i, Hit { damage: d.damage * power, poise: d.poise * power, hitstun: d.hitstun }, d.hitstop, hp);
+            let hit = Hit { damage: d.damage * back, poise: d.poise, hitstun: d.hitstun, pierce: strike.pierce, crit: strike.crit };
+            self.duel_hit(i, hit, d.hitstop, hp);
+        }
+        if landed > 0 && strike.blood > 0.0 {
+            // A cursed blade drinks from the hand that holds it.
+            self.hero.hp = (self.hero.hp - (strike.blood * landed as f64) as i32).max(1);
         }
     }
 
@@ -417,6 +457,16 @@ impl Game {
                 self.view.shake(0.08);
             }
         }
+        if dead && self.spar.as_ref().is_some_and(|s| s.kit.terror) {
+            // Terrify (Ragnar's level 8): the foes round the kill lose half their poise.
+            let r2 = crate::logic::progression::path::TERROR_RADIUS.powi(2);
+            for e in self.enemies.iter_mut() {
+                if let Some(o) = e.duel.as_deref_mut().filter(|o| o.alive() && crate::logic::types::dist_sq(o.pos, p) <= r2) {
+                    let half = o.f.max_poise / 2.0;
+                    o.f.shake(half);
+                }
+            }
+        }
         if dead {
             stop = stop.max(HITSTOP_KILL);
             let color = self.enemies[i].b.color;
@@ -429,10 +479,10 @@ impl Game {
         self.hitstop = self.hitstop.max(secs(stop));
     }
 
-    /// Something outside the frame data struck duelist `i` (a spirit at his side, holy fire): a light blow.
+    /// Something outside the frame data reached duelist `i` (a spirit at his side, holy fire): in
+    /// the ring it does nothing (the audit of COMBAT.md §8 cuts what bypasses the state machine).
     pub(super) fn stray_blow(&mut self, i: usize) {
-        let from = self.hero.pos();
-        self.duel_hit(i, Hit { damage: STRAY_DAMAGE, poise: STRAY_POISE, hitstun: 10 }, 2, from);
+        let _ = i;
     }
 
     /// The foes' frame: their fighters, the tokens, the sectors, their minds, their blows, the bolts, and the end of the bout.
@@ -460,6 +510,7 @@ impl Game {
                                 vel: math::scale(du.aim, BOLT_SPEED),
                                 life: BOLT_LIFE,
                                 damage: mv.data().damage,
+                                poise: 0.0,
                                 reflected: false,
                                 touched: false,
                                 due: self.spar.as_ref().and_then(|s| s.threat.landing(du.id)),
@@ -563,10 +614,15 @@ impl Game {
             }
             let (from, damage) = (du.pos, d.damage);
             self.enemies[i].duel.as_mut().unwrap().struck = true;
-            if self.blow_on_hero(from, damage, d.hitstop) == Defense::Parried {
+            if self.blow_on_hero(from, damage, d.hitstop, false) == Defense::Parried {
+                let guard = self.spar.as_ref().map(|s| s.kit.guard).unwrap_or(crate::logic::combat::kit::Guard::TRAINING);
                 let du = self.enemies[i].duel.as_mut().unwrap();
-                du.f.deflect();
+                du.f.deflect(guard.deflect, guard.riposte);
                 du.flash = 8;
+                if guard.thorns > 0.0 {
+                    let hp = self.hero.pos();
+                    self.duel_hit(i, Hit { damage: guard.thorns, ..Default::default() }, 2, hp);
+                }
             }
         }
 
@@ -629,7 +685,7 @@ impl Game {
      * (evade, parry, block, a broken guard, or open), and his health pays for it. At none left
      * the bout is lost; he is never slain in the ring.
      */
-    fn blow_on_hero(&mut self, from: V, damage: f64, hitstop: u16) -> Defense {
+    fn blow_on_hero(&mut self, from: V, damage: f64, hitstop: u16, bolt: bool) -> Defense {
         let hp = self.hero.pos();
         let from_front = math::dot(self.hero.aim(), math::norm(math::sub(from, hp))) > 0.0;
         let airborne = self.hero.airborne();
@@ -639,7 +695,8 @@ impl Game {
         // Whatever reaches him counts as a landing, however he meets it.
         let f = spar.threat.frame;
         spar.land(f);
-        let cost = damage * BLOCK_COST;
+        let kit = spar.kit;
+        let cost = if bolt && kit.guard.bolt_proof { 0.0 } else { damage * kit.guard.cost };
         let def = spar.hero.defend(airborne, from_front, stamina, cost);
         let mut loss = 0.0;
         match def {
@@ -650,6 +707,8 @@ impl Game {
             }
             Defense::Parried => {
                 spar.stats.parries += 1;
+                // The aegis (the tenth shield) gives him back a little with every parry.
+                self.hero.hp = (self.hero.hp + kit.guard.aegis as i32).min(self.hero.max_hp);
                 self.hitstop = self.hitstop.max(secs(HITSTOP_PARRY));
                 self.audio.play(Sfx::Clang);
                 self.view.sparkle(&self.level.grid, (hp.x + from.x) / 2.0, (hp.y + from.y) / 2.0, 0.9, 0xffe070, 30);
@@ -664,7 +723,7 @@ impl Game {
             }
             Defense::GuardBroken => {
                 spar.stats.guard_breaks += 1;
-                loss = (damage * GUARD_BREAK_SHARE).round();
+                loss = (damage * kit.guard.break_share * kit.taken).round();
                 self.hero.drain(self.hero.stamina);
                 self.audio.play(Sfx::ShieldBreak);
                 self.floater(hp.x, hp.y - 0.9, "GUARD BROKEN", 1.0, Some(0xff7a3a));
@@ -674,8 +733,8 @@ impl Game {
                 if swinging {
                     spar.stats.caught += 1;
                 }
-                let r = spar.hero.take_hit(&Hit { damage, poise: 0.0, hitstun: math::hero_hitstun(damage) });
-                loss = r.damage;
+                let r = spar.hero.take_hit(&Hit { damage, hitstun: math::hero_hitstun(damage), ..Default::default() });
+                loss = (r.damage * kit.taken).round();
                 self.hitstop = self.hitstop.max(secs(hitstop));
                 self.audio.play(Sfx::Hurt);
                 self.view.shake(0.22);
@@ -683,6 +742,17 @@ impl Game {
         }
         if loss > 0.0 {
             self.hero.hp = (self.hero.hp - loss as i32).max(0);
+            let wind = self.spar.as_ref().map(|s| (s.kit.second_wind, s.wind_used)).unwrap_or((0.0, true));
+            if self.hero.hp == 0 && wind.0 > 0.0 && !wind.1 {
+                // The second wind (Valkyrie Call, the last stand, the World Tree): once a bout, the end is put off.
+                self.hero.hp = ((self.hero.max_hp as f64 * wind.0).round() as i32).max(1);
+                if let Some(s) = self.spar.as_mut() {
+                    s.wind_used = true;
+                }
+                self.audio.play(Sfx::Heal);
+                self.view.sparkle(&self.level.grid, hp.x, hp.y, 1.2, 0xfff1a8, 40);
+                self.floater(hp.x, hp.y - 1.4, "SECOND WIND", 1.4, Some(0xfff1a8));
+            }
             self.floater(hp.x, hp.y - 0.5, format!("-{loss}"), 0.9, Some(0xff4a3a));
             let lost = self.hero.hp == 0;
             let fighting = self.spar.as_ref().is_some_and(|s| s.phase == BoutPhase::Fight);
@@ -727,10 +797,13 @@ impl Game {
                 if !b.touched && math::len(math::sub(b.pos, hp)) <= BOLT_RADIUS + HERO_RADIUS {
                     b.touched = true;
                     let from = math::sub(b.pos, b.vel);
-                    if self.blow_on_hero(from, b.damage, 3) == Defense::Parried {
-                        // Turned back at the foes, faster and twice as deadly.
+                    if self.blow_on_hero(from, b.damage, 3, true) == Defense::Parried {
+                        // Turned back at the foes, faster, and harder as his shield is better.
+                        let reflect = self.spar.as_ref().map(|s| s.kit.guard.reflect).unwrap_or(1.0);
                         b.vel = math::scale(b.vel, -REFLECT_SPEED);
                         b.reflected = true;
+                        b.damage *= reflect;
+                        b.poise = REFLECT_POISE;
                     } else if !self.hero.airborne() {
                         b.life = 0;
                     }
@@ -744,7 +817,7 @@ impl Game {
             if let Some(i) = hit {
                 b.life = 0;
                 let d = MoveId::Hex.data();
-                self.duel_hit(i, Hit { damage: b.damage * REFLECT_DAMAGE, poise: 30.0, hitstun: 20 }, d.hitstop, b.pos);
+                self.duel_hit(i, Hit { damage: b.damage, poise: b.poise, hitstun: 20, ..Default::default() }, d.hitstop, b.pos);
             }
         }
         bolts.retain(|b| b.life > 0);

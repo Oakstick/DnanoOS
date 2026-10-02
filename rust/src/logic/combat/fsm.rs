@@ -2,7 +2,8 @@
 //! one step per 60 Hz frame, keeps a one-slot input buffer, applies the cancel rules, and takes
 //! blows through poise, armor and decaying hitstun.
 
-use super::frames::{MoveId, Phase};
+use super::frames::{MoveData, MoveId, Phase};
+use super::kit::Kit;
 use super::math::{self, COMBO_RESET, POISE_REGEN_DELAY, POISE_REGEN_FRAMES, PUNISH_MULT, VULNERABLE_MULT};
 
 /// Frames a press waits in the buffer for a state that can take it.
@@ -91,12 +92,16 @@ pub enum Event {
     Recovered(Reel),
 }
 
-/// A blow, as it arrives: its damage (power already in it), poise damage and hitstun.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// A blow, as it arrives: its damage (power already in it), poise damage and hitstun; poise it
+/// adds to the armor check alone (armor-piercing), and what it adds to the multiplier on an
+/// opening (a critical blow).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Hit {
     pub damage: f64,
     pub poise: f64,
     pub hitstun: u16,
+    pub pierce: f64,
+    pub crit: f64,
 }
 
 /// What a blow did to the struck.
@@ -154,6 +159,12 @@ pub struct Fighter {
     pub can_attack: bool,
     /// Set by the owner each frame: is the guard button held?
     pub guard_held: bool,
+    /// The hero's string as his kit swings it (L1, L2, L3); foes' moves come from the table.
+    pub table: [MoveData; 3],
+    /// The last guard frame that parries, the evade's whole length, and how long a broken guard reels.
+    pub parry_to: u16,
+    pub evade_total: u16,
+    pub break_frames: u16,
     regen_wait: u16,
     calm: u16,
     grace: Option<(MoveId, u16)>,
@@ -181,12 +192,37 @@ impl Fighter {
             grace: None,
             buffer: None,
             guard_lock: 0,
+            table: MoveId::HERO.map(MoveId::data),
+            parry_to: PARRY_TO,
+            evade_total: EVADE_TOTAL,
+            break_frames: GUARD_BREAK,
         }
     }
 
-    /// The hero: no poise, mercy frames after every blow.
+    /// The hero: no poise, mercy frames after every blow, the training kit.
     pub fn hero() -> Self {
         Self { mercy_frames: MERCY, ..Self::new(0.0, 0.0, 0, 0) }
+    }
+
+    /// The hero with `kit`: his string, his parry window, his evade, his broken guard.
+    pub fn with_kit(kit: &Kit) -> Self {
+        Self {
+            table: kit.moves(),
+            parry_to: kit.guard.parry_to(),
+            evade_total: EVADE_AIR + kit.evade_land,
+            break_frames: kit.guard.break_frames,
+            ..Self::hero()
+        }
+    }
+
+    /// A move's frame data as this fighter performs it.
+    pub fn data(&self, mv: MoveId) -> MoveData {
+        match mv {
+            MoveId::L1 => self.table[0],
+            MoveId::L2 => self.table[1],
+            MoveId::L3 => self.table[2],
+            _ => mv.data(),
+        }
     }
 
     /// A press, held in the buffer until a state can take it (or it grows stale).
@@ -202,7 +238,7 @@ impl Fighter {
     /// The move under way, its phase and frame.
     pub fn attack(&self) -> Option<(MoveId, Phase, u16)> {
         match self.state {
-            State::Attack { mv, frame } => Some((mv, mv.data().phase(frame), frame)),
+            State::Attack { mv, frame } => Some((mv, self.data(mv).phase(frame), frame)),
             _ => None,
         }
     }
@@ -234,14 +270,14 @@ impl Fighter {
 
     /// The guard is up, and on a parry frame.
     pub fn parrying(&self) -> bool {
-        matches!(self.state, State::Guard { frame } if (PARRY_FROM..=PARRY_TO).contains(&frame))
+        matches!(self.state, State::Guard { frame } if (PARRY_FROM..=self.parry_to).contains(&frame))
     }
 
     /// The share of its pace a fighter keeps in its state (planted in a swing, rooted while reeling).
     pub fn root(&self) -> f64 {
         match self.state {
             State::Neutral | State::Guard { .. } | State::Evade { .. } => 1.0,
-            State::Attack { mv, frame } => match mv.data().phase(frame) {
+            State::Attack { mv, frame } => match self.data(mv).phase(frame) {
                 Phase::Startup => 0.3,
                 Phase::Active => 0.15,
                 Phase::Recovery => 0.4,
@@ -265,9 +301,9 @@ impl Fighter {
     /// Poise damage a blow needs to make it flinch now.
     pub fn current_armor(&self) -> f64 {
         match self.state {
-            State::Attack { mv, frame } => match mv.data().phase(frame) {
+            State::Attack { mv, frame } => match self.data(mv).phase(frame) {
                 Phase::Recovery => 0.0,
-                _ => self.armor.max(mv.data().armor),
+                _ => self.armor.max(self.data(mv).armor),
             },
             State::Reel { .. } => 0.0,
             _ => self.armor,
@@ -319,7 +355,7 @@ impl Fighter {
                     }
                     if kind == Reel::Blockstun && self.guard_held {
                         // The guard stays up through the blockstun: no fresh parry window from it.
-                        self.state = State::Guard { frame: PARRY_TO + 1 };
+                        self.state = State::Guard { frame: self.parry_to + 1 };
                     }
                     ev.push(Event::Recovered(kind));
                 } else {
@@ -327,7 +363,7 @@ impl Fighter {
                 }
             }
             State::Attack { mv, frame } => {
-                let d = mv.data();
+                let d = self.data(mv);
                 let f = frame + 1;
                 if f >= d.total() {
                     self.state = State::Neutral;
@@ -342,7 +378,7 @@ impl Fighter {
             }
             State::Guard { frame } => self.state = State::Guard { frame: frame.saturating_add(1) },
             State::Evade { frame } => {
-                self.state = if frame + 1 >= EVADE_TOTAL { State::Neutral } else { State::Evade { frame: frame + 1 } };
+                self.state = if frame + 1 >= self.evade_total { State::Neutral } else { State::Evade { frame: frame + 1 } };
             }
             State::Neutral | State::Dead => {}
         }
@@ -380,7 +416,9 @@ impl Fighter {
                 self.guard_lock = GUARD_LOCK;
             }
             State::Neutral if self.guard_held && self.guard_lock == 0 => self.state = State::Guard { frame: 0 },
-            State::Attack { mv, frame } if self.guard_held && frame >= mv.data().cancel_frame() => self.state = State::Guard { frame: 0 },
+            State::Attack { mv, frame } if self.guard_held && frame >= self.data(mv).cancel_frame() => {
+                self.state = State::Guard { frame: 0 }
+            }
             _ => {}
         }
     }
@@ -389,7 +427,7 @@ impl Fighter {
     fn holds_attack(&self, input: Input) -> bool {
         match (input, self.state) {
             (Input::Attack, State::Attack { mv, frame }) => {
-                let d = mv.data();
+                let d = self.data(mv);
                 d.chain.is_some() && frame >= d.startup && frame < d.cancel_frame()
             }
             _ => false,
@@ -404,8 +442,8 @@ impl Fighter {
                     return false;
                 }
                 let next = match self.state {
-                    State::Neutral => Some(self.grace.and_then(|(m, _)| m.data().chain).unwrap_or(MoveId::L1)),
-                    State::Attack { mv, frame } if frame >= mv.data().cancel_frame() => mv.data().chain,
+                    State::Neutral => Some(self.grace.and_then(|(m, _)| self.data(m).chain).unwrap_or(MoveId::L1)),
+                    State::Attack { mv, frame } if frame >= self.data(mv).cancel_frame() => self.data(mv).chain,
                     _ => None,
                 };
                 let Some(mv) = next else { return false };
@@ -418,7 +456,7 @@ impl Fighter {
                 let free = match self.state {
                     State::Neutral | State::Guard { .. } => true,
                     State::Attack { mv, frame } => {
-                        let d = mv.data();
+                        let d = self.data(mv);
                         frame < d.startup || frame >= d.cancel_frame()
                     }
                     _ => false,
@@ -447,7 +485,7 @@ impl Fighter {
         if frame < GUARD_RAISE || !from_front {
             return Defense::Open;
         }
-        if frame <= PARRY_TO {
+        if frame <= self.parry_to {
             return Defense::Parried;
         }
         if stamina + 1e-9 >= cost {
@@ -455,13 +493,14 @@ impl Fighter {
             self.state = State::Reel { kind: Reel::Blockstun, left: stun, total: stun };
             return Defense::Blocked;
         }
-        self.state = State::Reel { kind: Reel::GuardBroken, left: GUARD_BREAK, total: GUARD_BREAK };
+        self.state = State::Reel { kind: Reel::GuardBroken, left: self.break_frames, total: self.break_frames };
         Defense::GuardBroken
     }
 
     /// A blow lands: the damage it deals here (state and proration), the poise it takes, and whether it flinches or breaks.
     pub fn take_hit(&mut self, hit: &Hit) -> Received {
-        let state = self.vulnerability();
+        let open = self.vulnerability();
+        let state = if open > 1.0 { open + hit.crit } else { 1.0 };
         self.combo = self.combo.saturating_add(1);
         let n = self.combo;
         let damage = math::damage(hit.damage, 1.0, state, n);
@@ -482,7 +521,7 @@ impl Fighter {
         if self.vulnerable() {
             return Received { damage, effect: Effect::Held };
         }
-        if hit.poise >= armor {
+        if hit.poise + hit.pierce >= armor {
             let hs = math::hitstun(hit.hitstun, n);
             self.state = State::Reel { kind: Reel::Hitstun, left: hs, total: hs };
             return Received { damage, effect: Effect::Flinched(hs) };
@@ -490,10 +529,11 @@ impl Fighter {
         Received { damage, effect: Effect::Armored }
     }
 
-    /// Parried: it reels, and half its poise goes (all of it breaks it, as any blow would).
-    pub fn deflect(&mut self) {
+    /// Parried: it reels for `frames`, and half its poise goes and `riposte` more (all of it
+    /// breaks it, as any blow would).
+    pub fn deflect(&mut self, frames: u16, riposte: f64) {
         if self.max_poise > 0.0 {
-            self.poise -= self.max_poise * PARRY_POISE;
+            self.poise -= self.max_poise * PARRY_POISE + riposte;
             self.regen_wait = POISE_REGEN_DELAY;
             if self.poise <= 0.0 && self.resolve == 0 {
                 self.poise = 0.0;
@@ -502,7 +542,24 @@ impl Fighter {
             }
             self.poise = self.poise.max(0.0);
         }
-        self.state = State::Reel { kind: Reel::Deflected, left: DEFLECT, total: DEFLECT };
+        self.state = State::Reel { kind: Reel::Deflected, left: frames, total: frames };
+    }
+
+    /// A shock to its poise without a blow (a kill's terror beside it): it breaks if it runs out.
+    pub fn shake(&mut self, poise: f64) -> bool {
+        if self.max_poise <= 0.0 || self.is_dead() {
+            return false;
+        }
+        self.poise -= poise;
+        self.regen_wait = POISE_REGEN_DELAY;
+        if self.poise <= 0.0 {
+            self.poise = 0.0;
+            if self.resolve == 0 && !self.vulnerable() {
+                self.state = State::Reel { kind: Reel::Staggered, left: self.stagger, total: self.stagger };
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -551,7 +608,7 @@ mod tests {
         assert_eq!(began(&log)[1].1, MoveId::L1);
         // A press while reeling waits BUFFER frames, no more.
         let mut f = Fighter::hero();
-        f.take_hit(&Hit { damage: 10.0, poise: 0.0, hitstun: 20 });
+        f.take_hit(&Hit { damage: 10.0, poise: 0.0, hitstun: 20, ..Default::default() });
         let log = run(&mut f, 40, &[(5, Input::Attack)]);
         assert!(began(&log).is_empty(), "pressed 15 frames before the hitstun ends");
         let log = run(&mut f, 40, &[]);
@@ -573,30 +630,34 @@ mod tests {
     fn hits_decay_poise_breaks_and_resolve_stops_a_second_break() {
         // A Skirmisher: poise 25, no armor.
         let mut f = Fighter::new(25.0, 0.0, 50, 60);
-        let l1 = Hit { damage: 10.0, poise: 20.0, hitstun: 14 };
+        let l1 = Hit { damage: 10.0, poise: 20.0, hitstun: 14, ..Default::default() };
         let r = f.take_hit(&l1);
         assert_eq!(r.effect, Effect::Flinched(14));
         let r = f.take_hit(&l1);
         assert_eq!(r.effect, Effect::Broken, "40 poise from 25");
         assert_eq!(r.damage, 9.0, "the second hit of a combo deals 92%");
-        let r = f.take_hit(&Hit { damage: 16.0, poise: 45.0, hitstun: 24 });
+        let r = f.take_hit(&Hit { damage: 16.0, poise: 45.0, hitstun: 24, ..Default::default() });
         assert_eq!((r.effect, r.damage), (Effect::Held, 20.0), "x1.5 on the staggered, x0.84 for the third hit");
         for _ in 0..50 {
             f.step();
         }
         assert!(f.is_neutral() && f.poise == 25.0 && f.resolve > 0);
         // Resolve: emptied again, it only flinches.
-        let r = f.take_hit(&Hit { damage: 10.0, poise: 40.0, hitstun: 14 });
+        let r = f.take_hit(&Hit { damage: 10.0, poise: 40.0, hitstun: 14, ..Default::default() });
         assert!(matches!(r.effect, Effect::Flinched(_)));
     }
 
     #[test]
     fn the_brutes_armor_shrugs_off_light_blows_but_not_the_finisher() {
         let mut f = Fighter::new(100.0, 35.0, 90, 120);
-        assert_eq!(f.take_hit(&Hit { damage: 10.0, poise: 20.0, hitstun: 14 }).effect, Effect::Armored);
+        assert_eq!(f.take_hit(&Hit { damage: 10.0, poise: 20.0, hitstun: 14, ..Default::default() }).effect, Effect::Armored);
         assert!(f.begin(MoveId::Slam));
-        assert_eq!(f.take_hit(&Hit { damage: 11.0, poise: 20.0, hitstun: 14 }).effect, Effect::Armored, "nor mid-slam");
-        assert!(matches!(f.take_hit(&Hit { damage: 16.0, poise: 45.0, hitstun: 24 }).effect, Effect::Flinched(_)));
+        assert_eq!(
+            f.take_hit(&Hit { damage: 11.0, poise: 20.0, hitstun: 14, ..Default::default() }).effect,
+            Effect::Armored,
+            "nor mid-slam"
+        );
+        assert!(matches!(f.take_hit(&Hit { damage: 16.0, poise: 45.0, hitstun: 24, ..Default::default() }).effect, Effect::Flinched(_)));
         // In recovery its armor is gone and it takes the punish multiplier.
         let mut f = Fighter::new(100.0, 35.0, 90, 120);
         f.begin(MoveId::Slam);
@@ -604,11 +665,11 @@ mod tests {
             f.step();
         }
         assert_eq!(f.attack().map(|a| a.1), Some(Phase::Recovery));
-        let r = f.take_hit(&Hit { damage: 10.0, poise: 20.0, hitstun: 14 });
+        let r = f.take_hit(&Hit { damage: 10.0, poise: 20.0, hitstun: 14, ..Default::default() });
         assert_eq!((r.damage, r.effect), (13.0, Effect::Flinched(14)));
         // Poise comes back after its delay.
         let mut f = Fighter::new(100.0, 35.0, 90, 120);
-        f.take_hit(&Hit { damage: 10.0, poise: 50.0, hitstun: 14 });
+        f.take_hit(&Hit { damage: 10.0, poise: 50.0, hitstun: 14, ..Default::default() });
         for _ in 0..POISE_REGEN_DELAY {
             f.step();
         }
@@ -659,12 +720,12 @@ mod tests {
     fn a_parried_attacker_reels_and_a_deflect_on_empty_poise_staggers() {
         let mut f = Fighter::new(25.0, 0.0, 50, 60);
         f.begin(MoveId::Lunge);
-        f.deflect();
+        f.deflect(DEFLECT, 0.0);
         assert_eq!(f.reeling(), Some(Reel::Deflected));
         assert!((f.poise - 12.5).abs() < 1e-9);
         let mut f = Fighter::new(25.0, 0.0, 50, 60);
         f.poise = 10.0;
-        f.deflect();
+        f.deflect(DEFLECT, 0.0);
         assert_eq!(f.reeling(), Some(Reel::Staggered));
     }
 }

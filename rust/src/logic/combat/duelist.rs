@@ -35,6 +35,8 @@ pub struct Bolt {
     /// Frames left.
     pub life: u16,
     pub damage: f64,
+    /// Its poise damage, once it flies at the foes (thrown by him, or parried back).
+    pub poise: f64,
     pub reflected: bool,
     /// It has reached the hero (struck, been blocked, or passed under his leap): it strikes once.
     pub touched: bool,

@@ -39,6 +39,9 @@ Design limits the table must satisfy (each is a test in `combat::frames`):
 
 ### 1.1 Hero: the Training Sword (one chain, three hits)
 
+This is a fresh Ragnar: his first blade and shield, no path. Every other kit is this table with
+different numbers (§8).
+
 | Move | Startup | Active | Recovery | Total | Dmg | Poise | Hitstun | Reach | Arc (±) | Cancel (rec. f) | Chain | Hitstop |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | L1 | 6 (100 ms) | 4 | 14 | 24 (400 ms) | 10 | 20 | 14 | 1.5 | 60° | 4 | → L2 | 3 |
@@ -278,7 +281,7 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | **0 Spec** | this document | numbers pinned by tests ✔ |
 | **1 The Ring** | `logic::combat` (frames, FSM, buffer, formulas, threat manager, archetypes), the gym's Sparring Ring, telegraphs, HP/poise bars, frame readout, five bouts | builds, tests green, five bouts playable ✔ |
 | **2 Tune** | the balance harness (§7): three bot skills play every bout; telemetry on screen when a bout ends and in `combat_log.csv`; tables tuned in two rounds | expert TTK inside every target ✔, zero overlaps for a player who stands his ground ✔ (≈ 0.4 a minute for one who moves), the skill gradient of §7 ✔. Your own parry rate is in the log. |
-| 3 Hero kit | map blade tiers onto the move table (reach, arc, tempo scalars), shields onto guard stats (parry window, block cost), audit path skills against the FSM (cut what bypasses it) | every tier is the same three verbs with different numbers |
+| **3 Hero kit** | `combat::kit`: blade tiers as move-table scalars (power, poise, tempo, reach, arc, finisher), shields as guard stats (parry window, block cost, riposte, deflect, reflect), the path audited against the FSM (§8) | every tier is the same three verbs with different numbers ✔; each hero's tier 10 wins ≥ 2× faster than his tier 1 ✔; at every tier the heroes kill within 1.3× of each other on the Brute and the Trio ✔ |
 | 4 Roll-out | the realms' foes become archetypes (Helmeted → Brute-lite, Large Bat → Skirmisher-flier), the Vaults' packs run through the threat manager, contact damage retired outside the Garden's chase levels | the Vaults play as a Diablo-like brawl with readable cadence |
 | 5 Bosses | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3 | the boss is a fourth archetype, not a special case |
 
@@ -351,3 +354,177 @@ What the numbers say for phase 3: the adept wins by turtling (43 blocks in a Tri
 because blocking is safe and every swing is a risk. When blade tiers arrive, blade **tempo**
 should shorten that risk, so a better blade rewards attacking rather than just making numbers
 bigger.
+
+---
+
+## 8. Phase 3: the hero's kit as numbers
+
+Every blade, shield and path level is the same three verbs (strike, guard, evade) with different
+numbers. `combat::kit::Kit::of(hero, blade, edge, shield, path)` builds the kit when a bout
+begins. The hero's `Fighter` then runs on the kit's table (`Kit::moves`), its parry window, its
+evade landing and its broken guard, and the ring reads the rest from it. A fresh Ragnar's kit is
+the training kit of §1, exactly (`a_fresh_ragnar_fights_the_training_table`), so phase 2's
+balance stands.
+
+### 8.1 Blade → strike
+
+```
+weight  = sqrt(min(cooldown, 0.6) / 0.42)                 a heavier blade: slower, and it breaks more
+tempo   = clamp(weight · (1 − 0.02·(tier − 1)) · sqrt(hero tempo) · sqrt(0.85 if path ≥ 1)
+                · (1.08 for the janissary), 0.7, 1.25)
+power   = (1 + 0.15·(tier − 1)) · (0.4 + 0.6·edge) · might^0.25 · (1.1 if its gift is cut)
+poise   = min(1.5, (1 + 0.04·(tier − 1)) · weight · (1.15 if it stuns or flashes))
+reach   = clamp(swing reach − 1.2, 0, 0.9)                thrown weapons and bows: +0.3
+arc     = clamp(atan2(half width, reach) − atan2(0.7, 1.2), −15°, +29°)
+frames  = startup, recovery and cancel × tempo  (startup ≥ 3, recovery ≥ 8; active unchanged)
+stamina = 16 × tempo per swing                            a quick blade buys more blows per breath
+```
+
+| Blade feature | In the ring |
+|---|---|
+| Swings behind (a whirl) or flashes | the finisher sweeps all round (360°) |
+| Thrown, or a bow | the finisher flies down his aim (its speed, its range up to 9 tiles) |
+| A wave | the finisher reaches 1 tile further |
+| A flash | the finisher lands ×1.5 |
+| Pierces armour | +15 poise toward armour checks (not to poise damage): light blows flinch the Brute |
+| Critical | +0.2 on the multiplier of an opening |
+| Drinks blood | 2 health per blow that lands |
+| Stuns, flashes | poise ×1.15 |
+| Trick, bleed, burn, venom, lightning, stealth, fire trail | **cut** (they act outside the state machine); the blade bites ×1.1 instead |
+
+### 8.2 Shield → guard
+
+```
+parry window = 8 + (tier − 1)/3 frames               8 at tier 1, 11 at tier 10
+block cost   = 0.7 − 0.4 · (block share − 0.4)/0.45   stamina per point: 0.70 down to 0.30
+```
+
+| Shield gift | In the ring |
+|---|---|
+| Bash (tier 4) | a parry takes 10 more poise (riposte) |
+| Missile-proof (5) | a bolt caught on the guard costs nothing |
+| Reflect (6) | a parried bolt does ×2 to the foes (×1.5 without) |
+| Stagger (7) | a parried foe reels 80 f (60 without) |
+| Unbreakable (8) | a broken guard lets 25% through and reels 24 f (50%, 48 f without) |
+| Thorns (9) | a parry deals the attacker 10 |
+| Aegis (10) | a parry gives back 5 health |
+| No shield | a bare-handed guard: 5 f window, a block costs the whole blow |
+
+Durability is not worn down in the ring: the lab never breaks real gear. Wear comes in phase 4.
+
+### 8.3 The path audit
+
+| Level | Skill | Verdict | In the ring |
+|---|---|---|---|
+| 1 | Rage | keep | tempo × √0.85 (Ragnar takes ×1.1) |
+| 2 | Guard | keep | +50 health with a shield |
+| 3 | Seer's Sight (Ragnar, Mehmed) | adapt | +0.1 on openings (it was crits on the boss) |
+| 3 | Wind Step (Miyamoto) | adapt | the evade lands in 2 f |
+| 4 | Song | keep | stamina comes back ×1.6 (unchanged) |
+| 5 | Bifrost Step | adapt | the evade lands in 0 f (the blink itself is cut: one evade verb) |
+| 6 | Fang (Ragnar) / Flank | adapt | ×1.5 from behind (Ragnar) / ×1.25 from the flank or behind |
+| 7 | Forge-Heart (Ragnar) | keep | free swings when his breath runs out (unchanged) |
+| 7 | Defiance (others) | n/a | nothing in the ring hinders him |
+| 8 | Terrify (Ragnar) | adapt | a kill takes half the poise of the foes round it (it was panic) |
+| 8 | Last Stand (others) | adapt | second wind: once a bout, a fatal blow leaves 30% |
+| 9 | Valkyrie Call (Ragnar) | adapt | second wind: 50% |
+| 9 | Spirits (others) | **cut** | they strike outside the state machine |
+| 10 | World Tree | adapt | +25% on the second wind |
+
+A blow from anything outside the frame data does nothing to a duelist (`Game::stray_blow`).
+
+### 8.4 Results: every hero at tiers 1, 4, 7 and 10 (6 seeds, `--kits 6`)
+
+```
+hero      tier  tempo power reach parry cost | expert: brute   trio  gauntlet      | adept: brute (blocks)  trio (win, blocks)
+Mehmed       1   0.90  1.06   0.0    8f 0.70 |          10.4   13.9   25.3 (100%) |         24.2 ( 9.0)    83%  40.3
+Mehmed       4   0.98  1.53   0.4    9f 0.56 |           5.4    7.3   12.7 (100%) |         10.7 ( 4.0)   100%  13.5
+Mehmed       7   1.00  2.21   0.7   10f 0.43 |           3.9    5.9    8.9 (100%) |          6.9 ( 2.7)   100%   8.5
+Mehmed      10   0.98  2.48   0.3   11f 0.30 |           2.6    4.3    9.2 (100%) |          4.8 ( 2.0)   100%   3.5
+Ragnar       1   0.92  1.00   0.0    8f 0.70 |          11.4   16.6   25.6 ( 83%) |         28.2 (10.0)   100%  47.3
+Ragnar       4   0.93  1.45   0.3    9f 0.56 |           5.9    7.7   12.0 (100%) |         10.6 ( 4.0)   100%  13.7
+Ragnar       7   0.84  1.90   0.5   10f 0.43 |           3.8    6.6    7.8 (100%) |          5.6 ( 0.7)   100%   2.7
+Ragnar      10   0.82  2.58   0.3   11f 0.30 |           2.4    4.7    7.5 (100%) |          3.5 ( 1.0)   100%   3.0
+Miyamoto     1   0.74  1.00   0.0    8f 0.70 |           8.9   14.1   22.6 ( 83%) |         24.2 ( 9.0)    67%  34.5
+Miyamoto     4   0.83  1.59   0.3    9f 0.56 |           5.4    6.7   10.3 (100%) |          9.9 ( 4.0)   100%   9.3
+Miyamoto     7   0.75  1.90   0.5   10f 0.43 |           4.5    6.3    8.1 (100%) |          4.8 ( 0.0)   100%   2.8
+Miyamoto    10   0.81  2.35   0.3   11f 0.30 |           2.4    4.4    6.4 (100%) |          3.4 ( 1.0)   100%   4.0
+```
+
+* **Growth**: each hero's expert kills the Brute 3.7-4.8× faster at tier 10 than at tier 1, and
+  the Trio 3.2-3.5× faster. Every step of the sweep is faster than the one before it on the Brute
+  and the Trio.
+* **Parity**: at every tier the three heroes are within 1.3× on the Brute and the Trio (worst:
+  1.28× at tier 1). The five-foe Gauntlet spreads to 1.44× at tier 10.
+* **Attacking pays**: the adept's blocks per Brute fall from 9-10 at tier 1 to 1-2 at tier 10.
+  The turtling of §7 was a tier-1 problem.
+
+### 8.5 What changed, and why
+
+| Change | Why |
+|---|---|
+| Poise: +4% a tier, ×1.15 for stunning blades, capped at 1.5 (was √power × weight, uncapped) | tier 4 was a cliff (11.6 → 4.2 s): poise breaks compound, and a light blow beat the Brute's armour at tier 10 |
+| Riposte 25 → 10, crit 0.3 → 0.2, Seer 0.15 → 0.1 | the shield's and the path's bonuses multiplied with the blade's |
+| Might counts at a quarter; janissary tempo ×1.08 | Mehmed killed 35% faster than Ragnar at tier 1, on top of his extra health |
+| A cut gift folds into ×1.1 power | blades whose gift the ring cuts fell behind (Miyamoto's tier 4 was 1.5× slower than Mehmed's) |
+| A swing's stamina scales with tempo | the expert waits for openings, so a quick blade helped it little: stamina ran out first |
+| Cooldown counts up to 0.6 s | the sun-blades' long wait paid for a flash the ring cuts; Miyamoto's tier 10 was slower than his tier 7 |
+
+What the lab taught:
+
+* For a player who waits for openings, **power is worth more than tempo**, and the Brute's
+  kill time has a floor set by its own attack cycle.
+* **A shield is defence until tier 7**: on its own it does not shorten a fight (Mehmed's tier-4
+  shield: 11.6 s on the Brute with it or without it), until the longer deflect and the doubled reflect turn guarding into offence.
+
+### 8.6 Every blade and shield as the ring reads it (`--kit-table`; path 0, keen)
+
+```
+hero      tier blade                     tempo power poise reach  arc   finisher        traits
+Mehmed       1 Bronze Yatagan             0.97  1.06  0.90  +0.0   +0deg 1.7 t           
+Mehmed       2 Iron Kilic                 1.15  1.22  1.13  +0.3  +15deg 2.0 t           
+Mehmed       3 Steel Pata Guard           1.13  1.37  1.18  +0.2   -7deg 2.9 t           
+Mehmed       4 Dervish Crescent Blade     1.06  1.53  1.17  +0.4  +15deg whirl           
+Mehmed       5 Koroglu's Steel Flintlock  1.19  1.69  1.39  +0.3   +0deg thrown          
+Mehmed       6 Janissary Mace of Conquest  1.06  1.85  1.31  +0.3   +3deg 2.0 t           pierce
+Mehmed       7 Zulfikar-Infused Greatsword  1.09  2.21  1.42  +0.7  +10deg 2.4 t           
+Mehmed       8 Simurg Feather Bow         1.11  2.38  1.50  +0.3   +0deg thrown          
+Mehmed       9 Masterwork Djezzar Saber   0.97  2.33  1.50  +0.6   +3deg 2.3 t           crit +0.20
+Mehmed      10 Kaf Dagi Sun-Blade         1.06  2.48  1.50  +0.3   +8deg whirl           finisher x1.5
+Ragnar       1 Bronze Hrotti              1.00  1.00  1.00  +0.0   +0deg 1.7 t           
+Ragnar       2 Iron Skofnung              1.01  1.15  1.08  +0.3   +0deg thrown          
+Ragnar       3 Steel Angurvadel           1.05  1.30  1.18  +0.2   -1deg 2.9 t           
+Ragnar       4 Tyr's Rune-Etched Axe      1.00  1.45  1.38  +0.3   +2deg 2.0 t           
+Ragnar       5 Dwarven Masterwork Dual Axes  0.96  1.60  1.21  +0.4  +15deg whirl           
+Ragnar       6 Laevateinn Wand-Sword      0.93  1.93  1.24  +0.4   +2deg 2.1 t           
+Ragnar       7 Mistilteinn Magic Blade    0.91  1.90  1.28  +0.5   +3deg 2.2 t           pierce
+Ragnar       8 Gram, Sigurd's Bane        0.94  2.25  1.40  +0.6   +6deg 2.3 t           
+Ragnar       9 Gungnir, Odin's Spear      0.96  2.20  1.50  +0.3   +0deg thrown          crit +0.20
+Ragnar      10 Mjolnir, Thor's Hammer     0.89  2.58  1.48  +0.3   +0deg thrown          
+Miyamoto     1 Katana of the Iron Gate    0.80  1.00  0.90  +0.0   +0deg 1.7 t           
+Miyamoto     2 Oni-Slayer Nodachi         0.96  1.15  1.13  +0.3  +15deg 2.0 t           
+Miyamoto     3 Tengu Wind-Blade           0.98  1.30  1.24  +0.1  +12deg whirl           
+Miyamoto     4 Kusanagi-no-Tsurugi Fragment  0.90  1.59  1.20  +0.3   +3deg 2.0 t           
+Miyamoto     5 Dual Ninjato of the Shadow  0.86  1.76  1.21  +0.4  +15deg whirl           
+Miyamoto     6 Yari of the Shifting Serpent  0.88  1.93  1.31  +0.9  -15deg 2.6 t           
+Miyamoto     7 Muramasa Cursed Blade      0.81  1.90  1.28  +0.5   +3deg 2.2 t           pierce, blood 2
+Miyamoto     8 Yumi of the Heavenly Bow   0.92  2.05  1.50  +0.3   +0deg thrown          
+Miyamoto     9 Masamune Masterpiece Katana  0.78  2.20  1.37  +0.6   +3deg 2.3 t           pierce, crit +0.20
+Miyamoto    10 Amaterasu's Sun-Forged Blade  0.88  2.35  1.50  +0.3   +8deg whirl           finisher x1.5
+
+tier shield                    parry cost  riposte deflect reflect bolt-proof break
+   1 Linden Board Shield          8f 0.70       0     60f    1.5x no         50%/48f
+   2 Iron-Boss Round Shield       8f 0.63       0     60f    1.5x no         50%/48f
+   3 Rawhide Warboard             8f 0.59       0     60f    1.5x no         50%/48f
+   4 Jarl's Painted Shield        9f 0.56      10     60f    1.5x no         50%/48f
+   5 Oak of the Shield-Wall       9f 0.52      10     60f    1.5x yes        50%/48f
+   6 Ullr's Ship                  9f 0.48      10     60f    2.0x yes        50%/48f
+   7 Hildr's Warboard            10f 0.43      10     80f    2.0x yes        50%/48f
+   8 Brokkr's Bulwark            10f 0.39      10     80f    2.0x yes        25%/24f
+   9 Hel's Bone Shield           10f 0.34      10     80f    2.0x yes        25%/24f
+  10 Svalinn                     11f 0.30      10     80f    2.0x yes        25%/24f
+```
+
+Tools: `--kits N` (the sweep), `--kit-parts T` (each tree on its own at tier T: what each is
+worth), `--kit-table` (the table above). `every_heros_kit_grows_and_the_heroes_stay_level` pins
+growth and parity at tiers 1 and 10.

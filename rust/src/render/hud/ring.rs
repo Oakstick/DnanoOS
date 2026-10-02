@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::game::sparring::{BoutPhase, Sparring};
-use crate::logic::combat::fsm::{PARRY_FROM, PARRY_TO};
-use crate::logic::combat::{Fighter, Input, MoveId, Phase, State};
+use crate::logic::combat::fsm::PARRY_FROM;
+use crate::logic::combat::{Fighter, Input, Phase, State};
 use crate::logic::gym;
 
 /// A fighter's state as the readout shows it: what, and how far through.
@@ -13,7 +13,7 @@ fn state_line(f: &Fighter) -> String {
     match f.state {
         State::Neutral => "NEUTRAL".to_string(),
         State::Attack { mv, frame } => {
-            let d = mv.data();
+            let d = f.data(mv);
             let (name, at, of) = match d.phase(frame) {
                 Phase::Startup => ("STARTUP", frame + 1, d.startup),
                 Phase::Active => ("ACTIVE", frame - d.startup + 1, d.active),
@@ -21,7 +21,7 @@ fn state_line(f: &Fighter) -> String {
             };
             format!("{} {name} {at}/{of}", d.name)
         }
-        State::Guard { frame } if (PARRY_FROM..=PARRY_TO).contains(&frame) => format!("GUARD {frame} PARRY"),
+        State::Guard { frame } if (PARRY_FROM..=f.parry_to).contains(&frame) => format!("GUARD {frame} PARRY"),
         State::Guard { frame } => format!("GUARD {frame}"),
         State::Evade { frame } => format!("EVADE {frame}"),
         State::Reel { kind, left, total } => format!("{kind:?} {}/{total}", total - left + 1).to_uppercase(),
@@ -176,8 +176,24 @@ fn draw_readout(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
         rows.push((format!("LAST WIN  {}  {:.1}s  -{:.0} HP", gym::BOUTS[bout].name, last.frames as f64 / 60.0, last.taken), GOLD));
     }
     rows.push(("F6  NEXT BOUT".to_string(), TEXT_DIM));
-    let l1 = MoveId::L1.data();
-    rows.push((format!("L1 {}/{}/{}  PARRY F{PARRY_FROM}-{PARRY_TO}", l1.startup, l1.active, l1.recovery), TEXT_DIM));
+    // His kit (COMBAT.md §8): the string's frames, its scalars, the guard.
+    let k = &spar.kit;
+    let [l1, l2, l3] = spar.hero.table;
+    rows.push((
+        format!(
+            "STRING {}/{}/{}  {}/{}/{}  {}/{}/{}",
+            l1.startup, l1.active, l1.recovery, l2.startup, l2.active, l2.recovery, l3.startup, l3.active, l3.recovery
+        ),
+        TEXT_DIM,
+    ));
+    rows.push((
+        format!("TEMPO {:.2}  POWER {:.2}  POISE {:.2}  REACH +{:.1}", k.strike.tempo, k.strike.power, k.strike.poise, k.strike.reach),
+        TEXT_DIM,
+    ));
+    rows.push((
+        format!("PARRY F{PARRY_FROM}-{}  BLOCK {:.2}/DMG  DEFLECT {}F", k.guard.parry_to(), k.guard.cost, k.guard.deflect),
+        TEXT_DIM,
+    ));
     let width = rows.iter().map(|r| o.measure(&r.0, size)).fold(0.0, f32::max) + t * 0.8;
     o.rect(x - t * 0.3, y - line * 0.75, width, line * rows.len() as f32 + t * 0.3, [0.0, 0.0, 0.0, 0.55]);
     for (text, color) in rows {
