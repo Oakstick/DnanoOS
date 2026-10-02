@@ -24,7 +24,7 @@ use crate::logic::gym;
 use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::progression::{self, Tree};
 use crate::logic::rng::Rng;
-use crate::logic::types::V;
+use crate::logic::types::{P, V};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -75,6 +75,8 @@ const COMMIT: f64 = 16.0;
 
 pub struct Bot {
     pub skill: Skill,
+    /// The way round the walls to its target: from which tile, to which, and the step (the vaults).
+    route: Option<(P, P, V)>,
     rng: Rng,
     /// The reaction delay drawn for each foe's current move (by foe id and the move's start frame).
     noticed: HashMap<u32, (u32, u16)>,
@@ -84,12 +86,16 @@ pub struct Bot {
     guard_hold: u16,
     /// The expert's timing error for the strike it is waiting on.
     lead: f64,
+    /// Frames before it may drink again.
+    sip: u16,
 }
 
 impl Bot {
     pub fn new(skill: Skill, seed: u32) -> Self {
         Self {
             skill,
+            route: None,
+            sip: 0,
             rng: Rng::new(seed.wrapping_mul(2654435761).wrapping_add(7)),
             noticed: HashMap::new(),
             attack_down: false,
@@ -100,7 +106,7 @@ impl Bot {
 
     /// The strikes it has noticed, soonest first.
     fn threats(&mut self, g: &Game) -> Vec<Threat> {
-        let Some(spar) = g.spar.as_ref() else { return Vec::new() };
+        let Some(spar) = g.brawl.as_ref() else { return Vec::new() };
         let hp = g.hero.pos();
         let now = spar.threat.frame;
         let (base, spread) = self.skill.reaction();
@@ -159,17 +165,58 @@ impl Bot {
         out
     }
 
+    /// Which way to walk from `from` to `to`: straight while nothing stands between, else the
+    /// first step of the shortest way round (searched again only when either end changes tile).
+    fn way(&mut self, g: &Game, from: V, to: V) -> V {
+        let grid = &g.level.grid;
+        let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        let n = (math::len(math::sub(to, from)) / 0.3).ceil().max(1.0) as usize;
+        let clear = (0..=n).all(|k| {
+            let p = math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64));
+            [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)].iter().all(|&(dx, dy)| {
+                let t = tile(V::new(p.x + dx, p.y + dy));
+                grid.is_walkable(t.x, t.y, false)
+            })
+        });
+        if clear {
+            self.route = None;
+            return math::norm(math::sub(to, from));
+        }
+        let (a, b) = (tile(from), tile(to));
+        if let Some((ra, rb, step)) = self.route {
+            if ra == a && rb == b {
+                return math::norm(math::sub(step, from));
+            }
+        }
+        let step = match crate::logic::pathing::route_toward(grid, a, to, false, false, false) {
+            Some(d) => {
+                let (dx, dy) = d.vec();
+                P::new(a.x + dx, a.y + dy).v()
+            }
+            None => to,
+        };
+        self.route = Some((a, b, step));
+        math::norm(math::sub(step, from))
+    }
+
     /// This update's stick and buttons.
     pub fn act(&mut self, g: &Game) -> PadState {
         let mut pad = PadState::default();
-        let Some(spar) = g.spar.as_ref() else { return pad };
-        if spar.phase != BoutPhase::Fight {
+        let Some(spar) = g.brawl.as_ref() else { return pad };
+        if !spar.live || !g.brawling() {
             self.attack_down = false;
             return pad;
         }
         let hp = g.hero.pos();
         let threats = self.threats(g);
         let soonest = threats.first().copied();
+
+        // Low on health, the adept and the expert drink from the belt.
+        self.sip = self.sip.saturating_sub(1);
+        if self.skill != Skill::Novice && self.sip == 0 && !g.belt.is_empty() && (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.4 {
+            self.sip = 240;
+            pad.actions.insert(Action::Drink);
+        }
 
         // Defence.
         let guard_at = match self.skill {
@@ -193,8 +240,28 @@ impl Bot {
             return pad;
         }
 
-        // Offence: the most open foe (reeling, then recovering), then the nearest.
-        let foes: Vec<_> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).collect();
+        // Offence: the most open foe (reeling, then recovering), then the nearest; in the vaults those
+        // hunting him first, and when none is, the nearest pack asleep (to wake it).
+        let all: Vec<_> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).collect();
+        let hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
+        // Between fights (or hurt), what lies near goes into the belt first: a potion, a weapon, a boon.
+        let hurt = (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.6;
+        if self.skill != Skill::Novice && (hunting.is_empty() || hurt) {
+            let near = g.vault.as_ref().and_then(|v| {
+                v.drops
+                    .iter()
+                    .filter(|d| !d.taken && d.landed())
+                    .map(|d| d.at.v())
+                    .filter(|p| math::len(math::sub(*p, hp)) < 6.0)
+                    .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))
+            });
+            if let Some(p) = near {
+                let dir = self.way(g, hp, p);
+                pad.left = (dir.x as f32, dir.y as f32);
+                return pad;
+            }
+        }
+        let foes = if hunting.is_empty() { all } else { hunting };
         let openness = |d: &crate::logic::combat::Duelist| {
             if d.f.vulnerable() || d.f.reeling().is_some() {
                 0
@@ -215,7 +282,7 @@ impl Bot {
         let Some(target) = target else { return pad };
         let to = math::sub(target.pos, hp);
         let dist = math::len(to) - target.radius();
-        let dir = math::norm(to);
+        let dir = self.way(g, hp, target.pos);
         if dist > ENGAGE {
             pad.left = (dir.x as f32, dir.y as f32);
             self.attack_down = false;
@@ -257,6 +324,18 @@ pub struct BoutResult {
 /// Seconds a bout may run before it counts as a timeout (neither won nor lost).
 pub const LIMIT: f64 = 120.0;
 
+/// A new game on a fresh save, whatever the save folder holds: no progress, no adventure under way
+/// (one run's broken shield or bought tier must never leak into the next).
+fn fresh_game(seed: u32) -> Game {
+    let mut g = Game::new();
+    g.reseed(seed);
+    g.progress = crate::logic::progression::Progress::default();
+    g.saved_run = None;
+    g.hero_kind = HeroKind::Ragnar;
+    g.equip_from_progress();
+    g
+}
+
 /// A hero, with his blade, shield and path at their tiers.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Loadout {
@@ -293,8 +372,7 @@ pub fn play_bout(bout: usize, skill: Skill, seed: u32) -> BoutResult {
 
 /// The same, with the hero and his kit of `loadout` (none: a fresh Ragnar).
 pub fn play_bout_as(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadout>) -> BoutResult {
-    let mut g = Game::new();
-    g.reseed(seed);
+    let mut g = fresh_game(seed);
     g.debug_ring(bout + 1);
     if let Some(l) = loadout {
         // (After the jump, which takes the saved run's hero from the title.)
@@ -309,17 +387,17 @@ pub fn play_bout_as(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadou
         let pad = bot.act(&g);
         g.input.set_pad(Some(pad));
         g.update(step);
-        let spar = g.spar.as_ref().unwrap();
+        let (spar, b) = (g.spar.as_ref().unwrap(), g.brawl.as_ref().unwrap());
         match spar.phase {
             BoutPhase::Won(_) | BoutPhase::Lost(_) => {
                 let won = matches!(spar.phase, BoutPhase::Won(_));
-                return BoutResult { won, secs: spar.stats.frames as f64 / 60.0, stats: spar.stats };
+                return BoutResult { won, secs: b.stats.frames as f64 / 60.0, stats: b.stats };
             }
             _ => {}
         }
     }
-    let spar = g.spar.as_ref().unwrap();
-    BoutResult { won: false, secs: spar.stats.frames as f64 / 60.0, stats: spar.stats }
+    let b = g.brawl.as_ref().unwrap();
+    BoutResult { won: false, secs: b.stats.frames as f64 / 60.0, stats: b.stats }
 }
 
 /// One bout and skill over every seed: the averages.
@@ -533,6 +611,114 @@ pub fn kit_parts(hero: HeroKind, tier: u8, seeds: &[u32]) -> String {
 ",
             name, b.ttk, t.ttk
         );
+    }
+    out
+}
+
+/// How a crawl through the Vaults of Mammon went (COMBAT.md §9).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Crawl {
+    /// Every foe of the vaults slain.
+    pub cleared: bool,
+    /// Lives lost, and whether they ran out.
+    pub deaths: u32,
+    pub game_over: bool,
+    pub foes: u32,
+    pub kills: u32,
+    /// Seconds in all, and seconds with at least one foe hunting him.
+    pub secs: f64,
+    pub combat_secs: f64,
+    /// The most foes hunting him at once.
+    pub peak: usize,
+    pub stats: BoutStats,
+}
+
+impl Crawl {
+    /// Overlapping strikes per minute of fighting.
+    pub fn overlaps_per_minute(&self) -> f64 {
+        self.stats.overlaps as f64 / (self.combat_secs / 60.0).max(1e-9)
+    }
+}
+
+/// A bot crawls the Vaults of Mammon from the antechamber, waking pack after pack and fighting it
+/// out, until every foe is slain, its lives run out, or `limit` seconds pass.
+pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> Crawl {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let foes = g.enemies.iter().filter(|e| e.duel.is_some()).count() as u32;
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = Crawl { foes, ..Crawl::default() };
+    let mut t = 0.0;
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        t += step;
+        match g.screen {
+            super::Screen::GameOver => {
+                out.game_over = true;
+                break;
+            }
+            super::Screen::Toll => break,
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+        let hunting = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged()).count();
+        out.peak = out.peak.max(hunting);
+        if hunting > 0 {
+            out.combat_secs += step;
+        }
+        if !g.enemies.iter().any(|e| e.duel.as_ref().is_some_and(|d| d.alive())) {
+            out.cleared = true;
+            break;
+        }
+    }
+    out.secs = t;
+    out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
+    out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.kills = out.foes - g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count() as u32;
+    out
+}
+
+/// Crawls by every skill (and the kit at each tier of `tiers`, Ragnar's), one line each.
+pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
+    let mut out =
+        String::from("skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min\n");
+    for &tier in tiers {
+        for skill in [Skill::Adept, Skill::Expert] {
+            let runs: Vec<Crawl> = seeds.iter().map(|&s| crawl(skill, s, Some(Loadout::all(HeroKind::Ragnar, tier)), limit)).collect();
+            let n = runs.len() as f64;
+            let avg = |f: &dyn Fn(&Crawl) -> f64| runs.iter().map(f).sum::<f64>() / n;
+            out += &format!(
+                "{:<7} {:>4}  {:>5.0}%  {:>5.0}/{:<4.0}  {:>6.1}  {:>7.1}  {:>6.1}  {:>4.0}  {:>5.0}  {:>5.0} {:>5.0} {:>6.0}  {:>12.2}\n",
+                skill.name(),
+                tier,
+                avg(&|c| f64::from(u8::from(c.cleared))) * 100.0,
+                avg(&|c| c.kills as f64),
+                avg(&|c| c.foes as f64),
+                avg(&|c| c.deaths as f64),
+                avg(&|c| c.secs / 60.0),
+                avg(&|c| c.combat_secs / 60.0),
+                avg(&|c| c.peak as f64),
+                avg(&|c| c.stats.taken),
+                avg(&|c| c.stats.parries as f64),
+                avg(&|c| c.stats.blocks as f64),
+                avg(&|c| c.stats.caught as f64),
+                avg(&|c| c.overlaps_per_minute())
+            );
+        }
     }
     out
 }

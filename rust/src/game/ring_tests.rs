@@ -22,9 +22,9 @@ fn gym() -> Game {
 /// Runs the game until `n` more of the ring's 60 Hz frames have passed (hitstop included).
 fn frames(g: &mut Game, n: u16) {
     let n = n as u32;
-    let goal = g.spar.as_ref().unwrap().threat.frame + n;
+    let goal = g.brawl.as_ref().unwrap().threat.frame + n;
     for _ in 0..(n as usize * 2 + 600) {
-        if g.spar.as_ref().unwrap().threat.frame >= goal {
+        if g.brawl.as_ref().unwrap().threat.frame >= goal {
             return;
         }
         g.update(crate::app::STEP);
@@ -76,6 +76,9 @@ fn strike(g: &mut Game, mv: MoveId) {
     if let Some(s) = g.spar.as_mut() {
         s.phase = BoutPhase::Fight;
     }
+    if let Some(b) = g.brawl.as_mut() {
+        b.live = true;
+    }
     let d = duel_mut(g, 0);
     d.token = true;
     assert!(d.begin(mv));
@@ -108,7 +111,7 @@ fn the_heros_string_lands_on_its_active_frames_chains_and_the_finisher_breaks_th
     let full = duel(&g, 0).hp;
     g.input.inject(Action::Attack);
     frames(&mut g, 1);
-    assert_eq!(g.spar.as_ref().unwrap().hero.attack().map(|a| a.0), Some(MoveId::L1));
+    assert_eq!(g.brawl.as_ref().unwrap().hero.attack().map(|a| a.0), Some(MoveId::L1));
     frames(&mut g, MoveId::L1.data().startup - 1);
     assert_eq!(duel(&g, 0).hp, full, "nothing lands in the startup");
     frames(&mut g, 1);
@@ -119,7 +122,7 @@ fn the_heros_string_lands_on_its_active_frames_chains_and_the_finisher_breaks_th
         g.input.inject(Action::Attack);
         frames(&mut g, 1);
     }
-    let s = g.spar.as_ref().unwrap();
+    let s = g.brawl.as_ref().unwrap();
     assert_eq!(s.stats.hits, 3, "L1, L2, L3");
     assert_eq!(duel(&g, 0).hp, full - 10.0 - 10.0 - 13.0, "11 x 0.92 and 16 x 0.84 of the combo");
     assert!(duel(&g, 0).f.poise < 100.0 - 80.0, "85 poise gone");
@@ -135,7 +138,7 @@ fn a_raised_guard_blocks_for_stamina_and_a_late_raise_parries_the_lunge() {
     assert!(g.hero.blocking);
     strike(&mut g, MoveId::Lunge);
     frames(&mut g, 30);
-    let s = g.spar.as_ref().unwrap();
+    let s = g.brawl.as_ref().unwrap();
     assert_eq!((s.stats.blocks, s.stats.parries), (1, 0), "{:?}", s.stats);
     assert_eq!(g.hero.hp, g.hero.max_hp, "the guard takes it all");
     assert!(g.hero.stamina < 90.0, "for stamina");
@@ -145,7 +148,7 @@ fn a_raised_guard_blocks_for_stamina_and_a_late_raise_parries_the_lunge() {
     frames(&mut g, MoveId::Lunge.data().startup - 2);
     g.input.inject(Action::Block);
     frames(&mut g, 14);
-    let s = g.spar.as_ref().unwrap();
+    let s = g.brawl.as_ref().unwrap();
     assert_eq!(s.stats.parries, 1, "parried: {:?}", s.stats);
     assert_eq!(g.hero.hp, g.hero.max_hp);
     assert!(matches!(duel(&g, 0).f.reeling(), Some(Reel::Deflected | Reel::Staggered)), "the Skirmisher reels");
@@ -160,7 +163,7 @@ fn the_evade_passes_under_a_slam_and_an_open_hero_pays_for_it() {
     g.hero.face(Dir::Down);
     g.input.inject(Action::Jump);
     frames(&mut g, 14);
-    let s = g.spar.as_ref().unwrap();
+    let s = g.brawl.as_ref().unwrap();
     assert_eq!(s.stats.evades, 1, "{:?}", s.stats);
     assert_eq!(g.hero.hp, g.hero.max_hp, "untouched in the air");
     // Standing there, it lands.
@@ -168,7 +171,7 @@ fn the_evade_passes_under_a_slam_and_an_open_hero_pays_for_it() {
     strike(&mut g, MoveId::Slam);
     frames(&mut g, slam.startup + 2);
     assert_eq!(g.hero.hp, g.hero.max_hp - 30);
-    assert_eq!(g.spar.as_ref().unwrap().hero.reeling(), Some(Reel::Hitstun));
+    assert_eq!(g.brawl.as_ref().unwrap().hero.reeling(), Some(Reel::Hitstun));
 }
 
 #[test]
@@ -189,6 +192,9 @@ fn losing_puts_him_back_on_his_feet_and_winning_brings_the_next_bout() {
     if let Some(s) = g.spar.as_mut() {
         s.phase = BoutPhase::Fight;
     }
+    if let Some(b) = g.brawl.as_mut() {
+        b.live = true;
+    }
     g.input.inject(Action::Attack);
     frames(&mut g, 10);
     assert!(matches!(phase(&g), BoutPhase::Won(_)), "{:?}", phase(&g));
@@ -208,7 +214,7 @@ fn the_gauntlet_never_lands_two_strikes_inside_the_reaction_window() {
     for _ in 0..(60.0 / crate::app::STEP) as usize {
         g.hero.hp = g.hero.max_hp; // he stands there and takes it, for a minute
         g.update(crate::app::STEP);
-        let s = g.spar.as_ref().unwrap();
+        let s = g.brawl.as_ref().unwrap();
         assert!(s.threat.used() <= CAPACITY);
         for k in 0..5 {
             let on = duel(&g, k).f.active().is_some();
@@ -218,7 +224,7 @@ fn the_gauntlet_never_lands_two_strikes_inside_the_reaction_window() {
             actives_before[k] = on;
         }
     }
-    let s = g.spar.as_ref().unwrap();
+    let s = g.brawl.as_ref().unwrap();
     assert_eq!(phase(&g), BoutPhase::Fight);
     assert!(strikes >= 20, "they kept coming: {strikes} strikes in a minute");
     assert_eq!(s.stats.overlaps, 0, "{:?}", s.stats);
@@ -287,5 +293,20 @@ fn every_heros_kit_grows_and_the_heroes_stay_level() {
                 if e == 0 { "tier 1" } else { "tier 10" }
             );
         }
+    }
+}
+
+/// Phase 4 of COMBAT.md: crawling the Vaults of Mammon, the expert with a tier-4 kit clears every
+/// pack without losing all its lives, the adept with a tier-7 kit too, and no strikes overlap.
+#[test]
+fn the_vaults_are_a_brawl_a_skilled_player_can_clear_with_a_readable_cadence() {
+    use super::bot::{crawl, Loadout, Skill};
+    use crate::logic::heroes::HeroKind;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    for (skill, tier) in [(Skill::Expert, 4), (Skill::Adept, 7)] {
+        let c = crawl(skill, 1, Some(Loadout::all(HeroKind::Ragnar, tier)), 900.0);
+        assert!(c.cleared && !c.game_over, "{skill:?} at tier {tier}: {c:?}");
+        assert!(c.overlaps_per_minute() < 0.5, "{skill:?} at tier {tier}: {c:?}");
+        assert!(c.peak <= 8, "a pack at a time: {c:?}");
     }
 }

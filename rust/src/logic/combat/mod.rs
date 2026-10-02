@@ -14,7 +14,7 @@ pub mod kit;
 pub mod math;
 pub mod threat;
 
-pub use archetype::Archetype;
+pub use archetype::{Archetype, Breed};
 pub use duelist::Duelist;
 pub use frames::{MoveData, MoveId, Phase};
 pub use fsm::{Event, Fighter, Input, Reel, State};

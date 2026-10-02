@@ -132,6 +132,69 @@ impl Archetype {
     }
 }
 
+/**
+ * A foe's body on an archetype (COMBAT.md §9): every kind in the game fights as one of the three,
+ * its numbers scaled. Systematic reduction: three archetypes, ten bodies, no new moves.
+ */
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Breed {
+    pub kind: EnemyKind,
+    pub arch: Archetype,
+    /// Multiples of the archetype's health, damage, poise (and armor), and pace.
+    pub hp: f64,
+    pub damage: f64,
+    pub poise: f64,
+    pub speed: f64,
+    /// Its body's radius, and the threat points its token costs.
+    pub radius: f64,
+    pub cost: u8,
+}
+
+impl Breed {
+    pub const fn of(kind: EnemyKind) -> Breed {
+        use Archetype::*;
+        use EnemyKind as K;
+        let (arch, hp, damage, poise, speed, radius, cost) = match kind {
+            // The second stage's bodies are the archetypes themselves...
+            K::Blemmyes => (Brute, 1.0, 1.0, 1.0, 1.0, 0.5, 2),
+            K::Werewolf => (Skirmisher, 1.0, 1.0, 1.0, 1.0, 0.38, 1),
+            K::Witch => (Hexer, 1.0, 1.0, 1.0, 1.0, 0.35, 1),
+            // ...with lighter cousins: the helmeted skeleton a small brute, the large bat a flying skirmisher.
+            K::Helmeted => (Brute, 0.6, 0.7, 0.6, 1.15, 0.38, 1),
+            K::LargeBat => (Skirmisher, 0.8, 0.85, 0.8, 1.1, 0.4, 1),
+            K::Minion => (Skirmisher, 0.35, 0.55, 0.4, 1.0, 0.3, 1),
+            // The Garden's four: a draugr chops like a brute, the ravens swoop, the bog slime spits.
+            K::Skeleton => (Brute, 0.45, 0.6, 0.5, 1.1, 0.36, 1),
+            K::Vampire => (Skirmisher, 0.6, 0.7, 0.6, 1.0, 0.32, 1),
+            K::Bat => (Skirmisher, 0.45, 0.6, 0.5, 1.05, 0.3, 1),
+            K::Slime => (Hexer, 0.8, 0.8, 0.8, 0.7, 0.38, 1),
+        };
+        Breed { kind, arch, hp, damage, poise, speed, radius, cost }
+    }
+
+    /// The archetype's numbers as this body has them.
+    pub fn stats(&self) -> Stats {
+        let s = self.arch.stats();
+        Stats {
+            hp: s.hp * self.hp,
+            poise: s.poise * self.poise,
+            armor: s.armor * self.poise,
+            walk: s.walk * self.speed,
+            strafe: s.strafe * self.speed,
+            retreat: s.retreat * self.speed,
+            radius: self.radius,
+            cost: self.cost,
+            ..s
+        }
+    }
+
+    /// A fresh fighter for it.
+    pub fn fighter(&self) -> Fighter {
+        let s = self.stats();
+        Fighter::new(s.poise, s.armor, s.stagger, s.resolve)
+    }
+}
+
 /// The Brute sweeps a hero this close outside its slam's cone.
 pub const SWEEP_NEAR: f64 = 1.3;
 /// The Skirmisher lunges from between these distances, and steps back when nearer.
@@ -163,5 +226,22 @@ mod tests {
         assert!(h.ring > s.ring && h.ring > b.ring && FLEE > MoveId::L3.data().reach);
         // A Brute's token is worth two of the others.
         assert_eq!((b.cost, s.cost, h.cost), (2, 1, 1));
+    }
+
+    #[test]
+    fn every_body_fights_as_one_of_the_three_and_the_archetypes_own_bodies_are_full_strength() {
+        for arch in Archetype::ALL {
+            assert_eq!(Breed::of(arch.kind()).stats(), arch.stats(), "{arch:?}");
+        }
+        let all = [EnemyKind::STAGE_ONE.as_slice(), EnemyKind::STAGE_TWO.as_slice()].concat();
+        for kind in all {
+            let b = Breed::of(kind);
+            let s = b.stats();
+            assert!(b.hp <= 1.0 && b.damage <= 1.0 && s.hp > 0.0, "{kind:?}: no body is stronger than its archetype");
+            // Every brute keeps armor against the training sword's light blows... except the lightest.
+            if b.arch == Archetype::Brute && b.poise >= 0.6 {
+                assert!(s.armor > MoveId::L1.data().poise, "{kind:?}");
+            }
+        }
     }
 }

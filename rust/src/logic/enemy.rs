@@ -315,8 +315,12 @@ impl Enemy {
         self.b.ally > 0.0
     }
 
-    /// Michael's fire strikes it: for `seconds` it fights on the hero's side.
+    /// Michael's fire strikes it: for `seconds` it fights on the hero's side. (A duelist's mind is
+    /// its own: these brain-level spells pass it by, and the game shakes its poise instead.)
     pub fn turn(&mut self, seconds: f64) {
+        if self.duel.is_some() {
+            return;
+        }
         self.b.ally = seconds;
         self.b.mode = EnemyMode::Chase;
         self.b.dread = 0.0;
@@ -361,7 +365,7 @@ impl Enemy {
 
     /// Enemies in or leaving the nest are unaffected.
     pub fn enter_frenzy(&mut self, grid: &Grid) {
-        if !self.is_dangerous() {
+        if !self.is_dangerous() || self.duel.is_some() {
             return;
         }
         self.b.mode = EnemyMode::Frenzied;
@@ -376,6 +380,9 @@ impl Enemy {
 
     /// Stunned by a blow, or sent fleeing in panic by a kill: harmless and slow for `seconds`.
     pub fn scare(&mut self, grid: &Grid, seconds: f64) {
+        if self.duel.is_some() {
+            return;
+        }
         if self.is_dangerous() {
             self.b.mode = EnemyMode::Frenzied;
             self.m.reverse(grid);
@@ -387,7 +394,7 @@ impl Enemy {
 
     /// Befuddled by a trick: it wanders at random for `seconds`, though it still bites.
     pub fn confuse(&mut self, seconds: f64) {
-        if self.is_dangerous() {
+        if self.is_dangerous() && self.duel.is_none() {
             self.b.confused = self.b.confused.max(seconds);
         }
     }
@@ -397,6 +404,9 @@ impl Enemy {
     }
 
     pub fn reverse(&mut self, grid: &Grid) {
+        if self.duel.is_some() {
+            return;
+        }
         self.m.reverse(grid);
     }
 

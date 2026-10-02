@@ -34,15 +34,7 @@ impl Game {
         let hp = self.hero.pos();
         if self.hero.shield_broke {
             self.hero.shield_broke = false;
-            self.audio.play(Sfx::ShieldBreak);
-            self.view.dust(&self.level.grid, hp.x, hp.y, 0x8a6a40, 16, 3.0);
-            self.view.shake(0.3);
-            // For good: it is struck off until the old man forges it anew.
-            let h = self.progress.hero_mut(self.hero_kind);
-            h.broken |= 1 << h.carry;
-            self.save_progress();
-            self.floater(hp.x, hp.y - 0.6, "SHIELD DESTROYED", 1.6, Some(0xff8a6a));
-            self.floater(hp.x, hp.y - 0.1, "THE OLD MAN CAN REFORGE IT", 1.8, Some(0xe8dcc0));
+            self.shatter_shield();
         }
         match result {
             DamageResult::Blocked => {
@@ -107,6 +99,19 @@ impl Game {
                 false
             }
         }
+    }
+
+    /// His shield has broken: for good, struck off until the old man forges it anew.
+    pub(super) fn shatter_shield(&mut self) {
+        let hp = self.hero.pos();
+        self.audio.play(Sfx::ShieldBreak);
+        self.view.dust(&self.level.grid, hp.x, hp.y, 0x8a6a40, 16, 3.0);
+        self.view.shake(0.3);
+        let h = self.progress.hero_mut(self.hero_kind);
+        h.broken |= 1 << h.carry;
+        self.save_progress();
+        self.floater(hp.x, hp.y - 0.6, "SHIELD DESTROYED", 1.6, Some(0xff8a6a));
+        self.floater(hp.x, hp.y - 0.1, "THE OLD MAN CAN REFORGE IT", 1.8, Some(0xe8dcc0));
     }
 
     pub(super) fn kill_hero(&mut self) {

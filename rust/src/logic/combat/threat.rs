@@ -71,6 +71,8 @@ struct Hold {
 #[derive(Clone, Debug)]
 pub struct ThreatManager {
     pub capacity: u8,
+    /// Frames between two grants, at least (`CADENCE` unless the field asks otherwise).
+    pub cadence: u32,
     pub frame: u32,
     holds: Vec<Hold>,
     last_grant: Option<u32>,
@@ -84,7 +86,7 @@ impl Default for ThreatManager {
 
 impl ThreatManager {
     pub fn new() -> Self {
-        Self { capacity: CAPACITY, frame: 0, holds: Vec::new(), last_grant: None }
+        Self { capacity: CAPACITY, cadence: CADENCE, frame: 0, holds: Vec::new(), last_grant: None }
     }
 
     pub fn tick(&mut self) {
@@ -110,7 +112,7 @@ impl ThreatManager {
     /// Grants at most one token this frame: to the best-scored request that fits the pool and
     /// whose strike would land clear of every other's.
     pub fn grant(&mut self, requests: &[Request]) -> Option<u32> {
-        if self.last_grant.is_some_and(|t| self.frame - t < CADENCE) {
+        if self.last_grant.is_some_and(|t| self.frame - t < self.cadence) {
             return None;
         }
         let mut order: Vec<&Request> = requests.iter().filter(|r| !self.holds(r.id)).collect();
@@ -215,9 +217,10 @@ pub fn sector_angle(k: usize) -> f64 {
  * Hands each waiting foe a sector of its ring: the nearest foes choose first, each the free
  * sector closest to its bearing, keeping its old one unless another is clearly better. Sectors
  * in the hero's back arc cost extra, and so does one whose point the arena (`lo`..`hi`) cuts off.
- * Melee rings (under 5 tiles) and the ranged ring share no sectors among themselves.
+ * Melee rings (under 5 tiles) and the ranged ring share no sectors among themselves. A point
+ * the ground has no room for (`open`: a wall, in the vaults) costs most of all.
  */
-pub fn assign_slots(hero: V, aim: V, waiters: &[Waiter], lo: V, hi: V) -> Vec<Slot> {
+pub fn assign_slots(hero: V, aim: V, waiters: &[Waiter], lo: V, hi: V, open: &dyn Fn(V) -> bool) -> Vec<Slot> {
     let mut order: Vec<&Waiter> = waiters.iter().collect();
     let d2 = |w: &Waiter| (w.pos.x - hero.x).powi(2) + (w.pos.y - hero.y).powi(2);
     order.sort_by(|a, b| d2(a).total_cmp(&d2(b)).then(a.id.cmp(&b.id)));
@@ -239,6 +242,9 @@ pub fn assign_slots(hero: V, aim: V, waiters: &[Waiter], lo: V, hi: V) -> Vec<Sl
             }
             if p.x < lo.x || p.x > hi.x || p.y < lo.y || p.y > hi.y {
                 c += 1.0;
+            }
+            if !open(p) {
+                c += 4.0;
             }
             if w.prev == Some(k) {
                 c -= STICKY;
@@ -359,7 +365,7 @@ mod tests {
         let hi = V::new(20.0, 20.0);
         let waiters: Vec<Waiter> =
             (0..4).map(|i| Waiter { id: i, pos: V::new(6.0, 10.0 + i as f64 * 0.1), ring: 4.0, prev: None }).collect();
-        let slots = assign_slots(hero, aim, &waiters, lo, hi);
+        let slots = assign_slots(hero, aim, &waiters, lo, hi, &|_| true);
         assert_eq!(slots.len(), 4);
         let mut sectors: Vec<usize> = slots.iter().map(|s| s.sector).collect();
         sectors.sort();
@@ -375,7 +381,7 @@ mod tests {
             Waiter { id: 1, pos: V::new(14.0, 10.0), ring: 4.0, prev: None },
             Waiter { id: 2, pos: V::new(16.0, 10.0), ring: 6.0, prev: None },
         ];
-        let slots = assign_slots(hero, aim, &two, lo, hi);
+        let slots = assign_slots(hero, aim, &two, lo, hi, &|_| true);
         assert_eq!(slots[0].sector, slots[1].sector);
     }
 }

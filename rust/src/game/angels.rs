@@ -130,11 +130,16 @@ impl Game {
     /// Michael's fire struck foe `i`: for a while it fights on the hero's side.
     pub(super) fn turn_foe(&mut self, i: usize) {
         self.enemies[i].turn(ALLY_SECONDS);
+        // A duelist (under the frame data) is not turned but awed: all its poise goes, and it staggers.
+        let awed = self.enemies[i].duel.as_deref_mut().map(|d| {
+            let all = d.f.max_poise;
+            d.f.shake(all);
+        });
         let p = self.enemies[i].pos();
         let color = Archangel::Michael.color();
         self.audio.play(Sfx::MichaelTurn);
         self.view.sparkle(&self.level.grid, p.x, p.y, 1.0, color, 30);
-        self.floater(p.x, p.y - 0.8, "TURNED", 1.2, Some(color));
+        self.floater(p.x, p.y - 0.8, if awed.is_some() { "AWED" } else { "TURNED" }, 1.2, Some(color));
     }
 
     /// Gabriel: thunder from a clear sky; every foe within reach is struck dead, a boss wounded.

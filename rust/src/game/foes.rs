@@ -10,7 +10,7 @@ use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::heroes::HeroKind;
 use crate::logic::progression::path;
 use crate::logic::systems::{POINTS_KILL, PUDDLE_SECONDS};
-use crate::logic::types::{dist_sq, Tile, CARDINALS, P};
+use crate::logic::types::{dist_sq, Tile, CARDINALS, P, V};
 use crate::logic::{gym, progression};
 
 /// Seconds between reinforcements (the first comes after `SPAWN_FIRST`).
@@ -306,7 +306,6 @@ impl Game {
         }
         self.wake_pack_of(i);
         let base = if self.enemies[i].is_stunned() { self.frenzy.consume_value() } else { POINTS_KILL };
-        self.earn(COINS_KILL);
         self.enemies[i].kill();
         let at = self.enemies[i].pos();
         if self.hero.path >= 8 && self.hero_kind == HeroKind::Ragnar {
@@ -318,6 +317,21 @@ impl Game {
                 }
             }
         }
+        // (The spoils first, as ever: a BRUTAL's freeze-frame gives way to the kill's.)
+        self.kill_spoils(at, base);
+        let p = self.enemies[i].pos();
+        let color = self.enemies[i].b.color;
+        self.view.spark(&self.level.grid, p.x, p.y, 0xffb0b0);
+        self.view.dust(&self.level.grid, p.x, p.y, color, 14, 2.4);
+        self.view.sparkle(&self.level.grid, p.x, p.y, 0.5, 0xfff1c0, 8);
+        self.view.shake(0.1);
+        self.hitstop = HITSTOP_KILL;
+    }
+
+    /// What a kill at `at` brings: its coins, now and then a rune, the streak (and BRUTAL every
+    /// third), and `base` points (doubled while BRUTAL lasts).
+    pub(super) fn kill_spoils(&mut self, at: V, base: u32) {
+        self.earn(COINS_KILL);
         if self.rng.next() < RUNE_DROP {
             self.progress.runes += 1;
             self.audio.play(Sfx::Milestone);
@@ -331,18 +345,11 @@ impl Game {
             self.brutal();
         }
         let value = self.award(base);
-        let p = self.enemies[i].pos();
-        let color = self.enemies[i].b.color;
-        self.view.spark(&self.level.grid, p.x, p.y, 0xffb0b0);
-        self.view.dust(&self.level.grid, p.x, p.y, color, 14, 2.4);
-        self.view.sparkle(&self.level.grid, p.x, p.y, 0.5, 0xfff1c0, 8);
-        self.view.shake(0.1);
-        self.hitstop = HITSTOP_KILL;
         let label = if self.double_points > 0.0 { format!("{value} x2") } else { value.to_string() };
-        self.floater(p.x, p.y, label, 1.0, if self.double_points > 0.0 { Some(0xff5a3a) } else { None });
+        self.floater(at.x, at.y, label, 1.0, if self.double_points > 0.0 { Some(0xff5a3a) } else { None });
         if self.kill_streak >= 2 {
             let text = format!("x{} STREAK", self.kill_streak);
-            self.floater(p.x, p.y - 0.6, text, 1.2, Some(0xff8a2a));
+            self.floater(at.x, at.y - 0.6, text, 1.2, Some(0xff8a2a));
         }
     }
 
@@ -358,7 +365,8 @@ impl Game {
         let ho = self.hero.occupied();
         for i in 0..self.enemies.len() {
             let e = &self.enemies[i];
-            if !e.is_dangerous() {
+            // (A duelist's blows land on their frames, never by touch.)
+            if !e.is_dangerous() || e.duel.is_some() {
                 continue;
             }
             let same_tile = e.occupied() == ho;

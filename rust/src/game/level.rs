@@ -72,6 +72,8 @@ impl Game {
             self.view.camera_mode = mode;
         }
         self.spar = data.theme.is_gym().then(super::sparring::Sparring::new);
+        // (The vaults raise their own brawl as their packs are laid out.)
+        self.brawl = data.theme.is_gym().then(|| super::brawl::Brawl::new(super::brawl::Field::Ring));
         let vault_level = data.theme.is_vault();
         if !vault_level {
             if let Some(mode) = self.camera_before_vault.take() {
@@ -254,7 +256,16 @@ impl Game {
         self.was_airborne = false;
         let center = self.level.nest_center;
         let graves = self.grave_spawns();
+        // Under the frame data the fight begins afresh: the vaults' packs back asleep at their posts, whole.
+        let kit = self.hero_kit();
+        if let Some(b) = self.brawl.as_mut() {
+            b.respawn(kit);
+        }
         for (i, e) in self.enemies.iter_mut().enumerate() {
+            if let Some(d) = e.duel.as_deref_mut() {
+                d.reset_home();
+                continue;
+            }
             match (e.post, graves.get(i % graves.len().max(1))) {
                 // The vaults' packs go back to idling in their rooms; the gym's foes pull themselves together at their posts.
                 (Some(_), _) if e.b.den.is_some() => Self::settle(e, e.b.den.unwrap()),

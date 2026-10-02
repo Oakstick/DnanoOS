@@ -16,6 +16,9 @@ use crate::logic::systems::{
 use crate::logic::types::{dist_sq, P, V};
 use crate::logic::{items, progression};
 
+/// Poise a stunning blow or a shield's clash takes from a duelist round it.
+const STUN_POISE: f64 = 25.0;
+
 /// Damage the Cyclops takes from a bomb (the weapons carry their own).
 const BOMB_DAMAGE: i32 = 6;
 
@@ -397,6 +400,10 @@ impl Game {
         for e in self.enemies.iter_mut() {
             if (e.is_dangerous() || e.is_stunned()) && dist_sq(e.pos(), at) <= radius * radius {
                 e.scare(grid, seconds);
+                // (A duelist reels by its poise: the clash rattles it.)
+                if let Some(d) = e.duel.as_deref_mut() {
+                    d.f.shake(STUN_POISE);
+                }
                 any = true;
             }
         }

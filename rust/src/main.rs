@@ -40,6 +40,14 @@ fn main() {
         }
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--crawl") {
+        // Phase 4 of COMBAT.md: the bots crawl the Vaults of Mammon (N seeds; tiers 1, 4 and 7).
+        let n: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(2);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let seeds: Vec<u32> = (1..=n).collect();
+        print!("{}", void_harvest::game::bot::crawl_report(&seeds, &[1, 4, 7], 900.0));
+        return;
+    }
     if args.iter().any(|a| a == "--kit-table") {
         print!("{}", void_harvest::game::bot::kit_table());
         return;

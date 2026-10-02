@@ -2,7 +2,8 @@
 //! Greed's portal he arrives in the west antechamber; the packs idle in their
 //! rooms until he comes near, then hunt him as long as he stays close, and go
 //! back to their rooms when he is gone, as the packs of Diablo do; what falls
-//! stays down. Every room is strewn with gold he can take: coins, heaps of
+//! stays down. They fight by frame data (`brawl`, COMBAT.md §9): every foe is a
+//! duelist on its archetype, paced by the threat manager. Every room is strewn with gold he can take: coins, heaps of
 //! them, treasure heaps, chests and gems, all counted into his hoard. A chest
 //! also throws out one to three items as it opens (potions, weapons, boons,
 //! runes, bombs, in Diablo's four rarities), which land beside it and are his
@@ -13,18 +14,21 @@
 //! starts the realm again with every coin back where it lay and his kit as it
 //! was when he came in. F2 brings him straight to the far portal.
 
+use super::brawl::{Brawl, Field};
 use super::save::Stage;
 use super::{Banner, Game, MenuItem, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
+use crate::logic::combat::duelist::Den;
+use crate::logic::combat::{Breed, Duelist};
 use crate::logic::enemy::{enemy_specs, Enemy, EnemyMode};
 use crate::logic::gear;
 use crate::logic::hub::Rect;
 use crate::logic::items::ItemKind;
 use crate::logic::progression;
 use crate::logic::sins::Sin;
-use crate::logic::types::{dist_sq, Dir, Tile, P, V};
-use crate::logic::vault::{roll_drops, Drop, DropItem, LootKind, Rarity, Vault, LEASH, SEED, WAKE_RANGE};
+use crate::logic::types::{Dir, Tile, P, V};
+use crate::logic::vault::{roll_drops, Drop, DropItem, LootKind, Rarity, Vault, SEED};
 use crate::render::view::CameraMode;
 
 /// What he carries out of the vaults: its worth, and what it is made of.
@@ -65,22 +69,35 @@ impl Game {
         // His kit as he came in: what he gets back if he keeps the gold and the vaults close on him.
         self.vault_kit = (self.belt.clone(), self.progress.runes);
         self.vault = Some(vault);
-        self.enemies = self.vault_garrison();
+        let mut brawl = Brawl::new(Field::Vault);
+        brawl.reset(self.hero_kit());
+        self.enemies = self.vault_garrison(&mut brawl);
+        self.brawl = Some(brawl);
     }
 
-    /// The packs: every foe at its post in its room, idling there.
-    fn vault_garrison(&self) -> Vec<Enemy> {
+    /// The packs: every foe at its post in its room, asleep there, a duelist on its archetype.
+    fn vault_garrison(&self, brawl: &mut Brawl) -> Vec<Enemy> {
         let Some(v) = &self.vault else { return Vec::new() };
         let specs = [enemy_specs(&self.level.grid, 1), enemy_specs(&self.level.grid, 2)];
         let mut out = Vec::new();
         for pack in &v.packs {
-            for (k, &(kind, stage, post)) in pack.foes.iter().enumerate() {
+            let r = pack.den;
+            let lo = V::new(r.x0 as f64 - 0.5, r.y0 as f64 - 0.5);
+            let hi = V::new(r.x1 as f64 + 0.5, r.y1 as f64 + 0.5);
+            let (cx, cy) = r.center();
+            for &(kind, stage, post) in &pack.foes {
                 let mut spec = specs[stage as usize - 1].iter().find(|s| s.kind == kind).unwrap().clone();
                 spec.name = format!("{} {}", spec.name, out.len() + 1);
-                let _ = k;
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
                 e.post = Some(post);
-                Self::settle(&mut e, pack.den);
+                e.b.mode = EnemyMode::Chase;
+                // Facing into the room, asleep at its post.
+                let facing = V::new(cx as f64 - post.x as f64, cy as f64 - post.y as f64 + 0.01);
+                let mut d = Duelist::bred(brawl.next_id(), Breed::of(kind), post.v(), facing);
+                d.max_hp *= super::brawl::VAULT_HP;
+                d.hp = d.max_hp;
+                d.den = Some(Den { lo, hi, home: post.v(), awake: false, returning: false });
+                e.duel = Some(Box::new(d));
                 out.push(e);
             }
         }
@@ -105,43 +122,7 @@ impl Game {
         for d in v.drops.iter_mut() {
             d.age += dt;
         }
-        let hp = self.hero.pos();
-        let ho = self.hero.occupied();
-        // Packs wake together: when he steps into their room, or comes close to any one of them.
-        let mut stirred: Vec<Rect> = Vec::new();
-        for e in &self.enemies {
-            if !e.lurking() || !e.is_dangerous() {
-                continue;
-            }
-            let den = e.b.den.unwrap();
-            if (den.contains(ho) || dist_sq(e.pos(), hp) < WAKE_RANGE * WAKE_RANGE) && !stirred.contains(&den) {
-                stirred.push(den);
-            }
-        }
-        for den in &stirred {
-            let (cx, cy) = den.center();
-            self.floater(cx as f64, cy as f64, "THE PACK STIRS", 1.4, Some(0xffc85a));
-            self.audio.play(Sfx::Growl);
-        }
-        for e in self.enemies.iter_mut() {
-            if e.lurking() && stirred.iter().any(|d| Some(*d) == e.b.den) {
-                e.rouse();
-            }
-        }
-        // The hunt is given up when he is far from the room; taken up again if he comes back.
-        for e in self.enemies.iter_mut() {
-            let Some(den) = e.b.den else { continue };
-            if e.b.keep.is_some() {
-                continue;
-            }
-            let (cx, cy) = den.center();
-            let far = dist_sq(V::new(cx as f64, cy as f64), hp) > LEASH * LEASH;
-            if far && !e.b.returning {
-                e.go_home();
-            } else if e.b.returning && dist_sq(e.pos(), hp) < WAKE_RANGE * WAKE_RANGE {
-                e.rouse();
-            }
-        }
+        // (The packs' waking and giving up is the brawl's: `Game::update_dens`.)
         // What falls in the vaults stays down: a draugr lies in its pieces a while, and is then gone too.
         for e in self.enemies.iter_mut() {
             if e.mode() == EnemyMode::Scattered && e.b.scatter_timer < 0.4 {
@@ -414,6 +395,18 @@ mod tests {
         g
     }
 
+    /// Asleep in its den (a duelist that has not been woken).
+    fn asleep(e: &Enemy) -> bool {
+        e.duel.as_ref().and_then(|d| d.den).is_some_and(|d| !d.awake)
+    }
+
+    /// The foes whose den is `room`.
+    fn pack_of(g: &Game, room: Rect) -> Vec<usize> {
+        let (cx, cy) = room.center();
+        let c = V::new(cx as f64, cy as f64);
+        (0..g.enemies.len()).filter(|&i| g.enemies[i].duel.as_ref().and_then(|d| d.den).is_some_and(|d| d.contains(c))).collect()
+    }
+
     #[test]
     fn greeds_realm_is_the_vault_full_of_gold_and_idle_packs() {
         let g = in_the_vault();
@@ -421,8 +414,9 @@ mod tests {
         assert_eq!(g.level.data.name, "The Vaults of Mammon");
         assert_eq!(g.hero.occupied(), v.arrival, "he arrives in the antechamber");
         assert_eq!(g.keys_total, 0, "no keys here: the far portal asks a toll instead");
-        assert!(g.enemies.len() >= 60);
-        assert!(g.enemies.iter().all(|e| e.lurking() && e.b.den.is_some()), "every foe idles in its room");
+        assert!(g.enemies.len() >= 50, "packs sized for frame-data fights");
+        assert!(g.enemies.iter().all(asleep), "every foe sleeps in its room");
+        assert!(g.brawl.as_ref().is_some_and(|b| b.field == Field::Vault), "the vaults are fought by frame data");
         assert!(g.relic_shrine.is_none() && g.potions.is_empty());
         assert!(g.hoard.is_empty());
     }
@@ -432,38 +426,39 @@ mod tests {
         let mut g = in_the_vault();
         let v = g.vault.clone().unwrap();
         let hall = v.rooms.iter().find(|r| r.kind == RoomKind::Hall).unwrap().rect;
-        let pack: Vec<usize> = (0..g.enemies.len()).filter(|&i| g.enemies[i].b.den == Some(hall)).collect();
+        let pack = pack_of(&g, hall);
         assert!(pack.len() >= 6);
-        let others: Vec<usize> = (0..g.enemies.len()).filter(|&i| g.enemies[i].b.den != Some(hall)).collect();
-        // Idle, they wander their room and never leave it.
+        let others: Vec<usize> = (0..g.enemies.len()).filter(|i| !pack.contains(i)).collect();
+        let posts: Vec<V> = pack.iter().map(|&i| g.enemies[i].pos()).collect();
+        // Asleep, they stand at their posts.
         for _ in 0..(4.0 / STEP) as usize {
             g.update(STEP);
         }
-        for &i in &pack {
-            assert!(hall.contains(g.enemies[i].occupied()), "{} keeps to the hall", g.enemies[i].b.name);
-            assert!(g.enemies[i].lurking());
+        for (k, &i) in pack.iter().enumerate() {
+            assert_eq!(g.enemies[i].pos(), posts[k], "{} sleeps at its post", g.enemies[i].b.name);
+            assert!(asleep(&g.enemies[i]));
         }
         // Into the hall: the whole pack wakes, and nobody else's.
         let (cx, cy) = hall.center();
         g.hero.place(P::new(cx as i32, cy as i32));
-        g.hero.invuln = 1.0;
+        g.update(STEP);
         g.update(STEP);
         for &i in &pack {
-            assert!(!g.enemies[i].lurking(), "{} is roused", g.enemies[i].b.name);
+            assert!(g.enemies[i].duel.as_ref().unwrap().engaged(), "{} is roused", g.enemies[i].b.name);
         }
-        assert!(others.iter().all(|&i| g.enemies[i].lurking()), "the other packs sleep on");
+        assert!(others.iter().all(|&i| asleep(&g.enemies[i])), "the other packs sleep on");
         assert!(g.floaters.iter().any(|f| f.text == "THE PACK STIRS"));
-        // Far away again: they give up and go home.
+        // Far away again: they give up and go home, and fall asleep there.
         g.hero.place(v.arrival);
         g.update(STEP);
+        g.update(STEP);
         for &i in &pack {
-            assert!(g.enemies[i].b.returning, "{} goes home", g.enemies[i].b.name);
+            assert!(!g.enemies[i].duel.as_ref().unwrap().engaged(), "{} gives up the hunt", g.enemies[i].b.name);
         }
         for _ in 0..(30.0 / STEP) as usize {
             g.update(STEP);
-            g.hero.invuln = 1.0;
         }
-        assert!(pack.iter().all(|&i| g.enemies[i].lurking()), "back in the hall, idling again");
+        assert!(pack.iter().all(|&i| asleep(&g.enemies[i])), "back at their posts, asleep again");
     }
 
     #[test]
@@ -481,19 +476,91 @@ mod tests {
         assert_eq!(g.hoard, Hoard { gold: 710, coins: 1, piles: 0, treasures: 0, chests: 1, gems: 1 });
         let taken = g.vault.as_ref().unwrap().loot.iter().filter(|l| l.taken).count();
         assert_eq!(taken, 3);
-        // Slain foes are gone for good (a draugr after it has lain in pieces a while).
+        // Slain foes are gone for good, a draugr too, with a kill's spoils.
         let n = g.enemies.len();
         let draugr = (0..n).find(|&i| g.enemies[i].kind().reassembles()).unwrap();
         let other = (0..n).find(|&i| !g.enemies[i].kind().reassembles()).unwrap();
-        g.enemies[draugr].kill();
-        g.enemies[other].kill();
-        g.update(STEP);
-        assert_eq!(g.enemies.len(), n - 1, "the other falls at once");
+        let coins = g.progress.silver;
+        for i in [draugr, other] {
+            g.enemies[i].duel.as_mut().unwrap().hp = 1.0;
+            g.stray_blow(i);
+        }
+        assert!(g.progress.silver > coins, "a kill's coins");
+        for _ in 0..(0.3 / STEP) as usize {
+            g.update(STEP); // (through the kill's freeze-frame)
+        }
+        assert_eq!(g.enemies.len(), n - 2, "both fall, and the draugr never rises");
         for _ in 0..(3.5 / STEP) as usize {
             g.update(STEP);
             g.hero.invuln = 1.0;
         }
-        assert_eq!(g.enemies.len(), n - 2, "the draugr never rises");
+        assert_eq!(g.enemies.len(), n - 2);
+    }
+
+    /// The vault with only one foe left in it, awake and `gap` tiles north of him (he faces north),
+    /// asking for no token, and beginning a slam if `slam`.
+    fn one_on_one(gap: f64, slam: bool) -> Game {
+        let mut g = in_the_vault();
+        let keep = g.enemies.iter().position(|e| e.duel.is_some()).unwrap();
+        let e = g.enemies.swap_remove(keep);
+        g.enemies = vec![e];
+        g.view.clear_enemies();
+        g.view.add_enemy(&g.enemies[0]);
+        let v = g.vault.clone().unwrap();
+        let hall = v.rooms.iter().find(|r| r.kind == RoomKind::Hall).unwrap().rect;
+        let (cx, cy) = hall.center();
+        g.hero.place(P::new(cx as i32, cy as i32));
+        g.hero.face(Dir::Up);
+        let hp = g.hero.pos();
+        let d = g.enemies[0].duel.as_mut().unwrap();
+        d.pos = V::new(hp.x, hp.y - gap);
+        d.facing = V::new(0.0, 1.0);
+        d.rest = u16::MAX;
+        if let Some(den) = d.den.as_mut() {
+            den.awake = true;
+        }
+        if slam {
+            d.token = true;
+            assert!(d.begin(crate::logic::combat::MoveId::Slam));
+        }
+        g
+    }
+
+    #[test]
+    fn in_the_vaults_his_shield_wears_as_it_blocks_and_breaks_for_good() {
+        let mut g = one_on_one(1.4, true);
+        let tier = g.progress.hero(g.hero_kind).carry;
+        g.hero.shield = Some(gear::ShieldGear { durability: 5, ..gear::ShieldGear::new(tier) });
+        let hp = g.hero.hp;
+        g.input.inject(Action::Block);
+        for _ in 0..(1.2 / STEP) as usize {
+            g.update(STEP);
+        }
+        assert_eq!(g.brawl.as_ref().unwrap().stats.blocks, 1, "{:?}", g.brawl.as_ref().unwrap().stats);
+        assert_eq!(g.hero.hp, hp, "the guard took the blow");
+        assert!(g.hero.shield.is_none(), "and wore through");
+        assert!(g.progress.hero(g.hero_kind).is_broken(tier), "struck off until the old man reforges it");
+        let guard = g.brawl.as_ref().unwrap().kit.guard;
+        assert_eq!(guard, crate::logic::combat::kit::Guard::BARE, "bare hands now");
+    }
+
+    #[test]
+    fn a_foe_in_the_vaults_can_slay_him_and_the_pack_goes_home_whole() {
+        let mut g = one_on_one(1.4, true);
+        g.enemies[0].duel.as_mut().unwrap().hp = 5.0;
+        let lives = g.score.lives;
+        g.hero.hp = 10;
+        for _ in 0..(1.2 / STEP) as usize {
+            g.update(STEP);
+        }
+        assert_eq!(g.screen, Screen::Dying, "slain for real in the vaults");
+        for _ in 0..(2.5 / STEP) as usize {
+            g.update(STEP);
+        }
+        assert_eq!(g.score.lives, lives - 1);
+        let d = g.enemies[0].duel.as_ref().unwrap();
+        let den = d.den.unwrap();
+        assert!(!den.awake && d.pos == den.home && d.hp == d.max_hp, "home, asleep and whole");
     }
 
     #[test]

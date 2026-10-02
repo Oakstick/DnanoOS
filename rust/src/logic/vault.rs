@@ -32,7 +32,7 @@ pub const MARGIN: i32 = 3;
 /// Corridors are this many tiles wide.
 pub const CORRIDOR: i32 = 3;
 /// A pack wakes when he comes this close to one of its foes (tiles), or steps into its room.
-pub const WAKE_RANGE: f64 = 8.0;
+pub const WAKE_RANGE: f64 = 6.0;
 /// A hunting foe gives up and goes home when he is this far from its room.
 pub const LEASH: f64 = 26.0;
 
@@ -576,16 +576,17 @@ impl Vault {
             take(coins, false, &mut |_| LootKind::Coin, &mut rng, &mut spots, &mut loot, &mut busy);
             posts_free.retain(|p| !busy.contains(p));
             // The pack: more, and more of the second stage, the deeper the room.
+            // (Sized for frame-data fights, COMBAT.md §9: a pack is a fight, not a swarm.)
             let count = match r.kind {
                 RoomKind::Entry => 0,
-                RoomKind::Chamber => 3 + (r.depth * 3.0).round() as usize,
-                RoomKind::Hall => 8,
-                RoomKind::Exit => 6,
+                RoomKind::Chamber => 2 + (r.depth * 2.0).round() as usize,
+                RoomKind::Hall => 6,
+                RoomKind::Exit => 5,
             };
             if count == 0 {
                 continue;
             }
-            let stage_two = (r.depth * 0.9).min(0.85);
+            let stage_two = (r.depth * 0.8).min(0.7);
             let mut foes = Vec::new();
             let mut posts: Vec<P> = Vec::new();
             for p in posts_free.iter().copied() {
@@ -691,7 +692,7 @@ mod tests {
         let gold: HashSet<P> = v.loot.iter().map(|l| l.at).collect();
         assert!(v.packs.iter().flat_map(|p| p.foes.iter()).all(|f| !gold.contains(&f.2)));
         let foes: Vec<(EnemyKind, u8)> = v.packs.iter().flat_map(|p| p.foes.iter().map(|f| (f.0, f.1))).collect();
-        assert!(foes.len() >= 60, "{} foes", foes.len());
+        assert!(foes.len() >= 50, "{} foes", foes.len());
         assert!(foes.iter().any(|f| f.1 == 1) && foes.iter().any(|f| f.1 == 2));
         assert!(v.packs.iter().all(|p| !p.foes.is_empty()));
         let entry = v.rooms.iter().find(|r| r.kind == RoomKind::Entry).unwrap();

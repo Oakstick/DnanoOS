@@ -1,8 +1,10 @@
-//! The Sparring Ring's HUD (COMBAT.md §5): health and poise bars over every duelist, the bout's
-//! banner, and the frame readout (F5): the hero's state and frame, his buffer, the threat
-//! points in use, each foe's state and frame, and the bout's numbers.
+//! The brawl's HUD (COMBAT.md §5, §9): health and poise bars over every duelist in the fight (in
+//! the ring and the vaults), the ring's bout banner and results card, and the frame readout (F5):
+//! the hero's state and frame, his buffer, the threat points in use, each foe's state and frame,
+//! his kit, and the fight's numbers.
 
 use super::*;
+use crate::game::brawl::{Brawl, Field};
 use crate::game::sparring::{BoutPhase, Sparring};
 use crate::logic::combat::fsm::PARRY_FROM;
 use crate::logic::combat::{Fighter, Input, Phase, State};
@@ -29,27 +31,29 @@ fn state_line(f: &Fighter) -> String {
     }
 }
 
-/// Everything the ring draws over the view.
+/// Everything the brawl draws over the view.
 pub(super) fn draw_ring(o: &mut Overlay, g: &Game, t: f32) {
-    let Some(spar) = g.spar.as_ref() else { return };
+    let Some(brawl) = g.brawl.as_ref() else { return };
     if g.screen != Screen::Playing {
         return;
     }
-    draw_bars(o, g, spar, t);
-    draw_banner(o, g, spar, t);
-    if spar.readout && g.in_ring() {
-        draw_readout(o, g, spar, t);
+    draw_bars(o, g, brawl, t);
+    if let Some(spar) = g.spar.as_ref().filter(|_| g.in_ring()) {
+        draw_banner(o, g, spar, brawl, t);
+        if matches!(spar.phase, BoutPhase::Won(_) | BoutPhase::Lost(_)) {
+            draw_results(o, spar, brawl, t);
+        }
     }
-    if matches!(spar.phase, BoutPhase::Won(_) | BoutPhase::Lost(_)) && g.in_ring() {
-        draw_results(o, spar, t);
+    if brawl.readout && g.brawling() {
+        draw_readout(o, g, brawl, g.spar.as_ref(), t);
     }
 }
 
 /// The results card, through the aftermath of a bout: its time against the target, what he took,
 /// and how he met what came at him.
-fn draw_results(o: &mut Overlay, spar: &Sparring, t: f32) {
+fn draw_results(o: &mut Overlay, spar: &Sparring, brawl: &Brawl, t: f32) {
     let won = matches!(spar.phase, BoutPhase::Won(_));
-    let s = &spar.stats;
+    let s = &brawl.stats;
     let bout = gym::BOUTS[spar.bout];
     let secs = s.frames as f64 / 60.0;
     let on_target = secs >= bout.target.0 && secs <= bout.target.1;
@@ -89,11 +93,12 @@ fn draw_results(o: &mut Overlay, spar: &Sparring, t: f32) {
 }
 
 /// Health and poise over each duelist; its state under them with the readout on.
-fn draw_bars(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
+fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
     let (w, h) = (o.width, o.height);
     for e in &g.enemies {
         let Some(d) = e.duel.as_deref() else { continue };
-        if !d.alive() {
+        // In the vaults only those in the fight (or hurt) wear their bars.
+        if !d.alive() || (brawl.field == Field::Vault && !d.engaged() && d.hp >= d.max_hp) {
             continue;
         }
         let top = match d.arch {
@@ -103,14 +108,14 @@ fn draw_bars(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
         };
         let p = Vec3::new(d.pos.x as f32, top, d.pos.y as f32);
         let Some((x, y)) = g.view.project(p, w, h) else { continue };
-        let st = d.arch.stats();
+        let st = d.stats();
         let bw = t * if st.hp > 100.0 { 3.0 } else { 2.0 };
         let bh = (t * 0.2).max(4.0);
-        bar(o, x - bw / 2.0, y, bw, bh, (d.hp / st.hp) as f32, 0xe04a3a);
+        bar(o, x - bw / 2.0, y, bw, bh, (d.hp / d.max_hp) as f32, 0xe04a3a);
         // Poise: gold, white while its resolve holds it unbreakable.
         let pcolor = if d.f.resolve > 0 { 0xf0f0f0 } else { 0xf2c53d };
         bar(o, x - bw / 2.0, y + bh + 2.0, bw, (bh * 0.6).max(3.0), (d.f.poise / st.poise) as f32, pcolor);
-        if spar.readout {
+        if brawl.readout {
             let line = state_line(&d.f);
             let color = match d.f.attack() {
                 Some((_, Phase::Startup, _)) => 0xff9a5a,
@@ -125,7 +130,7 @@ fn draw_bars(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
 }
 
 /// The bout's name and its phase across the top.
-fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
+fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, brawl: &Brawl, t: f32) {
     if !g.in_ring() {
         return;
     }
@@ -136,7 +141,7 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
         BoutPhase::Countdown(left) => (format!("GET READY  {}", left.ceil() as u32), SAND),
         BoutPhase::Fight => {
             let alive = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).count();
-            (format!("{alive} LEFT  {:.1}s", spar.stats.frames as f64 / 60.0), TEXT_DIM)
+            (format!("{alive} LEFT  {:.1}s", brawl.stats.frames as f64 / 60.0), TEXT_DIM)
         }
         BoutPhase::Won(left) => (format!("THE NEXT BOUT IN {}", left.ceil() as u32), GOLD),
         BoutPhase::Lost(left) => (format!("AGAIN IN {}", left.ceil() as u32), 0xff6a4a),
@@ -146,7 +151,7 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
 }
 
 /// The frame readout, down the left side.
-fn draw_readout(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
+fn draw_readout(o: &mut Overlay, g: &Game, spar: &Brawl, ring: Option<&Sparring>, t: f32) {
     let x = t * 0.6;
     let mut y = PANEL_ROWS * t + t * 1.6;
     let size = t * 0.46;
@@ -172,10 +177,15 @@ fn draw_readout(o: &mut Overlay, g: &Game, spar: &Sparring, t: f32) {
     rows.push((format!("DEALT {:.0}  TAKEN {:.0}  HITS {}", s.dealt, s.taken, s.hits), TEXT_DIM));
     rows.push((format!("PARRY {}  BLOCK {}  EVADE {}  BREAK {}", s.parries, s.blocks, s.evades, s.breaks), TEXT_DIM));
     rows.push((format!("OVERLAPS {}", s.overlaps), if s.overlaps == 0 { 0x7ad87a } else { 0xff4a3a }));
-    if let Some((bout, last)) = spar.last {
-        rows.push((format!("LAST WIN  {}  {:.1}s  -{:.0} HP", gym::BOUTS[bout].name, last.frames as f64 / 60.0, last.taken), GOLD));
+    if let Some(ring) = ring.filter(|_| spar.field == Field::Ring) {
+        if let Some((bout, last)) = ring.last {
+            rows.push((format!("LAST WIN  {}  {:.1}s  -{:.0} HP", gym::BOUTS[bout].name, last.frames as f64 / 60.0, last.taken), GOLD));
+        }
+        rows.push(("F6  NEXT BOUT".to_string(), TEXT_DIM));
+    } else {
+        let awake = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged()).count();
+        rows.push((format!("KILLS {}  HUNTING HIM {awake}", s.kills), TEXT_DIM));
     }
-    rows.push(("F6  NEXT BOUT".to_string(), TEXT_DIM));
     // His kit (COMBAT.md §8): the string's frames, its scalars, the guard.
     let k = &spar.kit;
     let [l1, l2, l3] = spar.hero.table;

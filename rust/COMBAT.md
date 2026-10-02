@@ -282,7 +282,7 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | **1 The Ring** | `logic::combat` (frames, FSM, buffer, formulas, threat manager, archetypes), the gym's Sparring Ring, telegraphs, HP/poise bars, frame readout, five bouts | builds, tests green, five bouts playable ✔ |
 | **2 Tune** | the balance harness (§7): three bot skills play every bout; telemetry on screen when a bout ends and in `combat_log.csv`; tables tuned in two rounds | expert TTK inside every target ✔, zero overlaps for a player who stands his ground ✔ (≈ 0.4 a minute for one who moves), the skill gradient of §7 ✔. Your own parry rate is in the log. |
 | **3 Hero kit** | `combat::kit`: blade tiers as move-table scalars (power, poise, tempo, reach, arc, finisher), shields as guard stats (parry window, block cost, riposte, deflect, reflect), the path audited against the FSM (§8) | every tier is the same three verbs with different numbers ✔; each hero's tier 10 wins ≥ 2× faster than his tier 1 ✔; at every tier the heroes kill within 1.3× of each other on the Brute and the Trio ✔ |
-| 4 Roll-out | the realms' foes become archetypes (Helmeted → Brute-lite, Large Bat → Skirmisher-flier), the Vaults' packs run through the threat manager, contact damage retired outside the Garden's chase levels | the Vaults play as a Diablo-like brawl with readable cadence |
+| **4 Roll-out** | every foe kind a breed of an archetype; the brawl (`game::brawl`) runs the Vaults of Mammon: packs of duelists asleep in their dens, one threat manager, real death, shield and blade wear, contact damage retired there (§9) | the expert clears the vaults with every kit, the adept from tier 4; zero overlaps in every crawl ✔ |
 | 5 Bosses | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3 | the boss is a fourth archetype, not a special case |
 
 ---
@@ -528,3 +528,92 @@ tier shield                    parry cost  riposte deflect reflect bolt-proof br
 Tools: `--kits N` (the sweep), `--kit-parts T` (each tree on its own at tier T: what each is
 worth), `--kit-table` (the table above). `every_heros_kit_grows_and_the_heroes_stay_level` pins
 growth and parity at tiers 1 and 10.
+
+---
+
+## 9. Phase 4: the roll-out to the Vaults of Mammon
+
+The frame-data rules leave the lab. `game::brawl` holds what the ring and the vaults share:
+the hero's fighter on his kit, the threat manager, the bolts, the telemetry. The `Field` says
+where it is fought:
+
+| | Ring (the lab) | Vault (the game) |
+|---|---|---|
+| Foes | a bout's archetypes | every pack, asleep in its den until woken |
+| Ground | a square (`Arena`) | rooms and corridors (`GridTerrain`): foes slide along walls and find their way round them by the hero's flow field (one BFS from his tile, redrawn when he steps onto a new one), or a search for anything farther |
+| Threat | 3 points, a token per 30 f | **2 points, a token per 60 f**: a pack is a fight, not a pile-on |
+| His health | a lost bout, never death | real: lives, the dying, the packs back asleep at their posts and whole |
+| His gear | never worn | his shield wears as it blocks and breaks for good; his blade dulls as it strikes |
+| Blows from outside the frame data | nothing (the lab is pure) | a plain blow through the fighter (a bomb, an archangel's fire: 20 damage, 30 poise) |
+| A kill | gone | gone, with its coins, rune chance, streak and points, and 20% a health potion |
+
+The kit is refreshed every frame, so a dulled blade, a broken shield or a potion counts at once
+(strength ×1.25 power; haste ×0.75 tempo; Ragnarok ×2 power and ×0.67 tempo).
+
+### 9.1 Ten bodies, three archetypes
+
+Every kind fights as one of the three, its numbers scaled (`archetype::Breed`):
+
+| Kind | Archetype | Health | Damage | Poise | Pace | Cost |
+|---|---|---|---|---|---|---|
+| Blemmyes | Brute | 1.0 | 1.0 | 1.0 | 1.0 | 2 |
+| Helmeted skeleton | Brute | 0.6 | 0.7 | 0.6 | 1.15 | 1 |
+| Draugr | Brute | 0.45 | 0.6 | 0.5 | 1.1 | 1 |
+| Loup-garou | Skirmisher | 1.0 | 1.0 | 1.0 | 1.0 | 1 |
+| Large bat | Skirmisher | 0.8 | 0.85 | 0.8 | 1.1 | 1 |
+| Night raven | Skirmisher | 0.6 | 0.7 | 0.6 | 1.0 | 1 |
+| Raven | Skirmisher | 0.45 | 0.6 | 0.5 | 1.05 | 1 |
+| Witch's minion | Skirmisher | 0.35 | 0.55 | 0.4 | 1.0 | 1 |
+| Witch | Hexer | 1.0 | 1.0 | 1.0 | 1.0 | 1 |
+| Bog slime | Hexer (green spit) | 0.8 | 0.8 | 0.8 | 0.7 | 1 |
+
+Armor scales with poise, so the helmeted skeleton (21) still shrugs off the training sword's
+light blows and the draugr (17.5) does not. The vaults weigh their foes as the first realm:
+health ×0.85 and damage ×0.8. Later realms raise these as the keys held mount up.
+
+### 9.2 What the old rules did, and what they do now
+
+| Old rule | Under the frame data |
+|---|---|
+| Contact damage | gone: a duelist hurts only on its active frames |
+| Toughness (one blow fells) | health and poise |
+| Witches conjure minions | subtracted |
+| The loup-garou's fury, the draugr's reassembling | subtracted: what falls in the vaults stays down |
+| Scare, confuse, frenzy, Michael's turning | they pass a duelist's mind by; Michael's fire *awes* it (all its poise: it staggers), a stunning blow or a shield's clash takes 25 poise |
+| Bifrost Step's blink | cut (one evade verb); path 5 lands his leap ready |
+| Shrine weapons from vault chests | still fire as they always have; their shots are stray blows |
+
+### 9.3 The crawl (`--crawl 3`: Ragnar's kit at each tier, from the antechamber to the last pack)
+
+```
+skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min
+adept      1      0%     34/61       3.0     11.5    10.4     6    531     53   318     12          0.00
+expert     1    100%     61/61       0.0     10.0     8.4     6    172    200     0      7          0.00
+adept      4    100%     61/61       0.7      9.1     7.4     6    549     34   157     20          0.00
+expert     4    100%     61/61       0.0      5.5     3.9     6    166    105     0      5          0.00
+adept      7    100%     61/61       0.0      5.5     3.6     6    290     23    29     12          0.00
+expert     7    100%     61/61       0.0      4.2     2.2     6     98     44     0      3          0.00
+```
+
+* **Every kit clears the vaults**, except the adept at tier 1, which needs better gear first
+  (34 of 61, then its lives run out). The expert clears even at tier 1 without dying.
+* **Readable cadence**: no two strikes land within 300 ms of each other in any crawl, and at
+  most 6 foes hunt him at once.
+* **A Diablo dungeon's length**: 4 to 10 minutes from the antechamber to the last pack.
+
+### 9.4 What changed, and why
+
+| Change | Why |
+|---|---|
+| Packs: chambers 2-4 (were 3-6), the hall 6 (8), the exit 5 (6), at most 70% second stage (85%) | sized for the old rules, where any blow felled a foe; with health and poise, 93 foes and 8-10 hunting him at once outlasted every adept |
+| Wake range 8 → 6 tiles | the packs next door woke with the one he walked into |
+| The vaults' threat: 2 points, 60 f | the adept met a strike every 1.7 s and ran out of health in under 4 minutes, however well it blocked |
+| Health potions from 20% of kills; the bots drink below 40% and pick up what lies near | sustain, as Diablo's health globes give it |
+| The realm's weight: health ×0.85, damage ×0.8 | Greed is the first realm |
+| Every harness run starts from a fresh save | runs shared the save folder: one crawl's broken shield left the next "fresh" hero bare-handed (a 5-frame parry), and the ring's balance seemed to shift |
+
+Since the bots drink potions now, the adept's ring numbers of §7 rise a little (the Pack and
+the Trio: 100%). The expert's are unchanged to the decimal.
+
+Tools: `--crawl N`. `the_vaults_are_a_brawl_a_skilled_player_can_clear_with_a_readable_cadence`
+pins the expert's tier-4 clear and the adept's tier-7 clear, with no overlaps.

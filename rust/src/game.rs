@@ -7,7 +7,8 @@
 //! - `level`: loading a level and starting a round
 //! - `movement`: turning input into movement, footsteps
 //! - `combat`, `boss`, `foes`, `health`: blows, the boss fight, the foes, the hero's health
-//! - `sparring`: the gym's Sparring Ring, where fights go by frame data (`logic::combat`, COMBAT.md)
+//! - `brawl`, `sparring`: fighting by frame data (`logic::combat`, COMBAT.md) in the Vaults of
+//!   Mammon and the gym's Sparring Ring, and the ring's bouts
 //! - `pickups`, `gate`: what he picks up, the gate that ends a level
 //! - `feedback`: floating text, points, streaks and the screen's juice
 //! - `angels`, `hub`, `realm`, `vault`, `shop`, `map`, `story`, `tour`, `select`, `controls`,
@@ -18,6 +19,7 @@
 mod angels;
 mod boss;
 pub mod bot;
+pub mod brawl;
 mod combat;
 mod controls;
 mod debug;
@@ -332,8 +334,10 @@ pub struct Game {
     vault_kit: (Vec<PotionKind>, u32),
     /// The camera as it was before the vaults turned it to the top view.
     camera_before_vault: Option<CameraMode>,
-    /// The gym's Sparring Ring: its bout, the hero's fighter, the threat manager (none elsewhere).
+    /// The gym's Sparring Ring: its bouts (none elsewhere).
     pub spar: Option<sparring::Sparring>,
+    /// Fighting by frame data: the hero's fighter, the threat manager, the bolts (in the gym and the vaults).
+    pub brawl: Option<brawl::Brawl>,
 }
 
 impl Game {
@@ -449,6 +453,7 @@ impl Game {
             vault_kit: (Vec::new(), 0),
             camera_before_vault: None,
             spar: None,
+            brawl: None,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -474,14 +479,16 @@ impl Game {
 
         let wanted = self.resolve_wanted_dir();
         self.hero.wish = self.free_wish();
-        // LB or Shift held: the shield is raised (if he has one, and is on his feet). In the Sparring
-        // Ring the guard (a training buckler) is his fighter's, and so are his attack and evade.
+        // LB or Shift held: the shield is raised (if he has one, and is on his feet). Where fights go by
+        // frame data (the Sparring Ring, the vaults) the guard is his fighter's, and so are his attack
+        // and evade; a shrine weapon from a vault chest still fires as it always has.
         let guard = self.input.held(Action::Block) && self.hero.alive && !self.hero.airborne();
-        let ring = self.in_ring();
+        let ring = self.brawling();
+        let swinging_fsm = ring && !self.hero.holding_pickup();
         if ring {
-            let attack = self.input.was_pressed(&[Action::Attack, Action::Tap]);
+            let attack = swinging_fsm && self.input.was_pressed(&[Action::Attack, Action::Tap]);
             let evade = self.input.was_pressed(&[Action::Jump]);
-            self.spar_input(attack, evade, guard);
+            self.brawl_input(attack, evade, guard);
         } else {
             self.hero.blocking = guard && self.hero.shield.is_some();
             self.hero.root = 1.0;
@@ -501,16 +508,21 @@ impl Game {
         self.update_decoy(dt);
         self.update_spirits(dt);
         self.update_fires(dt);
-        self.watch_health();
+        if !ring {
+            // (Under the frame data the kit's second wind stands in for the World Tree.)
+            self.watch_health();
+        }
 
-        // (In the ring only the sword, the guard and the evade: COMBAT.md §4.3.)
-        if !ring && self.input.was_pressed(&[Action::Attack, Action::Tap]) {
+        // (Under the frame data: the sword, the guard and the evade; in the vaults bombs and the
+        // archangels too, as blows through the foes' fighters. COMBAT.md §4.3, §9.)
+        let vault_brawl = ring && self.brawl.as_ref().is_some_and(|b| b.field == brawl::Field::Vault);
+        if !swinging_fsm && self.input.was_pressed(&[Action::Attack, Action::Tap]) {
             self.attack();
         }
         if !ring && self.input.was_pressed(&[Action::Step]) {
             self.bifrost_step();
         }
-        if !ring && self.input.was_pressed(&[Action::Angel]) {
+        if (!ring || vault_brawl) && self.input.was_pressed(&[Action::Angel]) {
             self.invoke_blessing();
         }
         if self.hero.winded {
@@ -523,7 +535,7 @@ impl Game {
         if !ring && self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
             self.audio.play(Sfx::Jump);
         }
-        if !ring && self.input.was_pressed(&[Action::Bomb]) {
+        if (!ring || vault_brawl) && self.input.was_pressed(&[Action::Bomb]) {
             self.place_bomb();
         }
         if self.input.was_pressed(&[Action::NextPotion]) && !self.belt.is_empty() {
@@ -583,6 +595,10 @@ impl Game {
         }
         self.update_witches(dt);
         self.update_sparring(dt);
+        self.update_brawl(dt);
+        if self.screen != Screen::Playing {
+            return; // slain in the vaults
+        }
         self.update_gym(dt);
         self.update_vault(dt);
         self.update_spawns(dt);

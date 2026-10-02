@@ -260,7 +260,7 @@ impl WorldView {
         for b in s.bolts {
             let p = Vec3::new(b.pos.x as f32, 1.0, b.pos.y as f32);
             let v = Vec3::new(b.vel.x as f32, 0.0, b.vel.y as f32).normalize_or_zero();
-            let color = lin(if b.reflected { 0xffc850 } else { 0xc070ff });
+            let color = lin(b.tint);
             for k in 0..4 {
                 let m = Mat4::from_translation(p - v * k as f32 * 0.14)
                     * Mat4::from_rotation_y(time * 9.0 + k as f32)
