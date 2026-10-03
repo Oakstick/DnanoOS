@@ -323,7 +323,7 @@ impl WorldView {
             hero_light *= 0.5; // candlelight everywhere
         }
         if self.crypt {
-            hero_light *= 0.6; // the braziers are the vaults' light; his lantern only keeps him seen
+            hero_light *= 0.4; // the braziers are the vaults' light; his lantern only keeps him seen
         }
         if let Some(k) = self.run_lantern() {
             hero_light *= k; // each realm has its own light

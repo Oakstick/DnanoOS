@@ -24,6 +24,9 @@ pub(super) mod pal {
     pub const EMBER: u32 = 0xffa040;
     pub const BONE: u32 = 0xcfc7b0;
     pub const MIST_TEAL: u32 = 0x6e9a90;
+    /// Moss in three greens, where the damp gathers.
+    pub const MOSS: [u32; 3] = [0x2e4426, 0x3a5230, 0x283c22];
+    pub const IRON: u32 = 0x2a2624;
     /// The dark beyond the light: charcoal with the mist's teal in it.
     pub const DARK: u32 = 0x1a2c2a;
 }
@@ -33,6 +36,9 @@ use pal::*;
 pub const SHADE_STONE: f32 = 18.0;
 pub const SHADE_FLAG: f32 = 19.0;
 const SHADE_CLOTH: f32 = 8.0;
+/// Soft, strand-shaded growth (`voxel_surface` fur): moss and leaves.
+const SHADE_SOFT: f32 = 7.0;
+const SHADE_IRON: f32 = 6.0;
 const SHADE_BRONZE: f32 = 13.0;
 
 /// How high the vaults' walls stand above their floor (just above his chest, so the top view
@@ -46,6 +52,10 @@ fn jit(hex: u32, h: f64, amount: f32) -> Vec3 {
 
 fn block(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3, shade: f32) {
     let m = Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos);
+    out.push(Instance::new(m, color, 1.0, Vec3::ZERO, shade));
+}
+
+fn block_m(out: &mut Vec<Instance>, m: Mat4, color: Vec3, shade: f32) {
     out.push(Instance::new(m, color, 1.0, Vec3::ZERO, shade));
 }
 
@@ -120,6 +130,8 @@ impl WorldView {
                     SHADE_FLAG,
                 );
             }
+            // Moss where the damp gathers in the seams.
+            self.floor_growth(xf, yf, h, hx, hy);
             // Now and then the bones of the vaults' dead, swept to the foot of a wall.
             if hash(hx * 5.0 + 3.0, hy * 7.0) < 0.05
                 && CARDINALS.iter().any(|d| {
@@ -213,6 +225,7 @@ impl WorldView {
                 jit(CHARCOAL[(hash(hx + 3.0, hy) * 3.0) as usize % 3], hash(hy, hx), 0.08) * 0.85,
                 SHADE_STONE,
             );
+            self.wall_growth(xf, yf, top, hx, hy);
             let len = self.static_cubes.len() - start;
             self.rock_index.insert(tile_key(x, y), (start, len));
             // A wall on raised ground stands well over his head from the road below it: it fades
@@ -244,6 +257,46 @@ impl WorldView {
                 self.pillar(xf, yf, base, roads[0], hx, hy);
             } else if pick < 0.16 {
                 self.banner(xf, yf, base, roads[(pick * 50.0) as usize % roads.len()], hx, hy);
+            } else if pick < 0.2 {
+                self.statue(xf, yf, top + 0.08, roads[0], hx, hy);
+            } else if pick < 0.25 {
+                self.wall_lantern(P::new(x, y), base, roads[(pick * 70.0) as usize % roads.len()]);
+            }
+        }
+        // ---- arches over the passages (up to three wide), each with a lantern hung from its crown
+        let open = |x: i32, y: i32| grid.in_bounds(x, y) && !matches!(grid.get(x, y), Tile::Rock | Tile::Pit) && !grid.is_ramp(x, y);
+        let mut last_arch: Option<(P, bool)> = None;
+        for (x, y, _) in grid.cells() {
+            for across_x in [true, false] {
+                // From a wall on the west (or north) side: the run of floor across to the wall opposite.
+                let (sx, sy) = if across_x { (1, 0) } else { (0, 1) };
+                if !open(x, y) || !rock(x - sx, y - sy) {
+                    continue;
+                }
+                let mut width = 0;
+                while width < 4 && open(x + sx * width, y + sy * width) {
+                    width += 1;
+                }
+                if width == 0 || width > 3 || !rock(x + sx * width, y + sy * width) {
+                    continue;
+                }
+                // A passage, not a junction: open before and behind along it, all one height.
+                let (ax, ay) = (sy, sx);
+                let h0 = floor_y(x, y);
+                let passage = (0..width).all(|k| {
+                    let (tx, ty) = (x + sx * k, y + sy * k);
+                    open(tx + ax, ty + ay) && open(tx - ax, ty - ay) && (floor_y(tx, ty) - h0).abs() < 0.01
+                });
+                let (hx, hy) = (x as f64, y as f64);
+                if !passage || hash(hx * 2.3 + 7.0, hy * 1.9 + 3.0) > 0.07 {
+                    continue;
+                }
+                // Not one just behind another.
+                if last_arch.is_some_and(|(p, a)| a == across_x && (p.x - x).abs() + (p.y - y).abs() <= 2) {
+                    continue;
+                }
+                last_arch = Some((P::new(x, y), across_x));
+                self.arch(P::new(x, y), h0, across_x, width);
             }
         }
         for (spot, d) in braziers {
@@ -346,7 +399,7 @@ impl WorldView {
             p + Vec3::Y * (h - 0.13),
             Vec3::new(0.66, 0.26, 0.66),
             0.0,
-            jit(PALE_STONE[0], hash(hy, hx), 0.05),
+            jit(PALE_STONE[1], hash(hy, hx), 0.05) * 0.75,
             SHADE_STONE,
         );
         // It stands taller than him: it fades out of the way of the view of him, as trees do.
@@ -417,6 +470,246 @@ impl WorldView {
             );
         }
         self.torches.insert(spot, (pos + Vec3::Y * 0.4, (start, self.static_cubes.len() - start)));
+    }
+
+    /// Moss creeping over the top of a wall.
+    fn wall_growth(&mut self, x: f32, y: f32, top: f32, hx: f64, hy: f64) {
+        let hk = hash(hx * 1.7 + 9.0, hy * 2.9 + 4.0);
+        if hk < 0.45 {
+            // A creeping patch in small clumps, thickest in its middle.
+            let (px, pz) = ((hash(hx * 2.0, hy) as f32 - 0.5) * 0.5, (hash(hy * 2.0, hx) as f32 - 0.5) * 0.5);
+            for k in 0..3 + (hk * 14.0) as usize {
+                let a = hash(hx + k as f64 * 3.1, hy * 1.3 + k as f64) as f32;
+                let b = hash(hy + k as f64 * 2.3, hx * 1.1 + k as f64) as f32;
+                let (a, b) = (0.5 + px + (a - 0.5) * 0.45, 0.5 + pz + (b - 0.5) * 0.45);
+                let size = Vec3::new(0.08 + (a * 7.0).fract() * 0.12, 0.025 + (b * 5.0).fract() * 0.035, 0.08 + (b * 9.0).fract() * 0.12);
+                let at = Vec3::new(x + (a - 0.5) * 0.6, top + 0.08 + size.y / 2.0, y + (b - 0.5) * 0.6);
+                block(&mut self.static_cubes, at, size, a * 3.0, jit(MOSS[k % 3], b as f64, 0.1), SHADE_SOFT);
+            }
+        }
+    }
+
+    /// Moss along the seams of a flagstone.
+    fn floor_growth(&mut self, x: f32, y: f32, h: f32, hx: f64, hy: f64) {
+        let hm = hash(hx * 4.1 + 2.0, hy * 3.7 + 6.0);
+        if hm < 0.16 {
+            // Moss in a seam, along x or along z through the tile's middle.
+            let along_x = hm < 0.08;
+            let len = 0.3 + hm as f32 * 3.0;
+            let size = if along_x { Vec3::new(len, 0.025, 0.05) } else { Vec3::new(0.05, 0.025, len) };
+            let off = (hash(hy, hx * 2.0) as f32 - 0.5) * 0.4;
+            let at = Vec3::new(x + if along_x { off } else { 0.0 }, h + 0.005, y + if along_x { 0.0 } else { off });
+            block(&mut self.static_cubes, at, size, 0.0, jit(MOSS[(hm * 30.0) as usize % 3], hm, 0.1), SHADE_SOFT);
+        }
+    }
+
+    /// An arch across a narrow passage at (`at`): piers against the walls either side rising
+    /// past them, a round arch of wedge stones with a keystone, a lintel course over it, and a
+    /// lantern hung on a chain from the crown. High enough to walk under; it fades out of the
+    /// way of the view of him, as trees do. `across_x`: the walls stand east and west.
+    fn arch(&mut self, at: P, floor: f32, across_x: bool, width: i32) {
+        // `at` is the first tile of the run across; the arch is centred on the run.
+        let half = (width - 1) as f32 / 2.0;
+        let (cx, cz) = if across_x { (at.x as f32 + half, at.y as f32) } else { (at.x as f32, at.y as f32 + half) };
+        let (hx, hy) = (at.x as f64, at.y as f64);
+        // Local frame: u across the passage (between the walls), w along it.
+        let frame =
+            |u: f32, h: f32, w: f32| if across_x { Vec3::new(cx + u, floor + h, cz + w) } else { Vec3::new(cx + w, floor + h, cz + u) };
+        // (A quarter turn back, so the local across axis lands on +z as `frame` puts it.)
+        let turn = if across_x { 0.0 } else { -PI / 2.0 };
+        let start = self.static_cubes.len();
+        let spring = 1.75;
+        let r = width as f32 / 2.0;
+        let depth = 0.38 + 0.08 * (width - 1) as f32;
+        // The piers: pale stone, from the floor to the spring, standing proud of the wall.
+        for side in [-1.0f32, 1.0] {
+            let c = jit(PALE_STONE[(hash(hx + side as f64, hy) * 2.0) as usize % 2], hash(hy, hx + side as f64), 0.06) * 0.8;
+            block(&mut self.static_cubes, frame(side * r, spring / 2.0, 0.0), Vec3::new(0.22, spring, depth + 0.04), turn, c, SHADE_STONE);
+            block(
+                &mut self.static_cubes,
+                frame(side * (r - 0.02), spring + 0.05, 0.0),
+                Vec3::new(0.3, 0.1, depth + 0.1),
+                turn,
+                c * 1.05,
+                SHADE_STONE,
+            );
+        }
+        // The arch: wedge stones round the half circle, the middle one the keystone.
+        let wedges = 7 + 2 * width as usize;
+        for k in 0..wedges {
+            let a = PI * (k as f32 + 0.5) / wedges as f32;
+            let (u, h) = (-a.cos() * r, spring + 0.1 + a.sin() * r);
+            let key = k == wedges / 2;
+            let c = if key { jit(PALE_STONE[0], hash(hx, hy), 0.04) } else { jit(CHARCOAL[k % 3], hash(hx + k as f64, hy), 0.1) };
+            let size = Vec3::new(PI * r / wedges as f32 + 0.02, if key { 0.32 } else { 0.24 }, depth + if key { 0.06 } else { 0.0 });
+            let rot = Quat::from_rotation_y(turn) * Quat::from_rotation_z(a - PI / 2.0);
+            let m = Mat4::from_scale_rotation_translation(size, rot, frame(u, h, 0.0));
+            block_m(&mut self.static_cubes, m, c, SHADE_STONE);
+        }
+        // The lintel course over it, and the haunches filled up to it.
+        block(
+            &mut self.static_cubes,
+            frame(0.0, spring + 0.1 + r + 0.28, 0.0),
+            Vec3::new(2.0 * r + 0.24, 0.2, depth + 0.02),
+            turn,
+            jit(UMBER[0], hash(hy, hx), 0.08),
+            SHADE_STONE,
+        );
+        for side in [-1.0f32, 1.0] {
+            let fill = r * 0.9;
+            block(
+                &mut self.static_cubes,
+                frame(side * (r - 0.12), spring + 0.1 + fill / 2.0 + 0.1, 0.0),
+                Vec3::new(0.26, fill + 0.2, depth),
+                turn,
+                jit(CHARCOAL[2], hash(hx, hy + side as f64), 0.1),
+                SHADE_STONE,
+            );
+        }
+        // A little moss on the lintel, now and then.
+        if hash(hx * 3.0, hy * 5.0) < 0.5 {
+            block(
+                &mut self.static_cubes,
+                frame(0.15, spring + 0.1 + r + 0.4, 0.0),
+                Vec3::new(0.5, 0.04, depth * 0.8),
+                turn,
+                lin(MOSS[1]),
+                SHADE_SOFT,
+            );
+        }
+        let len = self.static_cubes.len() - start;
+        let shades = self.static_cubes[start..start + len].iter().map(|c| c.emissive[3]).collect();
+        self.trees.push(Tree {
+            range: (start, len),
+            base: frame(0.0, spring - 0.2, 0.0) - Vec3::Y * 0.0,
+            radius: r + 0.25,
+            height: r + 0.7,
+            fade: 1.0,
+            alive: true,
+            shades: Some(shades),
+        });
+        // The lantern under the crown.
+        self.hanging_lantern(at, frame(0.0, spring + 0.1 + r - 0.12, 0.0), 0.55);
+    }
+
+    /// A lantern of copper and amber glass hung on a chain of `drop` from `from`; it lights the
+    /// vault (one of the torches, keyed by the tile `at`).
+    fn hanging_lantern(&mut self, at: P, from: Vec3, drop: f32) {
+        let start = self.static_cubes.len();
+        let links = (drop / 0.07) as usize;
+        for k in 0..links {
+            let turn = if k % 2 == 0 { 0.0 } else { PI / 2.0 };
+            block(
+                &mut self.static_cubes,
+                from - Vec3::Y * (k as f32 * 0.07 + 0.035),
+                Vec3::new(0.035, 0.06, 0.012),
+                turn,
+                lin(IRON),
+                SHADE_IRON,
+            );
+        }
+        let c = from - Vec3::Y * (drop + 0.13);
+        let copper = lin(COPPER);
+        block(&mut self.static_cubes, c + Vec3::Y * 0.13, Vec3::new(0.2, 0.04, 0.2), PI / 4.0, copper, SHADE_BRONZE);
+        block(&mut self.static_cubes, c - Vec3::Y * 0.12, Vec3::new(0.18, 0.04, 0.18), PI / 4.0, copper * 0.9, SHADE_BRONZE);
+        for k in 0..4 {
+            let a = k as f32 * TAU / 4.0 + PI / 4.0;
+            block(
+                &mut self.static_cubes,
+                c + Vec3::new(a.cos() * 0.09, 0.0, a.sin() * 0.09),
+                Vec3::new(0.025, 0.24, 0.025),
+                0.0,
+                copper * 0.8,
+                SHADE_BRONZE,
+            );
+        }
+        glowing_block(&mut self.static_cubes, c, Vec3::new(0.13, 0.2, 0.13), lin(AMBER), lin(AMBER) * 1.8);
+        // (The light sits at the glass: torches are lit half a unit above their point.)
+        self.torches.insert(at, (c - Vec3::Y * 0.5, (start, self.static_cubes.len() - start)));
+    }
+
+    /// A lantern on an iron bracket from the wall's face over the road `d`.
+    fn wall_lantern(&mut self, wall: P, base: f32, d: Dir) {
+        let (dx, dy) = d.vec();
+        let face = Vec3::new(wall.x as f32 + dx as f32 * 0.5, base + 1.45, wall.y as f32 + dy as f32 * 0.5);
+        let out = Vec3::new(dx as f32, 0.0, dy as f32);
+        let iron = lin(IRON);
+        block(&mut self.static_cubes, face + out * 0.02, Vec3::new(0.12, 0.2, 0.12), 0.0, iron, SHADE_IRON);
+        block(
+            &mut self.static_cubes,
+            face + out * 0.17 + Vec3::Y * 0.06,
+            Vec3::new(0.3, 0.035, 0.3) * (out.abs() + Vec3::new(0.0, 1.0, 0.0)) + Vec3::new(0.03, 0.0, 0.03),
+            0.0,
+            iron,
+            SHADE_IRON,
+        );
+        self.hanging_lantern(wall, face + out * 0.3 + Vec3::Y * 0.04, 0.1);
+    }
+
+    /// A hooded knight of stone on a plinth on top of the wall, looking down on the road `d`: a
+    /// long robe, a mantle over the shoulders, the hood's shadow for a face, both hands on the
+    /// pommel of a sword stood point down before him. A monument over the maze; it fades out of
+    /// the way of the view of him.
+    fn statue(&mut self, x: f32, y: f32, base: f32, d: Dir, hx: f64, hy: f64) {
+        let (dx, dy) = d.vec();
+        let yaw = -(dy as f32).atan2(dx as f32) + PI / 2.0;
+        let q = Quat::from_rotation_y(yaw);
+        let origin = Vec3::new(x + dx as f32 * 0.08, base, y + dy as f32 * 0.08);
+        // Local: x across him, y up, z toward the road.
+        let at = |l: Vec3| origin + q * l;
+        let start = self.static_cubes.len();
+        let stone = jit(CHARCOAL[1], hash(hx, hy), 0.06) * 0.85;
+        let dark = stone * 0.7;
+        let pale = jit(PALE_STONE[0], hash(hy, hx), 0.05);
+        let mut put = |c: Vec3, s: Vec3, col: Vec3| {
+            let m = Mat4::from_scale_rotation_translation(s, q, at(c));
+            self.static_cubes.push(Instance::new(m, col, 1.0, Vec3::ZERO, SHADE_STONE));
+        };
+        put(Vec3::new(0.0, 0.14, 0.0), Vec3::new(0.82, 0.28, 0.64), pale * 0.8);
+        put(Vec3::new(0.0, 0.31, 0.0), Vec3::new(0.7, 0.06, 0.54), pale * 0.7);
+        // The robe in three falls, widest at the hem, and the cape hanging behind.
+        put(Vec3::new(0.0, 0.5, 0.0), Vec3::new(0.62, 0.32, 0.44), stone * 0.9);
+        put(Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.54, 0.3, 0.38), stone);
+        put(Vec3::new(0.0, 1.08, 0.0), Vec3::new(0.48, 0.28, 0.34), stone * 1.05);
+        put(Vec3::new(0.0, 0.9, -0.2), Vec3::new(0.66, 1.0, 0.08), dark);
+        // Shoulders under the mantle, and the arms coming down to the hands at the pommel.
+        put(Vec3::new(0.0, 1.32, -0.02), Vec3::new(0.72, 0.18, 0.42), stone * 0.95);
+        for side in [-1.0f32, 1.0] {
+            let arm = Mat4::from_scale_rotation_translation(
+                Vec3::new(0.13, 0.42, 0.14),
+                q * Quat::from_rotation_x(-0.5) * Quat::from_rotation_z(side * 0.35),
+                at(Vec3::new(side * 0.2, 1.12, 0.12)),
+            );
+            self.static_cubes.push(Instance::new(arm, stone * 0.92, 1.0, Vec3::ZERO, SHADE_STONE));
+        }
+        let mut put = |c: Vec3, s: Vec3, col: Vec3| {
+            let m = Mat4::from_scale_rotation_translation(s, q, at(c));
+            self.static_cubes.push(Instance::new(m, col, 1.0, Vec3::ZERO, SHADE_STONE));
+        };
+        // The hood, bowed a little, the shadow of the face under it.
+        put(Vec3::new(0.0, 1.55, 0.0), Vec3::new(0.34, 0.32, 0.36), stone);
+        put(Vec3::new(0.0, 1.73, -0.03), Vec3::new(0.24, 0.1, 0.28), stone * 0.95);
+        put(Vec3::new(0.0, 1.5, 0.16), Vec3::new(0.2, 0.2, 0.06), dark * 0.4);
+        // The sword, point down before him on the plinth, his hands on its pommel.
+        put(Vec3::new(0.0, 0.7, 0.3), Vec3::new(0.07, 0.8, 0.04), pale * 0.75);
+        put(Vec3::new(0.0, 1.1, 0.3), Vec3::new(0.32, 0.05, 0.06), pale * 0.7);
+        put(Vec3::new(0.0, 1.2, 0.29), Vec3::new(0.2, 0.12, 0.13), stone * 1.1);
+        // Verdigris and moss where the damp has had its way with him.
+        if hash(hx * 2.0, hy * 3.0) < 0.6 {
+            put(Vec3::new(0.14, 1.49, 0.0), Vec3::new(0.18, 0.04, 0.3), lin(VERDIGRIS));
+        }
+        put(Vec3::new(-0.2, 0.37, 0.12), Vec3::new(0.24, 0.03, 0.18), lin(MOSS[0]));
+        let len = self.static_cubes.len() - start;
+        let shades = self.static_cubes[start..start + len].iter().map(|c| c.emissive[3]).collect();
+        self.trees.push(Tree {
+            range: (start, len),
+            base: origin,
+            radius: 0.45,
+            height: 1.8,
+            fade: 1.0,
+            alive: true,
+            shades: Some(shades),
+        });
     }
 
     /// A little heap of bones: a skull and a few long bones, pale on the stone.
