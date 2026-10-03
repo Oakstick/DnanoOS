@@ -349,6 +349,16 @@ impl Default for Atmosphere {
     }
 }
 
+/// Ground haze (RP19): fog thickest at `floor` and thinning above it, `falloff` units to fall
+/// to a third; `density` is how much of the light it takes, per unit, at the floor. It also
+/// scatters the nearest lamps' light toward the eye (a glow in the air round them).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Haze {
+    pub density: f32,
+    pub floor: f32,
+    pub falloff: f32,
+}
+
 #[derive(Default)]
 pub struct Frame {
     pub opaque: [Vec<Instance>; MESH_KINDS],
@@ -375,6 +385,7 @@ pub struct Frame {
     /// The title diorama draws on its own; the level's static geometry sits this frame out.
     pub skip_static: bool,
     pub atmosphere: Atmosphere,
+    pub haze: Haze,
 }
 
 impl Frame {
@@ -387,6 +398,7 @@ impl Frame {
         self.rigs_blend.clear();
         self.sets.clear();
         self.sets_blend.clear();
+        self.haze = Haze::default();
         self.additive.clear();
         self.glow.clear();
         self.lights.clear();

@@ -188,6 +188,7 @@ impl WorldView {
         if let Some(c) = self.tint.filter(|_| !self.showcase) {
             f.atmosphere = f.atmosphere.tinted(c);
         }
+        f.haze = self.level_haze();
         // Seer's Sight (path 3) sees through the dark.
         let nv = if s.hero.sees() { 0.6 } else { 0.0 };
         if nv > 0.0 && !self.meadow && !self.hell && !self.showcase && self.vault.is_none() && self.run_view.is_none() {
@@ -213,6 +214,29 @@ impl WorldView {
         self.emit_transients(s, f);
         self.emit_world(s, f, hero_pos);
         self.emit_light_pools(f, time, Vec3::new(hero_pos.x, 0.0, hero_pos.z), &remedy_points, &shrine_points);
+    }
+
+    /// Each kind of level's ground haze (RP19): a low night mist in the dungeons, a thin dusk haze in
+    /// the meadow, heat over the lava, dust in the vaults, and each realm its own (the Grey Mire
+    /// thickest). Kept thin enough that a foe charging from across a room stays plain to see.
+    fn level_haze(&self) -> Haze {
+        let haze = |density, falloff| Haze { density, floor: 0.0, falloff };
+        if self.showcase {
+            Haze::default()
+        } else if self.vault.is_some() {
+            haze(0.008, 2.5)
+        } else if let Some(r) = &self.run_view {
+            match r {
+                realms::RunView::Sloth(_) => haze(0.06, 1.2),
+                _ => haze(0.025, 1.0),
+            }
+        } else if self.hell {
+            Haze { density: 0.03, floor: -1.0, falloff: 1.2 }
+        } else if self.meadow {
+            haze(0.018, 1.5)
+        } else {
+            haze(0.035, 0.8)
+        }
     }
 
     /// The hero: his body, his gifts' glow, his lantern, the trail of his swing and his shadow.

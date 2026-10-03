@@ -18,7 +18,16 @@ struct Post {
     params: vec4<f32>,    // contact radius, contact strength, glow strength, blur max px at 1080p (0 = off)
     params2: vec4<f32>,   // glow threshold, vignette, time, grading
     moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through
+    haze: vec4<f32>,      // ground haze (RP19): density at the floor, floor height, falloff, the fog's own scattering
+    vol: vec4<f32>,       // lamps that light the air: how many (the first in priority order), exposure, strength
 };
+
+// The scene's lights (RP17's list, in priority order: the hero's lantern first, then nearest the eye).
+struct Light {
+    pos: vec4<f32>,   // xyz position, w cutoff distance
+    color: vec4<f32>,
+};
+@group(0) @binding(7) var<storage, read> lights: array<Light>;
 
 @group(0) @binding(0) var<uniform> p: Post;
 @group(0) @binding(1) var t0: texture_2d<f32>;
@@ -249,6 +258,51 @@ fn contact(uv: vec2<f32>) -> f32 {
     return pow(textureSampleLevel(t2, samp, uv, 0.0).r, p.params.y);
 }
 
+// The lamps' light scattered toward the eye by the air in front of the pixel (RP19): for each of
+// the first few lamps, the haze's density round it times the light along the view ray, whose
+// inverse-square falloff integrates in closed form (an arctangent), cut to the lamp's reach.
+// No history: every frame stands alone, so a cut, a portal or a falling wall leaves no trail.
+fn lamp_glow(uv: vec2<f32>, d: f32) -> vec3<f32> {
+    let count = u32(p.vol.x);
+    if (count == 0u || p.cam_pos.w > 0.5) {
+        return vec3<f32>(0.0);
+    }
+    let eye = p.cam_pos.xyz;
+    let far_point = world_at(uv, min(d, 60.0));
+    let seg = far_point - eye;
+    let len = length(seg);
+    let dir = seg / max(len, 1e-4);
+    let fall = max(p.haze.z, 0.05);
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < count; i++) {
+        let l = lights[i];
+        let to = l.pos.xyz - eye;
+        let t0 = dot(to, dir);
+        // (No nearer than the lamp's own size, so a ray grazing it does not blaze.)
+        let h2 = max(dot(to, to) - t0 * t0, 0.0225);
+        let h = sqrt(h2);
+        // Only where the ray passes within the lamp's reach.
+        var a = 0.0;
+        var b = len;
+        if (l.pos.w > 0.0) {
+            if (h >= l.pos.w) {
+                continue;
+            }
+            let half_chord = sqrt(l.pos.w * l.pos.w - h2);
+            a = max(a, t0 - half_chord);
+            b = min(b, t0 + half_chord);
+        }
+        if (b <= a) {
+            continue;
+        }
+        let along = (atan((b - t0) / h) - atan((a - t0) / h)) / h;
+        let density = p.haze.x * exp(-max(l.pos.y - p.haze.y, 0.0) / fall) + p.haze.w;
+        sum += l.color.rgb * density * along;
+    }
+    // Scattered evenly every way (1 / 4 pi), as the scene holds light (times the exposure).
+    return sum * p.vol.y * p.vol.z / (4.0 * 3.14159265);
+}
+
 // The scene's light at `uv`, contact shading taking away from its indirect part only: the sun,
 // the moon, the lamps and what glows keep all theirs (RP15).
 fn shaded(uv: vec2<f32>) -> vec3<f32> {
@@ -294,6 +348,7 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
     }
 
     lin += textureSampleLevel(t3, samp, in.uv, 0.0).rgb * p.params.z;
+    lin += lamp_glow(in.uv, d);
     var col = to_srgb(aces_filmic(lin));
 
     // Grading: a touch more saturation and contrast, cool shadows, warm highlights.

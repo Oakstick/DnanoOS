@@ -14,6 +14,7 @@ use wgpu::util::DeviceExt;
 use super::clusters;
 use super::faces::StaticFaces;
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
+use super::probes::{self, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
 use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS, NEAR};
 use super::voxels::{RigMesh, RigVertex};
@@ -57,6 +58,8 @@ const SHADOW_SIZE: u32 = if cfg!(target_arch = "wasm32") { 2048 } else { 4096 };
 /// Half the width of the fine shadow cascade, in world units.
 const NEAR_CASCADE: f32 = 10.0;
 const BLOOM_LEVELS: usize = 5;
+/// How many lamps light the air (RP19): the first in priority order. The cost scales with it.
+const VOLUMETRIC_LAMPS: usize = 8;
 /// The environment cube (RP14): its first mip's size, and how many mips (roughness 0 to 1).
 const ENV_SIZE: u32 = 128;
 const ENV_MIPS: u32 = 6;
@@ -188,6 +191,9 @@ struct Globals {
     bounds: [f32; 4],
     shadow: [f32; 4],
     cluster: [f32; 4],
+    haze: [f32; 4],
+    probe_min: [f32; 4],
+    probe_size: [f32; 4],
 }
 
 #[repr(C)]
@@ -201,6 +207,8 @@ struct PostUniform {
     params: [f32; 4],
     params2: [f32; 4],
     moon: [f32; 4],
+    haze: [f32; 4],
+    vol: [f32; 4],
 }
 
 struct MeshBuf {
@@ -295,6 +303,8 @@ struct Targets {
 /// What the post passes share: their bind group layout, uniform, sampler and a blank texture.
 struct PostShared {
     layout: wgpu::BindGroupLayout,
+    /// The scene's lights, for the lamps' glow in the air (RP19).
+    lights: wgpu::Buffer,
     gbuf_layout: wgpu::BindGroupLayout,
     uniform: wgpu::Buffer,
     sampler: wgpu::Sampler,
@@ -314,6 +324,7 @@ impl PostShared {
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(t[3]) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&self.sampler) },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(t[4]) },
+                wgpu::BindGroupEntry { binding: 7, resource: self.lights.as_entire_binding() },
             ],
         })
     }
@@ -443,6 +454,17 @@ pub struct Gpu {
     overlay_pipe: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
+    /// What the scene's bind group holds, to make it again when the probes' textures change.
+    scene_inputs: SceneInputs,
+    /// The level's probes (RP18): built on the level's first frame, refreshed round broken walls.
+    probe_tex: Vec<wgpu::Texture>,
+    probes: Option<ProbeVolume>,
+    /// The level (full static upload) the probes were built for, the boxes changed since, and the
+    /// bounds of every static cube as last sent (so a hidden one's place is known).
+    probe_level: u64,
+    probe_dirty: Vec<(Vec3, Vec3)>,
+    static_bounds: Vec<(Vec3, Vec3)>,
+    static_level: u64,
     /// Clustered lights: every light, each cluster's run, the runs (`clusters`).
     light_buf: wgpu::Buffer,
     cell_buf: wgpu::Buffer,
@@ -650,6 +672,17 @@ impl Gpu {
                 mapped_at_creation: false,
             })
         };
+        // The level's probes (RP18): six 3D textures, one per side.
+        let probe_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D3,
+                multisampled: false,
+            },
+            count: None,
+        };
         let light_buf = storage("lights", (clusters::MAX_LIGHTS * std::mem::size_of::<GpuLight>()) as u64);
         let cell_buf = storage("light clusters", clusters::CELLS as u64 * 4);
         let index_buf = storage("light indices", (clusters::CELLS * clusters::CELL_CAP) as u64 * 4);
@@ -702,6 +735,12 @@ impl Gpu {
                 light_entry(7),
                 light_entry(8),
                 light_entry(9),
+                probe_entry(10),
+                probe_entry(11),
+                probe_entry(12),
+                probe_entry(13),
+                probe_entry(14),
+                probe_entry(15),
             ],
         });
         // ---- the environment (RP14): a cube of the surroundings as light, a mip per roughness,
@@ -763,21 +802,20 @@ impl Gpu {
                 bytemuck::cast_slice(&lut),
             )
             .create_view(&Default::default());
-        let scene_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("scene"),
-            layout: &scene_layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&shadow_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&shadow_sampler) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&env_view) },
-                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&env_sampler) },
-                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&lut_view) },
-                wgpu::BindGroupEntry { binding: 7, resource: light_buf.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 8, resource: cell_buf.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 9, resource: index_buf.as_entire_binding() },
-            ],
-        });
+        let scene_inputs = SceneInputs {
+            layout: scene_layout.clone(),
+            globals: globals.clone(),
+            shadow_view: shadow_view.clone(),
+            shadow_sampler: shadow_sampler.clone(),
+            env_view: env_view.clone(),
+            env_sampler: env_sampler.clone(),
+            lut_view: lut_view.clone(),
+            light_buf: light_buf.clone(),
+            cell_buf: cell_buf.clone(),
+            index_buf: index_buf.clone(),
+        };
+        let probe_tex = probe_textures(&device, [1, 1, 1]);
+        let scene_bind = scene_inputs.bind(&device, &probe_tex);
         // The environment's own passes see only the globals (the cube they draw into is in the
         // scene's group), and the prefilter its first mip.
         let env_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1232,6 +1270,16 @@ impl Gpu {
                     count: None,
                 },
                 tex_entry(6),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         // The normals-and-depth resolve: the multisampled buffer, read sample by sample.
@@ -1326,6 +1374,7 @@ impl Gpu {
         });
         let post = PostShared {
             layout: post_layout,
+            lights: scene_inputs.light_buf.clone(),
             gbuf_layout,
             uniform: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("post"),
@@ -1506,6 +1555,13 @@ impl Gpu {
             overlay_pipe,
             globals,
             scene_bind,
+            scene_inputs,
+            probe_tex,
+            probes: None,
+            probe_level: 0,
+            probe_dirty: Vec::new(),
+            static_bounds: Vec::new(),
+            static_level: 0,
             light_buf,
             cell_buf,
             index_buf,
@@ -1598,6 +1654,14 @@ impl Gpu {
             })
         });
         self.static_count = sorted.len() as u32;
+        self.static_bounds = sorted
+            .iter()
+            .map(|c| {
+                let (at, half) = cube_bounds(c);
+                (at - half, at + half)
+            })
+            .collect();
+        self.static_level += 1;
         self.static_chunks = chunks;
         self.static_faces = Some(index);
         self.faces_main = faces;
@@ -1626,6 +1690,9 @@ impl Gpu {
                 return false;
             }
             let c = view.static_cubes[self.static_slot.len()];
+            let (at, half) = cube_bounds(&c);
+            self.static_bounds.push((at - half, at + half));
+            self.probe_dirty.push((at - half, at + half));
             self.queue.write_buffer(&self.static_buf.buf, slot as u64 * stride, bytemuck::bytes_of(&c));
             self.pending_upload += stride;
             self.static_slot.push(slot);
@@ -1650,6 +1717,14 @@ impl Gpu {
                 self.pending_upload += bytes.len() as u64;
                 for k in i..j {
                     let slot = self.static_slot[k];
+                    // A cube hidden (or moved) changes what the probes round it see.
+                    let (at, half) = cube_bounds(&view.static_cubes[k]);
+                    if let Some(&(lo, hi)) = self.static_bounds.get(slot as usize) {
+                        if (lo - (at - half)).length_squared() + (hi - (at + half)).length_squared() > 1e-8 {
+                            self.probe_dirty.push((lo, hi));
+                            self.static_bounds[slot as usize] = (at - half, at + half);
+                        }
+                    }
                     let Some(opened) = index.update(slot, &view.static_cubes[k]) else { return false };
                     if !opened.is_empty() {
                         // The neighbours stand in the hidden cube's chunk, or just over its edge.
@@ -1717,6 +1792,7 @@ impl Gpu {
         }
         counts.upload += (std::mem::size_of_val(gpu_lights.as_slice()) + grid.cells.len() * 4 + grid.indices.len() * 4) as u64;
         let atm = frame.atmosphere;
+        let use_probes = self.sync_probes(view, frame);
         let fog = super::overlay::rgba(atm.background, atm.fog_near);
         let v4 = |v: Vec3, w: f32| [v.x, v.y, v.z, w];
         // The fog is light: as much as tone maps to the fog colour.
@@ -1751,6 +1827,12 @@ impl Gpu {
             fog,
             params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
             cluster: [self.config.width as f32, self.config.height as f32, NEAR, FAR],
+            haze: [frame.haze.density, frame.haze.floor, frame.haze.falloff, 0.0],
+            probe_min: [-0.5, probes::Y0 - probes::DY * 0.5, -0.5, if use_probes { 1.0 } else { 0.0 }],
+            probe_size: self
+                .probes
+                .as_ref()
+                .map_or([1.0; 4], |p| [p.dims[0] as f32, probes::LAYERS as f32 * probes::DY, p.dims[2] as f32, 0.0]),
             hemi_sky: v4(atm.hemi_sky, 0.0),
             hemi_ground: v4(atm.hemi_ground, fog_light.x),
             ambient: v4(atm.ambient, fog_light.y),
@@ -1765,7 +1847,7 @@ impl Gpu {
                 near_r,
                 radius,
                 if light_vp_near.is_some() { 1.0 } else { 0.0 },
-                (self.fx_off & (fx::SCENE | fx::BACKFACE | fx::LIGHT_HEAT)) as f32,
+                (self.fx_off & (fx::SCENE | fx::BACKFACE | fx::LIGHT_HEAT | fx::HAZE)) as f32,
             ],
         };
         self.queue.write_buffer(&self.cascade_bufs[0], 0, bytemuck::cast_slice(&light_vp_near.unwrap_or(light_vp).to_cols_array()));
@@ -1786,6 +1868,18 @@ impl Gpu {
             ],
             params2: [0.6, 0.28, frame.time, if self.fx_off & fx::GRADE != 0 { 0.0 } else { 1.0 }],
             moon: moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky),
+            // The air: the haze, and a little scattering in the fog itself (so lamps glow in it too).
+            haze: [frame.haze.density, frame.haze.floor, frame.haze.falloff, if frame.haze.density > 0.0 { 0.004 } else { 0.0 }],
+            vol: [
+                if self.fx_off & fx::VOLUMETRIC != 0 || frame.haze.density <= 0.0 {
+                    0.0
+                } else {
+                    gpu_lights.len().min(VOLUMETRIC_LAMPS) as f32
+                },
+                atm.exposure,
+                0.8,
+                0.0,
+            ],
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));
@@ -2247,6 +2341,54 @@ impl Gpu {
         }))
     }
 
+    /// Builds the level's probes on its first frame, refreshes them round what changed since, and
+    /// sends them up when they change. Whether the frame is in a level the probes cover.
+    fn sync_probes(&mut self, view: &WorldView, frame: &Frame) -> bool {
+        if frame.skip_static || self.static_count == 0 {
+            return false;
+        }
+        let t = std::time::Instant::now();
+        let mut changed = false;
+        if self.probe_level != self.static_level || self.probes.is_none() {
+            let (w, h) = view.level_size();
+            self.probes = Some(ProbeVolume::build(&view.static_cubes, w, h, &frame.atmosphere));
+            self.probe_level = self.static_level;
+            self.probe_dirty.clear();
+            changed = true;
+        } else if !self.probe_dirty.is_empty() {
+            let (mut lo, mut hi) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
+            for (a, b) in self.probe_dirty.drain(..) {
+                lo = lo.min(a);
+                hi = hi.max(b);
+            }
+            if let Some(p) = self.probes.as_mut() {
+                p.refresh(&view.static_cubes, lo, hi);
+            }
+            changed = true;
+        }
+        if changed {
+            let p = self.probes.as_ref().unwrap();
+            if self.probe_tex.first().is_none_or(|t| [t.width(), t.height(), t.depth_or_array_layers()] != p.dims) {
+                self.probe_tex = probe_textures(&self.device, p.dims);
+                self.scene_bind = self.scene_inputs.bind(&self.device, &self.probe_tex);
+            }
+            for (s, tex) in self.probe_tex.iter().enumerate() {
+                let data: Vec<u16> = p.sides[s].iter().flat_map(|v| v.map(super::brdf::f16)).collect();
+                self.queue.write_texture(
+                    tex.as_image_copy(),
+                    bytemuck::cast_slice(&data),
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(p.dims[0] * 8), rows_per_image: Some(p.dims[1]) },
+                    wgpu::Extent3d { width: p.dims[0], height: p.dims[1], depth_or_array_layers: p.dims[2] },
+                );
+                self.pending_upload += data.len() as u64 * 2;
+            }
+            if std::env::var_os("VH_PROBE_STATS").is_some() {
+                eprintln!("probes: {:?} in {:.1} ms", p.dims, t.elapsed().as_secs_f64() * 1e3);
+            }
+        }
+        true
+    }
+
     /// Draws runs of static faces (start, count) with `pipe`, which reads the static store.
     fn draw_faces(&self, pass: &mut wgpu::RenderPass<'_>, pipe: &wgpu::RenderPipeline, runs: &[(u32, u32)], counts: &mut FrameCounts) {
         let Some(bind) = &self.static_bind else { return };
@@ -2478,6 +2620,60 @@ fn build_meshes(device: &wgpu::Device) -> Vec<MeshBuf> {
         });
     }
     out
+}
+
+/// The probes' six textures (one per side), `dims` probes in x, layers and z.
+fn probe_textures(device: &wgpu::Device, dims: [u32; 3]) -> Vec<wgpu::Texture> {
+    (0..6)
+        .map(|_| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("probes"),
+                size: wgpu::Extent3d { width: dims[0], height: dims[1], depth_or_array_layers: dims[2] },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D3,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
+        })
+        .collect()
+}
+
+/// What the scene's bind group (group 0 of every scene pipeline) is made of.
+struct SceneInputs {
+    layout: wgpu::BindGroupLayout,
+    globals: wgpu::Buffer,
+    shadow_view: wgpu::TextureView,
+    shadow_sampler: wgpu::Sampler,
+    env_view: wgpu::TextureView,
+    env_sampler: wgpu::Sampler,
+    lut_view: wgpu::TextureView,
+    light_buf: wgpu::Buffer,
+    cell_buf: wgpu::Buffer,
+    index_buf: wgpu::Buffer,
+}
+
+impl SceneInputs {
+    /// The scene's bind group, with these probe textures (one per side).
+    fn bind(&self, device: &wgpu::Device, probes: &[wgpu::Texture]) -> wgpu::BindGroup {
+        let views: Vec<wgpu::TextureView> = probes.iter().map(|t| t.create_view(&Default::default())).collect();
+        let mut entries = vec![
+            wgpu::BindGroupEntry { binding: 0, resource: self.globals.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&self.shadow_view) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.shadow_sampler) },
+            wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&self.env_view) },
+            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&self.env_sampler) },
+            wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&self.lut_view) },
+            wgpu::BindGroupEntry { binding: 7, resource: self.light_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 8, resource: self.cell_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 9, resource: self.index_buf.as_entire_binding() },
+        ];
+        for (k, v) in views.iter().enumerate() {
+            entries.push(wgpu::BindGroupEntry { binding: 10 + k as u32, resource: wgpu::BindingResource::TextureView(v) });
+        }
+        device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("scene"), layout: &self.layout, entries: &entries })
+    }
 }
 
 fn rig_buf(device: &wgpu::Device, mesh: &RigMesh) -> RigBuf {

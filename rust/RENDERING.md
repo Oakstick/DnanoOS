@@ -191,6 +191,65 @@ output is a separate feature.
 - **Shadow-casting local lights:** there are none yet (only the sun or moon casts shadows). When there
   are, they get their own budget, separate from these unshadowed lights.
 
+### RP18: the level's light, from load-time probes
+
+- **Probes** (`render/probes.rs`): when a level is first drawn, its static cubes are laid into a grid
+  of cells a quarter unit across, each knowing its colour and glow. The cells that see the sun or moon
+  are found by marching toward it. A probe at every tile's centre, on six heights, then casts eight
+  cosine-spread rays along each of the six axes, out to 8 units. Each side records the light coming
+  back off what its rays hit (colour × ambient light, plus sun or moon where that spot sees it, plus
+  glow) and the share of rays that escape to the sky.
+- **Shading:** inside the level, a surface's ambient light becomes ambient + sky × seen share + light
+  from the surroundings, each from the probes blended toward the normal. Its environment reflection
+  becomes sky cube × seen share + the room's own light along the reflection. That replaces RP14's
+  stand-in for metals. Story sets, the title and Look Dev lie outside any level and keep the old path.
+- **Walls:** rays stop at solid cells, so light does not pass through walls; a probe buried in a wall
+  takes its open neighbours' values. Samples are taken 0.3 units off the surface, so floors do not see
+  themselves.
+- **Broken walls:** the region round each hidden or added cube is laid again, its sun worked out again,
+  and the probes within ray reach are traced again (a test checks this matches a full rebuild). It costs
+  8 ms per break in the Garden; the destruction scene's worst frame is 13.9 ms.
+- **Local reflections, the compromise:** reflections come from the probes' six directions (a very
+  blurred local view), not from rendered local cubemaps. That suits the worn metals, and the sharp
+  sky stays in the environment cube. Rendered room cubemaps would need the scene drawn again into
+  each one; that stays a later option if polished metal ever needs it.
+- **Build time:** 12 ms (meadow) to 125 ms (Vaults, 138×102 tiles), on a level's first frame. **GPU
+  cost:** within the noise.
+- **Not included:** moving lights (the hero's lantern, spells) do not bounce. They light directly
+  through the clusters (RP17).
+
+### RP19: atmosphere within budget
+
+- **Ground haze** (`fog_at` in `shaders.wgsl`, `frame::Haze`): fog thickest at a floor height that
+  thins exponentially above it. Its amount along each view ray is exact: the mean density of an
+  exponential layer along a straight ray has a closed form. It combines with the distance fog.
+  Each kind of level sets its own (`WorldView::level_haze`):
+  | Level | Density at the floor | Falloff |
+  |---|---|---|
+  | dungeons | 0.035 | 0.8 |
+  | meadow | 0.018 | 1.5 |
+  | hub, over the lava | 0.03 | 1.2 |
+  | Vaults | 0.008 | 2.5 |
+  | Grey Mire | 0.06 | 1.2 |
+  | other realms | 0.025 | 1.0 |
+
+  Story sets, the title and Look Dev have none. Surfaces, water, jets and glows take it; the cloud
+  sea, smoke wall and ground mist keep distance fog only (they already are the atmosphere). The
+  densities are kept low enough that a foe charging across a room stays plain; the 30-foe battle was
+  checked.
+- **Coarse volumetric light** (`lamp_glow` in `post.wgsl`): in the composite, the light of the first 8
+  lamps in priority order (the hero's lantern first) scattered toward the eye by the haze and a little
+  by the fog. It integrates in closed form along the view ray (an arctangent), cut to each lamp's reach,
+  and the ray's distance to a lamp is floored at the lamp's size so a grazing ray does not blaze. It is
+  isotropic and ignores shadowing. There is no history, so camera cuts, portal arrivals and falling
+  walls leave no trails. It is off under the orthographic map camera.
+- **Budget:**
+  - The haze and the volumetric light each have an `--fx-off` switch (`haze`, `volumetric`), so a
+    low preset can drop the volumetric light and keep the haze's depth cue.
+  - The lamp count (`VOLUMETRIC_LAMPS`) is the cost knob.
+  - Measured in the 30-foe battle: the composite pass took 0.81 ms without and 0.82 ms with it.
+- **The sun's light shafts** through the sky (`fs_rays`) are unchanged.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -248,8 +307,9 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13, RP14, RP15 and RP17 are done.
-  - Then RP16 (the rest: shadow presets and stable projections), RP18 (probes) and RP19 (atmosphere).
+- **D, lighting:** RP13, RP14, RP15, RP17, RP18 and RP19 are done.
+  - What remains is RP16's rest: shadow quality presets and per-cascade budgets (the static cache and
+    caster culling are done).
 - **E, world systems:**
   - RP02: camera validation.
   - RP03: area packaging and the portal loading screen. The portal scene's worst frame is 24 ms; cold

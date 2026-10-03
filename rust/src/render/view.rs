@@ -66,8 +66,8 @@ pub use fade::TREE_FADE_MIN;
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{
-    glow_orb, rig_look, Atmosphere, Frame, Instance, InstanceSet, Light, LodPolicy, MeshKind, RigDraw, RigList, MESH_KINDS, SHADE_CLOUD,
-    SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
+    glow_orb, rig_look, Atmosphere, Frame, Haze, Instance, InstanceSet, Light, LodPolicy, MeshKind, RigDraw, RigList, MESH_KINDS,
+    SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
 };
 pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;

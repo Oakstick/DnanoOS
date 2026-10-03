@@ -30,7 +30,52 @@ struct Globals {
     bounds: vec4<f32>,     // the level's footprint: min x, min z, max x, max z
     shadow: vec4<f32>,     // x fine cascade half width, y coarse half width (world), z 1 when the fine one is drawn, w effects switched off (FX_ bits)
     cluster: vec4<f32>,    // the clusters' screen (pixels w, h) and depth range (near, far): see `cluster_at`
+    haze: vec4<f32>,       // ground haze (RP19): density at the floor, the floor's height, falloff
+    probe_min: vec4<f32>,  // the probe volume's corner (xyz) and 1 when there is one (RP18)
+    probe_size: vec4<f32>, // its extent
 };
+
+// The level's irradiance probes (RP18, `render::probes`): per side (+x, -x, +y, -y, +z, -z), the
+// light coming back off what that side sees (rgb, linear radiance) and the share of sky (a).
+@group(0) @binding(10) var probe_px: texture_3d<f32>;
+@group(0) @binding(11) var probe_nx: texture_3d<f32>;
+@group(0) @binding(12) var probe_py: texture_3d<f32>;
+@group(0) @binding(13) var probe_ny: texture_3d<f32>;
+@group(0) @binding(14) var probe_pz: texture_3d<f32>;
+@group(0) @binding(15) var probe_nz: texture_3d<f32>;
+
+struct Probe {
+    px: vec4<f32>,
+    nx: vec4<f32>,
+    py: vec4<f32>,
+    ny: vec4<f32>,
+    pz: vec4<f32>,
+    nz: vec4<f32>,
+    inside: bool,
+};
+
+// The probes at `world`, nudged off the surface along `n` (so a floor does not see itself).
+fn probe_at(world: vec3<f32>, n: vec3<f32>) -> Probe {
+    var p: Probe;
+    let uvw = (world + n * 0.3 - g.probe_min.xyz) / g.probe_size.xyz;
+    p.inside = g.probe_min.w > 0.5 && all(uvw.xz >= vec2<f32>(0.0)) && all(uvw.xz <= vec2<f32>(1.0));
+    if (!p.inside) {
+        return p;
+    }
+    p.px = textureSampleLevel(probe_px, env_samp, uvw, 0.0);
+    p.nx = textureSampleLevel(probe_nx, env_samp, uvw, 0.0);
+    p.py = textureSampleLevel(probe_py, env_samp, uvw, 0.0);
+    p.ny = textureSampleLevel(probe_ny, env_samp, uvw, 0.0);
+    p.pz = textureSampleLevel(probe_pz, env_samp, uvw, 0.0);
+    p.nz = textureSampleLevel(probe_nz, env_samp, uvw, 0.0);
+    return p;
+}
+
+// What a probe sees toward `d`: its sides blended by how much `d` faces each (an ambient cube).
+fn probe_toward(p: Probe, d: vec3<f32>) -> vec4<f32> {
+    let w = d * d;
+    return select(p.nx, p.px, d.x > 0.0) * w.x + select(p.ny, p.py, d.y > 0.0) * w.y + select(p.nz, p.pz, d.z > 0.0) * w.z;
+}
 
 @group(0) @binding(0) var<uniform> g: Globals;
 
@@ -41,6 +86,7 @@ const FX_GRASS: u32 = 4u;
 const FX_MATERIALS: u32 = 8u;
 const FX_FOG: u32 = 16u;
 const FX_BACKFACE: u32 = 2048u;
+const FX_HAZE: u32 = 8192u;
 // Not an effect switched off but a view: how many lights each pixel's cluster holds (RP17).
 const FX_LIGHT_HEAT: u32 = 4096u;
 
@@ -540,6 +586,27 @@ fn finish(col: vec3<f32>) -> vec3<f32> {
     return max(col, vec3<f32>(0.0)) * g.params.y;
 }
 
+// How much of the light from `world` the air between it and the eye takes away: the fog by
+// distance, and the ground haze (RP19), thickest at its floor, worked out exactly along the ray
+// (its density falls off exponentially with height, so the ray's mean density has a closed form).
+fn fog_at(world: vec3<f32>, depth: f32) -> f32 {
+    let distance_fog = smoothstep(g.fog.w, g.params.x, depth);
+    let d0 = g.haze.x;
+    if (d0 <= 0.0 || fx_off(FX_HAZE)) {
+        return distance_fog;
+    }
+    let eye = g.cam_pos.xyz;
+    let fall = max(g.haze.z, 0.05);
+    let ye = max(eye.y - g.haze.y, 0.0);
+    let yp = max(world.y - g.haze.y, 0.0);
+    let fe = exp(-ye / fall);
+    let fp = exp(-yp / fall);
+    let dy = yp - ye;
+    let mean = select(fe, fall * (fe - fp) / dy, abs(dy) > 1e-3);
+    let haze = 1.0 - exp(-d0 * length(world - eye) * mean);
+    return 1.0 - (1.0 - distance_fog) * (1.0 - haze);
+}
+
 // `c` from `finish`, a fraction `f` of the way into the fog (as light: see `gpu::untonemap`).
 fn fogged(c: vec3<f32>, f: f32) -> vec3<f32> {
     return mix(c, vec3<f32>(g.hemi_ground.w, g.ambient.w, g.moon_dir.w), f);
@@ -877,7 +944,7 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
     let view_dir = normalize(g.cam_pos.xyz - in.world);
     var out: FOut;
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
-    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    let fog_f = fog_at(in.world, in.depth);
     if (abs(n_geom.y) < 0.5) {
         // Falling water: streaks rushing down, whiter where it breaks.
         let across = dot(in.world.xz, vec2<f32>(0.7071, 0.7071)) * 14.0;
@@ -972,7 +1039,7 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
     spec += pow(max(dot(n, normalize(g.moon_dir.xyz + view_dir)), 0.0), 60.0) * g.moon_color.rgb;
     let col = in.color.rgb * light * (0.55 + 0.5 * rush + 0.6 * edge) + spec * 0.8;
     let rgb = finish(col);
-    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    let fog_f = fog_at(in.world, in.depth);
     var out: FOut;
     out.color = vec4<f32>(fogged(rgb, fog_f), in.color.a * clamp(0.35 + 0.65 * edge + 0.25 * rush, 0.0, 1.0));
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
@@ -987,7 +1054,7 @@ fn glow_orb(in: VOut) -> FOut {
     // Added as light, a halo's faint rim shows far more than added as display colour did; a
     // steep falloff keeps it the size it was drawn.
     let k = pow(1.0 - r2, 4.0);
-    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    let fog_f = fog_at(in.world, in.depth);
     var out: FOut;
     out.color = vec4<f32>(finish(in.color.rgb), in.color.a * k * (1.0 - fog_f * 0.8));
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
@@ -1081,8 +1148,15 @@ fn fs_scene(in: VOut) -> FOut {
     var indirect = vec3<f32>(0.0);
     if (mode < 0.5 || mode > 1.5) {
         // The light from all around (ambient, sky and ground) is indirect; the sun or moon and the
-        // lamps are direct.
-        let ambient_irr = g.ambient.rgb + mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * sn.y + 0.5);
+        // lamps are direct. Inside the level it comes from the probes: the sky only as far as
+        // this spot sees it, and the light coming back off its surroundings (RP18).
+        let probe = probe_at(in.world, sn);
+        let hemi = mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * sn.y + 0.5);
+        var ambient_irr = g.ambient.rgb + hemi;
+        if (probe.inside) {
+            let q = probe_toward(probe, sn);
+            ambient_irr = g.ambient.rgb + hemi * q.a + q.rgb * PI;
+        }
         var irr = ambient_irr;
         var spec = vec3<f32>(0.0);
         let wrap = surf.wrap;
@@ -1126,9 +1200,16 @@ fn fs_scene(in: VOut) -> FOut {
         let lut = textureSampleLevel(brdf_lut, env_samp, vec2<f32>(nv, surf.rough), 0.0).rg;
         let refl = reflect(-view_dir, sn);
         var env = textureSampleLevel(env_map, env_samp, refl, surf.rough * ENV_MIPS).rgb;
-        // A metal also mirrors the walls, ground and foliage the sun or moon lights, which the cube
-        // does not hold: until rooms get their own probes (RP18), a share of the direct light.
-        env += g.moon_color.rgb * mix(0.3, 0.18, smoothstep(-0.3, 0.5, refl.y)) * surf.metal;
+        if (probe.inside) {
+            // Inside the level the sky shows only where the probes see it, and the room itself
+            // (lit walls, ground, lava) fills the rest (RP18).
+            let q = probe_toward(probe, refl);
+            env = env * q.a + q.rgb;
+        } else {
+            // Away from any level (the story's sets, the title): a share of the direct light
+            // stands in for the lit surroundings the sky cube does not hold.
+            env += g.moon_color.rgb * mix(0.3, 0.18, smoothstep(-0.3, 0.5, refl.y)) * surf.metal;
+        }
         rgb = surf.albedo * (1.0 - surf.metal) * irr / PI + spec + env * (f0 * lut.x + lut.y) + emissive;
         // Fur and cloth catch a rim of sky.
         let fres = pow(1.0 - nv, 3.0);
@@ -1147,7 +1228,7 @@ fn fs_scene(in: VOut) -> FOut {
         }
     }
     rgb = finish(rgb);
-    let fog_f = select(smoothstep(g.fog.w, g.params.x, in.depth), 0.0, fx_off(FX_FOG));
+    let fog_f = select(fog_at(in.world, in.depth), 0.0, fx_off(FX_FOG));
     rgb = fogged(rgb, fog_f);
     if (fx_off(FX_LIGHT_HEAT)) {
         // Blue none, through green, to red at 16 or more lights in the cluster.

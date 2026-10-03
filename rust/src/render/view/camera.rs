@@ -340,6 +340,11 @@ impl WorldView {
         }
     }
 
+    /// The level's size in tiles (x, z), for what covers it (the probes).
+    pub fn level_size(&self) -> (f32, f32) {
+        (self.level_dims.x, self.level_dims.y)
+    }
+
     /// How rigs choose their level of detail under this camera (see `LodPolicy`).
     pub fn lod_policy(&self) -> LodPolicy {
         let half_px = self.viewport_h.max(1.0) * 0.5;

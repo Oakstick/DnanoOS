@@ -25,6 +25,7 @@ pub mod icons;
 pub mod overlay;
 #[cfg(test)]
 pub mod preview;
+mod probes;
 pub mod profile;
 pub mod props;
 pub mod view;

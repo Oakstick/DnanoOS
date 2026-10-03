@@ -88,7 +88,7 @@ pub struct StaticFaces {
 }
 
 /// Runs `f` over `items` in a few even parts on every core, keeping the order.
-fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(usize, &T) -> R + Sync) -> Vec<R> {
+pub(crate) fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(usize, &T) -> R + Sync) -> Vec<R> {
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 16);
     let span = items.len().div_ceil(threads).max(1);
     let f = &f;

@@ -178,8 +178,11 @@ pub mod fx {
     pub const BACKFACE: u32 = 2048;
     /// Not an effect off but a view: each pixel tinted by how many lights its cluster holds.
     pub const LIGHT_HEAT: u32 = 4096;
+    /// The ground haze, and the lamps' glow in the air (RP19).
+    pub const HAZE: u32 = 8192;
+    pub const VOLUMETRIC: u32 = 16384;
 
-    pub const NAMES: [(&str, u32); 12] = [
+    pub const NAMES: [(&str, u32); 14] = [
         ("shadows", SHADOWS),
         ("lights", LIGHTS),
         ("grass", GRASS),
@@ -192,6 +195,8 @@ pub mod fx {
         ("prepass", PREPASS),
         ("mist", MIST),
         ("backface", BACKFACE),
+        ("haze", HAZE),
+        ("volumetric", VOLUMETRIC),
     ];
 
     /// "shadows,ao" to its bits; unknown names are ignored.
