@@ -95,7 +95,7 @@ fn sprites() -> &'static Sprites {
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
             (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
-            (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail slows you too."),
+            (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail burns you."),
             (sprite_from(&super::foes2::witch()), "Witch", 0xb066ff, "Keeps her distance and conjures minions. Two blows."),
             (sprite_from(&super::foes2::minion()), "Witch Minion", 0xd08cff, "Small and quick; they come in numbers."),
             (
@@ -126,21 +126,16 @@ fn sprites() -> &'static Sprites {
             ),
             (sprite_from(&super::foes4::rokurokubi()), "Rokurokubi", 0xe8d8e8, "Body: her head lashes out on her long neck."),
             (sprite_from(&super::foes4::kitsune()), "Kitsune", 0xff8a3a, "Distance: foxfire in threes, and illusions of itself."),
-            (
-                sprite_from(&super::foes5::karakoncolos()),
-                "Karakoncolos",
-                0x8ec8ff,
-                "Melee: it calls you by name and draws you to its claws.",
-            ),
+            (sprite_from(&super::foes5::karakoncolos()), "Karakoncolos", 0x8ec8ff, "Melee: it roars your name, and the roar dooms you."),
             (sprite_from(&super::foes5::tulukus()), "Tülükuş", 0xd09a5a, "Body: a silent dive from the air; its cry dooms you."),
-            (sprite_from(&super::foes5::albasti()), "Albastı", 0xc0283a, "Body: a shadow until she pounces and pins you down."),
-            (sprite_from(&super::foes5::cin()), "Cin", 0xffe6a0, "Distance: smokeless fire that strikes you dumb; vanishes."),
-            (sprite_from(&super::foes5::arcura()), "Arçura", 0x6ad050, "Distance: roots burst from the floor and hold you fast."),
+            (sprite_from(&super::foes5::albasti()), "Albastı", 0xc0283a, "Body: a shadow until she pounces with all her weight."),
+            (sprite_from(&super::foes5::cin()), "Cin", 0xffe6a0, "Distance: smokeless fire out of nowhere; vanishes."),
+            (sprite_from(&super::foes5::arcura()), "Arçura", 0x6ad050, "Distance: roots burst from the floor and lash you."),
             (
                 sprite_from(&super::foes7::frost_giant()),
                 "Frost Giant",
                 0xa8dcff,
-                "Melee: its blows chill through your shield; chilled twice, you freeze.",
+                "Melee: its blows frostbite through your shield, and the frost bites on.",
             ),
             (sprite_from(&super::foes7::surtr()), "Surtr", 0xff6a1a, "Melee: a flaming sword that leaves the floor burning."),
             (sprite_from(&super::foes7::nidhogg()), "Nidhogg", 0x8ad04a, "Body: it burrows and bursts up beneath you; venom."),
@@ -155,7 +150,7 @@ fn sprites() -> &'static Sprites {
                 sprite_from(&super::foes6::gashadokuro()),
                 "Gashadokuro",
                 0xdcd8b8,
-                "Melee: a ringing, then its hands close on you. Parry or leap.",
+                "Melee: a ringing, then its hands crush you. Parry or leap.",
             ),
             (
                 sprite_from(&super::foes6::ejder()),
@@ -874,8 +869,8 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
         o.rect(ex, ey + ew + t * 0.05, ew * fr, t * 0.14, rgba(color, 1.0));
         ex += ew + t * 0.3;
     }
-    if hero.slowed() {
-        o.text("SLOWED", ex, ey + ew / 2.0, small * 0.9, rgba(0x5cff6a, 1.0), Align::Left, true);
+    if hero.slimed() {
+        o.text("SLIME BURNS", ex, ey + ew / 2.0, small * 0.9, rgba(0x5cff6a, 1.0), Align::Left, true);
     }
 }
 

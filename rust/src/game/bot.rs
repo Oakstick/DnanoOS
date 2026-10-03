@@ -11,10 +11,10 @@
 //!   never into a swing it could not guard out of before the next strike it has seen.
 //!
 //! Against the later stages' legends (COMBAT.md §11) the adept and the expert also walk out of
-//! marks on the floor and lanes of ice (leaping when it is too late to walk), walk away from a
-//! call, step out of fire, leap a grab they cannot parry (the adept), strike Tepegöz only while
-//! his eye is in reach (the expert), and never strike a felled dragon begging for a second blow.
-//! Held, every skill strikes and strikes to struggle free. Nothing out of reach is a target.
+//! marks on the floor and lanes of ice (leaping when it is too late to walk), step out of fire,
+//! leap a grab they cannot parry (the adept), strike Tepegöz only while his eye is in reach (the
+//! expert), and never strike a felled dragon begging for a second blow. Nothing out of reach is a
+//! target.
 //!
 //! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
 //! kill and damage taken against the targets of COMBAT.md §2.1 (`gym::Bout::target`).
@@ -334,16 +334,7 @@ impl Bot {
         let threats = self.threats(g);
         let soonest = threats.first().copied();
         let dodges = self.dodges(g);
-
-        // Held (pinned, or in a giant's hand): strike and strike, to struggle free.
-        if spar.ails.held.is_some() {
-            self.attack_down = !self.attack_down;
-            if self.attack_down {
-                pad.actions.insert(Action::Attack);
-            }
-            return pad;
-        }
-        let can_leap = spar.ails.can_leap() && !g.hero.airborne();
+        let can_leap = !g.hero.airborne();
         let leap = |pad: &mut PadState, out: V| {
             pad.left = (out.x as f32, out.y as f32);
             if can_leap {
@@ -371,13 +362,6 @@ impl Bot {
             if let Some(d) = dodge {
                 pad.left = (d.out.x as f32, d.out.y as f32);
                 self.attack_down = false;
-                return pad;
-            }
-            // Called by name: walk away against the call.
-            let caller = spar.ails.pull.and_then(|(id, _)| g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id));
-            if let Some(c) = caller {
-                let away = Self::keep_in(g, hp, math::norm(math::sub(hp, c.pos)));
-                pad.left = (away.x as f32, away.y as f32);
                 return pad;
             }
         }

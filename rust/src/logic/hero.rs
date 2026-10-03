@@ -33,10 +33,9 @@ pub const HEALTH_IMMUNITY: f64 = 1.5;
 /// The blink of Bifrost Step leaves him untouchable this long.
 const STEP_IMMUNITY: f64 = 0.3;
 const SWING_SECONDS: f64 = 0.18;
-/// Speed multiplier while slowed by slime.
-pub const SLIME_SLOW: f64 = 0.5;
-/// How long a step in slime keeps slowing him after he leaves it.
-pub const SLIME_SLOW_SECONDS: f64 = 1.2;
+/// Slime underfoot burns him (it never slows him): this much health, at most once in so many seconds.
+pub const SLIME_BURN: i32 = 2;
+pub const SLIME_BURN_SECONDS: f64 = 0.5;
 
 // Weight and momentum. Top speed is untouched (`Mover::speed`); these only
 // shape how he gets there and how he lets go of it. Position, `occupied`
@@ -181,8 +180,8 @@ pub struct Hero {
     /// Enemies cannot sense or touch him while this runs.
     pub invisible_timer: f64,
     pub speed_timer: f64,
-    /// Slime underfoot.
-    pub slow_timer: f64,
+    /// Seconds until slime can burn him again; above zero, it is still on his boots.
+    pub slime_timer: f64,
     pub base_speed: f64,
     jump: Option<JumpState>,
     /// Floor elevation at his feet, or the arc height while airborne, in levels.
@@ -256,7 +255,7 @@ impl Hero {
             invincible_timer: 0.0,
             invisible_timer: 0.0,
             speed_timer: 0.0,
-            slow_timer: 0.0,
+            slime_timer: 0.0,
             base_speed: speed,
             jump: None,
             altitude: 0.0,
@@ -283,8 +282,8 @@ impl Hero {
     pub fn hasted(&self) -> bool {
         self.speed_timer > 0.0
     }
-    pub fn slowed(&self) -> bool {
-        self.slow_timer > 0.0
+    pub fn slimed(&self) -> bool {
+        self.slime_timer > 0.0
     }
     pub fn airborne(&self) -> bool {
         self.jump.is_some()
@@ -513,7 +512,7 @@ impl Hero {
         self.invincible_timer = (self.invincible_timer - dt).max(0.0);
         self.invisible_timer = (self.invisible_timer - dt).max(0.0);
         self.speed_timer = (self.speed_timer - dt).max(0.0);
-        self.slow_timer = (self.slow_timer - dt).max(0.0);
+        self.slime_timer = (self.slime_timer - dt).max(0.0);
         self.step_cooldown = (self.step_cooldown - dt).max(0.0);
         self.last_stand = (self.last_stand - dt).max(0.0);
         self.heart = (self.heart - dt).max(0.0);
@@ -554,15 +553,10 @@ impl Hero {
                 }
             }
         }
-        if self.heart > 0.0 {
-            // Forge-Heart shrugs off the slime.
-            self.slow_timer = 0.0;
-        }
         self.m.speed = self.base_speed
             * if self.hasted() { SPEED_BOOST } else { 1.0 }
             * if self.fx.haste > 0.0 { HASTE_SPEED } else { 1.0 }
             * if self.fx.ragnarok > 0.0 { RAGNAROK_SPEED } else { 1.0 }
-            * if self.slowed() { SLIME_SLOW } else { 1.0 }
             * if self.blocking { BLOCK_SPEED } else { 1.0 }
             * self.root
             * self.pace;
@@ -789,7 +783,7 @@ impl Hero {
             let friction = need.min(top / STOP_SECONDS);
             self.vel = (self.vel - friction * dt).max(top * MIN_COAST);
         } else if self.vel > top {
-            // Top speed just dropped (slime, haste running out): shed the excess smoothly.
+            // Top speed just dropped (the shield raised, haste running out): shed the excess smoothly.
             self.vel = (self.vel - top / BRAKE_SECONDS * dt).max(top);
         } else {
             self.vel = (self.vel + top / ACCEL_SECONDS * dt).min(top);
@@ -1068,7 +1062,7 @@ impl Hero {
     pub fn restore(&mut self) {
         self.hp = self.max_hp;
         self.stamina = STAMINA_MAX;
-        self.slow_timer = 0.0;
+        self.slime_timer = 0.0;
         self.fx.ragnarok = 0.0;
     }
     pub fn grant_invincibility(&mut self) {
@@ -1081,9 +1075,22 @@ impl Hero {
         self.invisible_timer = seconds;
     }
 
-    /// Stepping in slime. Refreshes while he stays in it.
-    pub fn slow(&mut self) {
-        self.slow_timer = SLIME_SLOW_SECONDS;
+    /**
+     * Standing in slime: it burns `SLIME_BURN` at once and again every `SLIME_BURN_SECONDS` he
+     * stays in it, and returns what it took. It never takes his last breath and never slows him;
+     * invincible, or while Forge-Heart beats, he shrugs it off.
+     */
+    pub fn burn_in_slime(&mut self) -> i32 {
+        if !self.alive || self.slime_timer > 0.0 {
+            return 0;
+        }
+        self.slime_timer = SLIME_BURN_SECONDS;
+        if self.invincible() || self.heart > 0.0 {
+            return 0;
+        }
+        let burn = SLIME_BURN.min(self.hp - 1).max(0);
+        self.hp -= burn;
+        burn
     }
 
     pub fn heal(&mut self, amount: i32) {
@@ -1134,7 +1141,7 @@ impl Hero {
         self.invincible_timer = 0.0;
         self.invisible_timer = 0.0;
         self.speed_timer = 0.0;
-        self.slow_timer = 0.0;
+        self.slime_timer = 0.0;
         self.m.speed = self.base_speed;
         self.jump = None;
         self.altitude = 0.0;
@@ -1416,6 +1423,27 @@ mod tests {
             h.update(DT, &g, Dir::Left);
         }
         assert_eq!(h.dir(), Dir::Left);
+    }
+
+    #[test]
+    fn slime_burns_him_a_little_now_and_then_but_never_slows_or_kills_him() {
+        let g = corridor(10);
+        let mut h = Hero::new(P::new(3, 1), 5.2);
+        h.update(DT, &g, Dir::None);
+        let (pace, hp) = (h.m.speed, h.hp);
+        // Two seconds standing in it: a burn at once, then one every half second.
+        let mut burnt = 0;
+        for _ in 0..240 {
+            burnt += h.burn_in_slime();
+            h.update(DT, &g, Dir::None);
+            assert_eq!(h.m.speed, pace, "slowed");
+        }
+        assert_eq!(burnt, 4 * SLIME_BURN);
+        assert_eq!(h.hp, hp - 4 * SLIME_BURN);
+        // It leaves him his last breath.
+        h.hp = 1;
+        h.slime_timer = 0.0;
+        assert_eq!((h.burn_in_slime(), h.hp), (0, 1));
     }
 
     #[test]

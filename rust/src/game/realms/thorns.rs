@@ -8,8 +8,8 @@
 //! - **Tobit's cure:** a koi caught in a pond and burnt at a censer makes ten seconds of smoke that
 //!   blocks charm, turns the facades to glass and lights the honest paths; the golden koi's gall
 //!   gives twenty seconds of true sight. Raphael's beams burn straight paths through the hedges.
-//! - **The rest of the garden:** the bowers give up the dead grooms' last gear; a karakoncolos's
-//!   call draws him toward her rather than to itself; a ring of dancing elf-maids drags him in.
+//! - **The rest of the garden:** the bowers give up the dead grooms' last gear; a ring of dancing
+//!   elf-maids drags him in.
 //! - **The wedding night:** at the Black Thorn the gate grinds open over ten seconds and the Bride
 //!   walks up behind him. Facing her fills charm three times as fast; if she takes him he is her
 //!   eighth groom (a heavy wound and Doom) and wakes in the innermost bower. He survives by keeping
@@ -300,31 +300,13 @@ impl Game {
         self.floater(x, y - 1.0, format!("A DEAD GROOM'S LAST GEAR: {label}"), 2.2, Some(rarity.color()));
     }
 
-    /// What draws him: a karakoncolos's call (turned toward her) and the rings of dancing elf-maids.
+    /// What draws him: the rings of dancing elf-maids.
     fn thorns_pulls(&mut self, dt: f64) {
-        // A karakoncolos calls him by name in a loved one's voice, and the voice comes from her.
-        let caller = self.brawl.as_ref().and_then(|b| b.ails.pull);
-        if let Some((id, left)) = caller {
-            let karakoncolos =
-                self.enemies.iter().any(|e| e.kind() == EnemyKind::Karakoncolos && e.duel.as_ref().is_some_and(|d| d.id == id));
-            if karakoncolos {
-                if let Some(b) = self.brawl.as_mut() {
-                    b.ails.pull = None;
-                }
-                if let Some(t) = self.thorns_mut() {
-                    t.call = left.max(45);
-                }
-            }
-        }
         let hp = self.hero.pos();
         let air = self.hero.airborne();
         let mut shove = V::new(0.0, 0.0);
         let mut hint = false;
         if let Some(t) = self.thorns_mut() {
-            if t.call > 0 {
-                t.call = t.call.saturating_sub((dt * 60.0).round().max(1.0) as u16);
-                shove = math::add(shove, math::scale(toward(hp, t.bride), crate::logic::combat::ails::PULL_SPEED * dt));
-            }
             for &c in &t.dances {
                 let d = math::len(math::sub(c, hp));
                 if d < DANCE_REACH && d > 0.4 {
@@ -939,36 +921,12 @@ mod tests {
     }
 
     #[test]
-    fn a_karakoncolos_calls_him_toward_her_and_the_elf_maids_draw_him_into_their_dance() {
+    fn the_elf_maids_draw_him_into_their_dance() {
         let mut g = garden();
         g.hero.free_move = true;
         g.enemies.clear();
-        // A karakoncolos in the first clearing, its call just heard.
-        let th = t(&g).clone();
-        let den = th.clearings[0];
-        let post = P::new(den.x0 + 1, den.y0 + 1);
-        let mut b = g.brawl.take().unwrap();
-        let raised = g.raise_packs(&[Pack { den, foes: vec![(EnemyKind::Karakoncolos, 5, post)] }], 1, &mut b);
-        g.brawl = Some(b);
-        g.enemies = raised;
-        g.refresh_foe_views();
-        let id = g.enemies[0].duel.as_ref().unwrap().id;
-        let at = P::new(THORN_X, den.y0 - 3);
-        g.hero.place(at);
-        g.update(STEP);
-        let her = t(&g).bride;
-        let before = math::len(math::sub(g.hero.pos(), her));
-        g.brawl.as_mut().unwrap().ails.pull = Some((id, 40));
-        g.update(STEP);
-        assert!(g.brawl.as_ref().unwrap().ails.pull.is_none(), "the call is hers, not its own");
-        assert!(t(&g).call > 0);
-        for _ in 0..20 {
-            g.update(STEP);
-        }
-        let after = math::len(math::sub(g.hero.pos(), t(&g).bride));
-        assert!(after < before - 0.2, "drawn toward her: {before} -> {after}");
         // The dancing ring in the last clearing drags a passer-by in.
-        let c = th.dances[0];
+        let c = t(&g).dances[0];
         g.hero.place(P::new(c.x.round() as i32, (c.y + 2.6).round() as i32));
         g.update(STEP);
         let d0 = math::len(math::sub(g.hero.pos(), c));

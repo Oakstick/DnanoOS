@@ -134,30 +134,19 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
 }
 
 /// What the legends have done to him, low across the middle of the screen: each ail and the
-/// seconds left of it (a hold says how to break it).
+/// seconds left of it.
 fn draw_ails(o: &mut Overlay, brawl: &Brawl, t: f32) {
     let a = &brawl.ails;
     let secs = |f: u16| format!("{:.1}S", f as f32 / 60.0);
     let mut parts: Vec<(String, u32)> = Vec::new();
-    if let Some(h) = a.held {
-        parts.push((if h.pin { "PINNED: STRIKE TO STRUGGLE FREE".to_string() } else { format!("SEIZED {}", secs(h.left)) }, 0xff6a5a));
-    }
-    if a.frozen > 0 {
-        parts.push((format!("FROZEN {}", secs(a.frozen)), 0xc8f0ff));
-    } else if a.chill > 0 {
-        parts.push((format!("CHILLED {}", secs(a.chill)), 0x9ad8ff));
-    }
-    if a.rooted > 0 {
-        parts.push((format!("ROOTED {}", secs(a.rooted)), 0x7ad860));
+    if a.frost > 0 {
+        parts.push((format!("FROSTBITE {}", secs(a.frost)), 0x9ad8ff));
     }
     if a.venom > 0 {
         parts.push((format!("VENOM {}", secs(a.venom)), 0x9ae05a));
     }
     if a.doom > 0 {
         parts.push((format!("DOOMED {}", secs(a.doom)), 0xb08aff));
-    }
-    if a.pull.is_some() {
-        parts.push(("CALLED: WALK AWAY".to_string(), 0xa8d8ff));
     }
     if parts.is_empty() {
         return;

@@ -230,12 +230,12 @@ impl WorldView {
         if hero.fx.strength > 0.0 {
             emissive += lin(0xff2a1a) * (0.12 + (time * 6.0).sin().abs() * 0.12);
         }
-        // A shield potion's bark greys his skin a little; chill blues it, venom greens it.
+        // A shield potion's bark greys his skin a little; frostbite blues it, venom greens it.
         let mut tint = if hero.bark > 0 { Vec3::new(0.82, 0.84, 0.88) } else { Vec3::ONE };
         let ails = s.ails;
-        if ails.chill > 0 || ails.frozen > 0 {
+        if ails.frost > 0 {
             tint *= Vec3::new(0.72, 0.88, 1.2);
-            emissive += lin(0x6ab8ff) * if ails.frozen > 0 { 0.35 } else { 0.12 };
+            emissive += lin(0x6ab8ff) * (0.1 + (time * 4.0).sin().abs() * 0.06);
         }
         if ails.venom > 0 {
             emissive += lin(0x6ad040) * (0.08 + (time * 5.0).sin().abs() * 0.1);
@@ -753,25 +753,16 @@ fn emit_neck(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: 
 }
 
 impl WorldView {
-    /// What the legends have done to him, shown about him: a block of ice when frozen, roots about
-    /// his feet, the owl's dark sigil over his head, venom's bubbles, his name's call in rings.
+    /// What the legends have done to him, shown about him: frost's motes drifting off him, the
+    /// omen's dark sigil over his head, venom's bubbles.
     fn emit_ails(&self, ails: &crate::logic::combat::ails::Ails, at: Vec3, time: f32, f: &mut Frame) {
-        if ails.frozen > 0 {
-            let m = Mat4::from_translation(at + Vec3::new(0.0, 0.5, 0.0))
-                * Mat4::from_rotation_y(0.4)
-                * Mat4::from_scale(Vec3::new(0.62, 1.08, 0.62));
-            f.transparent[MeshKind::Cube as usize].push(Instance::new(m, lin(0xc8f0ff), 0.45, lin(0x6ab8ff) * 0.3, SHADE_UNLIT));
-        }
-        if ails.rooted > 0 {
-            for k in 0..6 {
-                let a = k as f32 * TAU / 6.0 + 0.3;
-                let tall = 0.28 + 0.08 * (time * 3.0 + k as f32).sin();
-                let p = at + Vec3::new(a.cos() * 0.22, tall * 0.5, a.sin() * 0.22);
-                let m = Mat4::from_translation(p)
-                    * Mat4::from_rotation_y(a)
-                    * Mat4::from_rotation_z(0.35)
-                    * Mat4::from_scale(Vec3::new(0.06, tall, 0.06));
-                f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(0x5a3a1e), 1.0, Vec3::ZERO, SHADE_LIT));
+        if ails.frost > 0 {
+            for k in 0..4 {
+                let t = (time * 0.7 + k as f32 / 4.0).fract();
+                let a = k as f32 * TAU / 4.0 + time * 0.8;
+                let p = at + Vec3::new(a.cos() * 0.26, 0.3 + t * 1.0, a.sin() * 0.26);
+                let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.04 * (1.0 - t * 0.4)));
+                f.additive.push(Instance::new(m, lin(0xc8f0ff) * 1.6, 0.8 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
             }
         }
         if ails.doom > 0 {

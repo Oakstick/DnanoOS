@@ -190,7 +190,7 @@ pub enum Power {
     Plea,
     /// The goryō's wrath: nothing touches it but while it rages (its moves).
     Spirit,
-    /// The frost giant's rime: its blows chill, blocked or not.
+    /// The frost giant's rime: its blows frostbite, blocked or not.
     Rime,
     /// Surtr's sword: its blows leave the floor burning.
     Fire,
@@ -297,7 +297,7 @@ impl Breed {
             K::Gashadokuro => (Rider::None, Power::Rattle),
             K::Ejder => (Rider::None, Power::Plea),
             K::Goryo => (Rider::None, Power::Spirit),
-            K::FrostGiant => (Rider::Chill, Power::Rime),
+            K::FrostGiant => (Rider::Frost, Power::Rime),
             K::Surtr => (Rider::None, Power::Fire),
             K::Nidhogg => (Rider::Venom(120), Power::None),
             K::Hel => (Rider::Drain, Power::Necromancy),
