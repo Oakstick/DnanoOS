@@ -248,14 +248,18 @@ fn body(out: &mut Vec<Instance>, root: Mat4, w: i32, h: i32, lava: f32, seed: f6
     let (cx, cz) = ((w - 1) as f32 / 2.0, (h - 1) as f32 / 2.0);
     let (fw, fh) = (w as f32, h as f32);
     let deep = lava - 0.6;
-    plain(out, root, Vec3::new(cx, (-0.18 + deep) / 2.0, cz), Vec3::new(fw - 0.03, -0.18 - deep, fh - 0.03), 0x2a1c16);
-    // Strata: a band of paler earth, a band of dark rock.
+    // Earth over rock: the soil the top was churned from, then darker rock down into the lava.
+    let soil = (-0.55f32).max(lava + 0.05);
+    plain(out, root, Vec3::new(cx, (-0.18 + soil) / 2.0, cz), Vec3::new(fw - 0.02, -0.18 - soil, fh - 0.02), 0x5a4232);
+    plain(out, root, Vec3::new(cx, (soil + deep) / 2.0, cz), Vec3::new(fw - 0.03, soil - deep, fh - 0.03), 0x3a2c26);
+    // Strata: a band of paler earth, a band of ash, a band of dark rock.
     let band = |out: &mut Vec<Instance>, y: f32, t: f32, grow: f32, c: u32| {
         plain(out, root, Vec3::new(cx, y, cz), Vec3::new(fw + grow, t, fh + grow), c);
     };
-    band(out, -0.26, 0.1, 0.02, 0x4a3426);
+    band(out, -0.27, 0.09, 0.02, 0x6a5038);
+    band(out, -0.4, 0.04, 0.015, 0x6a625e);
     if lava < -0.7 {
-        band(out, (lava - 0.26) * 0.55, 0.16, 0.04, 0x241a18);
+        band(out, (lava - 0.26) * 0.55, 0.16, 0.04, 0x2a2220);
     }
     // Rocks jutting along every side.
     let mut perim: Vec<(f32, f32, f32, f32)> = Vec::new();
@@ -269,14 +273,26 @@ fn body(out: &mut Vec<Instance>, root: Mat4, w: i32, h: i32, lava: f32, seed: f6
     }
     for (k, &(x, z, nx, nz)) in perim.iter().enumerate() {
         let r = |j: u32| rnd(seed + k as f64 * 0.37, j);
-        if r(0) < 0.45 {
+        if r(0) < 0.3 {
+            continue;
+        }
+        if r(0) > 0.94 {
+            // Something of the battle buried in the bank: a skull, or a sword's hilt.
+            let at = Vec3::new(x + nx * 0.02, -0.3 - r(1) * 0.25, z + nz * 0.02);
+            if r(2) < 0.5 {
+                decor::skull(out, root, at, nz.atan2(nx) - PI / 2.0 + PI, 0.9);
+            } else {
+                let q = Quat::from_rotation_arc(Vec3::Y, Vec3::new(nx, 0.3, nz).normalize());
+                bx(out, root, at, Vec3::new(0.04, 0.28, 0.04), q, lin(STEEL_D), Vec3::ZERO, SH_METAL);
+                bx(out, root, at + q * Vec3::new(0.0, 0.1, 0.0), Vec3::new(0.16, 0.03, 0.04), q, lin(RUST), Vec3::ZERO, SH_METAL);
+            }
             continue;
         }
         let tall = 0.2 + r(1) * (-lava).min(1.4) * 0.6;
         let y = -0.12 - r(2) * (-lava - tall).max(0.0) - tall / 2.0;
         let along = 0.35 + r(3) * 0.5;
         let size = if nx != 0.0 { Vec3::new(0.16, tall, along) } else { Vec3::new(along, tall, 0.16) };
-        let c = lin(if r(4) < 0.5 { 0x3a2a24 } else { 0x2e2420 }) * (0.85 + r(5) * 0.3);
+        let c = lin([0x4a3a30, 0x3e322a, 0x5a4a3e, 0x34302c][(r(4) * 4.0) as usize % 4]) * (0.85 + r(5) * 0.3);
         bx(
             out,
             root,
