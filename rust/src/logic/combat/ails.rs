@@ -1,18 +1,18 @@
-//! What the later stages' legends do to the hero (COMBAT.md §11): the frost giant's chill and
-//! the freezing after it, the arçura's roots, the owl's doom, Níðhöggr's venom, Surtr's fire
-//! underfoot, a pin or a grab, a call drawing him in, a shove; and the brief marks the legends
-//! leave on the scene for the view (lightning, roots, ice, an eruption, smoke). Every one is a
-//! clock in 60 Hz frames; the brawl applies them (`game::brawl`).
+//! What the later stages' legends do to the hero (COMBAT.md §11): the frost giant's frostbite,
+//! the owl's and the karakoncolos's doom, Níðhöggr's venom, Surtr's fire underfoot, a shove; and
+//! the brief marks the legends leave on the scene for the view (lightning, roots, ice, an
+//! eruption, smoke). None of them slows him, holds him or roots him. Every one is a clock in
+//! 60 Hz frames; the brawl applies them (`game::brawl`).
 
 use super::math::{len, sub};
 use crate::logic::types::V;
 
-/// Chill: frames it lasts and the share of his pace it leaves him; chilled again meanwhile, he
-/// freezes solid for `FREEZE_FRAMES`.
-pub const CHILL_FRAMES: u16 = 180;
-pub const CHILL_PACE: f64 = 0.55;
-pub const FREEZE_FRAMES: u16 = 50;
-/// The owl's omen: frames it hangs over him, and what it makes of the next wound he takes.
+/// Frostbite: frames it lasts, and the health it takes, and how often.
+pub const FROST_FRAMES: u16 = 180;
+pub const FROST_EVERY: u16 = 30;
+pub const FROST_DAMAGE: f64 = 2.0;
+/// The omen (the owl's cry, the karakoncolos's roar): frames it hangs over him, and what it makes
+/// of the next wound he takes.
 pub const DOOM_FRAMES: u16 = 240;
 pub const DOOM_MULT: f64 = 1.3;
 /// Venom: health it takes, and how often.
@@ -23,84 +23,30 @@ pub const FIRE_FRAMES: u16 = 180;
 pub const FIRE_RADIUS: f64 = 0.7;
 pub const SCORCH_EVERY: u16 = 20;
 pub const SCORCH_DAMAGE: f64 = 5.0;
-/// The call: tiles per second it draws him, and the share of that left while he walks away.
-pub const PULL_SPEED: f64 = 3.0;
-pub const PULL_RESISTED: f64 = 0.35;
 /// A shove: tiles per second for each tile it carries him, and the share of its speed each frame keeps.
 pub const SHOVE_SPEED: f64 = 9.0;
 pub const SHOVE_KEEP: f64 = 0.85;
-/// A hold: frames between bites; a pin's bite takes this share of the pounce's damage, a grab's
-/// damage comes in this many bites; each strike of his struggles this many frames off a pin.
-pub const BITE_EVERY: u16 = 12;
-pub const PIN_BITE: f64 = 0.3;
-pub const GRAB_BITES: u16 = 3;
-pub const STRUGGLE: u16 = 8;
-
-/// Held fast: by whom, frames left, frames to the next bite and between bites, what a bite takes,
-/// and whether it is a pin (struggled out of) or a grab.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Held {
-    pub by: u32,
-    pub left: u16,
-    pub bite: u16,
-    pub every: u16,
-    pub damage: f64,
-    pub pin: bool,
-}
 
 /// Why a wound came.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Wound {
+    Frost,
     Venom,
     Fire,
-    Bite,
 }
 
 /// Everything ailing him.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Ails {
-    pub chill: u16,
-    pub frozen: u16,
-    pub rooted: u16,
+    pub frost: u16,
     pub doom: u16,
     pub venom: u16,
     pub scorch: u16,
-    pub held: Option<Held>,
-    /// Drawn toward a caller: which duelist, and frames left.
-    pub pull: Option<(u32, u16)>,
     /// Shoved: tiles per second, fading.
     pub shove: V,
 }
 
 impl Ails {
-    /// Chilled: the first time he slows; chilled again while he still is, he freezes. True if he froze.
-    pub fn chill(&mut self) -> bool {
-        if self.chill > 0 {
-            self.chill = 0;
-            self.frozen = FREEZE_FRAMES;
-            true
-        } else {
-            self.chill = CHILL_FRAMES;
-            false
-        }
-    }
-
-    /// The share of his pace his ails leave him: none rooted, frozen or held; a little chilled.
-    pub fn pace(&self) -> f64 {
-        if self.rooted > 0 || self.frozen > 0 || self.held.is_some() {
-            0.0
-        } else if self.chill > 0 {
-            CHILL_PACE
-        } else {
-            1.0
-        }
-    }
-
-    /// He may leap (not rooted, frozen or held).
-    pub fn can_leap(&self) -> bool {
-        self.rooted == 0 && self.frozen == 0 && self.held.is_none()
-    }
-
     /// The doom on him, spent by a wound: what that wound is multiplied by.
     pub fn spend_doom(&mut self) -> f64 {
         if self.doom > 0 {
@@ -111,24 +57,20 @@ impl Ails {
         }
     }
 
-    /// He strikes while pinned: he struggles that much nearer to free.
-    pub fn struggle(&mut self) {
-        if let Some(h) = self.held.as_mut().filter(|h| h.pin) {
-            h.left = h.left.saturating_sub(STRUGGLE);
-        }
-    }
-
     /**
-     * One frame: the clocks run down, and the wounds that come due are returned: venom every
-     * `VENOM_EVERY` frames, fire every `SCORCH_EVERY` while he stands in it (`burning`), a hold's
-     * bites. A hold run out lets him go.
+     * One frame: the clocks run down, and the wounds that come due are returned: frostbite every
+     * `FROST_EVERY` frames and venom every `VENOM_EVERY`, fire every `SCORCH_EVERY` while he stands
+     * in it (`burning`).
      */
     pub fn step(&mut self, burning: bool) -> Vec<(f64, Wound)> {
         let mut out = Vec::new();
-        self.chill = self.chill.saturating_sub(1);
-        self.frozen = self.frozen.saturating_sub(1);
-        self.rooted = self.rooted.saturating_sub(1);
         self.doom = self.doom.saturating_sub(1);
+        if self.frost > 0 {
+            self.frost -= 1;
+            if self.frost.is_multiple_of(FROST_EVERY) {
+                out.push((FROST_DAMAGE, Wound::Frost));
+            }
+        }
         if self.venom > 0 {
             self.venom -= 1;
             if self.venom.is_multiple_of(VENOM_EVERY) {
@@ -143,20 +85,6 @@ impl Ails {
             self.scorch -= 1;
         } else {
             self.scorch = 0;
-        }
-        if let Some(h) = self.held.as_mut() {
-            h.bite = h.bite.saturating_sub(1);
-            if h.bite == 0 {
-                out.push((h.damage, Wound::Bite));
-                h.bite = h.every;
-            }
-            h.left = h.left.saturating_sub(1);
-            if h.left == 0 {
-                self.held = None;
-            }
-        }
-        if let Some((id, left)) = self.pull {
-            self.pull = (left > 1).then_some((id, left - 1));
         }
         self.shove = V::new(self.shove.x * SHOVE_KEEP, self.shove.y * SHOVE_KEEP);
         if len(self.shove) < 0.05 {
@@ -239,26 +167,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chilled_twice_he_freezes_and_venom_fire_and_bites_come_due() {
-        let mut a = Ails::default();
-        assert!(!a.chill());
-        assert_eq!(a.pace(), CHILL_PACE);
-        assert!(a.chill(), "chilled again while chilled");
-        assert!(a.frozen > 0 && a.pace() == 0.0 && !a.can_leap());
+    fn frostbite_venom_and_fire_come_due() {
+        // Frostbite bites every half second while it lasts, and is gone after.
+        let mut a = Ails { frost: FROST_FRAMES, ..Ails::default() };
+        let frost: Vec<_> = (0..FROST_FRAMES + 60).flat_map(|_| a.step(false)).collect();
+        assert_eq!(frost, vec![(FROST_DAMAGE, Wound::Frost); (FROST_FRAMES / FROST_EVERY) as usize]);
         let mut a = Ails { venom: 2 * VENOM_EVERY, ..Ails::default() };
         let wounds: Vec<_> = (0..2 * VENOM_EVERY).flat_map(|_| a.step(false)).collect();
         assert_eq!(wounds, vec![(VENOM_DAMAGE, Wound::Venom); 2]);
         let mut a = Ails::default();
         let fire: Vec<_> = (0..SCORCH_EVERY * 2).flat_map(|_| a.step(true)).collect();
         assert_eq!(fire.len(), 2, "on stepping in, and once more");
-        // A pin's bites, struggled short; then he is free.
-        let mut a =
-            Ails { held: Some(Held { by: 1, left: 60, bite: BITE_EVERY, every: BITE_EVERY, damage: 5.0, pin: true }), ..Ails::default() };
-        a.struggle();
-        a.struggle();
-        let bites = (0..60).flat_map(|_| a.step(false)).count();
-        assert_eq!(bites, 3, "44 frames held, a bite every 12");
-        assert!(a.held.is_none() && a.can_leap());
         // The omen's doom is spent by one wound.
         let mut a = Ails { doom: DOOM_FRAMES, ..Ails::default() };
         assert_eq!((a.spend_doom(), a.spend_doom()), (DOOM_MULT, 1.0));

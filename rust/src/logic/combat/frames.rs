@@ -34,21 +34,21 @@ pub enum MoveId {
     Kanabo,
     /// The tülükuş's dive: up out of reach, then down on the mark it has chosen.
     Dive,
-    /// The albastı's pounce: a leap that pins him under her.
+    /// The albastı's pounce: a leap that lands on him with all her weight.
     Pounce,
-    /// The cin's smokeless fire: a bolt that strikes him dumb.
+    /// The cin's smokeless fire: a bolt out of nowhere.
     Smokeless,
-    /// The arçura's roots: they burst from the floor under him and hold him fast.
+    /// The arçura's roots: they burst from the floor under him and lash him.
     Roots,
-    /// The karakoncolos's call: his name in a loved one's voice, drawing him in.
+    /// The karakoncolos's call: his name roared in a loved one's voice, and it dooms him.
     Call,
-    /// The gashadokuro's grab: two great hands, unblockable; it bites what it holds.
+    /// The gashadokuro's grab: two great hands, unblockable; it crushes what it closes on.
     Grab,
     /// The seven heads of the ejder: four bites one after another.
     Heads,
     /// The goryō's lightning: three marks, then the sky falls on them.
     Thunder,
-    /// The frost giant's wave of ice spikes down a lane: it chills.
+    /// The frost giant's wave of ice spikes down a lane: it frostbites.
     Frostwave,
     /// Níðhöggr dives under the floor and bursts up beneath him: venom.
     Burrow,
@@ -90,20 +90,10 @@ pub enum Rider {
     None,
     /// Shoves him this many tiles back, blocked or not (a sumo charge).
     Shove(f64),
-    /// Pins him under it for this many frames, choking; striking struggles him free sooner.
-    Pin(u16),
-    /// Holds him up for this many frames, biting.
-    Grab(u16),
-    /// Strikes him dumb for this many frames (cin çarpması).
-    Stun(u16),
-    /// Roots him where he stands for this many frames: no walking, no leap.
-    Root(u16),
-    /// Chills him: slower for a while; chilled again, he freezes.
-    Chill,
+    /// Frostbites him: the cold bites for a while, blocked or not (it never slows him).
+    Frost,
     /// Poisons him for this many frames.
     Venom(u16),
-    /// Draws him toward the caller through its active frames.
-    Pull,
     /// What it deals heals the one who dealt it.
     Drain,
     /// Raises this many of the dead.
@@ -426,7 +416,7 @@ impl MoveId {
                 startup: 26,
                 active: 8,
                 recovery: 34,
-                damage: 12.0,
+                damage: 22.0,
                 reach: 0.9,
                 half_angle: deg(70.0),
                 track: 16,
@@ -435,7 +425,6 @@ impl MoveId {
                 range: (1.6, 3.6),
                 off: (0.0, deg(30.0)),
                 line: true,
-                rider: Rider::Pin(64),
                 ..BASE
             },
             MoveId::Smokeless => MoveData {
@@ -452,7 +441,6 @@ impl MoveId {
                 range: (2.5, 7.5),
                 off: (0.0, deg(45.0)),
                 line: true,
-                rider: Rider::Stun(36),
                 ..BASE
             },
             MoveId::Roots => MoveData {
@@ -460,7 +448,7 @@ impl MoveId {
                 startup: 38,
                 active: 4,
                 recovery: 30,
-                damage: 14.0,
+                damage: 18.0,
                 reach: 8.0,
                 half_angle: 0.0,
                 track: 16,
@@ -468,7 +456,6 @@ impl MoveId {
                 range: (2.0, 8.0),
                 off: (0.0, deg(70.0)),
                 shape: Shape::Mark { radius: 1.0, count: 1 },
-                rider: Rider::Root(70),
                 ..BASE
             },
             MoveId::Call => MoveData {
@@ -483,7 +470,6 @@ impl MoveId {
                 off: (0.0, deg(50.0)),
                 line: true,
                 shape: Shape::Spell,
-                rider: Rider::Pull,
                 cooldown: 420,
                 ..BASE
             },
@@ -499,7 +485,6 @@ impl MoveId {
                 hitstop: 6,
                 range: (0.0, 2.0),
                 off: (0.0, deg(50.0)),
-                rider: Rider::Grab(40),
                 cooldown: 240,
                 unblockable: true,
                 ..BASE
@@ -550,7 +535,7 @@ impl MoveId {
                 off: (0.0, deg(30.0)),
                 line: true,
                 shape: Shape::Lane { width: 0.55 },
-                rider: Rider::Chill,
+                rider: Rider::Frost,
                 cooldown: 300,
                 unblockable: true,
                 ..BASE

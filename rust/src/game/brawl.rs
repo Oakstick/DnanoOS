@@ -8,15 +8,14 @@
 //! potion counts at once.
 //!
 //! The later stages' foes bring their legends (COMBAT.md §11): blows of new shapes (a lane, marks
-//! on the floor, a volley, a quake), what their blows carry (a shove, a pin, a grab, a stun, roots,
-//! chill, venom, a drain), the call that draws him in, the dead raised, illusions, a dragon that
-//! begs for a second blow, a ring that turns blades, fire left on the floor. What they do to him
-//! is his `Ails`.
+//! on the floor, a volley, a quake), what their blows carry (a shove, frostbite, venom, a drain),
+//! the roar that dooms him, the dead raised, illusions, a dragon that begs for a second blow, a
+//! ring that turns blades, fire left on the floor. What they do to him is his `Ails`; none of it
+//! slows him, holds him or roots him.
 
 use super::Game;
 use crate::audio::Sfx;
-use crate::logic::combat::ails::{Ails, Flash, FlashKind, Hazard, Held, Wound, BITE_EVERY, DOOM_FRAMES, FIRE_FRAMES, FIRE_RADIUS};
-use crate::logic::combat::ails::{FREEZE_FRAMES, GRAB_BITES, PIN_BITE, PULL_RESISTED, PULL_SPEED, SHOVE_SPEED};
+use crate::logic::combat::ails::{Ails, Flash, FlashKind, Hazard, Wound, DOOM_FRAMES, FIRE_FRAMES, FIRE_RADIUS, FROST_FRAMES, SHOVE_SPEED};
 use crate::logic::combat::archetype::Power;
 use crate::logic::combat::duelist::{bolt_tint, Arena, Bolt, Cue, Den, Flow, GridTerrain, Lore, Sense, Terrain, HERO_RADIUS};
 use crate::logic::combat::duelist::{CONJURE_AT, MAX_RAISED, PLEA_FRAMES, PLEA_HEALTH, RISE_FRAMES, SPILL_FRAMES};
@@ -258,11 +257,6 @@ impl Brawl {
         self.hero.evade_total = f.evade_total;
         self.hero.break_frames = f.break_frames;
     }
-
-    /// The duelist that holds him, if one does.
-    pub fn holder(&self) -> Option<u32> {
-        self.ails.held.map(|h| h.by)
-    }
 }
 
 impl Game {
@@ -303,18 +297,13 @@ impl Game {
         k
     }
 
-    /// His buttons: attack and evade into his fighter's buffer (pinned, a strike is a struggle;
-    /// rooted, frozen or held, he cannot leap); the guard as held.
+    /// His buttons: attack and evade into his fighter's buffer; the guard as held.
     pub(super) fn brawl_input(&mut self, attack: bool, evade: bool, guard: bool) {
         let Some(b) = self.brawl.as_mut() else { return };
         if attack {
-            if b.ails.held.is_some() {
-                b.ails.struggle();
-            } else {
-                b.hero.press(Input::Attack);
-            }
+            b.hero.press(Input::Attack);
         }
-        if evade && b.ails.can_leap() {
+        if evade {
             b.hero.press(Input::Evade);
         }
         b.hero.guard_held = guard;
@@ -383,7 +372,7 @@ impl Game {
                         }
                     }
                 }
-                Event::Evade if self.brawl.as_ref().is_some_and(|b| b.ails.can_leap()) && self.hero.try_jump(&self.level.grid) => {
+                Event::Evade if self.hero.try_jump(&self.level.grid) => {
                     self.audio.play(Sfx::Jump);
                     if let Some(b) = self.brawl.as_mut() {
                         b.hero.evade();
@@ -393,7 +382,7 @@ impl Game {
             }
         }
         let Some(b) = self.brawl.as_ref() else { return };
-        self.hero.root = b.hero.root() * b.ails.pace();
+        self.hero.root = b.hero.root();
         self.hero.blocking = matches!(b.hero.state, State::Guard { .. } | State::Reel { kind: Reel::Blockstun, .. });
         let live = b.live;
         self.hero_strikes();
@@ -667,8 +656,8 @@ impl Game {
         }
     }
 
-    /// He is carried `step` tiles by a legend (a shove, a call, a giant's hand); in the ring, no
-    /// farther than its edge (only his own feet take him out of a bout).
+    /// He is carried `step` tiles by a legend (a shove); in the ring, no farther than its edge
+    /// (only his own feet take him out of a bout).
     fn carry_hero(&mut self, step: V) {
         let mut step = step;
         if self.brawl.as_ref().is_some_and(|b| b.field == Field::Ring) {
@@ -867,7 +856,6 @@ impl Game {
         let sense = Sense { hero: hp, aim: self.hero.aim(), swing };
         let ids = self.duelists();
         let frame = self.brawl.as_ref().map(|b| b.threat.frame).unwrap_or(0);
-        let holder = self.brawl.as_ref().and_then(|b| b.holder());
         self.count_the_raised(&ids);
 
         // Their fighters: a hex looses its bolts; a move's first active frame does its work (a
@@ -951,12 +939,12 @@ impl Game {
         self.read_cues(&ids);
 
         // Tokens: the engaged ask, the manager grants (one a frame at most); holders on their way update
-        // their plans. (Not one felled, rising, gone in smoke, or holding him.)
+        // their plans. (Not one felled, rising, or gone in smoke.)
         let b = self.brawl.as_mut().unwrap();
         let mut requests = Vec::new();
         for &i in &ids {
             let du = self.enemies[i].duel.as_ref().unwrap();
-            if !du.engaged() || du.puppet || du.begging() || du.lore.rise > 0 || du.lore.vanish > 0 || holder == Some(du.id) {
+            if !du.engaged() || du.puppet || du.begging() || du.lore.rise > 0 || du.lore.vanish > 0 {
                 continue;
             }
             if du.token {
@@ -1018,8 +1006,7 @@ impl Game {
             }
         }
 
-        // Their minds: each moves, and a token holder in reach asks the commit gate to strike. (One
-        // holding him keeps hold of him.)
+        // Their minds: each moves, and a token holder in reach asks the commit gate to strike.
         let bodies: Vec<(u32, V, f64)> = ids
             .iter()
             .map(|&i| self.enemies[i].duel.as_ref().unwrap())
@@ -1029,8 +1016,8 @@ impl Game {
         let mut began = Vec::new();
         for &i in &ids {
             let du = self.enemies[i].duel.as_mut().unwrap();
-            if du.den.is_some_and(|d| !d.awake) || holder == Some(du.id) {
-                continue; // asleep, or holding him
+            if du.den.is_some_and(|d| !d.awake) {
+                continue; // asleep
             }
             if du.puppet {
                 // Moved and set going by whoever holds its strings; its moves play out below.
@@ -1175,20 +1162,25 @@ impl Game {
         }
     }
 
-    /// A move's first active frame, beyond its blow: the call heard, the dead raised, the ground
+    /// A move's first active frame, beyond its blow: the roar heard, the dead raised, the ground
     /// shaken, lightning, roots, an eruption, ice, a dive come down; Surtr's blade sets the floor alight.
     fn first_active(&mut self, i: usize, mv: MoveId) {
         let Some(du) = self.enemies[i].duel.as_ref() else { return };
-        let (id, pos, aim, power, marks) = (du.id, du.pos, du.aim, du.breed.power, du.lore.marks);
+        let (pos, aim, power, marks) = (du.pos, du.aim, du.breed.power, du.lore.marks);
         let d = du.data(mv);
         let hp = self.hero.pos();
         match mv {
             MoveId::Call => {
-                if let Some(b) = self.brawl.as_mut() {
-                    b.ails.pull = Some((id, d.active));
-                }
+                // His name roared in a loved one's voice: heard within its reach, it dooms him.
                 let name = self.hero_kind.name().to_uppercase();
-                self.floater(hp.x, hp.y - 1.4, format!("\"{name}...\""), 1.6, Some(0xa8d8ff));
+                if math::len(math::sub(hp, pos)) <= d.reach {
+                    if let Some(b) = self.brawl.as_mut() {
+                        b.ails.doom = DOOM_FRAMES;
+                    }
+                    self.floater(hp.x, hp.y - 1.4, format!("\"{name}!\" DOOMED"), 1.6, Some(0xb08aff));
+                } else {
+                    self.floater(hp.x, hp.y - 1.4, format!("\"{name}...\""), 1.6, Some(0xa8d8ff));
+                }
             }
             MoveId::Raise => self.raise_dead(i),
             MoveId::Kanabo => {
@@ -1283,8 +1275,7 @@ impl Game {
     }
 
     /**
-     * The legends' work on him this frame: a hold keeps him where his holder has him and bites, a
-     * call draws him in (less while he walks away), a shove carries him, venom and Surtr's fire
+     * The legends' work on him this frame: a shove carries him, frostbite, venom and Surtr's fire
      * burn; the fires and the scene's marks age.
      */
     fn update_ails(&mut self) {
@@ -1299,71 +1290,17 @@ impl Game {
             f.age += 1;
         }
         b.flashes.retain(|f| f.age < f.life);
-        let was = b.ails.held;
         let wounds = b.ails.step(burning);
-        let (held, pull, shove) = (b.ails.held, b.ails.pull, b.ails.shove);
-        if let (Some(h), None) = (was, held) {
-            // Let go: he can act again; the albastı springs off him.
-            if b.hero.reeling().is_some() {
-                b.hero.state = State::Reel { kind: Reel::Hitstun, left: 1, total: 1 };
-            }
-            if let Some(k) = self.duelist_index(h.by) {
-                if let Some(d) = self.enemies[k].duel.as_mut().filter(|_| h.pin) {
-                    d.backstep = 20;
-                }
-            }
-        }
-        if let Some(h) = held {
-            // Held where his holder has him: up in a giant's hand before it, or under the albastı.
-            if let Some(k) = self.duelist_index(h.by) {
-                let d = self.enemies[k].duel.as_mut().unwrap();
-                let at = if h.pin { hp } else { math::add(d.pos, math::scale(d.facing, d.radius() + HERO_RADIUS + 0.1)) };
-                if h.pin {
-                    d.pos = math::sub(hp, math::scale(d.facing, 0.15));
-                }
-                self.carry_hero(math::sub(at, hp));
-            }
-            if let Some(b) = self.brawl.as_mut() {
-                if b.hero.reeling().is_none() {
-                    b.hero.state = State::Reel { kind: Reel::Hitstun, left: h.left.max(1), total: h.left.max(1) };
-                }
-            }
-        }
-        if let Some((id, _)) = pull {
-            match self
-                .duelist_index(id)
-                .and_then(|k| self.enemies[k].duel.as_ref())
-                .filter(|d| d.alive() && d.f.active() == Some(MoveId::Call))
-            {
-                Some(d) => {
-                    let to = math::sub(d.pos, hp);
-                    if math::len(to) > d.radius() + HERO_RADIUS + 0.6 {
-                        let dir = math::norm(to);
-                        let away = math::dot(math::norm(self.hero.wish), dir) < -0.3;
-                        let speed = PULL_SPEED * if away { PULL_RESISTED } else { 1.0 };
-                        self.carry_hero(math::scale(dir, speed / 60.0));
-                    }
-                }
-                None => {
-                    if let Some(b) = self.brawl.as_mut() {
-                        b.ails.pull = None;
-                    }
-                }
-            }
-        }
+        let shove = b.ails.shove;
         if math::len(shove) > 0.0 {
             self.carry_hero(math::scale(shove, 1.0 / 60.0));
         }
         for (amount, why) in wounds {
             let color = match why {
+                Wound::Frost => 0x9ad8ff,
                 Wound::Venom => 0x8ad04a,
                 Wound::Fire => 0xff7a2a,
-                Wound::Bite => 0xff4a3a,
             };
-            if why == Wound::Bite {
-                self.audio.play(Sfx::Hurt);
-                self.view.shake(0.15);
-            }
             let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0);
             self.wound_hero((amount * taken).round(), color);
             if tracing() {
@@ -1446,9 +1383,7 @@ impl Game {
                 if swinging {
                     b.stats.caught += 1;
                 }
-                // A grab's damage comes in its bites, while it holds him.
-                let dealt = if matches!(blow.rider, Rider::Grab(_)) { 0.0 } else { damage };
-                let r = b.hero.take_hit(&Hit { damage: dealt, hitstun: math::hero_hitstun(damage), ..Default::default() });
+                let r = b.hero.take_hit(&Hit { damage, hitstun: math::hero_hitstun(damage), ..Default::default() });
                 loss = (r.damage * kit.taken).round();
                 self.hitstop = self.hitstop.max(secs(blow.hitstop));
                 self.audio.play(Sfx::Hurt);
@@ -1466,7 +1401,7 @@ impl Game {
         match (def, blow.rider) {
             (Defense::Open, rider) => self.ride(rider, &blow, loss),
             (Defense::Blocked | Defense::GuardBroken, Rider::Shove(tiles)) => self.ride(Rider::Shove(tiles * 0.5), &blow, 0.0),
-            (Defense::Blocked | Defense::GuardBroken, Rider::Chill) => self.ride(Rider::Chill, &blow, 0.0),
+            (Defense::Blocked | Defense::GuardBroken, Rider::Frost) => self.ride(Rider::Frost, &blow, 0.0),
             _ => {}
         }
         if loss > 0.0 {
@@ -1481,8 +1416,8 @@ impl Game {
         def
     }
 
-    /// What a blow carries, on him: a shove, a pin or a grab (held, and nothing else falls on him
-    /// meanwhile), a stun, roots, chill (or freezing), venom; a drain heals the one who struck.
+    /// What a blow carries, on him: a shove, frostbite, venom; a drain heals the one who struck.
+    /// (None of it slows him or holds him.)
     fn ride(&mut self, rider: Rider, blow: &Blow, loss: f64) {
         let hp = self.hero.pos();
         if rider == Rider::Drain {
@@ -1494,54 +1429,20 @@ impl Game {
             return;
         }
         let Some(b) = self.brawl.as_mut() else { return };
-        let frame = b.threat.frame;
-        let hold = |b: &mut Brawl, frames: u16, held: Held| {
-            b.ails.held = Some(held);
-            b.hero.state = State::Reel { kind: Reel::Hitstun, left: frames, total: frames };
-            b.threat.quiet_until = b.threat.quiet_until.max(frame + frames as u32 + SPACING);
-        };
         let (text, color) = match rider {
-            Rider::None | Rider::Pull | Rider::Raise(_) => return,
+            Rider::None | Rider::Raise(_) | Rider::Drain => return,
             Rider::Shove(tiles) => {
                 b.ails.shove = math::scale(math::norm(math::sub(hp, blow.from)), SHOVE_SPEED * tiles);
                 return;
             }
-            Rider::Pin(frames) => {
-                let damage = blow.damage * PIN_BITE;
-                hold(b, frames, Held { by: blow.by, left: frames, bite: BITE_EVERY, every: BITE_EVERY, damage, pin: true });
-                ("PINNED! STRIKE TO STRUGGLE FREE", 0xd04a5a)
-            }
-            Rider::Grab(frames) => {
-                let every = frames / (GRAB_BITES + 1);
-                let damage = blow.damage / GRAB_BITES as f64;
-                hold(b, frames, Held { by: blow.by, left: frames, bite: every, every, damage, pin: false });
-                ("SEIZED!", 0xe8e0c0)
-            }
-            Rider::Stun(frames) => {
-                let left = match b.hero.state {
-                    State::Reel { left, .. } => left.max(frames),
-                    _ => frames,
-                };
-                b.hero.state = State::Reel { kind: Reel::Hitstun, left, total: left };
-                ("STRUCK DUMB", 0xfff2c8)
-            }
-            Rider::Root(frames) => {
-                b.ails.rooted = frames;
-                ("ROOTED", 0x6ad050)
-            }
-            Rider::Chill => {
-                if b.ails.chill() {
-                    b.hero.state = State::Reel { kind: Reel::Hitstun, left: FREEZE_FRAMES, total: FREEZE_FRAMES };
-                    ("FROZEN SOLID!", 0xc8f0ff)
-                } else {
-                    ("CHILLED", 0x9ad8ff)
-                }
+            Rider::Frost => {
+                b.ails.frost = FROST_FRAMES;
+                ("FROSTBITE", 0x9ad8ff)
             }
             Rider::Venom(frames) => {
                 b.ails.venom = b.ails.venom.max(frames);
                 ("VENOM", 0x8ad04a)
             }
-            Rider::Drain => return,
         };
         self.floater(hp.x, hp.y - 1.25, text, 1.1, Some(color));
     }

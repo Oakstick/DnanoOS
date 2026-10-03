@@ -9,8 +9,8 @@
 //! the skull, a spiked crescent staff in her right hand. Each faces +z, stands in the middle of its
 //! grid (where its rig sets it down), and is sculpted in the parts its rig swings.
 //!
-//! Between them they fight all three ways (COMBAT.md §10): the frost giant's blows chill you, and
-//! chilled twice you freeze solid; Surtr's flaming sword leaves the ground burning behind it (both
+//! Between them they fight all three ways (COMBAT.md §10): the frost giant's blows frostbite you,
+//! and the frost bites on a while; Surtr's flaming sword leaves the ground burning behind it (both
 //! melee); Níðhöggr burrows under the ground and bursts up beneath you, and its bite is venom
 //! (body); Hel's bolts drain your life into hers, and she raises the dead (distance).
 //!

@@ -268,11 +268,11 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | 8 The Night Parade | the third stage's five | every way of attacking at once |
 | 9 The Iron Club | oni + kappa | an unstoppable club, a charge that shoves |
 | 10 The Fox's Wedding | the fourth stage's four | a neck across the room, foxfire and illusions |
-| 11 The Call in the Cold | karakoncolos + tülükuş | drawn in by a call; a dive from out of reach |
-| 12 Zemheri Nights | the fifth stage's five | pins, roots, a stun, a vanishing, all at once |
+| 11 The Call in the Cold | karakoncolos + tülükuş | doomed by a roar and a cry; a dive from out of reach |
+| 12 Zemheri Nights | the fifth stage's five | a pounce, roots, fire out of nowhere, a vanishing, all at once |
 | 13 The One Eye | Tepegöz | a body no blade cuts: strike the eye when it comes within reach |
 | 14 The Old Tales | the sixth stage's four | a grab, seven heads and a plea, lightning from a ghost |
-| 15 Fire and Ice | frost giant + Surtr | chill through the shield, fire on the floor |
+| 15 Fire and Ice | frost giant + Surtr | frostbite through the shield, fire on the floor |
 | 16 Ragnarök | the seventh stage's four | the end of the world: everything above, harder |
 
 Bouts 1-5 are the lab: the archetypes in their own bodies. Bouts 6-8 bring the third stage's
@@ -750,10 +750,12 @@ four stages, their powers and attacks drawn from their legends. Every body is st
 archetype, and so attacks one of the three ways (§10). Each also brings its legend in three
 parts, systematic as the archetypes are:
 
-* **A move of its own**: a variation on its archetype's verb. It is a lunge that shoves, a bolt that
-  stuns, or a slam that shakes the ground. It is frame data like any other move, held to the same
-  design limits.
-* **A rider**: what its blows carry besides their damage.
+* **A move of its own**: a variation on its archetype's verb. It is a lunge that shoves, a bolt out
+  of nowhere, or a slam that shakes the ground. It is frame data like any other move, held to the
+  same design limits.
+* **A rider**: what its blows carry besides their damage. No rider slows him, holds him, roots him
+  or drags him: a legend hurts, dooms or shoves, and only the ordinary hitstun of a landed blow
+  stops him (`ails` keeps no pace of its own).
 * **A power**: one rule from its legend on top of the frame data.
 
 ### 11.1 The stages
@@ -778,16 +780,16 @@ sculpted at a coarser voxel, 0.02 to 0.025, and stand two and a half to three ti
 | Kappa | the dish of water on its head is its strength; bow to it and it bows back, and spills it | **Sumo Charge**: a lunge that shoves him 2.2 tiles back (1.1 through a block). Parried, it bows and its dish spills: for 6 s it takes ×1.75 damage at 60% of its pace |
 | Rokurokubi | by night her neck stretches across the room | **Neck Lash**: her head flies 4.6 tiles down a lane and back; she cannot use it on a hero who comes close |
 | Kitsune | foxfire (*kitsune-bi*), and illusions | **Foxfire**: three bolts in a fan, one strike to the threat manager. Wounded below 70% and again below 35%, it conjures two illusions and swaps places with one of them. One blow pops an illusion, its foxfire is harmless, and it casts no light |
-| Karakoncolos | on the coldest nights it calls people out by name in a loved one's voice | **The Call**: draws him in at 3 tiles a second for 45 frames (a third of that while he walks away), then it asks at once for the blow |
+| Karakoncolos | on the coldest nights it calls people out by name in a loved one's voice | **The Call**: it roars his name; heard within its 7 tiles as the roar begins, it dooms him as the owl's cry does (his next wound ×1.3, for 4 s). He is not drawn in |
 | Tülükuş | an owl's cry foretells a death; it flies without a sound | **Dive**: up out of reach (no blow touches it) and down on its mark, which follows him at half his pace. Its cry as it takes wing dooms him: his next wound ×1.3 |
-| Albastı | the night hag who sits on a sleeper's chest | **Pounce**: a leap that pins him for 64 frames, a bite every 12; each strike of his struggles 8 frames off. She is a shadow with red eyes until she pounces |
-| Cin | made of smokeless fire, seen only when it wishes; *cin çarpması*, struck by a cin | **Smokeless Fire**: a bolt that strikes him dumb for 36 frames. Come within 2.6 tiles and it vanishes in smoke, to stand 6 tiles off (once every 5 s) |
-| Arçura | grows as tall as a tree or as small as a blade of grass; guards the forest | **Roots**: a ring on the floor; the roots burst up and hold him 70 frames (no walking, no leap). It grows to cast, and slips away half again as fast, shrunk to the grass |
+| Albastı | the night hag who sits on a sleeper's chest | **Pounce**: a leap that lands with all her weight (22, where it was 12 and a pin); no pin. She is a shadow with red eyes until she pounces |
+| Cin | made of smokeless fire, seen only when it wishes; *cin çarpması*, struck by a cin | **Smokeless Fire**: a bolt out of nowhere, an ordinary hit (only the usual hitstun). Come within 2.6 tiles and it vanishes in smoke, to stand 6 tiles off (once every 5 s) |
+| Arçura | grows as tall as a tree or as small as a blade of grass; guards the forest | **Roots**: a ring on the floor; the roots burst up and lash him (18, where it was 14 and a 70-frame hold); he stays free. It grows to cast, and slips away half again as fast, shrunk to the grass |
 | Tepegöz | his mother the peri's ring made his body proof against blade and arrow; Basat struck his one eye | **The Ring**: 15% of every blow, damage and poise alike, unless his eye is within reach: in his recovery, or reeling. Then the whole blow lands, and his eye lights up |
-| Gashadokuro | the skeleton of the starved: a ringing in the ears, then its hands | **Grab**: two hands no shield holds (parry them, or leap); it holds him 40 frames and bites three times. A bell is its tell |
+| Gashadokuro | the skeleton of the starved: a ringing in the ears, then its hands | **Grab**: two hands no shield holds (parry them, or leap); they crush him, the whole 30 at once, and let go. A bell is its tell |
 | Yedi başlı ejder | the seven-headed dragon on the town's spring; felled, it begs *"Bir daha vur!"* | **Seven Heads**: four bites in one lunge (one strike; a parry stops them all). Felled, it begs for 150 frames: a second blow brings it back at a seventh of its health (a head grown again); restraint kills it ("my mother bore me but once") |
 | Goryō | the wrath of a wronged noble: Michizane's struck the palace as lightning | **Thunder**: three marks, one on him and one either side, then lightning. Nothing touches it but while it rages (in its moves) |
-| Frost giant | the rime-giants of Jötunheim | **Rime**: its blows chill, even through the shield (55% pace for 3 s; chilled again, frozen 50 frames). **Frost Wave**: a lane of ice spikes that neither shield nor parry turns |
+| Frost giant | the rime-giants of Jötunheim | **Rime**: its blows frostbite, even through the shield: 2 health every half second for 3 s (struck again, the 3 s start over). It never slows him. **Frost Wave**: a lane of ice spikes that neither shield nor parry turns |
 | Surtr | the fire giant of Muspelheim, whose sword burns the world | **Fire**: his slam and sweep leave fire on the floor for 3 s: 5 health every 20 frames he stands in it |
 | Níðhöggr | the dragon gnawing the roots of Yggdrasil from below | **Burrow**: into the floor, along under it (out of reach) and up beneath him on its mark. Its bites are venom: 3 health every half second for 2 s |
 | Hel | Loki's daughter, half living and half corpse, queen of the dead | **Raise the Dead**: two draugr climb out of the floor about him; they fall when she does. Her bolts drain: what they deal, she heals |
@@ -801,14 +803,14 @@ sculpted at a coarser voxel, 0.02 to 0.025, and stand two and a half to three ti
 | Foxfire | 34 | 1 | 32 | 9 ×3 | volley of three, ±0.28 rad | |
 | Kanabō | 46 | 6 | 52 | 32 | cone; quake 2.3 at 45% | (unstoppable) |
 | Dive | 40 | 6 | 34 | 24 | mark 0.85 | |
-| Pounce | 26 | 8 | 34 | 12 | lunge, 3.0 travel | pin 64 |
-| Smokeless Fire | 36 | 1 | 30 | 14 | bolt | stun 36 |
-| Roots | 38 | 4 | 30 | 14 | mark 1.0 | root 70 |
-| The Call | 30 | 45 | 12 | | spell | pull |
-| Grab | 40 | 8 | 44 | 30 | cone 2.0, unblockable | grab 40 |
+| Pounce | 26 | 8 | 34 | 22 | lunge, 3.0 travel | |
+| Smokeless Fire | 36 | 1 | 30 | 14 | bolt | |
+| Roots | 38 | 4 | 30 | 18 | mark 1.0 | |
+| The Call | 30 | 45 | 12 | | spell | (doom) |
+| Grab | 40 | 8 | 44 | 30 | cone 2.0, unblockable | |
 | Seven Heads | 30 | 24 | 34 | 10 ×4 | cone, 1.0 travel, four bites | |
 | Thunder | 44 | 4 | 32 | 22 | three marks 0.85 | |
-| Frost Wave | 40 | 10 | 40 | 18 | lane 4.5, 0.55 wide, unblockable | chill |
+| Frost Wave | 40 | 10 | 40 | 18 | lane 4.5, 0.55 wide, unblockable | frost |
 | Burrow | 60 | 6 | 40 | 26 | mark 1.0 | venom 120 |
 | Raise the Dead | 50 | 1 | 40 | | spell | raise 2 |
 
@@ -825,19 +827,20 @@ A move's range and angle to begin it are now in its data (`range`, `off`, `line`
 rest between uses (`cooldown`). A foe takes the first move it knows whose conditions hold, so the
 lab's choices are the same table as before.
 
-### 11.4 What the guard can do, and what holds him
+### 11.4 What the guard can do
 
 * **Guarding:** most blows are blocked or parried. A grab is parried only (`GuardRule::ParryOnly`).
   Marks on the floor and the wave of ice are neither (`GuardRule::Bare`): he walks out of them, or
   leaps. The leap is airborne, and every blow passes under it.
-* **Holds:** while a pin or a grab holds him, the threat manager falls quiet (`quiet_until`). No
-  token is granted and no strike begun until the hold ends, and `SPACING` after.
+* **Nothing holds him:** no legend pins, grabs, roots, freezes, stuns past the ordinary hitstun,
+  or drags him. (The pin, the grab's hold, the roots, the freeze, the long stun and the call's
+  pull were cut: the bites they dealt went into the blows.)
 * **Counting strikes:** a volley lands as one strike, and so does a flurry; neither counts as an
   overlap with itself.
-* **The ring's edge:** no shove, call or giant's hand carries him out of a bout (`carry_hero`).
-* **His ails** (`combat::ails`) are each a clock in frames: chill and frozen, rooted, doom, venom,
-  the fire underfoot, held, pulled, shoved. They show about him (a block of ice, roots at his feet,
-  a dark sigil, venom's bubbles) and in a line on screen.
+* **The ring's edge:** no shove carries him out of a bout (`carry_hero`).
+* **His ails** (`combat::ails`) are each a clock in frames: frostbite, doom, venom, the fire
+  underfoot, shoved. None of them touches his pace. They show about him (frost's motes, a dark
+  sigil, venom's bubbles) and in a line on screen.
 
 ### 11.5 The breeds
 

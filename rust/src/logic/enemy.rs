@@ -50,25 +50,25 @@ pub enum EnemyKind {
     // ---- the fifth stage: Anatolian nights
     /// The tülükuş: an owl demon that dives without a sound; its hoot foretells a death.
     Tulukus,
-    /// The albastı: a night hag who pounces and pins her prey like a nightmare on the chest.
+    /// The albastı: a night hag who pounces with the weight of a nightmare on the chest.
     Albasti,
-    /// The cin: a spirit of smokeless fire that strikes men dumb, and vanishes at will.
+    /// The cin: a spirit of smokeless fire that strikes out of nowhere, and vanishes at will.
     Cin,
     /// The arçura: a forest spirit that makes roots burst from the ground, and changes its size.
     Arcura,
-    /// The karakoncolos: a winter demon that calls its prey by name, then strikes.
+    /// The karakoncolos: a winter demon that roars its prey's name, dooming it, then strikes.
     Karakoncolos,
     // ---- the sixth stage: the legends
     /// Tepegöz: the one-eyed giant whose body no blade can cut; only his eye can be hurt.
     Tepegoz,
-    /// The gashadokuro: a giant skeleton of the starved, heard before it is seen; it grabs.
+    /// The gashadokuro: a giant skeleton of the starved, heard before it is seen; it crushes.
     Gashadokuro,
     /// The yedi başlı ejder: a seven-headed dragon; struck down, it begs for a second blow.
     Ejder,
     /// The goryō: a wronged noble's ghost that calls down lightning, untouchable but in its wrath.
     Goryo,
     // ---- the seventh stage: Ragnarök
-    /// The frost giant: its blows chill; chilled twice, a man freezes solid.
+    /// The frost giant: its blows frostbite, and the frost bites on a while.
     FrostGiant,
     /// Surtr: the fire giant whose flaming sword leaves the ground burning.
     Surtr,

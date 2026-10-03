@@ -418,27 +418,24 @@ fn bowed_to_the_kappa_spills_its_dish_and_the_oni_shakes_the_ground_round_him() 
     assert!(lost > 0 && lost < 25, "a share of the blow reached him: {lost}");
 }
 
+/// After the ordinary hitstun of a blow he walks at his whole pace: nothing a legend does holds him.
+fn free_after_the_blow(g: &mut Game, what: &str) {
+    frames(g, 50);
+    assert!(g.brawl.as_ref().unwrap().hero.reeling().is_none(), "{what}: still reeling");
+    assert_eq!(g.hero.root, 1.0, "{what}: slowed");
+}
+
 #[test]
-fn the_albasti_pins_him_and_striking_struggles_him_free_sooner() {
-    let held_for = |mash: bool| {
-        let mut g = legend(EnemyKind::Albasti, 2.4);
-        strike(&mut g, MoveId::Pounce);
-        frames(&mut g, MoveId::Pounce.data().startup + 4);
-        assert!(ails(&g).held.is_some_and(|h| h.pin), "pinned");
-        let mut n = 0;
-        while ails(&g).held.is_some() && n < 200 {
-            if mash && n % 2 == 0 {
-                g.input.inject(Action::Attack);
-            }
-            frames(&mut g, 1);
-            n += 1;
-        }
-        (n, g.hero.max_hp - g.hero.hp)
-    };
-    let (still, lost_still) = held_for(false);
-    let (struggling, lost_struggling) = held_for(true);
-    assert!(struggling < still - 20, "struggling frees him sooner: {struggling} against {still} frames");
-    assert!(lost_struggling < lost_still, "and costs him less: {lost_struggling} against {lost_still}");
+fn the_albastis_pounce_and_the_gashadokuros_grab_land_hard_all_at_once_and_let_him_go() {
+    for (kind, mv, gap) in [(EnemyKind::Albasti, MoveId::Pounce, 2.4), (EnemyKind::Gashadokuro, MoveId::Grab, 1.4)] {
+        let mut g = legend(kind, gap);
+        strike(&mut g, mv);
+        frames(&mut g, mv.data().startup + mv.data().active + 2);
+        let lost = g.hero.max_hp - g.hero.hp;
+        assert!(lost as f64 >= mv.data().damage * 0.6, "{kind:?}: the whole blow at once: {lost}");
+        free_after_the_blow(&mut g, mv.data().name);
+        assert_eq!(g.hero.max_hp - g.hero.hp, lost, "{kind:?}: nothing more bites him after");
+    }
 }
 
 #[test]
@@ -499,26 +496,26 @@ fn tepegoz_takes_a_share_of_a_blow_but_the_whole_of_it_on_his_eye() {
 }
 
 #[test]
-fn the_cins_fire_strikes_him_dumb_roots_hold_him_and_chilled_twice_he_freezes() {
+fn the_cins_fire_and_the_roots_only_hurt_and_the_frost_giants_cold_bites_on_without_slowing_him() {
     let mut g = legend(EnemyKind::Cin, 4.0);
     strike(&mut g, MoveId::Smokeless);
     frames(&mut g, 80);
     assert!(g.hero.hp < g.hero.max_hp);
+    free_after_the_blow(&mut g, "smokeless fire");
     let mut g = legend(EnemyKind::Arcura, 4.0);
     strike(&mut g, MoveId::Roots);
     frames(&mut g, MoveId::Roots.data().startup + 2);
-    assert!(ails(&g).rooted > 0 && g.hero.root == 0.0, "rooted");
+    assert!(g.hero.hp < g.hero.max_hp, "the roots lash him");
+    assert!(g.brawl.as_ref().unwrap().flashes.iter().any(|f| f.kind == crate::logic::combat::ails::FlashKind::Roots));
+    free_after_the_blow(&mut g, "roots");
+    // Frostbite: struck by the giant, the cold keeps biting while he walks at his whole pace.
     let mut g = legend(EnemyKind::FrostGiant, 1.6);
     strike(&mut g, MoveId::Slam);
     frames(&mut g, MoveId::Slam.data().startup + 2);
-    assert!(ails(&g).chill > 0, "chilled");
-    let d = duel_mut(&mut g, 0);
-    d.f = Breed::of(EnemyKind::FrostGiant).fighter();
-    d.token = false;
-    frames(&mut g, 40);
-    strike(&mut g, MoveId::Slam);
-    frames(&mut g, MoveId::Slam.data().startup + 2);
-    assert!(ails(&g).frozen > 0, "frozen solid: {:?}", ails(&g));
+    assert!(ails(&g).frost > 0, "frostbitten");
+    let after_blow = g.hero.hp;
+    free_after_the_blow(&mut g, "frostbite");
+    assert!(ails(&g).frost > 0 && g.hero.hp < after_blow, "the cold bites on: {} from {after_blow}", g.hero.hp);
 }
 
 #[test]
@@ -544,7 +541,7 @@ fn surtr_leaves_the_floor_burning_hel_raises_the_dead_and_they_fall_with_her() {
 }
 
 #[test]
-fn the_kitsune_conjures_illusions_a_blow_undoes_and_the_call_draws_him_in() {
+fn the_kitsune_conjures_illusions_a_blow_undoes_and_the_karakoncolos_roar_dooms_him() {
     let mut g = legend(EnemyKind::Kitsune, 1.4);
     let max = duel(&g, 0).max_hp;
     duel_mut(&mut g, 0).hp = max * 0.72;
@@ -557,10 +554,16 @@ fn the_kitsune_conjures_illusions_a_blow_undoes_and_the_call_draws_him_in() {
     let hp = g.hero.pos();
     g.call_duel_hit(k, hp);
     assert!(!g.enemies[k].duel.as_ref().unwrap().alive(), "one blow and it is gone");
-    // The karakoncolos calls: he is drawn toward it.
+    // The karakoncolos roars his name: it dooms him, and he stays where he stands.
     let mut g = legend(EnemyKind::Karakoncolos, 5.0);
-    let y0 = g.hero.pos().y;
+    let at = g.hero.pos();
     strike(&mut g, MoveId::Call);
     frames(&mut g, MoveId::Call.data().startup + 30);
-    assert!(g.hero.pos().y < y0 - 0.8, "drawn in: {} from {y0}", g.hero.pos().y);
+    assert!(ails(&g).doom > 0, "doomed");
+    assert!(
+        crate::logic::combat::math::len(crate::logic::combat::math::sub(g.hero.pos(), at)) < 0.05,
+        "not drawn in: {:?} from {at:?}",
+        g.hero.pos()
+    );
+    assert_eq!(g.hero.root, 1.0);
 }

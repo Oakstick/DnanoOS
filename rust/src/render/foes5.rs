@@ -9,10 +9,10 @@
 //! sculpted in the parts its rig swings.
 //!
 //! Between them they fight all three ways (COMBAT.md §10). The karakoncolos comes to blows: it
-//! calls you by name in the voice of someone you love, then strikes with its claws. The tülükuş
-//! and the albastı throw their whole bodies at you: the owl dives without a sound, and its hoot
-//! foretells a death; the hag pounces and pins you down like a nightmare on the chest. The cin
-//! and the arçura fight from afar: the cin hurls smokeless fire that strikes you dumb, and
+//! roars your name in the voice of someone you love, dooming you, then strikes with its claws.
+//! The tülükuş and the albastı throw their whole bodies at you: the owl dives without a sound,
+//! and its hoot foretells a death; the hag pounces with the weight of a nightmare on the chest.
+//! The cin and the arçura fight from afar: the cin hurls smokeless fire out of nowhere, and
 //! vanishes to appear elsewhere; the arçura makes roots burst from the ground beneath you, and
 //! changes its size.
 
