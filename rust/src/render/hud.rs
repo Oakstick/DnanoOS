@@ -164,6 +164,12 @@ fn sprites() -> &'static Sprites {
                 "Body: seven heads strike in turn. Felled, it begs a second blow: deny it.",
             ),
             (sprite_from(&super::foes6::goryo()), "Goryō", 0x8ab0ff, "Distance: lightning on three marks; untouchable but in its wrath."),
+            (
+                sprite_from(&super::foes_thorns::ellepige()),
+                "Ellepige",
+                0xf0e0ea,
+                "Melee: lovely from the front, hollow behind. Strike her back.",
+            ),
         ],
     })
 }
@@ -1146,7 +1152,7 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 EnemyKind::Peerless => 5,
                 EnemyKind::Ganglot => 0,
                 EnemyKind::Gaki => 7,
-                EnemyKind::Ellepige => 3,
+                EnemyKind::Ellepige => sp.cast.iter().position(|c| c.1 == "Ellepige").unwrap_or(3),
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;
