@@ -112,6 +112,45 @@ memory clock it was 13–22%: the float target doubles the 4× MSAA colour traff
 **Not in this step:** AO still multiplies all light (RP15 moves it to indirect light only); HDR monitor
 output is a separate feature.
 
+### RP14: physically based materials
+
+- **Material model** (`shaders.wgsl`, `Surface`): base colour, roughness, metalness and a specular
+  level (0.5 means 4% reflectance), with emission as before. The voxel materials map onto it:
+  | Material | Roughness | Metalness | Specular | Notes |
+  |---|---|---|---|---|
+  | stone | 0.9 | 0 | 0.5 | grass 0.8 |
+  | iron | 0.45 | 0.7 | — | worn |
+  | gold | 0.38 | 0.7 | — | |
+  | fur | 0.75 | 0 | 0.25 | keeps wrap and sheen |
+  | cloth | 0.9 | 0 | 0.3 | keeps wrap and sheen |
+  | leather | 0.55 | 0 | 0.45 | |
+  | skin | 0.5 | 0 | 0.5 | wraps light |
+  | ivory | 0.35 | 0 | 0.6 | |
+  | wood | 0.75 | 0 | 0.4 | |
+  | slime | 0.12 | 0 | 1.0 | |
+  | marble | 0.15 | 0 | 1.5 | about 12%, deliberately glossier than real stone so the Vaults shine |
+- **Lighting:** GGX specular (Smith-Schlick visibility, Schlick Fresnel) for the sun or moon and every
+  point light. Diffuse is Lambert weighted by (1 − metalness), with the soft materials' light wrap kept.
+- **Environment:** each light change redraws a 128-pixel cube of the surroundings as light: the
+  hemisphere's sky and ground (irradiance over π) plus the sky itself (moon, stars, dusk sun). Its five
+  further mips are prefiltered by GGX importance sampling, one per roughness step (`fs_env`, `env.wgsl`).
+  Surfaces reflect it through a split-sum BRDF lookup computed at start-up (`render/brdf.rs`, 64×64).
+  Metals also reflect a share of the direct light, standing in for the lit walls and ground until
+  rooms get their own probes (RP18).
+- **Metal colours:** the game's metals were painted as they look worn and lit (dark iron at 2%), so a
+  metal's reflectance is its hue raised to at least 35%. **For TA04:** author metals by reflectance from
+  now on.
+- **Pixel footprint:** a voxel only a few pixels across gets rougher (up to 0.6), so small highlights do
+  not glitter.
+- **Look against HDR alone** (sheet in the session):
+  - Dielectrics gain a soft grazing sheen.
+  - Lit floors show the lights' reflections (Scene I's flagstones).
+  - Metals read as worn metal: the helmet now carries a little of the dusk sky.
+  - Marble's light pools are tighter.
+  - The neutral chart is slightly lighter on flat surfaces (physically correct for rough stone).
+- **Cost:** about 2–5% GPU in the cleaner round (Garden 5.58 → 5.70 ms, 30 foes 8.24 → 8.45 ms). The
+  environment passes run only when the light changes.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -169,8 +208,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13 is done and the default.
-  - Then RP14 (GGX materials, prefiltered reflections), RP15 (AO on indirect light only, an audit of the
+- **D, lighting:** RP13 and RP14 are done (RP14's look waits for approval).
+  - Then RP15 (AO on indirect light only, an audit of the
     MSAA normal/depth resolve), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
 - **E, world systems:**
   - RP02: camera validation.

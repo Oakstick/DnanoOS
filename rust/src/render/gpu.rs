@@ -57,6 +57,10 @@ const SHADOW_SIZE: u32 = if cfg!(target_arch = "wasm32") { 2048 } else { 4096 };
 /// Half the width of the fine shadow cascade, in world units.
 const NEAR_CASCADE: f32 = 10.0;
 const BLOOM_LEVELS: usize = 5;
+/// The environment cube (RP14): its first mip's size, and how many mips (roughness 0 to 1).
+const ENV_SIZE: u32 = 128;
+const ENV_MIPS: u32 = 6;
+const ENV_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// Static scenery is cut into square chunks this many world units across, culled as a whole.
 const CHUNK: f32 = 8.0;
 /// Spare static slots for cubes a level adds as it is played (floor patches, scorch marks).
@@ -421,6 +425,14 @@ pub struct Gpu {
     overlay_pipe: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
+    /// The environment cube's faces by mip (face + 6 x mip), its passes' bind groups and
+    /// pipelines, and the light it was last drawn for.
+    env_faces: Vec<wgpu::TextureView>,
+    env_globals: wgpu::BindGroup,
+    env_src: wgpu::BindGroup,
+    env_draw_pipe: wgpu::RenderPipeline,
+    env_prefilter_pipe: wgpu::RenderPipeline,
+    env_key: Option<Vec<u32>>,
     screen: wgpu::Buffer,
     overlay_bind: wgpu::BindGroup,
     meshes: Vec<MeshBuf>,
@@ -617,8 +629,93 @@ impl Gpu {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
+        // ---- the environment (RP14): a cube of the surroundings as light, a mip per roughness,
+        // and the split-sum lookup (`brdf`)
+        let env_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("environment"),
+            size: wgpu::Extent3d { width: ENV_SIZE, height: ENV_SIZE, depth_or_array_layers: 6 },
+            mip_level_count: ENV_MIPS,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: ENV_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let cube_view = |base_mip_level: u32, mip_level_count: Option<u32>| {
+            env_tex.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::Cube),
+                base_mip_level,
+                mip_level_count,
+                ..Default::default()
+            })
+        };
+        let env_view = cube_view(0, None);
+        let env_first = cube_view(0, Some(1));
+        let env_faces: Vec<wgpu::TextureView> = (0..ENV_MIPS * 6)
+            .map(|k| {
+                env_tex.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_mip_level: k / 6,
+                    mip_level_count: Some(1),
+                    base_array_layer: k % 6,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        let env_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("environment"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let lut = super::brdf::lut_texels();
+        let lut_view = device
+            .create_texture_with_data(
+                &queue,
+                &wgpu::TextureDescriptor {
+                    label: Some("brdf lookup"),
+                    size: wgpu::Extent3d { width: super::brdf::LUT_SIZE, height: super::brdf::LUT_SIZE, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::LayerMajor,
+                bytemuck::cast_slice(&lut),
+            )
+            .create_view(&Default::default());
         let scene_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("scene"),
             layout: &scene_layout,
@@ -626,8 +723,85 @@ impl Gpu {
                 wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&shadow_view) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&shadow_sampler) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&env_view) },
+                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&env_sampler) },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&lut_view) },
             ],
         });
+        // The environment's own passes see only the globals (the cube they draw into is in the
+        // scene's group), and the prefilter its first mip.
+        let env_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("environment globals"),
+            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT)],
+        });
+        let env_src_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("environment source"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let env_globals = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("environment globals"),
+            layout: &env_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() }],
+        });
+        let env_src = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("environment source"),
+            layout: &env_src_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&env_first) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&env_sampler) },
+            ],
+        });
+        let env_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("environment"),
+            source: wgpu::ShaderSource::Wgsl(concat!(include_str!("shaders.wgsl"), include_str!("env.wgsl")).into()),
+        });
+        let env_pipe = |label: &str, fs: &str, layouts: &[&wgpu::BindGroupLayout]| {
+            let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some(label),
+                bind_group_layouts: layouts,
+                push_constant_ranges: &[],
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pl),
+                vertex: wgpu::VertexState {
+                    module: &env_shader,
+                    entry_point: Some("vs_env"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &env_shader,
+                    entry_point: Some(fs),
+                    targets: &[Some(wgpu::ColorTargetState { format: ENV_FORMAT, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: Default::default(),
+                depth_stencil: None,
+                multisample: Default::default(),
+                multiview: None,
+                cache: None,
+            })
+        };
+        let env_draw_pipe = env_pipe("environment", "fs_env", &[&env_layout]);
+        let env_prefilter_pipe = env_pipe("environment prefilter", "fs_prefilter", &[&env_layout, &env_src_layout]);
         let scene_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("scene"),
             bind_group_layouts: &[&scene_layout],
@@ -1237,6 +1411,12 @@ impl Gpu {
             overlay_pipe,
             globals,
             scene_bind,
+            env_faces,
+            env_globals,
+            env_src,
+            env_draw_pipe,
+            env_prefilter_pipe,
+            env_key: None,
             screen,
             overlay_bind,
             meshes,
@@ -1613,6 +1793,37 @@ impl Gpu {
                 },
                 wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
             );
+        }
+
+        // ---- the environment, drawn again when the light it shows changes
+        let env_key: Vec<u32> = [atm.hemi_sky, atm.hemi_ground, atm.moon_view, sky_fwd.normalize_or_zero()]
+            .iter()
+            .flat_map(|v| v.to_array())
+            .chain([atm.night_sky, atm.exposure, atm.background as f32])
+            .map(f32::to_bits)
+            .collect();
+        if self.env_key.as_ref() != Some(&env_key) {
+            for k in 0..ENV_MIPS * 6 {
+                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("environment"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.env_faces[k as usize],
+                        resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: if k == 0 { self.timer.as_mut().and_then(|t| t.pass("environment")) } else { None },
+                    occlusion_query_set: None,
+                });
+                pass.set_pipeline(if k < 6 { &self.env_draw_pipe } else { &self.env_prefilter_pipe });
+                pass.set_bind_group(0, &self.env_globals, &[]);
+                if k >= 6 {
+                    pass.set_bind_group(1, &self.env_src, &[]);
+                }
+                pass.draw(0..3, k..k + 1);
+                counts.draw(1, 3);
+            }
+            self.env_key = Some(env_key);
         }
 
         // ---- shadow maps, fine cascade then coarse (the fine one is skipped when unused)

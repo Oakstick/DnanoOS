@@ -50,6 +50,13 @@ fn fx_off(bit: u32) -> bool {
 @group(0) @binding(2) var shadow_cmp: sampler_comparison;
 // The shadow pass draws one cascade at a time with its own matrix.
 @group(0) @binding(3) var<uniform> cascade_vp: mat4x4<f32>;
+// The scene's surroundings as light, prefiltered by roughness down its mips (RP14), and the
+// split-sum lookup of how much of them a surface reflects (`render::brdf`).
+@group(0) @binding(4) var env_map: texture_cube<f32>;
+@group(0) @binding(5) var env_samp: sampler;
+@group(0) @binding(6) var brdf_lut: texture_2d<f32>;
+// The environment's coarsest mip (roughness 1).
+const ENV_MIPS: f32 = 5.0;
 
 struct VIn {
     @location(0) pos: vec3<f32>,
@@ -332,12 +339,14 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>) -> f32 {
 // and a bevel that darkens every voxel's edges. Detail fades out when a voxel
 // covers only a few pixels, so it never shimmers.
 
+// A surface as the lighting sees it (RP14): base colour, roughness, metalness and a specular
+// level (0.5 is the usual 4% reflectance of a dielectric), plus two soft-material terms.
 struct Surface {
     albedo: vec3<f32>,
     n: vec3<f32>,
-    spec: f32,     // specular strength
-    shine: f32,    // specular exponent
-    metal: f32,    // 1 tints highlights with the albedo
+    rough: f32,
+    metal: f32,
+    specular: f32,
     wrap: f32,     // light wrapping past the terminator (soft materials)
     sheen: f32,    // rim glow at grazing angles (fur, cloth)
 };
@@ -361,9 +370,9 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
     var m: Surface;
     m.albedo = base;
     m.n = n;
-    m.spec = 0.0;
-    m.shine = 16.0;
+    m.rough = 0.9;
     m.metal = 0.0;
+    m.specular = 0.5;
     m.wrap = 0.0;
     m.sheen = 0.0;
     let uv = voxel_uv(local);
@@ -382,9 +391,9 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             let dent = hash12(floor(c));
             m.n = normalize(n + (t * cell.x + b * cell.y) * 0.55 * detail * (0.4 + dent));
             m.albedo *= mix(1.0, 0.86 + 0.22 * dent, detail) * 0.55;
-            m.spec = 1.0;
-            m.shine = 44.0;
-            m.metal = 0.85;
+            // Worn, not polished: broad highlights that catch every light, and a little diffuse left.
+            m.rough = 0.45;
+            m.metal = 0.7;
         }
         case 2: {
             // Fur and hair: strands of varied shade, soft light, a sheen at the rim.
@@ -394,8 +403,8 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             m.albedo *= mix(1.0, strand, detail);
             m.wrap = 0.35;
             m.sheen = 0.3;
-            m.spec = 0.08;
-            m.shine = 10.0;
+            m.rough = 0.75;
+            m.specular = 0.25;
         }
         case 3: {
             // Woven cloth: over-under threads, four to a voxel.
@@ -406,44 +415,45 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             m.albedo *= mix(1.0, 0.86 + 0.18 * thread, detail);
             m.wrap = 0.15;
             m.sheen = 0.12;
+            m.rough = 0.9;
+            m.specular = 0.3;
         }
         case 4: {
             // Leather: a soft mottle and a dull shine.
             let g = hash12(floor(uv * 5.0) + seed * 13.0);
             m.albedo *= mix(1.0, 0.86 + 0.24 * g, detail);
-            m.spec = 0.25;
-            m.shine = 18.0;
+            m.rough = 0.55;
+            m.specular = 0.45;
         }
         case 5: {
             // Skin: light wraps around, a faint oily shine.
             m.wrap = 0.45;
-            m.spec = 0.1;
-            m.shine = 14.0;
+            m.rough = 0.5;
         }
         case 6: {
             // Ivory horn: growth rings and a polished gloss.
             m.albedo *= mix(1.0, 0.93 + 0.08 * sin(uv.y * 19.0 + seed * 5.0), detail);
-            m.spec = 0.45;
-            m.shine = 36.0;
+            m.rough = 0.35;
+            m.specular = 0.6;
         }
         case 7: {
             // Wood: long grain.
             let grain = abs(sin(uv.x * 13.0 + sin(uv.y * 4.0 + seed * 9.0) * 1.8));
             m.albedo *= mix(1.0, 0.8 + 0.26 * grain, detail);
-            m.spec = 0.08;
+            m.rough = 0.75;
+            m.specular = 0.4;
         }
         case 9: {
             // Slime: wet and glossy, a sharp highlight and light soaking in.
-            m.spec = 1.4;
-            m.shine = 90.0;
+            m.rough = 0.12;
+            m.specular = 1.0;
             m.wrap = 0.4;
             m.sheen = 0.2;
         }
         case 8: {
             // Gold and bronze: bright, warm, polished.
-            m.spec = 1.3;
-            m.shine = 60.0;
-            m.metal = 1.0;
+            m.rough = 0.38;
+            m.metal = 0.7;
             m.albedo *= 0.85;
         }
         case 10: {
@@ -452,8 +462,9 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             let vein = abs(sin(c.x * 2.1 + sin(c.y * 3.7 + seed * 9.0) * 1.6 + sin(c.y * 1.3) * 0.8));
             let v = smoothstep(0.93, 1.0, vein);
             m.albedo *= mix(1.0, 0.86, v * detail);
-            m.spec = 0.9;
-            m.shine = 70.0;
+            // (Glossier than real stone: the vaults' marble is meant to shine.)
+            m.rough = 0.15;
+            m.specular = 1.5;
         }
         default: {}
     }
@@ -956,6 +967,26 @@ fn glow_orb(in: VOut) -> FOut {
     return out;
 }
 
+// ------------------------------------------------------------ the BRDF (RP14)
+
+// GGX specular for a light from `l`: the distribution, Smith visibility (Schlick's fit, as UE4
+// uses for analytic lights) and Schlick's Fresnel. Times the light's colour and n.l, it is the
+// reflected light, in the same units as the diffuse `albedo / PI * light * n.l`.
+fn ggx(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, rough: f32, f0: vec3<f32>) -> vec3<f32> {
+    let h = normalize(v + l);
+    let nl = max(dot(n, l), 1e-4);
+    let nv = max(dot(n, v), 1e-4);
+    let nh = max(dot(n, h), 0.0);
+    let vh = max(dot(v, h), 0.0);
+    let a = max(rough * rough, 0.002);
+    let a2 = a * a;
+    let d = a2 / (PI * pow2(nh * nh * (a2 - 1.0) + 1.0));
+    let k = pow2(rough + 1.0) / 8.0;
+    let vis = 0.25 / ((nl * (1.0 - k) + k) * (nv * (1.0 - k) + k));
+    let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - vh, 5.0);
+    return d * vis * f;
+}
+
 @fragment
 fn fs_scene(in: VOut) -> FOut {
     // Derivatives first, while control flow is still uniform.
@@ -993,23 +1024,32 @@ fn fs_scene(in: VOut) -> FOut {
     var surf: Surface;
     surf.albedo = albedo;
     surf.n = n;
-    surf.spec = 0.0;
-    surf.shine = 16.0;
+    // Plain surfaces (stone, earth, painted props): broad and rough, a dielectric. Grass a little less so.
+    surf.rough = select(0.9, 0.8, mode > 3.5 && mode < 4.5);
     surf.metal = 0.0;
+    surf.specular = 0.5;
     surf.wrap = 0.0;
     surf.sheen = 0.0;
+    let px = max(local_w.x, max(local_w.y, local_w.z));
     if (mode > 5.5) {
-        let px = max(local_w.x, max(local_w.y, local_w.z));
         let plain = select(1.0, 0.0, fx_off(FX_MATERIALS));
         let detail = (1.0 - smoothstep(0.1, 0.3, px)) * plain;
         let bevel = (1.0 - smoothstep(0.2, 0.5, px)) * plain;
         let seed = fract(dot(in.color.rgb, vec3<f32>(17.13, 31.71, 11.37)));
         surf = voxel_surface(i32(round(mode - 5.0)), in.local, detail, bevel, albedo, n, seed);
     }
+    // A voxel only a few pixels across would glitter with a sharp highlight, so the smaller it
+    // is on screen the rougher it is drawn (filtering the shading by the pixel's footprint).
+    surf.rough = max(surf.rough, 0.6 * smoothstep(0.2, 0.6, px));
     let sn = surf.n;
     let view_dir = normalize(g.cam_pos.xyz - in.world);
-    let spec_tint = mix(vec3<f32>(1.0), surf.albedo * 1.6, surf.metal);
-    let spec_norm = (surf.shine + 8.0) / (8.0 * PI);
+    let nv = max(dot(sn, view_dir), 1e-3);
+    // Reflectance head-on: 4% for a dielectric at the usual specular level; for a metal its colour,
+    // raised to at least a worn metal's brightness (bare iron reflects over half the light; tarnished
+    // and dulled, about a third). The game's metals were painted as they look worn and lit (dark
+    // iron), so their hue is kept and their level set here.
+    let metal_f0 = surf.albedo * clamp(0.35 / max(max(surf.albedo.r, surf.albedo.g), max(surf.albedo.b, 1e-3)), 1.0, 30.0);
+    let f0 = mix(vec3<f32>(0.08 * surf.specular), metal_f0, surf.metal);
     var rgb = surf.albedo;
     if (mode < 0.5 || mode > 1.5) {
         var irr = g.ambient.rgb;
@@ -1021,9 +1061,8 @@ fn fs_scene(in: VOut) -> FOut {
         if (ndl > 0.0) {
             let vis = sun_visibility(in.world, n, in.clip.xy);
             irr += ndl * g.moon_color.rgb * vis;
-            if (surf.spec > 0.0 && ndl_raw > 0.0) {
-                let h = normalize(g.moon_dir.xyz + view_dir);
-                spec += pow(max(dot(sn, h), 0.0), surf.shine) * ndl_raw * g.moon_color.rgb * vis;
+            if (ndl_raw > 0.0) {
+                spec += ggx(sn, view_dir, g.moon_dir.xyz, surf.rough, f0) * ndl_raw * g.moon_color.rgb * vis;
             }
         }
         let count = select(min(u32(g.params.w), MAX_LIGHTS), 0u, fx_off(FX_LIGHTS));
@@ -1044,25 +1083,28 @@ fn fs_scene(in: VOut) -> FOut {
                 att *= pow2(clamp(1.0 - r * r * r * r, 0.0, 1.0));
             }
             irr += nl * l.color.rgb * att;
-            if (surf.spec > 0.0 && nl_raw > 0.0) {
-                let h = normalize(ld + view_dir);
-                spec += pow(max(dot(sn, h), 0.0), surf.shine) * nl_raw * l.color.rgb * att;
+            if (nl_raw > 0.0) {
+                spec += ggx(sn, view_dir, ld, surf.rough, f0) * nl_raw * l.color.rgb * att;
             }
         }
         var emissive = in.emissive.rgb;
         if (mode > 1.5 && mode < 2.5) {
             emissive *= g.params.z;
         }
-        rgb = surf.albedo * irr / PI + spec * spec_tint * surf.spec * spec_norm + emissive;
-        // Metals mirror the sky above and the ground below; fur and cloth catch a rim of sky.
-        let fres = pow(1.0 - max(dot(sn, view_dir), 0.0), 3.0);
-        let r = reflect(-view_dir, sn);
-        let env = mix(g.hemi_ground.rgb * 0.6, g.hemi_sky.rgb * 1.3, smoothstep(-0.35, 0.35, r.y));
-        rgb += env * spec_tint * surf.metal * (0.3 + 0.5 * fres);
+        // The surroundings reflected: prefiltered by roughness, scaled by the split-sum lookup.
+        let lut = textureSampleLevel(brdf_lut, env_samp, vec2<f32>(nv, surf.rough), 0.0).rg;
+        let refl = reflect(-view_dir, sn);
+        var env = textureSampleLevel(env_map, env_samp, refl, surf.rough * ENV_MIPS).rgb;
+        // A metal also mirrors the walls, ground and foliage the sun or moon lights, which the cube
+        // does not hold: until rooms get their own probes (RP18), a share of the direct light.
+        env += g.moon_color.rgb * mix(0.3, 0.18, smoothstep(-0.3, 0.5, refl.y)) * surf.metal;
+        rgb = surf.albedo * (1.0 - surf.metal) * irr / PI + spec + env * (f0 * lut.x + lut.y) + emissive;
+        // Fur and cloth catch a rim of sky.
+        let fres = pow(1.0 - nv, 3.0);
         rgb += g.hemi_sky.rgb * surf.albedo * surf.sheen * fres;
         if (mode > 5.5) {
             // Characters and statues: a cool rim of moonlight on the edges turned toward it, so they stand out of the dark.
-            let rim = pow(1.0 - max(dot(sn, view_dir), 0.0), 4.0);
+            let rim = pow(1.0 - nv, 4.0);
             rgb += g.moon_color.rgb * rim * (0.08 + 0.22 * max(dot(sn, g.moon_dir.xyz), 0.0)) * (0.5 + 0.5 * surf.albedo);
         }
         if (mode > 15.5 && mode < 16.5) {
@@ -1095,6 +1137,61 @@ fn fs_prepass(in: VOut) -> FOut {
     out.color = vec4<f32>(0.0);
     out.gbuf = vec4<f32>(0.0);
     return out;
+}
+
+// ------------------------------------------------------------ environment (RP14)
+//
+// Each frame (when the light changes) the surroundings are drawn into a small cubemap, face by
+// face, then each mip is filtered from the first for a rougher surface (GGX, importance
+// sampled), so `fs_scene` reflects them as sharply as its roughness allows.
+
+struct EnvOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    // The cube face, and the roughness this mip is for.
+    @location(1) @interpolate(flat) face: u32,
+    @location(2) @interpolate(flat) rough: f32,
+};
+
+// A full-screen triangle on one face of one mip: the instance is the face plus six times the mip.
+@vertex
+fn vs_env(@builtin(vertex_index) i: u32, @builtin(instance_index) inst: u32) -> EnvOut {
+    let q = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
+    var o: EnvOut;
+    o.clip = vec4<f32>(q * 2.0 - 1.0, 0.0, 1.0);
+    o.uv = vec2<f32>(q.x * 2.0 - 1.0, (1.0 - q.y) * 2.0 - 1.0);
+    o.face = inst % 6u;
+    o.rough = f32(inst / 6u) / ENV_MIPS;
+    return o;
+}
+
+// The direction through `uv` (-1..1, v down) on cube face `face` (+x, -x, +y, -y, +z, -z).
+fn cube_dir(face: u32, uv: vec2<f32>) -> vec3<f32> {
+    let u = uv.x;
+    let v = uv.y;
+    switch face {
+        case 0u: { return normalize(vec3<f32>(1.0, -v, -u)); }
+        case 1u: { return normalize(vec3<f32>(-1.0, -v, u)); }
+        case 2u: { return normalize(vec3<f32>(u, 1.0, v)); }
+        case 3u: { return normalize(vec3<f32>(u, -1.0, -v)); }
+        case 4u: { return normalize(vec3<f32>(u, -v, 1.0)); }
+        default: { return normalize(vec3<f32>(-u, -v, -1.0)); }
+    }
+}
+
+// What surrounds the scene, as light: the ambient light as it falls from each side (sky above,
+// ground below), and where there is a sky, the sky itself (the moon, the stars, the dusk sun).
+@fragment
+fn fs_env(in: EnvOut) -> @location(0) vec4<f32> {
+    let d = cube_dir(in.face, in.uv);
+    // (The hemisphere's values are the light falling from each side; seen along one direction, a
+    // uniform sky that sends that much has a radiance of that over pi.)
+    var c = mix(g.hemi_ground.rgb, g.hemi_sky.rgb, smoothstep(-0.35, 0.35, d.y)) / PI;
+    if (g.sky_fwd.w > 0.0 && d.y > -0.05) {
+        // The sky is drawn as display colour; as light, before the exposure the scene applies.
+        c = max(c, from_display(sky_color(d, 0.02, g.sky_right.w)) / max(g.params.y, 1e-3));
+    }
+    return vec4<f32>(c, 1.0);
 }
 
 // ------------------------------------------------------------------ night sky
