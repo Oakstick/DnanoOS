@@ -77,8 +77,8 @@ pub mod pal {
     pub const STONE_D: u32 = 0x5a564e | MARBLE;
     pub const BRICK: u32 = 0x9a4a2e;
     pub const BRICK_D: u32 = 0x6a2e1c;
-    pub const LIP: u32 = 0xb03040 | mat::SLIME;
-    pub const LIP_D: u32 = 0x701a26 | mat::SLIME;
+    pub const LIP: u32 = 0xb03040 | mat::SKIN;
+    pub const LIP_D: u32 = 0x701a26 | mat::SKIN;
     pub const FIRE: u32 = 0xffa030 | mat::GLOW;
     pub const FIRE_L: u32 = 0xffe080 | mat::GLOW;
     pub const SOOT: u32 = 0x1a1412;

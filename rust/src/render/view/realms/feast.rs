@@ -864,9 +864,9 @@ impl WorldView {
             let out = &mut self.static_cubes;
             // The wall it is built into, and the oven proud of it.
             cube(out, c + Vec3::new(0.0, WALL_H[1] / 2.0, 0.0), Vec3::new(1.0, WALL_H[1], 1.0), 0.0, lin(0x6a2e1c), SHADE_LIT);
-            let m = Mat4::from_translation(c + Vec3::new(dx as f32, 0.0, dz as f32) * 0.32) * Mat4::from_rotation_y(yaw_to(d));
+            let m = Mat4::from_translation(c + Vec3::new(dx as f32, 0.0, dz as f32) * 0.64) * Mat4::from_rotation_y(yaw_to(d));
             push_merged(out, &v.art.oven, m, 0.0);
-            v.fires.push((c + Vec3::new(dx as f32, 0.0, dz as f32) * 0.45 + Vec3::new(0.0, 0.42, 0.0), 0.3));
+            v.fires.push((c + Vec3::new(dx as f32, 0.0, dz as f32) * 0.62 + Vec3::new(0.0, 0.4, 0.0), 0.28));
         }
     }
 

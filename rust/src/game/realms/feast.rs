@@ -632,15 +632,29 @@ impl Game {
                 spawn = Some(P::new(at.x.round() as i32, at.y.round() as i32));
             }
         }
-        // The walls squeeze the foes in with him.
+        // The walls squeeze the foes in with him (and digest any with nowhere to go).
         let walls = c.walls();
+        let grid = &self.level.grid;
+        let mut crushed = Vec::new();
         for e in self.enemies.iter_mut() {
-            let Some(d) = e.duel.as_deref_mut() else { continue };
+            let Some(d) = e.duel.as_deref_mut().filter(|d| d.alive()) else { continue };
             let off = V::new(d.pos.x - squeeze.x, d.pos.y - squeeze.y);
             let l = len(off);
             if l > walls - 0.4 && l > 1e-6 && dist_sq(d.pos, stomach) <= (radius + 1.5) * (radius + 1.5) {
                 let k = (walls - 0.4).max(0.3) / l;
-                d.pos = V::new(squeeze.x + off.x * k, squeeze.y + off.y * k);
+                let to = V::new(squeeze.x + off.x * k, squeeze.y + off.y * k);
+                if grid.is_walkable(to.x.round() as i32, to.y.round() as i32, false) {
+                    d.pos = to;
+                } else {
+                    d.f.kill();
+                    e.b.mode = EnemyMode::Eaten;
+                    crushed.push(d.id);
+                }
+            }
+        }
+        if let Some(b) = self.brawl.as_mut() {
+            for id in crushed {
+                b.threat.release(id);
             }
         }
         // The pylorus: its teeth part for two seconds in ten, and let through only the lean.
@@ -921,6 +935,25 @@ mod tests {
         b.stats.hits += 1;
         g.update_feast(STEP);
         assert_eq!(feast(&g).bloat, 1);
+    }
+
+    #[test]
+    fn the_gaki_lurk_while_he_is_lean_and_come_when_he_smells_of_food() {
+        let mut g = in_realm(Sin::Gluttony);
+        let den = GAKI_DENS[0];
+        let gaki: Vec<usize> =
+            (0..g.enemies.len()).filter(|&i| g.enemies[i].kind() == EnemyKind::Gaki && den.contains(g.enemies[i].post.unwrap())).collect();
+        assert!(gaki.len() >= 3);
+        let asleep = |g: &Game, i: usize| g.enemies[i].duel.as_ref().and_then(|d| d.den).is_some_and(|d| !d.awake);
+        // Lean, he walks up the Hall past them, and they sleep on.
+        g.hero.place(P::new(23, 100));
+        g.hero.invuln = 99.0;
+        run(&mut g, 1.0);
+        assert!(gaki.iter().all(|&i| asleep(&g, i)), "they do not smell him yet");
+        g.feast_mut().unwrap().bloat = BLOAT_SMELL;
+        g.update(STEP);
+        assert!(gaki.iter().all(|&i| !asleep(&g, i)), "at 3 Bloat they come");
+        assert!(g.floaters.iter().any(|f| f.text == "THE GAKI SMELL THE FEAST ON HIM"));
     }
 
     #[test]

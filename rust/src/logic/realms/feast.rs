@@ -78,6 +78,14 @@ pub const GAKI_EVERY: f64 = 7.0;
 /// Where he wakes after the Stomach has digested him: hungry.
 pub const WAKE_HUNGER: i32 = 30;
 
+/// Where each zone's gaki lurk: a corner of it, away from the way through.
+pub const GAKI_DENS: [Rect; 4] = [
+    Rect { x0: 31, y0: 102, x1: 35, y1: 107 },
+    Rect { x0: 28, y0: 76, x1: 32, y1: 81 },
+    Rect { x0: 11, y0: 46, x1: 14, y1: 50 },
+    Rect { x0: 9, y0: 8, x1: 14, y1: 14 },
+];
+
 /// The four zones of the gullet, from the portal to the pylorus.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord, Hash)]
 pub enum Zone {
@@ -581,20 +589,21 @@ impl Feast {
         let mut packs = Vec::new();
         let native = |rng: &mut Rng, n: usize| -> Vec<(EnemyKind, u8)> { (0..n).map(|_| pick_native(rng, sin, tier)).collect() };
         let gaki = |n: usize| -> Vec<(EnemyKind, u8)> { vec![(EnemyKind::Gaki, 0); n] };
+        // (The gaki lurk in corners off the way through, so that only the smell of food brings them.)
         let mut dens: Vec<(Rect, Vec<(EnemyKind, u8)>)> = vec![
             (Rect { x0: 5, y0: 90, x1: 15, y1: 98 }, native(&mut rng, 2 + more)),
             (Rect { x0: 25, y0: 90, x1: 35, y1: 98 }, native(&mut rng, 2 + more)),
-            (Rect { x0: 17, y0: 90, x1: 23, y1: 96 }, gaki(3)),
+            (GAKI_DENS[0], gaki(3)),
             (
                 Rect { x0: 8, y0: 62, x1: 20, y1: 68 },
                 vec![(EnemyKind::Witch, 2), (EnemyKind::Witch, 2), (EnemyKind::Minion, 2), (EnemyKind::Minion, 2)],
             ),
             (Rect { x0: 21, y0: 68, x1: 32, y1: 74 }, native(&mut rng, 2 + more)),
-            (Rect { x0: 21, y0: 62, x1: 32, y1: 66 }, gaki(3 + more)),
+            (GAKI_DENS[1], gaki(3 + more)),
             (Rect { x0: 11, y0: 36, x1: 20, y1: 44 }, native(&mut rng, 2 + more)),
-            (Rect { x0: 21, y0: 42, x1: 30, y1: 49 }, gaki(4 + more)),
-            (Rect { x0: 11, y0: 47, x1: 20, y1: 53 }, native(&mut rng, 2)),
-            (Rect { x0: 9, y0: 8, x1: 31, y1: 24 }, gaki(4 + more)),
+            (GAKI_DENS[2], gaki(4 + more)),
+            (Rect { x0: 21, y0: 42, x1: 30, y1: 49 }, native(&mut rng, 2)),
+            (GAKI_DENS[3], gaki(4 + more)),
         ];
         // The Stomach's tenant: a giant of the sixth stage where the tier sends them, else a native.
         let tenant =
