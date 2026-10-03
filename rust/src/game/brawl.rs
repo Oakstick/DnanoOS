@@ -171,6 +171,8 @@ pub struct Brawl {
     /// The last volley's number, and the last that reached him (it lands once).
     volleys: u32,
     landed_volley: u32,
+    /// A realm's multiple on his strike power (Pride's Glory); 1 elsewhere.
+    pub might: f64,
 }
 
 impl Brawl {
@@ -202,6 +204,7 @@ impl Brawl {
             flashes: Vec::new(),
             volleys: 0,
             landed_volley: 0,
+            might: 1.0,
         }
     }
 
@@ -334,7 +337,8 @@ impl Game {
     /// One 60 Hz frame: his kit and fighter, then (while the foes fight) theirs, their bolts, the
     /// threat manager, and what the legends do to him.
     fn brawl_frame(&mut self) {
-        let kit = self.hero_kit();
+        let mut kit = self.hero_kit();
+        kit.strike.power *= self.brawl.as_ref().map(|b| b.might).unwrap_or(1.0);
         let Some(b) = self.brawl.as_mut() else { return };
         b.refit(kit);
         let cost = kit.swing_cost();
@@ -951,7 +955,7 @@ impl Game {
         let mut requests = Vec::new();
         for &i in &ids {
             let du = self.enemies[i].duel.as_ref().unwrap();
-            if !du.engaged() || du.begging() || du.lore.rise > 0 || du.lore.vanish > 0 || holder == Some(du.id) {
+            if !du.engaged() || du.puppet || du.begging() || du.lore.rise > 0 || du.lore.vanish > 0 || holder == Some(du.id) {
                 continue;
             }
             if du.token {
@@ -999,7 +1003,7 @@ impl Game {
             let waiters: Vec<Waiter> = ids
                 .iter()
                 .map(|&i| self.enemies[i].duel.as_ref().unwrap())
-                .filter(|d| d.engaged() && !d.token)
+                .filter(|d| d.engaged() && !d.token && !d.puppet)
                 .map(|d| Waiter { id: d.id, pos: d.pos, ring: d.stats().ring, prev: d.slot.map(|s| s.sector) })
                 .collect();
             // (In the ring only the square's edge counts, as the lab was tuned; in the vaults the walls.)
@@ -1026,6 +1030,12 @@ impl Game {
             let du = self.enemies[i].duel.as_mut().unwrap();
             if du.den.is_some_and(|d| !d.awake) || holder == Some(du.id) {
                 continue; // asleep, or holding him
+            }
+            if du.puppet {
+                // Moved and set going by whoever holds its strings; its moves play out below.
+                let p = du.pos;
+                self.enemies[i].m.tile = P::new(p.x.round() as i32, p.y.round() as i32);
+                continue;
             }
             let near: Vec<(V, f64)> = bodies
                 .iter()
