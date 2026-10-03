@@ -348,6 +348,8 @@ impl WorldView {
                     // (Hel's servants shuffle.)
                     EnemyKind::Ganglot => (0.3, 0.12),
                     EnemyKind::Kappa => (0.5, 0.2),
+                    // (The gaki shamble on their sticks of legs, grasping hands held out.)
+                    EnemyKind::Gaki => (0.45, 0.12),
                     _ => (0.85, 0.5),
                 };
                 let s = v.phase.sin();
@@ -360,6 +362,7 @@ impl WorldView {
                     * match v.kind {
                         EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Oni => 0.1,
                         EnemyKind::Kappa => 0.14,
+                        EnemyKind::Gaki => 0.12,
                         _ => 0.06,
                     };
                 if let Some(k) = rig.index("tail") {

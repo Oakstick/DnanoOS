@@ -168,6 +168,8 @@ pub struct Hero {
     /// The share of his pace a realm leaves him (mud, a full belly, a drowsy spell); 1 elsewhere.
     /// The realm sets it every tick.
     pub pace: f64,
+    /// Maximum health a realm's hunger has taken from him (the Rotting Feast); 0 elsewhere.
+    pub hunger: i32,
     /// How sharp the blade in his hand is, 0 to 1: a dull one bites the boss less (`gear::edge_power`).
     pub edge: f64,
     /// The outfit he wears, and how many skills of his path he has learned (each a ribbon on his arm).
@@ -246,6 +248,7 @@ impl Hero {
             blocking: false,
             root: 1.0,
             pace: 1.0,
+            hunger: 0,
             edge: 1.0,
             outfit: 0,
             fx: Effects::default(),
@@ -340,7 +343,7 @@ impl Hero {
     pub fn health_cap(&self) -> i32 {
         let guard = self.path >= 2 && (self.kind != HeroKind::Ragnar || self.shield.is_some());
         // Mehmed can take more than Ragnar, Miyamoto less.
-        (HERO_MAX_HP as f64 * self.kind.vigor()).round() as i32 + if guard { path::GUARD_HP } else { 0 }
+        (HERO_MAX_HP as f64 * self.kind.vigor()).round() as i32 + if guard { path::GUARD_HP } else { 0 } - self.hunger
     }
     /// Spends stamina for a blow or a blink; false (and winded) if he has too little.
     fn spend(&mut self, cost: f64) -> bool {
