@@ -330,6 +330,7 @@ impl WorldView {
                 Vec3::Z
             }
         };
+        f.lantern = f.lights.is_empty();
         f.lights.push(Light {
             pos: hero_pos + Vec3::new(0.0, 2.3, 0.0) + to_cam * 0.9,
             color: light_color * hero_light * 2.2,

@@ -274,7 +274,8 @@ fn lamp_glow(uv: vec2<f32>, d: f32) -> vec3<f32> {
     let dir = seg / max(len, 1e-4);
     let fall = max(p.haze.z, 0.05);
     var sum = vec3<f32>(0.0);
-    for (var i = 0u; i < count; i++) {
+    // (From the second light when the first is the hero's own lantern: `vol.w`.)
+    for (var i = u32(p.vol.w); i < count; i++) {
         let l = lights[i];
         let to = l.pos.xyz - eye;
         let t0 = dot(to, dir);
@@ -295,7 +296,13 @@ fn lamp_glow(uv: vec2<f32>, d: f32) -> vec3<f32> {
         if (b <= a) {
             continue;
         }
-        let along = (atan((b - t0) / h) - atan((a - t0) / h)) / h;
+        var along = (atan((b - t0) / h) - atan((a - t0) / h)) / h;
+        // Fading to nothing toward the edge of its reach by how near the ray passes, as its light
+        // on surfaces does: cut off there, the glow showed a hard-edged disc round the lamp.
+        if (l.pos.w > 0.0) {
+            let win = 1.0 - h2 / (l.pos.w * l.pos.w);
+            along *= win * win;
+        }
         let density = p.haze.x * exp(-max(l.pos.y - p.haze.y, 0.0) / fall) + p.haze.w;
         sum += l.color.rgb * density * along;
     }

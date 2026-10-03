@@ -384,6 +384,8 @@ pub struct Frame {
     pub bounds: Vec4,
     /// The title diorama draws on its own; the level's static geometry sits this frame out.
     pub skip_static: bool,
+    /// The first light is the hero's own lantern (which lights the scene but not the haze).
+    pub lantern: bool,
     pub atmosphere: Atmosphere,
     pub haze: Haze,
 }
@@ -402,6 +404,7 @@ impl Frame {
         self.additive.clear();
         self.glow.clear();
         self.lights.clear();
+        self.lantern = false;
     }
 }
 

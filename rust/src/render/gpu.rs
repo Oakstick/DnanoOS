@@ -1903,11 +1903,13 @@ impl Gpu {
                 if self.fx_off & fx::VOLUMETRIC != 0 || frame.haze.density <= 0.0 {
                     0.0
                 } else {
-                    gpu_lights.len().min(self.preset.volumetric_lamps) as f32
+                    // (Not his own lantern: it hangs over him wherever he goes, and its glow read as a
+                    // disc stuck to the middle of the screen.)
+                    gpu_lights.len().min(self.preset.volumetric_lamps + usize::from(frame.lantern)) as f32
                 },
                 atm.exposure,
                 0.8,
-                0.0,
+                if frame.lantern { 1.0 } else { 0.0 },
             ],
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
