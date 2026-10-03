@@ -437,7 +437,7 @@ pub fn run(args: &[String]) -> i32 {
             let c = &x.counts;
             let _ = writeln!(
                 csv,
-                "{i},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{}",
+                "{i},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                 x.wall,
                 x.cpu.total(),
                 x.cpu.update,
@@ -455,7 +455,9 @@ pub fn run(args: &[String]) -> i32 {
                 c.rigs,
                 c.rig_voxels,
                 c.lights,
-                c.lights_dropped
+                c.lights_dropped,
+                c.light_pairs,
+                c.busiest_cluster
             );
         }
         let _ = std::fs::write(format!("{out_dir}/{when}-{}.csv", scene.name), csv);

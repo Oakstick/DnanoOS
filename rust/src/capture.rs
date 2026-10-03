@@ -28,7 +28,8 @@
 //! chart) under that light; `--fx-off shadows,lights,grass,materials,fog,ao,bloom,dof,grade,prepass,mist`
 //! switches effects off to see what each adds; `--frame-stats` lists what the view emitted;
 //! `--lod-bias B` drops rigs' detail sooner (B > 1) or never (0), and `--lod-debug` tints each
-//! level of detail (whole, half green, quarter red).
+//! level of detail (whole, half green, quarter red); `--light-heat` tints each pixel by how many
+//! lights its cluster holds (blue none, green some, red 16 or more).
 
 use crate::app::STEP;
 use crate::audio::synth::Synth;
@@ -305,6 +306,9 @@ pub fn run(args: &[String]) -> i32 {
     };
     eprintln!("renderer: {} (ready in {:.0} ms)", gpu.backend, started.elapsed().as_secs_f64() * 1e3);
     gpu.fx_off = arg(args, "--fx-off").map(crate::render::profile::fx::parse).unwrap_or(0);
+    if args.iter().any(|a| a == "--light-heat") {
+        gpu.fx_off |= crate::render::profile::fx::LIGHT_HEAT;
+    }
     let mut game = Game::new();
     // Fixed seeds, so the same script always renders the same picture.
     game.reseed(1);

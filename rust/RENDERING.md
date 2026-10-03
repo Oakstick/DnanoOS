@@ -169,6 +169,28 @@ output is a separate feature.
 - **Still open (TA):** dark colours crushed by the tone curve's toe (the Look Dev ramp) is a tone-curve
   and exposure decision, not AO.
 
+### RP17: clustered forward lighting
+
+- **Clusters** (`render/clusters.rs`): the view is cut into 16×9 screen tiles × 24 depth slices
+  (logarithmic from the near plane to 80 m), 3,456 clusters in all. Each frame the CPU bins every light
+  into the clusters its sphere of reach touches. It first takes the tiles and slices the sphere's
+  bounds cover (through the real view projection, so the map's orthographic camera works too), then
+  keeps a cluster only if the sphere really meets its box.
+- **Shading:** each pixel loops over its own cluster's lights only, at most 32 (`cluster_at` in
+  `shaders.wgsl`, used by surfaces, mist, water and jets). Lights live in a storage buffer of up to
+  1,024, so the old global limit of 32 is gone.
+- **Predictable limits:** lights are ranked the hero's lantern first, then nearest the eye. A cluster
+  that overflows keeps its most important lights and drops the same ones each frame.
+- **Diagnostics:** F3 and the `--perf` CSV report lights, pairs kept, the fullest cluster and pairs over
+  the cap; `--light-heat` tints every pixel by its cluster's light count.
+- **Measured** (30-foe battle, interleaved against the global list):
+  - All 40 lights now shade, where the old list dropped 8. GPU time is about the same (21.5 vs 21.0 ms
+    and 21.9 vs 24.5 ms at low clocks); Garden, Vaults and Lust are within noise.
+  - 13.8k light-in-cluster pairs, the fullest cluster 25, none over the cap.
+  - The CPU binning costs 0.1–0.25 ms a frame.
+- **Shadow-casting local lights:** there are none yet (only the sun or moon casts shadows). When there
+  are, they get their own budget, separate from these unshadowed lights.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -226,8 +248,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13, RP14 and RP15 are done.
-  - Then RP16 (the rest: shadow presets and stable projections), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
+- **D, lighting:** RP13, RP14, RP15 and RP17 are done.
+  - Then RP16 (the rest: shadow presets and stable projections), RP18 (probes) and RP19 (atmosphere).
 - **E, world systems:**
   - RP02: camera validation.
   - RP03: area packaging and the portal loading screen. The portal scene's worst frame is 24 ms; cold

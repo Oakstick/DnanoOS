@@ -4,7 +4,6 @@
 // ACES filmic tone mapping; sRGB encode; then linear fog mixed in sRGB.
 
 const PI: f32 = 3.141592653589793;
-const MAX_LIGHTS: u32 = 32u;
 
 struct Light {
     pos: vec4<f32>,   // xyz position, w cutoff distance
@@ -30,7 +29,7 @@ struct Globals {
     sky_moon: vec4<f32>,   // xyz toward the moon
     bounds: vec4<f32>,     // the level's footprint: min x, min z, max x, max z
     shadow: vec4<f32>,     // x fine cascade half width, y coarse half width (world), z 1 when the fine one is drawn, w effects switched off (FX_ bits)
-    lights: array<Light, 32>,
+    cluster: vec4<f32>,    // the clusters' screen (pixels w, h) and depth range (near, far): see `cluster_at`
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -42,6 +41,8 @@ const FX_GRASS: u32 = 4u;
 const FX_MATERIALS: u32 = 8u;
 const FX_FOG: u32 = 16u;
 const FX_BACKFACE: u32 = 2048u;
+// Not an effect switched off but a view: how many lights each pixel's cluster holds (RP17).
+const FX_LIGHT_HEAT: u32 = 4096u;
 
 fn fx_off(bit: u32) -> bool {
     return (u32(g.shadow.w) & bit) != 0u;
@@ -55,6 +56,30 @@ fn fx_off(bit: u32) -> bool {
 @group(0) @binding(4) var env_map: texture_cube<f32>;
 @group(0) @binding(5) var env_samp: sampler;
 @group(0) @binding(6) var brdf_lut: texture_2d<f32>;
+// Clustered lights (RP17, `render::clusters`): every light, each cluster's run in `light_index`
+// (start shifted 8, count in the low 8 bits), and the runs.
+@group(0) @binding(7) var<storage, read> lights: array<Light>;
+@group(0) @binding(8) var<storage, read> cluster_cells: array<u32>;
+@group(0) @binding(9) var<storage, read> light_index: array<u32>;
+const TILES_X: u32 = 16u;
+const TILES_Y: u32 = 9u;
+const SLICES: u32 = 24u;
+
+struct Cluster {
+    start: u32,
+    count: u32,
+};
+
+// The lights that reach the pixel at `frag` (pixels) showing `world`.
+fn cluster_at(frag: vec2<f32>, world: vec3<f32>) -> Cluster {
+    let tx = min(u32(max(frag.x, 0.0) / g.cluster.x * f32(TILES_X)), TILES_X - 1u);
+    let ty = min(u32(max(frag.y, 0.0) / g.cluster.y * f32(TILES_Y)), TILES_Y - 1u);
+    let d = dot(world - g.cam_pos.xyz, g.cam_fwd.xyz);
+    let k = log(max(d, g.cluster.z) / g.cluster.z) * f32(SLICES) / log(g.cluster.w / g.cluster.z);
+    let s = min(u32(max(floor(k), 0.0)), SLICES - 1u);
+    let cell = cluster_cells[(s * TILES_Y + ty) * TILES_X + tx];
+    return Cluster(cell >> 8u, cell & 255u);
+}
 // The environment's coarsest mip (roughness 1).
 const ENV_MIPS: f32 = 5.0;
 
@@ -804,9 +829,9 @@ fn ground_mist(in: VOut, layer: f32) -> FOut {
     cover *= smoothstep(0.0, 0.9, inside);
     // Moonlight on the mist, and a warm glow where lanterns and candles are near.
     var light = g.moon_color.rgb * 0.22 + g.hemi_sky.rgb * 0.25 + g.ambient.rgb;
-    let count = min(u32(g.params.w), MAX_LIGHTS);
-    for (var i = 0u; i < count; i++) {
-        let l = g.lights[i];
+    let cl = cluster_at(in.clip.xy, in.world);
+    for (var i = 0u; i < cl.count; i++) {
+        let l = lights[light_index[cl.start + i]];
         let d = length(l.pos.xyz - in.world);
         // Out of its reach, a light adds nothing: skip the rest.
         if (d >= l.pos.w && l.pos.w > 0.0) {
@@ -886,9 +911,9 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
     // The body of the water: dark, lit faintly from above and by lights nearby.
     var body = in.color.rgb * (g.ambient.rgb * 2.0 + g.hemi_sky.rgb * 0.35 + g.moon_color.rgb * 0.15);
     var spec = vec3<f32>(0.0);
-    let count = min(u32(g.params.w), MAX_LIGHTS);
-    for (var i = 0u; i < count; i++) {
-        let l = g.lights[i];
+    let cl = cluster_at(in.clip.xy, in.world);
+    for (var i = 0u; i < cl.count; i++) {
+        let l = lights[light_index[cl.start + i]];
         let to_light = l.pos.xyz - in.world;
         let d = length(to_light);
         // Out of its reach, a light adds nothing: skip the rest.
@@ -926,9 +951,9 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
     let rush = cnoise(vec2<f32>(in.local.y * 3.0 - time * 14.0 + in.emissive.x * 7.0, atan2(in.local.z, in.local.x) * 2.0 + in.emissive.x));
     var light = g.ambient.rgb * 2.0 + g.hemi_sky.rgb * 0.6 + g.moon_color.rgb * 0.35;
     var spec = vec3<f32>(0.0);
-    let count = min(u32(g.params.w), MAX_LIGHTS);
-    for (var i = 0u; i < count; i++) {
-        let l = g.lights[i];
+    let cl = cluster_at(in.clip.xy, in.world);
+    for (var i = 0u; i < cl.count; i++) {
+        let l = lights[light_index[cl.start + i]];
         let to_light = l.pos.xyz - in.world;
         let d = length(to_light);
         // Out of its reach, a light adds nothing: skip the rest.
@@ -1070,9 +1095,10 @@ fn fs_scene(in: VOut) -> FOut {
                 spec += ggx(sn, view_dir, g.moon_dir.xyz, surf.rough, f0) * ndl_raw * g.moon_color.rgb * vis;
             }
         }
-        let count = select(min(u32(g.params.w), MAX_LIGHTS), 0u, fx_off(FX_LIGHTS));
+        let cl = cluster_at(in.clip.xy, in.world);
+        let count = select(cl.count, 0u, fx_off(FX_LIGHTS));
         for (var i = 0u; i < count; i++) {
-            let l = g.lights[i];
+            let l = lights[light_index[cl.start + i]];
             let to_light = l.pos.xyz - in.world;
             let d = length(to_light);
             // Out of its reach, a light adds nothing: skip the rest.
@@ -1123,6 +1149,11 @@ fn fs_scene(in: VOut) -> FOut {
     rgb = finish(rgb);
     let fog_f = select(smoothstep(g.fog.w, g.params.x, in.depth), 0.0, fx_off(FX_FOG));
     rgb = fogged(rgb, fog_f);
+    if (fx_off(FX_LIGHT_HEAT)) {
+        // Blue none, through green, to red at 16 or more lights in the cluster.
+        let k = f32(cluster_at(in.clip.xy, in.world).count) / 16.0;
+        rgb = mix(rgb * 0.25, vec3<f32>(clamp(k * 2.0 - 1.0, 0.0, 1.0), 1.0 - abs(k * 2.0 - 1.0), clamp(1.0 - k * 2.0, 0.0, 1.0)), 0.6) * g.params.y;
+    }
     var out: FOut;
     out.color = vec4<f32>(rgb, in.color.a);
     out.gbuf = vec4<f32>(n, dot(in.world - g.cam_pos.xyz, g.cam_fwd.xyz));

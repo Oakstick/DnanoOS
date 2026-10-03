@@ -5,6 +5,7 @@ mod brdf;
 mod carve;
 pub mod cast;
 pub mod characters;
+mod clusters;
 mod faces;
 pub mod foes;
 pub mod foes2;

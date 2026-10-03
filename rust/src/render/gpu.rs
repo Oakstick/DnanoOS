@@ -11,13 +11,13 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
+use super::clusters;
 use super::faces::StaticFaces;
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
 use super::profile::{fx, FrameCounts, GpuTimer};
-use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS};
+use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS, NEAR};
 use super::voxels::{RigMesh, RigVertex};
 
-const MAX_LIGHTS: usize = 32;
 const SAMPLES: u32 = 4;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// The scene's color: light itself (linear HDR, times the exposure), tone mapped by the composite.
@@ -187,7 +187,7 @@ struct Globals {
     sky_moon: [f32; 4],
     bounds: [f32; 4],
     shadow: [f32; 4],
-    lights: [GpuLight; MAX_LIGHTS],
+    cluster: [f32; 4],
 }
 
 #[repr(C)]
@@ -443,6 +443,10 @@ pub struct Gpu {
     overlay_pipe: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
+    /// Clustered lights: every light, each cluster's run, the runs (`clusters`).
+    light_buf: wgpu::Buffer,
+    cell_buf: wgpu::Buffer,
+    index_buf: wgpu::Buffer,
     /// The environment cube's faces by mip (face + 6 x mip), its passes' bind groups and
     /// pipelines, and the light it was last drawn for.
     env_faces: Vec<wgpu::TextureView>,
@@ -627,6 +631,28 @@ impl Gpu {
             compare: Some(wgpu::CompareFunction::LessEqual),
             ..Default::default()
         });
+        // ---- clustered lights (RP17): every light, each cluster's run, and the runs, at fixed sizes
+        let light_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
+        let storage = |label: &str, size: u64| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        let light_buf = storage("lights", (clusters::MAX_LIGHTS * std::mem::size_of::<GpuLight>()) as u64);
+        let cell_buf = storage("light clusters", clusters::CELLS as u64 * 4);
+        let index_buf = storage("light indices", (clusters::CELLS * clusters::CELL_CAP) as u64 * 4);
         let scene_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("scene"),
             entries: &[
@@ -673,6 +699,9 @@ impl Gpu {
                     },
                     count: None,
                 },
+                light_entry(7),
+                light_entry(8),
+                light_entry(9),
             ],
         });
         // ---- the environment (RP14): a cube of the surroundings as light, a mip per roughness,
@@ -744,6 +773,9 @@ impl Gpu {
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&env_view) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&env_sampler) },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&lut_view) },
+                wgpu::BindGroupEntry { binding: 7, resource: light_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 8, resource: cell_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 9, resource: index_buf.as_entire_binding() },
             ],
         });
         // The environment's own passes see only the globals (the cube they draw into is in the
@@ -1474,6 +1506,9 @@ impl Gpu {
             overlay_pipe,
             globals,
             scene_bind,
+            light_buf,
+            cell_buf,
+            index_buf,
             env_faces,
             env_globals,
             env_src,
@@ -1653,19 +1688,34 @@ impl Gpu {
             t.collect(&self.device);
             t.begin();
         }
-        // ---- uniforms
-        let mut lights = [GpuLight::zeroed(); MAX_LIGHTS];
+        // ---- lights, in priority order (the hero's lantern first, then nearest the eye), binned
+        // into the view's clusters (RP17)
+        let eye = view.camera_position();
         let mut chosen: Vec<&Light> = frame.lights.iter().collect();
         counts.lights = chosen.len() as u32;
-        if chosen.len() > MAX_LIGHTS {
-            let hero = frame.lights[0].pos;
-            chosen.sort_by(|a, b| a.pos.distance_squared(hero).partial_cmp(&b.pos.distance_squared(hero)).unwrap());
-            chosen.truncate(MAX_LIGHTS);
+        if chosen.len() > 1 {
+            chosen[1..].sort_by(|a, b| a.pos.distance_squared(eye).total_cmp(&b.pos.distance_squared(eye)));
         }
-        counts.lights_dropped = counts.lights - chosen.len() as u32;
-        for (i, l) in chosen.iter().enumerate() {
-            lights[i] = GpuLight { pos: [l.pos.x, l.pos.y, l.pos.z, l.distance], color: [l.color.x, l.color.y, l.color.z, 0.0] };
+        chosen.truncate(clusters::MAX_LIGHTS);
+        let gpu_lights: Vec<GpuLight> = chosen
+            .iter()
+            .map(|l| GpuLight { pos: [l.pos.x, l.pos.y, l.pos.z, l.distance], color: [l.color.x, l.color.y, l.color.z, 0.0] })
+            .collect();
+        let reach: Vec<clusters::Reach> = chosen.iter().map(|l| clusters::Reach { at: l.pos, range: l.distance }).collect();
+        let (_, cam_fwd_unit, _, _, _) = view.camera_basis();
+        let grid =
+            clusters::build(&reach, &clusters::ClusterView { view_proj: view.view_proj(), eye, fwd: cam_fwd_unit, near: NEAR, far: FAR });
+        counts.lights_dropped = grid.dropped;
+        counts.light_pairs = grid.pairs;
+        counts.busiest_cluster = grid.busiest;
+        if !gpu_lights.is_empty() {
+            self.queue.write_buffer(&self.light_buf, 0, bytemuck::cast_slice(&gpu_lights));
         }
+        self.queue.write_buffer(&self.cell_buf, 0, bytemuck::cast_slice(&grid.cells));
+        if !grid.indices.is_empty() {
+            self.queue.write_buffer(&self.index_buf, 0, bytemuck::cast_slice(&grid.indices));
+        }
+        counts.upload += (std::mem::size_of_val(gpu_lights.as_slice()) + grid.cells.len() * 4 + grid.indices.len() * 4) as u64;
         let atm = frame.atmosphere;
         let fog = super::overlay::rgba(atm.background, atm.fog_near);
         let v4 = |v: Vec3, w: f32| [v.x, v.y, v.z, w];
@@ -1700,6 +1750,7 @@ impl Gpu {
             cam_fwd: v4(fwd, 1.0 / SHADOW_SIZE as f32),
             fog,
             params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
+            cluster: [self.config.width as f32, self.config.height as f32, NEAR, FAR],
             hemi_sky: v4(atm.hemi_sky, 0.0),
             hemi_ground: v4(atm.hemi_ground, fog_light.x),
             ambient: v4(atm.ambient, fog_light.y),
@@ -1710,8 +1761,12 @@ impl Gpu {
             sky_up: v4(sky_up, 0.0),
             sky_moon: v4(atm.moon_view, 0.0),
             bounds: frame.bounds.to_array(),
-            shadow: [near_r, radius, if light_vp_near.is_some() { 1.0 } else { 0.0 }, (self.fx_off & (fx::SCENE | fx::BACKFACE)) as f32],
-            lights,
+            shadow: [
+                near_r,
+                radius,
+                if light_vp_near.is_some() { 1.0 } else { 0.0 },
+                (self.fx_off & (fx::SCENE | fx::BACKFACE | fx::LIGHT_HEAT)) as f32,
+            ],
         };
         self.queue.write_buffer(&self.cascade_bufs[0], 0, bytemuck::cast_slice(&light_vp_near.unwrap_or(light_vp).to_cols_array()));
         self.queue.write_buffer(&self.cascade_bufs[1], 0, bytemuck::cast_slice(&light_vp.to_cols_array()));

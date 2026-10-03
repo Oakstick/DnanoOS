@@ -176,6 +176,8 @@ pub mod fx {
     pub const MIST: u32 = 1024;
     /// Skipping the static faces turned away from the camera.
     pub const BACKFACE: u32 = 2048;
+    /// Not an effect off but a view: each pixel tinted by how many lights its cluster holds.
+    pub const LIGHT_HEAT: u32 = 4096;
 
     pub const NAMES: [(&str, u32); 12] = [
         ("shadows", SHADOWS),
@@ -208,7 +210,10 @@ pub struct FrameCounts {
     pub upload: u64,
     /// Lights the view asked for, and how many the shader's shortlist dropped.
     pub lights: u32,
+    /// Light-in-cluster pairs over a cluster's cap, the pairs kept, and the fullest cluster (RP17).
     pub lights_dropped: u32,
+    pub light_pairs: u32,
+    pub busiest_cluster: u32,
     /// Static scenery: chunks and instances drawn in the main pass, of how many.
     pub chunks_drawn: u32,
     pub chunks: u32,
@@ -276,14 +281,16 @@ pub fn readout(cpu: &CpuTimes, counts: &FrameCounts, timer: Option<&GpuTimer>) -
             counts.shadow_static as f64 / 1e3
         ),
         format!(
-            "rigs {} ({:.1}k voxels; detail {}/{}/{}), lights {} ({} dropped)",
+            "rigs {} ({:.1}k voxels; detail {}/{}/{})",
             counts.rigs,
             counts.rig_voxels as f64 / 1e3,
             counts.rig_levels[0],
             counts.rig_levels[1],
             counts.rig_levels[2],
-            counts.lights,
-            counts.lights_dropped
+        ),
+        format!(
+            "lights {}: {} in clusters, fullest {}, {} over the cap",
+            counts.lights, counts.light_pairs, counts.busiest_cluster, counts.lights_dropped
         ),
     ];
     match timer {
