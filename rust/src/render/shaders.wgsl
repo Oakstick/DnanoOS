@@ -1051,6 +1051,7 @@ fn vs_overlay(v: OIn) -> OOut {
 
 @fragment
 fn fs_overlay(in: OOut) -> @location(0) vec4<f32> {
-    let a = textureSample(atlas, atlas_sampler, in.uv).r;
-    return vec4<f32>(in.color.rgb, in.color.a * a);
+    // Glyphs are white with their coverage as alpha; the pictures carry their own colour.
+    let t = textureSample(atlas, atlas_sampler, in.uv);
+    return vec4<f32>(in.color.rgb * t.rgb, in.color.a * t.a);
 }

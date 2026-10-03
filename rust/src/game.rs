@@ -46,6 +46,7 @@ mod story;
 mod tests;
 mod tour;
 mod vault;
+mod viewpick;
 
 pub use combat::Spirit;
 pub use feedback::{
@@ -97,6 +98,8 @@ pub enum Screen {
     Tour,
     /// Before the far portal of the Vaults of Mammon: drop everything, or keep it?
     Toll,
+    /// Just before play: the camera from above, or over his shoulder?
+    View,
     GameOver,
 }
 
@@ -155,6 +158,10 @@ pub enum MenuItem {
     DropAll,
     /// An answer to a prince's offer in one of the realms after the vaults, in its own words.
     Choice(&'static str),
+    /// The camera: from above, or over his shoulder (the choice before play; in the pause menu,
+    /// the one in use, which choosing switches).
+    ViewTop,
+    ViewFollow,
 }
 
 impl MenuItem {
@@ -173,6 +180,8 @@ impl MenuItem {
             MenuItem::KeepAll => "KEEP THE GOLD",
             MenuItem::DropAll => "LEAVE IT",
             MenuItem::Choice(words) => words,
+            MenuItem::ViewTop => "VIEW: TOP-DOWN",
+            MenuItem::ViewFollow => "VIEW: FOLLOW",
         }
     }
 }
@@ -292,6 +301,8 @@ pub struct Game {
     /// The first-run tour, while it plays, and whether it is still owed.
     pub tour: Option<Tour>,
     pub tour_pending: bool,
+    /// After the camera is chosen: the tour (or else the countdown).
+    view_then_tour: bool,
     /// The hero being played (chosen on the character screen).
     pub hero_kind: crate::logic::heroes::HeroKind,
     /// The character screen: which place in the line-up is highlighted, seconds since it
@@ -435,6 +446,7 @@ impl Game {
             tour: None,
             // Tests start straight into play; they switch the tour on when they want it.
             tour_pending: !cfg!(test) && !tour::tour_seen(),
+            view_then_tour: false,
             hero_kind: crate::logic::heroes::HeroKind::Ragnar,
             select_index: 1,
             select_age: 0.0,
@@ -470,6 +482,8 @@ impl Game {
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
         // Free movement is on unless the player turned it off (tests keep to the grid).
         g.hero.free_move = !cfg!(test) && crate::platform::load("vh.free_move").map(|v| v != "0").unwrap_or(true);
+        // The camera chosen last time.
+        g.view.camera_mode = viewpick::saved_camera();
         g
     }
 

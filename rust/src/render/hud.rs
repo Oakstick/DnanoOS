@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 use glam::Vec3;
 
 use super::foes::{bog_slime, draugr, raven};
-use super::overlay::{rgba, Align, Overlay};
+use super::overlay::{rgba, Align, Overlay, Picture};
 use super::view::STEP;
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen, TourArt, DOUBLE_POINTS_SECONDS, TOUR_STOP_SECONDS};
@@ -28,7 +28,7 @@ mod shop;
 pub use controls::controls_tab_rects;
 pub use map::map_rects;
 mod story;
-use crate::logic::angels::{Archangel, ARCHANGELS};
+use crate::logic::angels::Archangel;
 use crate::logic::boss::BossState;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::gear::{BELT_SLOTS, COINS_BOSS, RUNES_BOSS};
@@ -37,7 +37,6 @@ use crate::logic::sins::SINS;
 use crate::logic::systems::MAX_LIVES;
 use crate::logic::types::{PotionKind, Tile};
 use crate::logic::{gear, hub};
-use crate::render::view;
 use crate::render::view::floor_at;
 pub use shop::{shop_rects, shop_row_at};
 
@@ -59,7 +58,6 @@ struct Sprites {
     /// Each hero's face in the corner: Ragnar's pixel model, Mehmed and Miyamoto as they are played.
     portraits: [Sprite; 3],
     /// The fountain's statue, for its tour card.
-    krampus: Sprite,
     cast: Vec<(Sprite, &'static str, u32, &'static str)>,
 }
 
@@ -91,7 +89,6 @@ fn sprites() -> &'static Sprites {
             cropped(sprite_from(&super::heroes::mehmed_hd(None))),
             cropped(sprite_from(&super::heroes::miyamoto_hd(None))),
         ],
-        krampus: sprite_from(&view::krampus()),
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
             (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
@@ -212,7 +209,8 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         }
         return;
     }
-    if g.screen != Screen::Title {
+    // (The camera choice keeps the world clear of the HUD, as the tour does.)
+    if !matches!(g.screen, Screen::Title | Screen::View) {
         draw_world_overlays(o, g, t);
         ring::draw_ring(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
@@ -299,6 +297,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             0.65,
         ),
         Screen::Toll => draw_toll(o, g, t),
+        Screen::View => draw_view_choice(o, g, t),
         Screen::Cleared => {
             // The fanfare's last moments fade to black on the way to the boss.
             let k = (1.0 - g.screen_timer as f32 / 0.9).clamp(0.0, 1.0);
@@ -1110,7 +1109,6 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
     };
     match art {
         TourArt::Hero => fit(o, portrait_of(hero)),
-        TourArt::Fountain => fit(o, &sp.krampus),
         TourArt::Enemy(kind) => {
             let i = match kind {
                 EnemyKind::Skeleton => 0,
@@ -1158,29 +1156,6 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
         }
         TourArt::Nugget => fit(o, icon(Icon::Key)),
         TourArt::Gate => fit(o, icon(Icon::Lock)),
-        TourArt::Potion(k) => fit(o, icon(Icon::Potion(HeroKind::Ragnar, k))),
-        TourArt::AngelShrine => {
-            // Four flags in the archangels' colours round a haloed figure.
-            let (cx, cy) = (x + size / 2.0, y + size / 2.0);
-            for (k, a) in ARCHANGELS.iter().enumerate() {
-                let fx = x + size * (0.14 + 0.24 * k as f32);
-                o.rect(fx, y + size * 0.18, size * 0.02, size * 0.62, rgba(0x8a6a3a, alpha));
-                o.rect(fx + size * 0.02, y + size * 0.18, size * 0.12, size * 0.14, rgba(a.color(), alpha));
-            }
-            o.circle(cx, cy + size * 0.12, size * 0.1, rgba(0xf0ebe0, alpha));
-            o.rect(cx - size * 0.08, cy + size * 0.2, size * 0.16, size * 0.22, rgba(0xf0ebe0, alpha));
-            o.arc(cx, cy - size * 0.02, size * 0.08, 0.0, std::f32::consts::TAU, (size * 0.02).max(1.5), rgba(0xffe070, alpha));
-        }
-        TourArt::ItemShrine => fit(o, icon(Icon::Node(HeroKind::Ragnar, Tree::Shield, 2))),
-        TourArt::Cross => {
-            let c = rgba(0x4cf06a, alpha);
-            o.rect(x + size * 0.4, y + size * 0.15, size * 0.2, size * 0.7, c);
-            o.rect(x + size * 0.15, y + size * 0.4, size * 0.7, size * 0.2, c);
-        }
-        TourArt::Pit => {
-            o.circle(x + size / 2.0, y + size / 2.0, size * 0.38, rgba(0x2a1e12, alpha));
-            o.circle(x + size / 2.0, y + size / 2.0, size * 0.3, rgba(0x050406, alpha));
-        }
         TourArt::Portal(color) => draw_portal_icon(o, x, y, size, color, alpha),
         TourArt::Seal => {
             // Seven sockets round a seal stone, each in its sin's colour.
@@ -1319,6 +1294,13 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
     let bh = t * 1.3;
     let count = items.len();
     match screen {
+        Screen::View => {
+            // Two cards side by side, a picture in each.
+            let [cw, ch] = view_card(w, h);
+            let gap = t * 1.2;
+            let x0 = w / 2.0 - (count as f32 * cw + (count as f32 - 1.0) * gap) / 2.0;
+            (0..count).map(|i| [x0 + i as f32 * (cw + gap), h / 2.0 - ch / 2.0 + t * 0.3, cw, ch]).collect()
+        }
         Screen::Title if items.contains(&MenuItem::StartOver) => {
             // The two answers side by side at the foot of the "start over?" panel.
             let [px, py, pw, ph] = reset_panel(w, h);
@@ -1460,6 +1442,60 @@ fn draw_offer(o: &mut Overlay, g: &Game, t: f32) {
         );
     }
     draw_menu(o, g, t);
+}
+
+/// A camera card's width and height: a picture of 16 by 9 over its name and a line.
+fn view_card(w: f32, h: f32) -> [f32; 2] {
+    let t = tile_for(w, h);
+    let cw = (w * 0.4).min(t * 16.0).min((h * 0.55 - t * 3.2) * 16.0 / 9.0 + t * 0.8);
+    [cw, (cw - t * 0.8) * 9.0 / 16.0 + t * 3.6]
+}
+
+/// Just before play: the two cameras, each a card with a picture of how it sees the Garden, its
+/// name and a line; the highlighted card in gold. The world behind is seen as it would be.
+fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
+    o.rect(0.0, 0.0, o.width, o.height, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.55]);
+    let items = g.menu_items();
+    let rects = menu_rects(Screen::View, &items, o.width, o.height);
+    let Some(first) = rects.first() else { return };
+    o.text("CHOOSE YOUR VIEW", o.width / 2.0, first[1] - t * 1.9, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
+    let pulse = 0.75 + (g.time as f32 * 4.0).sin() * 0.25;
+    let pad = t * 0.4;
+    for (i, (item, r)) in items.iter().zip(&rects).enumerate() {
+        let selected = i == g.menu_index;
+        let (picture, name, what) = match item {
+            MenuItem::ViewTop => (Picture::ViewTop, "TOP-DOWN", "From above: the whole ground and every foe in sight."),
+            _ => (Picture::ViewFollow, "FOLLOW", "Over his shoulder: up close, the mouse turns the view."),
+        };
+        o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.9]);
+        let pw = r[2] - pad * 2.0;
+        let ph = pw * 9.0 / 16.0;
+        o.picture(picture, r[0] + pad, r[1] + pad, pw, ph, if selected { 1.0 } else { 0.6 });
+        let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
+        o.rect_outline(r[0], r[1], r[2], r[3], (t * if selected { 0.14 } else { 0.08 }).max(1.0), edge);
+        let y = r[1] + pad + ph + t * 0.95;
+        o.text(name, r[0] + r[2] / 2.0, y, t * 0.95, rgba(if selected { GOLD } else { TEXT_DIM }, 1.0), Align::Center, true);
+        o.wrap_text(
+            what,
+            r[0] + r[2] / 2.0,
+            y + t * 1.05,
+            r[2] - pad * 2.0,
+            t * 0.62,
+            t * 0.48,
+            rgba(SAND, if selected { 1.0 } else { 0.7 }),
+        );
+    }
+    let foot = rects.iter().map(|r| r[1] + r[3]).fold(0.0, f32::max) + t * 1.2;
+    o.text("Left / Right to choose    Enter or click to play", o.width / 2.0, foot, t * 0.6, rgba(TEXT, 0.9), Align::Center, false);
+    o.text(
+        "Switch at any time with C (R3 on a controller), or from the pause menu",
+        o.width / 2.0,
+        foot + t * 0.85,
+        t * 0.5,
+        rgba(SAND, 0.85),
+        Align::Center,
+        false,
+    );
 }
 
 /// Mammon's toll, before the far portal of his vaults: what he carries, and the choice.

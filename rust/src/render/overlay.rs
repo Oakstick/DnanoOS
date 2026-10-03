@@ -1,5 +1,5 @@
-//! 2D overlay batcher: rectangles, lines, arcs, pixel sprites and a bitmap
-//! font, in logical pixels, blended in sRGB like a canvas.
+//! 2D overlay batcher: rectangles, lines, arcs, pixel sprites, a bitmap font and a few
+//! pictures, in logical pixels, blended in sRGB like a canvas.
 
 use bytemuck::{Pod, Zeroable};
 
@@ -49,8 +49,42 @@ fn extra_glyph(c: char) -> [u8; 8] {
     }
 }
 
-/// The atlas: every ASCII glyph of the public-domain font8x8, magnified 4x, one byte per texel,
-/// then the extra letters.
+/// A picture kept in the atlas under the glyphs: a screenshot for the camera choice.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Picture {
+    /// The Garden seen from above.
+    ViewTop,
+    /// The Garden over Ragnar's shoulder.
+    ViewFollow,
+}
+
+/// Every picture's size in texels, and the atlas row they start on (below the last glyph cell).
+const PICTURE_W: u32 = 256;
+const PICTURE_H: u32 = 144;
+const PICTURE_Y: u32 = 288;
+
+impl Picture {
+    const ALL: [Picture; 2] = [Picture::ViewTop, Picture::ViewFollow];
+
+    /// Its top-left corner in the atlas.
+    fn origin(self) -> (u32, u32) {
+        match self {
+            Picture::ViewTop => (0, PICTURE_Y),
+            Picture::ViewFollow => (PICTURE_W, PICTURE_Y),
+        }
+    }
+
+    /// Its texels, raw RGB rows (taken with `--capture --no-hud` and boxed down to size).
+    fn rgb(self) -> &'static [u8] {
+        match self {
+            Picture::ViewTop => include_bytes!("../../assets/ui/view_top.rgb"),
+            Picture::ViewFollow => include_bytes!("../../assets/ui/view_follow.rgb"),
+        }
+    }
+}
+
+/// The atlas, four bytes a texel: every ASCII glyph of the public-domain font8x8, magnified 4x,
+/// in white with its coverage as alpha, then the extra letters, then the pictures.
 pub fn build_atlas() -> Vec<u8> {
     let mut px = vec![0u8; (ATLAS_W * ATLAS_H) as usize];
     let scale = CELL / 8;
@@ -83,7 +117,17 @@ pub fn build_atlas() -> Vec<u8> {
     for (i, &c) in EXTRA.iter().enumerate() {
         put(&mut px, EXTRA_CELL + i as u32, &extra_glyph(c));
     }
-    px
+    // The glyphs white, their coverage as alpha; the pictures opaque.
+    let mut out: Vec<u8> = px.iter().flat_map(|&a| [255, 255, 255, a]).collect();
+    for p in Picture::ALL {
+        let (ox, oy) = p.origin();
+        for (k, [r, g, b]) in p.rgb().as_chunks::<3>().0.iter().enumerate() {
+            let (x, y) = (ox + k as u32 % PICTURE_W, oy + k as u32 / PICTURE_W);
+            let i = ((y * ATLAS_W + x) * 4) as usize;
+            out[i..i + 4].copy_from_slice(&[*r, *g, *b, 255]);
+        }
+    }
+    out
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -152,6 +196,16 @@ impl Overlay {
         }
         let uv = Self::solid_uv();
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [uv; 4], color);
+    }
+
+    /// A picture from the atlas, stretched over `w` by `h`.
+    pub fn picture(&mut self, p: Picture, x: f32, y: f32, w: f32, h: f32, alpha: f32) {
+        let (ox, oy) = p.origin();
+        // (Half a texel in from its edges, so the filter never reaches its neighbour.)
+        let (u0, v0) = ((ox as f32 + 0.5) / ATLAS_W as f32, (oy as f32 + 0.5) / ATLAS_H as f32);
+        let (u1, v1) = ((ox + PICTURE_W) as f32 - 0.5, (oy + PICTURE_H) as f32 - 0.5);
+        let (u1, v1) = (u1 / ATLAS_W as f32, v1 / ATLAS_H as f32);
+        self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], [1.0, 1.0, 1.0, alpha]);
     }
 
     pub fn rect_outline(&mut self, x: f32, y: f32, w: f32, h: f32, lw: f32, color: [f32; 4]) {
@@ -277,7 +331,7 @@ mod tests {
 
     #[test]
     fn the_later_stages_names_draw_in_their_own_letters() {
-        assert_eq!(build_atlas().len(), (ATLAS_W * ATLAS_H) as usize);
+        assert_eq!(build_atlas().len(), (ATLAS_W * ATLAS_H * 4) as usize);
         assert!(EXTRA_CELL + EXTRA.len() as u32 <= (ATLAS_W / CELL) * (ATLAS_H / CELL), "room in the atlas");
         let unknown = extra_glyph('x');
         for c in EXTRA {

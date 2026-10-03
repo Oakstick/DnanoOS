@@ -228,6 +228,10 @@ impl Game {
                 self.enter(Screen::Ready);
             }
         }
+        // Back into play: the camera is chosen first.
+        if self.screen == Screen::Ready {
+            self.ask_view(false);
+        }
         self.juice.fade = 1.0;
     }
 

@@ -1,7 +1,7 @@
 //! Loading a level and starting a round: the level itself, the hero's kit, the foes at their
 //! places, the hidden relic shrine, and where he starts.
 
-use super::{save, Game, Screen, MODE_SCHEDULE, SPAWN_FIRST};
+use super::{save, Game, MODE_SCHEDULE, SPAWN_FIRST};
 use crate::audio::Soundtrack;
 use crate::logic::boss::{Cyclops, CYCLOPS_HP, CYCLOPS_HP_STEP};
 use crate::logic::enemy::{Enemy, REASSEMBLE_SECONDS};
@@ -329,11 +329,8 @@ impl Game {
         self.load_level(0);
         self.juice.score_shown = 0.0;
         self.checkpoint(save::Stage::Dungeon(0));
-        if self.tour_pending {
-            self.begin_tour();
-        } else {
-            self.enter(Screen::Ready);
-        }
+        // The camera first, then the tour (the first time) or the countdown.
+        self.ask_view(self.tour_pending);
     }
 
     /// A fresh adventure: the weapon and shield he chose at the old man's, one health potion.

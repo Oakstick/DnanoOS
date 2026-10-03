@@ -19,11 +19,20 @@ use crate::logic::types::{dist_sq, Tile, P};
 use crate::logic::{gym, pathing};
 use crate::render::{hud, view};
 
-/// Play on the title, then begin with the hero on the character screen (Ragnar).
+/// Play on the title, then begin with the hero on the character screen (Ragnar), and keep the
+/// camera highlighted (follow).
 fn start_from_title(g: &mut Game) {
     g.input.inject(Action::Confirm);
     g.update(crate::app::STEP);
     assert_eq!(g.screen, Screen::Select);
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    choose_view(g);
+}
+
+/// The camera choice before play: Enter takes the highlighted one.
+fn choose_view(g: &mut Game) {
+    assert_eq!(g.screen, Screen::View, "the camera is chosen first");
     g.input.inject(Action::Confirm);
     g.update(crate::app::STEP);
 }
@@ -56,6 +65,7 @@ fn the_character_screen_offers_three_heroes_and_each_can_begin() {
         g.select_index = hero.slot();
         g.input.inject(Action::Confirm);
         g.update(crate::app::STEP);
+        choose_view(&mut g);
         assert_eq!(g.screen, Screen::Ready, "{hero:?} begins");
         assert_eq!(g.hero_kind, hero);
         assert_eq!(g.hero.kind, hero, "and plays with his own armory");
@@ -247,16 +257,31 @@ fn the_menus_can_quit() {
     assert!(g.quit_requested);
     assert_eq!(g.screen, Screen::Title);
 
-    // Pause offers Resume / Call the Old Man / Controller / Map / Quit to Title / Quit Game; clicking a button picks it.
+    // Pause offers Resume / the view / Call the Old Man / Controller / Map / Quit to Title / Quit Game;
+    // clicking a button picks it.
     let mut g = playing();
     g.input.inject(Action::Pause);
     g.update(crate::app::STEP);
     assert_eq!(g.screen, Screen::Paused);
     assert_eq!(
         g.menu_items(),
-        vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle, MenuItem::Quit]
+        vec![
+            MenuItem::Resume,
+            MenuItem::ViewFollow,
+            MenuItem::CallOldMan,
+            MenuItem::Controls,
+            MenuItem::Map,
+            MenuItem::QuitToTitle,
+            MenuItem::Quit
+        ]
     );
-    let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[4];
+    // The view's button switches the camera, and stays in the pause menu.
+    g.menu_index = 1;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!((g.screen, g.view.camera_mode), (Screen::Paused, view::CameraMode::Top));
+    assert_eq!(g.menu_items()[1], MenuItem::ViewTop);
+    let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[5];
     g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
     g.input.mouse_button(winit::event::MouseButton::Left, true);
     g.update(crate::app::STEP);
@@ -954,6 +979,7 @@ fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     // Continue is highlighted first.
     g.input.inject(Action::Confirm);
     g.update(crate::app::STEP);
+    choose_view(&mut g);
     assert_eq!(g.screen, Screen::Ready, "no story and no character screen");
     assert!(g.level.data.boss && g.boss.is_some());
     assert_eq!((g.hero_kind, g.hero.kind), (HeroKind::Mehmed, HeroKind::Mehmed));
@@ -1325,8 +1351,9 @@ fn the_first_game_opens_with_a_tour() {
     start_from_title(&mut g);
     assert_eq!(g.screen, Screen::Tour);
     let stops = g.tour.as_ref().unwrap().stops.len();
-    assert!(stops >= 8, "only {stops} stops");
-    assert!(g.tour.as_ref().unwrap().stops.iter().any(|s| matches!(s.art, TourArt::Enemy(_))));
+    // Kept short: the hero, the goal, one foe and the objective.
+    let arts: Vec<TourArt> = g.tour.as_ref().unwrap().stops.iter().map(|s| s.art).collect();
+    assert!(matches!(arts[..], [TourArt::Hero, TourArt::Gate, TourArt::Enemy(_), TourArt::Nugget]), "{arts:?}");
     // The camera flies to the first thing.
     for _ in 0..60 {
         g.update(crate::app::STEP);

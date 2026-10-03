@@ -77,7 +77,7 @@ impl Game {
         // The title and the shop have their own recording, and every level the song it drew as it loaded.
         match screen {
             Screen::Title | Screen::Select | Screen::Shop => self.audio.set_soundtrack(Some(Soundtrack::Menu)),
-            Screen::Ready | Screen::Tour => self.audio.set_soundtrack(self.level_track),
+            Screen::Ready | Screen::Tour | Screen::View => self.audio.set_soundtrack(self.level_track),
             _ => {}
         }
         if screen == Screen::Ready {
@@ -171,6 +171,7 @@ impl Game {
             }
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
+                Some(MenuItem::ViewTop | MenuItem::ViewFollow) => self.switch_camera(),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map) => self.open_map(),
@@ -218,6 +219,7 @@ impl Game {
             }
             Screen::Shop => self.update_shop(dt),
             Screen::Tour => self.update_tour(dt),
+            Screen::View => self.update_view_choice(),
             Screen::GameOver => {
                 if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Tap]) {
                     self.enter(Screen::Title);
@@ -247,7 +249,10 @@ impl Game {
         let mut items = match self.screen {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
-            Screen::Paused => vec![MenuItem::Resume, MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle],
+            Screen::Paused => {
+                vec![MenuItem::Resume, self.view_item(), MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle]
+            }
+            Screen::View => return super::viewpick::VIEWS.iter().map(|v| v.0).collect(),
             // Keep first, and highlighted: Mammon would have it so. (A prince's offer in the realms
             // after the vaults puts the answer he would have first, too.)
             Screen::Toll if self.vault.is_some() => return vec![MenuItem::KeepAll, MenuItem::DropAll],
@@ -273,7 +278,7 @@ impl Game {
         let rects = hud::menu_rects(self.screen, &items, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
         let n = items.len();
-        let horizontal = self.screen == Screen::Title;
+        let horizontal = matches!(self.screen, Screen::Title | Screen::View);
         match self.input.nav {
             Some(Dir::Up) if !horizontal => self.menu_index = (self.menu_index + n - 1) % n,
             Some(Dir::Down) if !horizontal => self.menu_index = (self.menu_index + 1) % n,
@@ -360,8 +365,8 @@ impl Game {
                 self.enter(Screen::Playing);
             }
         }
-        if self.input.was_pressed(&[Action::Camera]) {
-            self.view.camera_mode = if self.view.camera_mode == CameraMode::Third { CameraMode::Top } else { CameraMode::Third };
+        if self.input.was_pressed(&[Action::Camera]) && self.screen != Screen::View {
+            self.switch_camera();
         }
 
         // Aiming, by mouse or right stick, only steers the chase camera.
@@ -373,8 +378,8 @@ impl Game {
             if self.input.pad_aiming {
                 self.input.pad_aiming = false;
                 self.view.recenter();
-            } else {
-                self.view.camera_mode = if self.view.camera_mode == CameraMode::Third { CameraMode::Top } else { CameraMode::Third };
+            } else if self.screen != Screen::View {
+                self.switch_camera();
             }
         }
         // Looking around is allowed during the countdown too.
