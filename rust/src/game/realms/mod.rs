@@ -255,7 +255,6 @@ impl Game {
     }
 
     /// The offer is put to him: play stops for the question, the realm's first answer highlighted.
-    #[allow(dead_code)] // (for the realms whose princes make an offer: the Grey Mire's bed)
     pub(super) fn ask_offer(&mut self) {
         self.enter(Screen::Toll);
         self.menu_index = 0;

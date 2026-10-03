@@ -278,7 +278,7 @@ impl Breed {
             // (`logic::realms::weight`). The Peerless fights with his own kit (`game::realms::mirrors`).
             K::Peerless => (Brute, 1.6, 1.0, 1.25, 1.0, 0.4, 2),
             // Hel's servants wade in, slow and hard to stop.
-            K::Ganglot => (Brute, 1.3, 0.9, 2.0, 0.45, 0.45, 1),
+            K::Ganglot => (Brute, 1.3, 0.9, 3.0, 0.4, 0.45, 1),
             // The gaki swarm.
             K::Gaki => (Skirmisher, 0.9, 0.95, 0.8, 1.05, 0.38, 1),
             // The elf-maids: hollow behind, and only there to be struck.
