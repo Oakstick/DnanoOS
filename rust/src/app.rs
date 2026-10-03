@@ -32,6 +32,8 @@ pub struct Options {
     pub windowed: bool,
     pub fullscreen: bool,
     pub no_vsync: bool,
+    /// Draw the scene in linear HDR (RP13, `--hdr`), for comparing it with the display-space look.
+    pub hdr: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -316,7 +318,7 @@ impl ApplicationHandler for App {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let size = window.inner_size();
-            match pollster::block_on(Gpu::new(Some(window.clone()), (size.width, size.height))) {
+            match pollster::block_on(Gpu::new(Some(window.clone()), (size.width, size.height), self.opts.hdr)) {
                 Ok(mut gpu) => {
                     if self.opts.no_vsync {
                         gpu.set_vsync(false);
@@ -337,7 +339,7 @@ impl ApplicationHandler for App {
             let w = window.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let size = w.inner_size();
-                let gpu = Gpu::new(Some(w.clone()), (size.width.max(1), size.height.max(1))).await;
+                let gpu = Gpu::new(Some(w.clone()), (size.width.max(1), size.height.max(1)), false).await;
                 *pending.borrow_mut() = Some(gpu);
                 w.request_redraw();
             });

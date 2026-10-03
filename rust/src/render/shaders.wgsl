@@ -19,8 +19,8 @@ struct Globals {
     cam_fwd: vec4<f32>,    // xyz camera forward; w shadow map texel size in uv
     fog: vec4<f32>,        // rgb fog color (sRGB), w near
     params: vec4<f32>,     // x fog far, y exposure, z nugget pulse, w light count
-    hemi_sky: vec4<f32>,
-    hemi_ground: vec4<f32>,
+    hemi_sky: vec4<f32>,    // w: 1 when the scene is drawn in linear HDR (`gpu::Gpu::hdr`)
+    hemi_ground: vec4<f32>, // w, and ambient.w and moon_dir.w: the fog as linear light, for HDR
     ambient: vec4<f32>,
     moon_dir: vec4<f32>,
     moon_color: vec4<f32>,
@@ -496,6 +496,57 @@ fn to_srgb(c: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, c <= vec3<f32>(0.0031308));
 }
 
+// ------------------------------------------------------------ output (RP13)
+//
+// Two ways to hand a colour to the scene target. Display (the original look): every surface
+// is tone mapped and sRGB encoded here, fog is mixed in that display space, and see-through
+// things blend there too. Linear HDR (`--hdr`): the target holds light itself (times the
+// exposure); fog and blending happen in light, and the composite tone maps and encodes once.
+
+fn hdr_on() -> bool {
+    return g.hemi_sky.w > 0.5;
+}
+
+// Worked-out light (linear radiance) as the target holds it.
+fn finish(col: vec3<f32>) -> vec3<f32> {
+    if (hdr_on()) {
+        return max(col, vec3<f32>(0.0)) * g.params.y;
+    }
+    return to_srgb(aces_filmic(col, g.params.y));
+}
+
+// `c` from `finish`, a fraction `f` of the way into the fog.
+fn fogged(c: vec3<f32>, f: f32) -> vec3<f32> {
+    if (hdr_on()) {
+        return mix(c, vec3<f32>(g.hemi_ground.w, g.ambient.w, g.moon_dir.w), f);
+    }
+    return mix(c, g.fog.rgb, f);
+}
+
+fn srgb_to_lin(c: vec3<f32>) -> vec3<f32> {
+    let hi = pow((max(c, vec3<f32>(0.0)) + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+    return select(hi, c / 12.92, c <= vec3<f32>(0.04045));
+}
+
+// The light that tone maps to linear display colour `t` (the curve turned round, a few steps).
+fn untonemap(t: vec3<f32>) -> vec3<f32> {
+    let goal = clamp(t, vec3<f32>(0.0), vec3<f32>(0.97));
+    var x = goal;
+    for (var i = 0; i < 8; i++) {
+        let y = aces_filmic(x, 1.0);
+        x = x * clamp(goal / max(y, vec3<f32>(1e-5)), vec3<f32>(0.25), vec3<f32>(4.0));
+    }
+    return x;
+}
+
+// A colour made to look a certain way on screen (the sky, sRGB) as the target holds it.
+fn from_display(srgb: vec3<f32>) -> vec3<f32> {
+    if (hdr_on()) {
+        return untonemap(srgb_to_lin(srgb));
+    }
+    return srgb;
+}
+
 fn bayer4(p: vec2<f32>) -> f32 {
     var m = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
     let i = (u32(p.y) % 4u) * 4u + (u32(p.x) % 4u);
@@ -686,10 +737,10 @@ fn smoke_wall(in: VOut) -> FOut {
     let lit = smoothstep(crest - 3.4, crest - 0.3, y);
     let tint = in.color.rgb * 2.4;
     let col = tint * (0.3 + 0.7 * n) * (0.45 + 0.75 * shade) + g.moon_color.rgb * 0.045 * shade * n * (0.35 + 0.65 * lit);
-    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let rgb = finish(col);
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
-    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f * 0.45), cover * in.color.a * (1.0 - 0.08 * rank));
+    out.color = vec4<f32>(fogged(rgb, fog_f * 0.45), cover * in.color.a * (1.0 - 0.08 * rank));
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
     return out;
 }
@@ -735,10 +786,10 @@ fn cloud_sea(in: VOut) -> FOut {
     let tint = in.color.rgb;
     var col = mix(tint * 0.35, tint * 2.1 + vec3<f32>(0.015, 0.018, 0.03), smoothstep(0.4, 0.85, n));
     col += vec3<f32>(0.02, 0.03, 0.03) * smoothstep(2.0, 0.0, abs(outside)) * smoothstep(0.4, 0.8, n);
-    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let rgb = finish(col);
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
-    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f * 0.6), cover * in.color.a);
+    out.color = vec4<f32>(fogged(rgb, fog_f * 0.6), cover * in.color.a);
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
     return out;
 }
@@ -775,10 +826,10 @@ fn ground_mist(in: VOut, layer: f32) -> FOut {
         light += l.color.rgb * min(att, 1.5) * 0.06;
     }
     let col = in.color.rgb * light * (0.8 + 0.4 * n);
-    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let rgb = finish(col);
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
-    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), cover * (1.0 - fog_f * 0.5));
+    out.color = vec4<f32>(fogged(rgb, fog_f), cover * (1.0 - fog_f * 0.5));
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
     return out;
 }
@@ -816,10 +867,10 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
         let white = smoothstep(0.35, 0.8, streak);
         var col = mix(vec3<f32>(0.02, 0.05, 0.06), in.color.rgb * 0.5, white);
         col *= g.moon_color.rgb * 0.5 + g.hemi_sky.rgb * 0.6 + g.ambient.rgb * 2.0;
-        let rgb = to_srgb(aces_filmic(col * 2.2, g.params.y));
+        let rgb = finish(col * 2.2);
         // Falls off the island's edge thin away into the clouds below it.
         let sink = smoothstep(-3.2, -0.6, in.world.y);
-        out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), in.color.a * (0.55 + 0.45 * white) * sink);
+        out.color = vec4<f32>(fogged(rgb, fog_f), in.color.a * (0.55 + 0.45 * white) * sink);
         return out;
     }
     // Ripples: the normal from the slope of a moving height field.
@@ -864,10 +915,11 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
     let md = normalize(g.sky_moon.xyz);
     let sheen = pow(max(dot(r, md), 0.0), 40.0) * 0.5 + pow(max(dot(r, md), 0.0), 6.0) * 0.08;
     let ripple_light = g.hemi_sky.rgb * (0.05 + 0.25 * clamp(h0 - 0.35, 0.0, 1.0)) + g.moon_color.rgb * sheen * g.sky_fwd.w;
-    let body_srgb = to_srgb(aces_filmic(body + spec + ripple_light, g.params.y));
+    let body_out = finish(body + spec + ripple_light);
     let mirror = clamp(fres * 1.5 + 0.3, 0.0, 1.0);
-    var col = mix(body_srgb, max(sky, body_srgb), mirror) + to_srgb(aces_filmic(spec, g.params.y)) * 0.5;
-    out.color = vec4<f32>(mix(col, g.fog.rgb, fog_f), mix(in.color.a, 1.0, fres));
+    let sky_out = from_display(sky);
+    var col = mix(body_out, max(sky_out, body_out), mirror) + finish(spec) * 0.5;
+    out.color = vec4<f32>(fogged(col, fog_f), mix(in.color.a, 1.0, fres));
     return out;
 }
 
@@ -900,10 +952,10 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
     }
     spec += pow(max(dot(n, normalize(g.moon_dir.xyz + view_dir)), 0.0), 60.0) * g.moon_color.rgb;
     let col = in.color.rgb * light * (0.55 + 0.5 * rush + 0.6 * edge) + spec * 0.8;
-    let rgb = to_srgb(aces_filmic(col, g.params.y));
+    let rgb = finish(col);
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
-    out.color = vec4<f32>(mix(rgb, g.fog.rgb, fog_f), in.color.a * clamp(0.35 + 0.65 * edge + 0.25 * rush, 0.0, 1.0));
+    out.color = vec4<f32>(fogged(rgb, fog_f), in.color.a * clamp(0.35 + 0.65 * edge + 0.25 * rush, 0.0, 1.0));
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
     return out;
 }
@@ -913,10 +965,12 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
 // of haze would look).
 fn glow_orb(in: VOut) -> FOut {
     let r2 = min(dot(in.local.xy, in.local.xy), 1.0);
-    let k = pow(1.0 - r2, 1.5);
+    // Added as light (HDR), a halo's faint rim shows far more than added as display colour did;
+    // a steeper falloff keeps it the size it was drawn.
+    let k = pow(1.0 - r2, select(1.5, 4.0, hdr_on()));
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
-    out.color = vec4<f32>(to_srgb(aces_filmic(in.color.rgb, g.params.y)), in.color.a * k * (1.0 - fog_f * 0.8));
+    out.color = vec4<f32>(finish(in.color.rgb), in.color.a * k * (1.0 - fog_f * 0.8));
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
     return out;
 }
@@ -1035,9 +1089,9 @@ fn fs_scene(in: VOut) -> FOut {
             rgb = surf.albedo * 2.4 + in.emissive.rgb;
         }
     }
-    rgb = to_srgb(aces_filmic(rgb, g.params.y));
+    rgb = finish(rgb);
     let fog_f = select(smoothstep(g.fog.w, g.params.x, in.depth), 0.0, fx_off(FX_FOG));
-    rgb = mix(rgb, g.fog.rgb, fog_f);
+    rgb = fogged(rgb, fog_f);
     var out: FOut;
     out.color = vec4<f32>(rgb, in.color.a);
     out.gbuf = vec4<f32>(n, dot(in.world - g.cam_pos.xyz, g.cam_fwd.xyz));
@@ -1125,7 +1179,7 @@ fn fs_sky(in: SkyOut) -> FOut {
     // Dither so the dark halo and horizon glow do not band in 8 bits.
     col += (hash31(vec3<f32>(in.clip.xy, fract(time) * 7.0)) - 0.5) / 255.0;
     var out: FOut;
-    out.color = vec4<f32>(col, 1.0);
+    out.color = vec4<f32>(from_display(col), 1.0);
     out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
     return out;
 }

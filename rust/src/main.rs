@@ -115,6 +115,7 @@ fn main() {
         windowed: args.iter().any(|a| a == "--windowed"),
         fullscreen: args.iter().any(|a| a == "--fullscreen"),
         no_vsync: args.iter().any(|a| a == "--no-vsync"),
+        hdr: args.iter().any(|a| a == "--hdr"),
     };
     app::run(opts);
 }

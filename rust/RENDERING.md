@@ -84,6 +84,35 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
   lower GPU time in the Garden (5.2–6.2 ms either way). After the prepass and back-face skipping, far
   scenery is cheap. Revisit on the vista and top-down cameras and on the GTX 1080.
 
+### RP13: linear HDR, behind a switch
+
+`--hdr` (the game, `--capture` and `--perf`) draws the scene in linear HDR. Without it, the look is
+exactly what it was: per-surface tone mapping into an 8-bit target, with the same maths and pixels.
+
+**With `--hdr`:**
+- **Target:** half floats holding light times the exposure (`shaders.wgsl`, output section: `finish`,
+  `fogged`, `from_display`).
+- **Fog and blending in light:** fog, alpha blending and additive effects all mix in linear light. The
+  fog colour (and the clear behind everything) becomes the light that tone maps to it (`untonemap`).
+- **Sky:** the sky, drawn as display colour, is turned into light the same way, so it looks as before.
+- **Bloom:** taken from the tone-mapped light, so its energy matches the old look; a lit marble floor
+  would otherwise drown the hero. It joins the light before the final tone map.
+- **Encoding:** the composite tone maps (the same ACES fit) and encodes to sRGB exactly once.
+- **Glow orbs:** they now add light rather than display colour, which made their faint rims visible;
+  they get a steeper falloff so halos keep their drawn size.
+
+**Compared side by side** (Garden, hub, meadow, Vaults, Burning Field, Scene I): close to the original.
+Bright sources (torches, lamps, fire, lava edges) are punchier and keep their order of brightness. The
+souls are a little paler, and the Vaults' floor a little brighter. Approving or tuning this is TA02's
+job.
+
+**Cost at full GPU clocks:** about 0–8% (Garden +0%, 30 foes +6%, Scene I +8%). At this laptop's low
+memory clock it was 13–22%: the float target doubles the 4× MSAA colour traffic. Check it on the GTX 1080.
+
+**Not in this step:** AO still multiplies all light (RP15 moves it to indirect light only); HDR monitor
+output is a separate feature; there is no in-game toggle yet, because the switch rebuilds the
+pipelines (about 3 s), so it is a launch option.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -141,10 +170,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13, linear HDR.
-  - Lighting, fog and transparency would move into linear units, with bloom taken before tone mapping
-    and the image encoded once.
-  - This changes the look, so it should come behind a switch and be approved from side-by-side captures.
+- **D, lighting:** RP13 is built behind `--hdr` and waits for art approval; then make it the default
+  and drop the display path.
   - Then RP14 (GGX materials, prefiltered reflections), RP15 (AO on indirect light only, an audit of the
     MSAA normal/depth resolve), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
 - **E, world systems:**

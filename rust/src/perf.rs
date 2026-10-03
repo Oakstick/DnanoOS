@@ -1,7 +1,7 @@
 //! Repeatable performance captures (RP08 in the Technical Art and Rendering Plan):
 //!
 //!   AdventuresOfTheAncientBlades --perf [all|garden,battle30,...] [--frames 600] [--size 1920x1080]
-//!                                [--fx-off shadows,ao] [--lod-bias 1] [--out perf]
+//!                                [--fx-off shadows,ao] [--lod-bias 1] [--hdr] [--out perf]
 //!
 //! Each scene starts from the same seed and script, runs a second of untimed frames so the GPU
 //! leaves its idle clocks and the first uploads are done, then plays `--frames` frames as the
@@ -369,7 +369,7 @@ pub fn run(args: &[String]) -> i32 {
         eprintln!("no such scene; the scenes are: {}", SCENES.iter().map(|s| s.name).collect::<Vec<_>>().join(", "));
         return 2;
     }
-    let mut gpu = match pollster::block_on(Gpu::new(None, size)) {
+    let mut gpu = match pollster::block_on(Gpu::new(None, size, args.iter().any(|a| a == "--hdr"))) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("{e}");
@@ -390,6 +390,7 @@ pub fn run(args: &[String]) -> i32 {
     let _ = writeln!(md, "| Resolution | {}x{} native, 4x MSAA, no upscaling |", size.0, size.1);
     let _ = writeln!(md, "| Effects off | {} |", if fx_list.is_empty() { "none" } else { fx_list });
     let _ = writeln!(md, "| Level-of-detail bias | {lod_bias} |");
+    let _ = writeln!(md, "| Scene light | {} |", if gpu.hdr { "linear HDR (`--hdr`)" } else { "display (tone mapped per surface)" });
     let _ = writeln!(md, "| Frames per scene | {frames} after 1 s of warm-up, at most 2 in flight |\n");
     let _ = writeln!(
         md,

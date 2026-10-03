@@ -7,7 +7,9 @@
 //   composite  color x contact shading, background blur, glow, grading, vignette
 //
 // The scene color arrives tone mapped and sRGB encoded; glow and blur mix in
-// (approximately) linear light and encode again at the end.
+// (approximately) linear light and encode again at the end. In linear HDR (`--hdr`,
+// moon.w = 1) it arrives as light: glow is taken from that light, and the composite
+// tone maps and encodes it, once.
 
 struct Post {
     view_proj: mat4x4<f32>,
@@ -17,7 +19,7 @@ struct Post {
     cam_u: vec4<f32>,     // up, scaled to the screen edge; w: blur is full this far behind focus
     params: vec4<f32>,    // contact radius, contact strength, glow strength, blur max px at 1080p (0 = off)
     params2: vec4<f32>,   // glow threshold, vignette, time, grading
-    moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through
+    moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through; w 1 for linear HDR
 };
 
 @group(0) @binding(0) var<uniform> p: Post;
@@ -125,18 +127,72 @@ fn to_lin(c: vec3<f32>) -> vec3<f32> {
     return pow(max(c, vec3<f32>(0.0)), vec3<f32>(2.2));
 }
 
+fn hdr_on() -> bool {
+    return p.moon.w > 0.5;
+}
+
+// What glows (the bloom's and the shafts' input): the scene as display light. In HDR that is the
+// light tone mapped, so a brightly lit floor, holding many times the threshold's light, glows as
+// much as it did and does not swallow what stands on it; the glow still joins the light before
+// the final tone map.
+fn glow_light(c: vec3<f32>) -> vec3<f32> {
+    if (hdr_on()) {
+        return aces_filmic(max(c, vec3<f32>(0.0)));
+    }
+    return to_lin(c);
+}
+
+// The scene's colour as light to blur and composite: decoded from display, or as it is in HDR.
+fn scene_light(c: vec3<f32>) -> vec3<f32> {
+    if (hdr_on()) {
+        return max(c, vec3<f32>(0.0));
+    }
+    return to_lin(c);
+}
+
+// The scene shader's tone curve (ACES filmic as Three.js fits it) and sRGB encoding, for HDR.
+fn rrt_odt_fit(v: vec3<f32>) -> vec3<f32> {
+    let a = v * (v + 0.0245786) - 0.000090537;
+    let b = v * (0.983729 * v + 0.4329510) + 0.238081;
+    return a / b;
+}
+
+fn aces_filmic(c_in: vec3<f32>) -> vec3<f32> {
+    let input_m = mat3x3<f32>(
+        vec3<f32>(0.59719, 0.07600, 0.02840),
+        vec3<f32>(0.35458, 0.90834, 0.13383),
+        vec3<f32>(0.04823, 0.01566, 0.83777),
+    );
+    let output_m = mat3x3<f32>(
+        vec3<f32>(1.60475, -0.10208, -0.00327),
+        vec3<f32>(-0.53108, 1.10813, -0.07276),
+        vec3<f32>(-0.07367, -0.00605, 1.07602),
+    );
+    var c = c_in / 0.6;
+    c = input_m * c;
+    c = rrt_odt_fit(c);
+    c = output_m * c;
+    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let hi = pow(c, vec3<f32>(0.41666)) * 1.055 - vec3<f32>(0.055);
+    let lo = c * 12.92;
+    return select(hi, lo, c <= vec3<f32>(0.0031308));
+}
+
 @fragment
 fn fs_bloom_pre(in: POut) -> @location(0) vec4<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(t0));
     var c = vec3<f32>(0.0);
-    c += to_lin(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(-1.0, -1.0), 0.0).rgb);
-    c += to_lin(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(1.0, -1.0), 0.0).rgb);
-    c += to_lin(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(-1.0, 1.0), 0.0).rgb);
-    c += to_lin(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(1.0, 1.0), 0.0).rgb);
+    c += glow_light(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(-1.0, -1.0), 0.0).rgb);
+    c += glow_light(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(1.0, -1.0), 0.0).rgb);
+    c += glow_light(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(-1.0, 1.0), 0.0).rgb);
+    c += glow_light(textureSampleLevel(t0, samp, in.uv + texel * vec2<f32>(1.0, 1.0), 0.0).rgb);
     c *= 0.25;
+    let th = p.params2.x;
     // Soft-knee threshold on the brightest channel.
     let l = max(c.r, max(c.g, c.b));
-    let th = p.params2.x;
     let knee = th * 0.5;
     var soft = clamp(l - th + knee, 0.0, 2.0 * knee);
     soft = soft * soft / (4.0 * knee + 1e-4);
@@ -191,7 +247,7 @@ fn fs_rays(in: POut) -> @location(0) vec4<f32> {
         if (all(uv > vec2<f32>(0.0)) && all(uv < vec2<f32>(1.0))) {
             let d = textureSampleLevel(t1, samp, uv, 0.0).w;
             if (d > SKY) {
-                let c = to_lin(textureSampleLevel(t0, samp, uv, 0.0).rgb);
+                let c = glow_light(textureSampleLevel(t0, samp, uv, 0.0).rgb);
                 let near_moon = exp(-length((uv - moon) * aspect) * 4.0);
                 sum += c * decay * near_moon;
             }
@@ -217,7 +273,7 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
     let dim = vec2<f32>(textureDimensions(t0));
     let px = vec2<i32>(in.uv * dim);
     let d = textureLoad(t1, px, 0).w;
-    var lin = to_lin(textureLoad(t0, px, 0).rgb) * contact(in.uv);
+    var lin = scene_light(textureLoad(t0, px, 0).rgb) * contact(in.uv);
 
     // Background blur: things well behind the in-focus plane soften.
     let max_px = p.params.w * dim.y / 1080.0;
@@ -237,7 +293,7 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
             // Sharp things in front must not smear over the blurred background.
             let scoc = select(blur_amount(sd, max_px), max_px, sd > SKY);
             let w = clamp(scoc - r + 1.0, 0.0, 1.0);
-            acc += to_lin(textureSampleLevel(t0, samp, suv, 0.0).rgb) * contact(suv) * w;
+            acc += scene_light(textureSampleLevel(t0, samp, suv, 0.0).rgb) * contact(suv) * w;
             wsum += w;
         }
         lin = acc / wsum;
@@ -245,6 +301,9 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
 
     lin += textureSampleLevel(t3, samp, in.uv, 0.0).rgb * p.params.z;
     var col = pow(max(lin, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+    if (hdr_on()) {
+        col = to_srgb(aces_filmic(lin));
+    }
 
     // Grading: a touch more saturation and contrast, cool shadows, warm highlights.
     let grade = p.params2.w;

@@ -20,8 +20,43 @@ use super::voxels::{RigMesh, RigVertex};
 const MAX_LIGHTS: usize = 32;
 const SAMPLES: u32 = 4;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-/// The scene's color, tone mapped and sRGB encoded by the shader.
-const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+/// The scene's color: tone mapped and sRGB encoded by the shader, or in linear HDR (`Gpu::hdr`)
+/// light itself, which needs a float target.
+fn color_format(hdr: bool) -> wgpu::TextureFormat {
+    if hdr {
+        wgpu::TextureFormat::Rgba16Float
+    } else {
+        wgpu::TextureFormat::Rgba8Unorm
+    }
+}
+
+/// The scene shader's tone curve (ACES filmic as Three.js fits it), exposure 1, for linear light.
+fn aces_filmic(c: Vec3) -> Vec3 {
+    let input = glam::Mat3::from_cols(
+        Vec3::new(0.59719, 0.07600, 0.02840),
+        Vec3::new(0.35458, 0.90834, 0.13383),
+        Vec3::new(0.04823, 0.01566, 0.83777),
+    );
+    let output = glam::Mat3::from_cols(
+        Vec3::new(1.60475, -0.10208, -0.00327),
+        Vec3::new(-0.53108, 1.10813, -0.07276),
+        Vec3::new(-0.07367, -0.00605, 1.07602),
+    );
+    let v = input * (c / 0.6);
+    let a = v * (v + Vec3::splat(0.0245786)) - Vec3::splat(0.000090537);
+    let b = v * (v * 0.983729 + Vec3::splat(0.432951)) + Vec3::splat(0.238081);
+    (output * (a / b)).clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+/// The light that tone maps to linear display colour `t` (as the shader's `untonemap`).
+fn untonemap(t: Vec3) -> Vec3 {
+    let goal = t.clamp(Vec3::ZERO, Vec3::splat(0.97));
+    let mut x = goal;
+    for _ in 0..24 {
+        x *= (goal / aces_filmic(x).max(Vec3::splat(1e-5))).clamp(Vec3::splat(0.25), Vec3::splat(4.0));
+    }
+    x
+}
 /// World normal and view depth, and the glow chain.
 const HDR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const AO: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -307,10 +342,10 @@ fn texture(
 }
 
 impl Targets {
-    fn new(device: &wgpu::Device, post: &PostShared, w: u32, h: u32) -> Self {
+    fn new(device: &wgpu::Device, post: &PostShared, w: u32, h: u32, color_format: wgpu::TextureFormat) -> Self {
         let full = (w, h);
         let half = ((w / 2).max(1), (h / 2).max(1));
-        let color = texture(device, "color", full, COLOR, 1, true);
+        let color = texture(device, "color", full, color_format, 1, true);
         let gbuf = texture(device, "gbuf", full, HDR, 1, true);
         let ao = texture(device, "ao", half, AO, 1, true);
         let ao_blur = texture(device, "ao blur", half, AO, 1, true);
@@ -327,7 +362,7 @@ impl Targets {
         let up_binds = (0..BLOOM_LEVELS - 1).map(|i| post.bind(device, "bloom up", [&bloom[i + 1], b, b, b])).collect();
         let composite_bind = post.bind(device, "composite", [&color, &gbuf, &ao_blur, &bloom[0]]);
         Self {
-            msaa_color: texture(device, "msaa color", full, COLOR, SAMPLES, false),
+            msaa_color: texture(device, "msaa color", full, color_format, SAMPLES, false),
             msaa_gbuf: texture(device, "msaa gbuf", full, HDR, SAMPLES, false),
             depth: texture(device, "depth", full, DEPTH, SAMPLES, false),
             color,
@@ -432,11 +467,16 @@ pub struct Gpu {
     overlay_buf: Dyn,
     pub backend: String,
     pub adapter: wgpu::AdapterInfo,
+    /// The scene in linear HDR (RP13) rather than tone mapped as each surface is drawn.
+    pub hdr: bool,
 }
 
 impl Gpu {
     /// Opens the GPU on a window surface. `size` is in physical pixels.
-    pub async fn new(window: Option<Arc<winit::window::Window>>, size: (u32, u32)) -> Result<Self, String> {
+    /// `hdr` draws the scene in linear HDR (RP13): see `shaders.wgsl`'s output section.
+    pub async fn new(window: Option<Arc<winit::window::Window>>, size: (u32, u32), hdr: bool) -> Result<Self, String> {
+        #[allow(non_snake_case)]
+        let COLOR = color_format(hdr);
         // Direct3D 12 first on Windows: it is what the Steam overlay and capture
         // tools know best. Anything else (or WGPU_BACKEND) as the fallback.
         let preferred = if cfg!(windows) { wgpu::Backends::DX12 } else { wgpu::Backends::all() };
@@ -1141,7 +1181,7 @@ impl Gpu {
 
         let meshes = build_meshes(&device);
         let inst = wgpu::BufferUsages::VERTEX;
-        let rt = Targets::new(&device, &post, config.width, config.height);
+        let rt = Targets::new(&device, &post, config.width, config.height, COLOR);
         let timer = GpuTimer::new(&device, &queue);
         let rig_draw_buf = Dyn::new(&device, "rig draws", wgpu::BufferUsages::STORAGE, 1 << 14);
         let rig_part_buf = Dyn::new(&device, "rig parts", wgpu::BufferUsages::STORAGE, 1 << 16);
@@ -1215,6 +1255,7 @@ impl Gpu {
             static_count: 0,
             backend,
             adapter: adapter_info,
+            hdr,
         })
     }
 
@@ -1228,7 +1269,7 @@ impl Gpu {
         if let Some(s) = &self.surface {
             s.configure(&self.device, &self.config);
         }
-        self.rt = Targets::new(&self.device, &self.post, w, h);
+        self.rt = Targets::new(&self.device, &self.post, w, h, color_format(self.hdr));
     }
 
     pub fn set_vsync(&mut self, on: bool) {
@@ -1398,6 +1439,8 @@ impl Gpu {
         let atm = frame.atmosphere;
         let fog = super::overlay::rgba(atm.background, atm.fog_near);
         let v4 = |v: Vec3, w: f32| [v.x, v.y, v.z, w];
+        // In HDR the fog is light: as much as tone maps to the fog colour.
+        let fog_light = untonemap(super::voxels::lin(atm.background));
         let (cam, fwd, cam_r, cam_u, ortho) = view.camera_basis();
         let (sky_fwd, sky_right, sky_up) = view.sky_basis();
         // Two shadow cascades look down the light: a fine one over the ground ahead of
@@ -1427,10 +1470,10 @@ impl Gpu {
             cam_fwd: v4(fwd, 1.0 / SHADOW_SIZE as f32),
             fog,
             params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
-            hemi_sky: v4(atm.hemi_sky, 0.0),
-            hemi_ground: v4(atm.hemi_ground, 0.0),
-            ambient: v4(atm.ambient, 0.0),
-            moon_dir: v4(atm.sun_dir, 0.0),
+            hemi_sky: v4(atm.hemi_sky, if self.hdr { 1.0 } else { 0.0 }),
+            hemi_ground: v4(atm.hemi_ground, fog_light.x),
+            ambient: v4(atm.ambient, fog_light.y),
+            moon_dir: v4(atm.sun_dir, fog_light.z),
             moon_color: v4(atm.sun, 0.0),
             sky_fwd: v4(sky_fwd, atm.night_sky),
             sky_right: v4(sky_right, frame.time),
@@ -1457,7 +1500,11 @@ impl Gpu {
                 if focus.is_some() && self.fx_off & fx::DOF == 0 { 3.5 } else { 0.0 },
             ],
             params2: [0.6, 0.28, frame.time, if self.fx_off & fx::GRADE != 0 { 0.0 } else { 1.0 }],
-            moon: moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky),
+            moon: {
+                let mut m = moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky);
+                m[3] = if self.hdr { 1.0 } else { 0.0 };
+                m
+            },
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));
@@ -1638,7 +1685,8 @@ impl Gpu {
 
         // ---- scene
         {
-            let bg = super::overlay::rgba(atm.background, 1.0);
+            // The clear shows where nothing is drawn: the background colour, or in HDR the light that tone maps to it.
+            let bg = if self.hdr { [fog_light.x, fog_light.y, fog_light.z, 1.0] } else { super::overlay::rgba(atm.background, 1.0) };
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[
@@ -2237,4 +2285,27 @@ fn cylinder(r_top: f32, r_bottom: f32, h: f32, segments: u32) -> MeshData {
         i.extend_from_slice(&[t0, b0, b1, t0, b1, t1, 0, t0, t1, 1, b1, b0]);
     }
     (v, i)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn untonemap_finds_the_light_behind_a_display_colour() {
+        for hex in [0x06100b, 0x2a0a0e, 0x767676, 0xc49358, 0x567770, 0xb6b39a, 0x202040] {
+            let t = super::super::voxels::lin(hex);
+            let back = aces_filmic(untonemap(t));
+            assert!((back - t).abs().max_element() < 1e-3, "{hex:06x}: {t} came back as {back}");
+        }
+    }
+
+    #[test]
+    fn frustum_keeps_what_it_sees() {
+        let vp = Mat4::perspective_rh(1.0, 1.0, 0.1, 100.0) * Mat4::look_at_rh(Vec3::ZERO, Vec3::NEG_Z, Vec3::Y);
+        let f = Frustum::new(vp);
+        assert!(f.sees(Vec3::new(-1.0, -1.0, -11.0), Vec3::new(1.0, 1.0, -9.0)));
+        assert!(!f.sees(Vec3::new(-1.0, -1.0, 9.0), Vec3::new(1.0, 1.0, 11.0)), "behind");
+        assert!(!f.sees(Vec3::new(50.0, -1.0, -11.0), Vec3::new(52.0, 1.0, -9.0)), "off to the side");
+    }
 }
