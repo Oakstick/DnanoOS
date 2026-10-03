@@ -122,7 +122,9 @@ fn main() {
             .iter()
             .position(|a| a == "--preset")
             .and_then(|i| args.get(i + 1))
-            .and_then(|name| void_harvest::render::preset::Preset::named(name)),
+            .and_then(|name| void_harvest::render::preset::Preset::named(name))
+            .or_else(|| args.iter().any(|a| a == "--gpu-cull").then(void_harvest::render::preset::Preset::default_for_build))
+            .map(|p| void_harvest::render::preset::Preset { gpu_cull: p.gpu_cull || args.iter().any(|a| a == "--gpu-cull"), ..p }),
     };
     app::run(opts);
 }

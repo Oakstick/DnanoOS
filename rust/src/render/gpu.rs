@@ -86,6 +86,30 @@ fn push_faces(out: &mut Vec<u32>, slot: u32, open: u8) {
     }
 }
 
+/// Faces within a chunk that all face one way (RP21: clusters with a normal cone, here exact):
+/// where they start in the face buffer, how many, the box the faces span, and the way they
+/// face (0 to 5 as `FACE_NORMALS`, +x, -x, +y, -y, +z, -z), or 6 for faces of turned cubes and
+/// of cubes that can fade, which are never culled by facing.
+#[derive(Clone, Copy, Debug)]
+struct FaceGroup {
+    faces: u32,
+    count: u32,
+    lo: Vec3,
+    hi: Vec3,
+    dir: u32,
+}
+
+/// The way an unturned cube's face `f` looks, or 6 when the cube is turned or mirrored.
+fn face_dir(c: &Instance, f: u32) -> u32 {
+    let m = &c.m;
+    let square = [m[1], m[2], m[4], m[6], m[8], m[9]].iter().all(|v| v.abs() < 1e-5) && m[0] > 0.0 && m[5] > 0.0 && m[10] > 0.0;
+    if square {
+        f
+    } else {
+        6
+    }
+}
+
 /// A run of static instances near one another, the run of their open faces, and the box they fill.
 #[derive(Clone, Copy, Debug)]
 struct StaticChunk {
@@ -505,10 +529,16 @@ pub struct Gpu {
     /// opened or added since (drawn as one more run, after the chunks), with the box they lie in.
     static_faces: Option<StaticFaces>,
     faces_main: Vec<u32>,
+    /// The level's faces by chunk and facing (RP21), as the GPU cull lists them, and the same cut
+    /// into clusters of at most 64 faces (for comparing granularities).
+    face_groups: Vec<FaceGroup>,
+    face_clusters: Vec<FaceGroup>,
     extra_faces: Vec<u32>,
     extra_box: (Vec3, Vec3),
     static_layout: wgpu::BindGroupLayout,
     static_bind: Option<wgpu::BindGroup>,
+    /// GPU visibility for the static chunks (RP20), where the adapter can draw indirectly.
+    cull: Option<GpuCull>,
     quad: wgpu::Buffer,
     face_prepass: wgpu::RenderPipeline,
     face_opaque: wgpu::RenderPipeline,
@@ -526,6 +556,11 @@ pub struct Gpu {
     pub counts: FrameCounts,
     /// Effects switched off (`profile::fx` bits), to see what each costs and adds.
     pub fx_off: u32,
+    /// Measure how much of the static scenery in view is hidden behind nearer scenery (RP20:
+    /// whether occlusion culling would pay), with a query per chunk in the depth prepass. Slow
+    /// (it waits for the answer each frame); for `--perf --occlusion` only.
+    pub measure_occlusion: bool,
+    occlusion: Option<(wgpu::QuerySet, wgpu::Buffer, wgpu::Buffer, u32)>,
     /// The quality preset (RP16 and the plan's preset policy); change it with `set_preset`.
     preset: Preset,
     /// The last frame handed to the queue, for pacing frames in flight.
@@ -576,7 +611,13 @@ impl Gpu {
             wgpu::Limits::default().using_resolution(adapter.limits())
         };
         // Timestamps for the profiler, where the adapter has them.
-        let features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;
+        // GPU visibility (RP20) wants indirect multi-draws with a first instance, and counted
+        // ones where the adapter has them (DX12, Vulkan 1.2).
+        let features = adapter.features()
+            & (wgpu::Features::TIMESTAMP_QUERY
+                | wgpu::Features::MULTI_DRAW_INDIRECT
+                | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT
+                | wgpu::Features::INDIRECT_FIRST_INSTANCE);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("void-harvest"),
@@ -1286,6 +1327,7 @@ impl Gpu {
                 count: None,
             }],
         });
+        let cull = GpuCull::new(&device);
         let gbuf_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gbuf resolve"),
             source: wgpu::ShaderSource::Wgsl(include_str!("gbuf.wgsl").into()),
@@ -1491,10 +1533,13 @@ impl Gpu {
             face_buf: Dyn::new(&device, "static faces", wgpu::BufferUsages::VERTEX, 1 << 20),
             static_faces: None,
             faces_main: Vec::new(),
+            face_groups: Vec::new(),
+            face_clusters: Vec::new(),
             extra_faces: Vec::new(),
             extra_box: (Vec3::INFINITY, Vec3::NEG_INFINITY),
             static_layout,
             static_bind: None,
+            cull,
             quad,
             face_prepass,
             face_opaque,
@@ -1505,6 +1550,8 @@ impl Gpu {
             timer,
             counts: FrameCounts::default(),
             fx_off: 0,
+            measure_occlusion: false,
+            occlusion: None,
             last_submit: None,
             surface,
             static_buf: Dyn::new(&device, "static", inst | wgpu::BufferUsages::STORAGE, 1 << 20),
@@ -1580,6 +1627,11 @@ impl Gpu {
         !view.static_dirty && self.static_count > 0 && self.probes.is_some() && self.probe_level == self.static_level
     }
 
+    /// How many facing groups and 64-face clusters the level's static faces make (RP21).
+    pub fn face_cluster_counts(&self) -> (usize, usize) {
+        (self.face_groups.len(), self.face_clusters.len())
+    }
+
     /// The quality preset in use.
     pub fn preset(&self) -> &Preset {
         &self.preset
@@ -1641,11 +1693,54 @@ impl Gpu {
             self.static_slot[i as usize] = slot as u32;
         }
         let index = StaticFaces::build(&sorted);
+        // Cubes that can fade keep their back faces: they go with the turned ones.
+        let mut fades = vec![false; sorted.len()];
+        for (start, len) in view.fade_ranges() {
+            for i in start..(start + len).min(self.static_slot.len()) {
+                fades[self.static_slot[i] as usize] = true;
+            }
+        }
+        // Each chunk's faces, grouped by the way they face (RP21).
         let mut faces: Vec<u32> = Vec::new();
+        let mut groups: Vec<FaceGroup> = Vec::new();
         for ch in chunks.iter_mut() {
             ch.faces = faces.len() as u32;
+            let mut by: [Vec<u32>; 7] = Default::default();
+            let mut boxes = [(Vec3::INFINITY, Vec3::NEG_INFINITY); 7];
             for slot in ch.start..ch.start + ch.count {
-                push_faces(&mut faces, slot, index.open[slot as usize]);
+                let c = &sorted[slot as usize];
+                let (at, half) = cube_bounds(c);
+                let open = index.open[slot as usize];
+                for f in 0..6u32 {
+                    if open & (1 << f) == 0 {
+                        continue;
+                    }
+                    let d = if fades[slot as usize] { 6 } else { face_dir(c, f) };
+                    by[d as usize].push(slot << 3 | f);
+                    // The face itself: flat along the way it faces (so the box's sides along that
+                    // axis are the face planes, for the facing test), its full size across.
+                    let (lo, hi) = if d < 6 {
+                        let n = FACE_AXES[d as usize];
+                        let centre = at + n * half;
+                        let across = half * (Vec3::ONE - n.abs());
+                        (centre - across, centre + across)
+                    } else {
+                        (at - half, at + half)
+                    };
+                    boxes[d as usize] = (boxes[d as usize].0.min(lo), boxes[d as usize].1.max(hi));
+                }
+            }
+            for (d, list) in by.iter().enumerate() {
+                if !list.is_empty() {
+                    groups.push(FaceGroup {
+                        faces: faces.len() as u32,
+                        count: list.len() as u32,
+                        lo: boxes[d].0,
+                        hi: boxes[d].1,
+                        dir: d as u32,
+                    });
+                    faces.extend_from_slice(list);
+                }
             }
             ch.face_count = faces.len() as u32 - ch.faces;
         }
@@ -1683,6 +1778,34 @@ impl Gpu {
             })
             .collect();
         self.static_level += 1;
+        // The same groups in clusters of at most 64 faces, each with its own box.
+        let mut clusters = Vec::new();
+        for g in &groups {
+            for start in (0..g.count).step_by(64) {
+                let n = (g.count - start).min(64);
+                let (mut lo, mut hi) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
+                for &code in &faces[(g.faces + start) as usize..(g.faces + start + n) as usize] {
+                    let (at, half) = cube_bounds(&sorted[(code >> 3) as usize]);
+                    let (a, b) = if g.dir < 6 {
+                        let ax = FACE_AXES[g.dir as usize];
+                        let c = at + ax * half;
+                        let across = half * (Vec3::ONE - ax.abs());
+                        (c - across, c + across)
+                    } else {
+                        (at - half, at + half)
+                    };
+                    lo = lo.min(a);
+                    hi = hi.max(b);
+                }
+                clusters.push(FaceGroup { faces: g.faces + start, count: n, lo, hi, dir: g.dir });
+            }
+        }
+        // The GPU culls by the clusters (RP21): of the three grains they drop the most.
+        if let Some(cull) = self.cull.as_mut() {
+            cull.upload(&self.device, &self.queue, &clusters);
+        }
+        self.face_groups = groups;
+        self.face_clusters = clusters;
         self.static_chunks = chunks;
         self.static_faces = Some(index);
         self.faces_main = faces;
@@ -1996,11 +2119,78 @@ impl Gpu {
         // level or the box changes.
         let cache_key = (self.static_gen, light_vp.to_cols_array());
         let cache_fresh = use_static && self.shadow_cache_key == Some(cache_key);
+        // RP21's comparison: the faces the camera would draw at each granularity of culling.
+        if use_static && self.timer.is_some() {
+            let fr = Frustum::new(view_proj);
+            let eye = view.camera_position();
+            let faces_toward = |g: &FaceGroup| {
+                if g.dir >= 6 || self.fx_off & fx::BACKFACE != 0 {
+                    return true;
+                }
+                let n = FACE_AXES[g.dir as usize];
+                if ortho {
+                    return (-fwd).dot(n) > 0.0;
+                }
+                let lowest = if n.x + n.y + n.z > 0.0 { g.lo.dot(n) } else { g.hi.dot(n) };
+                eye.dot(n) > lowest
+            };
+            counts.faces_by_chunk = self.static_chunks.iter().filter(|c| fr.sees(c.min, c.max)).map(|c| c.face_count as u64).sum();
+            counts.faces_by_group =
+                self.face_groups.iter().filter(|g| fr.sees(g.lo, g.hi) && faces_toward(g)).map(|g| g.count as u64).sum();
+            counts.faces_by_cluster =
+                self.face_clusters.iter().filter(|g| fr.sees(g.lo, g.hi) && faces_toward(g)).map(|g| g.count as u64).sum();
+        }
         counts.chunks = self.static_chunks.len() as u32;
         counts.static_total = self.static_count as u64;
         counts.chunks_drawn = main_chunks.len() as u32;
 
         let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
+        // ---- the static chunks each view sees, worked out on the GPU (RP20)
+        let measuring = self.measure_occlusion && use_static && self.fx_off & fx::PREPASS == 0 && !main_faces.is_empty();
+        let gpu_cull = use_static && !measuring && self.preset.gpu_cull && self.cull.as_ref().is_some_and(|c| c.chunks > 0);
+        if measuring {
+            let need = main_faces.len() as u32;
+            if self.occlusion.as_ref().is_none_or(|o| o.3 < need) {
+                let cap = need.next_power_of_two().max(256);
+                let set = self.device.create_query_set(&wgpu::QuerySetDescriptor {
+                    label: Some("occlusion"),
+                    ty: wgpu::QueryType::Occlusion,
+                    count: cap,
+                });
+                let resolve = self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("occlusion resolve"),
+                    size: cap as u64 * 8,
+                    usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                    mapped_at_creation: false,
+                });
+                let read = self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("occlusion read"),
+                    size: cap as u64 * 8,
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                self.occlusion = Some((set, resolve, read, cap));
+            }
+        }
+        if gpu_cull {
+            let extra =
+                (!self.extra_faces.is_empty()).then_some((self.extra_box, self.faces_main.len() as u32, self.extra_faces.len() as u32));
+            let views = [view_proj, light_vp_near.unwrap_or(light_vp), light_vp];
+            // Which way each view looks, to drop the face groups turned from it (RP21): the
+            // camera from its eye (a point; or along its gaze when orthographic), the cascades
+            // along the light. (None when back faces are kept, `--fx-off backface`.)
+            let away = -l;
+            let eyes = if self.fx_off & fx::BACKFACE != 0 {
+                [Vec4::new(0.0, 0.0, 0.0, 2.0); 3]
+            } else {
+                let camera = if ortho { (-fwd).extend(0.0) } else { view.camera_position().extend(1.0) };
+                [camera, (-away).extend(0.0), (-away).extend(0.0)]
+            };
+            let timer = self.timer.as_mut().and_then(|t| t.compute_pass("cull"));
+            if let Some(cull) = self.cull.as_mut() {
+                cull.run(&self.queue, &mut enc, &views, &eyes, extra, timer);
+            }
+        }
         if use_static && !cache_fresh {
             let far = visible(light_vp);
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2015,7 +2205,11 @@ impl Gpu {
                 occlusion_query_set: None,
             });
             pass.set_bind_group(0, &self.shadow_binds[1], &[]);
-            self.draw_faces(&mut pass, &self.face_shadow, &far, &mut counts);
+            if gpu_cull {
+                self.draw_faces_gpu(&mut pass, &self.face_shadow, 2, &mut counts);
+            } else {
+                self.draw_faces(&mut pass, &self.face_shadow, &far, &mut counts);
+            }
             counts.shadow_static += far.iter().map(|c| c.1 as u64).sum::<u64>();
             drop(pass);
             self.shadow_cache_key = Some(cache_key);
@@ -2091,7 +2285,12 @@ impl Gpu {
             });
             pass.set_pipeline(&self.shadow_pipe);
             pass.set_bind_group(0, &self.shadow_binds[c], &[]);
-            if c == 0 && !near_chunks.is_empty() {
+            if c == 0 && gpu_cull {
+                self.draw_faces_gpu(&mut pass, &self.face_shadow, 1, &mut counts);
+                let n = near_chunks.iter().map(|c| c.1 as u64).sum::<u64>();
+                counts.shadow_static += n;
+                counts.shadow_near += n;
+            } else if c == 0 && !near_chunks.is_empty() {
                 self.draw_faces(&mut pass, &self.face_shadow, &near_chunks, &mut counts);
                 let n = near_chunks.iter().map(|c| c.1 as u64).sum::<u64>();
                 counts.shadow_static += n;
@@ -2158,7 +2357,7 @@ impl Gpu {
                     stencil_ops: None,
                 }),
                 timestamp_writes: self.timer.as_mut().and_then(|t| t.pass("main")),
-                occlusion_query_set: None,
+                occlusion_query_set: if measuring { self.occlusion.as_ref().map(|o| &o.0) } else { None },
             });
             pass.set_bind_group(0, &self.scene_bind, &[]);
             if atm.night_sky > 0.0 {
@@ -2169,7 +2368,17 @@ impl Gpu {
 
             // The depth of every opaque thing first (nearest static chunks first), then the shading.
             let prepass = self.fx_off & fx::PREPASS == 0;
-            if prepass && !main_faces.is_empty() {
+            if measuring {
+                // Nearest first, each chunk counted: a chunk none of whose samples pass lies
+                // wholly behind the nearer scenery drawn before it.
+                for (i, run) in main_faces.iter().enumerate() {
+                    pass.begin_occlusion_query(i as u32);
+                    self.draw_faces(&mut pass, &self.face_prepass, std::slice::from_ref(run), &mut counts);
+                    pass.end_occlusion_query();
+                }
+            } else if prepass && gpu_cull {
+                self.draw_faces_gpu(&mut pass, &self.face_prepass, 0, &mut counts);
+            } else if prepass && !main_faces.is_empty() {
                 self.draw_faces(&mut pass, &self.face_prepass, &main_faces, &mut counts);
             }
             if prepass && !all.is_empty() {
@@ -2194,7 +2403,9 @@ impl Gpu {
                 pass.set_pipeline(&self.rig_prepass);
                 self.draw_rigs(&mut pass, &frame.rigs.meshes, 0, &mut counts);
             }
-            if !main_faces.is_empty() {
+            if gpu_cull {
+                self.draw_faces_gpu(&mut pass, &self.face_opaque, 0, &mut counts);
+            } else if !main_faces.is_empty() {
                 self.draw_faces(&mut pass, &self.face_opaque, &main_faces, &mut counts);
             }
             if let Some(bind) = rig_bind.as_ref() {
@@ -2308,10 +2519,33 @@ impl Gpu {
             pass.draw(0..overlay.len() as u32, 0..1);
             counts.draw(1, overlay.len() as u32);
         }
+        if let (true, Some((set, resolve, read, _))) = (measuring, &self.occlusion) {
+            let n = main_faces.len() as u32;
+            enc.resolve_query_set(set, 0..n, resolve, 0);
+            enc.copy_buffer_to_buffer(resolve, 0, read, 0, n as u64 * 8);
+        }
         if let Some(t) = self.timer.as_mut() {
             t.resolve(&mut enc);
         }
         self.last_submit = Some(self.queue.submit([enc.finish()]));
+        if let (true, Some((_, _, read, _))) = (measuring, &self.occlusion) {
+            let n = main_faces.len();
+            let slice = read.slice(..n as u64 * 8);
+            slice.map_async(wgpu::MapMode::Read, |_| {});
+            let _ = self.device.poll(wgpu::PollType::Wait);
+            {
+                let data = slice.get_mapped_range();
+                let samples: &[u64] = bytemuck::cast_slice(&data);
+                for (run, &passed) in main_faces.iter().zip(samples) {
+                    counts.faces_seen += run.1 as u64;
+                    if passed == 0 {
+                        counts.faces_hidden += run.1 as u64;
+                    }
+                }
+            }
+            read.unmap();
+            self.counts = counts;
+        }
         if let Some(t) = self.timer.as_mut() {
             t.submitted();
         }
@@ -2477,6 +2711,17 @@ impl Gpu {
     }
 
     /// Draws runs of static faces (start, count) with `pipe`, which reads the static store.
+    /// The static chunks view `view` sees, as the cull pass listed them: one indirect multi-draw.
+    fn draw_faces_gpu(&self, pass: &mut wgpu::RenderPass<'_>, pipe: &wgpu::RenderPipeline, view: u32, counts: &mut FrameCounts) {
+        let (Some(bind), Some(cull)) = (&self.static_bind, &self.cull) else { return };
+        pass.set_pipeline(pipe);
+        pass.set_bind_group(1, bind, &[]);
+        pass.set_vertex_buffer(0, self.face_buf.buf.slice(..));
+        pass.set_index_buffer(self.quad.slice(..), wgpu::IndexFormat::Uint16);
+        cull.draw(pass, view);
+        counts.draws += 1;
+    }
+
     fn draw_faces(&self, pass: &mut wgpu::RenderPass<'_>, pipe: &wgpu::RenderPipeline, runs: &[(u32, u32)], counts: &mut FrameCounts) {
         let Some(bind) = &self.static_bind else { return };
         pass.set_pipeline(pipe);
@@ -2748,6 +2993,206 @@ fn shadow_targets(device: &wgpu::Device, q: &Shadows) -> ([wgpu::Texture; 2], [w
     let cache = map("static shadow cache", q.far_size, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC);
     let cache_view = cache.create_view(&Default::default());
     (maps, views, cache, cache_view)
+}
+
+/// GPU visibility for the static chunks (RP20, `cull.wgsl`): every chunk's bounds kept on the GPU,
+/// tested there against the camera and both shadow cascades each frame, and the chunks seen drawn
+/// by indirect multi-draws, so the CPU neither tests them nor records a draw per chunk. The
+/// faces added since the level loaded (patches, rubble) ride along as one more chunk, its box
+/// sent again each frame. Absent where the adapter cannot draw indirectly with a first instance.
+struct GpuCull {
+    pipe: wgpu::ComputePipeline,
+    layout: wgpu::BindGroupLayout,
+    views: wgpu::Buffer,
+    counts: wgpu::Buffer,
+    chunk_buf: Option<wgpu::Buffer>,
+    args: Option<wgpu::Buffer>,
+    bind: Option<wgpu::BindGroup>,
+    /// Chunks listed (the level's, and the added faces' one at the end).
+    chunks: u32,
+    /// Drawn with a count (the seen packed to the front), else every slot drawn.
+    counted: bool,
+}
+
+/// A chunk as `cull.wgsl` reads it.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct GpuChunk {
+    lo: [f32; 4],
+    hi: [f32; 4],
+    faces: u32,
+    count: u32,
+    /// The way all its faces look (0 to 5), or 6 for any.
+    dir: u32,
+    pad: u32,
+}
+
+/// Outward normals of a cube's faces, in `FACE_NORMALS` order.
+const FACE_AXES: [Vec3; 6] = [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y, Vec3::Z, Vec3::NEG_Z];
+
+/// Cull views: the camera, the fine shadow cascade, the coarse one's static cache.
+const CULL_VIEWS: u32 = 3;
+
+impl GpuCull {
+    fn new(device: &wgpu::Device) -> Option<Self> {
+        let f = device.features();
+        if !f.contains(wgpu::Features::MULTI_DRAW_INDIRECT | wgpu::Features::INDIRECT_FIRST_INSTANCE) {
+            return None;
+        }
+        let storage = |binding, read_only| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("cull"),
+            entries: &[
+                storage(0, true),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                storage(2, false),
+                storage(3, false),
+            ],
+        });
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("cull"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("cull.wgsl").into()),
+        });
+        let pipe = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("cull"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("cull"),
+                bind_group_layouts: &[&layout],
+                push_constant_ranges: &[],
+            })),
+            module: &module,
+            entry_point: Some("cs_cull"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        let views = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cull views"),
+            size: 21 * 16 + 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let counts = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cull counts"),
+            size: 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let counted = f.contains(wgpu::Features::MULTI_DRAW_INDIRECT_COUNT);
+        Some(Self { pipe, layout, views, counts, chunk_buf: None, args: None, bind: None, chunks: 0, counted })
+    }
+
+    /// A level's face groups (chunk by chunk, by facing), and one slot more for the added faces.
+    fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, groups: &[FaceGroup]) {
+        let mut list: Vec<GpuChunk> = groups
+            .iter()
+            .map(|g| GpuChunk {
+                lo: g.lo.extend(0.0).to_array(),
+                hi: g.hi.extend(0.0).to_array(),
+                faces: g.faces,
+                count: g.count,
+                dir: g.dir,
+                pad: 0,
+            })
+            .collect();
+        list.push(GpuChunk::zeroed());
+        let n = list.len() as u32;
+        if self.chunks != n || self.chunk_buf.is_none() {
+            let chunk_buf = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cull chunks"),
+                size: std::mem::size_of_val(list.as_slice()) as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let args = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cull draws"),
+                size: (n * CULL_VIEWS) as u64 * 20,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT,
+                mapped_at_creation: false,
+            });
+            self.bind = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("cull"),
+                layout: &self.layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: chunk_buf.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 1, resource: self.views.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 2, resource: args.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 3, resource: self.counts.as_entire_binding() },
+                ],
+            }));
+            self.chunk_buf = Some(chunk_buf);
+            self.args = Some(args);
+        }
+        if let Some(b) = &self.chunk_buf {
+            queue.write_buffer(b, 0, bytemuck::cast_slice(&list));
+        }
+        self.chunks = n;
+    }
+
+    /// Lists what each view sees: the added faces' box and run sent, the counts cleared, the test run.
+    fn run(
+        &mut self,
+        queue: &wgpu::Queue,
+        enc: &mut wgpu::CommandEncoder,
+        views: &[Mat4; 3],
+        eyes: &[Vec4; 3],
+        extra: Option<((Vec3, Vec3), u32, u32)>,
+        timestamps: Option<wgpu::ComputePassTimestampWrites<'_>>,
+    ) {
+        let (Some(chunk_buf), Some(bind)) = (&self.chunk_buf, &self.bind) else { return };
+        let last = match extra {
+            Some(((lo, hi), faces, count)) => {
+                GpuChunk { lo: lo.extend(0.0).to_array(), hi: hi.extend(0.0).to_array(), faces, count, dir: 6, pad: 0 }
+            }
+            None => GpuChunk::zeroed(),
+        };
+        queue.write_buffer(chunk_buf, (self.chunks as u64 - 1) * std::mem::size_of::<GpuChunk>() as u64, bytemuck::bytes_of(&last));
+        let mut data: Vec<f32> = Vec::with_capacity(21 * 4 + 4);
+        for m in views {
+            for p in Frustum::new(*m).0 {
+                data.extend_from_slice(&p.to_array());
+            }
+        }
+        for e in eyes {
+            data.extend_from_slice(&e.to_array());
+        }
+        let n: [u32; 4] = [self.chunks, CULL_VIEWS, u32::from(self.counted), 0];
+        let mut bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+        bytes.extend_from_slice(bytemuck::cast_slice(&n));
+        queue.write_buffer(&self.views, 0, &bytes);
+        enc.clear_buffer(&self.counts, 0, None);
+        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("cull"), timestamp_writes: timestamps });
+        pass.set_pipeline(&self.pipe);
+        pass.set_bind_group(0, bind, &[]);
+        pass.dispatch_workgroups(self.chunks.div_ceil(64), CULL_VIEWS, 1);
+    }
+
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, view: u32) {
+        let Some(args) = &self.args else { return };
+        let offset = (view * self.chunks) as u64 * 20;
+        if self.counted {
+            pass.multi_draw_indexed_indirect_count(args, offset, &self.counts, view as u64 * 4, self.chunks);
+        } else {
+            pass.multi_draw_indexed_indirect(args, offset, self.chunks);
+        }
+    }
 }
 
 /// What the scene's bind group (group 0 of every scene pipeline) is made of.

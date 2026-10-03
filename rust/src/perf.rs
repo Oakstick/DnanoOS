@@ -400,6 +400,7 @@ pub fn run(args: &[String]) -> i32 {
         },
         None => Preset::default_for_build(),
     };
+    let preset = Preset { gpu_cull: preset.gpu_cull || args.iter().any(|a| a == "--gpu-cull"), ..preset };
     let lod_bias: f32 = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(preset.lod_bias);
     let out_dir = arg(args, "--out").unwrap_or("perf").to_string();
     let scenes: Vec<&Scene> = SCENES.iter().filter(|s| which == "all" || which.split(',').any(|n| n == s.name)).collect();
@@ -416,6 +417,7 @@ pub fn run(args: &[String]) -> i32 {
     };
     gpu.fx_off = fx::parse(fx_list);
     gpu.set_preset(preset);
+    gpu.measure_occlusion = args.iter().any(|a| a == "--occlusion");
     if gpu.timer.is_none() {
         eprintln!("note: this adapter has no timestamp queries; GPU times are not reported");
     }
@@ -431,8 +433,15 @@ pub fn run(args: &[String]) -> i32 {
     let s = &preset.shadows;
     let _ = writeln!(
         md,
-        "| Preset | {} (for the {}): shadows {} near, {} far, {}+{} filter taps; {} volumetric lamps |",
-        preset.name, preset.target, s.near_size, s.far_size, s.search_taps, s.filter_taps, preset.volumetric_lamps
+        "| Preset | {} (for the {}): shadows {} near, {} far, {}+{} filter taps; {} volumetric lamps; scenery culled on the {} |",
+        preset.name,
+        preset.target,
+        s.near_size,
+        s.far_size,
+        s.search_taps,
+        s.filter_taps,
+        preset.volumetric_lamps,
+        if preset.gpu_cull { "GPU" } else { "CPU" }
     );
     let _ = writeln!(md, "| Level-of-detail bias | {lod_bias} |");
     let _ = writeln!(md, "| Frames per scene | {frames} after 1 s of warm-up, at most 2 in flight |\n");
@@ -449,6 +458,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut cascades = String::new();
     let mut sim_rows = String::new();
     let mut moves = String::new();
+    let mut hidden_rows = String::new();
+    let mut grain_rows = String::new();
     for scene in scenes {
         eprintln!("perf: {} ({frames} frames) ...", scene.name);
         let run = measure(&mut gpu, scene, frames, size, lod_bias);
@@ -547,6 +558,34 @@ pub fn run(args: &[String]) -> i32 {
             csv.push('\n');
         }
         let _ = std::fs::write(format!("{out_dir}/{when}-{}.csv", scene.name), csv);
+        {
+            let by = |f: &dyn Fn(&FrameCounts) -> u64| mean(&|x| f(&x.counts) as f64);
+            let (chunk, group, cluster) = (by(&|c| c.faces_by_chunk), by(&|c| c.faces_by_group), by(&|c| c.faces_by_cluster));
+            if chunk > 0.0 {
+                let _ = writeln!(
+                    grain_rows,
+                    "| {} | {:.0}k | {:.0}k ({:.0}%) | {:.0}k ({:.0}%) |",
+                    scene.name,
+                    chunk / 1e3,
+                    group / 1e3,
+                    group / chunk * 100.0,
+                    cluster / 1e3,
+                    cluster / chunk * 100.0
+                );
+            }
+        }
+        if gpu.measure_occlusion {
+            let seen = mean(&|x| x.counts.faces_seen as f64);
+            let hidden = mean(&|x| x.counts.faces_hidden as f64);
+            let _ = writeln!(
+                hidden_rows,
+                "| {} | {:.0}k | {:.0}k | {:.1}% |",
+                scene.name,
+                seen / 1e3,
+                hidden / 1e3,
+                hidden / seen.max(1.0) * 100.0
+            );
+        }
         for tr in &run.transitions {
             let _ = writeln!(
                 moves,
@@ -581,6 +620,22 @@ pub fn run(args: &[String]) -> i32 {
         SimTimes::NAMES.join(" | "),
         "---|".repeat(SimTimes::NAMES.len())
     );
+    if !grain_rows.is_empty() {
+        let (groups, clusters) = gpu.face_cluster_counts();
+        let _ = writeln!(
+            md,
+            "\n## Culling granularity\n\nStatic faces the camera would draw (mean per frame), culled by whole chunks, by chunk and facing group \
+             ({groups} groups in the last level), and by clusters of at most 64 faces with their facing ({clusters} clusters), each 48 bytes \
+             on the GPU (RP21).\n\n| Scene | Chunks | Facing groups | 64-face clusters |\n|---|---|---|---|\n{grain_rows}"
+        );
+    }
+    if !hidden_rows.is_empty() {
+        let _ = writeln!(
+            md,
+            "\n## Hidden scenery\n\nStatic faces in the camera's view, and those in chunks wholly hidden behind nearer scenery (an occlusion \
+             query per chunk in the depth prepass, nearest first): what chunk-level occlusion culling could skip (RP20).\n\n| Scene | In view | Hidden | Share |\n|---|---|---|---|\n{hidden_rows}"
+        );
+    }
     if !moves.is_empty() {
         let _ = writeln!(
             md,

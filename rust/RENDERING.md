@@ -486,6 +486,84 @@ courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to r
   On this machine the GPU is the cost. RP06's gameplay rule holds: none of these settings touch the
   simulation, and the presets and level of detail are view-only.
 
+## Stage F: advanced rendering, evaluated
+
+The plan gates stage F on measuring the indexed path on both target GPUs. That was waived by
+decision on 2026-10-04: no hardware tests. Everything below is measured on the development laptop
+only, by interleaved A/B in one sitting.
+
+### RP20: GPU visibility
+
+- **Built:** `GpuCull` in `gpu.rs`, with the shader in `cull.wgsl`.
+  - The static scenery's cluster bounds are kept on the GPU.
+  - Each frame a compute pass tests them against the camera and both shadow cascades.
+  - It writes the visible ones as indirect draws: packed and counted where the adapter can (DX12,
+    Vulkan 1.2), or one slot per cluster drawn empty where unseen.
+  - Each pass then draws all its scenery with one multi-draw. There is no CPU readback.
+  - Faces added since the level loaded (patches, rubble) are one more cluster, whose box is sent
+    each frame.
+  - It needs `MULTI_DRAW_INDIRECT` and `INDIRECT_FIRST_INSTANCE`, both requested where the adapter
+    has them. Elsewhere (the web build), it falls back to the CPU path.
+- **Result:**
+  - Draw calls halved (Garden 105 to 51, vista 142 to 71).
+  - The pictures match the CPU path.
+  - **GPU and CPU time are no better:** within noise, and 0.1 to 0.3 ms slower on some runs.
+    Culling 300 chunks on the CPU and recording their draws already cost almost nothing.
+  - **So it is off by default** (`Preset::gpu_cull`). `--gpu-cull` turns it on in the game,
+    `--capture` and `--perf`. It is worth trying on the GTX 1080, which is geometry-bound, where
+    it might pay.
+- **Hi-Z occlusion: measured, not built.**
+  - `--perf --occlusion` counts, with a query per chunk in the depth prepass (nearest first), the
+    static faces in view that lie in chunks wholly hidden behind nearer scenery:
+    - Garden, corridor, destruction and siege: 7 to 8%.
+    - Close-up, the 30-foe battle and switching cameras: 11 to 18%.
+    - The hub vista and the portal scene: 31 to 42%, of only about 25k faces.
+  - Those faces already fail the depth test early, so culling them saves only their vertex and
+    depth work. RP21's measurement below shows that saving even 30 to 50% of the faces' vertex
+    work changes nothing on this GPU.
+  - To avoid popping, Hi-Z would need either splitting the multisampled main pass to build the
+    pyramid mid-frame, or last frame's depth, which can hide scenery for a frame after a character
+    walks away.
+  - It does not meet the plan's bar ("when hidden geometry remains a measured cost").
+
+### RP21: meshlet data
+
+Meshlets are built from the extracted surfaces (the open faces of RP11), not from whole cubes.
+Three grains were compared (`--perf` writes a *Culling granularity* table):
+
+| Grain | Count in the dungeon | GPU memory | Faces the camera draws, against whole chunks |
+|---|---|---|---|
+| Whole 8 m chunks (today) | ~300 | — | 100% |
+| Chunk × facing group | 1,536 | 74 kB | 71 to 95% |
+| Clusters of at most 64 faces, with their facing | 18,215 | 0.9 MB | 45 to 71% |
+
+- **Facing as an exact normal cone:** every face in a group or cluster looks the same way (one of
+  six), so the cone test is exact.
+  - From the camera, a group is dropped when the eye lies behind its nearest face plane.
+  - From the light, it is dropped when the group faces away.
+  - Faces of turned cubes, and of cubes that can fade (trees, the Thorns' hedges, which must keep
+    their back faces), are never culled by facing.
+- **The 64-face clusters cull the most** (29 to 55% of faces dropped before vertex work), and the
+  GPU path uses them.
+- **But on this GPU it measured no faster** than drawing whole chunks with per-face back-face
+  skipping in the vertex shader. The cost here is pixels and 4× MSAA, not geometry. The data and
+  path stay, for the GTX 1080.
+
+### RP22: mesh shaders, evaluated and not adopted
+
+- **Engine today (wgpu 25):** a mesh-shader feature flag only. There is no mesh pipeline or mesh
+  draw in its API, and WGSL cannot express mesh shaders.
+- **Later wgpu:** [wgpu 28](https://github.com/gfx-rs/wgpu/releases/tag/v28.0.0) added them:
+  - in full on Vulkan;
+  - on DX12 and Metal only through passthrough shaders, the unsafe API the plan says to review
+    before adopting;
+  - WGSL support through WESL or naga_oil.
+- **Adopting them would mean** three major wgpu versions of migration (25 to 28 or later),
+  passthrough shaders on our DX12 path or a move to Vulkan, and a second, mesh-shader path. The
+  GTX 1080 has no mesh shaders, so the indexed path must stay first-class anyway.
+- **Not adopted:** RP21 shows the geometry stage is not what costs on this GPU, so mesh shaders
+  have no measured problem to solve. Recheck if the target GPUs show geometry cost.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -554,8 +632,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
   - A numerical portal-loading target, set on the target machines.
   - TA07's broken pieces and the cue that a wall can be broken; the rubble is a stand-in.
   - Rare foe pathfinding peaks, up to 5 ms, in the Garden maze.
-- **F, advanced:** RP20 (GPU visibility and Hi-Z), RP21 (meshlets) and RP22 (mesh shaders), each only
-  after the indexed path is measured on both target GPUs.
+- **F, advanced:** RP20 to RP22 evaluated (above). GPU visibility is built but off by default; Hi-Z
+  and mesh shaders were not built, by measurement.
 - **G, shipping:** the GTX 1080 and RTX 3060 presets, and packaged validation.
 - **Calibration** (the plan's own list):
   - Record both target machines.

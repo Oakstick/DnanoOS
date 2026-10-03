@@ -38,6 +38,10 @@ pub struct Preset {
     pub volumetric_lamps: usize,
     /// Rig level-of-detail bias (RP12): above 1 drops to coarser levels sooner.
     pub lod_bias: f32,
+    /// Static scenery culled on the GPU and drawn by indirect multi-draws, face groups turned
+    /// from the view dropped whole (RP20, RP21). Off on both: on the development GPU it measured
+    /// no faster than culling on the CPU (`--gpu-cull` to try it).
+    pub gpu_cull: bool,
     pub budget: Budget,
 }
 
@@ -48,6 +52,7 @@ pub const HIGH: Preset = Preset {
     shadows: Shadows { near_size: 4096, far_size: 4096, search_taps: 8, filter_taps: 16 },
     volumetric_lamps: 8,
     lod_bias: 1.0,
+    gpu_cull: false,
     budget: Budget { frame_ms: 1000.0 / 60.0, shadow_near_ms: 1.0, shadow_far_ms: 1.0 },
 };
 
@@ -60,6 +65,7 @@ pub const LOW: Preset = Preset {
     volumetric_lamps: 4,
     // Not raised: at 1.25 Ragnar drops to his half level at play distance, which costs readability.
     lod_bias: 1.0,
+    gpu_cull: false,
     budget: Budget { frame_ms: 1000.0 / 30.0, shadow_near_ms: 2.0, shadow_far_ms: 1.5 },
 };
 
@@ -70,6 +76,7 @@ pub const WEB: Preset = Preset {
     shadows: Shadows { near_size: 2048, far_size: 2048, search_taps: 8, filter_taps: 16 },
     volumetric_lamps: 8,
     lod_bias: 1.0,
+    gpu_cull: false,
     budget: HIGH.budget,
 };
 

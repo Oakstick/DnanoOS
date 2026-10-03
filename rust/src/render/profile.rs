@@ -98,6 +98,16 @@ impl GpuTimer {
         })
     }
 
+    /// The same for a compute pass.
+    pub fn compute_pass(&mut self, label: &'static str) -> Option<wgpu::ComputePassTimestampWrites<'_>> {
+        let w = self.pass(label)?;
+        Some(wgpu::ComputePassTimestampWrites {
+            query_set: w.query_set,
+            beginning_of_pass_write_index: w.beginning_of_pass_write_index,
+            end_of_pass_write_index: w.end_of_pass_write_index,
+        })
+    }
+
     /// Resolves this frame's queries into its readback slot (before the encoder is finished).
     pub fn resolve(&mut self, enc: &mut wgpu::CommandEncoder) {
         if !self.active || self.labels.is_empty() {
@@ -233,6 +243,15 @@ pub struct FrameCounts {
     pub rig_voxels: u64,
     /// Rigs drawn whole, at half and at a quarter of their resolution.
     pub rig_levels: [u32; 3],
+    /// With occlusion measured (`Gpu::measure_occlusion`, RP20): static faces in the camera's
+    /// view, and those in chunks wholly hidden behind nearer scenery.
+    pub faces_seen: u64,
+    pub faces_hidden: u64,
+    /// Static faces the camera would draw culled by whole chunks, by chunk and facing group, and by
+    /// 64-face clusters with their facing (RP21's comparison; worked out on the CPU each frame).
+    pub faces_by_chunk: u64,
+    pub faces_by_group: u64,
+    pub faces_by_cluster: u64,
 }
 
 impl FrameCounts {

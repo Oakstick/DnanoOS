@@ -118,6 +118,12 @@ impl WorldView {
         }
     }
 
+    /// The static cubes that can fade (trees, the Thorns' hedges): their back faces must stay
+    /// drawable, so the renderer never culls them by the way they face (RP21).
+    pub fn fade_ranges(&self) -> Vec<(usize, usize)> {
+        self.trees.iter().map(|t| t.range).collect()
+    }
+
     /// How faded each standing tree is (1 = solid), for tests and tools.
     pub fn tree_fades(&self) -> impl Iterator<Item = f32> + '_ {
         self.trees.iter().filter(|t| t.alive).map(|t| t.fade)

@@ -321,6 +321,10 @@ pub fn run(args: &[String]) -> i32 {
     if let Some(p) = arg(args, "--preset").and_then(crate::render::preset::Preset::named) {
         gpu.set_preset(p);
     }
+    if args.iter().any(|a| a == "--gpu-cull") {
+        let p = *gpu.preset();
+        gpu.set_preset(crate::render::preset::Preset { gpu_cull: true, ..p });
+    }
     if args.iter().any(|a| a == "--light-heat") {
         gpu.fx_off |= crate::render::profile::fx::LIGHT_HEAT;
     }
