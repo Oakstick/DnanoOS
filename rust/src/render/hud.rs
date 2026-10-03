@@ -92,7 +92,7 @@ fn sprites() -> &'static Sprites {
         cast: vec![
             (sprite_from(&draugr()), "Draugr", 0xe9e9f2, "An undead viking. Follows your footsteps, falls apart, rises again."),
             (sprite_from(&raven(false)), "Raven", 0xc9a0ff, "Fast, and flies over pits and ledges. Its dark kin hunts in pairs."),
-            (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail burns you."),
+            (sprite_from(&bog_slime()), "Bog Slime", 0x5cff6a, "Slow, but its trail slows you too."),
             (sprite_from(&super::foes2::witch()), "Witch", 0xb066ff, "Keeps her distance and conjures minions. Two blows."),
             (sprite_from(&super::foes2::minion()), "Witch Minion", 0xd08cff, "Small and quick; they come in numbers."),
             (
@@ -868,8 +868,8 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
         o.rect(ex, ey + ew + t * 0.05, ew * fr, t * 0.14, rgba(color, 1.0));
         ex += ew + t * 0.3;
     }
-    if hero.slimed() {
-        o.text("SLIME BURNS", ex, ey + ew / 2.0, small * 0.9, rgba(0x5cff6a, 1.0), Align::Left, true);
+    if hero.slowed() {
+        o.text("SLOWED", ex, ey + ew / 2.0, small * 0.9, rgba(0x5cff6a, 1.0), Align::Left, true);
     }
 }
 

@@ -104,7 +104,7 @@ impl Game {
         if self.step_dist >= STRIDE_TILES {
             self.step_dist -= STRIDE_TILES;
             let speed = if self.hero.m.speed > 0.0 { (self.hero.vel / self.hero.m.speed).clamp(0.3, 1.0) } else { 0.5 };
-            let slimy = self.hero.slimed();
+            let slimy = self.hero.slowed();
             self.audio.play_step(speed, slimy);
             let color = if slimy { 0x5cff6a } else { 0x4a3620 };
             self.view.dust(&self.level.grid, after.x, after.y, color, 2, 0.7);

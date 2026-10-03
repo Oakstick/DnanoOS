@@ -125,7 +125,7 @@ impl Game {
                 EnemyKind::Skeleton => ("DRAUGR", "An undead viking. It follows your footsteps by sound. Cut it down and it falls apart, then pulls itself together and rises again.", 0xe9e9f2),
                 EnemyKind::Bat => ("RAVEN", "Fast, and it flies over pits and ledges where you cannot follow.", 0xc9a0ff),
                 EnemyKind::Vampire => ("NIGHT RAVEN", "The raven's red-eyed kin: bigger, bolder, and it hunts where the raven drives you.", 0xff6a6a),
-                EnemyKind::Slime => ("BOG SLIME", "Slow, but it leaves a trail of bog slime behind it that burns while you stand in it. Step out of the trail, or leap it.", 0x5cff6a),
+                EnemyKind::Slime => ("BOG SLIME", "Slow, but it leaves a trail of bog slime behind it that slows you down. Step round the trail, or leap it.", 0x5cff6a),
                 EnemyKind::Witch => ("WITCH", "She keeps her distance and cackles up minions to do her biting. Two blows fell her; the first only makes her shriek.", 0xb066ff),
                 EnemyKind::Minion => ("WITCH MINION", "Knee-high, quick and eager. One blow is enough, but they come in numbers.", 0xd08cff),
                 EnemyKind::Helmeted => ("HELMETED SKELETON", "A draugr's cousin in an iron cap: the first blow rings off the helmet. It hears your footsteps, and rises again when it falls.", 0xff5a4a),

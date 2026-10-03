@@ -230,7 +230,7 @@ impl Game {
         out
     }
 
-    /// Moving slimes mark every tile they cross; standing in the slime burns the hero a little.
+    /// Moving slimes mark every tile they cross; standing in the slime slows the hero.
     pub(super) fn update_slime_trails(&mut self, dt: f64) {
         self.puddles.update(dt);
         for (i, e) in self.enemies.iter().enumerate() {
@@ -246,13 +246,7 @@ impl Game {
             }
         }
         if self.hero.alive && !self.hero.airborne() && self.puddles.has(self.hero.occupied()) {
-            let burn = self.hero.burn_in_slime();
-            if burn > 0 {
-                let hp = self.hero.pos();
-                self.juice.hp_flash = 1.0;
-                self.juice.hp_flash_color = 0x5cff6a;
-                self.floater(hp.x, hp.y - 0.5, format!("-{burn}"), 0.6, Some(0x5cff6a));
-            }
+            self.hero.slow();
         }
     }
 
