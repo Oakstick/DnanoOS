@@ -3,7 +3,7 @@
 //! - **Crossings.** A step into a deep pool on the Waterline is a dive: he comes down on the
 //!   Drowned Floor at the pool's twin (1.5 tiles beyond where it showed through the water). A step
 //!   onto a geyser vent below holds him there, open to blows, for a four-second ride up to the
-//!   Waterline. Deep water he falls into (a hump moving on under him, a kappa's charge) takes him
+//!   Waterline. Deep water he falls into (a hump moving on under him, a kappa's shove) takes him
 //!   down too. Each crossing of the true way moves his checkpoint on.
 //! - **Coils.** Leviathan's humps come and go through the deep water above, bridges while they
 //!   pass; his walls slide across the passages below, and batter him aside if he stands in the way.
@@ -282,7 +282,7 @@ impl Game {
     }
 
     /// What his feet find: the bell's pool, the open seam under the bell, a deep pool, deep water, a
-    /// vent; or a kappa's charge drags him under.
+    /// vent; or a kappa's shove drags him under.
     fn grotto_crossings(&mut self) {
         if !self.hero.alive || self.hero.airborne() {
             return;

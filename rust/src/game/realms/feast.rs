@@ -94,7 +94,7 @@ impl Game {
     }
 
     /// The controls as the realm leaves them (`Game::steer_run`): untouched (a purge's stun holds
-    /// him through his fighter).
+    /// him through his pace, and keeps him from swinging through his fighter).
     pub(in crate::game) fn steer_feast(&mut self, wanted: Dir) -> Dir {
         wanted
     }
@@ -187,13 +187,13 @@ impl Game {
     }
 
     /// What his Bloat costs him each tick: his walk, and a frame of his leap's landing for every
-    /// stack; and the purge's stun wearing off.
+    /// stack; and the purge's stun wearing off (it holds him where he stands while it lasts).
     fn feast_bloat(&mut self, dt: f64) {
         let Some(f) = self.feast_mut() else { return };
         f.stun = (f.stun - dt).max(0.0);
         f.hint = (f.hint - dt).max(0.0);
-        let bloat = f.bloat;
-        self.hero.pace = bloat_pace(bloat);
+        let (bloat, stunned) = (f.bloat, f.stun > 0.0);
+        self.hero.pace = if stunned { 0.0 } else { bloat_pace(bloat) };
         if let Some(b) = self.brawl.as_mut() {
             b.hero.evade_total = EVADE_AIR + b.kit.evade_land + bloat as u16;
         }

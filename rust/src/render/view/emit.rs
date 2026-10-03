@@ -374,9 +374,6 @@ impl WorldView {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
                 let rig = self.models.foe_at(v.rig, v.group_pos.distance(self.cam_pos));
                 emit_rig(&mut f.opaque[cube], rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
-                if v.neck > 0.0 {
-                    emit_neck(&mut f.opaque[cube], rig, &v.pose, root, v.mat_color);
-                }
                 if v.eye > 0.0 {
                     if let Some(h) = rig.index("head") {
                         let pivot = Vec3::from(crate::render::foes6::TEPEGOZ_RIG[4].pivot);
@@ -728,27 +725,6 @@ impl WorldView {
                 f.lights.push(Light { pos: l.pos, color: l.color * l.intensity, distance: l.distance });
             }
         }
-    }
-}
-
-/// The rokurokubi's neck stretched out to her flying head: a chain of its pale, ring-creased flesh
-/// from her collar, arching up a little on the way.
-fn emit_neck(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
-    const SKIN: f32 = 10.0;
-    let (Some(n), Some(h)) = (rig.index("neck"), rig.index("head")) else { return };
-    let from = root.transform_point3(rig.parts[n].rest + Vec3::new(0.0, 0.06, 0.0));
-    let to = root.transform_point3(pose.pos[h]);
-    let lift = Vec3::new(0.0, 0.25 + 0.06 * (to - from).length(), 0.0);
-    let mid = (from + to) * 0.5 + lift;
-    let steps = ((to - from).length() / 0.06).ceil().max(2.0) as i32;
-    let (r0, r1) = crate::render::foes4::ROKURO_NECK_RADII;
-    for k in 0..=steps {
-        let t = k as f32 / steps as f32;
-        let p = from * (1.0 - t) * (1.0 - t) + mid * 2.0 * t * (1.0 - t) + to * t * t;
-        // (Her voxels are 0.0125 a side, whichever copy of her is drawn.)
-        let r = (r0 + (r1 - r0) * t) * 0.025;
-        let c = if k % 3 == 0 { lin(0x9c8c7e) } else { lin(0xc6b8aa) };
-        out.push(Instance::new(Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r)), c * tint, 1.0, Vec3::ZERO, SKIN));
     }
 }
 

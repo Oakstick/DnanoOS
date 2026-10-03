@@ -11,7 +11,7 @@
 //!   never into a swing it could not guard out of before the next strike it has seen.
 //!
 //! Against the later stages' legends (COMBAT.md §11) the adept and the expert also walk out of
-//! marks on the floor and lanes of ice (leaping when it is too late to walk), step out of fire,
+//! a burrow's mark on the floor (leaping when it is too late to walk), step out of fire,
 //! leap a grab they cannot parry (the adept), strike Tepegöz only while his eye is in reach (the
 //! expert), and never strike a felled dragon begging for a second blow. Nothing out of reach is a
 //! target.
@@ -72,8 +72,8 @@ struct Threat {
     rule: GuardRule,
 }
 
-/// Ground he must be off before it falls (a mark, a lane of ice, fire): frames until it does,
-/// and the quickest way out.
+/// Ground he must be off before it falls (a mark, fire): frames until it does, and the quickest
+/// way out.
 #[derive(Clone, Copy, Debug)]
 struct Dodge {
     t: f64,
@@ -84,6 +84,9 @@ struct Dodge {
 const LEAP_AT: f64 = 8.0;
 /// Frames ahead the bot looks to leave the ground a blow will fall on.
 const DODGE_AHEAD: f64 = 40.0;
+/// Frames earlier than its flight says that a bolt is reckoned to arrive: it reaches him on the
+/// frame it is drawn touching him, a frame or two before a blow's first active frame would.
+const BOLT_EARLY: f64 = 2.0;
 /// Frames before a grab the adept leaps it.
 const GRAB_LEAP: f64 = 9.0;
 
@@ -162,29 +165,13 @@ impl Bot {
             let start = (data.startup as f64 - frame as f64).max(0.0);
             let off = math::dot(math::norm(to), d.aim).clamp(-1.0, 1.0).acos();
             let t = match data.shape {
-                Shape::Lane { width } => {
-                    let along = math::dot(to, d.aim);
-                    let across = (dist * dist - along * along).max(0.0).sqrt();
-                    if along <= 0.0 || along > data.reach + HERO_RADIUS + 0.4 || across > width + HERO_RADIUS + 0.35 {
-                        continue;
-                    }
-                    // Its head gets to him that many frames into its active ones (less those gone).
-                    let head = ((along - HERO_RADIUS).max(0.0) / (data.reach / data.active as f64)).floor();
-                    start + (head - frame.saturating_sub(data.startup) as f64).max(0.0)
-                }
                 Shape::Quake { radius, .. } if dist <= radius + HERO_RADIUS + 0.3 => start,
                 _ => {
                     let aimed = off <= data.half_angle + 0.35;
-                    if !aimed || dist > data.reach + data.travel + HERO_RADIUS + 0.4 {
+                    if !aimed || dist > data.reach + HERO_RADIUS + 0.4 {
                         continue;
                     }
-                    // A lunge lands once it has closed the gap.
-                    let close = if data.travel > 0.0 {
-                        ((dist - data.reach - HERO_RADIUS).max(0.0) / (data.travel / data.active as f64)).floor()
-                    } else {
-                        0.0
-                    };
-                    start + close
+                    start
                 }
             };
             let rule = if data.blockable() { GuardRule::Full } else { GuardRule::ParryOnly };
@@ -200,7 +187,7 @@ impl Bot {
             let across = (math::len(to).powi(2) - along * along).max(0.0).sqrt();
             if along > 0.0 && across < BOLT_RADIUS + HERO_RADIUS + 0.1 {
                 let speed = math::len(b.vel).max(BOLT_SPEED * 0.25);
-                let t = ((along - BOLT_RADIUS - HERO_RADIUS).max(0.0) / (speed / 60.0)).floor();
+                let t = ((along - BOLT_RADIUS - HERO_RADIUS).max(0.0) / (speed / 60.0)).floor() - BOLT_EARLY;
                 out.push(Threat { t, from: math::sub(b.pos, b.vel), rule: GuardRule::Full });
             }
         }
@@ -209,9 +196,9 @@ impl Bot {
     }
 
     /**
-     * The ground it has seen a blow is about to fall on, with him on it: marks on the floor (once
-     * its reaction has passed), a lane of ice coming down at him, Surtr's fire under his feet.
-     * The way out is straight away from a mark's middle, across a lane, off the fire.
+     * The ground it has seen a blow is about to fall on, with him on it: a burrow's mark on the
+     * floor (once its reaction has passed), Surtr's fire under his feet. The way out is straight
+     * away from a mark's middle, off the fire.
      */
     fn dodges(&mut self, g: &Game) -> Vec<Dodge> {
         let Some(spar) = g.brawl.as_ref() else { return Vec::new() };
@@ -230,31 +217,17 @@ impl Bot {
                 continue;
             }
             let t = (data.startup as f64 - frame as f64).max(0.0);
-            match data.shape {
-                Shape::Mark { radius, count } => {
-                    for m in &d.lore.marks[..(count as usize).min(3)] {
-                        let away = math::sub(hp, *m);
-                        if math::len(away) < radius + HERO_RADIUS + 0.35 {
-                            let out_dir = if math::len(away) < 0.05 {
-                                let a = math::norm(math::sub(hp, d.lore.from));
-                                V::new(-a.y, a.x)
-                            } else {
-                                math::norm(away)
-                            };
-                            out.push(Dodge { t, out: out_dir });
-                        }
-                    }
+            if let Shape::Mark { radius } = data.shape {
+                let away = math::sub(hp, d.lore.mark);
+                if math::len(away) < radius + HERO_RADIUS + 0.35 {
+                    let out_dir = if math::len(away) < 0.05 {
+                        let a = math::norm(math::sub(hp, d.lore.from));
+                        V::new(-a.y, a.x)
+                    } else {
+                        math::norm(away)
+                    };
+                    out.push(Dodge { t, out: out_dir });
                 }
-                Shape::Lane { width } => {
-                    let to = math::sub(hp, d.pos);
-                    let along = math::dot(to, d.aim);
-                    let side = V::new(-d.aim.y, d.aim.x);
-                    let across = math::dot(to, side);
-                    if along > 0.0 && along < data.reach + HERO_RADIUS + 0.4 && across.abs() < width + HERO_RADIUS + 0.35 {
-                        out.push(Dodge { t, out: math::scale(side, if across >= 0.0 { 1.0 } else { -1.0 }) });
-                    }
-                }
-                _ => {}
             }
         }
         for h in spar.hazards.iter().filter(|h| h.burns(hp, HERO_RADIUS + 0.1)) {

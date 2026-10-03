@@ -133,22 +133,22 @@ fn the_heros_string_lands_on_its_active_frames_chains_and_the_finisher_breaks_th
 }
 
 #[test]
-fn a_raised_guard_blocks_for_stamina_and_a_late_raise_parries_the_lunge() {
-    // Raised long before the lunge: a block.
-    let mut g = face_off(2, 2.4);
+fn a_raised_guard_blocks_for_stamina_and_a_late_raise_parries_the_bite() {
+    // Raised long before the bite: a block.
+    let mut g = face_off(2, 1.2);
     g.input.inject(Action::Block);
     frames(&mut g, 20);
     assert!(g.hero.blocking);
-    strike(&mut g, MoveId::Lunge);
+    strike(&mut g, MoveId::Bite);
     frames(&mut g, 30);
     let s = g.brawl.as_ref().unwrap();
     assert_eq!((s.stats.blocks, s.stats.parries), (1, 0), "{:?}", s.stats);
     assert_eq!(g.hero.hp, g.hero.max_hp, "the guard takes it all");
     assert!(g.hero.stamina < 90.0, "for stamina");
-    // Raised two frames before its active frames: the bite lands inside the parry window.
-    let mut g = face_off(2, 2.4);
-    strike(&mut g, MoveId::Lunge);
-    frames(&mut g, MoveId::Lunge.data().startup - 2);
+    // Raised four frames before its active frames: the bite lands inside the parry window.
+    let mut g = face_off(2, 1.2);
+    strike(&mut g, MoveId::Bite);
+    frames(&mut g, MoveId::Bite.data().startup - 4);
     g.input.inject(Action::Block);
     frames(&mut g, 14);
     let s = g.brawl.as_ref().unwrap();
@@ -175,6 +175,75 @@ fn the_evade_passes_under_a_slam_and_an_open_hero_pays_for_it() {
     frames(&mut g, slam.startup + 2);
     assert_eq!(g.hero.hp, g.hero.max_hp - 30);
     assert_eq!(g.brawl.as_ref().unwrap().hero.reeling(), Some(Reel::Hitstun));
+}
+
+/// Walks him to the right for `n` frames (the stick held over); how far he went.
+fn walk(g: &mut Game, n: u16, guard: bool) -> f64 {
+    let from = g.hero.pos();
+    let goal = g.brawl.as_ref().unwrap().threat.frame + n as u32;
+    while g.brawl.as_ref().unwrap().threat.frame < goal {
+        let mut pad = crate::input::PadState { left: (1.0, 0.0), ..Default::default() };
+        if guard {
+            pad.actions.insert(Action::Block);
+        }
+        g.input.set_pad(Some(pad));
+        g.update(crate::app::STEP);
+    }
+    g.input.set_pad(None);
+    crate::logic::combat::math::len(crate::logic::combat::math::sub(g.hero.pos(), from))
+}
+
+#[test]
+fn no_foes_blow_slows_him_or_roots_him_struck_blocking_or_with_his_guard_broken() {
+    // Free, as a yardstick: how far he walks in 16 frames.
+    let mut g = face_off(1, 1.4);
+    g.hero.free_move = true;
+    let free = walk(&mut g, 16, false);
+    assert!(free > 0.8, "{free}");
+    // Struck open by the slam: in his hitstun he walks at his whole pace.
+    let mut g = face_off(1, 1.4);
+    g.hero.free_move = true;
+    strike(&mut g, MoveId::Slam);
+    frames(&mut g, MoveId::Slam.data().startup + 1);
+    assert_eq!(g.brawl.as_ref().unwrap().hero.reeling(), Some(Reel::Hitstun));
+    assert_eq!(g.hero.root, 1.0, "not rooted");
+    let gone = walk(&mut g, 16, false);
+    assert!(gone > free * 0.9, "struck, he walked {gone} of {free}");
+    // Blocked: in his blockstun he walks as he does with his shield up, no slower.
+    let mut g = face_off(1, 1.4);
+    g.hero.free_move = true;
+    let shielded = walk(&mut g, 16, true);
+    let mut g = face_off(1, 1.4);
+    g.hero.free_move = true;
+    g.input.inject(Action::Block);
+    frames(&mut g, 20);
+    strike(&mut g, MoveId::Slam);
+    while g.brawl.as_ref().unwrap().hero.reeling().is_none() {
+        let pad = crate::input::PadState { actions: [Action::Block].into_iter().collect(), ..Default::default() };
+        g.input.set_pad(Some(pad));
+        frames(&mut g, 1);
+    }
+    assert_eq!(g.brawl.as_ref().unwrap().hero.reeling(), Some(Reel::Blockstun));
+    assert_eq!(g.hero.root, 1.0, "not rooted");
+    let gone = walk(&mut g, 16, true);
+    assert!(gone > shielded * 0.9, "blocking, he walked {gone} of {shielded}");
+    // His guard broken ("BREAK!"): no stamina to hold it, and still he walks at his whole pace.
+    let mut g = face_off(1, 1.4);
+    g.hero.free_move = true;
+    g.input.inject(Action::Block);
+    frames(&mut g, 20);
+    strike(&mut g, MoveId::Slam);
+    while g.brawl.as_ref().unwrap().hero.reeling().is_none() {
+        g.hero.stamina = 0.0;
+        let pad = crate::input::PadState { actions: [Action::Block].into_iter().collect(), ..Default::default() };
+        g.input.set_pad(Some(pad));
+        frames(&mut g, 1);
+    }
+    assert_eq!(g.brawl.as_ref().unwrap().hero.reeling(), Some(Reel::GuardBroken));
+    assert_eq!(g.brawl.as_ref().unwrap().stats.guard_breaks, 1);
+    assert_eq!(g.hero.root, 1.0, "not rooted");
+    let gone = walk(&mut g, 16, false);
+    assert!(gone > free * 0.9, "his guard broken, he walked {gone} of {free}");
 }
 
 #[test]
@@ -388,20 +457,23 @@ fn ails(g: &Game) -> crate::logic::combat::ails::Ails {
 
 #[test]
 fn bowed_to_the_kappa_spills_its_dish_and_the_oni_shakes_the_ground_round_him() {
-    // A parried sumo charge: the kappa bows back, and its dish spills.
-    let mut g = legend(EnemyKind::Kappa, 2.4);
+    // A parried sumo shove: the kappa bows back, and its dish spills.
+    let mut g = legend(EnemyKind::Kappa, 1.2);
     strike(&mut g, MoveId::Shove);
-    frames(&mut g, MoveId::Shove.data().startup - 2);
+    frames(&mut g, MoveId::Shove.data().startup - 4);
     g.input.inject(Action::Block);
     frames(&mut g, 14);
     assert_eq!(g.brawl.as_ref().unwrap().stats.parries, 1);
     let d = duel(&g, 0);
     assert!(d.lore.spilled > SPILL_FRAMES - 30 && d.taken() > 1.0, "spilled: {:?}", d.lore);
-    // Blocked, the charge still shoves him back.
-    let mut g = legend(EnemyKind::Kappa, 2.4);
+    // Blocked, the shove still shoves him back.
+    let mut g = legend(EnemyKind::Kappa, 1.2);
     g.input.inject(Action::Block);
     frames(&mut g, 20);
-    let y0 = g.hero.pos().y;
+    let hp = g.hero.pos();
+    let y0 = hp.y;
+    let d = duel_mut(&mut g, 0);
+    (d.pos, d.facing) = (V::new(hp.x, hp.y - 1.2), V::new(0.0, 1.0)); // (it strayed toward its post meanwhile)
     strike(&mut g, MoveId::Shove);
     frames(&mut g, 50);
     assert_eq!(g.brawl.as_ref().unwrap().stats.blocks, 1);
@@ -418,7 +490,7 @@ fn bowed_to_the_kappa_spills_its_dish_and_the_oni_shakes_the_ground_round_him() 
     assert!(lost > 0 && lost < 25, "a share of the blow reached him: {lost}");
 }
 
-/// After the ordinary hitstun of a blow he walks at his whole pace: nothing a legend does holds him.
+/// After a blow he walks at his whole pace: nothing a legend does holds him.
 fn free_after_the_blow(g: &mut Game, what: &str) {
     frames(g, 50);
     assert!(g.brawl.as_ref().unwrap().hero.reeling().is_none(), "{what}: still reeling");
@@ -426,8 +498,8 @@ fn free_after_the_blow(g: &mut Game, what: &str) {
 }
 
 #[test]
-fn the_albastis_pounce_and_the_gashadokuros_grab_land_hard_all_at_once_and_let_him_go() {
-    for (kind, mv, gap) in [(EnemyKind::Albasti, MoveId::Pounce, 2.4), (EnemyKind::Gashadokuro, MoveId::Grab, 1.4)] {
+fn the_albastis_weight_and_the_gashadokuros_grab_land_hard_all_at_once_and_let_him_go() {
+    for (kind, mv, gap) in [(EnemyKind::Albasti, MoveId::Smother, 1.2), (EnemyKind::Gashadokuro, MoveId::Grab, 1.4)] {
         let mut g = legend(kind, gap);
         strike(&mut g, mv);
         frames(&mut g, mv.data().startup + mv.data().active + 2);
@@ -496,18 +568,28 @@ fn tepegoz_takes_a_share_of_a_blow_but_the_whole_of_it_on_his_eye() {
 }
 
 #[test]
-fn the_cins_fire_and_the_roots_only_hurt_and_the_frost_giants_cold_bites_on_without_slowing_him() {
+fn the_cins_fire_and_the_root_dart_only_hurt_and_the_frost_giants_cold_bites_on_without_slowing_him() {
     let mut g = legend(EnemyKind::Cin, 4.0);
     strike(&mut g, MoveId::Smokeless);
     frames(&mut g, 80);
     assert!(g.hero.hp < g.hero.max_hp);
     free_after_the_blow(&mut g, "smokeless fire");
+    // The root dart flies at him as any bolt does, and bursts into roots where it strikes.
     let mut g = legend(EnemyKind::Arcura, 4.0);
     strike(&mut g, MoveId::Roots);
     frames(&mut g, MoveId::Roots.data().startup + 2);
-    assert!(g.hero.hp < g.hero.max_hp, "the roots lash him");
+    assert_eq!(g.hero.hp, g.hero.max_hp, "nothing from the floor: the dart is in flight");
+    assert_eq!(g.brawl.as_ref().unwrap().bolts.len(), 1);
+    frames(&mut g, 40);
+    assert!(g.hero.hp < g.hero.max_hp, "the dart strikes him");
     assert!(g.brawl.as_ref().unwrap().flashes.iter().any(|f| f.kind == crate::logic::combat::ails::FlashKind::Roots));
-    free_after_the_blow(&mut g, "roots");
+    free_after_the_blow(&mut g, "root dart");
+    // The goryō's thunderbolt flies too, and comes down as lightning on him.
+    let mut g = legend(EnemyKind::Goryo, 4.0);
+    strike(&mut g, MoveId::Thunder);
+    frames(&mut g, MoveId::Thunder.data().startup + 40);
+    assert!(g.hero.hp < g.hero.max_hp, "the bolt strikes him");
+    assert!(g.brawl.as_ref().unwrap().flashes.iter().any(|f| f.kind == crate::logic::combat::ails::FlashKind::Lightning));
     // Frostbite: struck by the giant, the cold keeps biting while he walks at his whole pace.
     let mut g = legend(EnemyKind::FrostGiant, 1.6);
     strike(&mut g, MoveId::Slam);

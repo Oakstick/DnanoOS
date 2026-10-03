@@ -13,8 +13,8 @@
 //! Between them they fight all three ways (COMBAT.md §10). Tepegöz's body is proof against blade
 //! and arrow, so only his one eye can be hurt; he swings his club (melee). The gashadokuro is
 //! heard before it is seen, a ringing in the ears, then its hands close on you (melee: a grab).
-//! The ejder's seven heads strike one after another (body). The goryō calls lightning down on
-//! you and cannot be touched except while its wrath is upon it (distance).
+//! The ejder's seven heads strike one after another (body). The goryō flings lightning at you
+//! and cannot be touched except while its wrath is upon it (distance).
 
 use std::f32::consts::{PI, TAU};
 

@@ -7,22 +7,24 @@
 //! as numbers, `combat::kit`), refreshed every frame so a dulled blade, a broken shield or a
 //! potion counts at once.
 //!
-//! The later stages' foes bring their legends (COMBAT.md §11): blows of new shapes (a lane, marks
-//! on the floor, a volley, a quake), what their blows carry (a shove, frostbite, venom, a drain),
-//! the roar that dooms him, the dead raised, illusions, a dragon that begs for a second blow, a
-//! ring that turns blades, fire left on the floor. What they do to him is his `Ails`; none of it
-//! slows him, holds him or roots him.
+//! The later stages' foes bring their legends (COMBAT.md §11): blows of new shapes (a mark on the
+//! floor, a volley, a quake), bolts of their own (spit, fire, foxfire, a root dart that bursts into
+//! roots, lightning), what their blows carry (a shove, frostbite, venom, a drain), the roar that
+//! dooms him, the dead raised, illusions, a dragon that begs for a second blow, a ring that turns
+//! blades, fire left on the floor. What they do to him is his `Ails`; none of it slows him, holds
+//! him or roots him. Nor does a blow itself: struck, blocking or with his guard broken he walks at
+//! his whole pace (his fighter's reel only keeps him from swinging or guarding for its frames).
 
 use super::Game;
 use crate::audio::Sfx;
 use crate::logic::combat::ails::{Ails, Flash, FlashKind, Hazard, Wound, DOOM_FRAMES, FIRE_FRAMES, FIRE_RADIUS, FROST_FRAMES, SHOVE_SPEED};
 use crate::logic::combat::archetype::Power;
-use crate::logic::combat::duelist::{bolt_tint, Arena, Bolt, Cue, Den, Flow, GridTerrain, Lore, Sense, Terrain, HERO_RADIUS};
+use crate::logic::combat::duelist::{Arena, Bolt, BoltLook, Cue, Den, Flow, GridTerrain, Lore, Sense, Terrain, HERO_RADIUS, REFLECT_TINT};
 use crate::logic::combat::duelist::{CONJURE_AT, MAX_RAISED, PLEA_FRAMES, PLEA_HEALTH, RISE_FRAMES, SPILL_FRAMES};
 use crate::logic::combat::frames::{Rider, Shape, BOLT_LIFE, BOLT_RADIUS, BOLT_SPEED, REFLECT_POISE, REFLECT_SPEED};
 use crate::logic::combat::fsm::{Defense, Effect, GuardRule, Hit, State};
 use crate::logic::combat::kit::Kit;
-use crate::logic::combat::threat::{assign_slots, Request, Waiter, REVOKE_REST, SPACING};
+use crate::logic::combat::threat::{assign_slots, Request, Waiter, REVOKE_REST, SLACK, SPACING};
 use crate::logic::combat::{math, secs, Breed, Duelist, Event, Fighter, FrameClock, Input, MoveId, Phase, Reel, ThreatManager};
 use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::gym;
@@ -69,7 +71,7 @@ fn tracing() -> bool {
 /// The cry a foe gives as it begins a strike (its tell, to the ear): the tengu's steel and the
 /// cobra's hiss, the dire wolf's growl, the jorogumo's and the rokurokubi's shriek, the giants'
 /// roar, the owl's hoot, the gashadokuro's ringing, the earth groaning for roots and burrows, a
-/// cold wind for a call or a wave of ice; the rest by their move.
+/// cold wind for a call, a frost slam or the cin's fire; the rest by their move.
 fn tell_sfx(kind: EnemyKind, mv: MoveId) -> Sfx {
     use EnemyKind as K;
     match (kind, mv) {
@@ -81,12 +83,12 @@ fn tell_sfx(kind: EnemyKind, mv: MoveId) -> Sfx {
         (K::Albasti, _) => Sfx::Stinger,
         (K::Gashadokuro, _) => Sfx::Bells,
         (K::Ejder, _) => Sfx::BossCharge,
-        (_, MoveId::Call | MoveId::Frostwave | MoveId::Smokeless) => Sfx::Wind,
+        (_, MoveId::Call | MoveId::FrostSlam | MoveId::Smokeless) => Sfx::Wind,
         (_, MoveId::Roots | MoveId::Burrow) => Sfx::DoorGrind,
         (_, MoveId::Thunder | MoveId::Raise) => Sfx::Soul,
         (K::Oni | K::Tepegoz | K::FrostGiant | K::Surtr, _) => Sfx::BossRoar,
         (_, MoveId::Slam | MoveId::Sweep) => Sfx::Growl,
-        (_, MoveId::Lunge) => Sfx::Howl,
+        (_, MoveId::Bite) => Sfx::Howl,
         _ => Sfx::Cackle,
     }
 }
@@ -363,7 +365,8 @@ impl Game {
                                 reflected: true,
                                 touched: false,
                                 due: None,
-                                tint: 0xffc850,
+                                look: BoltLook::Blade,
+                                tint: REFLECT_TINT,
                                 rider: Rider::None,
                                 owner: 0,
                                 volley: 0,
@@ -382,7 +385,7 @@ impl Game {
             }
         }
         let Some(b) = self.brawl.as_ref() else { return };
-        self.hero.root = b.hero.root();
+        self.hero.root = b.hero.stride();
         self.hero.blocking = matches!(b.hero.state, State::Guard { .. } | State::Reel { kind: Reel::Blockstun, .. });
         let live = b.live;
         self.hero_strikes();
@@ -852,8 +855,7 @@ impl Game {
             self.update_dens();
         }
         let hp = self.hero.pos();
-        let swing = matches!(self.brawl.as_ref().and_then(|b| b.hero.attack()), Some((_, Phase::Startup, _)));
-        let sense = Sense { hero: hp, aim: self.hero.aim(), swing };
+        let sense = Sense { hero: hp, aim: self.hero.aim() };
         let ids = self.duelists();
         let frame = self.brawl.as_ref().map(|b| b.threat.frame).unwrap_or(0);
         self.count_the_raised(&ids);
@@ -886,6 +888,7 @@ impl Game {
                             for k in 0..count {
                                 let a = if count > 1 { base - spread + 2.0 * spread * k as f64 / (count - 1) as f64 } else { base };
                                 let dir = math::from_angle(a);
+                                let look = BoltLook::of(du.breed.kind);
                                 bolts.push(Bolt {
                                     pos: math::add(du.pos, math::scale(dir, 0.5)),
                                     vel: math::scale(dir, BOLT_SPEED),
@@ -895,7 +898,8 @@ impl Game {
                                     reflected: false,
                                     touched: false,
                                     due: b.threat.landing(du.id),
-                                    tint: bolt_tint(du.breed.kind),
+                                    look,
+                                    tint: look.tint(),
                                     rider: du.rider(mv),
                                     owner: du.id,
                                     volley,
@@ -951,7 +955,7 @@ impl Game {
                 b.threat.project(du.id, du.eta(&sense));
                 continue;
             }
-            if du.f.is_neutral() && du.rest == 0 && du.backstep == 0 {
+            if du.f.is_neutral() && du.rest == 0 {
                 let to = math::sub(du.pos, hp);
                 requests.push(Request {
                     id: du.id,
@@ -1144,10 +1148,10 @@ impl Game {
         }
     }
 
-    /// A move has just begun: the owl's cry dooms him.
+    /// A move has just begun: the owl's cry as it rises on its wings dooms him.
     fn on_begin(&mut self, i: usize, mv: MoveId) {
         let Some(du) = self.enemies[i].duel.as_ref() else { return };
-        if mv == MoveId::Dive && du.breed.power == Power::Omen {
+        if mv == MoveId::Talons && du.breed.power == Power::Omen {
             let hp = self.hero.pos();
             let doomed = match self.brawl.as_mut().filter(|b| b.ails.doom == 0) {
                 Some(b) => {
@@ -1163,10 +1167,10 @@ impl Game {
     }
 
     /// A move's first active frame, beyond its blow: the roar heard, the dead raised, the ground
-    /// shaken, lightning, roots, an eruption, ice, a dive come down; Surtr's blade sets the floor alight.
+    /// shaken, an eruption, ice bursting from the floor; Surtr's blade sets the floor alight.
     fn first_active(&mut self, i: usize, mv: MoveId) {
         let Some(du) = self.enemies[i].duel.as_ref() else { return };
-        let (pos, aim, power, marks) = (du.pos, du.aim, du.breed.power, du.lore.marks);
+        let (pos, aim, power, mark) = (du.pos, du.aim, du.breed.power, du.lore.mark);
         let d = du.data(mv);
         let hp = self.hero.pos();
         match mv {
@@ -1193,29 +1197,24 @@ impl Game {
                 self.view.shake(0.35);
                 self.view.dust(&self.level.grid, pos.x + aim.x * d.reach * 0.7, pos.y + aim.y * d.reach * 0.7, 0x8a7a64, 26, 3.0);
             }
-            MoveId::Thunder => {
-                for m in marks {
-                    self.flash(Flash::new(FlashKind::Lightning, m));
-                }
-                self.audio.play(Sfx::GabrielThunder);
-                self.view.shake(0.3);
+            MoveId::Talons => {
+                let at = math::add(pos, math::scale(aim, d.reach * 0.6));
+                self.view.dust(&self.level.grid, at.x, at.y, 0x8a7a64, 12, 1.4);
             }
-            MoveId::Roots => {
-                self.flash(Flash::new(FlashKind::Roots, marks[0]));
-                self.view.dust(&self.level.grid, marks[0].x, marks[0].y, 0x5a4a30, 18, 2.0);
-            }
-            MoveId::Dive => self.view.dust(&self.level.grid, marks[0].x, marks[0].y, 0x8a7a64, 16, 2.2),
             MoveId::Burrow => {
-                self.flash(Flash::new(FlashKind::Erupt, marks[0]));
+                self.flash(Flash::new(FlashKind::Erupt, mark));
                 self.audio.play(Sfx::BossSlam);
                 self.view.shake(0.3);
-                self.view.dust(&self.level.grid, marks[0].x, marks[0].y, 0x5a4a30, 30, 3.2);
+                self.view.dust(&self.level.grid, mark.x, mark.y, 0x5a4a30, 30, 3.2);
             }
-            MoveId::Frostwave => {
+            MoveId::FrostSlam => {
+                // Ice bursts from the floor where the fists came down, no farther than they reach.
                 let mut f = Flash::new(FlashKind::Ice, pos);
                 f.dir = aim;
                 f.length = d.reach;
                 self.flash(f);
+                self.audio.play(Sfx::BossSlam);
+                self.view.shake(0.25);
             }
             _ => {}
         }
@@ -1499,9 +1498,28 @@ impl Game {
         }
     }
 
-    /// Hex bolts fly; one meets the hero (or, thrown by him or parried back, the foes); they burn out
+    /// A foe's bolt lands at `at` (on him, on his shield, or against a wall): the root dart bursts
+    /// into roots, the thunderbolt comes down as lightning, the spit splashes, the fire scatters.
+    fn bolt_lands(&mut self, look: BoltLook, at: V) {
+        match look {
+            BoltLook::Thorn => {
+                self.flash(Flash::new(FlashKind::Roots, at));
+                self.view.dust(&self.level.grid, at.x, at.y, 0x5a4a30, 14, 1.6);
+            }
+            BoltLook::Lightning => {
+                self.flash(Flash::new(FlashKind::Lightning, at));
+                self.audio.play(Sfx::GabrielThunder);
+                self.view.shake(0.2);
+            }
+            BoltLook::Spit => self.view.dust(&self.level.grid, at.x, at.y, 0x7aff5a, 10, 1.2),
+            BoltLook::Fire => self.view.sparkle(&self.level.grid, at.x, at.y, 0.6, 0xffa040, 14),
+            _ => {}
+        }
+    }
+
+    /// Bolts fly; one meets the hero (or, thrown by him or parried back, the foes); they burn out
     /// at the ring's edge or against a wall. An illusion's bolt is smoke at a touch; a volley's
-    /// bolts land as one strike.
+    /// bolts land as one strike; where a foe's bolt lands, it lands as its kind does (`bolt_lands`).
     fn update_bolts(&mut self, ids: &[usize]) {
         let hp = self.hero.pos();
         let Some(b) = self.brawl.as_mut() else { return };
@@ -1522,6 +1540,13 @@ impl Game {
             }
             b.pos = math::add(b.pos, math::scale(b.vel, 1.0 / 60.0));
             b.life = b.life.saturating_sub(1);
+            if b.due.is_some_and(|due| now > due + SLACK) && !b.reflected && !b.touched {
+                // It has missed its moment (he stepped off its line): it burns out, and leaves the
+                // time it was given to the others' strikes.
+                b.life = 0;
+                self.view.dust(&self.level.grid, b.pos.x, b.pos.y, b.tint, 6, 0.8);
+                continue;
+            }
             let out = if ring {
                 b.pos.x < lo.x || b.pos.x > hi.x || b.pos.y < lo.y || b.pos.y > hi.y
             } else {
@@ -1529,6 +1554,9 @@ impl Game {
             };
             if out {
                 b.life = 0;
+                if !b.reflected && !b.phantom {
+                    self.bolt_lands(b.look, b.pos);
+                }
             }
             if b.life == 0 {
                 continue;
@@ -1560,10 +1588,11 @@ impl Game {
                         b.reflected = true;
                         b.damage *= reflect;
                         b.poise = REFLECT_POISE;
-                        b.tint = 0xffc850;
+                        b.tint = REFLECT_TINT;
                         b.rider = Rider::None;
                     } else if !self.hero.airborne() {
                         b.life = 0;
+                        self.bolt_lands(b.look, b.pos);
                     }
                     if !self.hero.alive {
                         return;

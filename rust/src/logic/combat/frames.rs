@@ -19,26 +19,26 @@ pub enum MoveId {
     Slam,
     /// The Brute's sweep, for a hero at his flank.
     Sweep,
-    /// The Skirmisher's lunge: a gap-closing bite.
-    Lunge,
+    /// The Skirmisher's bite: from beside him, with nothing thrown across the floor.
+    Bite,
     /// The Hexer's bolt.
     Hex,
     // ---- the folklore moves of the later stages (COMBAT.md §11), each a breed's own
-    /// The kappa's sumo charge: a lunge that shoves him back, blocked or not.
+    /// The kappa's sumo shove: a palm thrust from beside him that shoves him back, blocked or not.
     Shove,
-    /// The rokurokubi's neck: her head flies out down a lane and back.
-    Lash,
+    /// The rokurokubi's bite: her head dips a little way on her neck and bites, close.
+    NeckBite,
     /// The kitsune's foxfire: three bolts in a fan.
     Foxfire,
     /// The oni's iron club: an unstoppable slam that shakes the ground all round.
     Kanabo,
-    /// The tülükuş's dive: up out of reach, then down on the mark it has chosen.
-    Dive,
-    /// The albastı's pounce: a leap that lands on him with all her weight.
-    Pounce,
+    /// The tülükuş's talons: up on its wings over him, and down talons first.
+    Talons,
+    /// The albastı's weight: she rears up beside him and falls on him with all of it.
+    Smother,
     /// The cin's smokeless fire: a bolt out of nowhere.
     Smokeless,
-    /// The arçura's roots: they burst from the floor under him and lash him.
+    /// The arçura's root dart: a thorny seed that bursts into roots where it strikes.
     Roots,
     /// The karakoncolos's call: his name roared in a loved one's voice, and it dooms him.
     Call,
@@ -46,10 +46,10 @@ pub enum MoveId {
     Grab,
     /// The seven heads of the ejder: four bites one after another.
     Heads,
-    /// The goryō's lightning: three marks, then the sky falls on them.
+    /// The goryō's thunderbolt: lightning flung at him.
     Thunder,
-    /// The frost giant's wave of ice spikes down a lane: it frostbites.
-    Frostwave,
+    /// The frost giant's slam: both fists down, and ice bursts from the floor; it frostbites.
+    FrostSlam,
     /// Níðhöggr dives under the floor and bursts up beneath him: venom.
     Burrow,
     /// Hel raises the dead.
@@ -69,13 +69,10 @@ pub enum Phase {
 pub enum Shape {
     /// The cone of `reach` tiles and `half_angle` either side of the aim (every blow of the lab).
     Cone,
-    /// A lane `width` tiles either side of the aim out to `reach`, its head travelling out over the
-    /// active frames: a neck, a wave of ice.
-    Lane { width: f64 },
-    /// `count` circles of `radius` on the floor: the first on the hero, following him through the
-    /// tracking frames, the rest beside it; the blow falls in them on its active frames (roots,
-    /// lightning, a dive, an eruption). Nothing guards against it: he steps out, or leaps.
-    Mark { radius: f64, count: u8 },
+    /// A circle of `radius` on the floor, on the hero, following him through the tracking frames;
+    /// the blow falls in it on its active frames (an eruption). Nothing guards against it: he
+    /// steps out, or leaps.
+    Mark { radius: f64 },
     /// `count` bolts in a fan `spread` radians either side of the aim.
     Volley { count: u8, spread: f64 },
     /// The cone, and the ground shaking `radius` tiles all round it at `share` of the blow.
@@ -120,8 +117,6 @@ pub struct MoveData {
     pub armor: f64,
     /// Startup frames in which the attacker still turns toward its target; after them the aim is committed.
     pub track: u16,
-    /// Tiles the attacker travels along its aim over the active frames (a lunge).
-    pub travel: f64,
     /// The next move of the string, for an attack buffered in the cancel window.
     pub chain: Option<MoveId>,
     /// Recovery frame from which the move may be cancelled (into its chain, an evade or the guard).
@@ -162,7 +157,6 @@ const BASE: MoveData = MoveData {
     half_angle: deg(45.0),
     armor: 0.0,
     track: 0,
-    travel: 0.0,
     chain: None,
     cancel: u16::MAX,
     hitstop: 0,
@@ -188,6 +182,8 @@ pub const REFLECT_SPEED: f64 = 1.6;
 /// A parried bolt's poise damage to the foe it meets.
 pub const REFLECT_POISE: f64 = 30.0;
 pub const REFLECT_DAMAGE: f64 = 1.5;
+/// The farthest (centre to centre) a body foe bites from: beside him, no farther.
+pub const BITE_RANGE: f64 = 1.3;
 /// Unstoppable: armor no blow of his reaches (the oni's club; only the parry stops it).
 pub const UNSTOPPABLE: f64 = 1e6;
 /// A mark on the floor follows the hero this fast (tiles per second) through its tracking frames:
@@ -200,21 +196,21 @@ impl MoveId {
     pub const FOE: [MoveId; 19] = [
         MoveId::Slam,
         MoveId::Sweep,
-        MoveId::Lunge,
+        MoveId::Bite,
         MoveId::Hex,
         MoveId::Shove,
-        MoveId::Lash,
+        MoveId::NeckBite,
         MoveId::Foxfire,
         MoveId::Kanabo,
-        MoveId::Dive,
-        MoveId::Pounce,
+        MoveId::Talons,
+        MoveId::Smother,
         MoveId::Smokeless,
         MoveId::Roots,
         MoveId::Call,
         MoveId::Grab,
         MoveId::Heads,
         MoveId::Thunder,
-        MoveId::Frostwave,
+        MoveId::FrostSlam,
         MoveId::Burrow,
         MoveId::Raise,
     ];
@@ -299,20 +295,18 @@ impl MoveId {
                 off: (deg(60.0), PI),
                 ..BASE
             },
-            MoveId::Lunge => MoveData {
-                name: "LUNGE",
+            MoveId::Bite => MoveData {
+                name: "BITE",
                 startup: 18,
-                active: 8,
-                recovery: 22,
-                damage: 18.0,
-                reach: 0.9,
+                active: 6,
+                recovery: 24,
+                damage: 20.0,
+                reach: 1.1,
                 half_angle: deg(70.0),
                 track: 12,
-                travel: 2.6,
                 hitstop: 4,
-                range: (1.6, 3.2),
-                off: (0.0, deg(30.0)),
-                line: true,
+                range: (0.0, BITE_RANGE),
+                off: (0.0, deg(35.0)),
                 ..BASE
             },
             MoveId::Hex => MoveData {
@@ -332,36 +326,32 @@ impl MoveId {
                 ..BASE
             },
             MoveId::Shove => MoveData {
-                name: "SUMO CHARGE",
+                name: "SUMO SHOVE",
                 startup: 22,
-                active: 8,
-                recovery: 26,
-                damage: 16.0,
-                reach: 0.9,
-                half_angle: deg(70.0),
+                active: 6,
+                recovery: 28,
+                damage: 18.0,
+                reach: 1.2,
+                half_angle: deg(60.0),
                 track: 14,
-                travel: 2.8,
                 hitstop: 5,
-                range: (1.4, 3.4),
-                off: (0.0, deg(30.0)),
-                line: true,
+                range: (0.0, BITE_RANGE + 0.1),
+                off: (0.0, deg(35.0)),
                 rider: Rider::Shove(2.2),
                 ..BASE
             },
-            MoveId::Lash => MoveData {
-                name: "NECK LASH",
-                startup: 28,
-                active: 10,
+            MoveId::NeckBite => MoveData {
+                name: "NECK BITE",
+                startup: 26,
+                active: 6,
                 recovery: 30,
-                damage: 18.0,
-                reach: 4.6,
-                half_angle: 0.0,
-                track: 22,
+                damage: 20.0,
+                reach: 1.2,
+                half_angle: deg(55.0),
+                track: 18,
                 hitstop: 5,
-                range: (1.8, 4.6),
-                off: (0.0, deg(25.0)),
-                line: true,
-                shape: Shape::Lane { width: 0.38 },
+                range: (0.0, BITE_RANGE),
+                off: (0.0, deg(35.0)),
                 ..BASE
             },
             MoveId::Foxfire => MoveData {
@@ -397,34 +387,32 @@ impl MoveId {
                 shape: Shape::Quake { radius: 2.3, share: 0.45 },
                 ..BASE
             },
-            MoveId::Dive => MoveData {
-                name: "DIVE",
-                startup: 40,
+            MoveId::Talons => MoveData {
+                name: "TALONS",
+                startup: 30,
+                active: 6,
+                recovery: 34,
+                damage: 26.0,
+                reach: 1.2,
+                half_angle: deg(60.0),
+                track: 20,
+                hitstop: 6,
+                range: (0.0, BITE_RANGE),
+                off: (0.0, deg(40.0)),
+                ..BASE
+            },
+            MoveId::Smother => MoveData {
+                name: "SMOTHER",
+                startup: 26,
                 active: 6,
                 recovery: 34,
                 damage: 24.0,
-                reach: 6.5,
-                half_angle: 0.0,
-                track: 26,
-                hitstop: 6,
-                range: (2.2, 6.5),
-                shape: Shape::Mark { radius: 0.85, count: 1 },
-                ..BASE
-            },
-            MoveId::Pounce => MoveData {
-                name: "POUNCE",
-                startup: 26,
-                active: 8,
-                recovery: 34,
-                damage: 22.0,
-                reach: 0.9,
-                half_angle: deg(70.0),
+                reach: 1.2,
+                half_angle: deg(65.0),
                 track: 16,
-                travel: 3.0,
                 hitstop: 6,
-                range: (1.6, 3.6),
-                off: (0.0, deg(30.0)),
-                line: true,
+                range: (0.0, BITE_RANGE),
+                off: (0.0, deg(35.0)),
                 ..BASE
             },
             MoveId::Smokeless => MoveData {
@@ -444,18 +432,19 @@ impl MoveId {
                 ..BASE
             },
             MoveId::Roots => MoveData {
-                name: "ROOTS",
+                name: "ROOT DART",
                 startup: 38,
-                active: 4,
+                active: 1,
                 recovery: 30,
                 damage: 18.0,
-                reach: 8.0,
+                reach: BOLT_REACH,
                 half_angle: 0.0,
-                track: 16,
+                track: 30,
                 hitstop: 3,
-                range: (2.0, 8.0),
-                off: (0.0, deg(70.0)),
-                shape: Shape::Mark { radius: 1.0, count: 1 },
+                projectile: true,
+                range: (2.5, 7.5),
+                off: (0.0, deg(45.0)),
+                line: true,
                 ..BASE
             },
             MoveId::Call => MoveData {
@@ -494,50 +483,47 @@ impl MoveId {
                 startup: 30,
                 active: 24,
                 recovery: 34,
-                damage: 10.0,
-                reach: 1.6,
+                damage: 11.0,
+                reach: 1.4,
                 half_angle: deg(55.0),
                 track: 18,
-                travel: 1.0,
                 hitstop: 3,
-                range: (0.8, 2.6),
+                range: (0.0, BITE_RANGE + 0.1),
                 off: (0.0, deg(40.0)),
-                line: true,
                 hits: 4,
                 ..BASE
             },
             MoveId::Thunder => MoveData {
-                name: "THUNDER",
-                startup: 44,
-                active: 4,
+                name: "THUNDERBOLT",
+                startup: 40,
+                active: 1,
                 recovery: 32,
                 damage: 22.0,
-                reach: 9.0,
+                reach: BOLT_REACH,
                 half_angle: 0.0,
-                track: 20,
+                track: 30,
                 hitstop: 6,
-                range: (2.5, 9.0),
-                off: (0.0, deg(90.0)),
-                shape: Shape::Mark { radius: 0.85, count: 3 },
+                projectile: true,
+                range: (2.5, 7.5),
+                off: (0.0, deg(45.0)),
+                line: true,
                 ..BASE
             },
-            MoveId::Frostwave => MoveData {
-                name: "FROST WAVE",
+            MoveId::FrostSlam => MoveData {
+                name: "FROST SLAM",
                 startup: 40,
-                active: 10,
-                recovery: 40,
-                damage: 18.0,
-                reach: 4.5,
-                half_angle: 0.0,
-                track: 22,
-                hitstop: 5,
-                range: (1.8, 4.5),
-                off: (0.0, deg(30.0)),
-                line: true,
-                shape: Shape::Lane { width: 0.55 },
+                active: 6,
+                recovery: 44,
+                damage: 22.0,
+                reach: 1.8,
+                half_angle: deg(40.0),
+                armor: 35.0,
+                track: 28,
+                hitstop: 6,
+                range: (0.0, 1.7),
+                off: (0.0, deg(50.0)),
                 rider: Rider::Frost,
                 cooldown: 300,
-                unblockable: true,
                 ..BASE
             },
             MoveId::Burrow => MoveData {
@@ -551,7 +537,7 @@ impl MoveId {
                 track: 46,
                 hitstop: 7,
                 range: (3.5, 10.0),
-                shape: Shape::Mark { radius: 1.0, count: 1 },
+                shape: Shape::Mark { radius: 1.0 },
                 rider: Rider::Venom(120),
                 cooldown: 360,
                 ..BASE
@@ -604,7 +590,7 @@ impl MoveData {
         self.damage > 0.0
     }
 
-    /// Falls on marks on the floor: no guard stops it, nor parries it.
+    /// Falls on a mark on the floor: no guard stops it, nor parries it.
     pub fn from_the_ground(&self) -> bool {
         matches!(self.shape, Shape::Mark { .. })
     }
@@ -614,10 +600,9 @@ impl MoveData {
         !self.unblockable && !self.from_the_ground()
     }
 
-    /// The parry can turn it (anything but what falls from the ground or sky; a wave of ice
-    /// cannot be turned by a shield either).
+    /// The parry can turn it (anything but what bursts from the ground).
     pub fn parriable(&self) -> bool {
-        !self.from_the_ground() && !(self.unblockable && matches!(self.shape, Shape::Lane { .. }))
+        !self.from_the_ground()
     }
 
     /// The blow (of `hits`) under way on active frame `frame` (0-based from the first active frame).
@@ -672,24 +657,17 @@ mod tests {
 
     #[test]
     fn what_cannot_be_guarded_gives_time_to_step_out_of_it() {
-        // A mark on the floor (or a wave of ice) is answered by walking out of it. Setting out on
-        // seeing it, a hero at his own pace (less what getting going costs) gains on a mark that
-        // follows at MARK_FOLLOW, then on one fixed, enough to clear its radius and his own with a
-        // fifth to spare. A lane's aim is fixed after its tracking frames: he steps aside then.
+        // A mark on the floor is answered by walking out of it. Setting out on seeing it, a hero at
+        // his own pace (less what getting going costs) gains on a mark that follows at
+        // MARK_FOLLOW, then on one fixed, enough to clear its radius and his own with a fifth to spare.
         let walk = 6.5 * crate::logic::levels::SPEED_SCALE;
         for m in MoveId::FOE {
             let d = m.data();
-            let (need, gained) = match d.shape {
-                Shape::Mark { radius, .. } => {
-                    let following = d.track.saturating_sub(REACTION) as f64 * (walk - MARK_FOLLOW);
-                    let fixed = (d.startup - d.track.max(REACTION)) as f64 * walk;
-                    (radius, (following + fixed) / 60.0)
-                }
-                Shape::Lane { width } if !d.parriable() => (width, (d.startup - d.track) as f64 * walk / 60.0),
-                _ => continue,
-            };
-            let gained = gained - 0.25;
-            assert!(gained >= (need + 0.3) * 1.2, "{}: {gained:.2} t to clear {need} t", d.name);
+            let Shape::Mark { radius } = d.shape else { continue };
+            let following = d.track.saturating_sub(REACTION) as f64 * (walk - MARK_FOLLOW);
+            let fixed = (d.startup - d.track.max(REACTION)) as f64 * walk;
+            let gained = (following + fixed) / 60.0 - 0.25;
+            assert!(gained >= (radius + 0.3) * 1.2, "{}: {gained:.2} t to clear {radius} t", d.name);
         }
     }
 
@@ -702,7 +680,7 @@ mod tests {
         assert_eq!(MoveId::Slam.data().hit_index(5), 0);
         // Spells deal nothing; the ground's blows go round the guard.
         assert!(!MoveId::Call.data().strikes() && !MoveId::Raise.data().strikes());
-        assert!(!MoveId::Roots.data().blockable() && !MoveId::Roots.data().parriable());
+        assert!(!MoveId::Burrow.data().blockable() && !MoveId::Burrow.data().parriable());
         assert!(!MoveId::Grab.data().blockable() && MoveId::Grab.data().parriable());
         assert!(MoveId::Slam.data().blockable() && MoveId::Slam.data().parriable());
     }

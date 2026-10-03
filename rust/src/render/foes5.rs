@@ -10,11 +10,11 @@
 //!
 //! Between them they fight all three ways (COMBAT.md §10). The karakoncolos comes to blows: it
 //! roars your name in the voice of someone you love, dooming you, then strikes with its claws.
-//! The tülükuş and the albastı throw their whole bodies at you: the owl dives without a sound,
-//! and its hoot foretells a death; the hag pounces with the weight of a nightmare on the chest.
+//! The tülükuş and the albastı come at you with their bodies: the owl drops its talons without a
+//! sound, and its hoot foretells a death; the hag falls on you with the weight of a nightmare.
 //! The cin and the arçura fight from afar: the cin hurls smokeless fire out of nowhere, and
-//! vanishes to appear elsewhere; the arçura makes roots burst from the ground beneath you, and
-//! changes its size.
+//! vanishes to appear elsewhere; the arçura throws darts of root and thorn that burst into roots
+//! where they strike, and changes its size.
 
 use std::f32::consts::{PI, TAU};
 

@@ -47,9 +47,6 @@ pub(super) struct EnemyView {
     pub(super) light_color: Vec3,
     pub(super) light_intensity: f32,
     pub(super) scatter: Option<Vec<(Vec3, Vec3)>>,
-    /// How far the rokurokubi's head has flown out on her neck this frame (world units; 0 at rest):
-    /// the neck is drawn as a chain out to it.
-    pub(super) neck: f32,
     /// Tepegöz's eye, lit (0 to 1) while it is within reach.
     pub(super) eye: f32,
 }
@@ -122,7 +119,6 @@ impl WorldView {
             light_color: base,
             light_intensity: 0.0,
             scatter: None,
-            neck: 0.0,
             eye: 0.0,
         });
     }

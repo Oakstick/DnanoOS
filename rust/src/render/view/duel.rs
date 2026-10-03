@@ -1,17 +1,20 @@
 //! The Sparring Ring's duelists on screen (COMBAT.md §1.3): each stands where its mind put it and
 //! faces its own way; its move plays on top of its gait (the wind-up is the tell, the strike
 //! snaps, the recovery hangs open), its colours tell its state, and the floor shows where its
-//! attack will land, filling as the startup runs and flashing in the commit frames: a cone, a
-//! lane, a fan, rings on the floor where the ground's blows will fall (COMBAT.md §11). Token
-//! holders wear a red pip; bolts fly as sparks in their caster's colour (the witch's violet, the
-//! bog slime's green, the jorogumo's fire, the kitsune's pale foxfire, the cin's white fire, Hel's
-//! cold; gold, once parried back). The legends leave their marks for a moment (lightning, roots,
-//! ice, an eruption, smoke, a splash, the ground shaking, a grave), and Surtr's fire burns on.
+//! attack will land, filling as the startup runs and flashing in the commit frames: a cone (a
+//! small one at a body foe's jaws: it bites from beside him), a fan, a line the way a bolt will
+//! fly, a ring on the floor where a burrow will burst up (COMBAT.md §11). Token holders wear a red
+//! pip; every caster's bolt has its own look (`BoltLook`): the bog slime's dripping glob of spit,
+//! the witch's violet hex star, the jorogumo's ball of fire, the kitsune's foxfire wisps, the cin's
+//! tall smokeless flame, the arçura's thorny root dart, the goryō's jagged lightning, Hel's cold
+//! drain with its motes; gold, once parried back. The legends leave their marks for a moment
+//! (lightning, roots, ice, an eruption, smoke, a splash, the ground shaking, a grave), and Surtr's
+//! fire burns on.
 
 use super::animation::{follow, EJDER_NECKS};
 use super::*;
 use crate::logic::combat::ails::{Flash, FlashKind};
-use crate::logic::combat::duelist::FIRE_TINT;
+use crate::logic::combat::duelist::{Bolt, BoltLook, ALOFT, FIRE_TINT};
 use crate::logic::combat::frames::Shape;
 use crate::logic::combat::{Archetype, Duelist, MoveId, Phase, Reel, State};
 
@@ -28,15 +31,15 @@ fn tell(arch: Archetype) -> u32 {
 }
 
 /// A duelist's telegraph colour: its archetype's, the jorogumo's fire, or what its move is: the
-/// ground's blows in their own colours (roots green, lightning pale, the owl's dive amber, the
-/// burrow sickly, ice cyan), a grab no shield holds in bone white.
+/// legends' in their own colours (roots green, lightning pale, the owl's talons amber, the burrow
+/// sickly, ice cyan), a grab no shield holds in bone white.
 fn tell_of(d: &Duelist) -> u32 {
     match d.f.attack().map(|a| a.0) {
         Some(MoveId::Roots) => return 0x6ad050,
         Some(MoveId::Thunder) => return 0xa8c8ff,
-        Some(MoveId::Dive) => return 0xffb060,
+        Some(MoveId::Talons) => return 0xffb060,
         Some(MoveId::Burrow) => return 0x9ad04a,
-        Some(MoveId::Frostwave) => return 0x9adcff,
+        Some(MoveId::FrostSlam) => return 0x9adcff,
         Some(MoveId::Grab) => return 0xe8f0d0,
         Some(MoveId::Call) => return 0x9ac8ff,
         Some(MoveId::Raise) => return 0x6a8cff,
@@ -95,7 +98,6 @@ impl WorldView {
             let goal = (d.facing.x as f32).atan2(d.facing.y as f32);
             v.yaw = lerp_angle(v.yaw, goal, 1.0 - (-24.0 * dt).exp());
         }
-        self.enemy_views[i].neck = 0.0;
         self.animate_enemy(i, e, dt, time);
         self.pose_duel(i, d, time);
         let v = &mut self.enemy_views[i];
@@ -153,9 +155,9 @@ impl WorldView {
             v.mat_color *= 0.86 + 0.14 * (time * 9.0 + i as f32).sin();
         }
         if d.breed.power == crate::logic::combat::archetype::Power::Shade
-            && !matches!(d.f.attack(), Some((MoveId::Pounce, Phase::Startup | Phase::Active, _)))
+            && !matches!(d.f.attack(), Some((MoveId::Smother, Phase::Startup | Phase::Active, _)))
         {
-            // The albastı: a shadow, red eyes in it, until she pounces.
+            // The albastı: a shadow, red eyes in it, until she falls on him.
             v.mat_color *= 0.16;
             v.light_color = lin(0xc0283a);
             v.light_intensity = 1.2;
@@ -208,7 +210,7 @@ impl WorldView {
                 let snap = 1.0 - (1.0 - strike).powi(3);
                 match mv {
                     MoveId::Shove => {
-                        // Down in a sumo crouch, then the charge: thrown forward, arms out to shove.
+                        // Down in a sumo crouch, then the shove: leaning in, both palms thrust out.
                         if strike == 0.0 {
                             v.root_scale = Vec3::new(1.0 + 0.06 * wind, 1.0 - 0.16 * wind, 1.0);
                             v.root_rot.x = 0.18 * wind;
@@ -224,26 +226,15 @@ impl WorldView {
                         }
                         follow(rig, &mut v.pose, "head", "water");
                     }
-                    MoveId::Lash => {
-                        // Her neck draws back, then her head flies down the lane, and comes slowly home.
-                        let reach = data.reach as f32;
-                        let out = if strike == 0.0 {
-                            -0.12 * wind
-                        } else if rec == 0.0 {
-                            reach * strike
-                        } else {
-                            reach * (1.0 - rec)
-                        };
-                        let k = (out / reach).clamp(0.0, 1.0);
+                    MoveId::NeckBite => {
+                        // Her neck draws back, then bows forward a little way and her head bites:
+                        // it stays on her neck, and her neck its own length.
+                        let bow = if strike == 0.0 { -0.18 * wind } else { 0.42 * snap * (1.0 - rec) };
+                        v.pose.rot_x(rig, "neck", bow);
+                        let head = rig.index("head").map(|h| v.pose.rot[h]).unwrap_or_default();
+                        follow(rig, &mut v.pose, "neck", "head");
                         if let Some(h) = rig.index("head") {
-                            v.pose.pos[h] = rig.parts[h].rest + Vec3::new(0.0, -0.7 * k, out);
-                            v.pose.rot[h] = Vec3::new(0.45 * k - 0.25 * wind * (1.0 - k), 0.0, 0.0);
-                        }
-                        if out > 0.06 {
-                            v.neck = out;
-                            if let Some(n) = rig.index("neck") {
-                                v.pose.pos[n] = rig.parts[n].rest - Vec3::new(0.0, 4.0, 0.0);
-                            }
+                            v.pose.rot[h] += head + Vec3::new(0.35 * snap * (1.0 - rec), 0.0, 0.0);
                         }
                     }
                     MoveId::Foxfire => {
@@ -253,7 +244,7 @@ impl WorldView {
                             v.pose.rot[t].x = -0.5 * wind * (1.0 - rec) + 0.4 * snap * (1.0 - rec);
                         }
                     }
-                    MoveId::Slam | MoveId::Kanabo | MoveId::Frostwave => {
+                    MoveId::Slam | MoveId::Kanabo | MoveId::FrostSlam => {
                         // Both fists rise overhead as he leans back, come down like a hammer, and heave up slowly.
                         let arms = if strike == 0.0 {
                             -2.9 * wind
@@ -278,12 +269,14 @@ impl WorldView {
                         v.pose.rot_x(rig, "leftArm", -1.5 * (1.0 - rec));
                         v.pose.rot_x(rig, "rightArm", -1.5 * (1.0 - rec));
                     }
-                    MoveId::Dive => {
-                        // Up on spread wings out of reach, across, and down on the mark, talons first.
+                    MoveId::Talons => {
+                        // Straight up on spread wings over him, out of reach, and straight down talons first.
                         let u = (f / s).min(1.0);
+                        let (up, down) = (ALOFT.0 as f32 + 6.0, ALOFT.1 as f32);
                         if strike == 0.0 {
-                            v.group_pos.y += 1.7 * (u * PI).sin().max(0.0).powf(0.7);
-                            v.root_rot.x = if u > 0.55 { 0.7 * (u - 0.55) / 0.45 } else { -0.15 };
+                            let high = if f < down { ease(f / up) } else { 1.0 - ease((f - down) / (s - down)) };
+                            v.group_pos.y += 1.5 * high;
+                            v.root_rot.x = if f >= down { 0.6 } else { -0.15 };
                         }
                         let spread = if rec > 0.0 { 1.35 * (1.0 - rec) } else { 1.35 + (time * 16.0).sin() * 0.35 * (1.0 - u) };
                         for (name, side) in [("leftWing", -1.0f32), ("rightWing", 1.0)] {
@@ -294,18 +287,18 @@ impl WorldView {
                         v.pose.rot_x(rig, "leftLeg", -0.8 * wind * (1.0 - rec));
                         v.pose.rot_x(rig, "rightLeg", -0.8 * wind * (1.0 - rec));
                     }
-                    MoveId::Pounce => {
-                        // She sinks down, then springs: a leap through the air at him, claws first.
+                    MoveId::Smother => {
+                        // She rears up tall beside him, arms spread over him, then falls forward on him.
                         if strike == 0.0 {
-                            v.root_scale = Vec3::new(1.0 + 0.05 * wind, 1.0 - 0.2 * wind, 1.0);
-                            v.pose.rot_x(rig, "leftArm", -0.6 * wind);
-                            v.pose.rot_x(rig, "rightArm", -0.6 * wind);
+                            v.root_scale = Vec3::new(1.0 - 0.04 * wind, 1.0 + 0.12 * wind, 1.0);
+                            v.root_rot.x = -0.2 * wind;
+                            v.pose.rot_x(rig, "leftArm", -2.4 * wind);
+                            v.pose.rot_x(rig, "rightArm", -2.4 * wind);
                         } else {
                             let out = 1.0 - rec;
-                            v.group_pos.y += 0.5 * (strike * PI).sin() * out;
-                            v.root_rot.x = 0.35 * out;
-                            v.pose.rot_x(rig, "leftArm", -2.2 * out);
-                            v.pose.rot_x(rig, "rightArm", -2.2 * out);
+                            v.root_rot.x = -0.2 + 0.65 * snap * out + 0.2 * rec;
+                            v.pose.rot_x(rig, "leftArm", (-2.4 + 1.0 * snap) * out);
+                            v.pose.rot_x(rig, "rightArm", (-2.4 + 1.0 * snap) * out);
                         }
                     }
                     MoveId::Roots => {
@@ -337,18 +330,17 @@ impl WorldView {
                             v.pose.rot_x(rig, "neck", -0.3 * (1.0 - snap));
                         }
                     }
-                    MoveId::Lunge if cobra || v.kind == EnemyKind::Nidhogg => {
+                    MoveId::Bite if cobra || v.kind == EnemyKind::Nidhogg => {
                         if strike == 0.0 {
                             // Drawn back on its coil, the hood high.
                             v.pose.rot_x(rig, "neck", -0.4 * wind);
                             v.pose.rot_x(rig, "head", 0.25 * wind);
                             v.root_scale = Vec3::new(1.0, 1.0 - 0.06 * wind, 1.0);
                         } else {
-                            // The strike: thrown forward and down off the coil, its length stretched out.
+                            // The strike: down off the coil onto him, its length its own.
                             let out = snap * (1.0 - rec);
                             v.pose.rot_x(rig, "neck", 0.85 * out);
                             v.pose.rot_x(rig, "head", -0.3 * out);
-                            v.root_scale = Vec3::new(1.0, 1.0, 1.0 + 0.2 * out);
                         }
                         if v.kind == EnemyKind::Nidhogg {
                             let head = rig.index("head").map(|h| v.pose.rot[h]).unwrap_or_default();
@@ -358,20 +350,19 @@ impl WorldView {
                             }
                         }
                     }
-                    MoveId::Lunge => {
+                    MoveId::Bite => {
                         if strike == 0.0 {
-                            // Crouched and coiled, head low.
-                            v.root_scale = Vec3::new(1.0 + 0.08 * wind, 1.0 - 0.22 * wind, 1.0 - 0.06 * wind);
+                            // Hackles up, head drawn back, weight on the haunches.
+                            v.root_scale = Vec3::new(1.0 + 0.05 * wind, 1.0 - 0.12 * wind, 1.0);
                             v.root_rot.x = -0.12 * wind;
-                            v.pose.rot_x(rig, "head", 0.35 * wind);
+                            v.pose.rot_x(rig, "head", -0.35 * wind);
                         } else {
-                            // Stretched out in the bite.
-                            let out = 1.0 - rec;
-                            v.root_scale = Vec3::new(1.0, 1.0, 1.0 + 0.18 * out);
-                            v.root_rot.x = 0.22 * out;
-                            v.pose.rot_x(rig, "frontLeftLeg", -1.1 * out);
-                            v.pose.rot_x(rig, "frontRightLeg", -1.1 * out);
-                            v.pose.rot_x(rig, "head", -0.3 * out);
+                            // The snap of the jaws where it stands: the head thrown down at him.
+                            let out = snap * (1.0 - rec);
+                            v.root_rot.x = 0.2 * out;
+                            v.pose.rot_x(rig, "frontLeftLeg", -0.5 * out);
+                            v.pose.rot_x(rig, "frontRightLeg", -0.5 * out);
+                            v.pose.rot_x(rig, "head", 0.45 * out);
                         }
                     }
                     MoveId::Grab => {
@@ -509,24 +500,11 @@ impl WorldView {
                 dot(at, fill >= 0.95);
             };
             match data.shape {
-                Shape::Mark { radius, count } => {
-                    // Where the ground's blow will fall: a ring for each mark, following him, then holding.
-                    for m in &d.lore.marks[..(count as usize).min(3)] {
-                        let at = Vec3::new(m.x as f32, 0.0, m.y as f32) - Vec3::new(base.x, 0.0, base.z);
-                        ring(&mut dot, at, radius as f32);
-                    }
-                    continue;
-                }
-                Shape::Lane { width } => {
-                    // The lane down its aim, as far as the head (or the ice) will reach.
-                    let length = data.reach as f32;
-                    let steps = (length / 0.28).ceil() as i32;
-                    for k in 2..=steps {
-                        let along = k as f32 * length / steps as f32;
-                        for w in [-(width as f32), 0.0, width as f32] {
-                            dot(aim * along + side * w, along <= length * fill);
-                        }
-                    }
+                Shape::Mark { radius } => {
+                    // Where the burrow will burst up: a ring following him, then holding.
+                    let m = d.lore.mark;
+                    let at = Vec3::new(m.x as f32, 0.0, m.y as f32) - Vec3::new(base.x, 0.0, base.z);
+                    ring(&mut dot, at, radius as f32);
                     continue;
                 }
                 Shape::Volley { count, spread } => {
@@ -567,17 +545,6 @@ impl WorldView {
                 Shape::Cone => {}
             }
             match mv {
-                _ if data.travel > 0.0 => {
-                    // A lane down its aim, as far as the bite will carry.
-                    let length = data.travel as f32 + data.reach as f32;
-                    let steps = (length / 0.28).ceil() as i32;
-                    for k in 1..=steps {
-                        let along = k as f32 * length / steps as f32;
-                        for w in [-0.32f32, 0.0, 0.32] {
-                            dot(aim * along + side * w, along <= length * fill);
-                        }
-                    }
-                }
                 _ if data.projectile => {
                     // A line toward him, the way the bolt will fly.
                     for k in 1..=12 {
@@ -625,19 +592,8 @@ impl WorldView {
             }
             f.lights.push(Light { pos: c + Vec3::new(0.0, 0.4, 0.0), color: lin(0xff7a2a) * 3.0 * dying, distance: 3.0 });
         }
-        // Hex bolts: a spinning spark and its trail, violet (gold once parried back), lighting the floor.
         for b in s.bolts {
-            let p = Vec3::new(b.pos.x as f32, 1.0, b.pos.y as f32);
-            let v = Vec3::new(b.vel.x as f32, 0.0, b.vel.y as f32).normalize_or_zero();
-            let color = lin(b.tint);
-            for k in 0..4 {
-                let m = Mat4::from_translation(p - v * k as f32 * 0.14)
-                    * Mat4::from_rotation_y(time * 9.0 + k as f32)
-                    * Mat4::from_rotation_x(time * 7.0)
-                    * Mat4::from_scale(Vec3::splat(0.13 - k as f32 * 0.025));
-                f.additive.push(Instance::new(m, color * (2.6 - k as f32 * 0.5), 0.95 - k as f32 * 0.2, Vec3::ZERO, SHADE_UNLIT));
-            }
-            f.lights.push(Light { pos: p, color: color * 2.5, distance: 3.0 });
+            emit_bolt(b, time, f);
         }
     }
 
@@ -798,4 +754,184 @@ impl WorldView {
             }
         }
     }
+}
+
+/**
+ * A bolt in flight, as its caster's kind looses it (in its colour: gold once it flies at the foes):
+ * the bog slime's glob of spit wobbling and dripping, the witch's violet star in a spinning ring,
+ * the jorogumo's ball of fire with flames streaming up off it, the kitsune's foxfire wisp on a
+ * long wavering tail, the cin's tall pale flame with no smoke behind it, the arçura's thorny dart
+ * shedding leaves, the goryō's jagged lightning, Hel's dark drain with cold motes about it, and his
+ * own blade spinning. Each lights the floor under it its own way.
+ */
+fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
+    let p = Vec3::new(b.pos.x as f32, 1.0, b.pos.y as f32);
+    let v = Vec3::new(b.vel.x as f32, 0.0, b.vel.y as f32).normalize_or_zero();
+    let side = Vec3::new(-v.z, 0.0, v.x);
+    let color = lin(b.tint);
+    let seed = (b.pos.x * 7.3 + b.pos.y * 3.1) as f32;
+    let yaw = v.x.atan2(v.z);
+    let add = |f: &mut Frame, at: Vec3, rot: Quat, size: Vec3, c: Vec3, alpha: f32| {
+        f.additive.push(Instance::new(Mat4::from_scale_rotation_translation(size, rot, at), c, alpha, Vec3::ZERO, SHADE_UNLIT));
+    };
+    let (light, reach) = match b.look {
+        BoltLook::Spit => {
+            // A glob of green bog spit, wobbling as it flies, dripping onto the floor behind it.
+            let wob = (time * 18.0).sin() * 0.04;
+            let m = Mat4::from_scale_rotation_translation(
+                Vec3::new(0.2 + wob, 0.16 - wob, 0.24),
+                Quat::from_rotation_y(yaw),
+                p - Vec3::new(0.0, 0.1, 0.0),
+            );
+            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, color * 0.9, 0.85, color * 0.35, SHADE_UNLIT));
+            for k in 1..4 {
+                let t = ((time * 2.5 + k as f32 * 0.33).fract()) * 0.5;
+                let at = p - v * (0.18 + 0.12 * k as f32) - Vec3::new(0.0, 0.1 + t * 1.6, 0.0);
+                let m = Mat4::from_scale_rotation_translation(Vec3::splat(0.05 - k as f32 * 0.008), Quat::IDENTITY, at);
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, color, 0.8, color * 0.3, SHADE_UNLIT));
+            }
+            (color * 1.2, 2.2)
+        }
+        BoltLook::Hex => {
+            // A violet star (two cubes crossed) turning in a ring of the same light, sparks behind.
+            let spin = Quat::from_rotation_y(time * 9.0) * Quat::from_rotation_x(time * 7.0);
+            add(f, p, spin, Vec3::splat(0.13), color * 2.6, 0.95);
+            add(f, p, spin * Quat::from_rotation_z(PI / 4.0) * Quat::from_rotation_x(PI / 4.0), Vec3::splat(0.13), color * 2.2, 0.9);
+            let ring = Mat4::from_translation(p)
+                * Mat4::from_rotation_y(yaw)
+                * Mat4::from_rotation_z(time * 5.0)
+                * Mat4::from_scale(Vec3::new(0.24, 0.24, 1.0));
+            f.transparent[MeshKind::Annulus as usize].push(Instance::new(ring, color * 2.0, 0.8, Vec3::ZERO, SHADE_UNLIT));
+            for k in 1..4 {
+                add(
+                    f,
+                    p - v * k as f32 * 0.16,
+                    Quat::from_rotation_y(time * 9.0 + k as f32),
+                    Vec3::splat(0.09 - k as f32 * 0.02),
+                    color * (2.0 - k as f32 * 0.45),
+                    0.8 - k as f32 * 0.2,
+                );
+            }
+            (color * 2.5, 3.0)
+        }
+        BoltLook::Fire => {
+            // A ball of fire, a yellow heart in it, flames streaming up and back off it.
+            glow_orb(f, p, 0.55, color, 1.0);
+            add(f, p, Quat::from_rotation_y(time * 11.0) * Quat::from_rotation_x(time * 8.0), Vec3::splat(0.2), color * 2.4, 0.95);
+            add(f, p, Quat::from_rotation_x(time * 13.0), Vec3::splat(0.11), lin(0xffe070) * 3.0, 1.0);
+            for k in 0..6 {
+                let t = (time * 3.0 + k as f32 / 6.0).fract();
+                let wave = side * ((time * 9.0 + k as f32 * 2.1).sin() * 0.08);
+                let at = p - v * (0.12 + t * 0.6) + Vec3::new(0.0, t * 0.45, 0.0) + wave;
+                let c = if k % 2 == 0 { lin(0xffd050) } else { color };
+                add(f, at, Quat::from_rotation_y(t * 6.0 + k as f32), Vec3::splat(0.12 * (1.0 - t) + 0.02), c * 2.2, 0.9 * (1.0 - t));
+            }
+            (color * 4.0, 4.0)
+        }
+        BoltLook::Foxfire => {
+            // A pale wisp, bobbing as it comes, on a long wavering tail.
+            let bob = Vec3::new(0.0, (time * 7.0 + seed).sin() * 0.08, 0.0);
+            glow_orb(f, p + bob, 0.32, color, 0.9);
+            add(f, p + bob, Quat::from_rotation_y(time * 6.0), Vec3::new(0.08, 0.14, 0.08), Vec3::ONE.lerp(color, 0.4) * 2.6, 0.95);
+            for k in 1..9 {
+                let back = k as f32 * 0.11;
+                let sway = side * ((time * 8.0 - k as f32 * 0.7 + seed).sin() * 0.06 * k as f32 / 4.0);
+                let at = p + bob * (1.0 - k as f32 / 9.0) - v * back + sway + Vec3::new(0.0, k as f32 * 0.015, 0.0);
+                add(
+                    f,
+                    at,
+                    Quat::from_rotation_y(k as f32),
+                    Vec3::splat(0.07 * (1.0 - k as f32 / 10.0)),
+                    color * (2.0 - k as f32 * 0.18),
+                    0.85 - k as f32 * 0.08,
+                );
+            }
+            (color * 2.0, 2.6)
+        }
+        BoltLook::Smokeless => {
+            // A tall pale flame standing straight up as it flies, flickering; nothing trails it.
+            let flick = 1.0 + (time * 23.0 + seed).sin() * 0.15 + (time * 37.0).sin() * 0.08;
+            add(
+                f,
+                p + Vec3::new(0.0, 0.05, 0.0),
+                Quat::from_rotation_y(time * 4.0),
+                Vec3::new(0.12, 0.42 * flick, 0.12),
+                color * 2.2,
+                0.85,
+            );
+            add(f, p, Quat::from_rotation_y(-time * 5.0), Vec3::new(0.06, 0.26 * flick, 0.06), Vec3::splat(3.0), 1.0);
+            glow_orb(f, p, 0.4, Vec3::ONE.lerp(color, 0.5), 0.6);
+            (Vec3::ONE.lerp(color, 0.5) * 3.2, 3.4)
+        }
+        BoltLook::Thorn => {
+            // A dart of root and thorn, rolling as it flies, leaves shed behind it.
+            let roll = Quat::from_rotation_y(yaw) * Quat::from_rotation_z(time * 12.0);
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.07, 0.07, 0.46), roll, p);
+            f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(0x6a4a24), 1.0, Vec3::ZERO, SHADE_LIT));
+            for k in 0..4 {
+                let a = k as f32 * PI / 2.0;
+                let off = roll * Vec3::new(a.cos() * 0.07, a.sin() * 0.07, 0.12 - k as f32 * 0.08);
+                let m = Mat4::from_scale_rotation_translation(Vec3::new(0.025, 0.025, 0.1), roll * Quat::from_rotation_x(0.9), p + off);
+                f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(0x3a5a1a), 1.0, Vec3::ZERO, SHADE_LIT));
+            }
+            add(f, p + v * 0.25, roll, Vec3::new(0.04, 0.04, 0.08), lin(0x9adf5a) * 1.8, 0.9);
+            for k in 1..5 {
+                let t = (time * 2.0 + k as f32 * 0.25).fract();
+                let at = p - v * (0.3 + t * 0.7) + side * ((k as f32 * 1.7 + time * 3.0).sin() * 0.12) - Vec3::new(0.0, t * 0.4, 0.0);
+                add(
+                    f,
+                    at,
+                    Quat::from_rotation_y(time * 5.0 + k as f32) * Quat::from_rotation_x(k as f32),
+                    Vec3::new(0.07, 0.01, 0.04),
+                    lin(0x6ad050) * 1.6,
+                    0.8 * (1.0 - t),
+                );
+            }
+            (lin(0x6ad050) * 1.2, 2.0)
+        }
+        BoltLook::Lightning => {
+            // A jagged fork of lightning, struck anew every few frames, white at the head.
+            let n = 5;
+            let jag = (time * 30.0).floor();
+            let mut a = p;
+            for k in 0..n {
+                let h = ((jag + k as f32 * 7.0) * 12.9898).sin() * 43758.547;
+                let r = (h - h.floor()) * 2.0 - 1.0;
+                let b2 = p - v * (k + 1) as f32 * 0.2 + side * r * 0.14 + Vec3::new(0.0, r * 0.06, 0.0);
+                let mid = (a + b2) * 0.5;
+                let d = b2 - a;
+                let len = d.length().max(0.01);
+                let rot = Quat::from_rotation_arc(Vec3::Z, d / len);
+                add(f, mid, rot, Vec3::new(0.035, 0.035, len * 0.5 + 0.02), Vec3::ONE.lerp(color, 0.5) * 3.2, 1.0 - k as f32 * 0.12);
+                a = b2;
+            }
+            glow_orb(f, p, 0.45, color, 1.1);
+            add(f, p, Quat::from_rotation_y(time * 20.0), Vec3::splat(0.09), Vec3::splat(3.5), 1.0);
+            let flick = 0.7 + ((time * 41.0).sin() * 0.5 + 0.5) * 0.6;
+            (color * 4.5 * flick, 4.0)
+        }
+        BoltLook::Drain => {
+            // A dark heart of cold, motes of pale blue circling it, a ghost of it fading behind.
+            let m = Mat4::from_scale_rotation_translation(Vec3::splat(0.12), Quat::IDENTITY, p);
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, lin(0x101828), 1.0, color * 0.15, SHADE_UNLIT));
+            glow_orb(f, p, 0.42, color, 0.7);
+            for k in 0..3 {
+                let a = time * 8.0 + k as f32 * TAU / 3.0;
+                let at = p + side * a.cos() * 0.22 + Vec3::new(0.0, a.sin() * 0.22, 0.0);
+                add(f, at, Quat::from_rotation_y(a), Vec3::splat(0.045), lin(0xc8dcff) * 2.6, 0.95);
+            }
+            for k in 1..4 {
+                glow_orb(f, p - v * k as f32 * 0.22, 0.3 - k as f32 * 0.06, color, 0.45 - k as f32 * 0.1);
+            }
+            (color * 2.5, 3.0)
+        }
+        BoltLook::Blade => {
+            // His blade, spinning flat.
+            let spin = Quat::from_rotation_y(time * 24.0);
+            add(f, p, spin, Vec3::new(0.42, 0.025, 0.07), color * 2.6, 0.95);
+            add(f, p - v * 0.15, Quat::from_rotation_y(time * 24.0 - 0.5), Vec3::new(0.36, 0.02, 0.05), color * 1.4, 0.5);
+            (color * 2.5, 3.0)
+        }
+    };
+    f.lights.push(Light { pos: p, color: light, distance: reach });
 }

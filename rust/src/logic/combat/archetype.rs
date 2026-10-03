@@ -1,8 +1,9 @@
 //! The three archetypes (COMBAT.md §4.3), each asking the player one question: the Brute
 //! (*can you wait?*), the Skirmisher (*can you read the timing?*) and the Hexer (*can you
 //! close the distance?*). Each wears the body of a foe already in the game, and each reaches
-//! the hero its own way: the Brute's blows are melee, the Skirmisher throws its body, the
-//! Hexer strikes from a distance (§10: every stage's cast has all three).
+//! the hero its own way: the Brute's blows are melee, the Skirmisher bites from beside him, the
+//! Hexer sends bolts from a distance (§10: every stage's cast has all three). Only the Hexer
+//! strikes from afar; nothing of the others' darts across the floor or stretches out to him.
 
 use super::frames::{MoveId, Rider};
 use super::fsm::Fighter;
@@ -15,8 +16,8 @@ pub enum Archetype {
     Hexer,
 }
 
-/// How an archetype's blows reach the hero: with a weapon swung at arm's length, with its whole
-/// body thrown at him, or from afar.
+/// How an archetype's blows reach the hero: with a weapon swung at arm's length, with its own
+/// body (teeth, claws, weight) from beside him, or with bolts from afar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Attack {
     Melee,
@@ -88,7 +89,7 @@ impl Archetype {
                 strafe: 2.8,
                 retreat: 4.0,
                 turn: 540.0 * std::f64::consts::PI / 180.0,
-                ring: 4.2,
+                ring: 3.2,
                 cost: 1,
                 radius: 0.38,
                 rest: 60,
@@ -111,7 +112,7 @@ impl Archetype {
         }
     }
 
-    /// How its blows reach him: the Brute swings, the Skirmisher throws itself, the Hexer casts.
+    /// How its blows reach him: the Brute swings, the Skirmisher bites, the Hexer casts.
     pub const fn attack(self) -> Attack {
         match self {
             Archetype::Brute => Attack::Melee,
@@ -141,17 +142,8 @@ impl Archetype {
     pub fn moves(self) -> &'static [MoveId] {
         match self {
             Archetype::Brute => &[MoveId::Slam, MoveId::Sweep],
-            Archetype::Skirmisher => &[MoveId::Lunge],
+            Archetype::Skirmisher => &[MoveId::Bite],
             Archetype::Hexer => &[MoveId::Hex],
-        }
-    }
-
-    /// The farthest it attacks from (centre to centre), to plan its approach.
-    pub fn range(self) -> f64 {
-        match self {
-            Archetype::Brute => 1.7,
-            Archetype::Skirmisher => LUNGE_FAR,
-            Archetype::Hexer => HEX_FAR,
         }
     }
 
@@ -203,7 +195,7 @@ pub enum Power {
 /**
  * A foe's body on an archetype (COMBAT.md §9, §10, §11): every kind in the game fights as one of
  * the three, its numbers scaled. The later stages' bodies bring their own moves (each a variation
- * on its archetype's verb: a lunge that shoves, a bolt that stuns, a slam that shakes the ground),
+ * on its archetype's verb: a bite that shoves, a bolt of lightning, a slam that shakes the ground),
  * a rider on their blows and a folklore power.
  */
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -234,41 +226,41 @@ impl Breed {
             K::Blemmyes => (Brute, 1.0, 1.0, 1.0, 1.0, 0.5, 2),
             K::Werewolf => (Skirmisher, 1.0, 1.0, 1.0, 1.0, 0.38, 1),
             K::Witch => (Hexer, 1.0, 1.0, 1.0, 1.0, 0.35, 1),
-            // ...with lighter cousins: the helmeted skeleton a small brute, the large bat a flying skirmisher.
+            // ...with lighter cousins: the helmeted skeleton a small brute, the large bat a biting skirmisher.
             K::Helmeted => (Brute, 0.6, 0.7, 0.6, 1.15, 0.38, 1),
             K::LargeBat => (Skirmisher, 0.8, 0.85, 0.8, 1.1, 0.4, 1),
             K::Minion => (Skirmisher, 0.35, 0.55, 0.4, 1.0, 0.3, 1),
-            // The Garden's four: a draugr chops like a brute, the ravens swoop, the bog slime spits.
+            // The Garden's four: a draugr chops like a brute, the ravens peck, the bog slime spits.
             K::Skeleton => (Brute, 0.45, 0.6, 0.5, 1.1, 0.36, 1),
             K::Vampire => (Skirmisher, 0.6, 0.7, 0.6, 1.0, 0.32, 1),
             K::Bat => (Skirmisher, 0.45, 0.6, 0.5, 1.05, 0.3, 1),
             K::Slime => (Hexer, 0.8, 0.8, 0.8, 0.7, 0.38, 1),
             // The third stage's, stronger than the archetypes' own: two blades (the tengu quick on
-            // his feet, the rasetsu heavy), two bodies thrown (the dire wolf's pounce, the cobra's
-            // strike), and fire from afar (the jorogumo).
+            // his feet, the rasetsu heavy), two that bite (the dire wolf's jaws, the cobra's
+            // fangs), and fire from afar (the jorogumo).
             K::Tengu => (Brute, 1.0, 1.15, 0.9, 1.5, 0.42, 2),
             K::Rasetsu => (Brute, 1.5, 1.2, 1.25, 1.0, 0.52, 2),
             K::DireWolf => (Skirmisher, 1.5, 1.2, 1.3, 1.1, 0.45, 1),
             K::Cobra => (Skirmisher, 1.25, 1.3, 1.0, 0.8, 0.4, 1),
             K::Jorogumo => (Hexer, 1.6, 1.2, 1.5, 1.0, 0.46, 1),
-            // The fourth stage (the yōkai): the oni's club, the kappa's charge, the rokurokubi's
-            // neck, the kitsune's foxfire.
+            // The fourth stage (the yōkai): the oni's club, the kappa's shove, the rokurokubi's
+            // bite, the kitsune's foxfire.
             K::Oni => (Brute, 1.9, 1.35, 1.25, 1.0, 0.6, 2),
             K::Kappa => (Skirmisher, 1.9, 1.35, 1.4, 0.95, 0.42, 1),
             K::Rokurokubi => (Skirmisher, 1.7, 1.4, 1.2, 0.7, 0.4, 1),
             K::Kitsune => (Hexer, 2.0, 1.35, 1.5, 1.3, 0.38, 1),
-            // The fifth (Anatolian nights): the karakoncolos's claws, the tülükuş's dive, the
-            // albastı's pounce, the cin's fire, the arçura's roots.
+            // The fifth (Anatolian nights): the karakoncolos's claws, the tülükuş's talons, the
+            // albastı's weight, the cin's fire, the arçura's root darts.
             K::Karakoncolos => (Brute, 2.3, 1.35, 1.25, 1.15, 0.6, 2),
-            K::Tulukus => (Skirmisher, 2.2, 1.5, 1.3, 1.1, 0.42, 1),
-            K::Albasti => (Skirmisher, 2.4, 1.45, 1.4, 1.05, 0.42, 1),
+            K::Tulukus => (Skirmisher, 3.8, 1.5, 1.3, 1.1, 0.42, 1),
+            K::Albasti => (Skirmisher, 3.4, 1.45, 1.4, 1.05, 0.42, 1),
             K::Cin => (Hexer, 2.6, 1.5, 1.6, 1.0, 0.38, 1),
-            K::Arcura => (Hexer, 2.8, 1.45, 1.8, 0.95, 0.45, 1),
+            K::Arcura => (Hexer, 3.8, 1.45, 1.8, 0.95, 0.45, 1),
             // The sixth (the legends): two giants, the dragon, the ghost.
             K::Tepegoz => (Brute, 4.0, 1.7, 1.25, 0.85, 0.85, 2),
             K::Gashadokuro => (Brute, 3.0, 1.65, 1.25, 0.9, 0.9, 2),
-            K::Ejder => (Skirmisher, 4.0, 1.6, 1.6, 0.75, 0.9, 2),
-            K::Goryo => (Hexer, 3.0, 1.7, 2.0, 1.0, 0.4, 1),
+            K::Ejder => (Skirmisher, 5.0, 1.6, 1.6, 0.75, 0.9, 2),
+            K::Goryo => (Hexer, 4.2, 1.7, 2.0, 1.0, 0.4, 1),
             // The seventh (Ragnarök).
             K::FrostGiant => (Brute, 3.6, 1.9, 1.25, 0.9, 0.9, 2),
             K::Surtr => (Brute, 4.0, 2.0, 1.25, 0.85, 0.95, 2),
@@ -313,18 +305,18 @@ impl Breed {
         match self.kind {
             K::Oni => &[MoveId::Kanabo, MoveId::Sweep],
             K::Kappa => &[MoveId::Shove],
-            K::Rokurokubi => &[MoveId::Lash],
+            K::Rokurokubi => &[MoveId::NeckBite],
             K::Kitsune => &[MoveId::Foxfire],
             K::Karakoncolos => &[MoveId::Call, MoveId::Slam, MoveId::Sweep],
-            K::Tulukus => &[MoveId::Dive],
-            K::Albasti => &[MoveId::Pounce],
+            K::Tulukus => &[MoveId::Talons],
+            K::Albasti => &[MoveId::Smother],
             K::Cin => &[MoveId::Smokeless],
             K::Arcura => &[MoveId::Roots],
             K::Gashadokuro => &[MoveId::Grab, MoveId::Slam, MoveId::Sweep],
             K::Ejder => &[MoveId::Heads],
             K::Goryo => &[MoveId::Thunder],
-            K::FrostGiant => &[MoveId::Frostwave, MoveId::Slam, MoveId::Sweep],
-            K::Nidhogg => &[MoveId::Burrow, MoveId::Lunge],
+            K::FrostGiant => &[MoveId::FrostSlam, MoveId::Slam, MoveId::Sweep],
+            K::Nidhogg => &[MoveId::Burrow, MoveId::Bite],
             K::Hel => &[MoveId::Raise, MoveId::Hex],
             _ => self.arch.moves(),
         }
@@ -364,14 +356,7 @@ impl Breed {
     }
 }
 
-/// The Brute sweeps a hero this close outside its slam's cone.
-pub const SWEEP_NEAR: f64 = 1.3;
-/// The Skirmisher lunges from between these distances, and steps back when nearer.
-pub const LUNGE_NEAR: f64 = 1.6;
-pub const LUNGE_FAR: f64 = 3.2;
-/// The Hexer casts from no farther than this, and backs off from a hero nearer than `FLEE`.
-pub const HEX_FAR: f64 = 7.5;
-pub const HEX_NEAR: f64 = 2.5;
+/// The Hexer backs off from a hero nearer than this.
 pub const FLEE: f64 = 3.0;
 
 #[cfg(test)]
@@ -463,6 +448,58 @@ mod tests {
                 assert!(b.main_move().data().strikes(), "{kind:?}");
             }
         }
+    }
+
+    /// Every body the game has, on its archetype.
+    fn every_breed() -> Vec<Breed> {
+        (1..=EnemyKind::STAGES)
+            .flat_map(|s| EnemyKind::of_stage(s).iter().copied())
+            .chain([EnemyKind::Gaki, EnemyKind::Ellepige])
+            .map(Breed::of)
+            .collect()
+    }
+
+    #[test]
+    fn a_body_foe_only_bites_from_beside_him_and_only_a_distance_foe_strikes_from_afar() {
+        use super::super::frames::{Shape, BITE_RANGE};
+        for b in every_breed() {
+            for &mv in b.moves() {
+                let d = mv.data();
+                if !d.strikes() {
+                    continue;
+                }
+                // (A big body's reach is its arm and its girth, not a throw.)
+                let far = d.range.1 + b.reach;
+                match b.attack() {
+                    // Teeth, claws, a shove, its weight: from beside him (a burrow comes up under him).
+                    Attack::Body if matches!(d.shape, Shape::Mark { .. }) => assert_eq!(mv, MoveId::Burrow),
+                    Attack::Body => {
+                        assert!(!d.projectile && far <= BITE_RANGE + 0.1 + b.reach + 1e-9, "{:?} {}: from {far}", b.kind, d.name);
+                        assert!(d.reach <= 1.4 && d.range.0 == 0.0, "{:?} {}", b.kind, d.name);
+                    }
+                    // A weapon at arm's length (the ground shaking round the club is close too).
+                    Attack::Melee => assert!(!d.projectile && far <= 2.0 + b.reach + 1e-9, "{:?} {}: from {far}", b.kind, d.name),
+                    // From afar, only by bolts.
+                    Attack::Distance => assert!(d.projectile, "{:?} {} is not a bolt", b.kind, d.name),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_distance_foes_bolt_has_its_own_look() {
+        use super::super::duelist::BoltLook;
+        let mut seen: Vec<(EnemyKind, BoltLook)> = Vec::new();
+        for b in every_breed().into_iter().filter(|b| b.attack() == Attack::Distance) {
+            let look = BoltLook::of(b.kind);
+            assert_ne!(look, BoltLook::Blade, "{:?}", b.kind);
+            if let Some(&(other, _)) = seen.iter().find(|s| s.1 == look) {
+                panic!("{:?} and {other:?} loose the same bolt", b.kind);
+            }
+            assert!(seen.iter().all(|s| s.1.tint() != look.tint()), "{:?}: a colour of its own", b.kind);
+            seen.push((b.kind, look));
+        }
+        assert_eq!(seen.len(), 8, "the slime, the witch, the jorogumo, the kitsune, the cin, the arçura, the goryō, Hel");
     }
 
     #[test]

@@ -31,7 +31,7 @@ Design limits the table must satisfy (each is a test in `combat::frames`):
   Every whiffed attack can be punished.
 * **Parry by reaction**: every foe melee startup ≥ reaction (15 f) + guard raise (2 f) = 17 f.
   If the hero presses guard 15 f after the tell starts, the hit lands inside the parry window.
-  The Lunge (18 f) sits one frame above that floor: it's the hardest read in the game.
+  The Bite (18 f) sits one frame above that floor: it's the hardest read in the game.
 
 ---
 
@@ -61,24 +61,28 @@ different numbers (§8).
 |---|---|---|
 | Guard (LB / Shift) | raise 2 f | Blocks hits from the front 180°. Walk speed × 0.55. Can't attack while raised. |
 | **Parry** | guard f2-f9 (8 f, 133 ms) | A hit landing in the window: no damage, no stamina. Attacker → *Deflected* **60 f** (longer than any recovery, so a parry always opens more than a dodge) and loses 50% of max poise. A hex bolt is **reflected** (×1.5 damage to foes). |
-| Block | after f9 | Stamina − **0.7** × damage (the training buckler's 30% stability). Hero → *Blockstun* 6 + dmg/3 f. |
-| Guard break | block with stamina < cost | 50% damage through, hero → *GuardBroken* 48 f, stamina → 0. |
+| Block | after f9 | Stamina − **0.7** × damage (the training buckler's 30% stability). Hero → *Blockstun* 6 + dmg/3 f (he walks on at his guard's pace). |
+| Guard break | block with stamina < cost | 50% damage through, hero → *GuardBroken* 48 f, stamina → 0. He walks on at his whole pace. |
 | Evade (Space / A) | 25 f airborne + 6 f landing | The leap. **Airborne = i-frames** (f0-f24), then 6 f landing recovery. Cancels any startup frame, or recovery from its cancel frame. |
 | Hit taken | hitstun 10 + dmg/2 f | Then **30 f mercy** i-frames, so two attacks can't stack into one combo. The formula of §2 applies to him too: a foe that catches his recovery deals ×1.25, a broken guard ×1.5. |
+| No hit-lock | any reel | Hitstun, blockstun and a broken guard keep him from swinging and guarding for their frames, and nothing else: he walks at his whole pace through them (`Fighter::stride`). Only his own swing plants him. No foe slows him but the bog slime's trail. |
 | Soft lock | at Began and the first active frame | The swing turns onto the nearest foe within its reach + 1 tile and 46° of his facing, and he turns with it. Four keys and a stick are coarse. |
 
 ### 1.3 Foes
 
-| Move | Owner | Startup | Active | Recovery | Total | Dmg | Reach | Arc (±) | Track | Travel | Armor |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Slam | Brute | 42 (700 ms) | 6 | 48 (800 ms) | 96 | 30 | 1.8 | 35° | 30 f | 0 | 35 |
-| Sweep | Brute | 30 (500 ms) | 8 | 36 | 74 | 20 | 1.6 | 110° | 16 f | 0 | 35 |
-| Lunge | Skirmisher | 18 (300 ms) | 8 | 22 | 48 | 18 | 0.9 | 70° | 12 f | 2.6 tiles | 0 |
-| Hex Bolt | Hexer | 36 (600 ms) | 1 | 30 | 67 | 15 | bolt 7 t/s (time-locked), 90 f | — | 30 f | 0 | 0 |
+| Move | Owner | Startup | Active | Recovery | Total | Dmg | Reach | Arc (±) | Track | Armor |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Slam | Brute | 42 (700 ms) | 6 | 48 (800 ms) | 96 | 30 | 1.8 | 35° | 30 f | 35 |
+| Sweep | Brute | 30 (500 ms) | 8 | 36 | 74 | 20 | 1.6 | 110° | 16 f | 35 |
+| Bite | Skirmisher | 18 (300 ms) | 6 | 24 | 48 | 20 | 1.1 (from ≤ 1.3) | 70° | 12 f | 0 |
+| Hex Bolt | Hexer | 36 (600 ms) | 1 | 30 | 67 | 15 | bolt 7 t/s (time-locked), 90 f | — | 30 f | 0 |
 
 * **Track**: for the first *track* startup frames the attacker turns toward the hero.
   After that its aim is **committed**: the last 12 f of a Slam and the last 6 f of a
-  Lunge are locked, so a late sidestep beats them.
+  Bite are locked, so a late sidestep beats them.
+* **Nothing travels.** No foe's move carries it across the floor, and nothing of it stretches
+  out to him and snaps back. A body foe bites from beside him (`frames::BITE_RANGE`, 1.3 tiles
+  centre to centre) and stays where it bit; only a distance foe strikes from afar, with a bolt.
 * **Telegraph**: during startup the hit zone is drawn on the floor and fills as the
   startup runs. In the last 8 f it flashes (commit). In recovery the foe dims: punish now.
 
@@ -119,11 +123,11 @@ Why these shapes:
 | Archetype | HP | Poise | What kills it | Expected TTK |
 |---|---|---|---|---|
 | Brute | 200 | 100 | Slam recovery 48 f fits L1+L2+L3 if the punish starts by f12; a parried slam opens 60 f at ×1.5. 85 poise per chain, so the 2nd punish breaks it; 90 f stagger at ×1.5 fits one full chain (≈ 52). | 4 punishes, **10-12 s** (measured: 11.6 s) |
-| Skirmisher | 80 | 25 | Any hit flinches it; L2 breaks it (40 ≥ 25); L3 lands ×1.5. It sidesteps the first swing it sees. | 2 chains, **3-4 s** once caught |
+| Skirmisher | 80 | 25 | Any hit flinches it; L2 breaks it (40 ≥ 25); L3 lands ×1.5. | 2 chains, **3-4 s** once caught |
 | Hexer | 55 | 20 | One chain + L1, or a parried bolt (22) and a chain. The cost is reaching her. | **2-3 s** in reach |
 
-Foe pressure (if every attack landed): Brute 30 per ~140 f ≈ **13 DPS**, Skirmisher 18 per ~136 f
-≈ **8 DPS**, Hexer 15 per ~127 f ≈ **7 DPS**. With 3 threat points, the worst case is
+Foe pressure (if every attack landed): Brute 30 per ~140 f ≈ **13 DPS**, Skirmisher 20 per ~136 f
+≈ **9 DPS**, Hexer 15 per ~127 f ≈ **7 DPS**. With 3 threat points, the worst case is
 Brute + one other ≈ **21 DPS** against 100 HP: about 5 s of zero-skill play.
 
 ---
@@ -193,8 +197,7 @@ score = 1.0 · clamp(1 − d/10, 0, 1)        closeness
 
 The **commit gate** backs the projection up. A foe holding a token may only begin its move if
 the frame it **lands** on is ≥ 24 f (18 f + 6 f of slack) from every other committed landing.
-For a blow that frame is now + startup. For a lunge it adds the active frames it travels before
-it is near enough. For a hex bolt it adds the flight (`duelist::lands_after`). Otherwise the foe
+For a blow that frame is now + startup. For a bolt it adds the flight (`duelist::lands_after`). Otherwise the foe
 holds for a few frames. *No two foe attacks land within 300 ms of each other*, and that is a
 test (`the_gauntlet_never_lands_two_strikes_inside_the_reaction_window`, a minute of five foes
 against a hero who stands still), and the bots measure it with the hero moving (§7).
@@ -210,11 +213,12 @@ Lessons from the lab, now in the rules:
   still walking in. A token now lasts `max(150, eta + 60)` frames.
 * **Telemetry counts real landings.** A landing is the frame a strike reaches the hero, however
   he meets it (hit, block, parry, evade). *Overlaps* counts landings inside the 18 f window.
-* **Plans keep slack.** A moving hero shifts landings by a few frames: a lunge closes sooner on a
-  hero walking into it. Plans 24 f apart land 18 f apart.
+* **Plans keep slack.** A moving hero shifts landings by a few frames: he steps into a bite's
+  reach a frame or two into its active frames. Plans 24 f apart land 18 f apart.
 * **Bolts are time-locked.** A bolt flies straight but paces itself (0.5× to 1.6× its speed) to
   touch the hero on its planned frame. A hero walking into it no longer brings it in early. A
-  sidestep still dodges it.
+  sidestep still dodges it, and a bolt that has missed its moment by more than the slack burns
+  out, so it cannot come late into another strike's slot.
 
 ### 4.2 Positional play: rings and sectors
 
@@ -223,7 +227,7 @@ Around the hero:
 | Ring | Radius | Who |
 |---|---|---|
 | Engage | the move's range | the token holder only |
-| Hold | Brute 3.6, Skirmisher 4.2 | melee foes without a token, strafing |
+| Hold | Brute 3.6, Skirmisher 3.2 | melee foes without a token, strafing (the biters wait nearer: they must walk in to bite) |
 | Ranged | 6.0 | Hexers; they back off if the hero comes within 3.0 |
 
 The circle is cut into **8 sectors of 45°**. Each waiting foe claims one free sector on its
@@ -241,8 +245,8 @@ can see them; his back fills only when the five sectors before it are taken. Foe
 | Stagger / Resolve | 90 f / 120 f | 50 f / 60 f | 60 f / 60 f |
 | Walk / Strafe (t/s) | 1.8 / 1.2 | 4.6 / 2.8 | 2.2 / 2.0 (retreat 3.2) |
 | Turn rate | 150°/s | 540°/s | 360°/s |
-| Moves | Slam (front), Sweep (when flanked within 1.3) | Lunge from 1.6-3.2 tiles, then 30 f backstep; **sidesteps** a swing begun within 2.4 tiles (12 f hop at 8 t/s, then 120 f before the next) | Hex Bolt from ≤ 7.5 tiles |
-| Answer | evade the slam, punish the 48 f recovery, break it with L3 | don't open with a swing: parry the lunge (deflect 60 f) or punish its 22 f recovery | dash in between bolts; parry reflects |
+| Moves | Slam (front), Sweep (when flanked within 1.3) | Bite from beside him (≤ 1.3 tiles); it walks up, bites, and stays where it bit: no lunge, no spring back, no hop | Hex Bolt from ≤ 7.5 tiles |
+| Answer | evade the slam, punish the 48 f recovery, break it with L3 | parry the bite (deflect 60 f), step out of its reach, or punish its 24 f recovery | dash in between bolts; parry reflects |
 | Rest after a move | 70 f | 60 f | 75 f |
 | Radius | 0.5 | 0.38 | 0.35 |
 
@@ -264,12 +268,12 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | 4 The Trio | one of each | the whole triangle |
 | 5 The Gauntlet | Brute, Skirmisher ×2, Hexer ×2 | the threat manager under load |
 | 6 Steel | tengu + rasetsu | melee: two blades, one token between them |
-| 7 Fang and Fire | dire wolf + cobra + jorogumo | bodies thrown at him while fire comes from afar |
+| 7 Fang and Fire | dire wolf + cobra + jorogumo | jaws beside him while fire comes from afar |
 | 8 The Night Parade | the third stage's five | every way of attacking at once |
-| 9 The Iron Club | oni + kappa | an unstoppable club, a charge that shoves |
-| 10 The Fox's Wedding | the fourth stage's four | a neck across the room, foxfire and illusions |
-| 11 The Call in the Cold | karakoncolos + tülükuş | doomed by a roar and a cry; a dive from out of reach |
-| 12 Zemheri Nights | the fifth stage's five | a pounce, roots, fire out of nowhere, a vanishing, all at once |
+| 9 The Iron Club | oni + kappa | an unstoppable club, a shove from beside him |
+| 10 The Fox's Wedding | the fourth stage's four | a long neck that bites, foxfire and illusions |
+| 11 The Call in the Cold | karakoncolos + tülükuş | doomed by a roar and a cry; talons from out of reach |
+| 12 Zemheri Nights | the fifth stage's five | a hag's weight, root darts, fire out of nowhere, a vanishing, all at once |
 | 13 The One Eye | Tepegöz | a body no blade cuts: strike the eye when it comes within reach |
 | 14 The Old Tales | the sixth stage's four | a grab, seven heads and a plea, lightning from a ghost |
 | 15 Fire and Ice | frost giant + Surtr | frostbite through the shield, fire on the floor |
@@ -645,8 +649,8 @@ distance. Those are the three archetypes' ways of reaching the hero (`archetype:
 | Way | Archetype | Its move | The question |
 |---|---|---|---|
 | Melee | Brute | a weapon swung at arm's length: the slam, the sweep | can you wait? |
-| Body | Skirmisher | its whole body thrown at him: the lunge | can you read the timing? |
-| Distance | Hexer | a bolt from afar | can you close the distance? |
+| Body | Skirmisher | teeth, claws or weight, from beside him: the bite | can you read the timing? |
+| Distance | Hexer | a bolt from afar, each kind's its own | can you close the distance? |
 
 Every stage's cast has all three (`every_stages_cast_attacks_all_three_ways`):
 
@@ -674,13 +678,13 @@ string.
 |---|---|---|---|---|---|---|---|
 | Tengu | Brute (melee) | 1.0 (200) | 1.15 | 0.9 | 1.5 | 2 | a swordsman: closes in half again as fast as a brute; slam 35, sweep 23 |
 | Rasetsu | Brute (melee) | 1.5 (300) | 1.2 | 1.25 | 1.0 | 2 | the heavy: the longest fight of the stage, armor 44; slam 36 |
-| Dire wolf | Skirmisher (body) | 1.5 (120) | 1.2 | 1.3 | 1.1 | 1 | the pounce, harder and longer-lived than the loup-garou's; 22 |
-| Cobra | Skirmisher (body) | 1.25 (100) | 1.3 | 1.0 | 0.8 | 1 | slow on the ground, the hardest bite of the stage: 23 |
-| Jorogumo | Hexer (distance) | 1.6 (88) | 1.2 | 1.5 | 1.0 | 1 | fire bolts (orange, her own tell colour); backs away; 18 |
+| Dire wolf | Skirmisher (body) | 1.5 (120) | 1.2 | 1.3 | 1.1 | 1 | the bite, harder and longer-lived than the loup-garou's; 24 |
+| Cobra | Skirmisher (body) | 1.25 (100) | 1.3 | 1.0 | 0.8 | 1 | slow on the ground, the hardest bite of the stage: 26 |
+| Jorogumo | Hexer (distance) | 1.6 (88) | 1.2 | 1.5 | 1.0 | 1 | balls of fire (orange, her own tell colour); backs away; 18 |
 
 No new moves: systematic reduction holds at fifteen bodies. Each has its own tell to the ear
 (the tengu's steel, the cobra's hiss, the dire wolf's growl, the jorogumo's shriek) and its own
-pose on the archetype's frames (the cobra rears back on its coil, then throws its neck forward).
+pose on the archetype's frames (the cobra rears back on its coil, then strikes down off it).
 
 ### 10.2 In the gym
 
@@ -750,12 +754,12 @@ four stages, their powers and attacks drawn from their legends. Every body is st
 archetype, and so attacks one of the three ways (§10). Each also brings its legend in three
 parts, systematic as the archetypes are:
 
-* **A move of its own**: a variation on its archetype's verb. It is a lunge that shoves, a bolt out
+* **A move of its own**: a variation on its archetype's verb. It is a bite that shoves, a bolt out
   of nowhere, or a slam that shakes the ground. It is frame data like any other move, held to the
   same design limits.
 * **A rider**: what its blows carry besides their damage. No rider slows him, holds him, roots him
-  or drags him: a legend hurts, dooms or shoves, and only the ordinary hitstun of a landed blow
-  stops him (`ails` keeps no pace of its own).
+  or drags him: a legend hurts, dooms or shoves, and nothing slows his walk, not even a landed
+  blow's hitstun (`ails` keeps no pace of its own; `Fighter::stride`).
 * **A power**: one rule from its legend on top of the frame data.
 
 ### 11.1 The stages
@@ -777,19 +781,19 @@ sculpted at a coarser voxel, 0.02 to 0.025, and stand two and a half to three ti
 | Body | The legend | In the ring |
 |---|---|---|
 | Oni | *oni ni kanabō*: an iron club in an oni's hand makes the strong unstoppable | **Kanabō**: a slam no blow interrupts (armor `UNSTOPPABLE`; only the parry stops it), and the ground shakes all round it: 45% of the blow out to 2.5 tiles |
-| Kappa | the dish of water on its head is its strength; bow to it and it bows back, and spills it | **Sumo Charge**: a lunge that shoves him 2.2 tiles back (1.1 through a block). Parried, it bows and its dish spills: for 6 s it takes ×1.75 damage at 60% of its pace |
-| Rokurokubi | by night her neck stretches across the room | **Neck Lash**: her head flies 4.6 tiles down a lane and back; she cannot use it on a hero who comes close |
+| Kappa | the dish of water on its head is its strength; bow to it and it bows back, and spills it | **Sumo Shove**: a palm thrust from beside him that shoves him 2.2 tiles back (1.1 through a block). Parried, it bows and its dish spills: for 6 s it takes ×1.75 damage at 60% of its pace |
+| Rokurokubi | by night her neck grows long | **Neck Bite**: beside him, her neck bows forward a little way and her head bites; it never leaves her neck, nor her neck its length |
 | Kitsune | foxfire (*kitsune-bi*), and illusions | **Foxfire**: three bolts in a fan, one strike to the threat manager. Wounded below 70% and again below 35%, it conjures two illusions and swaps places with one of them. One blow pops an illusion, its foxfire is harmless, and it casts no light |
 | Karakoncolos | on the coldest nights it calls people out by name in a loved one's voice | **The Call**: it roars his name; heard within its 7 tiles as the roar begins, it dooms him as the owl's cry does (his next wound ×1.3, for 4 s). He is not drawn in |
-| Tülükuş | an owl's cry foretells a death; it flies without a sound | **Dive**: up out of reach (no blow touches it) and down on its mark, which follows him at half his pace. Its cry as it takes wing dooms him: his next wound ×1.3 |
-| Albastı | the night hag who sits on a sleeper's chest | **Pounce**: a leap that lands with all her weight (22, where it was 12 and a pin); no pin. She is a shadow with red eyes until she pounces |
+| Tülükuş | an owl's cry foretells a death; it flies without a sound | **Talons**: beside him it rises straight up on its wings, out of reach for frames 4-21 of its startup, and drops straight down talons first. Its cry as it takes wing dooms him: his next wound ×1.3 |
+| Albastı | the night hag who sits on a sleeper's chest | **Smother**: she rears up beside him and falls on him with all her weight (24); no pin, no leap. She is a shadow with red eyes until she rears up |
 | Cin | made of smokeless fire, seen only when it wishes; *cin çarpması*, struck by a cin | **Smokeless Fire**: a bolt out of nowhere, an ordinary hit (only the usual hitstun). Come within 2.6 tiles and it vanishes in smoke, to stand 6 tiles off (once every 5 s) |
-| Arçura | grows as tall as a tree or as small as a blade of grass; guards the forest | **Roots**: a ring on the floor; the roots burst up and lash him (18, where it was 14 and a 70-frame hold); he stays free. It grows to cast, and slips away half again as fast, shrunk to the grass |
+| Arçura | grows as tall as a tree or as small as a blade of grass; guards the forest | **Root Dart**: a thorny seed flung at him like any bolt; roots burst up where it lands (18); he stays free. It grows to cast, and slips away half again as fast, shrunk to the grass |
 | Tepegöz | his mother the peri's ring made his body proof against blade and arrow; Basat struck his one eye | **The Ring**: 15% of every blow, damage and poise alike, unless his eye is within reach: in his recovery, or reeling. Then the whole blow lands, and his eye lights up |
 | Gashadokuro | the skeleton of the starved: a ringing in the ears, then its hands | **Grab**: two hands no shield holds (parry them, or leap); they crush him, the whole 30 at once, and let go. A bell is its tell |
-| Yedi başlı ejder | the seven-headed dragon on the town's spring; felled, it begs *"Bir daha vur!"* | **Seven Heads**: four bites in one lunge (one strike; a parry stops them all). Felled, it begs for 150 frames: a second blow brings it back at a seventh of its health (a head grown again); restraint kills it ("my mother bore me but once") |
-| Goryō | the wrath of a wronged noble: Michizane's struck the palace as lightning | **Thunder**: three marks, one on him and one either side, then lightning. Nothing touches it but while it rages (in its moves) |
-| Frost giant | the rime-giants of Jötunheim | **Rime**: its blows frostbite, even through the shield: 2 health every half second for 3 s (struck again, the 3 s start over). It never slows him. **Frost Wave**: a lane of ice spikes that neither shield nor parry turns |
+| Yedi başlı ejder | the seven-headed dragon on the town's spring; felled, it begs *"Bir daha vur!"* | **Seven Heads**: four bites from beside him, its necks their own length (one strike; a parry stops them all). Felled, it begs for 150 frames: a second blow brings it back at a seventh of its health (a head grown again); restraint kills it ("my mother bore me but once") |
+| Goryō | the wrath of a wronged noble: Michizane's struck the palace as lightning | **Thunderbolt**: a bolt of lightning flung at him, coming down as lightning where it lands. Nothing touches it but while it rages (in its moves) |
+| Frost giant | the rime-giants of Jötunheim | **Rime**: its blows frostbite, even through the shield: 2 health every half second for 3 s (struck again, the 3 s start over). It never slows him. **Frost Slam**: both fists down beside him, and ice bursts from the floor as far as they reach |
 | Surtr | the fire giant of Muspelheim, whose sword burns the world | **Fire**: his slam and sweep leave fire on the floor for 3 s: 5 health every 20 frames he stands in it |
 | Níðhöggr | the dragon gnawing the roots of Yggdrasil from below | **Burrow**: into the floor, along under it (out of reach) and up beneath him on its mark. Its bites are venom: 3 health every half second for 2 s |
 | Hel | Loki's daughter, half living and half corpse, queen of the dead | **Raise the Dead**: two draugr climb out of the floor about him; they fall when she does. Her bolts drain: what they deal, she heals |
@@ -798,26 +802,26 @@ sculpted at a coarser voxel, 0.02 to 0.025, and stand two and a half to three ti
 
 | Move | Startup | Active | Recovery | Damage | Shape | Rider |
 |---|---|---|---|---|---|---|
-| Sumo Charge | 22 | 8 | 26 | 16 | lunge, 2.8 travel | shove 2.2 |
-| Neck Lash | 28 | 10 | 30 | 18 | lane 4.6, 0.38 wide | |
+| Sumo Shove | 22 | 6 | 28 | 18 | cone 1.2, from ≤ 1.4 | shove 2.2 |
+| Neck Bite | 26 | 6 | 30 | 20 | cone 1.2, from ≤ 1.3 | |
 | Foxfire | 34 | 1 | 32 | 9 ×3 | volley of three, ±0.28 rad | |
 | Kanabō | 46 | 6 | 52 | 32 | cone; quake 2.3 at 45% | (unstoppable) |
-| Dive | 40 | 6 | 34 | 24 | mark 0.85 | |
-| Pounce | 26 | 8 | 34 | 22 | lunge, 3.0 travel | |
+| Talons | 30 | 6 | 34 | 26 | cone 1.2, from ≤ 1.3 (aloft f4-21) | |
+| Smother | 26 | 6 | 34 | 24 | cone 1.2, from ≤ 1.3 | |
 | Smokeless Fire | 36 | 1 | 30 | 14 | bolt | |
-| Roots | 38 | 4 | 30 | 18 | mark 1.0 | |
+| Root Dart | 38 | 1 | 30 | 18 | bolt (roots where it lands) | |
 | The Call | 30 | 45 | 12 | | spell | (doom) |
 | Grab | 40 | 8 | 44 | 30 | cone 2.0, unblockable | |
-| Seven Heads | 30 | 24 | 34 | 10 ×4 | cone, 1.0 travel, four bites | |
-| Thunder | 44 | 4 | 32 | 22 | three marks 0.85 | |
-| Frost Wave | 40 | 10 | 40 | 18 | lane 4.5, 0.55 wide, unblockable | frost |
+| Seven Heads | 30 | 24 | 34 | 11 ×4 | cone 1.4, from ≤ 1.4, four bites | |
+| Thunderbolt | 40 | 1 | 32 | 22 | bolt (lightning where it lands) | |
+| Frost Slam | 40 | 6 | 44 | 22 | cone 1.8, from ≤ 1.7, armor 35 | frost |
 | Burrow | 60 | 6 | 40 | 26 | mark 1.0 | venom 120 |
 | Raise the Dead | 50 | 1 | 40 | | spell | raise 2 |
 
 Every move a foe may use is in `MoveId::FOE` and held to §0. Each is readable (18 frames or more),
 punishable (recovery past L1's 10), and parried on reaction (17 or more). Two new limits:
 
-* **What cannot be guarded gives time to step out of it.** A mark follows the hero at
+* **What cannot be guarded gives time to step out of it.** A burrow's mark follows the hero at
   `MARK_FOLLOW` (2.6 tiles a second, half his pace) through its tracking frames, then holds. A
   hero who sets out on seeing it clears its radius and his own with a fifth to spare
   (`what_cannot_be_guarded_gives_time_to_step_out_of_it`).
@@ -830,8 +834,7 @@ lab's choices are the same table as before.
 ### 11.4 What the guard can do
 
 * **Guarding:** most blows are blocked or parried. A grab is parried only (`GuardRule::ParryOnly`).
-  Marks on the floor and the wave of ice are neither (`GuardRule::Bare`): he walks out of them, or
-  leaps. The leap is airborne, and every blow passes under it.
+  A burrow's mark on the floor is neither (`GuardRule::Bare`): he walks out of it, or leaps. The leap is airborne, and every blow passes under it.
 * **Nothing holds him:** no legend pins, grabs, roots, freezes, stuns past the ordinary hitstun,
   or drags him. (The pin, the grab's hold, the roots, the freeze, the long stun and the call's
   pull were cut: the bites they dealt went into the blows.)
@@ -853,14 +856,14 @@ Multiples of the archetype (Brute 200 health, Skirmisher 80, Hexer 55):
 | Rokurokubi | Skirmisher | 1.7 | 1.4 | 1.2 | 0.7 | 0.4 | 1 |
 | Kitsune | Hexer | 2.0 | 1.35 | 1.5 | 1.3 | 0.38 | 1 |
 | Karakoncolos | Brute | 2.3 | 1.35 | 1.25 | 1.15 | 0.6 | 2 |
-| Tülükuş | Skirmisher | 2.2 | 1.5 | 1.3 | 1.1 | 0.42 | 1 |
-| Albastı | Skirmisher | 2.4 | 1.45 | 1.4 | 1.05 | 0.42 | 1 |
+| Tülükuş | Skirmisher | 3.8 | 1.5 | 1.3 | 1.1 | 0.42 | 1 |
+| Albastı | Skirmisher | 3.4 | 1.45 | 1.4 | 1.05 | 0.42 | 1 |
 | Cin | Hexer | 2.6 | 1.5 | 1.6 | 1.0 | 0.38 | 1 |
-| Arçura | Hexer | 2.8 | 1.45 | 1.8 | 0.95 | 0.45 | 1 |
+| Arçura | Hexer | 3.8 | 1.45 | 1.8 | 0.95 | 0.45 | 1 |
 | Tepegöz | Brute | 4.0 | 1.7 | 1.25 | 0.85 | 0.85 | 2 |
 | Gashadokuro | Brute | 3.0 | 1.65 | 1.25 | 0.9 | 0.9 | 2 |
-| Yedi başlı ejder | Skirmisher | 4.0 | 1.6 | 1.6 | 0.75 | 0.9 | 2 |
-| Goryō | Hexer | 3.0 | 1.7 | 2.0 | 1.0 | 0.4 | 1 |
+| Yedi başlı ejder | Skirmisher | 5.0 | 1.6 | 1.6 | 0.75 | 0.9 | 2 |
+| Goryō | Hexer | 4.2 | 1.7 | 2.0 | 1.0 | 0.4 | 1 |
 | Frost giant | Brute | 3.6 | 1.9 | 1.25 | 0.9 | 0.9 | 2 |
 | Surtr | Brute | 4.0 | 2.0 | 1.25 | 0.85 | 0.95 | 2 |
 | Níðhöggr | Skirmisher | 5.0 | 1.7 | 1.6 | 0.85 | 0.8 | 2 |
@@ -956,8 +959,9 @@ These are pinned by `every_later_stage_wants_skill_and_its_kit` and
 `ring_tests` play each rule through the game. They cover the spilled dish and the shove through a
 block, the tremor behind the oni, the pin struggled short, the plea (a second blow revives, restraint
 kills), the ring and the eye, the stun, roots and freezing, fire and the dead falling with Hel, and
-the illusions and the call. `duelist` tests the marks following and holding, the dive and the burrow
-out of reach, the cin's vanishing, a giant's reach and the lane's head.
+the illusions and the call. `duelist` tests the burrow's mark following and holding, the burrow
+and the owl out of reach, every body foe biting from beside him and staying where it bit, the
+cin's vanishing, and a giant's reach.
 
 ### 11.7 What changed, and why
 
@@ -977,3 +981,46 @@ The expert's new care moved the lab's times a little (Steel 25.4 → 26.6 s, Fan
 **Tools:**
 * `--stage S N` plays a stage's bouts with every skill at three kit tiers.
 * `--bout K SKILL TIER SEED` plays one bout. With `VH_TRACE=1` set, it prints every blow and wound on the hero as it comes: who struck, with what, how it was met, and his state.
+
+---
+
+## 12. Close bites, bolts from afar, and no hit-lock
+
+Playtesting found the Skirmisher's lunge a rubber band: a lane on the floor, a dart down it at
+the hero, and a spring back to where it stood. A guard broken by it held him in place. The rules
+now:
+
+* **No hit-lock.** No foe's blow slows him or holds him. Struck, blocking, or with his guard
+  broken, he walks at his whole pace; the reel only keeps him from swinging or guarding for its
+  frames (`Fighter::stride`; `no_foes_blow_slows_him_or_roots_him_struck_blocking_or_with_his_guard_broken`).
+  The damage, the flash, the floater and the hitstop stay. What still slows him: the bog slime's
+  trail, the realms' own ground (mud, thorns, Bloat, a purge's stun), and his own raised shield.
+* **Body foes bite up close.** Every Skirmisher breed bites from beside him (`BITE_RANGE`) and
+  stays where it bit: no lane, no travel, no spring back, no sidestep hop. The folklore moves
+  follow: the kappa's shove, the rokurokubi's neck bite (her neck keeps its length), the owl's
+  talons (straight up, straight down), the albastı's weight, the ejder's heads. Níðhöggr's
+  burrow, which goes under the floor and comes up beneath him, stays.
+* **Only distance foes strike from afar, and only with bolts.** The arçura's roots and the
+  goryō's lightning became bolts (the roots and the lightning now burst where the bolt lands).
+  The frost giant's wave became a close slam. Every caster's bolt has its own look (`BoltLook`):
+  the slime's dripping green glob, the witch's violet star in a ring, the jorogumo's ball of fire,
+  the kitsune's foxfire wisps on long tails, the cin's tall pale flame with no trail, the arçura's
+  thorny dart shedding leaves, the goryō's jagged white-blue lightning, Hel's dark drain circled
+  by cold motes; his own thrown blade spins gold
+  (`every_distance_foes_bolt_has_its_own_look`,
+  `a_body_foe_only_bites_from_beside_him_and_only_a_distance_foe_strikes_from_afar`).
+
+| Change | Why |
+|---|---|
+| Lunge (18/8/22, 18, 2.6 travel) → Bite (18/6/24, 20, reach 1.1 from ≤ 1.3); the backstep and the sidestep are gone | the rubber band; the bite is easier to step away from, so it bites a little harder |
+| Skirmisher hold ring 4.2 → 3.2 | a biter must walk all the way in; from the old ring it held its token so long that the brutes waited, and the Night Parade ran to 46 s |
+| Tülükuş health 2.2 → 3.8, Albastı 2.4 → 3.4, Arçura 2.8 → 3.8, Ejder 4.0 → 5.0, Goryō 3.0 → 4.2 | their blows are parried now, and a parry opens them: the Call in the Cold fell to 12.8 s, the Old Tales to 27 s |
+| The bot reckons a bolt 2 frames earlier than its flight says | its bolt parries came on guard frames 1-4 against a blow's 3-7; with more bolts about it lost the Old Tales |
+| A bolt that misses its moment by more than the slack burns out | a root dart dodged and then walked into came 23 f late, into the cin's slot: an overlap |
+
+Measured with the expert at each bout's tier (3 seeds, `--bout`): the Brute 11.6 s, the Pack 8.0,
+the Hexer's Guard 5.0, the Trio 15.9, the Gauntlet 23.3, Steel 26.6, Fang and Fire 14.2, the
+Night Parade 40.0, the Iron Club 17.3, the Fox's Wedding 30.8, the Call in the Cold 15.3, Zemheri
+Nights 34.6, the One Eye 14.3, the Old Tales 30.9, Fire and Ice 29.5, Ragnarök 37.9: all inside
+their targets, no overlaps. Open: with the sidestep gone a masher beats the Pack (two loup-garous)
+again; no test pins it.

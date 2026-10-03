@@ -31,30 +31,30 @@ pub enum EnemyKind {
     Tengu,
     /// The rasetsu: a horned red man-eater with a curved blade in each fist.
     Rasetsu,
-    /// The dire wolf: bigger than the loup-garou; it throws its whole body at you.
+    /// The dire wolf: bigger than the loup-garou; it circles, then bites.
     DireWolf,
     /// The jorogumo: a spider-woman who hurls fire from afar.
     Jorogumo,
     /// The cobra: coiled, it rears and strikes.
     Cobra,
     // ---- the fourth stage: the yōkai
-    /// The kappa: a river imp with a dish of water on its head; it charges like a sumo wrestler,
+    /// The kappa: a river imp with a dish of water on its head; it shoves like a sumo wrestler,
     /// and bows back (spilling its dish, and its strength) when it is bowed to.
     Kappa,
-    /// The rokurokubi: a woman whose neck stretches across the room, her head striking from afar.
+    /// The rokurokubi: a woman with a long neck; her head bows down on it and bites.
     Rokurokubi,
     /// The kitsune: an evil fox that throws foxfire and hides among its illusions.
     Kitsune,
     /// The oni: a red ogre with an iron club that shakes the ground.
     Oni,
     // ---- the fifth stage: Anatolian nights
-    /// The tülükuş: an owl demon that dives without a sound; its hoot foretells a death.
+    /// The tülükuş: an owl demon that drops its talons without a sound; its hoot foretells a death.
     Tulukus,
-    /// The albastı: a night hag who pounces with the weight of a nightmare on the chest.
+    /// The albastı: a night hag who falls on you with the weight of a nightmare on the chest.
     Albasti,
     /// The cin: a spirit of smokeless fire that strikes out of nowhere, and vanishes at will.
     Cin,
-    /// The arçura: a forest spirit that makes roots burst from the ground, and changes its size.
+    /// The arçura: a forest spirit that throws darts of root and thorn, and changes its size.
     Arcura,
     /// The karakoncolos: a winter demon that roars its prey's name, dooming it, then strikes.
     Karakoncolos,
@@ -65,7 +65,7 @@ pub enum EnemyKind {
     Gashadokuro,
     /// The yedi başlı ejder: a seven-headed dragon; struck down, it begs for a second blow.
     Ejder,
-    /// The goryō: a wronged noble's ghost that calls down lightning, untouchable but in its wrath.
+    /// The goryō: a wronged noble's ghost that flings lightning, untouchable but in its wrath.
     Goryo,
     // ---- the seventh stage: Ragnarök
     /// The frost giant: its blows frostbite, and the frost bites on a while.

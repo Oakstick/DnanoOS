@@ -5,10 +5,14 @@
 //! closes in only with a token. A foe with a den idles there until it is woken, and goes home when
 //! the hero is long gone. Its moves run on its own `Fighter`, its numbers on its `Breed`.
 //!
-//! The later stages' bodies carry their legends too (COMBAT.md §11): marks on the floor that follow
-//! the hero and then hold, a dive from the air and a burrow under the floor, a cin gone in smoke,
-//! a kappa's spilled dish, a felled dragon begging for a second blow, the dead climbing out of the
-//! floor, a ring that turns blades, a ghost nothing touches.
+//! The later stages' bodies carry their legends too (COMBAT.md §11): a burrow under the floor to a
+//! mark that follows the hero and then holds, a cin gone in smoke, a kappa's spilled dish, a felled
+//! dragon begging for a second blow, the dead climbing out of the floor, a ring that turns blades,
+//! a ghost nothing touches.
+//!
+//! A body foe bites from beside him and stays where it bit: nothing of it darts across the floor,
+//! stretches out to him or springs back. Only a distance foe strikes from afar, and only with a
+//! bolt, each kind's its own (`BoltLook`).
 
 use super::archetype::{Archetype, Breed, Power, FLEE};
 use super::frames::{MoveData, MoveId, Phase, Rider, Shape, BOLT_RADIUS, BOLT_SPEED, MARK_FOLLOW};
@@ -27,23 +31,58 @@ pub const HERO_RADIUS: f64 = 0.3;
 /// Knockback a flinch gives, in tiles per second, and how much of it each frame keeps.
 pub const KNOCKBACK: f64 = 3.0;
 pub const KNOCK_KEEP: f64 = 0.82;
-/// Frames the Skirmisher springs back after its lunge.
-pub const BACKSTEP: u16 = 30;
-/// The Skirmisher's sidestep: seen a swing begin within this reach, it hops back this many frames
-/// at this pace, then cannot again for `SIDESTEP_REST` frames. A mashed first swing whiffs, and
-/// its lunge comes into the recovery.
-pub const SIDESTEP_RANGE: f64 = 2.4;
-pub const SIDESTEP: u16 = 12;
-pub const SIDESTEP_SPEED: f64 = 8.0;
-pub const SIDESTEP_REST: u16 = 120;
-/// A hex bolt's colours: the witch's violet, the bog slime's green, the jorogumo's fire, the
-/// kitsune's pale foxfire, the cin's white smokeless fire, Hel's cold death.
-pub const HEX_TINT: u32 = 0xc070ff;
-pub const SPIT_TINT: u32 = 0x7aff5a;
+/// What a bolt looks like in flight, by who loosed it: the bog slime's glob of green spit, the
+/// witch's violet hex, the jorogumo's ball of fire, the kitsune's foxfire, the cin's pale smokeless
+/// flame, the arçura's thorny root dart, the goryō's lightning, Hel's cold drain; and the hero's
+/// own thrown blade.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum BoltLook {
+    Spit,
+    Hex,
+    Fire,
+    Foxfire,
+    Smokeless,
+    Thorn,
+    Lightning,
+    Drain,
+    Blade,
+}
+
+impl BoltLook {
+    /// The bolt `kind` looses.
+    pub fn of(kind: EnemyKind) -> BoltLook {
+        match kind {
+            EnemyKind::Slime => BoltLook::Spit,
+            EnemyKind::Jorogumo => BoltLook::Fire,
+            EnemyKind::Kitsune => BoltLook::Foxfire,
+            EnemyKind::Cin => BoltLook::Smokeless,
+            EnemyKind::Arcura => BoltLook::Thorn,
+            EnemyKind::Goryo => BoltLook::Lightning,
+            EnemyKind::Hel => BoltLook::Drain,
+            _ => BoltLook::Hex,
+        }
+    }
+
+    /// Its colour.
+    pub fn tint(self) -> u32 {
+        match self {
+            BoltLook::Spit => 0x7aff5a,
+            BoltLook::Hex => 0xc070ff,
+            BoltLook::Fire => FIRE_TINT,
+            BoltLook::Foxfire => 0x8af0ff,
+            BoltLook::Smokeless => 0xfff2c8,
+            BoltLook::Thorn => 0x8a6a2a,
+            BoltLook::Lightning => 0xd8e8ff,
+            BoltLook::Drain => 0x5a7cff,
+            BoltLook::Blade => REFLECT_TINT,
+        }
+    }
+}
+
+/// The jorogumo's fire: her bolts, and her tell.
 pub const FIRE_TINT: u32 = 0xff8a2a;
-pub const FOXFIRE_TINT: u32 = 0x8af0ff;
-pub const SMOKELESS_TINT: u32 = 0xfff2c8;
-pub const DEATH_TINT: u32 = 0x5a7cff;
+/// A bolt flying at the foes: his thrown blade, or a bolt parried back.
+pub const REFLECT_TINT: u32 = 0xffc850;
 /// The cin goes up in smoke from a hero this near, stands this far from him again after
 /// `VANISH_FRAMES`, and may not vanish again for `VANISH_REST` frames.
 pub const VANISH_NEAR: f64 = 2.6;
@@ -66,24 +105,15 @@ pub const RISE_FRAMES: u16 = 50;
 pub const MAX_RAISED: u8 = 2;
 /// Frames at the start of a burrow while it is still above the floor.
 pub const BURROW_SINK: u16 = 10;
+/// The tülükuş's talons: the startup frames it is up on its wings over him, out of reach (it rises
+/// straight up where it stands, and comes straight down).
+pub const ALOFT: (u16, u16) = (4, 22);
 /// The arçura slips away this much faster, shrunk to the grass.
 pub const GROW_PACE: f64 = 1.5;
 /// The kitsune conjures its illusions when its health first falls under each of these shares.
 pub const CONJURE_AT: [f64; 2] = [0.7, 0.35];
 
-/// The colour of `kind`'s bolts.
-pub fn bolt_tint(kind: EnemyKind) -> u32 {
-    match kind {
-        EnemyKind::Slime => SPIT_TINT,
-        EnemyKind::Jorogumo => FIRE_TINT,
-        EnemyKind::Kitsune => FOXFIRE_TINT,
-        EnemyKind::Cin => SMOKELESS_TINT,
-        EnemyKind::Hel => DEATH_TINT,
-        _ => HEX_TINT,
-    }
-}
-
-/// A hex bolt in flight (a parried one flies back at the foes).
+/// A bolt in flight (a parried one flies back at the foes).
 #[derive(Clone, Copy, Debug)]
 pub struct Bolt {
     pub pos: V,
@@ -100,9 +130,10 @@ pub struct Bolt {
     /// The frame it is due to reach him, as the threat manager planned it: it flies straight, and
     /// paces itself to arrive then (a hero walking into it does not bring it sooner).
     pub due: Option<u32>,
-    /// Its colour.
+    /// What it looks like, and its colour (gold once it flies at the foes).
+    pub look: BoltLook,
     pub tint: u32,
-    /// What it does besides its damage (a stun, a drain), and the duelist who loosed it (0: him).
+    /// What it does besides its damage (a drain), and the duelist who loosed it (0: him).
     pub rider: Rider,
     pub owner: u32,
     /// Bolts loosed together (a volley) share a number and land as one strike; 0 alone.
@@ -117,8 +148,6 @@ pub struct Sense {
     pub hero: V,
     /// Which way he faces (unit).
     pub aim: V,
-    /// He is winding up a swing.
-    pub swing: bool,
 }
 
 /// The ground a foe fights on.
@@ -127,7 +156,7 @@ pub trait Terrain {
     fn slide(&self, from: V, step: V, radius: f64) -> V;
     /// The point to head for on the way from `from` to `to`: `to` itself while the way is clear.
     fn toward(&self, from: V, to: V) -> V;
-    /// Is the straight way from `a` to `b` clear (for a lunge, a bolt)?
+    /// Is the straight way from `a` to `b` clear (for a bolt, a call)?
     fn clear(&self, a: V, b: V) -> bool;
     /// Is there room to stand at `p`?
     fn open(&self, p: V) -> bool;
@@ -329,11 +358,10 @@ pub struct Lore {
     pub risen: bool,
     /// The dead it has raised still standing (Hel), as the game counts them.
     pub raised: u8,
-    /// Where a dive, a burrow or a vanishing set out from.
+    /// Where a burrow or a vanishing set out from.
     pub from: V,
-    /// Where its move falls on the floor (the first mark: on the hero; the others beside it), or
-    /// where a vanished cin will stand.
-    pub marks: [V; 3],
+    /// Where its burrow comes up (on the hero), or where a vanished cin will stand.
+    pub mark: V,
     /// How many times the kitsune has conjured its illusions.
     pub conjured: u8,
     /// The blow of a flurry its `struck` belongs to.
@@ -378,15 +406,10 @@ pub struct Duelist {
     pub struck: bool,
     /// Where it waits.
     pub slot: Option<Slot>,
-    /// Frames of springing back (the Skirmisher, after a lunge).
-    pub backstep: u16,
     /// Knockback velocity, fading.
     pub knock: V,
     /// Frames of the white flash of a blow.
     pub flash: u16,
-    /// Frames left of a sidestep, and before the next may come.
-    pub sidestep: u16,
-    pub sidestep_rest: u16,
     /// Its room in the Vaults (none in the ring: always in the fight).
     pub den: Option<Den>,
     /// Frames before each of its moves (in its breed's order) may be begun again.
@@ -423,11 +446,8 @@ impl Duelist {
             aim: norm(facing),
             struck: false,
             slot: None,
-            backstep: 0,
             knock: V::new(0.0, 0.0),
             flash: 0,
-            sidestep: 0,
-            sidestep_rest: 0,
             den: None,
             cool: [0; 3],
             lore: Lore::default(),
@@ -465,8 +485,6 @@ impl Duelist {
         self.hp = self.max_hp;
         self.token = false;
         self.slot = None;
-        self.backstep = 0;
-        self.sidestep = 0;
         self.knock = V::new(0.0, 0.0);
         self.vel = V::new(0.0, 0.0);
         self.rest = 30;
@@ -483,9 +501,6 @@ impl Duelist {
         if r > 0.0 && !d.projectile && matches!(d.shape, Shape::Cone | Shape::Quake { .. }) {
             d.reach += r;
             d.range.1 += r;
-            if d.travel > 0.0 {
-                d.range.0 += r;
-            }
             if let Shape::Quake { radius, share } = d.shape {
                 d.shape = Shape::Quake { radius: radius + r, share };
             }
@@ -543,8 +558,8 @@ impl Duelist {
         lands_after(&self.data(mv), len(sub(hero, self.pos)))
     }
 
-    /// Begins `mv` with the hero at `hero`: its aim starts where it faces, a mark on the floor
-    /// where he stands (as far as the move reaches), and the move rests for its cooldown.
+    /// Begins `mv` with the hero at `hero`: its aim starts where it faces, a burrow's mark on the
+    /// floor where he stands (as far as the move reaches), and the move rests for its cooldown.
     pub fn begin(&mut self, mv: MoveId, hero: V) -> bool {
         if !self.f.begin(mv) {
             return false;
@@ -556,8 +571,7 @@ impl Duelist {
         self.lore.from = self.pos;
         let d = self.data(mv);
         if matches!(d.shape, Shape::Mark { .. }) {
-            self.lore.marks[0] = self.within_reach(hero, d.reach);
-            self.place_marks(&d);
+            self.lore.mark = self.within_reach(hero, d.reach);
         }
         if let Some(k) = self.breed.moves().iter().position(|&m| m == mv) {
             if let Some(c) = self.cool.get_mut(k) {
@@ -577,24 +591,10 @@ impl Duelist {
         }
     }
 
-    /// The marks beside the first (the goryō's lightning falls in three): across the line from
-    /// where it stands to the first, either side.
-    fn place_marks(&mut self, d: &MoveData) {
-        let Shape::Mark { count, .. } = d.shape else { return };
-        let main = self.lore.marks[0];
-        let a = norm(sub(main, self.lore.from));
-        let across = V::new(-a.y, a.x);
-        for k in 1..(count as usize).min(3) {
-            let side = if k == 1 { 1.0 } else { -1.0 };
-            self.lore.marks[k] = add(main, scale(across, side * 1.7));
-        }
-    }
-
     /// Its fighter's frame, plus what the end of a move means for it, and its legend's clocks.
     pub fn step(&mut self) -> Vec<Event> {
         self.flash = self.flash.saturating_sub(1);
         self.rest = self.rest.saturating_sub(1);
-        self.sidestep_rest = self.sidestep_rest.saturating_sub(1);
         for c in self.cool.iter_mut() {
             *c = c.saturating_sub(1);
         }
@@ -608,7 +608,7 @@ impl Duelist {
         if self.lore.vanish > 0 {
             self.lore.vanish -= 1;
             if self.lore.vanish == 0 {
-                self.pos = self.lore.marks[0];
+                self.pos = self.lore.mark;
                 self.cues.push(Cue::Appeared(self.pos));
             }
         }
@@ -621,26 +621,21 @@ impl Duelist {
             return Vec::new();
         }
         let ev = self.f.step();
-        for e in &ev {
-            if let Event::Ended(mv) = e {
-                self.rest = self.stats().rest;
-                if self.arch == Archetype::Skirmisher && mv.data().travel > 0.0 {
-                    self.backstep = BACKSTEP;
-                }
-            }
+        if ev.iter().any(|e| matches!(e, Event::Ended(_))) {
+            self.rest = self.stats().rest;
         }
         ev
     }
 
-    /// Out of the hero's reach: aloft in a dive, under the floor in a burrow, gone in smoke, or a
-    /// spirit whose wrath is not upon it.
+    /// Out of the hero's reach: up on its wings over him, under the floor in a burrow, gone in
+    /// smoke, or a spirit whose wrath is not upon it.
     pub fn untouchable(&self) -> bool {
         if self.lore.vanish > 0 {
             return true;
         }
         match self.f.state {
-            State::Attack { mv: MoveId::Dive, frame } => frame < MoveId::Dive.data().startup,
             State::Attack { mv: MoveId::Burrow, frame } => frame >= BURROW_SINK && frame < MoveId::Burrow.data().startup,
+            State::Attack { mv: MoveId::Talons, frame } => (ALOFT.0..ALOFT.1).contains(&frame),
             // In the air of a leap (only a puppet of the hero's leaps).
             State::Evade { frame } => frame < super::fsm::EVADE_AIR,
             State::Attack { .. } | State::Reel { .. } => false,
@@ -687,8 +682,8 @@ impl Duelist {
 
     /**
      * Does its move's blow reach a body of `radius` at `p` this frame, and at what share of its
-     * damage? The cone; the cone and the ground shaking round it as the club lands; a lane's
-     * head as far as it has travelled; the marks on the floor. Nothing for a bolt or a spell.
+     * damage? The cone; the cone and the ground shaking round it as the club lands; the mark on
+     * the floor. Nothing for a bolt or a spell.
      */
     pub fn reaches(&self, p: V, radius: f64) -> Option<f64> {
         let (mv, phase, frame) = self.f.attack()?;
@@ -709,16 +704,7 @@ impl Duelist {
                     (f == 0 && len(sub(p, self.pos)) <= ring + radius).then_some(share)
                 }
             }
-            Shape::Lane { width } => {
-                let extent = d.reach * (f + 1) as f64 / d.active as f64;
-                let to = sub(p, self.pos);
-                let along = dot(to, self.aim);
-                let across = (dot(to, to) - along * along).max(0.0).sqrt();
-                (along > 0.0 && along <= extent + radius && across <= width + radius).then_some(1.0)
-            }
-            Shape::Mark { radius: r, count } => {
-                self.lore.marks[..(count as usize).min(3)].iter().any(|m| len(sub(p, *m)) <= r + radius).then_some(1.0)
-            }
+            Shape::Mark { radius: r } => (len(sub(p, self.lore.mark)) <= r + radius).then_some(1.0),
             Shape::Volley { .. } | Shape::Spell => None,
         }
     }
@@ -741,9 +727,9 @@ impl Duelist {
 
     /**
      * One frame of thought and motion. Asleep in its den it stands; going home it walks there.
-     * In the fight it tracks the hero through its startup (its marks on the floor following him,
-     * no faster than `MARK_FOLLOW`), travels through a lunge's active frames, flies or burrows to
-     * its mark; free, it backs off (or vanishes), closes in (with a token, round any wall), or
+     * In the fight it tracks the hero through its startup (a burrow's mark on the floor following
+     * him, no faster than `MARK_FOLLOW`), and burrows to its mark; every other move it makes where
+     * it stands. Free, it backs off (or vanishes), closes in (with a token, round any wall), or
      * strafes to its slot. Returns the move it wants to begin now (the threat manager's commit
      * gate decides). Felled, rising, or gone in smoke, it does nothing.
      */
@@ -782,7 +768,7 @@ impl Duelist {
         if self.lore.vanish > 0 {
             // Gone in smoke, it drifts unseen to where it will stand.
             let u = 1.0 - self.lore.vanish as f64 / VANISH_FRAMES as f64;
-            self.pos = add(self.lore.from, scale(sub(self.lore.marks[0], self.lore.from), u));
+            self.pos = add(self.lore.from, scale(sub(self.lore.mark, self.lore.from), u));
             self.facing = turn_toward(self.facing, dir, turn);
             self.vel = V::new(0.0, 0.0);
             return None;
@@ -799,22 +785,21 @@ impl Duelist {
                     self.aim = self.facing;
                     if matches!(data.shape, Shape::Mark { .. }) {
                         let goal = self.within_reach(s.hero, data.reach);
-                        let gap = sub(goal, self.lore.marks[0]);
+                        let gap = sub(goal, self.lore.mark);
                         let step = MARK_FOLLOW / FPS;
-                        self.lore.marks[0] = if len(gap) <= step { goal } else { add(self.lore.marks[0], scale(norm(gap), step)) };
-                        self.place_marks(&data);
+                        self.lore.mark = if len(gap) <= step { goal } else { add(self.lore.mark, scale(norm(gap), step)) };
                     }
                 }
-                if matches!(mv, MoveId::Dive | MoveId::Burrow) {
-                    // Up out of reach (or down under the floor) and across to its mark, there by its
-                    // first active frame; it strikes and recovers where it came down.
-                    let sink = if mv == MoveId::Burrow { BURROW_SINK } else { 0 };
+                if mv == MoveId::Burrow {
+                    // Down under the floor and along to its mark, there by its first active frame;
+                    // it bursts up, strikes and recovers where it came up.
+                    let sink = BURROW_SINK;
                     let at = if data.phase(frame) == Phase::Startup {
                         let u = frame.saturating_sub(sink) as f64 / (data.startup - sink).max(1) as f64;
                         let u = u * u * (3.0 - 2.0 * u);
-                        add(self.lore.from, scale(sub(self.lore.marks[0], self.lore.from), u))
+                        add(self.lore.from, scale(sub(self.lore.mark, self.lore.from), u))
                     } else if data.phase(frame) == Phase::Active {
-                        self.lore.marks[0]
+                        self.lore.mark
                     } else {
                         self.pos
                     };
@@ -824,32 +809,15 @@ impl Duelist {
                         return None;
                     }
                 }
-                // A lunge carries it along its aim, up to the hero and no farther.
-                if data.phase(frame) == Phase::Active && data.travel > 0.0 {
-                    let mut step = data.travel / data.active as f64;
-                    if dot(self.aim, dir) > 0.0 {
-                        step = step.min((d - st.radius - HERO_RADIUS).max(0.0));
-                    }
-                    v = scale(self.aim, step * FPS);
-                }
             }
             State::Neutral => {
                 self.facing = turn_toward(self.facing, dir, turn);
-                if self.arch == Archetype::Skirmisher && s.swing && d <= SIDESTEP_RANGE && self.sidestep_rest == 0 {
-                    self.sidestep = SIDESTEP;
-                    self.sidestep_rest = SIDESTEP_REST;
-                }
-                // A body that wants room for its move steps back from a hero nearer than its range.
-                let near = self.data(self.breed.main_move()).range.0;
-                if self.sidestep > 0 {
-                    self.sidestep -= 1;
-                    v = scale(dir, -SIDESTEP_SPEED);
-                } else if self.arch == Archetype::Hexer && d < FLEE {
+                if self.arch == Archetype::Hexer && d < FLEE {
                     if self.breed.power == Power::Vanish && self.lore.vanish_rest == 0 && d < VANISH_NEAR {
                         // Gone in a breath of smoke, to stand far off.
                         let spot = self.vanish_spot(s.hero, terrain);
                         self.lore.from = self.pos;
-                        self.lore.marks[0] = spot;
+                        self.lore.mark = spot;
                         self.lore.vanish = VANISH_FRAMES;
                         self.lore.vanish_rest = VANISH_REST;
                         self.cues.push(Cue::Vanished { from: self.pos, to: spot });
@@ -858,13 +826,8 @@ impl Duelist {
                     }
                     let pace = if self.breed.power == Power::Grow { st.retreat * GROW_PACE } else { st.retreat };
                     v = self.flee(dir, pace, terrain);
-                } else if self.backstep > 0 {
-                    self.backstep -= 1;
-                    v = scale(dir, -st.retreat);
                 } else if self.token {
-                    if self.arch == Archetype::Skirmisher && d < near {
-                        v = scale(dir, -st.retreat); // room to spring
-                    } else if let Some(mv) = self.choose(s, terrain) {
+                    if let Some(mv) = self.choose(s, terrain) {
                         want = Some(mv);
                     } else {
                         v = scale(way_to(s.hero, self.pos), st.walk);
@@ -942,23 +905,11 @@ impl Duelist {
 }
 
 /// Frames from beginning a move of data `d` at `dist` tiles from the hero until it reaches him:
-/// its startup; for a lunge, the active frames it travels before it is near enough; for a lane,
-/// the frames its head takes to get to him; for a bolt (loosed half a tile ahead), the frames of
-/// flight until it touches him.
+/// its startup; for a bolt (loosed half a tile ahead), the frames of flight until it touches him.
 pub fn lands_after(d: &MoveData, dist: f64) -> u16 {
     if d.projectile {
         let travel = (dist - 0.5 - BOLT_RADIUS - HERO_RADIUS).max(0.0);
         return d.startup + ((travel / BOLT_SPEED * FPS).ceil() as u16).saturating_sub(1);
-    }
-    if d.travel > 0.0 {
-        let gap = (dist - d.reach - HERO_RADIUS).max(0.0);
-        let frames = (gap / (d.travel / d.active as f64)).ceil() as u16;
-        return d.startup + frames.saturating_sub(1).min(d.active - 1);
-    }
-    if let Shape::Lane { .. } = d.shape {
-        let per = d.reach / d.active as f64;
-        let frames = ((dist - HERO_RADIUS).max(0.0) / per).ceil() as u16;
-        return d.startup + frames.saturating_sub(1).min(d.active - 1);
     }
     d.startup
 }
@@ -966,16 +917,16 @@ pub fn lands_after(d: &MoveData, dist: f64) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::combat::archetype::{LUNGE_FAR, LUNGE_NEAR};
+    use crate::logic::combat::frames::BITE_RANGE;
 
     fn arena() -> Arena {
         Arena { lo: V::new(0.0, 0.0), hi: V::new(16.0, 16.0) }
     }
 
     #[test]
-    fn with_a_token_the_skirmisher_closes_in_and_lunges_from_its_range() {
+    fn with_a_token_the_skirmisher_walks_up_beside_him_and_bites_where_it_stands() {
         let mut d = Duelist::new(1, Archetype::Skirmisher, V::new(2.0, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(12.0, 8.0), aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero: V::new(12.0, 8.0), aim: V::new(-1.0, 0.0) };
         assert_eq!(d.think(&s, &arena(), &[]), None);
         assert_eq!(d.pos.x, 2.0, "no token, no slot: it holds");
         d.token = true;
@@ -987,35 +938,27 @@ mod tests {
                 break;
             }
         }
-        assert_eq!(wanted, Some(MoveId::Lunge));
+        assert_eq!(wanted, Some(MoveId::Bite));
         let gap = 12.0 - d.pos.x;
-        assert!((LUNGE_NEAR..=LUNGE_FAR + 1e-9).contains(&gap), "{gap}");
-        // The lunge carries it 2.6 tiles over its active frames (with the hero out of its way).
-        let far = Sense { hero: V::new(15.5, 8.0), aim: V::new(-1.0, 0.0), swing: false };
-        assert!(d.begin(MoveId::Lunge, far.hero));
-        let x0 = d.pos.x;
-        let data = MoveId::Lunge.data();
-        for _ in 0..data.total() - 1 {
-            d.step();
-            d.think(&far, &arena(), &[]);
-        }
-        assert!((d.pos.x - x0 - data.travel).abs() < 0.01, "{} tiles", d.pos.x - x0);
-        d.step();
-        assert!(d.backstep > 0, "and it springs back");
-        // Into the hero, it stops at his body.
-        let mut d = Duelist::new(1, Archetype::Skirmisher, V::new(10.0, 8.0), V::new(1.0, 0.0));
-        d.begin(MoveId::Lunge, s.hero);
-        for _ in 0..data.total() - 1 {
+        assert!(gap <= BITE_RANGE + 1e-9, "beside him: {gap}");
+        // The bite carries it nowhere, and afterwards it does not spring back: it stays where it bit.
+        assert!(d.begin(MoveId::Bite, s.hero));
+        let at = d.pos;
+        let data = MoveId::Bite.data();
+        for _ in 0..data.total() + 10 {
             d.step();
             d.think(&s, &arena(), &[]);
+            assert!(len(sub(d.pos, at)) < 0.05, "it moved to {:?} from {at:?}", d.pos);
         }
-        assert!(d.pos.x < 12.0 - 0.6, "{}", d.pos.x);
+        // From farther off it has no move at all: it walks.
+        let far = Duelist::new(2, Archetype::Skirmisher, V::new(9.5, 8.0), V::new(1.0, 0.0));
+        assert_eq!(far.choose(&s, &arena()), None);
     }
 
     #[test]
     fn a_committed_slam_no_longer_follows_the_hero() {
         let mut d = Duelist::new(1, Archetype::Brute, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let mut s = Sense { hero: V::new(9.5, 8.0), aim: V::new(-1.0, 0.0), swing: false };
+        let mut s = Sense { hero: V::new(9.5, 8.0), aim: V::new(-1.0, 0.0) };
         assert_eq!(d.choose(&s, &arena()), Some(MoveId::Slam));
         d.begin(MoveId::Slam, s.hero);
         let track = MoveId::Slam.data().track;
@@ -1038,11 +981,11 @@ mod tests {
     #[test]
     fn the_hexer_backs_away_from_a_hero_who_comes_close_and_slips_along_a_wall() {
         let mut d = Duelist::new(1, Archetype::Hexer, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(10.0, 8.0), aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero: V::new(10.0, 8.0), aim: V::new(-1.0, 0.0) };
         d.think(&s, &arena(), &[]);
         assert!(d.pos.x < 8.0);
         let mut d = Duelist::new(1, Archetype::Hexer, V::new(0.6, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(2.5, 8.0), aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero: V::new(2.5, 8.0), aim: V::new(-1.0, 0.0) };
         for _ in 0..20 {
             d.think(&s, &arena(), &[]);
         }
@@ -1050,33 +993,15 @@ mod tests {
     }
 
     #[test]
-    fn the_skirmisher_sidesteps_a_swing_it_sees_but_not_twice_running() {
-        let mut d = Duelist::new(1, Archetype::Skirmisher, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let swing = Sense { hero: V::new(9.3, 8.0), aim: V::new(-1.0, 0.0), swing: true };
-        for _ in 0..SIDESTEP {
-            d.step();
-            d.think(&swing, &arena(), &[]);
-        }
-        let gap = 9.3 - d.pos.x;
-        assert!(gap > MoveId::L1.data().reach + d.radius() + 0.1, "out of the swing's reach: {gap}");
-        // Seen again at once, it holds its ground.
-        d.pos = V::new(8.0, 8.0);
-        d.think(&swing, &arena(), &[]);
-        assert!(d.pos.x >= 8.0 - 1e-9, "resting");
-    }
-
-    #[test]
     fn a_strike_is_planned_for_the_frame_it_reaches_the_hero() {
         assert_eq!(lands_after(&MoveId::Slam.data(), 1.5), 42);
-        // A lunge from 2.4 tiles: 1.2 to close at 0.325 a frame, so on its fourth active frame.
-        assert_eq!(lands_after(&MoveId::Lunge.data(), 2.4), 18 + 3);
-        assert_eq!(lands_after(&MoveId::Lunge.data(), 1.0), 18, "already close: its first");
+        // A bite from beside him lands on its first active frame.
+        assert_eq!(lands_after(&MoveId::Bite.data(), 1.0), 18);
         // A bolt from 6.1 tiles: 5.0 to fly at 7/60 a frame, 43 frames counting the one it is loosed on.
         assert_eq!(lands_after(&MoveId::Hex.data(), 6.1), 36 + 43 - 1);
-        // The rokurokubi's head, 4.6 tiles in 10 frames: at 3.0 tiles (2.7 to his body) on its sixth.
-        assert_eq!(lands_after(&MoveId::Lash.data(), 3.0), 28 + 5);
-        // A mark on the floor falls when the startup ends, wherever he stands.
-        assert_eq!(lands_after(&MoveId::Roots.data(), 6.0), 38);
+        assert_eq!(lands_after(&MoveId::Roots.data(), 6.1), 38 + 43 - 1, "the root dart flies like any bolt");
+        // A burrow comes up when the startup ends, wherever he stands.
+        assert_eq!(lands_after(&MoveId::Burrow.data(), 6.0), 60);
     }
 
     /// A room 12 by 9 with a wall down its middle, open only at the bottom.
@@ -1104,7 +1029,7 @@ mod tests {
         assert!(!terrain.clear(V::new(3.0, 2.0), hero), "the wall is in the way");
         let mut d = Duelist::new(1, Archetype::Brute, V::new(3.0, 2.0), V::new(1.0, 0.0));
         d.token = true;
-        let s = Sense { hero, aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero, aim: V::new(-1.0, 0.0) };
         let mut reached = false;
         for _ in 0..60 * 20 {
             d.step();
@@ -1126,7 +1051,7 @@ mod tests {
         let mut d = Duelist::bred(1, Breed::of(EnemyKind::Skeleton), V::new(4.0, 4.0), V::new(1.0, 0.0));
         d.den = Some(Den { lo: V::new(2.0, 2.0), hi: V::new(8.0, 8.0), home: V::new(4.0, 4.0), awake: false, returning: false });
         d.token = true;
-        let s = Sense { hero: V::new(10.0, 4.0), aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero: V::new(10.0, 4.0), aim: V::new(-1.0, 0.0) };
         d.think(&s, &arena(), &[]);
         assert_eq!(d.pos.x, 4.0, "asleep");
         assert!(!d.engaged());
@@ -1147,7 +1072,7 @@ mod tests {
     #[test]
     fn waiting_foes_keep_their_distance_from_each_other() {
         let mut a = Duelist::new(1, Archetype::Skirmisher, V::new(8.0, 8.0), V::new(1.0, 0.0));
-        let s = Sense { hero: V::new(14.0, 14.0), aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero: V::new(14.0, 14.0), aim: V::new(-1.0, 0.0) };
         a.think(&s, &arena(), &[(V::new(8.2, 8.0), 0.38)]);
         assert!(a.pos.x < 8.0, "pushed apart");
     }
@@ -1158,7 +1083,7 @@ mod tests {
 
     /// Runs `d` through `frames` frames of its move with the hero at `hero`.
     fn play(d: &mut Duelist, hero: V, frames: u16) {
-        let s = Sense { hero, aim: V::new(-1.0, 0.0), swing: false };
+        let s = Sense { hero, aim: V::new(-1.0, 0.0) };
         for _ in 0..frames {
             d.step();
             d.think(&s, &arena(), &[]);
@@ -1166,57 +1091,91 @@ mod tests {
     }
 
     #[test]
-    fn a_mark_on_the_floor_follows_the_hero_slower_than_he_walks_then_holds() {
-        let mut d = bred(EnemyKind::Arcura, V::new(2.0, 8.0));
-        assert!(d.begin(MoveId::Roots, V::new(8.0, 8.0)));
-        assert_eq!(d.lore.marks[0], V::new(8.0, 8.0), "on him");
+    fn a_burrows_mark_follows_the_hero_slower_than_he_walks_then_holds() {
+        let mut d = bred(EnemyKind::Nidhogg, V::new(2.0, 8.0));
+        assert!(d.begin(MoveId::Burrow, V::new(8.0, 8.0)));
+        assert_eq!(d.lore.mark, V::new(8.0, 8.0), "on him");
         // He walks off at 5.2 tiles a second: the mark comes after him at half that.
-        let roots = MoveId::Roots.data();
+        let burrow = MoveId::Burrow.data();
         let mut hero = V::new(8.0, 8.0);
-        let s = |hero: V| Sense { hero, aim: V::new(1.0, 0.0), swing: false };
-        for _ in 0..roots.track {
+        let s = |hero: V| Sense { hero, aim: V::new(1.0, 0.0) };
+        for _ in 0..burrow.track {
             hero.y += 5.2 / 60.0;
             d.step();
             d.think(&s(hero), &arena(), &[]);
         }
-        let mark = d.lore.marks[0];
-        assert!((mark.y - 8.0 - MARK_FOLLOW * roots.track as f64 / 60.0).abs() < 0.05, "{mark:?}");
+        let mark = d.lore.mark;
+        assert!((mark.y - 8.0 - MARK_FOLLOW * burrow.track as f64 / 60.0).abs() < 0.05, "{mark:?}");
         for _ in 0..10 {
             hero.y += 5.2 / 60.0;
             d.step();
             d.think(&s(hero), &arena(), &[]);
         }
-        assert_eq!(d.lore.marks[0], mark, "held once its tracking is over");
-        // The goryō's lightning falls in three marks, either side of the first.
-        let mut g = bred(EnemyKind::Goryo, V::new(2.0, 8.0));
-        g.begin(MoveId::Thunder, V::new(7.0, 8.0));
-        assert_eq!(g.lore.marks[1], V::new(7.0, 9.7));
-        assert_eq!(g.lore.marks[2], V::new(7.0, 6.3));
+        assert_eq!(d.lore.mark, mark, "held once its tracking is over");
         // A mark no farther than the move reaches.
-        let mut far = bred(EnemyKind::Arcura, V::new(1.0, 8.0));
-        far.begin(MoveId::Roots, V::new(15.0, 8.0));
-        assert!((far.lore.marks[0].x - 9.0).abs() < 1e-9);
+        let mut far = bred(EnemyKind::Nidhogg, V::new(1.0, 8.0));
+        far.begin(MoveId::Burrow, V::new(15.0, 1.0));
+        assert!(len(sub(far.lore.mark, V::new(1.0, 8.0))) <= burrow.reach + 1e-9);
     }
 
     #[test]
-    fn the_owl_dives_out_of_reach_onto_its_mark_and_the_burrower_comes_up_under_it() {
-        let mut d = bred(EnemyKind::Tulukus, V::new(4.0, 8.0));
+    fn the_burrower_goes_under_the_floor_and_comes_up_beneath_him() {
         let hero = V::new(8.0, 8.0);
-        d.begin(MoveId::Dive, hero);
-        play(&mut d, hero, 10);
-        assert!(d.untouchable(), "aloft");
-        assert!(d.pos.x > 4.0 && d.pos.x < 8.0, "on its way: {:?}", d.pos);
-        let dive = MoveId::Dive.data();
-        play(&mut d, hero, dive.startup - 10);
-        assert!(!d.untouchable() && len(sub(d.pos, hero)) < 0.05, "down on him: {:?}", d.pos);
-        assert_eq!(d.reaches(hero, HERO_RADIUS), Some(1.0));
-        assert_eq!(d.reaches(V::new(8.0, 9.5), HERO_RADIUS), None, "out of the circle");
         let mut n = bred(EnemyKind::Nidhogg, V::new(2.0, 8.0));
         n.begin(MoveId::Burrow, hero);
         play(&mut n, hero, 5);
         assert!(!n.untouchable(), "still diving in");
         play(&mut n, hero, 20);
         assert!(n.untouchable(), "under the floor");
+        play(&mut n, hero, MoveId::Burrow.data().startup - 25);
+        assert!(!n.untouchable() && len(sub(n.pos, hero)) < 0.05, "up beneath him: {:?}", n.pos);
+        assert_eq!(n.reaches(hero, HERO_RADIUS), Some(1.0));
+        assert_eq!(n.reaches(V::new(8.0, 9.6), HERO_RADIUS), None, "out of the circle");
+    }
+
+    #[test]
+    fn every_body_foe_bites_from_beside_him_and_stays_where_it_bit() {
+        // The talons, the weight, the shove, the bite on the neck: each from beside him, and
+        // the body that struck is where it began, its head and limbs at home.
+        let hero = V::new(8.0, 8.0);
+        for kind in [EnemyKind::Tulukus, EnemyKind::Albasti, EnemyKind::Kappa, EnemyKind::Rokurokubi, EnemyKind::Ejder] {
+            let mut d = bred(kind, V::new(8.0 - 1.0 - d_reach(kind), 8.0));
+            let s = Sense { hero, aim: V::new(-1.0, 0.0) };
+            let mv = d.choose(&s, &arena()).unwrap_or_else(|| panic!("{kind:?} bites from beside him"));
+            assert!(d.begin(mv, hero));
+            let at = d.pos;
+            let data = d.data(mv);
+            let mut landed = false;
+            for _ in 0..data.total() + 10 {
+                d.step();
+                d.think(&s, &arena(), &[]);
+                landed |= d.reaches(hero, HERO_RADIUS).is_some();
+                assert!(len(sub(d.pos, at)) < 0.05, "{kind:?} moved to {:?} from {at:?}", d.pos);
+            }
+            assert!(landed, "{kind:?}: it reached him");
+            // A step back out of its reach, and it has nothing to strike with.
+            let away = bred(kind, V::new(8.0 - BITE_RANGE - d_reach(kind) - 0.6, 8.0));
+            assert_eq!(away.choose(&s, &arena()), None, "{kind:?} does not strike from afar");
+        }
+    }
+
+    #[test]
+    fn the_owl_rises_out_of_reach_where_it_stands_and_drops_its_talons_beside_him() {
+        let hero = V::new(8.0, 8.0);
+        let mut d = bred(EnemyKind::Tulukus, V::new(7.0, 8.0));
+        assert!(d.begin(MoveId::Talons, hero));
+        play(&mut d, hero, ALOFT.0 + 1);
+        assert!(d.untouchable(), "up on its wings");
+        assert_eq!(d.pos, V::new(7.0, 8.0), "straight up, not across");
+        play(&mut d, hero, ALOFT.1 - ALOFT.0);
+        assert!(!d.untouchable(), "down again before it strikes");
+        play(&mut d, hero, MoveId::Talons.data().startup - ALOFT.1);
+        assert_eq!(d.reaches(hero, HERO_RADIUS), Some(1.0));
+    }
+
+    /// What a big body adds to its reach.
+    fn d_reach(kind: EnemyKind) -> f64 {
+        Breed::of(kind).reach
     }
 
     #[test]
@@ -1232,19 +1191,10 @@ mod tests {
     }
 
     #[test]
-    fn a_giant_reaches_farther_and_the_lane_reaches_only_as_far_as_its_head_has_gone() {
+    fn a_giant_reaches_farther() {
         let g = bred(EnemyKind::Tepegoz, V::new(8.0, 8.0));
         assert!(g.data(MoveId::Slam).reach > MoveId::Slam.data().reach + 0.5);
-        assert!(g.choose(&Sense { hero: V::new(10.2, 8.0), aim: V::new(-1.0, 0.0), swing: false }, &arena()) == Some(MoveId::Slam));
-        let mut r = bred(EnemyKind::Rokurokubi, V::new(4.0, 8.0));
-        let hero = V::new(8.0, 8.0);
-        r.begin(MoveId::Lash, hero);
-        let lash = MoveId::Lash.data();
-        play(&mut r, hero, lash.startup);
-        assert_eq!(r.reaches(hero, HERO_RADIUS), None, "the head has not got there yet");
-        play(&mut r, hero, 8);
-        assert_eq!(r.reaches(hero, HERO_RADIUS), Some(1.0));
-        assert_eq!(r.reaches(V::new(8.0, 9.0), HERO_RADIUS), None, "beside the lane");
+        assert!(g.choose(&Sense { hero: V::new(10.2, 8.0), aim: V::new(-1.0, 0.0) }, &arena()) == Some(MoveId::Slam));
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! parts its rig swings.
 //!
 //! Between them they fight all three ways (COMBAT.md §10): the tengu and the rasetsu with their
-//! blades, the dire wolf and the cobra with their whole bodies, the jorogumo from afar.
+//! blades, the dire wolf and the cobra with their jaws, the jorogumo from afar.
 
 use std::f32::consts::{PI, TAU};
 

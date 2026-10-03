@@ -282,7 +282,7 @@ impl Fighter {
         matches!(self.state, State::Guard { frame } if (PARRY_FROM..=self.parry_to).contains(&frame))
     }
 
-    /// The share of its pace a fighter keeps in its state (planted in a swing, rooted while reeling).
+    /// The share of its pace a foe keeps in its state (planted in a swing, rooted while reeling).
     pub fn root(&self) -> f64 {
         match self.state {
             State::Neutral | State::Guard { .. } | State::Evade { .. } => 1.0,
@@ -293,6 +293,16 @@ impl Fighter {
             },
             State::Reel { kind: Reel::Blockstun, .. } => 0.2,
             State::Reel { .. } | State::Dead => 0.0,
+        }
+    }
+
+    /// The share of his pace the hero keeps in his state: planted in his own swing, and by nothing
+    /// else. No blow slows his feet or roots him: its hitstun, a block's stun and a broken guard only
+    /// keep him from swinging or guarding for their frames.
+    pub fn stride(&self) -> f64 {
+        match self.state {
+            State::Attack { .. } => self.root(),
+            _ => 1.0,
         }
     }
 
@@ -730,9 +740,32 @@ mod tests {
     }
 
     #[test]
+    fn no_blow_on_the_hero_slows_his_feet_only_his_own_swing_plants_him() {
+        let mut f = Fighter::hero();
+        f.take_hit(&Hit { damage: 20.0, hitstun: 20, ..Default::default() });
+        assert_eq!((f.reeling(), f.stride()), (Some(Reel::Hitstun), 1.0), "struck, he walks on");
+        let mut f = Fighter::hero();
+        f.guard_held = true;
+        for _ in 0..12 {
+            f.step();
+        }
+        assert_eq!(f.defend(false, true, 100.0, 15.0, GuardRule::Full), Defense::Blocked);
+        assert_eq!((f.reeling(), f.stride()), (Some(Reel::Blockstun), 1.0), "blocking, he walks on");
+        assert_eq!(f.defend(false, true, 0.0, 15.0, GuardRule::Full), Defense::Open, "mid-blockstun the guard is not up");
+        f.state = State::Guard { frame: 20 };
+        assert_eq!(f.defend(false, true, 0.0, 15.0, GuardRule::Full), Defense::GuardBroken);
+        assert_eq!((f.reeling(), f.stride()), (Some(Reel::GuardBroken), 1.0), "his guard broken, he walks on");
+        // His own swing still plants him (a foe's planted the same way).
+        let mut f = Fighter::hero();
+        f.press(Input::Attack);
+        f.step();
+        assert!(f.stride() < 1.0 && f.stride() == f.root());
+    }
+
+    #[test]
     fn a_parried_attacker_reels_and_a_deflect_on_empty_poise_staggers() {
         let mut f = Fighter::new(25.0, 0.0, 50, 60);
-        f.begin(MoveId::Lunge);
+        f.begin(MoveId::Bite);
         f.deflect(DEFLECT, 0.0);
         assert_eq!(f.reeling(), Some(Reel::Deflected));
         assert!((f.poise - 12.5).abs() < 1e-9);

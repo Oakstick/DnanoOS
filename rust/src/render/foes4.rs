@@ -9,9 +9,9 @@
 //! sculpted in the parts its rig swings.
 //!
 //! Between them they fight all three ways (COMBAT.md §10): the oni with his club, which shakes the
-//! ground where it lands; the kappa and the rokurokubi with their bodies, the kappa throwing all
-//! of itself at you in a sumo charge (bow to it and it bows back, spills the water from its dish
-//! and grows weak), the rokurokubi lashing her neck out across the room; the kitsune from afar,
+//! ground where it lands; the kappa and the rokurokubi with their bodies, the kappa thrusting its
+//! palms at you in a sumo shove (bow to it and it bows back, spills the water from its dish and
+//! grows weak), the rokurokubi bowing her long neck to bite; the kitsune from afar,
 //! casting foxfire and hiding among its illusions.
 
 use std::f32::consts::{PI, TAU};

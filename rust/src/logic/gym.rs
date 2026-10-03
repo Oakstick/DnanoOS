@@ -108,7 +108,7 @@ impl Bout {
 use super::enemy::EnemyKind as K;
 
 /// The bouts, in order: the lab's five, the archetypes in their own bodies (COMBAT.md §5); the
-/// third stage's three, its blades, its bodies thrown and its fire (§10); then two for each stage
+/// third stage's three, its blades, its jaws and its fire (§10); then two for each stage
 /// after it, a pair and the whole cast (§11).
 pub const BOUTS: [Bout; 16] = [
     Bout { name: "THE BRUTE", foes: &[K::Blemmyes], target: (8.0, 14.0), tier: 1 },
