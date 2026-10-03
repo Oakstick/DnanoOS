@@ -165,6 +165,12 @@ fn sprites() -> &'static Sprites {
             ),
             (sprite_from(&super::foes6::goryo()), "Goryō", 0x8ab0ff, "Distance: lightning on three marks; untouchable but in its wrath."),
             (sprite_from(&super::foes_feast::gaki()), "Gaki", 0xc8b49a, "Body: hungry ghosts; they swarm whoever smells of food."),
+            (
+                sprite_from(&super::foes_thorns::ellepige()),
+                "Ellepige",
+                0xf0e0ea,
+                "Melee: lovely from the front, hollow behind. Strike her back.",
+            ),
         ],
     })
 }
@@ -1147,7 +1153,7 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 EnemyKind::Peerless => 5,
                 EnemyKind::Ganglot => 0,
                 EnemyKind::Gaki => sp.cast.iter().position(|c| c.1 == "Gaki").unwrap_or(7),
-                EnemyKind::Ellepige => 3,
+                EnemyKind::Ellepige => sp.cast.iter().position(|c| c.1 == "Ellepige").unwrap_or(3),
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;
