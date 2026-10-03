@@ -164,6 +164,7 @@ fn sprites() -> &'static Sprites {
                 "Body: seven heads strike in turn. Felled, it begs a second blow: deny it.",
             ),
             (sprite_from(&super::foes6::goryo()), "Goryō", 0x8ab0ff, "Distance: lightning on three marks; untouchable but in its wrath."),
+            (sprite_from(&super::foes_feast::gaki()), "Gaki", 0xc8b49a, "Body: hungry ghosts; they swarm whoever smells of food."),
         ],
     })
 }
@@ -1145,7 +1146,7 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 // (The realms' own, for now in their kin's likeness.)
                 EnemyKind::Peerless => 5,
                 EnemyKind::Ganglot => 0,
-                EnemyKind::Gaki => 7,
+                EnemyKind::Gaki => sp.cast.iter().position(|c| c.1 == "Gaki").unwrap_or(7),
                 EnemyKind::Ellepige => 3,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
