@@ -625,6 +625,7 @@ impl Game {
             if let Some(d) = e.duel.as_deref_mut() {
                 d.pos = at;
                 d.lore.rise = RISE_FRAMES;
+                d.lore.risen = true;
                 if let Some(den) = d.den.as_mut() {
                     den.home = at;
                     den.awake = near;

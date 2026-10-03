@@ -325,6 +325,8 @@ pub struct Lore {
     pub master: Option<u32>,
     /// Frames left climbing out of the floor (the raised dead).
     pub rise: u16,
+    /// It has fallen once and risen again (the Burning Field's dead): a second death pays nothing.
+    pub risen: bool,
     /// The dead it has raised still standing (Hel), as the game counts them.
     pub raised: u8,
     /// Where a dive, a burrow or a vanishing set out from.

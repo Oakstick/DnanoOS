@@ -617,7 +617,7 @@ impl Game {
         if du.alive() {
             du.f.kill();
         }
-        let (p, id, illusion) = (du.pos, du.id, du.lore.illusion);
+        let (p, id, illusion, risen) = (du.pos, du.id, du.lore.illusion, du.lore.risen);
         let vault = self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault);
         if let Some(b) = self.brawl.as_mut() {
             if !illusion {
@@ -629,7 +629,8 @@ impl Game {
         self.view.dust(&self.level.grid, p.x, p.y, color, 18, 2.6);
         self.view.sparkle(&self.level.grid, p.x, p.y, 0.6, 0xfff1c0, 12);
         self.view.shake(0.18);
-        if vault {
+        if vault && !risen {
+            // (The risen dead pay nothing the second time: no farming the Burning Field.)
             self.kill_spoils(p, crate::logic::systems::POINTS_KILL);
             if self.rng.next() < HEAL_DROP {
                 let at = P::new(p.x.round() as i32, p.y.round() as i32);

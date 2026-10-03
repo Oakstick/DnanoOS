@@ -49,7 +49,8 @@ impl Game {
         if near && !self.gate_open && self.run.is_some() {
             // The realms after the vaults seal theirs until their last trap has been survived.
             if self.gate_hint <= 0.0 {
-                self.gate_hint = 3.0;
+                // (Not every few seconds: a realm's last trap may be sprung right before it.)
+                self.gate_hint = 12.0;
                 self.audio.play(Sfx::Denied);
                 let text = self.run_seal_hint();
                 let color = self.run.as_ref().map(|r| r.sin().color()).unwrap_or(0xffffff);
