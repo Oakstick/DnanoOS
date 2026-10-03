@@ -35,7 +35,7 @@ mod angels;
 mod animation;
 mod camera;
 mod duel;
-mod effects;
+pub mod effects;
 mod emit;
 mod fade;
 mod forest;
@@ -58,7 +58,7 @@ mod vault_decor;
 pub use animation::SLASH_SECONDS;
 use animation::{EnemyView, Pose, TURN_RATE_HERO};
 use camera::chase;
-pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR};
+pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR, REST_PITCH};
 pub use duel::crown;
 use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
@@ -283,6 +283,17 @@ pub struct WorldView {
     /// The level's size in tiles, for the shadow map's coverage.
     level_dims: Vec2,
     initialized: bool,
+    /// Where the gameplay camera was following last frame, to cut rather than sweep when he
+    /// jumps across the level (a tunnel's wrap, a teleport).
+    last_focus: Option<Vec3>,
+    /// The camera mode last frame, and how much of a switch between the two is still blending
+    /// (1 just switched, 0 settled).
+    mode_was: CameraMode,
+    switching: f32,
+    /// The solid scenery over each tile, as spans of height, for the chase camera to keep
+    /// clear of; worked out again when the scenery changes (`camera::Spans`).
+    tops: camera::Spans,
+    tops_dirty: bool,
     was_showcase: bool,
     /// R3 was pressed: the camera is swinging back behind him.
     recentering: bool,
@@ -402,6 +413,11 @@ impl WorldView {
             focus_point: Vec3::ZERO,
             level_dims: Vec2::new(28.0, 24.0),
             initialized: false,
+            last_focus: None,
+            mode_was: CameraMode::Third,
+            switching: 0.0,
+            tops: Default::default(),
+            tops_dirty: true,
             was_showcase: false,
             recentering: false,
             focus: None,
@@ -478,9 +494,19 @@ impl WorldView {
         self.torches.clear();
         self.charges.clear();
         self.enemy_views.clear();
+        // What a fight left in the air goes with the level (RP05): blasts, debris, sparks, and the
+        // angels' bolts, beams and waves, falling arrows, flashes and afterimages.
         self.blasts.clear();
         self.debris.clear();
+        self.debris.reserve(effects::MAX_DEBRIS);
         self.particles.clear();
+        self.zaps.clear();
+        self.bolts.clear();
+        self.beams.clear();
+        self.waves.clear();
+        self.rains.clear();
+        self.flashes.clear();
+        self.ghosts.clear();
         self.trauma = 0.0;
         for l in self.effect_lights.iter_mut() {
             l.intensity = 0.0;
@@ -557,6 +583,7 @@ impl WorldView {
             .collect();
 
         self.static_dirty = true;
+        self.tops_dirty = true;
         self.initialized = false;
     }
 
@@ -568,12 +595,30 @@ impl WorldView {
         self.static_patches.push(range);
     }
 
+    /// Is the wall on tile `p` still standing in the scenery (for tests and tools)?
+    pub fn wall_standing(&self, p: P) -> bool {
+        self.rock_index.contains_key(&p)
+    }
+
+    /// Chunks of broken wall in the air.
+    pub fn debris_count(&self) -> usize {
+        self.debris.len()
+    }
+
     /// Collapse a wall block after a blast and patch the floor beneath it.
     pub fn remove_rock(&mut self, grid: &Grid, x: i32, y: i32) {
         let k = tile_key(x, y);
+        // The wall's own colours, for the rubble it leaves.
+        let mut colors: Vec<Vec3> = Vec::new();
         if let Some(range) = self.rock_index.remove(&k) {
+            colors = self.static_cubes[range.0..range.0 + range.1]
+                .iter()
+                .filter(|c| c.color[3] > 0.99 && c.emissive[3] < SHADE_WATER)
+                .map(|c| Vec3::new(c.color[0], c.color[1], c.color[2]))
+                .collect();
             self.hide_range(range);
         }
+        self.tops_dirty = true;
         if let Some((_, range)) = self.torches.remove(&k) {
             self.hide_range(range);
         }
@@ -589,6 +634,32 @@ impl WorldView {
         let patch = if self.meadow { lin(0x62b437) } else { lin(0x3c6c32) };
         // (Added cubes go up on their own; see `Gpu::sync_static`.)
         self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, if self.meadow { SHADE_LIT } else { SHADE_GRASS }));
+        self.push_rubble(x, y, h, &colors);
+    }
+
+    /// What is left of a blown wall (RP04): a low heap of its stones on the floor, the same for the
+    /// same tile every time. It never stands above a shin, so it neither blocks the way (the tile
+    /// is open floor) nor hides a telegraph on the ground. A stand-in until the broken pieces are
+    /// authored (TA07).
+    fn push_rubble(&mut self, x: i32, y: i32, floor: f32, colors: &[Vec3]) {
+        let pick = |k: f64| hash(x as f64 * 1.37 + k * 7.1, y as f64 * 2.11 - k * 3.3) as f32;
+        let fallback = [lin(STONE_A), lin(DIRT)];
+        for i in 0..6 {
+            let k = i as f64;
+            let size = 0.1 + 0.14 * pick(k);
+            let (ox, oz) = ((pick(k + 0.3) - 0.5) * 0.7, (pick(k + 0.6) - 0.5) * 0.7);
+            let color = if colors.is_empty() {
+                fallback[i % 2]
+            } else {
+                colors[(pick(k + 0.9) * colors.len() as f32) as usize % colors.len()] * (0.7 + 0.25 * pick(k + 1.2))
+            };
+            let m = Mat4::from_scale_rotation_translation(
+                Vec3::new(size, size * (0.6 + 0.4 * pick(k + 1.5)), size),
+                Quat::from_rotation_y(pick(k + 1.8) * TAU),
+                Vec3::new(x as f32 + ox, floor + size * 0.4, y as f32 + oz),
+            );
+            self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
+        }
     }
 
     pub fn remove_collectible(&mut self, x: i32, y: i32) {

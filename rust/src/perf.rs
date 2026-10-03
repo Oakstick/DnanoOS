@@ -211,7 +211,7 @@ fn machine(gpu: &Gpu) -> Vec<(String, String)> {
 }
 
 /// UTC now as 2026-10-03-141502.
-fn stamp() -> String {
+pub(crate) fn stamp() -> String {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     // Days since 1970 to a civil date (Howard Hinnant's algorithm).
@@ -255,6 +255,8 @@ struct Run {
     samples: Vec<Sample>,
     /// The first drawn frame after the setup (cold: static upload, first rig meshes), in ms.
     first_frame: f64,
+    /// Changes of level while measuring, timed from the load to the first frame shown (RP03).
+    transitions: Vec<crate::game::Transition>,
 }
 
 fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_bias: f32) -> Run {
@@ -262,6 +264,9 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
     let setup = parse_script(scene.setup);
     let (mut next, mut t) = (0, 0.0);
     play(&mut game, &setup, &mut next, &mut t, scene.settle);
+    // From here on a change of level waits behind the loading screen for the renderer, as in the
+    // game (RP03).
+    game.await_renderer = true;
 
     let target = gpu.offscreen();
     let mut frame = Frame::default();
@@ -319,6 +324,9 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
         cpu.sync = s.elapsed().as_secs_f64() * 1e3;
         let s = Instant::now();
         gpu.draw(&target, &game.view, &frame, &overlay.verts, logical);
+        if game.loading.is_some() && gpu.level_ready(&game.view) {
+            game.finish_loading();
+        }
         cpu.record = s.elapsed().as_secs_f64() * 1e3;
         if let Some(idx) = gpu.last_submit.clone() {
             in_flight.push_back(idx);
@@ -365,7 +373,7 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
         samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, sim: game.sim, counts: gpu.counts });
     }
     let _ = gpu.device.poll(wgpu::PollType::Wait);
-    Run { samples, first_frame }
+    Run { samples, first_frame, transitions: game.transitions }
 }
 
 pub fn run(args: &[String]) -> i32 {
@@ -440,6 +448,7 @@ pub fn run(args: &[String]) -> i32 {
     let _ = std::fs::create_dir_all(&out_dir);
     let mut cascades = String::new();
     let mut sim_rows = String::new();
+    let mut moves = String::new();
     for scene in scenes {
         eprintln!("perf: {} ({frames} frames) ...", scene.name);
         let run = measure(&mut gpu, scene, frames, size, lod_bias);
@@ -538,6 +547,17 @@ pub fn run(args: &[String]) -> i32 {
             csv.push('\n');
         }
         let _ = std::fs::write(format!("{out_dir}/{when}-{}.csv", scene.name), csv);
+        for tr in &run.transitions {
+            let _ = writeln!(
+                moves,
+                "| {} | {} | {} | {:.0} | {:.0} |",
+                scene.name,
+                tr.label,
+                if tr.cold { "cold" } else { "warm" },
+                tr.load_ms,
+                tr.ms
+            );
+        }
         // The step's sections: median, 95th percentile and worst (RP06).
         let mut row = format!("| {} |", scene.name);
         for k in 0..SimTimes::NAMES.len() {
@@ -561,6 +581,14 @@ pub fn run(args: &[String]) -> i32 {
         SimTimes::NAMES.join(" | "),
         "---|".repeat(SimTimes::NAMES.len())
     );
+    if !moves.is_empty() {
+        let _ = writeln!(
+            md,
+            "\n## Changes of level\n\nFrom the load to the first frame shown, in ms, behind the loading screen (RP03). Load is building the \
+             level and its view; the rest is the renderer making it ready (uploading the scenery, working out its light). Cold is \
+             the level's first load in this run of the game, warm a return to it.\n\n| Scene | Level | | Load | To first frame |\n|---|---|---|---|---|\n{moves}"
+        );
+    }
     let _ = writeln!(md, "\n## Scenes\n");
     for scene in SCENES {
         let _ = writeln!(md, "- **{}**: {}.", scene.name, scene.what);

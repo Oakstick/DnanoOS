@@ -108,6 +108,9 @@ fn main() {
     if args.iter().any(|a| a == "--perf") {
         std::process::exit(void_harvest::perf::run(&args));
     }
+    if args.iter().any(|a| a == "--camera-check") {
+        std::process::exit(void_harvest::camcheck::run(&args));
+    }
     if args.iter().any(|a| a == "--capture") {
         std::process::exit(void_harvest::capture::run(&args));
     }

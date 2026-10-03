@@ -1630,3 +1630,153 @@ fn an_outfit_and_the_paths_ribbons_dress_the_hero() {
     g.update(crate::app::STEP);
     assert!(g.view.hero_voxels() > plain, "ribbons on his arm");
 }
+
+#[test]
+fn reinforcements_come_in_dungeon_three_too() {
+    // Dungeon III (reached from the map) is foe stage 3, whose foes the reinforcement cycle does
+    // not list: the spawner used to unwrap a missing spec there and crash.
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(2));
+    let before = g.enemies.len();
+    for _ in 0..(120.0 / crate::app::STEP) as usize {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+    }
+    assert!(g.enemies.len() > before || g.spawned > 0, "reinforcements came ({} foes)", g.enemies.len());
+}
+
+#[test]
+fn a_new_level_waits_behind_the_loading_screen_until_the_renderer_has_it() {
+    let mut g = Game::new();
+    g.await_renderer = true;
+    g.map_jump(Stage::Dungeon(0));
+    assert!(g.loading.as_ref().is_some_and(|l| l.cold), "the first load is cold");
+    let (screen, timer) = (g.screen, g.screen_timer);
+    for _ in 0..120 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!((g.screen, g.screen_timer), (screen, timer), "the world waits");
+    assert_eq!(g.juice.fade, 1.0, "behind black");
+    g.finish_loading();
+    assert!(g.loading.is_none());
+    assert_eq!(g.transitions.len(), 1);
+    g.update(crate::app::STEP);
+    assert!(g.screen_timer < timer, "the countdown runs again");
+    // Back to the same level: warm.
+    g.map_jump(Stage::Dungeon(0));
+    assert!(g.loading.as_ref().is_some_and(|l| !l.cold));
+    // A renderer that never answers does not hold it for ever.
+    for _ in 0..((crate::game::LOADING_TIMEOUT + 0.5) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.loading.is_none());
+}
+
+#[test]
+fn without_a_renderer_to_wait_for_levels_start_at_once() {
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(0));
+    assert!(g.loading.is_none());
+}
+
+/// Into the Garden, playing, with a wall he can blow up beside him: (where he stands, the wall).
+fn by_a_breakable_wall() -> (Game, P, P) {
+    use crate::logic::systems::is_protected;
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(0));
+    for _ in 0..(4.0 / crate::app::STEP) as usize {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    let grid = &g.level.grid;
+    let (mut stand, mut wall) = (None, None);
+    'find: for y in 2..grid.height - 2 {
+        for x in 2..grid.width - 2 {
+            if grid.get(x, y) != Tile::Open {
+                continue;
+            }
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (wx, wy) = (x + dx, y + dy);
+                if grid.get(wx, wy) == Tile::Rock
+                    && !is_protected(grid, wx, wy)
+                    && !grid.is_landmark(wx, wy)
+                    && g.view.wall_standing(P::new(wx, wy))
+                {
+                    (stand, wall) = (Some(P::new(x, y)), Some(P::new(wx, wy)));
+                    break 'find;
+                }
+            }
+        }
+    }
+    let (stand, wall) = (stand.unwrap(), wall.unwrap());
+    g.hero.place(stand);
+    (g, stand, wall)
+}
+
+#[test]
+fn a_blown_wall_opens_its_way_and_its_scenery_in_the_same_step() {
+    // RP04: no frame shows an open wall with blocking collision, or the reverse.
+    let (mut g, _, wall) = by_a_breakable_wall();
+    g.place_bomb();
+    assert_eq!(g.bombs.len(), 1);
+    let static_before = g.view.static_cubes.len();
+    let mut steps = 0;
+    while !g.bombs.is_empty() && steps < 1200 {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+        steps += 1;
+        let open = g.level.grid.get(wall.x, wall.y) != Tile::Rock;
+        assert_eq!(open, !g.view.wall_standing(wall), "the way and the scenery agree, step {steps}");
+    }
+    assert!(g.bombs.is_empty(), "the bomb went off");
+    assert_eq!(g.level.grid.get(wall.x, wall.y), Tile::Open, "the wall is floor");
+    assert!(!g.view.wall_standing(wall));
+    // Rubble is left, low: nothing of it stands above a shin.
+    let added = &g.view.static_cubes[static_before..];
+    assert!(added.len() > 1, "a floor patch and rubble");
+    for c in added {
+        let top = glam::Mat4::from_cols_array(&c.m).transform_point3(glam::Vec3::splat(0.5)).y;
+        assert!(top < g.level.grid.elevation(wall.x, wall.y) as f32 * crate::render::view::STEP + 0.3, "low rubble ({top})");
+    }
+    assert!(g.view.debris_count() <= crate::render::view::effects::MAX_DEBRIS);
+    // The foes' way-finding takes the new opening at once (it reads the grid every step).
+    let stand = g.hero.occupied();
+    let toward = Dir::nearest(V::new((wall.x - stand.x) as f64, (wall.y - stand.y) as f64));
+    let beyond = P::new(wall.x + (wall.x - stand.x), wall.y + (wall.y - stand.y));
+    if g.level.grid.get(beyond.x, beyond.y) == Tile::Open {
+        let way = crate::logic::pathing::route_toward(&g.level.grid, stand, beyond.v(), false, false, false);
+        assert_eq!(way, Some(toward), "through the gap");
+    }
+}
+
+#[test]
+fn chains_of_blasts_keep_their_debris_to_its_budget() {
+    let (mut g, stand, _) = by_a_breakable_wall();
+    for _ in 0..40 {
+        let grid = g.level.grid.clone();
+        g.view.explode(&grid, stand.x as f64, stand.y as f64, 12);
+    }
+    assert_eq!(g.view.debris_count(), crate::render::view::effects::MAX_DEBRIS);
+}
+
+#[test]
+fn coming_back_to_a_level_finds_its_walls_whole_and_keeps_what_he_earned() {
+    // RP05: transient damage goes with the visit; what he carries stays.
+    let (mut g, _, wall) = by_a_breakable_wall();
+    g.place_bomb();
+    while !g.bombs.is_empty() {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+    }
+    assert!(!g.view.wall_standing(wall));
+    g.progress.silver += 7;
+    let (silver, runes) = (g.progress.silver, g.progress.runes);
+    g.map_jump(Stage::Hub);
+    g.map_jump(Stage::Dungeon(0));
+    assert_eq!(g.level.grid.get(wall.x, wall.y), Tile::Rock, "the wall stands again");
+    assert!(g.view.wall_standing(wall));
+    assert_eq!(g.view.debris_count(), 0, "no debris carried over");
+    assert!(g.bombs.is_empty() && g.projectiles.is_empty());
+    assert_eq!((g.progress.silver, g.progress.runes), (silver, runes), "his silver and runes stay");
+}

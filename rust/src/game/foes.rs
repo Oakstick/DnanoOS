@@ -168,7 +168,14 @@ impl Game {
         let stage = self.foe_stage();
         let cycle: &[EnemyKind] = if stage == 1 { &SPAWN_CYCLE } else { &SPAWN_CYCLE_TWO };
         let kind = cycle[self.spawned % cycle.len()];
-        let mut spec = enemy_specs(&self.level.grid, stage).into_iter().find(|s| s.kind == kind).unwrap();
+        // The cycle's kind, or where this stage has none of it (dungeon III's stage, reached from
+        // the map) the stage's own foes in turn.
+        let specs = enemy_specs(&self.level.grid, stage);
+        let own: Vec<&EnemySpec> = specs.iter().filter(|s| s.kind != EnemyKind::Minion).collect();
+        let Some(mut spec) = specs.iter().find(|s| s.kind == kind).or_else(|| own.get(self.spawned % own.len().max(1)).copied()).cloned()
+        else {
+            return;
+        };
         spec.exit_delay = 0.5;
         spec.name = format!("{} {}", spec.name, self.spawned / cycle.len() + 2);
         let graves = self.grave_spawns();

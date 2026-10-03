@@ -6,6 +6,9 @@ use super::*;
 const BLAST_SECONDS: f32 = 0.45;
 
 const DEBRIS_SECONDS: f32 = 1.4;
+/// The most flying chunks at once (RP04): a chain of blasts in a 30-foe fight retires the oldest
+/// first rather than piling up.
+pub const MAX_DEBRIS: usize = 160;
 
 pub(super) const GRAVITY: f32 = 14.0;
 
@@ -116,6 +119,12 @@ impl WorldView {
             let vel = Vec3::new(a.cos() * s, 4.0 + r.nextf() * 5.0, a.sin() * s);
             let spin = Vec3::new(r.nextf() * 8.0, r.nextf() * 8.0, r.nextf() * 8.0);
             let life = DEBRIS_SECONDS * (0.7 + r.nextf() * 0.5);
+            if self.debris.len() >= MAX_DEBRIS {
+                // The one nearest its end goes (the list is kept in no order; this is rare).
+                if let Some(i) = self.debris.iter().enumerate().min_by(|a, b| a.1.life.total_cmp(&b.1.life)).map(|(i, _)| i) {
+                    self.debris.swap_remove(i);
+                }
+            }
             self.debris.push(Debris { pos, vel, rot: Vec3::ZERO, spin, life, floor_y: h + 0.08, color });
         }
     }

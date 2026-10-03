@@ -308,6 +308,22 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     if g.juice.fade > 0.0 {
         o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, g.juice.fade.min(1.0)]);
     }
+    draw_loading(o, g, t);
+}
+
+/// The loading screen (RP03): over the black, the level's name and a pulse, once the wait is long
+/// enough to notice. The HUD under it is drawn all the same, so its sprites are ready on reveal.
+fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
+    let Some(l) = &g.loading else { return };
+    let show = ((l.age as f32 - 0.12) / 0.15).clamp(0.0, 1.0);
+    if show <= 0.0 {
+        return;
+    }
+    o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, 1.0]);
+    let (cx, cy) = (o.width / 2.0, o.height * 0.55);
+    o.text(&l.label.to_uppercase(), cx, cy - t * 0.9, t * 0.8, rgba(GOLD, 0.95 * show), Align::Center, true);
+    let pulse = 0.45 + 0.35 * ((l.age as f32) * 5.0).sin().abs();
+    o.text("LOADING", cx, cy + t * 0.3, t * 0.5, rgba(SAND, pulse * show), Align::Center, false);
 }
 
 /**

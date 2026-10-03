@@ -278,6 +278,10 @@ impl WorldView {
             let root = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
             let target = if ghost { &mut f.rigs_blend } else { &mut f.rigs };
             let rust = ((1.0 - hero.edge) as f32 * 0.9).clamp(0.0, 0.85);
+            // He is always drawn whole: under the top camera he covers under 2 px a voxel at 1080p,
+            // where foes go to half detail, but he is the one the player reads (RP02).
+            let bias = target.lod.bias;
+            target.lod.bias = 0.0;
             match (&self.models.raised, hero.blocking) {
                 (Some((bare, shield)), true) => {
                     // The shield comes off his back and up before him, on his shield arm's side.
@@ -288,6 +292,7 @@ impl WorldView {
                 }
                 _ => emit_hero_rig(target, self.hero_rig(hero), &self.hero_pose, root, tint, alpha, emissive, rust),
             }
+            target.lod.bias = bias;
         }
         self.emit_hero_fx(hero, hero_pos, time, f);
         self.emit_ails(&ails, hero_pos, time, f);

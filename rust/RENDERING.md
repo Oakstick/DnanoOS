@@ -304,6 +304,145 @@ output is a separate feature.
 
 ## Stage E: world systems
 
+### RP02: both gameplay cameras, validated
+
+**`--camera-check [all|dungeon0,hub,...] [--stride 2] [--walk 20]`** (`src/camcheck.rs`) checks both
+cameras in all 21 kinds of level (three dungeons, their arenas, the hub, seven realms, seven
+courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to reproduce with
+`--capture --script "at:x:z,aim:yaw:pitch"`.
+
+- **Survey:** Ragnar is set down on every second tile he can stand on, with the world paused.
+  - The chase camera is held at 8 headings × 3 pitches (rest, looking down hard, looking up).
+  - The top camera is taken as it is.
+- **Walk:** 20 s of wandering with the foes about. The mouse swings the view now and then, and the
+  camera switches between the two views every 3 to 5 s.
+- **What it checks**, against the cubes the level actually builds:
+
+  | Check | What fails |
+  |---|---|
+  | Clipping | the near plane's corners inside a cube |
+  | Hidden hero | all three marks on him (shin, waist, chest) behind solid cubes, after fades settle; in the walk, only longer than 0.3 s |
+  | Off screen | his waist outside the middle 90% of the frame |
+  | Holes | the void showing through ground he walks on |
+  | Depth of field | more than 1 px of blur on a foe within 12 m of him |
+  | Level of detail | his level under each camera at 1080p (reported) |
+
+**Found and fixed:**
+- **Tunnels:** the camera eased across the whole map when Ragnar wrapped through a tunnel. It now
+  cuts whenever he moves more than 4 m in one frame (also teleports and portals).
+- **Real scenery heights:** the chase camera assumed walls were at most 0.7 m tall and only checked
+  its own spot, so it sat inside tall hedges, outer walls and gates. It now keeps clear of the
+  scenery's real spans of height on each tile (`camera::Spans`), worked out again when a wall
+  breaks:
+  - It fits under a gallery or an arch.
+  - Glass counts for its near plane, but he shows through it.
+- **Sight line:** it also checks its line of sight to his waist and chest, in 10 cm steps with a
+  4 cm margin.
+- **Fallbacks, in order:**
+  1. Back off only as far as there is room.
+  2. Pressed close, tip up less (down to −1.0 rad).
+  3. Where the heading leaves no room or no sight of him (a doorway, looking into the wall), swing
+     to the nearest heading that works, up to a quarter turn.
+  4. Duck under a low beam or rise over something low, and look at him.
+
+  The player's own heading and pitch are kept for when there is room again.
+- **Framing guard:** whatever the pose, and while easing, the chase camera turns its gaze just
+  enough that he stays within 18° of the middle of the view.
+- **Easing:** where easing would carry either camera's eye through scenery, it cuts to its clear
+  goal. The top camera rises over towers in its way.
+- **Switching views:** for 0.45 s after a switch, the gaze blends onto him. The top view's gaze also
+  follows him faster than its eye, so neither direction of switch loses him off the frame.
+- **Trees:** a tree fades when the camera is inside its crown as well as when it stands between
+  camera and hero. Its fade test now uses its real crown, fitted to its cubes, not the builder's
+  guess.
+- **Depth of field:** blur used to start 5 m past the focus, so a foe charging from behind was
+  blurred by up to 1.5 px. In play it now starts 12 m past and is full at 27 m
+  (`gpu::DOF_CLEAR`, `DOF_FULL`). The story, title, character screen, forge and tour keep their
+  composed 5 to 20 m. **Look change for approval:** distant scenery in play is a little sharper.
+- **Level of detail:** under the top camera at 1080p, Ragnar covers under 2 px per voxel and would
+  drop to half detail. He is now always drawn whole, because he is the one the player reads; foes
+  keep the projected-size LOD.
+- **Crash fix:** reinforcements in dungeon III, which is reachable from the map, unwrapped a foe
+  stage-3 never defines, and the game crashed when they came. They now come from the stage's own
+  foes. A regression test covers it.
+
+**Results** (`perf/camera-*.md`, the last run of all 21 levels):
+- **Clean:** the dungeons, arenas, courts and gym are clean or within 2 of about 17,000 poses.
+  Envy's, Wrath's, Greed's, Gluttony's and Lust's realms are within 17 hidden or clipping poses of
+  9,000 to 39,000.
+- **Left over:**
+  - **The Hall of Mirrors (Pride), chase camera only** (it starts in the top view):
+    - 72 clipping and 133 hidden poses out of 17,088 in the survey, at its door frames and glass.
+    - About 1,000 survey poses, and the walks' views round the throne, see down past its rings
+      into the well. That looks to be the design (the rings fall into a bottomless well), but it
+      is not confirmed.
+  - **Top view:** a dozen tiles across the hub and the realms where an overhang hides him. There
+    is no general overhead fade yet; trees fade, roofs and arches do not.
+  - **Short clips:** up to 4 frames of clipping right after a switch in two realms.
+  - **For TA06:** the backdrop past the level's edge (the cavern, the cloud sea, the lava) shows in
+    many poses by design. It is counted, not failed, for the vista review.
+
+### RP03: portals and the loading screen
+
+- **Hold until ready:** a new level now waits behind a loading screen (`game::Loading`). The world
+  stops, black, with the level's name and a pulse. It waits until the renderer has the level up
+  (`Gpu::level_ready`: scenery uploaded, probes worked out), then fades in on a finished frame.
+  - The camera is cut to the level's start during the hold, so the prepared frame is the one shown.
+  - The clock restarts on reveal, so the fade-in does not jump the time the load took.
+  - It gives up waiting after 10 s.
+  - The game and `--perf` wait; tests and `--capture` (with no renderer between steps) do not.
+  - `--capture --await-renderer` shows the screen.
+- **Light probes cached and built in the background:**
+  - Probes are kept for the last 8 levels, keyed by their scenery and light, so a return through a
+    portal finds them ready.
+  - A first visit builds them on a worker thread, so the loading screen keeps animating.
+- **Timing:** `--perf` writes a *Changes of level* table, cold (the level's first load in this run
+  of the game) and warm (a return), measured on the dev machine:
+
+  | Transition | Load | To first frame |
+  |---|---|---|
+  | Hall of Mirrors, cold | 13 ms | 144 ms |
+  | Hall of Mirrors, warm | 3 ms | 29 ms |
+  | Portals of Hell, warm | 4 to 10 ms | 32 to 41 ms |
+
+  Warm returns were 82 to 114 ms before the cache. The portal scene's worst frame fell from 156 ms
+  to 57 ms, and is behind the loading screen.
+- **Not built:**
+  - Packaging by area: the assets are procedural and in the code, the character rigs stay resident
+    once meshed, and there is nothing to stream.
+  - Preparing the next area while he walks up to a portal: the cold cost left is about 140 ms
+    behind the loading screen.
+- **Decision for you:** the plan asks for a numerical target for "very short" once both machines
+  are measured. The figures here are from the dev laptop only.
+
+### RP04 and RP05: bounded destruction and a clean reset
+
+- **What breaks:** bomb blasts break wall tiles: every wall within the blast that is not protected
+  or a landmark.
+  - **Same step:** the grid opens (collision, and the foes' way-finding, which reads the grid every
+    step) in the same step the wall's cubes are hidden. A test checks it every step of a blast, and
+    that a foe routes through the gap.
+- **Rubble:** a blown wall leaves a low heap of its own stones on the floor, the same for the same
+  tile every time. Nothing of it stands higher than a shin (tested), so it neither blocks the way
+  nor hides a telegraph. It is a stand-in until the broken pieces are authored (TA07).
+- **Debris budget:** at most 160 chunks fly at once; the oldest are retired first and the store is
+  reserved up front. Sparks were already capped at 700.
+- **Shadows:**
+  - Any hidden or moved static cube now redraws the cached far shadow cascade. Before, only a cube
+    that opened a neighbour's face did, so a blown wall's shadow could stay behind.
+  - The probes refresh round the break (RP18).
+- **Reset (RP05):** a level is rebuilt from its original layout on every entry, walls whole.
+  - **Cleared with the visit:** the level's debris, sparks, blasts, the angels' bolts, beams and
+    waves, falling arrows, flashes and afterimages. Before, the last seven of those could carry
+    across a portal.
+  - **Kept:** his progress (silver, runes, kit). Loot, quest, boss and foe respawn rules are
+    unchanged.
+  - A test blows a wall, leaves and comes back, and checks all of this.
+- **During a fight:** a wall breaking in the middle of a 30-foe fight is the `siege` perf scene
+  (RP06).
+- **Decision for TA07:** the visual cue that says a wall can be broken. Today every interior wall
+  can be, with no cue.
+
 ### RP06: the 30-foe budget
 
 - **The simulation step is timed by section** (`profile::SimTimes`, filled by `Game::update`):
@@ -377,6 +516,10 @@ The latest full capture is in `perf/`; compare new captures against it only at e
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept
   over half its cost. Instanced cubes at 4× MSAA dominate. This is why stage C came first.
+- **Measuring on this laptop needs interleaving.** Its clocks halve and double between runs (the
+  Garden's GPU p50 has read 6.7 ms and 16.5 ms on the same build). Only interleaved A/B runs in one
+  sitting compare. Stage E's changes measured within noise of RP06's build that way (Garden,
+  close-up, 30-foe battle, siege).
 - **The 30-foe battle's simulation spikes are fixed (RP06).** They were not AI or pathfinding: past
   the high score, every kill rewrote the save file, which is read and written whole. See RP06 below.
 - **The ground mist costs real GPU time.** The 13,500 transparent sheets in the Garden cost about 2 ms
@@ -405,16 +548,12 @@ The latest full capture is in `perf/`; compare new captures against it only at e
   - Merging coplanar faces of the same colour.
 - **D, lighting:** RP13 to RP19 are done. The presets' numbers need the target GPUs to be set for
   real (stage G).
-- **E, world systems:**
-  - RP02: camera validation.
-  - RP03: area packaging and the portal loading screen. The portal scene's worst frame is 24 ms; cold
-    and warm need their own figures.
-  - RP04 and RP05: predefined broken pieces with collision and navigation updated together. Today only
-    the bombable wall tiles break.
-  - RP06 is done (below). Two leftovers:
-    - Foe pathfinding peaks at 5 ms in the Garden maze, and is rare.
-    - A first frame takes 50 to 350 ms when the HUD first builds a hero's sprites. That belongs to
-      RP03's cold loading.
+- **E, world systems:** RP02 to RP06 are done (above). Still open:
+  - The Hall of Mirrors' chase camera (at its glass and door frames), and an overhead fade for
+    roofs and arches in the top view.
+  - A numerical portal-loading target, set on the target machines.
+  - TA07's broken pieces and the cue that a wall can be broken; the rubble is a stand-in.
+  - Rare foe pathfinding peaks, up to 5 ms, in the Garden maze.
 - **F, advanced:** RP20 (GPU visibility and Hi-Z), RP21 (meshlets) and RP22 (mesh shaders), each only
   after the indexed path is measured on both target GPUs.
 - **G, shipping:** the GTX 1080 and RTX 3060 presets, and packaged validation.

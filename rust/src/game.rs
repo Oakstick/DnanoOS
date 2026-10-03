@@ -196,9 +196,45 @@ pub enum GameEvent {
     BossSlain,
 }
 
+/// A level being made ready behind the loading screen (RP03): the world waits, black, until the
+/// renderer has its scenery up and its light worked out, and then fades in on a finished frame.
+#[derive(Clone, Debug)]
+pub struct Loading {
+    /// The level's name, shown on the loading screen.
+    pub label: String,
+    pub started: web_time::Instant,
+    /// The load itself (building the level and its view), in ms.
+    pub load_ms: f64,
+    /// Seconds held so far.
+    pub age: f64,
+    /// The first time this level was loaded in this run of the game (nothing of it cached yet).
+    pub cold: bool,
+}
+
+/// One change of level, timed (RP03): from the load to the first frame shown, in ms.
+#[derive(Clone, Debug)]
+pub struct Transition {
+    pub label: String,
+    pub cold: bool,
+    pub load_ms: f64,
+    pub ms: f64,
+}
+
+/// The loading screen gives up waiting after this long (a renderer that never reports ready).
+pub const LOADING_TIMEOUT: f64 = 10.0;
+
 pub struct Game {
     /// Where the last step's time went (RP06).
     pub sim: SimTimes,
+    /// A level being made ready (RP03), while the screen is held.
+    pub loading: Option<Loading>,
+    /// Hold each new level until the renderer has it ready (`finish_loading`). The game and the
+    /// performance harness set it; tests and captures, with no renderer between steps, do not.
+    pub await_renderer: bool,
+    /// Every change of level and how long it took to show (RP03).
+    pub transitions: Vec<Transition>,
+    /// Levels the renderer has made ready so far in this run, for telling a cold load from a warm one.
+    visited: std::collections::HashSet<String>,
     pub screen: Screen,
     pub level: ParsedLevel,
     pub hero: Hero,
@@ -398,6 +434,10 @@ impl Game {
             view: WorldView::new(),
             show_fps: false,
             sim: SimTimes::default(),
+            loading: None,
+            await_renderer: false,
+            transitions: Vec::new(),
+            visited: Default::default(),
             perf_lines: Vec::new(),
             rng: Rng::from_time(),
             cam_dir: Dir::None,
@@ -653,6 +693,29 @@ impl Game {
         }
         self.update_effects(dt);
         self.sim.effects += lap.lap();
+    }
+}
+
+impl Game {
+    /// A level has just been built: hold the screen until the renderer has it (RP03).
+    pub(super) fn begin_loading(&mut self, label: String, started: web_time::Instant) {
+        if !self.await_renderer {
+            return;
+        }
+        let cold = !self.visited.contains(&label);
+        let load_ms = started.elapsed().as_secs_f64() * 1e3;
+        self.loading = Some(Loading { label, started, load_ms, age: 0.0, cold });
+        self.juice.fade = 1.0;
+    }
+
+    /// The renderer has the new level ready: the hold ends and the level fades in.
+    pub fn finish_loading(&mut self) {
+        if let Some(l) = self.loading.take() {
+            let ms = l.started.elapsed().as_secs_f64() * 1e3;
+            self.visited.insert(l.label.clone());
+            self.transitions.push(Transition { label: l.label, cold: l.cold, load_ms: l.load_ms, ms });
+            self.juice.fade = 1.0;
+        }
     }
 }
 

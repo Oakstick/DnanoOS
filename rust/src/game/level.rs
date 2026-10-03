@@ -63,6 +63,12 @@ impl Game {
     }
 
     pub(super) fn load(&mut self, data: LevelData, index: usize) {
+        let started = web_time::Instant::now();
+        self.load_inner(data, index);
+        self.begin_loading(self.level.data.name.clone(), started);
+    }
+
+    fn load_inner(&mut self, data: LevelData, index: usize) {
         self.score.level = index;
         self.dungeon = index;
         // Every level begins with the patron's power ready.

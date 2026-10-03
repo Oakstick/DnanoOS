@@ -39,6 +39,7 @@ pub const SIDES: [Vec3; 6] = [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y, Vec3::
 
 /// Solid matter by cell: 0 is empty; otherwise the colour (square-root encoded RGB in the low
 /// 24 bits, so dark colours keep their steps) with the top byte set; glow kept apart (rare).
+#[derive(Clone)]
 struct Occupancy {
     min: Vec3,
     dims: [usize; 3],
@@ -193,6 +194,7 @@ impl Occupancy {
 }
 
 /// The level's probes, and the cells they were built from.
+#[derive(Clone)]
 pub struct ProbeVolume {
     /// Probes along x (tiles), y (layers) and z (tiles).
     pub dims: [u32; 3],

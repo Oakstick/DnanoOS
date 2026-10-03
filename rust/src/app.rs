@@ -206,6 +206,14 @@ impl App {
         }
         self.game.events.clear();
 
+        // The new level is ready on the GPU: the loading screen lifts, and the clock starts again
+        // from now, so the fade-in does not jump the time the load took (RP03).
+        if self.game.loading.is_some() && self.gpu.as_ref().is_some_and(|g| g.level_ready(&self.game.view)) {
+            self.game.finish_loading();
+            self.acc = 0.0;
+            self.last = Instant::now();
+        }
+
         self.fps_frames += 1;
         let since = (now - self.fps_at).as_secs_f64();
         if since >= 0.5 {
@@ -331,6 +339,7 @@ impl ApplicationHandler for App {
                         gpu.set_preset(p);
                     }
                     self.game.view.lod_bias = gpu.preset().lod_bias;
+                    self.game.await_renderer = true;
                     eprintln!("renderer: {}", gpu.backend);
                     self.gpu = Some(gpu);
                 }

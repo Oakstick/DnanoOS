@@ -22,6 +22,13 @@ pub(super) struct Tree {
 }
 
 impl Tree {
+    /// Is `eye` (with its near plane) inside the tree's crown?
+    pub(super) fn holds(&self, eye: Vec3) -> bool {
+        let (dx, dz) = (eye.x - self.base.x, eye.z - self.base.z);
+        let r = self.radius + 0.2;
+        eye.y > self.base.y - 0.2 && eye.y < self.base.y + self.height + 0.2 && dx * dx + dz * dz < r * r
+    }
+
     /// Does the sight line from `eye` to `to` pass through this tree?
     pub(super) fn blocks(&self, eye: Vec3, to: Vec3) -> bool {
         // Cheap reject: the tree has to lie between the two ends in the ground plane.
@@ -49,6 +56,27 @@ impl Tree {
 }
 
 impl WorldView {
+    /// Fits each tree's cylinder to its cubes as built (the builders' guesses can fall short of
+    /// a wide crown, and then the tree hides him without fading, RP02).
+    pub(super) fn fit_trees(&mut self) {
+        for t in self.trees.iter_mut() {
+            let (start, len) = t.range;
+            let (mut r, mut top) = (t.radius, t.base.y + t.height);
+            for c in &self.static_cubes[start..start + len] {
+                let m = Mat4::from_cols_array(&c.m);
+                let half = m.x_axis.truncate().length().max(m.z_axis.truncate().length()) * 0.71;
+                let p = m.w_axis.truncate();
+                if m.y_axis.truncate().length() == 0.0 {
+                    continue; // hidden
+                }
+                r = r.max(Vec2::new(p.x - t.base.x, p.z - t.base.z).length() + half);
+                top = top.max(p.y + m.y_axis.truncate().length() * 0.5);
+            }
+            t.radius = r;
+            t.height = top - t.base.y;
+        }
+    }
+
     /**
      * Trees standing between the camera and Ragnar dissolve so he is never
      * lost behind the woods, then grow back once the view is clear. The fade
@@ -71,7 +99,8 @@ impl WorldView {
             }
             // What the tour is showing never fades out of its own shot.
             let shown = self.tour.is_some() && Vec2::new(t.base.x - feet.x, t.base.z - feet.z).length() < t.radius + 0.3;
-            let blocking = (hero.alive || self.tour.is_some()) && !shown && targets.iter().any(|&to| t.blocks(eye, to));
+            // In the way of the view of him, or round the camera itself (RP02).
+            let blocking = (hero.alive || self.tour.is_some()) && !shown && (t.holds(eye) || targets.iter().any(|&to| t.blocks(eye, to)));
             let goal = if blocking { TREE_FADE_MIN } else { 1.0 };
             let fade = if t.fade < goal { (t.fade + step).min(goal) } else { (t.fade - step).max(goal) };
             if fade == t.fade {

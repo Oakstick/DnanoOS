@@ -695,6 +695,12 @@ impl Game {
 
     /// The whole scene built again (the land has turned, or aged).
     fn rebuild_mire_view(&mut self) {
+        let started = web_time::Instant::now();
+        self.rebuild_mire_view_now();
+        self.begin_loading(self.level.data.name.clone(), started);
+    }
+
+    fn rebuild_mire_view_now(&mut self) {
         self.view.build_level(
             &self.level.grid,
             &self.enemies,

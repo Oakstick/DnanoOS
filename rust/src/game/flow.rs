@@ -95,6 +95,21 @@ impl Game {
 
     pub fn update(&mut self, dt: f64) {
         self.sim = Default::default();
+        // A new level is being made ready (RP03): the world waits behind the loading screen. Only
+        // the camera moves, cut to where the level starts, so the frame the renderer prepares is
+        // the one that will be shown.
+        if let Some(l) = self.loading.as_mut() {
+            l.age += dt;
+            self.juice.fade = 1.0;
+            if l.age > crate::game::LOADING_TIMEOUT {
+                self.finish_loading();
+            } else {
+                let state = scene_state!(self);
+                self.view.update(0.0, &state);
+                self.input.flush();
+                return;
+            }
+        }
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;

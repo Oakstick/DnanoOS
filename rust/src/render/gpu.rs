@@ -58,6 +58,16 @@ const AO: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 /// Half the width of the fine shadow cascade, in world units.
 const NEAR_CASCADE: f32 = 10.0;
 const BLOOM_LEVELS: usize = 5;
+/// The depth of field (RP02): nothing blurs until this many metres past what the camera looks at,
+/// so a foe within reach of the hero (12 m, `camcheck`) stays sharp, and the blur is full
+/// (`DOF_PX` at 1080p) this far past it.
+pub const DOF_CLEAR: f32 = 12.0;
+pub const DOF_FULL: f32 = 27.0;
+pub const DOF_PX: f32 = 3.5;
+/// Shots with no foes to keep sharp (the story, the title, the character screen, the forge, the
+/// tour) keep the softer depth of field they were composed with.
+const CINEMA_DOF_CLEAR: f32 = 5.0;
+const CINEMA_DOF_FULL: f32 = 20.0;
 /// The environment cube (RP14): its first mip's size, and how many mips (roughness 0 to 1).
 const ENV_SIZE: u32 = 128;
 const ENV_MIPS: u32 = 6;
@@ -458,6 +468,13 @@ pub struct Gpu {
     /// The level's probes (RP18): built on the level's first frame, refreshed round broken walls.
     probe_tex: Vec<wgpu::Texture>,
     probes: Option<ProbeVolume>,
+    /// Probes of levels seen before, by what they were built from (RP03: a return through a
+    /// portal finds its level's light ready), the most recent last.
+    probe_cache: Vec<(u64, ProbeVolume)>,
+    /// A level's probes being built on a worker thread while the loading screen shows (RP03):
+    /// what for (the cache key and the static upload), and where the result comes back.
+    #[cfg(not(target_arch = "wasm32"))]
+    probe_job: Option<(u64, u64, std::sync::mpsc::Receiver<ProbeVolume>)>,
     /// The level (full static upload) the probes were built for, the boxes changed since, and the
     /// bounds of every static cube as last sent (so a hidden one's place is known).
     probe_level: u64,
@@ -1532,6 +1549,9 @@ impl Gpu {
             scene_inputs,
             probe_tex,
             probes: None,
+            probe_cache: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            probe_job: None,
             probe_level: 0,
             probe_dirty: Vec::new(),
             static_bounds: Vec::new(),
@@ -1552,6 +1572,12 @@ impl Gpu {
             backend,
             adapter: adapter_info,
         })
+    }
+
+    /// The view's level is up and lit: its static scenery uploaded and its probes worked out
+    /// (RP03: the loading screen waits for this).
+    pub fn level_ready(&self, view: &WorldView) -> bool {
+        !view.static_dirty && self.static_count > 0 && self.probes.is_some() && self.probe_level == self.static_level
     }
 
     /// The quality preset in use.
@@ -1672,6 +1698,9 @@ impl Gpu {
         let Some(index) = self.static_faces.as_mut() else { return view.static_cubes.is_empty() };
         let stride = std::mem::size_of::<Instance>() as u64;
         let mut extras_changed = false;
+        // A cube hidden or moved changes the shadows too (RP04: a wall blown away no longer
+        // casts in the cached cascade), even where no neighbour's face opens.
+        let mut moved = false;
         let grow = |b: &mut (Vec3, Vec3), c: &Instance| {
             let (at, half) = cube_bounds(c);
             // Its neighbours lie within one of its own sizes.
@@ -1716,6 +1745,7 @@ impl Gpu {
                     let (at, half) = cube_bounds(&view.static_cubes[k]);
                     if let Some(&(lo, hi)) = self.static_bounds.get(slot as usize) {
                         if (lo - (at - half)).length_squared() + (hi - (at + half)).length_squared() > 1e-8 {
+                            moved = true;
                             self.probe_dirty.push((lo, hi));
                             self.static_bounds[slot as usize] = (at - half, at + half);
                         }
@@ -1734,6 +1764,9 @@ impl Gpu {
                 }
                 i = j;
             }
+        }
+        if moved && !extras_changed {
+            self.static_gen += 1;
         }
         if extras_changed {
             // Shadows change too: the cached cascade is drawn again.
@@ -1854,13 +1887,13 @@ impl Gpu {
             view_proj: view_proj.to_cols_array(),
             cam_pos: v4(cam, if ortho { 1.0 } else { 0.0 }),
             cam_fwd: v4(fwd, focus.unwrap_or(0.0)),
-            cam_r: v4(cam_r, 5.0),
-            cam_u: v4(cam_u, 20.0),
+            cam_r: v4(cam_r, if view.cinematic() { CINEMA_DOF_CLEAR } else { DOF_CLEAR }),
+            cam_u: v4(cam_u, if view.cinematic() { CINEMA_DOF_FULL } else { DOF_FULL }),
             params: [
                 0.32,
                 if self.fx_off & fx::AO != 0 { 0.0 } else { 1.4 },
                 if self.fx_off & fx::BLOOM != 0 { 0.0 } else { 0.45 * atm.bloom },
-                if focus.is_some() && self.fx_off & fx::DOF == 0 { 3.5 } else { 0.0 },
+                if focus.is_some() && self.fx_off & fx::DOF == 0 { DOF_PX } else { 0.0 },
             ],
             params2: [0.6, 0.28, frame.time, if self.fx_off & fx::GRADE != 0 { 0.0 } else { 1.0 }],
             moon: moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky),
@@ -2341,6 +2374,54 @@ impl Gpu {
 
     /// Builds the level's probes on its first frame, refreshes them round what changed since, and
     /// sends them up when they change. Whether the frame is in a level the probes cover.
+    /// The probes for the level now uploaded: from the cache when it was seen before, else built
+    /// (on a worker thread, natively: none until it is done).
+    fn level_probes(&mut self, view: &WorldView, (w, h): (f32, f32), atm: &super::view::Atmosphere) -> Option<ProbeVolume> {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        bytemuck::cast_slice::<_, u8>(&view.static_cubes).hash(&mut hasher);
+        format!("{atm:?} {w} {h}").hash(&mut hasher);
+        let key = hasher.finish();
+        if let Some(i) = self.probe_cache.iter().position(|c| c.0 == key) {
+            let hit = self.probe_cache.remove(i);
+            let p = hit.1.clone();
+            self.probe_cache.push(hit);
+            return Some(p);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some((k, level, rx)) = &self.probe_job {
+                if *k == key && *level == self.static_level {
+                    let p = rx.try_recv().ok()?;
+                    self.probe_job = None;
+                    self.remember_probes(key, p.clone());
+                    return Some(p);
+                }
+            }
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (cubes, atm) = (view.static_cubes.clone(), *atm);
+            std::thread::spawn(move || {
+                let _ = tx.send(ProbeVolume::build(&cubes, w, h, &atm));
+            });
+            self.probe_job = Some((key, self.static_level, rx));
+            None
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let p = ProbeVolume::build(&view.static_cubes, w, h, atm);
+            self.remember_probes(key, p.clone());
+            Some(p)
+        }
+    }
+
+    fn remember_probes(&mut self, key: u64, p: ProbeVolume) {
+        const KEPT: usize = 8;
+        self.probe_cache.push((key, p));
+        if self.probe_cache.len() > KEPT {
+            self.probe_cache.remove(0);
+        }
+    }
+
     fn sync_probes(&mut self, view: &WorldView, frame: &Frame) -> bool {
         if frame.skip_static || self.static_count == 0 {
             return false;
@@ -2349,10 +2430,16 @@ impl Gpu {
         let mut changed = false;
         if self.probe_level != self.static_level || self.probes.is_none() {
             let (w, h) = view.level_size();
-            self.probes = Some(ProbeVolume::build(&view.static_cubes, w, h, &frame.atmosphere));
-            self.probe_level = self.static_level;
-            self.probe_dirty.clear();
-            changed = true;
+            match self.level_probes(view, (w, h), &frame.atmosphere) {
+                Some(p) => {
+                    self.probes = Some(p);
+                    self.probe_level = self.static_level;
+                    self.probe_dirty.clear();
+                    changed = true;
+                }
+                // Still being built: the level is not ready, and is drawn without them meanwhile.
+                None => return false,
+            }
         } else if !self.probe_dirty.is_empty() {
             let (mut lo, mut hi) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
             for (a, b) in self.probe_dirty.drain(..) {

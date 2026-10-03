@@ -110,6 +110,8 @@ pub(crate) enum Cmd {
     /// Scene I at a beat, seconds into it.
     Beat(usize, f64),
     Look(f64, f64),
+    /// The chase camera held at a heading (degrees) and pitch (radians), as `--camera-check` reports poses.
+    Aim(f32, f32),
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -178,6 +180,11 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "potion" => Cmd::Potion(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "hurt" => Cmd::Hurt,
+            "aim" => {
+                let yaw: f32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                let pitch = parts.next().and_then(|v| v.parse().ok()).unwrap_or(crate::render::view::REST_PITCH);
+                Cmd::Aim(yaw.to_radians(), pitch)
+            }
             "look" => {
                 let dx = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 let dy = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
@@ -212,6 +219,11 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Nav(d) => game.input.nav = Some(d),
         Cmd::Beat(n, at) => game.story_jump(n, at),
         Cmd::Look(dx, dy) => game.view.look(dx, dy),
+        Cmd::Aim(yaw, pitch) => {
+            game.view.cam_yaw = yaw;
+            game.view.cam_pitch = pitch;
+            game.view.mouse_look = true;
+        }
         Cmd::Nugget => game.debug_collect_key(),
         Cmd::Hurt => game.debug_hurt(),
         Cmd::Wound(n) => game.debug_wound_boss(n),
@@ -315,6 +327,9 @@ pub fn run(args: &[String]) -> i32 {
     let mut game = Game::new();
     // Fixed seeds, so the same script always renders the same picture.
     game.reseed(1);
+    // Levels hold behind the loading screen (RP03); nothing is drawn until the capture, so this
+    // shows that screen for a level loaded in the last ten seconds.
+    game.await_renderer = args.iter().any(|a| a == "--await-renderer");
     game.viewport = (w as f32, h as f32);
     game.tour_pending = false;
     let mut next = 0;

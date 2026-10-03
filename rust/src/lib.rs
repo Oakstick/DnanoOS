@@ -27,6 +27,8 @@
 pub mod app;
 pub mod audio;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod camcheck;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod capture;
 pub mod game;
 pub mod input;
