@@ -251,7 +251,7 @@ impl WorldView {
     /// The weapons (layered parts of his rig) move with the arms that hold them.
     pub(super) fn sync_hands(&mut self) {
         let rig = &self.models.hero;
-        for (arm, held) in [("swordArm", "blade"), ("shieldArm", "offhand")] {
+        for (arm, held) in [("swordArm", "blade"), ("shieldArm", "offhand"), ("shieldArm", "shield")] {
             if let (Some(a), Some(b)) = (rig.index(arm), rig.index(held)) {
                 self.hero_pose.rot[b] = self.hero_pose.rot[a];
             }

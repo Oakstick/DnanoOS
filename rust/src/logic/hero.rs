@@ -342,8 +342,10 @@ impl Hero {
     /// His health cap: more from path level 2 (for Ragnar, only while a shield is with him).
     pub fn health_cap(&self) -> i32 {
         let guard = self.path >= 2 && (self.kind != HeroKind::Ragnar || self.shield.is_some());
+        // The shield on his arm adds its own, the better the shield the more (and takes it as it breaks).
+        let shield = self.shield.map(|s| progression::ward(s.tier).vigor).unwrap_or(0);
         // Mehmed can take more than Ragnar, Miyamoto less.
-        (HERO_MAX_HP as f64 * self.kind.vigor()).round() as i32 + if guard { path::GUARD_HP } else { 0 } - self.hunger
+        (HERO_MAX_HP as f64 * self.kind.vigor()).round() as i32 + if guard { path::GUARD_HP } else { 0 } + shield - self.hunger
     }
     /// Spends stamina for a blow or a blink; false (and winded) if he has too little.
     fn spend(&mut self, cost: f64) -> bool {

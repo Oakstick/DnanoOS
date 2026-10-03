@@ -46,13 +46,7 @@ pub(super) fn segment(a: Vec3, b: Vec3, thick: f32) -> Mat4 {
     Mat4::from_scale_rotation_translation(Vec3::new(thick, len, thick), rot, (a + b) * 0.5)
 }
 
-/**
- * The detailed hero as he is played with a weapon of his armory in hand
- * (and its twin in the other, for a pair) and a shield of his tree on his
- * back, or none. The weapons are layered parts ("blade", "offhand") that
- * follow the arms, pivoting where the arms do.
- */
-/// How a hero is dressed and armed for his model: his blade's tier, the shield on his back, his
+/// How a hero is dressed and armed for his model: his blade's tier, the shield on his arm, his
 /// outfit and the skills of his path (ribbons on his arm). (Rust is a tint, see `emit_hero_rig`.)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct Kit {
@@ -92,33 +86,112 @@ fn hero_body(hero: HeroKind, kit: Kit) -> (Collected, &'static [PartDef]) {
 }
 
 pub(super) fn hero_model(hero: HeroKind, blade: u8, shield: Option<u8>) -> Rig {
-    hero_model_kit(hero, Kit::plain(blade, shield))
+    hero_rigs(hero, Kit::plain(blade, shield)).0
 }
 
-/// The hero without the shield on his back, and the shield on its own (in the same frame, still
-/// on his back): what is drawn while he holds it up before him. None if he has no shield.
-pub(super) fn raised_shield(hero: HeroKind, kit: Kit) -> Option<(Rig, Rig)> {
-    kit.shield?;
-    let (with, _) = hero_body(hero, kit);
-    let bare_kit = Kit { shield: None, ..kit };
-    let (bare, _) = hero_body(hero, bare_kit);
+/// The middle of each hero's shield forearm (x, y, z) and its girth there, in voxels of his own
+/// grid as he is sculpted: where his shield is strapped.
+fn forearm(hero: HeroKind) -> (f32, f32, f32, f32) {
+    match hero {
+        HeroKind::Ragnar => (7.5, 40.0, 17.0, 5.0),
+        HeroKind::Mehmed => (21.5, 36.0, 19.5, 5.8),
+        HeroKind::Miyamoto => (21.5, 34.0, 20.5, 5.2),
+    }
+}
+
+/// How thick a shield is carved, in voxels (its face, and the rim and boss standing out of it).
+const SHIELD_THICK: i32 = 4;
+/// A shield on his arm is a little smaller than the one that hung on his back.
+const STRAPPED_SCALE: f32 = 0.8;
+
+/// The shield as it is carved into his back, on its own: the voxels it adds to the bare body (and
+/// not those of his back that it shades).
+fn back_shield(with: &Collected, bare: &Collected) -> Collected {
     let plain: std::collections::HashSet<(i32, i32, i32, u32)> = bare.voxels.iter().map(|v| (v.x, v.y, v.z, v.c)).collect();
-    let voxels = with.voxels.iter().filter(|v| !plain.contains(&(v.x, v.y, v.z, v.c))).map(|v| Voxel { part: 0, ..*v }).collect();
-    let shield = Collected { voxels, width: with.width, depth: with.depth, height: with.height };
-    Some((hero_model_kit(hero, bare_kit), build_rig(&shield, &[], HERO_VOXEL)))
+    let added: Vec<Voxel> =
+        with.voxels.iter().filter(|v| !plain.contains(&(v.x, v.y, v.z, v.c))).map(|v| Voxel { part: 0, ..*v }).collect();
+    let out = added.iter().map(|v| v.z).min().unwrap_or(0);
+    let voxels = added.into_iter().filter(|v| v.z < out + SHIELD_THICK).collect();
+    Collected { voxels, width: with.width, depth: with.depth, height: with.height }
 }
 
-pub(super) fn hero_model_kit(hero: HeroKind, kit: Kit) -> Rig {
-    let w = progression::node(hero, Tree::Armory, kit.blade);
-    let (body, defs) = hero_body(hero, kit);
-    let pivot = |name: &str| defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3]);
-    let main = armory::weapon_for(hero, w.form, w.color, false);
-    let off = if armory::paired(w.form) {
-        armory::weapon_for(hero, w.form, w.color, true)
-    } else {
-        Collected { voxels: Vec::new(), width: body.width, depth: body.depth, height: body.height }
+/// The shield off his back and strapped to his shield forearm, a little smaller: turned edge-on
+/// to his front, its face looking out from his side, the inside of it against the arm.
+fn strapped(back: &Collected, hero: HeroKind) -> Collected {
+    let (ax, ay, az, girth) = forearm(hero);
+    let span = |f: fn(&Voxel) -> i32| {
+        let lo = back.voxels.iter().map(f).min().unwrap_or(0);
+        let hi = back.voxels.iter().map(f).max().unwrap_or(0);
+        (lo, hi)
     };
-    build_layered_rig(&body, defs, &[("blade", &main, pivot("swordArm")), ("offhand", &off, pivot("shieldArm"))], HERO_VOXEL)
+    let (x0, x1) = span(|v| v.x);
+    let (y0, y1) = span(|v| v.y);
+    let (_, inner) = span(|v| v.z);
+    let (cx, cy) = ((x0 + x1) as f32 / 2.0, (y0 + y1) as f32 / 2.0);
+    let at: std::collections::HashMap<(i32, i32, i32), Voxel> = back.voxels.iter().map(|v| ((v.x, v.y, v.z), *v)).collect();
+    let against = (ax - girth - 0.5).round() as i32;
+    // Each voxel of the smaller shield takes the colour of the one it shrank from (its face
+    // across his front and back, its height up his arm, its thickness out from his side).
+    let reach =
+        |lo: i32, hi: i32, c: f32| ((lo as f32 - c) * STRAPPED_SCALE).floor() as i32..=((hi as f32 - c) * STRAPPED_SCALE).ceil() as i32;
+    let mut voxels = Vec::new();
+    for dy in reach(y0, y1, cy) {
+        for dx in reach(x0, x1, cx) {
+            let (sx, sy) = ((cx + dx as f32 / STRAPPED_SCALE).round() as i32, (cy + dy as f32 / STRAPPED_SCALE).round() as i32);
+            for z in inner + 1 - SHIELD_THICK..=inner {
+                if let Some(v) = at.get(&(sx, sy, z)) {
+                    voxels.push(Voxel {
+                        x: against - (inner - z),
+                        y: (ay + dy as f32).round() as i32,
+                        z: (az + dx as f32).round() as i32,
+                        ..*v
+                    });
+                }
+            }
+        }
+    }
+    Collected { voxels, ..*back }
+}
+
+/// Turns a model of `width` left for right, so what he holds in his model's right fist (at its
+/// high x) is in his own right hand as he faces out of it.
+fn mirror(c: &mut Collected, width: i32) {
+    for v in c.voxels.iter_mut() {
+        v.x = width - 1 - v.x;
+    }
+}
+
+/**
+ * The detailed hero as he is played, and (if he carries a shield) as he holds it up before him.
+ * He has a weapon of his armory in his right hand (and its twin in his left, for a pair) and the
+ * shield of his tree on his left forearm. The weapons and the shield are layered parts ("blade",
+ * "offhand", "shield") that follow the arms, pivoting where the arms do. Raised, he is drawn
+ * without it, and the shield on its own as it hung on his back, to be turned and set before him.
+ */
+pub(super) fn hero_rigs(hero: HeroKind, kit: Kit) -> (Rig, Option<(Rig, Rig)>) {
+    let w = progression::node(hero, Tree::Armory, kit.blade);
+    let (mut body, defs) = hero_body(hero, Kit { shield: None, ..kit });
+    let (width, depth, height) = (body.width, body.depth, body.height);
+    let empty = || Collected { voxels: Vec::new(), width, depth, height };
+    let mut back = kit.shield.map(|_| back_shield(&hero_body(hero, kit).0, &body));
+    let mut arm = back.as_ref().map(|b| strapped(b, hero)).unwrap_or_else(empty);
+    let mut main = armory::weapon_for(hero, w.form, w.color, false);
+    let mut off = if armory::paired(w.form) { armory::weapon_for(hero, w.form, w.color, true) } else { empty() };
+    // He is sculpted with his weapon in the fist at the model's high x: his left as he faces out.
+    for c in [&mut body, &mut arm, &mut main, &mut off].into_iter().chain(back.as_mut()) {
+        mirror(c, width);
+    }
+    let defs: Vec<PartDef> = defs
+        .iter()
+        .map(|d| PartDef { name: d.name, boxes: d.boxes, pivot: [(width - 1) as f32 - d.pivot[0], d.pivot[1], d.pivot[2]] })
+        .collect();
+    let pivot = |name: &str| defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3]);
+    let (sword, shield) = (pivot("swordArm"), pivot("shieldArm"));
+    let rig = |arm: &Collected| {
+        build_layered_rig(&body, &defs, &[("blade", &main, sword), ("offhand", &off, shield), ("shield", arm, shield)], HERO_VOXEL)
+    };
+    let raised = back.map(|b| (rig(&empty()), build_rig(&b, &[], HERO_VOXEL)));
+    (rig(&arm), raised)
 }
 
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
@@ -149,8 +222,7 @@ impl WorldView {
     pub(super) fn refit_hero(&mut self, hero: HeroKind, h: &Hero) {
         let key = (hero, Kit::of(h));
         if key != self.models.hero_key {
-            self.models.hero = hero_model_kit(key.0, key.1);
-            self.models.raised = raised_shield(key.0, key.1);
+            (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1);
             self.models.thrown = thrown_model(key.0, key.1.blade);
             if key.0 != self.models.hero_key.0 {
                 // Another hero's joints sit elsewhere: start his pose afresh.

@@ -542,7 +542,8 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     if tree == Tree::Shield {
         let wd = progression::ward(tier);
         let extra = if tier >= 4 { "   KEEPS EVERY GIFT OF THE SHIELDS BEFORE IT" } else { "" };
-        o.text(&format!("DURABILITY {}{extra}", wd.durability), c[0] + pad, ey + t * 0.1, small * 0.8, rgba(SAND, 1.0), Align::Left, false);
+        let line = format!("DURABILITY {}   +{} HEALTH{extra}", wd.durability, wd.vigor);
+        o.text(&line, c[0] + pad, ey + t * 0.1, small * 0.8, rgba(SAND, 1.0), Align::Left, false);
     }
 
     // Its standing: owned, the way to it, or what stands in the way.

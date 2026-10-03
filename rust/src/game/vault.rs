@@ -537,7 +537,8 @@ mod tests {
             g.update(STEP);
         }
         assert_eq!(g.brawl.as_ref().unwrap().stats.blocks, 1, "{:?}", g.brawl.as_ref().unwrap().stats);
-        assert_eq!(g.hero.hp, hp, "the guard took the blow");
+        // (Only the health the shield itself gave him went with it.)
+        assert_eq!(g.hero.hp, hp.min(g.hero.max_hp), "the guard took the blow");
         assert!(g.hero.shield.is_none(), "and wore through");
         assert!(g.progress.hero(g.hero_kind).is_broken(tier), "struck off until the old man reforges it");
         let guard = g.brawl.as_ref().unwrap().kit.guard;

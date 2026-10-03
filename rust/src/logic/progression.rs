@@ -845,6 +845,8 @@ pub struct Ward {
     pub thorns: i32,
     /// Health each block gives back.
     pub aegis: i32,
+    /// Health it adds to his own while it is on his arm.
+    pub vigor: i32,
 }
 
 pub fn ward(tier: u8) -> Ward {
@@ -852,6 +854,7 @@ pub fn ward(tier: u8) -> Ward {
     const BLOCK: [f64; 10] = [0.4, 0.48, 0.52, 0.56, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85];
     const DURABILITY: [i32; 10] = [40, 70, 90, 120, 150, 180, 220, 260, 300, 360];
     const MEND: [f64; 10] = [0.0, 0.0, 1.0, 1.0, 1.0, 1.5, 1.5, 2.0, 2.0, 3.0];
+    const VIGOR: [i32; 10] = [5, 10, 15, 20, 25, 30, 35, 40, 50, 60];
     let i = (t - 1) as usize;
     Ward {
         block: BLOCK[i],
@@ -864,6 +867,7 @@ pub fn ward(tier: u8) -> Ward {
         unbreakable: t >= 8,
         thorns: if t >= 9 { 2 } else { 0 },
         aegis: if t >= 10 { 5 } else { 0 },
+        vigor: VIGOR[i],
     }
 }
 

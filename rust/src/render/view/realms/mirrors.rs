@@ -321,6 +321,7 @@ impl WorldView {
         triumph.rot_x(&statue, "blade", -2.9);
         triumph.rot_x(&statue, "shieldArm", -0.5);
         triumph.rot_x(&statue, "offhand", -0.5);
+        triumph.rot_x(&statue, "shield", -0.5);
         triumph.rot_x(&statue, "head", -0.25);
         let art = Box::new(Art { throne: decor::throne(), statue, triumph });
         MirrorsView { poses: VecDeque::new(), warps: r.warps, windows, chandeliers, art }

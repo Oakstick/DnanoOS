@@ -324,8 +324,9 @@ fn mehmed_is_slow_and_sturdy_and_hits_hard_miyamoto_quick_and_frail_and_strikes_
     else {
         unreachable!()
     };
-    assert_eq!((r_max, m_max, y_max), (100, 120, 80), "health 1 : 1.2 : 0.8");
-    assert_eq!((r_hp, m_hp), (100, 120), "and each begins with it full");
+    // (Each with his first shield on his arm, which adds its 5.)
+    assert_eq!((r_max, m_max, y_max), (105, 125, 85), "health 1 : 1.2 : 0.8");
+    assert_eq!((r_hp, m_hp), (105, 125), "and each begins with it full");
     assert!((m_speed / r_speed - 0.9).abs() < 1e-9 && (y_speed / r_speed - 1.1).abs() < 1e-9, "speed 1 : 0.9 : 1.1");
     assert!(m_blow > r_blow && y_blow == r_blow, "Mehmed hits harder: {m_blow} against {r_blow}");
     // Miyamoto's blade waits a fifth less than it would for anyone else.
