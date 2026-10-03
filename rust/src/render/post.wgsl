@@ -6,10 +6,8 @@
 //   bloom_*    glow: bright parts, shrunk down a chain of textures and grown back
 //   composite  color x contact shading, background blur, glow, grading, vignette
 //
-// The scene color arrives tone mapped and sRGB encoded; glow and blur mix in
-// (approximately) linear light and encode again at the end. In linear HDR (`--hdr`,
-// moon.w = 1) it arrives as light: glow is taken from that light, and the composite
-// tone maps and encodes it, once.
+// The scene color arrives as light (linear HDR, times the exposure): glow is taken from it,
+// and the composite tone maps and encodes it, once.
 
 struct Post {
     view_proj: mat4x4<f32>,
@@ -19,7 +17,7 @@ struct Post {
     cam_u: vec4<f32>,     // up, scaled to the screen edge; w: blur is full this far behind focus
     params: vec4<f32>,    // contact radius, contact strength, glow strength, blur max px at 1080p (0 = off)
     params2: vec4<f32>,   // glow threshold, vignette, time, grading
-    moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through; w 1 for linear HDR
+    moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through
 };
 
 @group(0) @binding(0) var<uniform> p: Post;
@@ -123,31 +121,16 @@ fn fs_blur(in: POut) -> @location(0) vec4<f32> {
 
 // ------------------------------------------------------------------ glow
 
-fn to_lin(c: vec3<f32>) -> vec3<f32> {
-    return pow(max(c, vec3<f32>(0.0)), vec3<f32>(2.2));
-}
-
-fn hdr_on() -> bool {
-    return p.moon.w > 0.5;
-}
-
-// What glows (the bloom's and the shafts' input): the scene as display light. In HDR that is the
-// light tone mapped, so a brightly lit floor, holding many times the threshold's light, glows as
-// much as it did and does not swallow what stands on it; the glow still joins the light before
-// the final tone map.
+// What glows (the bloom's and the shafts' input): the light tone mapped, so a brightly lit
+// floor, holding many times the threshold's light, glows as much as it looks bright and does
+// not swallow what stands on it. The glow still joins the light before the final tone map.
 fn glow_light(c: vec3<f32>) -> vec3<f32> {
-    if (hdr_on()) {
-        return aces_filmic(max(c, vec3<f32>(0.0)));
-    }
-    return to_lin(c);
+    return aces_filmic(max(c, vec3<f32>(0.0)));
 }
 
-// The scene's colour as light to blur and composite: decoded from display, or as it is in HDR.
+// The scene's colour as light to blur and composite.
 fn scene_light(c: vec3<f32>) -> vec3<f32> {
-    if (hdr_on()) {
-        return max(c, vec3<f32>(0.0));
-    }
-    return to_lin(c);
+    return max(c, vec3<f32>(0.0));
 }
 
 // The scene shader's tone curve (ACES filmic as Three.js fits it) and sRGB encoding, for HDR.
@@ -300,10 +283,7 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
     }
 
     lin += textureSampleLevel(t3, samp, in.uv, 0.0).rgb * p.params.z;
-    var col = pow(max(lin, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
-    if (hdr_on()) {
-        col = to_srgb(aces_filmic(lin));
-    }
+    var col = to_srgb(aces_filmic(lin));
 
     // Grading: a touch more saturation and contrast, cool shadows, warm highlights.
     let grade = p.params2.w;

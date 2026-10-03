@@ -19,7 +19,7 @@ struct Globals {
     cam_fwd: vec4<f32>,    // xyz camera forward; w shadow map texel size in uv
     fog: vec4<f32>,        // rgb fog color (sRGB), w near
     params: vec4<f32>,     // x fog far, y exposure, z nugget pulse, w light count
-    hemi_sky: vec4<f32>,    // w: 1 when the scene is drawn in linear HDR (`gpu::Gpu::hdr`)
+    hemi_sky: vec4<f32>,
     hemi_ground: vec4<f32>, // w, and ambient.w and moon_dir.w: the fog as linear light, for HDR
     ambient: vec4<f32>,
     moon_dir: vec4<f32>,
@@ -490,37 +490,21 @@ fn aces_filmic(c_in: vec3<f32>, exposure: f32) -> vec3<f32> {
     return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-fn to_srgb(c: vec3<f32>) -> vec3<f32> {
-    let hi = pow(c, vec3<f32>(0.41666)) * 1.055 - vec3<f32>(0.055);
-    let lo = c * 12.92;
-    return select(hi, lo, c <= vec3<f32>(0.0031308));
-}
-
 // ------------------------------------------------------------ output (RP13)
 //
-// Two ways to hand a colour to the scene target. Display (the original look): every surface
-// is tone mapped and sRGB encoded here, fog is mixed in that display space, and see-through
-// things blend there too. Linear HDR (`--hdr`): the target holds light itself (times the
-// exposure); fog and blending happen in light, and the composite tone maps and encodes once.
-
-fn hdr_on() -> bool {
-    return g.hemi_sky.w > 0.5;
-}
+// The scene target holds light itself (linear, times the exposure, in half floats): fog, alpha
+// blending and additive effects mix as light, and the composite tone maps and encodes once.
+// Colours made to look a certain way on screen (the sky, the fog's colour) become the light
+// that tone maps to them, so they look as they were drawn.
 
 // Worked-out light (linear radiance) as the target holds it.
 fn finish(col: vec3<f32>) -> vec3<f32> {
-    if (hdr_on()) {
-        return max(col, vec3<f32>(0.0)) * g.params.y;
-    }
-    return to_srgb(aces_filmic(col, g.params.y));
+    return max(col, vec3<f32>(0.0)) * g.params.y;
 }
 
-// `c` from `finish`, a fraction `f` of the way into the fog.
+// `c` from `finish`, a fraction `f` of the way into the fog (as light: see `gpu::untonemap`).
 fn fogged(c: vec3<f32>, f: f32) -> vec3<f32> {
-    if (hdr_on()) {
-        return mix(c, vec3<f32>(g.hemi_ground.w, g.ambient.w, g.moon_dir.w), f);
-    }
-    return mix(c, g.fog.rgb, f);
+    return mix(c, vec3<f32>(g.hemi_ground.w, g.ambient.w, g.moon_dir.w), f);
 }
 
 fn srgb_to_lin(c: vec3<f32>) -> vec3<f32> {
@@ -541,10 +525,7 @@ fn untonemap(t: vec3<f32>) -> vec3<f32> {
 
 // A colour made to look a certain way on screen (the sky, sRGB) as the target holds it.
 fn from_display(srgb: vec3<f32>) -> vec3<f32> {
-    if (hdr_on()) {
-        return untonemap(srgb_to_lin(srgb));
-    }
-    return srgb;
+    return untonemap(srgb_to_lin(srgb));
 }
 
 fn bayer4(p: vec2<f32>) -> f32 {
@@ -965,9 +946,9 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
 // of haze would look).
 fn glow_orb(in: VOut) -> FOut {
     let r2 = min(dot(in.local.xy, in.local.xy), 1.0);
-    // Added as light (HDR), a halo's faint rim shows far more than added as display colour did;
-    // a steeper falloff keeps it the size it was drawn.
-    let k = pow(1.0 - r2, select(1.5, 4.0, hdr_on()));
+    // Added as light, a halo's faint rim shows far more than added as display colour did; a
+    // steep falloff keeps it the size it was drawn.
+    let k = pow(1.0 - r2, 4.0);
     let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
     var out: FOut;
     out.color = vec4<f32>(finish(in.color.rgb), in.color.a * k * (1.0 - fog_f * 0.8));

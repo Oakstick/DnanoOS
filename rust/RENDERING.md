@@ -84,12 +84,12 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
   lower GPU time in the Garden (5.2–6.2 ms either way). After the prepass and back-face skipping, far
   scenery is cheap. Revisit on the vista and top-down cameras and on the GTX 1080.
 
-### RP13: linear HDR, behind a switch
+### RP13: linear HDR (the default since approval)
 
-`--hdr` (the game, `--capture` and `--perf`) draws the scene in linear HDR. Without it, the look is
-exactly what it was: per-surface tone mapping into an 8-bit target, with the same maths and pixels.
+Approved on 3 October 2026 from the side-by-side captures, then made the only path: the old
+per-surface tone mapping into an 8-bit target is gone, and so is the `--hdr` switch.
 
-**With `--hdr`:**
+**How it works:**
 - **Target:** half floats holding light times the exposure (`shaders.wgsl`, output section: `finish`,
   `fogged`, `from_display`).
 - **Fog and blending in light:** fog, alpha blending and additive effects all mix in linear light. The
@@ -110,8 +110,7 @@ job.
 memory clock it was 13–22%: the float target doubles the 4× MSAA colour traffic. Check it on the GTX 1080.
 
 **Not in this step:** AO still multiplies all light (RP15 moves it to indirect light only); HDR monitor
-output is a separate feature; there is no in-game toggle yet, because the switch rebuilds the
-pipelines (about 3 s), so it is a launch option.
+output is a separate feature.
 
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
@@ -170,8 +169,7 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13 is built behind `--hdr` and waits for art approval; then make it the default
-  and drop the display path.
+- **D, lighting:** RP13 is done and the default.
   - Then RP14 (GGX materials, prefiltered reflections), RP15 (AO on indirect light only, an audit of the
     MSAA normal/depth resolve), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
 - **E, world systems:**

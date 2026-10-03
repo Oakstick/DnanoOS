@@ -28,7 +28,7 @@
 //! chart) under that light; `--fx-off shadows,lights,grass,materials,fog,ao,bloom,dof,grade,prepass,mist`
 //! switches effects off to see what each adds; `--frame-stats` lists what the view emitted;
 //! `--lod-bias B` drops rigs' detail sooner (B > 1) or never (0), and `--lod-debug` tints each
-//! level of detail (whole, half green, quarter red); `--hdr` draws the scene in linear HDR (RP13).
+//! level of detail (whole, half green, quarter red).
 
 use crate::app::STEP;
 use crate::audio::synth::Synth;
@@ -296,7 +296,7 @@ pub fn run(args: &[String]) -> i32 {
     let script = parse_script(arg(args, "--script").unwrap_or(""));
 
     let started = std::time::Instant::now();
-    let mut gpu = match pollster::block_on(Gpu::new(None, (w, h), args.iter().any(|a| a == "--hdr"))) {
+    let mut gpu = match pollster::block_on(Gpu::new(None, (w, h))) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("{e}");
