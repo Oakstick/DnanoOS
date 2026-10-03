@@ -167,31 +167,37 @@ pub fn cottage(out: &mut Vec<Instance>, x0: i32, z0: i32, x1: i32, z1: i32, lean
         Vec3::ZERO,
         SHADE_WOOD,
     ));
-    // The roof: thatch in layers either side of the ridge, sagging in the middle, holed.
+    // The roof: thatch laid in courses up either slope, bundles of uneven length, sagging in the
+    // middle, rotten through in places and grown over with moss.
     let pitch = 0.75f32;
     let half = wide / 2.0 + 0.2;
     let slope = (half * half + (half * pitch.tan()).powi(2)).sqrt();
-    let segs = (len / 0.4).ceil() as i32;
-    for k in 0..segs {
-        let t = (k as f32 + 0.5) / segs as f32;
-        let x = -len / 2.0 - 0.15 + (len + 0.3) * t;
-        let sag = (PI * t).sin() * 0.16;
-        if h(seed + k as f32, 9.0) > 0.86 {
-            continue; // a hole in the thatch
-        }
-        for side in [-1.0f32, 1.0] {
-            let rise = half * pitch.tan();
-            let m = root
-                * Mat4::from_translation(Vec3::new(x, wall_h + rise / 2.0 - sag, side * half / 2.0))
-                * Mat4::from_rotation_x(side * pitch);
-            let c = [THATCH, THATCH_D, THATCH_L][(h(seed + k as f32, side) * 3.0) as usize % 3];
-            out.push(Instance::new(
-                m * Mat4::from_scale(Vec3::new(len / segs as f32 + 0.06, 0.16, slope)),
-                lin(c),
-                1.0,
-                Vec3::ZERO,
-                SHADE_LIT,
-            ));
+    let rise = half * pitch.tan();
+    let segs = (len / 0.34).ceil() as i32;
+    let rows = 5;
+    for side in [-1.0f32, 1.0] {
+        let plane =
+            root * Mat4::from_translation(Vec3::new(0.0, wall_h + rise / 2.0, side * half / 2.0)) * Mat4::from_rotation_x(side * pitch);
+        for row in 0..rows {
+            let v = (row as f32 + 0.5) / rows as f32 - 0.5;
+            for k in 0..segs {
+                let t = (k as f32 + 0.5) / segs as f32;
+                let hk = h(seed + k as f32 + side * 31.0, row as f32);
+                if hk > 0.93 && row > 0 && row < rows - 1 {
+                    continue; // rotten through
+                }
+                let x = -len / 2.0 - 0.15 + (len + 0.3) * t;
+                let sag = (PI * t).sin() * 0.14 * (1.0 - v.abs());
+                let c = if hk < 0.12 { MOSS } else { [THATCH, THATCH, THATCH_D, THATCH_L][(hk * 37.0) as usize % 4] };
+                let m = plane * Mat4::from_translation(Vec3::new(x + (hk - 0.5) * 0.06, -sag, v * slope * side));
+                out.push(Instance::new(
+                    m * Mat4::from_scale(Vec3::new((len + 0.3) / segs as f32 + 0.04, 0.14 + hk * 0.04, slope / rows as f32 + 0.05)),
+                    lin(c),
+                    1.0,
+                    Vec3::ZERO,
+                    if c == MOSS { SHADE_FUR } else { SHADE_LIT },
+                ));
+            }
         }
     }
     rbx(out, root, Vec3::new(0.0, wall_h + half * pitch.tan() - 0.05, 0.0), Vec3::new(len + 0.3, 0.12, 0.18), THATCH_D, SHADE_LIT);

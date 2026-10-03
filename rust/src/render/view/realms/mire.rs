@@ -31,11 +31,11 @@ mod pal {
     pub const PEAT_SIDE: u32 = 0x1e1a16;
     pub const GRASS: u32 = 0x8a9086;
     pub const GRASS_D: u32 = 0x6a7068;
-    pub const MOSS: u32 = 0x5c6b4a;
-    pub const MOSS_L: u32 = 0x76875c;
-    pub const MOSS_D: u32 = 0x45513a;
-    pub const PILLOW: u32 = 0x7f9462;
-    pub const PILLOW_L: u32 = 0x98ab78;
+    pub const MOSS: u32 = 0x5d6650;
+    pub const MOSS_L: u32 = 0x737e62;
+    pub const MOSS_D: u32 = 0x474e3d;
+    pub const PILLOW: u32 = 0x7a8c62;
+    pub const PILLOW_L: u32 = 0x92a276;
     pub const FLOWER: u32 = 0xe8e4d8;
     pub const MUD: u32 = 0x2a2219;
     pub const MUD_L: u32 = 0x3a2f22;
@@ -227,8 +227,11 @@ impl WorldView {
                                 SHADE_FUR,
                             );
                         }
-                        if hh < 0.3 {
-                            tuft(out, Vec3::new(xf + (hh - 0.15) * 2.0, STEP, zf), seed, GRASS);
+                        if hh < 0.45 {
+                            tuft(out, Vec3::new(xf + (hh - 0.22) * 2.0, STEP, zf - 0.2), seed, if hh < 0.2 { GRASS } else { GRASS_D });
+                        }
+                        if (0.6..0.66).contains(&hh) {
+                            bx(out, Vec3::new(xf - 0.2, STEP + 0.05, zf + 0.25), Vec3::new(0.26, 0.1, 0.2), seed, STONE, SHADE_LIT);
                         }
                     }
                     self.water_edge(r, w);
