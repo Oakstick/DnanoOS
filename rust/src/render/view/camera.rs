@@ -340,6 +340,16 @@ impl WorldView {
         }
     }
 
+    /// How rigs choose their level of detail under this camera (see `LodPolicy`).
+    pub fn lod_policy(&self) -> LodPolicy {
+        let half_px = self.viewport_h.max(1.0) * 0.5;
+        let (px_per_unit, ortho) = match self.map_view {
+            Some(half) => (half_px / half.max(0.01), true),
+            None => (half_px / (FOV_DEGREES.to_radians() * 0.5).tan(), false),
+        };
+        LodPolicy { eye: self.camera_position(), px_per_unit, ortho, bias: self.lod_bias, debug: self.lod_debug }
+    }
+
     pub fn projection(&self) -> Mat4 {
         if let Some(half) = self.map_view {
             let hw = half * self.aspect.max(0.01);

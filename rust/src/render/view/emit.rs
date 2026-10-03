@@ -153,6 +153,9 @@ impl WorldView {
         }
         f.skip_static = self.showcase || self.forge || self.select.is_some() || self.story.is_some();
         f.time = s.time as f32;
+        let lod = self.lod_policy();
+        f.rigs.lod = lod;
+        f.rigs_blend.lod = lod;
         if self.lookdev.is_some() {
             self.emit_lookdev(s, f);
             return;
@@ -374,7 +377,7 @@ impl WorldView {
             let group = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw);
             if v.visible {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
-                let rig = self.models.foe_at(v.rig, v.group_pos.distance(self.cam_pos));
+                let rig = self.models.rig(v.rig);
                 emit_rig(&mut f.rigs, rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
                 if v.eye > 0.0 {
                     if let Some(h) = rig.index("head") {

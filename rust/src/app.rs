@@ -225,6 +225,7 @@ impl App {
         let logical = (size.width as f32 / scale, size.height as f32 / scale);
         self.game.viewport = logical;
         self.game.view.aspect = size.width as f32 / size.height as f32;
+        self.game.view.viewport_h = size.height as f32;
         let t = Instant::now();
         self.game.view.emit(&self.game.scene(), &mut self.frame);
         self.cpu.emit = t.elapsed().as_secs_f64() * 1e3;

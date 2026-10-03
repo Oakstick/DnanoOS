@@ -562,7 +562,7 @@ impl WorldView {
         }
 
         // ---- Elveskud: elf-maids dancing in a ring, their lovely faces outward, beckoning
-        let maid = &self.models.foes_far[RigId::Ellepige as usize];
+        let maid = self.models.rig(RigId::Ellepige).lod(1);
         for c in &r.dances {
             let centre = w(*c);
             if !near(centre) {
@@ -588,7 +588,7 @@ impl WorldView {
         }
 
         // ---- the fox's wedding: a foxfire procession crossing the court, now and then
-        let fox = &self.models.foes_far[RigId::Kitsune as usize];
+        let fox = self.models.rig(RigId::Kitsune).lod(1);
         let cycle = (time / 34.0).fract() * 34.0;
         if cycle < 16.0 {
             let (a, b) = (w(r.procession.0), w(r.procession.1));

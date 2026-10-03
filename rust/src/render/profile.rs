@@ -219,6 +219,8 @@ pub struct FrameCounts {
     /// Rigs drawn from their resident voxels, and the voxels they cover.
     pub rigs: u32,
     pub rig_voxels: u64,
+    /// Rigs drawn whole, at half and at a quarter of their resolution.
+    pub rig_levels: [u32; 3],
 }
 
 impl FrameCounts {
@@ -274,9 +276,12 @@ pub fn readout(cpu: &CpuTimes, counts: &FrameCounts, timer: Option<&GpuTimer>) -
             counts.shadow_static as f64 / 1e3
         ),
         format!(
-            "rigs {} ({:.1}k voxels), lights {} ({} dropped)",
+            "rigs {} ({:.1}k voxels; detail {}/{}/{}), lights {} ({} dropped)",
             counts.rigs,
             counts.rig_voxels as f64 / 1e3,
+            counts.rig_levels[0],
+            counts.rig_levels[1],
+            counts.rig_levels[2],
             counts.lights,
             counts.lights_dropped
         ),

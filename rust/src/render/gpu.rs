@@ -14,7 +14,7 @@ use wgpu::util::DeviceExt;
 use super::faces::StaticFaces;
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
 use super::profile::{fx, FrameCounts, GpuTimer};
-use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, WorldView, FAR, MESH_KINDS};
+use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS};
 use super::voxels::{RigMesh, RigVertex};
 
 const MAX_LIGHTS: usize = 32;
@@ -1626,7 +1626,13 @@ impl Gpu {
             if let Some(bind) = rig_bind.as_ref().filter(|_| rig_split > 0) {
                 pass.set_pipeline(&self.rig_shadow);
                 pass.set_bind_group(1, bind, &[]);
-                self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+                // The near cascade shades the rigs on screen, so it keeps their very level (self-shadow
+                // stays aligned); the coarse far cascade takes each a level coarser.
+                if c == 0 {
+                    self.draw_rigs(&mut pass, &frame.rigs.meshes, 0, &mut counts);
+                } else {
+                    self.draw_rigs(&mut pass, &frame.rigs.far_meshes, rig_total, &mut counts);
+                }
             }
         }
 
@@ -1693,7 +1699,7 @@ impl Gpu {
             }
             if prepass && rig_split > 0 {
                 pass.set_pipeline(&self.rig_prepass);
-                self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+                self.draw_rigs(&mut pass, &frame.rigs.meshes, 0, &mut counts);
             }
             if !main_faces.is_empty() {
                 self.draw_faces(&mut pass, &self.face_opaque, &main_faces, &mut counts);
@@ -1711,7 +1717,7 @@ impl Gpu {
             for &(pipe, mesh, start, count) in &ranges {
                 if pipe > 0 && !rigs_done {
                     pass.set_pipeline(&self.rig_opaque);
-                    self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+                    self.draw_rigs(&mut pass, &frame.rigs.meshes, 0, &mut counts);
                     rigs_done = true;
                 }
                 // See-through sets and rigs come at the end of the see-through cubes, where they were listed
@@ -1735,7 +1741,7 @@ impl Gpu {
             }
             if !rigs_done {
                 pass.set_pipeline(&self.rig_opaque);
-                self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+                self.draw_rigs(&mut pass, &frame.rigs.meshes, 0, &mut counts);
             }
             if !blend_done {
                 self.draw_blend_sets_and_rigs(&mut pass, frame, rig_split, &mut counts);
@@ -1833,11 +1839,19 @@ impl Gpu {
         }
         let mut draws: Vec<RigDraw> = Vec::with_capacity(total);
         let mut parts: Vec<[f32; 16]> = Vec::new();
+        // Records: the solid rigs, the see-through ones, then the solid ones again a level coarser
+        // for the far shadow cascade (sharing the solid rigs' matrices).
         for list in lists {
             let base = parts.len() as u32;
             draws.extend(list.draws.iter().map(|d| RigDraw { part_base: d.part_base + base, ..*d }));
             parts.extend_from_slice(&list.parts);
-            for mesh in &list.meshes {
+            for (k, n) in list.levels.iter().enumerate() {
+                counts.rig_levels[k] += n;
+            }
+        }
+        draws.extend_from_slice(&frame.rigs.far_draws);
+        for mesh in frame.rigs.meshes.iter().chain(&frame.rigs_blend.meshes).chain(&frame.rigs.far_meshes) {
+            {
                 let device = &self.device;
                 let buf = self.rig_meshes.entry(mesh.id).or_insert_with(|| {
                     counts.upload +=
@@ -1845,9 +1859,11 @@ impl Gpu {
                     rig_buf(device, mesh)
                 });
                 buf.used = now;
-                counts.rigs += 1;
-                counts.rig_voxels += mesh.voxels as u64;
             }
+        }
+        for mesh in frame.rigs.meshes.iter().chain(&frame.rigs_blend.meshes) {
+            counts.rigs += 1;
+            counts.rig_voxels += mesh.voxels as u64;
         }
         draws.truncate(MAX_RIG_DRAWS as usize);
         let (d, p): (&[u8], &[u8]) = (bytemuck::cast_slice(&draws), bytemuck::cast_slice(&parts));
@@ -1927,14 +1943,14 @@ impl Gpu {
         }
         if !frame.rigs_blend.is_empty() {
             pass.set_pipeline(&self.rig_blend);
-            self.draw_rigs(pass, &frame.rigs_blend, rig_split, counts);
+            self.draw_rigs(pass, &frame.rigs_blend.meshes, rig_split, counts);
         }
     }
 
     /// Draws a list of rigs with the pipeline already set; `first` is the list's first record.
-    fn draw_rigs(&self, pass: &mut wgpu::RenderPass<'_>, list: &RigList, first: u32, counts: &mut FrameCounts) {
+    fn draw_rigs(&self, pass: &mut wgpu::RenderPass<'_>, meshes: &[std::sync::Arc<RigMesh>], first: u32, counts: &mut FrameCounts) {
         pass.set_vertex_buffer(1, self.rig_ids.slice(..));
-        for (k, mesh) in list.meshes.iter().enumerate() {
+        for (k, mesh) in meshes.iter().enumerate() {
             let id = first + k as u32;
             let Some(buf) = self.rig_meshes.get(&mesh.id).filter(|_| id < MAX_RIG_DRAWS) else { continue };
             pass.set_vertex_buffer(0, buf.vertices.slice(..));

@@ -122,31 +122,123 @@ pub struct RigDraw {
     pub size: f32,
 }
 
-/// Rigs to draw this frame: each one's mesh, its draw record, and the posed parts' matrices.
+/**
+ * How rigs choose their level of detail (RP12): by how many pixels one of their voxels covers
+ * under this frame's camera. Below `LOD_FINE` pixels the rig drops to half the resolution, below
+ * `LOD_COARSE` to a quarter: each level is used while its own voxels stay under about four
+ * pixels (as the old rule of coarse foes past six units did at 1080p, now for any rig, camera and
+ * screen). Coming back up wants 20% more than going down, so a rig at the edge does not flicker.
+ */
+#[derive(Clone, Copy, Debug)]
+pub struct LodPolicy {
+    pub eye: Vec3,
+    /// Pixels a world unit covers one unit from a perspective camera, or anywhere under the map's orthographic one.
+    pub px_per_unit: f32,
+    pub ortho: bool,
+    /// Higher drops detail sooner (a lower preset); 0 keeps every rig whole.
+    pub bias: f32,
+    /// Tints each level (whole, half, quarter) to see where they switch.
+    pub debug: bool,
+}
+
+impl Default for LodPolicy {
+    fn default() -> Self {
+        Self { eye: Vec3::ZERO, px_per_unit: 1000.0, ortho: false, bias: 1.0, debug: false }
+    }
+}
+
+pub const LOD_FINE: f32 = 2.0;
+pub const LOD_COARSE: f32 = 1.0;
+const LOD_RETURN: f32 = 1.2;
+
+impl LodPolicy {
+    /// Pixels a voxel `size` across covers at `at`.
+    pub fn pixels(&self, size: f32, at: Vec3) -> f32 {
+        if self.ortho {
+            size * self.px_per_unit
+        } else {
+            size * self.px_per_unit / at.distance(self.eye).max(0.05)
+        }
+    }
+
+    /// The level for `px` pixels a voxel, coming from level `was` (if it was drawn last frame).
+    pub fn level(&self, px: f32, was: Option<u8>) -> u8 {
+        if self.bias <= 0.0 {
+            return 0;
+        }
+        let px = px / self.bias;
+        let threshold = |l: u8| if l == 1 { LOD_FINE } else { LOD_COARSE };
+        let target = if px < LOD_COARSE {
+            2
+        } else if px < LOD_FINE {
+            1
+        } else {
+            0
+        };
+        match was {
+            Some(mut l) if target < l => {
+                while l > target && px > threshold(l) * LOD_RETURN {
+                    l -= 1;
+                }
+                l
+            }
+            _ => target,
+        }
+    }
+}
+
+/// Rigs to draw this frame: each one's mesh, its draw record, and the posed parts' matrices;
+/// the same again one level coarser for the far shadow cascade; and the level each rig was
+/// drawn at last time (by rig and by its turn among that rig's draws), for the hysteresis.
 #[derive(Default)]
 pub struct RigList {
     pub meshes: Vec<std::sync::Arc<RigMesh>>,
     pub draws: Vec<RigDraw>,
     pub parts: Vec<[f32; 16]>,
+    pub far_meshes: Vec<std::sync::Arc<RigMesh>>,
+    pub far_draws: Vec<RigDraw>,
+    pub lod: LodPolicy,
+    /// How many rigs went out at each level this frame.
+    pub levels: [u32; 3],
+    memory: std::collections::HashMap<(u64, u32), (u8, u64)>,
+    turns: std::collections::HashMap<u64, u32>,
+    frame: u64,
 }
 
 impl RigList {
-    /// Poses `rig` at `root` and queues it. See-through, it is drawn with every face (`Rig::mesh_whole`).
+    /// Poses `rig` at `root` and queues it at the level of detail its size on screen calls for.
+    /// See-through, it is drawn with every face (`Rig::mesh_whole`).
     #[allow(clippy::too_many_arguments)]
     pub(super) fn push(&mut self, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3, look: u32, rust: f32) {
-        let mesh = if alpha < 1.0 { rig.mesh_whole() } else { rig.mesh() };
+        let turn = self.turns.entry(rig.id()).or_insert(0);
+        let key = (rig.id(), *turn);
+        *turn += 1;
+        let scale = root.x_axis.truncate().length();
+        let px = self.lod.pixels(rig.size * scale, root.w_axis.truncate());
+        let level = self.lod.level(px, self.memory.get(&key).filter(|m| m.1 + 1 >= self.frame).map(|m| m.0));
+        self.memory.insert(key, (level, self.frame));
+        self.levels[level as usize] += 1;
+        let tint =
+            if self.lod.debug { tint * [Vec3::ONE, Vec3::new(0.5, 1.4, 0.5), Vec3::new(1.5, 0.45, 0.45)][level as usize] } else { tint };
+        let shown = rig.lod(level);
+        let mesh = if alpha < 1.0 { shown.mesh_whole() } else { shown.mesh() };
         let part_base = self.parts.len() as u32;
         for i in 0..rig.parts.len() {
             self.parts.push((root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i])).to_cols_array());
         }
-        self.draws.push(RigDraw {
+        let draw = RigDraw {
             tint: [tint.x, tint.y, tint.z, alpha],
             emissive: [emissive.x, emissive.y, emissive.z, rust],
             part_base,
             look,
             rust_mask: mesh.rust_mask,
-            size: rig.size,
-        });
+            size: shown.size,
+        };
+        // The far cascade's texels are coarse: a level coarser casts the same shadow there.
+        let far = rig.lod((level + 1).min(LOD_LEVELS - 1));
+        self.far_draws.push(RigDraw { size: far.size, ..draw });
+        self.far_meshes.push(far.mesh());
+        self.draws.push(draw);
         self.meshes.push(mesh);
     }
 
@@ -154,6 +246,16 @@ impl RigList {
         self.meshes.clear();
         self.draws.clear();
         self.parts.clear();
+        self.far_meshes.clear();
+        self.far_draws.clear();
+        self.levels = [0; 3];
+        self.turns.clear();
+        self.frame += 1;
+        // Forget rigs not drawn for a while.
+        if self.frame.is_multiple_of(120) {
+            let now = self.frame;
+            self.memory.retain(|_, m| m.1 + 120 > now);
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -288,5 +390,37 @@ impl Frame {
         self.additive.clear();
         self.glow.clear();
         self.lights.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn levels_follow_the_pixels_a_voxel_covers_with_a_margin_to_come_back() {
+        let lod = LodPolicy::default();
+        assert_eq!(lod.level(5.0, None), 0);
+        assert_eq!(lod.level(1.5, None), 1);
+        assert_eq!(lod.level(0.7, None), 2);
+        // Dropping is at once; coming back wants 20% more than the threshold.
+        assert_eq!(lod.level(1.9, Some(0)), 1);
+        assert_eq!(lod.level(2.1, Some(1)), 1, "just over: stays coarse");
+        assert_eq!(lod.level(2.5, Some(1)), 0);
+        assert_eq!(lod.level(1.1, Some(2)), 2);
+        assert_eq!(lod.level(3.0, Some(2)), 0, "far over both: straight back to whole");
+        // A higher bias drops sooner; none keeps every rig whole.
+        assert_eq!(LodPolicy { bias: 1.5, ..lod }.level(2.5, None), 1);
+        assert_eq!(LodPolicy { bias: 0.0, ..lod }.level(0.1, None), 0);
+    }
+
+    #[test]
+    fn a_voxel_covers_fewer_pixels_further_off_but_not_under_the_map_camera() {
+        let lod = LodPolicy { px_per_unit: 1000.0, ..LodPolicy::default() };
+        let near = lod.pixels(0.01, Vec3::new(0.0, 0.0, 2.0));
+        let far = lod.pixels(0.01, Vec3::new(0.0, 0.0, 8.0));
+        assert!((near - 5.0).abs() < 1e-4 && (far - 1.25).abs() < 1e-4);
+        let map = LodPolicy { ortho: true, px_per_unit: 50.0, ..lod };
+        assert_eq!(map.pixels(0.01, Vec3::new(0.0, 0.0, 2.0)), map.pixels(0.01, Vec3::new(0.0, 0.0, 80.0)));
     }
 }

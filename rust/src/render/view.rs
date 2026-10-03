@@ -66,8 +66,8 @@ pub use fade::TREE_FADE_MIN;
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{
-    glow_orb, rig_look, Atmosphere, Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, MESH_KINDS, SHADE_CLOUD, SHADE_DITHER,
-    SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
+    glow_orb, rig_look, Atmosphere, Frame, Instance, InstanceSet, Light, LodPolicy, MeshKind, RigDraw, RigList, MESH_KINDS, SHADE_CLOUD,
+    SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
 };
 pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;
@@ -190,6 +190,12 @@ pub struct WorldView {
     /// True while the mouse is captured; otherwise the view trails his heading.
     pub mouse_look: bool,
     pub aspect: f32,
+    /// The screen's height in pixels, for how big things are on it (levels of detail).
+    pub viewport_h: f32,
+    /// Levels of detail: how soon rigs drop detail (1 normal, higher sooner, 0 never) and
+    /// whether each level is tinted to show where it switches.
+    pub lod_bias: f32,
+    pub lod_debug: bool,
     /// Title screen: the camera circles Ragnar instead of chasing him.
     pub showcase: bool,
     /// Free movement: the chase camera turns after him only while he runs straight ahead.
@@ -336,6 +342,9 @@ impl WorldView {
             cam_pitch: chase::REST_PITCH,
             mouse_look: false,
             aspect: 16.0 / 9.0,
+            viewport_h: 1080.0,
+            lod_bias: 1.0,
+            lod_debug: false,
             showcase: false,
             follow_heading: false,
             showcase_angle: 0.6,

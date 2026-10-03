@@ -26,7 +26,9 @@
 //! more draws of the same frame; `--all-heroes` shows the locked heroes in colour on the
 //! character screen. `--lookdev neutral|dungeon|realm:N` shows the Look Dev room (the material
 //! chart) under that light; `--fx-off shadows,lights,grass,materials,fog,ao,bloom,dof,grade,prepass,mist`
-//! switches effects off to see what each adds; `--frame-stats` lists what the view emitted.
+//! switches effects off to see what each adds; `--frame-stats` lists what the view emitted;
+//! `--lod-bias B` drops rigs' detail sooner (B > 1) or never (0), and `--lod-debug` tints each
+//! level of detail (whole, half green, quarter red).
 
 use crate::app::STEP;
 use crate::audio::synth::Synth;
@@ -327,6 +329,9 @@ pub fn run(args: &[String]) -> i32 {
     let mut frame = Frame::default();
     let mut overlay = Overlay::new();
     game.view.aspect = w as f32 / h as f32;
+    game.view.viewport_h = h as f32;
+    game.view.lod_bias = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(1.0);
+    game.view.lod_debug = args.iter().any(|a| a == "--lod-debug");
     game.view.preview_heroes = args.iter().any(|a| a == "--all-heroes");
     let iso = args.iter().any(|a| a == "--iso");
     if iso {

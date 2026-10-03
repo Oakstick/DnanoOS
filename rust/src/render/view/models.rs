@@ -1,11 +1,7 @@
-//! Every model the view draws, built once: the heroes, the foes (and coarse copies for far
-//! away), props, keys, the portal doors and the story's cast.
+//! Every model the view draws, built once: the heroes, the foes, props, keys, the portal doors
+//! and the story's cast. (Coarser copies for far away come from `Rig::lod`, as the camera calls for them.)
 
 use super::*;
-
-/// Past this distance from the camera a foe is drawn from its coarse copy: its fine voxels
-/// would be a pixel or two across there, and a dungeon can hold a dozen foes.
-const FOE_DETAIL_DISTANCE: f32 = 6.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RigId {
@@ -53,7 +49,6 @@ pub(super) struct Models {
     pub(super) bat: Rig,
     pub(super) vampire: Rig,
     pub(super) slime: Rig,
-    /// The same four at half the resolution, for foes far from the camera.
     pub(super) witch: Rig,
     pub(super) minion: Rig,
     pub(super) helmeted: Rig,
@@ -90,8 +85,6 @@ pub(super) struct Models {
     pub(super) ganglot: Rig,
     pub(super) gaki: Rig,
     pub(super) ellepige: Rig,
-    /// Every foe's coarse copy, in `RigId` order.
-    pub(super) foes_far: Vec<Rig>,
     pub(super) medkit: Mesh,
     pub(super) bomb: Mesh,
     pub(super) arrow: Mesh,
@@ -204,43 +197,6 @@ impl Models {
             use crate::render::foes_thorns::{ellepige, ELLEPIGE_RIG, ELLEPIGE_VOXEL};
             build_rig(&ellepige(), ELLEPIGE_RIG, ELLEPIGE_VOXEL)
         };
-        let foes_far = vec![
-            skeleton.coarse(),
-            bat.coarse(),
-            vampire.coarse(),
-            slime.coarse(),
-            witch.coarse(),
-            minion.coarse(),
-            helmeted.coarse(),
-            werewolf.coarse(),
-            blemmyes.coarse(),
-            large_bat.coarse(),
-            tengu.coarse(),
-            rasetsu.coarse(),
-            dire_wolf.coarse(),
-            jorogumo.coarse(),
-            cobra.coarse(),
-            kappa.coarse(),
-            rokurokubi.coarse(),
-            kitsune.coarse(),
-            oni.coarse(),
-            tulukus.coarse(),
-            albasti.coarse(),
-            cin.coarse(),
-            arcura.coarse(),
-            karakoncolos.coarse(),
-            frost_giant.coarse(),
-            surtr.coarse(),
-            nidhogg.coarse(),
-            hel.coarse(),
-            tepegoz.coarse(),
-            gashadokuro.coarse(),
-            ejder.coarse(),
-            goryo.coarse(),
-            ganglot.coarse(),
-            gaki.coarse(),
-            ellepige.coarse(),
-        ];
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
             hero: forge::hero_model(ragnar, 1, Some(1)),
@@ -282,7 +238,6 @@ impl Models {
             ganglot,
             gaki,
             ellepige,
-            foes_far,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
             arrow: crate::render::props::arrow(),
@@ -359,13 +314,5 @@ impl Models {
             RigId::Gaki => &self.gaki,
             RigId::Ellepige => &self.ellepige,
         }
-    }
-
-    /// A foe as it is drawn from `distance` away: in full detail near the camera, coarser far off.
-    pub(super) fn foe_at(&self, id: RigId, distance: f32) -> &Rig {
-        if distance < FOE_DETAIL_DISTANCE {
-            return self.rig(id);
-        }
-        &self.foes_far[id as usize]
     }
 }

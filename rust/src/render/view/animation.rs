@@ -101,6 +101,12 @@ impl WorldView {
             EnemyKind::Ellepige => (RigId::Ellepige, 0.0),
         };
         let pose = Pose::rest(self.models.rig(rig));
+        // Its levels of detail and their meshes, made now rather than in the middle of a fight
+        // (once per kind: every later foe of it shares them).
+        let model = self.models.rig(rig);
+        for level in 0..LOD_LEVELS {
+            model.lod(level).mesh();
+        }
         let base = lin(e.b.color);
         self.enemy_views.push(EnemyView {
             rig,

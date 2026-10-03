@@ -138,13 +138,41 @@ pub struct Rig {
     id: u64,
     mesh: OnceLock<Arc<RigMesh>>,
     whole: OnceLock<Arc<RigMesh>>,
+    /// The same rig at half and a quarter of the resolution, made the first time they are wanted.
+    lods: [OnceLock<Box<Rig>>; 2],
 }
+
+/// Levels of detail a rig has: itself, then at half and a quarter of the resolution.
+pub const LOD_LEVELS: u8 = 3;
 
 static NEXT_RIG: AtomicU64 = AtomicU64::new(1);
 
 impl Rig {
     pub fn new(size: f32, parts: Vec<RigPart>) -> Self {
-        Self { size, parts, id: NEXT_RIG.fetch_add(1, Ordering::Relaxed), mesh: OnceLock::new(), whole: OnceLock::new() }
+        Self {
+            size,
+            parts,
+            id: NEXT_RIG.fetch_add(1, Ordering::Relaxed),
+            mesh: OnceLock::new(),
+            whole: OnceLock::new(),
+            lods: [OnceLock::new(), OnceLock::new()],
+        }
+    }
+
+    /// Names the rig (for caches and the level-of-detail memory).
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// The rig at level of detail `level`: 0 itself, 1 at half the resolution, 2 at a quarter
+    /// (see `Rig::coarse`). Made once, on first use; the parts and joints stay the same, so the
+    /// same pose drives every level.
+    pub fn lod(&self, level: u8) -> &Rig {
+        match level {
+            0 => self,
+            1 => self.lods[0].get_or_init(|| Box::new(self.coarse())),
+            _ => self.lods[1].get_or_init(|| Box::new(self.lod(1).coarse())),
+        }
     }
 
     /// The rig's surface as the GPU keeps it, built once on first use. A rig must not
@@ -358,6 +386,21 @@ mod tests {
             assert_eq!(a.cubes.len(), a.shade.len());
             assert!(!a.cubes.is_empty(), "{} lost its cubes", a.name);
         }
+    }
+
+    #[test]
+    fn a_rigs_levels_of_detail_keep_its_parts_and_are_made_once() {
+        let rig = build_rig(&crate::render::heroes::ragnar_hd(None), crate::render::heroes::RAGNAR_HD_RIG, 0.0125);
+        assert!(std::ptr::eq(rig.lod(0), &rig));
+        let (half, quarter) = (rig.lod(1), rig.lod(2));
+        assert!(std::ptr::eq(half, rig.lod(1)), "made once");
+        assert_eq!((half.size, quarter.size), (0.025, 0.05));
+        let count = |r: &Rig| r.parts.iter().map(|p| p.cubes.len()).sum::<usize>();
+        assert!(count(quarter) < count(half) && count(half) < count(&rig));
+        for (a, b) in quarter.parts.iter().zip(&rig.parts) {
+            assert_eq!((a.name, a.rest), (b.name, b.rest));
+        }
+        assert_ne!(rig.mesh().id, half.mesh().id);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Repeatable performance captures (RP08 in the Technical Art and Rendering Plan):
 //!
 //!   AdventuresOfTheAncientBlades --perf [all|garden,battle30,...] [--frames 600] [--size 1920x1080]
-//!                                [--fx-off shadows,ao] [--out perf]
+//!                                [--fx-off shadows,ao] [--lod-bias 1] [--out perf]
 //!
 //! Each scene starts from the same seed and script, runs a second of untimed frames so the GPU
 //! leaves its idle clocks and the first uploads are done, then plays `--frames` frames as the
@@ -212,11 +212,13 @@ fn stamp() -> String {
     format!("{y:04}-{m:02}-{d:02}-{:02}{:02}{:02}", rem / 3600, rem / 60 % 60, rem % 60)
 }
 
-fn new_game(w: u32, h: u32) -> Game {
+fn new_game(w: u32, h: u32, lod_bias: f32) -> Game {
     let mut game = Game::new();
     game.reseed(1);
     game.viewport = (w as f32, h as f32);
     game.view.aspect = w as f32 / h as f32;
+    game.view.viewport_h = h as f32;
+    game.view.lod_bias = lod_bias;
     game.tour_pending = false;
     game
 }
@@ -240,8 +242,8 @@ struct Run {
     first_frame: f64,
 }
 
-fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32)) -> Run {
-    let mut game = new_game(w, h);
+fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_bias: f32) -> Run {
+    let mut game = new_game(w, h, lod_bias);
     let setup = parse_script(scene.setup);
     let (mut next, mut t) = (0, 0.0);
     play(&mut game, &setup, &mut next, &mut t, scene.settle);
@@ -360,6 +362,7 @@ pub fn run(args: &[String]) -> i32 {
     let frames: usize = arg(args, "--frames").and_then(|n| n.parse().ok()).unwrap_or(600);
     let which = arg(args, "--perf").filter(|s| !s.starts_with("--")).unwrap_or("all");
     let fx_list = arg(args, "--fx-off").unwrap_or("");
+    let lod_bias: f32 = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(1.0);
     let out_dir = arg(args, "--out").unwrap_or("perf").to_string();
     let scenes: Vec<&Scene> = SCENES.iter().filter(|s| which == "all" || which.split(',').any(|n| n == s.name)).collect();
     if scenes.is_empty() {
@@ -386,6 +389,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     let _ = writeln!(md, "| Resolution | {}x{} native, 4x MSAA, no upscaling |", size.0, size.1);
     let _ = writeln!(md, "| Effects off | {} |", if fx_list.is_empty() { "none" } else { fx_list });
+    let _ = writeln!(md, "| Level-of-detail bias | {lod_bias} |");
     let _ = writeln!(md, "| Frames per scene | {frames} after 1 s of warm-up, at most 2 in flight |\n");
     let _ = writeln!(
         md,
@@ -399,7 +403,7 @@ pub fn run(args: &[String]) -> i32 {
     let _ = std::fs::create_dir_all(&out_dir);
     for scene in scenes {
         eprintln!("perf: {} ({frames} frames) ...", scene.name);
-        let run = measure(&mut gpu, scene, frames, size);
+        let run = measure(&mut gpu, scene, frames, size, lod_bias);
         let s = &run.samples;
         let wall = percentiles(s.iter().map(|x| x.wall).collect());
         let cpu = percentiles(s.iter().map(|x| x.cpu.total()).collect());

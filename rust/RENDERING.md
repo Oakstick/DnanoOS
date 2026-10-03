@@ -59,6 +59,31 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
 - **Start-up**: the pipelines that compile the scene shader are built in parallel (the DX12 shader
   compiler, FXC, is slow). The HUD's first draw built its sprites in quadratic time; that is now linear.
 
+### RP12: levels of detail for rigs
+
+- **Levels** (`Rig::lod`): every rig has three, itself plus copies at half and a quarter of the
+  resolution, made on first use and cached on the rig. Parts and joints are the same at every level, so
+  one pose drives them all. A foe's levels are made when it joins the view, not mid-fight. The
+  hand-kept `foes_far` copies and the fixed 6-unit switch are gone.
+- **Choosing a level** (`frame::LodPolicy`): by projected size, i.e. pixels per voxel under the actual
+  projection (perspective or the orthographic map) and screen height. A rig drops to half below 2 pixels
+  per voxel and to a quarter below 1, so each level is used while its own voxels stay under about 4
+  pixels. That matches the old rule at 1080p, and now holds at any resolution, for any rig and camera.
+- **Hysteresis:** coming back up needs 20% more than going down. The memory is kept per rig and per
+  turn in the frame's draw order.
+- **Shadows:** the near cascade casts each rig at its on-screen level, so self-shadowing stays aligned.
+  The coarse far cascade casts one level coarser.
+- **Knobs:** `--lod-bias B` (above 1 drops detail sooner, as a low preset would; 0 never drops) and
+  `--lod-debug` (half-resolution rigs tinted green, quarter red). F3 shows the count at each level.
+- **Measured:** rig voxels drawn fell from 25.7k to 15.4k in the Garden and from 17.4k to 1.3k on the
+  map view; frame time was about the same (rigs are now a small share). The stage-7 giants cost about
+  0.7 ms more: their voxels are bigger, so by projected size they stay whole past the old fixed 6 units.
+- **TA review:** at half resolution head, helmet, beard, weapon and shield all read. At a quarter the
+  eyes average away, but that level is only used when the whole figure is about 15 pixels wide.
+- **Static chunks get no LOD yet, by measurement:** dropping every chunk beyond 10 m entirely did not
+  lower GPU time in the Garden (5.2–6.2 ms either way). After the prepass and back-face skipping, far
+  scenery is cheap. Revisit on the vista and top-down cameras and on the GTX 1080.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -89,6 +114,9 @@ The latest full capture is in `perf/`; compare new captures against it only at e
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept
   over half its cost. Instanced cubes at 4× MSAA dominate. This is why stage C came first.
+- **The 30-foe battle has simulation spikes.** Every 1.2 s the update step takes 16 to 60 ms, growing
+  over the run (foes being summoned or pathfinding, in game code). That is RP06 territory and outside
+  the renderer.
 - **The ground mist costs real GPU time.** The 13,500 transparent sheets in the Garden cost about 2 ms
   (see `--fx-off mist`), as the plan warns about large transparent layers.
 - **Dark palette colours crush to black.** On the Look Dev value ramp under neutral light, sRGB 0, 25 and
@@ -109,8 +137,9 @@ The latest full capture is in `perf/`; compare new captures against it only at e
   - TA04 and RP01: the source asset conventions and a MagicaVoxel/Blender round trip.
   - TA05: the benchmark asset set.
 - **C, geometry:**
-  - RP12: screen-size LOD with hysteresis for every rig (foes now switch to a coarse rig by distance)
-    and for architectural chunks, plus a separate shadow LOD.
+  - RP12 remainder: LOD for architectural chunks if the vista, top-down or GTX 1080 measurements call
+    for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
+    (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
 - **D, lighting:** RP13, linear HDR.
   - Lighting, fog and transparency would move into linear units, with bloom taken before tone mapping
