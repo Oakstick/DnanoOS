@@ -75,6 +75,7 @@ use crate::logic::projectile::Projectile;
 use crate::logic::rng::Rng;
 use crate::logic::systems::{Frenzy, PuddleField, Score};
 use crate::logic::types::{Dir, PotionKind, P, V};
+use crate::render::profile::{Lap, SimTimes};
 use crate::render::view::{CameraMode, WorldView};
 use std::collections::HashMap;
 
@@ -196,6 +197,8 @@ pub enum GameEvent {
 }
 
 pub struct Game {
+    /// Where the last step's time went (RP06).
+    pub sim: SimTimes,
     pub screen: Screen,
     pub level: ParsedLevel,
     pub hero: Hero,
@@ -394,6 +397,7 @@ impl Game {
             input: Input::new(),
             view: WorldView::new(),
             show_fps: false,
+            sim: SimTimes::default(),
             perf_lines: Vec::new(),
             rng: Rng::from_time(),
             cam_dir: Dir::None,
@@ -503,6 +507,7 @@ impl Game {
     }
 
     fn tick(&mut self, dt: f64) {
+        let mut lap = Lap::start();
         self.update_mode_schedule(dt);
 
         let wanted = self.resolve_wanted_dir();
@@ -580,6 +585,7 @@ impl Game {
                 self.drink(slot);
             }
         }
+        self.sim.hero += lap.lap();
         self.update_projectiles(dt);
         self.update_angels(dt);
         self.update_bombs(dt);
@@ -589,6 +595,7 @@ impl Game {
         if self.screen != Screen::Playing {
             return;
         }
+        self.sim.shots += lap.lap();
         if self.boss.is_some() {
             self.update_boss(dt);
             if self.screen != Screen::Playing {
@@ -596,6 +603,7 @@ impl Game {
             }
         }
 
+        self.sim.boss += lap.lap();
         if self.frenzy.update(dt) {
             for e in self.enemies.iter_mut() {
                 e.exit_frenzy(self.global_mode);
@@ -624,6 +632,7 @@ impl Game {
             self.enemies[i].update(dt, &mut ctx);
         }
         self.update_witches(dt);
+        self.sim.foes += lap.lap();
         self.update_sparring(dt);
         self.update_brawl(dt);
         if self.screen != Screen::Playing {
@@ -632,14 +641,18 @@ impl Game {
         self.update_gym(dt);
         self.update_vault(dt);
         self.update_run(dt);
+        self.sim.fights += lap.lap();
         self.update_spawns(dt);
         self.update_slime_trails(dt);
+        self.sim.spawns += lap.lap();
 
         self.resolve_contact();
+        self.sim.contact += lap.lap();
         if self.screen != Screen::Playing {
             return;
         }
         self.update_effects(dt);
+        self.sim.effects += lap.lap();
     }
 }
 

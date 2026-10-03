@@ -63,6 +63,8 @@ macro_rules! scene_state {
 
 impl Game {
     pub(super) fn enter(&mut self, screen: Screen) {
+        // A new high score is written here, between fights, not on the kill that set it.
+        self.score.save_high();
         self.screen = screen;
         self.menu_index = 0;
         self.confirm_reset = false;
@@ -92,6 +94,7 @@ impl Game {
     }
 
     pub fn update(&mut self, dt: f64) {
+        self.sim = Default::default();
         self.time += dt;
         self.update_juice(dt);
         self.view.showcase = self.screen == Screen::Title;
@@ -226,8 +229,10 @@ impl Game {
                 }
             }
         }
+        let mut lap = crate::render::profile::Lap::start();
         let state = scene_state!(self);
         self.view.update(dt, &state);
+        self.sim.view += lap.lap();
         self.input.flush();
     }
 

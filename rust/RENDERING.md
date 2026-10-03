@@ -302,6 +302,51 @@ output is a separate feature.
   | GPU per frame, p50, close-up | 6.49 ms | 6.20 ms |
   | GPU per frame, p50, battle | 10.54 ms | 9.85 ms |
 
+## Stage E: world systems
+
+### RP06: the 30-foe budget
+
+- **The simulation step is timed by section** (`profile::SimTimes`, filled by `Game::update`):
+
+  | Section | What it covers |
+  |---|---|
+  | hero | input, movement, his blows |
+  | shots | projectiles, angels, bombs |
+  | boss | the boss |
+  | foes | foe AI, movement and pathfinding |
+  | fights | frame-data fights |
+  | spawns | new foes summoned |
+  | contact | collision between foes and the hero |
+  | effects | the world's effects |
+  | view | camera and animation state |
+
+  With CPU emit (posing rigs and gathering the frame), record (culling and draw recording) and GPU
+  time, this is the split the plan asks for: animation, visibility, collision, AI and rendering.
+  `--perf` writes a *Simulation step* table (median, p95, worst) and per-frame `sim_*_ms` columns.
+- **The battle's spikes were the high score being saved.**
+  - Once the score passed the high score, every kill called `platform::save`, which reads the whole
+    save file, rewrites it and renames it, on the game thread.
+  - Each kill cost 2 to 13 ms, and a swing that took several foes cost up to 50 ms. Foe AI peaked at
+    0.5 ms in the same fight.
+  - The high score is now held as unsaved and written on the next screen change (death, level end,
+    pause, title) or on quit (`Score::save_high`).
+  - This also happened in the shipped game whenever a player beat their high score.
+  - battle30's worst frame went from 36.1 ms to 12.9 ms, and its worst hero step from 33 ms to
+    0.1 ms.
+- **A wall breaking during the fight** (the plan's test) is a new perf scene, `siege`: 30 stage-2 foes
+  in the Garden, a bomb every second, the sword swinging.
+  - Frame time: p99 11.9 ms, worst 12.6 ms.
+  - Foe pathfinding: p95 0.7 ms, worst 5.3 ms (the maze is harder to path than the meadow).
+  - Collision: worst 1.5 ms.
+- **Measured** (perf/2026-10-03-201257, high preset, dev machine), the 30-foe battle:
+  - Wall time: p50 10.3 ms, p99 12.4 ms.
+  - CPU: p50 2.1 ms.
+  - GPU: p50 10.1 ms.
+  - The simulation is under 0.1 ms at p95.
+
+  On this machine the GPU is the cost. RP06's gameplay rule holds: none of these settings touch the
+  simulation, and the presets and level of detail are view-only.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -332,9 +377,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept
   over half its cost. Instanced cubes at 4× MSAA dominate. This is why stage C came first.
-- **The 30-foe battle has simulation spikes.** Every 1.2 s the update step takes 16 to 60 ms, growing
-  over the run (foes being summoned or pathfinding, in game code). That is RP06 territory and outside
-  the renderer.
+- **The 30-foe battle's simulation spikes are fixed (RP06).** They were not AI or pathfinding: past
+  the high score, every kill rewrote the save file, which is read and written whole. See RP06 below.
 - **The ground mist costs real GPU time.** The 13,500 transparent sheets in the Garden cost about 2 ms
   (see `--fx-off mist`), as the plan warns about large transparent layers.
 - **Dark palette colours crush to black.** On the Look Dev value ramp under neutral light, sRGB 0, 25 and
@@ -367,7 +411,10 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     and warm need their own figures.
   - RP04 and RP05: predefined broken pieces with collision and navigation updated together. Today only
     the bombable wall tiles break.
-  - RP06: the 30-foe budget split (animation, AI, collision, rendering).
+  - RP06 is done (below). Two leftovers:
+    - Foe pathfinding peaks at 5 ms in the Garden maze, and is rare.
+    - A first frame takes 50 to 350 ms when the HUD first builds a hero's sprites. That belongs to
+      RP03's cold loading.
 - **F, advanced:** RP20 (GPU visibility and Hi-Z), RP21 (meshlets) and RP22 (mesh shaders), each only
   after the indexed path is measured on both target GPUs.
 - **G, shipping:** the GTX 1080 and RTX 3060 presets, and packaged validation.

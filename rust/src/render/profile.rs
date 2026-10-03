@@ -243,6 +243,53 @@ impl FrameCounts {
     }
 }
 
+/// Where the last simulation step's time went (RP06's budget split), in ms. Sections are timed in
+/// the order the step runs them; a step that leaves early fills only the ones it reached.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SimTimes {
+    /// The hero: input, movement, pickups, his blows, shrines and potions.
+    pub hero: f64,
+    /// Projectiles, angels, bombs and their hits.
+    pub shots: f64,
+    pub boss: f64,
+    /// The foes' minds and movement (pathfinding included), and the witches.
+    pub foes: f64,
+    /// Frame-data fights: the sparring ring, brawls, the vaults, the run.
+    pub fights: f64,
+    /// New foes summoned, slime trails.
+    pub spawns: f64,
+    /// Touching foes: hits on the hero and on each other.
+    pub contact: f64,
+    /// Particles, floaters, the world's effects.
+    pub effects: f64,
+    /// The view's own update: camera, animation state, fades.
+    pub view: f64,
+}
+
+impl SimTimes {
+    pub const NAMES: [&'static str; 9] = ["hero", "shots", "boss", "foes", "fights", "spawns", "contact", "effects", "view"];
+
+    pub fn values(&self) -> [f64; 9] {
+        [self.hero, self.shots, self.boss, self.foes, self.fights, self.spawns, self.contact, self.effects, self.view]
+    }
+}
+
+/// A stopwatch read lap by lap: each `lap` is the milliseconds since the last.
+pub struct Lap(web_time::Instant);
+
+impl Lap {
+    pub fn start() -> Self {
+        Lap(web_time::Instant::now())
+    }
+
+    pub fn lap(&mut self) -> f64 {
+        let now = web_time::Instant::now();
+        let ms = (now - self.0).as_secs_f64() * 1e3;
+        self.0 = now;
+        ms
+    }
+}
+
 /// Where a frame's CPU time went, in milliseconds.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CpuTimes {

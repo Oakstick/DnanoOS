@@ -287,6 +287,10 @@ impl App {
 }
 
 impl ApplicationHandler for App {
+    fn exiting(&mut self, _el: &ActiveEventLoop) {
+        self.game.score.save_high();
+    }
+
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.window.is_some() {
             return;

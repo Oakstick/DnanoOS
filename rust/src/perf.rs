@@ -22,7 +22,7 @@ use crate::render::gpu::Gpu;
 use crate::render::hud;
 use crate::render::overlay::Overlay;
 use crate::render::preset::{self, Preset};
-use crate::render::profile::{fx, CpuTimes, FrameCounts};
+use crate::render::profile::{fx, CpuTimes, FrameCounts, SimTimes};
 use crate::render::view::Frame;
 
 /// How the camera moves while a scene is measured.
@@ -48,7 +48,8 @@ struct Scene {
 }
 
 /// The plan's scene list: a hero close-up, a dense corridor, a long vista, 30 enemies, transparency,
-/// fast rotation, camera switching, destruction and portal arrival.
+/// fast rotation, camera switching, destruction (also in the middle of a 30-foe fight) and portal
+/// arrival.
 const SCENES: &[Scene] = &[
     Scene {
         name: "closeup",
@@ -132,6 +133,15 @@ const SCENES: &[Scene] = &[
         motion: Motion::Still,
     },
     Scene {
+        name: "siege",
+        what: "The Garden with 30 stage-2 foes closing in, a bomb every second and the sword swinging (walls breaking mid-fight)",
+        setup: "0.1:dungeon:0,4.0:foes:5:2",
+        settle: 5.0,
+        during: "0.0:bomb,0.1:+left,0.3:attack,0.5:-left,0.5:+right,0.8:attack,0.9:-right",
+        period: 1.0,
+        motion: Motion::Still,
+    },
+    Scene {
         name: "portal",
         what: "Portal arrival: the hub, into Pride's realm and back, twice (cold then warm)",
         setup: "0.1:hub",
@@ -160,6 +170,8 @@ struct Sample {
     gpu: Option<f64>,
     /// The two cascades' passes from the same read-back (near; far with its static cache when drawn).
     shadow: Option<(f64, f64)>,
+    /// The simulation step's sections (RP06).
+    sim: SimTimes,
     counts: FrameCounts,
 }
 
@@ -350,7 +362,7 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
         if let Some(t) = fresh {
             gpu_seen = t.frames;
         }
-        samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, counts: gpu.counts });
+        samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, sim: game.sim, counts: gpu.counts });
     }
     let _ = gpu.device.poll(wgpu::PollType::Wait);
     Run { samples, first_frame }
@@ -427,6 +439,7 @@ pub fn run(args: &[String]) -> i32 {
     );
     let _ = std::fs::create_dir_all(&out_dir);
     let mut cascades = String::new();
+    let mut sim_rows = String::new();
     for scene in scenes {
         eprintln!("perf: {} ({frames} frames) ...", scene.name);
         let run = measure(&mut gpu, scene, frames, size, lod_bias);
@@ -484,7 +497,11 @@ pub fn run(args: &[String]) -> i32 {
             far[1] / b.shadow_far_ms * 100.0,
             mean(&|x| (x.counts.shadow_static - x.counts.shadow_near) as f64) / 1e3,
         );
-        let mut csv = String::from("frame,wall_ms,cpu_ms,update_ms,emit_ms,hud_ms,upload_ms,record_ms,gpu_ms,shadow_near_ms,shadow_far_ms,draws,instances,triangles,upload_bytes,static_drawn,shadow_static,shadow_near,rigs,rig_voxels,lights,lights_dropped,light_pairs,busiest_cluster\n");
+        let mut csv = String::from("frame,wall_ms,cpu_ms,update_ms,emit_ms,hud_ms,upload_ms,record_ms,gpu_ms,shadow_near_ms,shadow_far_ms,draws,instances,triangles,upload_bytes,static_drawn,shadow_static,shadow_near,rigs,rig_voxels,lights,lights_dropped,light_pairs,busiest_cluster");
+        for n in SimTimes::NAMES {
+            let _ = write!(csv, ",sim_{n}_ms");
+        }
+        csv.push('\n');
         for (i, x) in s.iter().enumerate() {
             let c = &x.counts;
             let _ = writeln!(
@@ -514,8 +531,20 @@ pub fn run(args: &[String]) -> i32 {
                 c.light_pairs,
                 c.busiest_cluster
             );
+            csv.pop();
+            for v in x.sim.values() {
+                let _ = write!(csv, ",{v:.3}");
+            }
+            csv.push('\n');
         }
         let _ = std::fs::write(format!("{out_dir}/{when}-{}.csv", scene.name), csv);
+        // The step's sections: median, 95th percentile and worst (RP06).
+        let mut row = format!("| {} |", scene.name);
+        for k in 0..SimTimes::NAMES.len() {
+            let p = percentiles(s.iter().map(|x| x.sim.values()[k]).collect());
+            let _ = write!(row, " {:.2} / {:.2} / {:.1} |", p[0], p[1], p[3]);
+        }
+        let _ = writeln!(sim_rows, "{row}");
     }
     let b = &preset.budget;
     let _ = writeln!(
@@ -524,6 +553,13 @@ pub fn run(args: &[String]) -> i32 {
          ({:.1} ms near, {:.1} ms far). Far includes redrawing its static cache when that happens. Casters are static \
          instances (thousands).\n\n| Scene | Near p50 | p95 | of budget | casters | Far p50 | p95 | of budget | casters |\n|---|---|---|---|---|---|---|---|---|\n{cascades}",
         b.shadow_near_ms, b.shadow_far_ms
+    );
+    let _ = writeln!(
+        md,
+        "\n## Simulation step\n\nWhere the update's time goes, per section (ms: median / 95th percentile / worst). The view \
+         section is the camera and animation state; drawing preparation is under CPU emit above.\n\n| Scene | {} |\n|---|{}\n{sim_rows}",
+        SimTimes::NAMES.join(" | "),
+        "---|".repeat(SimTimes::NAMES.len())
     );
     let _ = writeln!(md, "\n## Scenes\n");
     for scene in SCENES {
