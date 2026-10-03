@@ -182,6 +182,8 @@ impl WorldView {
             hell::hell_atmosphere()
         } else if self.meadow {
             meadow_atmosphere()
+        } else if self.crypt {
+            crypt::crypt_atmosphere()
         } else {
             Atmosphere::forest()
         };
@@ -234,6 +236,9 @@ impl WorldView {
             Haze { density: 0.03, floor: -1.0, falloff: 1.2 }
         } else if self.meadow {
             haze(0.018, 1.5)
+        } else if self.crypt {
+            // The vaults' cold mist, lying deep in the passages.
+            haze(0.045, 1.1)
         } else {
             haze(0.035, 0.8)
         }
@@ -316,6 +321,9 @@ impl WorldView {
         }
         if self.vault.is_some() {
             hero_light *= 0.5; // candlelight everywhere
+        }
+        if self.crypt {
+            hero_light *= 0.6; // the braziers are the vaults' light; his lantern only keeps him seen
         }
         if let Some(k) = self.run_lantern() {
             hero_light *= k; // each realm has its own light
@@ -693,14 +701,16 @@ impl WorldView {
             // A realm after the vaults: its own sky and life, no sea of cloud, no fireflies.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
             self.emit_run(s, time, hero_pos, f);
-        } else {
+        } else if !self.crypt {
+            // (The vaults are underground: no sea of cloud round them.)
             emit_cloud_sea(grid, f, self.cam_pos);
         }
         self.emit_garden(time, f);
         self.emit_fountain(time, f);
         self.emit_gate_and_keys(s, time, hero_pos, f);
         self.emit_smoke(time, f);
-        let mote_color = lin(MOTE);
+        // (In the vaults the fireflies are embers adrift from the braziers.)
+        let mote_color = if self.crypt { lin(crypt::pal::EMBER) * 0.7 } else { lin(MOTE) };
         for (i, b) in self.mote_base.iter().enumerate() {
             if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() {
                 break;
@@ -725,10 +735,14 @@ impl WorldView {
     /// remedies, shrines, and whatever effects are burning.
     fn emit_light_pools(&self, f: &mut Frame, time: f32, focus: Vec3, remedy_points: &[Vec3], shrine_points: &[(Vec3, Vec3)]) {
         let torch_points: Vec<Vec3> = self.torches.values().map(|(p, _)| *p).collect();
+        // The estate's lanterns burn a greenish gold; the vaults' braziers amber.
+        let torch = if self.crypt { lin(crypt::pal::EMBER) } else { lin(TORCH_LIGHT) };
         for (i, p) in nearest(&torch_points, focus, LIGHT_POOL_TORCHES).into_iter().enumerate() {
             let fi = i as f32;
             let intensity = 4.5 + (time * 3.0 + fi * 2.3).sin() * 0.5 + (time * 7.0 + fi).sin() * 0.3;
-            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.5, 0.2), color: lin(TORCH_LIGHT) * intensity, distance: 7.0 });
+            // (The braziers burn hotter and reach further: they are the vaults' light.)
+            let (k, reach) = if self.crypt { (1.5, 8.5) } else { (1.0, 7.0) };
+            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.5, 0.2), color: torch * intensity * k, distance: reach });
         }
         for (i, p) in nearest(&self.candles, focus, 5).into_iter().enumerate() {
             let flicker = 1.6 + (time * 9.0 + i as f32 * 1.7).sin() * 0.25 + (time * 23.0 + i as f32).sin() * 0.12;
@@ -737,7 +751,7 @@ impl WorldView {
         // Halos round the lamps and candles nearby, as if lighting the damp air.
         for (i, p) in nearest(&torch_points, focus, 10).into_iter().enumerate() {
             let flick = 0.9 + (time * 3.0 + i as f32 * 2.3).sin() * 0.06;
-            glow_orb(f, p + Vec3::new(0.0, 0.42, 0.0), 0.42, lin(TORCH_LIGHT), 0.16 * flick);
+            glow_orb(f, p + Vec3::new(0.0, 0.42, 0.0), 0.42, torch, 0.16 * flick);
         }
         for (i, p) in nearest(&self.candles, focus, 14).into_iter().enumerate() {
             let flick = 0.85 + (time * 9.0 + i as f32 * 1.7).sin() * 0.1;

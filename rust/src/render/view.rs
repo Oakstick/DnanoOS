@@ -34,6 +34,7 @@ use crate::render::foliage::{FOREST, MEADOW};
 mod angels;
 mod animation;
 mod camera;
+mod crypt;
 mod duel;
 pub mod effects;
 mod emit;
@@ -217,6 +218,9 @@ pub struct WorldView {
     pub tint: Option<u32>,
     /// The gym: the hub's lava and platforms, but none of its landmarks.
     pub gym: bool,
+    /// The Bone Vaults and the estates deeper still: built in stone to the art direction
+    /// (`crypt`), not as a forest. Set before the level is built.
+    pub crypt: bool,
     /// The Vaults of Mammon, while he is in them.
     vault: Option<vault::VaultView>,
     /// One of the six realms after the vaults, while he is in it.
@@ -366,6 +370,7 @@ impl WorldView {
             rock_index: HashMap::new(),
             meadow: false,
             hell: false,
+            crypt: false,
             tint: None,
             vault: None,
             run_view: None,
@@ -520,6 +525,8 @@ impl WorldView {
             self.build_hell(grid);
         } else if meadow {
             self.build_meadow(grid);
+        } else if self.crypt {
+            self.build_crypt(grid);
         } else {
             self.build_forest(grid);
         }

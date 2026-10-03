@@ -446,6 +446,18 @@ fn hash12(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453);
 }
 
+// Smooth value noise over the plane (for stone mottle and puddles).
+fn vnoise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = hash12(i);
+    let b = hash12(i + vec2<f32>(1.0, 0.0));
+    let c = hash12(i + vec2<f32>(0.0, 1.0));
+    let d = hash12(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
 fn voxel_uv(local: vec3<f32>) -> vec2<f32> {
     let a = abs(local);
     if (a.x >= a.y && a.x >= a.z) {
@@ -556,6 +568,26 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
             // (Glossier than real stone: the vaults' marble is meant to shine.)
             m.rough = 0.15;
             m.specular = 1.5;
+        }
+        case 13: {
+            // Dressed stone (the Bone Vaults): chisel-pocked, a mottle of tool marks and grime,
+            // darker in its pits; broad and rough.
+            let q = uv * 3.0 + vec2<f32>(seed * 11.0, seed * 5.0);
+            let mottle = vnoise(q) * 0.6 + vnoise(q * 2.7) * 0.4;
+            let pits = smoothstep(0.62, 0.8, vnoise(q * 5.3));
+            m.albedo *= mix(1.0, (0.82 + 0.3 * mottle) * (1.0 - 0.25 * pits), detail);
+            m.rough = 0.85;
+            m.specular = 0.45;
+        }
+        case 14: {
+            // Wet flagstone: the same stone, with standing water in its hollows: darker there and
+            // glossy, so the braziers' light lies in it.
+            let q = uv * 2.2 + vec2<f32>(seed * 7.0, seed * 13.0);
+            let mottle = vnoise(q * 1.6) * 0.6 + vnoise(q * 4.1) * 0.4;
+            let puddle = smoothstep(0.5, 0.68, vnoise(q * 0.9 + vec2<f32>(3.1, 1.7)));
+            m.albedo *= mix(1.0, 0.85 + 0.25 * mottle, detail) * mix(1.0, 0.62, puddle);
+            m.rough = mix(0.6, 0.06, puddle);
+            m.specular = mix(0.5, 0.9, puddle);
         }
         default: {}
     }

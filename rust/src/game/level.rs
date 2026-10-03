@@ -239,6 +239,8 @@ impl Game {
                 self.level.grid.set_landmark(g.x + dx, g.y, true);
             }
         }
+        // Dungeon III and the estates past it are the stone vaults of the art direction.
+        self.view.crypt = self.level.data.theme == crate::logic::level::Theme::Estate && !self.level.data.boss && index >= 2;
         self.view.build_level(
             &self.level.grid,
             &self.enemies,
