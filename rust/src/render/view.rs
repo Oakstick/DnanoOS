@@ -45,6 +45,7 @@ mod frame;
 mod garden;
 mod gate;
 mod hell;
+mod lookdev;
 mod meadow;
 mod models;
 mod realms;
@@ -65,9 +66,10 @@ pub use fade::TREE_FADE_MIN;
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{
-    glow_orb, Atmosphere, Frame, Instance, Light, MeshKind, MESH_KINDS, SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET,
-    SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
+    glow_orb, rig_look, Atmosphere, Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, MESH_KINDS, SHADE_CLOUD, SHADE_DITHER,
+    SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
 };
+pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;
 use models::{Models, RigId};
 pub use select::SelectView;
@@ -221,8 +223,9 @@ pub struct WorldView {
     fountain: Option<fountain::FountainView>,
     /// Where the will-o'-the-wisps haunt: the churchyard's middle, at its turf.
     wisps: Option<Vec3>,
-    /// Ground mist sheets, drawn every frame.
+    /// Ground mist sheets as the level's builders lay them, and the same kept on the GPU, drawn every frame.
     mist: Vec<Instance>,
+    mist_set: InstanceSet,
     /// Candle flames in shrines, temples and graves: the nearest few cast light.
     candles: Vec<Vec3>,
     /// Where the golden keys lie (each drawn while its tile still holds one).
@@ -285,17 +288,19 @@ pub struct WorldView {
     pub select: Option<SelectView>,
     /// The character screen's cavern (built once), how far each hero has stepped forward,
     /// where the camera has drifted to, and whether the screen was up last frame.
-    select_set: Vec<Instance>,
+    select_set: InstanceSet,
     select_step: [f32; 3],
     select_cam: f32,
     was_select: bool,
     /// Draw the heroes not yet unlocked in colour too (a capture option, to look at them).
     pub preview_heroes: bool,
+    /// The Look Dev room, while it is open (a capture option, for judging materials and light).
+    lookdev: Option<lookdev::LookDev>,
     /// Scene I while it plays; its two sets and their mist (built once); how far each
     /// warrior's soul has risen; and whether the story was on last frame.
     pub story: Option<StoryView>,
-    story_sets: [Vec<Instance>; 2],
-    story_mist: [Vec<Instance>; 2],
+    story_sets: [InstanceSet; 2],
+    story_mist: [InstanceSet; 2],
     story_rise: [f32; 3],
     was_story: bool,
     /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
@@ -350,6 +355,7 @@ impl WorldView {
             fountain: None,
             wisps: None,
             mist: Vec::new(),
+            mist_set: InstanceSet::default(),
             candles: Vec::new(),
             keys: Vec::new(),
             gate_tile: None,
@@ -392,14 +398,15 @@ impl WorldView {
             focus: None,
             forge: false,
             select: None,
-            select_set: select::cavern(),
+            select_set: InstanceSet::new(select::cavern()),
             select_step: [0.0, 1.0, 0.0],
             select_cam: 0.0,
             was_select: false,
             preview_heroes: false,
+            lookdev: None,
             story: None,
-            story_sets: [story::graveyard_set(), story::gateway_set()],
-            story_mist: [story::graveyard_mist(), story::gateway_mist()],
+            story_sets: [InstanceSet::new(story::graveyard_set()), InstanceSet::new(story::gateway_set())],
+            story_mist: [InstanceSet::new(story::graveyard_mist()), InstanceSet::new(story::gateway_mist())],
             story_rise: [0.0; 3],
             was_story: false,
             tour: None,
@@ -485,6 +492,7 @@ impl WorldView {
             // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
+        self.mist_set = InstanceSet::new(self.mist.clone());
         // A thread of smoke above every candle.
         let wisps: Vec<(Vec3, f32)> = self.candles.iter().map(|c| (*c + Vec3::new(0.0, 0.12, 0.0), 0.35)).collect();
         self.smoke.extend(wisps);
@@ -548,7 +556,7 @@ impl WorldView {
         for i in range.0..range.0 + range.1 {
             self.static_cubes[i].m = hidden.to_cols_array();
         }
-        self.static_dirty = true;
+        self.static_patches.push(range);
     }
 
     /// Collapse a wall block after a blast and patch the floor beneath it.
@@ -570,8 +578,8 @@ impl WorldView {
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
         let patch = if self.meadow { lin(0x62b437) } else { lin(0x3c6c32) };
+        // (Added cubes go up on their own; see `Gpu::sync_static`.)
         self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, if self.meadow { SHADE_LIT } else { SHADE_GRASS }));
-        self.static_dirty = true;
     }
 
     pub fn remove_collectible(&mut self, x: i32, y: i32) {
@@ -688,31 +696,17 @@ fn emit_mesh(out: &mut Vec<Instance>, mesh: &Mesh, base: Mat4, tint: Vec3, alpha
     }
 }
 
-fn emit_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
-    // (A voxel lit from within, `mat::GLOW`, keeps its own light whatever tints the rest: eyes in
-    // a shadow, fire on a giant dimmed in his recovery.)
-    const GLOW: f32 = 16.0;
-    for (i, part) in rig.parts.iter().enumerate() {
-        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-        for (j, (off, c)) in part.cubes.iter().enumerate() {
-            let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
-            let tint = if shade == GLOW { Vec3::ONE } else { tint };
-            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c * tint, alpha, emissive, shade));
-        }
-    }
+/// A posed rig, drawn whole from the mesh the GPU keeps of it. (A voxel lit from within,
+/// `mat::GLOW`, keeps its own light whatever tints the rest: eyes in a shadow, fire on a giant
+/// dimmed in his recovery.)
+fn emit_rig(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
+    out.push(rig, pose, root, tint, alpha, emissive, rig_look::PLAIN, 0.0);
 }
 
-/// Like `emit_rig`, but drained of colour to grey and tinted (a hero not yet unlocked).
-fn emit_rig_grey(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
-    for (i, part) in rig.parts.iter().enumerate() {
-        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-        for (j, (off, c)) in part.cubes.iter().enumerate() {
-            let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
-            // Like a statue in pale stone: the colours' lightness kept, squeezed into a narrow range.
-            let grey = 0.1 + 0.3 * c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).sqrt();
-            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), Vec3::splat(grey) * tint, 1.0, Vec3::ZERO, shade));
-        }
-    }
+/// Like `emit_rig`, but drained of colour to grey and tinted (a hero not yet unlocked): like a
+/// statue in pale stone, the colours' lightness kept, squeezed into a narrow range.
+fn emit_rig_grey(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
+    out.push(rig, pose, root, tint, 1.0, Vec3::ZERO, rig_look::GREY, 0.0);
 }
 
 /// Floor height in world units under a point, as the web build rounds it.

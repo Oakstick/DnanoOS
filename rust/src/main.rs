@@ -105,6 +105,9 @@ fn main() {
         print!("{}", void_harvest::game::bot::balance(&seeds));
         return;
     }
+    if args.iter().any(|a| a == "--perf") {
+        std::process::exit(void_harvest::perf::run(&args));
+    }
     if args.iter().any(|a| a == "--capture") {
         std::process::exit(void_harvest::capture::run(&args));
     }

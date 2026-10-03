@@ -24,7 +24,9 @@
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
 //! (and `rise` times the distance above it, 0.28 unless given); `--bench N` then times N
 //! more draws of the same frame; `--all-heroes` shows the locked heroes in colour on the
-//! character screen.
+//! character screen. `--lookdev neutral|dungeon|realm:N` shows the Look Dev room (the material
+//! chart) under that light; `--fx-off shadows,lights,grass,materials,fog,ao,bloom,dof,grade,prepass,mist`
+//! switches effects off to see what each adds; `--frame-stats` lists what the view emitted.
 
 use crate::app::STEP;
 use crate::audio::synth::Synth;
@@ -41,11 +43,11 @@ use crate::render::overlay::Overlay;
 use crate::render::view::Frame;
 use crate::render::{characters, hud, voxels};
 
-fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+pub(crate) fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
 }
 
-enum Cmd {
+pub(crate) enum Cmd {
     Nugget,
     Hurt,
     Wound(i32),
@@ -107,7 +109,7 @@ enum Cmd {
     Look(f64, f64),
 }
 
-fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
+pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
     let mut out = Vec::new();
     for item in s.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         let mut parts = item.split(':');
@@ -199,6 +201,81 @@ fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
     out
 }
 
+/// Carries out one script command on the game (`bot` takes over the pad for `bot:K`).
+pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot::Bot>) {
+    match *cmd {
+        Cmd::Press(a) => game.input.inject(a),
+        Cmd::Hold(d, down) => game.input.hold_dir(d, down),
+        Cmd::Nav(d) => game.input.nav = Some(d),
+        Cmd::Beat(n, at) => game.story_jump(n, at),
+        Cmd::Look(dx, dy) => game.view.look(dx, dy),
+        Cmd::Nugget => game.debug_collect_key(),
+        Cmd::Hurt => game.debug_hurt(),
+        Cmd::Wound(n) => game.debug_wound_boss(n),
+        Cmd::Daze => game.debug_daze_boss(),
+        Cmd::At(x, y) => game.hero.place(P::new(x, y)),
+        Cmd::Hub => game.map_jump(Stage::Hub),
+        Cmd::Map => game.open_map(),
+        Cmd::Gym => game.map_jump(Stage::Gym),
+        Cmd::Ring(n) => game.debug_ring(n),
+        Cmd::Bot(k) => {
+            game.hero.free_move = true;
+            *bot = Some(crate::game::bot::Bot::new(crate::game::bot::Skill::ALL[k.min(2)], 1));
+        }
+        Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
+        Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
+        Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
+        Cmd::Slay => game.debug_wound_boss(1000),
+        Cmd::Shop => game.open_shop(),
+        Cmd::Tour => game.tour_pending = true,
+        Cmd::Streak => game.debug_streak(),
+        Cmd::Goo => game.debug_goo(),
+        Cmd::Gate => game.cheat_to_gate(),
+        Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
+        Cmd::Dungeon(n) => game.debug_dungeon(n),
+        Cmd::Bless(n) => game.blessing = Some(Blessing::of(ARCHANGELS[n.min(3)])),
+        Cmd::Arm(tier) => game.debug_arm(tier),
+        Cmd::Shield(tier) => {
+            game.hero.shield = (tier > 0).then(|| ShieldGear::new(tier.min(TIERS)));
+        }
+        Cmd::Coins(n) => game.progress.silver = n,
+        Cmd::Runes(n) => game.progress.runes = n,
+        Cmd::Path(n) => {
+            let hero = game.hero_kind;
+            game.progress.hero_mut(hero).owned[1] = n.min(TIERS);
+            game.equip_from_progress();
+        }
+        Cmd::Row(n) => game.shop.row = n,
+        Cmd::Loadout => {
+            game.open_shop();
+            game.shop.loadout = true;
+            game.shop.row = 1;
+        }
+        Cmd::Patron(n) => {
+            let hero = game.hero_kind;
+            game.progress.hero_mut(hero).patron = Some(crate::logic::angels::ARCHANGELS[n.min(3)]);
+        }
+        Cmd::Outfit(n) => {
+            let hero = game.hero_kind;
+            game.progress.hero_mut(hero).outfit = n.min(3);
+            game.equip_from_progress();
+        }
+        Cmd::Edge(n) => {
+            let hero = game.hero_kind;
+            let h = game.progress.hero_mut(hero);
+            let k = (h.wield - 1) as usize;
+            h.edge[k] = n.min(100);
+            game.equip_from_progress();
+        }
+        Cmd::Controls => game.open_controls(),
+        Cmd::Keyboard => game.controls_keyboard = true,
+        Cmd::Unblock => game.input.inject_release(Action::Block),
+        Cmd::Call => game.call_old_man(),
+        // Drink brew number N (0 = tier 1 .. 9 = tier 10, 10 = an extra life) at once, to see its effect.
+        Cmd::Potion(i) => game.debug_drink(ALL_POTIONS[i.min(10)]),
+    }
+}
+
 pub fn run(args: &[String]) -> i32 {
     std::env::set_var("VH_NO_AUDIO", "1");
     // Keep test runs from touching the player's save, and start each from a clean one
@@ -216,6 +293,7 @@ pub fn run(args: &[String]) -> i32 {
     let until: f64 = arg(args, "--time").and_then(|t| t.parse().ok()).unwrap_or(1.0);
     let script = parse_script(arg(args, "--script").unwrap_or(""));
 
+    let started = std::time::Instant::now();
     let mut gpu = match pollster::block_on(Gpu::new(None, (w, h))) {
         Ok(g) => g,
         Err(e) => {
@@ -223,7 +301,8 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     };
-    eprintln!("renderer: {}", gpu.backend);
+    eprintln!("renderer: {} (ready in {:.0} ms)", gpu.backend, started.elapsed().as_secs_f64() * 1e3);
+    gpu.fx_off = arg(args, "--fx-off").map(crate::render::profile::fx::parse).unwrap_or(0);
     let mut game = Game::new();
     // Fixed seeds, so the same script always renders the same picture.
     game.reseed(1);
@@ -234,77 +313,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut bot: Option<crate::game::bot::Bot> = None;
     while t < until {
         while next < script.len() && script[next].0 <= t {
-            match script[next].1 {
-                Cmd::Press(a) => game.input.inject(a),
-                Cmd::Hold(d, down) => game.input.hold_dir(d, down),
-                Cmd::Nav(d) => game.input.nav = Some(d),
-                Cmd::Beat(n, at) => game.story_jump(n, at),
-                Cmd::Look(dx, dy) => game.view.look(dx, dy),
-                Cmd::Nugget => game.debug_collect_key(),
-                Cmd::Hurt => game.debug_hurt(),
-                Cmd::Wound(n) => game.debug_wound_boss(n),
-                Cmd::Daze => game.debug_daze_boss(),
-                Cmd::At(x, y) => game.hero.place(P::new(x, y)),
-                Cmd::Hub => game.map_jump(Stage::Hub),
-                Cmd::Map => game.open_map(),
-                Cmd::Gym => game.map_jump(Stage::Gym),
-                Cmd::Ring(n) => game.debug_ring(n),
-                Cmd::Bot(k) => {
-                    game.hero.free_move = true;
-                    bot = Some(crate::game::bot::Bot::new(crate::game::bot::Skill::ALL[k.min(2)], 1));
-                }
-                Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
-                Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
-                Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
-                Cmd::Slay => game.debug_wound_boss(1000),
-                Cmd::Shop => game.open_shop(),
-                Cmd::Tour => game.tour_pending = true,
-                Cmd::Streak => game.debug_streak(),
-                Cmd::Goo => game.debug_goo(),
-                Cmd::Gate => game.cheat_to_gate(),
-                Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
-                Cmd::Dungeon(n) => game.debug_dungeon(n),
-                Cmd::Bless(n) => game.blessing = Some(Blessing::of(ARCHANGELS[n.min(3)])),
-                Cmd::Arm(tier) => game.debug_arm(tier),
-                Cmd::Shield(tier) => {
-                    game.hero.shield = (tier > 0).then(|| ShieldGear::new(tier.min(TIERS)));
-                }
-                Cmd::Coins(n) => game.progress.silver = n,
-                Cmd::Runes(n) => game.progress.runes = n,
-                Cmd::Path(n) => {
-                    let hero = game.hero_kind;
-                    game.progress.hero_mut(hero).owned[1] = n.min(TIERS);
-                    game.equip_from_progress();
-                }
-                Cmd::Row(n) => game.shop.row = n,
-                Cmd::Loadout => {
-                    game.open_shop();
-                    game.shop.loadout = true;
-                    game.shop.row = 1;
-                }
-                Cmd::Patron(n) => {
-                    let hero = game.hero_kind;
-                    game.progress.hero_mut(hero).patron = Some(crate::logic::angels::ARCHANGELS[n.min(3)]);
-                }
-                Cmd::Outfit(n) => {
-                    let hero = game.hero_kind;
-                    game.progress.hero_mut(hero).outfit = n.min(3);
-                    game.equip_from_progress();
-                }
-                Cmd::Edge(n) => {
-                    let hero = game.hero_kind;
-                    let h = game.progress.hero_mut(hero);
-                    let k = (h.wield - 1) as usize;
-                    h.edge[k] = n.min(100);
-                    game.equip_from_progress();
-                }
-                Cmd::Controls => game.open_controls(),
-                Cmd::Keyboard => game.controls_keyboard = true,
-                Cmd::Unblock => game.input.inject_release(Action::Block),
-                Cmd::Call => game.call_old_man(),
-                // Drink brew number N (0 = tier 1 .. 9 = tier 10, 10 = an extra life) at once, to see its effect.
-                Cmd::Potion(i) => game.debug_drink(ALL_POTIONS[i.min(10)]),
-            }
+            exec(&mut game, &script[next].1, &mut bot);
             next += 1;
         }
         if let Some(b) = bot.as_mut() {
@@ -350,7 +359,39 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
+    if let Some(light) = arg(args, "--lookdev").and_then(crate::render::view::LookLight::parse) {
+        game.view.open_lookdev(light);
+        if let Some(v) = arg(args, "--view") {
+            let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
+            if n.len() >= 5 {
+                game.view.set_closeup_rise(glam::Vec3::new(n[0], n[1], n[2]), n[3].to_radians(), n[4], n.get(5).copied().unwrap_or(0.28));
+            }
+        }
+    }
     game.view.emit(&game.scene(), &mut frame);
+    if args.iter().any(|a| a == "--frame-stats") {
+        // What the view emitted this frame, by list and shade mode: where the per-frame upload goes.
+        let mut by: std::collections::BTreeMap<(String, i32), usize> = std::collections::BTreeMap::new();
+        let lists = frame
+            .opaque
+            .iter()
+            .enumerate()
+            .map(|(k, l)| (format!("opaque mesh {k}"), l))
+            .chain(frame.transparent.iter().enumerate().map(|(k, l)| (format!("see-through mesh {k}"), l)));
+        for (name, list) in lists.chain([
+            ("early".to_string(), &frame.transparent_early),
+            ("additive".into(), &frame.additive),
+            ("glow".into(), &frame.glow),
+        ]) {
+            for i in list {
+                *by.entry((name.clone(), i.emissive[3] as i32)).or_default() += 1;
+            }
+        }
+        for ((name, shade), n) in by {
+            eprintln!("frame: {name:>20} shade {shade:>2}: {n}");
+        }
+        eprintln!("frame: {} solid rigs, {} see-through", frame.rigs.len(), frame.rigs_blend.len());
+    }
     // A story shot sets its own camera as it draws; aim again afterwards so `--view` can frame the cast.
     if let Some(v) = arg(args, "--view") {
         let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
@@ -371,10 +412,28 @@ pub fn run(args: &[String]) -> i32 {
         hud::draw(&mut overlay, &game, 60);
     }
     gpu.sync_static(&mut game.view);
-    let rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+    let mut rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+    if game.show_fps && !args.iter().any(|a| a == "--no-hud") {
+        // The F3 readout reports the frame before: draw once more with this one's numbers.
+        let _ = gpu.device.poll(wgpu::PollType::Wait);
+        if let Some(t) = gpu.timer.as_mut() {
+            t.collect(&gpu.device);
+        }
+        game.perf_lines = crate::render::profile::readout(&Default::default(), &gpu.counts, gpu.timer.as_ref());
+        overlay.begin(w as f32, h as f32);
+        hud::draw(&mut overlay, &game, 60);
+        rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+    }
     if let Some(n) = arg(args, "--bench").and_then(|n| n.parse::<u32>().ok()) {
         let ms = gpu.bench(&game.view, &frame, &overlay.verts, (w as f32, h as f32), n);
         eprintln!("bench: {ms:.2} ms a frame over {n} frames ({:.0} fps)", 1000.0 / ms);
+        if let Some(t) = gpu.timer.as_mut() {
+            t.collect(&gpu.device);
+        }
+        let cpu = crate::render::profile::CpuTimes::default();
+        for line in crate::render::profile::readout(&cpu, &gpu.counts, gpu.timer.as_ref()).iter().skip(1) {
+            eprintln!("bench: {line}");
+        }
     }
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {

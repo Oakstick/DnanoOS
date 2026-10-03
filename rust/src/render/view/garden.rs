@@ -972,7 +972,7 @@ impl WorldView {
         let cube_i = MeshKind::Cube as usize;
         let sphere = MeshKind::Sphere as usize;
         let Some(plan) = &self.garden else {
-            f.transparent[cube_i].extend_from_slice(&self.mist);
+            f.sets_blend.push(self.mist_set.clone());
             return;
         };
         let (w, h) = (self.level_dims.x as i32, self.level_dims.y as i32);
@@ -1081,7 +1081,7 @@ impl WorldView {
                 }
             }
         }
-        f.transparent[cube_i].extend_from_slice(&self.mist);
+        f.sets_blend.push(self.mist_set.clone());
     }
 
     pub(super) fn foam(&self, at: Vec3, time: f32, seed: f32, f: &mut Frame) {

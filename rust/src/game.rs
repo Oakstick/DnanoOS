@@ -226,6 +226,8 @@ pub struct Game {
     pub input: Input,
     pub view: WorldView,
     pub show_fps: bool,
+    /// The renderer's own readout under the frame rate (F3): CPU and GPU times, counts.
+    pub perf_lines: Vec<String>,
     rng: Rng,
     /// The corridor the chase camera currently points down.
     cam_dir: Dir,
@@ -392,6 +394,7 @@ impl Game {
             input: Input::new(),
             view: WorldView::new(),
             show_fps: false,
+            perf_lines: Vec::new(),
             rng: Rng::from_time(),
             cam_dir: Dir::None,
             latch: None,

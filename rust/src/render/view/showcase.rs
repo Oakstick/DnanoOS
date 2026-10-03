@@ -80,7 +80,7 @@ impl WorldView {
                 pose.rot[hd].y = (time * 0.5 + i as f32 * 2.0).sin() * 0.12;
             }
             let aura = tint * (0.035 + 0.02 * (time * 1.5 + i as f32).sin());
-            emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, aura);
+            emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, aura);
             // His soul's light: a halo behind him, a ring at his feet, motes rising.
             glow_orb(f, feet + Vec3::new(0.0, 0.75, -0.35), 1.25, tint, 0.2 + 0.05 * (time * 1.3 + i as f32).sin());
             let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.01, 0.0))

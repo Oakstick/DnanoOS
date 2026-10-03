@@ -52,6 +52,8 @@ pub struct App {
     acc: f64,
     fps_frames: u32,
     fps_at: Instant,
+    /// Where the last frame's CPU time went, for the F3 readout.
+    cpu: crate::render::profile::CpuTimes,
     fps: u32,
     modifiers: ModifiersState,
     fullscreen: bool,
@@ -83,6 +85,7 @@ impl App {
             acc: 0.0,
             fps_frames: 0,
             fps_at: Instant::now(),
+            cpu: Default::default(),
             fps: 0,
             modifiers: ModifiersState::empty(),
             fullscreen,
@@ -177,6 +180,7 @@ impl App {
                 self.game.input.mouse_captured = false;
             }
         }
+        let sim = Instant::now();
         let mut guard = 0;
         while self.acc >= STEP && guard < 10 {
             self.game.update(STEP);
@@ -186,6 +190,7 @@ impl App {
         if guard == 10 {
             self.acc = 0.0;
         }
+        self.cpu.update = sim.elapsed().as_secs_f64() * 1e3;
         if std::mem::take(&mut self.game.want_fullscreen_toggle) {
             self.toggle_fullscreen();
         }
@@ -220,16 +225,30 @@ impl App {
         let logical = (size.width as f32 / scale, size.height as f32 / scale);
         self.game.viewport = logical;
         self.game.view.aspect = size.width as f32 / size.height as f32;
+        let t = Instant::now();
         self.game.view.emit(&self.game.scene(), &mut self.frame);
+        self.cpu.emit = t.elapsed().as_secs_f64() * 1e3;
+        let t = Instant::now();
         self.overlay.begin(logical.0, logical.1);
         hud::draw(&mut self.overlay, &self.game, self.fps);
+        self.cpu.hud = t.elapsed().as_secs_f64() * 1e3;
+        let t = Instant::now();
         gpu.sync_static(&mut self.game.view);
+        self.cpu.sync = t.elapsed().as_secs_f64() * 1e3;
 
         let Some(surface) = &gpu.surface else { return };
         match surface.get_current_texture() {
             Ok(tex) => {
                 let view = tex.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let t = Instant::now();
                 gpu.draw(&view, &self.game.view, &self.frame, &self.overlay.verts, logical);
+                self.cpu.record = t.elapsed().as_secs_f64() * 1e3;
+                // The readout shows next frame (it is drawn into the HUD before this one is recorded).
+                self.game.perf_lines = if self.game.show_fps {
+                    crate::render::profile::readout(&self.cpu, &gpu.counts, gpu.timer.as_ref())
+                } else {
+                    Vec::new()
+                };
                 window.pre_present_notify();
                 tex.present();
             }

@@ -314,7 +314,8 @@ impl WorldView {
     /// Where the fine shadow cascade centers: on the ground a little past where the
     /// camera looks. None where the coarse one is enough (the map, the title, the shop).
     pub fn shadow_focus(&self) -> Option<Vec3> {
-        if self.forge || self.showcase || self.select.is_some() || self.story.is_some() || self.map_view.is_some() {
+        if self.forge || self.showcase || self.select.is_some() || self.story.is_some() || self.map_view.is_some() || self.lookdev.is_some()
+        {
             return None;
         }
         let fwd = self.cam_look - self.cam_pos;
@@ -323,7 +324,9 @@ impl WorldView {
     }
 
     pub fn shadow_box(&self) -> (Vec3, f32) {
-        if let Some(sv) = self.story {
+        if self.lookdev.is_some() {
+            (super::lookdev::LOOKDEV + Vec3::new(0.0, 1.0, 0.0), 6.5)
+        } else if let Some(sv) = self.story {
             self.story_shadow_box(sv)
         } else if self.select.is_some() {
             (select::SELECT_STAGE + Vec3::new(0.0, 0.6, -0.6), 6.5)

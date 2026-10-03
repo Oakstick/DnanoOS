@@ -652,15 +652,7 @@ impl WorldView {
                     let root = Mat4::from_translation(p + Vec3::new(0.0, r, 0.0))
                         * Mat4::from_quat(spin)
                         * Mat4::from_translation(Vec3::new(0.0, -r, 0.0));
-                    emit_rig(
-                        &mut f.opaque[MeshKind::Cube as usize],
-                        &self.models.boulder,
-                        &Pose::rest(&self.models.boulder),
-                        root,
-                        Vec3::ONE,
-                        1.0,
-                        Vec3::ZERO,
-                    );
+                    emit_rig(&mut f.rigs, &self.models.boulder, &Pose::rest(&self.models.boulder), root, Vec3::ONE, 1.0, Vec3::ZERO);
                     let m = Mat4::from_translation(p + Vec3::new(0.0, 0.02, 0.0))
                         * Mat4::from_rotation_x(-PI / 2.0)
                         * Mat4::from_scale(Vec3::new(0.42, 0.42, 1.0));

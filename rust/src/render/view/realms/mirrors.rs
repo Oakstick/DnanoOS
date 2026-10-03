@@ -834,7 +834,7 @@ impl WorldView {
         } else {
             (Vec3::new(1.3, 1.08, 0.55), lin(GOLD) * 0.18)
         };
-        emit_rig(&mut f.opaque[cube_i], &self.models.hero, &self.hero_pose, root, tint, 1.0, emissive);
+        emit_rig(&mut f.rigs, &self.models.hero, &self.hero_pose, root, tint, 1.0, emissive);
         let head = at + Vec3::new(0.0, 1.18 * scale, 0.0);
         if !true_face {
             // A crown of gold.
@@ -883,18 +883,10 @@ impl WorldView {
         let scale = 1.25;
         let root = Mat4::from_translation(at) * Mat4::from_rotation_y(yaw) * Mat4::from_scale(Vec3::splat(scale));
         if gilded {
-            emit_rig(
-                &mut f.opaque[MeshKind::Cube as usize],
-                &v.art.statue,
-                &v.art.triumph,
-                root,
-                Vec3::new(1.5, 1.1, 0.3),
-                1.0,
-                lin(GOLD) * 0.2,
-            );
+            emit_rig(&mut f.rigs, &v.art.statue, &v.art.triumph, root, Vec3::new(1.5, 1.1, 0.3), 1.0, lin(GOLD) * 0.2);
         } else {
             let tint = Vec3::splat(1.0 + 0.2 * hp as f32) * Vec3::new(0.95, 0.93, 1.05);
-            emit_rig_grey(&mut f.opaque[MeshKind::Cube as usize], &v.art.statue, &v.art.triumph, root, tint);
+            emit_rig_grey(&mut f.rigs, &v.art.statue, &v.art.triumph, root, tint);
         }
         if hp < 3 {
             for k in 0..(3 - hp) * 3 {
@@ -1111,7 +1103,6 @@ impl WorldView {
         f: &mut Frame,
         lights: &mut Vec<(Vec3, Vec3, f32)>,
     ) {
-        let cube_i = MeshKind::Cube as usize;
         let rest = Pose::rest(&self.models.hero);
         let reeling = matches!(du.f.state, Fight::Reel { .. });
         let pose = if reeling { &rest } else { self.echo_pose(v, time).unwrap_or(&rest) };
@@ -1132,12 +1123,12 @@ impl WorldView {
         let tint = Vec3::new(0.62, 0.52, 1.0);
         match (&self.models.raised, matches!(du.f.state, Fight::Guard { .. })) {
             (Some((bare, shield)), true) => {
-                emit_rig(&mut f.opaque[cube_i], bare, pose, root, tint, 1.0, emissive);
+                emit_rig(&mut f.rigs, bare, pose, root, tint, 1.0, emissive);
                 let side = pose.pos.get(3).map(|p| p.x * 0.55).unwrap_or(-0.12);
                 let up = root * Mat4::from_translation(Vec3::new(side, 0.06, 0.12)) * Mat4::from_rotation_y(PI);
-                emit_rig(&mut f.opaque[cube_i], shield, &Pose::rest(shield), up, tint, 1.0, emissive);
+                emit_rig(&mut f.rigs, shield, &Pose::rest(shield), up, tint, 1.0, emissive);
             }
-            _ => emit_rig(&mut f.opaque[cube_i], &self.models.hero, pose, root, tint, 1.0, emissive),
+            _ => emit_rig(&mut f.rigs, &self.models.hero, pose, root, tint, 1.0, emissive),
         }
         // Its swing's trail, in violet.
         if let Some((_, phase, _)) = du.f.attack() {

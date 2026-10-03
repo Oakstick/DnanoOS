@@ -66,6 +66,105 @@ pub enum MeshKind {
 
 pub const MESH_KINDS: usize = 7;
 
+static NEXT_SET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A prebuilt list of instances that does not change once made (a scene's set, its ground
+/// mist): the GPU keeps it after the first upload and draws it again each frame for nothing.
+#[derive(Clone, Default)]
+pub struct InstanceSet {
+    pub id: u64,
+    pub instances: std::sync::Arc<Vec<Instance>>,
+}
+
+impl InstanceSet {
+    pub fn new(instances: Vec<Instance>) -> Self {
+        Self { id: NEXT_SET.fetch_add(1, std::sync::atomic::Ordering::Relaxed), instances: std::sync::Arc::new(instances) }
+    }
+
+    pub fn len(&self) -> usize {
+        self.instances.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.instances.is_empty()
+    }
+}
+
+/// How a rig's voxels are coloured when drawn whole (see `RigList`).
+pub mod rig_look {
+    /// Plain: the voxel's colour times the tint, but glowing voxels keep their own light.
+    pub const PLAIN: u32 = 0;
+    /// Drained to pale stone and tinted (a hero not yet unlocked).
+    pub const GREY: u32 = 1;
+    /// The voxel's own colour, plain lit, screen-door faded by alpha.
+    pub const FADED: u32 = 2;
+    /// See-through spirit light: the tint, shaded by the colour's lightness, unlit.
+    pub const GHOST: u32 = 4;
+    /// The tint falls on glowing voxels too (the hero's own rig).
+    pub const TINT_ALL: u32 = 8;
+}
+
+/// One rig drawn from the mesh the GPU keeps of it, as the shader reads it.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug)]
+pub struct RigDraw {
+    /// Linear tint and opacity.
+    pub tint: [f32; 4],
+    /// Linear emitted radiance, and how far the blade's metal has rusted.
+    pub emissive: [f32; 4],
+    /// Where its part matrices start in the frame's list.
+    pub part_base: u32,
+    /// `rig_look` bits.
+    pub look: u32,
+    /// Parts whose metal rusts (from the mesh).
+    pub rust_mask: u32,
+    /// The rig's voxel size.
+    pub size: f32,
+}
+
+/// Rigs to draw this frame: each one's mesh, its draw record, and the posed parts' matrices.
+#[derive(Default)]
+pub struct RigList {
+    pub meshes: Vec<std::sync::Arc<RigMesh>>,
+    pub draws: Vec<RigDraw>,
+    pub parts: Vec<[f32; 16]>,
+}
+
+impl RigList {
+    /// Poses `rig` at `root` and queues it. See-through, it is drawn with every face (`Rig::mesh_whole`).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn push(&mut self, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3, look: u32, rust: f32) {
+        let mesh = if alpha < 1.0 { rig.mesh_whole() } else { rig.mesh() };
+        let part_base = self.parts.len() as u32;
+        for i in 0..rig.parts.len() {
+            self.parts.push((root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i])).to_cols_array());
+        }
+        self.draws.push(RigDraw {
+            tint: [tint.x, tint.y, tint.z, alpha],
+            emissive: [emissive.x, emissive.y, emissive.z, rust],
+            part_base,
+            look,
+            rust_mask: mesh.rust_mask,
+            size: rig.size,
+        });
+        self.meshes.push(mesh);
+    }
+
+    pub fn clear(&mut self) {
+        self.meshes.clear();
+        self.draws.clear();
+        self.parts.clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.draws.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.draws.is_empty()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Light {
     pub pos: Vec3,
@@ -151,6 +250,12 @@ impl Default for Atmosphere {
 #[derive(Default)]
 pub struct Frame {
     pub opaque: [Vec<Instance>; MESH_KINDS],
+    /// Whole rigs drawn from their resident meshes: solid, and see-through (drawn before other see-through things).
+    pub rigs: RigList,
+    pub rigs_blend: RigList,
+    /// Prebuilt cubes the GPU keeps: solid ones, and see-through ones drawn where see-through cubes go.
+    pub sets: Vec<InstanceSet>,
+    pub sets_blend: Vec<InstanceSet>,
     /// See-through cubes drawn before every other see-through thing (the smoke wall far behind it all).
     pub transparent_early: Vec<Instance>,
     pub transparent: [Vec<Instance>; MESH_KINDS],
@@ -176,6 +281,10 @@ impl Frame {
             v.clear();
         }
         self.transparent_early.clear();
+        self.rigs.clear();
+        self.rigs_blend.clear();
+        self.sets.clear();
+        self.sets_blend.clear();
         self.additive.clear();
         self.glow.clear();
         self.lights.clear();

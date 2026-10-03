@@ -371,7 +371,7 @@ impl WorldView {
         let tint = if lit { Vec3::ONE } else { Vec3::splat(0.62) };
         // Lit, the marble itself holds a little of their light.
         let inner = if lit { color * 0.1 } else { Vec3::ZERO };
-        emit_rig(&mut f.opaque[MeshKind::Cube as usize], rig, &Pose::rest(rig), root, tint, 1.0, inner);
+        emit_rig(&mut f.rigs, rig, &Pose::rest(rig), root, tint, 1.0, inner);
         // The halo over the statue's head.
         let head = root.transform_point3(Vec3::new(0.0, (HEAD[1] + 3.8) * SHRINE_VOXEL, (HEAD[2] - 13.5 - 0.6) * SHRINE_VOXEL));
         let glow = if lit { 1.0 } else { 0.15 };

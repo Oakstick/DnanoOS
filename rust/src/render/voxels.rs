@@ -4,6 +4,10 @@
 //! of rows from back (-z) to front (+z); each row is a string of palette keys
 //! along x. '.' is empty. Models face +z.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+
+use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
 pub struct VoxelModel {
@@ -84,15 +88,19 @@ pub struct Sprite {
 
 /// Front view of any voxel model (text-authored or sculpted).
 pub fn sprite_from(c: &Collected) -> Sprite {
-    let mut pixels = Vec::new();
-    for y in (0..c.height).rev() {
-        let mut row = Vec::new();
-        for x in 0..c.width {
-            let best = c.voxels.iter().filter(|v| v.x == x && v.y == y).max_by_key(|v| v.z);
-            row.push(best.map(|v| v.c & 0xff_ffff));
+    // One pass over the voxels: each column keeps its frontmost (the last of equals, as before).
+    let (w, h) = (c.width.max(0) as usize, c.height.max(0) as usize);
+    let mut front: Vec<Option<(i32, u32)>> = vec![None; w * h];
+    for v in &c.voxels {
+        if v.x < 0 || v.y < 0 || v.x as usize >= w || v.y as usize >= h {
+            continue;
         }
-        pixels.push(row);
+        let cell = &mut front[v.y as usize * w + v.x as usize];
+        if cell.is_none_or(|(z, _)| v.z >= z) {
+            *cell = Some((v.z, v.c));
+        }
     }
+    let pixels = (0..h).rev().map(|y| (0..w).map(|x| front[y * w + x].map(|(_, c)| c & 0xff_ffff)).collect()).collect();
     Sprite { width: c.width, height: c.height, pixels }
 }
 
@@ -126,9 +134,30 @@ pub struct Rig {
     pub size: f32,
     /// 'body' first, then the named parts in definition order.
     pub parts: Vec<RigPart>,
+    /// Names this rig's GPU mesh, which is built the first time it is drawn (see `Rig::mesh`).
+    id: u64,
+    mesh: OnceLock<Arc<RigMesh>>,
+    whole: OnceLock<Arc<RigMesh>>,
 }
 
+static NEXT_RIG: AtomicU64 = AtomicU64::new(1);
+
 impl Rig {
+    pub fn new(size: f32, parts: Vec<RigPart>) -> Self {
+        Self { size, parts, id: NEXT_RIG.fetch_add(1, Ordering::Relaxed), mesh: OnceLock::new(), whole: OnceLock::new() }
+    }
+
+    /// The rig's surface as the GPU keeps it, built once on first use. A rig must not
+    /// change after it has been drawn.
+    pub fn mesh(&self) -> Arc<RigMesh> {
+        self.mesh.get_or_init(|| Arc::new(RigMesh::build(self, true))).clone()
+    }
+
+    /// The rig with every face of every voxel, for drawing it see-through or dithered, where the
+    /// faces inside show (and their layers are part of the look, as on the warriors' souls).
+    pub fn mesh_whole(&self) -> Arc<RigMesh> {
+        self.whole.get_or_init(|| Arc::new(RigMesh::build(self, false))).clone()
+    }
     pub fn index(&self, name: &str) -> Option<usize> {
         self.parts.iter().position(|p| p.name == name)
     }
@@ -168,7 +197,91 @@ impl Rig {
                 RigPart { name: p.name, rest: p.rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
             })
             .collect();
-        Rig { size, parts }
+        Rig::new(size, parts)
+    }
+}
+
+// ------------------------------------------------------------ GPU meshes
+
+/// One corner of a voxel face in a rig's GPU mesh.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug)]
+pub struct RigVertex {
+    /// The voxel's centre relative to the part's joint, in world units (the shader adds the
+    /// corner, so a face's four corners agree exactly on where the face is).
+    pub pos: [f32; 3],
+    /// The corner in the voxel's own unit cube, as -1 or 1 (halved by the shader), for per-voxel
+    /// detail; then which face it is on (0 to 5: +x, -x, +y, -y, +z, -z).
+    pub local: [i8; 4],
+    /// Linear colour and the shade mode. (Full floats: the shader seeds each voxel's detail from
+    /// its exact colour, so rounding it would change the pattern.)
+    pub color: [f32; 4],
+    /// Which part (and so which joint matrix) it belongs to.
+    pub part: u32,
+}
+
+/**
+ * A rig as the GPU draws it: only the voxel faces that nothing in the same part covers,
+ * each still its own voxel's square (no merging), so materials shade as they did on whole
+ * cubes. Faces between parts are kept, since a joint can swing them into view.
+ */
+pub struct RigMesh {
+    pub id: u64,
+    pub vertices: Vec<RigVertex>,
+    pub indices: Vec<u32>,
+    pub voxels: u32,
+    /// Parts whose metal rusts with a dull blade (the held weapon and shield), one bit each.
+    pub rust_mask: u32,
+}
+
+/// The six faces of a unit cube: the outward axis, then the four corners in order round the face.
+const FACES: [([i32; 3], [[i8; 3]; 4]); 6] = [
+    ([1, 0, 0], [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]]),
+    ([-1, 0, 0], [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]]),
+    ([0, 1, 0], [[-1, 1, -1], [-1, 1, 1], [1, 1, 1], [1, 1, -1]]),
+    ([0, -1, 0], [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]]),
+    ([0, 0, 1], [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]),
+    ([0, 0, -1], [[-1, -1, -1], [-1, 1, -1], [1, 1, -1], [1, -1, -1]]),
+];
+
+impl RigMesh {
+    fn build(rig: &Rig, cull: bool) -> Self {
+        let (mut vertices, mut indices) = (Vec::new(), Vec::new());
+        let mut voxels = 0;
+        let mut rust_mask = 0;
+        // Offsets sit on a grid of `size` shifted by the joint's fraction: doubled and rounded, neighbours are 2 apart.
+        let key = |p: Vec3| {
+            let k = (p / rig.size * 2.0).round();
+            (k.x as i32, k.y as i32, k.z as i32)
+        };
+        for (pi, part) in rig.parts.iter().enumerate() {
+            if pi < 32 && matches!(part.name, "blade" | "offhand") {
+                rust_mask |= 1 << pi;
+            }
+            let filled: std::collections::HashSet<(i32, i32, i32)> = part.cubes.iter().map(|(o, _)| key(*o)).collect();
+            for (j, (off, c)) in part.cubes.iter().enumerate() {
+                voxels += 1;
+                let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(0.0);
+                let color = [c.x, c.y, c.z, shade];
+                let k = key(*off);
+                for (fi, (dir, corners)) in FACES.into_iter().enumerate() {
+                    if cull && filled.contains(&(k.0 + dir[0] * 2, k.1 + dir[1] * 2, k.2 + dir[2] * 2)) {
+                        continue;
+                    }
+                    let base = vertices.len() as u32;
+                    for q in corners {
+                        vertices.push(RigVertex {
+                            pos: off.to_array(),
+                            local: [q[0] * 127, q[1] * 127, q[2] * 127, fi as i8],
+                            color,
+                            part: pi as u32,
+                        });
+                    }
+                    indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+                }
+            }
+        }
+        Self { id: rig.id * 2 + u64::from(!cull), vertices, indices, voxels, rust_mask }
     }
 }
 
@@ -194,7 +307,7 @@ pub fn build_rig(c: &Collected, defs: &[PartDef], size: f32) -> Rig {
     for (i, d) in defs.iter().enumerate() {
         parts.push(make(d.name, &buckets[i], d.pivot));
     }
-    Rig { size, parts }
+    Rig::new(size, parts)
 }
 
 /**
@@ -248,12 +361,46 @@ mod tests {
     }
 
     #[test]
+    fn a_rig_mesh_keeps_only_the_open_faces() {
+        let rig = build_rig(&crate::render::heroes::ragnar_hd(None), crate::render::heroes::RAGNAR_HD_RIG, 0.0125);
+        let mesh = rig.mesh();
+        let voxels: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
+        assert_eq!(mesh.voxels as usize, voxels);
+        assert_eq!(mesh.indices.len() % 6, 0);
+        let faces = mesh.indices.len() / 6;
+        // The sculpts are hollow already, so about half their faces stay open.
+        assert!(faces * 5 < voxels * 6 * 3, "{faces} faces left of {}", voxels * 6);
+        assert!(mesh.vertices.iter().all(|v| (v.part as usize) < rig.parts.len()));
+        // A lone voxel keeps all six; two touching keep ten.
+        let part = |cubes: Vec<(Vec3, Vec3)>| RigPart { name: "body", rest: Vec3::ZERO, shade: vec![0.0; cubes.len()], cubes, min_y: 0.0 };
+        let one = Rig::new(0.5, vec![part(vec![(Vec3::ZERO, Vec3::ONE)])]);
+        assert_eq!(one.mesh().indices.len(), 36);
+        assert!(Arc::ptr_eq(&one.mesh(), &one.mesh()), "built once");
+        assert_ne!(one.mesh().id, one.mesh_whole().id);
+        assert_eq!(rig.mesh_whole().indices.len(), voxels * 36);
+        let two = Rig::new(0.5, vec![part(vec![(Vec3::new(0.25, 0.25, 0.0), Vec3::ONE), (Vec3::new(0.75, 0.25, 0.0), Vec3::ONE)])]);
+        assert_eq!(two.mesh().indices.len(), 60);
+    }
+
+    #[test]
     fn rigs_claim_every_voxel_once() {
         let model = crate::render::characters::ragnar();
         let rig = build_rig(&model, crate::render::characters::RAGNAR_RIG, 0.05);
         assert_eq!(rig.parts.len(), 6);
         let total: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
         assert_eq!(total, model.voxels.len());
+    }
+
+    #[test]
+    fn a_sprite_is_each_columns_frontmost_voxel() {
+        let model = crate::render::heroes::ragnar_hd(None);
+        let s = sprite_from(&model);
+        for (row, y) in s.pixels.iter().zip((0..model.height).rev()) {
+            for (x, px) in row.iter().enumerate() {
+                let best = model.voxels.iter().filter(|v| v.x == x as i32 && v.y == y).max_by_key(|v| v.z);
+                assert_eq!(*px, best.map(|v| v.c & 0xff_ffff));
+            }
+        }
     }
 
     #[test]

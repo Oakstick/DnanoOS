@@ -8,11 +8,14 @@
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
+use super::faces::StaticFaces;
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
-use super::view::{Frame, Instance, Light, MeshKind, WorldView, FAR, MESH_KINDS};
+use super::profile::{fx, FrameCounts, GpuTimer};
+use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, WorldView, FAR, MESH_KINDS};
+use super::voxels::{RigMesh, RigVertex};
 
 const MAX_LIGHTS: usize = 32;
 const SAMPLES: u32 = 4;
@@ -26,6 +29,103 @@ const SHADOW_SIZE: u32 = if cfg!(target_arch = "wasm32") { 2048 } else { 4096 };
 /// Half the width of the fine shadow cascade, in world units.
 const NEAR_CASCADE: f32 = 10.0;
 const BLOOM_LEVELS: usize = 5;
+/// Static scenery is cut into square chunks this many world units across, culled as a whole.
+const CHUNK: f32 = 8.0;
+/// Spare static slots for cubes a level adds as it is played (floor patches, scorch marks).
+const STATIC_SPARE: usize = 8192;
+
+/// A cube's open faces (bits from `StaticFaces`) as face records: its slot times 8 plus the face.
+fn push_faces(out: &mut Vec<u32>, slot: u32, open: u8) {
+    for f in 0..6 {
+        if open & (1 << f) != 0 {
+            out.push(slot << 3 | f);
+        }
+    }
+}
+
+/// A run of static instances near one another, the run of their open faces, and the box they fill.
+#[derive(Clone, Copy, Debug)]
+struct StaticChunk {
+    start: u32,
+    count: u32,
+    faces: u32,
+    face_count: u32,
+    min: Vec3,
+    max: Vec3,
+}
+
+/// The six planes of a view-projection's clip volume (depth 0..1), facing inward.
+struct Frustum([Vec4; 6]);
+
+impl Frustum {
+    fn new(m: Mat4) -> Self {
+        let r = [m.row(0), m.row(1), m.row(2), m.row(3)];
+        Self([r[3] + r[0], r[3] - r[0], r[3] + r[1], r[3] - r[1], r[2], r[3] - r[2]])
+    }
+
+    /// False only when the box lies wholly outside one plane.
+    fn sees(&self, min: Vec3, max: Vec3) -> bool {
+        self.0.iter().all(|p| {
+            let v = Vec3::new(
+                if p.x >= 0.0 { max.x } else { min.x },
+                if p.y >= 0.0 { max.y } else { min.y },
+                if p.z >= 0.0 { max.z } else { min.z },
+            );
+            p.truncate().dot(v) + p.w >= 0.0
+        })
+    }
+}
+
+/// An instanced unit cube's center and half extent along each world axis.
+fn cube_bounds(c: &Instance) -> (Vec3, Vec3) {
+    let m = &c.m;
+    let a = |i: usize| Vec3::new(m[i].abs(), m[i + 1].abs(), m[i + 2].abs());
+    (Vec3::new(m[12], m[13], m[14]), (a(0) + a(4) + a(8)) * 0.5)
+}
+
+/// Orders the static instances chunk by chunk (stably, so a tile's run stays a run) and bounds
+/// each chunk. Instances too big for a chunk share one of their own; hidden ones (scaled to
+/// nothing) widen no box.
+fn chunk_static(cubes: &[Instance]) -> (Vec<u32>, Vec<StaticChunk>) {
+    let mut keyed: Vec<((i32, i32), u32)> = cubes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let (at, half) = cube_bounds(c);
+            let key = if half.x.max(half.z) > CHUNK * 0.5 {
+                (i32::MAX, i32::MAX)
+            } else {
+                ((at.x / CHUNK).floor() as i32, (at.z / CHUNK).floor() as i32)
+            };
+            (key, i as u32)
+        })
+        .collect();
+    keyed.sort_by_key(|k| k.0);
+    let mut chunks: Vec<StaticChunk> = Vec::new();
+    let mut last = None;
+    for (slot, (key, i)) in keyed.iter().enumerate() {
+        if last != Some(*key) {
+            last = Some(*key);
+            chunks.push(StaticChunk {
+                start: slot as u32,
+                count: 0,
+                faces: 0,
+                face_count: 0,
+                min: Vec3::INFINITY,
+                max: Vec3::NEG_INFINITY,
+            });
+        }
+        let ch = chunks.last_mut().unwrap();
+        ch.count += 1;
+        let (at, half) = cube_bounds(&cubes[*i as usize]);
+        if half.max_element() > 0.0 {
+            ch.min = ch.min.min(at - half);
+            ch.max = ch.max.max(at + half);
+        }
+    }
+    chunks.retain(|c| c.min.x <= c.max.x);
+    (keyed.into_iter().map(|k| k.1).collect(), chunks)
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -77,6 +177,26 @@ struct MeshBuf {
     count: u32,
 }
 
+/// A rig's mesh on the GPU, and the frame it was last drawn in.
+struct RigBuf {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    count: u32,
+    used: u64,
+}
+
+/// A prebuilt instance set on the GPU, and the frame it was last drawn in.
+struct SetBuf {
+    buf: wgpu::Buffer,
+    count: u32,
+    used: u64,
+}
+
+/// Rig meshes not drawn for this many frames are let go.
+const RIG_IDLE_FRAMES: u64 = 600;
+/// The most rigs one frame can draw (the draw-id buffer's length).
+const MAX_RIG_DRAWS: u32 = 4096;
+
 /// A growable GPU buffer of instances or vertices.
 struct Dyn {
     buf: wgpu::Buffer,
@@ -94,6 +214,13 @@ impl Dyn {
             mapped_at_creation: false,
         });
         Self { buf, cap, usage, label }
+    }
+
+    /// Makes room for at least `bytes`, dropping what was there if it must grow.
+    fn reserve(&mut self, device: &wgpu::Device, bytes: u64) {
+        if bytes > self.cap {
+            *self = Dyn::new(device, self.label, self.usage, bytes.next_power_of_two());
+        }
     }
 
     fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8]) {
@@ -228,10 +355,31 @@ pub struct Gpu {
     post: PostShared,
     /// One layer of the shadow map per cascade: the fine one round Ragnar, then the whole level.
     shadow_layers: [wgpu::TextureView; 2],
+    shadow_tex: wgpu::Texture,
+    /// The coarse cascade holding only the static scenery, kept while the light, the level and the
+    /// cascade's box stay the same (the static generation and the matrix it was drawn with).
+    shadow_cache: wgpu::Texture,
+    shadow_cache_view: wgpu::TextureView,
+    shadow_cache_key: Option<(u64, [f32; 16])>,
     shadow_pipe: wgpu::RenderPipeline,
     shadow_binds: [wgpu::BindGroup; 2],
     cascade_bufs: [wgpu::Buffer; 2],
     scene_opaque: wgpu::RenderPipeline,
+    scene_prepass: wgpu::RenderPipeline,
+    rig_opaque: wgpu::RenderPipeline,
+    rig_blend: wgpu::RenderPipeline,
+    rig_prepass: wgpu::RenderPipeline,
+    rig_shadow: wgpu::RenderPipeline,
+    rig_layout: wgpu::BindGroupLayout,
+    /// The resident rig meshes by rig id, this frame's draw records and part matrices, and
+    /// 0, 1, 2, ... as an instance stream so each draw finds its record.
+    rig_meshes: std::collections::HashMap<u64, RigBuf>,
+    rig_draw_buf: Dyn,
+    rig_part_buf: Dyn,
+    rig_ids: wgpu::Buffer,
+    frame_no: u64,
+    /// Prebuilt instance sets by id (`view::InstanceSet`).
+    sets: std::collections::HashMap<u64, SetBuf>,
     scene_blend: wgpu::RenderPipeline,
     scene_add: wgpu::RenderPipeline,
     sky_pipe: wgpu::RenderPipeline,
@@ -250,9 +398,40 @@ pub struct Gpu {
     meshes: Vec<MeshBuf>,
     static_buf: Dyn,
     static_count: u32,
+    /// The static cubes' open faces (slot times 8 plus the face), chunk by chunk; the store's bind
+    /// group; one quad's indices; and the pipelines that draw faces.
+    face_buf: Dyn,
+    /// The open-face index of the static cubes, the chunked faces as first sent, and the faces
+    /// opened or added since (drawn as one more run, after the chunks), with the box they lie in.
+    static_faces: Option<StaticFaces>,
+    faces_main: Vec<u32>,
+    extra_faces: Vec<u32>,
+    extra_box: (Vec3, Vec3),
+    static_layout: wgpu::BindGroupLayout,
+    static_bind: Option<wgpu::BindGroup>,
+    quad: wgpu::Buffer,
+    face_prepass: wgpu::RenderPipeline,
+    face_opaque: wgpu::RenderPipeline,
+    face_shadow: wgpu::RenderPipeline,
+    static_chunks: Vec<StaticChunk>,
+    /// Where each of the view's static instances sits in the chunk-ordered buffer.
+    static_slot: Vec<u32>,
+    /// Bumped on every full static upload.
+    static_gen: u64,
+    /// Bytes uploaded since the last frame was drawn.
+    pending_upload: u64,
+    /// GPU time per pass, when the adapter can time them.
+    pub timer: Option<GpuTimer>,
+    /// What the last frame drew.
+    pub counts: FrameCounts,
+    /// Effects switched off (`profile::fx` bits), to see what each costs and adds.
+    pub fx_off: u32,
+    /// The last frame handed to the queue, for pacing frames in flight.
+    pub last_submit: Option<wgpu::SubmissionIndex>,
     dyn_buf: Dyn,
     overlay_buf: Dyn,
     pub backend: String,
+    pub adapter: wgpu::AdapterInfo,
 }
 
 impl Gpu {
@@ -288,15 +467,18 @@ impl Gpu {
         let (surface, adapter) = found.ok_or_else(|| "no GPU adapter supports this window".to_string())?;
         let info = adapter.get_info();
         let backend = format!("{:?} {}", info.backend, info.name);
+        let adapter_info = info.clone();
         let limits = if cfg!(target_arch = "wasm32") {
             wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits())
         } else {
             wgpu::Limits::default().using_resolution(adapter.limits())
         };
+        // Timestamps for the profiler, where the adapter has them.
+        let features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("void-harvest"),
-                required_features: wgpu::Features::empty(),
+                required_features: features,
                 required_limits: limits,
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
@@ -355,9 +537,20 @@ impl Gpu {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: DEPTH,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        let shadow_cache = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("static shadow cache"),
+            size: wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let shadow_cache_view = shadow_cache.create_view(&Default::default());
         let shadow_view = shadow_tex
             .create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
         let layer = |i: u32| {
@@ -484,7 +677,7 @@ impl Gpu {
                 }),
             ]
         };
-        let scene_pipe = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+        let scene_pipe = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool, fs: &str, writes: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&scene_pl),
@@ -496,8 +689,13 @@ impl Gpu {
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: Some("fs_scene"),
-                    targets: &scene_targets(blend, depth_write),
+                    entry_point: Some(fs),
+                    targets: &if writes {
+                        scene_targets(blend, depth_write)
+                    } else {
+                        [COLOR, HDR]
+                            .map(|format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::empty() }))
+                    },
                     compilation_options: Default::default(),
                 }),
                 primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
@@ -533,9 +731,201 @@ impl Gpu {
             },
             alpha: wgpu::BlendComponent::OVER,
         };
-        let scene_opaque = scene_pipe("opaque", None, true);
-        let scene_blend = scene_pipe("transparent", Some(alpha), false);
-        let scene_add = scene_pipe("additive", Some(additive), false);
+
+        // ---- resident rigs: their meshes, plus a record per draw and the parts' matrices
+        let storage_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
+        let rig_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("rigs"),
+            entries: &[storage_entry(0), storage_entry(1)],
+        });
+        let rig_scene_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("rig scene"),
+            bind_group_layouts: &[&scene_layout, &rig_layout],
+            push_constant_ranges: &[],
+        });
+        let rig_shadow_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("rig shadow"),
+            bind_group_layouts: &[&shadow_layout, &rig_layout],
+            push_constant_ranges: &[],
+        });
+        let rig_vertex_layouts = [
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<RigVertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Snorm8x4, 2 => Float32x4, 3 => Uint32],
+            },
+            wgpu::VertexBufferLayout {
+                array_stride: 4,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &wgpu::vertex_attr_array![4 => Uint32],
+            },
+        ];
+        let rig_pipe = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool, fs: &str, writes: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&rig_scene_pl),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_rig"),
+                    buffers: &rig_vertex_layouts,
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(fs),
+                    targets: &if writes {
+                        scene_targets(blend, depth_write)
+                    } else {
+                        [COLOR, HDR]
+                            .map(|format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::empty() }))
+                    },
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH,
+                    depth_write_enabled: depth_write,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState { count: SAMPLES, ..Default::default() },
+                multiview: None,
+                cache: None,
+            })
+        };
+        let rig_shadow = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("rig shadow"),
+            layout: Some(&rig_shadow_pl),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_rig_shadow"),
+                buffers: &rig_vertex_layouts,
+                compilation_options: Default::default(),
+            },
+            fragment: None,
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+            }),
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        });
+        // ---- static scenery, face by face (see `open_faces`)
+        let static_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("static store"), entries: &[storage_entry(0)] });
+        let face_scene_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("face scene"),
+            bind_group_layouts: &[&scene_layout, &static_layout],
+            push_constant_ranges: &[],
+        });
+        let face_shadow_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("face shadow"),
+            bind_group_layouts: &[&shadow_layout, &static_layout],
+            push_constant_ranges: &[],
+        });
+        let face_layouts = [wgpu::VertexBufferLayout {
+            array_stride: 4,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![0 => Uint32],
+        }];
+        let face_pipe = |label: &str, fs: &str, writes: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&face_scene_pl),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_face"),
+                    buffers: &face_layouts,
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(fs),
+                    targets: &if writes {
+                        scene_targets(None, true)
+                    } else {
+                        [COLOR, HDR]
+                            .map(|format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::empty() }))
+                    },
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState { count: SAMPLES, ..Default::default() },
+                multiview: None,
+                cache: None,
+            })
+        };
+        let face_shadow = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("face shadow"),
+            layout: Some(&face_shadow_pl),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_face_shadow"),
+                buffers: &face_layouts,
+                compilation_options: Default::default(),
+            },
+            fragment: None,
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+            }),
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        });
+        // Every pipeline that shades the scene compiles the whole scene shader, which takes the
+        // Direct3D 12 shader compiler a good while each; they are built side by side.
+        let (scene_opaque, scene_blend, scene_add, scene_prepass, rig_opaque, rig_blend, rig_prepass, face_opaque, face_prepass) =
+            std::thread::scope(|s| {
+                let a = s.spawn(|| scene_pipe("opaque", None, true, "fs_scene", true));
+                let b = s.spawn(|| scene_pipe("transparent", Some(alpha), false, "fs_scene", true));
+                let c = s.spawn(|| scene_pipe("additive", Some(additive), false, "fs_scene", true));
+                let d = s.spawn(|| scene_pipe("depth prepass", None, true, "fs_prepass", false));
+                let e = s.spawn(|| rig_pipe("rig opaque", None, true, "fs_scene", true));
+                let f = s.spawn(|| rig_pipe("rig transparent", Some(alpha), false, "fs_scene", true));
+                let g = s.spawn(|| rig_pipe("rig depth prepass", None, true, "fs_prepass", false));
+                let h = s.spawn(|| face_pipe("face opaque", "fs_scene", true));
+                let i = s.spawn(|| face_pipe("face depth prepass", "fs_prepass", false));
+                let j = |t: std::thread::ScopedJoinHandle<'_, wgpu::RenderPipeline>| t.join().expect("pipeline thread");
+                (j(a), j(b), j(c), j(d), j(e), j(f), j(g), j(h), j(i))
+            });
+        let quad = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("quad"),
+            contents: bytemuck::cast_slice(&[0u16, 1, 2, 0, 2, 3]),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let ids: Vec<u32> = (0..MAX_RIG_DRAWS).collect();
+        let rig_ids = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("rig draw ids"),
+            contents: bytemuck::cast_slice(&ids),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
         // The sky: one full-screen triangle behind everything, no depth.
         let sky_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("sky"),
@@ -628,13 +1018,17 @@ impl Gpu {
             },
             alpha: wgpu::BlendComponent::OVER,
         };
-        let ssao_pipe = post_pipe("fs_ssao", AO, None);
-        let blur_pipe = post_pipe("fs_blur", AO, None);
-        let bloom_pre_pipe = post_pipe("fs_bloom_pre", HDR, None);
-        let bloom_down_pipe = post_pipe("fs_bloom_down", HDR, None);
-        let bloom_up_pipe = post_pipe("fs_bloom_up", HDR, Some(add_all));
-        let rays_pipe = post_pipe("fs_rays", HDR, Some(add_all));
-        let composite_pipe = post_pipe("fs_composite", format, None);
+        let (ssao_pipe, blur_pipe, bloom_pre_pipe, bloom_down_pipe, bloom_up_pipe, rays_pipe, composite_pipe) = std::thread::scope(|s| {
+            let a = s.spawn(|| post_pipe("fs_ssao", AO, None));
+            let b = s.spawn(|| post_pipe("fs_blur", AO, None));
+            let c = s.spawn(|| post_pipe("fs_bloom_pre", HDR, None));
+            let d = s.spawn(|| post_pipe("fs_bloom_down", HDR, None));
+            let e = s.spawn(|| post_pipe("fs_bloom_up", HDR, Some(add_all)));
+            let f = s.spawn(|| post_pipe("fs_rays", HDR, Some(add_all)));
+            let g = s.spawn(|| post_pipe("fs_composite", format, None));
+            let j = |t: std::thread::ScopedJoinHandle<'_, wgpu::RenderPipeline>| t.join().expect("pipeline thread");
+            (j(a), j(b), j(c), j(d), j(e), j(f), j(g))
+        });
         let post = PostShared {
             layout: post_layout,
             uniform: device.create_buffer(&wgpu::BufferDescriptor {
@@ -748,9 +1142,35 @@ impl Gpu {
         let meshes = build_meshes(&device);
         let inst = wgpu::BufferUsages::VERTEX;
         let rt = Targets::new(&device, &post, config.width, config.height);
+        let timer = GpuTimer::new(&device, &queue);
+        let rig_draw_buf = Dyn::new(&device, "rig draws", wgpu::BufferUsages::STORAGE, 1 << 14);
+        let rig_part_buf = Dyn::new(&device, "rig parts", wgpu::BufferUsages::STORAGE, 1 << 16);
         Ok(Self {
+            shadow_tex,
+            shadow_cache,
+            shadow_cache_view,
+            shadow_cache_key: None,
+            static_chunks: Vec::new(),
+            face_buf: Dyn::new(&device, "static faces", wgpu::BufferUsages::VERTEX, 1 << 20),
+            static_faces: None,
+            faces_main: Vec::new(),
+            extra_faces: Vec::new(),
+            extra_box: (Vec3::INFINITY, Vec3::NEG_INFINITY),
+            static_layout,
+            static_bind: None,
+            quad,
+            face_prepass,
+            face_opaque,
+            face_shadow,
+            static_slot: Vec::new(),
+            static_gen: 0,
+            pending_upload: 0,
+            timer,
+            counts: FrameCounts::default(),
+            fx_off: 0,
+            last_submit: None,
             surface,
-            static_buf: Dyn::new(&device, "static", inst, 1 << 20),
+            static_buf: Dyn::new(&device, "static", inst | wgpu::BufferUsages::STORAGE, 1 << 20),
             dyn_buf: Dyn::new(&device, "dynamic", inst, 1 << 20),
             overlay_buf: Dyn::new(&device, "overlay", inst, 1 << 18),
             device,
@@ -764,6 +1184,18 @@ impl Gpu {
             shadow_binds,
             cascade_bufs,
             scene_opaque,
+            scene_prepass,
+            rig_opaque,
+            rig_blend,
+            rig_prepass,
+            rig_shadow,
+            rig_layout,
+            rig_meshes: std::collections::HashMap::new(),
+            rig_draw_buf,
+            rig_part_buf,
+            rig_ids,
+            frame_no: 0,
+            sets: std::collections::HashMap::new(),
             scene_blend,
             scene_add,
             sky_pipe,
@@ -782,6 +1214,7 @@ impl Gpu {
             meshes,
             static_count: 0,
             backend,
+            adapter: adapter_info,
         })
     }
 
@@ -805,33 +1238,160 @@ impl Gpu {
         }
     }
 
-    /// Uploads the level's static geometry when it changed.
+    /// Uploads the level's static geometry when it changed. A new level goes up whole, chunk by
+    /// chunk (see `chunk_static`), with the open faces of each chunk (`faces::StaticFaces`). Later
+    /// changes go up as they come: rewritten cubes in place, cubes added into the spare slots,
+    /// and the faces a hidden cube had covered as a short extra run. Only a cube that moves, or
+    /// more added cubes than there is room for, sends the whole level up again.
     pub fn sync_static(&mut self, view: &mut WorldView) {
-        if view.static_dirty {
-            self.static_buf.write(&self.device, &self.queue, bytemuck::cast_slice(&view.static_cubes));
-            self.static_count = view.static_cubes.len() as u32;
-            view.static_dirty = false;
-            view.static_patches.clear();
+        if !view.static_dirty && !self.sync_static_changes(view) {
+            view.static_dirty = true;
+        }
+        if !view.static_dirty {
             return;
         }
-        // Small rewrites (fading trees) go up range by range.
-        let stride = std::mem::size_of::<Instance>();
-        for (start, len) in view.static_patches.drain(..) {
-            let bytes: &[u8] = bytemuck::cast_slice(&view.static_cubes[start..start + len]);
-            self.queue.write_buffer(&self.static_buf.buf, (start * stride) as u64, bytes);
+        let (order, mut chunks) = chunk_static(&view.static_cubes);
+        self.static_slot = vec![0; order.len()];
+        let mut sorted = Vec::with_capacity(order.len());
+        for (slot, &i) in order.iter().enumerate() {
+            sorted.push(view.static_cubes[i as usize]);
+            self.static_slot[i as usize] = slot as u32;
         }
+        let index = StaticFaces::build(&sorted);
+        let mut faces: Vec<u32> = Vec::new();
+        for ch in chunks.iter_mut() {
+            ch.faces = faces.len() as u32;
+            for slot in ch.start..ch.start + ch.count {
+                push_faces(&mut faces, slot, index.open[slot as usize]);
+            }
+            ch.face_count = faces.len() as u32 - ch.faces;
+        }
+        if std::env::var_os("VH_FACE_STATS").is_some() {
+            let mut by: std::collections::BTreeMap<i32, (usize, usize)> = Default::default();
+            for (c, bits) in sorted.iter().zip(&index.open) {
+                let e = by.entry(c.emissive[3] as i32).or_default();
+                e.0 += 1;
+                e.1 += bits.count_ones() as usize;
+            }
+            for (shade, (n, f)) in by {
+                eprintln!("faces: shade {shade:>2}: {n} cubes, {f} open faces ({:.0}%)", f as f64 * 100.0 / (n * 6) as f64);
+            }
+        }
+        // Room for cubes added later (floor patches, scorch marks) without sending it all again.
+        let stride = std::mem::size_of::<Instance>();
+        self.static_buf.reserve(&self.device, ((sorted.len() + STATIC_SPARE) * stride) as u64);
+        let bytes: &[u8] = bytemuck::cast_slice(&sorted);
+        self.static_buf.write(&self.device, &self.queue, bytes);
+        self.face_buf.write(&self.device, &self.queue, bytemuck::cast_slice(&faces));
+        self.pending_upload += (bytes.len() + faces.len() * 4) as u64;
+        self.static_bind = (!sorted.is_empty()).then(|| {
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("static store"),
+                layout: &self.static_layout,
+                entries: &[wgpu::BindGroupEntry { binding: 0, resource: self.static_buf.buf.as_entire_binding() }],
+            })
+        });
+        self.static_count = sorted.len() as u32;
+        self.static_chunks = chunks;
+        self.static_faces = Some(index);
+        self.faces_main = faces;
+        self.extra_faces.clear();
+        self.extra_box = (Vec3::INFINITY, Vec3::NEG_INFINITY);
+        self.static_gen += 1;
+        view.static_dirty = false;
+        view.static_patches.clear();
+    }
+
+    /// The changes since the last upload, sent as they are. False when they need the whole level sent again.
+    fn sync_static_changes(&mut self, view: &mut WorldView) -> bool {
+        let Some(index) = self.static_faces.as_mut() else { return view.static_cubes.is_empty() };
+        let stride = std::mem::size_of::<Instance>() as u64;
+        let mut extras_changed = false;
+        let grow = |b: &mut (Vec3, Vec3), c: &Instance| {
+            let (at, half) = cube_bounds(c);
+            // Its neighbours lie within one of its own sizes.
+            b.0 = b.0.min(at - half * 3.0);
+            b.1 = b.1.max(at + half * 3.0);
+        };
+        // Cubes added since: into the spare slots, with their open faces in the extra run.
+        while self.static_slot.len() < view.static_cubes.len() {
+            let slot = self.static_count;
+            if (slot as u64 + 1) * stride > self.static_buf.cap {
+                return false;
+            }
+            let c = view.static_cubes[self.static_slot.len()];
+            self.queue.write_buffer(&self.static_buf.buf, slot as u64 * stride, bytemuck::bytes_of(&c));
+            self.pending_upload += stride;
+            self.static_slot.push(slot);
+            self.static_count += 1;
+            let open = index.add(slot, &c);
+            push_faces(&mut self.extra_faces, slot, open);
+            grow(&mut self.extra_box, &c);
+            extras_changed = true;
+        }
+        // Rewritten cubes go up run by run, wherever the chunk order put them; a hidden one opens
+        // its neighbours' faces.
+        for (start, len) in std::mem::take(&mut view.static_patches) {
+            let mut i = start;
+            while i < start + len {
+                let first = self.static_slot[i];
+                let mut j = i + 1;
+                while j < start + len && self.static_slot[j] == first + (j - i) as u32 {
+                    j += 1;
+                }
+                let bytes: &[u8] = bytemuck::cast_slice(&view.static_cubes[i..j]);
+                self.queue.write_buffer(&self.static_buf.buf, first as u64 * stride, bytes);
+                self.pending_upload += bytes.len() as u64;
+                for k in i..j {
+                    let slot = self.static_slot[k];
+                    let Some(opened) = index.update(slot, &view.static_cubes[k]) else { return false };
+                    if !opened.is_empty() {
+                        // The neighbours stand in the hidden cube's chunk, or just over its edge.
+                        let at = self.static_chunks.partition_point(|c| c.start <= slot).saturating_sub(1);
+                        if let Some(ch) = self.static_chunks.get(at) {
+                            self.extra_box.0 = self.extra_box.0.min(ch.min - Vec3::ONE);
+                            self.extra_box.1 = self.extra_box.1.max(ch.max + Vec3::ONE);
+                        }
+                        self.extra_faces.extend(opened);
+                        extras_changed = true;
+                    }
+                }
+                i = j;
+            }
+        }
+        if extras_changed {
+            // Shadows change too: the cached cascade is drawn again.
+            self.static_gen += 1;
+            let main = self.faces_main.len();
+            let needed = ((main + self.extra_faces.len()) * 4) as u64;
+            if needed > self.face_buf.cap {
+                let all: Vec<u32> = self.faces_main.iter().chain(&self.extra_faces).copied().collect();
+                self.face_buf.write(&self.device, &self.queue, bytemuck::cast_slice(&all));
+            } else {
+                self.queue.write_buffer(&self.face_buf.buf, main as u64 * 4, bytemuck::cast_slice(&self.extra_faces));
+            }
+            self.pending_upload += self.extra_faces.len() as u64 * 4;
+        }
+        true
     }
 
     /// Draws one frame into `target`: shadows, the scene, post-processing, then the overlay on top.
     pub fn draw(&mut self, target: &wgpu::TextureView, view: &WorldView, frame: &Frame, overlay: &[OVertex], logical: (f32, f32)) {
+        let mut counts = FrameCounts { upload: std::mem::take(&mut self.pending_upload), ..Default::default() };
+        if let Some(t) = self.timer.as_mut() {
+            t.collect(&self.device);
+            t.begin();
+        }
         // ---- uniforms
         let mut lights = [GpuLight::zeroed(); MAX_LIGHTS];
         let mut chosen: Vec<&Light> = frame.lights.iter().collect();
+        counts.lights = chosen.len() as u32;
         if chosen.len() > MAX_LIGHTS {
             let hero = frame.lights[0].pos;
             chosen.sort_by(|a, b| a.pos.distance_squared(hero).partial_cmp(&b.pos.distance_squared(hero)).unwrap());
             chosen.truncate(MAX_LIGHTS);
         }
+        counts.lights_dropped = counts.lights - chosen.len() as u32;
         for (i, l) in chosen.iter().enumerate() {
             lights[i] = GpuLight { pos: [l.pos.x, l.pos.y, l.pos.z, l.distance], color: [l.color.x, l.color.y, l.color.z, 0.0] };
         }
@@ -863,7 +1423,7 @@ impl Gpu {
             view_proj: view_proj.to_cols_array(),
             light_vp: light_vp.to_cols_array(),
             light_vp_near: light_vp_near.unwrap_or(light_vp).to_cols_array(),
-            cam_pos: v4(view.camera_position(), 1.0),
+            cam_pos: v4(view.camera_position(), if ortho { 0.0 } else { 1.0 }),
             cam_fwd: v4(fwd, 1.0 / SHADOW_SIZE as f32),
             fog,
             params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
@@ -877,7 +1437,7 @@ impl Gpu {
             sky_up: v4(sky_up, 0.0),
             sky_moon: v4(atm.moon_view, 0.0),
             bounds: frame.bounds.to_array(),
-            shadow: [near_r, radius, if light_vp_near.is_some() { 1.0 } else { 0.0 }, 0.0],
+            shadow: [near_r, radius, if light_vp_near.is_some() { 1.0 } else { 0.0 }, (self.fx_off & (fx::SCENE | fx::BACKFACE)) as f32],
             lights,
         };
         self.queue.write_buffer(&self.cascade_bufs[0], 0, bytemuck::cast_slice(&light_vp_near.unwrap_or(light_vp).to_cols_array()));
@@ -890,12 +1450,18 @@ impl Gpu {
             cam_fwd: v4(fwd, focus.unwrap_or(0.0)),
             cam_r: v4(cam_r, 5.0),
             cam_u: v4(cam_u, 20.0),
-            params: [0.32, 1.4, 0.45 * atm.bloom, if focus.is_some() { 3.5 } else { 0.0 }],
-            params2: [0.6, 0.28, frame.time, 1.0],
+            params: [
+                0.32,
+                if self.fx_off & fx::AO != 0 { 0.0 } else { 1.4 },
+                if self.fx_off & fx::BLOOM != 0 { 0.0 } else { 0.45 * atm.bloom },
+                if focus.is_some() && self.fx_off & fx::DOF == 0 { 3.5 } else { 0.0 },
+            ],
+            params2: [0.6, 0.28, frame.time, if self.fx_off & fx::GRADE != 0 { 0.0 } else { 1.0 }],
             moon: moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky),
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));
+        counts.upload += (std::mem::size_of::<Globals>() + std::mem::size_of::<PostUniform>() + 128 + 16) as u64;
 
         // ---- instances: opaque by mesh, the early see-through ones, see-through by mesh, additive
         let order_t =
@@ -905,7 +1471,8 @@ impl Gpu {
             + frame.additive.len()
             + frame.glow.len();
         let mut all: Vec<Instance> = Vec::with_capacity(total);
-        let mut ranges: Vec<(u8, usize, u32, u32)> = Vec::new(); // (pipeline, mesh, start, count)
+        // (stage, mesh, start, count): 0 opaque, 1 the early see-through, 3 see-through, 2 additive.
+        let mut ranges: Vec<(u8, usize, u32, u32)> = Vec::new();
         for k in 0..MESH_KINDS {
             let list = &frame.opaque[k];
             if !list.is_empty() {
@@ -920,7 +1487,7 @@ impl Gpu {
         for k in order_t {
             let list = &frame.transparent[k as usize];
             if !list.is_empty() {
-                ranges.push((1, k as usize, all.len() as u32, list.len() as u32));
+                ranges.push((3, k as usize, all.len() as u32, list.len() as u32));
                 all.extend_from_slice(list);
             }
         }
@@ -932,44 +1499,134 @@ impl Gpu {
             ranges.push((2, MeshKind::Disc as usize, all.len() as u32, frame.glow.len() as u32));
             all.extend_from_slice(&frame.glow);
         }
+        // ---- rigs: the solid ones, then the see-through, as one list of records and matrices
+        self.frame_no += 1;
+        let rig_bind = self.upload_rigs(frame, &mut counts);
+        self.upload_sets(frame, &mut counts);
+        let rig_split = frame.rigs.len() as u32;
+        let rig_total = rig_split + frame.rigs_blend.len() as u32;
         self.dyn_buf.write(&self.device, &self.queue, bytemuck::cast_slice(&all));
         self.overlay_buf.write(&self.device, &self.queue, bytemuck::cast_slice(overlay));
+        counts.upload += (std::mem::size_of_val(all.as_slice()) + std::mem::size_of_val(overlay)) as u64;
+
+        // ---- the static chunks each view sees: the camera's front to back, then each cascade's casters
+        let use_static = self.static_count > 0 && !frame.skip_static;
+        let visible = |m: Mat4| -> Vec<(u32, u32)> {
+            if !use_static {
+                return Vec::new();
+            }
+            let fr = Frustum::new(m);
+            let mut runs: Vec<(u32, u32)> =
+                self.static_chunks.iter().filter(|c| fr.sees(c.min, c.max)).map(|c| (c.faces, c.face_count)).collect();
+            if !self.extra_faces.is_empty() && fr.sees(self.extra_box.0, self.extra_box.1) {
+                runs.push((self.faces_main.len() as u32, self.extra_faces.len() as u32));
+            }
+            runs
+        };
+        let mut main_chunks: Vec<(f32, u32, u32)> = Vec::new();
+        if use_static {
+            let fr = Frustum::new(view_proj);
+            let eye = view.camera_position();
+            for c in self.static_chunks.iter().filter(|c| fr.sees(c.min, c.max)) {
+                let near = eye.clamp(c.min, c.max).distance_squared(eye);
+                main_chunks.push((near, c.faces, c.face_count));
+                counts.static_drawn += c.count as u64;
+            }
+            main_chunks.sort_by(|a, b| a.0.total_cmp(&b.0));
+        }
+        let mut main_faces: Vec<(u32, u32)> = main_chunks.iter().map(|c| (c.1, c.2)).collect();
+        if use_static && !self.extra_faces.is_empty() && Frustum::new(view_proj).sees(self.extra_box.0, self.extra_box.1) {
+            main_faces.push((self.faces_main.len() as u32, self.extra_faces.len() as u32));
+        }
+        let near_chunks = light_vp_near.map(&visible).unwrap_or_default();
+        // The coarse cascade's static part is drawn once and copied in, until the light, the
+        // level or the box changes.
+        let cache_key = (self.static_gen, light_vp.to_cols_array());
+        let cache_fresh = use_static && self.shadow_cache_key == Some(cache_key);
+        counts.chunks = self.static_chunks.len() as u32;
+        counts.static_total = self.static_count as u64;
+        counts.chunks_drawn = main_chunks.len() as u32;
 
         let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
+        if use_static && !cache_fresh {
+            let far = visible(light_vp);
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shadow cache"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_cache_view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: self.timer.as_mut().and_then(|t| t.pass("shadow cache")),
+                occlusion_query_set: None,
+            });
+            pass.set_bind_group(0, &self.shadow_binds[1], &[]);
+            self.draw_faces(&mut pass, &self.face_shadow, &far, &mut counts);
+            counts.shadow_static += far.iter().map(|c| c.1 as u64).sum::<u64>();
+            drop(pass);
+            self.shadow_cache_key = Some(cache_key);
+        }
+        if use_static {
+            enc.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.shadow_cache,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.shadow_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: 0, y: 0, z: 1 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
+            );
+        }
 
         // ---- shadow maps, fine cascade then coarse (the fine one is skipped when unused)
         for c in 0..2 {
             if c == 0 && light_vp_near.is_none() {
                 continue;
             }
+            let label = if c == 0 { "shadow near" } else { "shadow far" };
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("shadow"),
+                label: Some(label),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.shadow_layers[c],
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: if c == 1 && use_static { wgpu::LoadOp::Load } else { wgpu::LoadOp::Clear(1.0) },
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: self.timer.as_mut().and_then(|t| t.pass(label)),
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.shadow_pipe);
             pass.set_bind_group(0, &self.shadow_binds[c], &[]);
-            if self.static_count > 0 && !frame.skip_static {
-                let m = &self.meshes[MeshKind::Cube as usize];
-                pass.set_vertex_buffer(0, m.vertices.slice(..));
-                pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
-                pass.set_vertex_buffer(1, self.static_buf.buf.slice(..));
-                pass.draw_indexed(0..m.count, 0, 0..self.static_count);
+            if c == 0 && !near_chunks.is_empty() {
+                self.draw_faces(&mut pass, &self.face_shadow, &near_chunks, &mut counts);
+                counts.shadow_static += near_chunks.iter().map(|c| c.1 as u64).sum::<u64>();
             }
             if !all.is_empty() {
+                pass.set_pipeline(&self.shadow_pipe);
                 pass.set_vertex_buffer(1, self.dyn_buf.buf.slice(..));
                 for &(_, mesh, start, count) in ranges.iter().filter(|r| r.0 == 0) {
                     let m = &self.meshes[mesh];
                     pass.set_vertex_buffer(0, m.vertices.slice(..));
                     pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
                     pass.draw_indexed(0..m.count, 0, start..start + count);
+                    counts.draw(count as u64, m.count);
                 }
+            }
+            self.draw_sets(&mut pass, &frame.sets, &mut counts);
+            if let Some(bind) = rig_bind.as_ref().filter(|_| rig_split > 0) {
+                pass.set_pipeline(&self.rig_shadow);
+                pass.set_bind_group(1, bind, &[]);
+                self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
             }
         }
 
@@ -1001,48 +1658,101 @@ impl Gpu {
                     depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Discard }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: self.timer.as_mut().and_then(|t| t.pass("main")),
                 occlusion_query_set: None,
             });
             pass.set_bind_group(0, &self.scene_bind, &[]);
             if atm.night_sky > 0.0 {
                 pass.set_pipeline(&self.sky_pipe);
                 pass.draw(0..3, 0..1);
+                counts.draw(1, 3);
             }
 
-            // Static level geometry.
-            if self.static_count > 0 && !frame.skip_static {
-                let m = &self.meshes[MeshKind::Cube as usize];
-                pass.set_pipeline(&self.scene_opaque);
-                pass.set_vertex_buffer(0, m.vertices.slice(..));
-                pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
-                pass.set_vertex_buffer(1, self.static_buf.buf.slice(..));
-                pass.draw_indexed(0..m.count, 0, 0..self.static_count);
+            // The depth of every opaque thing first (nearest static chunks first), then the shading.
+            let prepass = self.fx_off & fx::PREPASS == 0;
+            if prepass && !main_faces.is_empty() {
+                self.draw_faces(&mut pass, &self.face_prepass, &main_faces, &mut counts);
             }
-            if !all.is_empty() {
+            if prepass && !all.is_empty() {
+                pass.set_pipeline(&self.scene_prepass);
                 pass.set_vertex_buffer(1, self.dyn_buf.buf.slice(..));
-                for &(pipe, mesh, start, count) in &ranges {
-                    pass.set_pipeline(match pipe {
-                        0 => &self.scene_opaque,
-                        1 => &self.scene_blend,
-                        _ => &self.scene_add,
-                    });
+                for &(_, mesh, start, count) in ranges.iter().filter(|r| r.0 == 0) {
                     let m = &self.meshes[mesh];
                     pass.set_vertex_buffer(0, m.vertices.slice(..));
                     pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
                     pass.draw_indexed(0..m.count, 0, start..start + count);
+                    counts.draw(count as u64, m.count);
                 }
+            }
+            if prepass && !frame.sets.is_empty() {
+                pass.set_pipeline(&self.scene_prepass);
+                self.draw_sets(&mut pass, &frame.sets, &mut counts);
+            }
+            if let Some(bind) = rig_bind.as_ref() {
+                pass.set_bind_group(1, bind, &[]);
+            }
+            if prepass && rig_split > 0 {
+                pass.set_pipeline(&self.rig_prepass);
+                self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+            }
+            if !main_faces.is_empty() {
+                self.draw_faces(&mut pass, &self.face_opaque, &main_faces, &mut counts);
+            }
+            if let Some(bind) = rig_bind.as_ref() {
+                pass.set_bind_group(1, bind, &[]);
+            }
+            if !frame.sets.is_empty() {
+                pass.set_pipeline(&self.scene_opaque);
+                self.draw_sets(&mut pass, &frame.sets, &mut counts);
+            }
+            // The solid rigs with the solid things; the see-through sets and rigs where see-through cubes go.
+            let mut rigs_done = rig_split == 0;
+            let mut blend_done = rig_total == rig_split && frame.sets_blend.is_empty();
+            for &(pipe, mesh, start, count) in &ranges {
+                if pipe > 0 && !rigs_done {
+                    pass.set_pipeline(&self.rig_opaque);
+                    self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+                    rigs_done = true;
+                }
+                // See-through sets and rigs come at the end of the see-through cubes, where they were listed
+                // (over the water, under the spheres and veils of falling water).
+                let early = [MeshKind::Disc, MeshKind::Annulus, MeshKind::Ring, MeshKind::Cube].iter().any(|k| *k as usize == mesh);
+                if (pipe == 2 || (pipe == 3 && !early)) && !blend_done {
+                    self.draw_blend_sets_and_rigs(&mut pass, frame, rig_split, &mut counts);
+                    blend_done = true;
+                }
+                pass.set_pipeline(match pipe {
+                    0 => &self.scene_opaque,
+                    1 | 3 => &self.scene_blend,
+                    _ => &self.scene_add,
+                });
+                let m = &self.meshes[mesh];
+                pass.set_vertex_buffer(0, m.vertices.slice(..));
+                pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
+                pass.set_vertex_buffer(1, self.dyn_buf.buf.slice(..));
+                pass.draw_indexed(0..m.count, 0, start..start + count);
+                counts.draw(count as u64, m.count);
+            }
+            if !rigs_done {
+                pass.set_pipeline(&self.rig_opaque);
+                self.draw_rigs(&mut pass, &frame.rigs, 0, &mut counts);
+            }
+            if !blend_done {
+                self.draw_blend_sets_and_rigs(&mut pass, frame, rig_split, &mut counts);
             }
         }
 
         // ---- post
+        #[allow(clippy::too_many_arguments)]
         fn fullscreen(
             enc: &mut wgpu::CommandEncoder,
-            label: &str,
+            label: &'static str,
             target: &wgpu::TextureView,
             pipe: &wgpu::RenderPipeline,
             bind: &wgpu::BindGroup,
             clear: bool,
+            timer: &mut Option<GpuTimer>,
+            counts: &mut FrameCounts,
         ) {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(label),
@@ -1055,27 +1765,29 @@ impl Gpu {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: timer.as_mut().and_then(|t| t.pass(label)),
                 occlusion_query_set: None,
             });
             pass.set_pipeline(pipe);
             pass.set_bind_group(0, bind, &[]);
             pass.draw(0..3, 0..1);
+            counts.draw(1, 3);
         }
         let rt = &self.rt;
-        fullscreen(&mut enc, "ssao", &rt.ao, &self.ssao_pipe, &rt.ssao_bind, true);
-        fullscreen(&mut enc, "ssao blur", &rt.ao_blur, &self.blur_pipe, &rt.blur_bind, true);
-        fullscreen(&mut enc, "bloom pre", &rt.bloom[0], &self.bloom_pre_pipe, &rt.down_binds[0], true);
+        let (timer, c) = (&mut self.timer, &mut counts);
+        fullscreen(&mut enc, "ssao", &rt.ao, &self.ssao_pipe, &rt.ssao_bind, true, timer, c);
+        fullscreen(&mut enc, "ssao", &rt.ao_blur, &self.blur_pipe, &rt.blur_bind, true, timer, c);
+        fullscreen(&mut enc, "bloom", &rt.bloom[0], &self.bloom_pre_pipe, &rt.down_binds[0], true, timer, c);
         for i in 1..BLOOM_LEVELS {
-            fullscreen(&mut enc, "bloom down", &rt.bloom[i], &self.bloom_down_pipe, &rt.down_binds[i], true);
+            fullscreen(&mut enc, "bloom", &rt.bloom[i], &self.bloom_down_pipe, &rt.down_binds[i], true, timer, c);
         }
         for i in (0..BLOOM_LEVELS - 1).rev() {
-            fullscreen(&mut enc, "bloom up", &rt.bloom[i], &self.bloom_up_pipe, &rt.up_binds[i], false);
+            fullscreen(&mut enc, "bloom", &rt.bloom[i], &self.bloom_up_pipe, &rt.up_binds[i], false, timer, c);
         }
         if post.moon[2] > 0.0 {
-            fullscreen(&mut enc, "light shafts", &rt.bloom[0], &self.rays_pipe, &rt.rays_bind, false);
+            fullscreen(&mut enc, "shafts", &rt.bloom[0], &self.rays_pipe, &rt.rays_bind, false, timer, c);
         }
-        fullscreen(&mut enc, "composite", target, &self.composite_pipe, &rt.composite_bind, true);
+        fullscreen(&mut enc, "composite", target, &self.composite_pipe, &rt.composite_bind, true, timer, c);
 
         // ---- HUD
         if !overlay.is_empty() {
@@ -1087,15 +1799,165 @@ impl Gpu {
                     ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: self.timer.as_mut().and_then(|t| t.pass("hud")),
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.overlay_pipe);
             pass.set_bind_group(0, &self.overlay_bind, &[]);
             pass.set_vertex_buffer(0, self.overlay_buf.buf.slice(..));
             pass.draw(0..overlay.len() as u32, 0..1);
+            counts.draw(1, overlay.len() as u32);
         }
-        self.queue.submit([enc.finish()]);
+        if let Some(t) = self.timer.as_mut() {
+            t.resolve(&mut enc);
+        }
+        self.last_submit = Some(self.queue.submit([enc.finish()]));
+        if let Some(t) = self.timer.as_mut() {
+            t.submitted();
+        }
+        self.counts = counts;
+    }
+
+    /// Makes sure every rig this frame draws has its mesh on the GPU, uploads the frame's
+    /// draw records and part matrices, and lets go of meshes long unused. The bind group
+    /// for the records, if any rig is drawn.
+    fn upload_rigs(&mut self, frame: &Frame, counts: &mut FrameCounts) -> Option<wgpu::BindGroup> {
+        let lists = [&frame.rigs, &frame.rigs_blend];
+        let total: usize = lists.iter().map(|l| l.len()).sum();
+        let now = self.frame_no;
+        if self.frame_no.is_multiple_of(60) {
+            self.rig_meshes.retain(|_, b| now - b.used < RIG_IDLE_FRAMES);
+        }
+        if total == 0 {
+            return None;
+        }
+        let mut draws: Vec<RigDraw> = Vec::with_capacity(total);
+        let mut parts: Vec<[f32; 16]> = Vec::new();
+        for list in lists {
+            let base = parts.len() as u32;
+            draws.extend(list.draws.iter().map(|d| RigDraw { part_base: d.part_base + base, ..*d }));
+            parts.extend_from_slice(&list.parts);
+            for mesh in &list.meshes {
+                let device = &self.device;
+                let buf = self.rig_meshes.entry(mesh.id).or_insert_with(|| {
+                    counts.upload +=
+                        (std::mem::size_of_val(mesh.vertices.as_slice()) + std::mem::size_of_val(mesh.indices.as_slice())) as u64;
+                    rig_buf(device, mesh)
+                });
+                buf.used = now;
+                counts.rigs += 1;
+                counts.rig_voxels += mesh.voxels as u64;
+            }
+        }
+        draws.truncate(MAX_RIG_DRAWS as usize);
+        let (d, p): (&[u8], &[u8]) = (bytemuck::cast_slice(&draws), bytemuck::cast_slice(&parts));
+        self.rig_draw_buf.write(&self.device, &self.queue, d);
+        self.rig_part_buf.write(&self.device, &self.queue, p);
+        counts.upload += (d.len() + p.len()) as u64;
+        Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("rigs"),
+            layout: &self.rig_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: self.rig_draw_buf.buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: self.rig_part_buf.buf.as_entire_binding() },
+            ],
+        }))
+    }
+
+    /// Draws runs of static faces (start, count) with `pipe`, which reads the static store.
+    fn draw_faces(&self, pass: &mut wgpu::RenderPass<'_>, pipe: &wgpu::RenderPipeline, runs: &[(u32, u32)], counts: &mut FrameCounts) {
+        let Some(bind) = &self.static_bind else { return };
+        pass.set_pipeline(pipe);
+        pass.set_bind_group(1, bind, &[]);
+        pass.set_vertex_buffer(0, self.face_buf.buf.slice(..));
+        pass.set_index_buffer(self.quad.slice(..), wgpu::IndexFormat::Uint16);
+        for &(start, count) in runs {
+            if count > 0 {
+                pass.draw_indexed(0..6, 0, start..start + count);
+                counts.draw(count as u64, 6);
+            }
+        }
+    }
+
+    /// Puts every instance set this frame draws on the GPU (once), and lets go of those long unused.
+    fn upload_sets(&mut self, frame: &Frame, counts: &mut FrameCounts) {
+        let now = self.frame_no;
+        if now % 60 == 30 {
+            self.sets.retain(|_, b| now - b.used < RIG_IDLE_FRAMES);
+        }
+        for set in frame.sets.iter().chain(&frame.sets_blend) {
+            if set.is_empty() {
+                continue;
+            }
+            let device = &self.device;
+            let buf = self.sets.entry(set.id).or_insert_with(|| {
+                counts.upload += std::mem::size_of_val(set.instances.as_slice()) as u64;
+                SetBuf {
+                    buf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("instance set"),
+                        contents: bytemuck::cast_slice(set.instances.as_slice()),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                    count: set.len() as u32,
+                    used: 0,
+                }
+            });
+            buf.used = now;
+        }
+    }
+
+    /// Draws instance sets as cubes, with the pipeline already set.
+    fn draw_sets(&self, pass: &mut wgpu::RenderPass<'_>, sets: &[InstanceSet], counts: &mut FrameCounts) {
+        let m = &self.meshes[MeshKind::Cube as usize];
+        pass.set_vertex_buffer(0, m.vertices.slice(..));
+        pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint16);
+        for set in sets {
+            let Some(buf) = self.sets.get(&set.id) else { continue };
+            pass.set_vertex_buffer(1, buf.buf.slice(..));
+            pass.draw_indexed(0..m.count, 0, 0..buf.count);
+            counts.draw(buf.count as u64, m.count);
+        }
+    }
+
+    /// The see-through sets (mist), then the see-through rigs.
+    fn draw_blend_sets_and_rigs(&self, pass: &mut wgpu::RenderPass<'_>, frame: &Frame, rig_split: u32, counts: &mut FrameCounts) {
+        if !frame.sets_blend.is_empty() && self.fx_off & fx::MIST == 0 {
+            pass.set_pipeline(&self.scene_blend);
+            self.draw_sets(pass, &frame.sets_blend, counts);
+        }
+        if !frame.rigs_blend.is_empty() {
+            pass.set_pipeline(&self.rig_blend);
+            self.draw_rigs(pass, &frame.rigs_blend, rig_split, counts);
+        }
+    }
+
+    /// Draws a list of rigs with the pipeline already set; `first` is the list's first record.
+    fn draw_rigs(&self, pass: &mut wgpu::RenderPass<'_>, list: &RigList, first: u32, counts: &mut FrameCounts) {
+        pass.set_vertex_buffer(1, self.rig_ids.slice(..));
+        for (k, mesh) in list.meshes.iter().enumerate() {
+            let id = first + k as u32;
+            let Some(buf) = self.rig_meshes.get(&mesh.id).filter(|_| id < MAX_RIG_DRAWS) else { continue };
+            pass.set_vertex_buffer(0, buf.vertices.slice(..));
+            pass.set_index_buffer(buf.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..buf.count, 0, id..id + 1);
+            counts.draw(1, buf.count);
+        }
+    }
+
+    /// A texture the size of the screen to draw into without a window.
+    pub fn offscreen(&self) -> wgpu::TextureView {
+        self.device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("offscreen"),
+                size: wgpu::Extent3d { width: self.config.width, height: self.config.height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+            .create_view(&Default::default())
     }
 
     /// Draws the same frame `n` times offscreen, waiting for each; the mean milliseconds per frame.
@@ -1113,8 +1975,12 @@ impl Gpu {
             view_formats: &[],
         });
         let tv = tex.create_view(&Default::default());
-        self.draw(&tv, view, frame, overlay, logical);
-        let _ = self.device.poll(wgpu::PollType::Wait);
+        // A second of drawing first, so a laptop GPU has left its idle clocks.
+        let warm = std::time::Instant::now();
+        while warm.elapsed().as_secs_f64() < 1.0 {
+            self.draw(&tv, view, frame, overlay, logical);
+            let _ = self.device.poll(wgpu::PollType::Wait);
+        }
         let start = std::time::Instant::now();
         let mut cpu = 0.0;
         for _ in 0..n {
@@ -1229,6 +2095,20 @@ fn build_meshes(device: &wgpu::Device) -> Vec<MeshBuf> {
         });
     }
     out
+}
+
+fn rig_buf(device: &wgpu::Device, mesh: &RigMesh) -> RigBuf {
+    let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rig vertices"),
+        contents: bytemuck::cast_slice(&mesh.vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rig indices"),
+        contents: bytemuck::cast_slice(&mesh.indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    RigBuf { vertices, indices, count: mesh.indices.len() as u32, used: 0 }
 }
 
 /// Index buffers must be a multiple of four bytes.

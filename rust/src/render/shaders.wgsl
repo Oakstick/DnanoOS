@@ -15,7 +15,7 @@ struct Globals {
     view_proj: mat4x4<f32>,
     light_vp: mat4x4<f32>, // world to the moon's (or sun's) shadow map: the whole level
     light_vp_near: mat4x4<f32>, // ...and the fine cascade ahead of Ragnar
-    cam_pos: vec4<f32>,
+    cam_pos: vec4<f32>,    // xyz the eye; w 1 for a perspective camera, 0 for the map's orthographic one
     cam_fwd: vec4<f32>,    // xyz camera forward; w shadow map texel size in uv
     fog: vec4<f32>,        // rgb fog color (sRGB), w near
     params: vec4<f32>,     // x fog far, y exposure, z nugget pulse, w light count
@@ -29,11 +29,23 @@ struct Globals {
     sky_up: vec4<f32>,     // xyz to the top screen edge
     sky_moon: vec4<f32>,   // xyz toward the moon
     bounds: vec4<f32>,     // the level's footprint: min x, min z, max x, max z
-    shadow: vec4<f32>,     // x fine cascade half width, y coarse half width (world), z 1 when the fine one is drawn
+    shadow: vec4<f32>,     // x fine cascade half width, y coarse half width (world), z 1 when the fine one is drawn, w effects switched off (FX_ bits)
     lights: array<Light, 32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// Effects switched off for comparison captures (`render::profile::fx`).
+const FX_SHADOWS: u32 = 1u;
+const FX_LIGHTS: u32 = 2u;
+const FX_GRASS: u32 = 4u;
+const FX_MATERIALS: u32 = 8u;
+const FX_FOG: u32 = 16u;
+const FX_BACKFACE: u32 = 2048u;
+
+fn fx_off(bit: u32) -> bool {
+    return (u32(g.shadow.w) & bit) != 0u;
+}
 @group(0) @binding(1) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(2) var shadow_cmp: sampler_comparison;
 // The shadow pass draws one cascade at a time with its own matrix.
@@ -50,7 +62,8 @@ struct VIn {
 };
 
 struct VOut {
-    @builtin(position) clip: vec4<f32>,
+    // Invariant, so the depth prepass and the shading pass land on the very same depths.
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) color: vec4<f32>,
     @location(2) emissive: vec4<f32>,
@@ -77,6 +90,167 @@ fn vs_scene(v: VIn) -> VOut {
 fn vs_shadow(v: VIn) -> @builtin(position) vec4<f32> {
     let m = mat4x4<f32>(v.m0, v.m1, v.m2, v.m3);
     return cascade_vp * (m * vec4<f32>(v.pos, 1.0));
+}
+
+// ------------------------------------------------------------ resident rigs
+//
+// Characters stay on the GPU as meshes of their open voxel faces (`voxels::RigMesh`). Each
+// frame brings only a record per rig drawn and its parts' matrices; the vertex picks its
+// part's matrix and colours itself as the record says (`frame::rig_look`).
+
+struct RigDraw {
+    tint: vec4<f32>,     // rgb tint, a opacity
+    emissive: vec4<f32>, // rgb emitted, a how far the blade's metal has rusted
+    part_base: u32,
+    look: u32,
+    rust_mask: u32,
+    size: f32,
+};
+
+@group(1) @binding(0) var<storage, read> rig_draws: array<RigDraw>;
+@group(1) @binding(1) var<storage, read> rig_parts: array<mat4x4<f32>>;
+
+const LOOK_GREY: u32 = 1u;
+const LOOK_FADED: u32 = 2u;
+const LOOK_GHOST: u32 = 4u;
+const LOOK_TINT_ALL: u32 = 8u;
+
+struct RIn {
+    @location(0) pos: vec3<f32>,
+    @location(1) local: vec4<f32>,
+    @location(2) color: vec4<f32>,
+    @location(3) part: u32,
+    @location(4) draw: u32,
+};
+
+fn rig_world(v: RIn) -> vec4<f32> {
+    let d = rig_draws[v.draw];
+    return rig_parts[d.part_base + v.part] * vec4<f32>(v.pos + v.local.xyz * 0.5 * d.size, 1.0);
+}
+
+@vertex
+fn vs_rig(v: RIn) -> VOut {
+    let d = rig_draws[v.draw];
+    let pm = rig_parts[d.part_base + v.part];
+    let w = pm * vec4<f32>(v.pos + v.local.xyz * 0.5 * d.size, 1.0);
+    var c = v.color.rgb;
+    var shade = v.color.a;
+    // A dull blade: its metal (material 1, mode 6) turns to rust on the parts that rust.
+    if (d.emissive.a > 0.0 && abs(shade - 6.0) < 0.5 && ((d.rust_mask >> v.part) & 1u) != 0u) {
+        c = mix(c, vec3<f32>(0.32, 0.12, 0.05), d.emissive.a);
+    }
+    var tint = d.tint.rgb;
+    // A voxel lit from within keeps its own light, whatever tints the rest.
+    if (abs(shade - 16.0) < 0.5 && (d.look & LOOK_TINT_ALL) == 0u) {
+        tint = vec3<f32>(1.0);
+    }
+    var color = c * tint;
+    var emissive = d.emissive.rgb;
+    let lightness = sqrt(dot(c, vec3<f32>(0.2126, 0.7152, 0.0722)));
+    if ((d.look & LOOK_GREY) != 0u) {
+        color = vec3<f32>(0.1 + 0.3 * lightness) * d.tint.rgb;
+        emissive = vec3<f32>(0.0);
+    }
+    if ((d.look & LOOK_FADED) != 0u) {
+        color = c;
+        shade = 3.0;
+        emissive = vec3<f32>(0.0);
+    }
+    if ((d.look & LOOK_GHOST) != 0u) {
+        color = d.tint.rgb * (0.2 + 0.55 * lightness);
+        shade = 1.0;
+        emissive = vec3<f32>(0.0);
+    }
+    var out: VOut;
+    out.clip = g.view_proj * w;
+    out.world = w.xyz;
+    out.color = vec4<f32>(color, d.tint.a);
+    out.emissive = vec4<f32>(emissive, shade);
+    out.depth = out.clip.w;
+    out.local = v.local.xyz * 0.5;
+    // As for static faces: a solid rig's faces turned from the eye never show. (The face's centre
+    // comes from the same numbers at all four corners, so they all decide alike.)
+    let face = u32(round(v.local.w * 127.0));
+    let outward = (pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz;
+    let center = (pm * vec4<f32>(v.pos + FACE_NORMALS[face] * 0.5 * d.size, 1.0)).xyz;
+    let to_eye = select(-g.cam_fwd.xyz, g.cam_pos.xyz - center, g.cam_pos.w > 0.5);
+    if (dot(outward, to_eye) <= 0.0 && d.tint.a > 0.999 && (d.look & LOOK_FADED) == 0u && !fx_off(FX_BACKFACE)) {
+        out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+    }
+    return out;
+}
+
+@vertex
+fn vs_rig_shadow(v: RIn) -> @builtin(position) vec4<f32> {
+    return cascade_vp * rig_world(v);
+}
+
+// ------------------------------------------------------------ static faces
+//
+// Static scenery is drawn face by face: each open face of a static cube (`gpu::open_faces`)
+// is a quad that reads its cube from the instance store, so a cube rewritten in place (a tree
+// fading) changes every face of it at once.
+
+struct Inst {
+    m: mat4x4<f32>,
+    color: vec4<f32>,
+    emissive: vec4<f32>,
+};
+
+@group(1) @binding(0) var<storage, read> statics: array<Inst>;
+
+// The corners of each face of the unit cube, in the order the quad's two triangles walk them:
+// +x, -x, +y, -y, +z, -z.
+const FACE_CORNERS = array<vec3<f32>, 24>(
+    vec3<f32>(0.5, -0.5, -0.5), vec3<f32>(0.5, 0.5, -0.5), vec3<f32>(0.5, 0.5, 0.5), vec3<f32>(0.5, -0.5, 0.5),
+    vec3<f32>(-0.5, -0.5, -0.5), vec3<f32>(-0.5, -0.5, 0.5), vec3<f32>(-0.5, 0.5, 0.5), vec3<f32>(-0.5, 0.5, -0.5),
+    vec3<f32>(-0.5, 0.5, -0.5), vec3<f32>(-0.5, 0.5, 0.5), vec3<f32>(0.5, 0.5, 0.5), vec3<f32>(0.5, 0.5, -0.5),
+    vec3<f32>(-0.5, -0.5, -0.5), vec3<f32>(0.5, -0.5, -0.5), vec3<f32>(0.5, -0.5, 0.5), vec3<f32>(-0.5, -0.5, 0.5),
+    vec3<f32>(-0.5, -0.5, 0.5), vec3<f32>(0.5, -0.5, 0.5), vec3<f32>(0.5, 0.5, 0.5), vec3<f32>(-0.5, 0.5, 0.5),
+    vec3<f32>(-0.5, -0.5, -0.5), vec3<f32>(-0.5, 0.5, -0.5), vec3<f32>(0.5, 0.5, -0.5), vec3<f32>(0.5, -0.5, -0.5),
+);
+
+const FACE_NORMALS = array<vec3<f32>, 6>(
+    vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0),
+    vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
+);
+
+struct FIn {
+    @builtin(vertex_index) corner: u32,
+    // The cube's slot in the store times 8, plus which face.
+    @location(0) face: u32,
+};
+
+@vertex
+fn vs_face(v: FIn) -> VOut {
+    let inst = statics[v.face >> 3u];
+    let face = v.face & 7u;
+    let local = FACE_CORNERS[face * 4u + v.corner];
+    let w = inst.m * vec4<f32>(local, 1.0);
+    var out: VOut;
+    out.clip = g.view_proj * w;
+    // A face turned from the eye is behind its own cube: an opaque cube's back faces never show.
+    // (A cube fading away keeps them, for they show through its dither.) The cube's matrix is a
+    // turn times a scale, so it carries the face's outward axis to the outward normal's direction.
+    let outward = (inst.m * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz;
+    let center = (inst.m * vec4<f32>(FACE_NORMALS[face] * 0.5, 1.0)).xyz;
+    let to_eye = select(-g.cam_fwd.xyz, g.cam_pos.xyz - center, g.cam_pos.w > 0.5);
+    let fading = abs(inst.emissive.w - 3.0) < 0.5 && inst.color.a < 0.999;
+    if (dot(outward, to_eye) <= 0.0 && !fading && !fx_off(FX_BACKFACE)) {
+        out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+    }
+    out.world = w.xyz;
+    out.color = inst.color;
+    out.emissive = inst.emissive;
+    out.depth = out.clip.w;
+    out.local = local;
+    return out;
+}
+
+@vertex
+fn vs_face_shadow(v: FIn) -> @builtin(position) vec4<f32> {
+    let inst = statics[v.face >> 3u];
+    return cascade_vp * (inst.m * vec4<f32>(FACE_CORNERS[(v.face & 7u) * 4u + v.corner], 1.0));
 }
 
 // How wide the moon (or sun) looks: sets how fast a shadow softens with distance.
@@ -132,6 +306,9 @@ fn cascade_light(vp: mat4x4<f32>, layer: i32, world: vec3<f32>, half_width: f32,
 // How much of the moonlight (or sunlight) reaches `world`: the fine cascade
 // where it covers, fading into the coarse one toward its edge.
 fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>) -> f32 {
+    if (fx_off(FX_SHADOWS)) {
+        return 1.0;
+    }
     let spin = fract(52.9829189 * fract(dot(frag, vec2<f32>(0.06711056, 0.00583715)))) * 6.2831853;
     let size = f32(textureDimensions(shadow_map).x);
     let far_w = g.shadow.y;
@@ -771,7 +948,7 @@ fn fs_scene(in: VOut) -> FOut {
         discard;
     }
     var albedo = in.color.rgb;
-    if (mode > 3.5 && mode < 4.5 && n.y > 0.9) {
+    if (mode > 3.5 && mode < 4.5 && n.y > 0.9 && !fx_off(FX_GRASS)) {
         // Grass: blade tips catch a warmer, yellower light than the shaded roots.
         let gs = grass_shade(in.world, in.depth);
         albedo = albedo * gs.x;
@@ -788,8 +965,9 @@ fn fs_scene(in: VOut) -> FOut {
     surf.sheen = 0.0;
     if (mode > 5.5) {
         let px = max(local_w.x, max(local_w.y, local_w.z));
-        let detail = 1.0 - smoothstep(0.1, 0.3, px);
-        let bevel = 1.0 - smoothstep(0.2, 0.5, px);
+        let plain = select(1.0, 0.0, fx_off(FX_MATERIALS));
+        let detail = (1.0 - smoothstep(0.1, 0.3, px)) * plain;
+        let bevel = (1.0 - smoothstep(0.2, 0.5, px)) * plain;
         let seed = fract(dot(in.color.rgb, vec3<f32>(17.13, 31.71, 11.37)));
         surf = voxel_surface(i32(round(mode - 5.0)), in.local, detail, bevel, albedo, n, seed);
     }
@@ -813,7 +991,7 @@ fn fs_scene(in: VOut) -> FOut {
                 spec += pow(max(dot(sn, h), 0.0), surf.shine) * ndl_raw * g.moon_color.rgb * vis;
             }
         }
-        let count = min(u32(g.params.w), MAX_LIGHTS);
+        let count = select(min(u32(g.params.w), MAX_LIGHTS), 0u, fx_off(FX_LIGHTS));
         for (var i = 0u; i < count; i++) {
             let l = g.lights[i];
             let to_light = l.pos.xyz - in.world;
@@ -858,11 +1036,29 @@ fn fs_scene(in: VOut) -> FOut {
         }
     }
     rgb = to_srgb(aces_filmic(rgb, g.params.y));
-    let fog_f = smoothstep(g.fog.w, g.params.x, in.depth);
+    let fog_f = select(smoothstep(g.fog.w, g.params.x, in.depth), 0.0, fx_off(FX_FOG));
     rgb = mix(rgb, g.fog.rgb, fog_f);
     var out: FOut;
     out.color = vec4<f32>(rgb, in.color.a);
     out.gbuf = vec4<f32>(n, dot(in.world - g.cam_pos.xyz, g.cam_fwd.xyz));
+    return out;
+}
+
+// Depth only, before the shading: the opaque surfaces settle the depth buffer first, so the
+// costly shading below runs once a pixel instead of once for every face drawn over it. Fades
+// dither away exactly as they do when shaded; water, clouds and glows wait for the shading pass.
+@fragment
+fn fs_prepass(in: VOut) -> FOut {
+    let mode = in.emissive.w;
+    if ((mode > 4.5 && mode < 5.5) || mode > 19.5) {
+        discard;
+    }
+    if (mode > 2.5 && mode < 3.5 && in.color.a < bayer4(in.clip.xy)) {
+        discard;
+    }
+    var out: FOut;
+    out.color = vec4<f32>(0.0);
+    out.gbuf = vec4<f32>(0.0);
     return out;
 }
 

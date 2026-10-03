@@ -288,7 +288,6 @@ impl WorldView {
 
     /// Auras and trails of the elixirs he has drunk and the skills at work, and the lightning arcs.
     pub(super) fn emit_hero_fx(&self, hero: &Hero, pos: Vec3, time: f32, f: &mut Frame) {
-        let cube = MeshKind::Cube as usize;
         let spark = |f: &mut Frame, p: Vec3, size: f32, c: u32, a: f32| {
             f.additive.push(Instance::new(
                 Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(size)),
@@ -303,7 +302,7 @@ impl WorldView {
             let rig = self.hero_rig(hero);
             for (p, yaw, life) in &self.ghosts {
                 let root = Mat4::from_translation(*p) * Mat4::from_rotation_y(*yaw);
-                emit_rig(&mut f.transparent[cube], rig, &self.hero_pose, root, lin(0xffe066), 0.28 * life, lin(0xffd23a) * 0.4);
+                emit_rig(&mut f.rigs_blend, rig, &self.hero_pose, root, lin(0xffe066), 0.28 * life, lin(0xffd23a) * 0.4);
             }
             let fx = &hero.fx;
             if fx.strength > 0.0 || fx.fury > 0.0 {
@@ -417,7 +416,6 @@ impl WorldView {
      * pale, see-through warriors of his own people, their weapons raised as they strike.
      */
     pub(super) fn emit_spirits(&self, s: &SceneState, time: f32, f: &mut Frame) {
-        let cube = MeshKind::Cube as usize;
         let rig = match s.hero_kind {
             HeroKind::Mehmed => &self.models.spirits[0],
             HeroKind::Miyamoto => &self.models.spirits[1],
@@ -435,7 +433,7 @@ impl WorldView {
                 * Mat4::from_translation(Vec3::new(0.0, 0.0, lunge))
                 * Mat4::from_scale(Vec3::splat(0.8));
             let a = 0.32 + 0.08 * (time * 5.0 + i as f32).sin();
-            emit_rig(&mut f.transparent[cube], rig, &Pose::rest(rig), root, lin(0xa8c8ff), a, lin(0x6a9aff) * 0.5);
+            emit_rig(&mut f.rigs_blend, rig, &Pose::rest(rig), root, lin(0xa8c8ff), a, lin(0x6a9aff) * 0.5);
             glow_orb(f, p + Vec3::new(0.0, 0.8, 0.0), 0.7, lin(0x8ab0ff), 0.18);
         }
     }
@@ -467,10 +465,9 @@ impl WorldView {
 
     /// A decoy of Loki's trick: a flickering violet phantom of the hero where he stood.
     pub(super) fn emit_decoy(&self, at: Vec3, time: f32, f: &mut Frame) {
-        let cube = MeshKind::Cube as usize;
         let root = Mat4::from_translation(at) * Mat4::from_rotation_y(self.hero_yaw + (time * 0.8).sin() * 0.3);
         let a = 0.35 + 0.1 * (time * 9.0).sin();
-        emit_rig(&mut f.transparent[cube], &self.models.hero, &Pose::rest(&self.models.hero), root, lin(0xc89aff), a, lin(0x9a4aff) * 0.6);
+        emit_rig(&mut f.rigs_blend, &self.models.hero, &Pose::rest(&self.models.hero), root, lin(0xc89aff), a, lin(0x9a4aff) * 0.6);
         f.lights.push(Light { pos: at + Vec3::new(0.0, 0.9, 0.0), color: lin(0x9a4aff) * 3.0, distance: 3.0 });
     }
 
@@ -495,7 +492,7 @@ impl WorldView {
                     group * Mat4::from_rotation_x(time * 18.0) * Mat4::from_translation(Vec3::new(0.0, -0.55, 0.0))
                 };
                 emit_rig(
-                    &mut f.opaque[cube],
+                    &mut f.rigs,
                     rig,
                     &Pose::rest(rig),
                     spin * Mat4::from_translation(Vec3::new(-0.13, 0.0, 0.0)),

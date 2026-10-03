@@ -108,24 +108,13 @@ fn pivot_of(defs: &[PartDef], name: &str) -> [f32; 3] {
 }
 
 /// Like `emit_rig`, but screen-door faded by `alpha` (a shadow thinning into fog), all plain lit.
-fn emit_rig_faded(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, alpha: f32) {
-    for (i, part) in rig.parts.iter().enumerate() {
-        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-        for (off, c) in &part.cubes {
-            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), *c, alpha, Vec3::ZERO, SHADE_DITHER));
-        }
-    }
+fn emit_rig_faded(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, alpha: f32) {
+    out.push(rig, pose, root, Vec3::ONE, alpha, Vec3::ZERO, rig_look::FADED, 0.0);
 }
 
 /// A warrior's soul: the model drawn see-through in glowing spirit light, its colours kept only as shading.
-fn emit_rig_ghost(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32) {
-    for (i, part) in rig.parts.iter().enumerate() {
-        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-        for (off, c) in &part.cubes {
-            let l = c.dot(Vec3::new(0.2126, 0.7152, 0.0722)).sqrt();
-            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), tint * (0.2 + 0.55 * l), alpha, Vec3::ZERO, SHADE_UNLIT));
-        }
-    }
+fn emit_rig_ghost(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32) {
+    out.push(rig, pose, root, tint, alpha, Vec3::ZERO, rig_look::GHOST, 0.0);
 }
 
 // ---------------------------------------------------------------- the sets
@@ -895,17 +884,16 @@ impl WorldView {
 
     /// Scene I, each frame: whichever set the beat is on, its cast and its light.
     pub(super) fn emit_story(&self, sv: StoryView, s: &SceneState, f: &mut Frame) {
-        let cube = MeshKind::Cube as usize;
         match sv.shot().place() {
             Place::Graveyard => {
-                f.opaque[cube].extend_from_slice(&self.story_sets[0]);
-                f.transparent[cube].extend_from_slice(&self.story_mist[0]);
+                f.sets.push(self.story_sets[0].clone());
+                f.sets_blend.push(self.story_mist[0].clone());
                 f.bounds = Vec4::new(GRAVEYARD.x - 13.5, GRAVEYARD.z - 17.5, GRAVEYARD.x + 13.5, GRAVEYARD.z + 6.5);
                 self.emit_graveyard(sv, s, f);
             }
             Place::Gateway => {
-                f.opaque[cube].extend_from_slice(&self.story_sets[1]);
-                f.transparent[cube].extend_from_slice(&self.story_mist[1]);
+                f.sets.push(self.story_sets[1].clone());
+                f.sets_blend.push(self.story_mist[1].clone());
                 f.bounds = Vec4::new(GATEWAY.x - 4.5, GATEWAY.z - 3.5, GATEWAY.x + 4.5, GATEWAY.z + 4.5);
                 self.emit_gateway(sv, s, f);
             }
@@ -1173,7 +1161,7 @@ impl WorldView {
                     self.emit_kid(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO);
                 } else {
                     let (pose, _) = self.kid_pose(0, Act::Flail(time), time, 0.0);
-                    emit_rig_faded(&mut f.opaque[cube], &self.models.kids[0], &pose, root, alpha * 2.0);
+                    emit_rig_faded(&mut f.rigs, &self.models.kids[0], &pose, root, alpha * 2.0);
                 }
             }
             // Smoke boiling off him as he moves, left hanging in the air behind him.
@@ -1628,7 +1616,7 @@ impl WorldView {
     pub(super) fn emit_kid(&self, f: &mut Frame, which: usize, root: Mat4, act: Act, time: f32, look: f32, glow: Vec3) {
         let (pose, (lean, bob)) = self.kid_pose(which, act, time, look);
         let root = root * Mat4::from_translation(Vec3::new(0.0, bob, 0.0)) * Mat4::from_rotation_x(lean);
-        emit_rig(&mut f.opaque[MeshKind::Cube as usize], &self.models.kids[which.min(3)], &pose, root, Vec3::ONE, 1.0, glow);
+        emit_rig(&mut f.rigs, &self.models.kids[which.min(3)], &pose, root, Vec3::ONE, 1.0, glow);
         if glow.length_squared() > 0.0001 {
             glow_orb(
                 f,
@@ -1680,7 +1668,7 @@ impl WorldView {
         let root = Mat4::from_translation(feet + forward * (lunge * 0.1) + Vec3::new(0.0, -sink + breathe * 0.004, 0.0))
             * Mat4::from_rotation_y(yaw)
             * Mat4::from_rotation_x(0.1 * strain + lunge * 0.05);
-        emit_rig(&mut f.opaque[MeshKind::Cube as usize], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+        emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
         // Eyes glowing amber (dim when he dozes).
         for e in cast::DOG_EYES {
             let p = rig_point(rig, &pose, root, head, pivot_of(cast::DOG_RIG, "head"), [e[0], e[1], e[2] + 1.0]);
@@ -1711,7 +1699,7 @@ impl WorldView {
         }
         let sway = (time * 0.7).sin() * 0.012 * (1.0 + 2.0 * doze);
         let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(sway) * Mat4::from_rotation_x(0.05);
-        emit_rig(&mut f.opaque[MeshKind::Cube as usize], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+        emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
     }
 
     /**
@@ -1748,11 +1736,10 @@ impl WorldView {
         pose.rot[hd].y = (time * 1.7).sin() * 0.1 * (1.0 - run);
         let root =
             Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(0.28 * run - 0.25 * rear + 0.1 * reach);
-        let cube = MeshKind::Cube as usize;
         if alpha >= 0.99 {
-            emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+            emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
         } else if alpha > 0.01 {
-            emit_rig_faded(&mut f.opaque[cube], rig, &pose, root, alpha);
+            emit_rig_faded(&mut f.rigs, rig, &pose, root, alpha);
         }
         // Ember eyes, bright even when the rest of him is only a shape in the fog.
         let eyes = alpha.max(0.0).powf(0.3).min(1.0);
@@ -1791,14 +1778,7 @@ impl WorldView {
         let pose = Pose::rest(rig);
         // Thinner up close, where many layers of it would pile up into a white glare.
         let near = (self.cam_pos.distance(base + Vec3::new(0.0, 0.6, 0.0)) / 3.6).clamp(0.4, 1.0);
-        emit_rig_ghost(
-            &mut f.transparent[MeshKind::Cube as usize],
-            rig,
-            &pose,
-            root,
-            tint * (1.0 + 0.15 * (time * 3.0).sin()),
-            0.24 * r * near,
-        );
+        emit_rig_ghost(&mut f.rigs_blend, rig, &pose, root, tint * (1.0 + 0.15 * (time * 3.0).sin()), 0.24 * r * near);
         glow_orb(f, base + Vec3::new(0.0, 0.6 * scale, 0.0), 1.1 * scale, tint, 0.18 * r);
         // A ring of light on the floor where it rose, and motes streaming up.
         let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.012, 0.0))
@@ -2073,11 +2053,10 @@ impl WorldView {
      */
     pub(super) fn emit_wares(&self, s: &SceneState, f: &mut Frame) {
         let time = s.time as f32;
-        let cube = MeshKind::Cube as usize;
         let at = |p: Vec3| GATEWAY + p;
         f.atmosphere = crypt();
-        f.opaque[cube].extend_from_slice(&self.story_sets[1]);
-        f.transparent[cube].extend_from_slice(&self.story_mist[1]);
+        f.sets.push(self.story_sets[1].clone());
+        f.sets_blend.push(self.story_mist[1].clone());
         f.bounds = Vec4::new(GATEWAY.x - 4.5, GATEWAY.z - 3.5, GATEWAY.x + 4.5, GATEWAY.z + 4.5);
         gateway_lights(f, time);
         gateway_door(f, 0.0, time);
@@ -2098,7 +2077,7 @@ impl WorldView {
         let root = Mat4::from_translation(at(WARES_HERO))
             * Mat4::from_rotation_y(yaw_to(WARES_HERO, WARES_OLD_MAN))
             * Mat4::from_scale(Vec3::new(1.0, 1.0 + breathe * 0.006, 1.0));
-        emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+        emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
         f.lights.push(Light { pos: at(WARES_HERO + Vec3::new(0.6, 1.8, 1.4)), color: lin(0xffe0c0) * 3.0, distance: 4.0 });
     }
 }

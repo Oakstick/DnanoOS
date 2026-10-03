@@ -1,0 +1,137 @@
+# Technical art and rendering: status
+
+This tracks the *Technical Art and Rendering Plan* (version 1, 3 October 2026; native Windows and Steam,
+GTX 1080 at 30 FPS on a reduced preset, RTX 3060 at 60 FPS, native 1920×1080, no upscaling). Task
+IDs (RP for the rendering programmer, TA for the technical artist) are the plan's own.
+
+**Measured on:** the development laptop only (RTX 5070 Ti Laptop GPU, Ryzen AI 9 HX 370, Windows 11,
+DX12). That is neither target GPU, and its clocks shift between runs, so only interleaved before/after
+comparisons on this machine are meaningful. **Nothing here has been measured on a GTX 1080 or an RTX
+3060 yet**; the plan's acceptance gates are still open.
+
+## Done
+
+### Stage A: baseline (RP07, RP08)
+
+- **RP07, instrumentation** (`render/profile.rs`). GPU timestamps per pass (shadow cache, near and far
+  cascade, main, AO, bloom, shafts, composite, HUD), read back up to three frames late so nothing waits.
+  Per frame it counts draws, instances, triangles, bytes uploaded, static chunks drawn, shadow casters,
+  rigs, and lights requested and dropped. CPU time is split into simulation, emission, HUD, upload and
+  recording. F3 shows it all above the frame rate, and `--bench` and `--perf` print it.
+- **Effect switches** (`--fx-off`): `shadows, lights, grass, materials, fog, ao, bloom, dof, grade, prepass,
+  mist, backface`. Each one captures the same scene without one effect, as the plan's per-effect
+  comparisons need.
+- **RP08, performance captures** (`src/perf.rs`, `--perf [all|names] [--frames N] [--size WxH]
+  [--fx-off …] [--out dir]`). There are eleven scenes: close-up, garden, corridor, vista, 30 foes,
+  souls, fast rotation, camera switching, destruction, portal arrival, vault. Each has a fixed seed and
+  script and gets a second of untimed warm-up. Frames are paced as in the game (one simulation step per
+  frame, at most two frames in flight). The report gives the median, 95th and 99th percentile and worst
+  of wall, CPU and GPU time, plus the first-frame cost. It writes a Markdown summary (machine, driver,
+  backend, build `git hash[-modified]`, settings) and a CSV of every frame per scene to `perf/`.
+- **Look Dev room** (TA01, `render/view/lookdev.rs`, `--lookdev neutral|dungeon|realm:N`). Every voxel
+  material stands on a stepped block, once at neutral grey and once in its usual colour. Beside them are
+  the shared palette, the seven proposed realm accents (each capped with its realm's identity colour), an
+  eleven-step value ramp, and Ragnar and a draugr for scale. It can be lit three ways: a neutral chart
+  light, the dungeons' moonlit night with two torches, or a realm's tint.
+
+### Stage C: geometry (RP09 to RP11, part of RP16)
+
+- **RP09, static chunks.** Static scenery is sorted into 8×8 m chunks with bounds and drawn front to back
+  after a CPU frustum test. Each shadow cascade culls its own casters, so off-screen objects still cast.
+  Tree fades still patch in place.
+- **RP16 (part), cached static shadow.** The coarse cascade's static part is drawn once and copied in each
+  frame. It is drawn again only when the light, its box or the static scenery changes.
+- **Depth prepass** for opaque geometry: the expensive shading then runs once per pixel. Fades dither
+  the same way in both passes; water, clouds and glows are left out of the prepass.
+- **RP10 and RP11, resident rigs** (`voxels::RigMesh`). Each rig is meshed once, per part, keeping only
+  the voxel faces nothing in the same part covers; faces at joints stay. Each frame uploads only a
+  48-byte record and the part matrices per rig, instead of 96 bytes per voxel. Ghosts and fades use a
+  mesh with every face, since their look depends on the inner layers.
+- **RP11, static surfaces** (`render/faces.rs`). A static cube's face is dropped when an identical cube
+  (same turn and size) sits right against it and can hide it. The rest are drawn as single quads that
+  read their cube from a storage buffer, so fades and hides still patch the cube in place. The index is
+  kept after load: a wall blown up, a coin taken or a hedge burnt reopens only the neighbouring faces,
+  and new cubes go into spare slots. Nothing makes the whole level re-upload any more.
+- **Back faces skipped** in the vertex shader for static faces and solid rigs. All four corners of a face
+  decide together; fading cubes keep their back faces.
+- **Prebuilt sets kept on the GPU** (`view::InstanceSet`): ground mist, Scene I's sets and the
+  character-screen cavern were re-sent every frame and are now sent once.
+- **Start-up**: the pipelines that compile the scene shader are built in parallel (the DX12 shader
+  compiler, FXC, is slow). The HUD's first draw built its sprites in quadratic time; that is now linear.
+
+### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
+
+| Scene | Before | After |
+|---|---|---|
+| Garden of Krampus | 31.2 ms | 18.0 ms |
+| 30 foes, stage 2 | 38.6 ms | 23.2 ms |
+| Scene I, the souls | 14.6 ms | 10.7 ms |
+| Portals of Hell (vista) | 11.8 ms | 9.5 ms |
+| Vaults of Mammon | 12.2 ms | 8.6 ms |
+| Garden of Thorns | 13.3 ms | 9.7 ms |
+
+The bench waits for every frame, so absolute times are inflated; the ratios are what count. Other effects:
+
+- **Per-frame upload:** the Garden fell from 5.8 MB to 2.0 MB, the 30-foe scene from 5.5 to about 2 MB,
+  and Scene I from 8.2 MB to 0.1 MB.
+- **Start-up:** DX12 GPU setup went from about 5 s (baseline) to 3.2 s.
+- **First gameplay frame:** 1.8 s down to 0.3 s.
+- **Breaking a wall:** a full static re-upload (worst frame 99 ms with face extraction) became an
+  incremental patch (worst frame 30 ms, the same as ordinary frames).
+
+Pictures were checked against the untouched build on 36 scripted scenes. The differences are a few
+hundred pixels per scene, where coplanar faces already z-fought, plus the blending order inside
+see-through souls.
+
+The latest full capture is in `perf/`; compare new captures against it only at equal settings.
+
+## Findings
+
+- **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept
+  over half its cost. Instanced cubes at 4× MSAA dominate. This is why stage C came first.
+- **The ground mist costs real GPU time.** The 13,500 transparent sheets in the Garden cost about 2 ms
+  (see `--fx-off mist`), as the plan warns about large transparent layers.
+- **Dark palette colours crush to black.** On the Look Dev value ramp under neutral light, sRGB 0, 25 and
+  51 all land on black, and the palette's charcoal (#192321) is one of them. The plan warns about this
+  for dark base colours; the tone curve and exposure need art review (RP13 and TA01).
+- **Start-up on DX12 is still 3 s**, mostly compiling shaders with FXC. Moving to DXC would need
+  `dxcompiler.dll` shipped, or wgpu's `static-dxc` feature (which downloads the compiler at build
+  time). Vulkan starts in 1.9 s.
+- The 8-bit scene target does not band visibly (the composite dithers). An earlier impression of
+  banding came from scaled-down screenshots.
+
+## Open, in the plan's order
+
+- **B, art contract:**
+  - TA02: one approved light per realm, captured with grading on and off (`--lookdev realm:N`,
+    `--fx-off grade`).
+  - TA03: cue colours.
+  - TA04 and RP01: the source asset conventions and a MagicaVoxel/Blender round trip.
+  - TA05: the benchmark asset set.
+- **C, geometry:**
+  - RP12: screen-size LOD with hysteresis for every rig (foes now switch to a coarse rig by distance)
+    and for architectural chunks, plus a separate shadow LOD.
+  - Merging coplanar faces of the same colour.
+- **D, lighting:** RP13, linear HDR.
+  - Lighting, fog and transparency would move into linear units, with bloom taken before tone mapping
+    and the image encoded once.
+  - This changes the look, so it should come behind a switch and be approved from side-by-side captures.
+  - Then RP14 (GGX materials, prefiltered reflections), RP15 (AO on indirect light only, an audit of the
+    MSAA normal/depth resolve), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
+- **E, world systems:**
+  - RP02: camera validation.
+  - RP03: area packaging and the portal loading screen. The portal scene's worst frame is 24 ms; cold
+    and warm need their own figures.
+  - RP04 and RP05: predefined broken pieces with collision and navigation updated together. Today only
+    the bombable wall tiles break.
+  - RP06: the 30-foe budget split (animation, AI, collision, rendering).
+- **F, advanced:** RP20 (GPU visibility and Hi-Z), RP21 (meshlets) and RP22 (mesh shaders), each only
+  after the indexed path is measured on both target GPUs.
+- **G, shipping:** the GTX 1080 and RTX 3060 presets, and packaged validation.
+- **Calibration** (the plan's own list):
+  - Record both target machines.
+  - Agree a numerical portal-loading target.
+  - Ratify the percentile gates.
+  - Approve the realm accents.
+- The web build still compiles and lints, but the plan drops the browser target. Rigs and static faces
+  now read storage buffers in the vertex shader, which WebGL2 cannot do.

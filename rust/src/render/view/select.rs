@@ -216,7 +216,7 @@ impl WorldView {
         let cube = MeshKind::Cube as usize;
         let at = |x: f32, y: f32, z: f32| SELECT_STAGE + Vec3::new(x, y, z);
         f.atmosphere = cavern_atmosphere();
-        f.opaque[cube].extend_from_slice(&self.select_set);
+        f.sets.push(self.select_set.clone());
 
         // ---- lava: pouring down its channels in bright bands, into glowing basins that bubble
         for (n, &(x, z, top)) in LAVA_FALLS.iter().enumerate() {
@@ -344,9 +344,9 @@ impl WorldView {
                 pose.rot[hd].y = (time * 0.6 + i as f32 * 2.0).sin() * 0.12;
             }
             if kind.unlocked() || self.preview_heroes {
-                emit_rig(&mut f.opaque[cube], rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+                emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
             } else {
-                emit_rig_grey(&mut f.opaque[cube], rig, &pose, root, Vec3::new(0.95, 0.97, 1.05) * (0.85 + 0.15 * step));
+                emit_rig_grey(&mut f.rigs, rig, &pose, root, Vec3::new(0.95, 0.97, 1.05) * (0.85 + 0.15 * step));
             }
             // A pool of light at the picked hero's feet: gold if he can be chosen, pale if not.
             if picked {

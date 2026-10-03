@@ -604,6 +604,12 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 
     if let Some(fps) = fps {
         o.text(&format!("{fps} fps"), margin + t * 0.3, h - margin - t * 0.4, small, rgba(0x99ffff, 1.0), Align::Left, true);
+        // The renderer's readout above it, oldest line at the top.
+        let n = g.perf_lines.len();
+        for (i, line) in g.perf_lines.iter().enumerate() {
+            let y = h - margin - t * 0.4 - (n - i) as f32 * small * 1.25;
+            o.text(line, margin + t * 0.3, y, small * 0.8, rgba(0x99ffff, 0.9), Align::Left, true);
+        }
     }
 
     draw_boss_bar(o, g, t);

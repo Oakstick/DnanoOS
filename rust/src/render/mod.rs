@@ -4,6 +4,7 @@ pub mod armory;
 mod carve;
 pub mod cast;
 pub mod characters;
+mod faces;
 pub mod foes;
 pub mod foes2;
 pub mod foes3;
@@ -22,6 +23,7 @@ pub mod icons;
 pub mod overlay;
 #[cfg(test)]
 pub mod preview;
+pub mod profile;
 pub mod props;
 pub mod view;
 pub mod voxels;

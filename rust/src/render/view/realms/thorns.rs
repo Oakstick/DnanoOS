@@ -410,7 +410,6 @@ impl WorldView {
                 decor::bxg(out, at, Vec3::new(0.12, 0.03, 0.08), Quat::from_rotation_y(a), 0xff6a2a, 0.5);
                 decor::beam(out, at, at + Vec3::new(0.05, 0.25, 0.02), 0.04, 0x0e0a0a);
             }
-            self.static_dirty = true;
         }
         // Glass: where the smoke is (and, in true sight, round him), the lovely faces thin away.
         let hero = s.hero.pos();
@@ -582,7 +581,7 @@ impl WorldView {
                 pose.rot_x(maid, "leftLeg", (time * 4.0 + k as f32).sin() * 0.3);
                 pose.rot_x(maid, "rightLeg", -(time * 4.0 + k as f32).sin() * 0.3);
                 let root = Mat4::from_translation(at) * Mat4::from_rotation_y(yaw);
-                emit_rig(&mut f.opaque[cube], maid, &pose, root, Vec3::splat(0.9), 1.0, lin(0xf0e0ea) * 0.03);
+                emit_rig(&mut f.rigs, maid, &pose, root, Vec3::splat(0.9), 1.0, lin(0xf0e0ea) * 0.03);
             }
             glow_orb(f, centre + Vec3::new(0.0, 0.3, 0.0), 2.4, lin(0xd8c8ff), 0.06 + 0.02 * (time * 2.0).sin());
             f.lights.push(Light { pos: centre + Vec3::new(0.0, 1.6, 0.0), color: lin(0xd8c8ff) * 1.2, distance: 4.5 });
@@ -610,7 +609,7 @@ impl WorldView {
                 pose.rot_x(fox, "rightLeg", -step.sin() * 0.5);
                 let root =
                     Mat4::from_translation(at) * Mat4::from_rotation_y(dir.x.atan2(dir.z)) * Mat4::from_scale(Vec3::splat(0.6 * fade));
-                emit_rig(&mut f.opaque[cube], fox, &pose, root, Vec3::ONE, 1.0, lin(0xffa040) * 0.15);
+                emit_rig(&mut f.rigs, fox, &pose, root, Vec3::ONE, 1.0, lin(0xffa040) * 0.15);
                 let flame = at + Vec3::new(0.0, 0.85 + (time * 3.0 + k as f32).sin() * 0.08, 0.0);
                 glow_orb(f, flame, 0.32, lin(0x7ae8ff), 0.5 * fade);
                 f.additive.push(Instance::new(
@@ -879,7 +878,7 @@ impl WorldView {
         let sway = Mat4::from_rotation_z((time * 0.8).sin() * 0.03);
         let root = Mat4::from_translation(at) * Mat4::from_rotation_y(yaw) * sway * Mat4::from_scale(Vec3::splat(BRIDE_SCALE));
         let glow = if r.sight > 0.0 && !wedding { 0.0 } else { 0.035 };
-        let target = if appear >= 1.0 { &mut f.opaque[cube] } else { &mut f.transparent[cube] };
+        let target = if appear >= 1.0 { &mut f.rigs } else { &mut f.rigs_blend };
         emit_rig(target, rig, &pose, root, Vec3::splat(0.86), appear, lin(0xfff0f6) * glow * appear);
         // The veil: sheer white from her crown, trailing down her back to the ground behind her.
         let head = root * Mat4::from_translation(Vec3::new(0.0, 1.12, 0.0));

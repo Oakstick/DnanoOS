@@ -153,6 +153,10 @@ impl WorldView {
         }
         f.skip_static = self.showcase || self.forge || self.select.is_some() || self.story.is_some();
         f.time = s.time as f32;
+        if self.lookdev.is_some() {
+            self.emit_lookdev(s, f);
+            return;
+        }
         if let Some(sv) = self.story {
             self.emit_story(sv, s, f);
             return;
@@ -213,7 +217,6 @@ impl WorldView {
     fn emit_hero(&self, s: &SceneState, f: &mut Frame) -> Vec3 {
         let time = s.time as f32;
         let grid = s.grid;
-        let cube = MeshKind::Cube as usize;
         let hero = s.hero;
         let hp = hero.pos();
         let (hx, hz) = (hp.x as f32, hp.y as f32);
@@ -246,7 +249,7 @@ impl WorldView {
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
             let root = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
-            let target = if ghost { &mut f.transparent[cube] } else { &mut f.opaque[cube] };
+            let target = if ghost { &mut f.rigs_blend } else { &mut f.rigs };
             let rust = ((1.0 - hero.edge) as f32 * 0.9).clamp(0.0, 0.85);
             match (&self.models.raised, hero.blocking) {
                 (Some((bare, shield)), true) => {
@@ -352,7 +355,6 @@ impl WorldView {
     fn emit_foes(&self, s: &SceneState, f: &mut Frame) {
         let view_proj = self.view_proj();
         let time = s.time as f32;
-        let cube = MeshKind::Cube as usize;
         for (i, v) in self.enemy_views.iter().enumerate() {
             if i >= s.enemies.len() {
                 break;
@@ -373,7 +375,7 @@ impl WorldView {
             if v.visible {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
                 let rig = self.models.foe_at(v.rig, v.group_pos.distance(self.cam_pos));
-                emit_rig(&mut f.opaque[cube], rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
+                emit_rig(&mut f.rigs, rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
                 if v.eye > 0.0 {
                     if let Some(h) = rig.index("head") {
                         let pivot = Vec3::from(crate::render::foes6::TEPEGOZ_RIG[4].pivot);
@@ -759,18 +761,9 @@ impl WorldView {
     }
 }
 
-/// The hero's rig, with `rust` (0 to 1) reddening the iron of his blades (their metal voxels).
+/// The hero's rig: the tint falls on all of him, and `rust` (0 to 1) reddens the metal voxels of
+/// his blades (the "blade" and "offhand" parts).
 #[allow(clippy::too_many_arguments)]
-fn emit_hero_rig(out: &mut Vec<Instance>, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3, rust: f32) {
-    const METAL: f32 = 6.0;
-    let rusty = Vec3::new(0.32, 0.12, 0.05);
-    for (i, part) in rig.parts.iter().enumerate() {
-        let pm = root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]);
-        let blade = rust > 0.0 && matches!(part.name, "blade" | "offhand");
-        for (j, (off, c)) in part.cubes.iter().enumerate() {
-            let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(SHADE_LIT);
-            let c = if blade && shade == METAL { c.lerp(rusty, rust) } else { *c };
-            out.push(Instance::new(voxel_matrix(&pm, rig.size, *off), c * tint, alpha, emissive, shade));
-        }
-    }
+fn emit_hero_rig(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3, rust: f32) {
+    out.push(rig, pose, root, tint, alpha, emissive, rig_look::TINT_ALL, rust);
 }

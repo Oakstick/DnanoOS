@@ -17,7 +17,8 @@
 //!   them with wgpu; `hud` draws the overlay; the rest sculpts the voxel models.
 //! - `game`: the state of a run and every rule that ties the layers together, one module per part
 //!   (see its docs).
-//! - `app`: the window and the frame loop; `capture` renders scripted frames headless.
+//! - `app`: the window and the frame loop; `capture` renders scripted frames headless, and `perf`
+//!   times scripted scenes (the rendering plan's performance captures).
 //!
 //! One coupling runs both ways: the game owns the view and calls it directly (sparks, shakes,
 //! rebuilding a level), and the HUD reads the `Game`. Separating them (the game emitting events
@@ -30,6 +31,8 @@ pub mod capture;
 pub mod game;
 pub mod input;
 pub mod logic;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod perf;
 pub mod platform;
 pub mod render;
 #[cfg(feature = "steam")]
