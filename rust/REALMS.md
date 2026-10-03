@@ -1,6 +1,6 @@
 # The six realms: level concepts
 
-These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.md`. Greed's realm, the Vaults of Mammon, is already built. Each realm is designed around one spatial technique that lies to the player, and each closes on its prince's lie, as Greed's closes on Mammon's toll. All numbers are starting values for tuning. The natives come from the 33-foe bestiary (COMBAT.md §10–11) and are tagged by stage. Status: proposals (2026-10-03), not yet confirmed.
+These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.md`. Greed's realm, the Vaults of Mammon, is already built. Each realm is designed around one spatial technique that lies to the player, and each closes on its prince's lie, as Greed's closes on Mammon's toll. All numbers are starting values for tuning. The natives come from the 33-foe bestiary (COMBAT.md §10–11) and are tagged by stage. (Superseded 2026-10-03: the realms are built, and their packs now hold every foe met so far plus the stage the realm brings in, by how many realms have been taken; see `logic::realms::Dealer`. The native lists below are the original themed picks.) Status: proposals (2026-10-03), not yet confirmed.
 
 | Sin | Realm · Prince | Technique | The prince's lie | When it springs |
 |---|---|---|---|---|
