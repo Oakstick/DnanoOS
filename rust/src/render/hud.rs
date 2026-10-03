@@ -538,8 +538,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
         o.text(&gold, rc, ty, gs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
         o.text("HOARD", rc - o.measure(&gold, gs) - t * 0.3, ty, small, rgba(0xffc85a, 1.0), Align::Right, true);
     } else if g.in_run() {
-        // The realm's own gauges: the first in the panel, the rest stacked beneath it.
-        draw_run_meters(o, g, t, rc, ty, small);
+        // The realm's own gauges, stacked beneath the panel (its last row holds the purse).
+        draw_run_meters(o, g, t, rc, margin + band + small * 1.1, small);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);
