@@ -453,6 +453,16 @@ impl Enemy {
         self.b.cast = WITCH_CAST_FIRST;
     }
 
+    /// Stands at `at`, whole and on the hunt (as a level begins: no foe lies there in pieces).
+    pub fn stand_at(&mut self, at: P) {
+        self.m.teleport(at);
+        self.b.mode = EnemyMode::Chase;
+        self.b.scatter_timer = 0.0;
+        self.b.hits = self.b.kind.toughness();
+        self.b.fury = 0.0;
+        self.b.cast = WITCH_CAST_FIRST;
+    }
+
     /// Climbs up out of the ground at `at`: in pieces at first (as a slain draugr lies), whole after `seconds`.
     pub fn rise_at(&mut self, at: P, seconds: f64) {
         self.m.teleport(at);

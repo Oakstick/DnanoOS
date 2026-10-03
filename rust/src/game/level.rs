@@ -4,7 +4,7 @@
 use super::{save, Game, MODE_SCHEDULE, SPAWN_FIRST};
 use crate::audio::Soundtrack;
 use crate::logic::boss::{Cyclops, CYCLOPS_HP, CYCLOPS_HP_STEP};
-use crate::logic::enemy::{Enemy, REASSEMBLE_SECONDS};
+use crate::logic::enemy::Enemy;
 use crate::logic::garden;
 use crate::logic::gear::ShieldGear;
 use crate::logic::hero::Hero;
@@ -289,11 +289,12 @@ impl Game {
                 continue;
             }
             match (e.post, graves.get(i % graves.len().max(1))) {
-                // The vaults' packs go back to idling in their rooms; the gym's foes pull themselves together at their posts.
+                // The vaults' packs go back to idling in their rooms; the gym's foes stand whole at their posts.
                 (Some(_), _) if e.b.den.is_some() => Self::settle(e, e.b.den.unwrap()),
-                (Some(post), _) => e.rise_at(post, REASSEMBLE_SECONDS),
-                // Draugr climb out of the churchyard rather than the hollow.
-                (None, Some(&g)) if e.kind().reassembles() => e.rise_at(g, REASSEMBLE_SECONDS),
+                (Some(post), _) => e.stand_at(post),
+                // Draugr wait in the churchyard rather than the hollow, standing among the graves
+                // (those that come later climb out of them).
+                (None, Some(&g)) if e.kind().reassembles() => e.stand_at(g),
                 _ => e.reset(self.nest_slots.get(i).copied().unwrap_or(center)),
             }
         }
