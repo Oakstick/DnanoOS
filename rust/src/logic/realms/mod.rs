@@ -272,35 +272,6 @@ pub fn gate(sin: Sin, tile: P, facing: Dir) -> Gate {
     Gate { tile, facing, sin }
 }
 
-/// A plain hall standing in for a realm not yet built: the portal in its west wall, the far portal
-/// in its east wall, two packs of its natives between.
-pub fn placeholder(sin: Sin, tier: usize, seed: u32) -> Base {
-    use super::hub::Rect;
-    let (w, h) = (44, 30);
-    let mut c = Canvas::new(w, h);
-    c.fill(3, 3, w - 4, h - 4, ' ');
-    let mid = h / 2;
-    let entry = gate(sin, P::new(2, mid), Dir::Right);
-    let exit = gate(sin, P::new(w - 3, mid), Dir::Left);
-    let arrival = P::new(4, mid);
-    c.set(arrival, 'P');
-    c.set(exit.tile, 'D');
-    c.set(P::new(w - 5, mid), 'G');
-    let mut rng = Rng::new(seed);
-    let mut packs = Vec::new();
-    for (den, count) in [(Rect { x0: 12, y0: 6, x1: 20, y1: h - 7 }, 3), (Rect { x0: 24, y0: 6, x1: 34, y1: h - 7 }, 4)] {
-        let foes = (0..count)
-            .map(|k| {
-                let (kind, stage) = pick_native(&mut rng, sin, tier);
-                (kind, stage, P::new(den.x0 + 2 + 2 * k, den.y0 + 3 + 3 * k))
-            })
-            .collect();
-        packs.push(Pack { den, foes });
-    }
-    let (rows, heights) = c.finish();
-    Base { sin, width: w, height: h, rows, heights, arrival, entry, exit, packs, checkpoint: arrival, tier }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

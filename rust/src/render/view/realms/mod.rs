@@ -1,7 +1,7 @@
 //! The six realms after the vaults as the view draws them (`logic::realms` lays them out). Each has
 //! its own ground, props, sky and light in its module. This one hands them the build, the frame and
 //! the atmosphere, and keeps what they share: the portals in and out (Greed's are the vaults'
-//! own), and a plain hall for a realm standing in for one not yet built.
+//! own).
 
 mod feast;
 mod field;
@@ -101,33 +101,4 @@ impl WorldView {
             RunView::Lust(_) => thorns::LANTERN,
         })
     }
-
-    /// A plain hall standing in for a realm not yet built: a floor of `floor` slabs, walls of `wall`
-    /// blocks round it.
-    pub(super) fn build_plain_hall(&mut self, grid: &Grid, floor: u32, wall: u32) {
-        for (x, y, t) in grid.cells() {
-            let (xf, yf) = (x as f32, y as f32);
-            let h = hash(x as f64 * 1.3, y as f64 * 2.1) as f32;
-            if t == Tile::Rock {
-                let by_floor = CARDINALS.iter().any(|d| {
-                    let (dx, dy) = d.vec();
-                    grid.is_walkable(x + dx, y + dy, false)
-                });
-                if by_floor {
-                    let m = Mat4::from_scale_rotation_translation(Vec3::new(1.0, 1.4, 1.0), Quat::IDENTITY, Vec3::new(xf, 0.7, yf));
-                    self.static_cubes.push(Instance::new(m, lin(wall) * (0.9 + 0.2 * h), 1.0, Vec3::ZERO, SHADE_LIT));
-                }
-                continue;
-            }
-            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.97, 0.12, 0.97), Quat::IDENTITY, Vec3::new(xf, -0.06, yf));
-            self.static_cubes.push(Instance::new(m, lin(floor) * (0.9 + 0.2 * h), 1.0, Vec3::ZERO, SHADE_LIT));
-        }
-    }
-}
-
-/// A dark hall's air under a sin's colour (for the stand-ins).
-pub(super) fn plain_atmosphere(sin_color: u32) -> Atmosphere {
-    let mut a = vault::vault_atmosphere();
-    a.background = 0x0a0808;
-    a.tinted(sin_color)
 }
