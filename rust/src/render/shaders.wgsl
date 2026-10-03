@@ -475,6 +475,8 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
 struct FOut {
     @location(0) color: vec4<f32>,
     @location(1) gbuf: vec4<f32>,
+    // The part of `color` that is indirect light (RP15): what contact shading may take away.
+    @location(2) indirect: vec4<f32>,
 };
 
 fn rrt_odt_fit(v: vec3<f32>) -> vec3<f32> {
@@ -1051,9 +1053,12 @@ fn fs_scene(in: VOut) -> FOut {
     let metal_f0 = surf.albedo * clamp(0.35 / max(max(surf.albedo.r, surf.albedo.g), max(surf.albedo.b, 1e-3)), 1.0, 30.0);
     let f0 = mix(vec3<f32>(0.08 * surf.specular), metal_f0, surf.metal);
     var rgb = surf.albedo;
+    var indirect = vec3<f32>(0.0);
     if (mode < 0.5 || mode > 1.5) {
-        var irr = g.ambient.rgb;
-        irr += mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * sn.y + 0.5);
+        // The light from all around (ambient, sky and ground) is indirect; the sun or moon and the
+        // lamps are direct.
+        let ambient_irr = g.ambient.rgb + mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * sn.y + 0.5);
+        var irr = ambient_irr;
         var spec = vec3<f32>(0.0);
         let wrap = surf.wrap;
         let ndl_raw = dot(sn, g.moon_dir.xyz);
@@ -1102,6 +1107,8 @@ fn fs_scene(in: VOut) -> FOut {
         // Fur and cloth catch a rim of sky.
         let fres = pow(1.0 - nv, 3.0);
         rgb += g.hemi_sky.rgb * surf.albedo * surf.sheen * fres;
+        indirect = surf.albedo * (1.0 - surf.metal) * ambient_irr / PI + env * (f0 * lut.x + lut.y)
+            + g.hemi_sky.rgb * surf.albedo * surf.sheen * fres;
         if (mode > 5.5) {
             // Characters and statues: a cool rim of moonlight on the edges turned toward it, so they stand out of the dark.
             let rim = pow(1.0 - nv, 4.0);
@@ -1110,6 +1117,7 @@ fn fs_scene(in: VOut) -> FOut {
         if (mode > 15.5 && mode < 16.5) {
             // Lit from within (`mat::GLOW`): its own colour, bright, whatever falls on it.
             rgb = surf.albedo * 2.4 + in.emissive.rgb;
+            indirect = vec3<f32>(0.0);
         }
     }
     rgb = finish(rgb);
@@ -1118,6 +1126,8 @@ fn fs_scene(in: VOut) -> FOut {
     var out: FOut;
     out.color = vec4<f32>(rgb, in.color.a);
     out.gbuf = vec4<f32>(n, dot(in.world - g.cam_pos.xyz, g.cam_fwd.xyz));
+    // (As much of it as the fog leaves.)
+    out.indirect = vec4<f32>(finish(indirect) * (1.0 - fog_f), 1.0);
     return out;
 }
 

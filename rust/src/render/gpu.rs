@@ -271,6 +271,11 @@ impl Dyn {
 struct Targets {
     msaa_color: wgpu::TextureView,
     msaa_gbuf: wgpu::TextureView,
+    /// The scene's indirect light, multisampled and resolved (RP15).
+    msaa_indirect: wgpu::TextureView,
+    indirect: wgpu::TextureView,
+    /// Reads the multisampled normals and depth for their resolve (nearest sample, `gbuf.wgsl`).
+    gbuf_resolve_bind: wgpu::BindGroup,
     depth: wgpu::TextureView,
     color: wgpu::TextureView,
     gbuf: wgpu::TextureView,
@@ -290,13 +295,14 @@ struct Targets {
 /// What the post passes share: their bind group layout, uniform, sampler and a blank texture.
 struct PostShared {
     layout: wgpu::BindGroupLayout,
+    gbuf_layout: wgpu::BindGroupLayout,
     uniform: wgpu::Buffer,
     sampler: wgpu::Sampler,
     blank: wgpu::TextureView,
 }
 
 impl PostShared {
-    fn bind(&self, device: &wgpu::Device, label: &str, t: [&wgpu::TextureView; 4]) -> wgpu::BindGroup {
+    fn bind(&self, device: &wgpu::Device, label: &str, t: [&wgpu::TextureView; 5]) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(label),
             layout: &self.layout,
@@ -307,6 +313,7 @@ impl PostShared {
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(t[2]) },
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(t[3]) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(t[4]) },
             ],
         })
     }
@@ -349,18 +356,28 @@ impl Targets {
         let bloom: Vec<_> =
             (0..BLOOM_LEVELS).map(|i| texture(device, "bloom", ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1)), HDR, 1, true)).collect();
         let b = &post.blank;
-        let ssao_bind = post.bind(device, "ssao", [&gbuf, b, b, b]);
-        let blur_bind = post.bind(device, "blur", [&ao, &gbuf, b, b]);
-        let rays_bind = post.bind(device, "rays", [&color, &gbuf, b, b]);
-        let mut down_binds = vec![post.bind(device, "bloom pre", [&color, b, b, b])];
+        let indirect = texture(device, "indirect", full, HDR, 1, true);
+        let msaa_gbuf = texture(device, "msaa gbuf", full, HDR, SAMPLES, true);
+        let gbuf_resolve_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("gbuf resolve"),
+            layout: &post.gbuf_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&msaa_gbuf) }],
+        });
+        let ssao_bind = post.bind(device, "ssao", [&gbuf, b, b, b, b]);
+        let blur_bind = post.bind(device, "blur", [&ao, &gbuf, b, b, b]);
+        let rays_bind = post.bind(device, "rays", [&color, &gbuf, b, b, b]);
+        let mut down_binds = vec![post.bind(device, "bloom pre", [&color, b, b, b, b])];
         for i in 1..BLOOM_LEVELS {
-            down_binds.push(post.bind(device, "bloom down", [&bloom[i - 1], b, b, b]));
+            down_binds.push(post.bind(device, "bloom down", [&bloom[i - 1], b, b, b, b]));
         }
-        let up_binds = (0..BLOOM_LEVELS - 1).map(|i| post.bind(device, "bloom up", [&bloom[i + 1], b, b, b])).collect();
-        let composite_bind = post.bind(device, "composite", [&color, &gbuf, &ao_blur, &bloom[0]]);
+        let up_binds = (0..BLOOM_LEVELS - 1).map(|i| post.bind(device, "bloom up", [&bloom[i + 1], b, b, b, b])).collect();
+        let composite_bind = post.bind(device, "composite", [&color, &gbuf, &ao_blur, &bloom[0], &indirect]);
         Self {
             msaa_color: texture(device, "msaa color", full, COLOR, SAMPLES, false),
-            msaa_gbuf: texture(device, "msaa gbuf", full, HDR, SAMPLES, false),
+            msaa_gbuf,
+            msaa_indirect: texture(device, "msaa indirect", full, HDR, SAMPLES, false),
+            indirect,
+            gbuf_resolve_bind,
             depth: texture(device, "depth", full, DEPTH, SAMPLES, false),
             color,
             gbuf,
@@ -422,6 +439,7 @@ pub struct Gpu {
     bloom_up_pipe: wgpu::RenderPipeline,
     rays_pipe: wgpu::RenderPipeline,
     composite_pipe: wgpu::RenderPipeline,
+    gbuf_resolve_pipe: wgpu::RenderPipeline,
     overlay_pipe: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
@@ -869,14 +887,13 @@ impl Gpu {
             cache: None,
         });
         // Color, then normals and depth; blended passes leave the latter alone.
+        // Color, then normals and depth, then indirect light; see-through passes write only the color.
         let scene_targets = |blend: Option<wgpu::BlendState>, gbuf: bool| {
+            let solid = if gbuf { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() };
             [
                 Some(wgpu::ColorTargetState { format: COLOR, blend, write_mask: wgpu::ColorWrites::ALL }),
-                Some(wgpu::ColorTargetState {
-                    format: HDR,
-                    blend: None,
-                    write_mask: if gbuf { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() },
-                }),
+                Some(wgpu::ColorTargetState { format: HDR, blend: None, write_mask: solid }),
+                Some(wgpu::ColorTargetState { format: HDR, blend: None, write_mask: solid }),
             ]
         };
         let scene_pipe = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool, fs: &str, writes: bool| {
@@ -895,7 +912,7 @@ impl Gpu {
                     targets: &if writes {
                         scene_targets(blend, depth_write)
                     } else {
-                        [COLOR, HDR]
+                        [COLOR, HDR, HDR]
                             .map(|format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::empty() }))
                     },
                     compilation_options: Default::default(),
@@ -987,7 +1004,7 @@ impl Gpu {
                     targets: &if writes {
                         scene_targets(blend, depth_write)
                     } else {
-                        [COLOR, HDR]
+                        [COLOR, HDR, HDR]
                             .map(|format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::empty() }))
                     },
                     compilation_options: Default::default(),
@@ -1061,7 +1078,7 @@ impl Gpu {
                     targets: &if writes {
                         scene_targets(None, true)
                     } else {
-                        [COLOR, HDR]
+                        [COLOR, HDR, HDR]
                             .map(|format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::empty() }))
                     },
                     compilation_options: Default::default(),
@@ -1182,7 +1199,51 @@ impl Gpu {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                tex_entry(6),
             ],
+        });
+        // The normals-and-depth resolve: the multisampled buffer, read sample by sample.
+        let gbuf_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("gbuf resolve"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: true,
+                },
+                count: None,
+            }],
+        });
+        let gbuf_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("gbuf resolve"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("gbuf.wgsl").into()),
+        });
+        let gbuf_resolve_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("gbuf resolve"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("gbuf resolve"),
+                bind_group_layouts: &[&gbuf_layout],
+                push_constant_ranges: &[],
+            })),
+            vertex: wgpu::VertexState {
+                module: &gbuf_shader,
+                entry_point: Some("vs_resolve"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &gbuf_shader,
+                entry_point: Some("fs_resolve"),
+                targets: &[Some(wgpu::ColorTargetState { format: HDR, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                compilation_options: Default::default(),
+            }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
         });
         let post_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("post"),
@@ -1233,6 +1294,7 @@ impl Gpu {
         });
         let post = PostShared {
             layout: post_layout,
+            gbuf_layout,
             uniform: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("post"),
                 size: std::mem::size_of::<PostUniform>() as u64,
@@ -1408,6 +1470,7 @@ impl Gpu {
             bloom_up_pipe,
             rays_pipe,
             composite_pipe,
+            gbuf_resolve_pipe,
             overlay_pipe,
             globals,
             scene_bind,
@@ -1892,13 +1955,19 @@ impl Gpu {
                             store: wgpu::StoreOp::Discard,
                         },
                     }),
+                    // Kept, not averaged: `gbuf_resolve` picks each pixel's nearest sample after the pass.
                     Some(wgpu::RenderPassColorAttachment {
                         view: &self.rt.msaa_gbuf,
-                        resolve_target: Some(&self.rt.gbuf),
+                        resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.0, g: 1.0, b: 0.0, a: 10000.0 }),
-                            store: wgpu::StoreOp::Discard,
+                            store: wgpu::StoreOp::Store,
                         },
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &self.rt.msaa_indirect,
+                        resolve_target: Some(&self.rt.indirect),
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Discard },
                     }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -2023,6 +2092,7 @@ impl Gpu {
         }
         let rt = &self.rt;
         let (timer, c) = (&mut self.timer, &mut counts);
+        fullscreen(&mut enc, "gbuf resolve", &rt.gbuf, &self.gbuf_resolve_pipe, &rt.gbuf_resolve_bind, true, timer, c);
         fullscreen(&mut enc, "ssao", &rt.ao, &self.ssao_pipe, &rt.ssao_bind, true, timer, c);
         fullscreen(&mut enc, "ssao", &rt.ao_blur, &self.blur_pipe, &rt.blur_bind, true, timer, c);
         fullscreen(&mut enc, "bloom", &rt.bloom[0], &self.bloom_pre_pipe, &rt.down_binds[0], true, timer, c);

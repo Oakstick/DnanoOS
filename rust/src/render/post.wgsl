@@ -26,6 +26,8 @@ struct Post {
 @group(0) @binding(3) var t2: texture_2d<f32>;
 @group(0) @binding(4) var t3: texture_2d<f32>;
 @group(0) @binding(5) var samp: sampler;
+// The composite's fifth texture: the scene's indirect light, which contact shading darkens (RP15).
+@group(0) @binding(6) var t4: texture_2d<f32>;
 
 const SKY: f32 = 5000.0;
 
@@ -247,6 +249,14 @@ fn contact(uv: vec2<f32>) -> f32 {
     return pow(textureSampleLevel(t2, samp, uv, 0.0).r, p.params.y);
 }
 
+// The scene's light at `uv`, contact shading taking away from its indirect part only: the sun,
+// the moon, the lamps and what glows keep all theirs (RP15).
+fn shaded(uv: vec2<f32>) -> vec3<f32> {
+    let lit = scene_light(textureSampleLevel(t0, samp, uv, 0.0).rgb);
+    let indirect = max(textureSampleLevel(t4, samp, uv, 0.0).rgb, vec3<f32>(0.0));
+    return max(lit - indirect * (1.0 - contact(uv)), vec3<f32>(0.0));
+}
+
 fn blur_amount(d: f32, max_px: f32) -> f32 {
     return smoothstep(p.cam_r.w, p.cam_u.w, d - p.cam_fwd.w) * max_px;
 }
@@ -256,7 +266,8 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
     let dim = vec2<f32>(textureDimensions(t0));
     let px = vec2<i32>(in.uv * dim);
     let d = textureLoad(t1, px, 0).w;
-    var lin = scene_light(textureLoad(t0, px, 0).rgb) * contact(in.uv);
+    let centre = (vec2<f32>(px) + 0.5) / dim;
+    var lin = shaded(centre);
 
     // Background blur: things well behind the in-focus plane soften.
     let max_px = p.params.w * dim.y / 1080.0;
@@ -276,7 +287,7 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
             // Sharp things in front must not smear over the blurred background.
             let scoc = select(blur_amount(sd, max_px), max_px, sd > SKY);
             let w = clamp(scoc - r + 1.0, 0.0, 1.0);
-            acc += scene_light(textureSampleLevel(t0, samp, suv, 0.0).rgb) * contact(suv) * w;
+            acc += shaded(suv) * w;
             wsum += w;
         }
         lin = acc / wsum;

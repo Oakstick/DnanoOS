@@ -151,6 +151,24 @@ output is a separate feature.
 - **Cost:** about 2–5% GPU in the cleaner round (Garden 5.58 → 5.70 ms, 30 foes 8.24 → 8.45 ms). The
   environment passes run only when the light changes.
 
+### RP15: contact shading on indirect light, and an honest normal buffer
+
+- **AO darkens only indirect light.** The scene pass writes a third target holding the indirect part
+  of each opaque pixel: the ambient sky and ground light, environment reflections and the soft
+  materials' sky rim, after fog. The composite takes away only what contact shading occludes
+  (`colour − indirect × (1 − AO)`). The sun or moon, the lamps, emission, and see-through layers (mist,
+  water) keep all their light, so AO no longer dims a lamp-lit corner or a glowing ember.
+- **The normal/depth buffer keeps real surfaces.** It used to be resolved by averaging its four samples,
+  giving edge pixels a normal and depth halfway between foreground and background. Now it is stored
+  multisampled, and a resolve pass (`gbuf.wgsl`) keeps each pixel's nearest sample, the surface in
+  front, whole. Contact shading and the background blur read only real surfaces.
+- **Look:** very close to RP14. Sunlit and lamplit edges in creases keep their light (between the hero's
+  arm and body, at the feet of walls); unlit creases are shaded as before.
+- **Cost:** within the noise (resolve 0.05–0.24 ms). The extra multisampled target is paid back by no
+  longer hardware-resolving the normal buffer.
+- **Still open (TA):** dark colours crushed by the tone curve's toe (the Look Dev ramp) is a tone-curve
+  and exposure decision, not AO.
+
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
 | Scene | Before | After |
@@ -208,9 +226,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13 and RP14 are done (RP14's look waits for approval).
-  - Then RP15 (AO on indirect light only, an audit of the
-    MSAA normal/depth resolve), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
+- **D, lighting:** RP13, RP14 and RP15 are done.
+  - Then RP16 (the rest: shadow presets and stable projections), RP17 (clustered lights), RP18 (probes) and RP19 (atmosphere).
 - **E, world systems:**
   - RP02: camera validation.
   - RP03: area packaging and the portal loading screen. The portal scene's worst frame is 24 ms; cold
