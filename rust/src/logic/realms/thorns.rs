@@ -15,7 +15,7 @@
 
 use std::collections::HashSet;
 
-use super::{gate, pick_native, Base, Canvas, Pack};
+use super::{gate, Base, Canvas, Dealer, Pack};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::hub::Rect;
 use crate::logic::rng::Rng;
@@ -252,6 +252,8 @@ pub fn ring_block(k: i32) -> i32 {
 impl Thorns {
     /// The realm laid out for `tier`.
     pub fn generate(tier: usize) -> Thorns {
+        // Its foes, dealt by how far he has come (`Dealer`).
+        let mut deal = Dealer::new(tier);
         let sin = Sin::Lust;
         let mut c = Canvas::new(W, H);
         let mut rose: HashSet<P> = HashSet::new();
@@ -393,7 +395,6 @@ impl Thorns {
         c.set(P::new(court.x0 + 1, court.y1 - 1), 'W');
 
         // ---- the packs: elf-maids on the thorn path, natives in the clearings
-        let mut prng = Rng::new(SEED);
         let mut packs = Vec::new();
         let extra = usize::from(tier >= 4);
         for (y0, y1, count) in [
@@ -422,7 +423,7 @@ impl Thorns {
                 .into_iter()
                 .take(count)
                 .map(|p| {
-                    let (kind, stage) = pick_native(&mut prng, sin, tier);
+                    let (kind, stage) = deal.draw();
                     (kind, stage, p)
                 })
                 .collect();

@@ -4,7 +4,7 @@
 use super::{save, Game, Screen, MODE_SCHEDULE, SPAWN_FIRST};
 use crate::audio::Soundtrack;
 use crate::logic::boss::{Cyclops, CYCLOPS_HP, CYCLOPS_HP_STEP};
-use crate::logic::enemy::{enemy_specs, Enemy, REASSEMBLE_SECONDS};
+use crate::logic::enemy::{Enemy, REASSEMBLE_SECONDS};
 use crate::logic::garden;
 use crate::logic::gear::ShieldGear;
 use crate::logic::hero::Hero;
@@ -167,11 +167,7 @@ impl Game {
         // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
         let hell = self.theme().is_hub();
         let gym = self.theme().is_gym();
-        let specs = if self.level.data.boss || hell || gym || vault_level || run_level {
-            Vec::new()
-        } else {
-            enemy_specs(&self.level.grid, self.foe_stage_of(index))
-        };
+        let specs = if self.level.data.boss || hell || gym || vault_level || run_level { Vec::new() } else { self.dungeon_cast(index) };
         self.enemies = specs
             .iter()
             .enumerate()

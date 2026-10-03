@@ -19,7 +19,7 @@
 
 use std::collections::{BinaryHeap, HashSet, VecDeque};
 
-use super::{gate, pick_native, Base, Pack};
+use super::{gate, Base, Dealer, Pack};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::hub::{Gate, Rect};
 use crate::logic::rng::Rng;
@@ -932,6 +932,8 @@ impl Mire {
     /// The packs, at clearings round the bog (one by the giant's head): the natives of the tier,
     /// Hel's servants among them, more of those the older the mire.
     fn lay_packs(&self, tier: usize, age: u32) -> Vec<Pack> {
+        // Its foes, dealt by how far he has come (`Dealer`).
+        let mut deal = Dealer::new(tier);
         let mut rng = Rng::new(SEED ^ (tier as u32).wrapping_mul(0x9e37_79b1) ^ age.wrapping_mul(0x85eb_ca77));
         let isle = vec![false; self.cells.len()];
         let main = flood(&self.cells, self.canon_arrival, &isle);
@@ -980,7 +982,7 @@ impl Mire {
                 if posts.iter().any(|q| (q.x - p.x).abs() + (q.y - p.y).abs() < 2) {
                     continue;
                 }
-                let (kind, stage) = if foes.len() < servants { (EnemyKind::Ganglot, 0) } else { pick_native(&mut rng, Sin::Sloth, tier) };
+                let (kind, stage) = if foes.len() < servants { (EnemyKind::Ganglot, 0) } else { deal.draw() };
                 posts.push(p);
                 foes.push((kind, stage, p));
             }

@@ -20,7 +20,7 @@
 
 use std::collections::VecDeque;
 
-use super::{gate, pick_native, Base, Canvas, Pack};
+use super::{gate, Base, Canvas, Dealer, Pack};
 use crate::logic::combat::fsm::State;
 use crate::logic::combat::MoveId;
 use crate::logic::hub::Rect;
@@ -274,6 +274,8 @@ pub fn on_octagon(dx: i32, dy: i32, outer: i32, cut: i32) -> bool {
 impl Mirrors {
     /// The realm laid out for `tier`.
     pub fn generate(tier: usize) -> Mirrors {
+        // Its foes, dealt by how far he has come (`Dealer`).
+        let mut deal = Dealer::new(tier);
         let mut rng = Rng::new(SEED);
         let (w, h) = (MARGIN * 2 + COLS * CELL, MARGIN * 2 + 2 * CELL);
         let mut c = Canvas::new(w, h);
@@ -428,7 +430,7 @@ impl Mirrors {
                 if foes.iter().any(|f: &(_, _, P)| (f.2.x - p.x).abs() + (f.2.y - p.y).abs() < 3) {
                     continue;
                 }
-                let (kind, stage) = pick_native(&mut rng, Sin::Pride, tier);
+                let (kind, stage) = deal.draw();
                 foes.push((kind, stage, p));
             }
             packs.push(Pack { den, foes });

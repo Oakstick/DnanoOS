@@ -801,7 +801,7 @@ pub fn realm_level(sin: Sin, tier: usize) -> LevelData {
     let base = level_for(tier);
     if sin == Sin::Greed {
         // The Vaults of Mammon (see `vault`).
-        return super::vault::Vault::generate(super::vault::SEED).level(&base);
+        return super::vault::Vault::generate(super::vault::SEED, 1).level(&base);
     }
     if let Some(level) = super::realms::level(sin, tier, &base) {
         // The six after them (see `realms`).

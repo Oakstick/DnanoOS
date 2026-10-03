@@ -430,10 +430,10 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     }
     assert_eq!(g.hero.hp, hp, "unhurt in the gym");
     assert!(g.enemies.iter().filter(|e| e.post.is_some()).all(|e| e.b.keep.is_some()));
-    // Off the road, a realm after the vaults sends its own natives, no deeper than its tier allows.
+    // Off the road, a realm after the vaults sends the foes met so far, no deeper than its tier allows.
     g.map_jump(save::Stage::Realm(Sin::Sloth));
-    let natives = crate::logic::realms::natives(Sin::Sloth);
-    assert!(g.enemies.iter().all(|e| e.kind().realm_own() || natives.iter().any(|n| n.0 == e.kind() && n.1 <= 2)));
+    let met = crate::logic::realms::roster(g.realm_tier());
+    assert!(g.enemies.iter().all(|e| e.kind().realm_own() || met.iter().any(|n| n.0 == e.kind())));
     g.map_jump(save::Stage::Gym);
     g.enter(Screen::Playing);
     let o = g.hero.occupied();

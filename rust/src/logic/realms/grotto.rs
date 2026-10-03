@@ -26,7 +26,7 @@
 use std::collections::HashSet;
 use std::f64::consts::{PI, TAU};
 
-use super::{gate, pick_native, Base, Canvas, Pack};
+use super::{gate, Base, Canvas, Dealer, Pack};
 use crate::logic::angels::Archangel;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::grid::Grid;
@@ -473,6 +473,8 @@ fn passage(c: &mut Canvas, a: P, b: P, half: i32, glyph: char) -> Vec<P> {
 impl Grotto {
     /// The realm laid out for `tier`.
     pub fn generate(tier: usize) -> Grotto {
+        // Its foes, dealt by how far he has come (`Dealer`).
+        let mut deal = Dealer::new(tier);
         let mut rng = Rng::new(SEED);
         let mut c = Canvas::new(WIDTH, HEIGHT);
         let d = |p: P| below(p);
@@ -839,7 +841,7 @@ impl Grotto {
                 if foes.iter().any(|f: &(EnemyKind, u8, P)| (f.2.x - p.x).abs() + (f.2.y - p.y).abs() < 3) {
                     continue;
                 }
-                let (kind, stage) = pick_native(&mut rng, Sin::Envy, tier);
+                let (kind, stage) = deal.draw();
                 busy.insert(p);
                 foes.push((kind, stage, p));
             }
@@ -1116,7 +1118,7 @@ mod tests {
         for pk in &g.base.packs {
             for &(kind, _, post) in &pk.foes {
                 assert!(pk.den.contains(post) && grid.is_walkable(post.x, post.y, false), "{kind:?} at {post:?}");
-                assert!(crate::logic::realms::natives(Sin::Envy).iter().any(|n| n.0 == kind));
+                assert!(crate::logic::realms::roster(7).iter().any(|n| n.0 == kind));
             }
         }
         // Every cavern pair has a coil.

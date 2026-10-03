@@ -13,7 +13,7 @@
 //! The realm's rules (hunger, Bloat, the crust, the fonts, the Last Course) are played in
 //! `game::realms::feast`; their state is kept here with the layout.
 
-use super::{deepest_stage, gate, pick_native, Base, Canvas, Pack};
+use super::{deepest_stage, gate, Base, Canvas, Dealer, Pack};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::hub::Rect;
 use crate::logic::rng::Rng;
@@ -388,6 +388,8 @@ pub struct Feast {
 impl Feast {
     /// The realm laid out for `tier`.
     pub fn generate(tier: usize) -> Feast {
+        // Its foes, dealt by how far he has come (`Dealer`).
+        let mut deal = Dealer::new(tier);
         let sin = Sin::Gluttony;
         let mut c = Canvas::new(WIDTH, HEIGHT);
         let mut rng = Rng::new(SEED);
@@ -587,31 +589,34 @@ impl Feast {
         // kin run the Kitchens; Tepegöz or the gashadokuro keep the Stomach at the deep tiers
         let more = tier / 3;
         let mut packs = Vec::new();
-        let native = |rng: &mut Rng, n: usize| -> Vec<(EnemyKind, u8)> { (0..n).map(|_| pick_native(rng, sin, tier)).collect() };
+        let native = |deal: &mut Dealer, n: usize| -> Vec<(EnemyKind, u8)> { (0..n).map(|_| deal.draw()).collect() };
         let gaki = |n: usize| -> Vec<(EnemyKind, u8)> { vec![(EnemyKind::Gaki, 0); n] };
         // (The gaki lurk in corners off the way through, so that only the smell of food brings them.)
         let mut dens: Vec<(Rect, Vec<(EnemyKind, u8)>)> = vec![
-            (Rect { x0: 5, y0: 90, x1: 15, y1: 98 }, native(&mut rng, 2 + more)),
-            (Rect { x0: 25, y0: 90, x1: 35, y1: 98 }, native(&mut rng, 2 + more)),
+            (Rect { x0: 5, y0: 90, x1: 15, y1: 98 }, native(&mut deal, 2 + more)),
+            (Rect { x0: 25, y0: 90, x1: 35, y1: 98 }, native(&mut deal, 2 + more)),
             (GAKI_DENS[0], gaki(3)),
             (
                 Rect { x0: 8, y0: 62, x1: 20, y1: 68 },
                 vec![(EnemyKind::Witch, 2), (EnemyKind::Witch, 2), (EnemyKind::Minion, 2), (EnemyKind::Minion, 2)],
             ),
-            (Rect { x0: 21, y0: 68, x1: 32, y1: 74 }, native(&mut rng, 2 + more)),
+            (Rect { x0: 21, y0: 68, x1: 32, y1: 74 }, native(&mut deal, 2 + more)),
             (GAKI_DENS[1], gaki(3 + more)),
-            (Rect { x0: 11, y0: 36, x1: 20, y1: 44 }, native(&mut rng, 2 + more)),
+            (Rect { x0: 11, y0: 36, x1: 20, y1: 44 }, native(&mut deal, 2 + more)),
             (GAKI_DENS[2], gaki(4 + more)),
-            (Rect { x0: 21, y0: 42, x1: 30, y1: 49 }, native(&mut rng, 2)),
+            (Rect { x0: 21, y0: 42, x1: 30, y1: 49 }, native(&mut deal, 2)),
             (GAKI_DENS[3], gaki(4 + more)),
         ];
         // The Stomach's tenant: a giant of the sixth stage where the tier sends them, else a native.
-        let tenant =
-            if deepest_stage(tier) >= 6 { vec![(rng.pick(&[EnemyKind::Tepegoz, EnemyKind::Gashadokuro]), 6)] } else { native(&mut rng, 2) };
+        let tenant = if deepest_stage(tier) >= 6 {
+            vec![(rng.pick(&[EnemyKind::Tepegoz, EnemyKind::Gashadokuro]), 6)]
+        } else {
+            native(&mut deal, 2)
+        };
         dens.push((Rect { x0: 12, y0: 6, x1: 28, y1: 14 }, tenant));
         for s in &seams {
             let n = 3 + usize::from(s.from != Zone::Hall) + more;
-            dens.push((s.wide.den.unwrap(), native(&mut rng, n)));
+            dens.push((s.wide.den.unwrap(), native(&mut deal, n)));
         }
         for (den, foes) in dens {
             let mut spots: Vec<P> = den.tiles().filter(|&p| open(&c, p) && !busy.contains(&p)).collect();

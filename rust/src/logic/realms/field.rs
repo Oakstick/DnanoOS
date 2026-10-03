@@ -21,7 +21,7 @@
 //! This module is the layout and the slabs' geometry (`game::realms::field` plays the rules, and
 //! `render::view::realms::field` draws it all).
 
-use super::{gate, pick_native, Base, Canvas, Pack};
+use super::{gate, Base, Canvas, Dealer, Pack};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::grid::Grid;
 use crate::logic::hub::Rect;
@@ -396,6 +396,8 @@ const MOAT: [(i32, i32, i32, i32, Band, f64); 5] = [
 impl Battlefield {
     /// The realm laid out for `tier`.
     pub fn generate(tier: usize) -> Battlefield {
+        // Its foes, dealt by how far he has come (`Dealer`).
+        let mut deal = Dealer::new(tier);
         let mut rng = Rng::new(SEED);
         let camp = Rect { x0: 22, y0: 105, x1: 37, y1: 114 };
         let isle = Rect { x0: 20, y0: 40, x1: 39, y1: 48 };
@@ -494,7 +496,7 @@ impl Battlefield {
             let foes = posts
                 .into_iter()
                 .map(|l| {
-                    let (kind, stage) = pick_native(&mut rng, Sin::Wrath, tier);
+                    let (kind, stage) = deal.draw();
                     (kind, stage, s.tile_of(l))
                 })
                 .collect();
@@ -506,7 +508,7 @@ impl Battlefield {
             foes: guard
                 .into_iter()
                 .map(|p| {
-                    let (kind, stage) = pick_native(&mut rng, Sin::Wrath, tier);
+                    let (kind, stage) = deal.draw();
                     (kind, stage, p)
                 })
                 .collect(),
@@ -1178,7 +1180,7 @@ mod tests {
             for &(kind, _, post) in &pk.foes {
                 assert!(pk.den.contains(post), "{kind:?} at {post:?}");
                 assert!(level.grid.is_walkable(post.x, post.y, false), "{kind:?} on rock at {post:?}");
-                assert!(super::super::natives(Sin::Wrath).iter().any(|n| n.0 == kind));
+                assert!(super::super::roster(3).iter().any(|n| n.0 == kind));
             }
         }
     }

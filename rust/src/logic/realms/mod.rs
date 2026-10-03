@@ -2,8 +2,8 @@
 //! (Pride), the Serpent Grotto (Envy), the Burning Field (Wrath), the Grey Mire (Sloth), the
 //! Rotting Feast (Gluttony) and the Garden of Thorns (Lust).
 //!
-//! Each is laid out and kept here, free of rendering: its ground as a level, its natives in packs
-//! at their dens, and the state of its own rules (a meter, a layer, a drifting slab). What every
+//! Each is laid out and kept here, free of rendering: its ground as a level, its foes in packs at
+//! their dens (dealt by how far he has come, `Dealer`, whichever realm it is), and the state of its own rules (a meter, a layer, a drifting slab). What every
 //! realm shares is its `Base`; what is its own lives in its module. `game::realms` plays them and
 //! `render::view::realms` draws them.
 
@@ -14,10 +14,10 @@ pub mod mire;
 pub mod mirrors;
 pub mod thorns;
 
+use super::combat::{Attack, Breed};
 use super::enemy::EnemyKind;
 use super::hub::Gate;
 use super::level::{LevelData, Theme};
-use super::rng::Rng;
 use super::sins::Sin;
 use super::types::{Dir, P};
 pub use super::vault::Pack;
@@ -119,66 +119,94 @@ pub fn level(sin: Sin, tier: usize, base: &LevelData) -> Option<LevelData> {
     Run::generate(sin, tier).map(|r| r.base().level(base))
 }
 
-/// The natives of each realm (REALMS.md), each with the stage it was built for. The realms' own
-/// new foes (the servants of Hel, the gaki, the elf-maids, the Peerless) are placed by the realms
-/// themselves.
-pub fn natives(sin: Sin) -> &'static [(EnemyKind, u8)] {
-    use EnemyKind as K;
-    match sin {
-        // The vain queen's witches and the palace guard; monks too proud for paradise; the cin behind the
-        // mirrors; a heart frozen by a shard of the devil's mirror.
-        Sin::Pride => &[(K::Helmeted, 2), (K::Witch, 2), (K::Tengu, 3), (K::Cin, 5), (K::FrostGiant, 7)],
-        // The grotto's slime and bats; the serpents and the river imp; the dragon on the spring; the malice-striker.
-        Sin::Envy => &[(K::Slime, 1), (K::LargeBat, 2), (K::Cobra, 3), (K::Kappa, 4), (K::Ejder, 6), (K::Nidhogg, 7)],
-        // Amon's ravens and wolves, the Einherjar, the rasetsu and the oni, the wrathful dead, the fire giant.
-        Sin::Wrath => &[
-            (K::Bat, 1),
-            (K::Skeleton, 1),
-            (K::Helmeted, 2),
-            (K::Werewolf, 2),
-            (K::DireWolf, 3),
-            (K::Rasetsu, 3),
-            (K::Oni, 4),
-            (K::Goryo, 6),
-            (K::Surtr, 7),
-        ],
-        // The bog's slime, the barrow's draugr, the sleeping bats, the silent owl, the night hag, Hel.
-        Sin::Sloth => &[(K::Slime, 1), (K::Skeleton, 1), (K::LargeBat, 2), (K::Tulukus, 5), (K::Albasti, 5), (K::Hel, 7)],
-        // The digesting slime, the witch of the house of cake, the blemmyes, the skeleton of the starved, the one-eyed glutton.
-        Sin::Gluttony => &[(K::Slime, 1), (K::Witch, 2), (K::Blemmyes, 2), (K::Gashadokuro, 6), (K::Tepegoz, 6)],
-        // The seductress and the bats; the spider-woman, the fox-wife and the courtesan; the voice of a loved one;
-        // the garden's guardian.
-        Sin::Lust => {
-            &[(K::Witch, 2), (K::LargeBat, 2), (K::Jorogumo, 3), (K::Kitsune, 4), (K::Rokurokubi, 4), (K::Karakoncolos, 5), (K::Arcura, 5)]
-        }
-        Sin::Greed => &[],
-    }
-}
-
 /// The deepest stage of foe a realm of `tier` sends: one past its tier, from the second to the seventh.
 pub fn deepest_stage(tier: usize) -> u8 {
     (tier as u8).saturating_add(1).clamp(2, 7)
 }
 
-/// A native of `sin`'s realm for `tier`: one built for no deeper a stage than the tier allows, the
-/// deeper ones more often.
-pub fn pick_native(rng: &mut Rng, sin: Sin, tier: usize) -> (EnemyKind, u8) {
+/// The stages a realm of `tier` brings in fresh, whose foes lead its packs: the deepest it sends,
+/// and in the last realm (every other key held) the two deepest.
+pub fn fresh_stages(tier: usize) -> std::ops::RangeInclusive<u8> {
     let deepest = deepest_stage(tier);
-    let all = natives(sin);
-    let mut fit: Vec<(EnemyKind, u8)> = all.iter().copied().filter(|n| n.1 <= deepest).collect();
-    if fit.is_empty() {
-        // (Every realm has natives from the second stage, so this is only a guard.)
-        fit.push(all.iter().copied().min_by_key(|n| n.1).unwrap_or((EnemyKind::Helmeted, 2)));
+    let from = if tier >= 7 { deepest - 1 } else { deepest };
+    from..=deepest
+}
+
+/// Every foe a realm of `tier` sends, with its stage: all those met so far (the Garden's first, then
+/// one stage more for every realm taken, whichever it was), the witch's minions aside (they come
+/// with the witches).
+pub fn roster(tier: usize) -> Vec<(EnemyKind, u8)> {
+    (1..=deepest_stage(tier))
+        .flat_map(|s| EnemyKind::of_stage(s).iter().map(move |&k| (k, s)))
+        .filter(|&(k, _)| k != EnemyKind::Minion)
+        .collect()
+}
+
+/// A foe to deal, and the stage it was built for.
+type Foe = (EnemyKind, u8);
+
+/// For one kind of fighting: the first round (fresh, then old), and the turns after it.
+type Queue = (Vec<Foe>, Vec<Foe>);
+
+/**
+ * Deals the foes of a realm of `tier` to its packs, the same way every time (`roster`): by turns
+ * one that fights with its body, one in melee and one from afar, so every pack mixes the three.
+ * Of each kind of fighting it deals first every foe of the fresh stages (`fresh_stages`), then
+ * every one met before, the latest first, so all of them are in a realm with room for them (and
+ * where there is less, the oldest and weakest are left out); after that, by turns one fresh and
+ * one old.
+ */
+pub struct Dealer {
+    queues: [Queue; 3],
+    dealt: [usize; 3],
+    turn: usize,
+}
+
+impl Dealer {
+    pub fn new(tier: usize) -> Self {
+        let fresh = fresh_stages(tier);
+        let all = roster(tier);
+        let queues = [Attack::Body, Attack::Melee, Attack::Distance].map(|way| {
+            let fights = |&&(k, _): &&(EnemyKind, u8)| Breed::of(k).attack() == way;
+            // (The latest stage first, in both.)
+            let mut new: Vec<(EnemyKind, u8)> = all.iter().filter(fights).filter(|n| fresh.contains(&n.1)).copied().collect();
+            let mut old: Vec<(EnemyKind, u8)> = all.iter().filter(fights).filter(|n| !fresh.contains(&n.1)).copied().collect();
+            new.sort_by_key(|n| std::cmp::Reverse(n.1));
+            old.sort_by_key(|n| std::cmp::Reverse(n.1));
+            let first: Vec<(EnemyKind, u8)> = new.iter().chain(&old).copied().collect();
+            let mut turns = Vec::new();
+            for i in 0..new.len().max(old.len()) {
+                if !new.is_empty() {
+                    turns.push(new[i % new.len()]);
+                }
+                if let Some(&o) = old.get(i) {
+                    turns.push(o);
+                }
+            }
+            (first, turns)
+        });
+        Self { queues, dealt: [0; 3], turn: 0 }
     }
-    let weights: Vec<f64> = fit.iter().map(|n| (n.1 as f64).powf(1.5)).collect();
-    let mut r = rng.next() * weights.iter().sum::<f64>();
-    for (k, w) in weights.iter().enumerate() {
-        if r < *w {
-            return fit[k];
+
+    /// The next foe, and the stage it was built for.
+    pub fn draw(&mut self) -> Foe {
+        // (Every stage has all three kinds of fighting, so no queue is empty; this is a guard.)
+        for _ in 0..3 {
+            let k = self.turn % 3;
+            self.turn += 1;
+            let (first, turns) = &self.queues[k];
+            let n = self.dealt[k];
+            if let Some(&f) = first.get(n) {
+                self.dealt[k] += 1;
+                return f;
+            }
+            if !turns.is_empty() {
+                self.dealt[k] += 1;
+                return turns[(n - first.len()) % turns.len()];
+            }
         }
-        r -= w;
+        (EnemyKind::Skeleton, 1)
     }
-    fit[fit.len() - 1]
 }
 
 /// What a foe built for `stage` (0 for a realm's own) is multiplied by in a realm of `tier`: its
@@ -306,19 +334,48 @@ mod tests {
     }
 
     #[test]
-    fn natives_come_by_the_tier_and_every_realm_has_some_for_the_first() {
-        let mut rng = Rng::new(3);
+    fn every_realm_holds_every_foe_of_the_stage_it_brings_in() {
         for sin in SINS.into_iter().filter(|&s| s != Sin::Greed) {
-            assert!(natives(sin).iter().any(|n| n.1 <= 2), "{sin:?} has natives for the first realm");
             for tier in 1..=7 {
-                for _ in 0..40 {
-                    let (kind, stage) = pick_native(&mut rng, sin, tier);
-                    assert!(stage <= deepest_stage(tier), "{sin:?} tier {tier}: {kind:?} of stage {stage}");
-                    assert!(natives(sin).contains(&(kind, stage)));
+                let run = Run::generate(sin, tier).unwrap();
+                let held: Vec<EnemyKind> = run.base().packs.iter().flat_map(|p| p.foes.iter().map(|f| f.0)).collect();
+                for &kind in EnemyKind::of_stage(deepest_stage(tier)).iter().filter(|&&k| k != EnemyKind::Minion) {
+                    assert!(held.contains(&kind), "{sin:?} at tier {tier} has no {kind:?}");
                 }
             }
         }
+    }
+
+    #[test]
+    fn each_realm_taken_brings_in_a_stage_more_dealt_by_turns_and_the_same_every_time() {
         assert_eq!((deepest_stage(1), deepest_stage(3), deepest_stage(9)), (2, 4, 7));
+        assert_eq!((fresh_stages(1), fresh_stages(6), fresh_stages(7)), (2..=2, 7..=7, 6..=7));
+        for tier in 1..=7 {
+            let all = roster(tier);
+            let deal = |n: usize| -> Vec<(EnemyKind, u8)> {
+                let mut d = Dealer::new(tier);
+                (0..n).map(|_| d.draw()).collect()
+            };
+            let dealt = deal(200);
+            assert_eq!(dealt, deal(200), "tier {tier}: dealt the same every time");
+            // Every foe met so far comes, and none deeper.
+            for n in &all {
+                assert!(dealt.contains(n), "tier {tier}: {n:?} never dealt");
+            }
+            assert!(dealt.iter().all(|n| all.contains(n) && n.1 <= deepest_stage(tier)));
+            // Every three in a row fight all three ways.
+            for three in dealt.as_chunks::<3>().0 {
+                let ways: Vec<Attack> = three.iter().map(|n| Breed::of(n.0).attack()).collect();
+                assert!(ways.contains(&Attack::Body) && ways.contains(&Attack::Melee) && ways.contains(&Attack::Distance));
+            }
+            // The fresh stages' foes come first, every one of them in the first dozen.
+            let fresh: Vec<_> = all.iter().filter(|n| fresh_stages(tier).contains(&n.1)).collect();
+            assert!(fresh.iter().all(|n| dealt[..12].contains(n)), "tier {tier}: {:?}", &dealt[..12]);
+            // Every foe met so far within the first round.
+            for n in &all {
+                assert!(dealt[..all.len() + 6].contains(n), "tier {tier}: {n:?} late");
+            }
+        }
         let (hp1, dmg1) = weight(0, 1);
         let (hp7, dmg7) = weight(0, 7);
         assert!(hp7 > hp1 && dmg7 > dmg1, "a realm's own foes grow with the tier");

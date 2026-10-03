@@ -4,7 +4,9 @@
 use super::feedback::STREAK_SECONDS;
 use super::{Game, BRUTAL_STREAK, MODE_SCHEDULE, WOUND_STAGGER};
 use crate::audio::Sfx;
-use crate::logic::enemy::{enemy_specs, Enemy, EnemyKind, EnemyMode, GlobalMode, REASSEMBLE_SECONDS, WITCH_CAST_EVERY, WITCH_CAST_RANGE};
+use crate::logic::enemy::{
+    enemy_specs, Enemy, EnemyKind, EnemyMode, EnemySpec, GlobalMode, REASSEMBLE_SECONDS, WITCH_CAST_EVERY, WITCH_CAST_RANGE,
+};
 use crate::logic::gear::{COINS_KILL, RUNE_DROP};
 use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::heroes::HeroKind;
@@ -45,14 +47,28 @@ const STAGGER_SECONDS: f64 = 2.0;
 const COLLISION_RADIUS_SQ: f64 = 0.45 * 0.45;
 
 impl Game {
-    /// Which cast haunts this level. For now only the Garden's: the second stage's foes train in
-    /// the gym until the realms are built, and every level keeps the first stage's cast.
+    /// Which stage's foes this level brings in: the Garden's the first, and each dungeon off the
+    /// road beyond it one stage more (the realms deal their own, `logic::realms::Dealer`).
     pub(super) fn foe_stage(&self) -> u8 {
         self.foe_stage_of(self.dungeon)
     }
 
-    pub(super) fn foe_stage_of(&self, _dungeon: usize) -> u8 {
-        1
+    pub(super) fn foe_stage_of(&self, dungeon: usize) -> u8 {
+        (dungeon as u8).saturating_add(1).min(EnemyKind::STAGES)
+    }
+
+    /// A dungeon's cast: its own stage's foes, and with them one of every stage met before (by
+    /// turns its first, second, third...), waiting longer in the hollow before they come out.
+    pub(super) fn dungeon_cast(&self, dungeon: usize) -> Vec<EnemySpec> {
+        let stage = self.foe_stage_of(dungeon);
+        let mut cast = enemy_specs(&self.level.grid, stage);
+        for older in 1..stage {
+            let specs: Vec<EnemySpec> = enemy_specs(&self.level.grid, older).into_iter().filter(|s| s.kind != EnemyKind::Minion).collect();
+            let mut s = specs[(stage - older - 1) as usize % specs.len()].clone();
+            s.exit_delay += 6.0 + 2.0 * older as f64;
+            cast.push(s);
+        }
+        cast
     }
 
     /// The gym's foes: one of every kind, stage by stage, each at its post.

@@ -301,7 +301,9 @@ fn overlap(a0: i32, a1: i32, b0: i32, b1: i32) -> Option<(i32, i32)> {
 
 impl Vault {
     /// The vault, laid out from `seed`.
-    pub fn generate(seed: u32) -> Vault {
+    pub fn generate(seed: u32, tier: usize) -> Vault {
+        // Its foes, dealt by how far he has come, as every realm's are (`realms::Dealer`).
+        let mut deal = super::realms::Dealer::new(tier);
         let mut rng = Rng::new(seed);
         let width = MARGIN * 2 + COLS * CELL_W;
         let height = MARGIN * 2 + ROWS * CELL_H;
@@ -575,7 +577,7 @@ impl Vault {
             let mut posts_free: Vec<P> = spots.clone();
             take(coins, false, &mut |_| LootKind::Coin, &mut rng, &mut spots, &mut loot, &mut busy);
             posts_free.retain(|p| !busy.contains(p));
-            // The pack: more, and more of the second stage, the deeper the room.
+            // The pack: more the deeper the room.
             // (Sized for frame-data fights, COMBAT.md §9: a pack is a fight, not a swarm.)
             let count = match r.kind {
                 RoomKind::Entry => 0,
@@ -586,7 +588,6 @@ impl Vault {
             if count == 0 {
                 continue;
             }
-            let stage_two = (r.depth * 0.8).min(0.7);
             let mut foes = Vec::new();
             let mut posts: Vec<P> = Vec::new();
             for p in posts_free.iter().copied() {
@@ -596,11 +597,7 @@ impl Vault {
                 if posts.iter().any(|q| (q.x - p.x).abs() + (q.y - p.y).abs() < 2) {
                     continue;
                 }
-                let (kind, stage) = if rng.next() < stage_two {
-                    (rng.pick(&[EnemyKind::Helmeted, EnemyKind::LargeBat, EnemyKind::Witch, EnemyKind::Werewolf, EnemyKind::Blemmyes]), 2)
-                } else {
-                    (rng.pick(&EnemyKind::STAGE_ONE), 1)
-                };
+                let (kind, stage) = deal.draw();
                 posts.push(p);
                 foes.push((kind, stage, p));
             }
@@ -645,7 +642,7 @@ mod tests {
 
     #[test]
     fn the_vault_is_twice_a_diablo_map_of_rooms_and_every_room_can_be_reached() {
-        let v = Vault::generate(SEED);
+        let v = Vault::generate(SEED, 1);
         assert_eq!((v.width, v.height), (138, 102));
         assert_eq!(v.rooms.len(), 19);
         let level = parse_level(&v.level(&level_for(1)));
@@ -677,7 +674,7 @@ mod tests {
 
     #[test]
     fn the_vault_is_full_of_gold_and_held_by_packs_of_both_stages() {
-        let v = Vault::generate(SEED);
+        let v = Vault::generate(SEED, 1);
         let count = |k: fn(LootKind) -> bool| v.loot.iter().filter(|l| k(l.kind)).count();
         assert!(count(|k| k == LootKind::Coin) >= 800, "coins: {}", count(|k| k == LootKind::Coin));
         assert!(count(|k| k == LootKind::Chest) >= 60, "chests: {}", count(|k| k == LootKind::Chest));
@@ -697,11 +694,13 @@ mod tests {
         assert!(v.packs.iter().all(|p| !p.foes.is_empty()));
         let entry = v.rooms.iter().find(|r| r.kind == RoomKind::Entry).unwrap();
         assert!(v.packs.iter().all(|p| p.den != entry.rect), "no foes where he arrives");
-        // The deeper rooms lean on the second stage.
-        let deep: Vec<&Pack> = v.packs.iter().filter(|p| v.room_at(p.foes[0].2).unwrap().depth > 0.7).collect();
-        let two = deep.iter().flat_map(|p| p.foes.iter()).filter(|f| f.1 == 2).count();
-        let all = deep.iter().map(|p| p.foes.len()).sum::<usize>();
-        assert!(two * 2 >= all, "{two} of {all} deep foes are of the second stage");
+        // Taken first, the vaults' fresh stage is the second: it leads the packs.
+        let two = foes.iter().filter(|f| f.1 == 2).count();
+        assert!(two * 2 >= foes.len(), "{two} of {} foes are of the second stage", foes.len());
+        // Taken later, they hold every foe met so far.
+        let later = Vault::generate(SEED, 4);
+        let met: HashSet<EnemyKind> = later.packs.iter().flat_map(|p| p.foes.iter().map(|f| f.0)).collect();
+        assert!(crate::logic::realms::roster(4).iter().all(|n| met.contains(&n.0)), "{met:?}");
     }
 
     #[test]

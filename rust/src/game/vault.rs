@@ -21,7 +21,7 @@ use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::combat::duelist::Den;
 use crate::logic::combat::{Breed, Duelist};
-use crate::logic::enemy::{enemy_specs, Enemy, EnemyMode};
+use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
 use crate::logic::gear;
 use crate::logic::hub::Rect;
 use crate::logic::items::ItemKind;
@@ -56,7 +56,7 @@ impl Game {
 
     /// Lays out the vault as this level is loaded: its packs at their posts, its gold where it lies.
     pub(super) fn enter_vault(&mut self) {
-        let vault = Vault::generate(SEED);
+        let vault = Vault::generate(SEED, self.realm_tier());
         // The vaults are seen from above, as Diablo's are; the camera goes back to what it was on leaving.
         if self.camera_before_vault.is_none() {
             self.camera_before_vault = Some(self.view.camera_mode);
@@ -78,15 +78,14 @@ impl Game {
     /// The packs: every foe at its post in its room, asleep there, a duelist on its archetype.
     fn vault_garrison(&self, brawl: &mut Brawl) -> Vec<Enemy> {
         let Some(v) = &self.vault else { return Vec::new() };
-        let specs = [enemy_specs(&self.level.grid, 1), enemy_specs(&self.level.grid, 2)];
         let mut out = Vec::new();
         for pack in &v.packs {
             let r = pack.den;
             let lo = V::new(r.x0 as f64 - 0.5, r.y0 as f64 - 0.5);
             let hi = V::new(r.x1 as f64 + 0.5, r.y1 as f64 + 0.5);
             let (cx, cy) = r.center();
-            for &(kind, stage, post) in &pack.foes {
-                let mut spec = specs[stage as usize - 1].iter().find(|s| s.kind == kind).unwrap().clone();
+            for &(kind, _, post) in &pack.foes {
+                let mut spec = spec_of(&self.level.grid, kind);
                 spec.name = format!("{} {}", spec.name, out.len() + 1);
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
                 e.post = Some(post);
