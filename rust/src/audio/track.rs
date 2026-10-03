@@ -16,6 +16,14 @@ pub enum Soundtrack {
     Menu,
     /// The Cyclops fight.
     Boss,
+    /// "Bastion Lux: Enter": one of the songs the later levels draw from.
+    BastionLux,
+    /// "The Last One".
+    LastOne,
+    /// "Desolation Vesper".
+    DesolationVesper,
+    /// "Level 1 Boss": the other song a boss fight may draw.
+    LevelOneBoss,
 }
 
 impl Soundtrack {
@@ -24,8 +32,18 @@ impl Soundtrack {
             Soundtrack::Level1 => include_bytes!("../../assets/music/level1.ogg"),
             Soundtrack::Menu => include_bytes!("../../assets/music/menu.ogg"),
             Soundtrack::Boss => include_bytes!("../../assets/music/boss.ogg"),
+            Soundtrack::BastionLux => include_bytes!("../../assets/music/bastion_lux.ogg"),
+            Soundtrack::LastOne => include_bytes!("../../assets/music/last_one.ogg"),
+            Soundtrack::DesolationVesper => include_bytes!("../../assets/music/desolation_vesper.ogg"),
+            Soundtrack::LevelOneBoss => include_bytes!("../../assets/music/level1_boss.ogg"),
         }
     }
+
+    /// The songs every level after dungeon I draws one of at random (the hub, the realms, the vaults,
+    /// the later dungeons and the gym).
+    pub const LEVELS: [Soundtrack; 3] = [Soundtrack::BastionLux, Soundtrack::LastOne, Soundtrack::DesolationVesper];
+    /// The songs a boss fight draws one of at random.
+    pub const BOSSES: [Soundtrack; 2] = [Soundtrack::Boss, Soundtrack::LevelOneBoss];
 
     /// Playback gain that sits the recording at the synth tune's loudness under the effects.
     pub fn gain(self) -> f64 {
@@ -33,6 +51,10 @@ impl Soundtrack {
             Soundtrack::Level1 => 1.0,
             Soundtrack::Menu => 0.85,
             Soundtrack::Boss => 0.8,
+            Soundtrack::BastionLux => 0.74,
+            Soundtrack::LastOne => 0.84,
+            Soundtrack::DesolationVesper => 1.4,
+            Soundtrack::LevelOneBoss => 0.87,
         }
     }
 }
@@ -119,6 +141,15 @@ mod tests {
         }
         assert!(energy > 100.0, "the track is silent: {energy}");
     }
+
+    #[test]
+    fn every_recording_decodes() {
+        for which in Soundtrack::LEVELS.into_iter().chain(Soundtrack::BOSSES) {
+            let mut t = Track::new(which).unwrap_or_else(|| panic!("{which:?} decodes"));
+            let energy: f64 = (0..48_000).map(|_| t.next(48_000.0)).map(|(l, r)| (l * l + r * r) as f64).sum();
+            assert!(energy > 0.0, "{which:?} is silent");
+        }
+    }
 }
 
 /// Calibration for `Soundtrack::gain`: `cargo test --lib loudness -- --ignored --nocapture`
@@ -150,7 +181,7 @@ mod loudness {
         a.music.loops = 1;
         a.intensity = 0.3;
         let synth = rms(&mut a, 20);
-        for which in [Soundtrack::Level1, Soundtrack::Menu, Soundtrack::Boss] {
+        for which in [Soundtrack::Level1, Soundtrack::Menu].into_iter().chain(Soundtrack::LEVELS).chain(Soundtrack::BOSSES) {
             let mut b = Synth::new(48_000.0, 0.42);
             b.track = Track::new(which);
             b.track_target = 1.0;

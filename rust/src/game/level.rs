@@ -2,6 +2,7 @@
 //! places, the hidden relic shrine, and where he starts.
 
 use super::{save, Game, Screen, MODE_SCHEDULE, SPAWN_FIRST};
+use crate::audio::Soundtrack;
 use crate::logic::boss::{Cyclops, CYCLOPS_HP, CYCLOPS_HP_STEP};
 use crate::logic::enemy::{enemy_specs, Enemy, REASSEMBLE_SECONDS};
 use crate::logic::garden;
@@ -136,6 +137,15 @@ impl Game {
         self.door_opening = false;
         self.gate_hint = 0.0;
         self.audio.set_tempo_step(0);
+        // Its song: dungeon I's own, or one drawn at random (not the last level's) from the bosses'
+        // or the other levels' songs.
+        self.level_track = Some(if self.level.data.boss {
+            self.audio.pick_track(&Soundtrack::BOSSES, self.level_track)
+        } else if index == 0 && self.theme() == crate::logic::level::Theme::Estate {
+            Soundtrack::Level1
+        } else {
+            self.audio.pick_track(&Soundtrack::LEVELS, self.level_track)
+        });
 
         // Those waiting in the hollow stand along its middle row: at either end and in the middle.
         let c = self.level.nest_center;

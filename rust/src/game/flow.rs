@@ -74,20 +74,10 @@ impl Game {
         if screen == Screen::Title {
             self.audio.set_tempo_step(0);
         }
-        // Dungeon I has its own recorded soundtrack; the title, the shop and the rest keep the synth tune.
-        use Soundtrack;
+        // The title and the shop have their own recording, and every level the song it drew as it loaded.
         match screen {
             Screen::Title | Screen::Select | Screen::Shop => self.audio.set_soundtrack(Some(Soundtrack::Menu)),
-            Screen::Ready | Screen::Tour => {
-                let track = if self.level.data.boss {
-                    Some(Soundtrack::Boss)
-                } else if self.dungeon == 0 {
-                    Some(Soundtrack::Level1)
-                } else {
-                    None
-                };
-                self.audio.set_soundtrack(track);
-            }
+            Screen::Ready | Screen::Tour => self.audio.set_soundtrack(self.level_track),
             _ => {}
         }
         if screen == Screen::Ready {

@@ -252,6 +252,8 @@ pub struct Game {
     start_facing: Dir,
     /// The dungeon number this stretch of the game belongs to (its boss shares it).
     pub dungeon: usize,
+    /// The song this level plays, drawn as it is loaded (and kept through its retries).
+    level_track: Option<crate::audio::Soundtrack>,
     /// The boss of a boss arena, and what it has thrown.
     pub boss: Option<Cyclops>,
     pub boss_shots: Vec<BossShot>,
@@ -403,6 +405,7 @@ impl Game {
             was_airborne: false,
             start_facing: Dir::Down,
             dungeon: 0,
+            level_track: None,
             boss: None,
             boss_shots: Vec::new(),
             boss_events: Vec::new(),

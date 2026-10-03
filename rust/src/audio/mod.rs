@@ -1,5 +1,5 @@
-//! Procedural audio. No sample files: every effect and the whole soundtrack
-//! are synthesized, the same voices the web build made with Web Audio.
+//! Procedural audio: every effect is synthesized, the same voices the web build made with Web
+//! Audio. The music is the synth's own tune or one of the recorded soundtracks (`track`).
 
 pub mod music;
 pub mod synth;
@@ -270,6 +270,14 @@ impl AudioManager {
                 None => s.track_target = 0.0,
             }
         });
+    }
+
+    /// One of `pool` at random, other than `not` (the song the last level played) when there is a choice.
+    pub fn pick_track(&mut self, pool: &[Soundtrack], not: Option<Soundtrack>) -> Soundtrack {
+        let fresh: Vec<Soundtrack> = pool.iter().copied().filter(|t| Some(*t) != not).collect();
+        let from = if fresh.is_empty() { pool } else { &fresh };
+        let i = ((self.rng.next() * from.len() as f64) as usize).min(from.len() - 1);
+        from[i]
     }
 
     /// Lets the music fall silent, the recording and the synth tune both; the next soundtrack brings it back.

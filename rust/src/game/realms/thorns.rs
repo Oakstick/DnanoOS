@@ -18,7 +18,7 @@
 
 use super::super::{Banner, Game};
 use super::Meter;
-use crate::audio::{Sfx, Soundtrack};
+use crate::audio::Sfx;
 use crate::logic::angels::Archangel;
 use crate::logic::combat::ails::DOOM_FRAMES;
 use crate::logic::combat::math;
@@ -586,7 +586,7 @@ impl Game {
 
     /// The music comes back as it was.
     fn thorns_music(&mut self) {
-        self.audio.set_soundtrack(if self.dungeon == 0 { Some(Soundtrack::Level1) } else { None });
+        self.audio.set_soundtrack(self.level_track);
     }
 
     /// She has him: a heavy wound and Doom, and he wakes in the innermost bower, her eighth groom.
