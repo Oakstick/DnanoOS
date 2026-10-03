@@ -671,7 +671,6 @@ impl Game {
             t.smoke = None;
             t.sight = 0.0;
             t.wedding = None;
-            t.call = 0;
             t.thorn_carry = 0.0;
             t.rose_carry = 0.0;
             t.golden_taken = false;

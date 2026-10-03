@@ -224,8 +224,6 @@ pub struct Thorns {
     /// Health owed by the thorns and to the roses, not yet whole.
     pub thorn_carry: f64,
     pub rose_carry: f64,
-    /// Frames left of a karakoncolos's call, turned toward her.
-    pub call: u16,
     /// Raphael's charges and his patron's wait as last seen (a cast shows as a drop or a jump).
     pub raphael_seen: u8,
     pub patron_seen: f64,
@@ -478,7 +476,6 @@ impl Thorns {
             brides_raised: false,
             thorn_carry: 0.0,
             rose_carry: 0.0,
-            call: 0,
             raphael_seen: 0,
             patron_seen: 0.0,
             hints: 0,
