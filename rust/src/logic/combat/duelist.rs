@@ -392,6 +392,9 @@ pub struct Duelist {
     /// Its legend at work, and what it did this frame.
     pub lore: Lore,
     pub cues: Vec<Cue>,
+    /// A puppet: it never thinks for itself (no token, no walking, no choice of move); whoever
+    /// holds its strings moves it and begins its moves (the Peerless, Pride's echo of the hero).
+    pub puppet: bool,
 }
 
 impl Duelist {
@@ -427,6 +430,7 @@ impl Duelist {
             cool: [0; 3],
             lore: Lore::default(),
             cues: Vec::new(),
+            puppet: false,
         }
     }
 
@@ -471,7 +475,8 @@ impl Duelist {
     /// A move as this body performs it: a big body's blows reach farther, and it begins them
     /// from farther off.
     pub fn data(&self, mv: MoveId) -> MoveData {
-        let mut d = mv.data();
+        // (Its fighter's own table: the hero's string as a kit swings it, for one that wears his.)
+        let mut d = self.f.data(mv);
         let r = self.breed.reach;
         if r > 0.0 && !d.projectile && matches!(d.shape, Shape::Cone | Shape::Quake { .. }) {
             d.reach += r;
@@ -634,6 +639,8 @@ impl Duelist {
         match self.f.state {
             State::Attack { mv: MoveId::Dive, frame } => frame < MoveId::Dive.data().startup,
             State::Attack { mv: MoveId::Burrow, frame } => frame >= BURROW_SINK && frame < MoveId::Burrow.data().startup,
+            // In the air of a leap (only a puppet of the hero's leaps).
+            State::Evade { frame } => frame < super::fsm::EVADE_AIR,
             State::Attack { .. } | State::Reel { .. } => false,
             _ => self.breed.power == Power::Spirit,
         }
