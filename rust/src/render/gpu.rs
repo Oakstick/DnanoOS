@@ -14,6 +14,7 @@ use wgpu::util::DeviceExt;
 use super::clusters;
 use super::faces::StaticFaces;
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
+use super::preset::{Preset, Shadows};
 use super::probes::{self, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
 use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS, NEAR};
@@ -54,12 +55,9 @@ fn untonemap(t: Vec3) -> Vec3 {
 /// World normal and view depth, and the glow chain.
 const HDR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const AO: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
-const SHADOW_SIZE: u32 = if cfg!(target_arch = "wasm32") { 2048 } else { 4096 };
 /// Half the width of the fine shadow cascade, in world units.
 const NEAR_CASCADE: f32 = 10.0;
 const BLOOM_LEVELS: usize = 5;
-/// How many lamps light the air (RP19): the first in priority order. The cost scales with it.
-const VOLUMETRIC_LAMPS: usize = 8;
 /// The environment cube (RP14): its first mip's size, and how many mips (roughness 0 to 1).
 const ENV_SIZE: u32 = 128;
 const ENV_MIPS: u32 = 6;
@@ -194,6 +192,7 @@ struct Globals {
     haze: [f32; 4],
     probe_min: [f32; 4],
     probe_size: [f32; 4],
+    shadow_q: [f32; 4],
 }
 
 #[repr(C)]
@@ -413,9 +412,9 @@ pub struct Gpu {
     pub format: wgpu::TextureFormat,
     rt: Targets,
     post: PostShared,
-    /// One layer of the shadow map per cascade: the fine one round Ragnar, then the whole level.
-    shadow_layers: [wgpu::TextureView; 2],
-    shadow_tex: wgpu::Texture,
+    /// One shadow map per cascade, each its own size: the fine one round Ragnar, then the whole level.
+    shadow_maps: [wgpu::Texture; 2],
+    shadow_views: [wgpu::TextureView; 2],
     /// The coarse cascade holding only the static scenery, kept while the light, the level and the
     /// cascade's box stay the same (the static generation and the matrix it was drawn with).
     shadow_cache: wgpu::Texture,
@@ -510,6 +509,8 @@ pub struct Gpu {
     pub counts: FrameCounts,
     /// Effects switched off (`profile::fx` bits), to see what each costs and adds.
     pub fx_off: u32,
+    /// The quality preset (RP16 and the plan's preset policy); change it with `set_preset`.
+    preset: Preset,
     /// The last frame handed to the queue, for pacing frames in flight.
     pub last_submit: Option<wgpu::SubmissionIndex>,
     dyn_buf: Dyn,
@@ -614,38 +615,8 @@ impl Gpu {
             ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
             count: None,
         };
-        let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("shadow map"),
-            size: wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 2 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let shadow_cache = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("static shadow cache"),
-            size: wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let shadow_cache_view = shadow_cache.create_view(&Default::default());
-        let shadow_view = shadow_tex
-            .create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
-        let layer = |i: u32| {
-            shadow_tex.create_view(&wgpu::TextureViewDescriptor {
-                dimension: Some(wgpu::TextureViewDimension::D2),
-                base_array_layer: i,
-                array_layer_count: Some(1),
-                ..Default::default()
-            })
-        };
-        let shadow_layers = [layer(0), layer(1)];
+        let preset = Preset::default_for_build();
+        let (shadow_maps, shadow_views, shadow_cache, shadow_cache_view) = shadow_targets(&device, &preset.shadows);
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("shadow"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -683,6 +654,16 @@ impl Gpu {
             },
             count: None,
         };
+        let shadow_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Depth,
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
         let light_buf = storage("lights", (clusters::MAX_LIGHTS * std::mem::size_of::<GpuLight>()) as u64);
         let cell_buf = storage("light clusters", clusters::CELLS as u64 * 4);
         let index_buf = storage("light indices", (clusters::CELLS * clusters::CELL_CAP) as u64 * 4);
@@ -690,16 +671,8 @@ impl Gpu {
             label: Some("scene"),
             entries: &[
                 uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
+                shadow_entry(1),
+                shadow_entry(16),
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -805,7 +778,7 @@ impl Gpu {
         let scene_inputs = SceneInputs {
             layout: scene_layout.clone(),
             globals: globals.clone(),
-            shadow_view: shadow_view.clone(),
+            shadow_views: shadow_views.clone(),
             shadow_sampler: shadow_sampler.clone(),
             env_view: env_view.clone(),
             env_sampler: env_sampler.clone(),
@@ -1491,7 +1464,9 @@ impl Gpu {
         let rig_draw_buf = Dyn::new(&device, "rig draws", wgpu::BufferUsages::STORAGE, 1 << 14);
         let rig_part_buf = Dyn::new(&device, "rig parts", wgpu::BufferUsages::STORAGE, 1 << 16);
         Ok(Self {
-            shadow_tex,
+            shadow_maps,
+            shadow_views,
+            preset,
             shadow_cache,
             shadow_cache_view,
             shadow_cache_key: None,
@@ -1524,7 +1499,6 @@ impl Gpu {
             format,
             rt,
             post,
-            shadow_layers,
             shadow_pipe,
             shadow_binds,
             cascade_bufs,
@@ -1578,6 +1552,27 @@ impl Gpu {
             backend,
             adapter: adapter_info,
         })
+    }
+
+    /// The quality preset in use.
+    pub fn preset(&self) -> &Preset {
+        &self.preset
+    }
+
+    /// Switches the quality preset: the shadow maps are made again when their sizes change (and
+    /// the static cascade's cache drawn again).
+    pub fn set_preset(&mut self, preset: Preset) {
+        if preset.shadows.near_size != self.preset.shadows.near_size || preset.shadows.far_size != self.preset.shadows.far_size {
+            let (maps, views, cache, cache_view) = shadow_targets(&self.device, &preset.shadows);
+            self.shadow_maps = maps;
+            self.shadow_views = views.clone();
+            self.shadow_cache = cache;
+            self.shadow_cache_view = cache_view;
+            self.shadow_cache_key = None;
+            self.scene_inputs.shadow_views = views;
+            self.scene_bind = self.scene_inputs.bind(&self.device, &self.probe_tex);
+        }
+        self.preset = preset;
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -1811,7 +1806,7 @@ impl Gpu {
         let light_vp_near = match view.shadow_focus() {
             Some(focus) => {
                 let f = light_view.transform_point3(focus);
-                let texel = 2.0 * near_r / SHADOW_SIZE as f32;
+                let texel = 2.0 * near_r / self.preset.shadows.near_size as f32;
                 let (cx, cy) = ((f.x / texel).round() * texel, (f.y / texel).round() * texel);
                 Some(Mat4::orthographic_rh(cx - near_r, cx + near_r, cy - near_r, cy + near_r, 1.0, 200.0) * light_view)
             }
@@ -1823,7 +1818,7 @@ impl Gpu {
             light_vp: light_vp.to_cols_array(),
             light_vp_near: light_vp_near.unwrap_or(light_vp).to_cols_array(),
             cam_pos: v4(view.camera_position(), if ortho { 0.0 } else { 1.0 }),
-            cam_fwd: v4(fwd, 1.0 / SHADOW_SIZE as f32),
+            cam_fwd: v4(fwd, 0.0),
             fog,
             params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
             cluster: [self.config.width as f32, self.config.height as f32, NEAR, FAR],
@@ -1833,6 +1828,7 @@ impl Gpu {
                 .probes
                 .as_ref()
                 .map_or([1.0; 4], |p| [p.dims[0] as f32, probes::LAYERS as f32 * probes::DY, p.dims[2] as f32, 0.0]),
+            shadow_q: [self.preset.shadows.search_taps as f32, self.preset.shadows.filter_taps as f32, 0.0, 0.0],
             hemi_sky: v4(atm.hemi_sky, 0.0),
             hemi_ground: v4(atm.hemi_ground, fog_light.x),
             ambient: v4(atm.ambient, fog_light.y),
@@ -1874,7 +1870,7 @@ impl Gpu {
                 if self.fx_off & fx::VOLUMETRIC != 0 || frame.haze.density <= 0.0 {
                     0.0
                 } else {
-                    gpu_lights.len().min(VOLUMETRIC_LAMPS) as f32
+                    gpu_lights.len().min(self.preset.volumetric_lamps) as f32
                 },
                 atm.exposure,
                 0.8,
@@ -1998,12 +1994,12 @@ impl Gpu {
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyTextureInfo {
-                    texture: &self.shadow_tex,
+                    texture: &self.shadow_maps[1],
                     mip_level: 0,
-                    origin: wgpu::Origin3d { x: 0, y: 0, z: 1 },
+                    origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
+                self.shadow_maps[1].size(),
             );
         }
 
@@ -2048,7 +2044,7 @@ impl Gpu {
                 label: Some(label),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_layers[c],
+                    view: &self.shadow_views[c],
                     depth_ops: Some(wgpu::Operations {
                         load: if c == 1 && use_static { wgpu::LoadOp::Load } else { wgpu::LoadOp::Clear(1.0) },
                         store: wgpu::StoreOp::Store,
@@ -2062,7 +2058,9 @@ impl Gpu {
             pass.set_bind_group(0, &self.shadow_binds[c], &[]);
             if c == 0 && !near_chunks.is_empty() {
                 self.draw_faces(&mut pass, &self.face_shadow, &near_chunks, &mut counts);
-                counts.shadow_static += near_chunks.iter().map(|c| c.1 as u64).sum::<u64>();
+                let n = near_chunks.iter().map(|c| c.1 as u64).sum::<u64>();
+                counts.shadow_static += n;
+                counts.shadow_near += n;
             }
             if !all.is_empty() {
                 pass.set_pipeline(&self.shadow_pipe);
@@ -2640,11 +2638,34 @@ fn probe_textures(device: &wgpu::Device, dims: [u32; 3]) -> Vec<wgpu::Texture> {
         .collect()
 }
 
+/// The two cascades' maps (each its own size, drawn into and sampled), and the coarse cascade's
+/// static cache (the far map's size, copied from).
+fn shadow_targets(device: &wgpu::Device, q: &Shadows) -> ([wgpu::Texture; 2], [wgpu::TextureView; 2], wgpu::Texture, wgpu::TextureView) {
+    let map = |label, size: u32, usage| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let drawn = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+    let maps = [map("shadow near", q.near_size, drawn), map("shadow far", q.far_size, drawn)];
+    let views = [maps[0].create_view(&Default::default()), maps[1].create_view(&Default::default())];
+    let cache = map("static shadow cache", q.far_size, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC);
+    let cache_view = cache.create_view(&Default::default());
+    (maps, views, cache, cache_view)
+}
+
 /// What the scene's bind group (group 0 of every scene pipeline) is made of.
 struct SceneInputs {
     layout: wgpu::BindGroupLayout,
     globals: wgpu::Buffer,
-    shadow_view: wgpu::TextureView,
+    shadow_views: [wgpu::TextureView; 2],
     shadow_sampler: wgpu::Sampler,
     env_view: wgpu::TextureView,
     env_sampler: wgpu::Sampler,
@@ -2660,7 +2681,8 @@ impl SceneInputs {
         let views: Vec<wgpu::TextureView> = probes.iter().map(|t| t.create_view(&Default::default())).collect();
         let mut entries = vec![
             wgpu::BindGroupEntry { binding: 0, resource: self.globals.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&self.shadow_view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&self.shadow_views[0]) },
+            wgpu::BindGroupEntry { binding: 16, resource: wgpu::BindingResource::TextureView(&self.shadow_views[1]) },
             wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.shadow_sampler) },
             wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&self.env_view) },
             wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&self.env_sampler) },

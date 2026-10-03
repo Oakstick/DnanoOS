@@ -21,6 +21,7 @@ use crate::game::Game;
 use crate::render::gpu::Gpu;
 use crate::render::hud;
 use crate::render::overlay::Overlay;
+use crate::render::preset::{self, Preset};
 use crate::render::profile::{fx, CpuTimes, FrameCounts};
 use crate::render::view::Frame;
 
@@ -157,6 +158,8 @@ struct Sample {
     cpu: CpuTimes,
     /// The latest GPU frame time read back (from a frame or two earlier), or none yet.
     gpu: Option<f64>,
+    /// The two cascades' passes from the same read-back (near; far with its static cache when drawn).
+    shadow: Option<(f64, f64)>,
     counts: FrameCounts,
 }
 
@@ -338,11 +341,16 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
             }
             continue;
         }
-        let gpu_ms = gpu.timer.as_ref().filter(|t| t.frames > gpu_seen).map(|t| {
-            gpu_seen = t.frames;
-            t.total
+        let fresh = gpu.timer.as_ref().filter(|t| t.frames > gpu_seen);
+        let gpu_ms = fresh.map(|t| t.total);
+        let shadow = fresh.map(|t| {
+            let ms = |label: &str| t.passes.iter().filter(|p| p.0 == label).map(|p| p.1).sum::<f64>();
+            (ms("shadow near"), ms("shadow far") + ms("shadow cache"))
         });
-        samples.push(Sample { wall, cpu, gpu: gpu_ms, counts: gpu.counts });
+        if let Some(t) = fresh {
+            gpu_seen = t.frames;
+        }
+        samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, counts: gpu.counts });
     }
     let _ = gpu.device.poll(wgpu::PollType::Wait);
     Run { samples, first_frame }
@@ -362,7 +370,17 @@ pub fn run(args: &[String]) -> i32 {
     let frames: usize = arg(args, "--frames").and_then(|n| n.parse().ok()).unwrap_or(600);
     let which = arg(args, "--perf").filter(|s| !s.starts_with("--")).unwrap_or("all");
     let fx_list = arg(args, "--fx-off").unwrap_or("");
-    let lod_bias: f32 = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(1.0);
+    let preset = match arg(args, "--preset") {
+        Some(name) => match Preset::named(name) {
+            Some(p) => p,
+            None => {
+                eprintln!("no such preset; the presets are: {}", preset::ALL.map(|p| p.name).join(", "));
+                return 2;
+            }
+        },
+        None => Preset::default_for_build(),
+    };
+    let lod_bias: f32 = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(preset.lod_bias);
     let out_dir = arg(args, "--out").unwrap_or("perf").to_string();
     let scenes: Vec<&Scene> = SCENES.iter().filter(|s| which == "all" || which.split(',').any(|n| n == s.name)).collect();
     if scenes.is_empty() {
@@ -377,6 +395,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     gpu.fx_off = fx::parse(fx_list);
+    gpu.set_preset(preset);
     if gpu.timer.is_none() {
         eprintln!("note: this adapter has no timestamp queries; GPU times are not reported");
     }
@@ -389,6 +408,12 @@ pub fn run(args: &[String]) -> i32 {
     }
     let _ = writeln!(md, "| Resolution | {}x{} native, 4x MSAA, no upscaling |", size.0, size.1);
     let _ = writeln!(md, "| Effects off | {} |", if fx_list.is_empty() { "none" } else { fx_list });
+    let s = &preset.shadows;
+    let _ = writeln!(
+        md,
+        "| Preset | {} (for the {}): shadows {} near, {} far, {}+{} filter taps; {} volumetric lamps |",
+        preset.name, preset.target, s.near_size, s.far_size, s.search_taps, s.filter_taps, preset.volumetric_lamps
+    );
     let _ = writeln!(md, "| Level-of-detail bias | {lod_bias} |");
     let _ = writeln!(md, "| Frames per scene | {frames} after 1 s of warm-up, at most 2 in flight |\n");
     let _ = writeln!(
@@ -401,6 +426,7 @@ pub fn run(args: &[String]) -> i32 {
         "| Scene | Wall p50 | p95 | p99 | max | CPU p50 | p95 | GPU p50 | p95 | p99 | max | First frame | Draws | Tri (M) | Upload kB |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     let _ = std::fs::create_dir_all(&out_dir);
+    let mut cascades = String::new();
     for scene in scenes {
         eprintln!("perf: {} ({frames} frames) ...", scene.name);
         let run = measure(&mut gpu, scene, frames, size, lod_bias);
@@ -432,12 +458,38 @@ pub fn run(args: &[String]) -> i32 {
         );
         eprintln!("{line}");
         let _ = writeln!(md, "{line}");
-        let mut csv = String::from("frame,wall_ms,cpu_ms,update_ms,emit_ms,hud_ms,upload_ms,record_ms,gpu_ms,draws,instances,triangles,upload_bytes,static_drawn,shadow_static,rigs,rig_voxels,lights,lights_dropped\n");
+        // The cascades against their budgets (RP16). The budgets are for the target GPU; on any
+        // other machine the shares only say where the shadow time goes.
+        let near = percentiles(s.iter().filter_map(|x| x.shadow.map(|c| c.0)).collect());
+        let far = percentiles(s.iter().filter_map(|x| x.shadow.map(|c| c.1)).collect());
+        let b = &preset.budget;
+        // The fine cascade is not drawn where nothing focuses it (the souls' gallery).
+        let near_cells = if near[1] > 0.0 {
+            format!(
+                "{:.2} | {:.2} | {:.0}% | {:.0}k",
+                near[0],
+                near[1],
+                near[1] / b.shadow_near_ms * 100.0,
+                mean(&|x| x.counts.shadow_near as f64) / 1e3
+            )
+        } else {
+            "not drawn | | |".to_string()
+        };
+        let _ = writeln!(
+            cascades,
+            "| {} | {near_cells} | {:.2} | {:.2} | {:.0}% | {:.0}k |",
+            scene.name,
+            far[0],
+            far[1],
+            far[1] / b.shadow_far_ms * 100.0,
+            mean(&|x| (x.counts.shadow_static - x.counts.shadow_near) as f64) / 1e3,
+        );
+        let mut csv = String::from("frame,wall_ms,cpu_ms,update_ms,emit_ms,hud_ms,upload_ms,record_ms,gpu_ms,shadow_near_ms,shadow_far_ms,draws,instances,triangles,upload_bytes,static_drawn,shadow_static,shadow_near,rigs,rig_voxels,lights,lights_dropped,light_pairs,busiest_cluster\n");
         for (i, x) in s.iter().enumerate() {
             let c = &x.counts;
             let _ = writeln!(
                 csv,
-                "{i},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{i},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                 x.wall,
                 x.cpu.total(),
                 x.cpu.update,
@@ -446,12 +498,15 @@ pub fn run(args: &[String]) -> i32 {
                 x.cpu.sync,
                 x.cpu.record,
                 x.gpu.map(|g| format!("{g:.3}")).unwrap_or_default(),
+                x.shadow.map(|c| format!("{:.3}", c.0)).unwrap_or_default(),
+                x.shadow.map(|c| format!("{:.3}", c.1)).unwrap_or_default(),
                 c.draws,
                 c.instances,
                 c.triangles,
                 c.upload,
                 c.static_drawn,
                 c.shadow_static,
+                c.shadow_near,
                 c.rigs,
                 c.rig_voxels,
                 c.lights,
@@ -462,6 +517,14 @@ pub fn run(args: &[String]) -> i32 {
         }
         let _ = std::fs::write(format!("{out_dir}/{when}-{}.csv", scene.name), csv);
     }
+    let b = &preset.budget;
+    let _ = writeln!(
+        md,
+        "\n## Shadow cascades\n\nGPU ms per cascade, and the 95th percentile as a share of the preset's budget on its target GPU \
+         ({:.1} ms near, {:.1} ms far). Far includes redrawing its static cache when that happens. Casters are static \
+         instances (thousands).\n\n| Scene | Near p50 | p95 | of budget | casters | Far p50 | p95 | of budget | casters |\n|---|---|---|---|---|---|---|---|---|\n{cascades}",
+        b.shadow_near_ms, b.shadow_far_ms
+    );
     let _ = writeln!(md, "\n## Scenes\n");
     for scene in SCENES {
         let _ = writeln!(md, "- **{}**: {}.", scene.name, scene.what);

@@ -33,6 +33,7 @@ struct Globals {
     haze: vec4<f32>,       // ground haze (RP19): density at the floor, the floor's height, falloff
     probe_min: vec4<f32>,  // the probe volume's corner (xyz) and 1 when there is one (RP18)
     probe_size: vec4<f32>, // its extent
+    shadow_q: vec4<f32>,   // the preset's shadows (RP16): x blocker search taps, y filter taps
 };
 
 // The level's irradiance probes (RP18, `render::probes`): per side (+x, -x, +y, -y, +z, -z), the
@@ -93,7 +94,9 @@ const FX_LIGHT_HEAT: u32 = 4096u;
 fn fx_off(bit: u32) -> bool {
     return (u32(g.shadow.w) & bit) != 0u;
 }
-@group(0) @binding(1) var shadow_map: texture_depth_2d_array;
+// One map per cascade, each its own size (RP16): the fine one round Ragnar, the coarse one over the level.
+@group(0) @binding(1) var shadow_near: texture_depth_2d;
+@group(0) @binding(16) var shadow_far: texture_depth_2d;
 @group(0) @binding(2) var shadow_cmp: sampler_comparison;
 // The shadow pass draws one cascade at a time with its own matrix.
 @group(0) @binding(3) var<uniform> cascade_vp: mat4x4<f32>;
@@ -201,11 +204,6 @@ struct RIn {
     @location(4) draw: u32,
 };
 
-fn rig_world(v: RIn) -> vec4<f32> {
-    let d = rig_draws[v.draw];
-    return rig_parts[d.part_base + v.part] * vec4<f32>(v.pos + v.local.xyz * 0.5 * d.size, 1.0);
-}
-
 @vertex
 fn vs_rig(v: RIn) -> VOut {
     let d = rig_draws[v.draw];
@@ -260,7 +258,15 @@ fn vs_rig(v: RIn) -> VOut {
 
 @vertex
 fn vs_rig_shadow(v: RIn) -> @builtin(position) vec4<f32> {
-    return cascade_vp * rig_world(v);
+    // As for static faces: a face turned from the light is skipped (RP16).
+    let d = rig_draws[v.draw];
+    let pm = rig_parts[d.part_base + v.part];
+    let face = u32(round(v.local.w * 127.0));
+    let away = vec3<f32>(cascade_vp[0].z, cascade_vp[1].z, cascade_vp[2].z);
+    if (dot((pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz, away) > 0.0) {
+        return vec4<f32>(2.0, 2.0, 2.0, 1.0);
+    }
+    return cascade_vp * (pm * vec4<f32>(v.pos + v.local.xyz * 0.5 * d.size, 1.0));
 }
 
 // ------------------------------------------------------------ static faces
@@ -328,7 +334,15 @@ fn vs_face(v: FIn) -> VOut {
 @vertex
 fn vs_face_shadow(v: FIn) -> @builtin(position) vec4<f32> {
     let inst = statics[v.face >> 3u];
-    return cascade_vp * (inst.m * vec4<f32>(FACE_CORNERS[(v.face & 7u) * 4u + v.corner], 1.0));
+    let face = v.face & 7u;
+    // A face turned from the light is never nearest to it (the cube's lit faces cover the same
+    // ground in front of it), so it is skipped (RP16): the map comes out the same. The cascade's
+    // depth row says which way is away from the light.
+    let away = vec3<f32>(cascade_vp[0].z, cascade_vp[1].z, cascade_vp[2].z);
+    if (dot((inst.m * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz, away) > 0.0) {
+        return vec4<f32>(2.0, 2.0, 2.0, 1.0);
+    }
+    return cascade_vp * (inst.m * vec4<f32>(FACE_CORNERS[face * 4u + v.corner], 1.0));
 }
 
 // How wide the moon (or sun) looks: sets how fast a shadow softens with distance.
@@ -347,7 +361,7 @@ fn vogel(i: i32, n: i32, spin: f32) -> vec2<f32> {
 // Soft shadows that harden where an object meets what it shades: a search
 // for the things between here and the light says how far above they are,
 // and the filter spreads with that distance.
-fn cascade_light(vp: mat4x4<f32>, layer: i32, world: vec3<f32>, half_width: f32, bias: f32, spin: f32) -> vec2<f32> {
+fn cascade_light(map: texture_depth_2d, vp: mat4x4<f32>, world: vec3<f32>, half_width: f32, bias: f32, spin: f32) -> vec2<f32> {
     let lp = vp * vec4<f32>(world, 1.0);
     let c = lp.xyz / lp.w;
     let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
@@ -356,14 +370,18 @@ fn cascade_light(vp: mat4x4<f32>, layer: i32, world: vec3<f32>, half_width: f32,
         return vec2<f32>(1.0, 0.0);
     }
     let inside = smoothstep(0.0, 0.06, edge);
-    let size = f32(textureDimensions(shadow_map).x);
+    let size = f32(textureDimensions(map).x);
     let texel = 1.0 / size;
     let z = c.z - bias;
     var blockers = 0.0;
     var found = 0.0;
-    for (var i = 0; i < 8; i++) {
-        let q = clamp((uv + vogel(i, 8, spin) * texel * 7.0) * size, vec2<f32>(0.0), vec2<f32>(size - 1.0));
-        let d = textureLoad(shadow_map, vec2<i32>(q), layer, 0);
+    let search = i32(g.shadow_q.x);
+    let taps = i32(g.shadow_q.y);
+    // The search reaches as far in the world whatever the map's size.
+    let reach = texel * 7.0 * size / 4096.0;
+    for (var i = 0; i < search; i++) {
+        let q = clamp((uv + vogel(i, search, spin) * reach) * size, vec2<f32>(0.0), vec2<f32>(size - 1.0));
+        let d = textureLoad(map, vec2<i32>(q), 0);
         if (d < z) {
             blockers += d;
             found += 1.0;
@@ -375,10 +393,10 @@ fn cascade_light(vp: mat4x4<f32>, layer: i32, world: vec3<f32>, half_width: f32,
     let gap = (z - blockers / found) * LIGHT_DEPTH;
     let spread = clamp(gap * LIGHT_SIZE / (2.0 * half_width), texel * 1.2, texel * 9.0);
     var lit = 0.0;
-    for (var i = 0; i < 16; i++) {
-        lit += textureSampleCompareLevel(shadow_map, shadow_cmp, uv + vogel(i, 16, spin) * spread, layer, z);
+    for (var i = 0; i < taps; i++) {
+        lit += textureSampleCompareLevel(map, shadow_cmp, uv + vogel(i, taps, spin) * spread, z);
     }
-    return vec2<f32>(lit / 16.0, inside);
+    return vec2<f32>(lit / f32(taps), inside);
 }
 
 // How much of the moonlight (or sunlight) reaches `world`: the fine cascade
@@ -388,18 +406,20 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>) -> f32 {
         return 1.0;
     }
     let spin = fract(52.9829189 * fract(dot(frag, vec2<f32>(0.06711056, 0.00583715)))) * 6.2831853;
-    let size = f32(textureDimensions(shadow_map).x);
+    // Surfaces are pushed off along their normal by three texels of the cascade they read.
+    let near_size = f32(textureDimensions(shadow_near).x);
+    let far_size = f32(textureDimensions(shadow_far).x);
     let far_w = g.shadow.y;
     if (g.shadow.z > 0.5) {
         let near_w = g.shadow.x;
-        let near = cascade_light(g.light_vp_near, 0, world + n * (3.0 * near_w / size), near_w, 0.02 / LIGHT_DEPTH, spin);
+        let near = cascade_light(shadow_near, g.light_vp_near, world + n * (3.0 * near_w / near_size), near_w, 0.02 / LIGHT_DEPTH, spin);
         if (near.y > 0.999) {
             return near.x;
         }
-        let far = cascade_light(g.light_vp, 1, world + n * (3.0 * far_w / size), far_w, 0.05 / LIGHT_DEPTH, spin);
+        let far = cascade_light(shadow_far, g.light_vp, world + n * (3.0 * far_w / far_size), far_w, 0.05 / LIGHT_DEPTH, spin);
         return mix(far.x, near.x, near.y);
     }
-    return cascade_light(g.light_vp, 1, world + n * (3.0 * far_w / size), far_w, 0.05 / LIGHT_DEPTH, spin).x;
+    return cascade_light(shadow_far, g.light_vp, world + n * (3.0 * far_w / far_size), far_w, 0.05 / LIGHT_DEPTH, spin).x;
 }
 
 // ------------------------------------------------------------ voxel materials

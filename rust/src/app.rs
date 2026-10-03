@@ -32,6 +32,8 @@ pub struct Options {
     pub windowed: bool,
     pub fullscreen: bool,
     pub no_vsync: bool,
+    /// The quality preset (`--preset high|low`); none takes the build's default.
+    pub preset: Option<crate::render::preset::Preset>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -321,6 +323,10 @@ impl ApplicationHandler for App {
                     if self.opts.no_vsync {
                         gpu.set_vsync(false);
                     }
+                    if let Some(p) = self.opts.preset {
+                        gpu.set_preset(p);
+                    }
+                    self.game.view.lod_bias = gpu.preset().lod_bias;
                     eprintln!("renderer: {}", gpu.backend);
                     self.gpu = Some(gpu);
                 }

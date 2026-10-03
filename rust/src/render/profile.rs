@@ -224,8 +224,10 @@ pub struct FrameCounts {
     pub chunks: u32,
     pub static_drawn: u64,
     pub static_total: u64,
-    /// Static instances drawn into the shadow cascades (near and far together).
+    /// Static instances drawn into the shadow cascades (near and far together), and into the near
+    /// one alone.
     pub shadow_static: u64,
+    pub shadow_near: u64,
     /// Rigs drawn from their resident voxels, and the voxels they cover.
     pub rigs: u32,
     pub rig_voxels: u64,

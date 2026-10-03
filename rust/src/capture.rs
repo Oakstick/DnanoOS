@@ -306,6 +306,9 @@ pub fn run(args: &[String]) -> i32 {
     };
     eprintln!("renderer: {} (ready in {:.0} ms)", gpu.backend, started.elapsed().as_secs_f64() * 1e3);
     gpu.fx_off = arg(args, "--fx-off").map(crate::render::profile::fx::parse).unwrap_or(0);
+    if let Some(p) = arg(args, "--preset").and_then(crate::render::preset::Preset::named) {
+        gpu.set_preset(p);
+    }
     if args.iter().any(|a| a == "--light-heat") {
         gpu.fx_off |= crate::render::profile::fx::LIGHT_HEAT;
     }
@@ -334,7 +337,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut overlay = Overlay::new();
     game.view.aspect = w as f32 / h as f32;
     game.view.viewport_h = h as f32;
-    game.view.lod_bias = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(1.0);
+    game.view.lod_bias = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(gpu.preset().lod_bias);
     game.view.lod_debug = args.iter().any(|a| a == "--lod-debug");
     game.view.preview_heroes = args.iter().any(|a| a == "--all-heroes");
     let iso = args.iter().any(|a| a == "--iso");

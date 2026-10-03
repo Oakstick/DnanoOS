@@ -246,9 +246,61 @@ output is a separate feature.
 - **Budget:**
   - The haze and the volumetric light each have an `--fx-off` switch (`haze`, `volumetric`), so a
     low preset can drop the volumetric light and keep the haze's depth cue.
-  - The lamp count (`VOLUMETRIC_LAMPS`) is the cost knob.
+  - The lamp count (`Preset::volumetric_lamps`) is the cost knob.
   - Measured in the 30-foe battle: the composite pass took 0.81 ms without and 0.82 ms with it.
 - **The sun's light shafts** through the sky (`fs_rays`) are unchanged.
+
+### RP16: shadow presets and per-cascade budgets
+
+- **Quality presets** (`render/preset.rs`, `--preset high|low` for the game, `--capture` and `--perf`):
+
+  | | high (RTX 3060, 60 FPS) | low (GTX 1080, 30 FPS) |
+  |---|---|---|
+  | Near cascade map | 4096 | 2048 (still a 1 cm texel round the hero) |
+  | Far cascade map | 4096 | 2048 |
+  | Shadow filter taps (blocker search + filter) | 8 + 16 | 4 + 8 |
+  | Lamps lighting the haze | 8 | 4 |
+  | Rig level-of-detail bias | 1.0 | 1.0 |
+  | Budget, near / far cascade (p95 on its target GPU) | 1.0 / 1.0 ms | 2.0 / 1.5 ms |
+
+  The ground haze is on in both, so the reduced preset keeps the fog's depth cue and loses only part
+  of the lamps' glow in it. A level-of-detail bias of 1.25 was tried on low and rejected: it drops
+  Ragnar to his half level at play distance, and the policy puts hero readability before
+  distant detail. High renders exactly as before (36 scenes, largest difference 1 level in 255). Low
+  differs only at shadow edges, with a little more grain in soft self-shadow close up.
+- **Each cascade has its own map** (`shadow_near` and `shadow_far`, two textures in place of one
+  array), so they can differ in size. The filter's tap counts come from the preset. The blocker search
+  keeps the same reach in the world at any map size.
+- **Per-cascade budgets:** `--perf` writes a *Shadow cascades* table:
+  - Each cascade's p50 and p95, which include the far cascade's static cache when it redraws.
+  - Their share of the preset's budget.
+  - The static casters each one drew.
+  - The CSV also has `shadow_near_ms` and `shadow_far_ms` per frame.
+- **Faces turned from the light are skipped** in both shadow passes, for static faces and rigs:
+  - For a closed voxel, the faces turned to the light cover the same ground and are always nearer to
+    it, so the map comes out the same. The 36 scenes differ by a few hundred scattered pixels at
+    voxel edges.
+  - The undersides of every floor were a full plane drawn under each level.
+  - Interleaved A/B in the same clock state: the near cascade went from 0.57–0.66 ms to
+    0.32–0.39 ms (garden, 30-foe battle, close-up). Whole-frame GPU time was within noise on this
+    GPU, which is not limited by the shadow pass. It should matter more on the GTX 1080, where
+    geometry is the cost, but that is unmeasured.
+- **Already in place from stage C and RP12:**
+  - Caster culling per cascade.
+  - The cached static far cascade, drawn again on a light, box or static change, which covers
+    destruction and area changes.
+  - The near cascade's texel snapping, which keeps projections stable.
+  - The far cascade taking rigs a level coarser.
+- **Measured** (perf/2026-10-03-195145 high, -195228 low; dev machine, same clock state):
+
+  | Measure | high | low |
+  |---|---|---|
+  | Near cascade, p95 | 0.15–0.60 ms | 0.05–0.49 ms |
+  | Far cascade, p95 (except Scene I's souls, which has no near cascade) | at most 0.05 ms | at most 0.04 ms |
+  | Souls, far cascade, p95 | 0.70 ms | 0.22 ms |
+  | GPU per frame, p50, all 11 scenes | — | 0.15 to 0.9 ms below high |
+  | GPU per frame, p50, close-up | 6.49 ms | 6.20 ms |
+  | GPU per frame, p50, battle | 10.54 ms | 9.85 ms |
 
 ### Results (interleaved, same machine and clock state, 1920×1080, `--bench`)
 
@@ -307,9 +359,8 @@ The latest full capture is in `perf/`; compare new captures against it only at e
     for it, and for voxel props (`Mesh`) if they become a measured cost. A feature-keeping coarsening
     (eyes, gems) could replace plain colour averaging if art review asks for it.
   - Merging coplanar faces of the same colour.
-- **D, lighting:** RP13, RP14, RP15, RP17, RP18 and RP19 are done.
-  - What remains is RP16's rest: shadow quality presets and per-cascade budgets (the static cache and
-    caster culling are done).
+- **D, lighting:** RP13 to RP19 are done. The presets' numbers need the target GPUs to be set for
+  real (stage G).
 - **E, world systems:**
   - RP02: camera validation.
   - RP03: area packaging and the portal loading screen. The portal scene's worst frame is 24 ms; cold

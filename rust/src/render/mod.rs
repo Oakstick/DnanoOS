@@ -23,6 +23,7 @@ pub mod heroes;
 pub mod hud;
 pub mod icons;
 pub mod overlay;
+pub mod preset;
 #[cfg(test)]
 pub mod preview;
 mod probes;
