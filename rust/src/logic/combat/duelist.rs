@@ -50,6 +50,8 @@ pub enum BoltLook {
     Drain,
     /// Mammon's coins, flung in a fan.
     Coin,
+    /// Beelzebub's flies, a buzzing knot of them.
+    Flies,
     Blade,
 }
 
@@ -65,6 +67,7 @@ impl BoltLook {
             EnemyKind::Goryo => BoltLook::Lightning,
             EnemyKind::Hel => BoltLook::Drain,
             EnemyKind::Mammon => BoltLook::Coin,
+            EnemyKind::Beelzebub => BoltLook::Flies,
             _ => BoltLook::Hex,
         }
     }
@@ -81,6 +84,7 @@ impl BoltLook {
             BoltLook::Lightning => 0xd8e8ff,
             BoltLook::Drain => 0x5a7cff,
             BoltLook::Coin => 0xe8b030,
+            BoltLook::Flies => 0x7a8a2a,
             BoltLook::Blade => REFLECT_TINT,
         }
     }

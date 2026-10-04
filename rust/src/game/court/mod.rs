@@ -54,6 +54,8 @@ pub struct Court {
     pub trail: f32,
     /// His adds are to come as his fight begins (his general's decree was done, WARBAND.md §9).
     pub adds_due: bool,
+    /// Beelzebub's banquet: his platters, his meal, his flies (`gluttony`).
+    pub banquet: gluttony::Banquet,
 }
 
 /// The prince's bar on the HUD: his name, the phase's title, his health and its trail, and
@@ -144,7 +146,8 @@ impl Game {
         self.enemies = vec![e];
         self.brawl = Some(brawl);
         let trail = self.enemies[0].duel.as_ref().map(|d| d.max_hp as f32).unwrap_or(0.0);
-        self.court = Some(Court { sin, prince: id, phase: 1, slain: false, trail, adds_due: terms.adds_at_start });
+        self.court =
+            Some(Court { sin, prince: id, phase: 1, slain: false, trail, adds_due: terms.adds_at_start, banquet: Default::default() });
         match sin {
             Sin::Greed => self.greed_enter(id),
             Sin::Pride => self.pride_enter(id),

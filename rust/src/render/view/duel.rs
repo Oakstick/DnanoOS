@@ -741,7 +741,12 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
-        self.emit_traps(s.traps, s.grid, time, f);
+        if self.court == Some(Sin::Gluttony) {
+            // (Beelzebub's bile, not Mammon's coins.)
+            self.emit_bile(s.traps, s.grid, time, f);
+        } else {
+            self.emit_traps(s.traps, s.grid, time, f);
+        }
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.
         for h in s.hazards {
             let c = Vec3::new(h.pos.x as f32, floor_at(s.grid, h.pos.x as f32, h.pos.y as f32), h.pos.y as f32);
@@ -1100,6 +1105,25 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
                 add(f, p - v * k as f32 * 0.16, spin, Vec3::new(0.08, 0.08, 0.02), color * (1.8 - k as f32 * 0.4), 0.7 - k as f32 * 0.18);
             }
             (color * 2.0, 2.5)
+        }
+        BoltLook::Flies => {
+            // A buzzing knot of black flies, each on its own tight loop, wings blurred pale, a sickly
+            // green sheen on them, and a few stragglers trailing.
+            for k in 0..14 {
+                let kf = k as f32;
+                let a = time * (17.0 + kf * 1.9) + kf * 2.3 + seed;
+                let r = 0.08 + 0.13 * ((k * 7 % 5) as f32 / 4.0);
+                let trail = if k >= 11 { (kf - 10.0) * 0.18 } else { 0.0 };
+                let at = p - v * trail
+                    + side * (a.cos() * r)
+                    + Vec3::new(0.0, (a * 1.3).sin() * r * 0.8 - 0.15, 0.0)
+                    + v * ((a * 0.7).sin() * r);
+                let body = Mat4::from_scale_rotation_translation(Vec3::new(0.045, 0.035, 0.06), Quat::from_rotation_y(a), at);
+                f.opaque[MeshKind::Cube as usize].push(Instance::new(body, lin(0x141010), 1.0, lin(0x2a3a10) * 0.6, SHADE_LIT));
+                add(f, at + Vec3::new(0.0, 0.03, 0.0), Quat::from_rotation_y(a * 3.0), Vec3::new(0.09, 0.006, 0.04), lin(0xc8d0b0), 0.35);
+            }
+            glow_orb(f, p - Vec3::new(0.0, 0.1, 0.0), 0.32, color, 0.12);
+            (color * 0.6, 1.6)
         }
         BoltLook::Blade => {
             // His blade, spinning flat.

@@ -344,8 +344,9 @@ impl Breed {
             K::Belphegor => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::Nightmare => (Skirmisher, 0.7, 0.75, 0.8, 0.95, 0.4, 1),
             // Gluttony's court: Beelzebub, and his swarms.
-            K::Beelzebub => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
-            K::FlySwarm => (Skirmisher, 0.5, 0.6, 0.5, 1.0, 0.4, 1),
+            K::Beelzebub => (Prince, 1.15, 1.0, 1.0, 1.0, 0.95, 3),
+            // (Quick and light: a cloud of flies.)
+            K::FlySwarm => (Skirmisher, 0.5, 0.6, 0.5, 1.25, 0.4, 1),
             // Lust's court: Asmodeus (his elf-maids are the realm's own).
             K::Asmodeus => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
         };

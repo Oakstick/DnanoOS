@@ -477,6 +477,10 @@ impl Bot {
         if let Some(p) = self.see_through(g, &mut pad) {
             return p;
         }
+        // Beelzebub's banquet: the green crosses taken before he eats them.
+        if let Some(p) = self.banquet(g, soonest.map(|t| t.t), &mut pad) {
+            return p;
+        }
         // Ragnar's War Cry (his mastery's fourth rank): the expert cries when a body foe stands about
         // him (not reeling) and no other kind is left to strike him in it, and nothing it has seen
         // lands before the cry is done.
@@ -593,7 +597,7 @@ impl Bot {
                 };
                 let clear = soonest.is_none_or(|t| t.t > commit) && dodges.first().is_none_or(|d| d.t > commit + DODGE_AHEAD * 0.5);
                 let warded = target.breed.power == Power::Ward && !target.exposed();
-                stamina >= 16.0 && clear && !warded && (openness(target) < 2 || !winding)
+                stamina >= 16.0 && clear && !warded && (openness(target) < 2 || !winding || Self::feasting(target))
             }
         };
         if swing {
@@ -640,6 +644,41 @@ impl Bot {
         Some(pad.clone())
     }
 }
+
+impl Bot {
+    /**
+     * Against Beelzebub in the Banquet of Flies (PRINCES.md §5), the adept and the expert take a
+     * green cross off the floor before he can eat it, whenever nothing it has seen lands within
+     * `CROSS_CLEAR` frames. `None`: no cross to take (or not his court).
+     */
+    fn banquet(&mut self, g: &Game, soonest: Option<f64>, pad: &mut PadState) -> Option<PadState> {
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Gluttony) {
+            return None;
+        }
+        if soonest.is_some_and(|t| t <= CROSS_CLEAR) {
+            return None;
+        }
+        let hp = g.hero.pos();
+        let grid = &g.level.grid;
+        let cross = grid
+            .cells()
+            .filter(|&(_, _, t)| t == crate::logic::types::Tile::Charge)
+            .map(|(x, y, _)| P::new(x, y).v())
+            .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
+        let dir = self.way(g, hp, cross);
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        Some(pad.clone())
+    }
+
+    /// Beelzebub bent over his food, eating: no blow comes of it, and a blow chokes him.
+    fn feasting(target: &crate::logic::combat::Duelist) -> bool {
+        matches!(target.f.attack(), Some((crate::logic::combat::MoveId::Gorge, _, _)))
+    }
+}
+
+/// Frames clear of every strike it has seen that the bot wants before it walks off for a cross.
+const CROSS_CLEAR: f64 = 30.0;
 
 /// How far off it notices a cheat standing in the world, and how near it walks to strike it.
 const SEE_THROUGH: f64 = 14.0;
