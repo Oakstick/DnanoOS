@@ -1369,3 +1369,16 @@ off for A/B runs.
   ground that moves (the Field's slabs: his post rides a slab, his instruments stand where the
   layout put them); Watch only round the fire's own floor in Pride; the Steward's long name on the
   Map's button.
+
+### After W6's merge (the integrator)
+
+The crawl harness is one function for every realm (`crawl_full`: the realm, its general, a
+Ledger). With the generals in the vaults every crawl is slower (the expert at tier 1 9.7 → 11.5
+minutes, the adept at tier 4 9.5 → 12.3), every clear is as before, and overlaps stay at none for
+the expert from tier 4 and the adept at tier 7 (0.02-0.04 a minute where a bot on the move meets a
+bolt paced late; none of them a general's).
+
+| Change | Why |
+|---|---|
+| A bot that has pushed a second without moving (outside the ring) takes the tiles' way round | an adept crawl stood 6 minutes wedged on a doorway's corner its straight-line check (±0.28) let through but the hero's body did not; the generals' slower crawl walked it there |
+| The crossfire test plays ten minutes, not five | with a general in the vault the bot meets its packs in another order |

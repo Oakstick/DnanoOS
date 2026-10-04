@@ -799,7 +799,7 @@ fn two_casters_cross_their_fire_as_one_strike() {
     g.brawl.as_mut().unwrap().reset(kit);
     g.hero.free_move = true;
     let mut bot = Bot::new(Skill::Expert, 4);
-    for _ in 0..(300.0 / crate::app::STEP) as usize {
+    for _ in 0..(600.0 / crate::app::STEP) as usize {
         if g.screen != Screen::Playing {
             g.enter(Screen::Playing);
         }

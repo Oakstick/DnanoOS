@@ -127,6 +127,9 @@ pub struct Bot {
     /// behind a pillar's corner would hold it for good).
     chase: (P, u32),
     given_up: Vec<P>,
+    /// Where it stood a while ago, and for how many updates it has pushed without getting
+    /// anywhere: wedged on a corner the straight line cuts, it takes the tiles' way round.
+    stand: (V, u32),
 }
 
 impl Bot {
@@ -143,6 +146,7 @@ impl Bot {
             ignore: Vec::new(),
             chase: (P::new(-1, -1), 0),
             given_up: Vec::new(),
+            stand: (V::new(f64::NAN, f64::NAN), 0),
         }
     }
 
@@ -352,14 +356,23 @@ impl Bot {
     fn way(&mut self, g: &Game, from: V, to: V) -> V {
         let grid = &g.level.grid;
         let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        // Pushing a second (120 updates) without moving a tenth of a tile: wedged, so no shortcut.
+        if math::len(math::sub(from, self.stand.0)) > 0.1 || self.stand.0.x.is_nan() {
+            self.stand = (from, 0);
+        } else {
+            self.stand.1 += 1;
+        }
+        // (Not in the ring: there it presses on a foe's body by design, and the lab's numbers hold.)
+        let wedged = self.stand.1 > 120 && !g.in_ring();
         let n = (math::len(math::sub(to, from)) / 0.3).ceil().max(1.0) as usize;
-        let clear = (0..=n).all(|k| {
-            let p = math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64));
-            [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)].iter().all(|&(dx, dy)| {
-                let t = tile(V::new(p.x + dx, p.y + dy));
-                grid.is_walkable(t.x, t.y, false)
-            })
-        });
+        let clear = !wedged
+            && (0..=n).all(|k| {
+                let p = math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64));
+                [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)].iter().all(|&(dx, dy)| {
+                    let t = tile(V::new(p.x + dx, p.y + dy));
+                    grid.is_walkable(t.x, t.y, false)
+                })
+            });
         if clear {
             self.route = None;
             return math::norm(math::sub(to, from));
@@ -1295,6 +1308,8 @@ fn crawl_full(
     if std::env::var_os("VH_CRAWL_LEFT").is_some() {
         let hp = g.hero.pos();
         eprintln!("hero at ({:.1}, {:.1})", hp.x, hp.y);
+        let (inst, gate) = g.general_targets();
+        eprintln!("  general's instruments standing {inst:?}, glowing gate {gate:?}");
         for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
             eprintln!(
                 "  left: {:?} at ({:.1}, {:.1}) hp {:.0}/{:.0} den {:?} state {:?}",
