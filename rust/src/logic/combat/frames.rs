@@ -75,8 +75,27 @@ pub enum MoveId {
     /// Lucifer's radiant cut: a blade of light swept before him (a placeholder for his table).
     RadiantCut,
     // Leviathan's (Envy)
-    /// Leviathan's coil lash: his coils whipped round before him (a placeholder for his table).
+    /// Leviathan's coil lash: his tail swept wide round him.
     CoilLash,
+    /// Leviathan's brine spit: a fan of three bolts of brine.
+    BrineSpit,
+    /// Leviathan's dive: he sinks out of sight and comes up under him.
+    Dive,
+    /// Leviathan's covet: he copies the archangel's power the hero last used (as it begins it
+    /// becomes one of the four below, `game::court::envy`).
+    Covet,
+    /// Michael's fire, coveted: a volley of four bolts of green fire.
+    CovetFire,
+    /// Gabriel's thunder, coveted: three marks round him, struck from above.
+    CovetThunder,
+    /// Raphael's beam, coveted: a beam of green light along a line.
+    CovetBeam,
+    /// Uriel's wave, coveted: the floor shaking in a ring round Leviathan.
+    CovetWave,
+    /// Leviathan strikes the drowned bell: the floor shakes in a ring round it.
+    BellToll,
+    /// Fire bursts from the floor at points round the hot bell.
+    BurningCoil,
     // Amon's (Wrath)
     /// Amon's flame breath: fire breathed in a cone before him (a placeholder for his table).
     FlameBreath,
@@ -297,6 +316,15 @@ impl MoveId {
         MoveId::RadiantCut,
         // Leviathan's (Envy)
         MoveId::CoilLash,
+        MoveId::BrineSpit,
+        MoveId::Dive,
+        MoveId::Covet,
+        MoveId::CovetFire,
+        MoveId::CovetThunder,
+        MoveId::CovetBeam,
+        MoveId::CovetWave,
+        MoveId::BellToll,
+        MoveId::BurningCoil,
         // Amon's (Wrath)
         MoveId::FlameBreath,
         // Belphegor's (Sloth)
@@ -758,8 +786,166 @@ impl MoveId {
             },
             // Lucifer's (Pride)
             MoveId::RadiantCut => MoveData { name: "RADIANT CUT", ..PRINCE_PLACEHOLDER },
-            // Leviathan's (Envy)
-            MoveId::CoilLash => MoveData { name: "COIL LASH", ..PRINCE_PLACEHOLDER },
+            // Leviathan's (Envy): `logic::combat::prince::envy` says what each is for.
+            MoveId::CoilLash => MoveData {
+                name: "COIL LASH",
+                startup: 34,
+                active: 8,
+                recovery: 44,
+                damage: 24.0,
+                reach: 1.4,
+                half_angle: deg(85.0),
+                track: 20,
+                hitstop: 6,
+                range: (0.0, 1.4),
+                off: (0.0, deg(80.0)),
+                ..BASE
+            },
+            MoveId::BrineSpit => MoveData {
+                name: "BRINE SPIT",
+                startup: 34,
+                active: 1,
+                recovery: 34,
+                damage: 12.0,
+                reach: BOLT_REACH,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 3,
+                projectile: true,
+                range: (2.6, 8.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                shape: Shape::Volley { count: 3, spread: 0.3 },
+                cooldown: 180,
+                ..BASE
+            },
+            MoveId::Dive => MoveData {
+                name: "DIVE",
+                startup: 60,
+                active: 6,
+                recovery: 56,
+                damage: 26.0,
+                reach: 10.0,
+                half_angle: 0.0,
+                track: 44,
+                hitstop: 7,
+                range: (3.0, 10.0),
+                shape: Shape::Mark { radius: 1.1 },
+                cooldown: 420,
+                ..BASE
+            },
+            // (Begun as itself, it is one of the four below by its next frame: all start up alike.)
+            MoveId::Covet => MoveData {
+                name: "COVET",
+                startup: 44,
+                active: 6,
+                recovery: 40,
+                damage: 18.0,
+                reach: 0.0,
+                half_angle: 0.0,
+                track: 30,
+                range: (0.0, 10.0),
+                off: (0.0, deg(70.0)),
+                shape: Shape::Spell,
+                cooldown: 420,
+                ..BASE
+            },
+            MoveId::CovetFire => MoveData {
+                name: "COVETED FIRE",
+                startup: 44,
+                active: 1,
+                recovery: 36,
+                damage: 11.0,
+                reach: BOLT_REACH,
+                half_angle: 0.0,
+                track: 32,
+                hitstop: 3,
+                projectile: true,
+                range: (2.0, 9.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                shape: Shape::Volley { count: 4, spread: 0.36 },
+                ..BASE
+            },
+            MoveId::CovetThunder => MoveData {
+                name: "COVETED THUNDER",
+                startup: 44,
+                active: 6,
+                recovery: 40,
+                damage: 18.0,
+                reach: 10.0,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 6,
+                range: (0.0, 10.0),
+                shape: Shape::Mark { radius: 1.0 },
+                ..BASE
+            },
+            MoveId::CovetBeam => MoveData {
+                name: "COVETED BEAM",
+                startup: 44,
+                active: 8,
+                recovery: 40,
+                damage: 20.0,
+                reach: 9.0,
+                half_angle: 0.0,
+                track: 12,
+                hitstop: 5,
+                range: (1.5, 9.0),
+                off: (0.0, deg(50.0)),
+                line: true,
+                shape: Shape::Beam { length: 9.0, width: 1.0 },
+                ..BASE
+            },
+            MoveId::CovetWave => MoveData {
+                name: "COVETED WAVE",
+                startup: 44,
+                active: 6,
+                recovery: 46,
+                damage: 22.0,
+                reach: 1.3,
+                half_angle: deg(60.0),
+                track: 26,
+                hitstop: 7,
+                range: (0.0, 2.6),
+                off: (0.0, PI),
+                shape: Shape::Quake { radius: 2.2, share: 0.8 },
+                ..BASE
+            },
+            // (Its mark is the bell's, where he strikes it: `game::court::envy` sets it there.)
+            MoveId::BellToll => MoveData {
+                name: "BELL TOLL",
+                startup: 72,
+                active: 6,
+                recovery: 46,
+                damage: 28.0,
+                reach: 0.0,
+                half_angle: 0.0,
+                track: 0,
+                hitstop: 8,
+                range: (0.0, 7.0),
+                off: (0.0, PI),
+                shape: Shape::Mark { radius: 3.6 },
+                cooldown: 360,
+                ..BASE
+            },
+            // (Its fires are laid round the bell by `game::court::envy` as it begins.)
+            MoveId::BurningCoil => MoveData {
+                name: "BURNING COIL",
+                startup: 46,
+                active: 6,
+                recovery: 40,
+                damage: 20.0,
+                reach: 0.0,
+                half_angle: 0.0,
+                track: 0,
+                hitstop: 5,
+                range: (0.0, 14.0),
+                off: (0.0, PI),
+                shape: Shape::Spell,
+                cooldown: 330,
+                ..BASE
+            },
             // Amon's (Wrath)
             MoveId::FlameBreath => MoveData { name: "FLAME BREATH", ..PRINCE_PLACEHOLDER },
             // Belphegor's (Sloth)
@@ -936,8 +1122,8 @@ mod tests {
         assert_eq!(MoveId::CoinToss.data().traps(), Some((5, 0.8, 48, 0)), "the coins do not linger");
         assert_eq!(MoveId::Grasp.data().guard_rule(), GuardRule::ParryOnly);
         assert_eq!(MoveId::Sceptre.data().guard_rule(), GuardRule::Full);
-        // No move of the game uses them yet: play is as it was.
-        for m in MoveId::FOE {
+        // No move of the game uses them yet but Leviathan's coveted beam: play is as it was.
+        for m in MoveId::FOE.iter().filter(|m| **m != MoveId::CovetBeam) {
             assert!(!matches!(m.data().shape, Shape::Beam { .. } | Shape::Charge { .. } | Shape::TrapLine { .. }), "{m:?}");
         }
     }
