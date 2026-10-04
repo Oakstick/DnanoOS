@@ -136,6 +136,8 @@ impl Game {
             let seed = (self.level.grid.width as u32).wrapping_mul(7919) ^ (tier as u32).wrapping_mul(0x9e37_79b9);
             let offered = self.ledger().offer(tier, seed);
             let packs = self.war.packs.len();
+            // (A usurper already stands at his general's post: he is not offered twice.)
+            let offered: Vec<RivalId> = offered.into_iter().filter(|r| !self.war.grudges.seated.iter().any(|s| s.1 == *r)).collect();
             for (k, rival) in offered.into_iter().enumerate() {
                 if packs == 0 {
                     break;

@@ -420,6 +420,11 @@ impl Game {
                 }
             }
         }
+        // A usurper is a rival of the Ledger still: his lesson, his weakness and his nature go
+        // with him into the fight (WARBAND.md §8-§9), and his card when he is met.
+        if let (Some(fid), Some(rival)) = (id, self.general.as_ref().and_then(|g| g.usurper)) {
+            self.war.grudges.seated.push((fid, rival));
+        }
         if let Some(g) = self.general.as_mut() {
             g.id = id;
             g.patrol = patrol;
@@ -1606,6 +1611,31 @@ fn cue_line(gen: &General, kind: OrderKind) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// A rival of the fourth rank usurps the realm's general (WARBAND.md §9.2): his name and body
+    /// at the post, and in the fight he is the rival still (seated in the grudges, his lesson and
+    /// traits with him), offered nowhere else.
+    #[test]
+    fn a_usurper_holds_the_post_and_fights_as_the_rival_he_is() {
+        use crate::logic::war::names::Deed;
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        let rival = g.promote_rival(EnemyKind::Werewolf, Deed::KillingBlow);
+        for _ in 0..3 {
+            g.warband.save.ledger.rank_up(rival);
+        }
+        g.map_jump(crate::game::save::Stage::Realm(Sin::Greed));
+        g.enter(crate::game::Screen::Playing);
+        for _ in 0..10 {
+            g.update(crate::app::STEP);
+        }
+        let run = g.general.as_ref().expect("a general");
+        assert_eq!(run.usurper, Some(rival));
+        let id = run.id.expect("at his post");
+        let seated: Vec<_> = g.war.grudges.seated.iter().filter(|s| s.1 == rival).collect();
+        assert_eq!(seated.len(), 1, "seated once: {seated:?}");
+        assert_eq!(seated[0].0, id, "as the general");
+    }
     use super::*;
     use crate::game::save::Stage;
     use crate::game::Screen;
