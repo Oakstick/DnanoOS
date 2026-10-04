@@ -32,13 +32,13 @@ use crate::logic::realms::mirrors::{on_octagon, Mirrors, CELL, MARGIN, OUTER, TH
 pub(super) const LANTERN: f32 = 0.05;
 
 mod pal {
-    pub const OBSIDIAN: u32 = 0x2a1e3e;
-    pub const OBSIDIAN_L: u32 = 0x3a2a56;
-    pub const OBSIDIAN_D: u32 = 0x120c1c;
-    pub const RIM: u32 = 0x6a5a92;
+    pub const OBSIDIAN: u32 = 0x211a2e;
+    pub const OBSIDIAN_L: u32 = 0x2a223c;
+    pub const OBSIDIAN_D: u32 = 0x0e0c12;
+    pub const RIM: u32 = 0x4a3e66;
     pub const MARBLE: u32 = 0xf2eef8;
     pub const MARBLE_D: u32 = 0xd2c8e0;
-    pub const PLINTH: u32 = 0x3a2a58;
+    pub const PLINTH: u32 = 0x2c2640;
     pub const GOLD: u32 = 0xf2c53d;
     pub const GOLD_D: u32 = 0xb8902a;
     pub const GOLD_L: u32 = 0xfff0a0;
@@ -47,7 +47,10 @@ mod pal {
     pub const GLASS: u32 = 0xc8c0f0;
     pub const TEAL: u32 = 0x1ab0a0;
     pub const SAPPHIRE: u32 = 0x2a4ad8;
-    pub const CAP: u32 = 0x2a2040;
+    pub const CAP: u32 = 0x1a1424;
+    /// The light-well's key: mist teal round an amber heart (the board's, not the star's white).
+    pub const WELL_MIST: u32 = 0x9cc4bc;
+    pub const WELL_AMBER: u32 = 0xffc47a;
 }
 use pal::*;
 
@@ -717,12 +720,12 @@ impl WorldView {
     /// in it, one for every gallery it shows above him.
     #[allow(clippy::too_many_arguments)]
     fn emit_well(&self, r: &Mirrors, g: usize, o: Vec3, here: bool, time: f32, f: &mut Frame, lights: &mut Vec<(Vec3, Vec3, f32)>) {
-        let star = lin(STAR);
+        let (mist, amber) = (lin(WELL_MIST), lin(WELL_AMBER));
         let bloom = 1.0 + 0.06 * r.loops as f32;
-        // The shaft: a column of white light, brighter at its heart.
-        for (w, a) in [(2.4f32 * bloom, 0.05f32), (1.2 * bloom, 0.09), (0.45, 0.16)] {
+        // The shaft: a column of mist-teal light round an amber heart.
+        for (w, a, c) in [(2.4f32 * bloom, 0.04f32, mist), (1.2 * bloom, 0.07, mist.lerp(amber, 0.5)), (0.45, 0.13, amber)] {
             let m = Mat4::from_translation(o + Vec3::new(0.0, 2.0, 0.0)) * Mat4::from_scale(Vec3::new(w, 16.0, w));
-            f.additive.push(Instance::new(m, star, a * (0.9 + 0.1 * (time * 1.3).sin()), Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(m, c, a * (0.9 + 0.1 * (time * 1.3).sin()), Vec3::ZERO, SHADE_UNLIT));
         }
         if !here {
             return;
@@ -736,11 +739,11 @@ impl WorldView {
             let m = Mat4::from_translation(o + Vec3::new(0.0, y, 0.0))
                 * Mat4::from_rotation_x(-PI / 2.0)
                 * Mat4::from_scale(Vec3::new(rad, rad, 1.0));
-            let c = if k as usize >= THRONE - g { lin(GOLD_L) } else { star };
+            let c = if k as usize >= THRONE - g { lin(GOLD_L) } else { mist };
             f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, c * 2.0, 0.45 * pulse, Vec3::ZERO, SHADE_UNLIT));
         }
-        glow_orb(f, o + Vec3::new(0.0, 0.6, 0.0), 2.6 * bloom, star, 0.08);
-        lights.push((o + Vec3::new(0.0, 2.6, 0.0), star * 5.0 * bloom, 9.0));
+        glow_orb(f, o + Vec3::new(0.0, 0.6, 0.0), 2.6 * bloom, mist, 0.06);
+        lights.push((o + Vec3::new(0.0, 2.6, 0.0), amber * 4.5 * bloom, 9.0));
     }
 
     /// A mirror-door's glass: its face (vain or true), his reflection when he is near, its cracks.
@@ -1170,17 +1173,18 @@ pub(super) fn atmosphere(_v: &MirrorsView, r: &Mirrors, _s: &SceneState) -> Atmo
     let top = r.gallery == THRONE;
     let flattered = 1.0 + 0.05 * r.loops.min(6) as f32;
     Atmosphere {
-        background: if top { 0x1a1230 } else { 0x07050c },
+        background: if top { 0x15121c } else { 0x07080a },
         fog_near: 18.0,
         fog_far: 48.0,
-        hemi_sky: lin(0xd8d0ff) * if top { 0.7 } else { 0.5 } * flattered,
-        hemi_ground: lin(0x3a2a60) * 0.5,
-        ambient: lin(0x4a3a70) * if top { 0.75 } else { 0.6 },
+        // A mist-teal sky light and an amber key from the Morning Star, over charcoal violet.
+        hemi_sky: lin(0xa8c8c4) * if top { 0.55 } else { 0.42 } * flattered,
+        hemi_ground: lin(0x2a2434) * 0.5,
+        ambient: lin(0x34303e) * if top { 0.7 } else { 0.58 },
         sun_dir: Vec3::new(0.25, 1.0, 0.75).normalize(),
-        sun: lin(0xf4f0ff) * (if top { 1.6 } else { 1.3 }) * flattered,
+        sun: lin(0xeadcc4) * (if top { 1.45 } else { 1.15 }) * flattered,
         exposure: 1.1,
         night_sky: 0.0,
-        bloom: 1.3,
+        bloom: 1.0,
         moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
         cloud_tint: lin(0x140c24),
     }

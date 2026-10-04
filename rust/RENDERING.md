@@ -647,6 +647,11 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   (`grade_scenery`). Colours near the realm's sin hue keep their saturation as its accent:
   Pride's violet, Envy's green, Greed's gold, Lust's pink. Everything else (chalk floors, loud
   stone) comes into the palette.
+- **The Hall of Mirrors (Pride):**
+  - The obsidian floor comes down from loud violet to charcoal violet; its rims, plinths and the
+    masonry caps follow, so the gold spokes and the mirror-doors carry the eye.
+  - The light-well is keyed mist teal round an amber heart (shaft, rings and the light it throws),
+    under a mist-teal sky light and a warm stone key instead of white-violet. Bloom is 1.0.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 
