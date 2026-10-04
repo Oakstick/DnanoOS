@@ -65,7 +65,7 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Cheat: straight to the Cyclops | F1 | |
 | Cheat: straight to the old man's wares (with 1000 silver and 10 runes) | 0 | |
 | Sparring Ring: frame readout / next bout / next stage's bouts | F8 / F6 / F7 | |
-| Immortal (testing): foes still strike, but health always comes back | F5 | |
+| God mode (testing): foes still strike, but health always comes back | F5 | |
 
 The controls page (CONTROLLER on the title or the pause menu) shows either the controller or the keyboard and mouse: left and right, LT and RT, Tab or a click on its tabs switch between them, and it opens on the controller when one is plugged in.
 

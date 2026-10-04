@@ -482,7 +482,10 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     }
 
     if g.immortal {
-        o.text("IMMORTAL  F5", margin + t * 0.35, margin + band + t * 0.5, small, rgba(0xffb050, 1.0), Align::Left, true);
+        let label = "GOD MODE  (F5)";
+        let gy = margin + band + t * 0.2;
+        panel(o, margin, gy, o.measure(label, fs) + t * 0.9, t * 1.0, t);
+        o.text(label, margin + t * 0.45, gy + t * 0.5, fs, rgba(0xffb050, 1.0), Align::Left, true);
     }
 
     let row_a = margin + t * 0.8;

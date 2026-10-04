@@ -75,6 +75,8 @@ pub(crate) enum Cmd {
     Prince(usize),
     /// The Cyclops falls at once.
     Slay,
+    /// `god`: god mode on (F5).
+    God,
     Shop,
     Tour,
     Streak,
@@ -156,6 +158,7 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
+            "god" => Cmd::God,
             "shop" => Cmd::Shop,
             "tour" => Cmd::Tour,
             "streak" => Cmd::Streak,
@@ -247,6 +250,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
         Cmd::Slay => game.debug_wound_boss(1000),
+        Cmd::God => game.input.inject(crate::input::Action::Immortal),
         Cmd::Shop => game.open_shop(),
         Cmd::Tour => game.tour_pending = true,
         Cmd::Streak => game.debug_streak(),

@@ -125,7 +125,7 @@ impl Game {
         self.keep_immortal();
         let hp = self.hero.pos();
         self.audio.play(if self.immortal { Sfx::Heal } else { Sfx::Nodule });
-        self.floater(hp.x, hp.y - 1.0, if self.immortal { "IMMORTAL" } else { "MORTAL AGAIN" }, 1.4, Some(0xffb050));
+        self.floater(hp.x, hp.y - 1.0, if self.immortal { "GOD MODE ON" } else { "GOD MODE OFF" }, 1.4, Some(0xffb050));
     }
 
     /// While immortal, his health is always whole again.
