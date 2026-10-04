@@ -668,3 +668,35 @@ fn the_expert_beats_mammon_in_his_court_and_a_masher_does_not() {
     let f = court_fight(Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
     assert!(!f.slain && f.game_over, "{f:?}");
 }
+
+/// The war log (WARBAND.md §3) hears of every strike once: an expert plays the Gauntlet, and what
+/// the log counted (landings and how he met them, his blows, the kills) is what the bout counted.
+#[test]
+fn the_war_log_reports_every_strike_once() {
+    use super::bot::{fresh_game, Bot, Skill};
+    let mut g = fresh_game(3);
+    g.debug_ring(5);
+    g.hero.free_move = true;
+    let mut bot = Bot::new(Skill::Expert, 3);
+    let mut done = false;
+    for _ in 0..(150.0 / crate::app::STEP) as usize {
+        let pad = bot.act(&g);
+        g.input.set_pad(Some(pad));
+        g.update(crate::app::STEP);
+        if matches!(phase(&g), BoutPhase::Won(_) | BoutPhase::Lost(_)) {
+            done = true;
+            break;
+        }
+    }
+    assert!(done, "the bout ended");
+    let (s, t) = (g.brawl.as_ref().unwrap().stats, g.war.tally);
+    assert!(s.landings > 10 && s.hits > 10, "a real fight: {s:?}");
+    assert_eq!(t.landings, s.landings, "{t:?} {s:?}");
+    assert_eq!((t.parried, t.blocked, t.evaded, t.broken), (s.parries, s.blocks, s.evades, s.guard_breaks), "{t:?} {s:?}");
+    assert_eq!(t.hero_hits, s.hits, "{t:?} {s:?}");
+    assert_eq!(t.kills, s.kills, "{t:?} {s:?}");
+    assert!(t.tells >= t.landings, "every landing was told first: {t:?}");
+    if matches!(phase(&g), BoutPhase::Won(_)) {
+        assert_eq!(t.packs_cleared, 1, "the last foe of the bout clears it: {t:?}");
+    }
+}

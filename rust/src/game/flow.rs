@@ -180,6 +180,7 @@ impl Game {
                 } else {
                     self.tick(dt);
                 }
+                self.update_war();
             }
             Screen::Toll => {
                 if let Some(choice) = self.menu_choice() {

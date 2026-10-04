@@ -203,6 +203,7 @@ impl Game {
             return;
         }
         let kind = self.belt.remove(slot);
+        self.war_note(crate::logic::war::WarEvent::Drank { potion: kind });
         if self.belt_index >= self.belt.len() {
             self.belt_index = self.belt.len().saturating_sub(1);
         }

@@ -48,6 +48,7 @@ mod tests;
 mod tour;
 mod vault;
 mod viewpick;
+pub mod war;
 
 pub use combat::Spirit;
 pub use court::PrinceBar;
@@ -294,6 +295,8 @@ pub struct Game {
     /// Logical window size, for hit-testing menu buttons.
     pub viewport: (f32, f32),
     pub juice: Juice,
+    /// The war log and what reads it (WARBAND.md).
+    pub war: war::War,
     /// Seconds of freeze-frame left.
     hitstop: f64,
     kill_streak: u32,
@@ -457,6 +460,7 @@ impl Game {
             floaters: Vec::new(),
             nest_slots: Vec::new(),
             events: Vec::new(),
+            war: war::War::default(),
             want_fullscreen_toggle: false,
             menu_index: 0,
             quit_requested: false,

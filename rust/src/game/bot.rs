@@ -499,7 +499,7 @@ pub const LIMIT: f64 = 120.0;
 
 /// A new game on a fresh save, whatever the save folder holds: no progress, no adventure under way
 /// (one run's broken shield or bought tier must never leak into the next).
-fn fresh_game(seed: u32) -> Game {
+pub(super) fn fresh_game(seed: u32) -> Game {
     let mut g = Game::new();
     g.reseed(seed);
     g.progress = crate::logic::progression::Progress::default();

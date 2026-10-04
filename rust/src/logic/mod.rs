@@ -26,3 +26,4 @@ pub mod story;
 pub mod systems;
 pub mod types;
 pub mod vault;
+pub mod war;

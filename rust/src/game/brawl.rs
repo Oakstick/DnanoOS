@@ -35,6 +35,7 @@ use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::gym;
 use crate::logic::types::{P, V};
 use crate::logic::vault::{LEASH, WAKE_RANGE};
+use crate::logic::war::WarEvent;
 
 /// Frames between re-dealing the waiting foes' sectors.
 const SLOT_EVERY: u32 = 12;
@@ -130,6 +131,8 @@ pub struct BoutStats {
     pub overlaps: u32,
     /// Foes slain.
     pub kills: u32,
+    /// Foes' strikes that reached him, however he met them.
+    pub landings: u32,
 }
 
 /// A foe's blow (or bolt) as it reaches him: from where, how hard, its freeze frames, what the
@@ -186,6 +189,8 @@ pub struct Brawl {
     pub traps: Vec<Trap>,
     /// The prince whose fist holds him (his feet stay where they are until he strikes the prince).
     pub held: Option<u32>,
+    /// The duelists whose present move has met him (however he met it): the rest whiff.
+    met: Vec<u32>,
 }
 
 impl Brawl {
@@ -220,6 +225,7 @@ impl Brawl {
             might: 1.0,
             traps: Vec::new(),
             held: None,
+            met: Vec::new(),
         }
     }
 
@@ -244,6 +250,7 @@ impl Brawl {
         self.flashes.clear();
         self.traps.clear();
         self.held = None;
+        self.met.clear();
     }
 
     /// He rises again (the vaults after a fall): a fresh fighter and field, the fight's numbers kept.
@@ -256,6 +263,7 @@ impl Brawl {
     /// A foe's strike reached the hero on frame `f` (a blow meeting him, a bolt touching him, however
     /// he met it): one landing inside the reaction window of another counts as an overlap.
     fn land(&mut self, f: u32) {
+        self.stats.landings += 1;
         if self.strikes.iter().any(|&g| f.abs_diff(g) < SPACING) {
             self.stats.overlaps += 1;
         }
@@ -559,6 +567,7 @@ impl Game {
             du.lore.conjured += 1;
         }
         let id = du.id;
+        let kind = du.breed.kind;
         let mut stop = hitstop;
         let (text, color) = match r.effect {
             _ if share == 0.0 => ("STRIKE FROM BEHIND".to_string(), 0xf0b0d0),
@@ -569,6 +578,10 @@ impl Game {
             _ => (format!("{}", r.damage), 0xffffff),
         };
         self.floater(p.x, p.y - 0.7, text, 0.8, Some(color));
+        let hp = self.hero.pos();
+        let finisher = from == hp && self.brawl.as_ref().and_then(|b| b.hero.attack()).is_some_and(|a| a.0 == MoveId::L3);
+        let dir = math::norm(math::sub(p, from));
+        self.war_note(WarEvent::HeroHit { foe: id, kind, effect: r.effect, dmg: r.damage, finisher, dir, at: p, warded: 1.0 - share });
         if let Some(b) = self.brawl.as_mut() {
             b.stats.dealt += r.damage;
             b.stats.hits += 1;
@@ -657,6 +670,17 @@ impl Game {
         }
         let color = self.enemies[i].b.color;
         self.enemies[i].b.mode = EnemyMode::Eaten;
+        if !illusion {
+            let (kind, den) = self.enemies[i].duel.as_ref().map(|d| (d.breed.kind, d.den)).unwrap_or((EnemyKind::Skeleton, None));
+            let same = |o: &Duelist| match (den, o.den) {
+                (Some(a), Some(b)) => a.lo == b.lo && a.hi == b.hi,
+                (None, None) => true,
+                _ => false,
+            };
+            let last_of_pack = !self.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|o| o.id != id && o.counts() && same(o));
+            let dir = math::norm(math::sub(p, self.hero.pos()));
+            self.war_note(WarEvent::Slain { foe: id, kind, at: p, dir, last_of_pack });
+        }
         self.view.dust(&self.level.grid, p.x, p.y, color, 18, 2.6);
         self.view.sparkle(&self.level.grid, p.x, p.y, 0.6, 0xfff1c0, 12);
         self.view.shake(0.18);
@@ -914,6 +938,7 @@ impl Game {
         let mut bolts = Vec::new();
         let mut released = Vec::new();
         let mut actives = Vec::new();
+        let mut whiffs = Vec::new();
         let foe_damage = self.brawl.as_ref().map(|b| b.foe_damage).unwrap_or(1.0);
         for &i in &ids {
             let du = self.enemies[i].duel.as_mut().unwrap();
@@ -962,6 +987,12 @@ impl Game {
                     Event::Ended(mv) => {
                         du.token = false;
                         released.push(du.id);
+                        let d = du.data(mv);
+                        // (Coins on the floor burst after the throw has ended: they are not its swing.)
+                        let swung = d.strikes() && !d.projectile && !matches!(d.shape, Shape::Traps { .. });
+                        if swung && !self.brawl.as_ref().is_some_and(|b| b.met.contains(&du.id)) {
+                            whiffs.push(WarEvent::Whiffed { foe: du.id, kind: du.breed.kind, mv });
+                        }
                         if mv == MoveId::Call {
                             // It has called him in: it asks again at once, for the blow that follows.
                             du.rest = 0;
@@ -986,6 +1017,9 @@ impl Game {
             b.threat.release(id);
         }
         b.bolts.extend(bolts);
+        for e in whiffs {
+            self.war_note(e);
+        }
         for (i, mv) in actives {
             self.first_active(i, mv);
         }
@@ -1106,6 +1140,13 @@ impl Game {
             b.flow = flow;
         }
         for (i, mv) in began {
+            if let Some(du) = self.enemies[i].duel.as_ref() {
+                let (foe, kind, at) = (du.id, du.breed.kind, du.pos);
+                if let Some(b) = self.brawl.as_mut() {
+                    b.met.retain(|&m| m != foe);
+                }
+                self.war_note(WarEvent::Tell { foe, kind, mv, at });
+            }
             self.on_begin(i, mv);
         }
 
@@ -1467,6 +1508,14 @@ impl Game {
         if loss > 0.0 {
             self.wound_hero(loss, 0xff4a3a);
         }
+        let kind = self.duelist_index(blow.by).and_then(|k| self.enemies[k].duel.as_ref()).map(|d| d.breed.kind);
+        if let Some(b) = self.brawl.as_mut() {
+            if !b.met.contains(&blow.by) {
+                b.met.push(blow.by);
+            }
+        }
+        let dir = math::norm(math::sub(hp, blow.from));
+        self.war_note(WarEvent::Landed { foe: blow.by, kind, how: def, dmg: loss, dir, lands: blow.lands, bolt: blow.bolt });
         if tracing() {
             let who =
                 self.duelist_index(blow.by).and_then(|k| self.enemies[k].duel.as_ref()).map(|d| (d.breed.kind, d.f.attack().map(|a| a.0)));

@@ -81,6 +81,7 @@ impl Game {
         }
         self.spar = data.theme.is_gym().then(super::sparring::Sparring::new);
         // (The vaults raise their own brawl as their packs are laid out.)
+        self.war.reset();
         self.brawl = data.theme.is_gym().then(|| super::brawl::Brawl::new(super::brawl::Field::Ring));
         let vault_level = data.theme.is_vault();
         // One of the six realms after the vaults (`game::realms`).
