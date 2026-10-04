@@ -382,6 +382,26 @@ fn court(sin: Sin, hail: &str) -> Guide {
     // Wrath's court, as built (its page to come here).
 
     // Sloth's court, as built (its page to come here).
+    const BELPHEGOR_TALE: &[&str] = &[
+        "this is Belphegor's Hall of Stopped Clocks: a grey bedchamber the size of a hall, fog on its floor, every clock stopped at the same hour.",
+        "He was the Baal of Peor, and Binsfeld made him the prince of sloth. He gives men clever inventions and riches without labour, and they never wake.",
+        "He sleeps in his great chair behind the giant hourglass, and fights in three moods: the Sleeper, the Dreamer, the Waking.",
+    ];
+    const BELPHEGOR_TASK: &[&str] = &[
+        "Bring Belphegor down. He drops the Key of Sloth: take it, and the gate in the south wall opens.",
+        "Through it you come to me, and then back to the Portals of Hell, where Sloth's door shuts with its key in the lock.",
+        "Each new mood is named as it comes, and a green cross falls for a breather. If you fall, he sleeps whole again in his chair.",
+    ];
+    const BELPHEGOR_WATCH: &[&str] = &[
+        "Asleep his hide is open: your first blow lands whole and wakes him. Awake it turns most of a blow, except in his recoveries.",
+        "The Sleeper yawns you back (leap it, or parry it and stand fast), swats wide with his great hand, and lets sand drift down to burst: step off it.",
+        "At two thirds he lies down to dream and two nightmares come. Asleep he mends: do not stand back and wait. Strike him hard, or finish a string, and he wakes.",
+        "At one third he stands for good, slow but vast: the hourglass slams the floor round him, the clock's hands sweep all round from far. Step back, then punish.",
+        "If his general, the Lamplighter, fell, no nightmares come. If the hourglass was wound, he wakes rested, with no free blow, and his nightmares come at once.",
+    ];
+    if sin == Sin::Sloth {
+        return page("THE HALL OF STOPPED CLOCKS", hail, BELPHEGOR_TALE, BELPHEGOR_TASK, BELPHEGOR_WATCH);
+    }
 
     // Gluttony's court, as built (its page to come here).
 

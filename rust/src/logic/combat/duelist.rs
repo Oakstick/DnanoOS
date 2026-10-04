@@ -379,6 +379,8 @@ pub struct Lore {
     pub summoned: bool,
     /// A beam's length as rock lets it run along the aim (locked with it); a charge's run so far.
     pub span: f64,
+    /// Belphegor's sleep (`prince::sloth`): while he lies asleep or wakes, his hide is open.
+    pub slumber: super::prince::sloth::Slumber,
 }
 
 /// Something a foe's legend did this frame, for the game to show and sound.
@@ -675,10 +677,13 @@ impl Duelist {
         }
     }
 
-    /// Tepegöz's eye within reach (or a prince's hide open): bent over in a recovery, reeling, or
-    /// holding the hero in his fist.
+    /// Tepegöz's eye within reach (or a prince's hide open): bent over in a recovery, reeling,
+    /// holding the hero in his fist, or (Belphegor) asleep or waking.
     pub fn exposed(&self) -> bool {
-        matches!(self.f.attack(), Some((_, Phase::Recovery, _))) || self.f.reeling().is_some() || self.lore.hold > 0
+        matches!(self.f.attack(), Some((_, Phase::Recovery, _)))
+            || self.f.reeling().is_some()
+            || self.lore.hold > 0
+            || self.lore.slumber.open()
     }
 
     /// What a blow on it is worth by its legend: a share through Tepegöz's ring while his eye is

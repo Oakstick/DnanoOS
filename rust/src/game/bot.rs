@@ -538,7 +538,9 @@ impl Bot {
         }
         let foes = if hunting.is_empty() { all } else { hunting };
         let openness = |d: &crate::logic::combat::Duelist| {
-            if d.f.vulnerable() || d.f.reeling().is_some() {
+            if Self::belphegor_asleep(d) {
+                0
+            } else if d.f.vulnerable() || d.f.reeling().is_some() {
                 0
             } else if matches!(d.f.attack(), Some((_, Phase::Recovery, _))) {
                 1
@@ -596,6 +598,10 @@ impl Bot {
                 stamina >= 16.0 && clear && !warded && (openness(target) < 2 || !winding)
             }
         };
+        if swing && Self::belphegor_asleep(target) {
+            // (Nothing turns it toward a sleeper: it leans into him, to face him as it swings.)
+            pad.left = (dir.x as f32 * 0.4, dir.y as f32 * 0.4);
+        }
         if swing {
             // Mash: the button goes down every other update.
             self.attack_down = !self.attack_down;
@@ -608,6 +614,13 @@ impl Bot {
 }
 
 impl Bot {
+    /// Belphegor asleep or waking (PRINCES.md §4): his hide is open and he mends while he sleeps,
+    /// so a player who knows strikes him before anything else (his nightmares keep their distance
+    /// to be chased). Only his fight asks it.
+    fn belphegor_asleep(d: &crate::logic::combat::Duelist) -> bool {
+        d.breed.kind == crate::logic::enemy::EnemyKind::Belphegor && d.lore.slumber.open()
+    }
+
     /// What it does about the prince's cheats (not the novice: it falls for them all), when no foe
     /// hunts it: a whisper in the air, it calls the old man; a mimic chest
     /// near, it walks up to striking distance (no nearer: near enough to trade, or to open the
