@@ -380,6 +380,26 @@ fn court(sin: Sin, hail: &str) -> Guide {
     // Envy's court, as built (its page to come here).
 
     // Wrath's court, as built (its page to come here).
+    const AMON_TALE: &[&str] = &[
+        "this is the Anvil of Wrath: black basalt cracked over fire, the weapons of the war's dead stuck where they fell, banners burning.",
+        "The old books call Amon a marquis of Hell: a wolf with a serpent's tail who vomits flame, and at a word a man with a raven's head.",
+        "Here he is both, and a great axe besides. He fights in three moods: the Wolf, the Raven, the Fury. Rage is all he has, and rage can be turned.",
+    ];
+    const AMON_TASK: &[&str] = &[
+        "Bring Amon down. He drops the Key of Wrath: take it, and the gate in the south wall opens.",
+        "Through it you come to me, and then back to the Portals of Hell, where Wrath's door shuts with its key in the lock.",
+        "Each new mood is named as it comes, and a green cross falls for a breather. If you fall, he stands whole again before his anvil.",
+    ];
+    const AMON_WATCH: &[&str] = &[
+        "He has no hide: every blow lands whole. But every blow you land makes him angrier and quicker, five steps of rage at most.",
+        "He lowers his head to charge, and the line of his run shows on the floor. When it stops following you, step aside or leap: he runs straight on.",
+        "Four broken pillars stand in the ring. Charged into stone, or the wall, or his anvil, he stands dazed, his rage gone out of him: strike then.",
+        "The Raven splits the floor toward you: the seam glows, then bursts into lava that burns a while. Step off it, and stay off it.",
+        "At two thirds his ravens come, once: none if Marshal Gorebrand fell, at once if his bridges burnt. The Fury charges twice; the floor erupts.",
+    ];
+    if sin == Sin::Wrath {
+        return page("THE ANVIL OF WRATH", hail, AMON_TALE, AMON_TASK, AMON_WATCH);
+    }
 
     // Sloth's court, as built (its page to come here).
 

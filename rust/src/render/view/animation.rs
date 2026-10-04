@@ -396,7 +396,6 @@ impl WorldView {
             | EnemyKind::Leviathan
             | EnemyKind::Serpentling
             | EnemyKind::Amon
-            | EnemyKind::Raven
             | EnemyKind::Belphegor
             | EnemyKind::Nightmare
             | EnemyKind::Beelzebub
@@ -409,14 +408,13 @@ impl WorldView {
                     EnemyKind::Tepegoz | EnemyKind::Gashadokuro | EnemyKind::FrostGiant | EnemyKind::Surtr => (0.5, 0.3),
                     // (Mammon waddles under his robe and his belly; the golems stump.)
                     EnemyKind::Mammon => (0.3, 0.16),
+                    // (Amon strides like the beast he is under his pelt, his arms swinging.)
+                    EnemyKind::Amon => (0.55, 0.32),
                     EnemyKind::GoldGolem => (0.5, 0.3),
                     // (The other princes, for now robed figures: small steps under the robe.)
-                    EnemyKind::Lucifer
-                    | EnemyKind::Leviathan
-                    | EnemyKind::Amon
-                    | EnemyKind::Belphegor
-                    | EnemyKind::Beelzebub
-                    | EnemyKind::Asmodeus => (0.3, 0.16),
+                    EnemyKind::Lucifer | EnemyKind::Leviathan | EnemyKind::Belphegor | EnemyKind::Beelzebub | EnemyKind::Asmodeus => {
+                        (0.3, 0.16)
+                    }
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)
@@ -542,7 +540,7 @@ impl WorldView {
                 }
                 v.root_rot.z = if moving { t.sin() * 0.08 } else { 0.0 };
             }
-            EnemyKind::Bat | EnemyKind::Vampire | EnemyKind::LargeBat => {
+            EnemyKind::Bat | EnemyKind::Vampire | EnemyKind::LargeBat | EnemyKind::Raven => {
                 let beat = time * if v.kind == EnemyKind::LargeBat { 9.0 } else { 15.0 } + i as f32 * 2.0;
                 let flap = beat.sin() * 0.8;
                 if let Some(l) = rig.index("leftWing") {

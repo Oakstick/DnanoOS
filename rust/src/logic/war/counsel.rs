@@ -75,10 +75,12 @@ pub enum Answer {
     StepOutOfTheCall,
     /// Mammon's hide.
     HideTurns,
+    /// Amon: his charge runs straight; run into stone, he is dazed.
+    BaitIntoStone,
 }
 
 impl Answer {
-    pub const ALL: [Answer; 21] = [
+    pub const ALL: [Answer; 22] = [
         Answer::WaitAndPunish,
         Answer::ParryTheBite,
         Answer::CloseBetweenBolts,
@@ -100,6 +102,7 @@ impl Answer {
         Answer::ParryTheClub,
         Answer::StepOutOfTheCall,
         Answer::HideTurns,
+        Answer::BaitIntoStone,
     ];
 
     /// The answers a liar can put in any breed's mouth (the prince's whisper picks a false one).
@@ -132,9 +135,9 @@ impl Answer {
             Power::Shade => Some(Answer::WatchTheRearing),
             Power::Grow => Some(Answer::CloseWhenItGrows),
             // A prince's hide (for now every prince's power is one).
-            Power::GoldHide | Power::Vainglory | Power::Scales | Power::Fury | Power::Torpor | Power::Bloat | Power::Allure => {
-                Some(Answer::HideTurns)
-            }
+            Power::GoldHide | Power::Vainglory | Power::Scales | Power::Torpor | Power::Bloat | Power::Allure => Some(Answer::HideTurns),
+            // Amon has no hide: his charge is the thing to know.
+            Power::Fury => Some(Answer::BaitIntoStone),
             Power::Rattle | Power::None => None,
         };
         if let Some(a) = by_power {
@@ -188,6 +191,7 @@ impl Answer {
             Answer::ParryTheClub => any(&|m| m.data().armor >= UNSTOPPABLE),
             Answer::StepOutOfTheCall => moves.contains(&MoveId::Call),
             Answer::HideTurns => b.power.is_hide(),
+            Answer::BaitIntoStone => b.power == Power::Fury && any(&|m| matches!(m.data().shape, Shape::Charge { .. })),
         }
     }
 
@@ -215,6 +219,7 @@ impl Answer {
             Answer::ParryTheClub => "only a parry stops",
             Answer::StepOutOfTheCall => "roars your name",
             Answer::HideTurns => "turns your blade",
+            Answer::BaitIntoStone => "into stone",
         }
     }
 
@@ -253,6 +258,9 @@ impl Answer {
                 format!("When the {b} roars your name, your next wound cuts deeper. Get away as the roar begins.")
             }
             Answer::HideTurns => format!("The {b}'s hide turns your blade. Strike in {its} recoveries, or while {it} reels."),
+            Answer::BaitIntoStone => {
+                format!("The {b} charges straight. Stand with stone at your back and step aside at the last: run into stone, {it} stands dazed.")
+            }
         }
     }
 }

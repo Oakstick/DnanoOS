@@ -437,6 +437,10 @@ impl Bot {
                 return pad;
             }
         }
+        // Amon's court: the expert steps out of his charge's way and lets the stone stop him.
+        if let Some(p) = self.amon_court(g, &dodges, soonest) {
+            return p;
+        }
         // A grab no shield holds: the adept leaps it (the expert parries it below).
         if let Some(t) = soonest.filter(|t| self.skill == Skill::Adept && t.rule == GuardRule::ParryOnly && t.t <= GRAB_LEAP) {
             leap(&mut pad, math::norm(math::sub(hp, t.from)));
@@ -638,6 +642,76 @@ impl Bot {
             }
         }
         Some(pad.clone())
+    }
+}
+
+impl Bot {
+    /**
+     * Amon's court (PRINCES.md §3), and nowhere else. Once his charge's aim has locked with the
+     * hero in its path, the expert steps aside (leaping if it is too late to walk) and lets him run
+     * on into the stone behind; and the adept and the expert walk out of the rift's lava while it
+     * lingers. `None`: nothing of his to answer.
+     */
+    fn amon_court(&mut self, g: &Game, dodges: &[Dodge], soonest: Option<Threat>) -> Option<PadState> {
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Wrath) {
+            return None;
+        }
+        let hp = g.hero.pos();
+        let mut pad = PadState::default();
+        if self.skill == Skill::Expert {
+            let amon = g.prince().filter(|d| d.breed.kind == crate::logic::enemy::EnemyKind::Amon)?;
+            if let Some((mv @ crate::logic::combat::MoveId::FieryCharge, phase, frame)) = amon.f.attack() {
+                let data = amon.data(mv);
+                let Shape::Charge { length, speed } = data.shape else { return None };
+                let seen = self.noticed.get(&amon.id).is_some_and(|&(_, delay)| delay > 0 && frame >= delay);
+                let locked = phase == Phase::Active || (phase == Phase::Startup && frame >= data.track);
+                if seen && locked && phase != Phase::Recovery {
+                    let rel = math::sub(hp, amon.pos);
+                    let along = math::dot(rel, amon.aim);
+                    let side = amon.aim.x * rel.y - amon.aim.y * rel.x;
+                    let left = (length - amon.lore.span).max(0.0);
+                    let corridor = data.reach + HERO_RADIUS + 0.45;
+                    if along > -0.5 && along < left + data.reach + 0.5 && side.abs() < corridor {
+                        let start = if phase == Phase::Startup { (data.startup - frame) as f64 } else { 0.0 };
+                        let t = start + (along - data.reach - HERO_RADIUS).max(0.0) / speed * 60.0;
+                        let normal = V::new(-amon.aim.y, amon.aim.x);
+                        let away = if side >= 0.0 { normal } else { math::scale(normal, -1.0) };
+                        let out = Self::keep_in(g, hp, away);
+                        // (The way it was pushed back out of the floor: the other side.)
+                        let out = if math::dot(out, away) < 0.2 { Self::keep_in(g, hp, math::scale(away, -1.0)) } else { out };
+                        pad.left = (out.x as f32, out.y as f32);
+                        if t <= LEAP_AT && !g.hero.airborne() {
+                            pad.actions.insert(Action::Jump);
+                        }
+                        self.attack_down = false;
+                        return Some(pad);
+                    }
+                }
+            }
+        }
+        // Out of the rift's lingering lava he stands in (unless a blow or a step from the ground is due first).
+        if dodges.first().is_some_and(|d| d.t <= DODGE_AHEAD) || soonest.is_some_and(|t| t.t <= BLOCK_LEAD + 8.0) {
+            return None;
+        }
+        let spar = g.brawl.as_ref()?;
+        let lava = spar.traps.iter().filter(|t| t.lingering() && t.reaches(hp, HERO_RADIUS + 0.2)).min_by_key(|t| t.linger)?;
+        let clear = |dir: V| {
+            let p = math::add(hp, math::scale(dir, 1.4));
+            spar.traps
+                .iter()
+                .filter(|t| t.lingering() || t.armed())
+                .map(|o| math::len(math::sub(p, o.pos)) - o.radius)
+                .fold(f64::MAX, f64::min)
+        };
+        let away = math::sub(hp, lava.pos);
+        let base = if math::len(away) < 0.05 { 0.0 } else { math::angle(away) };
+        let best = (0..12)
+            .map(|k| math::from_angle(base + k as f64 * std::f64::consts::TAU / 12.0))
+            .filter(|&dir| Self::keep_in(g, hp, dir) == dir)
+            .max_by(|a, b| clear(*a).total_cmp(&clear(*b)))?;
+        pad.left = (best.x as f32, best.y as f32);
+        self.attack_down = false;
+        Some(pad)
     }
 }
 

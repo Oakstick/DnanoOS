@@ -579,9 +579,6 @@ fn kin_voice(kind: EnemyKind) -> Option<(EnemyKind, f32, f32, f32)> {
         // Envy's court: the root-dragon's, and the cobra's.
         K::Leviathan => (K::Nidhogg, 1.0, 0.85, 1.0),
         K::Serpentling => (K::Cobra, 0.9, 1.2, 0.9),
-        // Wrath's court: the fire giant's, and the dark raven's.
-        K::Amon => (K::Surtr, 1.0, 1.1, 1.0),
-        K::Raven => (K::Vampire, 1.0, 0.9, 1.0),
         // Sloth's court: Hel's servants', slowed; the night hag's.
         K::Belphegor => (K::Ganglot, 1.2, 0.8, 1.0),
         K::Nightmare => (K::Albasti, 1.0, 1.15, 0.9),
@@ -889,13 +886,35 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             coins(0.15, 5, 0.3, 0.04),
         ]
         .concat(),
+        // ---- the prince of Wrath
+        K::Amon => match mv {
+            // Head down to charge: two snorts through the beak, then the growl rising in the wolf's throat.
+            MoveId::FieryCharge => [
+                vec![hiss(1.0).at(0.0).dur(0.07).vol(0.9).bp(700.0, 2.0), hiss(1.0).at(0.13).dur(0.07).vol(0.9).bp(650.0, 2.0)],
+                growl(0.22, 58.0, 0.55, 0.13),
+                caw(0.5, 300.0, 1, 0.0, 0.1),
+            ]
+            .concat(),
+            // The breath drawn in, the fire stirring in his throat.
+            MoveId::FlameBreath => vec![
+                hiss(0.6).at(0.0).dur(0.55).vol(0.7).swell(0.5).bp(500.0, 1.2),
+                crackle(0.8).at(0.15).dur(0.4).vol(0.35).swell(0.3).hp(1800.0, 0.0),
+                sine(70.0, 95.0).at(0.0).dur(0.55).vol(0.08).swell(0.5),
+            ],
+            // The axe on the stone: iron dragged, and the floor cracking open.
+            MoveId::Rift => [vec![crackle(0.5).at(0.0).dur(0.6).vol(0.6).swell(0.2).lp(700.0, 1.0)], amon_croak(0.15)].concat(),
+            // The floor round him heaving: a rumble from below.
+            MoveId::Eruption => [vec![hiss(0.3).at(0.0).dur(0.8).vol(0.7).swell(0.5).lp(140.0, 1.0)], growl(0.1, 48.0, 0.6, 0.12)].concat(),
+            // The axe raised: his croak, and the iron ringing.
+            _ => [amon_croak(0.04), vec![sine(1180.0, 1120.0).at(0.12).dur(0.45).vol(0.02)]].concat(),
+        },
+        // A raven of Amon: a deep caw three times, embers in its feathers.
+        K::Raven => [caw(0.06, 470.0, 3, 0.19, 0.14), vec![crackle(0.9).at(0.05).dur(0.5).vol(0.25).hp(2400.0, 0.0)]].concat(),
         // The six other princes and their adds: a kin's voice, for now.
         K::Lucifer
         | K::Reflection
         | K::Leviathan
         | K::Serpentling
-        | K::Amon
-        | K::Raven
         | K::Belphegor
         | K::Nightmare
         | K::Beelzebub
@@ -916,6 +935,12 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
     out
 }
 
+/// Amon's voice: a raven's croak torn out of a wolf's throat, the fire under it.
+fn amon_croak(at: f32) -> Vec<Layer> {
+    [caw(at, 320.0, 1, 0.0, 0.13), growl(at + 0.05, 64.0, 0.5, 0.12), vec![hiss(0.5).at(at).dur(0.55).vol(0.4).swell(0.2).lp(650.0, 1.0)]]
+        .concat()
+}
+
 fn banker_laugh(at: f32) -> Vec<Layer> {
     speak(at, 118.0, &[(Onset::H, Vowel::O, 0.14, 1.0), (Onset::H, Vowel::O, 0.14, 0.94), (Onset::H, Vowel::O, 0.22, 0.88)], 0.5, false)
 }
@@ -934,6 +959,7 @@ fn breed_voice(kind: EnemyKind) -> Vec<Layer> {
         // The name is a tell, not a cry: he howls like the winter wind.
         K::Karakoncolos => [growl(0.0, 70.0, 0.4, 0.12), vec![hiss(0.6).at(0.0).dur(0.5).vol(0.6).swell(0.15).bp(500.0, 1.5)]].concat(),
         K::Mammon => banker_laugh(0.0),
+        K::Amon => amon_croak(0.0),
         // Bones groan; the ringing is the tell's alone.
         K::Gashadokuro => [rattle(0.0, 6, 0.04, 1500.0, 0.7), growl(0.05, 50.0, 0.4, 0.1)].concat(),
         K::Peerless => speak(0.0, 120.0, &[(Onset::H, Vowel::U, 0.18, 1.0)], 0.45, false),
@@ -1110,13 +1136,24 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         // An avalanche of coins.
         K::Mammon => [coins(0.0, 40, 1.4, 0.03), vec![hiss(0.5).dur(1.4).vol(0.6).lp(500.0, 1.0)]].concat(),
         K::GoldGolem => [coins(0.0, 16, 0.6, 0.05), vec![crackle(0.4).dur(0.6).vol(1.2).lp(400.0, 1.0)]].concat(),
+        // A last croak sinking into a growl, and the fire in him going out.
+        K::Amon => [
+            caw(0.0, 300.0, 2, 0.28, 0.12),
+            growl(0.3, 46.0, 1.0, 0.12),
+            vec![hiss(0.5).at(0.2).dur(1.4).vol(0.6).swell(0.1).lp(450.0, 1.0)],
+        ]
+        .concat(),
+        // A caw cut short; its embers puff out.
+        K::Raven => [caw(0.0, 470.0, 1, 0.0, 0.12), vec![crackle(1.0).at(0.05).dur(0.25).vol(0.3).hp(2500.0, 0.0)]]
+            .concat()
+            .into_iter()
+            .map(|l| l.dur(0.12))
+            .collect(),
         // The six other princes and their adds: a kin's fall, for now.
         K::Lucifer
         | K::Reflection
         | K::Leviathan
         | K::Serpentling
-        | K::Amon
-        | K::Raven
         | K::Belphegor
         | K::Nightmare
         | K::Beelzebub
@@ -1238,13 +1275,39 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         },
         // A golden fist, and a jingle.
         K::GoldGolem => [whoosh(0.0, 420.0, 0.35, 0.9), coins(0.1, 3, 0.15, 0.03)].concat(),
+        // Amon's: fire roaring out, the axe falling, the charge thundering, the floor splitting.
+        K::Amon => match mv {
+            MoveId::FlameBreath => vec![
+                hiss(0.5).dur(0.75).vol(1.0).swell(0.12).hold(0.5).lp(900.0, 1.0),
+                crackle(1.0).dur(0.7).vol(0.45).hp(2200.0, 0.0),
+                sine(80.0, 60.0).dur(0.6).vol(0.12).swell(0.1),
+            ],
+            MoveId::FieryCharge => {
+                [vec![hiss(0.3).dur(0.65).vol(0.9).lp(170.0, 1.0), sine(52.0, 40.0).dur(0.55).vol(0.18)], whoosh(0.0, 620.0, 0.5, 0.7)]
+                    .concat()
+            }
+            MoveId::Rift => {
+                [crack(0.0, 1.0), vec![hiss(0.6).at(0.05).dur(0.5).vol(0.7).lp(500.0, 1.0), sine(72.0, 36.0).dur(0.35).vol(0.2)]].concat()
+            }
+            MoveId::Eruption => {
+                vec![
+                    sine(64.0, 28.0).dur(0.6).vol(0.35),
+                    crackle(0.4).dur(0.6).vol(0.8).lp(500.0, 1.0),
+                    hiss(0.5).dur(0.5).vol(0.6).lp(300.0, 1.0),
+                ]
+            }
+            _ => [whoosh(0.0, 360.0, 0.4, 1.0), crack(0.32, 0.7), bell(0.34, 620.0, 0.5, 0.03)].concat(),
+        },
+        // Ragged wings beating, and the beak snapping.
+        K::Raven => {
+            [(0..3).map(|i| hiss(0.7).at(i as f32 * 0.08).dur(0.09).vol(0.8).swell(0.03).lp(800.0, 1.0)).collect(), snap(0.2, 220.0, 0.7)]
+                .concat()
+        }
         // The six other princes and their adds: a kin's swing, for now.
         K::Lucifer
         | K::Reflection
         | K::Leviathan
         | K::Serpentling
-        | K::Amon
-        | K::Raven
         | K::Belphegor
         | K::Nightmare
         | K::Beelzebub

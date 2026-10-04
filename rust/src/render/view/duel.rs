@@ -46,6 +46,8 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => return 0xffd860,
         Some(MoveId::Call) => return 0x9ac8ff,
         Some(MoveId::Raise) => return 0x6a8cff,
+        // Amon's fire: his breath, his charge, the floor he splits and bursts.
+        Some(MoveId::FlameBreath | MoveId::FieryCharge | MoveId::Rift | MoveId::Eruption) => return 0xff5a1a,
         _ => {}
     }
     if d.breed.kind == EnemyKind::Jorogumo {
@@ -505,6 +507,77 @@ impl WorldView {
                         v.root_rot.x = if strike == 0.0 { -0.16 * wind } else { 0.28 * (1.0 - rec) };
                         v.root_scale = Vec3::new(1.0, 1.0 - 0.05 * snap * (1.0 - rec), 1.0);
                     }
+                    MoveId::FlameBreath => {
+                        // Amon draws the breath in, his beak thrown up and his chest swelling; then
+                        // throws his head forward and the fire roars out of his throat.
+                        let out = 1.0 - rec;
+                        if strike == 0.0 {
+                            v.pose.rot_x(rig, "head", -0.55 * wind);
+                            v.root_rot.x = -0.12 * wind;
+                            v.root_scale = Vec3::new(1.0 + 0.04 * wind, 1.0 + 0.02 * wind, 1.0 + 0.05 * wind);
+                        } else {
+                            v.pose.rot_x(rig, "head", (0.35 - 0.9 * (1.0 - snap)).max(-0.55) * out);
+                            v.root_rot.x = 0.16 * out;
+                        }
+                        v.pose.rot_x(rig, "leftArm", 0.45 * wind * out);
+                        v.pose.rot_x(rig, "rightArm", 0.35 * wind * out);
+                    }
+                    MoveId::AxeCleave | MoveId::Rift => {
+                        // The axe raised high over his head in both hands, leaning back; brought down
+                        // (the rift: on down into the floor before him, and dragged).
+                        let down = if mv == MoveId::Rift { 1.2 } else { 0.7 };
+                        let arms = if strike == 0.0 {
+                            -3.0 * wind
+                        } else if rec == 0.0 {
+                            -3.0 + (3.0 + down) * snap
+                        } else {
+                            down * (1.0 - rec)
+                        };
+                        v.pose.rot_x(rig, "leftArm", arms);
+                        v.pose.rot_x(rig, "rightArm", arms);
+                        v.root_rot.x = if strike == 0.0 { -0.2 * wind } else { (0.3 + down * 0.12) * (1.0 - rec) };
+                        v.pose.rot_x(rig, "head", if strike == 0.0 { -0.2 * wind } else { 0.2 * (1.0 - rec) });
+                    }
+                    MoveId::FieryCharge => {
+                        // Head down and shoulders low, pawing the floor; then running flat out, his
+                        // tail streaming; then pulling up.
+                        let run = matches!(d.f.attack(), Some((_, Phase::Active, _)));
+                        if strike == 0.0 {
+                            v.root_rot.x = 0.3 * wind;
+                            v.root_scale = Vec3::new(1.0 + 0.04 * wind, 1.0 - 0.08 * wind, 1.0);
+                            v.pose.rot_x(rig, "head", 0.45 * wind);
+                            v.pose.rot_x(rig, "leftArm", 0.6 * wind);
+                            v.pose.rot_x(rig, "rightArm", 0.6 * wind);
+                            v.pose.rot_x(rig, "rightLeg", -0.35 * wind * (time * 9.0).sin().max(0.0));
+                        } else if run {
+                            let stride = (time * 22.0).sin();
+                            v.root_rot.x = 0.42;
+                            v.pose.rot_x(rig, "head", 0.4);
+                            v.pose.rot_x(rig, "leftLeg", stride * 0.9);
+                            v.pose.rot_x(rig, "rightLeg", -stride * 0.9);
+                            v.pose.rot_x(rig, "leftArm", 0.5 - stride * 0.5);
+                            v.pose.rot_x(rig, "rightArm", 0.5 + stride * 0.5);
+                            v.pose.rot_x(rig, "tail", -0.6);
+                        } else {
+                            v.root_rot.x = 0.42 * (1.0 - rec);
+                            v.pose.rot_x(rig, "head", 0.4 * (1.0 - rec));
+                        }
+                    }
+                    MoveId::Eruption => {
+                        // Both fists raised to the dark, roaring; then down on the floor with all his weight.
+                        let arms = if strike == 0.0 {
+                            -2.9 * wind
+                        } else if rec == 0.0 {
+                            -2.9 + 3.7 * snap
+                        } else {
+                            0.8 * (1.0 - rec)
+                        };
+                        v.pose.rot_x(rig, "leftArm", arms);
+                        v.pose.rot_x(rig, "rightArm", arms);
+                        v.pose.rot_x(rig, "head", -0.45 * wind * (1.0 - snap));
+                        v.root_rot.x = if strike == 0.0 { -0.15 * wind } else { 0.35 * (1.0 - rec) };
+                        v.root_scale = Vec3::new(1.0 + 0.05 * snap * (1.0 - rec), 1.0 - 0.1 * snap * (1.0 - rec), 1.0);
+                    }
                     MoveId::Hex | MoveId::Smokeless => {
                         // Her right hand high, her left reaching out; then the throw.
                         let right = if strike == 0.0 { -2.8 * wind } else { -1.4 * (1.0 - rec) };
@@ -741,7 +814,10 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
-        self.emit_traps(s.traps, s.grid, time, f);
+        // (Wrath's court draws its rift's lava itself: `court_wrath::emit_rift`.)
+        if self.anvil.is_none() {
+            self.emit_traps(s.traps, s.grid, time, f);
+        }
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.
         for h in s.hazards {
             let c = Vec3::new(h.pos.x as f32, floor_at(s.grid, h.pos.x as f32, h.pos.y as f32), h.pos.y as f32);

@@ -166,8 +166,8 @@ impl Game {
                 EnemyKind::Leviathan => ("LEVIATHAN", "The prince of Envy, the serpent of the deep. His scales turn your blows, but not while he recovers.", 0x3aa88a),
                 EnemyKind::Serpentling => ("SERPENTLING", "One of Leviathan's brood. It falls when he does.", 0x5ac0a0),
                 // Wrath's court
-                EnemyKind::Amon => ("AMON", "The prince of Wrath, a wolf with a serpent's tail who breathes flame. His fury turns your blows, but not while he recovers.", 0xe0402a),
-                EnemyKind::Raven => ("RAVEN OF AMON", "One of Amon's black birds. It falls when he does.", 0x3a3040),
+                EnemyKind::Amon => ("AMON", "The prince of Wrath, raven-headed in a wolf's pelt, fire in his throat. He has no hide, and every blow you land angers him. His charge runs straight: step aside, and stone stops him dazed.", 0xe0402a),
+                EnemyKind::Raven => ("RAVEN OF AMON", "One of Amon's great black birds, its feathers smouldering. It harries you from the air, and falls when he does.", 0x3a3040),
                 // Sloth's court
                 EnemyKind::Belphegor => ("BELPHEGOR", "The prince of Sloth, dozing among his stopped clocks. His torpor turns your blows, but not while he recovers.", 0x8a96b0),
                 EnemyKind::Nightmare => ("NIGHTMARE", "A dream of Belphegor's, sent to sit on the sleeper's chest. It falls when he does.", 0x6a5a9a),

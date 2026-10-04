@@ -1098,7 +1098,9 @@ mod tests {
         let cues = c.slay();
         assert!(cues.iter().any(|q| matches!(q, Cue::Over { stage: OrderStage::Broken, .. })));
         assert!(run(&mut c, 20_000, true).is_empty());
-        assert!(c.terms().health < 1.0);
+        // (His prince fights weaker: without his adds in a court built to its plan, else on his health.)
+        let t = c.terms();
+        assert!(!t.phase_two_adds || t.health < 1.0, "{t:?}");
         // A failed order (the gate barred) may be given again after his rest.
         let mut c = Command::new(Sin::Greed, [P::new(1, 1); 3]);
         run(&mut c, FIRST_ORDER + 1, true);

@@ -379,6 +379,10 @@ pub struct Lore {
     pub summoned: bool,
     /// A beam's length as rock lets it run along the aim (locked with it); a charge's run so far.
     pub span: f64,
+    /// Amon's rage: steps of it, one a blow taken (`prince::wrath::RAGE_MAX`); and where the Fury's
+    /// two charges stand (0 none, 1 the first under way, 2 the second due, 3 the second under way).
+    pub rage: u8,
+    pub twin: u8,
 }
 
 /// Something a foe's legend did this frame, for the game to show and sound.
@@ -491,6 +495,10 @@ impl Duelist {
 
     /// Its archetype's numbers as its body has them.
     pub fn stats(&self) -> super::archetype::Stats {
+        if self.breed.power == Power::Fury {
+            // (Amon's rage quickens him.)
+            return super::prince::wrath::enraged(self.breed.stats(), self.lore.rage);
+        }
         self.breed.stats()
     }
 
