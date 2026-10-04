@@ -119,7 +119,7 @@ fn stone(h: f64) -> Vec3 {
 }
 
 /// Where the lock lamps sit on the gate's face, relative to its foot.
-fn lock_spot(i: u32, n: u32) -> Vec3 {
+pub(super) fn lock_spot(i: u32, n: u32) -> Vec3 {
     if n == 1 {
         // A single lock (the arena's) sits on the oak over the doors, below the keystone.
         return Vec3::new(0.0, 1.56, 0.07);
@@ -131,6 +131,10 @@ fn lock_spot(i: u32, n: u32) -> Vec3 {
 impl WorldView {
     /// The gatehouse's stonework (the doors and lamps move, so they are drawn each frame).
     pub(super) fn build_gate(&mut self, grid: &Grid, gate: P, locks: u32) {
+        if self.crypt {
+            let sockets: Vec<Vec3> = (0..locks).map(|i| lock_spot(i, locks)).collect();
+            return self.build_crypt_gate(grid, gate, &sockets);
+        }
         let floor = grid.elevation(gate.x, gate.y + 1) as f32 * STEP;
         let o = Vec3::new(gate.x as f32, floor, gate.y as f32);
         let q = Quat::IDENTITY;
@@ -288,7 +292,8 @@ impl WorldView {
         let open = g.keys >= g.total && g.total > 0;
         // The estate's gate takes golden keys; the arena's, the Cyclops' red one.
         let (lamp, lamp_glow) = if g.red { (lin(g.key), lin(mix_hex(g.key, 0xffffff, 0.2))) } else { (lin(GOLD), lin(0xffc040)) };
-        // Doors: planks, iron straps and studs, a ring pull; they swing in, away from you.
+        // Doors: planks, iron straps and studs, a ring pull; they swing in, away from you. (In the
+        // vaults, gates of iron bars under the arch's grille.)
         let swing = g.door.clamp(0.0, 1.0);
         let angle = (swing * swing * (3.0 - 2.0 * swing)) * 1.75;
         for side in [-1.0f32, 1.0] {
@@ -304,6 +309,18 @@ impl WorldView {
                     SHADE_LIT,
                 ));
             };
+            if self.crypt {
+                for k in 0..4 {
+                    let u = 0.05 + k as f32 * 0.105;
+                    leaf(f, Vec3::new(u, 0.56, 0.0), Vec3::new(0.03, 1.1, 0.03), lin(IRON));
+                    leaf(f, Vec3::new(u, 1.13, 0.0), Vec3::new(0.045, 0.06, 0.045), lin(0x9a5b3c));
+                }
+                for y in [0.1f32, 0.56, 1.02] {
+                    leaf(f, Vec3::new(0.21, y, 0.0), Vec3::new(0.42, 0.04, 0.045), lin(IRON));
+                }
+                leaf(f, Vec3::new(0.38, 0.56, 0.035), Vec3::new(0.05, 0.08, 0.02), lin(0x9a5b3c));
+                continue;
+            }
             for (k, oak) in OAK.iter().enumerate() {
                 leaf(f, Vec3::new(0.07 + k as f32 * 0.14, 0.66, 0.0), Vec3::new(0.135, 1.32, 0.06), lin(*oak));
             }
@@ -360,15 +377,17 @@ impl WorldView {
             f.lights.push(Light { pos: b + Vec3::new(0.0, 0.35, 0.25), color: lin(0xff9a40) * flick * 0.7, distance: 4.0 });
         }
         // Unlocked: a beacon over the gate, seen from across the estate; and the glow through the doors.
+        // (The vaults are dark and exposed for it: there the glow is gentler, or it blinds.)
+        let dim = if self.crypt { 0.3 } else { 1.0 };
         if open {
             let beam = Mat4::from_translation(o + Vec3::new(0.0, 7.0, -0.1)) * Mat4::from_scale(Vec3::new(0.45, 14.0, 0.45));
             f.additive.push(Instance::new(beam, lamp, 0.1 + (time * 1.5).sin() * 0.03, Vec3::ZERO, SHADE_UNLIT));
-            f.lights.push(Light { pos: o + Vec3::new(0.0, 2.9, 0.4), color: lamp_glow * 1.6, distance: 5.0 });
+            f.lights.push(Light { pos: o + Vec3::new(0.0, 2.9, 0.4), color: lamp_glow * 1.6 * dim, distance: 5.0 });
         }
         if swing > 0.0 {
             let glow = Mat4::from_translation(o + Vec3::new(0.0, 0.8, -0.36)) * Mat4::from_scale(Vec3::new(0.84, 1.6, 0.02));
-            f.additive.push(Instance::new(glow, lin(0xffd070), swing, Vec3::ZERO, SHADE_UNLIT));
-            f.lights.push(Light { pos: o + Vec3::new(0.0, 0.9, 0.2), color: lin(0xffd070) * 8.0 * swing, distance: 6.0 });
+            f.additive.push(Instance::new(glow, lin(0xffd070), swing * dim.max(0.5), Vec3::ZERO, SHADE_UNLIT));
+            f.lights.push(Light { pos: o + Vec3::new(0.0, 0.9, 0.2), color: lin(0xffd070) * 8.0 * swing * dim, distance: 6.0 });
         }
     }
 

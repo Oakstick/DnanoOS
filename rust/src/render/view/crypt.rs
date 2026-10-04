@@ -196,6 +196,8 @@ impl WorldView {
             let base = floor_y(x, y);
             let top = base + WALL_H;
             let start = self.static_cubes.len();
+            // Now and then a wall has crumbled: most of its top course lies on the floor.
+            let ruined = hash(hx * 6.1 + 2.0, hy * 4.3 + 8.0) < 0.18;
             // The core, a touch inside the faces so the blocks stand proud of it.
             block(
                 &mut self.static_cubes,
@@ -214,18 +216,39 @@ impl WorldView {
                 })
                 .collect();
             for &d in &roads {
-                self.build_masonry(xf, yf, base, d, hx, hy);
+                // What falls from the wall lies on the road's floor (not down a pit or on a stair).
+                let (nx, ny) = (x + d.vec().0, y + d.vec().1);
+                let plain = !matches!(grid.get(nx, ny), Tile::Pit | Tile::Nest) && !grid.is_ramp(nx, ny) && !grid.is_bridge(nx, ny);
+                self.build_masonry(xf, yf, base, d, hx, hy, plain.then(|| floor_y(nx, ny)), ruined);
             }
-            // A coping of dark stone across the top.
-            block(
-                &mut self.static_cubes,
-                Vec3::new(xf, top + 0.04, yf),
-                Vec3::new(1.0, 0.08, 1.0),
-                0.0,
-                jit(CHARCOAL[(hash(hx + 3.0, hy) * 3.0) as usize % 3], hash(hy, hx), 0.08) * 0.85,
-                SHADE_STONE,
-            );
-            self.wall_growth(xf, yf, top, hx, hy);
+            // A coping of heavy dark slabs across the top, cracked through; on a ruined wall, what
+            // is left of it, settled askew over the rubble core.
+            let split_x = hash(hx + 5.0, hy * 2.0) < 0.5;
+            let slabs = if ruined { 3 } else { 2 };
+            for k in 0..slabs {
+                let r = hash(hx * 2.1 + k as f64 * 1.7, hy * 3.3 + k as f64) as f32;
+                if ruined && r < 0.35 {
+                    continue;
+                }
+                let w = 1.0 / slabs as f32;
+                let off = -0.5 + w * (k as f32 + 0.5);
+                let (size, o) = if split_x {
+                    (Vec3::new(w - 0.025, 0.11, 1.0), Vec3::new(off, 0.0, 0.0))
+                } else {
+                    (Vec3::new(1.0, 0.11, w - 0.025), Vec3::new(0.0, 0.0, off))
+                };
+                let tilt = (r - 0.5) * if ruined { 0.16 } else { 0.03 };
+                let drop = if ruined { r * 0.05 } else { (r - 0.5) * 0.015 };
+                let m = Mat4::from_scale_rotation_translation(
+                    size,
+                    Quat::from_rotation_x(tilt * 0.5) * Quat::from_rotation_z(tilt),
+                    Vec3::new(xf, top + 0.055 - drop, yf) + o,
+                );
+                block_m(&mut self.static_cubes, m, jit(CHARCOAL[(hash(hx + 3.0 + k as f64, hy) * 3.0) as usize % 3], r as f64, 0.08) * 0.85, SHADE_STONE);
+            }
+            if !ruined {
+                self.wall_growth(xf, yf, top, hx, hy);
+            }
             let len = self.static_cubes.len() - start;
             self.rock_index.insert(tile_key(x, y), (start, len));
             // A wall on raised ground stands well over his head from the road below it: it fades
@@ -257,8 +280,8 @@ impl WorldView {
                 self.pillar(xf, yf, base, roads[0], hx, hy);
             } else if pick < 0.16 {
                 self.banner(xf, yf, base, roads[(pick * 50.0) as usize % roads.len()], hx, hy);
-            } else if pick < 0.2 {
-                self.statue(xf, yf, top + 0.08, roads[0], hx, hy);
+            } else if pick < 0.2 && !ruined {
+                self.statue(xf, yf, top + 0.11, roads[0], hx, hy);
             } else if pick < 0.25 {
                 self.wall_lantern(P::new(x, y), base, roads[(pick * 70.0) as usize % roads.len()]);
             }
@@ -314,7 +337,11 @@ impl WorldView {
 
     /// The road-facing side `d` of a wall tile in courses of dressed blocks of uneven length,
     /// staggered, on a pale plinth; here and there a block of umber, or green with verdigris.
-    fn build_masonry(&mut self, x: f32, y: f32, base: f32, d: Dir, hx: f64, hy: f64) {
+    /// The blocks are chunky and old: each stands out its own depth, a touch askew, some chipped
+    /// short. Now and then one has fallen out and lies broken at the wall's foot (on the road's
+    /// floor, `foot`), and a `ruined` wall has lost half its top course there.
+    #[allow(clippy::too_many_arguments)]
+    fn build_masonry(&mut self, x: f32, y: f32, base: f32, d: Dir, hx: f64, hy: f64, foot: Option<f32>, ruined: bool) {
         let (dx, dy) = d.vec();
         let turn = if dx != 0 { PI / 2.0 } else { 0.0 };
         let at = |u: f32, h: f32, out: f32| {
@@ -331,6 +358,7 @@ impl WorldView {
             SHADE_STONE,
         );
         let course_h = (WALL_H - 0.2) / COURSES as f32;
+        let mut fallen = 0;
         for course in 0..COURSES {
             let shift = if course % 2 == 0 { 0.0 } else { 0.17 };
             let mut u: f32 = -0.5 - shift;
@@ -339,7 +367,11 @@ impl WorldView {
                 let hk = hash(hx * 7.0 + k as f64 * 1.3 + course as f64 * 5.0 + dx as f64, hy * 3.0 + dy as f64 * 7.0 + course as f64);
                 let len = 0.3 + hk as f32 * 0.22;
                 let (a, b) = (u.max(-0.5), (u + len).min(0.5));
-                if b - a > 0.06 {
+                let gone = hash(hk * 17.0 + 3.0, hy * 1.3 + hx);
+                let missing = if ruined && course == COURSES - 1 { gone < 0.5 } else { gone < 0.035 };
+                if missing {
+                    fallen += 1;
+                } else if b - a > 0.06 {
                     let roll = hash(hk * 31.0, hx + hy);
                     let c = if roll < 0.04 {
                         jit(VERDIGRIS, hk, 0.1)
@@ -348,13 +380,16 @@ impl WorldView {
                     } else {
                         jit(CHARCOAL[(hk * 3.0) as usize % 3], hk, 0.12)
                     };
-                    let proud = 0.44 + (roll as f32) * 0.03;
-                    let h = base + 0.2 + course as f32 * course_h + course_h / 2.0;
+                    // Each block its own depth out of the core, a touch askew, some chipped short.
+                    let depth = 0.08 + hash(hk * 13.0, hy + 1.0) as f32 * 0.08;
+                    let chip = if (hk * 29.0).fract() < 0.25 { (hk * 53.0).fract() as f32 * 0.05 } else { 0.0 };
+                    let askew = ((hk * 41.0).fract() as f32 - 0.5) * 0.06;
+                    let h = base + 0.2 + course as f32 * course_h + course_h / 2.0 - chip / 2.0;
                     block(
                         &mut self.static_cubes,
-                        at((a + b) / 2.0, h, proud),
-                        Vec3::new(b - a - 0.025, course_h - 0.025, 0.08),
-                        turn,
+                        at((a + b) / 2.0, h, 0.46 + depth / 2.0),
+                        Vec3::new(b - a - 0.03, course_h - 0.03 - chip, depth),
+                        turn + askew,
                         c,
                         SHADE_STONE,
                     );
@@ -362,6 +397,143 @@ impl WorldView {
                 u += len;
                 k += 1;
             }
+        }
+        // The fallen blocks, broken in pieces at the foot of the wall.
+        let Some(foot) = foot else { return };
+        let pieces = (fallen * 2).min(7);
+        for k in 0..pieces {
+            let r1 = hash(hx * 3.7 + k as f64 * 1.9 + dx as f64, hy * 2.3 + dy as f64 * 5.0 + k as f64) as f32;
+            let r2 = hash(hy * 4.1 + k as f64 * 2.7, hx * 1.7 + dy as f64 + k as f64 * 3.0) as f32;
+            let s = 0.07 + r1 * 0.13;
+            let size = Vec3::new(s * (1.0 + r2 * 0.6), s * (0.6 + r2 * 0.5), s * (0.8 + r1 * 0.4));
+            let rot = Quat::from_rotation_y(r1 * 6.0) * Quat::from_rotation_x((r2 - 0.5) * 0.6) * Quat::from_rotation_z((r1 - 0.5) * 0.5);
+            let pos = at((r2 - 0.5) * 0.85, foot + size.y * 0.4, 0.56 + r1 * 0.25);
+            let c = jit(CHARCOAL[k % 3], r2 as f64, 0.12) * 0.9;
+            block_m(&mut self.static_cubes, Mat4::from_scale_rotation_translation(size, rot, pos), c, SHADE_STONE);
+        }
+    }
+
+    /// The vaults' gatehouse in the north wall: two squat towers of dressed stone, each with a
+    /// hooded knight on top keeping watch; between them a round arch, its keystone a carved skull,
+    /// closed by iron gates under a fixed grille (the gates and lock lamps move, so the gate's
+    /// own code draws them each frame); a stepped pale pediment over all; copper braziers before
+    /// the towers. The lock lamps sit in iron sockets in a fan over the arch.
+    pub(super) fn build_crypt_gate(&mut self, grid: &Grid, gate: P, sockets: &[Vec3]) {
+        let floor = grid.elevation(gate.x, gate.y + 1) as f32 * STEP;
+        let o = Vec3::new(gate.x as f32, floor, gate.y as f32);
+        let (gx, gy) = (gate.x as f64, gate.y as f64);
+        let out = &mut self.static_cubes;
+        // Threshold, and the dark way down behind the gates.
+        block(out, o + Vec3::new(0.0, -0.04, 0.05), Vec3::new(1.1, 0.1, 0.95), 0.0, jit(PALE_STONE[1], 0.3, 0.0) * 0.7, SHADE_STONE);
+        block(out, o + Vec3::new(0.0, 0.85, -0.42), Vec3::new(0.9, 1.8, 0.08), 0.0, lin(0x060606), SHADE_LIT);
+        // The towers.
+        let course_h = 0.4;
+        let courses = 6;
+        let tower_top = -0.2 + courses as f32 * course_h;
+        for side in [-1.0f32, 1.0] {
+            let out = &mut self.static_cubes;
+            let t = o + Vec3::new(side * 0.98, 0.0, 0.0);
+            block(out, t + Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.98, 0.3, 0.98), 0.0, jit(PALE_STONE[1], gx, 0.04) * 0.8, SHADE_STONE);
+            for k in 0..courses {
+                let h = hash(gx + side as f64 * 3.0, k as f64 * 1.7);
+                let c = if k == 3 {
+                    jit(PALE_STONE[0], h, 0.05) * 0.75
+                } else if h < 0.3 {
+                    jit(UMBER[k % 2], h, 0.08)
+                } else {
+                    jit(CHARCOAL[k % 3], h, 0.1)
+                };
+                let w = 0.88 + (h as f32 - 0.5) * 0.04;
+                let y0 = -0.2 + k as f32 * course_h;
+                block(out, t + Vec3::new(0.0, y0 + course_h / 2.0, 0.0), Vec3::new(w, course_h - 0.03, w), (h as f32 - 0.5) * 0.04, c, SHADE_STONE);
+            }
+            // A heavy cap, and verdigris down the stone where the water runs.
+            block(out, t + Vec3::new(0.0, tower_top + 0.07, 0.0), Vec3::new(0.98, 0.14, 0.98), 0.0, jit(CHARCOAL[0], gx, 0.05) * 0.8, SHADE_STONE);
+            block(out, t + Vec3::new(side * 0.2, tower_top - 0.5, 0.45), Vec3::new(0.12, 0.9, 0.02), 0.0, jit(VERDIGRIS, gy, 0.1), SHADE_STONE);
+            block(out, t + Vec3::new(-side * 0.15, tower_top + 0.15, 0.25), Vec3::new(0.3, 0.04, 0.3), 0.4, lin(MOSS[1]), SHADE_SOFT);
+            // A copper brazier before each tower (its flames are the gate's).
+            let b = o + Vec3::new(side * 0.98, 0.0, 0.62);
+            let copper = lin(COPPER);
+            for k in 0..3 {
+                let a = k as f32 * TAU / 3.0;
+                block(out, b + Vec3::new(a.cos() * 0.1, 0.26, a.sin() * 0.1), Vec3::new(0.045, 0.52, 0.045), a, copper * 0.8, SHADE_BRONZE);
+            }
+            block(out, b + Vec3::Y * 0.55, Vec3::new(0.34, 0.09, 0.34), PI / 4.0, copper, SHADE_BRONZE);
+            block(out, b + Vec3::Y * 0.61, Vec3::new(0.4, 0.05, 0.4), 0.0, copper * 0.9, SHADE_BRONZE);
+            glowing_block(out, b + Vec3::Y * 0.645, Vec3::new(0.3, 0.04, 0.3), lin(0x3a1a0a), lin(EMBER) * 1.2);
+            self.smoke.push((b + Vec3::new(0.0, 0.75, 0.0), 1.0));
+            // The watcher on the tower.
+            self.statue(o.x + side * 0.98, o.z, floor + tower_top + 0.14, Dir::Down, gx + side as f64 * 7.0, gy);
+        }
+        let out = &mut self.static_cubes;
+        // The arch: piers, a round ring of wedge stones, the keystone a skull.
+        let spring = 1.15;
+        let r = 0.49;
+        for side in [-1.0f32, 1.0] {
+            block(out, o + Vec3::new(side * 0.53, spring / 2.0, 0.02), Vec3::new(0.2, spring, 0.4), 0.0, jit(PALE_STONE[1], gy, 0.05) * 0.8, SHADE_STONE);
+        }
+        let wedges = 9;
+        for k in 0..wedges {
+            let a = PI * (k as f32 + 0.5) / wedges as f32;
+            let key = k == wedges / 2;
+            let c = if key {
+                lin(BONE) * 0.8
+            } else if k % 2 == 0 {
+                jit(PALE_STONE[0], hash(gx + k as f64, gy), 0.05) * 0.75
+            } else {
+                jit(CHARCOAL[k % 3], hash(gx, gy + k as f64), 0.1)
+            };
+            let size = Vec3::new(PI * r / wedges as f32 + 0.03, if key { 0.2 } else { 0.14 }, if key { 0.44 } else { 0.4 });
+            let m = Mat4::from_scale_rotation_translation(
+                size,
+                Quat::from_rotation_z(a - PI / 2.0),
+                o + Vec3::new(-a.cos() * r, spring + a.sin() * r, 0.02),
+            );
+            block_m(out, m, c, SHADE_STONE);
+        }
+        // The skull's eyes and nose, and its jaw over the crown.
+        let skull = o + Vec3::new(0.0, spring + r, 0.24);
+        for side in [-1.0f32, 1.0] {
+            block(out, skull + Vec3::new(side * 0.035, 0.03, 0.0), Vec3::new(0.04, 0.04, 0.02), 0.0, lin(0x0e0c0a), SHADE_LIT);
+        }
+        block(out, skull + Vec3::new(0.0, -0.02, 0.0), Vec3::new(0.02, 0.025, 0.02), 0.0, lin(0x0e0c0a), SHADE_LIT);
+        block(out, skull + Vec3::new(0.0, -0.08, -0.01), Vec3::new(0.08, 0.04, 0.04), 0.0, lin(BONE) * 0.7, SHADE_STONE);
+        // A fixed iron grille in the arch over the gates: a rail at the spring, bars fanned up from it.
+        block(out, o + Vec3::new(0.0, spring - 0.02, -0.02), Vec3::new(0.86, 0.04, 0.04), 0.0, lin(IRON), SHADE_IRON);
+        for k in 0..5 {
+            let a = PI * (k as f32 + 1.0) / 6.0;
+            let len = r - 0.07;
+            let m = Mat4::from_scale_rotation_translation(
+                Vec3::new(0.025, len, 0.025),
+                Quat::from_rotation_z(a - PI / 2.0),
+                o + Vec3::new(-a.cos() * len / 2.0, spring + a.sin() * len / 2.0, -0.02),
+            );
+            block_m(out, m, lin(IRON), SHADE_IRON);
+        }
+        // The wall over the arch, in courses, up to a cornice and a stepped pale pediment.
+        let wall_top = 2.25;
+        for (x0, x1) in [(-0.63f32, -0.2f32), (0.2, 0.63)] {
+            block(out, o + Vec3::new((x0 + x1) / 2.0, (spring + 1.62) / 2.0, -0.03), Vec3::new(x1 - x0, 1.62 - spring, 0.32), 0.0, jit(CHARCOAL[1], gx, 0.05) * 0.85, SHADE_STONE);
+        }
+        for k in 0..2 {
+            let y0 = 1.62 + k as f32 * 0.315;
+            for j in 0..3 {
+                let h = hash(gx + j as f64 * 2.0, k as f64 + 4.0);
+                let c = if h < 0.3 { jit(UMBER[j % 2], h, 0.08) } else { jit(CHARCOAL[(j + k) % 3], h, 0.1) };
+                let shift = if k == 0 { 0.0 } else { 0.21 };
+                let a = (-0.63 + j as f32 * 0.42 + shift - 0.21 * (k as f32)).max(-0.63);
+                let b = (a + 0.42 + if k == 0 { 0.0 } else { 0.21 }).min(0.63);
+                block(out, o + Vec3::new((a + b) / 2.0, y0 + 0.155, -0.02), Vec3::new(b - a - 0.02, 0.29, 0.34 + h as f32 * 0.04), 0.0, c, SHADE_STONE);
+            }
+        }
+        for (k, w) in [1.36f32, 1.0, 0.6].into_iter().enumerate() {
+            let c = jit(PALE_STONE[k % 2], gy + k as f64, 0.05) * (0.8 - k as f32 * 0.04);
+            block(out, o + Vec3::new(0.0, wall_top + 0.06 + k as f32 * 0.13, 0.0), Vec3::new(w, 0.13, 0.42 - k as f32 * 0.04), 0.0, c, SHADE_STONE);
+        }
+        block(out, o + Vec3::new(0.3, wall_top + 0.14, 0.12), Vec3::new(0.4, 0.04, 0.2), 0.2, lin(MOSS[2]), SHADE_SOFT);
+        // Iron sockets for the lock lamps.
+        for &s in sockets {
+            block(out, o + s - Vec3::new(0.0, 0.0, 0.03), Vec3::new(0.11, 0.11, 0.04), PI / 4.0, lin(IRON), SHADE_IRON);
         }
     }
 
@@ -483,7 +655,7 @@ impl WorldView {
                 let b = hash(hy + k as f64 * 2.3, hx * 1.1 + k as f64) as f32;
                 let (a, b) = (0.5 + px + (a - 0.5) * 0.45, 0.5 + pz + (b - 0.5) * 0.45);
                 let size = Vec3::new(0.08 + (a * 7.0).fract() * 0.12, 0.025 + (b * 5.0).fract() * 0.035, 0.08 + (b * 9.0).fract() * 0.12);
-                let at = Vec3::new(x + (a - 0.5) * 0.6, top + 0.08 + size.y / 2.0, y + (b - 0.5) * 0.6);
+                let at = Vec3::new(x + (a - 0.5) * 0.6, top + 0.11 + size.y / 2.0, y + (b - 0.5) * 0.6);
                 block(&mut self.static_cubes, at, size, a * 3.0, jit(MOSS[k % 3], b as f64, 0.1), SHADE_SOFT);
             }
         }
