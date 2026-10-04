@@ -22,8 +22,10 @@ pub mod bot;
 pub mod brawl;
 mod combat;
 mod controls;
+pub mod counsel;
 mod court;
 mod debug;
+pub mod deceit;
 mod feedback;
 mod feel;
 mod flow;
@@ -323,6 +325,8 @@ pub struct Game {
     pub war: war::War,
     /// The run's Warband as saved (the Ledger of Grudges), its name card and its board.
     pub warband: ledger::Warband,
+    /// The two voices: the old man's counsel, the line in the panel, the prince's cheats.
+    pub voices: counsel::Voices,
     /// Seconds of freeze-frame left.
     hitstop: f64,
     /// The freezes' budget, the slowing of time and the pace (`juice`); the feel's settings; and
@@ -495,6 +499,7 @@ impl Game {
             events: Vec::new(),
             war: war::War::default(),
             warband: ledger::Warband::load(),
+            voices: counsel::Voices::default(),
             want_fullscreen_toggle: false,
             menu_index: 0,
             quit_requested: false,

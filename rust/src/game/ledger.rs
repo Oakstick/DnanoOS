@@ -86,6 +86,8 @@ impl Game {
         let Some(r) = self.ledger().get(rival) else { return };
         let said = bark(r, Situation::Meet, hero, roll);
         self.warband.card = Some(RivalCard { rival, foe, enemy: None, at, since: self.time, bark: said });
+        // The old man names one true trait of his, if one is known.
+        self.counsel_rival(rival);
     }
 
     /// What a rival says when he wins, flees or dies (the integrator floats it over him).
@@ -121,6 +123,7 @@ impl Game {
     /// Start over: the Ledger, the generals, the lies seen and the counsel's flags are gone.
     pub(super) fn wipe_warband(&mut self) {
         self.warband = Warband::default();
+        self.voices = super::counsel::Voices::default();
         if !cfg!(test) {
             platform::save(WARBAND_KEY, "");
         }
