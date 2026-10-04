@@ -148,7 +148,8 @@ pub(super) fn draw_signs(o: &mut Overlay, g: &Game, t: f32) {
                 let sin = g.realm.unwrap_or(crate::logic::sins::Sin::Greed);
                 let (color, alpha) = if turned {
                     let flicker = if ((time * 13.0).sin() + (time * 7.3).sin()) > 0.4 { 0.45 } else { 1.0 };
-                    (sin.color(), flicker)
+                    // (The prince's colour, never one that could pass for the old man's lamp.)
+                    (crate::game::counsel::whisper_color(sin), flicker)
                 } else {
                     (0xd7ccb8, 0.8)
                 };

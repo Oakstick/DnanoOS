@@ -66,10 +66,25 @@ impl Spoken {
     pub fn color(&self) -> u32 {
         match self.who {
             Speaker::OldMan => AMBER,
-            Speaker::Whisper(sin) => sin.color(),
+            Speaker::Whisper(sin) => whisper_color(sin),
         }
     }
 }
+
+/// The colour the prince's whisper comes in: his sin's, but never near the old man's amber. Greed's
+/// gold and Gluttony's orange would pass for it, so Mammon whispers in tarnish, the green of an old
+/// coin, and Beelzebub in bile.
+pub fn whisper_color(sin: Sin) -> u32 {
+    match sin {
+        Sin::Greed => TARNISH,
+        Sin::Gluttony => BILE,
+        _ => sin.color(),
+    }
+}
+
+/// An old coin's green: Mammon's whisper; and Beelzebub's, bile.
+pub const TARNISH: u32 = 0x8fbf5a;
+pub const BILE: u32 = 0xa0b030;
 
 /// The voices on the game: the old man's counsel, the line in the panel, the prince's cheats.
 #[derive(Clone, Debug, Default)]
@@ -370,6 +385,18 @@ pub(super) fn toward(from: V, to: V) -> V {
 
 #[cfg(test)]
 mod tests {
+
+    /// The whisper never comes in a colour near the old man's amber: its colour is its tell.
+    #[test]
+    fn no_whisper_is_coloured_like_the_old_man() {
+        let rgb = |c: u32| [(c >> 16) as f64, ((c >> 8) & 0xff) as f64, (c & 0xff) as f64];
+        let a = rgb(AMBER);
+        for sin in crate::logic::sins::SINS {
+            let w = rgb(whisper_color(sin));
+            let d = ((a[0] - w[0]).powi(2) + (a[1] - w[1]).powi(2) + (a[2] - w[2]).powi(2)).sqrt();
+            assert!(d > 90.0, "{sin:?}'s whisper too near the old man's amber ({d:.0})");
+        }
+    }
 
     /// The old man names the realm's general and where an instrument of his stands, from the
     /// general the realm really holds (WARBAND.md §10.1: true by construction).
