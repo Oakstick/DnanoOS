@@ -668,6 +668,12 @@ builder is `view/crypt.rs`. Both are off the road on the map.
 - **The Grey Mire (Sloth):** still flat and shadowless, but its fog and light are a mist-teal grey
   instead of a cold blue-grey, with a little umber off the peat, and the moss pillows are deeper
   and nearer olive. Belphegor's slate blue stays in the marsh-lights and the portals.
+- **The Rotting Feast (Gluttony):**
+  - The Hall of Courses' chalk-white marble comes down to warm pale stone (its tables' marble and
+    the Kitchens' white tile too), so the red runner, the food and the candles carry the hall.
+  - The Stomach's acid and glands go from lime to a sick olive-amber, and its pools glow less.
+  - The light is a little lower and the bloom 0.95 to 1.25 (was 1.15 to 1.45), so the candles
+    no longer blow out in halos.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 

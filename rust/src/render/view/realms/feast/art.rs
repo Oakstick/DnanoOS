@@ -27,8 +27,8 @@ pub mod pal {
     pub const VERDIGRIS: u32 = 0x5aa08a | mat::METAL;
     pub const IRON: u32 = 0x3a3c42 | mat::METAL;
     pub const GOLD: u32 = 0xf2c53d | mat::GOLD;
-    pub const MARBLE_W: u32 = 0xf0e8da | MARBLE;
-    pub const MARBLE_D: u32 = 0xc8bca8 | MARBLE;
+    pub const MARBLE_W: u32 = 0xccc2b0 | MARBLE;
+    pub const MARBLE_D: u32 = 0xaaa08e | MARBLE;
     pub const VEIN_RED: u32 = 0xa02a2a | MARBLE;
     pub const GUM: u32 = 0xc04a5a | mat::SLIME;
     pub const GUM_D: u32 = 0x8a2a3a | mat::SLIME;
@@ -85,7 +85,7 @@ pub mod pal {
     pub const STEW: u32 = 0x7a4a1a | mat::SLIME;
     pub const SALT: u32 = 0xe8e4dc | mat::IVORY;
     pub const RUST: u32 = 0x6a3a22 | mat::METAL;
-    pub const ACID: u32 = 0xb0e040 | mat::GLOW;
+    pub const ACID: u32 = 0xa89a3c | mat::GLOW;
     pub const FLESH: u32 = 0xa83a42 | mat::SLIME;
     pub const FLESH_D: u32 = 0x6a1a24 | mat::SLIME;
 }

@@ -43,9 +43,9 @@ const SLIME: f32 = 14.0;
 const MARBLE: f32 = 15.0;
 
 mod pal {
-    pub const C_MARBLE: u32 = 0xeee4d2;
-    pub const MARBLE_L: u32 = 0xf8f2e6;
-    pub const MARBLE_D: u32 = 0xd6c8b0;
+    pub const C_MARBLE: u32 = 0xaca290;
+    pub const MARBLE_L: u32 = 0xb8ae9c;
+    pub const MARBLE_D: u32 = 0x988e7c;
     pub const VEIN: u32 = 0xa8303a;
     pub const VEIN_D: u32 = 0x7a1a24;
     pub const WAINSCOT: u32 = 0x4a2c1a;
@@ -65,8 +65,8 @@ mod pal {
     pub const CREAM: u32 = 0xb8a888;
     pub const GROUT: u32 = 0x3a2a20;
     pub const GREASE: u32 = 0x3a2a12;
-    pub const TILE_W: u32 = 0xeceae2;
-    pub const TILE_W2: u32 = 0xdedad0;
+    pub const TILE_W: u32 = 0xc8c4b8;
+    pub const TILE_W2: u32 = 0xb8b4a8;
     pub const DELFT: u32 = 0x3a5aa8;
     pub const TILE_RED: u32 = 0x8a2a1e;
     pub const SOOT: u32 = 0x221a16;
@@ -81,9 +81,9 @@ mod pal {
     pub const FLESH_D: u32 = 0x6a1a26;
     pub const FLESH_DD: u32 = 0x3e0e16;
     pub const RIB: u32 = 0xeae0c8;
-    pub const GLAND: u32 = 0xc8e04a;
-    pub const ACID: u32 = 0xb8e040;
-    pub const ACID_D: u32 = 0x7a9a20;
+    pub const GLAND: u32 = 0xd0bc50;
+    pub const ACID: u32 = 0xa89a3c;
+    pub const ACID_D: u32 = 0x6e6626;
     pub const ACID_HOT: u32 = 0xffa040;
     pub const CRUST: u32 = 0xd8a04a;
     pub const CRUST_L: u32 = 0xf0c870;
@@ -898,7 +898,7 @@ impl WorldView {
         for &p in &r.pools {
             let c = Vec3::new(p.x as f32, 0.0, p.y as f32);
             let out = &mut self.static_cubes;
-            glow_cube(out, c + Vec3::new(0.0, -0.1, 0.0), Vec3::new(1.0, 0.04, 1.0), 0.0, lin(ACID_D), 0.9);
+            glow_cube(out, c + Vec3::new(0.0, -0.1, 0.0), Vec3::new(1.0, 0.04, 1.0), 0.0, lin(ACID_D), 0.55);
             // A lip of flesh round the pool where it meets the floor.
             for d in CARDINALS {
                 let n = p.step(d);
@@ -1499,10 +1499,10 @@ pub(super) fn atmosphere(_v: &FeastView, r: &Feast, s: &SceneState) -> Atmospher
     at.hemi_sky = mix(pa.1, pb.1) * 0.36;
     at.hemi_ground = mix(pa.2, pb.2) * 0.42;
     at.ambient = mix(pa.3, pb.3) * 0.38;
-    at.sun = mix(pa.4, pb.4) * (1.1 - 0.15 * k);
+    at.sun = mix(pa.4, pb.4) * (1.0 - 0.12 * k);
     at.fog_near = pa.5 + (pb.5 - pa.5) * t;
     at.fog_far = pa.6 + (pb.6 - pa.6) * t;
-    at.bloom = 1.15 + 0.1 * k;
+    at.bloom = 0.95 + 0.1 * k;
     at.cloud_tint = mix(pa.2, pb.2) * 0.3;
     at
 }
