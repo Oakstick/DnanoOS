@@ -12,10 +12,12 @@ impl Game {
         self.audio.play(Sfx::Win);
         let hp = self.hero.pos();
         self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.6, 0xf2c53d, 40);
-        let arena = self.boss.is_some();
+        let arena = self.arena();
         self.juice.banner = Some(Banner {
             text: "THE GATE IS UNLOCKED".into(),
-            sub: if arena {
+            sub: if self.in_court() {
+                "IN THE SOUTH WALL: GO BACK THROUGH IT".into()
+            } else if arena {
                 "IN THE NORTH HEDGE: GO THROUGH AND ON DOWN".into()
             } else {
                 "FIND IT IN THE NORTH WALL AND GO THROUGH".into()
@@ -61,9 +63,10 @@ impl Game {
         if near && !self.gate_open && self.gate_hint <= 0.0 {
             self.gate_hint = 3.0;
             self.audio.play(Sfx::Denied);
-            let (text, color) = match &self.boss {
-                Some(b) if b.alive() => (format!("LOCKED: {} HOLDS THE KEY", self.boss_name()), self.key_color()),
-                Some(_) => (format!("LOCKED: TAKE {}", self.key_name()), self.key_color()),
+            let standing = self.boss.as_ref().map(|b| b.alive()).or(self.court.as_ref().map(|c| !c.slain));
+            let (text, color) = match standing {
+                Some(true) => (format!("LOCKED: {} HOLDS THE KEY", self.boss_name()), self.key_color()),
+                Some(false) => (format!("LOCKED: TAKE {}", self.key_name()), self.key_color()),
                 None => (format!("LOCKED  {}/{} KEYS", self.keys_got, self.keys_total), 0xf2c53d),
             };
             self.floater(g.x as f64, g.y as f64 + 0.6, text, 1.6, Some(color));
@@ -82,8 +85,8 @@ impl Game {
             }
         }
         if self.door >= 1.0 && self.hero.occupied() == g {
-            if self.boss.is_some() {
-                // Out of the Cyclops' meadow: the victory, and then the old man.
+            if self.arena() {
+                // Out of the Cyclops' meadow (or a prince's court): the victory, and then the old man.
                 self.gate_open = false;
                 self.audio.play(Sfx::Win);
                 self.enter(Screen::Won);

@@ -13,6 +13,9 @@
 //! A body foe bites from beside him and stays where it bit: nothing of it darts across the floor,
 //! stretches out to him or springs back. Only a distance foe strikes from afar, and only with a
 //! bolt, each kind's its own (`BoltLook`).
+//!
+//! A prince (COMBAT.md §13) thinks as every foe does, from the table of his phase; his hide turns
+//! blows outside his recoveries, and while his fist holds the hero he keeps still, open.
 
 use super::archetype::{Archetype, Breed, Power, FLEE};
 use super::frames::{MoveData, MoveId, Phase, Rider, Shape, BOLT_RADIUS, BOLT_SPEED, MARK_FOLLOW};
@@ -45,6 +48,8 @@ pub enum BoltLook {
     Thorn,
     Lightning,
     Drain,
+    /// Mammon's coins, flung in a fan.
+    Coin,
     Blade,
 }
 
@@ -59,6 +64,7 @@ impl BoltLook {
             EnemyKind::Arcura => BoltLook::Thorn,
             EnemyKind::Goryo => BoltLook::Lightning,
             EnemyKind::Hel => BoltLook::Drain,
+            EnemyKind::Mammon => BoltLook::Coin,
             _ => BoltLook::Hex,
         }
     }
@@ -74,6 +80,7 @@ impl BoltLook {
             BoltLook::Thorn => 0x8a6a2a,
             BoltLook::Lightning => 0xd8e8ff,
             BoltLook::Drain => 0x5a7cff,
+            BoltLook::Coin => 0xe8b030,
             BoltLook::Blade => REFLECT_TINT,
         }
     }
@@ -366,6 +373,10 @@ pub struct Lore {
     pub conjured: u8,
     /// The blow of a flurry its `struck` belongs to.
     pub bite: u8,
+    /// Frames left that a prince's fist holds the hero (his grasp landed): he keeps still, open.
+    pub hold: u16,
+    /// A prince has raised his golems (once in a fight).
+    pub summoned: bool,
 }
 
 /// Something a foe's legend did this frame, for the game to show and sound.
@@ -377,6 +388,8 @@ pub enum Cue {
     Appeared(V),
     /// The kappa's dish is full again.
     Refilled,
+    /// A prince's health has fallen into the next phase of his fight.
+    Phase(u8),
 }
 
 #[derive(Clone, Debug)]
@@ -413,7 +426,7 @@ pub struct Duelist {
     /// Its room in the Vaults (none in the ring: always in the fight).
     pub den: Option<Den>,
     /// Frames before each of its moves (in its breed's order) may be begun again.
-    pub cool: [u16; 3],
+    pub cool: [u16; 4],
     /// Its legend at work, and what it did this frame.
     pub lore: Lore,
     pub cues: Vec<Cue>,
@@ -449,7 +462,7 @@ impl Duelist {
             knock: V::new(0.0, 0.0),
             flash: 0,
             den: None,
-            cool: [0; 3],
+            cool: [0; 4],
             lore: Lore::default(),
             cues: Vec::new(),
             puppet: false,
@@ -488,8 +501,9 @@ impl Duelist {
         self.knock = V::new(0.0, 0.0);
         self.vel = V::new(0.0, 0.0);
         self.rest = 30;
-        self.cool = [0; 3];
+        self.cool = [0; 4];
         self.lore = Lore { illusion: self.lore.illusion, master: self.lore.master, ..Lore::default() };
+        self.breed.phase = 1;
     }
 
     /// A move as this body performs it: a big body's blows reach farther, and it begins them
@@ -617,7 +631,7 @@ impl Duelist {
             self.lore.rise -= 1;
             return Vec::new();
         }
-        if self.lore.plea > 0 {
+        if self.lore.plea > 0 || self.lore.hold > 0 {
             return Vec::new();
         }
         let ev = self.f.step();
@@ -643,9 +657,10 @@ impl Duelist {
         }
     }
 
-    /// Tepegöz's eye within reach: bent over in a recovery, or reeling.
+    /// Tepegöz's eye within reach (or Mammon's hide open): bent over in a recovery, reeling, or
+    /// holding the hero in his fist.
     pub fn exposed(&self) -> bool {
-        matches!(self.f.attack(), Some((_, Phase::Recovery, _))) || self.f.reeling().is_some()
+        matches!(self.f.attack(), Some((_, Phase::Recovery, _))) || self.f.reeling().is_some() || self.lore.hold > 0
     }
 
     /// What a blow on it is worth by its legend: a share through Tepegöz's ring while his eye is
@@ -653,6 +668,7 @@ impl Duelist {
     pub fn taken(&self) -> f64 {
         match self.breed.power {
             Power::Ward if !self.exposed() => WARD_SHARE,
+            Power::GoldHide if !self.exposed() => super::prince::HIDE_SHARE,
             Power::Dish if self.lore.spilled > 0 => SPILLED_TAKEN,
             _ => 1.0,
         }
@@ -705,7 +721,7 @@ impl Duelist {
                 }
             }
             Shape::Mark { radius: r } => (len(sub(p, self.lore.mark)) <= r + radius).then_some(1.0),
-            Shape::Volley { .. } | Shape::Spell => None,
+            Shape::Volley { .. } | Shape::Spell | Shape::Traps { .. } => None,
         }
     }
 
@@ -761,7 +777,7 @@ impl Duelist {
         let to = sub(s.hero, self.pos);
         let d = len(to);
         let dir = norm(to);
-        if self.lore.plea > 0 || self.lore.rise > 0 {
+        if self.lore.plea > 0 || self.lore.rise > 0 || self.lore.hold > 0 {
             self.vel = V::new(0.0, 0.0);
             return None;
         }
@@ -905,8 +921,12 @@ impl Duelist {
 }
 
 /// Frames from beginning a move of data `d` at `dist` tiles from the hero until it reaches him:
-/// its startup; for a bolt (loosed half a tile ahead), the frames of flight until it touches him.
+/// its startup; for a bolt (loosed half a tile ahead), the frames of flight until it touches him;
+/// for coins thrown on the floor, their flight and their fuse.
 pub fn lands_after(d: &MoveData, dist: f64) -> u16 {
+    if let Shape::Traps { fuse, .. } = d.shape {
+        return d.startup + super::prince::COIN_FLIGHT + fuse;
+    }
     if d.projectile {
         let travel = (dist - 0.5 - BOLT_RADIUS - HERO_RADIUS).max(0.0);
         return d.startup + ((travel / BOLT_SPEED * FPS).ceil() as u16).saturating_sub(1);

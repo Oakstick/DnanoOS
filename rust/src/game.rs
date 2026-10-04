@@ -22,6 +22,7 @@ pub mod bot;
 pub mod brawl;
 mod combat;
 mod controls;
+mod court;
 mod debug;
 mod feedback;
 mod flow;
@@ -49,6 +50,7 @@ mod vault;
 mod viewpick;
 
 pub use combat::Spirit;
+pub use court::PrinceBar;
 pub use feedback::{
     streak_tier, Banner, Floater, FlyingCoin, Juice, BRUTAL_STREAK, COIN_FLIGHT_SECONDS, DOUBLE_POINTS_SECONDS, STREAK_CALLS,
 };
@@ -388,6 +390,8 @@ pub struct Game {
     pub vault: Option<crate::logic::vault::Vault>,
     /// One of the six realms after the vaults, while he is in it: its ground and its rules' state.
     pub run: Option<crate::logic::realms::Run>,
+    /// Greed's court, the Counting House, while he is in it: its prince's fight (`court`).
+    pub court: Option<court::Court>,
     /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
     pub hoard: Hoard,
     toll_asked: bool,
@@ -518,6 +522,7 @@ impl Game {
             realm: None,
             vault: None,
             run: None,
+            court: None,
             hoard: Hoard::default(),
             toll_asked: false,
             vault_kit: (Vec::new(), 0),
@@ -535,6 +540,11 @@ impl Game {
     }
 
     /// How the level looks, and what lives there.
+    /// A boss's arena: the Cyclops' meadow, or a prince's court.
+    pub fn arena(&self) -> bool {
+        self.level.data.boss
+    }
+
     pub fn theme(&self) -> Theme {
         self.level.data.theme
     }
@@ -641,6 +651,9 @@ impl Game {
             if self.screen != Screen::Playing {
                 return;
             }
+        }
+        if self.court.is_some() {
+            self.update_court(dt);
         }
 
         self.sim.boss += lap.lap();

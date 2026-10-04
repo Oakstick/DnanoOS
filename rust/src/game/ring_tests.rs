@@ -326,8 +326,9 @@ fn the_bouts_meet_their_balance_targets() {
         assert!(s.ttk >= b.target.0 && s.ttk <= b.target.1, "{} in {:.1} s, not {:?}: {s:?}", b.name, s.ttk, b.target);
         assert_eq!(s.overlaps, 0, "{}: {s:?}", b.name);
     }
-    for k in [0, 4] {
-        let s = summarize(k, Skill::Novice, &seeds);
+    // (Nor the prince of Greed, with the kit a hero has on reaching him.)
+    for (k, tier) in [(0, 1), (4, 1), (gym::BOUTS.len() - 1, 2)] {
+        let s = summarize_as(k, Skill::Novice, &seeds, (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier)));
         assert_eq!(s.wins, 0, "a masher cannot beat {}: {s:?}", gym::BOUTS[k].name);
     }
     let s = summarize(0, Skill::Adept, &seeds);
@@ -648,4 +649,22 @@ fn the_kitsune_conjures_illusions_a_blow_undoes_and_the_karakoncolos_roar_dooms_
         g.hero.pos()
     );
     assert_eq!(g.hero.root, 1.0);
+}
+
+/// COMBAT.md §13: Mammon in his own court, the Counting House, by the bots: with the kit a hero
+/// has on reaching him (tiers 1 and 2) the expert brings him down through all three phases without
+/// falling; a masher loses every life to him in his first.
+#[test]
+fn the_expert_beats_mammon_in_his_court_and_a_masher_does_not() {
+    use super::bot::{court_fight, Loadout, Skill};
+    use crate::logic::heroes::HeroKind;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    for (tier, seed) in [(1, 1), (2, 2)] {
+        let kit = (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier));
+        let f = court_fight(Skill::Expert, seed, kit, 200.0);
+        assert!(f.slain && f.deaths == 0 && f.phase == 3, "tier {tier}: {f:?}");
+        assert_eq!(f.stats.overlaps, 0, "{f:?}");
+    }
+    let f = court_fight(Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
+    assert!(!f.slain && f.game_over, "{f:?}");
 }

@@ -50,7 +50,7 @@ impl Game {
                 let text = format!("KEY {}/{}", self.keys_got, self.keys_total);
                 self.floater(ox, oy, text, 1.2, Some(0xf2c53d));
                 // The dungeon takes it badly: someone new comes for him at once, and sooner after.
-                if self.boss.is_none() && self.keys_got < self.keys_total {
+                if !self.arena() && self.keys_got < self.keys_total {
                     self.spawn_timer = self.spawn_timer.min(1.5);
                 }
                 if self.keys_got < self.keys_total {

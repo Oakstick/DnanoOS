@@ -610,7 +610,8 @@ mod tests {
         for _ in 0..((CLEARED_SECONDS + 0.1) / STEP) as usize {
             g.update(STEP);
         }
-        assert_eq!((g.screen, g.realm, g.boss.is_some()), (Screen::Ready, Some(Sin::Greed), true), "Mammon's court");
+        assert_eq!((g.screen, g.realm, g.in_court()), (Screen::Ready, Some(Sin::Greed), true), "Mammon's court");
+        assert!(g.boss.is_none() && g.prince().is_some(), "Mammon himself, by frame data");
         assert!(g.vault.is_none());
     }
 

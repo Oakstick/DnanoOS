@@ -85,6 +85,11 @@ pub enum EnemyKind {
     Gaki,
     /// An ellepige: an elf-maid of the Garden of Thorns, lovely from the front and hollow behind.
     Ellepige,
+    // ---- the princes' courts, in no stage's cast
+    /// Mammon, the prince of Greed: a demon-king of gold, fought in the Counting House.
+    Mammon,
+    /// A gold golem: coins and bars fused into a lumbering body, raised by Mammon from his heaps.
+    GoldGolem,
 }
 
 impl EnemyKind {
@@ -103,6 +108,14 @@ impl EnemyKind {
     pub const STAGES: u8 = 7;
     /// The realms' own new foes, which belong to no stage.
     pub const REALMS_OWN: [EnemyKind; 4] = [EnemyKind::Peerless, EnemyKind::Ganglot, EnemyKind::Gaki, EnemyKind::Ellepige];
+
+    /// The princes' courts' own: the princes, and what they raise.
+    pub const COURTS_OWN: [EnemyKind; 2] = [EnemyKind::Mammon, EnemyKind::GoldGolem];
+
+    /// One of the courts' own.
+    pub fn court_own(self) -> bool {
+        Self::COURTS_OWN.contains(&self)
+    }
 
     /// One of the realms' own new foes.
     pub fn realm_own(self) -> bool {
@@ -771,7 +784,9 @@ impl Brain {
             | EnemyKind::Peerless
             | EnemyKind::Ganglot
             | EnemyKind::Gaki
-            | EnemyKind::Ellepige => hp,
+            | EnemyKind::Ellepige
+            | EnemyKind::Mammon
+            | EnemyKind::GoldGolem => hp,
             // Swoops at where he is heading, but short of it, and swerves on the way.
             EnemyKind::LargeBat => {
                 let v = ctx.hero.dir.vecf();
@@ -1018,13 +1033,15 @@ pub fn spec_of(grid: &Grid, kind: EnemyKind) -> EnemySpec {
     enemy_specs(grid, kind.stage()).into_iter().find(|s| s.kind == kind).expect("every kind has its stage's spec")
 }
 
-/// The realms' own foes: each kind's name, colour and pace (none for any other kind).
+/// The realms' (and the courts') own foes: each kind's name, colour and pace (none for any other kind).
 pub fn realm_foe_spec(kind: EnemyKind) -> Option<EnemySpec> {
     let (name, color, speed_factor) = match kind {
         EnemyKind::Peerless => ("The Peerless", 0xd8c8ff, 1.0),
         EnemyKind::Ganglot => ("Ganglöt", 0x9aa4b0, 0.45),
         EnemyKind::Gaki => ("Gaki", 0xc8b49a, 1.05),
         EnemyKind::Ellepige => ("Ellepige", 0xf0e0ea, 1.0),
+        EnemyKind::Mammon => ("Mammon", 0xf2c53d, 0.8),
+        EnemyKind::GoldGolem => ("Gold Golem", 0xd8a83a, 0.6),
         _ => return None,
     };
     Some(EnemySpec { kind, name: name.into(), color, scatter_target: P::new(0, 0), exit_delay: 0.0, speed_factor })

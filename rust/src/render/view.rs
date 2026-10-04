@@ -34,11 +34,12 @@ use crate::render::foliage::{FOREST, MEADOW};
 mod angels;
 mod animation;
 mod camera;
+mod court_greed;
 mod crypt;
-mod estate;
 mod duel;
 pub mod effects;
 mod emit;
+mod estate;
 mod fade;
 mod forest;
 mod forge;
@@ -51,8 +52,8 @@ mod lookdev;
 mod meadow;
 mod models;
 mod realms;
-mod select;
 mod sanctum;
+mod select;
 mod showcase;
 mod story;
 mod vault;
@@ -159,6 +160,8 @@ pub struct SceneState<'a> {
     pub hazards: &'a [crate::logic::combat::ails::Hazard],
     pub flashes: &'a [crate::logic::combat::ails::Flash],
     pub ails: crate::logic::combat::ails::Ails,
+    /// A prince's coins lying on the floor, to burst.
+    pub traps: &'a [crate::logic::combat::prince::Trap],
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -235,6 +238,8 @@ pub struct WorldView {
     vault: Option<vault::VaultView>,
     /// One of the six realms after the vaults, while he is in it.
     run_view: Option<realms::RunView>,
+    /// Greed's court, the Counting House, while he is in it.
+    counting: Option<court_greed::CountingView>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -388,6 +393,7 @@ impl WorldView {
             tint: None,
             vault: None,
             run_view: None,
+            counting: None,
             gym: false,
             water: Vec::new(),
             garden: None,
@@ -493,6 +499,11 @@ impl WorldView {
         self.tint = theme.sin().filter(|_| vault.is_none() && run.is_none()).map(|s| s.color());
         self.vault = None;
         self.run_view = None;
+        self.counting = None;
+        let counting = theme.is_court_of_greed();
+        if counting {
+            self.tint = None;
+        }
         self.garden = garden.cloned();
         self.fountain = None;
         self.wisps = None;
@@ -538,6 +549,8 @@ impl WorldView {
             self.build_vault(grid, v);
         } else if let Some(r) = run {
             self.build_run(grid, r);
+        } else if counting {
+            self.build_counting_house(grid);
         } else if self.hell {
             self.build_hell(grid);
         } else if meadow {
@@ -547,15 +560,15 @@ impl WorldView {
         } else {
             self.build_forest(grid);
         }
-        if let Some(g) = gate.filter(|_| vault.is_none() && run.is_none()) {
+        if let Some(g) = gate.filter(|_| vault.is_none() && run.is_none() && !counting) {
             // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
         // The garden and its gate, and the Cyclops' meadow, graded into the board's palette.
         if self.estate_art || theme == Theme::Meadow || (self.hell && !self.gym) {
             self.grade_estate();
-        } else if vault.is_some() || run.is_some() {
-            // The sin realms: graded into the board, their sin's colour kept as their accent.
+        } else if vault.is_some() || run.is_some() || counting {
+            // The sin realms (and Greed's court): graded into the board, their sin's colour kept as their accent.
             self.grade_scenery(theme.sin().map(|s| s.color()));
         }
         self.mist_set = InstanceSet::new(self.mist.clone());

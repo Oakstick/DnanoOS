@@ -117,7 +117,8 @@ impl Game {
      * open grass if it died over stone or water: a tile he can walk onto.
      */
     pub(super) fn drop_red_key(&mut self, at: V) {
-        let (x0, y0, x1, y1) = ARENA;
+        // (In a prince's court, anywhere on its floor.)
+        let (x0, y0, x1, y1) = if self.in_court() { (0, 0, self.level.grid.width - 1, self.level.grid.height - 1) } else { ARENA };
         let g = &self.level.grid;
         let spot = g
             .cells()
@@ -175,45 +176,54 @@ impl Game {
                 self.view.shake(0.12);
                 self.audio.play(Sfx::ArrowHit);
             }
-            BossEvent::Died(p) => {
-                self.view.explode(grid, p.x, p.y, 0);
-                self.view.sparkle(grid, p.x, p.y, 1.2, 0xf2c53d, 60);
-                self.view.sparkle(grid, p.x, p.y, 1.0, 0xffffff, 30);
-                self.view.dust(grid, p.x, p.y, 0x8a2a6a, 40, 5.0);
-                self.view.shockwave(grid, p.x, p.y);
-                self.view.shake(1.0);
-                self.audio.play(Sfx::Explode);
-                self.audio.play(Sfx::BossDeath);
-                self.audio.set_threat(0.0);
-                self.award(POINTS_CYCLOPS);
-                let bounty = COINS_BOSS + 100 * self.dungeon as u32;
-                self.earn(bounty);
-                self.floater(p.x, p.y - 0.8, format!("+{bounty} {}", progression::coin(self.hero_kind)), 2.2, Some(0xffd84a));
-                self.floater(p.x, p.y, format!("+{POINTS_CYCLOPS}"), 2.0, Some(0xf2c53d));
-                let runes = RUNES_BOSS + self.dungeon as u32;
-                self.progress.runes += runes;
-                self.floater(p.x, p.y + 0.8, format!("+{runes} {}", progression::gems(self.hero_kind, runes)), 2.4, Some(0x9ad1ff));
-                // Its downfall gives up a relic of the old heroes.
-                self.take_relic(p);
-                self.events.push(GameEvent::BossSlain);
-                // It drops its key to the gate in the north hedge: the red diamond, or the sin's.
-                self.drop_red_key(p);
-                self.juice.banner = Some(Banner {
-                    text: format!("{} IS SLAIN", self.boss_name()),
-                    sub: format!("TAKE {} TO THE GATE IN THE NORTH HEDGE", self.key_name()),
-                    color: self.key_color(),
-                    life: 3.5,
-                    max: 3.5,
-                });
-                self.save_progress();
-                if let Some(sin) = self.realm {
-                    // The sin is conquered: its key is his, for the seal.
-                    self.sins_cleared |= sin.bit();
-                    self.checkpoint(save::Stage::SinShop(sin));
-                } else {
-                    self.checkpoint(save::Stage::Shop(self.dungeon));
-                }
-            }
+            BossEvent::Died(p) => self.boss_slain(p),
+        }
+    }
+
+    /// The boss falls (the Cyclops, or a prince in his court): the blast and the bounty, a relic,
+    /// his key on the floor, and the checkpoint at the old man's (the sin's key his, in a court).
+    pub(super) fn boss_slain(&mut self, p: V) {
+        let grid = &self.level.grid;
+        self.view.explode(grid, p.x, p.y, 0);
+        self.view.sparkle(grid, p.x, p.y, 1.2, 0xf2c53d, 60);
+        self.view.sparkle(grid, p.x, p.y, 1.0, 0xffffff, 30);
+        self.view.dust(grid, p.x, p.y, 0x8a2a6a, 40, 5.0);
+        self.view.shockwave(grid, p.x, p.y);
+        self.view.shake(1.0);
+        self.audio.play(Sfx::Explode);
+        self.audio.play(Sfx::BossDeath);
+        self.audio.set_threat(0.0);
+        self.award(POINTS_CYCLOPS);
+        let bounty = COINS_BOSS + 100 * self.dungeon as u32;
+        self.earn(bounty);
+        self.floater(p.x, p.y - 0.8, format!("+{bounty} {}", progression::coin(self.hero_kind)), 2.2, Some(0xffd84a));
+        self.floater(p.x, p.y, format!("+{POINTS_CYCLOPS}"), 2.0, Some(0xf2c53d));
+        let runes = RUNES_BOSS + self.dungeon as u32;
+        self.progress.runes += runes;
+        self.floater(p.x, p.y + 0.8, format!("+{runes} {}", progression::gems(self.hero_kind, runes)), 2.4, Some(0x9ad1ff));
+        // Its downfall gives up a relic of the old heroes.
+        self.take_relic(p);
+        self.events.push(GameEvent::BossSlain);
+        // It drops its key to the gate in the north hedge: the red diamond, or the sin's.
+        self.drop_red_key(p);
+        self.juice.banner = Some(Banner {
+            text: format!("{} IS SLAIN", self.boss_name()),
+            sub: format!(
+                "TAKE {} TO THE GATE {}",
+                self.key_name(),
+                if self.in_court() { "IN THE SOUTH WALL" } else { "IN THE NORTH HEDGE" }
+            ),
+            color: self.key_color(),
+            life: 3.5,
+            max: 3.5,
+        });
+        self.save_progress();
+        if let Some(sin) = self.realm {
+            // The sin is conquered: its key is his, for the seal.
+            self.sins_cleared |= sin.bit();
+            self.checkpoint(save::Stage::SinShop(sin));
+        } else {
+            self.checkpoint(save::Stage::Shop(self.dungeon));
         }
     }
 

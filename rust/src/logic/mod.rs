@@ -3,6 +3,7 @@
 pub mod angels;
 pub mod boss;
 pub mod combat;
+pub mod court;
 pub mod enemy;
 pub mod garden;
 pub mod gear;

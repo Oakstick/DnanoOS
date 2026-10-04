@@ -21,6 +21,7 @@ use crate::logic::progression::{self, Tree};
 use crate::render::icons::{icon, Icon};
 
 mod controls;
+mod court;
 mod map;
 mod ring;
 mod shop;
@@ -552,6 +553,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
             (format!("{key}: TO THE GATE"), g.key_color())
         };
         o.text(&text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
+    } else if g.in_court() {
+        court::draw_status(o, g, rc, ty, small);
     } else if g.in_vault() {
         // The hoard: what he carries out of the vaults, for Mammon to ask his toll on.
         let cp = j.coin_punch;
@@ -634,6 +637,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     }
 
     draw_boss_bar(o, g, t);
+    court::draw_prince_bar(o, g, t);
 
     // Frenzy window, centered along the top edge.
     if g.frenzy.active() {
@@ -1004,8 +1008,8 @@ fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let y = h * 0.42;
     o.circle(w / 2.0, y, t * 3.2 * pop, [1.0, 1.0, 1.0, 0.05 * alpha]);
     o.text(&n.to_string(), w / 2.0, y, t * 5.0 * pop, rgba(GOLD, alpha), Align::Center, true);
-    let ready = if g.boss.is_some() { format!("{} AWAITS", g.boss_name()) } else { "GET READY".to_string() };
-    o.text(&ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.boss.is_some() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
+    let ready = if g.arena() { format!("{} AWAITS", g.boss_name()) } else { "GET READY".to_string() };
+    o.text(&ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.arena() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
     // The level's name, large and gold across the top, as the count begins.
     let name = g.level.data.name.to_uppercase();
     let fit = w * 0.86 / (name.chars().count().max(1) as f32 * o.measure("M", 1.0));
@@ -1096,16 +1100,16 @@ fn where_line(g: &Game) -> String {
         "THE VAULTS OF MAMMON: TAKE ALL YOU CAN CARRY, AND SEE WHAT IT COSTS YOU AT THE FAR PORTAL".to_string()
     } else if g.theme().is_gym() {
         "ONE OF EVERY FOE, STAGE BY STAGE: THEY RISE AGAIN WHEN THEY FALL".to_string()
-    } else if let Some(line) = g.run_where().filter(|_| g.boss.is_none()) {
+    } else if let Some(line) = g.run_where().filter(|_| !g.arena()) {
         line
     } else if let Some(sin) = g.realm {
-        if g.boss.is_some() {
+        if g.arena() {
             format!("THE REALM OF {}: {} GUARDS ITS KEY", sin.title(), sin.prince().to_uppercase())
         } else {
             format!("THE REALM OF {}: EIGHT KEYS OPEN THE WAY TO ITS PRINCE", sin.title())
         }
     } else {
-        crate::logic::story::depth_line(g.dungeon, g.boss.is_some())
+        crate::logic::story::depth_line(g.dungeon, g.arena())
     }
 }
 
@@ -1174,6 +1178,8 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 EnemyKind::Ganglot => 0,
                 EnemyKind::Gaki => sp.cast.iter().position(|c| c.1 == "Gaki").unwrap_or(7),
                 EnemyKind::Ellepige => sp.cast.iter().position(|c| c.1 == "Ellepige").unwrap_or(3),
+                // (The courts' own have no card of their own yet: Mammon is drawn as the blemmyes.)
+                EnemyKind::Mammon | EnemyKind::GoldGolem => 7,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;

@@ -14,7 +14,8 @@
 //! a burrow's mark on the floor (leaping when it is too late to walk), step out of fire,
 //! leap a grab they cannot parry (the adept), strike Tepegöz only while his eye is in reach (the
 //! expert), and never strike a felled dragon begging for a second blow. Nothing out of reach is a
-//! target.
+//! target. Against a prince (§13) they step off his coins before they burst, by the way clearest
+//! of the others, and held in his fist they strike him (as a masher would anyway).
 //!
 //! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
 //! kill and damage taken against the targets of COMBAT.md §2.1 (`gym::Bout::target`).
@@ -232,6 +233,22 @@ impl Bot {
         }
         for h in spar.hazards.iter().filter(|h| h.burns(hp, HERO_RADIUS + 0.1)) {
             out.push(Dodge { t: 0.0, out: math::norm(math::sub(hp, h.pos)) });
+        }
+        // A prince's coins lying on the floor, with him on one: off by the way clearest of them all.
+        let armed: Vec<&crate::logic::combat::prince::Trap> = spar.traps.iter().filter(|t| t.armed()).collect();
+        if let Some(t) = armed.iter().filter(|t| t.reaches(hp, HERO_RADIUS + 0.35)).min_by_key(|t| t.fuse) {
+            let clearance = |dir: V| {
+                let p = math::add(hp, math::scale(dir, 1.7));
+                armed.iter().map(|o| math::len(math::sub(p, o.pos)) - o.radius).fold(f64::MAX, f64::min)
+            };
+            let away = math::sub(hp, t.pos);
+            let base = if math::len(away) < 0.05 { 0.0 } else { math::angle(away) };
+            let best = (0..16)
+                .map(|k| math::from_angle(base + k as f64 * std::f64::consts::TAU / 16.0))
+                .filter(|&dir| Self::keep_in(g, hp, dir) == dir)
+                .max_by(|a, b| clearance(*a).total_cmp(&clearance(*b)))
+                .unwrap_or_else(|| math::from_angle(base));
+            out.push(Dodge { t: t.fuse as f64, out: best });
         }
         for d in out.iter_mut() {
             d.out = Self::keep_in(g, hp, d.out);
@@ -924,5 +941,66 @@ pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
             );
         }
     }
+    out
+}
+
+/// How a fight in a prince's court went.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CourtFight {
+    /// The prince fell, and the key lay on the floor.
+    pub slain: bool,
+    pub game_over: bool,
+    pub deaths: u32,
+    /// Seconds of play, the phase he was brought to, and the fight's numbers (the last life's).
+    pub secs: f64,
+    pub phase: u8,
+    pub stats: BoutStats,
+}
+
+/// A bot fights Greed's prince in his court, the Counting House, until he falls, its lives run
+/// out, or `limit` seconds pass.
+pub fn court_fight(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> CourtFight {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Court(crate::logic::sins::Sin::Greed));
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    // (It plays from the top view, as in the ring and the vaults: its stick is the world's way round.)
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = CourtFight::default();
+    let mut t = 0.0;
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        t += step;
+        match g.screen {
+            super::Screen::GameOver => {
+                out.game_over = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+        out.phase = out.phase.max(g.prince().map(|d| d.breed.phase).unwrap_or(0));
+
+        if g.court.as_ref().is_some_and(|c| c.slain) {
+            out.slain = true;
+            break;
+        }
+    }
+    out.secs = t;
+    out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
+    out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
     out
 }

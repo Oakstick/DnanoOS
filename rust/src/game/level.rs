@@ -115,7 +115,7 @@ impl Game {
         }
         // Dungeon I is a landscape garden: a fountain and its bridged channels, a churchyard, temples and flower beds.
         self.garden = None;
-        if self.level.data.boss {
+        if self.level.data.boss && !data.theme.is_court_of_greed() {
             // The arena's stream runs in a stone channel under stone bridges too.
             self.garden = garden::stream_plan(&self.level.grid);
             if let Some(plan) = &self.garden {
@@ -188,7 +188,13 @@ impl Game {
         if let Some(sin) = run_sin {
             self.enter_run(sin);
         }
-        self.boss = if self.level.data.boss {
+        // Greed's court: Mammon by frame data, not the Cyclops (`court`).
+        let court = data.theme.is_court_of_greed();
+        self.court = None;
+        if court {
+            self.enter_court();
+        }
+        self.boss = if self.level.data.boss && !court {
             let (x0, y0, x1, y1) = ARENA;
             let hp = CYCLOPS_HP + CYCLOPS_HP_STEP * index as i32;
             let min = V::new(x0 as f64 + 1.0, y0 as f64 + 0.5);
@@ -328,6 +334,7 @@ impl Game {
         }
         self.boss_shots.clear();
         self.reset_run();
+        self.reset_court();
     }
 
     pub(super) fn start_game(&mut self) {

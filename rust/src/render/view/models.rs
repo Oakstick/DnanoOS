@@ -41,6 +41,9 @@ pub(super) enum RigId {
     Ganglot,
     Gaki,
     Ellepige,
+    /// The courts' own: Mammon and his gold golems.
+    Mammon,
+    GoldGolem,
 }
 
 pub(super) struct Models {
@@ -85,6 +88,9 @@ pub(super) struct Models {
     pub(super) ganglot: Rig,
     pub(super) gaki: Rig,
     pub(super) ellepige: Rig,
+    /// The courts' own: Mammon and his gold golems.
+    pub(super) mammon: Rig,
+    pub(super) gold_golem: Rig,
     pub(super) medkit: Mesh,
     pub(super) bomb: Mesh,
     pub(super) arrow: Mesh,
@@ -197,6 +203,10 @@ impl Models {
             use crate::render::foes_thorns::{ellepige, ELLEPIGE_RIG, ELLEPIGE_VOXEL};
             build_rig(&ellepige(), ELLEPIGE_RIG, ELLEPIGE_VOXEL)
         };
+        let (mammon, gold_golem) = {
+            use crate::render::foes_court::{gold_golem, mammon, GOLEM_RIG, GOLEM_VOXEL, MAMMON_RIG, MAMMON_VOXEL};
+            (build_rig(&mammon(), MAMMON_RIG, MAMMON_VOXEL), build_rig(&gold_golem(), GOLEM_RIG, GOLEM_VOXEL))
+        };
         // The played hero and his shield raised, built together (the raised pair is only remade
         // when his kit changes, so it must be made here too, or he blocks with a bare fist).
         let (hero, raised) = forge::hero_rigs(ragnar, forge::Kit::plain(1, Some(1)));
@@ -241,6 +251,8 @@ impl Models {
             ganglot,
             gaki,
             ellepige,
+            mammon,
+            gold_golem,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
             arrow: crate::render::props::arrow(),
@@ -316,6 +328,8 @@ impl Models {
             RigId::Ganglot => &self.ganglot,
             RigId::Gaki => &self.gaki,
             RigId::Ellepige => &self.ellepige,
+            RigId::Mammon => &self.mammon,
+            RigId::GoldGolem => &self.gold_golem,
         }
     }
 }

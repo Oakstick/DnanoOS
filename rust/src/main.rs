@@ -86,6 +86,18 @@ fn main() {
         );
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--court") {
+        // Greed's prince in his court, played by a bot: `--court SKILL TIER SEED` (skill 0 novice,
+        // 1 adept, 2 expert).
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (skill, tier, seed) = (num(1, 2), num(2, 1) as u8, num(3, 1));
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        let kit = (tier > 1).then(|| void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, tier));
+        let r = void_harvest::game::bot::court_fight(skill, seed, kit, 240.0);
+        println!("THE COUNTING HOUSE {skill:?} tier {tier} seed {seed}: {r:?}");
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--stage") {
         // COMBAT.md §11: stage S's bouts, every bot skill, Ragnar's kit at three tiers about the
         // bouts' own, N seeds: `--stage S N`.

@@ -178,6 +178,8 @@ impl WorldView {
             Atmosphere { bloom: 0.3, ..estate::garden_atmosphere() }
         } else if self.vault.is_some() {
             vault::vault_atmosphere()
+        } else if self.counting.is_some() {
+            court_greed::counting_atmosphere()
         } else if let Some(a) = self.run_atmosphere(s) {
             a
         } else if self.hell {
@@ -197,7 +199,14 @@ impl WorldView {
         f.haze = self.level_haze();
         // Seer's Sight (path 3) sees through the dark.
         let nv = if s.hero.sees() { 0.6 } else { 0.0 };
-        if nv > 0.0 && !self.meadow && !self.hell && !self.showcase && self.vault.is_none() && self.run_view.is_none() {
+        if nv > 0.0
+            && !self.meadow
+            && !self.hell
+            && !self.showcase
+            && self.vault.is_none()
+            && self.run_view.is_none()
+            && self.counting.is_none()
+        {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
             a.hemi_sky *= 1.0 + 1.4 * nv;
@@ -231,6 +240,8 @@ impl WorldView {
             Haze::default()
         } else if self.vault.is_some() {
             haze(0.008, 2.5)
+        } else if self.counting.is_some() {
+            haze(0.012, 2.0)
         } else if let Some(r) = &self.run_view {
             match r {
                 realms::RunView::Sloth(_) => haze(0.06, 1.2),
@@ -324,8 +335,8 @@ impl WorldView {
         if self.hell {
             hero_light *= 0.45; // the lava lights him from below
         }
-        if self.vault.is_some() {
-            hero_light *= 0.5; // candlelight everywhere
+        if self.vault.is_some() || self.counting.is_some() {
+            hero_light *= 0.5; // candlelight everywhere (in the court, the braziers)
         }
         if self.crypt {
             hero_light *= 0.4; // the braziers are the vaults' light; his lantern only keeps him seen
@@ -455,7 +466,9 @@ impl WorldView {
                     | EnemyKind::Ejder
                     | EnemyKind::FrostGiant
                     | EnemyKind::Surtr
-                    | EnemyKind::Nidhogg => 1.0,
+                    | EnemyKind::Nidhogg
+                    | EnemyKind::Mammon => 1.0,
+                    EnemyKind::GoldGolem => 0.6,
                     EnemyKind::Peerless | EnemyKind::Ganglot | EnemyKind::Gaki | EnemyKind::Ellepige => 0.45,
                 };
                 f.lights.push(Light {
@@ -702,6 +715,9 @@ impl WorldView {
             // Underground: no sea of cloud, and no fireflies.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
             self.emit_vault(s, time, hero_pos, f);
+        } else if self.counting.is_some() {
+            // Greed's court: indoors, its braziers and its gold.
+            self.emit_counting_house(s, time, hero_pos, f);
         } else if self.run_view.is_some() {
             // A realm after the vaults: its own sky and life, no sea of cloud, no fireflies.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
@@ -726,7 +742,7 @@ impl WorldView {
             lin(MOTE)
         };
         for (i, b) in self.mote_base.iter().enumerate() {
-            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() {
+            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() || self.counting.is_some() {
                 break;
             }
             let fi = i as f32;
