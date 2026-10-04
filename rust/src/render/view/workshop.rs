@@ -58,10 +58,10 @@ const ANVIL: Vec3 = Vec3::new(-4.0, 0.0, -3.0);
 const ANVIL_TOP: f32 = 0.62;
 const RACK: Vec3 = Vec3::new(-4.05, 0.0, -4.6);
 const RACK_STEP: f32 = 0.22;
-const SHIELDS: Vec3 = Vec3::new(0.1, 0.0, -4.9);
+const SHIELDS: Vec3 = Vec3::new(-0.2, 0.0, -4.9);
 const SHIELD_STEP: f32 = 0.56;
 const SHIELD_ROWS: [f32; 2] = [1.95, 1.2];
-const BLOCK: Vec3 = Vec3::new(-1.85, 0.0, -3.7);
+const BLOCK: Vec3 = Vec3::new(-2.05, 0.0, -3.7);
 const BLOCK_TOP: f32 = 0.55;
 const BENCH: Vec3 = Vec3::new(6.45, 0.0, -2.6);
 const BENCH_TOP: f32 = 0.88;
@@ -77,9 +77,16 @@ const TROPHY_ROWS: [f32; 2] = [1.95, 1.3];
 const DOOR: Vec3 = Vec3::new(1.2, 0.0, HALF_D);
 /// The open floor in the middle, which the walkers cross on the way from one side to another.
 const MIDDLE: Vec3 = Vec3::new(0.2, 0.0, 0.3);
-/// The lamps: on the back wall between the racks and the shields, by the bench, by the war
-/// table, and by the door.
-const LAMPS: [Vec3; 4] = [Vec3::new(-2.3, 2.15, -4.7), Vec3::new(6.7, 2.05, 0.45), Vec3::new(-6.7, 2.05, 0.45), Vec3::new(-0.1, 2.25, 4.7)];
+/// The lamps: on the back wall between the racks and the shields, by the yard, by the war
+/// table, by the door, beside the shield wall, and at the end of the bench.
+const LAMPS: [Vec3; 6] = [
+    Vec3::new(-2.3, 2.15, -4.7),
+    Vec3::new(6.7, 2.05, 0.45),
+    Vec3::new(-6.7, 2.05, 0.45),
+    Vec3::new(-0.1, 2.25, 4.7),
+    Vec3::new(1.5, 2.15, -4.7),
+    Vec3::new(6.75, 2.0, -4.3),
+];
 
 /// One station's place in the room: the camera's eye and what it frames (set on the left of
 /// the screen, the wares' panel being on the right), and where the old man, the hero and
@@ -128,9 +135,9 @@ fn spot(s: Station) -> Spot {
             work: ANVIL + v(0.0, ANVIL_TOP, 0.0),
         },
         Station::ShieldWall => Spot {
-            eye: v(0.55, 2.7, 1.9),
-            subject: v(-0.6, 1.2, -3.8),
-            left: 0.5,
+            eye: v(-0.3, 2.7, 1.9),
+            subject: v(-0.75, 1.2, -3.8),
+            left: 0.55,
             old_man: BLOCK + v(0.0, 0.0, -0.5),
             hero: (0.75, 1.25),
             dog: (1.2, 2.0),
@@ -150,7 +157,7 @@ fn spot(s: Station) -> Spot {
             subject: v(3.55, 0.75, 1.95),
             left: 0.45,
             old_man: YARD + v(1.35, 0.0, -0.15),
-            hero: (0.2, 0.35),
+            hero: (0.55, 0.3),
             dog: (-0.55, 1.5),
             work: DUMMY + v(0.0, 1.1, 0.0),
         },
@@ -263,9 +270,7 @@ fn dressing_set(dress: Dress) -> Vec<Instance> {
     let mut b = Build::new();
     floor(&mut b, dress);
     walls(&mut b, dress);
-    if std::env::var_os("VH_CUTAWAY").is_none() {
-        ceiling(&mut b, dress);
-    }
+    ceiling(&mut b, dress);
     hearth(&mut b, dress);
     anvil(&mut b, dress);
     rack(&mut b, dress);
@@ -569,7 +574,7 @@ fn hearth(b: &mut Build, dress: Dress) {
             }
             for k in 0..9 {
                 let a = k as f32 * 0.7;
-                b.glow(c + Vec3::new(a.cos() * 0.3, 0.4, a.sin() * 0.22), Vec3::splat(0.09), 0x3a1408, lin(0xff5a18) * 0.7);
+                b.glow(c + Vec3::new(a.cos() * 0.3, 0.4, a.sin() * 0.22), Vec3::splat(0.09), 0x3a1408, lin(0xff5a18) * 0.45);
             }
             for i in 0..3 {
                 b.seg(
@@ -599,7 +604,7 @@ fn hearth(b: &mut Build, dress: Dress) {
             }
             for k in 0..7 {
                 let a = k as f32 * 0.9;
-                b.glow(c + Vec3::new(a.cos() * 0.25, 0.06, a.sin() * 0.2), Vec3::splat(0.1), 0x3a1408, lin(0xff5a18) * 0.7);
+                b.glow(c + Vec3::new(a.cos() * 0.25, 0.06, a.sin() * 0.2), Vec3::splat(0.1), 0x3a1408, lin(0xff5a18) * 0.45);
             }
             for k in 0..3 {
                 let a = k as f32 / 3.0 * TAU + 0.4;
@@ -1367,9 +1372,9 @@ impl WorldView {
             Some(Work { station, .. }) if station == w.station && st.old_man.pos.distance(sp.old_man) < 0.1 => yaw_to(sp.old_man, sp.work),
             _ => face_man,
         };
-        st.old_man.step(sp.old_man, face_man, 1.7, dt);
-        st.hero.step(sp.hero_at(), face_hero, 2.2, dt);
-        st.dog.step(sp.dog_at(), face_dog, 2.6, dt);
+        st.old_man.step(sp.old_man, face_man, 2.3, dt);
+        st.hero.step(sp.hero_at(), face_hero, 2.8, dt);
+        st.dog.step(sp.dog_at(), face_dog, 3.2, dt);
         let lie = st.dog.moving < 0.05 && w.mood == QuitmerMood::Calm;
         st.settle = (st.settle + if lie { dt * 1.2 } else { -dt * 3.0 }).clamp(0.0, 1.0);
     }
@@ -1420,7 +1425,8 @@ impl WorldView {
         let dress = Dress::of(w.hero);
         let at = |p: Vec3| WORKSHOP + p;
         f.atmosphere = workshop_atmosphere(dress);
-        f.haze = Haze { density: 0.006, floor: 0.0, falloff: 1.2 };
+        // No haze: its glow round the lamps hung in the air before the stations like ghosts.
+        f.haze = Haze::default();
         f.bounds = Vec4::new(WORKSHOP.x - HALF_W, WORKSHOP.z - HALF_D, WORKSHOP.x + HALF_W, WORKSHOP.z + HALF_D);
         if let Some(set) = &st.sets[dress.index()] {
             f.sets.push(set.clone());
@@ -1438,7 +1444,7 @@ impl WorldView {
                 if !(mine && tier == w.wield) {
                     let p = at(rack_slot(tier));
                     let root = Mat4::from_translation(p) * Mat4::from_rotation_x(-0.1) * Mat4::from_rotation_y(0.5);
-                    let tint = if mine { Vec3::ONE } else { Vec3::splat(0.32) };
+                    let tint = if mine { Vec3::ONE } else { Vec3::splat(0.42) };
                     emit_rig(
                         &mut f.rigs,
                         &r.blades[(tier - 1) as usize],
@@ -1456,7 +1462,7 @@ impl WorldView {
                         * Mat4::from_rotation_y(PI)
                         * Mat4::from_rotation_x(0.08)
                         * Mat4::from_scale(Vec3::splat(0.85));
-                    let tint = if mine { Vec3::ONE } else { Vec3::splat(0.3) };
+                    let tint = if mine { Vec3::ONE } else { Vec3::splat(0.45) };
                     let rig = &r.shields[(tier - 1) as usize];
                     emit_rig(&mut f.rigs, rig, &Pose::rest(rig), root, tint, 1.0, Vec3::ZERO);
                 }
@@ -1480,7 +1486,7 @@ impl WorldView {
             let size = 0.07 * (1.0 - rise * 0.7);
             f.additive.push(Instance::new(
                 Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(size, size * 1.6, size)),
-                lin([0xffc060, 0xff8a30, 0xff6a20][k % 3]) * 1.1,
+                lin([0xffc060, 0xff8a30, 0xff6a20][k % 3]) * 0.8,
                 0.75 * (1.0 - rise),
                 Vec3::ZERO,
                 SHADE_UNLIT,
@@ -1718,7 +1724,7 @@ fn workshop_atmosphere(dress: Dress) -> Atmosphere {
         ambient: lin(0x28302e) * 1.15,
         sun_dir: Vec3::new(-0.3, 1.0, -0.2).normalize(),
         sun: lin(MIST_TEAL) * if dress == Dress::Japanese { 0.08 } else { 0.18 },
-        exposure: 1.3,
+        exposure: 1.45,
         night_sky: 0.0,
         bloom: 1.0,
         moon_view: Vec3::Y,
