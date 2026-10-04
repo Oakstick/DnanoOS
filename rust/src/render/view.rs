@@ -340,7 +340,7 @@ pub struct WorldView {
     /// The old man's workshop while the shop is up (the station, what the hero owns, the work).
     pub workshop: Option<crate::game::WorkshopView>,
     shop_stage: workshop::WorkshopStage,
-    /// The prince's cheats standing in the world: the false gatekeeper, a mimic chest.
+    /// The prince's cheats standing in the world: a mimic chest.
     pub deceit: DeceitView,
     /// The character screen, while it is up.
     pub select: Option<SelectView>,

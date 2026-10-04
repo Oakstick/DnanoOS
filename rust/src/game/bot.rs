@@ -18,7 +18,7 @@
 //! of the others, and held in his fist they strike him (as a masher would anyway).
 //!
 //! Against the prince's cheats (WARBAND.md §10.3, §15.2), when nothing hunts it, the adept and the
-//! expert refuse a whisper (they call the old man, who denies it), strike the false gatekeeper
+//! expert refuse a whisper (they call the old man, who denies it), strike a mimic chest
 //! rather than trade with him, and strike a mimic chest before they would open it.
 //!
 //! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
@@ -609,7 +609,7 @@ impl Bot {
 
 impl Bot {
     /// What it does about the prince's cheats (not the novice: it falls for them all), when no foe
-    /// hunts it: a whisper in the air, it calls the old man; the false gatekeeper or a mimic chest
+    /// hunts it: a whisper in the air, it calls the old man; a mimic chest
     /// near, it walks up to striking distance (no nearer: near enough to trade, or to open the
     /// chest, is too near) and strikes. `None`: nothing to see through.
     fn see_through(&mut self, g: &Game, pad: &mut PadState) -> Option<PadState> {
@@ -625,13 +625,7 @@ impl Bot {
             return Some(pad.clone());
         }
         let hp = g.hero.pos();
-        let target = d
-            .keeper
-            .as_ref()
-            .filter(|k| k.demon.is_none())
-            .map(|k| k.at)
-            .or(d.mimic.as_ref().filter(|m| !m.done).map(|m| m.at))
-            .filter(|p| math::len(math::sub(*p, hp)) < SEE_THROUGH)?;
+        let target = d.mimic.as_ref().filter(|m| !m.done).map(|m| m.at).filter(|p| math::len(math::sub(*p, hp)) < SEE_THROUGH)?;
         let dist = math::len(math::sub(target, hp));
         if dist > STRIKE_AT {
             let dir = self.way(g, hp, target);

@@ -54,8 +54,10 @@ pub enum Action {
     Immortal,
     /// F10: the nearest foe becomes a rival of the Ledger, there and then (testing cheat).
     MakeRival,
-    /// F6: the Sparring Ring's next bout; F7: the first of the next stage's.
+    /// F9: the Sparring Ring's next bout; F7: the first of the next stage's.
     NextBout,
+    /// F6: a thousand coins into his purse, every press (testing cheat).
+    Gold,
     NextStageBout,
 }
 
@@ -131,7 +133,8 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         F5 => Action::Immortal,
         F10 => Action::MakeRival,
         F8 => Action::Readout,
-        F6 => Action::NextBout,
+        F6 => Action::Gold,
+        F9 => Action::NextBout,
         F7 => Action::NextStageBout,
         KeyC => Action::Camera,
         KeyQ => Action::Drink,

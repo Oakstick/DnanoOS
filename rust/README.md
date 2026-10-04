@@ -64,7 +64,8 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Mute / FPS / Fullscreen | M / F3 / F11, Alt+Enter | |
 | Cheat: straight to the Cyclops | F1 | |
 | Cheat: straight to the old man's wares (with 1000 silver and 10 runes) | 0 | |
-| Sparring Ring: frame readout / next bout / next stage's bouts | F8 / F6 / F7 | |
+| Sparring Ring: frame readout / next bout / next stage's bouts | F8 / F9 / F7 | |
+| Cheat: a thousand coins, every press | F6 | |
 | God mode (testing): foes still strike, but health always comes back | F5 | |
 | Ragnar's War Cry (his mastery's fourth rank) | F | Left stick press (L3) |
 | Cheat: the nearest foe becomes a rival of the Ledger | F10 | |
@@ -84,7 +85,7 @@ The controls page (CONTROLLER on the title or the pause menu) shows either the c
 - **Kits** (COMBAT.md §8): `--kits N` plays every hero at tiers 1, 4, 7 and 10; `--kit-parts T` shows what the blade, the shield and the path are each worth at tier T; `--kit-table` lists every blade and shield as the ring reads it.
 - **The Vaults of Mammon fight the same way** (COMBAT.md §9): every foe there is a duelist on one of the three archetypes (the draugr a small brute, the ravens skirmishers, the bog slime a hexer that spits green), asleep at its post until he comes near, then paced by the threat manager (two threat points there, a token a second), finding its way round walls, going home when he is long gone. His blows and theirs land on their frames; his shield wears as it blocks and breaks for good; his blade dulls; he can die. Kills bring their coins, streaks and points, and now and then a health potion. Bombs and the archangels still work, as blows through the foes' poise (Michael's fire awes a foe into a stagger). `--crawl N` sends the bots through the vaults.
 - **Tuning** (COMBAT.md §7): `AdventuresOfTheAncientBlades.exe --balance N` has three scripted players (novice, adept, expert) play every bout N times through the real controller path and prints win rate, time to kill against each bout's target, health lost, parries, blocks, mistakes and overlaps. The capture command `bot:K` lets one play in a capture. When a bout ends, a results card shows the same numbers, and a line goes into `combat_log.csv` in the save folder.
-- **On screen**: the floor shows each attack's reach, filling through its startup and flashing in the commit frames. A foe glows through its wind-up, flashes on its strike and dims in its recovery (punish now). Each foe has health and poise bars, and token holders wear a red pip. **F8** shows the frame readout: your state and frame, the buffer, threat points in use, each foe's way of attacking (melee, body or distance) and its state, and the bout's numbers (damage, parries, blocks, evades, breaks, overlaps). **F6** skips to the next bout.
+- **On screen**: the floor shows each attack's reach, filling through its startup and flashing in the commit frames. A foe glows through its wind-up, flashes on its strike and dims in its recovery (punish now). Each foe has health and poise bars, and token holders wear a red pip. **F8** shows the frame readout: your state and frame, the buffer, threat points in use, each foe's way of attacking (melee, body or distance) and its state, and the bout's numbers (damage, parries, blocks, evades, breaks, overlaps). **F9** skips to the next bout.
 - **Bouts**: the Brute; the Pack (two Skirmishers); the Hexer's Guard; the Trio; the Gauntlet (five); then the third stage's foes: Steel (the tengu and the rasetsu), Fang and Fire (the dire wolf, the cobra and the jorogumo) and the Night Parade (all five).
   - Then two for each later stage: The Iron Club and The Fox's Wedding (stage 4), The Call in the Cold and Zemheri Nights (stage 5), The One Eye and The Old Tales (stage 6), Fire and Ice and Ragnarök (stage 7).
   - And last the princes, each alone as in his court: The Prince of Greed (Mammon, measured with tier-2 kit; COMBAT.md §13).
@@ -109,8 +110,9 @@ Code: `src/logic/combat/` (the rules: `frames`, `math`, `fsm`, `threat`, `archet
 - **Generals**: every realm has a named commander who runs it by orders (watch, muster, kindle,
   decree) through instruments you can break, bar or turn; slaying him weakens his prince. `--general SIN SKILL TIER SEED`.
 - **The two voices**: the old man's counsel (amber, Quitmer's bark, always true) and the prince's
-  cheats (a whisper, a false gatekeeper with tainted wares, a crooked bargain, mimic chests, a turned
-  compass), each with a tell.
+  cheats in his own voice (a whisper, a crooked bargain, mimic chests, a turned compass), each with a
+  tell. The old man always leads to good: no cheat ever takes his form. The compass (the realm's
+  needle and the old man's amber lamp) shows when you stand still.
 - **The workshop**: the old man's six stations (anvil, shield wall, bench, yard, war table, trophy
   wall), dressed for each hero; trials in the yard confirm each rank of the hero's mastery.
 - **Feel and sound**: hit pause within a budget, slow time on a pack's last kill and a rival's fall,

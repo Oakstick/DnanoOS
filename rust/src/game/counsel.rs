@@ -28,6 +28,9 @@ pub const TYPE_RATE: f64 = 42.0;
 pub const HOLD: f64 = 5.0;
 /// A voice blip every this many letters.
 const BLIP_EVERY: usize = 3;
+/// The compass shows once he has stood idle this long (seconds), fading in over this long.
+pub const COMPASS_AFTER: f64 = 0.8;
+pub const COMPASS_FADE: f64 = 0.4;
 /// The old man's colour: amber (the prince's whisper comes in his sin's colour instead).
 pub const AMBER: u32 = 0xffa83a;
 /// Below this share of its strength, his shield is cracking.
@@ -99,6 +102,9 @@ pub struct Voices {
     shield: f32,
     /// What the old man has to say at the workshop, since the last thing that happened below.
     pub note: Option<String>,
+    /// Seconds he has stood still, out of any swing (the compass shows only then), and where.
+    pub idle: f64,
+    still_at: Option<V>,
 }
 
 /// What the War Table asks for a rival's true weakness: 40 silver at rank 1, up to 120 at rank 5.
@@ -222,7 +228,29 @@ impl Game {
 
     /// Once a frame: the counsel's flags from the save (once), a realm entered or left, the
     /// shield's wear, the prince's cheats, and the line in the panel typed out with its sounds.
+    /// F6 (a testing cheat): a thousand coins into his purse, every press.
+    pub(super) fn cheat_gold(&mut self) {
+        const GOLD: u32 = 1000;
+        self.progress.silver += GOLD;
+        self.save_progress();
+        self.audio.play(crate::audio::Sfx::Buy);
+        let hp = self.hero.pos();
+        let coin = crate::logic::progression::coin(self.hero_kind);
+        self.floater(hp.x, hp.y - 1.2, format!("CHEAT: +{GOLD} {coin}"), 1.4, Some(0xf2c53d));
+    }
+
+    /// How fully the compass shows (0 to 1): only once he has stood idle a moment, fading in.
+    pub fn compass_shown(&self) -> f32 {
+        ((self.voices.idle - COMPASS_AFTER) / COMPASS_FADE).clamp(0.0, 1.0) as f32
+    }
+
     pub(super) fn update_voices(&mut self, dt: f64) {
+        // Idle: not moving, not swinging (his stillness, for the compass).
+        let hp = self.hero.pos();
+        let swinging = self.brawl.as_ref().is_some_and(|b| b.hero.attack().is_some());
+        let moved = self.voices.still_at.is_none_or(|p| (p.x - hp.x).abs() + (p.y - hp.y).abs() > 0.02);
+        self.voices.idle = if moved || swinging || !self.hero.alive { 0.0 } else { self.voices.idle + dt };
+        self.voices.still_at = Some(hp);
         if !self.voices.loaded {
             self.voices.loaded = true;
             self.voices.counsel = counsel::Counsel::decode(&self.warband.save.counsel);
@@ -241,10 +269,8 @@ impl Game {
         }
         // What of the cheats stands in the world, for the renderer.
         let d = &self.voices.deceit;
-        self.view.deceit = crate::render::view::DeceitView {
-            keeper: d.keeper.as_ref().filter(|k| k.demon.is_none()).map(|k| (k.at, k.facing, d.sin.map(|s| s.color()).unwrap_or(0xffffff))),
-            chest: d.mimic.as_ref().filter(|m| !m.done).map(|m| (m.at, V::new(0.0, 1.0))),
-        };
+        self.view.deceit =
+            crate::render::view::DeceitView { chest: d.mimic.as_ref().filter(|m| !m.done).map(|m| (m.at, V::new(0.0, 1.0))) };
         if self.screen == Screen::Playing {
             let frac = self.hero.shield.map(|s| s.fraction()).unwrap_or(1.0);
             if frac < CRACKING && self.voices.shield >= CRACKING && frac > 0.0 {

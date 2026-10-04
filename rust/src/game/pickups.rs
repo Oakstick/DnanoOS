@@ -202,7 +202,6 @@ impl Game {
         if slot >= self.belt.len() || !self.hero.alive {
             return;
         }
-        self.voices.deceit.tainted.drink_slot(slot);
         let kind = self.belt.remove(slot);
         self.war_note(crate::logic::war::WarEvent::Drank { potion: kind });
         if self.belt_index >= self.belt.len() {

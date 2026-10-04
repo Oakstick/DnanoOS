@@ -1,9 +1,9 @@
 //! The two voices on screen (WARBAND.md §10, §13): the panel in the bottom-left corner where the
 //! old man speaks (his face in an amber frame, his name, his words typed out in amber) and where
-//! the prince's whisper speaks in his stead (an empty frame, the name in the sin's colour, the
+//! the prince's whisper speaks under his own name (an empty frame, the name in the sin's colour, the
 //! words in the sin's colour); and in a realm, the signs about the hero: the realm's compass needle
 //! (pale, or turned toward a den, flickering in the sin's colour) and the old man's amber lamp,
-//! always true; over the false gatekeeper, the name he takes, in the wrong colour.
+//! always true, both shown only while he stands idle.
 
 use super::*;
 use crate::game::counsel::{Speaker, AMBER};
@@ -81,10 +81,14 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
         draw_sprite(o, f, fx + (fs - sw) / 2.0, fy + (fs - sh) / 2.0, scale, None, fade);
     }
     o.rect_outline(fx, fy, fs, fs, (t * 0.08).max(1.5), rgba(color, 0.95 * fade));
-    // The name over the words: the prince takes the old man's name, in the wrong colour.
+    // The name over the words: the old man's, or the prince's own (he never takes the old man's).
     let tx = fx + fs + t * 0.45;
     let tw = x + pw - tx - t * 0.35;
-    o.text("THE OLD MAN", tx, y + t * 0.62, small, rgba(color, fade), Align::Left, true);
+    let name = match s.who {
+        Speaker::Whisper(sin) => format!("{} WHISPERS", sin.prince().to_uppercase()),
+        Speaker::OldMan => "THE OLD MAN".to_string(),
+    };
+    o.text(&name, tx, y + t * 0.62, small, rgba(color, fade), Align::Left, true);
     if !whisper {
         // Quitmer's mark beside his name.
         o.text(
@@ -107,10 +111,14 @@ fn screen(g: &Game, p: V, up: f32, w: f32, h: f32) -> Option<(f32, f32)> {
     g.view.project(Vec3::new(x, floor_at(&g.level.grid, x, y) + up, y), w, h)
 }
 
-/// In a realm: the compass about him (the realm's needle, the old man's lamp), and the false
-/// gatekeeper's borrowed name over him.
+/// In a realm, while he stands idle: the compass about him (the realm's needle, the old man's lamp).
 pub(super) fn draw_signs(o: &mut Overlay, g: &Game, t: f32) {
     if g.screen != Screen::Playing || !g.hero.alive || g.realm.is_none() || !(g.in_vault() || g.in_run()) {
+        return;
+    }
+    // Only when he stands idle: the compass is for the moment he stops to look.
+    let shown = g.compass_shown();
+    if shown <= 0.0 {
         return;
     }
     let (w, h) = (o.width, o.height);
@@ -135,7 +143,7 @@ pub(super) fn draw_signs(o: &mut Overlay, g: &Game, t: f32) {
             let r = t * 4.5;
             let (lx, ly) = (c.0 + ux * r, c.1 + uy * r);
             let s = t * 0.34;
-            let a = 0.85 + (time * 2.0).sin() * 0.1;
+            let a = (0.85 + (time * 2.0).sin() * 0.1) * shown;
             o.line([lx, ly - s], [lx + s, ly], 2.5, rgba(AMBER, a));
             o.line([lx + s, ly], [lx, ly + s], 2.5, rgba(AMBER, a));
             o.line([lx, ly + s], [lx - s, ly], 2.5, rgba(AMBER, a));
@@ -153,6 +161,7 @@ pub(super) fn draw_signs(o: &mut Overlay, g: &Game, t: f32) {
                 } else {
                     (0xd7ccb8, 0.8)
                 };
+                let alpha = alpha * shown;
                 let (r0, r1) = (t * 2.6, t * 3.7);
                 let tip = (c.0 + ux * r1, c.1 + uy * r1);
                 let (px, py) = (-uy, ux);
@@ -170,18 +179,6 @@ pub(super) fn draw_signs(o: &mut Overlay, g: &Game, t: f32) {
                 for (a, b) in edges {
                     o.line(a, b, 3.0, rgba(color, alpha));
                 }
-            }
-        }
-    }
-    // The false gatekeeper takes the old man's name, in his prince's colour.
-    if let Some(k) = g.voices.deceit.keeper.as_ref().filter(|k| k.demon.is_none()) {
-        let d = ((k.at.x - hp.x).powi(2) + (k.at.y - hp.y).powi(2)).sqrt();
-        if d < 9.0 {
-            if let Some((sx, sy)) = screen(g, k.at, 2.1, w, h) {
-                let sin = g.voices.deceit.sin.unwrap_or(crate::logic::sins::Sin::Greed);
-                let a = (1.0 - (d as f32 - 6.0).max(0.0) / 3.0).clamp(0.0, 1.0);
-                o.text("THE OLD MAN", sx, sy, t * 0.55, rgba(sin.color(), a), Align::Center, true);
-                o.text("HALF PRICE", sx, sy + t * 0.6, t * 0.42, rgba(SAND, a * 0.8), Align::Center, false);
             }
         }
     }

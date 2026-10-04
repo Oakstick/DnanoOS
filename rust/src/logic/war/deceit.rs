@@ -1,5 +1,9 @@
 //! The prince's cheats (WARBAND.md §10.3): always lies, always with a tell.
 //!
+//! The old man is never one of them. The prince lies in his own voice and his own colour: he never
+//! takes the old man's form, his name, his shop or his dog (the user's rule: the old man always
+//! leads to good).
+//!
 //! Every cheat is a struct of **the lie, its tells, its counter, the reward for seeing through it,
 //! and what it costs if believed** (`Cheat`), and `every_cheat_has_a_tell_a_counter_and_a_bounded_cost`
 //! checks each part is there. They come only in Rest and Build, one at a time, at most two in a
@@ -15,7 +19,7 @@ use super::ledger::{counsel_line_for, Family, Rival, RivalId, Side, Trait, Weakn
 use crate::logic::enemy::EnemyKind;
 use crate::logic::heroes::HeroKind;
 use crate::logic::sins::Sin;
-use crate::logic::types::{Dir, PotionKind};
+use crate::logic::types::Dir;
 
 /// At most this many cheats in one realm.
 pub const MAX_PER_REALM: usize = 2;
@@ -23,27 +27,17 @@ pub const MAX_PER_REALM: usize = 2;
 pub const ASK_WINDOW: f64 = 40.0;
 /// Runes for each lie seen through.
 pub const SEEN_RUNES: u32 = 2;
-/// The tainted elixir turns for this long, the hero's blows at this share.
-pub const TURN_SECONDS: f64 = 10.0;
-pub const TURN_MIGHT: f64 = 0.6;
-/// The false blade: its might, and the blows before it shatters; then his hands sting this long.
-pub const BLADE_MIGHT: f64 = 1.3;
-pub const BLADE_BLOWS: u32 = 30;
-pub const SHATTER_SECONDS: f64 = 8.0;
-pub const SHATTER_MIGHT: f64 = 0.7;
 /// The turned sign points wrong this long.
 pub const SIGN_SECONDS: f64 = 20.0;
 /// The share of his health a mimic's first bite may take at most (the duelist's own blow, capped by
 /// its breed's damage; checked as a bound, not applied).
 pub const BITE_SHARE: f64 = 0.3;
 
-/// The five cheats.
+/// The four cheats.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum CheatKind {
-    /// False counsel in the old man's voice.
+    /// False counsel, in the prince's own voice.
     Whisper,
-    /// A mimic old man in a side room, selling at half price.
-    FalseGatekeeper,
     /// A deal mid-realm, its price bigger than it says.
     CrookedBargain,
     /// A mimic chest.
@@ -53,13 +47,11 @@ pub enum CheatKind {
 }
 
 impl CheatKind {
-    pub const ALL: [CheatKind; 5] =
-        [CheatKind::Whisper, CheatKind::FalseGatekeeper, CheatKind::CrookedBargain, CheatKind::LoadedDice, CheatKind::TurnedSign];
+    pub const ALL: [CheatKind; 4] = [CheatKind::Whisper, CheatKind::CrookedBargain, CheatKind::LoadedDice, CheatKind::TurnedSign];
 
     pub fn name(self) -> &'static str {
         match self {
             CheatKind::Whisper => "THE WHISPER",
-            CheatKind::FalseGatekeeper => "THE FALSE GATEKEEPER",
             CheatKind::CrookedBargain => "THE CROOKED BARGAIN",
             CheatKind::LoadedDice => "LOADED DICE",
             CheatKind::TurnedSign => "THE TURNED SIGN",
@@ -67,20 +59,18 @@ impl CheatKind {
     }
 
     /// Where it may be dealt: the dice only where there are chests to mimic (Greed, Gluttony); the
-    /// bargain only where the realm has a road to shorten (not the vaults); the false gatekeeper
-    /// not on the Burning Field, whose ground drifts (no side room stands still there).
+    /// bargain only where the realm has a road to shorten (not the vaults).
     pub fn fits(self, sin: Sin) -> bool {
         match self {
             CheatKind::LoadedDice => matches!(sin, Sin::Greed | Sin::Gluttony),
             CheatKind::CrookedBargain => sin != Sin::Greed,
-            CheatKind::FalseGatekeeper => sin != Sin::Wrath,
             _ => true,
         }
     }
 }
 
-/// How a cheat gives itself away. The old man's three signs are amber, Quitmer and a warm white
-/// lantern; the prince fakes them, and gets them wrong.
+/// How a cheat gives itself away. The old man's signs are amber and Quitmer's bark; the prince's
+/// voice has neither.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Tell {
     /// The sin's colour where the old man's amber should be.
@@ -91,12 +81,6 @@ pub enum Tell {
     NoBark,
     /// No face in the frame.
     NoPortrait,
-    /// A shadow dog at his feet that never wags.
-    DeadDog,
-    /// His lantern burns in the sin's colour, not warm white.
-    SinLantern,
-    /// Too good to be true: half price.
-    TooGoodPrices,
     /// The old man said it early: the prince's offers cost more than they say.
     CostsMore,
     /// The chest breathes.
@@ -114,8 +98,6 @@ pub enum Tell {
 pub enum Counter {
     /// Call the old man (H): "I said no such thing."
     AskTheOldMan,
-    /// Strike him: he is a demon.
-    StrikeHim,
     /// Refuse the deal.
     Refuse,
     /// Strike the chest before opening it.
@@ -129,8 +111,6 @@ pub enum Counter {
 pub enum Reward {
     /// A lie seen through: the count, and runes.
     SeenThrough { runes: u32 },
-    /// The demon slain pays the price of his wares in silver (and the mark).
-    HisWaresInSilver,
     /// The chest struck first gives twice (and the mark).
     DoubleLoot,
     /// Refusing a bargain gives nothing: it is a decision, not a trap.
@@ -155,9 +135,6 @@ pub enum Stake {
 pub enum Cost {
     /// A wasted elixir or a walk into a den.
     WrongCounsel,
-    /// Tainted wares: the elixir turns (`TURN_SECONDS`), the blade shatters after `BLADE_BLOWS`;
-    /// all of them vanish when the realm is left. The silver paid for them is lost.
-    TaintedWares,
     /// The gain is real, and so is the hidden price: the realm's dens all wake.
     HiddenPrice,
     /// It bites: one body strike, planned by the threat manager.
@@ -171,7 +148,6 @@ impl Cost {
     pub fn stakes(self) -> &'static [Stake] {
         match self {
             Cost::WrongCounsel => &[Stake::Time, Stake::Health],
-            Cost::TaintedWares => &[Stake::SilverCarried, Stake::Health, Stake::Time],
             Cost::HiddenPrice => &[Stake::Health, Stake::Time],
             Cost::Bite => &[Stake::Health],
             Cost::Detour => &[Stake::Time, Stake::Route],
@@ -182,7 +158,6 @@ impl Cost {
     pub fn bound(self) -> Bound {
         match self {
             Cost::WrongCounsel => Bound::Seconds(ASK_WINDOW),
-            Cost::TaintedWares => Bound::TheRealm,
             Cost::HiddenPrice => Bound::TheRealm,
             Cost::Bite => Bound::Share(BITE_SHARE),
             Cost::Detour => Bound::Seconds(SIGN_SECONDS),
@@ -220,12 +195,6 @@ pub fn cheat(kind: CheatKind, sin: Sin) -> Cheat {
             Reward::SeenThrough { runes: SEEN_RUNES },
             Cost::WrongCounsel,
         ),
-        CheatKind::FalseGatekeeper => (
-            vec![Tell::DeadDog, Tell::SinLantern, Tell::TooGoodPrices, Tell::SinColour],
-            Counter::StrikeHim,
-            Reward::HisWaresInSilver,
-            Cost::TaintedWares,
-        ),
         CheatKind::CrookedBargain => (vec![Tell::CostsMore, Tell::SinColour], Counter::Refuse, Reward::Nothing, Cost::HiddenPrice),
         CheatKind::LoadedDice => (vec![Tell::Breathes, Tell::NoGlint, Tell::Creaks], Counter::StrikeFirst, Reward::DoubleLoot, Cost::Bite),
         CheatKind::TurnedSign => {
@@ -242,37 +211,30 @@ pub fn lie(kind: CheatKind, sin: Sin) -> String {
     use CheatKind as C;
     let s = match (sin, kind) {
         (Sin::Greed, C::Whisper) => "Listen. I would charge for this, but you may have it free:",
-        (Sin::Greed, C::FalseGatekeeper) => "Half price, for a friend. Everything must go.",
         (Sin::Greed, C::CrookedBargain) => "A fair price, and a short road: the door, now.",
         (Sin::Greed, C::LoadedDice) => "A chest, unguarded. Whose? Yours, if you are quick.",
         (Sin::Greed, C::TurnedSign) => "The door is this way, and it costs you nothing.",
         (Sin::Pride, C::Whisper) => "Listen. A hero like you needs only half of this:",
-        (Sin::Pride, C::FalseGatekeeper) => "For the greatest of them, my best, at half the price.",
         (Sin::Pride, C::CrookedBargain) => "You have proven yourself. Why walk the long way? The door is open.",
         (Sin::Pride, C::LoadedDice) => "A prize worthy of you. Take it.",
         (Sin::Pride, C::TurnedSign) => "The bold way is this way. It suits you.",
         (Sin::Envy, C::Whisper) => "Listen. The other one knew this, and it kept him alive:",
-        (Sin::Envy, C::FalseGatekeeper) => "The very bottle the janissary bought. Half price; he will never know.",
         (Sin::Envy, C::CrookedBargain) => "The samurai took this road. Will you let him be first?",
         (Sin::Envy, C::LoadedDice) => "The northman left this chest behind. It is yours now.",
         (Sin::Envy, C::TurnedSign) => "The others went this way. Follow them.",
         (Sin::Wrath, C::Whisper) => "Listen, unless you are afraid to:",
-        (Sin::Wrath, C::FalseGatekeeper) => "A real blade, for a real fighter. Half price. Or are you a coward?",
         (Sin::Wrath, C::CrookedBargain) => "Through them, now, the door open. Unless you would rather hide.",
         (Sin::Wrath, C::LoadedDice) => "A chest. Kick it open, if you dare.",
         (Sin::Wrath, C::TurnedSign) => "The fight is this way. Go on.",
         (Sin::Sloth, C::Whisper) => "Listen, and save yourself the trouble:",
-        (Sin::Sloth, C::FalseGatekeeper) => "Sit, rest your legs. Half price, and no hurry.",
         (Sin::Sloth, C::CrookedBargain) => "Why walk? Rest, and the door opens by itself.",
         (Sin::Sloth, C::LoadedDice) => "A chest, and no work to open it.",
         (Sin::Sloth, C::TurnedSign) => "The easy way is this way.",
         (Sin::Gluttony, C::Whisper) => "Listen, and eat your fill of this:",
-        (Sin::Gluttony, C::FalseGatekeeper) => "Fresh from the feast. Drink, eat, half price.",
         (Sin::Gluttony, C::CrookedBargain) => "One more course, and then the door. Just one.",
         (Sin::Gluttony, C::LoadedDice) => "A chest, and it is full. Help yourself.",
         (Sin::Gluttony, C::TurnedSign) => "The banquet is this way.",
         (Sin::Lust, C::Whisper) => "Listen. You want this more than anything:",
-        (Sin::Lust, C::FalseGatekeeper) => "Everything you ever wanted, for half of what it is worth.",
         (Sin::Lust, C::CrookedBargain) => "The boy you came for is just beyond that door. I'll open it now.",
         (Sin::Lust, C::LoadedDice) => "What you most desire is in that chest.",
         (Sin::Lust, C::TurnedSign) => "What you want is this way.",
@@ -404,48 +366,6 @@ impl FalseFact {
     }
 }
 
-// ------------------------------------------------------------------ the false gatekeeper's wares
-
-/// What the false gatekeeper sells.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum WareKind {
-    /// A bottle that looks like strength and turns.
-    Elixir(PotionKind),
-    /// A blade that shatters after `BLADE_BLOWS`.
-    Blade,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Ware {
-    pub kind: WareKind,
-    /// What the old man would ask.
-    pub full: u32,
-}
-
-impl Ware {
-    /// What the false one asks: half (too good to be true).
-    pub fn price(&self) -> u32 {
-        self.full / 2
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self.kind {
-            WareKind::Elixir(_) => "AN ELIXIR OF STRENGTH",
-            WareKind::Blade => "A BRIGHT BLADE",
-        }
-    }
-}
-
-/// His wares: the elixir at the bench's price, and a blade at `blade_full`.
-pub fn keeper_wares(elixir_full: u32, blade_full: u32) -> [Ware; 2] {
-    [Ware { kind: WareKind::Elixir(PotionKind::Strength), full: elixir_full }, Ware { kind: WareKind::Blade, full: blade_full }]
-}
-
-/// What slaying him pays: the price of his wares (the full price, as the old man would have asked).
-pub fn wares_worth(wares: &[Ware]) -> u32 {
-    wares.iter().map(|w| w.full).sum()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,11 +421,22 @@ mod tests {
                 assert!(matches!(s, Stake::Time | Stake::Health | Stake::SilverCarried | Stake::Route), "{kind:?}: {s:?}");
             }
         }
-        // The wares are tainted only for a while: the turn, the blows, then gone with the realm.
-        const { assert!(TURN_SECONDS <= 10.0 && BLADE_BLOWS == 30 && SHATTER_SECONDS < 10.0) };
-        let w = keeper_wares(60, 120);
-        assert_eq!(w.iter().map(Ware::price).collect::<Vec<_>>(), vec![30, 60], "half price");
-        assert_eq!(wares_worth(&w), 180, "his wares' price, paid when he is slain");
+    }
+
+    /// The old man is never one of the prince's cheats: none of them takes his form, his name,
+    /// his shop or his dog, and none speaks with his face or Quitmer's bark.
+    #[test]
+    fn no_cheat_takes_the_old_mans_form() {
+        for kind in CheatKind::ALL {
+            assert!(!kind.name().contains("GATEKEEPER") && !kind.name().contains("OLD MAN"), "{kind:?}");
+            for sin in SINS {
+                let c = cheat(kind, sin);
+                let lie = c.lie.to_lowercase();
+                assert!(!lie.contains("old man") && !lie.contains("quitmer") && !lie.contains("half price"), "{kind:?} {sin:?}: {lie}");
+            }
+        }
+        let tells = cheat(CheatKind::Whisper, Sin::Greed).tells;
+        assert!(tells.contains(&Tell::NoBark) && tells.contains(&Tell::NoPortrait), "the prince's voice has neither");
     }
 
     #[test]

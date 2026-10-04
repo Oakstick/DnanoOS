@@ -1837,3 +1837,30 @@ fn the_map_plays_scene_one_from_either_place() {
     assert_eq!(g.screen, Screen::Story);
     assert_eq!(g.story.as_ref().map(|s| s.beat), Some(first(Shot::Arrive).unwrap()));
 }
+
+/// F6 (a testing cheat) puts a thousand coins in his purse, every press.
+#[test]
+fn f6_gives_a_thousand_coins_every_press() {
+    let mut g = playing();
+    let before = g.progress.silver;
+    for _ in 0..3 {
+        g.input.inject(Action::Gold);
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.progress.silver, before + 3000);
+}
+
+/// The compass shows only while he stands idle, fading in a moment after he stops.
+#[test]
+fn the_compass_shows_only_while_he_stands_idle() {
+    let mut g = playing();
+    for _ in 0..(2.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!((g.compass_shown() - 1.0).abs() < 1e-6, "idle: shown");
+    g.input.set_pad(Some(crate::input::PadState { left: (1.0, 0.0), ..Default::default() }));
+    for _ in 0..30 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.compass_shown(), 0.0, "moving: hidden");
+}

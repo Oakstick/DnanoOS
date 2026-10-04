@@ -239,7 +239,7 @@ fn draw_readout(o: &mut Overlay, g: &Game, spar: &Brawl, ring: Option<&Sparring>
         if let Some((bout, last)) = ring.last {
             rows.push((format!("LAST WIN  {}  {:.1}s  -{:.0} HP", gym::BOUTS[bout].name, last.frames as f64 / 60.0, last.taken), GOLD));
         }
-        rows.push(("F6  NEXT BOUT".to_string(), TEXT_DIM));
+        rows.push(("F9  NEXT BOUT".to_string(), TEXT_DIM));
     } else {
         let awake = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged()).count();
         rows.push((format!("KILLS {}  HUNTING HIM {awake}", s.kills), TEXT_DIM));

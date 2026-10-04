@@ -18,8 +18,7 @@
 //! `dungeon:N` (straight into dungeon N, 0 being the first), `map` (the map page), `hub`, `realm:N` and `court:N`
 //! `ledger` (the Ledger board, six made-up rivals on it) and `rival:N` (the nearest foe a rival of
 //! rank N, his name card up), `counsel` (the old man speaks: he has just fallen to the nearest foe),
-//! `whisper` (the prince whispers false counsel), `gatekeeper` (the false gatekeeper in this realm,
-//! the hero a few steps from him), `sign` (the realm's compass turned), `mimic` (a mimic chest
+//! `whisper` (the prince whispers false counsel), `sign` (the realm's compass turned), `mimic` (a mimic chest
 //! before him),
 //! `hero:K` (play hero K: 0 Ragnar, 1 Mehmed, 2 Miyamoto), `mastery:N` (his mastery at rank N, its
 //! next rank's deeds part done), `yard` (the training yard, its trials' card up), `trial:N` (his
@@ -142,10 +141,9 @@ pub(crate) enum Cmd {
     /// The nearest foe made a rival of rank N, his name card up.
     Rival(u8),
     /// The two voices (WARBAND.md §10): the old man speaks, the prince whispers, the false
-    /// gatekeeper, the turned sign, a mimic chest.
+    /// the turned sign, a mimic chest.
     Counsel,
     Whisper,
-    Gatekeeper,
     Sign,
     Mimic,
     /// The chase camera held at a heading (degrees) and pitch (radians), as `--camera-check` reports poses.
@@ -247,7 +245,6 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "rival" => Cmd::Rival(parts.next().and_then(|v| v.parse().ok()).unwrap_or(3)),
             "counsel" => Cmd::Counsel,
             "whisper" => Cmd::Whisper,
-            "gatekeeper" => Cmd::Gatekeeper,
             "sign" => Cmd::Sign,
             "mimic" => Cmd::Mimic,
             "aim" => {
@@ -306,7 +303,6 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Rival(n) => game.debug_rival(n),
         Cmd::Counsel => game.debug_counsel(),
         Cmd::Whisper => game.debug_whisper(),
-        Cmd::Gatekeeper => game.debug_gatekeeper(),
         Cmd::Sign => game.debug_sign(),
         Cmd::Mimic => game.debug_mimic(),
         Cmd::Wound(n) => game.debug_wound_boss(n),

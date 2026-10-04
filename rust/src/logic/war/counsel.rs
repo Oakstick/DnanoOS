@@ -369,7 +369,6 @@ pub fn gear_line(w: GearWarning, hero: HeroKind) -> String {
 pub fn praise_line(cheat: CheatKind, hero: HeroKind) -> String {
     let body = match cheat {
         CheatKind::Whisper => "That was not my voice down there. I said no such thing.",
-        CheatKind::FalseGatekeeper => "That was no old man in that room, and no dog of mine at his feet.",
         CheatKind::CrookedBargain => "You refused his bargain. It cost more than he said; it always does.",
         CheatKind::LoadedDice => "A chest that breathes is no chest.",
         CheatKind::TurnedSign => "You followed my lamp, not his sign.",

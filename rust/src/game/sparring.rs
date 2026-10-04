@@ -141,7 +141,7 @@ impl Game {
         self.hero.blocking = false;
     }
 
-    /// F6: on to the next bout.
+    /// F9: on to the next bout.
     pub(super) fn next_bout(&mut self) {
         let inside = self.in_ring();
         let Some(s) = self.spar.as_mut() else { return };

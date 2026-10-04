@@ -634,6 +634,11 @@ warm white. These three are the tells the prince fakes, and gets wrong.
 
 ### 10.3 The prince's cheats (always lies, always with a tell)
 
+**The old man always leads to good** (the user's rule, 2026-10-04). No cheat takes his form, his
+name, his shop or his dog: the prince lies in his own voice and colour. The false gatekeeper (a
+mimic old man selling tainted wares) was built and then removed for it, and the whisper speaks
+under the prince's own name ("MAMMON WHISPERS"), never "THE OLD MAN".
+
 `logic/war/deceit.rs`. Every cheat is a struct of **the lie, its tell, its counter, the reward for
 seeing through it, and what it costs if believed**, and a test checks each part exists
 (`every_cheat_has_a_tell_a_counter_and_a_bounded_cost`). Cheats come only in Rest and Build, one at
@@ -643,7 +648,6 @@ time, health, silver carried, or a better route.
 | Cheat | The lie | Its tell | Counter → reward | Cost if believed |
 |---|---|---|---|---|
 | **The Whisper** | false counsel: a wrong weakness, a wrong instrument, a wrong way | the sin's colour instead of amber, a reversed echo, no bark | ask the old man (H): "I said no such thing." → **Seen-through** mark (+runes) | a wasted elixir, a walk into a den |
-| **The False Gatekeeper** | a side room where "the old man" sells at half price | no Quitmer (or a shadow dog that doesn't wag), a lantern in the sin's colour, too-good prices | strike him: he is a demon (an elite of the realm's stage); slay him → the price of his wares in silver | **tainted** wares: an elixir that turns (strength becomes weakness for 10 s), a blade that shatters after 30 blows; all tainted wares vanish when the realm is left |
 | **The Crooked Bargain** | a deal mid-realm, like Mammon's toll: "Leave the horn whole and I'll open the court now" | his offers always cost more than they say (a learnable rule; the old man says so early) | refuse → nothing; accept → the gain is real, and so is the hidden price (the general's decree completes) | a harder prince for a shorter road: sometimes worth taking, which is the decision |
 | **Loaded Dice** | a mimic chest (Greed, Gluttony) | it breathes; its coins don't glint; the hinge creaks | strike it first → double loot | it bites (a body strike, planned by the threat manager) |
 | **The Turned Sign** | the realm's compass points toward a trap for 20 s | the arrow in the sin's colour, and it flickers | follow the old man's amber marker, which is always true | a detour |
@@ -853,7 +857,7 @@ can run in parallel from W1 as a background agent in a worktree, as the realms w
 3. **The Ledger lasts for the run** and Start wipes it (proposal) / it lasts across runs.
 4. **The Drum paces only** (proposal) / it also adapts to skill.
 5. **Slaying a general**: the prince loses his phase-two adds (proposal) / his hide falls from 70% to 50%.
-6. **The False Gatekeeper and tainted wares** are in (proposal) / the prince's cheats stay
+6. ~~**The False Gatekeeper and tainted wares** are in (proposal)~~ (removed 2026-10-04: the old man is never evil) / the prince's cheats stay
    words only (whispers and bargains).
 7. **Slow motion on kills** on by default (proposal) / off by default.
 8. **Generals' bodies**: dressed existing breeds now, own sculpts later (proposal) / sculpt seven now.
@@ -1400,3 +1404,14 @@ bolt paced late; none of them a general's).
   and orange were too near his amber), the turned needle too.
 - **The false gatekeeper's bottles** are known by their belt slot, the prince's colour in the glass.
 - Rivals: the Finisher lesson (a sway back out of the finisher), Patient, Fears, Greedy; F10; `--rivals`.
+
+### The old man always good; the compass when idle; F6
+
+- **No evil old man** (the user's rule): the false gatekeeper and his tainted wares are gone (the
+  cheat, its room, its demon, its bottles and blade, its capture hook and tests); the whisper speaks
+  as "<PRINCE> WHISPERS". Four cheats remain: the whisper, the crooked bargain, loaded dice, the
+  turned sign. Tests: `no_cheat_takes_the_old_mans_form`, `the_old_man_is_never_one_of_the_cheats`.
+- **The compass shows only when he stands idle** (0.8 s still, out of any swing, fading in over
+  0.4 s): the realm's needle and the old man's amber lamp. Test: `the_compass_shows_only_while_he_stands_idle`.
+- **F6 puts a thousand coins in his purse**, every press (a testing cheat); the ring's next bout
+  moved to F9. Test: `f6_gives_a_thousand_coins_every_press`.

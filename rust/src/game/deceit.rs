@@ -1,15 +1,15 @@
 //! The prince's cheats at run time (WARBAND.md §10.3; their rules in `logic::war::deceit`).
 //!
-//! Each realm visit deals two (`deceit::deal`). Two are places: **the false gatekeeper**, an old
-//! man in a side room selling at half price (no Quitmer, a shadow dog that never wags, a lantern in
-//! the sin's colour), and **loaded dice**, a mimic chest (it breathes, its coins never glint, its
-//! hinge creaks). Three are moments, played one at a time in Rest or Build: **the whisper** (false
-//! counsel in the old man's words, in the sin's colour, with a reversed echo and no bark), **the
-//! crooked bargain** (an offer through the prince's offer screen, with an honest hidden price), and
-//! **the turned sign** (the realm's compass needle turned toward a den for 20 s, flickering in the
-//! sin's colour, while the old man's amber lamp stays true).
+//! Each realm visit deals two (`deceit::deal`). One is a place: **loaded dice**, a mimic chest (it
+//! breathes, its coins never glint, its hinge creaks). Three are moments, played one at a time in
+//! Rest or Build: **the whisper** (false counsel in the prince's own voice and his sin's colour, with
+//! a reversed echo, no face and no bark), **the crooked bargain** (an offer through the prince's
+//! offer screen, with an honest hidden price), and **the turned sign** (the realm's compass needle
+//! turned toward a den for 20 s, flickering in the sin's colour, while the old man's amber lamp
+//! stays true).
 //!
-//! Nothing here takes what the hero owns: the false wares are lent, and gone with the realm.
+//! The old man is never one of them: the prince never takes his form, his name, his shop or his
+//! dog. Nothing here takes what the hero owns.
 
 use super::counsel::{toward, Speaker, AMBER};
 use super::{Banner, Game, MenuItem, Offer, Screen};
@@ -20,53 +20,24 @@ use crate::logic::enemy::EnemyKind;
 use crate::logic::hub::Rect;
 use crate::logic::realms::{deepest_stage, weight};
 use crate::logic::sins::Sin;
-use crate::logic::types::{dist_sq, Dir, PotionKind, P, V};
-use crate::logic::war::deceit::{
-    self, keeper_wares, may_begin, wares_worth, CheatKind, Ware, WareKind, Whisper, BLADE_BLOWS, BLADE_MIGHT, SHATTER_MIGHT,
-    SHATTER_SECONDS, SIGN_SECONDS, TURN_MIGHT, TURN_SECONDS,
-};
-use crate::logic::war::WarEvent;
+use crate::logic::types::{dist_sq, Dir, P, V};
+use crate::logic::war::deceit::{self, may_begin, CheatKind, Whisper, SIGN_SECONDS};
 
 /// Seconds into a visit before the first moment of deceit, and between them.
 const FIRST_AT: f64 = 14.0;
 const BETWEEN: f64 = 60.0;
-/// A swing meets the false gatekeeper or a chest within this reach, in front of him.
+/// A swing meets a chest within this reach, in front of him.
 const STRIKE_REACH: f64 = 1.7;
-/// Walking up to the false gatekeeper this close puts his wares to him (and he must step this far
-/// off before they are put again).
-const TRADE_AT: f64 = 1.0;
-const REARM_AT: f64 = 2.6;
-/// ...and not again for this long (he may stand by a corridor the hero walks often).
-const REASK: f64 = 20.0;
 /// The silver a chest is worth outside the vaults, twice over when struck first.
 const CHEST_SILVER: u32 = 40;
 /// The bargain's hidden price: this share of his health.
 pub const PRICE_SHARE: f64 = 1.0 / 3.0;
-/// The elite demon's health over its stage's.
-const ELITE: f64 = 1.5;
 
 /// A whisper in the air: what it said, and when (the visit's clock).
 #[derive(Clone, Debug, PartialEq)]
 pub struct LiveWhisper {
     pub w: Whisper,
     pub since: f64,
-}
-
-/// The false gatekeeper in his side room.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Keeper {
-    pub at: V,
-    /// The way he faces (into his room).
-    pub facing: V,
-    pub wares: [Ware; 2],
-    pub sold: [bool; 2],
-    /// He will put his wares to the hero when next he walks up (once he has been away a while).
-    pub armed: bool,
-    /// When he last put them (the visit's clock).
-    pub asked_at: f64,
-    /// Struck: the demon he was, and whether it has fallen.
-    pub demon: Option<u32>,
-    pub slain: bool,
 }
 
 /// A mimic chest.
@@ -92,63 +63,7 @@ pub struct Sign {
 /// What the prince's offer screen is asking.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Asking {
-    Keeper,
     Bargain,
-}
-
-/// The false wares he carries: bottles that will turn, a blade's blows left, and how long the turn
-/// and the sting of a shattered blade last. `applied`/`expect` keep the multiple on his blows apart
-/// from the realm's own (Pride's Glory).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Tainted {
-    /// The belt's slots that hold his false bottles (a slot, not a kind: a true bottle of the same
-    /// elixir beside it is his own), and whether the bottle drunk this frame was one.
-    pub slots: Vec<usize>,
-    pub drank: bool,
-    pub blade: Option<u32>,
-    pub turned: f64,
-    pub shattered: f64,
-    applied: f64,
-    expect: f64,
-}
-
-impl Default for Tainted {
-    fn default() -> Self {
-        Tainted { slots: Vec::new(), drank: false, blade: None, turned: 0.0, shattered: 0.0, applied: 1.0, expect: f64::NAN }
-    }
-}
-
-impl Tainted {
-    /// Slot `slot` of the belt is drunk: whether it held a false bottle (the slots after it move
-    /// down one, as the belt does).
-    pub fn drink_slot(&mut self, slot: usize) -> bool {
-        let was = self.slots.contains(&slot);
-        self.slots.retain(|&s| s != slot);
-        for s in self.slots.iter_mut().filter(|s| **s > slot) {
-            *s -= 1;
-        }
-        self.drank |= was;
-        was
-    }
-
-    /// What the false wares do to his blows now.
-    pub fn might(&self) -> f64 {
-        let mut m = 1.0;
-        if self.blade.is_some() {
-            m *= BLADE_MIGHT;
-        }
-        if self.turned > 0.0 {
-            m *= TURN_MIGHT;
-        }
-        if self.shattered > 0.0 {
-            m *= SHATTER_MIGHT;
-        }
-        m
-    }
-
-    pub fn any(&self) -> bool {
-        !self.slots.is_empty() || self.blade.is_some() || self.turned > 0.0 || self.shattered > 0.0
-    }
 }
 
 /// The prince's cheats in the realm he is in.
@@ -163,11 +78,9 @@ pub struct Deceit {
     pub clock: f64,
     next_at: f64,
     pub whisper: Option<LiveWhisper>,
-    pub keeper: Option<Keeper>,
     pub mimic: Option<Mimic>,
     pub sign: Option<Sign>,
     pub asking: Option<Asking>,
-    pub tainted: Tainted,
     /// His swing was in its active frames last frame (each swing counts once).
     swinging: bool,
     visits: u32,
@@ -178,8 +91,8 @@ pub struct Deceit {
 }
 
 impl Game {
-    /// Deals the realm's cheats as he enters it: the places (the false gatekeeper's room, a mimic
-    /// chest) are set now, the moments wait for their time.
+    /// Deals the realm's cheats as he enters it: the place (a mimic chest) is set now, the moments
+    /// wait for their time.
     pub(super) fn deal_deceit(&mut self, sin: Sin) {
         static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let d = &mut self.voices.deceit;
@@ -201,74 +114,26 @@ impl Game {
         d.played.clear();
         d.clock = 0.0;
         d.next_at = FIRST_AT;
-        if dealt.contains(&CheatKind::FalseGatekeeper) {
-            self.place_keeper(seed);
-        }
         if dealt.contains(&CheatKind::LoadedDice) {
             self.place_mimic(seed.rotate_left(11));
         }
     }
 
-    /// He left the realm: the false wares crumble (the bottles off his belt, the blade gone, his
-    /// blows his own again), and every cheat with it.
+    /// He left the realm: every cheat with it.
     pub(super) fn leave_deceit(&mut self) {
-        let t = std::mem::take(&mut self.voices.deceit.tainted);
-        let mut slots = t.slots.clone();
-        slots.sort_unstable_by(|a, b| b.cmp(a));
-        for i in slots {
-            if i < self.belt.len() {
-                self.belt.remove(i);
-            }
-        }
-        self.belt_index = self.belt_index.min(self.belt.len().saturating_sub(1));
-        if let Some(b) = self.brawl.as_mut() {
-            if (b.might - t.expect).abs() < 1e-12 {
-                b.might /= t.applied;
-            }
-        }
-        if t.any() {
-            self.belt_index = self.belt_index.min(self.belt.len().saturating_sub(1));
-            let hp = self.hero.pos();
-            self.floater(hp.x, hp.y - 1.0, "THE PRINCE'S WARES CRUMBLE TO ASH", 2.2, Some(0x9a8a7a));
-        }
         let d = &mut self.voices.deceit;
         let (visits, off, force) = (d.visits, d.off, d.force);
         *d = Deceit { visits, off, force, ..Deceit::default() };
     }
 
-    /// The false gatekeeper's room: in the vaults a chamber with no den in it; in a realm open floor
-    /// well away from the way in, the far portal and the dens.
-    fn place_keeper(&mut self, seed: u32) {
-        let Some(spot) = self.side_spot(seed, 1) else { return };
-        let price = crate::logic::progression::bottle_price(PotionKind::Strength);
-        let facing = toward(spot, self.hero.pos());
-        self.voices.deceit.keeper = Some(Keeper {
-            at: spot,
-            facing,
-            wares: keeper_wares(price, 120),
-            sold: [false; 2],
-            armed: true,
-            asked_at: f64::NEG_INFINITY,
-            demon: None,
-            slain: false,
-        });
-    }
-
     fn place_mimic(&mut self, seed: u32) {
-        let keeper = self.voices.deceit.keeper.as_ref().map(|k| k.at);
-        let Some(mut spot) = self.side_spot(seed, 1) else { return };
-        if keeper.is_some_and(|k| dist_sq(k, spot) < 36.0) {
-            match self.side_spot(seed.rotate_left(7) ^ 0x55, 1) {
-                Some(s) if keeper.is_none_or(|k| dist_sq(k, s) >= 36.0) => spot = s,
-                _ => return,
-            }
-        }
+        let Some(spot) = self.side_spot(seed, 1) else { return };
         self.voices.deceit.mimic = Some(Mimic { at: spot, done: false, biter: None, creak: 0.0 });
     }
 
     /// A quiet floor tile for a cheat to stand on: open ground `clear` tiles about, out of every
     /// den, away from where he came in and the far portal. Chosen by `seed`. (In the vaults every
-    /// chamber holds a pack: there he keeps to an alcove of the corridors.)
+    /// chamber holds a pack: there it keeps to an alcove of the corridors.)
     fn side_spot(&self, seed: u32, clear: i32) -> Option<V> {
         let grid = &self.level.grid;
         let mut dens: Vec<Rect> = Vec::new();
@@ -317,8 +182,6 @@ impl Game {
         let Some(sin) = self.voices.deceit.sin else { return };
         self.voices.deceit.clock += dt;
         let swing = self.new_swing();
-        self.update_tainted(dt, sin);
-        self.update_keeper(sin, swing);
         self.update_mimic(sin, swing, dt);
         self.update_sign(dt);
         let d = &mut self.voices.deceit;
@@ -494,23 +357,6 @@ impl Game {
         let d = &self.voices.deceit;
         let sin = d.sin?;
         match d.asking? {
-            Asking::Keeper => {
-                let k = d.keeper.as_ref()?;
-                let ware = |i: usize| {
-                    let w = &k.wares[i];
-                    if k.sold[i] {
-                        format!("{}: SOLD", w.name())
-                    } else {
-                        format!("{}: {} SILVER (HE ASKS {})", w.name(), w.price(), w.full)
-                    }
-                };
-                Some(Offer {
-                    title: "THE OLD MAN".into(),
-                    lines: vec![deceit::lie(CheatKind::FalseGatekeeper, sin), ware(0), ware(1), "Quitmer? Asleep in the back.".into()],
-                    choices: vec![MenuItem::Choice("BUY THE ELIXIR"), MenuItem::Choice("BUY THE BLADE"), MenuItem::Choice("WALK AWAY")],
-                    color: sin.color(),
-                })
-            }
             Asking::Bargain => Some(Offer {
                 title: format!("{}'S BARGAIN", sin.prince().to_uppercase()),
                 lines: vec![deceit::lie(CheatKind::CrookedBargain, sin), "Accept, and you stand at the end of the road.".into()],
@@ -526,11 +372,6 @@ impl Game {
         self.enter(Screen::Playing);
         let sin = self.voices.deceit.sin.unwrap_or(Sin::Greed);
         match asking {
-            Some(Asking::Keeper) => match choice {
-                MenuItem::Choice("BUY THE ELIXIR") => self.buy_false_ware(0, sin),
-                MenuItem::Choice("BUY THE BLADE") => self.buy_false_ware(1, sin),
-                _ => {}
-            },
             Some(Asking::Bargain) if choice == MenuItem::Choice("ACCEPT") => {
                 // The gain is real: the end of the road. So is the price he did not name.
                 self.cheat_run();
@@ -557,78 +398,6 @@ impl Game {
         }
     }
 
-    // ------------------------------------------------------------------ the false gatekeeper
-
-    fn update_keeper(&mut self, sin: Sin, swing: Option<(V, V)>) {
-        let hp = self.hero.pos();
-        let slain_now = {
-            let read = &self.war.read;
-            self.voices
-                .deceit
-                .keeper
-                .as_ref()
-                .and_then(|k| k.demon.filter(|_| !k.slain))
-                .is_some_and(|id| read.iter().any(|e| matches!(e, WarEvent::Slain { foe, .. } if *foe == id)))
-        };
-        if slain_now {
-            let worth = self.voices.deceit.keeper.as_ref().map(|k| wares_worth(&k.wares)).unwrap_or(0);
-            if let Some(k) = self.voices.deceit.keeper.as_mut() {
-                k.slain = true;
-            }
-            self.progress.silver += worth;
-            self.save_progress();
-            self.floater(hp.x, hp.y - 1.6, format!("HIS WARES' PRICE: +{worth} SILVER"), 2.4, Some(0xd8d8e0));
-            self.seen_through(CheatKind::FalseGatekeeper);
-            return;
-        }
-        let Some(k) = self.voices.deceit.keeper.as_mut() else { return };
-        if k.demon.is_some() {
-            return;
-        }
-        let d = dist_sq(k.at, hp).sqrt();
-        if Self::swing_meets(swing, k.at) {
-            let at = k.at;
-            let facing = toward(at, hp);
-            self.reveal_keeper(sin, at, facing);
-            return;
-        }
-        if d > REARM_AT && self.voices.deceit.clock - k.asked_at > REASK {
-            k.armed = true;
-        }
-        let swinging = self.voices.deceit.swinging;
-        let Some(k) = self.voices.deceit.keeper.as_mut() else { return };
-        if k.armed && d < TRADE_AT && !swinging && self.screen == Screen::Playing {
-            k.armed = false;
-            k.asked_at = self.voices.deceit.clock;
-            if !self.voices.deceit.played.contains(&CheatKind::FalseGatekeeper) {
-                self.voices.deceit.played.push(CheatKind::FalseGatekeeper);
-            }
-            self.voices.deceit.asking = Some(Asking::Keeper);
-            self.ask_offer();
-        }
-    }
-
-    /// Struck, the old man is a demon: an elite of the realm's deepest stage, where he stood.
-    fn reveal_keeper(&mut self, sin: Sin, at: V, facing: V) {
-        let stage = deepest_stage(self.realm_tier());
-        let kind = demon_of(stage);
-        let id = self.spawn_duelist(kind, at, facing, Lore::default());
-        if let Some(id) = id {
-            self.weigh_spawned(id, stage, ELITE);
-        }
-        if let Some(k) = self.voices.deceit.keeper.as_mut() {
-            k.demon = Some(id.unwrap_or(u32::MAX));
-            k.slain = id.is_none();
-        }
-        if !self.voices.deceit.played.contains(&CheatKind::FalseGatekeeper) {
-            self.voices.deceit.played.push(CheatKind::FalseGatekeeper);
-        }
-        self.audio.play(Sfx::Stinger);
-        self.view.shake(0.45);
-        self.view.dust(&self.level.grid, at.x, at.y, sin.color(), 24, 2.5);
-        self.floater(at.x, at.y - 1.4, "NO OLD MAN: A DEMON", 2.0, Some(sin.color()));
-    }
-
     /// A spawned foe weighed as the realm weighs its own, times `extra` on its health.
     fn weigh_spawned(&mut self, id: u32, stage: u8, extra: f64) {
         let tier = self.realm_tier();
@@ -637,80 +406,6 @@ impl Game {
             d.max_hp *= hp * extra;
             d.hp = d.max_hp;
             d.breed.damage *= damage;
-        }
-    }
-
-    fn buy_false_ware(&mut self, i: usize, sin: Sin) {
-        let Some(k) = self.voices.deceit.keeper.as_ref() else { return };
-        let (ware, sold) = (k.wares[i], k.sold[i]);
-        let hp = self.hero.pos();
-        if sold || self.progress.silver < ware.price() {
-            self.audio.play(Sfx::Denied);
-            return;
-        }
-        if matches!(ware.kind, WareKind::Elixir(_)) && self.belt.len() >= crate::logic::gear::BELT_SLOTS {
-            self.audio.play(Sfx::Denied);
-            self.floater(hp.x, hp.y - 1.0, "YOUR BELT IS FULL", 1.4, Some(0xff6a6a));
-            return;
-        }
-        self.progress.silver -= ware.price();
-        self.save_progress();
-        if let Some(k) = self.voices.deceit.keeper.as_mut() {
-            k.sold[i] = true;
-        }
-        match ware.kind {
-            WareKind::Elixir(p) => {
-                self.belt.push(p);
-                let slot = self.belt.len() - 1;
-                self.voices.deceit.tainted.slots.push(slot);
-            }
-            WareKind::Blade => self.voices.deceit.tainted.blade = Some(BLADE_BLOWS),
-        }
-        self.audio.play(Sfx::Buy);
-        self.floater(hp.x, hp.y - 1.0, ware.name(), 1.6, Some(sin.color()));
-    }
-
-    /// The false wares at work: a tainted bottle drunk turns (his blows weak for a while), the
-    /// bright blade counts its blows and shatters; their multiple on his blows kept up to date.
-    fn update_tainted(&mut self, dt: f64, sin: Sin) {
-        let hp = self.hero.pos();
-        let events = self.war.read.clone();
-        for e in events {
-            match e {
-                WarEvent::Drank { .. } => {
-                    let t = &mut self.voices.deceit.tainted;
-                    if std::mem::take(&mut t.drank) {
-                        t.turned = TURN_SECONDS;
-                        self.audio.play(Sfx::Denied);
-                        self.floater(hp.x, hp.y - 1.2, "THE ELIXIR TURNS: YOUR ARMS GO WEAK", 2.0, Some(sin.color()));
-                    }
-                }
-                WarEvent::HeroHit { .. } => {
-                    let t = &mut self.voices.deceit.tainted;
-                    if let Some(n) = t.blade.as_mut() {
-                        *n = n.saturating_sub(1);
-                        if *n == 0 {
-                            t.blade = None;
-                            t.shattered = SHATTER_SECONDS;
-                            self.audio.play(Sfx::ShieldBreak);
-                            self.view.shake(0.3);
-                            self.floater(hp.x, hp.y - 1.2, "THE BRIGHT BLADE SHATTERS", 2.0, Some(sin.color()));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        let t = &mut self.voices.deceit.tainted;
-        t.turned = (t.turned - dt).max(0.0);
-        t.shattered = (t.shattered - dt).max(0.0);
-        let m = t.might();
-        if let Some(b) = self.brawl.as_mut() {
-            // (If the realm set his might itself since, that is the base now.)
-            let base = if (b.might - t.expect).abs() < 1e-12 { b.might / t.applied } else { b.might };
-            b.might = base * m;
-            t.applied = m;
-            t.expect = b.might;
         }
     }
 
@@ -803,33 +498,6 @@ impl Game {
         self.begin_whisper(sin);
     }
 
-    /// Capture hook (`gatekeeper`): the false gatekeeper in this realm (dealt if he was not), and
-    /// the hero a few steps from him, facing him.
-    pub fn debug_gatekeeper(&mut self) {
-        let sin = self.realm.unwrap_or(Sin::Greed);
-        if self.voices.deceit.keeper.is_none() {
-            self.voices.deceit.sin = Some(sin);
-            for s in 0..8 {
-                self.place_keeper(1234 + s * 977);
-                if self.voices.deceit.keeper.is_some() {
-                    break;
-                }
-            }
-        }
-        let Some(k) = self.voices.deceit.keeper.as_mut() else { return };
-        let at = k.at;
-        let mut stand = V::new(at.x, at.y + 2.4);
-        if !self.level.grid.is_walkable(stand.x.round() as i32, stand.y.round() as i32, false) {
-            stand = V::new(at.x, at.y - 2.4);
-        }
-        k.facing = toward(at, stand);
-        k.armed = false;
-        self.hero.place(P::new(stand.x.round() as i32, stand.y.round() as i32));
-        let face = if stand.y > at.y { Dir::Up } else { Dir::Down };
-        self.hero.face(face);
-        self.view.aim_along(face);
-    }
-
     /// Capture hook (`sign`): the realm's compass turned toward a den now.
     pub fn debug_sign(&mut self) {
         let sin = self.voices.deceit.sin.or(self.realm).unwrap_or(Sin::Greed);
@@ -850,12 +518,6 @@ impl Game {
     }
 }
 
-/// The demon behind the false gatekeeper: the melee body of the realm's deepest stage.
-pub fn demon_of(stage: u8) -> EnemyKind {
-    use EnemyKind as K;
-    [K::Skeleton, K::Blemmyes, K::Rasetsu, K::Oni, K::Karakoncolos, K::Gashadokuro, K::Surtr][(stage.clamp(1, 7) - 1) as usize]
-}
-
 /// What comes out of a mimic chest: a body foe of the stage, never a giant.
 pub fn biter_of(stage: u8) -> EnemyKind {
     use EnemyKind as K;
@@ -865,17 +527,6 @@ pub fn biter_of(stage: u8) -> EnemyKind {
 #[cfg(test)]
 mod tests {
 
-    /// His own bottle of the same elixir beside a false one is his own: only the false one turns.
-    #[test]
-    fn a_true_bottle_beside_a_false_one_stays_true() {
-        let mut t = Tainted::default();
-        t.slots.push(1); // the false strength in slot 1, his own in slot 0
-        assert!(!t.drink_slot(0), "his own bottle");
-        assert_eq!(t.slots, vec![0], "the false one moves down a slot");
-        assert!(!std::mem::take(&mut t.drank));
-        assert!(t.drink_slot(0), "the false one");
-        assert!(t.drank && t.slots.is_empty());
-    }
     use super::super::realms::tests::{in_realm, STEP};
     use super::*;
     use crate::logic::progression::TREES;
@@ -889,10 +540,8 @@ mod tests {
         g.voices.deceit.sin = Some(sin);
         g.voices.deceit.dealt = cheats.to_vec();
         for (k, c) in cheats.iter().enumerate() {
-            match c {
-                CheatKind::FalseGatekeeper => g.place_keeper(99 + k as u32),
-                CheatKind::LoadedDice => g.place_mimic(7 + k as u32),
-                _ => {}
+            if *c == CheatKind::LoadedDice {
+                g.place_mimic(7 + k as u32);
             }
         }
         g.war.drum.phase = DrumPhase::Rest;
@@ -910,45 +559,9 @@ mod tests {
 
     #[test]
     fn the_prince_never_takes_what_the_hero_owns() {
-        let mut g = dealt(Sin::Gluttony, &[CheatKind::FalseGatekeeper, CheatKind::LoadedDice]);
+        let mut g = dealt(Sin::Gluttony, &[CheatKind::LoadedDice, CheatKind::Whisper]);
         g.progress.silver = 1000;
         let before = owned(&g);
-        // Believe the false gatekeeper: buy both, drink the bottle, swing the blade to pieces.
-        let k = g.voices.deceit.keeper.clone().expect("a side room for him");
-        g.voices.deceit.asking = Some(Asking::Keeper);
-        g.answer_deceit(MenuItem::Choice("BUY THE ELIXIR"));
-        g.voices.deceit.asking = Some(Asking::Keeper);
-        g.answer_deceit(MenuItem::Choice("BUY THE BLADE"));
-        assert_eq!(g.progress.silver, 1000 - k.wares[0].price() - k.wares[1].price(), "half price");
-        assert_eq!(g.voices.deceit.tainted.blade, Some(BLADE_BLOWS));
-        let bottles = |g: &Game| g.belt.iter().filter(|&&p| p == PotionKind::Strength).count();
-        let on_belt = bottles(&g);
-        assert!(on_belt >= 1, "the bottle on his belt");
-        let base = g.brawl.as_ref().unwrap().might;
-        g.update_deceit(STEP);
-        assert!((g.brawl.as_ref().unwrap().might - base * BLADE_MIGHT).abs() < 1e-9, "the bright blade bites");
-        // A second bottle of his, drunk: it turns.
-        g.belt.push(PotionKind::Strength);
-        g.voices.deceit.tainted.slots.push(g.belt.len() - 1);
-        assert!(g.voices.deceit.tainted.drink_slot(g.belt.len() - 1));
-        g.belt.pop();
-        g.war.read = vec![WarEvent::Drank { potion: PotionKind::Strength }];
-        g.update_deceit(STEP);
-        assert!(g.voices.deceit.tainted.turned > 0.0, "the elixir turns");
-        assert!((g.brawl.as_ref().unwrap().might - base * BLADE_MIGHT * TURN_MIGHT).abs() < 1e-9);
-        let hit = WarEvent::HeroHit {
-            foe: 1,
-            kind: EnemyKind::Gaki,
-            effect: crate::logic::combat::fsm::Effect::Flinched(10),
-            dmg: 1.0,
-            finisher: false,
-            dir: V::new(1.0, 0.0),
-            at: V::new(0.0, 0.0),
-            warded: 0.0,
-        };
-        g.war.read = vec![hit; BLADE_BLOWS as usize];
-        g.update_deceit(STEP);
-        assert!(g.voices.deceit.tainted.blade.is_none() && g.voices.deceit.tainted.shattered > 0.0, "it shatters after 30 blows");
         // Believe the dice: walk onto the chest, and it bites (a duelist, through the threat manager).
         let m = g.voices.deceit.mimic.clone().expect("a mimic");
         let n = g.enemies.len();
@@ -956,35 +569,33 @@ mod tests {
         g.update_deceit(STEP);
         assert_eq!(g.enemies.len(), n + 1, "it bites");
         assert!(g.enemies.last().unwrap().duel.is_some());
-        // Leave the realm: every false ware is gone, and nothing he owns went with it.
-        g.war.read.clear();
-        assert_eq!(g.voices.deceit.tainted.slots.len(), 1, "the bottle he bought, not yet drunk");
+        // Believe the whisper, leave the realm: nothing he owns went with it.
+        g.debug_whisper();
         g.leave_deceit();
-        assert_eq!(bottles(&g), on_belt - 1, "the false bottle is gone from his belt");
-        assert!(!g.voices.deceit.tainted.any());
-        assert!((g.brawl.as_ref().unwrap().might - base).abs() < 1e-9, "his blows his own again");
         assert_eq!(owned(&g), before, "no tier, relic, rune or life taken");
+        assert_eq!(g.progress.silver, 1000, "nor his silver");
     }
 
+    /// The old man is never one of the prince's cheats (the user's rule): no offer comes in his
+    /// name, and no whisper in his colour.
     #[test]
-    fn striking_the_false_gatekeeper_reveals_a_demon_whose_death_pays_his_wares() {
-        let mut g = dealt(Sin::Envy, &[CheatKind::FalseGatekeeper]);
-        let k = g.voices.deceit.keeper.clone().expect("a side room for him");
-        let lies = g.warband.save.lies;
-        let silver = g.progress.silver;
-        let n = g.enemies.len();
-        g.hero.place(P::new(k.at.x.round() as i32, k.at.y.round() as i32 + 1));
-        g.voices.deceit.swinging = false;
-        let swing = Some((g.hero.pos(), toward(g.hero.pos(), k.at)));
-        g.update_keeper(Sin::Envy, swing);
-        assert_eq!(g.enemies.len(), n + 1, "a demon where he stood");
-        let id = g.voices.deceit.keeper.as_ref().unwrap().demon.unwrap();
-        let demon = g.enemies.last().unwrap().duel.as_ref().unwrap();
-        assert_eq!((demon.id, demon.breed.kind), (id, demon_of(deepest_stage(g.realm_tier()))));
-        g.war.read = vec![WarEvent::Slain { foe: id, kind: demon.breed.kind, at: k.at, dir: V::new(1.0, 0.0), last_of_pack: true }];
-        g.update_keeper(Sin::Envy, None);
-        assert_eq!(g.progress.silver, silver + wares_worth(&k.wares), "his wares' price in silver");
-        assert_eq!(g.warband.save.lies, lies + 1, "a lie seen through");
+    fn the_old_man_is_never_one_of_the_cheats() {
+        for sin in crate::logic::sins::SINS {
+            let all: Vec<CheatKind> = CheatKind::ALL.iter().copied().filter(|c| c.fits(sin)).collect();
+            let mut g = dealt(sin, &all);
+            g.voices.deceit.next_at = 0.0;
+            for _ in 0..3 {
+                g.update_deceit(STEP);
+                if let Some(o) = g.deceit_offer() {
+                    assert!(!o.title.contains("OLD MAN") && !o.lines.join(" ").to_lowercase().contains("quitmer"), "{sin:?}: {o:?}");
+                }
+                if let Some(s) = g.voices_line() {
+                    if matches!(s.who, Speaker::Whisper(_)) {
+                        assert_ne!(s.color(), AMBER, "{sin:?}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -1062,27 +673,9 @@ mod tests {
     }
 
     #[test]
-    fn the_bot_refuses_whispers_and_strikes_the_false_gatekeeper_and_the_mimic() {
+    fn the_bot_refuses_whispers_and_strikes_the_mimic() {
         use crate::game::bot::{Bot, Skill};
-        let mut g = dealt(Sin::Greed, &[CheatKind::FalseGatekeeper]);
-        g.hero.free_move = true;
-        // (Nothing hunting it: it sees through cheats between fights.)
-        g.enemies.clear();
-        g.debug_gatekeeper();
         let mut bot = Bot::new(Skill::Expert, 3);
-        for _ in 0..(6.0 / STEP) as usize {
-            if g.screen != Screen::Playing {
-                break;
-            }
-            let pad = bot.act(&g);
-            g.input.set_pad(Some(pad));
-            g.update(STEP);
-            if g.voices.deceit.keeper.as_ref().is_some_and(|k| k.demon.is_some()) {
-                break;
-            }
-        }
-        assert!(g.voices.deceit.keeper.as_ref().unwrap().demon.is_some(), "it struck him rather than trade");
-        assert_eq!(g.screen, Screen::Playing, "and never stood to hear his wares");
         // A mimic before it: struck, never opened.
         let mut g = dealt(Sin::Gluttony, &[CheatKind::LoadedDice]);
         g.hero.free_move = true;
@@ -1109,20 +702,16 @@ mod tests {
     }
 
     #[test]
-    fn every_realm_has_a_side_room_for_the_false_gatekeeper_and_a_spot_for_a_chest() {
-        for sin in crate::logic::sins::SINS.into_iter().filter(|&s| CheatKind::FalseGatekeeper.fits(s)) {
-            let mut g = dealt(sin, &[CheatKind::FalseGatekeeper, CheatKind::LoadedDice]);
-            let k = g.voices.deceit.keeper.clone().unwrap_or_else(|| panic!("{sin:?}: no room for him"));
-            let t = P::new(k.at.x.round() as i32, k.at.y.round() as i32);
+    fn every_realm_with_chests_has_a_spot_for_a_mimic() {
+        for sin in crate::logic::sins::SINS.into_iter().filter(|&s| CheatKind::LoadedDice.fits(s)) {
+            let mut g = dealt(sin, &[CheatKind::LoadedDice]);
+            let m = g.voices.deceit.mimic.clone().unwrap_or_else(|| panic!("{sin:?}: no spot for a chest"));
+            let t = P::new(m.at.x.round() as i32, m.at.y.round() as i32);
             assert!(g.level.grid.is_walkable(t.x, t.y, false), "{sin:?}");
-            if CheatKind::LoadedDice.fits(sin) {
-                assert!(g.voices.deceit.mimic.is_some(), "{sin:?}: a chest");
-            }
-            // He is still there after a few seconds of the realm's own rules.
             for _ in 0..(3.0 / STEP) as usize {
                 g.update(STEP);
             }
-            assert!(g.voices.deceit.keeper.is_some(), "{sin:?}");
+            assert!(g.voices.deceit.mimic.is_some(), "{sin:?}");
         }
     }
 }

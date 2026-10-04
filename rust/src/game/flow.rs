@@ -377,6 +377,9 @@ impl Game {
                 b.readout = !b.readout;
             }
         }
+        if self.input.was_pressed(&[Action::Gold]) && matches!(self.screen, Screen::Playing | Screen::Paused | Screen::Shop) {
+            self.cheat_gold();
+        }
         if self.input.was_pressed(&[Action::NextBout]) && self.screen == Screen::Playing {
             self.next_bout();
         }

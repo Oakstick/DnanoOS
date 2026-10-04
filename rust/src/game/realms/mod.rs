@@ -247,7 +247,7 @@ impl Game {
 
     /// The prince's offer standing before him now, if his realm makes one.
     pub fn run_offer(&self) -> Option<Offer> {
-        // A prince's cheat asking (his bargain, the false gatekeeper's wares) comes first.
+        // A prince's cheat asking (his bargain) comes first.
         if let Some(o) = self.deceit_offer() {
             return Some(o);
         }
