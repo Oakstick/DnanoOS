@@ -173,7 +173,9 @@ impl WorldView {
             return;
         }
         f.atmosphere = if self.showcase {
-            estate::garden_atmosphere()
+            // (Bloom kept low: under the stage's strong key light it hazed a pale fringe round
+            // every figure.)
+            Atmosphere { bloom: 0.3, ..estate::garden_atmosphere() }
         } else if self.vault.is_some() {
             vault::vault_atmosphere()
         } else if let Some(a) = self.run_atmosphere(s) {

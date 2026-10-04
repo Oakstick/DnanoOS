@@ -1575,24 +1575,31 @@ fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
 
 /// Start screen. The real 3D Ragnar stands in the middle while the camera
 /// circles him; the logo, the quest, the foes and the controls frame him.
+/// A smooth top-to-bottom shade over the whole screen in `rgb`, opacity `alpha(v)` at the height
+/// `v` (0 top, 1 bottom): rows a few pixels high meeting exactly, so no seam is shaded twice.
+fn shade_rows(o: &mut Overlay, w: f32, h: f32, rgb: [f32; 3], alpha: impl Fn(f32) -> f32) {
+    let rows = (h / 3.0).ceil().max(1.0) as usize;
+    for i in 0..rows {
+        let (y0, y1) = ((h * i as f32 / rows as f32).round(), (h * (i + 1) as f32 / rows as f32).round());
+        let v = (i as f32 + 0.5) / rows as f32;
+        o.rect(0.0, y0, w, y1 - y0, [rgb[0], rgb[1], rgb[2], alpha(v)]);
+    }
+}
+
 fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let time = g.time as f32;
 
     // Shade the scene top and bottom, keep the middle clear for Ragnar.
-    let bands = 24;
-    for i in 0..bands {
-        let y0 = h * i as f32 / bands as f32;
-        let v = i as f32 / (bands - 1) as f32;
-        let a = if v < 0.3 {
+    shade_rows(o, w, h, INK, |v| {
+        if v < 0.3 {
             0.8 - v / 0.3 * 0.62
         } else if v < 0.76 {
             0.18
         } else {
             0.18 + (v - 0.76) / 0.24 * 0.6
-        };
-        o.rect(0.0, y0, w, h / bands as f32 + 1.0, [INK[0], INK[1], INK[2], a]);
-    }
+        }
+    });
     // Side vignettes behind the panels.
     for i in 0..10 {
         let a = 0.05 * (10 - i) as f32 / 10.0;
@@ -1742,18 +1749,15 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let time = g.time as f32;
     // Darken the top and bottom so the words read over the cavern.
-    let bands = 24;
-    for i in 0..bands {
-        let v = i as f32 / (bands - 1) as f32;
-        let a = if v < 0.2 {
+    shade_rows(o, w, h, INK, |v| {
+        if v < 0.2 {
             0.78 - v / 0.2 * 0.6
         } else if v < 0.7 {
             0.18
         } else {
             0.18 + (v - 0.7) / 0.3 * 0.62
-        };
-        o.rect(0.0, h * i as f32 / bands as f32, w, h / bands as f32 + 1.0, [2.0 / 255.0, 3.0 / 255.0, 6.0 / 255.0, a]);
-    }
+        }
+    });
 
     // ---- title
     o.text("ADVENTURES OF THE ANCIENT BLADES", w / 2.0, h * 0.045, t * 0.55, rgba(SAND, 0.9), Align::Center, false);
