@@ -77,12 +77,42 @@ impl Game {
         self.collect();
     }
 
-    /// Test and capture hook: `amount` damage straight to the boss.
+    /// Test and capture hook: `amount` damage straight to the boss (or the prince in his court,
+    /// through his hide: his phases change as they would).
     pub fn debug_wound_boss(&mut self, amount: i32) {
         if let Some(b) = self.boss.as_ref().filter(|b| b.active()) {
             let at = b.pos;
             self.wound_boss(amount, at);
         }
+        if let Some(i) =
+            self.prince().map(|d| d.id).and_then(|id| self.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| d.id == id)))
+        {
+            let Some(d) = self.enemies[i].duel.as_mut() else { return };
+            let from = d.pos;
+            d.hp -= (amount as f64 - 1.0).max(0.0);
+            let hit = crate::logic::combat::fsm::Hit { damage: 1.0 / d.taken(), ..Default::default() };
+            self.duel_hit(i, hit, 0, from);
+        }
+    }
+
+    /// Capture hook: the prince stands where he is, faces the hero and begins move `m` of his
+    /// (0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam).
+    pub fn debug_prince_move(&mut self, m: usize) {
+        use crate::logic::combat::{math, MoveId};
+        const MOVES: [MoveId; 6] =
+            [MoveId::Sceptre, MoveId::CoinToss, MoveId::Grasp, MoveId::CoinVolley, MoveId::CoinRain, MoveId::HoardSlam];
+        let hp = self.hero.pos();
+        let Some(id) = self.prince().map(|d| d.id) else { return };
+        let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) else { return };
+        if matches!(m, 0 | 2 | 5) {
+            // (Within his reach for a blow: just north of him, as he stands before the throne.)
+            d.pos = crate::logic::types::V::new(hp.x, hp.y - 1.9);
+        }
+        d.facing = math::norm(math::sub(hp, d.pos));
+        d.f.state = crate::logic::combat::State::Neutral;
+        d.rest = u16::MAX;
+        d.token = true;
+        d.begin(MOVES[m.min(5)], hp);
     }
 
     /// Capture hook: three quick kills, for a BRUTAL streak.

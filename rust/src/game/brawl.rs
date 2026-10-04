@@ -496,7 +496,7 @@ impl Game {
      * vaults with a kill's spoils). An illusion is gone at a touch; a felled ejder struck again
      * rises; one about to fall begs instead; a wounded kitsune conjures its illusions.
      */
-    fn duel_hit(&mut self, i: usize, mut hit: Hit, hitstop: u16, from: V) {
+    pub(super) fn duel_hit(&mut self, i: usize, mut hit: Hit, hitstop: u16, from: V) {
         self.wake_den_of(i);
         let Some(du) = self.enemies[i].duel.as_mut() else { return };
         if !du.alive() || du.untouchable() {

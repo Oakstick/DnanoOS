@@ -278,6 +278,7 @@ West of the gym's arrival platform: a 17×17 platform. Step in and a bout begins
 | 14 The Old Tales | the sixth stage's four | a grab, seven heads and a plea, lightning from a ghost |
 | 15 Fire and Ice | frost giant + Surtr | frostbite through the shield, fire on the floor |
 | 16 Ragnarök | the seventh stage's four | the end of the world: everything above, harder |
+| 17 The Prince of Greed | Mammon | a boss on the same rules: phases, a hide, coins on the floor, a grasp (§13) |
 
 Bouts 1-5 are the lab: the archetypes in their own bodies. Bouts 6-8 bring the third stage's
 foes, each a breed of an archetype (§10); bouts 9-16 the later stages', with their legends (§11),
@@ -304,7 +305,7 @@ each measured with the kit of its stage (tiers 3, 5, 7 and 9).
 | **4 Roll-out** | every foe kind a breed of an archetype; the brawl (`game::brawl`) runs the Vaults of Mammon: packs of duelists asleep in their dens, one threat manager, real death, shield and blade wear, contact damage retired there (§9) | the expert clears the vaults with every kit, the adept from tier 4; zero overlaps in every crawl ✔ |
 | **Stage 3** | five new bodies, each a breed of an archetype; every stage's cast attacks all three ways (melee, body, distance); a third platform in the gym and three bouts in the ring (§10) | the expert wins them with the training sword, the adept with tier-4 gear, a masher with neither ✔ |
 | **Stages 4-7** | seventeen bodies from folklore, each a breed of an archetype with a move, a rider and a power of its own; new shapes (lane, marks, volley, quake), the hero's ails, holds, summons; four more platforms and eight bouts (§11) | at its stage's tier the expert wins every bout inside its target and a masher none; three tiers up (or the last) a careful player wins them all; zero overlaps ✔ |
-| 5 Bosses | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3 | the boss is a fourth archetype, not a special case |
+| **5 Bosses** | Mammon from the same FSM: phase-specific move tables, armor windows, token cost 3; his court, the Counting House; a bout for him in the ring (§13) | the boss is a fourth archetype, not a special case ✔; the expert beats him with the kit a hero has on reaching him (tiers 1-2) and a masher does not ✔; zero overlaps ✔ |
 
 ---
 
@@ -1024,3 +1025,90 @@ Night Parade 40.0, the Iron Club 17.3, the Fox's Wedding 30.8, the Call in the C
 Nights 34.6, the One Eye 14.3, the Old Tales 30.9, Fire and Ice 29.5, Ragnarök 37.9: all inside
 their targets, no overlaps. Open: with the sidestep gone a masher beats the Pack (two loup-garous)
 again; no test pins it.
+
+---
+
+## 13. Phase 5: the princes, a fourth archetype
+
+The boss is not a special case. A sin's prince is a duelist like every foe: the same `Fighter`,
+frames, guard, parry, mercy and threat rules, his own `Archetype::Prince` with its numbers, and a
+`Breed` that carries the phase of his fight (`combat::prince`). Three things make him a boss:
+
+* **Phases by health.** Above two thirds he fights with one table of moves, down to a third with a
+  second, below it with a third (`prince::table`). A move's cooldown is its own; the tables change
+  as a blow takes him past a threshold (`Cue::Phase`), and the game shows it: a banner, his roar,
+  a green cross for a breather.
+* **Armour windows.** His hide turns 70% of a blow, damage and poise alike, outside his recoveries
+  (`Power::GoldHide`, as Tepegöz's ring: `HIDE_SHARE` 0.3). In a recovery, reeling, or while his
+  fist holds the hero, the whole blow lands, with the ×1.25 of a punish. No blow
+  interrupts him through his hide, not even the finisher (armour 40); a parry does (deflected
+  60 f, half his poise).
+* **A token of three.** He fills his court's pool by himself (capacity 3, a grant every 45 f):
+  while he strikes, what he raises waits.
+
+### 13.1 Mammon, the prince of Greed
+
+| | Prince (Mammon) |
+|---|---|
+| HP / Poise / Armor | 900 / 150 / 40 (hide: 30% of a blow outside his recoveries) |
+| Stagger / Resolve | 90 f / 300 f |
+| Walk / Strafe (t/s) | 2.0 / 1.3 (the Hoard: ×1.35) |
+| Rest after a move | 50 f (the Hoard: 30 f) |
+| Radius / arm | 0.95 / +0.9 tiles of reach |
+| Cost | 3 |
+
+| Phase (health) | Moves, in the order he prefers them | What else |
+|---|---|---|
+| 1 The Banker (100-66%) | Coin Toss (from 2.4-7 tiles), Sceptre Sweep | |
+| 2 The Collector (66-33%) | Grasp, Coin Toss, Sceptre Sweep | two gold golems climb out of his heaps (once) |
+| 3 The Hoard (< 33%) | Coin Rain, Hoard Slam, Coin Volley (3-8 tiles), Sceptre Sweep | quicker on his feet, quicker to strike again |
+
+| Move | Startup | Active | Recovery | Damage | Shape | Rider |
+|---|---|---|---|---|---|---|
+| Sceptre Sweep | 32 | 8 | 42 | 24 | cone 1.3 (+0.9), ±105° | |
+| Coin Toss | 30 | 1 | 36 | 18 | five coins on the floor round him (one where he stands), 0.8 wide, bursting 16 + 48 f after the throw | |
+| Grasp | 36 | 8 | 46 | 10 | cone 1.4 (+0.9), ±45°, parry only | the hold |
+| Coin Volley | 34 | 1 | 32 | 11 ×5 | volley of five, ±0.42 rad | |
+| Coin Rain | 40 | 1 | 34 | 16 | seven coins falling round him (two rings), 0.85 wide, bursting 16 + 42 f after | |
+| Hoard Slam | 42 | 6 | 50 | 32 | cone 1.3 (+0.9); quake 2.4 (+0.9) at 45% | |
+
+Every move holds to §0: readable (30 f or more), punishable, parried on reaction where it can be
+parried. The coins are `Shape::Traps`: what bursts from the floor is neither blocked nor parried
+(`GuardRule::Bare`); he steps off them, or leaps. A throw's coins burst together and land as one
+strike, on the frame the threat manager planned (`lands_after`: startup, flight, fuse), and the
+fuse leaves time to walk off them with a fifth to spare
+(`a_coin_on_the_floor_bursts_late_enough_to_step_off_it`).
+
+**The grasp** is the one thing in the game that holds the hero, and it holds only his feet. A
+grasp that lands open (not parried, not leapt) closes his fist on him: Mammon keeps still in the
+grasp's recovery, his hide open; the hero cannot walk or leap, but he can swing and guard. Every
+30 frames the fist takes 10 of his silver and gives Mammon 1.2% of his health back. A blow on
+Mammon breaks it (and lands whole, as a punish); after 300 frames he lets go of himself. Nothing
+else may strike while he holds (the threat manager is kept quiet). This bends §11.4's rule that
+nothing holds him, deliberately: the legend is "steals your silver unless you strike him", and a
+hero who strikes at once is held for a third of a second.
+
+### 13.2 Results
+
+The bout (the ring, `--bout 17 SKILL TIER SEED`; the expert's kit at the bout's tier, 2):
+
+| Skill | Tier | Win | Time (s) | Taken |
+|---|---|---|---|---|
+| novice | 1 | 0/3 | lost in 8.3 | 118 |
+| novice | 2 | 0/3 | lost in 10.8 | 162 |
+| adept | 1 | 0/3 | timed out (120) | 82 |
+| adept | 2 | 0/3 | timed out (120) | 52 |
+| expert | 1 | 3/3 | 84.9 | 18 |
+| expert | 2 | 3/3 | 69.0 (target 45-90) | 0 |
+
+His court (the Counting House, three lives, `--court SKILL TIER SEED`): the expert brings him down
+through all three phases at tiers 1 and 2 without falling (100-133 s with the walking, the golems
+and the coins); a masher loses all its lives in his first phase (about 46 s). The adept blocks
+everything and parries little, and his hide turns what it strikes outside his recoveries: it does
+not finish him in two minutes. Pinned by `the_bouts_meet_their_balance_targets` (the expert, no
+overlaps; a masher cannot win) and `the_expert_beats_mammon_in_his_court_and_a_masher_does_not`.
+
+| Change | Why |
+|---|---|
+| The court's pool 4 → 3 points | the golems' slams came while Mammon's own were planned; with his token filling the pool, they strike between his |
+| The bots play the court from the top view | the stick is the camera's way round in the chase view: a bot pushing south walked north into the wall |

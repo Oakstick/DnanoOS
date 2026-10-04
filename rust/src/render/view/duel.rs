@@ -138,6 +138,12 @@ impl WorldView {
             }
             _ => {}
         }
+        if d.arch == Archetype::Prince {
+            // A prince's tell is his pose and the floor's: a glow from within would wash out a figure
+            // so large and dark, so only a breath of it shows.
+            v.emissive *= 0.02;
+            v.light_intensity = 0.0;
+        }
         if d.flash > 0 {
             let k = d.flash as f32 / 6.0;
             v.emissive += Vec3::splat(1.3 * k);
@@ -443,9 +449,13 @@ impl WorldView {
                         // him the fist stays closed and out.
                         let held = d.lore.hold > 0;
                         let out = if held { 1.0 } else { 1.0 - rec };
-                        let arm = if strike == 0.0 { 0.4 * wind } else { 0.4 - 1.9 * snap };
+                        let arm = if strike == 0.0 { 0.4 * wind } else { 0.4 - 1.55 * snap };
                         v.pose.rot_x(rig, "leftArm", arm * out);
-                        v.root_rot.x = if strike == 0.0 { -0.12 * wind } else { 0.22 * out };
+                        if let Some(l) = rig.index("leftArm") {
+                            // (In across his front, down to where the hero stands.)
+                            v.pose.rot[l].z = if strike == 0.0 { -0.3 * wind } else { 0.38 * snap * out };
+                        }
+                        v.root_rot.x = if strike == 0.0 { -0.12 * wind } else { 0.26 * out };
                         v.pose.rot_x(rig, "rightArm", 0.3 * wind * out);
                         if held {
                             v.root_rot.z = (time * 14.0).sin() * 0.02;

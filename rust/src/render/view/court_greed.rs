@@ -107,19 +107,14 @@ impl WorldView {
                 let out = &mut self.static_cubes;
                 cube(out, Vec3::new(xf, -0.06, yf), Vec3::new(0.98, 0.12, 0.98), 0.0, marble(h), SHADE_MARBLE);
                 let d = Vec2::new(xf - c.x, yf - c.z).length();
-                if h > 0.72 && (d - MOSAIC as f32).abs() > 1.2 && d > 2.6 {
-                    // A thread of gold through the slab, with a branch off it.
+                if h > 0.8 && (d - MOSAIC as f32).abs() > 1.2 && d > 2.6 {
+                    // A hairline of gold wandering across the slab, dimmed into the stone.
                     let a = hash(x as f64 * 5.0, y as f64 * 7.0) as f32 * PI;
-                    let o = Vec3::new(xf + (h as f32 - 0.86) * 0.5, 0.004, yf + (hash(y as f64, x as f64) as f32 - 0.5) * 0.4);
-                    cube(out, o, Vec3::new(0.7, 0.01, 0.022), a, lin(GOLD_D), SHADE_GOLD);
-                    cube(
-                        out,
-                        o + Vec3::new(a.cos() * 0.18, 0.0, -a.sin() * 0.18),
-                        Vec3::new(0.28, 0.01, 0.018),
-                        a + 0.7,
-                        lin(GOLD_D),
-                        SHADE_GOLD,
-                    );
+                    let o = Vec3::new(xf + (h as f32 - 0.9) * 0.5, 0.003, yf + (hash(y as f64, x as f64) as f32 - 0.5) * 0.4);
+                    let dir = Vec3::new(a.cos(), 0.0, -a.sin());
+                    for (k, bend) in [(-1.0f32, 0.25f32), (0.0, 0.0), (1.0, -0.2)] {
+                        cube(out, o + dir * (k * 0.26), Vec3::new(0.28, 0.008, 0.012), a + bend, lin(GOLD_D) * 0.7, SHADE_GOLD);
+                    }
                 }
             }
         }
@@ -351,8 +346,9 @@ impl WorldView {
         // ---- the hanging braziers: a ring of eight between the pillars, and two by the throne
         let mut braziers = Vec::new();
         for k in 0..8 {
-            let a = k as f32 * TAU / 8.0;
-            braziers.push(c + Vec3::new(a.cos() * 7.6, BRAZIER_Y, a.sin() * 7.6));
+            // (In line with the pillars, inside them: none hangs over the way between him and the throne.)
+            let a = (k as f32 + 0.5) * TAU / 8.0;
+            braziers.push(c + Vec3::new(a.cos() * 7.8, BRAZIER_Y, a.sin() * 7.8));
         }
         braziers.push(Vec3::new(DAIS.0 as f32 - 0.6, BRAZIER_Y + 0.2, DAIS.1 as f32 + 1.4));
         braziers.push(Vec3::new(DAIS.2 as f32 + 0.6, BRAZIER_Y + 0.2, DAIS.1 as f32 + 1.4));
@@ -567,7 +563,7 @@ impl WorldView {
         }
         // The nearest braziers light the hall; one hangs over the throne whatever.
         for (i, p) in nearest(&cv.braziers, hero, 5).into_iter().enumerate() {
-            let flick = 7.0 + (time * 6.0 + i as f32 * 1.3).sin() * 0.6 + (time * 15.0 + i as f32).sin() * 0.3;
+            let flick = 5.5 + (time * 6.0 + i as f32 * 1.3).sin() * 0.5 + (time * 15.0 + i as f32).sin() * 0.25;
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.25, 0.0), color: lin(AMBER) * flick, distance: 9.0 });
         }
         f.lights.push(Light { pos: cv.throne + Vec3::new(0.0, 2.0, 2.2), color: lin(GOLD) * 3.5, distance: 7.0 });
@@ -638,7 +634,7 @@ impl WorldView {
                     let a = k as f32 * TAU / n as f32;
                     let p = at + Vec3::new(a.cos() * r, 0.03, a.sin() * r);
                     let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(0.08, 0.012, 0.08));
-                    f.additive.push(Instance::new(m, lin(0xffd860) * (1.2 + blink), 0.75, Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(m, lin(0xffd860) * (0.9 + blink), 0.7, Vec3::ZERO, SHADE_UNLIT));
                 }
                 let inner = r * (1.0 - fill);
                 let m = Mat4::from_translation(at + Vec3::new(0.0, 0.025, 0.0))
@@ -646,15 +642,15 @@ impl WorldView {
                     * Mat4::from_scale(Vec3::new(r.max(inner), r.max(inner), 1.0));
                 f.transparent[MeshKind::Disc as usize].push(Instance::new(
                     m,
-                    lin(0xffc040) * (0.8 + blink),
-                    0.18 + 0.3 * fill,
+                    lin(0xb87a28) * (0.6 + blink * 0.6),
+                    0.08 + 0.2 * fill,
                     Vec3::ZERO,
                     SHADE_UNLIT,
                 ));
                 let m = Mat4::from_translation(at + Vec3::new(0.0, 0.03, 0.0))
                     * Mat4::from_rotation_x(-PI / 2.0)
                     * Mat4::from_scale(Vec3::new(inner + 0.05, inner + 0.05, 1.0));
-                f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, lin(GOLD_L) * 1.6, 0.6, Vec3::ZERO, SHADE_UNLIT));
+                f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, lin(GOLD_L) * 1.2, 0.5, Vec3::ZERO, SHADE_UNLIT));
             }
         }
     }
