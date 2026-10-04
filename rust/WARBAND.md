@@ -869,3 +869,52 @@ can run in parallel from W1 as a background agent in a worktree, as the realms w
 | Juice hurts frame time | `--fx-off`, the debris budget, instancing, `--perf` per phase |
 | Mastery breaks the balance | the kit audit and the balance tests at every rank |
 | Scope | each phase stands alone and ships; the generals go one realm at a time |
+
+---
+
+## Build log
+
+### W1 "Feel": the presentation primitives (2026-10-04, branch `warband-juice`)
+
+Built §4.1-§4.5 as primitives with an API; the brawl's calls into them are wired by the integrator
+(`game/brawl.rs` was not touched), so until then the ring and the vaults feel as before, but for
+the hero's slash (now on his fighter's frames) and the outside callers below.
+
+* **`logic/juice.rs`**: the numbers. `Stop` (the freeze table, with `legacy_frames` for the
+  harnesses) and `budgeted` (14 f in any 60, halved past it); `DilationKind` → `Dilation { scale,
+  hold, ease }` with `scale_at` and `pitch_of` (for the audio); `Trauma` sources with amounts and
+  caps (`add_to`), the roll, FOV punches and kicks; `Matter` (12) with each `Grain`'s physics and
+  `matter_of(EnemyKind)` for every foe (the audio shares it), `is_giant`, the shatter's counts
+  and speeds; the springs' tunings. Pure and unit-tested.
+* **`game/juice.rs`**: `Game::freeze(Stop)` / `freeze_frames(f)` within the budget;
+  `Game::dilate(DilationKind)` (once in 3 s, never out of play or under a cinematic camera, not
+  with the setting off), applied with the freeze in `play_step` (flow.rs) by scaling the `dt` handed
+  to `tick` (the `FrameClock` keeps the fraction); `time_scale()` and `pace()`; the settings `Feel`
+  (`vh.slow_motion`, `vh.shake`) stepped from the pause menu (two new buttons); `set_juice_off`.
+  The garden's freezes (`foes.rs`), the Cyclops' (`boss.rs`) and BRUTAL's (`feedback.rs`) go
+  through the budget now.
+* **`render/view/spring.rs`**: `Spring { x, v, k, zeta }` (stepped exactly), `Spring3`, and
+  `step_response` / `squash` in closed form for poses driven by frames.
+* **`render/view/juice.rs`**: `trauma(Trauma)`, `kick(dir, amount)`, `fov_punch(deg, secs)`, the
+  roll (±2.5° × trauma²), all scaled by the "screen shake" setting after the sum, the noise seeded
+  by `reseed`; `chips(grid, at, dir, matter, n)`, `sparks_block(grid, at, dir)`, `shatter(i, dir)`
+  (the body as last drawn tips along the blow for 6 f on the game's time, then breaks into 24-60
+  cubes of its quarter rig, 90 and a dust ring for a giant; the foe itself is hidden once it is
+  not alive); `recoil(id, dir)` (per duelist id, in the view), `shield_jolt()`; and on top of the
+  duelists' poses (`overshoot_duel`): the flinch, the anticipation (pulled back 8% by a third of
+  the startup, held to the strike, sprung forward), the slam's squash 0.85 → 1.06; his landing's
+  squash; his blade's follow-through (12%).
+* **Debris**: `MAX_DEBRIS` 160 → 480, one instanced cube batch, the oldest retired first and counts
+  scaled down past half; pieces fly by their matter, rest, then sink and shrink over 2.5 s; debris
+  slows with the time scale. Measured: see `debris_at_its_budget_is_cheap`.
+* **The hero's slash** follows his fighter's frame wherever the brawl drives him (a freeze holds
+  it, a parry or a blow that ends his swing ends it); the garden's plain slash keeps its clock.
+* **Switches**: `--fx-off dilation,hitstop,shake,debris,springs` or `juice` (all); the bots'
+  harnesses run with `juice` off and print the same numbers as before (`--balance 1`, `--bout
+  1 2 1 1`, `--crawl 1` compared to the decimal).
+* **Captures**: `juice:K` fires event K of `game::JUICE_EVENTS` on the ring's nearest foe.
+* **Tests**: `time_dilation_keeps_every_frame_relation`, `the_freeze_follows_the_table_within_its_budget`,
+  `with_the_juice_off_the_brawl_freezes_as_it_always_did`, `time_slows_at_most_once_in_three_seconds_and_eases_back`,
+  `a_freeze_then_the_slowing_of_time`, `a_slain_foe_topples_and_breaks_into_its_voxels`,
+  `chips_and_trauma_stay_in_their_budgets`, `the_pause_menu_steps_the_feels_settings`, and the
+  unit tests of `logic::juice` and `spring`.
