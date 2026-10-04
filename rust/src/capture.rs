@@ -25,6 +25,8 @@
 //! trial of rank N in the ring), `toast` (MASTERY RISES),
 //! `ending` or `ending:T` (the end, Scene II, from its start or T seconds in: 0 the embrace, 8 the
 //! light, 15 the rise, 30 the white, 33 the words, 67 the credits),
+//! `pit:N` (level N of the Pit, 1 to 7) and `pitclock:S` (its clock set to S seconds into the
+//! level: 105 for the bell, 120 for the descent),
 //! `general:S` (sin S's realm, before its general's command post: 4 is
 //! the Assessor's) and `order:K` (the realm's general gives his order K now, 0..2),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
@@ -166,6 +168,9 @@ pub(crate) enum Cmd {
     Order(usize),
     /// The end: Scene II from T seconds in (FINALE.md §4).
     Ending(f64),
+    /// Into level N (1 to 7) of the Pit, and its clock set to S seconds into the level.
+    Pit(u8),
+    PitClock(f64),
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -206,6 +211,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "general" => Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4)),
             "order" => Cmd::Order(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "ending" => Cmd::Ending(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0)),
+            "pit" => Cmd::Pit(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "pitclock" => Cmd::PitClock(parts.next().and_then(|v| v.parse().ok()).unwrap_or(100.0)),
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -331,6 +338,8 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         }
         Cmd::Order(k) => game.debug_order(k),
         Cmd::Ending(at) => game.ending_jump(at),
+        Cmd::Pit(n) => game.map_jump(Stage::Pit(n.clamp(1, 7))),
+        Cmd::PitClock(s) => game.debug_pit_clock(s),
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,

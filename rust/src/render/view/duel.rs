@@ -129,7 +129,8 @@ impl WorldView {
     /// A duelist's place, heading, pose and colours this frame.
     pub(super) fn update_duelist(&mut self, i: usize, e: &Enemy, d: &Duelist, s: &SceneState, dt: f32, time: f32) {
         let (x, z) = (d.pos.x as f32, d.pos.y as f32);
-        let ground = floor_at(s.grid, x, z);
+        // (A rider of the Pit's platform goes down with it.)
+        let ground = floor_at(s.grid, x, z) - self.pit_sunk_at(d.pos);
         {
             let v = &mut self.enemy_views[i];
             v.group_pos = Vec3::new(x, ground + v.hover, z);

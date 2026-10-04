@@ -505,6 +505,28 @@ impl Hero {
         true
     }
 
+    /// A leap to `to` over whatever lies between (the Pit's lip onto its platform, or after it as
+    /// it sinks): the same arc as his own leap, landing where it is aimed.
+    pub fn leap_to(&mut self, grid: &Grid, to: V) {
+        if !self.alive {
+            return;
+        }
+        let from_pos = self.pos();
+        let from = self.m.occupied();
+        let tile = P::new(to.x.round() as i32, to.y.round() as i32);
+        self.m.tile = from;
+        self.m.offset = 0.0;
+        self.m.dir = Dir::None;
+        self.jump = Some(JumpState {
+            from_pos,
+            to_pos: if self.free_move { to } else { tile.v() },
+            to: tile,
+            from_h: grid.elevation(from.x, from.y) as f64,
+            to_h: grid.elevation(tile.x, tile.y) as f64,
+            t: 0.0,
+        });
+    }
+
     pub fn update(&mut self, dt: f64, grid: &Grid, wanted: Dir) {
         self.invuln = (self.invuln - dt).max(0.0);
         self.attack_cooldown = (self.attack_cooldown - dt).max(0.0);

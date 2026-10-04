@@ -7,13 +7,22 @@ use super::*;
 use crate::game::{map_stops, Stage};
 
 /// Where each stop's row sits on the map page.
+/// How many columns the map's stops stand in: one up to ten stops, two up to thirty, three beyond.
+pub fn map_cols(count: usize) -> usize {
+    match count {
+        0..=10 => 1,
+        11..=30 => 2,
+        _ => 3,
+    }
+}
+
 pub fn map_rects(count: usize, w: f32, h: f32) -> Vec<[f32; 4]> {
     let t = tile_for(w, h);
-    // One column up to ten stops, two beyond, filled top to bottom then left to right.
-    let cols = if count > 10 { 2 } else { 1 };
+    // Filled top to bottom, then left to right.
+    let cols = map_cols(count);
     let rows = count.div_ceil(cols);
     let gap = t * 0.3;
-    let bw = if cols == 1 { (t * 22.0).min(w - t * 2.0) } else { (t * 15.5).min((w - t * 2.0 - gap) / 2.0) };
+    let bw = if cols == 1 { (t * 22.0).min(w - t * 2.0) } else { (t * 15.5).min((w - t * 2.0 - gap * (cols - 1) as f32) / cols as f32) };
     let bh = t * 1.15;
     let total = rows as f32 * bh + (rows as f32 - 1.0).max(0.0) * gap;
     let y0 = (h - total) / 2.0 + t * 0.6;
@@ -45,6 +54,7 @@ pub fn draw_map(o: &mut Overlay, g: &Game, t: f32) {
             Stage::Arena(_) => 0xe0604a,
             Stage::Hub => 0xff5a2a,
             Stage::Gym => 0x9ad1ff,
+            Stage::Pit(n) => crate::logic::pit::light(n),
             _ => GOLD,
         };
         o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);

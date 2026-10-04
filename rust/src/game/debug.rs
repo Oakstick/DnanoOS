@@ -24,6 +24,10 @@ impl Game {
             self.cheat_run();
             return;
         }
+        if self.pit.is_some() {
+            self.cheat_pit();
+            return;
+        }
         let Some(g) = self.gate else { return };
         for (x, y, t) in self.level.grid.cells().collect::<Vec<_>>() {
             if t == Tile::Nodule {

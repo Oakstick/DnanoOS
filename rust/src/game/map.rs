@@ -37,6 +37,10 @@ pub fn map_stops() -> Vec<MapStop> {
         stops.push(stop(Stage::Court(sin), format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase())));
     }
     stops.push(stop(Stage::Gym, "THE GYM - ONE OF EVERY FOE".to_string()));
+    // The Pit under the House of the Devil, level by level.
+    for n in 1..=crate::logic::pit::LEVELS {
+        stops.push(stop(Stage::Pit(n), format!("THE PIT - LEVEL {n}")));
+    }
     // Off the road: dungeons II and III, the levels built to the art direction.
     stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
     stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
@@ -75,7 +79,9 @@ impl Game {
         self.show_map = true;
         // The stop he is at now is highlighted (the first one from the title).
         let here = if self.screen == Screen::Paused {
-            Some(if self.hub.is_some() {
+            Some(if let Some(p) = &self.pit {
+                Stage::Pit(p.level)
+            } else if self.hub.is_some() {
                 Stage::Hub
             } else if self.theme().is_gym() {
                 Stage::Gym
@@ -114,8 +120,8 @@ impl Game {
         let n = stops.len();
         let rects = hud::map_rects(n, self.viewport.0, self.viewport.1);
         let hit = |p: (f32, f32)| rects.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
-        // Two columns past ten stops: left and right step a column over.
-        let rows = if n > 10 { n.div_ceil(2) } else { n };
+        // Past ten stops, in columns: left and right step a column over.
+        let rows = n.div_ceil(hud::map_cols(n));
         match self.input.nav {
             Some(Dir::Up) => self.map_index = (self.map_index + n - 1) % n,
             Some(Dir::Down) => self.map_index = (self.map_index + 1) % n,
@@ -215,6 +221,7 @@ impl Game {
                 Stage::Realm(s) => self.load_realm(s),
                 Stage::Court(s) | Stage::SinShop(s) => self.load_court(s),
                 Stage::Gym => self.load_gym(),
+                Stage::Pit(n) => self.load_pit(n),
                 Stage::Hub => unreachable!(),
             }
             self.checkpoint(stage);

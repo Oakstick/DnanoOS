@@ -163,6 +163,17 @@ fn main() {
         println!("THE COURT OF {} {skill:?} tier {tier} seed {seed}: {r:?}", name.to_uppercase());
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--pit") {
+        // The Pit ridden by a bot: `--pit SKILL TIER SEED` (skill 0 novice, 1 adept, 2 expert; TIER
+        // its kit's), from level 1 or `--pit-level N`, each level's numbers reported.
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (skill, tier, seed) = (num(1, 2), num(2, 7) as u8, num(3, 1));
+        let from = args.iter().position(|a| a == "--pit-level").and_then(|k| args.get(k + 1)).and_then(|s| s.parse().ok()).unwrap_or(1u8);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        print!("{}", void_harvest::game::bot::pit_report(skill, tier, seed, from.clamp(1, 7)));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--stage") {
         // COMBAT.md §11: stage S's bouts, every bot skill, Ragnar's kit at three tiers about the
         // bouts' own, N seeds: `--stage S N`.

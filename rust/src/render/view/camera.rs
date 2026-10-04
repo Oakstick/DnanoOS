@@ -308,7 +308,8 @@ impl WorldView {
         let hp = hero.pos();
         let (hx, hz) = (hp.x as f32, hp.y as f32);
         // Follow the floor under him, not the jump arc, so the view does not bounce on every hop.
-        let focus = Vec3::new(hx, floor_at(grid, hx, hz), hz);
+        // (In the Pit he goes down with its platform, and the camera with him.)
+        let focus = Vec3::new(hx, floor_at(grid, hx, hz) - self.pit_sink(), hz);
         // He went through a tunnel to the far side, or was carried off: the camera cuts to him
         // (easing there would sweep it through the whole level's walls, RP02).
         if self.last_focus.is_some_and(|f| f.distance(focus) > JUMP_CUT) {
@@ -403,17 +404,21 @@ impl WorldView {
                     None => self.cam_yaw = lerp_angle(self.cam_yaw, dir_to_yaw(hero.facing), 1.0 - (-chase::FOLLOW_LERP * dt).exp()),
                 }
             }
-            let (desired, look) = chase_pose(&self.tops, focus, self.cam_yaw, self.cam_pitch);
+            // (On the Pit's way down the view lifts a little, to see the walls go up past it.)
+            let (desired, look) = chase_pose(&self.tops, focus, self.cam_yaw, self.cam_pitch + self.pit_tilt());
             (desired, look, chase::POS_LERP)
         } else {
-            // High above him, and higher still over a tower that would cut into its view.
-            let mut eye = focus + Vec3::new(0.0, TOP_HEIGHT, TOP_BACK);
+            // High above him, and higher still over a tower that would cut into its view. (On the
+            // Pit's way down, over the middle of its hole, looking down the shaft at the platform.)
+            let over = self.pit_overhead();
+            let base = focus.lerp(self.pit_middle(focus.y), over * 0.6);
+            let mut eye = base + Vec3::new(0.0, TOP_HEIGHT + 1.5 * over, TOP_BACK * (1.0 - over) + 0.8 * over);
             let mut lift = 0.0;
             while self.tops.cramped(eye) && lift < 4.0 {
                 eye.y += 0.25;
                 lift += 0.25;
             }
-            (eye, focus + Vec3::new(0.0, 0.0, -TOP_LOOK_AHEAD), TOP_LERP)
+            (eye, base + Vec3::new(0.0, 0.0, -TOP_LOOK_AHEAD), TOP_LERP)
         };
         self.focus_point = if let Some((_, _, focus)) = story_cam {
             focus
