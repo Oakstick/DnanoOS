@@ -127,7 +127,99 @@ Three parts built in parallel, each in its own files, joined at two seams:
 
 ### The Pit
 
-(to come)
+Built on branch `finale-pit`. Files: `logic/pit.rs` (the layout, the levels, the rules as pure
+functions), `game/pit.rs` (the rules in play), `render/view/pit.rs` (the art), `render/hud/pit.rs`
+(the clock), and the bot's `pit_board` and `pit_ride` in `game/bot.rs`.
+
+**The way in.** With all seven keys the House's door stands open (a banner says so as he comes up to
+it); walking into it calls `enter_pit()`: the banner THERE IS NO DEVIL HERE. ONLY THE WAY DOWN., the
+countdown, and he leaps from the lip onto the platform as play begins (`Hero::leap_to`, the same
+arc as his own leap). Each level is a checkpoint (`Stage::Pit(n)`, saved as `p n`); Continue and the
+map's seven stops (THE PIT - LEVEL n) load the level fresh, with nothing riding down, and every key
+held (so `realm_tier()` is 8, and the packs' affixes are the deepest realm's).
+
+**One level** (`logic::pit`): a cell 25 tiles across, walls included, the platform 11 by 11 in its
+middle and a ledge six tiles wide round it; a long table of seven tiles across the platform's middle
+is solid (rock in the grid), so the platform is two halves joined at the table's ends. Two iron doors
+in each wall (eight), four barred cells in each (scenery). The grid is the same at every level, so a
+descent changes no level: only the fight's state and the art's.
+
+**The rules** (`game::pit`). The clock runs 120 seconds of play. Each level's foes are its own stage's
+(`EnemyKind::of_stage(n)`, no witch's minions), 24 of them in four waves at 3, 26, 50 and 74
+seconds, each wave out of two doors on facing walls, three to a door, dealt by turns so every pack
+fights with its body, in melee and from afar. They fight as the realms' packs do (`raise_packs`,
+`Field::Vault`, `logic::realms::weight`), awake from the first moment, each door's pack its own den
+(so the Warband's packs, roles and affixes compose over them; `disband_packs` after each arrival
+recomposes them). At most ten stand at once (riders included): a pack whose time has come waits
+behind its door until there is room, and at 100 seconds the doors shut on whoever is left in. The
+last fifteen seconds: a toll each second, the banner THE PLATFORM DESCENDS. CLEAR IT., the platform's
+iron rim glowing with the bell, the screen's edge reddening, the HUD's count of who stands on it. At
+zero who rides down is settled (every foe counted standing on the platform, `pit::on_platform`); the
+fight stops (bolts, hazards and tokens cleared, every move broken off); a hero on the ledge leaps
+after the platform and lands with a tenth of his health gone (`leap_cost`, never his last point).
+Five seconds of descent hold the tick (`pit_holds`): nothing fights or walks. Then the ledge's foes
+are gone, the riders stand where they stood, hunting, the next level's clock begins with its green
+cross north of the table and the banner LEVEL n with its stage's name and how many rode down. A fall
+begins the level again with its riders as they came (kind, place and health) and its inmates back
+behind their doors. After the seventh level's descent, `pit_reaches_bottom()`: for now the Won screen
+(THE BOTTOM OF THE PIT), and the title after it; at the merge it leads into the lair.
+
+**The art** (`render::view::pit`). The level he stands on and the one above are static scenery (the
+upper one's floor is this one's ceiling, its hole over the hole); the level below is a set the GPU
+keeps. Each level's shell: concrete slabs with stains and cracks round an iron lip; rough grey walls
+in uneven courses, a dark plinth, rust bleeding under the lamps; iron doors whose leaves rise into
+the wall as their packs come out, a red lamp blinking over each open one; barred cells with a cot, a
+chain and a skull; three caged lamps a wall, lit in the stage's colour (white tinged with it). The
+level's number is carved in the north wall's middle, three tiles wide and six tall (a three-by-five
+chisel font, the grooves dark with a pale lip above, old paint of the level's colour in them). The
+platform is a stone slab paved in blocks inside a riveted iron frame (corner plates, guide shoes),
+glowing red with the bell. The table: oak on stone trestles, a cloth that stains and slides askew,
+and the feast by `feast_left` (1 at the first level, 0 at the seventh): the roast pig on its
+platter, a fowl, a three-tier cake, loaves, cheese, bowls of fruit, a jug, goblets, two
+candelabra; eaten to a haunch and bare ribs, then to a skull and a spine, the cake to a slice and
+crumbs, the candles burnt down and out (smoke from the wicks), bones dropped round the table and
+flies over what is left; at the seventh an overturned cup, its wine across the cloth and dripping off
+the edge. The overhead light is harsh and cold straight down the holes; the ledges are lit by
+their lamps; dust drifts down the light. On the way down the platform, the hero and its riders
+sink (the view's `pit_sink`), the chase camera lifts its pitch a little (`pit_tilt`) to see the walls
+slide up past it and the next number come up, the top camera moves over the hole to look down the
+shaft (`pit_overhead`), the lamps below brighten and the light turns to the next stage's colour.
+
+**The HUD and the guide.** Top middle, in the charcoal and copper: LEVEL n, the stage's name, the
+clock large (red and beating with the bell at the end), the two minutes running out as a thin bar,
+and the warning with how many stand on the platform; on the way down, the next level's name rising.
+Under the score: ON THE PLATFORM n, and how many are behind the doors and how many rode down. The old
+man's page (`GuidePlace::Pit(n)`): no devil, only the way down; the clock, what rides down and what
+stays, the leap and the cross; each level's foes and the one thing to know of each; the cap and the
+doors. His words "now" say the seconds left and who stands on the platform.
+
+**Bot and harness.** `--pit SKILL TIER SEED [--pit-level N]` rides from level 1 (or N) and prints each
+level's seconds, kills, riders in and out, foes left on the ledge, damage taken, falls and whether it
+had to leap, then the run's end and the sim's cost per step. The adept and the expert walk onto the
+platform 4 and 7 seconds before it sinks (`Bot::pit_board`); while the bell tolls the expert strikes
+first at what stands on the platform (`pit_targets`); the novice (a masher) never looks at the clock.
+
+Balance, Ragnar's kit at TIER, seeds 1 to 3 (lives lost; the run is three lives and game over):
+
+| Skill | Tier 5 | Tier 7 | Tier 8 |
+|---|---|---|---|
+| Expert | the bottom, 0 / 0 / 0 | the bottom, 0 / 1 / 0 | the bottom, 0 / 0 / 0 |
+| Adept | game over at level 2 to 3 | game over at level 3 to 5 | the bottom, 1 / 0 / 1 |
+| Novice | game over at level 2 | game over at level 2 | game over at level 2 |
+
+The expert kills 100 to 140 of the 168 foes, takes 40 to 290 damage over the seven levels, and lets
+0 to 2 ride down a level; the cap holds at ten from the doors (the peak of 14 to 18 counts what the
+deeper stages raise: Hel's dead, the kitsune's illusions). Cost: the sim at 0.02 ms a step with eight
+or more standing (slowest step, the level's load, 43 ms); drawn at 1920 by 1080 on the RTX 5070 Ti
+laptop, level 7 with ten foes, Hel's dead and Surtr's fire: 6.6 ms a frame from the chase camera
+(GPU 3.9 ms), 7.5 ms from the top; 5.4k static cubes, about 1.1k drawn each frame.
+
+**Changed from the design, and why.** The ledge is six tiles (25 - 11 over two, less the wall). The
+table on the platform is solid, so the fight goes round it. The doors shut at 100 seconds (the last
+twenty are for clearing the platform, as designed), and a wave that cannot come out for the cap
+waits rather than being lost, until then. The tier is the realms' (8) and was not tuned further: the
+measured spread above already meets the targets. Continue does not remember riders (it loads the
+level fresh). Summoned foes (raised dead, illusions) may lift the count past ten for a moment.
 
 ### Krampus
 
