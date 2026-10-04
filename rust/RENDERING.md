@@ -21,13 +21,24 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
 - **Effect switches** (`--fx-off`): `shadows, lights, grass, materials, fog, ao, bloom, dof, grade, prepass,
   mist, backface`. Each one captures the same scene without one effect, as the plan's per-effect
   comparisons need.
-- **RP08, performance captures** (`src/perf.rs`, `--perf [all|names] [--frames N] [--size WxH]
-  [--fx-off …] [--out dir]`). There are eleven scenes: close-up, garden, corridor, vista, 30 foes,
-  souls, fast rotation, camera switching, destruction, portal arrival, vault. Each has a fixed seed and
-  script and gets a second of untimed warm-up. Frames are paced as in the game (one simulation step per
-  frame, at most two frames in flight). The report gives the median, 95th and 99th percentile and worst
-  of wall, CPU and GPU time, plus the first-frame cost. It writes a Markdown summary (machine, driver,
-  backend, build `git hash[-modified]`, settings) and a CSV of every frame per scene to `perf/`.
+- **RP08, performance captures** (`src/perf.rs`, `--perf [all|names] [--perf-mode throughput|gameplay]
+  [--frames N] [--size WxH] [--fx-off …] [--out dir]`). There are fourteen scenes: close-up, garden,
+  corridor, vista, 30 foes, the warband (the vaults with the expert bot fighting), souls, fast rotation,
+  camera switching, destruction, siege, portal arrival, vault, and the Pit's seventh level with the
+  expert bot. Each has a fixed seed and script, played by the same driver as `--capture`
+  (`src/driver.rs`: the script, the bot's pad every step), a stated simulated duration the frame count
+  comes from, and 120 warm-up frames with the simulation held. **Throughput** mode (the default) takes
+  one simulation step per drawn frame, so the scene keeps moving however fast it is drawn; **gameplay**
+  mode measures each scene at 60 FPS (two steps per frame) and 30 FPS (four), as `app.rs`'s
+  accumulator runs them, reporting update and render CPU per drawn frame. At most two frames are in
+  flight. The report gives the median, 95th and 99th percentile and worst of wall, CPU (update and
+  render apart) and GPU time, plus the first-frame cost. Every scene states what must have happened
+  (a fight's swings, damage, foes engaged, blows met and packs slain; the portal's four changes of
+  level), counted by the driver; a scene that falls short is marked FAILED and the run exits with 3.
+  It writes a Markdown summary (machine, driver, backend, build `git hash[-modified]`, settings) and a
+  CSV of every frame per scene to `perf/`. Until 2026-10-05 the harness never let the setup's bot act
+  (the warband was measured with an idle hero) and its 600 frames ended before the portal's last
+  return.
 - **Look Dev room** (TA01, `render/view/lookdev.rs`, `--lookdev neutral|dungeon|realm:N`). Every voxel
   material stands on a stepped block, once at neutral grey and once in its usual colour. Beside them are
   the shared palette, the seven proposed realm accents (each capped with its realm's identity colour), an

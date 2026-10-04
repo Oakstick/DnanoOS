@@ -1241,6 +1241,16 @@ laptop at 1600x900: the fight's simulation (the brawl with the packs and the gru
 frame at the median, 0.06 at p95, 0.1 at most, inside §15.1's 0.5 ms; the whole frame 2.7 ms at the
 median, 5.8 ms at p99.
 
+**Correction (2026-10-05):** those numbers were taken with an idle hero: the harness made the bot
+but never let it act. The scene is now played by the capture's driver (the bot's pad every step, the
+prince's cheats off as in the harnesses) and fails unless the hero swings, deals damage, meets blows
+and a pack falls (20 simulated seconds: 19 swings, 336 damage, 10 blows met, 4 kills, 1 pack). In
+the game's own steps per frame (`--perf-mode gameplay`, 1920x1080, dev laptop, perf/2026-10-04-225333) the fight's simulation
+is 0.02 ms per frame at 60 FPS at the median, 0.04 at p95, 0.10 at most (0.03 / 0.05 / 0.14 at 30
+FPS), and the whole update 0.06 / 0.11 ms (at most 1.5): still well inside 0.5 ms. The whole frame
+is 2.6 ms at the median, 3.2 at p95; its worst, 14 ms, is a new foe's rig built and uploaded mid-fight
+(9.7 MB), which the idle run never met.
+
 ### W8 mastery: deeds, ranks and the old man's trials (branch `warband-mastery`)
 
 Built without touching `game/brawl.rs`; `logic/combat/kit.rs` gained two additive `Strike` fields.

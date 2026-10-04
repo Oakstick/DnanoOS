@@ -55,7 +55,6 @@
 //! `--script "0.1:ring:1,0.6:juice:14" --time 0.75`. `--fx-off juice` (or `dilation`, `hitstop`,
 //! `shake`, `debris`, `springs`) switches the juice off. Captures never write the settings.
 
-use crate::app::STEP;
 use crate::audio::synth::Synth;
 use crate::game::{Game, Screen, Stage};
 use crate::input::Action;
@@ -463,21 +462,7 @@ pub fn run(args: &[String]) -> i32 {
     game.viewport = (w as f32, h as f32);
     game.tour_pending = false;
     game.set_juice_off(gpu.fx_off);
-    let mut next = 0;
-    let mut t = 0.0;
-    let mut bot: Option<crate::game::bot::Bot> = None;
-    while t < until {
-        while next < script.len() && script[next].0 <= t {
-            exec(&mut game, &script[next].1, &mut bot);
-            next += 1;
-        }
-        if let Some(b) = bot.as_mut() {
-            let pad = b.act(&game);
-            game.input.set_pad(Some(pad));
-        }
-        game.update(STEP);
-        t += STEP;
-    }
+    crate::driver::Driver::new(script).run(&mut game, until);
 
     let mut frame = Frame::default();
     let mut overlay = Overlay::new();
