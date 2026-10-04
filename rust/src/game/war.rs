@@ -64,6 +64,7 @@ impl WarTally {
                 }
             }
             WarEvent::Drank { .. } => self.drinks += 1,
+            WarEvent::Order { .. } | WarEvent::Instrument { .. } => {}
         }
     }
 }
