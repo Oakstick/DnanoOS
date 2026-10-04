@@ -31,6 +31,7 @@ pub use controls::controls_tab_rects;
 pub use ledger::draw_ledger_board;
 pub use map::map_rects;
 mod story;
+mod voices;
 use crate::logic::angels::Archangel;
 use crate::logic::boss::BossState;
 use crate::logic::enemy::EnemyKind;
@@ -220,10 +221,12 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     // (The camera choice keeps the world clear of the HUD, as the tour does.)
     if !matches!(g.screen, Screen::Title | Screen::View) {
         draw_world_overlays(o, g, t);
+        voices::draw_signs(o, g, t);
         ledger::draw_rival_card(o, g, t);
         ring::draw_ring(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
         draw_feedback(o, g, t);
+        voices::draw_voices(o, g, t);
     }
     match g.screen {
         Screen::Title => {
@@ -1555,7 +1558,7 @@ fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
 
 /// Mammon's toll, before the far portal of his vaults: what he carries, and the choice.
 fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
-    if !g.in_vault() {
+    if !g.in_vault() || g.deceit_offer().is_some() {
         draw_offer(o, g, t);
         return;
     }

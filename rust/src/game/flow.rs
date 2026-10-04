@@ -188,7 +188,9 @@ impl Game {
             }
             Screen::Toll => {
                 if let Some(choice) = self.menu_choice() {
-                    if self.vault.is_some() {
+                    if self.voices.deceit.asking.is_some() {
+                        self.answer_deceit(choice);
+                    } else if self.vault.is_some() {
                         self.pay_toll(choice);
                     } else {
                         self.answer_run_offer(choice);
@@ -255,6 +257,8 @@ impl Game {
                 }
             }
         }
+        // The old man's counsel and the prince's cheats (WARBAND.md §10).
+        self.update_voices(dt);
         let mut lap = crate::render::profile::Lap::start();
         self.sync_feel();
         let state = scene_state!(self);
@@ -298,6 +302,7 @@ impl Game {
             Screen::View => return super::viewpick::VIEWS.iter().map(|v| v.0).collect(),
             // Keep first, and highlighted: Mammon would have it so. (A prince's offer in the realms
             // after the vaults puts the answer he would have first, too.)
+            Screen::Toll if self.voices.deceit.asking.is_some() => return self.deceit_offer().map(|o| o.choices).unwrap_or_default(),
             Screen::Toll if self.vault.is_some() => return vec![MenuItem::KeepAll, MenuItem::DropAll],
             Screen::Toll => return self.run_offer().map(|o| o.choices).unwrap_or_default(),
             _ => return Vec::new(),

@@ -206,12 +206,13 @@ impl Game {
         let k = (tier.clamp(1, 10) - 1) as usize;
         h.edge[k] = h.edge[k].saturating_sub(whole as u8);
         self.hero.edge = h.sharpness(tier);
-        let hp = self.hero.pos();
+        // The old man warns of it in his own voice (WARBAND.md §10.1).
+        use crate::logic::war::counsel::GearWarning;
         if before >= DULL_EDGE && self.hero.edge < DULL_EDGE {
-            self.floater(hp.x, hp.y - 1.0, "YOUR BLADE IS DULLING", 1.8, Some(0xc8a070));
+            self.counsel_gear(GearWarning::BladeDulling);
         } else if before >= RUSTED_EDGE && self.hero.edge < RUSTED_EDGE {
             self.audio.play(Sfx::Denied);
-            self.floater(hp.x, hp.y - 1.0, "YOUR BLADE IS RUSTED - SHARPEN IT AT THE OLD MAN'S", 2.4, Some(0xc86a3a));
+            self.counsel_gear(GearWarning::BladeRusted);
         }
     }
 

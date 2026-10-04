@@ -47,6 +47,8 @@ pub enum ShopAction {
     Life,
     /// The training yard's trials of mastery (not yet open).
     Trials,
+    /// The war table: a rival's true weakness, bought (WARBAND.md §10.1).
+    Intel(crate::logic::war::ledger::RivalId),
     Leave,
 }
 
@@ -67,6 +69,8 @@ pub enum RowKind {
     General(u8),
     /// A hook on the trophy wall.
     Trophy(u8),
+    /// A rival the war table has word of (the `Game::intel_rivals` order).
+    Rival(u8),
     Leave,
 }
 
@@ -237,6 +241,18 @@ impl Game {
                     let label = if g.is_some() { "KNOWN" } else { "NO WORD" };
                     let b = button(ShopAction::Board(Station::WarTable), label, 0, 0, false);
                     rows.push(ShopRow { kind: RowKind::General(i as u8), buttons: vec![b] });
+                }
+                // The rivals he has word of: their true weakness, for silver.
+                for (i, id) in self.intel_rivals().into_iter().enumerate() {
+                    let Some(r) = self.ledger().get(id) else { continue };
+                    let known = r.knows(crate::logic::war::ledger::Trait::Weakness(r.weakness));
+                    let price = super::counsel::intel_price(r.rank);
+                    let b = if known {
+                        button(ShopAction::Intel(id), "KNOWN", 0, 0, false)
+                    } else {
+                        button(ShopAction::Intel(id), "WEAKNESS", price, 0, true)
+                    };
+                    rows.push(ShopRow { kind: RowKind::Rival(i as u8), buttons: vec![b] });
                 }
                 rows.push(leave_row);
                 return rows;
@@ -426,7 +442,7 @@ impl Game {
     }
 
     /// Takes the silver if he has it; otherwise says so.
-    fn pay(&mut self, price: u32) -> bool {
+    pub(super) fn pay(&mut self, price: u32) -> bool {
         if self.progress.silver < price {
             self.audio.play(Sfx::Denied);
             self.note(format!("NOT ENOUGH {} - {} MORE NEEDED", progression::coin(self.hero_kind), price - self.progress.silver), 0xff6a6a);
@@ -436,7 +452,7 @@ impl Game {
         true
     }
 
-    fn sold(&mut self, what: String, color: u32) {
+    pub(super) fn sold(&mut self, what: String, color: u32) {
         self.audio.play(Sfx::Buy);
         self.shop.flourish = 1.0;
         self.start_work(color);
@@ -580,6 +596,7 @@ impl Game {
                 }
             }
             ShopAction::Trials => self.audio.play(Sfx::Denied),
+            ShopAction::Intel(id) => self.buy_intel(id),
             ShopAction::Life => {
                 if self.score.lives >= MAX_LIVES {
                     self.audio.play(Sfx::Denied);
@@ -625,5 +642,7 @@ impl Game {
         self.juice.fade = 1.0;
         self.input.consume(Action::Attack);
         self.input.consume(Action::Confirm);
+        // A whisper still in the air: he denies it (WARBAND.md §10.3).
+        self.voices_called();
     }
 }

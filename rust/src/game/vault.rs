@@ -211,7 +211,7 @@ impl Game {
 
     /// A chest opens: one to three items fly out and land on the floor beside it, the rarer the
     /// deeper the room. Each is named where it lands, in its rarity's colour.
-    fn open_chest(&mut self, at: P) {
+    pub(super) fn open_chest(&mut self, at: P) {
         let Some(v) = &self.vault else { return };
         let depth = v.room_at(at).map(|r| r.depth).unwrap_or(0.5);
         let drops = roll_drops(&mut self.rng, depth);

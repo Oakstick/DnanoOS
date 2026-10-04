@@ -1152,3 +1152,78 @@ seated as a pack's leader in the next and mostly slain there (9 slain, 7 alive a
 
 Open for W9: at tier 1 the adept slays a rival on its second fight, so lessons (rank 3) come only
 from rivals that kill him again; whether a rival that gets away should rank up too is a tuning call.
+
+### W7 The two voices (branch `warband-voices2`)
+
+Built without touching `game/brawl.rs` or `logic/combat/*` (the brawl's `spawn_duelist` is called,
+not changed).
+
+* **`logic/war/counsel.rs`**: the old man's rules (`Rule`: first death to a breed, three deaths in
+  a room, a rival met, a realm entered, the gear, a cheat seen through), each with a priority, a
+  cooldown and a once-flag (`Counsel`, its flags saved in `vh.warband`'s `counsel:` section); at
+  most one line in 45 s (`GAP`), stale after 90 s. Lines are built from the data: `Answer::of(kind)`
+  reads a breed's answer from its folklore power, its moves (unblockable, a mark, the call, an
+  unstoppable club) and its archetype, for all 38 kinds, and `Answer::holds` checks a claim against
+  the frame data and the breed table; a rival's line is `ledger::counsel_line_for`, said only when a
+  trait is known; a realm's line names its general only through `GeneralIntel` (W6 fills
+  `Game::general_intel`; until then he says only that the prince keeps a general there). The first
+  realm entered adds his rule: "whatever the prince offers you, it costs more than he says". Each
+  hero hears his own register (`framed`: Ragnar by name, Mehmed as "janissary", Miyamoto as
+  "swordsman"); the facts are the same.
+* **`logic/war/deceit.rs`**: `Cheat { lie, tells, counter, reward, cost }` for the five cheats, the
+  lie flavoured per prince (`lie`); `Stake` (time, health, silver carried, the road: nothing owned)
+  and `Bound` per cost; `deal` (two a realm, the dice only in Greed and Gluttony, the bargain not in
+  the vaults, the false gatekeeper not on the drifting Burning Field), `may_begin` (Rest, Build);
+  the whisper, false by construction: `whisper_breed` (an answer that does not hold), `whisper_rival`
+  (a weakness he does not have), `whisper_way` (the opposite way), each with the truth beside it;
+  the false gatekeeper's wares at half price, and their full worth paid when he is slain.
+* **`game/counsel.rs`**: `Game.voices` (`Voices`: the counsel, the line in the panel, the cheats).
+  The fall's killer is read from the war log (`counsel_fell`, from `kill_hero`), the rival from
+  `meet_rival`, the realm from a change of place, the shield cracking from its wear, the blade's
+  dulling and rusting from `dull_blade` and the broken shield from `shatter_shield` (their floaters
+  are now his lines). Delivery: one line at a time, typed out at 42 letters a second with the
+  old man's blips, Quitmer's bark (`Sfx::Bark`) as he begins, only when `drum_bounds().voices` or on
+  the death screen. At the workshop his line is `workshop_counsel` (a fall and its answer, a
+  whisper denied with the truth, a cheat seen through, the lies seen this run at the war table).
+  The War Table sells the living rivals' true weaknesses (`RowKind::Rival`, `ShopAction::Intel`,
+  40 + 20 per rank above the first: 40-120 silver) through `Ledger::reveal`.
+* **`game/deceit.rs`**: per realm visit the cheats are dealt from the layout (never the game's
+  dice). The false gatekeeper stands on quiet floor (in the vaults an alcove of the corridors: every
+  chamber has a pack), puts his wares through the prince's offer screen when walked up to (a tainted
+  elixir of strength that turns his blows to 60% for 10 s when drunk; a bright blade, 130% for 30
+  blows, then it shatters and his hands sting for 8 s; all gone, the bottle off his belt, when the
+  realm is left); struck, he is a demon (`spawn_duelist`, the melee body of the realm's deepest
+  stage, weighed as the realm weighs its own, 1.5× health), and slain it pays his wares' full worth.
+  The mimic chest breathes, does not glint and creaks (`Sfx::Creak`); struck first it gives double
+  (the vaults' chest twice, or 80 silver); opened, a body foe comes out biting (a duelist: the threat
+  manager plans its bite). The whisper comes in the sin's colour, no portrait, no bark, a reversed
+  echo (`Sfx::Whisper`); calling the old man within 40 s has him deny it. The crooked bargain is
+  put on the offer screen ("the end of the road", `cheat_run`), and its unsaid price is a third of
+  his health. The turned sign turns the realm's compass needle toward a sleeping den for 20 s,
+  flickering in the sin's colour; the old man's amber lamp keeps pointing at the far portal; not
+  followed, it is seen through. Each lie seen through counts in the save (`lies:`) and gives 2 runes.
+* **HUD and view**: `render/hud/voices.rs` (the bottom-left panel with his face from his sculpt's
+  `sprite_from` in an amber frame; the whisper's empty frame; the compass and the lamp about the
+  hero; "THE OLD MAN" over the false one in his prince's colour), `render/view/deceit.rs` (the old
+  man's rig with a lantern in the sin's colour and a dark, still dog; the vaults' chest, breathing).
+* **Bot**: the adept and the expert, when nothing hunts them, call the old man on a whisper, walk up
+  to striking distance of the false gatekeeper or a mimic chest and strike. The harnesses
+  (`fresh_game`) play with the cheats off (`Deceit::off`; `VH_NO_DECEIT=1` in play), so their
+  numbers do not move; the tests deal their own.
+* **Captures**: `counsel`, `whisper`, `gatekeeper`, `sign`, `mimic`.
+* **Tests**: `the_old_man_never_lies` (breeds in every register, rivals, the generals' intel),
+  `every_breed_has_a_true_answer_read_from_its_data`, `each_hero_hears_his_own_register_of_the_same_facts`,
+  `counsel_keeps_its_gap_its_priorities_and_its_once_flags`,
+  `every_cheat_has_a_tell_a_counter_and_a_bounded_cost`, `the_prince_never_takes_what_the_hero_owns`
+  (the rules, and in play: wares bought, drunk, shattered, a chest opened, the realm left),
+  `the_whisper_is_always_false_and_always_tellable`, `the_old_man_speaks_once_in_45_seconds_and_never_at_the_peak`,
+  `a_fall_brings_the_breeds_counter_to_the_death_screen_and_the_workshop`,
+  `the_war_table_sells_a_rivals_true_weakness_by_rank`, `striking_the_false_gatekeeper_reveals_a_demon_whose_death_pays_his_wares`,
+  `a_whisper_is_seen_through_by_asking_the_old_man`, `the_bargain_gives_what_it_says_and_takes_what_it_does_not`,
+  `the_turned_sign_points_at_a_den_and_the_old_mans_lamp_stays_true`, `striking_a_mimic_first_doubles_its_loot`,
+  `the_bot_refuses_whispers_and_strikes_the_false_gatekeeper_and_the_mimic`,
+  `every_realm_has_a_side_room_for_the_false_gatekeeper_and_a_spot_for_a_chest`.
+* Open: the tainted bottle is not yet drawn in a wrong colour on the belt (§11.2); Greed's gold is
+  close to the old man's amber, so in the vaults the whisper's colour is the weakest of its tells;
+  the bargain's price is health until W6's decrees can be its price; the bot's whisper refusal
+  opens the workshop, which a harness has to leave.

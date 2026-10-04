@@ -17,6 +17,10 @@
 //! target. Against a prince (§13) they step off his coins before they burst, by the way clearest
 //! of the others, and held in his fist they strike him (as a masher would anyway).
 //!
+//! Against the prince's cheats (WARBAND.md §10.3, §15.2), when nothing hunts it, the adept and the
+//! expert refuse a whisper (they call the old man, who denies it), strike the false gatekeeper
+//! rather than trade with him, and strike a mimic chest before they would open it.
+//!
 //! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
 //! kill and damage taken against the targets of COMBAT.md §2.1 (`gym::Bout::target`).
 
@@ -391,6 +395,11 @@ impl Bot {
         }
         self.guard_hold = 0;
 
+        // The prince's cheats, while nothing hunts it.
+        if let Some(p) = self.see_through(g, &mut pad) {
+            return p;
+        }
+
         // Offence: the most open foe (reeling, then recovering), then the nearest; in the vaults those
         // hunting him first, and when none is, the nearest pack asleep (to wake it).
         // (Nothing out of his reach is a target, nor a felled dragon begging to be struck again.)
@@ -485,6 +494,50 @@ impl Bot {
     }
 }
 
+impl Bot {
+    /// What it does about the prince's cheats (not the novice: it falls for them all), when no foe
+    /// hunts it: a whisper in the air, it calls the old man; the false gatekeeper or a mimic chest
+    /// near, it walks up to striking distance (no nearer: near enough to trade, or to open the
+    /// chest, is too near) and strikes. `None`: nothing to see through.
+    fn see_through(&mut self, g: &Game, pad: &mut PadState) -> Option<PadState> {
+        if self.skill == Skill::Novice {
+            return None;
+        }
+        if g.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|d| d.engaged()) {
+            return None;
+        }
+        let d = &g.voices.deceit;
+        if d.whisper.is_some() {
+            pad.actions.insert(Action::Call);
+            return Some(pad.clone());
+        }
+        let hp = g.hero.pos();
+        let target = d
+            .keeper
+            .as_ref()
+            .filter(|k| k.demon.is_none())
+            .map(|k| k.at)
+            .or(d.mimic.as_ref().filter(|m| !m.done).map(|m| m.at))
+            .filter(|p| math::len(math::sub(*p, hp)) < SEE_THROUGH)?;
+        let dist = math::len(math::sub(target, hp));
+        if dist > STRIKE_AT {
+            let dir = self.way(g, hp, target);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+        } else {
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
+        Some(pad.clone())
+    }
+}
+
+/// How far off it notices a cheat standing in the world, and how near it walks to strike it.
+const SEE_THROUGH: f64 = 14.0;
+const STRIKE_AT: f64 = 1.3;
+
 /// How a bout went.
 #[derive(Clone, Copy, Debug)]
 pub struct BoutResult {
@@ -504,6 +557,8 @@ pub(super) fn fresh_game(seed: u32) -> Game {
     g.reseed(seed);
     // The harnesses play without the juice (WARBAND.md §4): their numbers must not move with the feel.
     g.set_juice_off(crate::render::profile::fx::JUICE);
+    // ...and without the prince's cheats (WARBAND.md §10.3), which would move them too.
+    g.voices.deceit.off = true;
     g.progress = crate::logic::progression::Progress::default();
     g.saved_run = None;
     // (And no grudges carried over from the last run's crawl: each run meets its own.)

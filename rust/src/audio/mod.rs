@@ -124,6 +124,13 @@ pub enum Sfx {
     RaphaelBeam,
     /// Uriel's wave: a deep boom and a roaring wall of fire.
     UrielWave,
+    // ---- the two voices (WARBAND.md §10)
+    /// Quitmer's bark: two short, glad woofs, the old man's signature.
+    Bark,
+    /// The prince's whisper ending: a breath swelling backwards into silence (a reversed echo).
+    Whisper,
+    /// A mimic chest's hinge creaking.
+    Creak,
 }
 
 /// Whose voice a line of the story types out in: each has its own blip.
@@ -746,6 +753,56 @@ impl AudioManager {
                             Bus::Sfx,
                         )
                         .filtered(synth::FilterKind::Bandpass, 1600.0, 1.0),
+                    );
+                }
+                Sfx::Bark => {
+                    // Two short woofs: a falling chesty tone with a breath of noise, the second higher.
+                    for (k, f0) in [(0usize, 300.0), (1, 340.0)] {
+                        let at = t + k as f64 * 0.17;
+                        let freq = Env::points(vec![(at, f0 * vp), (at + 0.03, f0 * 1.25 * vp), (at + 0.11, f0 * 0.7 * vp)]);
+                        let gain = Env::points(vec![(at, 0.0001), (at + 0.012, 0.1 * vg), (at + 0.1, 0.001)]);
+                        s.push(Voice::new(at, at + 0.12, Wave::Saw, freq, gain, Bus::Sfx).filtered(
+                            synth::FilterKind::Lowpass,
+                            1300.0,
+                            2.2,
+                        ));
+                        s.push(
+                            Voice::new(
+                                at,
+                                at + 0.08,
+                                Wave::Noise { rate: 0.9, offset: offset + k as f64 },
+                                Env::constant(1.0),
+                                Env::ramp(at, 0.05 * vg, 0.001, 0.07),
+                                Bus::Sfx,
+                            )
+                            .filtered(synth::FilterKind::Bandpass, 900.0, 1.6),
+                        );
+                    }
+                }
+                Sfx::Whisper => {
+                    // A breath that swells instead of dying (an echo played backwards), cut off dead,
+                    // under a faint falling tone.
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.55, 0.03 * vg), (t + 0.62, 0.0001)]);
+                    s.push(Voice::new(t, t + 0.63, Wave::Noise { rate: 0.5, offset }, Env::constant(1.0), gain, Bus::Sfx).filtered(
+                        synth::FilterKind::Bandpass,
+                        1100.0 * vp,
+                        3.0,
+                    ));
+                    let tone = Env::points(vec![(t, 0.0001), (t + 0.5, 0.018 * vg), (t + 0.6, 0.0001)]);
+                    s.push(
+                        Voice::new(t, t + 0.62, Wave::Sine, Env::ramp(t, 440.0 * vp, 220.0 * vp, 0.6), tone, Bus::Sfx).vibrato(9.0, 0.02),
+                    );
+                }
+                Sfx::Creak => {
+                    // A slow wooden creak: a low saw sliding up, stuttering through a narrow band.
+                    let mut stutter = vec![(t, 0.0001)];
+                    for k in 1..10 {
+                        stutter.push((t + k as f64 * 0.04, if k % 2 == 0 { 0.03 * vg } else { 0.012 * vg }));
+                    }
+                    stutter.push((t + 0.45, 0.0001));
+                    s.push(
+                        Voice::new(t, t + 0.46, Wave::Saw, Env::ramp(t, 140.0 * vp, 220.0 * vp, 0.4), Env::points(stutter), Bus::Sfx)
+                            .filtered(synth::FilterKind::Bandpass, 700.0, 4.0),
                     );
                 }
                 Sfx::Caw => {
@@ -1561,6 +1618,9 @@ mod tests {
             Sfx::GabrielThunder,
             Sfx::RaphaelBeam,
             Sfx::UrielWave,
+            Sfx::Bark,
+            Sfx::Whisper,
+            Sfx::Creak,
         ];
         let render = |what: &str| {
             let mut buf = vec![0.0f32; 48_000 * 2];

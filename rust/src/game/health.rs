@@ -116,7 +116,8 @@ impl Game {
         h.broken |= 1 << h.carry;
         self.save_progress();
         self.floater(hp.x, hp.y - 0.6, "SHIELD DESTROYED", 1.6, Some(0xff8a6a));
-        self.floater(hp.x, hp.y - 0.1, "THE OLD MAN CAN REFORGE IT", 1.8, Some(0xe8dcc0));
+        // (That he can reforge it, the old man says himself.)
+        self.counsel_gear(crate::logic::war::counsel::GearWarning::ShieldBroken);
     }
 
     /// F5: immortal on or off.
@@ -137,6 +138,7 @@ impl Game {
     }
 
     pub(super) fn kill_hero(&mut self) {
+        self.counsel_fell();
         self.audio.play(Sfx::Death);
         self.audio.set_frenzy(false);
         self.audio.set_threat(0.0);
