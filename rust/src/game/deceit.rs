@@ -534,17 +534,19 @@ impl Game {
             Some(Asking::Bargain) if choice == MenuItem::Choice("ACCEPT") => {
                 // The gain is real: the end of the road. So is the price he did not name.
                 self.cheat_run();
-                let loss = ((self.hero.max_hp as f64 * PRICE_SHARE).round() as i32).min(self.hero.hp - 1).max(0);
-                self.hero.hp -= loss;
+                // The price he did not name: his general's decree done (the prince stronger for
+                // it); where no general stands to have it, a share of the hero's health.
+                let sub = match self.bargain_completes_the_decree() {
+                    Some(done) => format!("AND THE PRICE HE DID NOT NAME: {done}"),
+                    None => {
+                        let loss = ((self.hero.max_hp as f64 * PRICE_SHARE).round() as i32).min(self.hero.hp - 1).max(0);
+                        self.hero.hp -= loss;
+                        format!("AND THE PRICE HE DID NOT NAME: {loss} OF YOUR HEALTH")
+                    }
+                };
                 self.audio.play(Sfx::Toll);
                 self.view.shake(0.4);
-                self.juice.banner = Some(Banner {
-                    text: "THE END OF THE ROAD".into(),
-                    sub: format!("AND THE PRICE HE DID NOT NAME: {loss} OF YOUR HEALTH"),
-                    color: sin.color(),
-                    life: 3.5,
-                    max: 3.5,
-                });
+                self.juice.banner = Some(Banner { text: "THE END OF THE ROAD".into(), sub, color: sin.color(), life: 3.5, max: 3.5 });
             }
             Some(Asking::Bargain) => {
                 let hp = self.hero.pos();
@@ -1013,10 +1015,18 @@ mod tests {
         let offer = g.run_offer().expect("through the offer screen");
         assert!(offer.title.contains("BELPHEGOR") && !offer.lines.join(" ").to_lowercase().contains("health"), "the price unsaid");
         let (hp, max) = (g.hero.hp, g.hero.max_hp);
+        let general = g.general.as_ref().is_some_and(|r| !r.command.slain);
         g.answer_deceit(MenuItem::Choice("ACCEPT"));
         assert_eq!(g.screen, Screen::Playing);
-        assert!(g.hero.hp < hp && g.hero.hp >= 1, "the hidden price");
-        assert!(hp - g.hero.hp <= (max as f64 * PRICE_SHARE).round() as i32 + 1, "bounded");
+        if general {
+            // The hidden price is his general's decree: the prince fights by it.
+            assert!(g.general.as_ref().unwrap().command.decree_done, "the decree is done");
+            assert!(g.prince_terms(Sin::Sloth).health > 1.0, "the prince stronger for it");
+            assert_eq!(g.hero.hp, hp, "and nothing else");
+        } else {
+            assert!(g.hero.hp < hp && g.hero.hp >= 1, "the hidden price");
+            assert!(hp - g.hero.hp <= (max as f64 * PRICE_SHARE).round() as i32 + 1, "bounded");
+        }
     }
 
     #[test]

@@ -207,6 +207,20 @@ impl Game {
         Records::decode(&self.warband.save.generals)
     }
 
+    /**
+     * The prince's crooked bargain is taken (WARBAND.md §10.3): its unnamed price is the
+     * general's decree, done as if his carriers had reached the court; the prince fights by it.
+     * Returns what the decree did (the card's words), or None if no general stands here to have it.
+     */
+    pub(super) fn bargain_completes_the_decree(&mut self) -> Option<&'static str> {
+        let g = self.general.as_mut().filter(|g| !g.command.slain && !g.command.decree_done)?;
+        g.command.decree_done = true;
+        let done = g.command.general.decree_done;
+        self.keep_record();
+        self.save_warband();
+        Some(done)
+    }
+
     fn keep_record(&mut self) {
         let Some(g) = self.general.as_ref() else { return };
         let mut all = self.general_records();
