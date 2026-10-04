@@ -54,6 +54,9 @@ pub enum MoveId {
     Burrow,
     /// Hel raises the dead.
     Raise,
+    /// A pack's leader sounds its rally (WARBAND.md §7.2): its pack's poise comes back. No blow;
+    /// a long startup the hero can punish.
+    Rally,
     // ---- the princes' moves (COMBAT.md §13), each phase of a prince a table of them
     /// Mammon's sceptre swept wide round him.
     Sceptre,
@@ -212,7 +215,7 @@ pub const MARK_FOLLOW: f64 = 2.6;
 impl MoveId {
     pub const HERO: [MoveId; 3] = [MoveId::L1, MoveId::L2, MoveId::L3];
     /// Every foe's move: the archetypes' four, the folklore moves, then the princes'.
-    pub const FOE: [MoveId; 25] = [
+    pub const FOE: [MoveId; 26] = [
         MoveId::Slam,
         MoveId::Sweep,
         MoveId::Bite,
@@ -232,6 +235,7 @@ impl MoveId {
         MoveId::FrostSlam,
         MoveId::Burrow,
         MoveId::Raise,
+        MoveId::Rally,
         MoveId::Sceptre,
         MoveId::CoinToss,
         MoveId::Grasp,
@@ -565,6 +569,19 @@ impl MoveId {
                 shape: Shape::Mark { radius: 1.0 },
                 rider: Rider::Venom(120),
                 cooldown: 360,
+                ..BASE
+            },
+            MoveId::Rally => MoveData {
+                name: "RALLY",
+                startup: 40,
+                active: 1,
+                recovery: 36,
+                reach: 6.0,
+                half_angle: 0.0,
+                track: 0,
+                range: (0.0, 99.0),
+                shape: Shape::Spell,
+                cooldown: 600,
                 ..BASE
             },
             MoveId::Raise => MoveData {

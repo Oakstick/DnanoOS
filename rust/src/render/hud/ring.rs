@@ -121,6 +121,18 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
         // Poise: gold, white while its resolve holds it unbreakable.
         let pcolor = if d.f.resolve > 0 { 0xf0f0f0 } else { 0xf2c53d };
         bar(o, x - bw / 2.0, y + bh + 2.0, bw, (bh * 0.6).max(3.0), (d.f.poise / st.poise) as f32, pcolor);
+        // A pack's leader (WARBAND.md §7): its title and affixes over its bars, and its pack's heart
+        // as a thin bar under them.
+        if let Some(pack) = g.war.packs.iter().find(|p| p.leader == d.id) {
+            let mut title = String::from("LEADER");
+            for a in &pack.affixes {
+                title.push_str("  ");
+                title.push_str(a.name());
+            }
+            o.text(&title, x, y - t * 0.45, t * 0.36, rgba(0xffc040, 0.95), Align::Center, true);
+            let heart = (pack.morale / crate::logic::war::pack::MORALE) as f32;
+            bar(o, x - bw / 2.0, y + bh * 1.6 + 4.0, bw, 2.0, heart, 0x9ad1ff);
+        }
         if brawl.readout {
             // How it attacks (melee, body or distance), and where it is in its frames.
             let line = format!("{}  {}", d.breed.attack().name(), state_line(&d.f));

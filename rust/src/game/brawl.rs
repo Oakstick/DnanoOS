@@ -675,6 +675,13 @@ impl Game {
             if !illusion {
                 b.stats.kills += 1;
             }
+            // In the vaults its token goes back as it falls: the slain are swept from the field
+            // before their next frame, and a token never given back would close the pool for good.
+            // (The ring's slain stay on its floor and give theirs back on their next frame, as the
+            // lab was tuned.)
+            if b.field == Field::Vault {
+                b.threat.release(id);
+            }
         }
         let color = self.enemies[i].b.color;
         self.enemies[i].b.mode = EnemyMode::Eaten;
@@ -698,6 +705,10 @@ impl Game {
         } else if vault && !risen {
             // (The risen dead pay nothing the second time: no farming the Burning Field.)
             self.kill_spoils(p, crate::logic::systems::POINTS_KILL);
+            if self.gilded_leader(id) {
+                // A gilded leader's spoils come twice over.
+                self.kill_spoils(p, crate::logic::systems::POINTS_KILL);
+            }
             if self.rng.next() < HEAL_DROP * self.drum_bounds().potions {
                 let at = P::new(p.x.round() as i32, p.y.round() as i32);
                 if let Some(v) = self.vault.as_mut() {
@@ -934,6 +945,7 @@ impl Game {
         let field = self.brawl.as_ref().map(|b| b.field).unwrap_or(Field::Ring);
         if field == Field::Vault {
             self.update_dens();
+            self.packs_frame();
         }
         let hp = self.hero.pos();
         let sense = Sense { hero: hp, aim: self.hero.aim() };
@@ -1051,7 +1063,8 @@ impl Game {
                 b.threat.project(du.id, du.eta(&sense));
                 continue;
             }
-            if du.f.is_neutral() && du.rest == 0 {
+            let wish = self.war.directives.iter().find(|d| d.0 == du.id).map(|d| d.1).unwrap_or_default();
+            if du.f.is_neutral() && du.rest == 0 && wish.ask {
                 let to = math::sub(du.pos, hp);
                 requests.push(Request {
                     id: du.id,
@@ -1060,6 +1073,7 @@ impl Game {
                     dist: math::len(to),
                     front: math::dot(sense.aim, math::norm(to)),
                     wait: du.wait,
+                    bias: wish.bias,
                 });
             }
         }
@@ -1093,7 +1107,10 @@ impl Game {
                 .iter()
                 .map(|&i| self.enemies[i].duel.as_ref().unwrap())
                 .filter(|d| d.engaged() && !d.token && !d.puppet)
-                .map(|d| Waiter { id: d.id, pos: d.pos, ring: d.stats().ring, prev: d.slot.map(|s| s.sector) })
+                .map(|d| {
+                    let wish = self.war.directives.iter().find(|w| w.0 == d.id).map(|w| w.1).unwrap_or_default();
+                    Waiter { id: d.id, pos: d.pos, ring: d.stats().ring + wish.back, prev: d.slot.map(|s| s.sector), want: wish.want }
+                })
                 .collect();
             // (In the ring only the square's edge counts, as the lab was tuned; in the vaults the walls.)
             let open = |p: V| field == Field::Ring || terrain.open(p);
@@ -1277,6 +1294,10 @@ impl Game {
     /// A move's first active frame, beyond its blow: the roar heard, the dead raised, the ground
     /// shaken, an eruption, ice bursting from the floor; Surtr's blade sets the floor alight.
     fn first_active(&mut self, i: usize, mv: MoveId) {
+        if mv == MoveId::Rally {
+            self.rally(i);
+            return;
+        }
         let Some(du) = self.enemies[i].duel.as_ref() else { return };
         let (pos, aim, power, mark) = (du.pos, du.aim, du.breed.power, du.lore.mark);
         let d = du.data(mv);
@@ -1726,7 +1747,9 @@ impl Game {
             if let Some(i) = hit {
                 b.life = 0;
                 let d = MoveId::Hex.data();
-                self.duel_hit(i, Hit { damage: b.damage, poise: b.poise, hitstun: 20, ..Default::default() }, d.hitstop, b.pos);
+                let share = self.enemies[i].duel.as_ref().map(|du| self.ward_share(du.id)).unwrap_or(1.0);
+                let hit = Hit { damage: b.damage * share, poise: b.poise * share, hitstun: 20, ..Default::default() };
+                self.duel_hit(i, hit, d.hitstop, b.pos);
             }
         }
         bolts.retain(|b| b.life > 0);

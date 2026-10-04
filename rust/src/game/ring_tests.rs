@@ -700,3 +700,42 @@ fn the_war_log_reports_every_strike_once() {
         assert_eq!(t.packs_cleared, 1, "the last foe of the bout clears it: {t:?}");
     }
 }
+
+/// The packs of the vaults (WARBAND.md §7), played by the expert for four minutes: the leaders
+/// make their plays, no play brings two strikes down inside the reaction window, and a routed
+/// pack holds no token while it flees.
+#[test]
+fn the_packs_play_together_inside_the_reaction_window_and_a_rout_releases_the_pressure() {
+    use super::bot::{fresh_game, Bot, Loadout, Skill};
+    use crate::logic::war::pack::Play;
+    let mut g = fresh_game(2);
+    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    Loadout::all(crate::logic::heroes::HeroKind::Ragnar, 4).equip(&mut g);
+    g.enter(Screen::Playing);
+    let kit = g.hero_kit();
+    g.brawl.as_mut().unwrap().reset(kit);
+    g.hero.free_move = true;
+    let mut bot = Bot::new(Skill::Expert, 2);
+    let mut plays = std::collections::HashSet::new();
+    for _ in 0..(240.0 / crate::app::STEP) as usize {
+        if g.screen != Screen::Playing {
+            g.enter(Screen::Playing);
+        }
+        g.hero.hp = g.hero.max_hp;
+        let pad = bot.act(&g);
+        g.input.set_pad(Some(pad));
+        g.update(crate::app::STEP);
+        for p in &g.war.packs {
+            plays.insert(p.play);
+            if p.rout > 0 {
+                let held = p.members.iter().filter(|m| m.alive).any(|m| g.brawl.as_ref().unwrap().threat.holds(m.id));
+                assert!(!held, "a fleeing pack holds no token");
+            }
+        }
+    }
+    assert!(!g.war.packs.is_empty(), "the dens are packs");
+    assert!(plays.contains(&Play::Pincer) || plays.contains(&Play::Screen), "the leaders played: {plays:?}");
+    let s = g.brawl.as_ref().unwrap().stats;
+    assert!(s.kills > 10, "{s:?}");
+    assert_eq!(s.overlaps, 0, "{s:?}");
+}

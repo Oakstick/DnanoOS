@@ -9,10 +9,11 @@ use super::brawl::Field;
 use super::Game;
 use crate::logic::combat::fsm::Defense;
 use crate::logic::war::drum::{Bounds, Drum, Pulse};
+use crate::logic::war::pack::{Directive, Pack};
+use crate::logic::war::{PresRng, WarEvent};
 
 /// The least the Drum leaves of a pack's threat pool.
 const RELEASE_FLOOR_POINTS: u8 = 2;
-use crate::logic::war::{PresRng, WarEvent};
 
 /// What the war log has seen since the level began.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -32,6 +33,9 @@ pub struct WarTally {
     /// Packs (or bouts) whose last foe fell.
     pub packs_cleared: u32,
     pub drinks: u32,
+    /// Packs broken (fled or gone berserk), and rallies sounded.
+    pub routs: u32,
+    pub rallies: u32,
 }
 
 impl WarTally {
@@ -75,6 +79,11 @@ pub struct War {
     pub tally: WarTally,
     /// The level's breath (§6).
     pub drum: Drum,
+    /// The vaults' and the realms' packs (§7), and what they ask of their foes this frame.
+    pub packs: Vec<Pack>,
+    pub directives: Vec<(u32, Directive)>,
+    /// The packs are made for this level (and since he last fell).
+    pub composed: bool,
 }
 
 impl War {
@@ -84,6 +93,9 @@ impl War {
         self.read.clear();
         self.tally = WarTally::default();
         self.drum.reset();
+        self.packs.clear();
+        self.directives.clear();
+        self.composed = false;
     }
 }
 
@@ -100,6 +112,7 @@ impl Game {
         for e in &log {
             self.war.tally.count(e);
             self.war.drum.hear(e);
+            self.packs_hear(e);
         }
         self.war.read = log;
         let engaged = self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged() && !d.puppet).count() as u32;

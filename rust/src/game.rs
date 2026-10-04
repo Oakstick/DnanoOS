@@ -33,6 +33,7 @@ mod hub;
 mod level;
 mod map;
 mod movement;
+mod packs;
 mod pickups;
 mod realm;
 mod realms;

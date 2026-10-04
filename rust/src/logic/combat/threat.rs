@@ -45,12 +45,18 @@ pub struct Request {
     pub front: f64,
     /// Frames it has waited.
     pub wait: u16,
+    /// What its pack's play adds to its score (WARBAND.md §7: a caster pressing a guarding hero).
+    pub bias: f64,
 }
 
 impl Request {
-    /// Closeness, standing in front of the hero (readable), and patience (flanks happen, eventually).
+    /// Closeness, standing in front of the hero (readable), patience (flanks happen, eventually),
+    /// and its pack's wish.
     pub fn score(&self) -> f64 {
-        1.0 * (1.0 - self.dist / 10.0).clamp(0.0, 1.0) + 0.8 * (1.0 + self.front) / 2.0 + 0.5 * (self.wait as f64 / 240.0).min(1.0)
+        1.0 * (1.0 - self.dist / 10.0).clamp(0.0, 1.0)
+            + 0.8 * (1.0 + self.front) / 2.0
+            + 0.5 * (self.wait as f64 / 240.0).min(1.0)
+            + self.bias
     }
 }
 
@@ -197,6 +203,9 @@ pub struct Waiter {
     pub pos: V,
     pub ring: f64,
     pub prev: Option<usize>,
+    /// The bearing round the hero its pack would have it wait at (WARBAND.md §7: a pincer, a
+    /// screen); otherwise its own bearing.
+    pub want: Option<f64>,
 }
 
 /// Where a waiting foe should stand: its sector, and the point on its ring.
@@ -243,7 +252,7 @@ pub fn assign_slots(hero: V, aim: V, waiters: &[Waiter], lo: V, hi: V, open: &dy
         };
         let cost = |k: usize| {
             let p = point(k);
-            let mut c = wrap(sector_angle(k) - bearing).abs();
+            let mut c = wrap(sector_angle(k) - w.want.unwrap_or(bearing)).abs();
             if wrap(sector_angle(k) - back).abs() <= PI / 4.0 + 1e-6 {
                 c += BACK_PENALTY;
             }
@@ -272,7 +281,7 @@ mod tests {
     use super::*;
 
     fn req(id: u32, cost: u8, eta: u32) -> Request {
-        Request { id, cost, eta, dist: 3.0, front: 0.0, wait: 0 }
+        Request { id, cost, eta, dist: 3.0, front: 0.0, wait: 0, bias: 0.0 }
     }
 
     #[test]
@@ -339,9 +348,9 @@ mod tests {
 
     #[test]
     fn the_foe_in_front_and_near_gets_the_token_first() {
-        let near_front = Request { id: 1, cost: 1, eta: 20, dist: 2.0, front: 1.0, wait: 0 };
-        let near_behind = Request { id: 2, cost: 1, eta: 20, dist: 2.0, front: -1.0, wait: 0 };
-        let far_patient = Request { id: 3, cost: 1, eta: 60, dist: 8.0, front: -1.0, wait: 600 };
+        let near_front = Request { id: 1, cost: 1, eta: 20, dist: 2.0, front: 1.0, wait: 0, bias: 0.0 };
+        let near_behind = Request { id: 2, cost: 1, eta: 20, dist: 2.0, front: -1.0, wait: 0, bias: 0.0 };
+        let far_patient = Request { id: 3, cost: 1, eta: 60, dist: 8.0, front: -1.0, wait: 600, bias: 0.0 };
         assert!(near_front.score() > near_behind.score());
         assert!(near_behind.score() > far_patient.score() - 0.5);
         let mut t = ThreatManager::new();
@@ -355,7 +364,7 @@ mod tests {
         assert!(t.expired(1));
         // A far walk in earns a longer leash: its walk, and LATE frames more.
         let mut t = ThreatManager::new();
-        t.grant(&[Request { id: 9, cost: 2, eta: 300, dist: 9.0, front: 1.0, wait: 0 }]);
+        t.grant(&[Request { id: 9, cost: 2, eta: 300, dist: 9.0, front: 1.0, wait: 0, bias: 0.0 }]);
         for _ in 0..300 + LATE {
             t.tick();
         }
@@ -371,7 +380,7 @@ mod tests {
         let lo = V::new(0.0, 0.0);
         let hi = V::new(20.0, 20.0);
         let waiters: Vec<Waiter> =
-            (0..4).map(|i| Waiter { id: i, pos: V::new(6.0, 10.0 + i as f64 * 0.1), ring: 4.0, prev: None }).collect();
+            (0..4).map(|i| Waiter { id: i, pos: V::new(6.0, 10.0 + i as f64 * 0.1), ring: 4.0, prev: None, want: None }).collect();
         let slots = assign_slots(hero, aim, &waiters, lo, hi, &|_| true);
         assert_eq!(slots.len(), 4);
         let mut sectors: Vec<usize> = slots.iter().map(|s| s.sector).collect();
@@ -385,8 +394,8 @@ mod tests {
         }
         // A ranged foe shares a bearing with a melee one: different rings.
         let two = [
-            Waiter { id: 1, pos: V::new(14.0, 10.0), ring: 4.0, prev: None },
-            Waiter { id: 2, pos: V::new(16.0, 10.0), ring: 6.0, prev: None },
+            Waiter { id: 1, pos: V::new(14.0, 10.0), ring: 4.0, prev: None, want: None },
+            Waiter { id: 2, pos: V::new(16.0, 10.0), ring: 6.0, prev: None, want: None },
         ];
         let slots = assign_slots(hero, aim, &two, lo, hi, &|_| true);
         assert_eq!(slots[0].sector, slots[1].sector);

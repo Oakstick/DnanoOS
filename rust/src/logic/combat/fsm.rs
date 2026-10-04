@@ -265,6 +265,11 @@ impl Fighter {
         self.state == State::Neutral
     }
 
+    /// Its poise is coming back (no blow for a while).
+    pub fn regenerating(&self) -> bool {
+        self.regen_wait == 0
+    }
+
     pub fn reeling(&self) -> Option<Reel> {
         match self.state {
             State::Reel { kind, .. } => Some(kind),

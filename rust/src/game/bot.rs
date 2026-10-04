@@ -525,7 +525,7 @@ impl Loadout {
     }
 
     /// Puts it on the game's hero.
-    fn equip(&self, g: &mut Game) {
+    pub(super) fn equip(&self, g: &mut Game) {
         g.hero_kind = self.hero;
         let h = g.progress.hero_mut(self.hero);
         h.owned[Tree::Armory.index()] = self.blade;
@@ -857,6 +857,9 @@ pub struct Crawl {
     pub peak_share: f64,
     pub peaks: u32,
     pub rest: f64,
+    /// The packs (WARBAND.md §7): broken, and rallies sounded.
+    pub routs: u32,
+    pub rallies: u32,
 }
 
 /// The Drum, second by second through a crawl: (seconds, intensity, phase).
@@ -928,9 +931,21 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
     out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
     out.kills = out.foes - g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count() as u32;
+    if std::env::var_os("VH_CRAWL_LEFT").is_some() {
+        let hp = g.hero.pos();
+        eprintln!("hero at ({:.1}, {:.1})", hp.x, hp.y);
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
+            eprintln!(
+                "  left: {:?} at ({:.1}, {:.1}) hp {:.0}/{:.0} den {:?} state {:?}",
+                d.breed.kind, d.pos.x, d.pos.y, d.hp, d.max_hp, d.den, d.f.state
+            );
+        }
+    }
     let drum = &g.war.drum;
     out.peak_share = drum.peak_share();
     out.peaks = drum.peaks;
+    out.routs = g.war.tally.routs;
+    out.rallies = g.war.tally.rallies;
     out.rest = if drum.rests.is_empty() { 0.0 } else { drum.rests.iter().sum::<f64>() / drum.rests.len() as f64 };
     out
 }
@@ -938,7 +953,7 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
 /// Crawls by every skill (and the kit at each tier of `tiers`, Ragnar's), one line each.
 pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
     let mut out = String::from(
-        "skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min  at-peak peaks  rest\n",
+        "skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min  at-peak peaks  rest  routs rallies\n",
     );
     for &tier in tiers {
         for skill in [Skill::Adept, Skill::Expert] {
@@ -946,7 +961,7 @@ pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
             let n = runs.len() as f64;
             let avg = |f: &dyn Fn(&Crawl) -> f64| runs.iter().map(f).sum::<f64>() / n;
             out += &format!(
-                "{:<7} {:>4}  {:>5.0}%  {:>5.0}/{:<4.0}  {:>6.1}  {:>7.1}  {:>6.1}  {:>4.0}  {:>5.0}  {:>5.0} {:>5.0} {:>6.0}  {:>12.2}  {:>6.0}% {:>5.1} {:>5.1}\n",
+                "{:<7} {:>4}  {:>5.0}%  {:>5.0}/{:<4.0}  {:>6.1}  {:>7.1}  {:>6.1}  {:>4.0}  {:>5.0}  {:>5.0} {:>5.0} {:>6.0}  {:>12.2}  {:>6.0}% {:>5.1} {:>5.1} {:>6.1} {:>7.1}\n",
                 skill.name(),
                 tier,
                 avg(&|c| f64::from(u8::from(c.cleared))) * 100.0,
@@ -963,7 +978,9 @@ pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
                 avg(&|c| c.overlaps_per_minute()),
                 avg(&|c| c.peak_share) * 100.0,
                 avg(&|c| c.peaks as f64),
-                avg(&|c| c.rest)
+                avg(&|c| c.rest),
+                avg(&|c| c.routs as f64),
+                avg(&|c| c.rallies as f64)
             );
         }
     }

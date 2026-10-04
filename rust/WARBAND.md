@@ -912,3 +912,31 @@ The crawl (`--crawl 6`, Drum on / off):
 The adept, the player the pacing is for, spends about half its fighting at peak, inside §15.1's
 35-55%; the expert feels less pressure, as it should. Rests are short (about 6 s) because the bot
 walks straight on to the next den: player-driven, which the Drum allows.
+
+### W4 Packs
+
+`logic::war::pack` (`Role`, `Temperament`, `Affix`, `Play`, `Pack`, `compose`, `Directive`) and
+`game::packs` (composing the dens into packs, hearing the war log, `packs_frame` from the brawl's
+foes' frame after the dens). The threat manager's `Request` gained `bias` and its `Waiter` a
+`want` (a bearing): the only ways a play reaches the fight. `MoveId::Rally` (40/1/36, a spell: no
+blow) is the leader's move. The HUD writes LEADER and its affixes over a leader's bars, with its
+pack's heart as a thin blue bar. `VH_NO_PACKS=1` switches the packs off for A/B runs;
+`--crawl-one SKILL TIER SEED` plays one crawl and lists what is left standing.
+
+Built: Hold, Pincer, Screen, Rotate (a foe under 30% falls back while another takes its place),
+Rally (600 f between rallies); morale and the break by temperament (cowardly flee for 180 f and
+give their tokens back at once, frenzied +15% pace and quicker rests for 360 f, stalwart fight on);
+all five affixes (Ironhide, Bannered, Vengeful, Warding, Gilded). Not built: Crossfire and Hold the
+door (the riskiest for the reaction window and the den mouths; left for W9), Echoing (dropped: a
+ghost tell with no blow fights the rule that every tell means a strike).
+
+| Change | Why |
+|---|---|
+| Rallies rest 600 f per pack | without it a hurt leader rallied every 1.3 s (35 rallies in one adept crawl) |
+| A foe slain in the vaults gives its token back as it falls | the slain are swept from the field before their next frame; two committed tokens never came back and closed the pool for good (an expert crawl stood still for 13 minutes). Not in the ring: its slain stay a frame, and the lab's numbers hold to the decimal |
+| A cowardly pack gives its tokens back the moment it breaks | it held them for a frame while turning to flee |
+
+The crawl (`--crawl 6`, Drum and packs on): every clear as before (the adept from tier 4, the
+expert at every tier), 5-11 packs broken and 1-8 rallies a crawl, the adept 45-54% of its fighting
+at peak, overlaps 0 but for the adept at tier 1 (0.02 a minute: one in six crawls, a hero on the
+move). Test: `the_packs_play_together_inside_the_reaction_window_and_a_rout_releases_the_pressure`.

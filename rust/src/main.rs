@@ -101,6 +101,19 @@ fn main() {
         );
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--crawl-one") {
+        // One crawl through the Vaults of Mammon: `--crawl-one SKILL TIER SEED` (skill 0 novice,
+        // 1 adept, 2 expert); what is left standing at the end is listed.
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (skill, tier, seed) = (num(1, 2), num(2, 1) as u8, num(3, 1));
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        std::env::set_var("VH_CRAWL_LEFT", "1");
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        let kit = Some(void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, tier));
+        let r = void_harvest::game::bot::crawl(skill, seed, kit, 900.0);
+        println!("THE VAULTS {skill:?} tier {tier} seed {seed}: {r:?}");
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--court") {
         // Greed's prince in his court, played by a bot: `--court SKILL TIER SEED` (skill 0 novice,
         // 1 adept, 2 expert).

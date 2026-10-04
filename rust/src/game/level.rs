@@ -81,6 +81,7 @@ impl Game {
         }
         self.spar = data.theme.is_gym().then(super::sparring::Sparring::new);
         // (The vaults raise their own brawl as their packs are laid out.)
+        self.disband_packs();
         self.war.reset();
         self.brawl = data.theme.is_gym().then(|| super::brawl::Brawl::new(super::brawl::Field::Ring));
         let vault_level = data.theme.is_vault();
@@ -300,6 +301,7 @@ impl Game {
         if let Some(b) = self.brawl.as_mut() {
             b.respawn(kit);
         }
+        self.disband_packs();
         for (i, e) in self.enemies.iter_mut().enumerate() {
             if let Some(d) = e.duel.as_deref_mut() {
                 d.reset_home();
