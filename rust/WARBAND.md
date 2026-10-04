@@ -7,8 +7,8 @@ hero (`logic/progression.rs`) and the old man's wares (`game/shop.rs`). Nothing 
 the combat core. Everything here sits **above** it, as a layer that decides *who* fights,
 *where*, *when* and *why*, and **around** it, as the feel, the sound and the voices.
 
-Status: approved 2026-10-04 ("I like the plan... Lets go"); building. §17's proposals are taken as
-the defaults until the user says otherwise. W1 (feel), W2 (voices) and the workshop's set (W8 art)
+Status: approved 2026-10-04 ("I like the plan... Lets go"); building. §17's decisions were settled
+on the proposals the same day. W1 (feel), W2 (voices) and the workshop's set (W8 art)
 run in parallel worktrees while W0 is built on `rust-port`.
 
 ---
@@ -843,7 +843,7 @@ can run in parallel from W1 as a background agent in a worktree, as the realms w
 
 ---
 
-## 17. Decisions (proposals first)
+## 17. Decisions (settled 2026-10-04: the user chose every proposal, the first option of each)
 
 1. **Mastery**: an earned technique track beside the path tree (proposal) / the path tree itself
    renamed Mastery, nothing new.
