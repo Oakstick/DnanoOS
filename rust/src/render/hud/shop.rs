@@ -683,6 +683,16 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         let line = format!("DURABILITY {}   +{} HEALTH{extra}", wd.durability, wd.vigor);
         o.text(&line, c[0] + pad, ey + t * 0.1, small * 0.8, rgba(SAND, 1.0), Align::Left, false);
     }
+    // Against what he holds now, as the fight reads them (WARBAND.md §12.1): a decision in numbers.
+    let compare = compare_line(g, tree, tier);
+    if !compare.is_empty() {
+        let mut x = c[0] + pad;
+        let y = ey + if tree == Tree::Shield { t * 0.8 } else { t * 0.1 };
+        for (text, color) in compare {
+            o.text(&text, x, y, small * 0.8, rgba(color, 1.0), Align::Left, true);
+            x += o.measure(&text, small * 0.8) + t * 0.45;
+        }
+    }
 
     // Its standing: owned, the way to it, or what stands in the way.
     let owned = prog.has(tree, tier);
@@ -745,6 +755,47 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
             }
         }
     }
+}
+
+/// A blade or a shield of `tier` against the one in his hand or on his arm, as the fight reads them
+/// (`combat::kit`): the string's damage a second, reach and tempo; the parry window and a block's
+/// cost. Each part green where it is better, red where it is worse. Empty for the rest.
+fn compare_line(g: &Game, tree: Tree, tier: u8) -> Vec<(String, u32)> {
+    use crate::logic::combat::kit::{Guard, Kit};
+    let h = &g.hero;
+    let shield = h.shield.map(|s| s.tier);
+    let better = |b: bool, same: bool| {
+        if same {
+            TEXT_DIM
+        } else if b {
+            0x7dff9a
+        } else {
+            0xff7a6a
+        }
+    };
+    let mut out = vec![("AGAINST YOURS".to_string(), SAND)];
+    match tree {
+        Tree::Armory if tier != h.blade => {
+            let (now, then) = (Kit::of(g.hero_kind, h.blade, 1.0, shield, h.path), Kit::of(g.hero_kind, tier, 1.0, shield, h.path));
+            let (a, b) = (now.dps(), then.dps());
+            let pct = ((b / a.max(1e-9) - 1.0) * 100.0).round();
+            out.push((format!("DAMAGE {a:.0} > {b:.0}/S ({pct:+.0}%)"), better(b > a, pct == 0.0)));
+            // (The first swing's whole reach, not the blade's share of it.)
+            let (ra, rb) = (now.moves()[0].reach, then.moves()[0].reach);
+            out.push((format!("REACH {ra:.1} > {rb:.1}"), better(rb > ra, (rb - ra).abs() < 0.05)));
+            let (ta, tb) = (now.strike.tempo, then.strike.tempo);
+            out.push((format!("TEMPO x{:.2}", tb / ta.max(1e-9)), better(tb < ta, (tb - ta).abs() < 0.01)));
+        }
+        Tree::Shield if Some(tier) != shield => {
+            let now = shield.map(Guard::of).unwrap_or(Guard::BARE);
+            let then = Guard::of(tier);
+            out.push((format!("PARRY {} > {} F", now.parry, then.parry), better(then.parry > now.parry, then.parry == now.parry)));
+            let (ca, cb) = (now.cost, then.cost);
+            out.push((format!("BLOCK COST {:.0}% > {:.0}%", ca * 100.0, cb * 100.0), better(cb < ca, (cb - ca).abs() < 0.005)));
+        }
+        _ => return Vec::new(),
+    }
+    out
 }
 
 /// The card at the war table, the trophy wall and the yard's trials: a general known or not, and
