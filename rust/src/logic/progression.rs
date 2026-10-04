@@ -13,6 +13,7 @@
 use super::angels::Archangel;
 use super::heroes::HeroKind;
 use super::types::PotionKind;
+use super::war::mastery::{self, Mastery};
 
 /// The four trees, in the order of the old man's tabs.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -957,11 +958,23 @@ pub struct HeroProgress {
     pub broken: u16,
     /// How sharp each blade of his armory is, 0 (rusted through) to 100 (keen): index `tier - 1`.
     pub edge: [u8; 10],
+    /// His mastery of technique: its rank, his deeds, his trials (WARBAND.md §11.1).
+    pub mastery: Mastery,
 }
 
 impl Default for HeroProgress {
     fn default() -> Self {
-        Self { owned: [1, 0, 1, 1], relics: [0; 4], wield: 1, carry: 1, patron: None, outfit: 0, broken: 0, edge: [100; 10] }
+        Self {
+            owned: [1, 0, 1, 1],
+            relics: [0; 4],
+            wield: 1,
+            carry: 1,
+            patron: None,
+            outfit: 0,
+            broken: 0,
+            edge: [100; 10],
+            mastery: Mastery::default(),
+        }
     }
 }
 
@@ -1106,10 +1119,11 @@ impl Progress {
     }
 
     // A line of text for the save file:
-    // "v2 silver runes | a p s e r0 r1 r2 r3 wield carry patron outfit broken edge1 .. edge10 | ...".
-    // (A "v1" line, from before the loadout, stops after carry and still loads.)
+    // "v3 silver runes | a p s e r0 r1 r2 r3 wield carry patron outfit broken edge1 .. edge10 mastery(14) | ...".
+    // (A "v2" line, from before mastery, stops after the edges; a "v1" line, from before the
+    // loadout, stops after carry; both still load.)
     pub fn encode(&self) -> String {
-        let mut out = format!("v2 {} {}", self.silver, self.runes);
+        let mut out = format!("v3 {} {}", self.silver, self.runes);
         for h in &self.heroes {
             out.push_str(&format!(
                 " | {} {} {} {} {} {} {} {} {} {}",
@@ -1120,6 +1134,8 @@ impl Progress {
             for e in h.edge {
                 out.push_str(&format!(" {e}"));
             }
+            out.push(' ');
+            out.push_str(&h.mastery.encode());
         }
         out
     }
@@ -1127,16 +1143,27 @@ impl Progress {
     pub fn decode(text: &str) -> Option<Progress> {
         let mut parts = text.split('|');
         let mut head = parts.next()?.split_whitespace();
-        let v2 = match head.next()? {
-            "v1" => false,
-            "v2" => true,
+        let (v2, v3) = match head.next()? {
+            "v1" => (false, false),
+            "v2" => (true, false),
+            "v3" => (true, true),
             _ => return None,
         };
         let mut p = Progress { silver: head.next()?.parse().ok()?, runes: head.next()?.parse().ok()?, ..Default::default() };
         for h in p.heroes.iter_mut() {
             let n: Vec<u32> = parts.next()?.split_whitespace().map(|v| v.parse().ok()).collect::<Option<_>>()?;
-            if n.len() != if v2 { 23 } else { 10 } {
+            let len = if v3 {
+                23 + mastery::SAVED_NUMBERS
+            } else if v2 {
+                23
+            } else {
+                10
+            };
+            if n.len() != len {
                 return None;
+            }
+            if v3 {
+                h.mastery = Mastery::decode(&n[23..])?;
             }
             if v2 {
                 h.patron = (1..=4).contains(&n[10]).then(|| crate::logic::angels::ARCHANGELS[n[10] as usize - 1]);
@@ -1181,6 +1208,27 @@ mod tests {
         assert_eq!(old.silver, 5);
         assert_eq!(old.hero(HeroKind::Ragnar).wield, 2);
         assert_eq!((old.hero(HeroKind::Ragnar).patron, old.hero(HeroKind::Ragnar).edge), (None, [100; 10]));
+    }
+
+    #[test]
+    fn mastery_is_saved_and_saves_from_before_it_still_load() {
+        let mut p = Progress { silver: 9, ..Default::default() };
+        p.hero_mut(HeroKind::Miyamoto).mastery = Mastery { rank: 2, deeds: [80, 31, 0], tries: [1, 3, 0, 0, 0], best: [3, 5, 0, 0, 0] };
+        p.hero_mut(HeroKind::Ragnar).edge[2] = 55;
+        let line = p.encode();
+        assert!(line.starts_with("v3 "));
+        assert_eq!(Progress::decode(&line), Some(p));
+        // A v2 line (no mastery) loads with every mastery fresh.
+        let v2 = concat!(
+            "v2 9 0 | 1 0 1 1 0 0 0 0 1 1 0 0 0 100 100 55 100 100 100 100 100 100 100",
+            " | 1 0 1 1 0 0 0 0 1 1 0 0 0 100 100 100 100 100 100 100 100 100 100",
+            " | 1 0 1 1 0 0 0 0 1 1 0 0 0 100 100 100 100 100 100 100 100 100 100"
+        );
+        let old = Progress::decode(v2).expect("a v2 save");
+        assert_eq!(old.hero(HeroKind::Ragnar).edge[2], 55);
+        assert!(old.heroes.iter().all(|h| h.mastery == Mastery::default()));
+        // A v3 line cut short is refused, not half-read.
+        assert_eq!(Progress::decode(&line[..line.len() - 2]), None);
     }
     use crate::logic::heroes::ROSTER;
 
