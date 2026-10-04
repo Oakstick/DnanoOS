@@ -986,3 +986,32 @@ the hero's slash (now on his fighter's frames) and the outside callers below.
   `a_freeze_then_the_slowing_of_time`, `a_slain_foe_topples_and_breaks_into_its_voxels`,
   `chips_and_trauma_stay_in_their_budgets`, `the_pause_menu_steps_the_feels_settings`, and the
   unit tests of `logic::juice` and `spring`.
+
+### W2 Voices (branch `warband-voices`)
+
+* `audio/voices.rs`: every sound is a `Recipe` of `Layer`s (wave, pitch glide, envelope, filter,
+  vibrato, tagged by `Part`). `tell_for(kind, mv, hero)` = the family's `signature` (Melee: brass
+  swell + scrape; Body: breath intake + rising snarl; Distance: shimmer peaking on release) + the
+  breed's timbre from §5's table, for all 38 bodies (the karakoncolos calls Ragnar, Mehmed or
+  Miyamoto by name in formant speech; Mammon's tell changes with his move). `voice_set(kind, hero)`
+  gives tell, swing, matter, hurt, stagger, death, alert and size; pitch goes down with size (giants
+  an octave, the family signature half as far). Three round-robin variants, never twice running.
+  `hit_recipe` builds §4.6's five layers per outcome (`HitSound`), with `SoundMatter` (twelve
+  matters, to be unified with `logic::juice::Matter`), shield tiers and swing kinds; one voice per
+  hero (`hero_voice`). `tell_for` replaces brawl.rs's `tell_sfx`.
+* `audio/mix.rs`: `Priority` (Tell > Hero > Rest > Ambient), `Dedupe` (3 per 40 ms, then merged
+  +1 dB), the 96-voice budget with stealing (`steal`, 5 ms fade), the duck (-4 dB, 120 ms, under a
+  parry or a struck hero), a soft `Limiter` on the master (replacing the hard clamp), stereo
+  (`pan_gains`: constant power, unity at the centre) and `place` (camera-relative bearing, falloff
+  over 18 tiles, +3 dB from the back arc). The effects bus is now stereo; the music is unchanged.
+* Time scale: `set_time_scale(s)` pitches the effects by `s^0.25` and closes a two-pole low-pass on
+  the music below full speed.
+* Tempo: `Soundtrack::bpm`/`downbeat`, measured with `tools/track_tempo.py` (spectral-flux onset
+  autocorrelation; octave folded to 80-160): Level1 105, Menu 105, Boss 93.4, BastionLux 104,
+  LastOne 140.05, DesolationVesper 91.95, LevelOneBoss 82.95. `audio/wardrum.rs` plays over the
+  music locked to that beat (`Synth::beat_clock`): `set_drum(DrumLevel)` Rest silent, Build a
+  heartbeat, Peak full drums, Release one low hit. `next_bar_in()` for horns on the bar line.
+* `--audio-sheet DIR` writes every breed's tell/swing/hit/death, the hits, the families, a pan
+  circle and the drum levels as WAVs, and prints each one's peak and RMS.
+* Wiring left to the integrator (brawl.rs is not touched): see the W2 report; `feedback.rs` sets
+  the listener and the hero each frame.

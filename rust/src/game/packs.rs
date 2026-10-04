@@ -4,7 +4,6 @@
 
 use super::brawl::Field;
 use super::Game;
-use crate::audio::Sfx;
 use crate::logic::combat::MoveId;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::types::{dist_sq, V};
@@ -202,7 +201,8 @@ impl Game {
             if d.begin(MoveId::Rally, hp) {
                 let (kind, at) = (d.breed.kind, d.pos);
                 self.war_note(WarEvent::Tell { foe: leader, kind, mv: MoveId::Rally, at });
-                self.audio.play(Sfx::Toll);
+                let listener = self.audio.listener();
+                self.audio.tell(kind, MoveId::Rally, at, listener);
             }
         }
     }

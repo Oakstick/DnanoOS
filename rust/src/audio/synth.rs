@@ -2,9 +2,12 @@
 //! oscillators and noise with exponential envelopes, biquad filters, a music
 //! bus behind a warbling low-pass, an ambient threat drone and a crackle bed.
 //! It runs inside the audio callback, so the music sequencer is sample-accurate.
+//! The effects bus is stereo (each voice panned where its sound is) and goes through the mix
+//! (`mix`): a voice budget, a duck and a soft limiter on the master.
 
 use std::f64::consts::TAU;
 
+use super::mix::{self, Limiter, Priority, Stamp};
 use crate::logic::rng::Rng;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -15,6 +18,11 @@ pub enum Wave {
     Triangle,
     /// The shared noise buffer, read at `rate` from `offset` seconds in.
     Noise {
+        rate: f64,
+        offset: f64,
+    },
+    /// Clean white noise (no crackle), read the same way: breath, wind, whooshes (`voices`).
+    Hiss {
         rate: f64,
         offset: f64,
     },
@@ -81,7 +89,7 @@ impl Env {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum FilterKind {
     Lowpass,
     Highpass,
@@ -158,11 +166,39 @@ pub struct Voice {
     biquad: Option<Biquad>,
     phase: f64,
     started: bool,
+    /// Its place in the mix (`mix::Stamp`): stereo gains, priority, group, immunity to ducks.
+    pan: (f64, f64),
+    prio: Priority,
+    group: u32,
+    immune: bool,
+    /// A gain on top of its envelope: the stamp's, lifted by merged repeats.
+    boost: f64,
+    /// When it was stolen by the voice budget: it fades out over `mix::STEAL_FADE`.
+    stolen: Option<f64>,
 }
 
 impl Voice {
     pub fn new(start: f64, stop: f64, wave: Wave, freq: Env, gain: Env, bus: Bus) -> Self {
-        Self { start, stop, wave, freq, detune: 1.0, vibrato: None, gain, filter: None, bus, biquad: None, phase: 0.0, started: false }
+        Self {
+            start,
+            stop,
+            wave,
+            freq,
+            detune: 1.0,
+            vibrato: None,
+            gain,
+            filter: None,
+            bus,
+            biquad: None,
+            phase: 0.0,
+            started: false,
+            pan: (1.0, 1.0),
+            prio: Priority::Rest,
+            group: 0,
+            immune: false,
+            boost: 1.0,
+            stolen: None,
+        }
     }
 
     pub fn detune_cents(mut self, cents: f64) -> Self {
@@ -201,6 +237,7 @@ pub struct Synth {
     pub now: f64,
     voices: Vec<Voice>,
     noise: Vec<f32>,
+    white: Vec<f32>,
     pub rng: Rng,
 
     pub master: f64,
@@ -239,6 +276,22 @@ pub struct Synth {
     /// A low-pass on the recording that closes as the hero gets hurt, per channel.
     track_lp: (f64, f64),
     track_lp_k: f64,
+
+    /// What the effects pushed next carry into the mix (`mix::Stamp`); reset after each play.
+    pub stamp: Stamp,
+    /// Until when everything but the immune is ducked (`mix::DUCK_GAIN`), and the duck's level now.
+    pub duck_until: f64,
+    duck: f64,
+    limiter: Limiter,
+    /// The time scale's pitch on the effects (`s^0.25`), and its low-pass on the music: two
+    /// one-pole stages per channel, wide open (`k = 1`) at full speed.
+    pub sfx_rate: f64,
+    pub slow_k: f64,
+    slow: [f64; 4],
+    dedupe: mix::Dedupe,
+    groups: u32,
+    /// The war-drum layer over the recordings, locked to their tempo.
+    pub drum: super::wardrum::WarDrum,
 }
 
 /// The music bus low-pass: open enough to keep the upbeat track bright, still warm.
@@ -248,11 +301,13 @@ impl Synth {
     pub fn new(sample_rate: f64, music_level: f64) -> Self {
         let mut rng = Rng::from_time();
         let noise = build_noise(sample_rate, &mut rng);
+        let white = (0..(sample_rate * 2.0) as usize).map(|_| (rng.next() * 2.0 - 1.0) as f32).collect();
         Self {
             sample_rate,
             now: 0.0,
             voices: Vec::with_capacity(256),
             noise,
+            white,
             rng,
             master: 0.5,
             music_level,
@@ -279,16 +334,113 @@ impl Synth {
             track_target: 0.0,
             track_lp: (0.0, 0.0),
             track_lp_k: 1.0,
+            stamp: Stamp::default(),
+            duck_until: f64::NEG_INFINITY,
+            duck: 1.0,
+            limiter: Limiter::new(sample_rate),
+            sfx_rate: 1.0,
+            slow_k: 1.0,
+            slow: [0.0; 4],
+            dedupe: mix::Dedupe::default(),
+            groups: 0,
+            drum: Default::default(),
         }
     }
 
-    pub fn push(&mut self, v: Voice) {
+    /// Schedules a voice. An effect voice carries the current stamp into the mix and must fit the
+    /// budget (`mix::SFX_VOICES`): when it is full the least important voice is stolen (faded
+    /// out), or, if everything sounding matters more, this one is dropped.
+    pub fn push(&mut self, mut v: Voice) {
+        if v.bus == Bus::Sfx {
+            let st = self.stamp;
+            v.pan = (st.pan_l, st.pan_r);
+            v.prio = st.prio;
+            v.group = st.group;
+            v.immune = st.immune;
+            v.boost = st.gain;
+            let now = self.now;
+            let live = self
+                .voices
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| o.bus == Bus::Sfx && o.stolen.is_none() && o.stop > now)
+                .map(|(i, o)| (i, o.prio, o.stop));
+            match mix::steal(live, v.prio) {
+                mix::Steal::Room => {}
+                mix::Steal::Take(i) => {
+                    let o = &mut self.voices[i];
+                    o.stolen = Some(now.max(o.start));
+                    o.stop = o.stop.min(now.max(o.start) + mix::STEAL_FADE);
+                }
+                mix::Steal::Refuse => return,
+            }
+        }
         if self.voices.len() < 512 {
             self.voices.push(v);
         }
     }
 
-    /// Fills an interleaved buffer. The synth is mono; a recorded soundtrack plays in stereo.
+    /// Effect voices sounding or waiting to (not those stolen and fading).
+    pub fn sfx_voices(&self) -> usize {
+        self.voices.iter().filter(|v| v.bus == Bus::Sfx && v.stolen.is_none() && v.stop > self.now).count()
+    }
+
+    /// Effect voices of a priority sounding or waiting to.
+    #[cfg(test)]
+    pub fn voices_at(&self, prio: Priority) -> usize {
+        self.voices.iter().filter(|v| v.bus == Bus::Sfx && v.stolen.is_none() && v.stop > self.now && v.prio == prio).count()
+    }
+
+    /// Lifts every voice of a play by `k` (a merged repeat: `mix::Dedupe`), up to `mix::MERGE_CAP`.
+    pub fn boost_group(&mut self, group: u32, k: f64) {
+        for v in self.voices.iter_mut().filter(|v| v.group == group && group != 0) {
+            v.boost = (v.boost * k).min(mix::MERGE_CAP);
+        }
+    }
+
+    /// A fresh group for the next play's voices.
+    pub fn next_group(&mut self) -> u32 {
+        self.groups = self.groups.wrapping_add(1).max(1);
+        self.groups
+    }
+
+    /// Whether a play of sound `key` is heard as itself; if it is one too many inside the dedupe
+    /// window, the last one is lifted instead (merged, louder) and this one is not played.
+    pub fn admit(&mut self, key: u64, group: u32) -> bool {
+        match self.dedupe.admit(key, self.now, group) {
+            mix::Admit::Play => true,
+            mix::Admit::Merge { group } => {
+                self.boost_group(group, mix::MERGE_BOOST);
+                false
+            }
+        }
+    }
+
+    /// Ducks everything but the immune for `secs` from now.
+    pub fn duck_for(&mut self, secs: f64) {
+        self.duck_until = self.duck_until.max(self.now + secs);
+    }
+
+    /// The beat under the music now: (bpm, beats since the first downbeat). A recording counts
+    /// from its own measured downbeat; the synth tune from its sequencer; with neither, a free
+    /// clock at the base tempo.
+    pub fn beat_clock(&self) -> (f64, f64) {
+        if let Some(t) = self.track.as_ref().filter(|_| self.track_target > 0.0) {
+            let bpm = t.which.bpm();
+            return (bpm, (t.position() - t.which.downbeat()) * bpm / 60.0);
+        }
+        let seq = &self.music;
+        if seq.running && seq.next_time >= 0.0 {
+            let step_dur = 60.0 / seq.bpm.max(20.0) / 4.0;
+            let steps = seq.step as f64 - (seq.next_time - self.now) / step_dur;
+            return (seq.bpm, steps / 4.0);
+        }
+        let bpm = super::music::BASE_BPM;
+        (bpm, self.now * bpm / 60.0)
+    }
+
+    /// Fills an interleaved buffer: the effects in stereo, each voice where its sound is; the
+    /// synth tune mono; a recorded soundtrack in stereo.
     pub fn render(&mut self, out: &mut [f32], channels: usize) {
         let channels = channels.max(1);
         let dt = 1.0 / self.sample_rate;
@@ -296,6 +448,7 @@ impl Synth {
         let drone_k = 1.0 - (-dt / 0.1).exp();
         let music_k = 1.0 - (-dt / (0.4 / 3.0)).exp();
         let track_k = 1.0 - (-dt / 0.35).exp();
+        let duck_k = 1.0 - (-dt / 0.005).exp();
         let noise_len = self.noise.len();
 
         for frame in out.chunks_mut(channels) {
@@ -306,8 +459,10 @@ impl Synth {
             self.control_countdown -= 1;
 
             let t = self.now;
-            let mut sfx = 0.0;
+            // Effects: those a duck passes by, and the rest, per side.
+            let (mut keep_l, mut keep_r, mut sfx_l, mut sfx_r) = (0.0, 0.0, 0.0, 0.0);
             let mut music = 0.0;
+            let rate = self.sfx_rate;
             for v in self.voices.iter_mut() {
                 if t < v.start || t >= v.stop {
                     continue;
@@ -315,9 +470,13 @@ impl Synth {
                 if !v.started {
                     v.started = true;
                     v.biquad = v.filter.map(|(k, f, q)| Biquad::new(k, f, q, sr));
+                    if let Wave::Noise { offset, .. } | Wave::Hiss { offset, .. } = v.wave {
+                        v.phase = offset;
+                    }
                 }
+                let sped = if v.bus == Bus::Sfx { rate } else { 1.0 };
                 let g = v.gain.next(t, dt);
-                let mut f = v.freq.next(t, dt) * v.detune;
+                let mut f = v.freq.next(t, dt) * v.detune * sped;
                 if let Some((rate, depth)) = v.vibrato {
                     f *= 1.0 + depth * (TAU * rate * (t - v.start)).sin();
                 }
@@ -330,18 +489,32 @@ impl Synth {
                     }
                     Wave::Saw => 2.0 * v.phase - 1.0 - blep(v.phase, inc),
                     Wave::Triangle => 1.0 - 4.0 * (v.phase - 0.5).abs(),
-                    Wave::Noise { rate, offset } => {
-                        let pos = ((offset + (t - v.start) * rate) * sr) as usize;
-                        self.noise[pos % noise_len] as f64
-                    }
+                    Wave::Noise { .. } => self.noise[(v.phase * sr) as usize % noise_len] as f64,
+                    Wave::Hiss { .. } => self.white[(v.phase * sr) as usize % self.white.len()] as f64,
                 };
-                v.phase = (v.phase + inc).fract();
+                v.phase = match v.wave {
+                    // Noise keeps its read position (seconds into the buffer) in the phase.
+                    Wave::Noise { rate, .. } | Wave::Hiss { rate, .. } => v.phase + rate * sped * dt,
+                    _ => (v.phase + inc).fract(),
+                };
                 let mut s = s * g;
                 if let Some(b) = v.biquad.as_mut() {
                     s = b.process(s);
                 }
                 match v.bus {
-                    Bus::Sfx => sfx += s,
+                    Bus::Sfx => {
+                        s *= v.boost;
+                        if let Some(at) = v.stolen {
+                            s *= (1.0 - (t - at) / mix::STEAL_FADE).max(0.0);
+                        }
+                        if v.immune {
+                            keep_l += s * v.pan.0;
+                            keep_r += s * v.pan.1;
+                        } else {
+                            sfx_l += s * v.pan.0;
+                            sfx_r += s * v.pan.1;
+                        }
+                    }
                     Bus::Music => music += s,
                 }
             }
@@ -366,7 +539,6 @@ impl Synth {
                 frenzy = (1.0 - 4.0 * (self.frenzy_phase - 0.5).abs()) * 0.08;
             }
 
-            let mono = sfx + music_out + drone + frenzy;
             let (mut tl, mut tr) = (0.0, 0.0);
             self.track_level += (self.track_target - self.track_level) * track_k;
             if let Some(track) = self.track.as_mut() {
@@ -378,8 +550,23 @@ impl Synth {
                 tl = self.track_lp.0 * g;
                 tr = self.track_lp.1 * g;
             }
-            let left = ((mono + tl) * self.master).clamp(-1.0, 1.0) as f32;
-            let right = ((mono + tr) * self.master).clamp(-1.0, 1.0) as f32;
+            // Slowed time closes a low-pass over the music (wide open, so exact, at full speed).
+            let k = self.slow_k;
+            let sl = &mut self.slow;
+            sl[0] += (music_out + tl - sl[0]) * k;
+            sl[1] += (sl[0] - sl[1]) * k;
+            sl[2] += (music_out + tr - sl[2]) * k;
+            sl[3] += (sl[2] - sl[3]) * k;
+            let (music_l, music_r) = (sl[1], sl[3]);
+            // A parry or a struck hero ducks everything but its own voices.
+            let duck_target = if t < self.duck_until { mix::DUCK_GAIN } else { 1.0 };
+            self.duck += (duck_target - self.duck) * duck_k;
+            let d = self.duck;
+            let bed = drone + frenzy;
+            let (left, right) = self
+                .limiter
+                .process((keep_l + d * (sfx_l + music_l) + bed) * self.master, (keep_r + d * (sfx_r + music_r) + bed) * self.master);
+            let (left, right) = (left as f32, right as f32);
             match frame.len() {
                 1 => frame[0] = (left + right) * 0.5,
                 _ => {
@@ -414,6 +601,9 @@ impl Synth {
         let mut seq = std::mem::take(&mut self.music);
         seq.pump(self);
         self.music = seq;
+        let mut drum = std::mem::take(&mut self.drum);
+        drum.pump(self);
+        self.drum = drum;
     }
 }
 

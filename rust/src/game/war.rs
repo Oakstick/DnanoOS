@@ -118,6 +118,13 @@ impl Game {
         let engaged = self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged() && !d.puppet).count() as u32;
         let pulse = Pulse { engaged, hp: self.hero.hp as f64 / self.hero.max_hp.max(1) as f64, max_hp: self.hero.max_hp as f64 };
         self.war.drum.tick(dt, pulse);
+        use crate::logic::war::drum::DrumPhase;
+        self.audio.set_drum(match self.war.drum.phase {
+            DrumPhase::Rest => crate::audio::DrumLevel::Rest,
+            DrumPhase::Build => crate::audio::DrumLevel::Build,
+            DrumPhase::Peak => crate::audio::DrumLevel::Peak,
+            DrumPhase::Release => crate::audio::DrumLevel::Release,
+        });
         self.pace_the_brawl();
     }
 

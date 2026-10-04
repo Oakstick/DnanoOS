@@ -4,6 +4,8 @@
 //! springs, chips and shatters draw from the presentation's own rng (rule I5).
 
 use super::Game;
+use crate::audio::voices::matter_of as sound_matter;
+use crate::audio::{HitSound, ShieldTier, SoundMatter};
 use crate::logic::combat::fsm::Effect;
 use crate::logic::combat::Archetype;
 use crate::logic::enemy::EnemyKind;
@@ -27,6 +29,11 @@ impl Game {
     /// Duelist `id` is a prince.
     fn is_prince(&self, id: u32) -> bool {
         self.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|d| d.id == id && d.arch == Archetype::Prince)
+    }
+
+    /// Duelist `id`'s body (a witch's, for a bolt whose caster is gone).
+    fn body_of(&self, id: u32) -> EnemyKind {
+        self.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id).map(|d| d.breed.kind).unwrap_or(EnemyKind::Witch)
     }
 
     /**
@@ -66,6 +73,10 @@ impl Game {
     /// Duelist `i` is slain, struck the way `dir` goes: its body breaks into its voxels, the kill's
     /// freeze, and the release beat when it was the last of its pack.
     pub(super) fn feel_slain(&mut self, i: usize, dir: V, last_of_pack: bool) {
+        if let Some(d) = self.enemies[i].duel.as_deref() {
+            let (kind, at) = (d.breed.kind, d.pos);
+            self.audio.hit(HitSound::Kill { streak: 0 }, sound_matter(kind), kind, Some(at));
+        }
         self.view.shatter(i, dir);
         self.view.trauma(Trauma::Kill);
         if last_of_pack {
@@ -80,6 +91,20 @@ impl Game {
     /// met him as `met`.
     pub(super) fn feel_struck(&mut self, met: Met, by: u32, dir: V, dmg: f64, hitstop: u16) {
         let hp = self.hero.pos();
+        let kind = self.body_of(by);
+        let from = crate::logic::types::V::new(hp.x - dir.x, hp.y - dir.y);
+        let sound = match met {
+            Met::Evaded => None,
+            Met::Parried => Some(HitSound::Parry { prince: self.is_prince(by) }),
+            Met::Blocked => Some(HitSound::Block(ShieldTier::of_level(self.hero.shield.map(|s| s.tier).unwrap_or(0)))),
+            Met::GuardBroken => Some(HitSound::GuardBroken),
+            Met::Struck => Some(HitSound::HeroStruck(self.hero_kind)),
+        };
+        if let Some(sound) = sound {
+            let matter = if met == Met::Struck { SoundMatter::Flesh } else { SoundMatter::Iron };
+            let at = (met != Met::Struck).then_some(from);
+            self.audio.hit(sound, matter, kind, at);
+        }
         match met {
             Met::Evaded => {
                 if (self.hero.hp as f64) < self.hero.max_hp as f64 * NARROW_HEALTH {

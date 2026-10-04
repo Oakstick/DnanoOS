@@ -21,7 +21,8 @@
 
 use super::feel::Met;
 use super::Game;
-use crate::audio::Sfx;
+use crate::audio::voices::matter_of as sound_matter;
+use crate::audio::{Cry, HitSound, Sfx};
 use crate::logic::combat::ails::{Ails, Flash, FlashKind, Hazard, Wound, DOOM_FRAMES, FIRE_FRAMES, FIRE_RADIUS, FROST_FRAMES, SHOVE_SPEED};
 use crate::logic::combat::archetype::Power;
 use crate::logic::combat::duelist::{Arena, Bolt, BoltLook, Cue, Den, Flow, GridTerrain, Lore, Sense, Terrain, HERO_RADIUS, REFLECT_TINT};
@@ -70,34 +71,6 @@ const RAISE_SPREAD: f64 = 1.8;
 fn tracing() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("VH_TRACE").is_some())
-}
-
-/// The cry a foe gives as it begins a strike (its tell, to the ear): the tengu's steel and the
-/// cobra's hiss, the dire wolf's growl, the jorogumo's and the rokurokubi's shriek, the giants'
-/// roar, the owl's hoot, the gashadokuro's ringing, the earth groaning for roots and burrows, a
-/// cold wind for a call, a frost slam or the cin's fire; the rest by their move.
-fn tell_sfx(kind: EnemyKind, mv: MoveId) -> Sfx {
-    use EnemyKind as K;
-    match (kind, mv) {
-        (K::Tengu | K::Cobra, _) => Sfx::Whoosh,
-        (K::DireWolf, _) => Sfx::Growl,
-        (K::Jorogumo | K::Rokurokubi, _) => Sfx::Shriek,
-        (K::Kappa, _) => Sfx::Kick,
-        (K::Tulukus, _) => Sfx::Hoot,
-        (K::Albasti, _) => Sfx::Stinger,
-        (K::Gashadokuro, _) => Sfx::Bells,
-        (K::Ejder, _) => Sfx::BossCharge,
-        (K::Mammon, MoveId::Grasp) => Sfx::BossCharge,
-        (K::Mammon, MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => Sfx::Toll,
-        (K::Mammon, _) => Sfx::BossRoar,
-        (_, MoveId::Call | MoveId::FrostSlam | MoveId::Smokeless) => Sfx::Wind,
-        (_, MoveId::Roots | MoveId::Burrow) => Sfx::DoorGrind,
-        (_, MoveId::Thunder | MoveId::Raise) => Sfx::Soul,
-        (K::Oni | K::Tepegoz | K::FrostGiant | K::Surtr, _) => Sfx::BossRoar,
-        (_, MoveId::Slam | MoveId::Sweep) => Sfx::Growl,
-        (_, MoveId::Bite) => Sfx::Howl,
-        _ => Sfx::Cackle,
-    }
 }
 
 /// Where the brawl is fought.
@@ -604,15 +577,17 @@ impl Game {
         } else {
             match r.effect {
                 Effect::Broken => {
-                    self.audio.play(Sfx::Clang);
+                    self.audio.hit(HitSound::PoiseBreak, sound_matter(kind), kind, Some(p));
                     self.view.sparkle(&self.level.grid, p.x, p.y, 0.9, 0xffd040, 26);
                 }
                 Effect::Armored => {
-                    self.audio.play(Sfx::Clang);
+                    self.audio.hit(HitSound::Armor, sound_matter(kind), kind, Some(p));
                     self.view.spark(&self.level.grid, p.x, p.y, 0xc8d0da);
                 }
                 _ => {
-                    self.audio.play(Sfx::ArrowHit);
+                    let crit = hit.damage > 0.0 && r.damage > hit.damage.round();
+                    let sound = if finisher { HitSound::Finisher } else { HitSound::Flesh { crit } };
+                    self.audio.hit(sound, sound_matter(kind), kind, Some(p));
                     self.view.spark(&self.level.grid, p.x, p.y, 0xffb0b0);
                 }
             }
@@ -719,8 +694,6 @@ impl Game {
                     });
                 }
             }
-        } else {
-            self.audio.play_kill(0);
         }
         let followers: Vec<usize> = (0..self.enemies.len())
             .filter(|&k| self.enemies[k].duel.as_ref().is_some_and(|d| d.alive() && d.lore.master == Some(id)))
@@ -904,7 +877,12 @@ impl Game {
         for den in &stirred {
             let c = den.centre();
             self.floater(c.x, c.y, "THE PACK STIRS", 1.4, Some(0xffc85a));
-            self.audio.play(Sfx::Growl);
+            let first =
+                self.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.den.is_some_and(|o| o.lo == den.lo && o.hi == den.hi));
+            match first.map(|d| (d.breed.kind, d.pos)) {
+                Some((kind, at)) => self.audio.foe_cry(kind, Cry::Alert, at),
+                None => self.audio.play(Sfx::Growl),
+            }
         }
         let mut called_off = Vec::new();
         for e in self.enemies.iter_mut() {
@@ -1153,8 +1131,8 @@ impl Game {
             let lands = du.lands_in(mv, hp);
             if b.threat.may_commit(du.id, lands) && du.begin(mv, hp) {
                 b.threat.commit(du.id, lands);
-                let sfx = tell_sfx(du.breed.kind, mv);
-                self.audio.play(sfx);
+                let listener = self.audio.listener();
+                self.audio.tell(du.breed.kind, mv, du.pos, listener);
                 began.push((i, mv));
             }
         }
@@ -1295,6 +1273,9 @@ impl Game {
             self.rally(i);
             return;
         }
+        let Some(du) = self.enemies[i].duel.as_ref() else { return };
+        let (kind, at) = (du.breed.kind, du.pos);
+        self.audio.swing(kind, mv, at);
         let Some(du) = self.enemies[i].duel.as_ref() else { return };
         let (pos, aim, power, mark) = (du.pos, du.aim, du.breed.power, du.lore.mark);
         let d = du.data(mv);
@@ -1484,7 +1465,6 @@ impl Game {
                 b.stats.parries += 1;
                 // The aegis (the tenth shield) gives him back a little with every parry.
                 self.hero.hp = (self.hero.hp + kit.guard.aegis as i32).min(self.hero.max_hp);
-                self.audio.play(Sfx::Clang);
                 self.view.sparkle(&self.level.grid, (hp.x + blow.from.x) / 2.0, (hp.y + blow.from.y) / 2.0, 0.9, 0xffe070, 30);
                 self.floater(hp.x, hp.y - 0.9, "PARRY!", 0.9, Some(0xffd040));
             }
@@ -1492,7 +1472,6 @@ impl Game {
                 b.stats.blocks += 1;
                 wear = damage;
                 self.hero.drain(cost);
-                self.audio.play(Sfx::Clang);
                 self.view.spark(&self.level.grid, hp.x, hp.y, 0xc8d0da);
                 self.floater(hp.x, hp.y - 0.9, "BLOCKED", 0.6, Some(0xc8d0da));
             }
@@ -1501,7 +1480,6 @@ impl Game {
                 loss = (damage * kit.guard.break_share * kit.taken).round();
                 wear = damage * (1.0 - kit.guard.break_share);
                 self.hero.drain(self.hero.stamina);
-                self.audio.play(Sfx::ShieldBreak);
                 self.floater(hp.x, hp.y - 0.9, "GUARD BROKEN", 1.0, Some(0xff7a3a));
             }
             Defense::Open => {
@@ -1510,7 +1488,6 @@ impl Game {
                 }
                 let r = b.hero.take_hit(&Hit { damage, hitstun: math::hero_hitstun(damage), ..Default::default() });
                 loss = (r.damage * kit.taken).round();
-                self.audio.play(Sfx::Hurt);
             }
         }
         let doom = if loss > 0.0 { self.brawl.as_mut().map(|b| b.ails.spend_doom()).unwrap_or(1.0) } else { 1.0 };

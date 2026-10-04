@@ -57,6 +57,34 @@ impl Soundtrack {
             Soundtrack::LevelOneBoss => 0.87,
         }
     }
+
+    /// The recording's pulse, measured (`tools/track_tempo.py`: onset autocorrelation, octave
+    /// folded into 80-160): the war drum (`wardrum`) plays locked to it, since a recording can't
+    /// change its tempo.
+    pub fn bpm(self) -> f64 {
+        match self {
+            Soundtrack::Level1 => 105.0,
+            Soundtrack::Menu => 105.0,
+            Soundtrack::Boss => 93.4,
+            Soundtrack::BastionLux => 104.0,
+            Soundtrack::LastOne => 140.05,
+            Soundtrack::DesolationVesper => 91.95,
+            Soundtrack::LevelOneBoss => 82.95,
+        }
+    }
+
+    /// Seconds into the recording of its first downbeat (the same tool): bars count from here.
+    pub fn downbeat(self) -> f64 {
+        match self {
+            Soundtrack::Level1 => 0.480,
+            Soundtrack::Menu => 0.137,
+            Soundtrack::Boss => 0.946,
+            Soundtrack::BastionLux => 0.224,
+            Soundtrack::LastOne => 0.064,
+            Soundtrack::DesolationVesper => 1.271,
+            Soundtrack::LevelOneBoss => 1.058,
+        }
+    }
 }
 
 pub struct Track {
@@ -69,6 +97,8 @@ pub struct Track {
     a: (f32, f32),
     b: (f32, f32),
     frac: f64,
+    /// Source frames read since the top of the recording (it starts over with each loop).
+    read: u64,
 }
 
 impl Track {
@@ -76,7 +106,17 @@ impl Track {
         let reader = OggStreamReader::new(Cursor::new(which.bytes())).ok()?;
         let rate = reader.ident_hdr.audio_sample_rate as f64;
         let channels = reader.ident_hdr.audio_channels as usize;
-        let mut t = Self { which, reader: Some(reader), rate, channels, pending: VecDeque::new(), a: (0.0, 0.0), b: (0.0, 0.0), frac: 0.0 };
+        let mut t = Self {
+            which,
+            reader: Some(reader),
+            rate,
+            channels,
+            pending: VecDeque::new(),
+            a: (0.0, 0.0),
+            b: (0.0, 0.0),
+            frac: 0.0,
+            read: 0,
+        };
         t.a = t.pull();
         t.b = t.pull();
         Some(t)
@@ -103,10 +143,18 @@ impl Track {
                         return (0.0, 0.0);
                     }
                     self.reader = OggStreamReader::new(Cursor::new(self.which.bytes())).ok();
+                    self.read = 0;
                 }
             }
         }
+        self.read += 1;
         self.pending.pop_front().unwrap_or((0.0, 0.0))
+    }
+
+    /// Seconds into the recording of what is playing now (the two frames being interpolated are
+    /// read ahead of it), back to zero at each loop.
+    pub fn position(&self) -> f64 {
+        (self.read as f64 - 2.0 + self.frac).max(0.0) / self.rate
     }
 
     /// One output frame at `out_rate`, linearly resampled.

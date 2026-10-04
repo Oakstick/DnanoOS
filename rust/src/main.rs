@@ -32,6 +32,17 @@ fn main() {
             }
         });
     }
+    if let Some(i) = args.iter().position(|a| a == "--audio-sheet") {
+        // --audio-sheet DIR: every breed's tell, swing, hit and death, the hits and the war drum, as WAVs.
+        let dir = args.get(i + 1).map(String::as_str).unwrap_or("target/audio-sheet");
+        std::process::exit(match void_harvest::audio::voices::write_sheet(dir) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
+    }
     if let Some(i) = args.iter().position(|a| a == "--kit-parts") {
         let tier: u8 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(4);
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));

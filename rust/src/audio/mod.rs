@@ -1,15 +1,21 @@
 //! Procedural audio: every effect is synthesized, the same voices the web build made with Web
 //! Audio. The music is the synth's own tune or one of the recorded soundtracks (`track`).
 
+pub mod mix;
 pub mod music;
 pub mod synth;
 pub mod track;
+pub mod voices;
+pub mod wardrum;
 
 use std::sync::{Arc, Mutex};
 
+pub use mix::{Listener, Priority};
 use music::BASE_BPM;
 use synth::{Bus, Env, Synth, Voice, Wave};
 pub use track::Soundtrack;
+pub use voices::{Cry, HeroCry, HitSound, ShieldTier, SoundMatter, SwingKind};
+pub use wardrum::DrumLevel;
 
 use crate::logic::rng::Rng;
 use crate::platform;
@@ -148,6 +154,14 @@ pub struct AudioManager {
     soundtrack: Option<Soundtrack>,
     /// No music at all (the story plays over its own sounds) until the next soundtrack.
     hushed: bool,
+    // ---- the bestiary's voices and the mix (`voices`, `mix`)
+    /// Where the ears are, set each frame (`set_listener`).
+    listener: Listener,
+    /// Whose name the karakoncolos calls, and whose voice cries out.
+    hero: crate::logic::heroes::HeroKind,
+    robin: mix::RoundRobin,
+    /// Where the next `play` sounds from (`play_at`): pan and gain.
+    place_next: Option<(f64, f64)>,
 }
 
 impl Default for AudioManager {
@@ -170,6 +184,10 @@ impl AudioManager {
             foot: false,
             soundtrack: None,
             hushed: false,
+            listener: Listener::default(),
+            hero: Default::default(),
+            robin: Default::default(),
+            place_next: None,
         }
     }
 
@@ -469,8 +487,16 @@ impl AudioManager {
             1.0
         };
         let offset = self.rng.next() * 2.0;
+        let (pan, gain) = self.place_next.take().unwrap_or((0.0, 1.0));
         self.with(|s| {
             let t = s.now;
+            // Into the mix: no more than three of it at once (`mix::Dedupe`), placed where it is.
+            let group = s.next_group();
+            if !s.admit(voices::sfx_key(sfx), group) {
+                return;
+            }
+            let (pan_l, pan_r) = mix::pan_gains(pan);
+            s.stamp = mix::Stamp { pan_l, pan_r, group, gain, ..Default::default() };
             s.var_pitch = vp * side;
             s.var_gain = vg;
             match sfx {
@@ -1280,6 +1306,7 @@ impl AudioManager {
             }
             s.var_pitch = 1.0;
             s.var_gain = 1.0;
+            s.stamp = mix::Stamp::default();
         });
     }
 }

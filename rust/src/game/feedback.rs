@@ -162,6 +162,17 @@ impl Game {
             threat = 0.55 + 0.45 * (1.0 - dist_sq(b.pos, hp).sqrt() / 10.0).max(0.0);
         }
         self.audio.set_threat(threat);
+        // The ears ride with the hero, facing as the camera looks (from the top: up the screen).
+        let facing = match self.view.camera_mode {
+            crate::render::view::CameraMode::Third => {
+                let yaw = self.view.cam_yaw as f64;
+                crate::logic::types::V::new(yaw.cos(), yaw.sin())
+            }
+            crate::render::view::CameraMode::Top => crate::logic::types::V::new(0.0, -1.0),
+        };
+        self.audio.set_listener(crate::audio::Listener { pos: hp, facing });
+        self.audio.set_hero(self.hero_kind);
+        self.audio.set_time_scale(self.time_scale());
         let frac = self.hero.hp as f64 / self.hero.max_hp as f64;
         self.audio.set_danger(if frac < 0.35 { 1.0 - frac / 0.35 } else { 0.0 });
         self.streak_timer -= dt;
