@@ -739,3 +739,48 @@ fn the_packs_play_together_inside_the_reaction_window_and_a_rout_releases_the_pr
     assert!(s.kills > 10, "{s:?}");
     assert_eq!(s.overlaps, 0, "{s:?}");
 }
+
+/// The Ledger in the fight (WARBAND.md §8): the foe that brings him down in the vaults becomes a
+/// rival and takes a share of his silver; on his next visit that rival leads a pack, his kind,
+/// his name, dressed by his rank.
+#[test]
+fn the_foe_that_slays_him_becomes_a_rival_and_leads_a_pack_next_time() {
+    use super::bot::{fresh_game, Bot, Skill};
+    let mut g = fresh_game(5);
+    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    g.enter(Screen::Playing);
+    g.hero.free_move = true;
+    g.progress.silver = 1000;
+    let mut bot = Bot::new(Skill::Expert, 5);
+    // Walk in until a pack hunts him, then stand there with a sliver of health.
+    let mut fell = false;
+    for _ in 0..(240.0 / crate::app::STEP) as usize {
+        let hunting = g.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|d| d.engaged());
+        if hunting && g.hero.hp > 1 && !fell {
+            g.hero.hp = 1;
+        }
+        let pad = if hunting { Default::default() } else { bot.act(&g) };
+        g.input.set_pad(Some(pad));
+        g.update(crate::app::STEP);
+        if g.screen != Screen::Playing {
+            fell = true;
+            break;
+        }
+    }
+    assert!(fell, "he fell");
+    let rival = g.ledger().live().next().cloned().expect("his killer is a rival now");
+    assert!(g.progress.silver < 1000 && rival.silver_held > 0, "it took its share: {} {}", g.progress.silver, rival.silver_held);
+    // The next visit: he waits as a pack's leader.
+    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    g.enter(Screen::Playing);
+    for _ in 0..30 {
+        g.update(crate::app::STEP);
+    }
+    let seated = g.war.grudges.seated.clone();
+    assert_eq!(seated.len(), 1, "one rival a visit at tier 1");
+    let (id, rid) = seated[0];
+    assert_eq!(rid, rival.id);
+    assert!(g.leads_a_pack(id), "he leads");
+    let d = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id).unwrap();
+    assert_eq!(d.breed.kind, rival.kind);
+}

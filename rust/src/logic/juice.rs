@@ -98,6 +98,8 @@ pub enum DilationKind {
     PrinceParry,
     /// A blow passes under his leap with his health under `NARROW_HEALTH`.
     NarrowEscape,
+    /// A rival of the Ledger comes within ten tiles (WARBAND.md §8.4).
+    RivalMet,
 }
 
 /// His share of health under which a blow passing under his leap slows time.
@@ -116,8 +118,14 @@ pub struct Dilation {
 }
 
 impl DilationKind {
-    pub const ALL: [DilationKind; 5] =
-        [DilationKind::LastOfPack, DilationKind::Trophy, DilationKind::PrinceFalls, DilationKind::PrinceParry, DilationKind::NarrowEscape];
+    pub const ALL: [DilationKind; 6] = [
+        DilationKind::LastOfPack,
+        DilationKind::Trophy,
+        DilationKind::PrinceFalls,
+        DilationKind::PrinceParry,
+        DilationKind::NarrowEscape,
+        DilationKind::RivalMet,
+    ];
 
     pub fn dilation(self) -> Dilation {
         let (scale, hold, ease) = match self {
@@ -126,6 +134,7 @@ impl DilationKind {
             DilationKind::PrinceFalls => (0.3, 0.35, 0.3),
             DilationKind::PrinceParry => (0.5, 0.12, 0.15),
             DilationKind::NarrowEscape => (0.5, 0.15, 0.2),
+            DilationKind::RivalMet => (0.5, 0.25, 0.2),
         };
         Dilation { scale, hold, ease }
     }

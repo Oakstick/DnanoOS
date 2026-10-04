@@ -1106,3 +1106,24 @@ Built without touching `game/brawl.rs` or `logic/combat/*`; the fight's wiring i
 * Open: the yard's preview swing at the dummy and its comparison card (needs `Kit`), the hero
   taking up the new blade after the hammering, a walk cycle for Quitmer, a pass by eye on the
   Ottoman kazan and the Japanese hodo at close range.
+
+### W5 in the fight (the integrator)
+
+`game::rivals` (`Grudges` on `War`): every foe's part in a fight is followed from the war log by an
+`EncounterTracker`; when he falls, the foes that brought him down (or broke his guard thrice, or
+lived on low) are promoted (two a level at most), a killer takes 15% of his silver; a hunt called
+off ends their part (a leader left standing becomes "the Unfinished"). The Ledger's offer is seated
+when the packs are made: the rival leads a pack (his kind among its foes dressed as him, or he
+comes in beside them), his name over his bars. Within ten tiles he is met: card, bark, a 0.5×
+slowing of time (`DilationKind::RivalMet`). Lessons as choices: the Parry lesson waits a short or a
+long beat before its tell, the Leap lesson waits out his leap, the Shield lesson wears the shield
+×1.3, an antidote lifts strength and Ragnarok less on him. Weaknesses: Proud gloats 60 f after a
+blow lands, Scarred takes ×1.3 from his wound's side. Natures: the Coward flees below 40%, the
+Duelist's pack stands back, the Schemer's horn wakes the next den after 60 f. His fall: the
+trophy's freeze and slowing, runes and the silver back ×1.5, his last words, his trophy on the
+workshop's wall (`sync_trophies`). Not built yet: Patient's longer tracking and the Finisher
+lesson's leap (both need the duelist's own frames), Fears (a family that staggers), Greedy.
+
+The harness's `fresh_game` clears the Ledger too: a crawl's rivals were saved and seated in the next
+crawl of the same `--crawl` run (an adept crawl stood at 59/61). `VH_CRAWL_RIVALS=N` seeds N rivals
+before a crawl. Test: `the_foe_that_slays_him_becomes_a_rival_and_leads_a_pack_next_time`.

@@ -485,6 +485,9 @@ impl Game {
      */
     pub(super) fn duel_hit(&mut self, i: usize, mut hit: Hit, hitstop: u16, from: V) {
         self.wake_den_of(i);
+        // A rival's old wound, and the elixir he has learnt.
+        let grudge = self.enemies[i].duel.as_ref().map(|d| self.rival_takes(d.id, from)).unwrap_or(1.0);
+        hit.damage *= grudge;
         let Some(du) = self.enemies[i].duel.as_mut() else { return };
         if !du.alive() || du.untouchable() {
             return;
@@ -905,10 +908,11 @@ impl Game {
             }
         }
         if let Some(b) = self.brawl.as_mut() {
-            for id in called_off {
+            for &id in &called_off {
                 b.threat.release(id);
             }
         }
+        self.grudges_left(&called_off);
     }
 
     /**
@@ -1126,6 +1130,11 @@ impl Game {
             let p = du.pos;
             self.enemies[i].m.tile = P::new(p.x.round() as i32, p.y.round() as i32);
             let Some(mv) = want else { continue };
+            let id = self.enemies[i].duel.as_ref().map(|d| d.id).unwrap_or(0);
+            let evading = self.brawl.as_ref().is_some_and(|b| matches!(b.hero.state, State::Evade { .. }));
+            if self.war.grudges.waits(&self.warband.save.ledger, &mut self.rng, evading, id, mv) {
+                continue; // a rival who learnt the hero's answer takes his time
+            }
             let du = self.enemies[i].duel.as_mut().unwrap();
             let b = self.brawl.as_mut().unwrap();
             let lands = du.lands_in(mv, hp);
@@ -1145,6 +1154,7 @@ impl Game {
                 if let Some(b) = self.brawl.as_mut() {
                     b.met.retain(|&m| m != foe);
                 }
+                self.rival_began(foe);
                 self.war_note(WarEvent::Tell { foe, kind, mv, at });
             }
             self.on_begin(i, mv);
@@ -1496,6 +1506,7 @@ impl Game {
             self.floater(hp.x, hp.y - 1.2, "THE OMEN COMES TRUE", 1.0, Some(0xb08aff));
         }
         if vault && wear > 0.0 {
+            let wear = wear * self.rival_wear(blow.by);
             self.wear_shield(wear);
         }
         match (def, blow.rider) {

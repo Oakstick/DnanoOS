@@ -506,6 +506,8 @@ pub(super) fn fresh_game(seed: u32) -> Game {
     g.set_juice_off(crate::render::profile::fx::JUICE);
     g.progress = crate::logic::progression::Progress::default();
     g.saved_run = None;
+    // (And no grudges carried over from the last run's crawl: each run meets its own.)
+    g.warband = Default::default();
     g.hero_kind = HeroKind::Ragnar;
     g.equip_from_progress();
     g
@@ -883,6 +885,17 @@ pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> C
 /// A crawl, with the Drum's trace kept in `trace` if it is given one.
 pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64, trace: &mut Option<DrumTrace>) -> Crawl {
     let mut g = fresh_game(seed);
+    if let Some(n) = std::env::var("VH_CRAWL_RIVALS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        // Rivals waiting in the vaults (WARBAND.md §8), for a crawl against the Ledger.
+        use crate::logic::enemy::EnemyKind;
+        use crate::logic::war::names::Deed;
+        for k in [EnemyKind::Skeleton, EnemyKind::Werewolf, EnemyKind::Witch, EnemyKind::Blemmyes].into_iter().take(n) {
+            let id = g.promote_rival(k, Deed::KillingBlow);
+            for _ in 0..2 {
+                g.warband.save.ledger.rank_up(id);
+            }
+        }
+    }
     g.map_jump(super::save::Stage::Realm(crate::logic::sins::Sin::Greed));
     if let Some(l) = loadout {
         l.equip(&mut g);

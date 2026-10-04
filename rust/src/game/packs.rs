@@ -61,6 +61,8 @@ impl Game {
             }
         }
         self.war.composed = true;
+        self.seat_rivals();
+        self.sync_trophies();
     }
 
     /// The packs are broken up (he fell and the dens begin again, or a new level): a frenzy's pace
@@ -205,6 +207,7 @@ impl Game {
                 self.audio.tell(kind, MoveId::Rally, at, listener);
             }
         }
+        self.grudges_frame();
     }
 
     /// A leader's rally sounds (its first active frame): its pack about it takes back a share of

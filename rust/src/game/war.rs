@@ -84,6 +84,8 @@ pub struct War {
     pub directives: Vec<(u32, Directive)>,
     /// The packs are made for this level (and since he last fell).
     pub composed: bool,
+    /// The Ledger's rivals in this level, and every foe's part in its fight (§8).
+    pub grudges: super::rivals::Grudges,
 }
 
 impl War {
@@ -96,6 +98,7 @@ impl War {
         self.packs.clear();
         self.directives.clear();
         self.composed = false;
+        self.grudges = Default::default();
     }
 }
 
@@ -114,6 +117,7 @@ impl Game {
             self.war.drum.hear(e);
             self.packs_hear(e);
         }
+        self.grudges_hear(&log);
         self.war.read = log;
         let engaged = self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged() && !d.puppet).count() as u32;
         let pulse = Pulse { engaged, hp: self.hero.hp as f64 / self.hero.max_hp.max(1) as f64, max_hp: self.hero.max_hp as f64 };

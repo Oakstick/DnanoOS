@@ -44,6 +44,7 @@ mod realm;
 mod realms;
 #[cfg(test)]
 mod ring_tests;
+mod rivals;
 mod save;
 mod select;
 mod shop;
