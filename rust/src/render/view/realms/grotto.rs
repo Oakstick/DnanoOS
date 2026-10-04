@@ -56,6 +56,8 @@ mod pal {
     pub const SHELF_L: u32 = 0x445054;
     pub const ALGAE: u32 = 0x3ad06a;
     pub const ALGAE_D: u32 = 0x1c6a3c;
+    /// The algae along the waterline: a dim verdigris, so the deep's edge reads without glaring.
+    pub const FRINGE: u32 = 0x3a6a5a;
     pub const VERDIGRIS: u32 = 0x4aa088;
     pub const VERDIGRIS_D: u32 = 0x2e6a5a;
     pub const BRONZE: u32 = 0xa8743a;
@@ -63,16 +65,16 @@ mod pal {
     pub const BONE_D: u32 = 0xb8ac8a;
     pub const NACRE: u32 = 0xeae2f2;
     pub const NACRE_P: u32 = 0xf0c8dc;
-    pub const FLOOR_GOLD: u32 = 0x8c7c48;
-    pub const FLOOR_JADE: u32 = 0x4a6a52;
-    pub const FLOOR_SAND: u32 = 0x6e644a;
+    pub const FLOOR_GOLD: u32 = 0x806a44;
+    pub const FLOOR_JADE: u32 = 0x46604f;
+    pub const FLOOR_SAND: u32 = 0x665a46;
     pub const GOLD: u32 = 0xf2c53d;
     pub const CORAL: u32 = 0xd8705a;
     pub const CORAL_L: u32 = 0xf0a080;
     pub const KELP: u32 = 0x2c6e36;
-    pub const WATER: u32 = 0x165446;
-    pub const WATER_BELOW: u32 = 0x2a7a64;
-    pub const LAMP: u32 = 0xd8ff8a;
+    pub const WATER: u32 = 0x1c4a44;
+    pub const WATER_BELOW: u32 = 0x2e6a5e;
+    pub const LAMP: u32 = 0xf2d68a;
     pub const EYE: u32 = 0xc8f05a;
     pub const NAZAR: u32 = 0x1e48c8;
     pub const NAZAR_L: u32 = 0x7ab8ff;
@@ -168,7 +170,7 @@ pub(super) fn atmosphere(_v: &GrottoView, _r: &Grotto, s: &SceneState) -> Atmosp
             fog_near: 13.0,
             fog_far: 36.0,
             hemi_sky: lin(0x5a9a80) * 0.45,
-            hemi_ground: lin(0xb0a050) * 0.55,
+            hemi_ground: lin(0xb0905a) * 0.55,
             ambient: lin(0x2c4438) * 0.8,
             sun_dir: Vec3::new(-0.3, 1.0, 0.3).normalize(),
             sun: lin(0xd0e8c0) * 0.55,
@@ -183,14 +185,15 @@ pub(super) fn atmosphere(_v: &GrottoView, _r: &Grotto, s: &SceneState) -> Atmosp
             background: 0x030a0a,
             fog_near: 15.0,
             fog_far: 42.0,
-            hemi_sky: lin(0x6a8a98) * 0.5,
-            hemi_ground: lin(0x8a8a50) * 0.45,
-            ambient: lin(0x26363a) * 0.85,
+            // Cold mist teal from above, a little amber off the drowned floor below.
+            hemi_sky: lin(0x7ea49c) * 0.62,
+            hemi_ground: lin(0x8a7a50) * 0.45,
+            ambient: lin(0x2c3a3a) * 0.95,
             sun_dir: Vec3::new(-0.35, 1.0, 0.25).normalize(),
-            sun: lin(0xb0d0e0) * 0.8,
+            sun: lin(0xb8d0cc) * 0.85,
             exposure: 1.25,
             night_sky: 0.0,
-            bloom: 1.1,
+            bloom: 0.95,
             moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
             cloud_tint: lin(0x030a0a),
         }

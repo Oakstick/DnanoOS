@@ -344,7 +344,7 @@ impl WorldView {
                 let m = Mat4::from_translation(c + Vec3::new(a.cos() * rr, 0.0, a.sin() * rr))
                     * Mat4::from_rotation_y(-a)
                     * Mat4::from_scale(Vec3::new(0.12, 0.01, 0.03));
-                f.additive.push(Instance::new(m, lin(ALGAE), 0.35, Vec3::ZERO, SHADE_UNLIT));
+                f.additive.push(Instance::new(m, lin(ALGAE), 0.2, Vec3::ZERO, SHADE_UNLIT));
             }
             // Bubbles drawn down into the deep.
             for k in 0..6 {
@@ -926,7 +926,7 @@ impl WorldView {
         for (i, p) in nearest(&near, hero, 5).into_iter().enumerate() {
             let flick = (time * 6.0 + i as f32 * 1.7).sin() * 0.3;
             let (power, reach) = if drowned { (4.0, 7.0) } else { (2.2, 4.0) };
-            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.25, 0.0), color: lin(0xd8f08a) * (power + flick), distance: reach });
+            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.25, 0.0), color: lin(0xf0dc96) * (power + flick), distance: reach });
         }
         if !drowned {
             let algae: Vec<Vec3> = v.algae.iter().copied().filter(|l| Vec2::new(l.x - hero.x, l.z - hero.z).length() < RANGE).collect();

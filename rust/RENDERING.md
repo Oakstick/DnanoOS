@@ -652,6 +652,13 @@ builder is `view/crypt.rs`. Both are off the road on the map.
     masonry caps follow, so the gold spokes and the mirror-doors carry the eye.
   - The light-well is keyed mist teal round an amber heart (shaft, rings and the light it throws),
     under a mist-teal sky light and a warm stone key instead of white-violet. Bloom is 1.0.
+- **The Serpent Grotto (Envy):**
+  - The algae fringe along the deep water and the waterline band are a dim verdigris (`FRINGE`)
+    instead of the sin's full green, which outlined every pool in neon.
+  - The jade water is a deeper mist teal; the Drowned Floor's gold and jade come toward umber and
+    amber, and its lanterns burn amber instead of lime.
+  - The Waterline's light is a cold mist teal from above with more ambient, so the basalt reads
+    out of the black. Bloom is 0.95.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 

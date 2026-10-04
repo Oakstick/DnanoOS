@@ -146,7 +146,7 @@ impl WorldView {
                     let size = if along_x { Vec3::new(1.0, 0.03, 0.08) } else { Vec3::new(0.08, 0.03, 1.0) };
                     let rich = pools.contains(&n) || bell_pool.contains(&n);
                     // The algae fringe, brighter round the pools that only go down.
-                    let glow = if rich { lin(ALGAE) * 0.9 } else { lin(ALGAE_D) * 0.55 };
+                    let glow = if rich { lin(ALGAE) * 0.42 } else { lin(FRINGE) * 0.3 };
                     cube_glow(out, edge, size, Quat::IDENTITY, glow, 0.0, SHADE_LIGHT);
                     if rich {
                         for k in 0..2 {
@@ -261,7 +261,7 @@ impl WorldView {
                 face + n * 0.01 + Vec3::new(0.0, 0.0, 0.0),
                 side * 1.0 + Vec3::new(0.0, 0.08, 0.0) + n.abs() * 0.03,
                 Quat::IDENTITY,
-                lin(ALGAE_D) * 0.6,
+                lin(FRINGE) * 0.3,
                 0.0,
                 SHADE_LIGHT,
             );
@@ -286,7 +286,7 @@ impl WorldView {
                     face + n * 0.02 + side * s + Vec3::new(0.0, 0.6, 0.0),
                     side * 0.04 + n.abs() * 0.02 + Vec3::new(0.0, 0.7, 0.0),
                     Quat::IDENTITY,
-                    lin(ALGAE) * 0.45,
+                    lin(ALGAE) * 0.25,
                     0.0,
                     SHADE_LIGHT,
                 );
