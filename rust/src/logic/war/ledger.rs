@@ -577,7 +577,7 @@ pub enum Place {
 impl Place {
     pub fn name(self) -> String {
         match self {
-            Place::Realm(s) => s.realm().to_string(),
+            Place::Realm(s) => s.realm().replacen("The ", "the ", 1),
             Place::Court(s) => format!("the court of {}", s.prince()),
             Place::Dungeon(n) => format!("dungeon {}", n + 1),
             Place::Ring => "the Sparring Ring".to_string(),
@@ -1228,9 +1228,9 @@ fn lines(p: Personality, s: Situation) -> &'static [&'static str] {
         }
         (P::Schemer, S::Die) => &["This... wasn't the plan...", "Clever, {hero}... too clever...", "My horn... where is my horn..."],
         (P::Avenger, S::Meet) => {
-            &["You killed my brother, {hero}.", "I know your face, {title}. I've dreamt of it.", "For my kin. For every one of them."]
+            &["My kin told me of you, {hero}.", "I know your face, {title}. I've dreamt of it.", "For my kin. For every one of them."]
         }
-        (P::Avenger, S::Win) => &["That was for my brother.", "Now we're even, {title}.", "Rest easy, brother. It is done."],
+        (P::Avenger, S::Win) => &["That was for my kin.", "Now we're even, {title}.", "Rest easy, my kin. It is done."],
         (P::Avenger, S::Flee) => &["I'll have your head yet, {hero}.", "My vengeance can wait a little.", "Not yet... not yet..."],
         (P::Avenger, S::Die) => &["Brother... I'm sorry...", "I came so close...", "Avenge... me..."],
     }
@@ -1273,7 +1273,7 @@ fn memory_line(r: &Rival, hero: HeroKind) -> Option<String> {
  * (`PresRng::index`), never the simulation's (rule I5).
  */
 pub fn bark(r: &Rival, situation: Situation, hero: HeroKind, roll: usize) -> String {
-    if situation == Situation::Meet && roll % 2 == 0 {
+    if situation == Situation::Meet && roll.is_multiple_of(2) {
         if let Some(line) = memory_line(r, hero) {
             return line;
         }
