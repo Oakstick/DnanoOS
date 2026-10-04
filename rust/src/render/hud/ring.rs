@@ -221,6 +221,14 @@ fn draw_readout(o: &mut Overlay, g: &Game, spar: &Brawl, ring: Option<&Sparring>
     } else {
         let awake = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged()).count();
         rows.push((format!("KILLS {}  HUNTING HIM {awake}", s.kills), TEXT_DIM));
+        // The Drum (WARBAND.md §6): the level's breath and what it holds back.
+        let d = &g.war.drum;
+        let b = d.bounds();
+        rows.push((format!("DRUM  {}  {:.0}s  INTENSITY {:.2}", d.phase.name(), d.age, d.intensity), 0xd8a050));
+        rows.push((
+            format!("  POOL {:+}  CADENCE +{}  ORDERS {}  VOICES {}", b.capacity, b.cadence, u8::from(b.orders), u8::from(b.voices)),
+            TEXT_DIM,
+        ));
     }
     // His kit (COMBAT.md §8): the string's frames, its scalars, the guard.
     let k = &spar.kit;

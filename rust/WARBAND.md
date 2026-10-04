@@ -869,3 +869,46 @@ can run in parallel from W1 as a background agent in a worktree, as the realms w
 | Juice hurts frame time | `--fx-off`, the debris budget, instancing, `--perf` per phase |
 | Mastery breaks the balance | the kit audit and the balance tests at every rank |
 | Scope | each phase stands alone and ships; the generals go one realm at a time |
+
+---
+
+## Build log
+
+### W0 The war log (4f5c65e)
+
+`logic::war` (`WarEvent`, `PresRng`), `game::war` (`War`, `war_note`, `update_war`, `WarTally`). The
+brawl notes tells, landings (with how he met them), whiffs, his hits, kills (with `last_of_pack`)
+and drinks. `BoutStats.landings`. The direct audio and shake calls stay where they are until the
+feel (W1) and the voices (W2) are merged: their consumers replace them then.
+Test: `the_war_log_reports_every_strike_once`.
+
+### W3 The Drum
+
+`logic::war::drum` (`Drum`, `DrumPhase`, `Pacing`, `Bounds`, `intensity`), heard and ticked in
+`update_war`; its bounds go to the threat manager of the vaults and the realms (`pace_the_brawl`;
+the ring stays the lab, a prince's court keeps its own pace) and to the health-potion chance.
+The readout is on F8 with the ring's (not F9). `VH_NO_DRUM=1` switches it off for A/B harness runs.
+`--drum-trace` writes `perf/drum_trace.csv`; `--crawl` prints the share at peak, the peaks and the
+mean rest.
+
+Intensity, as built: 0.30 × foes hunting him (full at 4) + 0.30 × strikes reaching him in 5 s (full
+at 4, however he met them) + 0.25 × damage taken in 5 s (full at a fifth of his health) + 0.15 × how
+low he is. Peak from 0.5 (Steady 0.6, Relentless 0.45).
+
+| Change | Why |
+|---|---|
+| Damage and low health weigh less, foes and strikes more | the expert, barely hit, never reached a peak (p90 0.27) |
+| A release never takes the pool below 2 points | at 1 point a brute (cost 2) could not strike: lone brutes stood idle and two adept crawls ran out of time |
+
+The crawl (`--crawl 6`, Drum on / off):
+
+| | adept t1 | expert t1 | adept t4 | expert t4 | adept t7 | expert t7 |
+|---|---|---|---|---|---|---|
+| cleared | 0% / 0% | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% |
+| kills of 61 | 27 / 32 | 61 / 61 | 61 / 61 | 61 / 61 | 61 / 61 | 61 / 61 |
+| at peak | 52% | 21% | 50% | 14% | 25% | 3% |
+| overlaps/min | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+
+The adept, the player the pacing is for, spends about half its fighting at peak, inside §15.1's
+35-55%; the expert feels less pressure, as it should. Rests are short (about 6 s) because the bot
+walks straight on to the next den: player-driven, which the Drum allows.

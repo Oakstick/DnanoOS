@@ -48,6 +48,21 @@ fn main() {
         print!("{}", void_harvest::game::bot::crawl_report(&seeds, &[1, 4, 7], 900.0));
         return;
     }
+    if args.iter().any(|a| a == "--drum-trace") {
+        // WARBAND.md §6: the Drum through one crawl (the expert, Ragnar's tier-4 kit), second by second.
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        use void_harvest::game::bot::{crawl_traced, Loadout, Skill};
+        let mut trace = Some(Vec::new());
+        let c = crawl_traced(Skill::Expert, 1, Some(Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, 4)), 900.0, &mut trace);
+        let mut csv = String::from("secs,intensity,phase\n");
+        for (t, i, p) in trace.unwrap_or_default() {
+            csv += &format!("{t:.0},{i:.3},{}\n", p.name());
+        }
+        let _ = std::fs::create_dir_all("perf");
+        let _ = std::fs::write("perf/drum_trace.csv", csv);
+        println!("perf/drum_trace.csv: at peak {:.0}% of the fighting, {} peaks, mean rest {:.1} s", c.peak_share * 100.0, c.peaks, c.rest);
+        return;
+    }
     if args.iter().any(|a| a == "--kit-table") {
         print!("{}", void_harvest::game::bot::kit_table());
         return;

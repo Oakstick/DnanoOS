@@ -191,6 +191,8 @@ pub struct Brawl {
     pub held: Option<u32>,
     /// The duelists whose present move has met him (however he met it): the rest whiff.
     met: Vec<u32>,
+    /// The threat pool and cadence this field was made with, before the Drum bounds them.
+    base: Option<(u8, u32)>,
 }
 
 impl Brawl {
@@ -226,6 +228,7 @@ impl Brawl {
             traps: Vec::new(),
             held: None,
             met: Vec::new(),
+            base: None,
         }
     }
 
@@ -269,6 +272,11 @@ impl Brawl {
         }
         self.strikes.push(f);
         self.strikes.retain(|&g| f.saturating_sub(g) < 120);
+    }
+
+    /// The threat pool and cadence this field was made with (taken the first time it is asked).
+    pub fn base_pace(&mut self) -> (u8, u32) {
+        *self.base.get_or_insert((self.threat.capacity, self.threat.cadence))
     }
 
     /// His kit changed (a dulled blade, a broken shield, a potion): the numbers change, the state does not.
@@ -690,7 +698,7 @@ impl Game {
         } else if vault && !risen {
             // (The risen dead pay nothing the second time: no farming the Burning Field.)
             self.kill_spoils(p, crate::logic::systems::POINTS_KILL);
-            if self.rng.next() < HEAL_DROP {
+            if self.rng.next() < HEAL_DROP * self.drum_bounds().potions {
                 let at = P::new(p.x.round() as i32, p.y.round() as i32);
                 if let Some(v) = self.vault.as_mut() {
                     let item = crate::logic::vault::DropItem::Potion(crate::logic::types::PotionKind::Health);

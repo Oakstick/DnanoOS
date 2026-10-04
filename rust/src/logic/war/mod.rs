@@ -5,6 +5,8 @@
 //! fight goes out through, and the presentation's own rng, which the feel and the sound draw from
 //! so that nothing they do can touch the simulation (rule I5).
 
+pub mod drum;
+
 use crate::logic::combat::fsm::{Defense, Effect};
 use crate::logic::combat::MoveId;
 use crate::logic::enemy::EnemyKind;

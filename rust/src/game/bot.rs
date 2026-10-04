@@ -852,7 +852,15 @@ pub struct Crawl {
     /// The most foes hunting him at once.
     pub peak: usize,
     pub stats: BoutStats,
+    /// The Drum (WARBAND.md §6): the share of fighting time at peak, the peaks, and the mean rest
+    /// between fights (seconds; 0 if none finished).
+    pub peak_share: f64,
+    pub peaks: u32,
+    pub rest: f64,
 }
+
+/// The Drum, second by second through a crawl: (seconds, intensity, phase).
+pub type DrumTrace = Vec<(f64, f64, crate::logic::war::drum::DrumPhase)>;
 
 impl Crawl {
     /// Overlapping strikes per minute of fighting.
@@ -864,6 +872,11 @@ impl Crawl {
 /// A bot crawls the Vaults of Mammon from the antechamber, waking pack after pack and fighting it
 /// out, until every foe is slain, its lives run out, or `limit` seconds pass.
 pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> Crawl {
+    crawl_traced(skill, seed, loadout, limit, &mut None)
+}
+
+/// A crawl, with the Drum's trace kept in `trace` if it is given one.
+pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64, trace: &mut Option<DrumTrace>) -> Crawl {
     let mut g = fresh_game(seed);
     g.map_jump(super::save::Stage::Realm(crate::logic::sins::Sin::Greed));
     if let Some(l) = loadout {
@@ -901,6 +914,11 @@ pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> C
         if hunting > 0 {
             out.combat_secs += step;
         }
+        if let Some(tr) = trace.as_mut() {
+            if tr.last().is_none_or(|l| t - l.0 >= 1.0) {
+                tr.push((t, g.war.drum.intensity, g.war.drum.phase));
+            }
+        }
         if !g.enemies.iter().any(|e| e.duel.as_ref().is_some_and(|d| d.alive())) {
             out.cleared = true;
             break;
@@ -910,20 +928,25 @@ pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> C
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
     out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
     out.kills = out.foes - g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count() as u32;
+    let drum = &g.war.drum;
+    out.peak_share = drum.peak_share();
+    out.peaks = drum.peaks;
+    out.rest = if drum.rests.is_empty() { 0.0 } else { drum.rests.iter().sum::<f64>() / drum.rests.len() as f64 };
     out
 }
 
 /// Crawls by every skill (and the kit at each tier of `tiers`, Ragnar's), one line each.
 pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
-    let mut out =
-        String::from("skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min\n");
+    let mut out = String::from(
+        "skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min  at-peak peaks  rest\n",
+    );
     for &tier in tiers {
         for skill in [Skill::Adept, Skill::Expert] {
             let runs: Vec<Crawl> = seeds.iter().map(|&s| crawl(skill, s, Some(Loadout::all(HeroKind::Ragnar, tier)), limit)).collect();
             let n = runs.len() as f64;
             let avg = |f: &dyn Fn(&Crawl) -> f64| runs.iter().map(f).sum::<f64>() / n;
             out += &format!(
-                "{:<7} {:>4}  {:>5.0}%  {:>5.0}/{:<4.0}  {:>6.1}  {:>7.1}  {:>6.1}  {:>4.0}  {:>5.0}  {:>5.0} {:>5.0} {:>6.0}  {:>12.2}\n",
+                "{:<7} {:>4}  {:>5.0}%  {:>5.0}/{:<4.0}  {:>6.1}  {:>7.1}  {:>6.1}  {:>4.0}  {:>5.0}  {:>5.0} {:>5.0} {:>6.0}  {:>12.2}  {:>6.0}% {:>5.1} {:>5.1}\n",
                 skill.name(),
                 tier,
                 avg(&|c| f64::from(u8::from(c.cleared))) * 100.0,
@@ -937,7 +960,10 @@ pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
                 avg(&|c| c.stats.parries as f64),
                 avg(&|c| c.stats.blocks as f64),
                 avg(&|c| c.stats.caught as f64),
-                avg(&|c| c.overlaps_per_minute())
+                avg(&|c| c.overlaps_per_minute()),
+                avg(&|c| c.peak_share) * 100.0,
+                avg(&|c| c.peaks as f64),
+                avg(&|c| c.rest)
             );
         }
     }

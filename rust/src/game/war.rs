@@ -5,8 +5,13 @@
 //! count of them (the telemetry the later layers and the tests read). The Drum, the packs, the
 //! Ledger, the generals and the juice each become a reader of the same log.
 
+use super::brawl::Field;
 use super::Game;
 use crate::logic::combat::fsm::Defense;
+use crate::logic::war::drum::{Bounds, Drum, Pulse};
+
+/// The least the Drum leaves of a pack's threat pool.
+const RELEASE_FLOOR_POINTS: u8 = 2;
 use crate::logic::war::{PresRng, WarEvent};
 
 /// What the war log has seen since the level began.
@@ -68,6 +73,8 @@ pub struct War {
     pub read: Vec<WarEvent>,
     pub pres: PresRng,
     pub tally: WarTally,
+    /// The level's breath (§6).
+    pub drum: Drum,
 }
 
 impl War {
@@ -76,6 +83,7 @@ impl War {
         self.log.clear();
         self.read.clear();
         self.tally = WarTally::default();
+        self.drum.reset();
     }
 }
 
@@ -85,12 +93,41 @@ impl Game {
         self.war.log.push(e);
     }
 
-    /// Once a frame: the war log is read, by the tally now and by the layers as they are built.
-    pub(super) fn update_war(&mut self) {
+    /// Once a frame (`dt` seconds of play): the war log is read by the tally and the Drum, and the
+    /// Drum's bounds go down to the threat manager.
+    pub(super) fn update_war(&mut self, dt: f64) {
         let log = std::mem::take(&mut self.war.log);
         for e in &log {
             self.war.tally.count(e);
+            self.war.drum.hear(e);
         }
         self.war.read = log;
+        let engaged = self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged() && !d.puppet).count() as u32;
+        let pulse = Pulse { engaged, hp: self.hero.hp as f64 / self.hero.max_hp.max(1) as f64, max_hp: self.hero.max_hp as f64 };
+        self.war.drum.tick(dt, pulse);
+        self.pace_the_brawl();
+    }
+
+    /// What the Drum allows now (with `VH_NO_DRUM` set, for A/B runs of the harness, it allows
+    /// what the field always did).
+    pub(super) fn drum_bounds(&self) -> Bounds {
+        static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *OFF.get_or_init(|| std::env::var_os("VH_NO_DRUM").is_some()) {
+            Bounds::NORMAL
+        } else {
+            self.war.drum.bounds()
+        }
+    }
+
+    /// The Drum's bounds on the threat manager: the vaults' and the realms' packs (the ring is the
+    /// lab, and a prince's court keeps its own pace).
+    fn pace_the_brawl(&mut self) {
+        let court = self.in_court();
+        let bounds = self.drum_bounds();
+        let Some(b) = self.brawl.as_mut().filter(|b| b.field == Field::Vault && !court) else { return };
+        let (capacity, cadence) = b.base_pace();
+        // (Never below two points: a brute, which costs two, may still strike in a release.)
+        b.threat.capacity = (capacity as i8 + bounds.capacity).max(RELEASE_FLOOR_POINTS as i8) as u8;
+        b.threat.cadence = cadence + bounds.cadence;
     }
 }
