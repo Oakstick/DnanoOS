@@ -109,7 +109,7 @@ mod tests {
         assert!(glutton.walk > calm.walk && glutton.rest < calm.rest);
         assert!(glutton.walk < 6.5 * 0.8 * 0.6);
         // His flies are slow, but not so slow a bolt's pacing cannot meet them.
-        assert!(FLY_PACE >= 0.5 && FLY_PACE < 1.0 && BOLT_SPEED * FLY_PACE > 3.0);
-        assert!(GORGE_HEAL > CROSS_HEAL && GORGE_BELOW < 1.0);
+        const { assert!(FLY_PACE >= 0.5 && FLY_PACE < 1.0 && BOLT_SPEED * FLY_PACE > 3.0) };
+        const { assert!(GORGE_HEAL > CROSS_HEAL && GORGE_BELOW < 1.0) };
     }
 }

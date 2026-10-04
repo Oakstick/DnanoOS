@@ -46,6 +46,7 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => return 0xffd860,
         Some(MoveId::Call) => return 0x9ac8ff,
         Some(MoveId::Raise) => return 0x6a8cff,
+        Some(MoveId::Swarm | MoveId::Scatter | MoveId::BileSpew) => return 0x9ab030,
         _ => {}
     }
     if d.breed.kind == EnemyKind::Jorogumo {
@@ -504,6 +505,92 @@ impl WorldView {
                         v.pose.rot_x(rig, "rightArm", arms);
                         v.root_rot.x = if strike == 0.0 { -0.16 * wind } else { 0.28 * (1.0 - rec) };
                         v.root_scale = Vec3::new(1.0, 1.0 - 0.05 * snap * (1.0 - rec), 1.0);
+                    }
+                    MoveId::Cleaver => {
+                        // The cleaver raised high over his right shoulder, his bulk leaning back; then
+                        // brought down like a butcher's on the block.
+                        let arm = if strike == 0.0 {
+                            -2.7 * wind
+                        } else if rec == 0.0 {
+                            -2.7 + 3.3 * snap
+                        } else {
+                            0.6 * (1.0 - rec)
+                        };
+                        v.pose.rot_x(rig, "rightArm", arm);
+                        if let Some(r) = rig.index("rightArm") {
+                            v.pose.rot[r].z = 0.25 * wind * (1.0 - rec);
+                        }
+                        v.root_rot.x = if strike == 0.0 { -0.1 * wind } else { 0.2 * (1.0 - rec) };
+                        v.root_rot.y = if strike == 0.0 { -0.3 * wind } else { (-0.3 + 0.6 * snap) * (1.0 - rec) };
+                    }
+                    MoveId::Swarm => {
+                        // His arms flung wide, his head thrown back, the flies pouring from him at the throw.
+                        if let (Some(l), Some(r)) = (rig.index("leftArm"), rig.index("rightArm")) {
+                            let open = if strike == 0.0 { wind } else { 1.0 - rec };
+                            v.pose.rot[l].z = -0.9 * open;
+                            v.pose.rot[r].z = 0.9 * open;
+                            v.pose.rot[l].x = -0.6 * open;
+                            v.pose.rot[r].x = -0.6 * open;
+                        }
+                        v.pose.rot_x(rig, "head", if strike == 0.0 { -0.45 * wind } else { (-0.45 + 0.75 * snap) * (1.0 - rec) });
+                        v.root_rot.x = if strike == 0.0 { -0.08 * wind } else { 0.12 * (1.0 - rec) };
+                    }
+                    MoveId::Gorge => {
+                        // Bent over the food, his head down in it and bobbing, the drumstick to his mouth.
+                        let bent = if strike == 0.0 { wind.min(1.0) } else { 1.0 - rec };
+                        v.root_rot.x = 0.3 * bent;
+                        v.pose.rot_x(rig, "head", (0.55 + (time * 11.0).sin() * 0.18) * bent);
+                        v.pose.rot_x(rig, "leftArm", (-1.5 + (time * 5.5).sin() * 0.3) * bent);
+                        v.pose.rot_x(rig, "rightArm", -0.5 * bent);
+                        v.root_scale = Vec3::new(1.0 + 0.03 * (time * 11.0).sin().abs() * bent, 1.0, 1.0);
+                    }
+                    MoveId::Scatter => {
+                        // He crouches as he bursts into flies, and lands squashed, belly first.
+                        if strike == 0.0 {
+                            let c = (frame as f32 / 12.0).min(1.0);
+                            v.root_scale = Vec3::new(1.0 + 0.1 * c, 1.0 - 0.18 * c, 1.0 + 0.1 * c);
+                        } else {
+                            let squash = (1.0 - rec) * 0.2;
+                            v.root_scale = Vec3::new(1.0 + squash * 0.6, 1.0 - squash, 1.0 + squash * 0.6);
+                            v.pose.rot_x(rig, "leftArm", -1.2 * (1.0 - rec));
+                            v.pose.rot_x(rig, "rightArm", -1.2 * (1.0 - rec));
+                        }
+                    }
+                    MoveId::BellyRoll => {
+                        // Rocked back, arms tucked; then over and over on his belly; then up, dizzy.
+                        if strike == 0.0 {
+                            v.root_rot.x = -0.25 * wind;
+                            v.pose.rot_x(rig, "leftArm", -0.8 * wind);
+                            v.pose.rot_x(rig, "rightArm", -0.8 * wind);
+                        } else if rec == 0.0 {
+                            v.root_rot.x = (f - s) * 0.32;
+                            v.root_scale = Vec3::new(1.08, 0.86, 1.08);
+                            v.pose.rot_x(rig, "leftArm", -1.6);
+                            v.pose.rot_x(rig, "rightArm", -1.6);
+                            v.pose.rot_x(rig, "head", 0.8);
+                        } else {
+                            v.root_rot.z = (time * 7.0).sin() * 0.12 * (1.0 - rec);
+                            v.pose.rot_x(rig, "head", 0.3 * (1.0 - rec));
+                        }
+                    }
+                    MoveId::BileSpew => {
+                        // His head drawn back, his belly heaving; then the bile spewed out over the floor.
+                        v.pose.rot_x(rig, "head", if strike == 0.0 { -0.5 * wind } else { (-0.5 + 1.0 * snap) * (1.0 - rec) });
+                        v.root_rot.x = if strike == 0.0 { -0.12 * wind } else { 0.22 * (1.0 - rec) };
+                        let heave = if strike == 0.0 { (time * 14.0).sin().abs() * 0.05 * wind } else { 0.0 };
+                        v.root_scale = Vec3::new(1.0 + heave, 1.0 - heave * 0.5, 1.0 + heave);
+                    }
+                    MoveId::BellySlam => {
+                        // Up on his toes, arms high, leaning back; then down on the floor belly first.
+                        let arms = if strike == 0.0 { -2.6 * wind } else { -2.6 * (1.0 - snap) * (1.0 - rec) };
+                        v.pose.rot_x(rig, "leftArm", arms);
+                        v.pose.rot_x(rig, "rightArm", arms);
+                        v.root_rot.x = if strike == 0.0 { -0.18 * wind } else { 0.32 * (1.0 - rec) };
+                        if strike == 0.0 {
+                            v.group_pos.y += 0.25 * wind * wind;
+                        }
+                        v.root_scale =
+                            Vec3::new(1.0 + 0.1 * snap * (1.0 - rec), 1.0 - 0.12 * snap * (1.0 - rec), 1.0 + 0.1 * snap * (1.0 - rec));
                     }
                     MoveId::Hex | MoveId::Smokeless => {
                         // Her right hand high, her left reaching out; then the throw.

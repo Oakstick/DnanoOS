@@ -297,7 +297,83 @@ why, and the court's results (the bots' table, as COMBAT.md §13.2).
 
 ### Beelzebub
 
-(to come)
+Built 2026-10-04 in `logic/court/gluttony.rs`, `logic/combat/prince/gluttony.rs`,
+`game/court/gluttony.rs`, `render/foes_court/gluttony.rs` and `render/view/court_gluttony.rs`.
+
+**The court, the Banquet of Flies.** A long hall 27 tiles across (33 x 33 grid), floored in greasy
+flags with a moth-eaten red runner up its middle. The great table runs round the floor in a U open
+to the south: its arms down the west and east (x 6 and 26, y 8-23), its head across the north
+(y 8) broken in the middle, seven tiles wide, where his way to the floor runs. Narrow lanes run
+behind the arms (the hero can go round the table); four cauldrons over cold fires stand in the
+lanes and by the gate; his throne of piled plates stands on a low dais behind the head of the
+table, two green banners with a fly on them either side. Four platters stand on the arms (six
+with the feast laid: two more on the head). The gate is in the south wall, the hero just inside
+it, Beelzebub before his throne. Pinned by
+`the_banquet_is_a_long_hall_entered_from_the_south_with_a_table_in_a_u_round_its_floor`.
+
+**His fight** (HP x1.15 of the Prince's 900, else the Prince's numbers; the Glutton walks x1.3
+and rests x0.65):
+
+| Phase | Title | Moves, in the order he prefers them | What else |
+|---|---|---|---|
+| 1 (100-66%) | THE LORD OF FLIES | Swarm, Cleaver, Gorge | |
+| 2 (66-33%) | THE SWARM | Scatter, Swarm, Cleaver, Gorge | two Fly Swarms rise from the food beside the platters nearest the hero (once) |
+| 3 (< 33%) | THE GLUTTON | Belly Roll, Bile Spew, Belly Slam, Gorge | quicker |
+
+| Move | Startup | Active | Recovery | Damage | Shape |
+|---|---|---|---|---|---|
+| Cleaver | 34 | 6 | 44 | 26 | cone 1.4 (+0.9), +-55 deg |
+| Swarm | 36 | 1 | 36 | 9 x5 | volley of five, +-0.5 rad, the flies at 62% of a bolt's pace (2.6-8 tiles) |
+| Gorge | 60 | 1 | 44 | heals 9% (a cross 5%) | a spell; the court sends him to his food |
+| Scatter | 64 | 6 | 48 | 28 | a mark of 1.3 following the hero for 40 f; he is flies (out of reach) from f12 to 8 f before it lands |
+| Belly Roll | 40 | 46 | 46 | 30 | a charge of 7 tiles at 9.5 t/s (rock stops him; no daze) |
+| Bile Spew | 38 | 1 | 38 | 16 | four traps (one under the hero) 0.85 wide, fuse 50, lingering 180 f |
+| Belly Slam | 42 | 6 | 50 | 30 | cone 1.2 (+0.9), quake 2.4 (+0.9) at 45% |
+
+* **Gorge, his meal** (`game::court::gluttony`). Under 85% of his health, between moves and 9 s
+  after his last meal, he walks (a puppet of the court, his token given back) to the nearest
+  green cross that has lain 2.5 s on the floor, else the nearest laden platter, and eats: a 60 f
+  spell whose first active frame heals him (never past his phase's threshold). A blow while he
+  eats chokes him: staggered for 100 f (his bloat open) and the platter spoiled. Each platter
+  feeds him once; a cross he eats is gone. He gives up a walk of more than 10 s or food taken from
+  under him. A fall lays the table again.
+* **His flies** leave his hand at a bolt's pace and are re-planned at once by the threat manager
+  for their own (62%); if no frame is clear they keep a bolt's pace and its plan.
+* **His scatter** is the court's too: the mark follows the hero (no faster than `MARK_FOLLOW`),
+  he goes up in flies (smoke, untouchable, drawn as a cloud) drifting to it, and gathers on it a
+  moment before his slam. Nothing he does slows or holds the hero.
+* **The decree** (the Steward's feast laid): six platters, and the swarms at once; **the Steward
+  slain**: no swarms.
+
+**What changed from the design, and why.** Gorge sits in every table (for its place among his
+moves), but no range chooses it: the court sends him to his food. The heal stops at his phase's
+threshold, so a meal never turns his phase back. The head of the table is broken seven tiles wide
+(not five) so his bulk never wedges on its corners. His health is 1.15 times the Prince's: at 1.0
+the expert's tier-2 kit felled him in under 90 s. The Fly Swarm is a skirmisher a quarter quicker
+than the archetype ("quick and light"). His bile is drawn as bile (the view picks it for his
+court), not Mammon's coins.
+
+**The bots.** The adept and the expert take a green cross off the floor whenever nothing they
+have seen lands within half a second (`Bot::banquet`), and the expert strikes him while he eats
+(`Bot::feasting`); neither changes their play in any other fight.
+
+**Results** (`--court gluttony SKILL TIER SEED`, Ragnar's kit at the tier; 240 s limit):
+
+| Skill | Tier | Seed | Result | Time (s) | Deaths | Taken | Meals eaten / choked |
+|---|---|---|---|---|---|---|---|
+| expert | 1 | 1 | slain | 113.5 | 0 | 33 | 1 / 1 |
+| expert | 1 | 2 | slain | 117.2 | 0 | 10 | 1 / 1 |
+| expert | 1 | 3 | slain | 118.5 | 0 | 10 | 1 / 1 |
+| expert | 2 | 1 | slain | 100.6 | 0 | 11 | 1 / 1 |
+| expert | 2 | 2 | slain | 90.4 | 0 | 0 | 1 / 1 |
+| expert | 2 | 3 | slain | 93.8 | 0 | 0 | 1 / 1 |
+| adept | 1 | 1 | timed out in phase 2 | 240 | 0 | 182 | 0 / 4 |
+| adept | 2 | 1 | timed out in phase 2 | 240 | 0 | 69 | 0 / 4 |
+| novice | 1 | 1 | lost (game over) | 44.6 | 4 | 354 | |
+| novice | 2 | 1 | lost (game over) | 49.9 | 4 | 460 | |
+
+Pinned by `the_expert_beats_beelzebub_in_his_court_and_a_masher_does_not` (tiers 1 and 2: slain
+through all three phases, lives to spare, no overlaps; the masher loses every life).
 
 ### Asmodeus
 

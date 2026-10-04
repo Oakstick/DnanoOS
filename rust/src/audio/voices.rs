@@ -889,18 +889,38 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             coins(0.15, 5, 0.3, 0.04),
         ]
         .concat(),
+        // ---- the prince of Gluttony
+        K::Beelzebub => match mv {
+            // His cleaver: the drone of his wings, a wet growl, the blade scraped.
+            MoveId::Cleaver => {
+                [buzz(0.0, 110.0, 0.5, 0.05), growl(0.08, 62.0, 0.4, 0.09), vec![hiss(1.4).at(0.25).dur(0.12).vol(0.35).bp(4200.0, 3.0)]]
+                    .concat()
+            }
+            // His swarm, or himself bursting into flies: the buzz of a cloud swelling.
+            MoveId::Swarm | MoveId::Scatter => {
+                [buzz(0.0, 150.0, 0.7, 0.05), buzz(0.12, 205.0, 0.6, 0.04), buzz(0.2, 270.0, 0.5, 0.03)].concat()
+            }
+            // His meal: slurping and gulping, a hum of greed.
+            MoveId::Gorge => [
+                squelch(0.0, 0.8),
+                squelch(0.18, 0.7),
+                squelch(0.36, 0.9),
+                vec![sine(92.0, 88.0).at(0.0).dur(0.6).vol(0.12).swell(0.1).lp(300.0, 1.0)],
+            ]
+            .concat(),
+            // Bile coming up: a retch, bubbling.
+            MoveId::BileSpew => {
+                [speak(0.0, 84.0, &[(Onset::H, Vowel::U, 0.3, 1.0)], 0.45, true), bubbles(0.15, 320.0, &[0.0, 0.07, 0.15, 0.21], 0.05)]
+                    .concat()
+            }
+            // The roll and the slam: a grunt from the belly, sloshing.
+            _ => [speak(0.0, 80.0, &[(Onset::H, Vowel::O, 0.22, 1.0)], 0.45, true), squelch(0.12, 0.6), buzz(0.0, 100.0, 0.4, 0.035)]
+                .concat(),
+        },
+        // A fly swarm: a thin high buzz, rising.
+        K::FlySwarm => [buzz(0.0, 240.0, 0.4, 0.045), buzz(0.06, 310.0, 0.35, 0.03)].concat(),
         // The six other princes and their adds: a kin's voice, for now.
-        K::Lucifer
-        | K::Reflection
-        | K::Leviathan
-        | K::Serpentling
-        | K::Amon
-        | K::Raven
-        | K::Belphegor
-        | K::Nightmare
-        | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Belphegor | K::Nightmare | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&breed_tell(kin, mv, hero), time, pitch, gain)
         }
@@ -914,6 +934,23 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
         _ => {}
     }
     out
+}
+
+/// The drone of a fly's wings at `f`: two detuned buzzing saws, quivering.
+fn buzz(at: f32, f: f32, dur: f32, vol: f32) -> Vec<Layer> {
+    vec![
+        saw(f, f * 1.02).at(at).dur(dur).vol(vol).swell(dur * 0.2).hold(0.6).bp(f * 4.0, 2.0).vib(24.0, 0.03),
+        saw(f * 1.5, f * 1.53).at(at).dur(dur).vol(vol * 0.5).swell(dur * 0.2).hold(0.6).bp(f * 6.0, 3.0).vib(31.0, 0.025),
+    ]
+}
+
+/// Beelzebub's laugh: wet and deep, through his proboscis, the buzz under it.
+fn glutton_laugh(at: f32) -> Vec<Layer> {
+    [
+        speak(at, 88.0, &[(Onset::H, Vowel::U, 0.16, 1.0), (Onset::H, Vowel::U, 0.16, 0.95), (Onset::H, Vowel::O, 0.26, 0.85)], 0.45, true),
+        buzz(at, 120.0, 0.7, 0.03),
+    ]
+    .concat()
 }
 
 fn banker_laugh(at: f32) -> Vec<Layer> {
@@ -934,6 +971,7 @@ fn breed_voice(kind: EnemyKind) -> Vec<Layer> {
         // The name is a tell, not a cry: he howls like the winter wind.
         K::Karakoncolos => [growl(0.0, 70.0, 0.4, 0.12), vec![hiss(0.6).at(0.0).dur(0.5).vol(0.6).swell(0.15).bp(500.0, 1.5)]].concat(),
         K::Mammon => banker_laugh(0.0),
+        K::Beelzebub => glutton_laugh(0.0),
         // Bones groan; the ringing is the tell's alone.
         K::Gashadokuro => [rattle(0.0, 6, 0.04, 1500.0, 0.7), growl(0.05, 50.0, 0.4, 0.1)].concat(),
         K::Peerless => speak(0.0, 120.0, &[(Onset::H, Vowel::U, 0.18, 1.0)], 0.45, false),
@@ -1110,18 +1148,19 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         // An avalanche of coins.
         K::Mammon => [coins(0.0, 40, 1.4, 0.03), vec![hiss(0.5).dur(1.4).vol(0.6).lp(500.0, 1.0)]].concat(),
         K::GoldGolem => [coins(0.0, 16, 0.6, 0.05), vec![crackle(0.4).dur(0.6).vol(1.2).lp(400.0, 1.0)]].concat(),
+        // His buzz sinking and failing, a wet collapse, his flies scattering.
+        K::Beelzebub => [
+            vec![saw(140.0, 40.0).dur(1.6).vol(0.12).swell(0.05).hold(0.2).bp(500.0, 2.0).vib(20.0, 0.05)],
+            squelch(0.3, 1.0),
+            (0..8).flat_map(|i| buzz(0.4 + i as f32 * 0.09, 220.0 + 40.0 * (i % 4) as f32, 0.25, 0.02)).collect(),
+        ]
+        .concat(),
+        // A swarm breaking up: its buzz thinning away.
+        K::FlySwarm => {
+            [buzz(0.0, 260.0, 0.5, 0.04), buzz(0.15, 330.0, 0.35, 0.025)].into_iter().flatten().map(|l| l.vib(9.0, 0.08)).collect()
+        }
         // The six other princes and their adds: a kin's fall, for now.
-        K::Lucifer
-        | K::Reflection
-        | K::Leviathan
-        | K::Serpentling
-        | K::Amon
-        | K::Raven
-        | K::Belphegor
-        | K::Nightmare
-        | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Belphegor | K::Nightmare | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&death_of(kin), time, pitch, gain)
         }
@@ -1238,18 +1277,20 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         },
         // A golden fist, and a jingle.
         K::GoldGolem => [whoosh(0.0, 420.0, 0.35, 0.9), coins(0.1, 3, 0.15, 0.03)].concat(),
+        // His cleaver chopping, his flies loosed, his bile spattering, his bulk landing, his meal.
+        K::Beelzebub => match mv {
+            MoveId::Cleaver => {
+                [whoosh(0.0, 700.0, 0.25, 0.9), crack(0.15, 0.7), vec![sine(90.0, 50.0).at(0.15).dur(0.18).vol(0.18)]].concat()
+            }
+            MoveId::Swarm | MoveId::Scatter => [buzz(0.0, 190.0, 0.35, 0.05), whoosh(0.0, 1300.0, 0.3, 0.4)].concat(),
+            MoveId::BileSpew => [squelch(0.0, 1.0), squelch(0.08, 0.7), vec![hiss(0.9).at(0.0).dur(0.3).vol(0.6).bp(900.0, 1.0)]].concat(),
+            MoveId::Gorge => [snap(0.0, 300.0, 0.5), squelch(0.05, 0.8)].concat(),
+            _ => [whoosh(0.0, 300.0, 0.4, 1.0), squelch(0.25, 0.8), vec![sine(70.0, 40.0).at(0.25).dur(0.25).vol(0.2)]].concat(),
+        },
+        // A swarm darting in.
+        K::FlySwarm => [buzz(0.0, 280.0, 0.2, 0.04), whoosh(0.0, 2400.0, 0.15, 0.3)].concat(),
         // The six other princes and their adds: a kin's swing, for now.
-        K::Lucifer
-        | K::Reflection
-        | K::Leviathan
-        | K::Serpentling
-        | K::Amon
-        | K::Raven
-        | K::Belphegor
-        | K::Nightmare
-        | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Belphegor | K::Nightmare | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&swing_of(kin, mv).layers, time, pitch, gain)
         }

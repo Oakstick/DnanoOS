@@ -29,13 +29,13 @@ use crate::logic::hub::Gate;
 use crate::logic::realms::feast::FoodKind;
 
 mod pal {
-    pub const FLAG: u32 = 0x4a4236;
-    pub const FLAG_L: u32 = 0x585040;
-    pub const FLAG_D: u32 = 0x3a342a;
-    pub const GROUT: u32 = 0x1e1a14;
-    pub const STAIN: u32 = 0x2a2218;
-    pub const GREASE: u32 = 0x3e3620;
-    pub const WINE: u32 = 0x3a0c12;
+    pub const FLAG: u32 = 0x544a3c;
+    pub const FLAG_L: u32 = 0x625846;
+    pub const FLAG_D: u32 = 0x463e32;
+    pub const GROUT: u32 = 0x2c261e;
+    pub const STAIN: u32 = 0x403628;
+    pub const GREASE: u32 = 0x423a24;
+    pub const WINE: u32 = 0x42161a;
     pub const CRUMB: u32 = 0x9a7440;
     pub const BONE: u32 = 0xd8ccb0;
     pub const BONE_D: u32 = 0xa89a78;
@@ -44,8 +44,8 @@ mod pal {
     pub const OCHRE: u32 = 0x8a6a2a;
     pub const WALNUT: u32 = 0x2e2016;
     pub const WALNUT_L: u32 = 0x40301e;
-    pub const DAMASK: u32 = 0x5e4e2a;
-    pub const DAMASK_D: u32 = 0x4a3c20;
+    pub const DAMASK: u32 = 0x76643a;
+    pub const DAMASK_D: u32 = 0x5a4a28;
     pub const MOULD: u32 = 0x1a1c10;
     pub const MOULD_G: u32 = 0x2e3a16;
     pub const IRON: u32 = 0x2a2a2c;
@@ -85,8 +85,10 @@ use pal::*;
 const WALL_H: f32 = 2.6;
 const TABLE_Y: f32 = 0.78;
 /// How high the candle wheels hang, and where.
-const WHEEL_Y: f32 = 3.1;
+const WHEEL_Y: f32 = 4.4;
 const WHEELS: [(f32, f32); 2] = [(16.0, 13.0), (16.0, 21.0)];
+/// Where candelabra stand on the table (none on a platter's tile).
+const CANDELABRA: [(i32, i32); 8] = [(6, 9), (6, 16), (6, 22), (26, 9), (26, 16), (26, 22), (8, 8), (24, 8)];
 /// The food on each platter, in the order of `PLATTERS`.
 const FOODS: [FoodKind; 6] = [FoodKind::Roast, FoodKind::Ham, FoodKind::Pie, FoodKind::Pudding, FoodKind::Cake, FoodKind::Cheese];
 
@@ -96,12 +98,12 @@ pub fn gluttony_atmosphere() -> Atmosphere {
         background: 0x0c0a06,
         fog_near: 16.0,
         fog_far: 42.0,
-        hemi_sky: lin(0x6a7040) * 0.36,
-        hemi_ground: lin(0x4a3a20) * 0.4,
-        ambient: lin(0x504a30) * 0.44,
+        hemi_sky: lin(0x6e7450) * 0.5,
+        hemi_ground: lin(0x5a4a30) * 0.5,
+        ambient: lin(0x5a5440) * 0.6,
         sun_dir: Vec3::new(0.3, 1.0, 0.45).normalize(),
-        sun: lin(0xe0d4a0) * 0.85,
-        exposure: 1.25,
+        sun: lin(0xe8dcb0) * 1.0,
+        exposure: 1.35,
         night_sky: 0.0,
         bloom: 0.72,
         moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
@@ -151,11 +153,14 @@ fn disc(out: &mut Vec<Instance>, at: Vec3, r: f32, t: f32, color: Vec3, shade: f
 /// A plate standing on its rim, facing `yaw`, tipped back by `tip`.
 fn upright_plate(out: &mut Vec<Instance>, at: Vec3, r: f32, yaw: f32, tip: f32, color: Vec3, rim: Vec3) {
     let rot = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(PI / 2.0 - tip);
+    let normal = rot * Vec3::Y;
     for a in [0.0, PI / 4.0] {
         let q = rot * Quat::from_rotation_y(a);
-        tilted(out, at, Vec3::new(r * 1.66, 0.025, r * 1.66), q, color, SHADE_LIT);
+        // Its blue rim behind, its white face before it, and the well of the plate in its middle.
+        tilted(out, at, Vec3::new(r * 1.66, 0.02, r * 1.66), q, rim, SHADE_LIT);
+        tilted(out, at + normal * 0.012, Vec3::new(r * 1.42, 0.02, r * 1.42), q, color, SHADE_LIT);
     }
-    tilted(out, at, Vec3::new(r * 1.2, 0.03, r * 1.2), rot * Quat::from_rotation_y(PI / 8.0), rim, SHADE_LIT);
+    tilted(out, at + normal * 0.02, Vec3::new(r * 0.9, 0.01, r * 0.9), rot * Quat::from_rotation_y(PI / 8.0), color * 0.92, SHADE_LIT);
 }
 
 /// A model gone to mould: its colours greyed toward rot by `k`, furred pale in spots and black-green
@@ -220,8 +225,8 @@ fn ruined(m: &Merged) -> Merged {
 }
 
 fn flag(h: f64) -> Vec3 {
-    let set = [FLAG, FLAG, FLAG_L, FLAG_D];
-    lin(set[(h * 4.0) as usize % 4]) * (0.92 + h as f32 * 0.12)
+    let set = [FLAG, FLAG, FLAG_L, FLAG_D, 0x4e4a3a];
+    lin(set[(h * 5.0) as usize % 5]) * (0.9 + h as f32 * 0.16)
 }
 
 impl WorldView {
@@ -240,12 +245,10 @@ impl WorldView {
                 let h = hash(x as f64 * 1.9 + 7.0, y as f64 * 2.7);
                 let out = &mut self.static_cubes;
                 cube(out, Vec3::new(xf, -0.07, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(GROUT), SHADE_LIT);
-                // Two flags to a tile, offset row by row.
-                let off = if y % 2 == 0 { 0.25 } else { -0.25 };
+                // Two flags to a tile.
                 for (k, dx) in [(0, -0.25f32), (1, 0.25)] {
                     let hh = hash(x as f64 * 3.1 + k as f64, y as f64 * 1.3 + 2.0);
-                    let w = if (k == 0) == (off > 0.0) { 0.47 } else { 0.47 };
-                    cube(out, Vec3::new(xf + dx, -0.015, yf), Vec3::new(w, 0.06, 0.94), 0.0, flag(hh), SHADE_MARBLE);
+                    cube(out, Vec3::new(xf + dx, -0.015, yf), Vec3::new(0.47, 0.06, 0.94), 0.0, flag(hh), SHADE_LIT);
                 }
                 let runner = (15..=17).contains(&x) && y >= HEAD[0].2 && !gate_tile(x, y);
                 if runner {
@@ -253,8 +256,7 @@ impl WorldView {
                     if h > 0.12 {
                         let edge = x != 16;
                         let col = if edge { lin(OCHRE) * 0.7 } else { lin(if h > 0.6 { RUNNER } else { RUNNER_D }) };
-                        let w = if edge { 1.0 } else { 1.0 };
-                        cube(out, Vec3::new(xf, 0.02, yf), Vec3::new(w, 0.012, 1.0), 0.0, col, SHADE_LIT);
+                        cube(out, Vec3::new(xf, 0.02, yf), Vec3::new(1.0, 0.012, 1.0), 0.0, col, SHADE_LIT);
                         if edge {
                             let inner = if x < 16 { 0.25 } else { -0.25 };
                             cube(out, Vec3::new(xf + inner, 0.027, yf), Vec3::new(0.5, 0.012, 1.0), 0.0, lin(RUNNER) * 0.9, SHADE_LIT);
@@ -273,17 +275,17 @@ impl WorldView {
                     continue;
                 }
                 // Stains: grease and old wine, spreading in blots.
-                if h > 0.55 {
+                if h > 0.68 {
                     let n = 1 + (h * 10.0) as usize % 3;
                     for k in 0..n {
                         let a = hash(x as f64 + k as f64 * 3.0, y as f64 * 5.0) as f32 * TAU;
                         let r = 0.12 + 0.18 * hash(y as f64 + k as f64, x as f64) as f32;
-                        let col = if h > 0.9 {
+                        let col = if h > 0.93 {
                             lin(WINE)
                         } else if k % 2 == 0 {
-                            lin(STAIN)
-                        } else {
                             lin(GREASE)
+                        } else {
+                            lin(STAIN)
                         };
                         cube(
                             out,
@@ -387,7 +389,7 @@ impl WorldView {
                     }
                 }
                 // A sconce every third block: an iron arm, a guttered candle.
-                if (x * 7 + y * 3) % 3 == 0 {
+                if (x + y) % 3 == 0 {
                     let at = face + n * 0.16 + Vec3::new(0.0, 1.55, 0.0);
                     cube(out, at - n * 0.08, size(0.05, 0.05, 0.16), 0.0, lin(IRON), 6.0);
                     cube(out, at, Vec3::new(0.14, 0.03, 0.14), 0.0, lin(IRON), 6.0);
@@ -580,6 +582,29 @@ impl WorldView {
         if PLATTERS.contains(&(x, y)) {
             return;
         }
+        if CANDELABRA.contains(&(x, y)) {
+            // A tall candelabrum of tarnished pewter, three candles guttering in it.
+            let top = base + Vec3::new(0.0, TABLE_Y + 0.02, 0.0);
+            cube(out, top + Vec3::new(0.0, 0.03, 0.0), Vec3::new(0.24, 0.05, 0.24), PI / 4.0, lin(PEWTER), 6.0);
+            cube(out, top + Vec3::new(0.0, 0.3, 0.0), Vec3::new(0.05, 0.55, 0.05), 0.0, lin(PEWTER), 6.0);
+            let along = if ARMS.iter().any(|a| a.0 == x) { Vec3::Z } else { Vec3::X };
+            cube(
+                out,
+                top + Vec3::new(0.0, 0.58, 0.0),
+                along * 0.5 + Vec3::new(0.0, 0.04, 0.0) + (Vec3::ONE - along) * 0.04,
+                0.0,
+                lin(PEWTER),
+                6.0,
+            );
+            for s in [-1.0f32, 0.0, 1.0] {
+                let c = top + along * (s * 0.24) + Vec3::new(0.0, 0.6 + if s == 0.0 { 0.08 } else { 0.0 }, 0.0);
+                let tall = 0.14 + 0.06 * s.abs();
+                cube(out, c + Vec3::new(0.0, tall / 2.0, 0.0), Vec3::new(0.055, tall, 0.055), 0.0, lin(WAX), 11.0);
+                cube(out, c + Vec3::new(0.03, -0.03, 0.0), Vec3::new(0.02, 0.08, 0.02), 0.0, lin(WAX) * 0.9, 11.0);
+                candles.push(c + Vec3::new(0.0, tall + 0.05, 0.0));
+            }
+            return;
+        }
         // What lies on it.
         let top = base + Vec3::new(0.0, TABLE_Y + 0.02, 0.0);
         let a = (h * 47.0) as f32;
@@ -723,7 +748,7 @@ impl WorldView {
         let seat = mid + Vec3::new(0.0, 0.44, -0.35);
         let china = |k: usize, j: usize| {
             let h = ((k * 7 + j * 3) % 5) as f32 / 5.0;
-            if (k + j) % 4 == 0 {
+            if (k + j).is_multiple_of(4) {
                 lin(CHINA_D)
             } else {
                 lin(CHINA) * (0.88 + h * 0.12)
@@ -734,10 +759,10 @@ impl WorldView {
             for j in 0..n {
                 let wob = Vec3::new(((j * 13 + k * 5) % 7) as f32 / 7.0 - 0.5, 0.0, ((j * 11 + k * 3) % 5) as f32 / 5.0 - 0.5) * 0.06;
                 let p = at + wob + Vec3::new(0.0, 0.02 + j as f32 * 0.05, 0.0);
-                disc(out, p, r, 0.04, china(k, j), SHADE_LIT);
-                if j % 3 == 1 {
-                    disc(out, p + Vec3::new(0.0, 0.004, 0.0), r * 1.02, 0.012, lin(CHINA_RIM), SHADE_LIT);
-                }
+                // Each plate: its blue-banded rim, its white face a little smaller above it.
+                let rim = if j % 4 == 2 { lin(0x8a5a3a) } else { lin(CHINA_RIM) };
+                disc(out, p, r, 0.026, rim, SHADE_LIT);
+                disc(out, p + Vec3::new(0.0, 0.016, 0.0), r * 0.86, 0.02, china(k, j), SHADE_LIT);
             }
         };
         // The seat: a broad drum of plates, a rotten cushion on it.
@@ -762,7 +787,7 @@ impl WorldView {
         for k in 0..9 {
             let u = k as f32 / 8.0 - 0.5;
             let at = seat + Vec3::new(u * 2.0, 2.65 + (1.0 - (u * 2.0).powi(2)) * 0.55, -0.75);
-            upright_plate(out, at, 0.26, u * 0.5, 0.15, china(k, 2), lin(CHINA_RIM));
+            upright_plate(out, at, 0.26, u * 0.5, 0.35, china(k, 2), lin(CHINA_RIM));
         }
         // At its foot: a heap of plates, cracked and spilled, and bones.
         for k in 0..10 {
@@ -869,12 +894,12 @@ impl WorldView {
             glow_orb(f, *c + Vec3::new(0.0, 0.04, 0.0), 0.22, lin(CANDLE_LIGHT), 0.14 + 0.04 * flick);
         }
         for (i, p) in nearest(&bv.candles, hero, 6).into_iter().enumerate() {
-            let flick = 2.6 + (time * 7.0 + i as f32 * 1.3).sin() * 0.4 + (time * 17.0 + i as f32).sin() * 0.2;
+            let flick = 3.6 + (time * 7.0 + i as f32 * 1.3).sin() * 0.5 + (time * 17.0 + i as f32).sin() * 0.25;
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.15, 0.0), color: lin(CANDLE_LIGHT) * flick, distance: 6.0 });
         }
         for &(wx, wz) in &WHEELS {
             let at = Vec3::new(wx, WHEEL_Y + 0.2, wz);
-            f.lights.push(Light { pos: at, color: lin(CANDLE_LIGHT) * 5.0, distance: 9.0 });
+            f.lights.push(Light { pos: at, color: lin(CANDLE_LIGHT) * 10.0, distance: 12.0 });
         }
         f.lights.push(Light { pos: bv.throne + Vec3::new(0.0, 2.2, 1.8), color: lin(0xd8c890) * 3.0, distance: 6.5 });
 
@@ -891,6 +916,7 @@ impl WorldView {
             if state == 0 {
                 // A sickly breath of light over the rotting food.
                 glow_orb(f, p.at + Vec3::new(0.0, 0.3, 0.0), 0.6, lin(SICKLY), 0.06);
+                f.lights.push(Light { pos: p.at + Vec3::new(0.0, 0.7, 0.0), color: lin(SICKLY) * 1.6, distance: 3.2 });
             }
         }
         // The living dark: slow vortices of flies up in the hall's air.
@@ -1056,15 +1082,15 @@ fn flies(f: &mut Frame, at: Vec3, n: usize, r: f32, h: f32, time: f32, seed: f32
         let rr = r * (0.35 + 0.65 * ((s * 3.1).sin() * 0.5 + 0.5));
         let dart = (time * 6.0 + s).sin() * 0.06;
         let p = at + Vec3::new((a).cos() * rr + dart, (a * 1.7 + s).sin() * h * 0.5, (a * 1.3).sin() * rr - dart);
-        let body = Mat4::from_scale_rotation_translation(Vec3::new(0.04, 0.03, 0.05), Quat::from_rotation_y(a), p);
-        f.opaque[MeshKind::Cube as usize].push(Instance::new(body, lin(FLY), 1.0, Vec3::ZERO, SHADE_LIT));
+        let body = Mat4::from_scale_rotation_translation(Vec3::new(0.032, 0.026, 0.042), Quat::from_rotation_y(a), p);
+        f.opaque[MeshKind::Cube as usize].push(Instance::new(body, lin(FLY), 1.0, lin(0x3a4a1a) * 0.12, SHADE_LIT));
         if k % 2 == 0 {
             let wing = Mat4::from_scale_rotation_translation(
                 Vec3::new(0.08, 0.005, 0.035),
                 Quat::from_rotation_y(a + 1.2),
                 p + Vec3::new(0.0, 0.02, 0.0),
             );
-            f.additive.push(Instance::new(wing, lin(0xb8c0a0) * 0.6, 0.3, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(wing, lin(0x8a9078) * 0.35, 0.16, Vec3::ZERO, SHADE_UNLIT));
         }
     }
 }
