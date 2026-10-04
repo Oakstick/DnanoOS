@@ -310,8 +310,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 2 + 2 + 1 + 7,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop and each general's post"
+        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop and each general's post"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));

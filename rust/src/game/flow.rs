@@ -63,6 +63,7 @@ macro_rules! scene_state {
             hero_fighter: $g.brawl.as_ref().filter(|_| $g.brawling()).map(|b| &b.hero),
             parry_edge: $g.parry_edge(),
             general: $g.general.as_ref(),
+            lair: $g.lair.as_ref(),
         }
     };
 }
@@ -243,9 +244,14 @@ impl Game {
                 }
             }
             Screen::Won => {
-                // The boss is down: off to the old gatekeeper.
+                // The boss is down: off to the old gatekeeper (from Krampus's lair, for now, back to
+                // the title: the ending is joined to it as the finale's parts meet).
                 if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Tap]) {
-                    self.open_shop();
+                    if self.in_lair() {
+                        self.enter(Screen::Title);
+                    } else {
+                        self.open_shop();
+                    }
                     self.juice.fade = 1.0;
                     self.input.consume(Action::Attack);
                     self.input.consume(Action::Confirm);

@@ -135,7 +135,9 @@ impl Answer {
             Power::Shade => Some(Answer::WatchTheRearing),
             Power::Grow => Some(Answer::CloseWhenItGrows),
             // A prince's hide (for now every prince's power is one).
-            Power::GoldHide | Power::Vainglory | Power::Scales | Power::Torpor | Power::Bloat | Power::Allure => Some(Answer::HideTurns),
+            Power::GoldHide | Power::Vainglory | Power::Scales | Power::Torpor | Power::Bloat | Power::Allure | Power::Pelt => {
+                Some(Answer::HideTurns)
+            }
             // Amon has no hide: his charge is the thing to know.
             Power::Fury => Some(Answer::BaitIntoStone),
             Power::Rattle | Power::None => None,

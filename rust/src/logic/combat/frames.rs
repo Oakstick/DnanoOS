@@ -156,6 +156,25 @@ pub enum MoveId {
     RamButt,
     /// Asmodeus's thorn ring: thorns burst from the ground in a ring round him.
     ThornRing,
+    // Krampus's (FINALE.md §3)
+    /// Krampus's birch lash: his bundle of birch switches lashed wide before him.
+    BirchLash,
+    /// Krampus's chain sweep: the chain in his left fist swung round him, long and low.
+    ChainSweep,
+    /// Krampus's bell toll: he shakes the bells on his chains and stamps a hoof; the floor shakes
+    /// round him.
+    TollOfBells,
+    /// Krampus's chain lash: the chain flung straight out along a line on the floor.
+    ChainLash,
+    /// Krampus's hoof charge: horns down, a straight run along his locked aim; stone stops him dazed.
+    HoofCharge,
+    /// Krampus's coal fire: live coals flung from his sack in a row toward him; they burn on.
+    CoalFire,
+    /// Krampus's sack swing: his sack swung up overhead and brought down; the floor shakes.
+    SackSwing,
+    /// Krampus at the cage: he rattles it and taunts the child in it. No blow; he stands open while
+    /// he does (`game::lair`).
+    CageRattle,
 }
 
 /// Where in a move a frame falls.
@@ -389,6 +408,15 @@ impl MoveId {
         MoveId::BullCharge,
         MoveId::RamButt,
         MoveId::ThornRing,
+        // Krampus's (FINALE.md §3)
+        MoveId::BirchLash,
+        MoveId::ChainSweep,
+        MoveId::TollOfBells,
+        MoveId::ChainLash,
+        MoveId::HoofCharge,
+        MoveId::CoalFire,
+        MoveId::SackSwing,
+        MoveId::CageRattle,
     ];
 
     pub const fn data(self) -> MoveData {
@@ -1443,6 +1471,135 @@ impl MoveId {
                 range: (0.0, 3.4),
                 shape: Shape::Traps { count: 9, radius: 0.8, fuse: 46, linger: 0 },
                 cooldown: 300,
+                ..BASE
+            },
+            // Krampus's (FINALE.md §3): a big body, his arm adds a tile to a cone's reach (the
+            // birch 2.3 tiles, the chain's sweep 3.6). Every startup 32 or more, every recovery 42.
+            MoveId::BirchLash => MoveData {
+                name: "BIRCH LASH",
+                startup: 32,
+                active: 8,
+                recovery: 44,
+                damage: 26.0,
+                reach: 1.3,
+                half_angle: deg(75.0),
+                track: 20,
+                hitstop: 6,
+                range: (0.0, 1.3),
+                off: (0.0, deg(80.0)),
+                ..BASE
+            },
+            MoveId::ChainSweep => MoveData {
+                name: "CHAIN SWEEP",
+                startup: 40,
+                active: 10,
+                recovery: 48,
+                damage: 24.0,
+                reach: 2.6,
+                half_angle: deg(110.0),
+                track: 24,
+                hitstop: 6,
+                range: (1.2, 2.6),
+                off: (0.0, deg(90.0)),
+                cooldown: 210,
+                ..BASE
+            },
+            MoveId::TollOfBells => MoveData {
+                name: "BELL TOLL",
+                startup: 48,
+                active: 6,
+                recovery: 52,
+                damage: 28.0,
+                reach: 1.2,
+                half_angle: deg(50.0),
+                track: 26,
+                hitstop: 8,
+                range: (0.0, 2.2),
+                off: (0.0, PI),
+                shape: Shape::Quake { radius: 2.2, share: 0.6 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::ChainLash => MoveData {
+                name: "CHAIN LASH",
+                startup: 50,
+                active: 8,
+                recovery: 46,
+                damage: 26.0,
+                reach: 9.0,
+                half_angle: 0.0,
+                // (The line on the floor stops following him 24 frames before the chain flies.)
+                track: 26,
+                hitstop: 6,
+                range: (2.4, 8.5),
+                off: (0.0, deg(60.0)),
+                line: true,
+                shape: Shape::Beam { length: 9.0, width: 1.0 },
+                cooldown: 240,
+                ..BASE
+            },
+            MoveId::HoofCharge => MoveData {
+                name: "HOOF CHARGE",
+                startup: 42,
+                active: 46,
+                recovery: 46,
+                damage: 28.0,
+                // (Struck if he comes within this of the runner's middle: his girth and his horns.)
+                reach: 1.25,
+                half_angle: deg(60.0),
+                // (The aim locks fourteen frames before he sets off: the line on the floor holds still.)
+                track: 28,
+                hitstop: 7,
+                range: (0.0, 7.5),
+                off: (0.0, deg(40.0)),
+                line: true,
+                shape: Shape::Charge { length: 7.5, speed: 10.5 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::CoalFire => MoveData {
+                name: "COAL FIRE",
+                startup: 40,
+                active: 1,
+                recovery: 42,
+                damage: 22.0,
+                reach: 8.0,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 5,
+                range: (2.2, 8.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                shape: Shape::TrapLine { count: 6, radius: 0.7, fuse: 50, spacing: 1.25, linger: 150 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::SackSwing => MoveData {
+                name: "SACK SWING",
+                startup: 46,
+                active: 6,
+                recovery: 54,
+                damage: 32.0,
+                reach: 1.4,
+                half_angle: deg(60.0),
+                track: 28,
+                hitstop: 8,
+                range: (0.0, 1.4),
+                off: (0.0, deg(70.0)),
+                shape: Shape::Quake { radius: 2.2, share: 0.5 },
+                ..BASE
+            },
+            // (No range chooses it: the lair sends him to the cage, `game::lair`.)
+            MoveId::CageRattle => MoveData {
+                name: "CAGE RATTLE",
+                startup: 36,
+                active: 1,
+                recovery: 180,
+                reach: 0.0,
+                half_angle: 0.0,
+                range: (0.0, 0.0),
+                off: (0.0, PI),
+                shape: Shape::Spell,
                 ..BASE
             },
         }

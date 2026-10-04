@@ -232,13 +232,16 @@ pub enum Power {
     Bloat,
     /// Asmodeus's allure (Lust).
     Allure,
+    /// Krampus's pelt (FINALE.md §3): black fur matted thick as felt over a hide as hard as a
+    /// goat's horn; a hide as Mammon's, open in his recoveries and while he rattles the cage.
+    Pelt,
 }
 
 impl Power {
     /// A prince's hide: it turns most of a blow outside his recoveries (`prince::HIDE_SHARE`).
-    /// Mammon's gold, and for now every other prince's power too.
+    /// Mammon's gold, and for now every other prince's power too (and Krampus's pelt).
     pub const fn is_hide(self) -> bool {
-        matches!(self, Power::GoldHide | Power::Vainglory | Power::Scales | Power::Torpor | Power::Bloat | Power::Allure)
+        matches!(self, Power::GoldHide | Power::Vainglory | Power::Scales | Power::Torpor | Power::Bloat | Power::Allure | Power::Pelt)
     }
 }
 
@@ -350,6 +353,10 @@ impl Breed {
             K::FlySwarm => (Skirmisher, 0.5, 0.6, 0.5, 1.25, 0.4, 1),
             // Lust's court: Asmodeus (his elf-maids are the realm's own).
             K::Asmodeus => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            // Krampus's lair (FINALE.md §3): the last of them, larger and longer than any prince,
+            // harder to stagger; his Perchten, masked brutes with switches, lighter than golems.
+            K::Krampus => (Prince, 1.35, 1.0, 1.3, 1.05, 1.0, 3),
+            K::Percht => (Brute, 0.8, 0.6, 0.9, 1.05, 0.5, 1),
         };
         // A big body's arm reaches as far again as its girth outgrows a man's.
         let reach = if radius > 0.55 { (radius - 0.5) * 2.0 } else { 0.0 };
@@ -376,6 +383,7 @@ impl Breed {
             K::Belphegor => (Rider::None, Power::Torpor),
             K::Beelzebub => (Rider::None, Power::Bloat),
             K::Asmodeus => (Rider::None, Power::Allure),
+            K::Krampus => (Rider::None, Power::Pelt),
             _ => (Rider::None, Power::None),
         };
         Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power, phase: 1 }

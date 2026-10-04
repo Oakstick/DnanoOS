@@ -16,6 +16,7 @@ impl Game {
             Theme::Court(sin) => GuidePlace::Court(sin),
             Theme::Hell => GuidePlace::Hub,
             Theme::Gym => GuidePlace::Gym,
+            Theme::Lair => GuidePlace::Lair,
             Theme::Meadow => GuidePlace::Cyclops(self.dungeon.min(2)),
             Theme::Estate => match self.dungeon {
                 0 => GuidePlace::Garden,

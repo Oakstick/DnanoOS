@@ -23,6 +23,8 @@
 //! `hero:K` (play hero K: 0 Ragnar, 1 Mehmed, 2 Miyamoto), `mastery:N` (his mastery at rank N, its
 //! next rank's deeds part done), `yard` (the training yard, its trials' card up), `trial:N` (his
 //! trial of rank N in the ring), `toast` (MASTERY RISES),
+//! `lair` (Krampus's lair at the bottom of the Pit), `taunt` (Krampus goes to rattle the cage now) and
+//! `fell` (Krampus's last blow: his death, the cage, the boy),
 //! `general:S` (sin S's realm, before its general's command post: 4 is
 //! the Assessor's) and `order:K` (the realm's general gives his order K now, 0..2),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
@@ -162,6 +164,12 @@ pub(crate) enum Cmd {
     General(usize),
     /// The realm's general gives his order K (0..2) now.
     Order(usize),
+    /// Into Krampus's lair at the bottom of the Pit (FINALE.md §3).
+    Lair,
+    /// Krampus goes to the cage and rattles it now (Krampusnacht, his health under 40%).
+    Taunt,
+    /// Krampus's last blow: he falls, and the cage opens.
+    Fell,
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -201,6 +209,9 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "general" => Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4)),
             "order" => Cmd::Order(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "lair" => Cmd::Lair,
+            "taunt" => Cmd::Taunt,
+            "fell" => Cmd::Fell,
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -325,6 +336,9 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             game.jump_to_post();
         }
         Cmd::Order(k) => game.debug_order(k),
+        Cmd::Lair => game.map_jump(Stage::Lair),
+        Cmd::Taunt => game.debug_taunt(),
+        Cmd::Fell => game.debug_fell(),
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,

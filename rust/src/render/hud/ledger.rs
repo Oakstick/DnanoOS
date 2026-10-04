@@ -27,7 +27,7 @@ const PIP_OFF: u32 = 0x4a4038;
 
 /// The breed's rig, as `sprite_from` draws it.
 fn rig_of(kind: EnemyKind) -> Collected {
-    use crate::render::{foes, foes2, foes3, foes4, foes5, foes6, foes7, foes_court, foes_feast, foes_mire, foes_thorns};
+    use crate::render::{foes, foes2, foes3, foes4, foes5, foes6, foes7, foes_court, foes_feast, foes_lair, foes_mire, foes_thorns};
     use EnemyKind as K;
     match kind {
         K::Skeleton => foes::draugr(),
@@ -78,6 +78,8 @@ fn rig_of(kind: EnemyKind) -> Collected {
         K::Beelzebub => foes_court::gluttony::beelzebub(),
         K::FlySwarm => foes_court::gluttony::fly_swarm(),
         K::Asmodeus => foes_court::lust::asmodeus(),
+        K::Krampus => foes_lair::krampus(),
+        K::Percht => foes_lair::percht(),
     }
 }
 

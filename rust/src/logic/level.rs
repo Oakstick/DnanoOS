@@ -41,6 +41,8 @@ pub enum Theme {
     Court(Sin),
     /// The gym: platforms over lava, one of every foe (drawn like the Portals of Hell).
     Gym,
+    /// Krampus's lair at the bottom of the Pit (FINALE.md §3, `logic::lair`).
+    Lair,
 }
 
 impl Theme {

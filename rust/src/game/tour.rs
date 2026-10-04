@@ -176,6 +176,9 @@ impl Game {
                 EnemyKind::FlySwarm => ("FLY SWARM", "A cloud of Beelzebub's flies. It falls when he does.", 0x4a5020),
                 // Lust's court
                 EnemyKind::Asmodeus => ("ASMODEUS", "The prince of Lust, the lancer of the rose bower. His allure turns your blows, but not while he recovers.", 0xe0507a),
+                // Krampus's lair
+                EnemyKind::Krampus => ("KRAMPUS", "St Nicholas's dark companion, who carries children off in his basket. His pelt turns your blows, but not while he recovers.", 0xc8202a),
+                EnemyKind::Percht => ("PERCHT", "One of Krampus's masked companions of the winter nights, horned and shaggy. A brute with a switch: wait, then punish.", 0x8a6a4a),
                 EnemyKind::Hel => ("HEL", "Queen of the dead, half living and half corpse. Distance: her bolts drain your life into hers, and she raises the dead from the floor. When she falls, they fall with her.", 0x7aa0e8),
             };
             stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });

@@ -118,6 +118,12 @@ pub enum EnemyKind {
     // Lust's court (his adds are the elf-maids, `Ellepige`)
     /// Asmodeus, the prince of Lust: the lancer of the rose bower.
     Asmodeus,
+    // ---- the bottom of the Pit (FINALE.md §3), in no stage's cast
+    /// Krampus: St Nicholas's dark companion, who carries children down to the bottom of the world
+    /// in his basket; the last fight of the game, in his lair.
+    Krampus,
+    /// A Percht: one of Krampus's masked companions of the winter nights, horned and shaggy.
+    Percht,
 }
 
 impl EnemyKind {
@@ -160,6 +166,14 @@ impl EnemyKind {
         // Lust's court
         EnemyKind::Asmodeus,
     ];
+
+    /// Krampus's lair's own: Krampus, and his Perchten.
+    pub const LAIR_OWN: [EnemyKind; 2] = [EnemyKind::Krampus, EnemyKind::Percht];
+
+    /// One of Krampus's lair's own.
+    pub fn lair_own(self) -> bool {
+        Self::LAIR_OWN.contains(&self)
+    }
 
     /// One of the courts' own.
     pub fn court_own(self) -> bool {
@@ -846,7 +860,9 @@ impl Brain {
             | EnemyKind::Nightmare
             | EnemyKind::Beelzebub
             | EnemyKind::FlySwarm
-            | EnemyKind::Asmodeus => hp,
+            | EnemyKind::Asmodeus
+            | EnemyKind::Krampus
+            | EnemyKind::Percht => hp,
             // Swoops at where he is heading, but short of it, and swerves on the way.
             EnemyKind::LargeBat => {
                 let v = ctx.hero.dir.vecf();
@@ -1119,6 +1135,9 @@ pub fn realm_foe_spec(kind: EnemyKind) -> Option<EnemySpec> {
         EnemyKind::FlySwarm => ("Fly Swarm", 0x4a5020, 1.0),
         // Lust's court
         EnemyKind::Asmodeus => ("Asmodeus", 0xe0507a, 0.8),
+        // Krampus's lair
+        EnemyKind::Krampus => ("Krampus", 0xc8202a, 0.8),
+        EnemyKind::Percht => ("Percht", 0x8a6a4a, 1.0),
         _ => return None,
     };
     Some(EnemySpec { kind, name: name.into(), color, scatter_target: P::new(0, 0), exit_delay: 0.0, speed_factor })

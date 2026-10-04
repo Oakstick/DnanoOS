@@ -62,6 +62,13 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::BrineSpit) => return 0x8ae86a,
         Some(MoveId::BellToll) => return 0xd8a860,
         Some(MoveId::BurningCoil) => return 0xff8a3a,
+        // Krampus's: his coal red, his chain iron-blue, his bells brass, his charge and his sack
+        // dark red, the cage cold.
+        Some(MoveId::CoalFire) => return 0xff4a14,
+        Some(MoveId::ChainLash | MoveId::ChainSweep) => return 0xa8c4ec,
+        Some(MoveId::TollOfBells) => return 0xe8c060,
+        Some(MoveId::HoofCharge | MoveId::SackSwing) => return 0xe03a2a,
+        Some(MoveId::CageRattle) => return 0xc8e4ff,
         _ => {}
     }
     if d.breed.kind == EnemyKind::Jorogumo {
@@ -116,6 +123,9 @@ pub fn crown(kind: EnemyKind) -> Option<f32> {
         EnemyKind::FlySwarm => Some(1.5),
         // Lust's court
         EnemyKind::Asmodeus => Some(3.25),
+        // Krampus's lair
+        EnemyKind::Krampus => Some(3.3),
+        EnemyKind::Percht => Some(1.9),
         _ => None,
     }
 }
@@ -141,6 +151,9 @@ impl WorldView {
         self.overshoot_duel(i, d);
         if d.breed.kind == EnemyKind::Belphegor {
             self.pose_belphegor(i, d, time);
+        }
+        if d.breed.kind == EnemyKind::Krampus {
+            self.pose_krampus(i, d, time);
         }
         let v = &mut self.enemy_views[i];
         v.visible = d.alive() && d.lore.vanish == 0;
@@ -1093,6 +1106,7 @@ impl WorldView {
             Some(Sin::Lust) => self.emit_bower_thorns(s.traps, s.grid, time, f),
             Some(Sin::Gluttony) => self.emit_bile(s.traps, s.grid, time, f),
             Some(Sin::Wrath) => {}
+            None if self.lair.is_some() => self.emit_coals(s.traps, s.grid, time, f),
             _ => self.emit_traps(s.traps, s.grid, time, f),
         }
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.

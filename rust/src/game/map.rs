@@ -36,6 +36,8 @@ pub fn map_stops() -> Vec<MapStop> {
         stops.push(stop(Stage::Realm(sin), format!("{} - {}", sin.title(), sin.realm().to_uppercase())));
         stops.push(stop(Stage::Court(sin), format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase())));
     }
+    // The bottom of the Pit: Krampus in his lair, the friend in the cage (FINALE.md §3).
+    stops.push(stop(Stage::Lair, "THE BOTTOM OF THE PIT - KRAMPUS".to_string()));
     stops.push(stop(Stage::Gym, "THE GYM - ONE OF EVERY FOE".to_string()));
     // Off the road: dungeons II and III, the levels built to the art direction.
     stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
@@ -72,7 +74,9 @@ impl Game {
         self.show_map = true;
         // The stop he is at now is highlighted (the first one from the title).
         let here = if self.screen == Screen::Paused {
-            Some(if self.hub.is_some() {
+            Some(if self.lair.is_some() {
+                Stage::Lair
+            } else if self.hub.is_some() {
                 Stage::Hub
             } else if self.theme().is_gym() {
                 Stage::Gym
@@ -209,6 +213,7 @@ impl Game {
                 Stage::Realm(s) => self.load_realm(s),
                 Stage::Court(s) | Stage::SinShop(s) => self.load_court(s),
                 Stage::Gym => self.load_gym(),
+                Stage::Lair => self.load_lair(),
                 Stage::Hub => unreachable!(),
             }
             self.checkpoint(stage);

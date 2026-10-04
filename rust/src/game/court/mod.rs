@@ -18,6 +18,10 @@
 //! prince is set down), `<sin>_tick` (every tick of the fight), `<sin>_phase` (as his phase
 //! changes), `<sin>_reset` (after a fall), `<sin>_slain` (as he falls), `<sin>_banner` (the phase
 //! banner's line and colour) and `<sin>_raise` (his adds, when they come at once).
+//!
+//! Krampus at the bottom of the Pit is no sin's prince but fights as one (`game::lair` keeps his
+//! fight): `prince` and `prince_bar` find him in his lair too, and `prince_phase` hands his phases
+//! to `krampus_phase`.
 
 mod envy;
 mod gluttony;
@@ -31,7 +35,8 @@ use super::brawl::{Brawl, Field};
 use super::{Banner, Game};
 use crate::audio::Sfx;
 use crate::logic::combat::archetype::Archetype;
-use crate::logic::combat::prince::phase_name;
+use crate::logic::combat::prince::krampus::PHASE_AT as KRAMPUS_AT;
+use crate::logic::combat::prince::{phase_name, PHASE_AT};
 use crate::logic::combat::{Breed, Duelist};
 use crate::logic::court::{prince_spot, weight};
 use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
@@ -80,6 +85,9 @@ pub struct PrinceBar {
     /// He wears a hide that turns blows outside his openings (every prince but Amon, whose wrath
     /// has none: he is only ever open or not).
     pub hide: bool,
+    /// Where on the bar his phases change (shares of his health, the lower first): the thirds, or
+    /// Krampus's own.
+    pub notches: [f32; 2],
 }
 
 impl Game {
@@ -93,9 +101,9 @@ impl Game {
         self.court.as_ref().map(|c| c.sin)
     }
 
-    /// The prince, while he stands.
+    /// The prince, while he stands (or Krampus in his lair, who fights as a prince: `lair`).
     pub fn prince(&self) -> Option<&Duelist> {
-        let id = self.court.as_ref()?.prince;
+        let id = self.court.as_ref().map(|c| c.prince).or(self.lair.as_ref().map(|l| l.krampus))?;
         self.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id && d.alive())
     }
 
@@ -108,9 +116,14 @@ impl Game {
         self.prince().map(|d| glam::Vec3::new(d.pos.x as f32, 0.0, d.pos.y as f32))
     }
 
-    /// What the HUD shows of the prince's health (none once he has fallen).
+    /// What the HUD shows of the prince's health (none once he has fallen): in a court, in his sin's
+    /// colour; in the lair, Krampus's, notched where his own phases fall.
     pub fn prince_bar(&self) -> Option<PrinceBar> {
-        let c = self.court.as_ref()?;
+        let (trail, color, notches) = match (self.court.as_ref(), self.lair.as_ref()) {
+            (Some(c), _) => (c.trail, c.sin.color(), [PHASE_AT[1] as f32, PHASE_AT[0] as f32]),
+            (None, Some(l)) => (l.trail, super::lair::KRAMPUS_RED, [KRAMPUS_AT[1] as f32, KRAMPUS_AT[0] as f32]),
+            (None, None) => return None,
+        };
         let d = self.prince()?;
         Some(PrinceBar {
             name: self.boss_name(),
@@ -118,11 +131,12 @@ impl Game {
             title: phase_name(d.breed.kind, d.breed.phase),
             hp: d.hp.max(0.0) as f32,
             max: d.max_hp as f32,
-            trail: c.trail,
+            trail,
             open: d.exposed(),
             flash: d.flash > 0,
-            color: c.sin.color(),
+            color,
             hide: d.breed.power.is_hide(),
+            notches,
         })
     }
 
@@ -276,6 +290,11 @@ impl Game {
             return;
         }
         let (id, pos, kind) = (du.id, du.pos, du.breed.kind);
+        if kind == crate::logic::enemy::EnemyKind::Krampus {
+            // Krampus is no sin's prince: his lair has its own banners and adds (`lair`).
+            self.krampus_phase(i, phase);
+            return;
+        }
         let sin = Sin::of_prince(kind).unwrap_or(Sin::Greed);
         if let Some(c) = self.court.as_mut() {
             c.phase = phase;
@@ -332,7 +351,7 @@ impl Game {
 
     /// A green cross on open floor a few steps from the hero and away from the prince: a breather
     /// between phases.
-    fn drop_breather(&mut self, prince: V) {
+    pub(super) fn drop_breather(&mut self, prince: V) {
         let hp = self.hero.pos();
         let g = &self.level.grid;
         let ring = self.in_ring().then(crate::logic::gym::ring);

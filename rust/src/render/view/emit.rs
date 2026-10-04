@@ -178,6 +178,8 @@ impl WorldView {
             Atmosphere { bloom: 0.3, ..estate::garden_atmosphere() }
         } else if self.vault.is_some() {
             vault::vault_atmosphere()
+        } else if self.lair.is_some() {
+            lair::lair_atmosphere()
         } else if let Some(a) = self.court_atmosphere() {
             a
         } else if let Some(a) = self.run_atmosphere(s) {
@@ -206,6 +208,7 @@ impl WorldView {
             && self.vault.is_none()
             && self.run_view.is_none()
             && self.court.is_none()
+            && self.lair.is_none()
         {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
@@ -242,6 +245,8 @@ impl WorldView {
             Haze::default()
         } else if self.vault.is_some() {
             haze(0.008, 2.5)
+        } else if self.lair.is_some() {
+            haze(lair::HAZE.0, lair::HAZE.1)
         } else if let Some((density, falloff)) = self.court_haze() {
             haze(density, falloff)
         } else if let Some(r) = &self.run_view {
@@ -344,7 +349,7 @@ impl WorldView {
         if self.hell {
             hero_light *= 0.45; // the lava lights him from below
         }
-        if self.vault.is_some() || self.court.is_some() {
+        if self.vault.is_some() || self.court.is_some() || self.lair.is_some() {
             hero_light *= 0.5; // candlelight everywhere (in the courts, their braziers)
         }
         if self.crypt {
@@ -482,10 +487,11 @@ impl WorldView {
                     | EnemyKind::Amon
                     | EnemyKind::Belphegor
                     | EnemyKind::Beelzebub
-                    | EnemyKind::Asmodeus => 1.0,
+                    | EnemyKind::Asmodeus
+                    | EnemyKind::Krampus => 1.0,
                     EnemyKind::GoldGolem => 0.6,
                     EnemyKind::Reflection | EnemyKind::Serpentling | EnemyKind::Raven | EnemyKind::Nightmare | EnemyKind::FlySwarm => 0.45,
-                    EnemyKind::Peerless | EnemyKind::Ganglot | EnemyKind::Gaki | EnemyKind::Ellepige => 0.45,
+                    EnemyKind::Peerless | EnemyKind::Ganglot | EnemyKind::Gaki | EnemyKind::Ellepige | EnemyKind::Percht => 0.45,
                 };
                 f.lights.push(Light {
                     pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
@@ -735,6 +741,9 @@ impl WorldView {
             // Underground: no sea of cloud, and no fireflies.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
             self.emit_vault(s, time, hero_pos, f);
+        } else if self.lair.is_some() {
+            // Krampus's lair: under the earth, its cold light from the shaft above.
+            self.emit_lair(s, time, hero_pos, f);
         } else if self.court.is_some() {
             // A prince's court: indoors (Greed's, its braziers and its gold).
             self.emit_court(s, time, hero_pos, f);
@@ -763,7 +772,7 @@ impl WorldView {
             lin(MOTE)
         };
         for (i, b) in self.mote_base.iter().enumerate() {
-            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() || self.court.is_some() {
+            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() || self.court.is_some() || self.lair.is_some() {
                 break;
             }
             let fi = i as f32;

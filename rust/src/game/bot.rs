@@ -294,12 +294,13 @@ impl Bot {
     /**
      * Lucifer's lance of dawn (PRINCES.md §1), once its reaction has passed: a beam along a line on
      * the floor that no parry turns. With him in its line, the way out is across it, to the side he
-     * already stands to (the shield would only block it). Only Lucifer's beam: every other fight
-     * plays as it did.
+     * already stands to (the shield would only block it). Only Lucifer's beam, and Krampus's chain
+     * lash, which runs as it does (FINALE.md §3): every other fight plays as it did.
      */
     fn lucifer_dodges(&self, g: &Game, hp: V, now: u32) -> Vec<Dodge> {
         let mut out = Vec::new();
-        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive() && d.breed.kind == EnemyKind::Lucifer) {
+        let beams = |k: EnemyKind| matches!(k, EnemyKind::Lucifer | EnemyKind::Krampus);
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive() && beams(d.breed.kind)) {
             let State::Attack { mv, frame } = d.f.state else { continue };
             let data = d.data(mv);
             let Shape::Beam { length, width } = data.shape else { continue };
@@ -707,20 +708,23 @@ impl Bot {
 
 impl Bot {
     /**
-     * Amon's court (PRINCES.md §3), and nowhere else. Once his charge's aim has locked with the
-     * hero in its path, the expert steps aside (leaping if it is too late to walk) and lets him run
-     * on into the stone behind; and the adept and the expert walk out of the rift's lava while it
-     * lingers. `None`: nothing of his to answer.
+     * Amon's court (PRINCES.md §3), and Krampus's lair (his hoof charge and his coals, FINALE.md
+     * §3), and nowhere else. Once the charge's aim has locked with the hero in its path, the expert
+     * steps aside (leaping if it is too late to walk) and lets him run on into the stone behind; and
+     * the adept and the expert walk out of the rift's lava (or the coals) while it lingers. `None`:
+     * nothing of theirs to answer.
      */
     fn amon_court(&mut self, g: &Game, dodges: &[Dodge], soonest: Option<Threat>) -> Option<PadState> {
-        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Wrath) {
+        if self.skill == Skill::Novice || (g.court_sin() != Some(crate::logic::sins::Sin::Wrath) && !g.in_lair()) {
             return None;
         }
         let hp = g.hero.pos();
         let mut pad = PadState::default();
         if self.skill == Skill::Expert {
-            let amon = g.prince().filter(|d| d.breed.kind == crate::logic::enemy::EnemyKind::Amon)?;
-            if let Some((mv @ crate::logic::combat::MoveId::FieryCharge, phase, frame)) = amon.f.attack() {
+            let amon = g.prince().filter(|d| matches!(d.breed.kind, EnemyKind::Amon | EnemyKind::Krampus))?;
+            if let Some((mv @ (crate::logic::combat::MoveId::FieryCharge | crate::logic::combat::MoveId::HoofCharge), phase, frame)) =
+                amon.f.attack()
+            {
                 let data = amon.data(mv);
                 let Shape::Charge { length, speed } = data.shape else { return None };
                 let seen = self.noticed.get(&amon.id).is_some_and(|&(_, delay)| delay > 0 && frame >= delay);
@@ -1770,6 +1774,66 @@ pub fn court_fight(sin: crate::logic::sins::Sin, skill: Skill, seed: u32, loadou
     out.secs = t;
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
     out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out
+}
+
+/// How a fight in Krampus's lair went: as a court's, and his charges, those that ended dazed in
+/// stone, and his taunts at the cage.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LairFight {
+    pub fight: CourtFight,
+    pub charges: u32,
+    pub dazes: u32,
+    pub taunts: u32,
+}
+
+/// A bot fights Krampus in his lair at the bottom of the Pit (all seven keys held: tier 8 by the
+/// keys, its kit as `loadout` gives it) until he falls, its lives run out, or `limit` seconds pass.
+pub fn lair_fight(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> LairFight {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Lair);
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    // (It plays from the top view, as in the courts: its stick is the world's way round.)
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = LairFight::default();
+    let mut t = 0.0;
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        t += step;
+        match g.screen {
+            super::Screen::GameOver => {
+                out.fight.game_over = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+        out.fight.phase = out.fight.phase.max(g.prince().map(|d| d.breed.phase).unwrap_or(0));
+        if g.lair.as_ref().is_some_and(|l| l.slain) {
+            out.fight.slain = true;
+            break;
+        }
+    }
+    out.fight.secs = t;
+    out.fight.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.fight.game_over);
+    out.fight.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    if let Some(l) = g.lair.as_ref() {
+        (out.charges, out.dazes, out.taunts) = (l.charges, l.dazes, l.taunts);
+    }
     out
 }
 

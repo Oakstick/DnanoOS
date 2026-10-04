@@ -117,7 +117,7 @@ impl Game {
         }
         // Dungeon I is a landscape garden: a fountain and its bridged channels, a churchyard, temples and flower beds.
         self.garden = None;
-        if self.level.data.boss && !data.theme.is_princes_court() {
+        if self.level.data.boss && !data.theme.is_princes_court() && data.theme != crate::logic::level::Theme::Lair {
             // The arena's stream runs in a stone channel under stone bridges too.
             self.garden = garden::stream_plan(&self.level.grid);
             if let Some(plan) = &self.garden {
@@ -198,7 +198,13 @@ impl Game {
         if let Some(sin) = data.theme.sin().filter(|_| court) {
             self.enter_court(sin);
         }
-        self.boss = if self.level.data.boss && !court {
+        // Krampus's lair at the bottom of the Pit: Krampus by frame data, and the cage (`lair`).
+        let lair = data.theme == crate::logic::level::Theme::Lair;
+        self.lair = None;
+        if lair {
+            self.setup_lair();
+        }
+        self.boss = if self.level.data.boss && !court && !lair {
             let (x0, y0, x1, y1) = ARENA;
             let mut hp = CYCLOPS_HP + CYCLOPS_HP_STEP * index as i32;
             // (A prince stood in by a Cyclops: his general's decree and death weigh on his health.)
@@ -344,6 +350,7 @@ impl Game {
         self.boss_shots.clear();
         self.reset_run();
         self.reset_court();
+        self.reset_lair();
         self.reset_general();
     }
 
