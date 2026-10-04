@@ -98,8 +98,42 @@ impl Game {
     /// What the generals' layer knows of the realm of `sin` (W6 fills it from
     /// `logic::war::general`: the general's name, one instrument, where it stands). Until then the
     /// old man says only what is sure.
-    pub fn general_intel(&self, _sin: Sin) -> Option<GeneralIntel> {
-        None
+    pub fn general_intel(&self, sin: Sin) -> Option<GeneralIntel> {
+        // What the old man knows of the realm's general (WARBAND.md §9, §10.1): his name, and where
+        // the first of his instruments still standing is from where the hero came in. True by
+        // construction: read from the general the realm holds.
+        let run = self.general.as_ref().filter(|r| r.sin == sin && !r.command.slain)?;
+        let general = crate::logic::war::general::General::of(sin);
+        let k = (0..3).find(|&k| !run.command.instruments[k].broken)?;
+        let at = run.posts.instruments[k];
+        let from = self.level.hero_spawn;
+        let (dx, dy) = ((at.x - from.x) as f64, (at.y - from.y) as f64);
+        let ns = if dy < -dx.abs() * 0.5 {
+            "north"
+        } else if dy > dx.abs() * 0.5 {
+            "south"
+        } else {
+            ""
+        };
+        let ew = if dx > dy.abs() * 0.5 {
+            "east"
+        } else if dx < -dy.abs() * 0.5 {
+            "west"
+        } else {
+            ""
+        };
+        let way = match (ns, ew) {
+            ("", "") => "close by where you came in".to_string(),
+            (n, "") => format!("to the {n} of where you came in"),
+            ("", e) => format!("to the {e} of where you came in"),
+            (n, e) => format!("to the {n}-{e} of where you came in"),
+        };
+        Some(GeneralIntel {
+            name: crate::game::general::title_case(&run.name),
+            // ("THE COUNTING-BELL" as the line says it: "counting-bell".)
+            instrument: general.instruments[k].trim_start_matches("THE ").to_lowercase(),
+            place: way,
+        })
     }
 
     /// The line in the voices' panel, if one is up.
@@ -336,6 +370,21 @@ pub(super) fn toward(from: V, to: V) -> V {
 
 #[cfg(test)]
 mod tests {
+
+    /// The old man names the realm's general and where an instrument of his stands, from the
+    /// general the realm really holds (WARBAND.md §10.1: true by construction).
+    #[test]
+    fn the_old_man_names_the_realms_general_and_his_instrument() {
+        let g = crate::game::realms::tests::in_realm(Sin::Greed);
+        let intel = g.general_intel(Sin::Greed).expect("the vaults hold a general");
+        let run = g.general.as_ref().unwrap();
+        assert_eq!(intel.name.to_uppercase(), run.name.to_uppercase());
+        assert!(crate::logic::war::general::General::of(Sin::Greed)
+            .instruments
+            .iter()
+            .any(|i| i.trim_start_matches("THE ").to_lowercase() == intel.instrument));
+        assert!(intel.place.contains("where you came in"));
+    }
     use super::super::tests::playing;
     use super::*;
     use crate::logic::war::drum::DrumPhase;
