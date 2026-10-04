@@ -269,7 +269,13 @@ impl App {
                 self.cpu.record = t.elapsed().as_secs_f64() * 1e3;
                 // The readout shows next frame (it is drawn into the HUD before this one is recorded).
                 self.game.perf_lines = if self.game.show_fps {
-                    crate::render::profile::readout(&self.cpu, &gpu.counts, gpu.timer.as_ref())
+                    let mut lines = crate::render::profile::readout(&self.cpu, &gpu.counts, gpu.timer.as_ref());
+                    // What the run's save cost when it was last written (`game::persist`).
+                    let p = &self.game.persist;
+                    if p.writes > 0 {
+                        lines.push(format!("save {:.2} ms, worst {:.2}, {} writes", p.last_ms, p.worst_ms, p.writes));
+                    }
+                    lines
                 } else {
                     Vec::new()
                 };
@@ -361,7 +367,13 @@ impl App {
 
 impl ApplicationHandler for App {
     fn exiting(&mut self, _el: &ActiveEventLoop) {
-        self.game.score.save_high();
+        // The run's snapshot, if anything is still marked (on the web, the page unloading).
+        self.game.flush_saves();
+    }
+
+    /// On the web, the page hidden into the browser's history (it may never come back).
+    fn suspended(&mut self, _el: &ActiveEventLoop) {
+        self.game.flush_saves();
     }
 
     fn resumed(&mut self, el: &ActiveEventLoop) {

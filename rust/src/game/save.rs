@@ -14,7 +14,7 @@ use crate::logic::types::PotionKind;
 use crate::platform;
 
 /// Where the adventure's checkpoint is saved.
-const RUN_KEY: &str = "vh.run";
+pub(super) const RUN_KEY: &str = "vh.run";
 
 /// Every brew, in the order the save names them.
 const BREWS: [PotionKind; 11] = [
@@ -128,6 +128,11 @@ pub(super) fn load_run() -> Option<Run> {
     if cfg!(test) {
         return None;
     }
+    read_run()
+}
+
+/// The adventure the save holds.
+pub(super) fn read_run() -> Option<Run> {
     platform::load(RUN_KEY).and_then(|s| Run::decode(&s))
 }
 
@@ -176,13 +181,12 @@ impl Game {
         }
     }
 
+    /// A checkpoint: written at once, and with it the purse and the run's Warband (the Ledger of
+    /// Grudges), in one snapshot (`persist`).
     fn write_run(&mut self, run: Option<Run>) {
-        if !cfg!(test) {
-            platform::save(RUN_KEY, &run.as_ref().map(Run::encode).unwrap_or_default());
-        }
         self.saved_run = run;
-        // The run's Warband (the Ledger of Grudges) is written with it.
-        self.save_warband();
+        self.mark_saves();
+        self.flush_saves();
     }
 
     /// Continue: straight back into the saved stage, skipping the story and the heroes.
@@ -284,8 +288,9 @@ impl Game {
     fn reset_everything(&mut self) {
         self.progress = Progress::default();
         self.save_progress();
-        self.write_run(None);
         self.wipe_warband();
+        // (One write: the purse, the run and the Ledger go together.)
+        self.write_run(None);
         self.hero_kind = HeroKind::Ragnar;
         self.sins_cleared = 0;
         if !cfg!(test) {

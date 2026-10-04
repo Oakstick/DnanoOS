@@ -468,7 +468,12 @@ courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to r
   - Each kill cost 2 to 13 ms, and a swing that took several foes cost up to 50 ms. Foe AI peaked at
     0.5 ms in the same fight.
   - The high score is now held as unsaved and written on the next screen change (death, level end,
-    pause, title) or on quit (`Score::save_high`).
+    pause, title) or on quit, with the run's snapshot.
+  - The rest of the run's save goes the same way (`game/persist.rs`): the checkpoint, the purse and
+    the Ledger are one snapshot, marked when they change and written in one write at a calm moment
+    (no freeze-frame, no foe mid-blow, a second at most), at once at checkpoints, screen changes and
+    quit. A rival's fall used to write the file twice on the kill's frame; now once, later. The F3
+    readout shows the last write's cost; a write measured 3 to 4 ms median here, up to ~20 ms.
   - This also happened in the shipped game whenever a player beat their high score.
   - battle30's worst frame went from 36.1 ms to 12.9 ms, and its worst hero step from 33 ms to
     0.1 ms.

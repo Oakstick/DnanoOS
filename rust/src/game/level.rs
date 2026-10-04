@@ -12,7 +12,6 @@ use crate::logic::items::{Diamond, DiamondKind, Potion, WeaponKind, BOMBS_PER_LI
 use crate::logic::level::{parse_level, LevelData, ParsedLevel};
 use crate::logic::levels::{boss_arena, level_for, ARENA};
 use crate::logic::types::{manhattan, Dir, PotionKind, Tile, CARDINALS, P, V};
-use crate::platform;
 use std::collections::HashMap;
 
 /**
@@ -403,11 +402,10 @@ impl Game {
         self.hero.outfit = h.outfit;
     }
 
-    /// Writes the silver, the runes and the unlocks to the save (not in tests).
-    pub(super) fn save_progress(&self) {
-        if !cfg!(test) {
-            platform::save("vh.progress", &self.progress.encode());
-        }
+    /// The silver, the runes and the unlocks to the save: the run's snapshot is marked, and
+    /// written at a calm moment (`persist`).
+    pub(super) fn save_progress(&mut self) {
+        self.mark_saves();
     }
 
     /**

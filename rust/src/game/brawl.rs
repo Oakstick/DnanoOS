@@ -665,7 +665,7 @@ impl Game {
      * chance of a potion), and those who stood by its power fall with it: a kitsune's illusions
      * thin into smoke, the dead Hel raised sink back.
      */
-    fn slay(&mut self, i: usize) -> bool {
+    pub(super) fn slay(&mut self, i: usize) -> bool {
         let Some(du) = self.enemies[i].duel.as_mut() else { return false };
         if du.alive() {
             du.f.kill();

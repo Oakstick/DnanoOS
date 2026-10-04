@@ -48,6 +48,7 @@ mod map;
 pub mod mastery;
 mod movement;
 mod packs;
+mod persist;
 mod pickups;
 pub mod pit;
 mod realm;
@@ -413,6 +414,9 @@ pub struct Game {
     pub intro: bool,
     /// The adventure saved at the start of the last stage reached, for Continue.
     pub saved_run: Option<save::Run>,
+    /// The run's save (the checkpoint, the purse, the Ledger) as one snapshot: marked, written at
+    /// a calm moment (`persist`).
+    pub persist: persist::Persist,
     /// The title is asking whether to wipe everything and start over.
     pub confirm_reset: bool,
     /// The controller page is open over the title or the pause menu.
@@ -545,11 +549,7 @@ impl Game {
             boss_events: Vec::new(),
             red_key: None,
             // Tests start from nothing; the game from the saved progress.
-            progress: if cfg!(test) {
-                Progress::default()
-            } else {
-                crate::platform::load("vh.progress").and_then(|s| Progress::decode(&s)).unwrap_or_default()
-            },
+            progress: if cfg!(test) { Progress::default() } else { persist::read_progress() },
             belt: Vec::new(),
             belt_index: 0,
             shop: ShopState::default(),
@@ -578,6 +578,7 @@ impl Game {
             story: None,
             intro: !cfg!(test),
             saved_run: save::load_run(),
+            persist: persist::Persist::default(),
             confirm_reset: false,
             show_controls: false,
             show_map: false,

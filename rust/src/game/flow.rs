@@ -71,8 +71,9 @@ macro_rules! scene_state {
 
 impl Game {
     pub(super) fn enter(&mut self, screen: Screen) {
-        // A new high score is written here, between fights, not on the kill that set it.
-        self.score.save_high();
+        // The run's snapshot (and a new high score) is written here, between fights, not on the
+        // kill that set it.
+        self.flush_saves();
         self.screen = screen;
         self.menu_index = 0;
         self.confirm_reset = false;
@@ -270,6 +271,8 @@ impl Game {
         let state = scene_state!(self);
         self.view.update(dt, &state);
         self.sim.view += lap.lap();
+        // A marked save is written once the fight gives it a calm moment.
+        self.tick_saves(dt);
         self.input.flush();
     }
 
