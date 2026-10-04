@@ -157,6 +157,8 @@ impl Game {
                 EnemyKind::Ganglot => ("GANGLÖT", "One of Hel's shrouded servants, Ganglati and Ganglöt: slow as a snail, and they never stop. The noise of killing them keeps you awake.", 0x9aa4b0),
                 EnemyKind::Gaki => ("GAKI", "A hungry ghost, all swollen belly and needle throat. Body: they swarm whoever smells of food.", 0xc8b49a),
                 EnemyKind::Ellepige => ("ELLEPIGE", "An elf-maid, lovely from the front and hollow as a kneading trough behind. No blow tells on her face: strike her back.", 0xf0e0ea),
+                EnemyKind::Mammon => ("MAMMON", "The prince of Greed. His hide is sewn with coins and turns your blows, but not while he recovers. His coins lie on the floor and burst into spikes: step off them. His fist holds you and drains your silver until you strike him.", 0xf2c53d),
+                EnemyKind::GoldGolem => ("GOLD GOLEM", "Coins and bars fused into a body, raised from Mammon's heaps. Slow and heavy; it falls when he does.", 0xd8a83a),
                 EnemyKind::Hel => ("HEL", "Queen of the dead, half living and half corpse. Distance: her bolts drain your life into hers, and she raises the dead from the floor. When she falls, they fall with her.", 0x7aa0e8),
             };
             stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });

@@ -123,6 +123,8 @@ impl WorldView {
             EnemyKind::Ganglot => (RigId::Ganglot, 0.0),
             EnemyKind::Gaki => (RigId::Gaki, 0.0),
             EnemyKind::Ellepige => (RigId::Ellepige, 0.0),
+            EnemyKind::Mammon => (RigId::Mammon, 0.0),
+            EnemyKind::GoldGolem => (RigId::GoldGolem, 0.0),
         };
         let pose = Pose::rest(self.models.rig(rig));
         // Its levels of detail and their meshes, made now rather than in the middle of a fight
@@ -365,12 +367,17 @@ impl WorldView {
             | EnemyKind::Peerless
             | EnemyKind::Ganglot
             | EnemyKind::Gaki
-            | EnemyKind::Ellepige => {
+            | EnemyKind::Ellepige
+            | EnemyKind::Mammon
+            | EnemyKind::GoldGolem => {
                 // A walk: the blemmyes, the rasetsu and the oni lumber, the witch and the tengu stride,
                 // the kappa waddles, the skeletons stalk.
                 let (stride, swing) = match v.kind {
                     EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Oni | EnemyKind::Karakoncolos => (0.6, 0.35),
                     EnemyKind::Tepegoz | EnemyKind::Gashadokuro | EnemyKind::FrostGiant | EnemyKind::Surtr => (0.5, 0.3),
+                    // (Mammon waddles under his robe and his belly; the golems stump.)
+                    EnemyKind::Mammon => (0.3, 0.16),
+                    EnemyKind::GoldGolem => (0.5, 0.3),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)

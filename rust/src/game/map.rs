@@ -55,7 +55,7 @@ impl Game {
             } else if self.theme().is_gym() {
                 Stage::Gym
             } else if let Some(sin) = self.realm {
-                if self.boss.is_some() {
+                if self.arena() {
                     Stage::Court(sin)
                 } else {
                     Stage::Realm(sin)

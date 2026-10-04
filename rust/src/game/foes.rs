@@ -157,7 +157,7 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     pub(super) fn update_spawns(&mut self, dt: f64) {
-        if self.boss.is_some() || self.hub.is_some() || self.theme().is_gym() || self.vault.is_some() || self.run.is_some() {
+        if self.arena() || self.hub.is_some() || self.theme().is_gym() || self.vault.is_some() || self.run.is_some() {
             return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's and the vaults' are all there
         }
         self.spawn_timer -= dt;
@@ -203,7 +203,7 @@ impl Game {
 
     /// 0..1 how enraged the dungeon is: the share of its keys taken.
     pub fn rage(&self) -> f64 {
-        if self.boss.is_some() || self.keys_total == 0 {
+        if self.arena() || self.keys_total == 0 {
             0.0
         } else {
             self.keys_got as f64 / self.keys_total as f64

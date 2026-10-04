@@ -54,6 +54,19 @@ pub enum MoveId {
     Burrow,
     /// Hel raises the dead.
     Raise,
+    // ---- the princes' moves (COMBAT.md §13), each phase of a prince a table of them
+    /// Mammon's sceptre swept wide round him.
+    Sceptre,
+    /// Mammon's coins tossed at him: they land on the floor round him and burst into gold spikes.
+    CoinToss,
+    /// Mammon's grasp: his fist closes on him, and holds him while it drains his silver.
+    Grasp,
+    /// Mammon's coins flung in a fan, from afar.
+    CoinVolley,
+    /// Mammon's coins rained down from above all round him, to burst where they fall.
+    CoinRain,
+    /// Mammon's hoard brought down on the floor: a slam that shakes the ground.
+    HoardSlam,
 }
 
 /// Where in a move a frame falls.
@@ -79,6 +92,10 @@ pub enum Shape {
     Quake { radius: f64, share: f64 },
     /// No blow: the move works another way (a call, the dead raised).
     Spell,
+    /// `count` coins on the floor round him (the first where he stands), each bursting into gold
+    /// spikes `radius` tiles wide `fuse` frames after they land. Nothing guards against them: he
+    /// steps out, or leaps.
+    Traps { count: u8, radius: f64, fuse: u16 },
 }
 
 /// What a move does besides its damage.
@@ -95,6 +112,8 @@ pub enum Rider {
     Drain,
     /// Raises this many of the dead.
     Raise(u8),
+    /// Holds him in a fist until he strikes the one who holds him (Mammon's grasp).
+    Grasp,
 }
 
 /// One move's frame data and hitbox.
@@ -192,8 +211,8 @@ pub const MARK_FOLLOW: f64 = 2.6;
 
 impl MoveId {
     pub const HERO: [MoveId; 3] = [MoveId::L1, MoveId::L2, MoveId::L3];
-    /// Every foe's move: the archetypes' four, then the folklore moves.
-    pub const FOE: [MoveId; 19] = [
+    /// Every foe's move: the archetypes' four, the folklore moves, then the princes'.
+    pub const FOE: [MoveId; 25] = [
         MoveId::Slam,
         MoveId::Sweep,
         MoveId::Bite,
@@ -213,6 +232,12 @@ impl MoveId {
         MoveId::FrostSlam,
         MoveId::Burrow,
         MoveId::Raise,
+        MoveId::Sceptre,
+        MoveId::CoinToss,
+        MoveId::Grasp,
+        MoveId::CoinVolley,
+        MoveId::CoinRain,
+        MoveId::HoardSlam,
     ];
 
     pub const fn data(self) -> MoveData {
@@ -555,6 +580,102 @@ impl MoveId {
                 cooldown: 600,
                 ..BASE
             },
+            // Mammon's (a big body: his arm adds to the reach of his blows, `Breed::reach`).
+            MoveId::Sceptre => MoveData {
+                name: "SCEPTRE SWEEP",
+                startup: 32,
+                active: 8,
+                recovery: 42,
+                damage: 24.0,
+                reach: 1.3,
+                half_angle: deg(105.0),
+                track: 18,
+                hitstop: 6,
+                range: (0.0, 1.3),
+                off: (0.0, deg(80.0)),
+                ..BASE
+            },
+            MoveId::CoinToss => MoveData {
+                name: "COIN TOSS",
+                startup: 30,
+                active: 1,
+                recovery: 36,
+                damage: 18.0,
+                reach: 7.0,
+                half_angle: 0.0,
+                track: 26,
+                hitstop: 5,
+                range: (2.4, 7.0),
+                off: (0.0, deg(60.0)),
+                shape: Shape::Traps { count: 5, radius: 0.8, fuse: 48 },
+                cooldown: 240,
+                ..BASE
+            },
+            MoveId::Grasp => MoveData {
+                name: "GRASP",
+                startup: 36,
+                active: 8,
+                recovery: 46,
+                damage: 10.0,
+                reach: 1.4,
+                half_angle: deg(45.0),
+                track: 24,
+                hitstop: 6,
+                range: (0.0, 1.4),
+                off: (0.0, deg(50.0)),
+                rider: Rider::Grasp,
+                cooldown: 300,
+                unblockable: true,
+                ..BASE
+            },
+            MoveId::CoinVolley => MoveData {
+                name: "COIN VOLLEY",
+                startup: 34,
+                active: 1,
+                recovery: 32,
+                damage: 11.0,
+                reach: BOLT_REACH,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 3,
+                projectile: true,
+                range: (3.0, 8.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                shape: Shape::Volley { count: 5, spread: 0.42 },
+                cooldown: 150,
+                ..BASE
+            },
+            MoveId::CoinRain => MoveData {
+                name: "COIN RAIN",
+                startup: 40,
+                active: 1,
+                recovery: 34,
+                damage: 16.0,
+                reach: 12.0,
+                half_angle: 0.0,
+                track: 30,
+                hitstop: 5,
+                range: (0.0, 12.0),
+                shape: Shape::Traps { count: 7, radius: 0.85, fuse: 42 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::HoardSlam => MoveData {
+                name: "HOARD SLAM",
+                startup: 42,
+                active: 6,
+                recovery: 50,
+                damage: 32.0,
+                reach: 1.3,
+                half_angle: deg(35.0),
+                track: 28,
+                hitstop: 8,
+                range: (0.0, 1.2),
+                off: (0.0, deg(60.0)),
+                shape: Shape::Quake { radius: 2.4, share: 0.45 },
+                ..BASE
+            },
         }
     }
 
@@ -590,9 +711,9 @@ impl MoveData {
         self.damage > 0.0
     }
 
-    /// Falls on a mark on the floor: no guard stops it, nor parries it.
+    /// Falls on a mark on the floor (or bursts from coins lying on it): no guard stops it, nor parries it.
     pub fn from_the_ground(&self) -> bool {
-        matches!(self.shape, Shape::Mark { .. })
+        matches!(self.shape, Shape::Mark { .. } | Shape::Traps { .. })
     }
 
     /// The guard can block it (it is neither a grab nor from the ground).
@@ -669,6 +790,23 @@ mod tests {
             let gained = (following + fixed) / 60.0 - 0.25;
             assert!(gained >= (radius + 0.3) * 1.2, "{}: {gained:.2} t to clear {radius} t", d.name);
         }
+    }
+
+    #[test]
+    fn a_coin_on_the_floor_bursts_late_enough_to_step_off_it() {
+        // Coins land where he stands; setting out on seeing them, at his own pace (less what getting
+        // going costs), he clears a burst's radius and his own with a fifth to spare.
+        let walk = 6.5 * crate::logic::levels::SPEED_SCALE;
+        let mut seen = 0;
+        for m in MoveId::FOE {
+            let d = m.data();
+            let Shape::Traps { radius, fuse, count } = d.shape else { continue };
+            seen += 1;
+            assert!(count >= 2 && d.from_the_ground() && !d.blockable() && !d.parriable(), "{}", d.name);
+            let gained = fuse.saturating_sub(REACTION) as f64 * walk / 60.0 - 0.25;
+            assert!(gained >= (radius + 0.3) * 1.2, "{}: {gained:.2} t to clear {radius} t", d.name);
+        }
+        assert_eq!(seen, 2, "the coin toss and the coin rain");
     }
 
     #[test]

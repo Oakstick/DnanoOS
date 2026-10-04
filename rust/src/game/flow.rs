@@ -38,7 +38,7 @@ macro_rules! scene_state {
                 keys: $g.keys_got,
                 total: $g.keys_total,
                 door: $g.door as f32,
-                red: $g.boss.is_some(),
+                red: $g.arena(),
                 key: $g.key_color(),
             }),
             relic: $g.relic_shrine,
@@ -57,6 +57,7 @@ macro_rules! scene_state {
             hazards: $g.brawl.as_ref().map(|b| b.hazards.as_slice()).unwrap_or(&[]),
             flashes: $g.brawl.as_ref().map(|b| b.flashes.as_slice()).unwrap_or(&[]),
             ails: $g.brawl.as_ref().filter(|_| $g.brawling()).map(|b| b.ails).unwrap_or_default(),
+            traps: $g.brawl.as_ref().map(|b| b.traps.as_slice()).unwrap_or(&[]),
         }
     };
 }
@@ -133,6 +134,7 @@ impl Game {
             .filter(|b| b.alive() && matches!(self.screen, Screen::Playing | Screen::Paused))
             .filter(|b| !matches!(b.state, BossState::Hidden))
             .map(|b| glam::Vec3::new(b.pos.x as f32, 0.0, b.pos.y as f32))
+            .or_else(|| self.prince_focus())
             .or_else(|| self.hub_focus());
         self.input.poll(dt);
         self.handle_global_keys();

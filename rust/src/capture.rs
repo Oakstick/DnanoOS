@@ -14,6 +14,8 @@
 //! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
 //! `foes:N[:S]` (N rows of one of each foe before him, of stage S if given, best in the Cyclops' open meadow),
 //! `dungeon:N` (straight into dungeon N, 0 being the first), `map` (the map page), `hub`, `realm:N` and `court:N`
+//! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
+//! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam)
 //! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
 //! 0 Michael .. 3 Uriel) and `angel` (use it),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
@@ -69,6 +71,8 @@ pub(crate) enum Cmd {
     /// A bot plays from here on (0 novice, 1 adept, 2 expert).
     Bot(usize),
     Court(usize),
+    /// A prince begins move M of his (see `Game::debug_prince_move`).
+    Prince(usize),
     /// The Cyclops falls at once.
     Slay,
     Shop,
@@ -149,6 +153,7 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "readout" => Cmd::Press(Action::Readout),
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
             "shop" => Cmd::Shop,
@@ -239,6 +244,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         }
         Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
+        Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
         Cmd::Slay => game.debug_wound_boss(1000),
         Cmd::Shop => game.open_shop(),

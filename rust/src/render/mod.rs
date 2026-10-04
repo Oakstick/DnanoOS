@@ -14,6 +14,7 @@ pub mod foes4;
 pub mod foes5;
 pub mod foes6;
 pub mod foes7;
+pub mod foes_court;
 pub mod foes_feast;
 pub mod foes_mire;
 pub mod foes_thorns;

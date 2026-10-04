@@ -14,6 +14,10 @@
 //! blades, fire left on the floor. What they do to him is his `Ails`; none of it slows him, holds
 //! him or roots him. Nor does a blow itself: struck, blocking or with his guard broken he walks at
 //! his whole pace (his fighter's reel only keeps him from swinging or guarding for its frames).
+//!
+//! A prince (COMBAT.md §13) fights on the same rules: his phases change as his health falls, his
+//! coins lie on the floor and burst (`Trap`), and his grasp is the one thing that holds the hero:
+//! his feet, not his hands, until a blow on the prince breaks it.
 
 use super::Game;
 use crate::audio::Sfx;
@@ -24,6 +28,7 @@ use crate::logic::combat::duelist::{CONJURE_AT, MAX_RAISED, PLEA_FRAMES, PLEA_HE
 use crate::logic::combat::frames::{Rider, Shape, BOLT_LIFE, BOLT_RADIUS, BOLT_SPEED, REFLECT_POISE, REFLECT_SPEED};
 use crate::logic::combat::fsm::{Defense, Effect, GuardRule, Hit, State};
 use crate::logic::combat::kit::Kit;
+use crate::logic::combat::prince::{self, Trap, COIN_FLIGHT, DRAIN_EVERY, DRAIN_HEAL, DRAIN_SILVER, FIST, GRASP_HOLD};
 use crate::logic::combat::threat::{assign_slots, Request, Waiter, REVOKE_REST, SLACK, SPACING};
 use crate::logic::combat::{math, secs, Breed, Duelist, Event, Fighter, FrameClock, Input, MoveId, Phase, Reel, ThreatManager};
 use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
@@ -83,6 +88,9 @@ fn tell_sfx(kind: EnemyKind, mv: MoveId) -> Sfx {
         (K::Albasti, _) => Sfx::Stinger,
         (K::Gashadokuro, _) => Sfx::Bells,
         (K::Ejder, _) => Sfx::BossCharge,
+        (K::Mammon, MoveId::Grasp) => Sfx::BossCharge,
+        (K::Mammon, MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => Sfx::Toll,
+        (K::Mammon, _) => Sfx::BossRoar,
         (_, MoveId::Call | MoveId::FrostSlam | MoveId::Smokeless) => Sfx::Wind,
         (_, MoveId::Roots | MoveId::Burrow) => Sfx::DoorGrind,
         (_, MoveId::Thunder | MoveId::Raise) => Sfx::Soul,
@@ -174,6 +182,10 @@ pub struct Brawl {
     landed_volley: u32,
     /// A realm's multiple on his strike power (Pride's Glory); 1 elsewhere.
     pub might: f64,
+    /// A prince's coins on the floor, and their throws' numbers (a throw lands as one strike).
+    pub traps: Vec<Trap>,
+    /// The prince whose fist holds him (his feet stay where they are until he strikes the prince).
+    pub held: Option<u32>,
 }
 
 impl Brawl {
@@ -206,6 +218,8 @@ impl Brawl {
             volleys: 0,
             landed_volley: 0,
             might: 1.0,
+            traps: Vec::new(),
+            held: None,
         }
     }
 
@@ -228,6 +242,8 @@ impl Brawl {
         self.ails = Ails::default();
         self.hazards.clear();
         self.flashes.clear();
+        self.traps.clear();
+        self.held = None;
     }
 
     /// He rises again (the vaults after a fall): a fresh fighter and field, the fight's numbers kept.
@@ -305,7 +321,8 @@ impl Game {
         if attack {
             b.hero.press(Input::Attack);
         }
-        if evade {
+        // (In a prince's fist only a blow on him frees his feet: no leap.)
+        if evade && b.held.is_none() {
             b.hero.press(Input::Evade);
         }
         b.hero.guard_held = guard;
@@ -385,7 +402,7 @@ impl Game {
             }
         }
         let Some(b) = self.brawl.as_ref() else { return };
-        self.hero.root = b.hero.stride();
+        self.hero.root = if b.held.is_some() { 0.0 } else { b.hero.stride() };
         self.hero.blocking = matches!(b.hero.state, State::Guard { .. } | State::Reel { kind: Reel::Blockstun, .. });
         let live = b.live;
         self.hero_strikes();
@@ -479,7 +496,7 @@ impl Game {
      * vaults with a kill's spoils). An illusion is gone at a touch; a felled ejder struck again
      * rises; one about to fall begs instead; a wounded kitsune conjures its illusions.
      */
-    fn duel_hit(&mut self, i: usize, mut hit: Hit, hitstop: u16, from: V) {
+    pub(super) fn duel_hit(&mut self, i: usize, mut hit: Hit, hitstop: u16, from: V) {
         self.wake_den_of(i);
         let Some(du) = self.enemies[i].duel.as_mut() else { return };
         if !du.alive() || du.untouchable() {
@@ -507,11 +524,23 @@ impl Game {
             self.view.sparkle(&self.level.grid, p.x, p.y, 1.2, 0x9aff6a, 24);
             return;
         }
+        // A blow on a prince whose fist holds him breaks its hold (the blow lands on him open).
+        let freed = du.lore.hold > 0;
         let share = du.taken_from(from);
+        du.lore.hold = 0;
         hit.damage *= share;
         hit.poise *= share;
         let r = du.f.take_hit(&hit);
         du.hp -= r.damage;
+        // A prince's health fallen into his next phase: its table of moves, rested.
+        if du.arch == crate::logic::combat::Archetype::Prince && du.hp > 0.0 {
+            let phase = prince::phase_of(du.hp, du.max_hp);
+            if phase > du.breed.phase {
+                du.breed.phase = phase;
+                du.cool = [0; 4];
+                du.cues.push(Cue::Phase(phase));
+            }
+        }
         du.shove(from, matches!(r.effect, Effect::Flinched(_) | Effect::Broken));
         let dead = du.hp <= 0.0;
         let plea = dead && du.breed.power == Power::Plea;
@@ -582,6 +611,12 @@ impl Game {
         if conjure {
             self.conjure(i);
         }
+        if freed {
+            self.release_grasp();
+            let hp = self.hero.pos();
+            self.floater(hp.x, hp.y - 1.3, "BROKE FREE", 1.2, Some(0xffe070));
+            self.audio.play(Sfx::Clang);
+        }
         if dead && !plea {
             if self.brawl.as_ref().is_some_and(|b| b.kit.terror) {
                 // Terrify (Ragnar's level 8): the foes round the kill lose half their poise.
@@ -610,7 +645,11 @@ impl Game {
             du.f.kill();
         }
         let (p, id, illusion, risen) = (du.pos, du.id, du.lore.illusion, du.lore.risen);
+        let prince = du.arch == crate::logic::combat::Archetype::Prince;
         let vault = self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault);
+        if self.brawl.as_ref().is_some_and(|b| b.held == Some(id)) {
+            self.release_grasp();
+        }
         if let Some(b) = self.brawl.as_mut() {
             if !illusion {
                 b.stats.kills += 1;
@@ -621,7 +660,10 @@ impl Game {
         self.view.dust(&self.level.grid, p.x, p.y, color, 18, 2.6);
         self.view.sparkle(&self.level.grid, p.x, p.y, 0.6, 0xfff1c0, 12);
         self.view.shake(0.18);
-        if vault && !risen {
+        if prince && self.in_court() {
+            // A prince in his court: his key, and everything a boss's fall brings (`court`).
+            self.prince_slain(p);
+        } else if vault && !risen {
             // (The risen dead pay nothing the second time: no farming the Burning Field.)
             self.kill_spoils(p, crate::logic::systems::POINTS_KILL);
             if self.rng.next() < HEAL_DROP {
@@ -646,7 +688,14 @@ impl Game {
             .collect();
         if !followers.is_empty() {
             let raised = self.enemies[followers[0]].duel.as_ref().is_some_and(|d| !d.lore.illusion);
-            self.floater(p.x, p.y - 1.4, if raised { "THE DEAD FALL WITH HER" } else { "THE ILLUSIONS FADE" }, 1.4, Some(0xd8c8ff));
+            let text = if prince {
+                "THE GOLD FALLS WITH HIM"
+            } else if raised {
+                "THE DEAD FALL WITH HER"
+            } else {
+                "THE ILLUSIONS FADE"
+            };
+            self.floater(p.x, p.y - 1.4, text, 1.4, Some(0xd8c8ff));
         }
         for k in followers {
             let fp = self.enemies[k].duel.as_ref().map(|d| d.pos).unwrap_or(p);
@@ -682,7 +731,7 @@ impl Game {
 
     /// A new duelist of `kind` comes into the fight at `at` (an illusion, a raised dead), facing
     /// `facing`, its legend begun as `lore`. Returns its id.
-    fn spawn_duelist(&mut self, kind: EnemyKind, at: V, facing: V, lore: Lore) -> Option<u32> {
+    pub(super) fn spawn_duelist(&mut self, kind: EnemyKind, at: V, facing: V, lore: Lore) -> Option<u32> {
         let id = self.brawl.as_mut()?.next_id();
         let spec = spec_of(&self.level.grid, kind);
         let mut e = Enemy::new(&spec, P::new(at.x.round() as i32, at.y.round() as i32), self.level.data.enemy_speed);
@@ -941,6 +990,11 @@ impl Game {
             self.first_active(i, mv);
         }
         self.read_cues(&ids);
+        self.update_traps();
+        self.update_grasp();
+        if !self.hero.alive {
+            return;
+        }
 
         // Tokens: the engaged ask, the manager grants (one a frame at most); holders on their way update
         // their plans. (Not one felled, rising, or gone in smoke.)
@@ -1092,7 +1146,12 @@ impl Game {
                 lands: bite == 0,
             };
             let power = du.breed.power;
-            if self.blow_on_hero(blow) == Defense::Parried {
+            let grasp = blow.rider == Rider::Grasp;
+            let met = self.blow_on_hero(blow);
+            if grasp && met == Defense::Open && self.hero.alive {
+                self.seize(i);
+            }
+            if met == Defense::Parried {
                 let guard = self.brawl.as_ref().map(|b| b.kit.guard).unwrap_or(crate::logic::combat::kit::Guard::TRAINING);
                 let du = self.enemies[i].duel.as_mut().unwrap();
                 du.f.deflect(guard.deflect, guard.riposte);
@@ -1187,7 +1246,8 @@ impl Game {
                 }
             }
             MoveId::Raise => self.raise_dead(i),
-            MoveId::Kanabo => {
+            MoveId::CoinToss | MoveId::CoinRain => self.throw_coins(i, mv),
+            MoveId::Kanabo | MoveId::HoardSlam => {
                 let mut f = Flash::new(FlashKind::Quake, math::add(pos, math::scale(aim, d.reach * 0.7)));
                 if let Shape::Quake { radius, .. } = d.shape {
                     f.length = radius;
@@ -1252,6 +1312,7 @@ impl Game {
                     }
                     Cue::Appeared(at) => self.flash(Flash::new(FlashKind::Smoke, at)),
                     Cue::Refilled => self.view.sparkle(&self.level.grid, p.x, p.y, 1.1, 0x8ad8ff, 12),
+                    Cue::Phase(phase) => self.prince_phase(i, phase),
                 }
             }
         }
@@ -1429,7 +1490,7 @@ impl Game {
         }
         let Some(b) = self.brawl.as_mut() else { return };
         let (text, color) = match rider {
-            Rider::None | Rider::Raise(_) | Rider::Drain => return,
+            Rider::None | Rider::Raise(_) | Rider::Drain | Rider::Grasp => return,
             Rider::Shove(tiles) => {
                 b.ails.shove = math::scale(math::norm(math::sub(hp, blow.from)), SHOVE_SPEED * tiles);
                 return;
@@ -1615,6 +1676,161 @@ impl Game {
             let fresh = std::mem::take(&mut b.bolts);
             b.bolts = bolts;
             b.bolts.extend(fresh);
+        }
+    }
+}
+
+impl Game {
+    /**
+     * A prince's grasp has closed on him: his fist holds him (his feet, not his hands) and the
+     * prince keeps still in his recovery, his hide open, until a blow on him breaks it or the fist
+     * lets go of itself. Nothing else falls on him meanwhile (the threat manager is kept quiet).
+     */
+    fn seize(&mut self, i: usize) {
+        let Some(du) = self.enemies[i].duel.as_mut() else { return };
+        let d = du.data(MoveId::Grasp);
+        du.lore.hold = GRASP_HOLD;
+        du.f.state = State::Attack { mv: MoveId::Grasp, frame: d.startup + d.active };
+        let (id, pos, aim, radius) = (du.id, du.pos, du.aim, du.radius());
+        let hp = self.hero.pos();
+        let to = math::add(pos, math::scale(aim, radius + FIST));
+        self.hero.shove(&self.level.grid, math::sub(to, hp));
+        self.hero.heading = math::angle(math::sub(pos, self.hero.pos()));
+        if let Some(b) = self.brawl.as_mut() {
+            b.held = Some(id);
+            b.threat.quiet_until = b.threat.frame + GRASP_HOLD as u32;
+        }
+        let hp = self.hero.pos();
+        self.floater(hp.x, hp.y - 1.5, "IN HIS FIST: STRIKE HIM!", 1.6, Some(0xffd040));
+        self.audio.play(Sfx::Brutal);
+        self.view.shake(0.3);
+    }
+
+    /// The fist lets go of him (struck, felled, or of itself): his feet are his own again.
+    pub(super) fn release_grasp(&mut self) {
+        let Some(b) = self.brawl.as_mut() else { return };
+        let Some(id) = b.held.take() else { return };
+        b.threat.quiet_until = b.threat.frame;
+        if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
+            d.lore.hold = 0;
+        }
+    }
+
+    /// The fist holding him: every `DRAIN_EVERY` frames it takes his silver and heals the prince,
+    /// until it lets go of itself.
+    fn update_grasp(&mut self) {
+        let Some(id) = self.brawl.as_ref().and_then(|b| b.held) else { return };
+        let Some(i) = self.duelist_index(id) else {
+            self.release_grasp();
+            return;
+        };
+        let Some(du) = self.enemies[i].duel.as_mut().filter(|d| d.alive() && d.lore.hold > 0) else {
+            self.release_grasp();
+            return;
+        };
+        du.lore.hold -= 1;
+        let p = du.pos;
+        if du.lore.hold == 0 {
+            self.release_grasp();
+            self.floater(p.x, p.y - 2.0, "HE LETS GO", 1.0, Some(0xd8c8a0));
+            return;
+        }
+        if !(GRASP_HOLD - du.lore.hold).is_multiple_of(DRAIN_EVERY) {
+            return;
+        }
+        let heal = (du.max_hp * DRAIN_HEAL).round();
+        du.hp = (du.hp + heal).min(du.max_hp);
+        let silver = DRAIN_SILVER.min(self.progress.silver);
+        self.progress.silver -= silver;
+        let hp = self.hero.pos();
+        let coin = crate::logic::progression::coin(self.hero_kind);
+        if silver > 0 {
+            self.floater(hp.x, hp.y - 0.9, format!("-{silver} {coin}"), 0.9, Some(0xd8d8e0));
+        }
+        self.floater(p.x, p.y - 2.2, format!("+{heal}"), 0.9, Some(0xf2c53d));
+        self.audio.play(Sfx::Nodule);
+        self.view.sparkle(&self.level.grid, (hp.x + p.x) / 2.0, (hp.y + p.y) / 2.0, 0.7, 0xf2c53d, 10);
+    }
+
+    /// A prince's coin toss (or rain) as its first active frame comes: coins fly from his hand (or
+    /// fall from above) onto the floor about the hero, one where he stands, to burst together.
+    fn throw_coins(&mut self, i: usize, mv: MoveId) {
+        let Some(du) = self.enemies[i].duel.as_ref() else { return };
+        let d = du.data(mv);
+        let Shape::Traps { count, radius, fuse } = d.shape else { return };
+        let foe_damage = self.brawl.as_ref().map(|b| b.foe_damage).unwrap_or(1.0);
+        let (id, pos, damage) = (du.id, du.pos, d.damage * du.breed.damage * foe_damage);
+        let rain = mv == MoveId::CoinRain;
+        let hp = self.hero.pos();
+        let turn = self.rng.next() * std::f64::consts::TAU;
+        let spots: Vec<V> = prince::scatter(count, hp, if rain { 1.6 } else { 1.8 }, turn, rain)
+            .into_iter()
+            .enumerate()
+            .filter_map(|(k, p)| (k == 0 || self.on_floor(p, hp) == p).then_some(p))
+            .collect();
+        let Some(b) = self.brawl.as_mut() else { return };
+        b.volleys += 1;
+        let volley = b.volleys;
+        // (They burst as the threat manager planned: the flight from this frame, then the fuse.)
+        b.traps.extend(spots.into_iter().map(|p| Trap {
+            pos: p,
+            from: pos,
+            flight: COIN_FLIGHT + 1,
+            fuse,
+            full: fuse,
+            radius,
+            damage,
+            owner: id,
+            volley,
+            burst: None,
+            fell: rain,
+        }));
+        self.audio.play(if rain { Sfx::Toll } else { Sfx::Whoosh });
+        if rain {
+            self.floater(hp.x, hp.y - 1.6, "IT RAINS GOLD", 1.0, Some(0xf2c53d));
+        }
+    }
+
+    /// The coins on the floor: their fuses burn, and those that burst throw up gold spikes; one
+    /// throw's spikes reach him as one strike, unless he is off them or in the air.
+    fn update_traps(&mut self) {
+        let hp = self.hero.pos();
+        let Some(b) = self.brawl.as_mut() else { return };
+        let mut traps = std::mem::take(&mut b.traps);
+        let mut bursts = Vec::new();
+        let mut on_him: Vec<Trap> = Vec::new();
+        for t in traps.iter_mut() {
+            if t.step() {
+                bursts.push(t.pos);
+                if t.reaches(hp, HERO_RADIUS) && !on_him.iter().any(|o| o.volley == t.volley) {
+                    on_him.push(*t);
+                }
+            }
+        }
+        traps.retain(|t| t.live());
+        b.traps = traps;
+        if !bursts.is_empty() {
+            self.audio.play(Sfx::Clang);
+            self.view.shake(0.12);
+        }
+        for p in bursts {
+            self.view.sparkle(&self.level.grid, p.x, p.y, 0.7, 0xffd860, 14);
+        }
+        for t in on_him {
+            let blow = Blow {
+                from: t.pos,
+                damage: t.damage,
+                hitstop: 5,
+                bolt: false,
+                rule: GuardRule::Bare,
+                rider: Rider::None,
+                by: t.owner,
+                lands: true,
+            };
+            self.blow_on_hero(blow);
+            if !self.hero.alive {
+                return;
+            }
         }
     }
 }

@@ -4,6 +4,10 @@
 //! the hero its own way: the Brute's blows are melee, the Skirmisher bites from beside him, the
 //! Hexer sends bolts from a distance (§10: every stage's cast has all three). Only the Hexer
 //! strikes from afar; nothing of the others' darts across the floor or stretches out to him.
+//!
+//! The fourth, the Prince (COMBAT.md §13), is a sin's boss: the same fighter and the same rules,
+//! with a move table for each phase of his health, armour that only his recoveries open, and a
+//! token that costs three (`prince`).
 
 use super::frames::{MoveId, Rider};
 use super::fsm::Fighter;
@@ -14,6 +18,8 @@ pub enum Archetype {
     Brute,
     Skirmisher,
     Hexer,
+    /// A sin's prince: the boss of its court (`prince`).
+    Prince,
 }
 
 /// How an archetype's blows reach the hero: with a weapon swung at arm's length, with its own
@@ -109,13 +115,29 @@ impl Archetype {
                 radius: 0.35,
                 rest: 75,
             },
+            Archetype::Prince => Stats {
+                hp: 900.0,
+                poise: 150.0,
+                armor: 40.0,
+                stagger: 90,
+                resolve: 300,
+                walk: 2.0,
+                strafe: 1.3,
+                retreat: 1.3,
+                turn: 130.0 * std::f64::consts::PI / 180.0,
+                ring: 3.8,
+                cost: 3,
+                radius: 0.95,
+                rest: 50,
+            },
         }
     }
 
-    /// How its blows reach him: the Brute swings, the Skirmisher bites, the Hexer casts.
+    /// How its blows reach him: the Brute swings, the Skirmisher bites, the Hexer casts (and a
+    /// prince swings: whatever else he has, it is his weapon he closes in for).
     pub const fn attack(self) -> Attack {
         match self {
-            Archetype::Brute => Attack::Melee,
+            Archetype::Brute | Archetype::Prince => Attack::Melee,
             Archetype::Skirmisher => Attack::Body,
             Archetype::Hexer => Attack::Distance,
         }
@@ -127,6 +149,7 @@ impl Archetype {
             Archetype::Brute => EnemyKind::Blemmyes,
             Archetype::Skirmisher => EnemyKind::Werewolf,
             Archetype::Hexer => EnemyKind::Witch,
+            Archetype::Prince => EnemyKind::Mammon,
         }
     }
 
@@ -135,6 +158,7 @@ impl Archetype {
             Archetype::Brute => "BRUTE",
             Archetype::Skirmisher => "SKIRMISHER",
             Archetype::Hexer => "HEXER",
+            Archetype::Prince => "PRINCE",
         }
     }
 
@@ -144,6 +168,7 @@ impl Archetype {
             Archetype::Brute => &[MoveId::Slam, MoveId::Sweep],
             Archetype::Skirmisher => &[MoveId::Bite],
             Archetype::Hexer => &[MoveId::Hex],
+            Archetype::Prince => super::prince::table(1),
         }
     }
 
@@ -190,6 +215,9 @@ pub enum Power {
     Necromancy,
     /// The elf-maid's back: lovely from the front, where no blow tells, and hollow behind.
     Hollow,
+    /// Mammon's hide, sewn with coins: it turns most of a blow except in his recoveries, reeling,
+    /// or while his fist is closed on him.
+    GoldHide,
 }
 
 /**
@@ -215,6 +243,9 @@ pub struct Breed {
     /// What every blow of its carries besides its damage (unless the move has its own).
     pub rider: Rider,
     pub power: Power,
+    /// The phase of a prince's fight (1 to 3, by his health; `prince::phase_of`): which of his move
+    /// tables he fights with. 1 for every other body.
+    pub phase: u8,
 }
 
 impl Breed {
@@ -275,6 +306,9 @@ impl Breed {
             K::Gaki => (Skirmisher, 0.9, 0.95, 0.8, 1.05, 0.38, 1),
             // The elf-maids: hollow behind, and only there to be struck.
             K::Ellepige => (Skirmisher, 1.3, 1.1, 1.0, 1.0, 0.36, 1),
+            // The courts' own: Mammon is the Prince himself; his golems, slow and heavy brutes.
+            K::Mammon => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::GoldGolem => (Brute, 0.9, 0.8, 1.2, 0.6, 0.55, 1),
         };
         // A big body's arm reaches as far again as its girth outgrows a man's.
         let reach = if radius > 0.55 { (radius - 0.5) * 2.0 } else { 0.0 };
@@ -294,9 +328,10 @@ impl Breed {
             K::Nidhogg => (Rider::Venom(120), Power::None),
             K::Hel => (Rider::Drain, Power::Necromancy),
             K::Ellepige => (Rider::None, Power::Hollow),
+            K::Mammon => (Rider::None, Power::GoldHide),
             _ => (Rider::None, Power::None),
         };
-        Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power }
+        Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power, phase: 1 }
     }
 
     /// The moves it knows, in the order it prefers them: its archetype's own, or its legend's.
@@ -318,6 +353,7 @@ impl Breed {
             K::FrostGiant => &[MoveId::FrostSlam, MoveId::Slam, MoveId::Sweep],
             K::Nidhogg => &[MoveId::Burrow, MoveId::Bite],
             K::Hel => &[MoveId::Raise, MoveId::Hex],
+            _ if self.arch == Archetype::Prince => super::prince::table(self.phase),
             _ => self.arch.moves(),
         }
     }
@@ -333,18 +369,21 @@ impl Breed {
         self.arch.attack()
     }
 
-    /// The archetype's numbers as this body has them.
+    /// The archetype's numbers as this body has them (a prince in his last phase quicker).
     pub fn stats(&self) -> Stats {
         let s = self.arch.stats();
+        let (pace, rest) = if self.arch == Archetype::Prince { super::prince::pace(self.phase) } else { (1.0, 1.0) };
+        let speed = self.speed * pace;
         Stats {
             hp: s.hp * self.hp,
             poise: s.poise * self.poise,
             armor: s.armor * self.poise,
-            walk: s.walk * self.speed,
-            strafe: s.strafe * self.speed,
-            retreat: s.retreat * self.speed,
+            walk: s.walk * speed,
+            strafe: s.strafe * speed,
+            retreat: s.retreat * speed,
             radius: self.radius,
             cost: self.cost,
+            rest: (s.rest as f64 * rest).round() as u16,
             ..s
         }
     }

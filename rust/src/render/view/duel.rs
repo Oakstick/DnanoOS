@@ -27,6 +27,7 @@ fn tell(arch: Archetype) -> u32 {
         Archetype::Brute => 0xff5a2a,
         Archetype::Skirmisher => 0xff3a6a,
         Archetype::Hexer => 0xb066ff,
+        Archetype::Prince => 0xffa030,
     }
 }
 
@@ -40,7 +41,8 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::Talons) => return 0xffb060,
         Some(MoveId::Burrow) => return 0x9ad04a,
         Some(MoveId::FrostSlam) => return 0x9adcff,
-        Some(MoveId::Grab) => return 0xe8f0d0,
+        Some(MoveId::Grab | MoveId::Grasp) => return 0xe8f0d0,
+        Some(MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => return 0xffd860,
         Some(MoveId::Call) => return 0x9ac8ff,
         Some(MoveId::Raise) => return 0x6a8cff,
         _ => {}
@@ -78,6 +80,8 @@ pub fn crown(kind: EnemyKind) -> Option<f32> {
         EnemyKind::Gashadokuro => Some(3.05),
         EnemyKind::Ejder => Some(2.3),
         EnemyKind::Goryo => Some(1.62),
+        EnemyKind::Mammon => Some(3.25),
+        EnemyKind::GoldGolem => Some(1.7),
         _ => None,
     }
 }
@@ -133,6 +137,12 @@ impl WorldView {
                 v.emissive = lin(0x9ad1ff) * 0.45;
             }
             _ => {}
+        }
+        if d.arch == Archetype::Prince {
+            // A prince's tell is his pose and the floor's: a glow from within would wash out a figure
+            // so large and dark, so only a breath of it shows.
+            v.emissive *= 0.02;
+            v.light_intensity = 0.0;
         }
         if d.flash > 0 {
             let k = d.flash as f32 / 6.0;
@@ -406,6 +416,76 @@ impl WorldView {
                         v.pose.rot_x(rig, "rightArm", up);
                         v.pose.rot_x(rig, "leftArm", up * 0.8);
                     }
+                    MoveId::Sceptre if v.kind == EnemyKind::Mammon => {
+                        // The sceptre drawn back over his right shoulder as he winds round, then swept
+                        // right across before him, and his weight following it.
+                        v.root_rot.y = if strike == 0.0 {
+                            -0.75 * wind
+                        } else if rec == 0.0 {
+                            -0.75 + 1.9 * snap
+                        } else {
+                            1.15 * (1.0 - rec)
+                        };
+                        let arm = if strike == 0.0 { -2.3 * wind } else { -2.3 + 1.1 * snap };
+                        v.pose.rot_x(rig, "rightArm", arm * (1.0 - rec));
+                        if let Some(r) = rig.index("rightArm") {
+                            v.pose.rot[r].z = 0.5 * wind * (1.0 - rec);
+                        }
+                        v.pose.rot_x(rig, "leftArm", 0.35 * wind * (1.0 - rec));
+                    }
+                    MoveId::CoinToss | MoveId::CoinVolley => {
+                        // His left hand down into the sack, then the coins flung up (or flat) at him.
+                        let fling = if mv == MoveId::CoinToss { -2.3 } else { -1.5 };
+                        let arm = if strike == 0.0 { 0.55 * wind } else { 0.55 + (fling - 0.55) * snap };
+                        v.pose.rot_x(rig, "leftArm", arm * (1.0 - rec));
+                        if let Some(l) = rig.index("leftArm") {
+                            v.pose.rot[l].z = -0.25 * wind * (1.0 - rec);
+                        }
+                        v.root_rot.y = if strike == 0.0 { 0.3 * wind } else { 0.3 - 0.6 * snap * (1.0 - rec) };
+                        v.root_rot.x = -0.08 * wind * (1.0 - rec);
+                    }
+                    MoveId::Grasp => {
+                        // He draws back and leans in, his clawed left hand thrust out; while it holds
+                        // him the fist stays closed and out.
+                        let held = d.lore.hold > 0;
+                        let out = if held { 1.0 } else { 1.0 - rec };
+                        let arm = if strike == 0.0 { 0.4 * wind } else { 0.4 - 1.55 * snap };
+                        v.pose.rot_x(rig, "leftArm", arm * out);
+                        if let Some(l) = rig.index("leftArm") {
+                            // (In across his front, down to where the hero stands.)
+                            v.pose.rot[l].z = if strike == 0.0 { -0.3 * wind } else { 0.38 * snap * out };
+                        }
+                        v.root_rot.x = if strike == 0.0 { -0.12 * wind } else { 0.26 * out };
+                        v.pose.rot_x(rig, "rightArm", 0.3 * wind * out);
+                        if held {
+                            v.root_rot.z = (time * 14.0).sin() * 0.02;
+                        }
+                    }
+                    MoveId::CoinRain => {
+                        // Both arms raised to the vault overhead, his head thrown back; then flung wide.
+                        let up = if strike == 0.0 { -2.8 * wind } else { -2.8 * (1.0 - rec) };
+                        v.pose.rot_x(rig, "leftArm", up);
+                        v.pose.rot_x(rig, "rightArm", up);
+                        v.pose.rot_x(rig, "head", -0.4 * wind * (1.0 - rec));
+                        if let (Some(l), Some(r)) = (rig.index("leftArm"), rig.index("rightArm")) {
+                            v.pose.rot[l].z = -0.6 * snap * (1.0 - rec);
+                            v.pose.rot[r].z = 0.6 * snap * (1.0 - rec);
+                        }
+                    }
+                    MoveId::HoardSlam => {
+                        // The sceptre in both fists high over his crown, leaning back; down like a hammer.
+                        let arms = if strike == 0.0 {
+                            -3.0 * wind
+                        } else if rec == 0.0 {
+                            -3.0 + 3.6 * snap
+                        } else {
+                            0.6 * (1.0 - rec)
+                        };
+                        v.pose.rot_x(rig, "leftArm", arms);
+                        v.pose.rot_x(rig, "rightArm", arms);
+                        v.root_rot.x = if strike == 0.0 { -0.16 * wind } else { 0.28 * (1.0 - rec) };
+                        v.root_scale = Vec3::new(1.0, 1.0 - 0.05 * snap * (1.0 - rec), 1.0);
+                    }
                     MoveId::Hex | MoveId::Smokeless => {
                         // Her right hand high, her left reaching out; then the throw.
                         let right = if strike == 0.0 { -2.8 * wind } else { -1.4 * (1.0 - rec) };
@@ -450,6 +530,7 @@ impl WorldView {
                     Archetype::Brute => 1.25,
                     Archetype::Skirmisher => 0.95,
                     Archetype::Hexer => 1.55,
+                    Archetype::Prince => 3.25,
                 });
                 let m = Mat4::from_translation(base + Vec3::new(0.0, top + (time * 4.0).sin() * 0.04, 0.0))
                     * Mat4::from_rotation_y(time * 3.0)
@@ -542,6 +623,18 @@ impl WorldView {
                         dot(Vec3::new(a.cos(), 0.0, a.sin()) * radius as f32, fill >= 0.7);
                     }
                 }
+                Shape::Traps { .. } => {
+                    // Where the coins will land: a ring about him, the gold gathering in the prince's hand.
+                    let hp = s.hero.pos();
+                    let at = Vec3::new(hp.x as f32, 0.0, hp.y as f32) - Vec3::new(base.x, 0.0, base.z);
+                    ring(&mut dot, at, if mv == MoveId::CoinRain { 2.6 } else { 1.8 });
+                    let hand = base + Vec3::new(0.0, 2.0, 0.0) + side * -0.9;
+                    let m = Mat4::from_translation(hand)
+                        * Mat4::from_rotation_y(time * 6.0)
+                        * Mat4::from_scale(Vec3::splat(0.05 + 0.16 * fill));
+                    f.additive.push(Instance::new(m, color * 2.4, 0.9, Vec3::ZERO, SHADE_UNLIT));
+                    continue;
+                }
                 Shape::Cone => {}
             }
             match mv {
@@ -576,6 +669,7 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
+        self.emit_traps(s.traps, s.grid, time, f);
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.
         for h in s.hazards {
             let c = Vec3::new(h.pos.x as f32, floor_at(s.grid, h.pos.x as f32, h.pos.y as f32), h.pos.y as f32);
@@ -924,6 +1018,16 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
                 glow_orb(f, p - v * k as f32 * 0.22, 0.3 - k as f32 * 0.06, color, 0.45 - k as f32 * 0.1);
             }
             (color * 2.5, 3.0)
+        }
+        BoltLook::Coin => {
+            // A gold coin tumbling end over end, a glint of it trailing behind.
+            let spin = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(time * 22.0 + seed);
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.16, 0.035, 0.16), spin, p);
+            f.opaque[MeshKind::Cylinder as usize].push(Instance::new(m, color, 1.0, color * 0.35, 13.0));
+            for k in 1..4 {
+                add(f, p - v * k as f32 * 0.16, spin, Vec3::new(0.08, 0.08, 0.02), color * (1.8 - k as f32 * 0.4), 0.7 - k as f32 * 0.18);
+            }
+            (color * 2.0, 2.5)
         }
         BoltLook::Blade => {
             // His blade, spinning flat.

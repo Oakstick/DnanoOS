@@ -7,7 +7,8 @@
 //!
 //! West of the arrival platform lies the Sparring Ring, the combat lab of
 //! COMBAT.md: step in and a bout begins, first of the three archetypes, then
-//! of the later stages' foes, two bouts and more a stage.
+//! of the later stages' foes, two bouts and more a stage, and last the princes
+//! (the fourth archetype) as their courts fight them.
 
 use super::enemy::EnemyKind;
 use super::hub::Rect;
@@ -99,18 +100,31 @@ pub struct Bout {
 }
 
 impl Bout {
-    /// The stage it draws its foes from (2 for the lab's: the archetypes' own bodies).
+    /// The stage it draws its foes from (2 for the lab's: the archetypes' own bodies; after the
+    /// last stage for a prince's, `PRINCES`).
     pub fn stage(&self) -> u8 {
+        if self.prince() {
+            return PRINCES;
+        }
         self.foes.iter().map(|k| k.stage()).max().unwrap_or(2)
     }
+
+    /// A prince's bout: his fight as his court has it (COMBAT.md §13).
+    pub fn prince(&self) -> bool {
+        self.foes.iter().any(|k| k.court_own())
+    }
 }
+
+/// The princes' bouts come after the last stage's.
+pub const PRINCES: u8 = EnemyKind::STAGES + 1;
 
 use super::enemy::EnemyKind as K;
 
 /// The bouts, in order: the lab's five, the archetypes in their own bodies (COMBAT.md §5); the
 /// third stage's three, its blades, its jaws and its fire (§10); then two for each stage
-/// after it, a pair and the whole cast (§11).
-pub const BOUTS: [Bout; 16] = [
+/// after it, a pair and the whole cast (§11); and the princes, each alone as in his court (§13),
+/// with the kit a hero has on reaching him.
+pub const BOUTS: [Bout; 17] = [
     Bout { name: "THE BRUTE", foes: &[K::Blemmyes], target: (8.0, 14.0), tier: 1 },
     Bout { name: "THE PACK", foes: &[K::Werewolf, K::Werewolf], target: (5.0, 10.0), tier: 1 },
     Bout { name: "THE HEXER'S GUARD", foes: &[K::Witch, K::Werewolf], target: (5.0, 10.0), tier: 1 },
@@ -127,6 +141,7 @@ pub const BOUTS: [Bout; 16] = [
     Bout { name: "THE OLD TALES", foes: &[K::Tepegoz, K::Gashadokuro, K::Ejder, K::Goryo], target: (30.0, 60.0), tier: 7 },
     Bout { name: "FIRE AND ICE", foes: &[K::FrostGiant, K::Surtr], target: (20.0, 40.0), tier: 9 },
     Bout { name: "RAGNARÖK", foes: &[K::FrostGiant, K::Surtr, K::Nidhogg, K::Hel], target: (30.0, 60.0), tier: 9 },
+    Bout { name: "THE PRINCE OF GREED", foes: &[K::Mammon], target: (45.0, 90.0), tier: 2 },
 ];
 
 /// The first of the third stage's bouts.
@@ -253,6 +268,13 @@ mod tests {
         }
         assert_eq!(next_stage_bout(0), STAGE_THREE_BOUT);
         assert_eq!(next_stage_bout(BOUTS.len() - 1), 0, "round to the lab again");
+        // The princes come last, each alone, a fourth archetype, with no more than a few tiers' kit.
+        let princes = bouts_of(PRINCES);
+        assert_eq!(princes.end, BOUTS.len());
+        for b in &BOUTS[princes] {
+            assert!(b.foes.len() == 1 && Breed::of(b.foes[0]).arch == crate::logic::combat::Archetype::Prince, "{}", b.name);
+            assert!(b.tier <= 2, "{}", b.name);
+        }
     }
 
     #[test]

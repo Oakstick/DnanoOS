@@ -124,7 +124,7 @@ const CHEST_H: f32 = 6.0;
 const CHEST_BACK: f32 = 3.5;
 
 /// A chest's lid as it stands `angle` open, on the chest at `m`.
-fn lid_matrix(m: Mat4, angle: f32) -> Mat4 {
+pub(super) fn lid_matrix(m: Mat4, angle: f32) -> Mat4 {
     m * Mat4::from_translation(Vec3::new(0.0, CHEST_H * CHEST_VOXEL, -CHEST_BACK * CHEST_VOXEL)) * Mat4::from_rotation_x(angle)
 }
 
@@ -146,7 +146,7 @@ fn marble(h: f64) -> Vec3 {
 // ------------------------------------------------------------------ meshes
 
 /// A little stack of gold coins.
-fn coin() -> Merged {
+pub(super) fn coin() -> Merged {
     let (g, gd, gl) = (GOLD | mat::GOLD, GOLD_D | mat::GOLD, GOLD_L | mat::GOLD);
     let mut s = Sculpt::new(7, 4, 7);
     for y in 0..4 {
@@ -175,7 +175,7 @@ fn coin() -> Merged {
 }
 
 /// A heap of gold coins.
-fn pile() -> Merged {
+pub(super) fn pile() -> Merged {
     let (g, gd, gl) = (GOLD | mat::GOLD, GOLD_D | mat::GOLD, GOLD_L | mat::GOLD);
     let mut s = Sculpt::new(11, 6, 11);
     s.ellipsoid((5.0, 0.3, 5.0), (5.4, 4.6, 4.8), 0, g);
@@ -195,7 +195,7 @@ fn pile() -> Merged {
 }
 
 /// A treasure chest facing +z: the body, and the lid (its origin on its back bottom edge, the hinge).
-fn chest() -> (Merged, Merged) {
+pub(super) fn chest() -> (Merged, Merged) {
     let (wood, wood_l) = (WOOD | mat::WOOD, WOOD_L | mat::WOOD);
     let (g, gd, gl) = (GOLD | mat::GOLD, GOLD_D | mat::GOLD, GOLD_L | mat::GOLD);
     let mut b = Sculpt::new(12, 6, 8);

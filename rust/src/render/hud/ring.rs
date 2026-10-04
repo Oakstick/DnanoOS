@@ -101,13 +101,16 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
     for e in &g.enemies {
         let Some(d) = e.duel.as_deref() else { continue };
         // In the vaults only those in the fight (or hurt) wear their bars.
-        if !d.alive() || (brawl.field == Field::Vault && !d.engaged() && d.hp >= d.max_hp) {
+        // (A prince in his court wears the boss bar at the top instead.)
+        let prince = d.arch == crate::logic::combat::Archetype::Prince && g.in_court();
+        if !d.alive() || prince || (brawl.field == Field::Vault && !d.engaged() && d.hp >= d.max_hp) {
             continue;
         }
         let top = crate::render::view::crown(d.breed.kind).map(|c| c + 0.3).unwrap_or(match d.arch {
             crate::logic::combat::Archetype::Brute => 1.55,
             crate::logic::combat::Archetype::Skirmisher => 1.2,
             crate::logic::combat::Archetype::Hexer => 1.85,
+            crate::logic::combat::Archetype::Prince => 3.4,
         });
         let p = Vec3::new(d.pos.x as f32, top, d.pos.y as f32);
         let Some((x, y)) = g.view.project(p, w, h) else { continue };

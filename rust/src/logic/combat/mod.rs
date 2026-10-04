@@ -2,7 +2,8 @@
 //! formulas (`math`), the one state machine the hero and every foe run (`fsm`), the threat
 //! manager that hands out attack tokens and places the waiting foes (`threat`), the three
 //! archetypes and the later stages' breeds on them (`archetype`), a foe's mind (`duelist`), what
-//! the legends do to the hero (`ails`), and the hero's gear as numbers (`kit`).
+//! the legends do to the hero (`ails`), the hero's gear as numbers (`kit`), and the fourth
+//! archetype, a sin's prince, with his phases, his hide, his grasp and his coins (`prince`).
 //!
 //! Pure logic on a fixed 60 Hz frame. The simulation steps at 120 Hz; `FrameClock` turns its
 //! steps into whole frames, so every number here is in the frames of a fighting-game table.
@@ -14,6 +15,7 @@ pub mod frames;
 pub mod fsm;
 pub mod kit;
 pub mod math;
+pub mod prince;
 pub mod threat;
 
 pub use archetype::{Archetype, Attack, Breed};

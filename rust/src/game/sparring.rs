@@ -97,7 +97,8 @@ impl Game {
             let mut e = Enemy::new(&spec, P::new(at.x.round() as i32, at.y.round() as i32), self.level.data.enemy_speed);
             e.b.mode = EnemyMode::Chase;
             // (The lab's foes go by their archetypes, a stage's by their own names.)
-            e.b.name = if breed.arch.kind() == kind { breed.arch.name().to_string() } else { spec.name.to_uppercase() };
+            let lab = breed.arch.kind() == kind && breed.arch != crate::logic::combat::Archetype::Prince;
+            e.b.name = if lab { breed.arch.name().to_string() } else { spec.name.to_uppercase() };
             e.duel = Some(Box::new(Duelist::bred(b.next_id(), breed, at, V::new(1.0, 0.0))));
             fresh.push(e);
         }
