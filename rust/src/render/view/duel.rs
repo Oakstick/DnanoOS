@@ -104,6 +104,7 @@ impl WorldView {
         }
         self.animate_enemy(i, e, dt, time);
         self.pose_duel(i, d, time);
+        self.overshoot_duel(i, d);
         let v = &mut self.enemy_views[i];
         v.visible = d.alive() && d.lore.vanish == 0;
         let glow = lin(tell_of(d));

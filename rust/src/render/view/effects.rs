@@ -1,14 +1,15 @@
-//! Effects: sparks, dust and sparkles, bomb blasts and the debris of broken walls, the lights
-//! they cast, and the screen shake.
+//! Effects: sparks, dust and sparkles, bomb blasts and the debris of broken walls (and of broken
+//! bodies: see `juice`), the lights they cast, and the screen shake.
 
 use super::*;
 
 const BLAST_SECONDS: f32 = 0.45;
 
 const DEBRIS_SECONDS: f32 = 1.4;
-/// The most flying chunks at once (RP04): a chain of blasts in a 30-foe fight retires the oldest
-/// first rather than piling up.
-pub const MAX_DEBRIS: usize = 160;
+/// The most flying chunks at once (RP04; WARBAND.md §4.4): a chain of blasts or a pack shattered
+/// in a 30-foe fight retires the oldest first rather than piling up. They are drawn as one
+/// instanced batch of cubes.
+pub const MAX_DEBRIS: usize = 480;
 
 pub(super) const GRAVITY: f32 = 14.0;
 
@@ -33,6 +34,7 @@ pub(super) struct Particle {
     pub(super) glow: bool,
 }
 
+/// A flying chunk: of a wall or a bomb's crater, a chip off a body, or a piece of a shattered one.
 pub(super) struct Debris {
     pub(super) pos: Vec3,
     pub(super) vel: Vec3,
@@ -41,6 +43,70 @@ pub(super) struct Debris {
     pub(super) life: f32,
     pub(super) floor_y: f32,
     pub(super) color: Vec3,
+    /// Its size along each axis.
+    pub(super) size: Vec3,
+    /// Its matter's way of flying (`logic::juice::Grain`): a share of gravity, drag per second, the
+    /// bounce kept, the slide the floor takes, and how much it glows.
+    pub(super) gravity: f32,
+    pub(super) drag: f32,
+    pub(super) bounce: f32,
+    pub(super) friction: f32,
+    pub(super) glow: f32,
+    /// The last seconds of its life, in which it sinks into the floor and shrinks away (0: gone at once).
+    pub(super) fade: f32,
+}
+
+impl Debris {
+    /// A chunk of a wall or a crater, as they have always flown.
+    fn rubble(pos: Vec3, vel: Vec3, spin: Vec3, life: f32, floor_y: f32, color: Vec3) -> Self {
+        Self {
+            pos,
+            vel,
+            rot: Vec3::ZERO,
+            spin,
+            life,
+            floor_y,
+            color,
+            size: Vec3::splat(0.16),
+            gravity: 1.0,
+            drag: 0.0,
+            bounce: 0.35,
+            friction: 0.6,
+            glow: 0.0,
+            fade: 0.0,
+        }
+    }
+
+    /// A piece of `grain`'s matter, `size` across (stretched to its shape).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn of(
+        pos: Vec3,
+        vel: Vec3,
+        spin: Vec3,
+        life: f32,
+        floor_y: f32,
+        color: Vec3,
+        size: f32,
+        grain: &crate::logic::juice::Grain,
+        fade: f32,
+    ) -> Self {
+        Self {
+            pos,
+            vel,
+            rot: Vec3::ZERO,
+            spin,
+            life,
+            floor_y,
+            color,
+            size: Vec3::from(grain.shape) * size,
+            gravity: grain.gravity,
+            drag: grain.drag,
+            bounce: grain.bounce,
+            friction: grain.friction,
+            glow: grain.glow,
+            fade,
+        }
+    }
 }
 
 pub(super) struct Blast {
@@ -120,12 +186,10 @@ impl WorldView {
             let spin = Vec3::new(r.nextf() * 8.0, r.nextf() * 8.0, r.nextf() * 8.0);
             let life = DEBRIS_SECONDS * (0.7 + r.nextf() * 0.5);
             if self.debris.len() >= MAX_DEBRIS {
-                // The one nearest its end goes (the list is kept in no order; this is rare).
-                if let Some(i) = self.debris.iter().enumerate().min_by(|a, b| a.1.life.total_cmp(&b.1.life)).map(|(i, _)| i) {
-                    self.debris.swap_remove(i);
-                }
+                // The oldest goes (the list is kept in the order they were made).
+                self.debris.remove(0);
             }
-            self.debris.push(Debris { pos, vel, rot: Vec3::ZERO, spin, life, floor_y: h + 0.08, color });
+            self.debris.push(Debris::rubble(pos, vel, spin, life, h + 0.08, color));
         }
     }
 
@@ -134,7 +198,8 @@ impl WorldView {
         self.trauma = (self.trauma - TRAUMA_DECAY * dt).max(0.0);
         self.shake_clock += dt;
         let t = self.shake_clock;
-        let s = self.trauma * self.trauma * SHAKE_DISTANCE;
+        // (The player's "screen shake" setting applies after every source is summed.)
+        let s = self.trauma * self.trauma * SHAKE_DISTANCE * self.juice.shake_scale;
         self.shake_offset = Vec3::new(
             (t * 47.0).sin() * 0.6 + (t * 83.0).sin() * 0.4,
             ((t * 59.0).sin() * 0.6 + (t * 97.0).cos() * 0.4) * 0.7,
@@ -223,20 +288,31 @@ impl WorldView {
             }
             true
         });
+        // Debris slows with the game's time scale (a kill in slow motion breaks slowly); a
+        // freeze-frame does not hold it, as it holds no effect.
+        let ddt = dt * self.juice.slow;
         self.debris.retain_mut(|d| {
-            d.life -= dt;
+            d.life -= ddt;
             if d.life <= 0.0 {
                 return false;
             }
-            d.vel.y -= GRAVITY * dt;
-            d.pos += d.vel * dt;
+            d.vel.y -= GRAVITY * d.gravity * ddt;
+            if d.drag > 0.0 {
+                d.vel *= (1.0 - d.drag * ddt).max(0.0);
+            }
+            d.pos += d.vel * ddt;
             if d.pos.y < d.floor_y {
                 d.pos.y = d.floor_y;
-                d.vel.y *= -0.35;
-                d.vel.x *= 0.6;
-                d.vel.z *= 0.6;
+                d.vel.y *= -d.bounce;
+                d.vel.x *= d.friction;
+                d.vel.z *= d.friction;
+                if d.fade > 0.0 && d.vel.length_squared() < 0.04 {
+                    // At rest: it lies still until it sinks away.
+                    d.vel = Vec3::ZERO;
+                    d.spin = Vec3::ZERO;
+                }
             }
-            d.rot += d.spin * dt;
+            d.rot += d.spin * ddt;
             true
         });
         let lights = &mut self.effect_lights;

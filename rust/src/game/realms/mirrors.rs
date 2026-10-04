@@ -1191,7 +1191,8 @@ mod tests {
         assert!(g.gate_open, "the court's portal opens");
         assert!(mirrors(&g).won && mirrors(&g).fall.is_some_and(|f| f.win));
         assert!(g.hero.altitude < 0.0, "falling");
-        run(&mut g, FALL_SECONDS);
+        // (The last foe's fall slows time for a beat: the fall takes that much longer.)
+        run(&mut g, FALL_SECONDS + 0.6);
         let m = mirrors(&g);
         assert_eq!(g.hero.occupied(), m.base.exit.front(), "at the foot of the spire, before the court");
         assert_eq!(m.gallery, 0);

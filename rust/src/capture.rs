@@ -32,6 +32,11 @@
 //! `--lod-bias B` drops rigs' detail sooner (B > 1) or never (0), and `--lod-debug` tints each
 //! level of detail (whole, half green, quarter red); `--light-heat` tints each pixel by how many
 //! lights its cluster holds (blue none, green some, red 16 or more).
+//! `juice:K` fires juice event K on the ring's nearest foe (WARBAND.md §4; 0 kick, 1 FOV punch,
+//! 2-13 chips of each matter, 14 shatter, 15 shatter in slow motion, 16 sparks off the shield,
+//! 17 a flinch, 18 the shield jolted: `game::juice::JUICE_EVENTS`), e.g.
+//! `--script "0.1:ring:1,0.6:juice:14" --time 0.75`. `--fx-off juice` (or `dilation`, `hitstop`,
+//! `shake`, `debris`, `springs`) switches the juice off. Captures never write the settings.
 
 use crate::app::STEP;
 use crate::audio::synth::Synth;
@@ -118,6 +123,8 @@ pub(crate) enum Cmd {
     Look(f64, f64),
     /// The chase camera held at a heading (degrees) and pitch (radians), as `--camera-check` reports poses.
     Aim(f32, f32),
+    /// Juice event K (`game::juice::JUICE_EVENTS`) on the ring's nearest foe.
+    Juice(usize),
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -188,6 +195,7 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "potion" => Cmd::Potion(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "hurt" => Cmd::Hurt,
+            "juice" => Cmd::Juice(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "aim" => {
                 let yaw: f32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 let pitch = parts.next().and_then(|v| v.parse().ok()).unwrap_or(crate::render::view::REST_PITCH);
@@ -232,6 +240,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             game.view.cam_pitch = pitch;
             game.view.mouse_look = true;
         }
+        Cmd::Juice(k) => game.debug_juice(k),
         Cmd::Nugget => game.debug_collect_key(),
         Cmd::Hurt => game.debug_hurt(),
         Cmd::Wound(n) => game.debug_wound_boss(n),
@@ -346,6 +355,7 @@ pub fn run(args: &[String]) -> i32 {
     game.await_renderer = args.iter().any(|a| a == "--await-renderer");
     game.viewport = (w as f32, h as f32);
     game.tour_pending = false;
+    game.set_juice_off(gpu.fx_off);
     let mut next = 0;
     let mut t = 0.0;
     let mut bot: Option<crate::game::bot::Bot> = None;

@@ -304,8 +304,12 @@ impl WorldView {
         let k = KEYS.iter().rposition(|k| k.0 <= p).unwrap_or(0).min(KEYS.len() - 2);
         let (a, b) = (KEYS[k], KEYS[k + 1]);
         let u = ((p - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
-        // The strike snaps (ease-out cubic); wind-up and recovery ease in and out.
-        let e = if k == 1 { 1.0 - (1.0 - u).powi(3) } else { u * u * (3.0 - 2.0 * u) };
+        // The strike snaps (ease-out cubic); wind-up and recovery ease in and out. The blade
+        // follows through past the strike's end pose before it comes back (WARBAND.md §4.5).
+        let mut e = if k == 1 { 1.0 - (1.0 - u).powi(3) } else { u * u * (3.0 - 2.0 * u) };
+        if k == 2 && self.juice.off & crate::render::profile::fx::SPRINGS == 0 {
+            e -= crate::logic::juice::BLADE_OVERSHOOT * (PI * (u / 0.4).min(1.0)).sin();
+        }
         let mix = |x: f32, y: f32| x + (y - x) * e;
         let side = self.slash_side;
         let rig = &self.models.hero;

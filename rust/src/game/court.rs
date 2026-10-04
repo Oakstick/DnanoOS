@@ -177,6 +177,7 @@ impl Game {
         self.audio.play(Sfx::BossRoar);
         self.audio.set_tempo_step(phase as u32 - 1);
         self.view.shake(0.45);
+        self.feel_phase();
         self.view.sparkle(&self.level.grid, pos.x, pos.y, 1.4, 0xf2c53d, 40);
         let sub = match phase {
             2 => "HE RAISES HIS GOLD AGAINST YOU   STRIKE HIM TO BREAK HIS GRASP",

@@ -25,11 +25,15 @@ mod controls;
 mod court;
 mod debug;
 mod feedback;
+mod feel;
 mod flow;
 mod foes;
 mod gate;
 mod health;
 mod hub;
+mod juice;
+#[cfg(test)]
+mod juice_tests;
 mod level;
 mod map;
 mod movement;
@@ -56,6 +60,7 @@ pub use court::PrinceBar;
 pub use feedback::{
     streak_tier, Banner, Floater, FlyingCoin, Juice, BRUTAL_STREAK, COIN_FLIGHT_SECONDS, DOUBLE_POINTS_SECONDS, STREAK_CALLS,
 };
+pub use juice::{Feel, JUICE_EVENTS, SHAKE_STEPS};
 pub use level::center_spawn;
 pub use map::map_stops;
 pub use realms::{Meter, Offer};
@@ -167,6 +172,10 @@ pub enum MenuItem {
     /// the one in use, which choosing switches).
     ViewTop,
     ViewFollow,
+    /// The feel's settings in the pause menu (WARBAND.md §4): slow motion on kills (on or off),
+    /// and the screen's shake (percent); choosing either steps it.
+    SlowMotion(bool),
+    Shake(u8),
 }
 
 impl MenuItem {
@@ -187,6 +196,14 @@ impl MenuItem {
             MenuItem::Choice(words) => words,
             MenuItem::ViewTop => "VIEW: TOP-DOWN",
             MenuItem::ViewFollow => "VIEW: FOLLOW",
+            MenuItem::SlowMotion(true) => "SLOW MOTION: ON",
+            MenuItem::SlowMotion(false) => "SLOW MOTION: OFF",
+            MenuItem::Shake(100) => "SCREEN SHAKE: 100%",
+            MenuItem::Shake(75) => "SCREEN SHAKE: 75%",
+            MenuItem::Shake(50) => "SCREEN SHAKE: 50%",
+            MenuItem::Shake(25) => "SCREEN SHAKE: 25%",
+            MenuItem::Shake(0) => "SCREEN SHAKE: OFF",
+            MenuItem::Shake(_) => "SCREEN SHAKE",
         }
     }
 }
@@ -300,6 +317,11 @@ pub struct Game {
     pub war: war::War,
     /// Seconds of freeze-frame left.
     hitstop: f64,
+    /// The freezes' budget, the slowing of time and the pace (`juice`); the feel's settings; and
+    /// the juice switched off (`render::profile::fx` bits: the harnesses run without it).
+    tempo: juice::Tempo,
+    pub feel: juice::Feel,
+    pub juice_off: u32,
     kill_streak: u32,
     /// The last streak call shouted, so the next is another.
     last_call: &'static str,
@@ -468,6 +490,9 @@ impl Game {
             viewport: (1280.0, 720.0),
             juice: Juice::default(),
             hitstop: 0.0,
+            tempo: juice::Tempo::default(),
+            feel: juice::Feel::load(),
+            juice_off: 0,
             kill_streak: 0,
             last_call: "",
             streak_timer: 0.0,

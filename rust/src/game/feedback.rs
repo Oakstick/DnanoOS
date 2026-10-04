@@ -128,7 +128,7 @@ impl Game {
         self.double_points = DOUBLE_POINTS_SECONDS;
         // The longer the streak, the harder the jolt and the longer the world holds.
         self.view.shake(0.85 + 0.1 * tier as f32);
-        self.hitstop = 0.14 + 0.02 * tier as f64;
+        self.freeze_frames((0.14 + 0.02 * tier as f64) * crate::logic::juice::FPS);
         self.juice.brutal = 1.0;
         self.audio.play_brutal(tier as u32);
         self.juice.banner = Some(Banner {

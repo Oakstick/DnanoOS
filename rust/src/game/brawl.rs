@@ -19,6 +19,7 @@
 //! coins lie on the floor and burst (`Trap`), and his grasp is the one thing that holds the hero:
 //! his feet, not his hands, until a blow on the prince breaks it.
 
+use super::feel::Met;
 use super::Game;
 use crate::audio::Sfx;
 use crate::logic::combat::ails::{Ails, Flash, FlashKind, Hazard, Wound, DOOM_FRAMES, FIRE_FRAMES, FIRE_RADIUS, FROST_FRAMES, SHOVE_SPEED};
@@ -33,16 +34,13 @@ use crate::logic::combat::threat::{assign_slots, Request, Waiter, REVOKE_REST, S
 use crate::logic::combat::{math, secs, Breed, Duelist, Event, Fighter, FrameClock, Input, MoveId, Phase, Reel, ThreatManager};
 use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::gym;
+use crate::logic::juice::Stop;
 use crate::logic::types::{P, V};
 use crate::logic::vault::{LEASH, WAKE_RANGE};
 use crate::logic::war::WarEvent;
 
 /// Frames between re-dealing the waiting foes' sectors.
 const SLOT_EVERY: u32 = 12;
-/// Freeze frames for a broken poise, a parry and a kill.
-const HITSTOP_BREAK: u16 = 8;
-const HITSTOP_PARRY: u16 = 8;
-const HITSTOP_KILL: u16 = 6;
 /// The slowest and fastest a time-locked bolt flies, as shares of its speed.
 const BOLT_PACE: (f64, f64) = (0.5, 1.6);
 /// How far off his facing (radians) the soft lock turns his swing onto a foe.
@@ -576,7 +574,6 @@ impl Game {
         }
         let id = du.id;
         let kind = du.breed.kind;
-        let mut stop = hitstop;
         let (text, color) = match r.effect {
             _ if share == 0.0 => ("STRIKE FROM BEHIND".to_string(), 0xf0b0d0),
             _ if share < 1.0 => (format!("WARDED {}", r.damage), 0x8a929e),
@@ -607,10 +604,8 @@ impl Game {
         } else {
             match r.effect {
                 Effect::Broken => {
-                    stop = stop.max(HITSTOP_BREAK);
                     self.audio.play(Sfx::Clang);
                     self.view.sparkle(&self.level.grid, p.x, p.y, 0.9, 0xffd040, 26);
-                    self.view.shake(0.25);
                 }
                 Effect::Armored => {
                     self.audio.play(Sfx::Clang);
@@ -619,10 +614,10 @@ impl Game {
                 _ => {
                     self.audio.play(Sfx::ArrowHit);
                     self.view.spark(&self.level.grid, p.x, p.y, 0xffb0b0);
-                    self.view.shake(0.08);
                 }
             }
         }
+        self.feel_hero_hit(i, kind, r.effect, finisher, dir, p, hitstop);
         if plea {
             self.floater(p.x, p.y - 1.6, "BİR DAHA VUR!", 2.0, Some(0xffd040));
             self.floater(p.x, p.y - 1.1, "\"STRIKE AGAIN!\" IT BEGS", 2.0, Some(0xffe8b0));
@@ -649,10 +644,9 @@ impl Game {
                     }
                 }
             }
-            stop = stop.max(HITSTOP_KILL);
-            self.slay(i);
+            let last = self.slay(i);
+            self.freeze(if last { Stop::LastOfPack } else { Stop::Kill });
         }
-        self.hitstop = self.hitstop.max(secs(stop));
     }
 
     /**
@@ -660,8 +654,8 @@ impl Game {
      * chance of a potion), and those who stood by its power fall with it: a kitsune's illusions
      * thin into smoke, the dead Hel raised sink back.
      */
-    fn slay(&mut self, i: usize) {
-        let Some(du) = self.enemies[i].duel.as_mut() else { return };
+    fn slay(&mut self, i: usize) -> bool {
+        let Some(du) = self.enemies[i].duel.as_mut() else { return false };
         if du.alive() {
             du.f.kill();
         }
@@ -684,7 +678,7 @@ impl Game {
             }
         }
         let color = self.enemies[i].b.color;
-        self.enemies[i].b.mode = EnemyMode::Eaten;
+        let mut last = false;
         if !illusion {
             let (kind, den) = self.enemies[i].duel.as_ref().map(|d| (d.breed.kind, d.den)).unwrap_or((EnemyKind::Skeleton, None));
             let same = |o: &Duelist| match (den, o.den) {
@@ -695,10 +689,12 @@ impl Game {
             let last_of_pack = !self.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|o| o.id != id && o.counts() && same(o));
             let dir = math::norm(math::sub(p, self.hero.pos()));
             self.war_note(WarEvent::Slain { foe: id, kind, at: p, dir, last_of_pack });
+            self.feel_slain(i, dir, last_of_pack);
+            last = last_of_pack;
         }
+        self.enemies[i].b.mode = EnemyMode::Eaten;
         self.view.dust(&self.level.grid, p.x, p.y, color, 18, 2.6);
         self.view.sparkle(&self.level.grid, p.x, p.y, 0.6, 0xfff1c0, 12);
-        self.view.shake(0.18);
         if prince && self.in_court() {
             // A prince in his court: his key, and everything a boss's fall brings (`court`).
             self.prince_slain(p);
@@ -749,6 +745,7 @@ impl Game {
             self.flash(Flash::new(FlashKind::Smoke, fp));
             self.view.dust(&self.level.grid, fp.x, fp.y, 0xc8c0b0, 12, 1.6);
         }
+        last
     }
 
     /// He is carried `step` tiles by a legend (a shove); in the ring, no farther than its edge
@@ -1324,7 +1321,7 @@ impl Game {
                 }
                 self.flash(f);
                 self.audio.play(Sfx::BossSlam);
-                self.view.shake(0.35);
+                self.feel_quake(math::add(pos, math::scale(aim, d.reach * 0.7)));
                 self.view.dust(&self.level.grid, pos.x + aim.x * d.reach * 0.7, pos.y + aim.y * d.reach * 0.7, 0x8a7a64, 26, 3.0);
             }
             MoveId::Talons => {
@@ -1334,7 +1331,7 @@ impl Game {
             MoveId::Burrow => {
                 self.flash(Flash::new(FlashKind::Erupt, mark));
                 self.audio.play(Sfx::BossSlam);
-                self.view.shake(0.3);
+                self.feel_quake(mark);
                 self.view.dust(&self.level.grid, mark.x, mark.y, 0x5a4a30, 30, 3.2);
             }
             MoveId::FrostSlam => {
@@ -1344,7 +1341,7 @@ impl Game {
                 f.length = d.reach;
                 self.flash(f);
                 self.audio.play(Sfx::BossSlam);
-                self.view.shake(0.25);
+                self.feel_quake(pos);
             }
             _ => {}
         }
@@ -1487,7 +1484,6 @@ impl Game {
                 b.stats.parries += 1;
                 // The aegis (the tenth shield) gives him back a little with every parry.
                 self.hero.hp = (self.hero.hp + kit.guard.aegis as i32).min(self.hero.max_hp);
-                self.hitstop = self.hitstop.max(secs(HITSTOP_PARRY));
                 self.audio.play(Sfx::Clang);
                 self.view.sparkle(&self.level.grid, (hp.x + blow.from.x) / 2.0, (hp.y + blow.from.y) / 2.0, 0.9, 0xffe070, 30);
                 self.floater(hp.x, hp.y - 0.9, "PARRY!", 0.9, Some(0xffd040));
@@ -1507,7 +1503,6 @@ impl Game {
                 self.hero.drain(self.hero.stamina);
                 self.audio.play(Sfx::ShieldBreak);
                 self.floater(hp.x, hp.y - 0.9, "GUARD BROKEN", 1.0, Some(0xff7a3a));
-                self.view.shake(0.3);
             }
             Defense::Open => {
                 if swinging {
@@ -1515,9 +1510,7 @@ impl Game {
                 }
                 let r = b.hero.take_hit(&Hit { damage, hitstun: math::hero_hitstun(damage), ..Default::default() });
                 loss = (r.damage * kit.taken).round();
-                self.hitstop = self.hitstop.max(secs(blow.hitstop));
                 self.audio.play(Sfx::Hurt);
-                self.view.shake(0.22);
             }
         }
         let doom = if loss > 0.0 { self.brawl.as_mut().map(|b| b.ails.spend_doom()).unwrap_or(1.0) } else { 1.0 };
@@ -1544,6 +1537,17 @@ impl Game {
             }
         }
         let dir = math::norm(math::sub(hp, blow.from));
+        let met = match def {
+            Defense::Immune => None,
+            Defense::Evaded => Some(Met::Evaded),
+            Defense::Parried => Some(Met::Parried),
+            Defense::Blocked => Some(Met::Blocked),
+            Defense::GuardBroken => Some(Met::GuardBroken),
+            Defense::Open => Some(Met::Struck),
+        };
+        if let Some(met) = met {
+            self.feel_struck(met, blow.by, dir, loss, blow.hitstop);
+        }
         self.war_note(WarEvent::Landed { foe: blow.by, kind, how: def, dmg: loss, dir, lands: blow.lands, bolt: blow.bolt });
         if tracing() {
             let who =

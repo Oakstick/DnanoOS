@@ -261,6 +261,7 @@ struct Run {
 
 fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_bias: f32) -> Run {
     let mut game = new_game(w, h, lod_bias);
+    game.set_juice_off(gpu.fx_off);
     let setup = parse_script(scene.setup);
     let (mut next, mut t) = (0, 0.0);
     play(&mut game, &setup, &mut next, &mut t, scene.settle);

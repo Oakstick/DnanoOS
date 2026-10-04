@@ -290,7 +290,7 @@ impl Game {
         self.juice.coins.clear();
         self.juice.banner = None;
         self.juice.hp_trail = self.hero.hp as f32;
-        self.hitstop = 0.0;
+        self.reset_tempo();
         self.kill_streak = 0;
         self.double_points = 0.0;
         self.was_airborne = false;
