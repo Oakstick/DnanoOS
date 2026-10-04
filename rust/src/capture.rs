@@ -14,6 +14,8 @@
 //! `goo` (a slime trail around Ragnar) and `gate` (the F2 cheat: every key, at the gate),
 //! `foes:N[:S]` (N rows of one of each foe before him, of stage S if given, best in the Cyclops' open meadow),
 //! `dungeon:N` (straight into dungeon N, 0 being the first), `map` (the map page), `hub`, `realm:N` and `court:N`
+//! `ledger` (the Ledger board, six made-up rivals on it) and `rival:N` (the nearest foe a rival of
+//! rank N, his name card up),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
 //! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam)
 //! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
@@ -116,6 +118,10 @@ pub(crate) enum Cmd {
     /// Scene I at a beat, seconds into it.
     Beat(usize, f64),
     Look(f64, f64),
+    /// The Ledger board, filled with six made-up rivals (W5).
+    Ledger,
+    /// The nearest foe made a rival of rank N, his name card up.
+    Rival(u8),
     /// The chase camera held at a heading (degrees) and pitch (radians), as `--camera-check` reports poses.
     Aim(f32, f32),
 }
@@ -188,6 +194,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "potion" => Cmd::Potion(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "hurt" => Cmd::Hurt,
+            "ledger" => Cmd::Ledger,
+            "rival" => Cmd::Rival(parts.next().and_then(|v| v.parse().ok()).unwrap_or(3)),
             "aim" => {
                 let yaw: f32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 let pitch = parts.next().and_then(|v| v.parse().ok()).unwrap_or(crate::render::view::REST_PITCH);
@@ -234,6 +242,8 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         }
         Cmd::Nugget => game.debug_collect_key(),
         Cmd::Hurt => game.debug_hurt(),
+        Cmd::Ledger => game.debug_ledger(),
+        Cmd::Rival(n) => game.debug_rival(n),
         Cmd::Wound(n) => game.debug_wound_boss(n),
         Cmd::Daze => game.debug_daze_boss(),
         Cmd::At(x, y) => game.hero.place(P::new(x, y)),

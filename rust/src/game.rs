@@ -30,6 +30,7 @@ mod foes;
 mod gate;
 mod health;
 mod hub;
+pub mod ledger;
 mod level;
 mod map;
 mod movement;
@@ -150,6 +151,8 @@ pub enum MenuItem {
     Controls,
     /// The map: jump to any dungeon or Cyclops (for testing, for now).
     Map,
+    /// The Ledger of Grudges: the run's rivals, on their board.
+    Ledger,
     Resume,
     /// The gatekeeper's promise: call him, and his wares open wherever you are.
     CallOldMan,
@@ -177,6 +180,7 @@ impl MenuItem {
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Controls => "CONTROLLER",
             MenuItem::Map => "MAP",
+            MenuItem::Ledger => "THE LEDGER",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
@@ -297,6 +301,8 @@ pub struct Game {
     pub juice: Juice,
     /// The war log and what reads it (WARBAND.md).
     pub war: war::War,
+    /// The run's Warband as saved (the Ledger of Grudges), its name card and its board.
+    pub warband: ledger::Warband,
     /// Seconds of freeze-frame left.
     hitstop: f64,
     kill_streak: u32,
@@ -461,6 +467,7 @@ impl Game {
             nest_slots: Vec::new(),
             events: Vec::new(),
             war: war::War::default(),
+            warband: ledger::Warband::load(),
             want_fullscreen_toggle: false,
             menu_index: 0,
             quit_requested: false,

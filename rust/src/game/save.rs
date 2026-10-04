@@ -171,6 +171,8 @@ impl Game {
             platform::save(RUN_KEY, &run.as_ref().map(Run::encode).unwrap_or_default());
         }
         self.saved_run = run;
+        // The run's Warband (the Ledger of Grudges) is written with it.
+        self.save_warband();
     }
 
     /// Continue: straight back into the saved stage, skipping the story and the heroes.
@@ -265,6 +267,7 @@ impl Game {
         self.progress = Progress::default();
         self.save_progress();
         self.write_run(None);
+        self.wipe_warband();
         self.hero_kind = HeroKind::Ragnar;
         self.sins_cleared = 0;
         if !cfg!(test) {
