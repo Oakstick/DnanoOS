@@ -2039,13 +2039,18 @@ pub fn pit_ride(skill: Skill, seed: u32, loadout: Option<Loadout>, from: u8, lim
         }
         t += step;
         out.peak = out.peak.max(g.pit_standing());
+        if let Some(p) = g.pit.as_ref() {
+            out.levels = p.tallies.clone();
+            out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+        }
+        // The platform has come to rest at the bottom: Krampus's lair (his fight is `lair_fight`'s).
+        if g.in_lair() {
+            out.bottom = true;
+            break;
+        }
         match g.screen {
             super::Screen::GameOver => {
                 out.game_over = true;
-                break;
-            }
-            super::Screen::Won => {
-                out.bottom = true;
                 break;
             }
             super::Screen::Ready => g.enter(super::Screen::Playing),
@@ -2056,8 +2061,6 @@ pub fn pit_ride(skill: Skill, seed: u32, loadout: Option<Loadout>, from: u8, lim
     out.step_ms.0 = sum / n.max(1) as f64;
     out.step_ms.2 = crowd / crowded.max(1) as f64;
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
-    out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
-    out.levels = g.pit.as_ref().map(|p| p.tallies.clone()).unwrap_or_default();
     out
 }
 

@@ -2,7 +2,7 @@
 
 Enemy AI, rivals, generals, the old man's counsel, the princes' cheats, the workshop and the feel: `WARBAND.md` (built 2026-10-04). Combat: `COMBAT.md` has its own roadmap. Phases 1 to 4 are built: the Sparring Ring (frame data, the fighter state machine, the threat manager, three archetypes), the bot balance harness, the hero's kit as numbers, and the roll-out to the Vaults of Mammon, whose packs now fight by frame data. Each new realm builds its foes as breeds of the archetypes and its fight on the brawl (`game::brawl`).
 
-Status: phases 0, 1 and 2 are done (the engine groundwork, the hub with a polish round on its art, and the whole loop with stand-ins), and phase 3's realm, the Vaults of Mammon, is built (`logic/vault.rs`, `game/vault.rs`, `render/view/vault.rs`: a Diablo-style dungeon of rooms and corridors in gold and marble, packs that idle until he comes near, gold everywhere, and Mammon's toll at the far portal); the other six realms (phases 4 to 9) are built too, each to its design in `REALMS.md` (`logic/realms`, `game/realms`, `render/view/realms`: the Hall of Mirrors, the Serpent Grotto, the Burning Field, the Grey Mire, the Rotting Feast and the Garden of Thorns, each with its spatial lie, its trap and its prince's lie at the end). Greed's prince is built too: Mammon fights in his own court, **the Counting House** (`logic/court.rs`, `game/court.rs`, `render/view/court_greed.rs`: an octagonal hall of gold-veined dark marble, black-and-gold pillars, heaps of coins, counting tables, his throne under giant brass scales), by frame data as the fourth archetype, the Prince (`logic/combat/prince.rs`, COMBAT.md §13): the Banker's sceptre and coins that lie on the floor and burst, the Collector's two gold golems and a grasp that drains silver until he is struck, the Hoard's rain of coins and slam. He drops the Key of Greed, and the way on is as before. The other six princes fight as themselves too, each in his own court on the same archetype (`PRINCES.md`, built 2026-10-04): Lucifer on the Throne of the Morning Star (his beam, his mirror step and Reflections, the Fallen's stars; struck from behind he bleeds whole), Leviathan at the Drowned Bell (he dives, covets the archangel you last called, and coils the burning bell), Amon at the Anvil of Wrath (no hide, a rage that quickens him, charges that daze him on stone, lava rifts), Belphegor in the Hall of Stopped Clocks (asleep until struck, asleep again and mending while his nightmares fight), Beelzebub at the Banquet of Flies (he eats from his platters to heal unless struck mid-meal, scatters into flies) and Asmodeus in the Rose Bower (a blown kiss that takes the guard away, thorns, and Raphael's censers that strip his hide). Each drops his sin's key; the bots' expert beats each in 88-135 s and a masher none. Next: the House of the Devil (phase 10). Decisions 1 to 3 were settled on the proposals: a realm and its prince behind each portal, the hub straight after the Garden's Cyclops (the Cisterns and the Bone Vaults are off the road), and free order with difficulty following the keys held. Changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it; the bridges are three tiles wide rather than two, so they sit centred on the platforms; and the stand-in realms are fresh estate seeds rather than the retired layouts. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
+Status: phases 0, 1 and 2 are done (the engine groundwork, the hub with a polish round on its art, and the whole loop with stand-ins), and phase 3's realm, the Vaults of Mammon, is built (`logic/vault.rs`, `game/vault.rs`, `render/view/vault.rs`: a Diablo-style dungeon of rooms and corridors in gold and marble, packs that idle until he comes near, gold everywhere, and Mammon's toll at the far portal); the other six realms (phases 4 to 9) are built too, each to its design in `REALMS.md` (`logic/realms`, `game/realms`, `render/view/realms`: the Hall of Mirrors, the Serpent Grotto, the Burning Field, the Grey Mire, the Rotting Feast and the Garden of Thorns, each with its spatial lie, its trap and its prince's lie at the end). Greed's prince is built too: Mammon fights in his own court, **the Counting House** (`logic/court.rs`, `game/court.rs`, `render/view/court_greed.rs`: an octagonal hall of gold-veined dark marble, black-and-gold pillars, heaps of coins, counting tables, his throne under giant brass scales), by frame data as the fourth archetype, the Prince (`logic/combat/prince.rs`, COMBAT.md §13): the Banker's sceptre and coins that lie on the floor and burst, the Collector's two gold golems and a grasp that drains silver until he is struck, the Hoard's rain of coins and slam. He drops the Key of Greed, and the way on is as before. The other six princes fight as themselves too, each in his own court on the same archetype (`PRINCES.md`, built 2026-10-04): Lucifer on the Throne of the Morning Star (his beam, his mirror step and Reflections, the Fallen's stars; struck from behind he bleeds whole), Leviathan at the Drowned Bell (he dives, covets the archangel you last called, and coils the burning bell), Amon at the Anvil of Wrath (no hide, a rage that quickens him, charges that daze him on stone, lava rifts), Belphegor in the Hall of Stopped Clocks (asleep until struck, asleep again and mending while his nightmares fight), Beelzebub at the Banquet of Flies (he eats from his platters to heal unless struck mid-meal, scatters into flies) and Asmodeus in the Rose Bower (a blown kiss that takes the guard away, thorns, and Raphael's censers that strip his hide). Each drops his sin's key; the bots' expert beats each in 88-135 s and a masher none. Phase 10 is built too, redesigned by the user (`FINALE.md`, 2026-10-04): there is no Devil. Behind the House's door the hero rides a stone platform down **the Pit** (after the film *El hoyo*): seven levels, two minutes each, each holding many foes of one stage, and whatever stands on the platform at zero rides down with him. At the bottom Krampus waits with the stolen friend in a cage; slain after the longest fight in the game, he frees the boy, and **Scene II, the way up** carries the two of them up the shaft into white light to a choir, then the words ("There was never a devil... They were always within.") and the credits. Satan is cut from the game and the story. Decisions 1 to 3 were settled on the proposals: a realm and its prince behind each portal, the hub straight after the Garden's Cyclops (the Cisterns and the Bone Vaults are off the road), and free order with difficulty following the keys held. Changes from the plan: the estate's single gate stays as it was, with the hub's portals kept in their own list beside it; the bridges are three tiles wide rather than two, so they sit centred on the platforms; and the stand-in realms are fresh estate seeds rather than the retired layouts. The names, colours and bosses below are proposals; the open decisions are listed at the end. Sizes: M is roughly one working session, L several.
 
 ## The idea
 
@@ -10,7 +10,7 @@ The Cyclops of the Garden of Krampus drops the red diamond key, and its gate ope
 
 Each realm ends with a boss, the prince of that sin, who drops the sin's key. With all seven keys the seal breaks: causeways rise out of the lava to the volcano, and the last fight waits in the House of the Devil.
 
-With the hub and the House that makes nine new levels, and with Krampus and Satan nine new bosses: the "9 more levels and 9 more bosses" planned earlier.
+With the hub and the House that makes nine new levels, and with Krampus nine new bosses (Satan was planned too; the finale cut him: there is no Devil): the "9 more levels and 9 more bosses" planned earlier.
 
 ## The layout
 
@@ -48,7 +48,7 @@ Clockwise from the entrance, in the order of the terraces of Dante's Purgatory.
 | E | Gluttony | orange | a fanged maw swallowing a feast | Beelzebub | a rotting banquet hall of cauldrons and flies |
 | SE | Lust | rose | two serpents twined into a heart among thorned roses | Asmodeus | a crimson garden of roses and thorns |
 
-Wrath's prince is Amon rather than Satan, because Satan is the last boss.
+Wrath's prince is Amon (Binsfeld gave wrath to Satan; this game has no Devil).
 
 ## Phases
 
@@ -122,12 +122,12 @@ Proposed order: Greed first, because gold and treasure are easy to read and Mamm
 | Beelzebub (Gluttony) | fly swarms; eats crosses and bottles to heal; belly slam |
 | Asmodeus (Lust) | charm (your controls flip for a moment); thorned vines; illusions |
 
-### Phase 10: the House of the Devil (L)
+### Phase 10: the House of the Devil (L) — built, redesigned (`FINALE.md`)
 
-1. Krampus waits at the door: the one who took your friend.
-2. Satan fights in the heart of the volcano, in several phases.
+1. Inside the House there is no devil: the Pit, seven levels ridden down on a sinking platform, two minutes each.
+2. Krampus at the bottom, the stolen friend in his cage: the last fight.
 3. Your friend is set free.
-4. An ending cutscene (Scene II), then the credits.
+4. Scene II, the way up: the rise into white light, the words, the credits.
 
 ## Every phase
 
@@ -142,7 +142,7 @@ Proposed order: Greed first, because gold and treasure are easy to read and Mamm
 2. **Where the hub sits:** straight after the Garden's Cyclops, retiring the Cisterns and the Bone Vaults / after those two levels. If they retire, their layouts can stand in for realms in Phase 2.
 3. **Order:** free, with difficulty following the keys you hold / fixed, with harder portals marked on their doors.
 4. **The hub:** calm, with no enemies / demons patrol it, more with every key.
-5. **The end:** Krampus, then Satan / Satan alone.
+5. **The end:** settled by the user: Krampus alone, and no Devil (`FINALE.md`).
 6. **Details:** the sin order, colours and princes as in the table above.
 
 Phases 0 and 1 do not depend on these. Phase 2 needs decisions 1–3, and the realms need 4–6.
