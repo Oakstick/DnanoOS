@@ -784,3 +784,31 @@ fn the_foe_that_slays_him_becomes_a_rival_and_leads_a_pack_next_time() {
     let d = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id).unwrap();
     assert_eq!(d.breed.kind, rival.kind);
 }
+
+/// Crossfire (WARBAND.md §7.2): in a realm of the fourth tier two casters of a pack land their
+/// bolts on one frame from two sides, as one strike; the reaction window holds round the pair.
+#[test]
+fn two_casters_cross_their_fire_as_one_strike() {
+    use super::bot::{fresh_game, Bot, Loadout, Skill};
+    let mut g = fresh_game(4);
+    g.sins_cleared = 0b0111; // three keys held: the fourth tier
+    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    Loadout::all(crate::logic::heroes::HeroKind::Ragnar, 6).equip(&mut g);
+    g.enter(Screen::Playing);
+    let kit = g.hero_kit();
+    g.brawl.as_mut().unwrap().reset(kit);
+    g.hero.free_move = true;
+    let mut bot = Bot::new(Skill::Expert, 4);
+    for _ in 0..(300.0 / crate::app::STEP) as usize {
+        if g.screen != Screen::Playing {
+            g.enter(Screen::Playing);
+        }
+        g.hero.hp = g.hero.max_hp;
+        let pad = bot.act(&g);
+        g.input.set_pad(Some(pad));
+        g.update(crate::app::STEP);
+    }
+    assert!(g.war.tally.crossfires > 0, "they crossed their fire: {:?}", g.war.tally);
+    let s = g.brawl.as_ref().unwrap().stats;
+    assert_eq!(s.overlaps, 0, "{s:?}");
+}

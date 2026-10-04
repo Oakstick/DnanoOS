@@ -132,6 +132,10 @@ pub const RALLY_POISE: f64 = 0.3;
 pub const RALLY_RADIUS: f64 = 6.0;
 /// Frames before a pack may rally again.
 pub const RALLY_REST: u16 = 600;
+/// The realm's tier from which callers cross their fire.
+pub const CROSSFIRE_TIER: usize = 4;
+/// The least angle between two casters round him (radians) for their fire to cross.
+pub const CROSSFIRE_ANGLE: f64 = 1.05;
 /// The hero within this of a caller: a vanguard screens it.
 pub const SCREEN_NEAR: f64 = 3.5;
 
@@ -147,6 +151,9 @@ pub enum Play {
     Screen,
     /// The leader sounds its rally.
     Rally,
+    /// Two casters' bolts land on the same frame from two sides, as one strike (tier 4 and on):
+    /// one parry cannot meet both; a leap passes under them.
+    Crossfire,
 }
 
 impl Play {
@@ -156,6 +163,7 @@ impl Play {
             Play::Pincer => "PINCER",
             Play::Screen => "SCREEN",
             Play::Rally => "RALLY",
+            Play::Crossfire => "CROSSFIRE",
         }
     }
 }
@@ -230,6 +238,8 @@ pub struct Pack {
     pub broken: bool,
     /// Frames before its leader may rally again.
     pub rally_rest: u16,
+    /// The realm's tier (what its leader may play).
+    pub tier: usize,
     think: u16,
 }
 
@@ -273,6 +283,7 @@ pub fn compose(lo: V, hi: V, foes: &[(u32, EnemyKind, f64)], tier: usize, seed: 
         vengeance: 0,
         broken: false,
         rally_rest: 0,
+        tier,
         think: 0,
     }
 }
@@ -417,6 +428,9 @@ impl Pack {
         }
         if alive(Role::Vanguard) >= 1 && self.screened(seen, hero).is_some() {
             return Play::Screen;
+        }
+        if self.tier >= CROSSFIRE_TIER && alive(Role::Caller) >= 2 {
+            return Play::Crossfire;
         }
         if alive(Role::Harrier) >= 2 {
             return Play::Pincer;

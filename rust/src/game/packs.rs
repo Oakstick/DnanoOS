@@ -4,6 +4,7 @@
 
 use super::brawl::Field;
 use super::Game;
+use crate::logic::combat::frames::Shape;
 use crate::logic::combat::MoveId;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::types::{dist_sq, V};
@@ -207,7 +208,86 @@ impl Game {
                 self.audio.tell(kind, MoveId::Rally, at, listener);
             }
         }
+        self.crossfire();
         self.grudges_frame();
+    }
+
+    /**
+     * Crossfire (§7.2): in a pack whose leader plays it, a caster whose bolt is on its way is
+     * joined by another standing well apart round him, free, whose own bolt can be paced (as every
+     * bolt is, `BOLT_PACE`) to touch him on the very frame the first does. The two share a volley:
+     * whichever touches first lands, the other passes as part of it.
+     */
+    fn crossfire(&mut self) {
+        use crate::logic::combat::duelist::{BOLT_RADIUS_SUM, BOLT_SPEED_RANGE};
+        use crate::logic::combat::fsm::State;
+        use crate::logic::war::pack::{Play, CROSSFIRE_ANGLE};
+        let Some(now) = self.brawl.as_ref().map(|b| b.threat.frame) else { return };
+        self.war.cross.retain(|c| now.saturating_sub(c.3) < 240);
+        let hp = self.hero.pos();
+        let packs: Vec<Vec<u32>> = self
+            .war
+            .packs
+            .iter()
+            .filter(|p| p.play == Play::Crossfire)
+            .map(|p| p.members.iter().filter(|m| m.alive && m.role == Role::Caller).map(|m| m.id).collect())
+            .collect();
+        for callers in packs {
+            if self.war.cross.iter().any(|c| callers.contains(&c.0) || callers.contains(&c.1)) {
+                continue; // one crossfire a pack at a time
+            }
+            // The first: a single bolt in its startup, its landing planned.
+            let first = callers.iter().copied().find(|&id| {
+                let Some(d) = self.duel_at(id).and_then(|i| self.enemies[i].duel.as_deref()) else { return false };
+                matches!(d.f.state, State::Attack { mv, .. } if { let m = d.data(mv); m.projectile && !matches!(m.shape, Shape::Volley { .. }) })
+            });
+            let Some(a) = first else { continue };
+            let Some(land) = self.brawl.as_ref().and_then(|b| b.threat.landing(a)) else { continue };
+            let Some(apos) = self.duel_at(a).and_then(|i| self.enemies[i].duel.as_deref()).map(|d| d.pos) else { continue };
+            let bearing = |p: V| (p.y - hp.y).atan2(p.x - hp.x);
+            for &b in callers.iter().filter(|&&b| b != a) {
+                let Some(i) = self.duel_at(b) else { continue };
+                let Some(d) = self.enemies[i].duel.as_deref() else { continue };
+                let mv = d.breed.main_move();
+                let m = d.data(mv);
+                if !d.engaged() || !d.f.is_neutral() || d.token || d.rest > 0 || !m.projectile || matches!(m.shape, Shape::Volley { .. }) {
+                    continue;
+                }
+                let gap = crate::logic::war::pack::wrap(bearing(d.pos) - bearing(apos)).abs();
+                let dist = dist_sq(d.pos, hp).sqrt();
+                if gap < CROSSFIRE_ANGLE || dist < m.range.0 || dist > m.range.1 {
+                    continue;
+                }
+                // Can its bolt be paced to touch him on `land`?
+                let travel = (dist - BOLT_RADIUS_SUM).max(0.0);
+                let flight = land.saturating_sub(now + m.startup as u32) as f64 / 60.0;
+                let (slow, fast) = BOLT_SPEED_RANGE;
+                if flight <= 0.0 || travel / fast > flight || travel / slow < flight {
+                    continue;
+                }
+                let cost = d.stats().cost;
+                let joined = self.brawl.as_mut().is_some_and(|br| br.threat.join(b, cost, a));
+                if !joined {
+                    continue;
+                }
+                let Some(d) = self.enemies[i].duel.as_deref_mut() else { continue };
+                if !d.begin(mv, hp) {
+                    if let Some(br) = self.brawl.as_mut() {
+                        br.threat.release(b);
+                    }
+                    continue;
+                }
+                d.token = true;
+                let (kind, at) = (d.breed.kind, d.pos);
+                let volley = self.brawl.as_mut().map(|br| br.next_volley()).unwrap_or(0);
+                self.war.cross.push((a, b, volley, now));
+                self.war.tally.crossfires += 1;
+                self.war_note(WarEvent::Tell { foe: b, kind, mv, at });
+                let listener = self.audio.listener();
+                self.audio.tell(kind, mv, at, listener);
+                break;
+            }
+        }
     }
 
     /// A leader's rally sounds (its first active frame): its pack about it takes back a share of

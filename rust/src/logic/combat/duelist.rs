@@ -932,6 +932,12 @@ impl Duelist {
 /// Frames from beginning a move of data `d` at `dist` tiles from the hero until it reaches him:
 /// its startup; for a bolt (loosed half a tile ahead), the frames of flight until it touches him;
 /// for coins thrown on the floor, their flight and their fuse.
+/// What a bolt's flight leaves out of the distance between a caster and him (it leaves half a
+/// tile out, and touches at the sum of the radii), and the slowest and fastest it may be paced
+/// (tiles a second): the crossfire reckons whether two bolts can meet on one frame.
+pub const BOLT_RADIUS_SUM: f64 = 0.5 + BOLT_RADIUS + HERO_RADIUS;
+pub const BOLT_SPEED_RANGE: (f64, f64) = (BOLT_SPEED * 0.5, BOLT_SPEED * 1.6);
+
 pub fn lands_after(d: &MoveData, dist: f64) -> u16 {
     if let Shape::Traps { fuse, .. } = d.shape {
         return d.startup + super::prince::COIN_FLIGHT + fuse;

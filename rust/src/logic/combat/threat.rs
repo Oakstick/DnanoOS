@@ -175,6 +175,22 @@ impl ThreatManager {
         }
     }
 
+    /**
+     * `id` joins `with`'s committed strike (a crossfire, WARBAND.md §7.2): it takes a point of the
+     * pool and lands on the very frame `with`'s does, and the two count as one strike, so the
+     * reaction window holds round the pair as round one. Refused if `with` has no committed strike
+     * or the pool has no point left.
+     */
+    pub fn join(&mut self, id: u32, cost: u8, with: u32) -> bool {
+        let Some(at) = self.landing(with) else { return false };
+        if self.holds(id) || self.used() + cost > self.capacity {
+            return false;
+        }
+        let deadline = self.frame + TIMEOUT;
+        self.holds.push(Hold { id, cost, active_at: at, committed: true, deadline, spent: false });
+        true
+    }
+
     /// The holder gives its token back. A strike still on its way keeps its landing frame clear.
     pub fn release(&mut self, id: u32) {
         let frame = self.frame;

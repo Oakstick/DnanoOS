@@ -33,6 +33,8 @@ pub struct WarTally {
     /// Packs (or bouts) whose last foe fell.
     pub packs_cleared: u32,
     pub drinks: u32,
+    /// Crossfires begun.
+    pub crossfires: u32,
     /// Packs broken (fled or gone berserk), and rallies sounded.
     pub routs: u32,
     pub rallies: u32,
@@ -84,6 +86,8 @@ pub struct War {
     pub directives: Vec<(u32, Directive)>,
     /// The packs are made for this level (and since he last fell).
     pub composed: bool,
+    /// Crossfires under way: (first caster, second caster, their shared volley, frame made).
+    pub cross: Vec<(u32, u32, u32, u32)>,
     /// The Ledger's rivals in this level, and every foe's part in its fight (§8).
     pub grudges: super::rivals::Grudges,
 }
@@ -98,6 +102,7 @@ impl War {
         self.packs.clear();
         self.directives.clear();
         self.composed = false;
+        self.cross.clear();
         self.grudges = Default::default();
     }
 }

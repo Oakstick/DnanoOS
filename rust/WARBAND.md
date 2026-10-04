@@ -1127,3 +1127,14 @@ lesson's leap (both need the duelist's own frames), Fears (a family that stagger
 The harness's `fresh_game` clears the Ledger too: a crawl's rivals were saved and seated in the next
 crawl of the same `--crawl` run (an adept crawl stood at 59/61). `VH_CRAWL_RIVALS=N` seeds N rivals
 before a crawl. Test: `the_foe_that_slays_him_becomes_a_rival_and_leads_a_pack_next_time`.
+
+### W4 again: Crossfire
+
+From the fourth tier a pack with two casters plays Crossfire: when one caster's single bolt is on
+its way, another standing at least 60° round him from it, free, in its range, whose bolt can be
+paced (0.5× to 1.6× its speed, as every bolt is) to touch him on the very frame the first does,
+joins the first's strike (`ThreatManager::join`: a point of the pool, the same landing frame).
+The two bolts share a volley, so whichever touches first lands and the other passes as part of it:
+one strike, one parry turns only one, a leap passes under both. One crossfire a pack at a time.
+Test: `two_casters_cross_their_fire_as_one_strike` (five minutes of a tier-4 vault: crossfires,
+no overlaps).

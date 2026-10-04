@@ -203,6 +203,12 @@ impl Brawl {
         }
     }
 
+    /// A fresh volley number (bolts sharing one land as one strike).
+    pub fn next_volley(&mut self) -> u32 {
+        self.volleys += 1;
+        self.volleys
+    }
+
     /// A fresh id for a duelist.
     pub fn next_id(&mut self) -> u32 {
         self.next_id += 1;
@@ -952,11 +958,12 @@ impl Game {
                                 Shape::Volley { count, spread } => (count, spread),
                                 _ => (1, 0.0),
                             };
+                            let crossed = self.war.cross.iter().find(|c| c.0 == du.id || c.1 == du.id).map(|c| c.2);
                             let volley = if count > 1 {
                                 b.volleys += 1;
                                 b.volleys
                             } else {
-                                0
+                                crossed.unwrap_or(0)
                             };
                             let base = math::angle(du.aim);
                             for k in 0..count {
