@@ -7,9 +7,10 @@ hero (`logic/progression.rs`) and the old man's wares (`game/shop.rs`). Nothing 
 the combat core. Everything here sits **above** it, as a layer that decides *who* fights,
 *where*, *when* and *why*, and **around** it, as the feel, the sound and the voices.
 
-Status: approved 2026-10-04 ("I like the plan... Lets go"); building. §17's decisions were settled
-on the proposals the same day. W1 (feel), W2 (voices) and the workshop's set (W8 art)
-run in parallel worktrees while W0 is built on `rust-port`.
+Status: approved 2026-10-04 ("I like the plan... Lets go"), §17 settled on the proposals the same
+day, and W0 to W8 built and merged on `rust-port` that day (the build log at the end says what
+and how; several parts were built in parallel worktrees). Left: W9, the tuning pass, which wants a
+playthrough by hand (the bots cannot play the six later realms' own ground).
 
 ---
 

@@ -66,6 +66,8 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Cheat: straight to the old man's wares (with 1000 silver and 10 runes) | 0 | |
 | Sparring Ring: frame readout / next bout / next stage's bouts | F8 / F6 / F7 | |
 | God mode (testing): foes still strike, but health always comes back | F5 | |
+| Ragnar's War Cry (his mastery's fourth rank) | F | Left stick press (L3) |
+| Cheat: the nearest foe becomes a rival of the Ledger | F10 | |
 
 The controls page (CONTROLLER on the title or the pause menu) shows either the controller or the keyboard and mouse: left and right, LT and RT, Tab or a click on its tabs switch between them, and it opens on the controller when one is plugged in.
 
@@ -90,6 +92,33 @@ The controls page (CONTROLLER on the title or the pause menu) shows either the c
   - `--stage-three N` plays the third stage's bouts with every bot at kit tiers 1, 4 and 7 (COMBAT.md §10). `--stage S N` plays any later stage's at three tiers about its own (§11). `--bout K SKILL TIER SEED` plays one, and with `VH_TRACE=1` it prints every blow on the hero.
 
 Code: `src/logic/combat/` (the rules: `frames`, `math`, `fsm`, `threat`, `archetype` and its breeds, `duelist` with its terrain and dens, `kit`, `prince` the fourth archetype), `src/game/brawl.rs` (the fight in the ring and the vaults: hits both ways, bolts, dens, wear), `src/game/sparring.rs` (the bouts), `src/render/view/duel.rs` (poses, telegraphs, pips, bolts), `src/render/hud/ring.rs` (bars, banner, readout, results card), `src/game/bot.rs` (the scripted players and the balance harness); tests in `src/game/ring_tests.rs`.
+
+## The Warband: enemy AI, rivals, generals and the two voices
+
+`WARBAND.md` is the plan and its build log. Above the frame data and the threat manager:
+
+- **The Drum** paces each level through build, peak, release and rest; a release eases the threat
+  pool and raises the potion chance. F8 shows it beside the ring's readout. `--drum-trace` writes its curve.
+- **Packs**: each den is a pack with roles (vanguard, harrier, caller) and a leader (LEADER over its
+  bars, its affixes from tier 3), who plays pincer, screen, rotate, rally or (from tier 4) crossfire.
+  Morale breaks a pack by its temperament: the cowardly flee, the frenzied quicken, the stalwart stand.
+- **The Ledger of Grudges**: the foe that slays you (or breaks your guard thrice, or gets away low)
+  is named from its folklore and remembers; it leads a pack on your next visit, learns your most used
+  answer from its third rank, and leaves a trophy on the workshop's wall when you slay it. The board is
+  THE LEDGER on the pause menu. `--rivals RUNS SEED SKILL TIER` plays crawls in a row with one Ledger.
+- **Generals**: every realm has a named commander who runs it by orders (watch, muster, kindle,
+  decree) through instruments you can break, bar or turn; slaying him weakens his prince. `--general SIN SKILL TIER SEED`.
+- **The two voices**: the old man's counsel (amber, Quitmer's bark, always true) and the prince's
+  cheats (a whisper, a false gatekeeper with tainted wares, a crooked bargain, mimic chests, a turned
+  compass), each with a tell.
+- **The workshop**: the old man's six stations (anvil, shield wall, bench, yard, war table, trophy
+  wall), dressed for each hero; trials in the yard confirm each rank of the hero's mastery.
+- **Feel and sound**: hit pause within a budget, slow time on a pack's last kill and a rival's fall,
+  camera trauma, chips and voxel shatter, springs; every foe's own voice over its family's tell, panned;
+  the war drum. Settings on the pause menu: slow motion, screen shake.
+
+Switches for A/B runs: `VH_NO_DRUM`, `VH_NO_PACKS`, `VH_NO_GENERAL`, `VH_NO_DECEIT`; `--fx-off`
+for the juice. `--perf warband` measures a vault fight with every layer at work.
 
 ## The loadout
 
