@@ -281,7 +281,61 @@ why, and the court's results (the bots' table, as COMBAT.md §13.2).
 
 ### Lucifer
 
-(to come)
+Built 2026-10-04. **The court** (`logic/court/pride.rs`, art `render/view/court_pride.rs`): a
+round hall 29 tiles across (33-tile grid, floor within √204 of the middle), white marble veined
+with gold and polished, a morning star of gold inlaid at its heart in rings of gold and lapis, a
+lapis way from the gate to the steps. Six tall gilt mirrors stand on the floor's edge, three
+either side (`MIRRORS`); in the north the steps (`STEPS`, rock) rise to the empty throne, whose
+back is the seventh mirror, before a high apse with the star window; five shafts of light fall
+from it to the floor (`SHAFTS`). Nothing stands on the floor: his lance crosses it from wall to
+wall. Gate in the south wall, the hero four tiles inside it, Lucifer at the foot of his steps.
+
+**His fight** (`logic/combat/prince/pride.rs`, `game/court/pride.rs`), the Prince's numbers as
+Mammon's (900 / 150 / 40, arm +0.9; the Fallen ×1.35 pace and ×0.6 rest):
+
+| Move | Startup | Active | Recovery | Damage | Shape |
+|---|---|---|---|---|---|
+| Radiant Cut | 32 | 8 | 42 | 24 | cone 1.3 (+0.9), ±100° |
+| Lance of Dawn | 52 | 10 | 40 | 26 | beam 11.5 × 1.0 along his aim (locked at f22), from 2.5-9 tiles, cooldown 210 |
+| Mirror Step | 36 | 1 | 72 | — | spell: out of the mirror nearest the hero (marked to f30), from 4.5 tiles, cooldown 480 |
+| Starfall | 40 | 1 | 36 | 16 | five stars falling round the hero (one where he stands), 0.85 wide, bursting 17 + 44 f after |
+| Pride's Fall | 56 | 6 | 54 | 30 | a mark 1.4 wide following the hero to f36; he is aloft (untouchable) from f12 and lands on it; from 2-8 tiles |
+
+Phases: THE MORNING STAR (Lance of Dawn, Radiant Cut), THE MIRROR (Mirror Step, Lance, Cut; two
+Reflections step out of the two mirrors that stand about four tiles from the hero, once), THE FALLEN
+(Starfall, Pride's Fall, Cut; his white wings give way to the burnt six, smoking). **Vainglory**
+(`Duelist::taken_from`): his hide turns 70% outside his recoveries, except a blow from more than
+100° round from where he faces, which lands whole. **The Reflections**: his body as in a mirror
+(left-handed, silver, a silver halo), Brutes that cut with his Radiant Cut at half his damage
+(and his court's weight), one hit point: one blow shatters them; they shatter as he falls. The
+Chamberlain slain: none; his decree done: they stand at Lucifer's side as the fight begins (and
+not again at the Mirror). The bot (`Bot::lucifer_dodges`) steps across his lance's line once it
+has seen it, as it walks out of a mark; nothing else of its play changed.
+
+What changed from the design, and why:
+
+| Change | Why |
+|---|---|
+| The stars fall round the hero, not round Lucifer, five of them | as Mammon's rain: it is a blow from afar that the Fallen needs; five leave a gap to walk out through between the ring's stars |
+| No lingering starfire | a lingering trap's stings land outside the threat manager's plan, and two blows inside 18 frames came of it (overlaps) |
+| The Reflections are two thirds his size, and cast a shadow like his | an add is no taller than 2.2 tiles (the shared sculpt test), and every rig's shadow is drawn alike; the real one is told by his gold halo, his size and his blue tabard |
+| The seventh mirror is the throne's back | six round the wall and the throne-mirror of his Chamberlain's decree; the mirror step may come out at the throne's foot too |
+| Pride's Fall is a mark (no guard), with the floor shaking as he lands, not a quake | a quake is the shaking round a cone where he stands; his fall comes down where the hero was |
+
+Results (`--court pride SKILL TIER SEED`, seeds 1-3, Ragnar's kit at the tier; time and taken are
+the last life's):
+
+| Skill | Tier | Win | Time (s) | Deaths | Taken |
+|---|---|---|---|---|---|
+| novice | 1 | 0/3 | lost every life in 46.4 | 4 | 384 |
+| novice | 2 | 0/3 | lost every life in 49.9 | 4 | 487 |
+| adept | 1 | 0/3 | timed out (240), at the Mirror | 0-1 | 162 |
+| adept | 2 | 0/3 | timed out (240), at the Mirror | 0-1 | 119 |
+| expert | 1 | 3/3 | 105.9 (98.0-112.1) | 0 | 33 |
+| expert | 2 | 3/3 | 95.0 (88.6-102.6) | 0 | 7 |
+
+No two blows inside 18 frames in any of them. Pinned by
+`the_expert_beats_lucifer_in_his_court_and_a_masher_does_not` (game/court/pride.rs).
 
 ### Leviathan
 
