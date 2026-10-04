@@ -154,7 +154,9 @@ impl WorldView {
         let species = [super::super::props::pine(), super::super::props::oak(), super::super::props::birch()];
         let extents: Vec<(f32, f32)> = species.iter().map(tree_extent).collect();
         let (lantern, lantern_glass) = super::super::props::lantern();
-        let lantern_glow = lin(TORCH_LIGHT) * 0.8;
+        // The garden's lanterns burn the board's amber (the other forests their old green gold).
+        self.estate_art = self.garden.is_some();
+        let lantern_glow = if self.estate_art { lin(estate::pal::LANTERN) * 0.9 } else { lin(TORCH_LIGHT) * 0.8 };
         let mut trees: Vec<(P, Vec3, f32, f32, usize)> = Vec::new();
         let mut lanterns: Vec<(P, Dir)> = Vec::new();
         for (x, y, t) in grid.cells() {

@@ -173,7 +173,7 @@ impl WorldView {
             return;
         }
         f.atmosphere = if self.showcase {
-            Atmosphere::forest()
+            estate::garden_atmosphere()
         } else if self.vault.is_some() {
             vault::vault_atmosphere()
         } else if let Some(a) = self.run_atmosphere(s) {
@@ -184,6 +184,8 @@ impl WorldView {
             meadow_atmosphere()
         } else if self.crypt {
             crypt::crypt_atmosphere(self.cisterns)
+        } else if self.estate_art {
+            estate::garden_atmosphere()
         } else {
             Atmosphere::forest()
         };
@@ -713,7 +715,13 @@ impl WorldView {
         self.emit_gate_and_keys(s, time, hero_pos, f);
         self.emit_smoke(time, f);
         // (In the vaults the fireflies are embers adrift from the braziers.)
-        let mote_color = if self.crypt { lin(crypt::pal::EMBER) * 0.7 } else { lin(MOTE) };
+        let mote_color = if self.crypt {
+            lin(crypt::pal::EMBER) * 0.7
+        } else if self.estate_art {
+            lin(estate::pal::FIREFLY) * 0.75
+        } else {
+            lin(MOTE)
+        };
         for (i, b) in self.mote_base.iter().enumerate() {
             if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() {
                 break;
@@ -738,8 +746,14 @@ impl WorldView {
     /// remedies, shrines, and whatever effects are burning.
     fn emit_light_pools(&self, f: &mut Frame, time: f32, focus: Vec3, remedy_points: &[Vec3], shrine_points: &[(Vec3, Vec3)]) {
         let torch_points: Vec<Vec3> = self.torches.values().map(|(p, _)| *p).collect();
-        // The estate's lanterns burn a greenish gold; the vaults' braziers amber.
-        let torch = if self.crypt { lin(crypt::pal::EMBER) } else { lin(TORCH_LIGHT) };
+        // The vaults' braziers and the garden's lanterns burn amber; other forests a greenish gold.
+        let torch = if self.crypt {
+            lin(crypt::pal::EMBER)
+        } else if self.estate_art {
+            lin(estate::pal::LANTERN)
+        } else {
+            lin(TORCH_LIGHT)
+        };
         for (i, p) in nearest(&torch_points, focus, LIGHT_POOL_TORCHES).into_iter().enumerate() {
             let fi = i as f32;
             let intensity = 4.5 + (time * 3.0 + fi * 2.3).sin() * 0.5 + (time * 7.0 + fi).sin() * 0.3;

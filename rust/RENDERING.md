@@ -611,6 +611,18 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - Columns and arches are more frequent; banners and bones are rare.
   - The light is cooler, with more of it from above.
   - The layout and gameplay are unchanged.
+- **Dungeon I, the Garden of Krampus** (`view/estate.rs`): the garden keeps its own scenery
+  (hedges, woods, fountain, channels, churchyard, temples). A grade pulls everything built into
+  the board:
+  - greens go to moss and olive;
+  - chalk paving comes down to pale stone, with the dressed-stone material;
+  - loud blossoms are quieter.
+  - Its lanterns and fireflies burn amber, and the night is mist teal under the moon.
+- **The title screen and menus:**
+  - The stage is a dais of dressed stone with a copper band, and copper braziers on legs.
+  - The trees take the garden's grade; the soul halos are gentler; the fireflies are amber and
+    kept away from the camera.
+  - The menu panels are charcoal with pale-stone edges and a copper rule; the gold is amber.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 

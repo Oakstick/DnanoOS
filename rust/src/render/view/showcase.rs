@@ -20,18 +20,24 @@ impl WorldView {
         let cyl = MeshKind::Cylinder as usize;
         let at = |x: f32, y: f32, z: f32| STAGE + Vec3::new(x, y, z);
 
-        // Ground: a wide mossy platform; behind the boys a dais of dressed stone, two steps up.
+        // Ground: a wide platform of dark moss; behind the boys a dais of dressed stone, two
+        // steps up, in the board's pale stone and charcoal, a copper band along its face.
         let platform = Mat4::from_translation(at(0.0, -0.09, 0.0)) * Mat4::from_scale(Vec3::new(14.0, 1.5, 14.0));
-        f.opaque[cyl].push(Instance::new(platform, lin(0x2a4a28), 1.0, Vec3::ZERO, SHADE_LIT));
+        f.opaque[cyl].push(Instance::new(platform, lin(0x2a3424), 1.0, Vec3::ZERO, SHADE_LIT));
         for (k, (w, d, y)) in [(4.9f32, 1.9f32, 0.07f32), (4.5, 1.5, 0.2)].into_iter().enumerate() {
             for gx in 0..8 {
                 let x = -w / 2.0 + (gx as f32 + 0.5) * w / 8.0;
                 let v = hash(gx as f64 + k as f64 * 9.0, 3.0) as f32;
-                let m = Mat4::from_translation(at(x, y, -0.75 + k as f32 * 0.0)) * Mat4::from_scale(Vec3::new(w / 8.0 - 0.02, 0.13, d));
-                f.opaque[cube].push(Instance::new(m, lin(0x6a6e64) * (0.8 + 0.3 * v), 1.0, Vec3::ZERO, SHADE_LIT));
+                let stone = if k == 0 { lin(0x3f4745) } else { lin(0x7e7868) * 0.6 };
+                let m = Mat4::from_translation(at(x, y, -0.75 + k as f32 * 0.0)) * Mat4::from_scale(Vec3::new(w / 8.0 - 0.025, 0.13, d));
+                f.opaque[cube].push(Instance::new(m, stone * (0.85 + 0.25 * v), 1.0, Vec3::ZERO, crypt::SHADE_STONE));
             }
         }
-        // A ring of trees, and two braziers either side of the line-up.
+        let band = Mat4::from_translation(at(0.0, 0.07, -0.75 + 0.955)) * Mat4::from_scale(Vec3::new(4.9, 0.03, 0.01));
+        f.opaque[cube].push(Instance::new(band, lin(0x9a5b3c), 1.0, Vec3::ZERO, 13.0));
+        // A ring of trees (in the garden's graded colours), and two braziers either side of the
+        // line-up.
+        let tree = estate::graded(&self.models.tree);
         for i in 0..14 {
             let a = i as f32 / 14.0 * TAU + 0.2;
             // Leave the camera's side of the ring open (the camera sits toward +z).
@@ -41,7 +47,7 @@ impl WorldView {
             let r = 4.6 + (i % 2) as f32 * 0.9;
             push_field(
                 &mut f.opaque[cube],
-                &self.models.tree,
+                &tree,
                 at(a.cos() * r, 0.0, a.sin() * r),
                 a * 3.0,
                 1.9 + (i % 3) as f32 * 0.3,
@@ -52,17 +58,30 @@ impl WorldView {
         }
         let braziers = [at(-2.9, 0.0, 0.2), at(2.9, 0.0, 0.2)];
         for p in braziers {
-            let post = Mat4::from_translation(p + Vec3::new(0.0, 0.45, 0.0)) * Mat4::from_scale(Vec3::new(0.12, 0.9, 0.12));
-            f.opaque[cube].push(Instance::new(post, lin(0x2e2a26), 1.0, Vec3::ZERO, SHADE_LIT));
-            let bowl = Mat4::from_translation(p + Vec3::new(0.0, 0.93, 0.0)) * Mat4::from_scale(Vec3::new(1.2, 0.8, 1.2));
-            f.opaque[cyl].push(Instance::new(bowl, lin(0x3a3530), 1.0, Vec3::ZERO, SHADE_LIT));
-            for k in 0..5 {
-                let a = time * 3.0 + k as f32 * 1.3;
-                let fp = p + Vec3::new(a.cos() * 0.08, 1.02 + (time * 5.0 + k as f32).sin().abs() * 0.12, a.sin() * 0.08);
-                let m = Mat4::from_translation(fp) * Mat4::from_scale(Vec3::splat(0.07));
-                f.additive.push(Instance::new(m, lin(0xffa040) * 1.4, 0.8, Vec3::ZERO, SHADE_UNLIT));
+            // A copper brazier on three legs, its coals glowing, amber flames licking up.
+            let copper = lin(0x9a5b3c);
+            for k in 0..3 {
+                let a = k as f32 * TAU / 3.0 + 0.3;
+                let leg = Mat4::from_translation(p + Vec3::new(a.cos() * 0.14, 0.42, a.sin() * 0.14))
+                    * Mat4::from_rotation_y(a)
+                    * Mat4::from_rotation_z(0.12)
+                    * Mat4::from_scale(Vec3::new(0.05, 0.86, 0.05));
+                f.opaque[cube].push(Instance::new(leg, copper * 0.8, 1.0, Vec3::ZERO, 13.0));
             }
-            glow_orb(f, p + Vec3::new(0.0, 1.1, 0.0), 0.6, lin(0xffa050), 0.25);
+            let bowl = Mat4::from_translation(p + Vec3::new(0.0, 0.9, 0.0)) * Mat4::from_scale(Vec3::new(0.62, 0.14, 0.62));
+            f.opaque[cyl].push(Instance::new(bowl, copper, 1.0, Vec3::ZERO, 13.0));
+            let coals = Mat4::from_translation(p + Vec3::new(0.0, 0.98, 0.0)) * Mat4::from_scale(Vec3::new(0.5, 0.04, 0.5));
+            f.opaque[cyl].push(Instance::new(coals, lin(0x3a1a0a), 1.0, lin(0xffa040) * 1.2, SHADE_LIT));
+            for k in 0..6 {
+                let fk = k as f32;
+                let t = (time * 1.6 + fk * 0.37).fract();
+                let a = fk * 2.1 + time;
+                let fp = p + Vec3::new(a.cos() * 0.09 * (1.0 - t), 1.02 + t * 0.32, a.sin() * 0.09 * (1.0 - t));
+                let m = Mat4::from_translation(fp) * Mat4::from_scale(Vec3::splat(0.08 * (1.0 - t) + 0.02));
+                let c = if t < 0.4 { lin(0xffd070) } else { lin(0xff7a28) };
+                f.additive.push(Instance::new(m, c * 1.3, 0.85 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+            }
+            glow_orb(f, p + Vec3::new(0.0, 1.08, 0.0), 0.32, lin(0xffa050), 0.16);
         }
 
         // The warriors on the dais, and in front of each the boy who will carry his soul.
@@ -82,7 +101,7 @@ impl WorldView {
             let aura = tint * (0.035 + 0.02 * (time * 1.5 + i as f32).sin());
             emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, aura);
             // His soul's light: a halo behind him, a ring at his feet, motes rising.
-            glow_orb(f, feet + Vec3::new(0.0, 0.75, -0.35), 1.25, tint, 0.2 + 0.05 * (time * 1.3 + i as f32).sin());
+            glow_orb(f, feet + Vec3::new(0.0, 0.75, -0.35), 1.1, tint, 0.13 + 0.04 * (time * 1.3 + i as f32).sin());
             let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.01, 0.0))
                 * Mat4::from_rotation_x(-PI / 2.0)
                 * Mat4::from_scale(Vec3::new(0.5, 0.5, 1.0));
@@ -103,23 +122,26 @@ impl WorldView {
             self.emit_kid(f, i + 1, story::kid_root(boy, -x * 0.1), act, time, look, Vec3::ZERO);
         }
 
-        // Fireflies.
-        for i in 0..50 {
+        // Fireflies, amber, kept off the camera's side of the stage (close by, they only blur).
+        for i in 0..36 {
             let fi = i as f32;
             let a = fi * 2.399;
             let r = 1.5 + (fi * 0.37) % 3.2;
             let p = at(a.cos() * r + (time * 0.5 + fi).sin() * 0.3, 0.5 + (fi * 0.61) % 2.0 + (time * 0.9 + fi).sin() * 0.15, a.sin() * r);
-            let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.05));
-            f.additive.push(Instance::new(m, lin(MOTE), 0.55 + (time * 2.2 + fi).sin() * 0.3, Vec3::ZERO, SHADE_UNLIT));
+            if p.z - STAGE.z > 1.2 {
+                continue;
+            }
+            let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.035));
+            f.additive.push(Instance::new(m, lin(estate::pal::FIREFLY), 0.5 + (time * 2.2 + fi).sin() * 0.3, Vec3::ZERO, SHADE_UNLIT));
         }
 
         // Light: warm from the front for the boys' faces, a cool moon rim from behind, the braziers.
         let flicker = 1.0 + (time * 7.0).sin() * 0.05 + (time * 3.1).sin() * 0.04;
         f.lights.push(Light { pos: at(-1.2, 2.2, 3.0), color: lin(0xffc27a) * 22.0 * flicker, distance: 10.0 });
-        f.lights.push(Light { pos: at(2.6, 2.8, -2.6), color: lin(0x8fb4ff) * 22.0, distance: 10.0 });
+        f.lights.push(Light { pos: at(2.6, 2.8, -2.6), color: lin(estate::pal::MOONLIGHT) * 20.0, distance: 10.0 });
         f.lights.push(Light { pos: at(0.8, 2.0, 2.2), color: lin(0xfff0e0) * 5.0, distance: 6.0 });
         for p in braziers {
-            f.lights.push(Light { pos: p + Vec3::new(0.0, 1.3, 0.0), color: lin(TORCH_LIGHT) * 4.0 * flicker, distance: 5.0 });
+            f.lights.push(Light { pos: p + Vec3::new(0.0, 1.3, 0.0), color: lin(estate::pal::LANTERN) * 4.0 * flicker, distance: 5.0 });
         }
         for l in &self.effect_lights {
             if l.intensity > 0.0 {

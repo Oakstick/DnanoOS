@@ -50,7 +50,12 @@ const PANEL_ROWS: f32 = 3.0;
 const TEXT: u32 = 0xe6e0d2;
 const TEXT_DIM: u32 = 0xaaa293;
 const SAND: u32 = 0xd7ccb8;
-const GOLD: u32 = 0xf2c53d;
+// The art direction's UI: charcoal panels with a teal cast, pale-stone edges, amber where the
+// eye should go (the board's amber, lifted to read as text), a copper rule.
+const GOLD: u32 = 0xeab55e;
+const INK: [f32; 3] = [12.0 / 255.0, 17.0 / 255.0, 17.0 / 255.0];
+const EDGE: [f32; 3] = [0.62, 0.6, 0.54];
+const COPPER: u32 = 0xb06a44;
 const FRENZIED: u32 = 0x3b5bff;
 const FRENZIED_WARN: u32 = 0xe8f0ff;
 
@@ -228,7 +233,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         }
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused => {
-            o.rect(0.0, 0.0, o.width, o.height, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.65]);
+            o.rect(0.0, 0.0, o.width, o.height, [INK[0], INK[1], INK[2], 0.65]);
             let top = menu_rects(Screen::Paused, &[MenuItem::Resume], o.width, o.height)[0][1];
             o.text("PAUSED", o.width / 2.0, top - t * 2.6, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
             o.text("Esc or Start to resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center, false);
@@ -416,10 +421,10 @@ fn draw_sprite(o: &mut Overlay, s: &Sprite, x: f32, y: f32, scale: f32, tint: Op
 // ---------------------------------------------------------------------- HUD
 
 fn panel(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, t: f32) {
-    o.rect(x, y, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.82]);
-    o.rect_outline(x, y, w, h, (t * 0.06).max(1.0), [1.0, 1.0, 1.0, 0.14]);
-    // A thin gold rule along the top edge ties the panels together.
-    o.rect(x + t * 0.3, y, w - t * 0.6, (t * 0.06).max(1.0), rgba(GOLD, 0.35));
+    o.rect(x, y, w, h, [INK[0], INK[1], INK[2], 0.82]);
+    o.rect_outline(x, y, w, h, (t * 0.06).max(1.0), [EDGE[0], EDGE[1], EDGE[2], 0.26]);
+    // A thin copper rule along the top edge ties the panels together.
+    o.rect(x + t * 0.3, y, w - t * 0.6, (t * 0.06).max(1.0), rgba(COPPER, 0.6));
 }
 
 /// Where flying keys land: the row of keys in the top-right panel.
@@ -494,7 +499,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     o.rect(cx0, by, bar_w * trail, bh, [1.0, 1.0, 1.0, 0.75]);
     let low = frac <= 0.25 && ((time * 4.0).sin() > 0.0);
     o.rect(cx0, by, bar_w * frac, bh, rgba(hp_color(frac), if low { 0.7 } else { 1.0 }));
-    o.rect(cx0, by, bar_w * frac, bh * 0.3, [1.0, 1.0, 1.0, 0.18]);
+    o.rect(cx0, by, bar_w * frac, bh * 0.3, [EDGE[0], EDGE[1], EDGE[2], 0.32]);
     if j.hp_flash > 0.0 {
         o.rect_outline(cx0 - 2.0, by - 2.0, bar_w + 4.0, bh + 4.0, (t * 0.1).max(2.0), rgba(j.hp_flash_color, j.hp_flash));
     }
@@ -846,7 +851,7 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
             slot,
             slot,
             if sel { (t * 0.08).max(1.5) } else { 1.0 },
-            if sel { rgba(GOLD, 0.95) } else { [1.0, 1.0, 1.0, 0.18] },
+            if sel { rgba(GOLD, 0.95) } else { [EDGE[0], EDGE[1], EDGE[2], 0.32] },
         );
         o.text(&format!("{}", i + 1), x + slot / 2.0, y + slot + t * 0.35, t * 0.36, rgba(TEXT_DIM, 1.0), Align::Center, false);
     }
@@ -973,7 +978,7 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
         let pop = if big { pop * 1.7 } else { pop };
         let alpha = (b.life / 0.4).min(1.0);
         let y = h * 0.27;
-        o.rect(0.0, y - t * 1.3, w, t * 2.6, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.45 * alpha]);
+        o.rect(0.0, y - t * 1.3, w, t * 2.6, [INK[0], INK[1], INK[2], 0.45 * alpha]);
         o.text(&b.text, w / 2.0, y - t * 0.25, t * 1.4 * pop, rgba(b.color, alpha), Align::Center, true);
         o.text(&b.sub, w / 2.0, y + t * 0.85, t * 0.6, rgba(SAND, alpha), Align::Center, true);
     }
@@ -989,7 +994,7 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
 /// The countdown before play: 3, 2, 1, each landing big and settling.
 fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
-    o.rect(0.0, 0.0, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.3]);
+    o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.3]);
     let left = g.screen_timer.max(0.0) as f32;
     let n = left.ceil().max(1.0) as u32;
     let k = left - left.floor(); // 1 -> 0 through each second
@@ -1379,10 +1384,10 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
     for (i, (item, r)) in items.iter().zip(rects).enumerate() {
         let selected = i == g.menu_index;
         let quit = matches!(item, MenuItem::Quit | MenuItem::QuitToTitle | MenuItem::StartOver);
-        let bg = if selected { [1.0, 1.0, 1.0, 0.14] } else { [1.0, 1.0, 1.0, 0.05] };
-        o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);
+        let bg = if selected { [EDGE[0], EDGE[1], EDGE[2], 0.26] } else { [1.0, 1.0, 1.0, 0.05] };
+        o.rect(r[0], r[1], r[2], r[3], [INK[0], INK[1], INK[2], 0.85]);
         o.rect(r[0], r[1], r[2], r[3], bg);
-        let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
+        let edge = if selected { rgba(GOLD, pulse) } else { [EDGE[0], EDGE[1], EDGE[2], 0.32] };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
         let color = if selected {
             if quit {
@@ -1476,7 +1481,7 @@ fn view_card(w: f32, h: f32) -> [f32; 2] {
 /// Just before play: the two cameras, each a card with a picture of how it sees the Garden, its
 /// name and a line; the highlighted card in gold. The world behind is seen as it would be.
 fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
-    o.rect(0.0, 0.0, o.width, o.height, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.55]);
+    o.rect(0.0, 0.0, o.width, o.height, [INK[0], INK[1], INK[2], 0.55]);
     let items = g.menu_items();
     let rects = menu_rects(Screen::View, &items, o.width, o.height);
     let Some(first) = rects.first() else { return };
@@ -1489,11 +1494,11 @@ fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
             MenuItem::ViewTop => (Picture::ViewTop, "TOP-DOWN", "From above: the whole ground and every foe in sight."),
             _ => (Picture::ViewFollow, "FOLLOW", "Over his shoulder: up close, the mouse turns the view."),
         };
-        o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.9]);
+        o.rect(r[0], r[1], r[2], r[3], [INK[0], INK[1], INK[2], 0.9]);
         let pw = r[2] - pad * 2.0;
         let ph = pw * 9.0 / 16.0;
         o.picture(picture, r[0] + pad, r[1] + pad, pw, ph, if selected { 1.0 } else { 0.6 });
-        let edge = if selected { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.18] };
+        let edge = if selected { rgba(GOLD, pulse) } else { [EDGE[0], EDGE[1], EDGE[2], 0.32] };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * if selected { 0.14 } else { 0.08 }).max(1.0), edge);
         let y = r[1] + pad + ph + t * 0.95;
         o.text(name, r[0] + r[2] / 2.0, y, t * 0.95, rgba(if selected { GOLD } else { TEXT_DIM }, 1.0), Align::Center, true);
@@ -1557,7 +1562,7 @@ fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
 /// Centered overlay for ready, pause, win, and game over screens.
 fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
     let (w, h) = (o.width, o.height);
-    o.rect(0.0, 0.0, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, dim]);
+    o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], dim]);
     let total: f32 = lines.iter().map(|l| l.size * t * 1.4).sum();
     let mut y = h / 2.0 - total / 2.0;
     for l in lines {
@@ -1586,7 +1591,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         } else {
             0.18 + (v - 0.76) / 0.24 * 0.6
         };
-        o.rect(0.0, y0, w, h / bands as f32 + 1.0, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, a]);
+        o.rect(0.0, y0, w, h / bands as f32 + 1.0, [INK[0], INK[1], INK[2], a]);
     }
     // Side vignettes behind the panels.
     for i in 0..10 {
@@ -1647,7 +1652,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         }
     }
     if g.confirm_reset {
-        o.rect(0.0, 0.0, w, h, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.6]);
+        o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.6]);
         let [px, py, pw, ph] = reset_panel(w, h);
         panel(o, px, py, pw, ph, t);
         o.text("START OVER?", w / 2.0, py + t * 1.35, t * 1.1, rgba(GOLD, 1.0), Align::Center, true);
@@ -1764,7 +1769,7 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
         let (pw, ph) = (t * 6.4, t * 1.9);
         let (px, py) = (sx - pw / 2.0 + shake, sy + t * 0.35);
         let open = kind.unlocked();
-        o.rect(px, py, pw, ph, [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, if picked { 0.88 } else { 0.7 }]);
+        o.rect(px, py, pw, ph, [INK[0], INK[1], INK[2], if picked { 0.88 } else { 0.7 }]);
         let pulse = 0.7 + (time * 4.0).sin() * 0.3;
         let edge = match (picked, open) {
             (true, true) => rgba(GOLD, pulse),
@@ -1810,14 +1815,14 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
     for (r, label, live) in [(layout.back, "BACK", true), (layout.begin, "BEGIN", hero.unlocked())] {
         let r = r.0;
         let hover = g.input.cursor.is_some_and(|p| Rect(r).contains(p));
-        o.rect(r[0], r[1], r[2], r[3], [2.0 / 255.0, 6.0 / 255.0, 12.0 / 255.0, 0.85]);
+        o.rect(r[0], r[1], r[2], r[3], [INK[0], INK[1], INK[2], 0.85]);
         let main = label == "BEGIN";
         let edge = if main && live {
             rgba(GOLD, 0.75 + (time * 4.0).sin() * 0.25)
         } else if hover {
             [1.0, 1.0, 1.0, 0.4]
         } else {
-            [1.0, 1.0, 1.0, 0.18]
+            [EDGE[0], EDGE[1], EDGE[2], 0.32]
         };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
         let color = if !live {

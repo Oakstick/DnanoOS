@@ -35,6 +35,7 @@ mod angels;
 mod animation;
 mod camera;
 mod crypt;
+mod estate;
 mod duel;
 pub mod effects;
 mod emit;
@@ -223,6 +224,8 @@ pub struct WorldView {
     pub crypt: bool,
     /// The Cisterns (dungeon II): the same stone, flooded. Set with `crypt`.
     pub cisterns: bool,
+    /// The Garden of Krampus, graded to the art direction (set as it is built).
+    estate_art: bool,
     /// The cisterns' standing water (tile centres at the water's height), and the spouts pouring
     /// into it (each mouth, the way it pours, and the floor below).
     flood: Vec<Vec3>,
@@ -378,6 +381,7 @@ impl WorldView {
             hell: false,
             crypt: false,
             cisterns: false,
+            estate_art: false,
             flood: Vec::new(),
             spouts: Vec::new(),
             tint: None,
@@ -502,6 +506,7 @@ impl WorldView {
         self.water.clear();
         self.flood.clear();
         self.spouts.clear();
+        self.estate_art = false;
         self.rock_index.clear();
         self.trees.clear();
         self.tree_index.clear();
@@ -544,6 +549,10 @@ impl WorldView {
         if let Some(g) = gate.filter(|_| vault.is_none() && run.is_none()) {
             // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
+        }
+        // The garden and its gate, graded into the board's palette.
+        if self.estate_art {
+            self.grade_estate();
         }
         self.mist_set = InstanceSet::new(self.mist.clone());
         // A thread of smoke above every candle.
