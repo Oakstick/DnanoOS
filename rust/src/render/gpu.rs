@@ -40,7 +40,11 @@ fn aces_filmic(c: Vec3) -> Vec3 {
     let v = input * (c / 0.6);
     let a = v * (v + Vec3::splat(0.0245786)) - Vec3::splat(0.000090537);
     let b = v * (v * 0.983729 + Vec3::splat(0.432951)) + Vec3::splat(0.238081);
-    (output * (a / b)).clamp(Vec3::ZERO, Vec3::ONE)
+    // The lifted toe, as the shaders' `toe`: straight at 0.55 of the light in the darks.
+    let aces = output * (a / b);
+    let lin = c.max(Vec3::ZERO) * 0.55;
+    let h = (Vec3::splat(0.004) - (aces - lin).abs()).max(Vec3::ZERO) / 0.004;
+    (aces.max(lin) + h * h * 0.001).clamp(Vec3::ZERO, Vec3::ONE)
 }
 
 /// The light that tone maps to linear display colour `t` (as the shader's `untonemap`).

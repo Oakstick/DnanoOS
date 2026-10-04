@@ -151,6 +151,20 @@ fn rrt_odt_fit(v: vec3<f32>) -> vec3<f32> {
     return a / b;
 }
 
+
+// The tone curve's toe, lifted: ACES's fit sends everything under about 0.3% of white to black
+// and crushes the next few percent, so dark palette colours (charcoal, umber) read as black. Below
+// about 3% the curve now runs straight at TOE_SLOPE of the light, joined to ACES by a smooth
+// maximum; above that ACES is untouched. (`gpu::aces_filmic` has the same.)
+const TOE_SLOPE: f32 = 0.55;
+const TOE_KNEE: f32 = 0.004;
+
+fn toe(aces: vec3<f32>, light: vec3<f32>) -> vec3<f32> {
+    let lin = max(light, vec3<f32>(0.0)) * TOE_SLOPE;
+    let h = max(vec3<f32>(TOE_KNEE) - abs(aces - lin), vec3<f32>(0.0)) / TOE_KNEE;
+    return max(aces, lin) + h * h * TOE_KNEE * 0.25;
+}
+
 fn aces_filmic(c_in: vec3<f32>) -> vec3<f32> {
     let input_m = mat3x3<f32>(
         vec3<f32>(0.59719, 0.07600, 0.02840),
@@ -166,7 +180,7 @@ fn aces_filmic(c_in: vec3<f32>) -> vec3<f32> {
     c = input_m * c;
     c = rrt_odt_fit(c);
     c = output_m * c;
-    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+    return clamp(toe(c, c_in), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 fn to_srgb(c: vec3<f32>) -> vec3<f32> {
@@ -362,8 +376,10 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
     let grade = p.params2.w;
     let l = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
     col = mix(vec3<f32>(l), col, 1.0 + 0.08 * grade);
-    col = mix(col, col * col * (3.0 - 2.0 * col), 0.18 * grade);
-    col += vec3<f32>(-0.006, 0.0, 0.014) * (1.0 - smoothstep(0.0, 0.4, l)) * grade;
+    // (The contrast curve eases off in the darks, and the shadows' cool cast is a tint, not an
+    // offset, so neither pushes a dark colour to black.)
+    col = mix(col, col * col * (3.0 - 2.0 * col), 0.18 * grade * smoothstep(0.03, 0.2, l));
+    col *= vec3<f32>(1.0) + vec3<f32>(-0.06, 0.0, 0.14) * (1.0 - smoothstep(0.0, 0.4, l)) * grade;
     col += vec3<f32>(0.012, 0.006, -0.01) * smoothstep(0.5, 1.0, l) * grade;
 
     // Vignette.

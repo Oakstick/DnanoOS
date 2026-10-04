@@ -602,9 +602,18 @@ The latest full capture is in `perf/`; compare new captures against it only at e
   the high score, every kill rewrote the save file, which is read and written whole. See RP06 below.
 - **The ground mist costs real GPU time.** The 13,500 transparent sheets in the Garden cost about 2 ms
   (see `--fx-off mist`), as the plan warns about large transparent layers.
-- **Dark palette colours crush to black.** On the Look Dev value ramp under neutral light, sRGB 0, 25 and
-  51 all land on black, and the palette's charcoal (#192321) is one of them. The plan warns about this
-  for dark base colours; the tone curve and exposure need art review (RP13 and TA01).
+- **Dark palette colours no longer crush to black (fixed 2026-10-04).**
+  - **Cause:** ACES's fit sends light under about 0.3% of white to black and crushes the next few
+    percent, and the grade's contrast curve and shadow offset darkened them further.
+  - **The toe:** below about 3% the tone curve now runs straight at 0.55 of the light, joined to
+    ACES by a smooth maximum (`toe` in both shaders, and the CPU's `aces_filmic`). Above that it is
+    unchanged.
+  - **The grade:** its contrast eases off in the darks, and its cool shadow cast is now a tint, not
+    an offset.
+  - **Result:** the Look Dev ramp's darkest steps went from 6, 11, 21 to 11, 15, 25 (0-255), with
+    everything above unchanged. In the Bone Vaults, stone in shadow went from 0-12 to 10-19
+    before the vaults' fill light was doubled, and now shows its blocks.
+  - Other levels change only in their deepest shadows.
 - **Start-up on DX12 is still 3 s**, mostly compiling shaders with FXC. Moving to DXC would need
   `dxcompiler.dll` shipped, or wgpu's `static-dxc` feature (which downloads the compiler at build
   time). Vulkan starts in 1.9 s.
