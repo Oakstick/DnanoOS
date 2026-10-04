@@ -30,6 +30,11 @@ use crate::logic::enemy::EnemyKind;
 use crate::logic::types::V;
 use std::f64::consts::TAU;
 
+/// A lingering trap's ground hurts him once every this many frames while he stands in it, for
+/// this share of the trap's damage (it never slows him).
+pub const LINGER_EVERY: u16 = 30;
+pub const LINGER_SHARE: f64 = 0.25;
+
 /// His health's shares below which the second and the third phase begin.
 pub const PHASE_AT: [f64; 2] = [2.0 / 3.0, 1.0 / 3.0];
 /// The share of a blow his hide lets through outside his recoveries.
@@ -106,6 +111,8 @@ pub struct Trap {
     pub burst: Option<u16>,
     /// It fell from above (the rain) rather than flew from his hand.
     pub fell: bool,
+    /// Frames after it bursts that its ground goes on hurting him while he stands in it (0: none).
+    pub linger: u16,
 }
 
 impl Trap {
@@ -129,9 +136,19 @@ impl Trap {
         false
     }
 
-    /// Still to burst, or its spikes still standing.
+    /// Still to burst, or its spikes still standing (or its ground still hurting).
     pub fn live(&self) -> bool {
-        self.burst.is_none_or(|b| b < SPIKES)
+        self.burst.is_none_or(|b| b < SPIKES.max(self.linger))
+    }
+
+    /// Burst, and its ground still hurting (a lingering trap's).
+    pub fn lingering(&self) -> bool {
+        self.burst.is_some_and(|b| b > 0 && b < self.linger)
+    }
+
+    /// The frame its lingering ground hurts again (every `LINGER_EVERY` after the burst).
+    pub fn stings(&self) -> bool {
+        self.lingering() && self.burst.is_some_and(|b| b.is_multiple_of(LINGER_EVERY))
     }
 
     /// Lying on the floor with its fuse burning.
@@ -238,6 +255,7 @@ mod tests {
             volley: 1,
             burst: None,
             fell: false,
+            linger: 0,
         };
         let bursts: Vec<bool> = (0..8).map(|_| t.step()).collect();
         assert_eq!(bursts.iter().filter(|b| **b).count(), 1);
@@ -247,5 +265,34 @@ mod tests {
             t.step();
         }
         assert!(!t.live());
+        assert!(!t.lingering() && !t.stings(), "the coins do not linger");
+    }
+
+    #[test]
+    fn a_lingering_traps_ground_stings_every_so_often_after_it_bursts_then_is_gone() {
+        let mut t = Trap {
+            pos: V::new(5.0, 5.0),
+            from: V::new(5.0, 5.0),
+            flight: 0,
+            fuse: 2,
+            full: 2,
+            radius: 0.8,
+            damage: 10.0,
+            owner: 1,
+            volley: 1,
+            burst: None,
+            fell: false,
+            linger: 100,
+        };
+        let mut stings = 0;
+        let mut frames = 0;
+        while t.live() {
+            t.step();
+            stings += t.stings() as u32;
+            frames += 1;
+            assert!(frames < 500);
+        }
+        assert_eq!(stings, (100 - 1) / LINGER_EVERY as u32, "once every {LINGER_EVERY} frames while it lingers");
+        assert!(frames > 100 && !t.lingering());
     }
 }

@@ -3,6 +3,7 @@
 //! later stages); the tests below hold it to the design limits of §0 (the reaction floor, the
 //! punish window, the parry by reaction).
 
+use super::fsm::GuardRule;
 use std::f64::consts::PI;
 
 /// Human visual reaction, in frames (about 250 ms).
@@ -115,8 +116,21 @@ pub enum Shape {
     Spell,
     /// `count` coins on the floor round him (the first where he stands), each bursting into gold
     /// spikes `radius` tiles wide `fuse` frames after they land. Nothing guards against them: he
-    /// steps out, or leaps.
-    Traps { count: u8, radius: f64, fuse: u16 },
+    /// steps out, or leaps. For `linger` frames after it bursts each one's ground goes on hurting
+    /// him while he stands in it (`prince::Trap::linger`; 0: it does not).
+    Traps { count: u8, radius: f64, fuse: u16, linger: u16 },
+    /// A beam from the attacker along his aim (locked as his tracking ends), `length` tiles long and
+    /// `width` wide, stopped by solid rock: on its active frames it strikes a body within half its
+    /// width of the line. The shield holds it; no parry turns it.
+    Beam { length: f64, width: f64 },
+    /// A charge: on its active frames the attacker runs along his locked aim at `speed` tiles a
+    /// second, up to `length` tiles, striking him once if he comes within the move's `reach` of the
+    /// runner's middle. Running into rock (a wall, a pillar) stops him short (`Duelist::crashed`).
+    /// The guard blocks it or parries it.
+    Charge { length: f64, speed: f64 },
+    /// Traps as `Traps`, but laid in a row along the attacker's locked aim, from in front of him
+    /// toward where the hero stood, `spacing` tiles apart.
+    TrapLine { count: u8, radius: f64, fuse: u16, spacing: f64, linger: u16 },
 }
 
 /// What a move does besides its damage.
@@ -673,7 +687,7 @@ impl MoveId {
                 hitstop: 5,
                 range: (2.4, 7.0),
                 off: (0.0, deg(60.0)),
-                shape: Shape::Traps { count: 5, radius: 0.8, fuse: 48 },
+                shape: Shape::Traps { count: 5, radius: 0.8, fuse: 48, linger: 0 },
                 cooldown: 240,
                 ..BASE
             },
@@ -723,7 +737,7 @@ impl MoveId {
                 track: 30,
                 hitstop: 5,
                 range: (0.0, 12.0),
-                shape: Shape::Traps { count: 7, radius: 0.85, fuse: 42 },
+                shape: Shape::Traps { count: 7, radius: 0.85, fuse: 42, linger: 0 },
                 cooldown: 300,
                 ..BASE
             },
@@ -791,7 +805,7 @@ impl MoveData {
 
     /// Falls on a mark on the floor (or bursts from coins lying on it): no guard stops it, nor parries it.
     pub fn from_the_ground(&self) -> bool {
-        matches!(self.shape, Shape::Mark { .. } | Shape::Traps { .. })
+        matches!(self.shape, Shape::Mark { .. } | Shape::Traps { .. } | Shape::TrapLine { .. })
     }
 
     /// The guard can block it (it is neither a grab nor from the ground).
@@ -799,9 +813,31 @@ impl MoveData {
         !self.unblockable && !self.from_the_ground()
     }
 
-    /// The parry can turn it (anything but what bursts from the ground).
+    /// The parry can turn it (anything but what bursts from the ground, or a beam of light).
     pub fn parriable(&self) -> bool {
-        !self.from_the_ground()
+        !self.from_the_ground() && !matches!(self.shape, Shape::Beam { .. })
+    }
+
+    /// What the guard can do against it: block or parry it, only parry it (a grab), only block it
+    /// (a beam), or nothing (what comes from the ground).
+    pub fn guard_rule(&self) -> GuardRule {
+        match (self.blockable(), self.parriable()) {
+            (true, true) => GuardRule::Full,
+            (false, true) => GuardRule::ParryOnly,
+            (true, false) => GuardRule::BlockOnly,
+            (false, false) => GuardRule::Bare,
+        }
+    }
+
+    /// Lays traps on the floor (a throw of coins, or a row of them): their count, radius, fuse and
+    /// linger.
+    pub fn traps(&self) -> Option<(u8, f64, u16, u16)> {
+        match self.shape {
+            Shape::Traps { count, radius, fuse, linger } | Shape::TrapLine { count, radius, fuse, linger, .. } => {
+                Some((count, radius, fuse, linger))
+            }
+            _ => None,
+        }
     }
 
     /// The blow (of `hits`) under way on active frame `frame` (0-based from the first active frame).
@@ -878,13 +914,32 @@ mod tests {
         let mut seen = 0;
         for m in MoveId::FOE {
             let d = m.data();
-            let Shape::Traps { radius, fuse, count } = d.shape else { continue };
+            let Some((count, radius, fuse, _)) = d.traps() else { continue };
             seen += 1;
             assert!(count >= 2 && d.from_the_ground() && !d.blockable() && !d.parriable(), "{}", d.name);
             let gained = fuse.saturating_sub(REACTION) as f64 * walk / 60.0 - 0.25;
             assert!(gained >= (radius + 0.3) * 1.2, "{}: {gained:.2} t to clear {radius} t", d.name);
         }
         assert_eq!(seen, 2, "the coin toss and the coin rain");
+    }
+
+    #[test]
+    fn the_shared_shapes_say_what_the_guard_can_do_against_them() {
+        let with = |shape: Shape| MoveData { name: "TEST", damage: 10.0, shape, ..BASE };
+        let beam = with(Shape::Beam { length: 8.0, width: 1.0 });
+        assert!(beam.blockable() && !beam.parriable() && beam.guard_rule() == GuardRule::BlockOnly);
+        let charge = with(Shape::Charge { length: 6.0, speed: 9.0 });
+        assert!(charge.blockable() && charge.parriable() && charge.guard_rule() == GuardRule::Full);
+        let line = with(Shape::TrapLine { count: 4, radius: 0.7, fuse: 40, spacing: 1.5, linger: 60 });
+        assert!(line.from_the_ground() && line.guard_rule() == GuardRule::Bare);
+        assert_eq!(line.traps(), Some((4, 0.7, 40, 60)));
+        assert_eq!(MoveId::CoinToss.data().traps(), Some((5, 0.8, 48, 0)), "the coins do not linger");
+        assert_eq!(MoveId::Grasp.data().guard_rule(), GuardRule::ParryOnly);
+        assert_eq!(MoveId::Sceptre.data().guard_rule(), GuardRule::Full);
+        // No move of the game uses them yet: play is as it was.
+        for m in MoveId::FOE {
+            assert!(!matches!(m.data().shape, Shape::Beam { .. } | Shape::Charge { .. } | Shape::TrapLine { .. }), "{m:?}");
+        }
     }
 
     #[test]

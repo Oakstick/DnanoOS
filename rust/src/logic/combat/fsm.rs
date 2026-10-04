@@ -129,6 +129,9 @@ pub struct Received {
 pub enum GuardRule {
     Full,
     ParryOnly,
+    /// Only the shield holds it (a beam of light): no parry turns it, and a guard raised in the
+    /// parry window blocks it.
+    BlockOnly,
     Bare,
 }
 
@@ -510,7 +513,7 @@ impl Fighter {
         if frame < GUARD_RAISE || !from_front || rule == GuardRule::Bare {
             return Defense::Open;
         }
-        if frame <= self.parry_to {
+        if frame <= self.parry_to && rule != GuardRule::BlockOnly {
             return Defense::Parried;
         }
         if rule == GuardRule::ParryOnly {
@@ -718,6 +721,9 @@ mod tests {
         f.step();
         assert_eq!(f.defend(false, true, 100.0, 15.0, GuardRule::Full), Defense::Parried);
         assert_eq!(f.defend(false, false, 100.0, 15.0, GuardRule::Full), Defense::Open, "nothing from behind");
+        // A beam in the window: only the shield holds it, no parry.
+        let mut g = f.clone();
+        assert_eq!(g.defend(false, true, 100.0, 15.0, GuardRule::BlockOnly), Defense::Blocked);
         for _ in 0..8 {
             f.step();
         }

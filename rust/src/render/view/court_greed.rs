@@ -590,6 +590,25 @@ impl WorldView {
             let at = Vec3::new(t.pos.x as f32, ground, t.pos.y as f32);
             let seed = (t.pos.x * 3.7 + t.pos.y * 1.9) as f32;
             if let Some(b) = t.burst {
+                if t.lingering() {
+                    // Its ground still hurting: a pulsing pool on the floor, fading as it ends.
+                    let left = 1.0 - b as f32 / t.linger.max(1) as f32;
+                    let pulse = 0.7 + 0.3 * (time * 6.0 + seed).sin();
+                    let r = t.radius as f32;
+                    let m = Mat4::from_translation(at + Vec3::new(0.0, 0.02, 0.0))
+                        * Mat4::from_rotation_x(-PI / 2.0)
+                        * Mat4::from_scale(Vec3::new(r, r, 1.0));
+                    f.transparent[MeshKind::Disc as usize].push(Instance::new(
+                        m,
+                        lin(0xff9a3a) * pulse,
+                        0.35 * left,
+                        Vec3::ZERO,
+                        SHADE_UNLIT,
+                    ));
+                }
+                if b >= SPIKES {
+                    continue;
+                }
                 // Spikes of gold thrust up out of the floor, and sink back.
                 let u = b as f32 / SPIKES as f32;
                 let rise = if u < 0.15 { u / 0.15 } else { 1.0 - ((u - 0.15) / 0.85).powi(2) };

@@ -661,6 +661,40 @@ impl WorldView {
                     f.additive.push(Instance::new(m, color * 2.4, 0.9, Vec3::ZERO, SHADE_UNLIT));
                     continue;
                 }
+                Shape::Beam { length, width } => {
+                    // The line the beam will run along, as far as the rock lets it, and its edges.
+                    let span = if d.lore.span > 0.0 { d.lore.span as f32 } else { length as f32 };
+                    let half = width as f32 / 2.0;
+                    let n = (span / 0.3).ceil().max(1.0) as i32;
+                    for k in 1..=n {
+                        let along = k as f32 * span / n as f32;
+                        let lit = along / span <= fill;
+                        dot(aim * along, lit);
+                        if k % 2 == 0 {
+                            dot(aim * along + side * half, lit);
+                            dot(aim * along - side * half, lit);
+                        }
+                    }
+                    continue;
+                }
+                Shape::Charge { length, .. } => {
+                    // The way he will run, filling from him outward.
+                    let length = length as f32;
+                    let n = (length / 0.35).ceil().max(1.0) as i32;
+                    for k in 1..=n {
+                        let along = k as f32 * length / n as f32;
+                        dot(aim * along, along / length <= fill);
+                    }
+                    continue;
+                }
+                Shape::TrapLine { count, radius, spacing, .. } => {
+                    // Where the row of traps will lie: a ring for each along his aim.
+                    let first = d.radius() as f32 + radius as f32;
+                    for k in 0..count {
+                        ring(&mut dot, aim * (first + k as f32 * spacing as f32), radius as f32);
+                    }
+                    continue;
+                }
                 Shape::Cone => {}
             }
             match mv {

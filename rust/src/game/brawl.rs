@@ -1000,7 +1000,7 @@ impl Game {
                         released.push(du.id);
                         let d = du.data(mv);
                         // (Coins on the floor burst after the throw has ended: they are not its swing.)
-                        let swung = d.strikes() && !d.projectile && !matches!(d.shape, Shape::Traps { .. });
+                        let swung = d.strikes() && !d.projectile && d.traps().is_none();
                         if swung && !self.brawl.as_ref().is_some_and(|b| b.met.contains(&du.id)) {
                             whiffs.push(WarEvent::Whiffed { foe: du.id, kind: du.breed.kind, mv });
                         }
@@ -1190,13 +1190,7 @@ impl Game {
             }
             let Some(share) = du.reaches(hp, HERO_RADIUS) else { continue };
             du.struck = true;
-            let rule = if !d.parriable() {
-                GuardRule::Bare
-            } else if !d.blockable() {
-                GuardRule::ParryOnly
-            } else {
-                GuardRule::Full
-            };
+            let rule = d.guard_rule();
             let blow = Blow {
                 from: du.pos,
                 damage: d.damage * du.breed.damage * foe_damage * share,
@@ -1317,6 +1311,8 @@ impl Game {
             }
             MoveId::Raise => self.raise_dead(i),
             MoveId::CoinToss | MoveId::CoinRain => self.throw_coins(i, mv),
+            // (Any other move that lays traps: a row of them.)
+            _ if d.traps().is_some() => self.throw_coins(i, mv),
             MoveId::Kanabo | MoveId::HoardSlam => {
                 let mut f = Flash::new(FlashKind::Quake, math::add(pos, math::scale(aim, d.reach * 0.7)));
                 if let Shape::Quake { radius, .. } = d.shape {
@@ -1383,6 +1379,12 @@ impl Game {
                     Cue::Appeared(at) => self.flash(Flash::new(FlashKind::Smoke, at)),
                     Cue::Refilled => self.view.sparkle(&self.level.grid, p.x, p.y, 1.1, 0x8ad8ff, 12),
                     Cue::Phase(phase) => self.prince_phase(i, phase),
+                    Cue::Crashed(at) => {
+                        // A charge run into the rock: dust and a jolt (the prince's fight may daze him: `Duelist::crashed`).
+                        self.view.dust(&self.level.grid, at.x, at.y, 0x8a7a64, 18, 1.6);
+                        self.view.shake(0.25);
+                        self.audio.play(Sfx::BossSlam);
+                    }
                 }
             }
         }
@@ -1838,21 +1840,28 @@ impl Game {
     }
 
     /// A prince's coin toss (or rain) as its first active frame comes: coins fly from his hand (or
-    /// fall from above) onto the floor about the hero, one where he stands, to burst together.
+    /// fall from above) onto the floor about the hero, one where he stands, to burst together. A
+    /// row of traps (`Shape::TrapLine`) is laid along his locked aim instead, from in front of him
+    /// toward where the hero stood.
     fn throw_coins(&mut self, i: usize, mv: MoveId) {
         let Some(du) = self.enemies[i].duel.as_ref() else { return };
         let d = du.data(mv);
-        let Shape::Traps { count, radius, fuse } = d.shape else { return };
+        let Some((count, radius, fuse, linger)) = d.traps() else { return };
         let foe_damage = self.brawl.as_ref().map(|b| b.foe_damage).unwrap_or(1.0);
         let (id, pos, damage) = (du.id, du.pos, d.damage * du.breed.damage * foe_damage);
+        let (aim, body) = (du.aim, du.radius());
         let rain = mv == MoveId::CoinRain;
         let hp = self.hero.pos();
-        let turn = self.rng.next() * std::f64::consts::TAU;
-        let spots: Vec<V> = prince::scatter(count, hp, if rain { 1.6 } else { 1.8 }, turn, rain)
-            .into_iter()
-            .enumerate()
-            .filter_map(|(k, p)| (k == 0 || self.on_floor(p, hp) == p).then_some(p))
-            .collect();
+        let spots: Vec<V> = if let Shape::TrapLine { spacing, .. } = d.shape {
+            line_spots(pos, aim, body + radius, spacing, count).into_iter().filter(|&p| self.on_floor(p, pos) == p).collect()
+        } else {
+            let turn = self.rng.next() * std::f64::consts::TAU;
+            prince::scatter(count, hp, if rain { 1.6 } else { 1.8 }, turn, rain)
+                .into_iter()
+                .enumerate()
+                .filter_map(|(k, p)| (k == 0 || self.on_floor(p, hp) == p).then_some(p))
+                .collect()
+        };
         let Some(b) = self.brawl.as_mut() else { return };
         b.volleys += 1;
         let volley = b.volleys;
@@ -1869,6 +1878,7 @@ impl Game {
             volley,
             burst: None,
             fell: rain,
+            linger,
         }));
         self.audio.play(if rain { Sfx::Toll } else { Sfx::Whoosh });
         if rain {
@@ -1884,12 +1894,16 @@ impl Game {
         let mut traps = std::mem::take(&mut b.traps);
         let mut bursts = Vec::new();
         let mut on_him: Vec<Trap> = Vec::new();
+        let mut stung: Vec<Trap> = Vec::new();
         for t in traps.iter_mut() {
             if t.step() {
                 bursts.push(t.pos);
                 if t.reaches(hp, HERO_RADIUS) && !on_him.iter().any(|o| o.volley == t.volley) {
                     on_him.push(*t);
                 }
+            } else if t.stings() && t.reaches(hp, HERO_RADIUS) && !stung.iter().any(|o| o.volley == t.volley) {
+                // A lingering trap's ground still hurting him where he stands (never slowing him).
+                stung.push(*t);
             }
         }
         traps.retain(|t| t.live());
@@ -1901,7 +1915,8 @@ impl Game {
         for p in bursts {
             self.view.sparkle(&self.level.grid, p.x, p.y, 0.7, 0xffd860, 14);
         }
-        for t in on_him {
+        let stings = stung.into_iter().map(|t| Trap { damage: t.damage * prince::LINGER_SHARE, ..t });
+        for t in on_him.into_iter().chain(stings) {
             let blow = Blow {
                 from: t.pos,
                 damage: t.damage,
@@ -1920,6 +1935,12 @@ impl Game {
     }
 }
 
+/// Where a row of `count` traps lies (`Shape::TrapLine`): along `aim` from `pos`, the first
+/// `first` tiles out, the rest `spacing` apart.
+pub fn line_spots(pos: V, aim: V, first: f64, spacing: f64, count: u8) -> Vec<V> {
+    (0..count).map(|k| math::add(pos, math::scale(aim, first + k as f64 * spacing))).collect()
+}
+
 // ------------------------------------------------------------------ the generals (WARBAND.md §9)
 
 impl Game {
@@ -1931,5 +1952,92 @@ impl Game {
     pub(super) fn general_hazard_blow(&mut self, from: V, damage: f64, by: u32) -> Defense {
         let blow = Blow { from, damage, hitstop: 5, bolt: false, rule: GuardRule::Bare, rider: Rider::None, by, lands: true };
         self.blow_on_hero(blow)
+    }
+}
+
+#[cfg(test)]
+mod shared_shape_tests {
+    use super::*;
+    use crate::game::court::testing::{court, prince as mammon, run};
+    use crate::logic::combat::frames::MoveData;
+    use crate::logic::sins::Sin;
+
+    /// Mammon in his court, wearing `shape` as a move of his own (his fighter's first), begun on
+    /// the hero `dist` tiles south of him.
+    fn mammon_wearing(shape: Shape, dist: f64) -> Game {
+        let mut g = court(Sin::Greed);
+        let hp = g.hero.pos();
+        let d = mammon(&mut g);
+        d.pos = V::new(hp.x, hp.y - dist);
+        d.facing = V::new(0.0, 1.0);
+        d.rest = u16::MAX;
+        d.token = true;
+        d.f.table[0] =
+            MoveData { name: "TEST", startup: 30, active: 1, recovery: 40, damage: 20.0, track: 12, shape, ..MoveId::CoinToss.data() };
+        assert!(d.begin(MoveId::L1, hp));
+        g
+    }
+
+    #[test]
+    fn a_row_of_traps_is_laid_along_his_aim_toward_the_hero() {
+        let spots = line_spots(V::new(0.0, 0.0), V::new(0.0, 1.0), 1.5, 1.2, 4);
+        assert_eq!(spots.len(), 4);
+        assert!(spots.iter().enumerate().all(|(k, p)| p.x.abs() < 1e-9 && (p.y - (1.5 + 1.2 * k as f64)).abs() < 1e-9));
+        let shape = Shape::TrapLine { count: 4, radius: 0.7, fuse: 40, spacing: 1.4, linger: 0 };
+        let mut g = mammon_wearing(shape, 6.0);
+        let from = mammon(&mut g).pos;
+        let mut laid = Vec::new();
+        for _ in 0..120 {
+            g.update(crate::app::STEP);
+            let b = g.brawl.as_ref().unwrap();
+            if !b.traps.is_empty() {
+                laid = b.traps.clone();
+                break;
+            }
+        }
+        assert_eq!(laid.len(), 4, "a row of four");
+        for (k, t) in laid.iter().enumerate() {
+            assert!((t.pos.x - from.x).abs() < 0.3, "along his aim: {:?}", t.pos);
+            assert!(t.pos.y > from.y, "toward the hero");
+            if k > 0 {
+                assert!((t.pos.y - laid[k - 1].pos.y - 1.4).abs() < 0.2, "{} apart", 1.4);
+            }
+        }
+        // It lands as a throw of coins does: the flight, then the fuse.
+        let data = MoveData { shape, ..MoveId::CoinToss.data() };
+        assert_eq!(
+            crate::logic::combat::duelist::lands_after(&data, 5.0),
+            crate::logic::combat::duelist::lands_after(&MoveId::CoinToss.data(), 5.0) - 48 + 40
+        );
+    }
+
+    #[test]
+    fn a_lingering_traps_ground_goes_on_hurting_him_while_he_stands_in_it() {
+        let shape = Shape::Traps { count: 3, radius: 0.9, fuse: 30, linger: 150 };
+        let mut g = mammon_wearing(shape, 4.0);
+        g.hero.hp = 1000;
+        let mut burst = false;
+        for _ in 0..400 {
+            g.update(crate::app::STEP);
+            if g.brawl.as_ref().unwrap().traps.iter().any(|t| t.burst.is_some()) {
+                burst = true;
+                break;
+            }
+        }
+        assert!(burst, "the traps burst");
+        // Stood on the one at his feet, the ground stings him again and again (never holding him).
+        let t = g.brawl.as_ref().unwrap().traps[0];
+        g.hero.place(P::new(t.pos.x.round() as i32, t.pos.y.round() as i32));
+        if let Some(d) = g.prince() {
+            let id = d.id;
+            if let Some(d) = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
+                d.rest = u16::MAX;
+                d.token = false;
+            }
+        }
+        let before = g.hero.hp;
+        run(&mut g, 3.0);
+        assert!(g.hero.hp < before, "stung: {} of {before}", g.hero.hp);
+        assert!(g.brawl.as_ref().unwrap().traps.is_empty(), "and then it is gone");
     }
 }

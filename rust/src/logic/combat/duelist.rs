@@ -377,6 +377,8 @@ pub struct Lore {
     pub hold: u16,
     /// A prince has raised his golems (once in a fight).
     pub summoned: bool,
+    /// A beam's length as rock lets it run along the aim (locked with it); a charge's run so far.
+    pub span: f64,
 }
 
 /// Something a foe's legend did this frame, for the game to show and sound.
@@ -388,6 +390,8 @@ pub enum Cue {
     Appeared(V),
     /// The kappa's dish is full again.
     Refilled,
+    /// Its charge ran into rock here (`Shape::Charge`): the game may daze it.
+    Crashed(V),
     /// A prince's health has fallen into the next phase of his fight.
     Phase(u8),
 }
@@ -440,6 +444,9 @@ pub struct Duelist {
     /// A puppet: it never thinks for itself (no token, no walking, no choice of move); whoever
     /// holds its strings moves it and begins its moves (the Peerless, Pride's echo of the hero).
     pub puppet: bool,
+    /// Its charge ran into rock this move (`Shape::Charge`): the game may daze it. Cleared as its
+    /// next move begins.
+    pub crashed: bool,
 }
 
 impl Duelist {
@@ -474,6 +481,7 @@ impl Duelist {
             cues: Vec::new(),
             patient: 0,
             puppet: false,
+            crashed: false,
         }
     }
 
@@ -591,6 +599,8 @@ impl Duelist {
         self.wait = 0;
         self.lore.bite = 0;
         self.lore.from = self.pos;
+        self.lore.span = 0.0;
+        self.crashed = false;
         let d = self.data(mv);
         if matches!(d.shape, Shape::Mark { .. }) {
             self.lore.mark = self.within_reach(hero, d.reach);
@@ -729,7 +739,12 @@ impl Duelist {
                 }
             }
             Shape::Mark { radius: r } => (len(sub(p, self.lore.mark)) <= r + radius).then_some(1.0),
-            Shape::Volley { .. } | Shape::Spell | Shape::Traps { .. } => None,
+            Shape::Beam { width, .. } => {
+                let end = add(self.pos, scale(self.aim, self.lore.span));
+                (from_segment(self.pos, end, p) <= width / 2.0 + radius).then_some(1.0)
+            }
+            Shape::Charge { .. } => (len(sub(p, self.pos)) <= d.reach + radius).then_some(1.0),
+            Shape::Volley { .. } | Shape::Spell | Shape::Traps { .. } | Shape::TrapLine { .. } => None,
         }
     }
 
@@ -808,12 +823,35 @@ impl Duelist {
                 if frame < track {
                     self.facing = turn_toward(self.facing, dir, turn);
                     self.aim = self.facing;
+                    if let Shape::Beam { length, .. } = data.shape {
+                        // (Its length as the rock lets it run, locked with the aim.)
+                        self.lore.span = beam_span(terrain, self.pos, self.aim, length);
+                    }
                     if matches!(data.shape, Shape::Mark { .. }) {
                         let goal = self.within_reach(s.hero, data.reach);
                         let gap = sub(goal, self.lore.mark);
                         let step = MARK_FOLLOW / FPS;
                         self.lore.mark = if len(gap) <= step { goal } else { add(self.lore.mark, scale(norm(gap), step)) };
                     }
+                }
+                if let (Shape::Charge { length, speed }, Phase::Active) = (data.shape, data.phase(frame)) {
+                    // The run along the locked aim, until its length is run or the rock stops it.
+                    let step = (speed / FPS).min(length - self.lore.span).max(0.0);
+                    if step > 0.0 && !self.crashed {
+                        let want = add(self.pos, scale(self.aim, step));
+                        let to = terrain.slide(self.pos, sub(want, self.pos), st.radius);
+                        let moved = len(sub(to, self.pos));
+                        self.lore.span += step;
+                        if moved < step * 0.5 || !terrain.open(add(to, scale(self.aim, st.radius + 0.1))) {
+                            self.crashed = true;
+                            self.cues.push(Cue::Crashed(to));
+                        }
+                        self.vel = scale(sub(to, self.pos), FPS);
+                        self.pos = to;
+                    } else {
+                        self.vel = V::new(0.0, 0.0);
+                    }
+                    return None;
                 }
                 if mv == MoveId::Burrow {
                     // Down under the floor and along to its mark, there by its first active frame;
@@ -939,14 +977,44 @@ pub const BOLT_RADIUS_SUM: f64 = 0.5 + BOLT_RADIUS + HERO_RADIUS;
 pub const BOLT_SPEED_RANGE: (f64, f64) = (BOLT_SPEED * 0.5, BOLT_SPEED * 1.6);
 
 pub fn lands_after(d: &MoveData, dist: f64) -> u16 {
-    if let Shape::Traps { fuse, .. } = d.shape {
+    if let Some((_, _, fuse, _)) = d.traps() {
         return d.startup + super::prince::COIN_FLIGHT + fuse;
+    }
+    if let Shape::Charge { speed, .. } = d.shape {
+        // The run to him.
+        let run = (dist - d.reach).max(0.0);
+        return d.startup + (run / speed.max(0.1) * FPS).ceil() as u16;
     }
     if d.projectile {
         let travel = (dist - 0.5 - BOLT_RADIUS - HERO_RADIUS).max(0.0);
         return d.startup + ((travel / BOLT_SPEED * FPS).ceil() as u16).saturating_sub(1);
     }
     d.startup
+}
+
+/// How far a beam from `from` along `aim` runs before solid rock stops it, up to `length`.
+pub fn beam_span(terrain: &dyn Terrain, from: V, aim: V, length: f64) -> f64 {
+    const STEP: f64 = 0.25;
+    let mut span = 0.0;
+    while span < length {
+        let next = (span + STEP).min(length);
+        if !terrain.clear(add(from, scale(aim, span)), add(from, scale(aim, next))) {
+            break;
+        }
+        span = next;
+    }
+    span
+}
+
+/// The distance from `p` to the segment `a`..`b`.
+pub fn from_segment(a: V, b: V, p: V) -> f64 {
+    let ab = sub(b, a);
+    let l2 = dot(ab, ab);
+    if l2 < 1e-12 {
+        return len(sub(p, a));
+    }
+    let t = (dot(sub(p, a), ab) / l2).clamp(0.0, 1.0);
+    len(sub(p, add(a, scale(ab, t))))
 }
 
 #[cfg(test)]
@@ -956,6 +1024,96 @@ mod tests {
 
     fn arena() -> Arena {
         Arena { lo: V::new(0.0, 0.0), hi: V::new(16.0, 16.0) }
+    }
+
+    /// Open ground to the west of a wall of rock at `x` (and nothing else in the way).
+    struct Wall {
+        x: f64,
+    }
+
+    impl Terrain for Wall {
+        fn slide(&self, from: V, step: V, radius: f64) -> V {
+            let p = add(from, step);
+            V::new(p.x.min(self.x - radius), p.y)
+        }
+        fn toward(&self, _from: V, to: V) -> V {
+            to
+        }
+        fn clear(&self, a: V, b: V) -> bool {
+            a.x < self.x - 0.25 && b.x < self.x - 0.25
+        }
+        fn open(&self, p: V) -> bool {
+            p.x < self.x - 0.4
+        }
+    }
+
+    /// A brute that wears `shape` as its first move (in its fighter's own table, as a kit's string
+    /// is worn), begun on the hero at `hero`, run to its first active frame.
+    fn wearing(shape: Shape, at: V, hero: V, terrain: &dyn Terrain) -> Duelist {
+        let mut d = Duelist::new(1, Archetype::Brute, at, norm(sub(hero, at)));
+        d.f.table[0] =
+            MoveData { name: "TEST", startup: 30, active: 40, recovery: 40, track: 12, reach: 0.9, shape, ..MoveId::Slam.data() };
+        let s = Sense { hero, aim: V::new(-1.0, 0.0) };
+        assert!(d.begin(MoveId::L1, hero));
+        for _ in 0..200 {
+            d.step();
+            d.think(&s, terrain, &[]);
+            if matches!(d.f.attack(), Some((_, Phase::Active, _))) {
+                break;
+            }
+        }
+        assert!(matches!(d.f.attack(), Some((_, Phase::Active, _))));
+        d
+    }
+
+    #[test]
+    fn a_beam_runs_along_the_locked_aim_until_the_rock_and_strikes_within_half_its_width() {
+        let wall = Wall { x: 6.0 };
+        let shape = Shape::Beam { length: 10.0, width: 1.0 };
+        let d = wearing(shape, V::new(1.0, 5.0), V::new(9.0, 5.0), &wall);
+        assert!(d.lore.span > 4.0 && d.lore.span < 5.0, "stopped by the rock: {}", d.lore.span);
+        assert_eq!(beam_span(&arena(), V::new(1.0, 5.0), V::new(1.0, 0.0), 10.0), 10.0, "open ground: its whole length");
+        assert_eq!(d.reaches(V::new(4.0, 5.3), 0.2), Some(1.0), "on the line");
+        assert_eq!(d.reaches(V::new(4.0, 5.8), 0.2), None, "beside it");
+        assert_eq!(d.reaches(V::new(8.0, 5.0), 0.2), None, "behind the rock");
+        let data = d.data(MoveId::L1);
+        assert!(data.blockable() && !data.parriable());
+        assert_eq!(lands_after(&data, 6.0), data.startup, "it lands as it lights");
+    }
+
+    #[test]
+    fn a_charge_runs_its_length_along_its_aim_and_a_wall_stops_it_short() {
+        // On open ground: it runs its length and no farther, and reaches him on the way.
+        let shape = Shape::Charge { length: 6.0, speed: 12.0 };
+        let mut d = wearing(shape, V::new(2.0, 8.0), V::new(14.0, 8.0), &arena());
+        let s = Sense { hero: V::new(14.0, 8.0), aim: V::new(-1.0, 0.0) };
+        let mut reached = false;
+        for _ in 0..40 {
+            reached |= d.reaches(V::new(6.0, 8.0), 0.3).is_some();
+            d.step();
+            d.think(&s, &arena(), &[]);
+        }
+        assert!((d.pos.x - 8.0).abs() < 0.05 && !d.crashed, "ran its length: {:?}", d.pos);
+        assert!(reached, "it passed him");
+        // Into a wall: stopped short, crashed, and it says so.
+        let wall = Wall { x: 5.0 };
+        let mut d = wearing(shape, V::new(1.0, 5.0), V::new(9.0, 5.0), &wall);
+        let s = Sense { hero: V::new(9.0, 5.0), aim: V::new(-1.0, 0.0) };
+        for _ in 0..40 {
+            d.step();
+            d.think(&s, &wall, &[]);
+        }
+        assert!(d.crashed && d.pos.x < 5.0, "{:?}", d.pos);
+        assert!(d.cues.iter().any(|c| matches!(c, Cue::Crashed(_))));
+        // Its next move clears the crash.
+        while !d.f.is_neutral() {
+            d.step();
+        }
+        assert!(d.begin(MoveId::L1, s.hero) && !d.crashed);
+        // It lands when its run reaches him.
+        let data = d.data(MoveId::L1);
+        assert!(lands_after(&data, 6.9) > lands_after(&data, 1.0) && lands_after(&data, 0.5) == data.startup);
+        assert!(data.blockable() && data.parriable());
     }
 
     #[test]
