@@ -359,6 +359,9 @@ impl Game {
         if self.input.was_pressed(&[Action::Cheat]) {
             self.cheat_to_boss();
         }
+        if self.input.was_pressed(&[Action::MakeRival]) && self.screen == Screen::Playing {
+            self.cheat_rival();
+        }
         if self.input.was_pressed(&[Action::Immortal]) {
             self.toggle_immortal();
         }

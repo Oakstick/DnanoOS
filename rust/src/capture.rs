@@ -178,6 +178,7 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
             "god" => Cmd::God,
+            "makerival" => Cmd::Press(Action::MakeRival),
             "shop" => Cmd::Shop,
             "workshop" => Cmd::Workshop(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "stocked" => Cmd::Stocked,

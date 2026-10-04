@@ -124,7 +124,9 @@ fn draw_bars(o: &mut Overlay, g: &Game, brawl: &Brawl, t: f32) {
         // A pack's leader (WARBAND.md §7): its title and affixes over its bars, and its pack's heart
         // as a thin bar under them.
         if let Some(pack) = g.war.packs.iter().find(|p| p.leader == d.id) {
-            let mut title = String::from("LEADER");
+            // (A rival of the Ledger leads under his own name.)
+            let rival = g.rival_of(d.id).and_then(|r| g.ledger().get(r)).map(|r| r.full_name().to_uppercase());
+            let mut title = rival.unwrap_or_else(|| String::from("LEADER"));
             for a in &pack.affixes {
                 title.push_str("  ");
                 title.push_str(a.name());

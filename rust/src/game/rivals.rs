@@ -521,6 +521,39 @@ impl Game {
         }
     }
 
+    /// F10 (a testing cheat): the nearest foe of the vaults or a realm becomes a rival there and
+    /// then, of the third rank (so it carries a lesson if it can learn one), seated and met.
+    pub(super) fn cheat_rival(&mut self) {
+        if !self.grudges_kept() {
+            return;
+        }
+        let hp = self.hero.pos();
+        let near = self
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.counts() && !d.puppet && self.rival_of(d.id).is_none())
+            .min_by(|a, b| dist_sq(a.pos, hp).total_cmp(&dist_sq(b.pos, hp)))
+            .map(|d| (d.id, d.breed.kind, d.pos));
+        let Some((id, kind, at)) = near else { return };
+        let rival = self.promote_rival(kind, crate::logic::war::names::Deed::KillingBlow);
+        for _ in 0..2 {
+            self.warband.save.ledger.rank_up(rival);
+        }
+        if let (Some(i), Some(r)) = (self.duel_index(id), self.ledger().get(rival).cloned()) {
+            if let Some(d) = self.enemies[i].duel.as_deref_mut() {
+                r.dress(d);
+            }
+            self.enemies[i].b.name = r.full_name().to_uppercase();
+        }
+        self.war.grudges.seated.push((id, rival));
+        if let Some(p) = self.war.packs.iter_mut().find(|p| p.has(id)) {
+            p.leader = id;
+        }
+        self.meet_rival(rival, Some(id), at);
+        self.floater(hp.x, hp.y - 1.4, "CHEAT: A RIVAL IS MADE", 1.6, Some(0xffc040));
+    }
+
     /// Where this fight is, as a rival remembers it.
     fn grudge_place(&self) -> Place {
         use crate::logic::level::Theme;

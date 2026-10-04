@@ -52,6 +52,8 @@ pub enum Action {
     Readout,
     /// F5: immortal on or off (testing cheat): blows still land, but his health always comes back.
     Immortal,
+    /// F10: the nearest foe becomes a rival of the Ledger, there and then (testing cheat).
+    MakeRival,
     /// F6: the Sparring Ring's next bout; F7: the first of the next stage's.
     NextBout,
     NextStageBout,
@@ -127,6 +129,7 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         F4 => Action::FreeMove,
         F3 => Action::Fps,
         F5 => Action::Immortal,
+        F10 => Action::MakeRival,
         F8 => Action::Readout,
         F6 => Action::NextBout,
         F7 => Action::NextStageBout,
