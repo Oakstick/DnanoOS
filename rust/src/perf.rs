@@ -97,6 +97,15 @@ const SCENES: &[Scene] = &[
         motion: Motion::Still,
     },
     Scene {
+        name: "warband",
+        what: "The Vaults of Mammon with the expert bot fighting its packs: the Drum, the packs, the threat manager, the juice and the voices (WARBAND.md)",
+        setup: "0.1:realm:4,0.5:bot:2",
+        settle: 25.0,
+        during: "",
+        period: 0.0,
+        motion: Motion::Still,
+    },
+    Scene {
         name: "souls",
         what: "Scene I, the souls rise: see-through rigs, mist and glow",
         setup: "0.3:beat:18:2",

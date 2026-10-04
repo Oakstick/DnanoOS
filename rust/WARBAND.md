@@ -1227,3 +1227,11 @@ not changed).
   close to the old man's amber, so in the vaults the whisper's colour is the weakest of its tells;
   the bargain's price is health until W6's decrees can be its price; the bot's whisper refusal
   opens the workshop, which a harness has to leave.
+
+### Frame time (`--perf warband`)
+
+A new perf scene, `warband`: the Vaults of Mammon with the expert bot fighting its packs (the
+Drum, the packs, the rivals, the threat manager, the juice and the voices all at work). On the dev
+laptop at 1600x900: the fight's simulation (the brawl with the packs and the grudges) 0.03 ms a
+frame at the median, 0.06 at p95, 0.1 at most, inside §15.1's 0.5 ms; the whole frame 2.7 ms at the
+median, 5.8 ms at p99.
