@@ -165,7 +165,7 @@ impl WorldView {
             return;
         }
         if self.forge {
-            self.emit_wares(s, f);
+            self.emit_workshop(s, f);
             return;
         }
         if let Some(sel) = self.select {

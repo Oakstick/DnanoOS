@@ -1,14 +1,17 @@
-//! The old gatekeeper's wares: a panel on the right over the 3D crypt, with
-//! a tab for each of the hero's four trees, the tree's ten tiers as a column
-//! of rows, a card telling the highlighted tier's legend, ability and price,
-//! and a line of feedback. `shop_rects` gives the button rectangles (and
-//! `shop_row_at` the rows) so the game can hit-test the same layout it draws.
+//! The old gatekeeper's workshop: a panel on the right over the 3D room, named
+//! for the station the hero stands at, with a tab for each station (and the
+//! loadout), the station's tree's ten tiers as a column of rows (or the war
+//! table's generals, or the trophy wall's hooks), a card telling the
+//! highlighted row's legend, ability and price, and a line of feedback.
+//! `shop_rects` gives the button rectangles (and `shop_row_at` the rows) so
+//! the game can hit-test the same layout it draws.
 
 use super::*;
-use crate::game::{RowKind, ShopAction, ShopRow};
+use crate::game::{RowKind, ShopAction, ShopRow, Station};
 use crate::logic::angels::ARCHANGELS;
 use crate::logic::gear::{self, BELT_SLOTS};
 use crate::logic::progression::{self, Tree, TIERS};
+use crate::logic::sins::SINS;
 use crate::logic::story::roman;
 use crate::logic::systems::MAX_LIVES;
 use crate::logic::types::PotionKind;
@@ -47,8 +50,14 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
                 let r = [x0 + pad, y0 + t * 2.3, inner, t * 1.3];
                 (r, (0..row.buttons.len()).map(|k| [r[0] + k as f32 * (bw + gap), r[1], bw, r[3]]).collect())
             }
-            RowKind::Tier(..) | RowKind::Repair | RowKind::Life | RowKind::Sharpen => {
-                let extra = if matches!(row.kind, RowKind::Tier(..)) { 0.0 } else { t * 0.15 };
+            RowKind::Tier(..)
+            | RowKind::Repair
+            | RowKind::Life
+            | RowKind::Sharpen
+            | RowKind::Trials
+            | RowKind::General(_)
+            | RowKind::Trophy(_) => {
+                let extra = if matches!(row.kind, RowKind::Tier(..) | RowKind::General(_) | RowKind::Trophy(_)) { 0.0 } else { t * 0.15 };
                 let r = [x0 + pad, y + extra, inner, rh];
                 y += rh + t * 0.08;
                 let bw = t * 7.4;
@@ -89,28 +98,47 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
     let l = layout(rows, w, h);
     rows.iter().enumerate().position(|(i, r)| {
         let b = l.rows[i];
-        matches!(r.kind, RowKind::Tier(..) | RowKind::Repair | RowKind::Life | RowKind::Sharpen | RowKind::Patron | RowKind::Outfit)
-            && p.0 >= b[0]
+        matches!(
+            r.kind,
+            RowKind::Tier(..)
+                | RowKind::Repair
+                | RowKind::Life
+                | RowKind::Sharpen
+                | RowKind::Patron
+                | RowKind::Outfit
+                | RowKind::Trials
+                | RowKind::General(_)
+                | RowKind::Trophy(_)
+        ) && p.0 >= b[0]
             && p.0 <= b[0] + b[2]
             && p.1 >= b[1]
             && p.1 <= b[1] + b[3]
     })
 }
 
-/// What the old man says, by the tab (or because he was called).
-fn old_man_line(g: &Game) -> &'static str {
-    if g.shop.called {
-        return "\"You called, and I came. I told you I would. What do you need?\"";
+/// What the old man says, by the station (or because he was called). Later phases make it
+/// counsel: what he says will depend on what just happened down there.
+fn old_man_line(g: &Game) -> String {
+    if g.station() == Station::WarTable {
+        if let Some(news) = g.workshop.news.first() {
+            return format!("\"{news}\"");
+        }
     }
-    if g.shop.loadout {
-        return "\"Swear to an angel, dress as you like, and keep that blade sharp. Rust has killed more heroes than monsters have.\"";
-    }
-    match g.shop.tab {
-        Tree::Armory => "\"Old blades of old heroes. I kept them for the ones brave enough to go down.\"",
-        Tree::Path => "\"The soul you carry remembers how he fought. Let him teach you, a step at a time.\"",
-        Tree::Shield => "\"Down there a good shield is worth more than a brave heart. Take one.\"",
-        Tree::Elixir => "\"Drink when you need it, boy. Not before.\"",
-    }
+    let line = if g.shop.called {
+        "\"You called, and I came. I told you I would. What do you need?\""
+    } else if g.shop.loadout {
+        "\"Swear to an angel, dress as you like, and keep that blade sharp. Rust has killed more heroes than monsters have.\""
+    } else {
+        match g.station() {
+            Station::Anvil => "\"Old blades of old heroes. I kept them for the ones brave enough to go down.\"",
+            Station::Yard => "\"The soul you carry remembers how he fought. Let him teach you, a step at a time.\"",
+            Station::ShieldWall => "\"Down there a good shield is worth more than a brave heart. Take one.\"",
+            Station::Bench => "\"Drink when you need it, boy. Not before.\"",
+            Station::WarTable => "\"Sit. When I hear what waits below, and who commands it, I will tell you here.\"",
+            Station::Trophies => "\"Hang what you take from them here. Let the next one see it.\"",
+        }
+    };
+    line.to_string()
 }
 
 pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
@@ -130,8 +158,9 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     o.rect_outline(x0, y0, pw, ph, (t * 0.08).max(1.5), rgba(COPPER, 0.9));
     o.rect_outline(x0 + t * 0.15, y0 + t * 0.15, pw - t * 0.3, ph - t * 0.3, 1.0, [EDGE[0], EDGE[1], EDGE[2], 0.18]);
     let flourish = g.shop.flourish;
+    let station = g.station();
     o.text(
-        "THE OLD GATEKEEPER",
+        station.name(),
         x0 + t * 0.7,
         y0 + t * 1.15,
         t * (0.95 + flourish * 0.08),
@@ -153,11 +182,28 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     cx -= o.measure(&silver, cs) + iw + t * 0.15;
     draw_sprite(o, icon(Icon::Money(g.hero_kind)), cx, y0 + t * 1.15 - iw / 2.0, iw / 16.0, None, 1.0);
 
-    // The tree's name and how far along it he is (on the loadout: whose it is).
+    // The tree's name and how far along it he is (on the loadout: whose it is; on a board, what
+    // hangs there).
     let ty = y0 + t * 4.25;
     if g.shop.loadout {
         o.text("LOADOUT", x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
         o.text(&hero.name().to_uppercase(), x0 + pw - t * 0.7, ty, small, rgba(SAND, 1.0), Align::Right, true);
+    } else if station == Station::WarTable {
+        let known = g.workshop.generals.iter().filter(|c| c.is_some()).count();
+        o.text("HELL'S GENERALS", x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
+        o.text(&format!("{known} / 7"), x0 + pw - t * 0.7, ty, small, rgba(SAND, 1.0), Align::Right, true);
+    } else if station == Station::Trophies {
+        o.text("WHAT YOU TOOK FROM BELOW", x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
+        let n = g.workshop.trophies.len().min(crate::game::workshop::TROPHY_SLOTS);
+        o.text(
+            &format!("{n} / {}", crate::game::workshop::TROPHY_SLOTS),
+            x0 + pw - t * 0.7,
+            ty,
+            small,
+            rgba(SAND, 1.0),
+            Align::Right,
+            true,
+        );
     } else {
         o.text(&tree.title(hero).to_uppercase(), x0 + t * 0.7, ty, small, rgba(GOLD, 1.0), Align::Left, true);
         o.text(&format!("{} / {}", prog.owned(tree), TIERS), x0 + pw - t * 0.7, ty, small, rgba(SAND, 1.0), Align::Right, true);
@@ -279,6 +325,46 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 let lives = format!("EXTRA LIFE   {}/{}", g.score.lives, MAX_LIVES);
                 o.text(&lives, rect[0] + t * 3.15, cy, small, rgba(0xff6d8d, 1.0), Align::Left, true);
             }
+            RowKind::Trials => {
+                o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.03]);
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                o.text("TRIALS OF MASTERY", rect[0] + t * 0.5, cy, small, rgba(0x8a857a, 1.0), Align::Left, true);
+            }
+            RowKind::General(i) => {
+                let sin = SINS[(i as usize).min(6)];
+                let card = g.workshop.generals.get(i as usize).and_then(|c| c.as_ref());
+                o.rect(rect[0], rect[1], rect[2], rect[3], if card.is_some() { [0.55, 0.45, 0.25, 0.14] } else { [1.0, 1.0, 1.0, 0.03] });
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                let sw = t * 0.55;
+                let lit = if card.is_some() { 1.0 } else { 0.35 };
+                o.rect(rect[0] + t * 0.45, cy - sw / 2.0, sw, sw, rgba(sin.color(), lit));
+                let name = match card {
+                    Some(c) => format!("{} - {}", sin.title(), c.name.to_uppercase()),
+                    None => format!("{} - {}", sin.title(), sin.realm().to_uppercase()),
+                };
+                let color = if card.is_some() { sin.color() } else { 0x8a857a };
+                o.text(&name, rect[0] + t * 1.4, cy, small, rgba(color, 1.0), Align::Left, true);
+            }
+            RowKind::Trophy(i) => {
+                let trophy = g.workshop.trophies.get(i as usize);
+                o.rect(rect[0], rect[1], rect[2], rect[3], if trophy.is_some() { [0.55, 0.45, 0.25, 0.14] } else { [1.0, 1.0, 1.0, 0.03] });
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                o.text(&roman(i as usize + 1), rect[0] + t * 0.85, cy, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Center, true);
+                let (text, color) = match trophy {
+                    Some(tr) => (tr.name.to_uppercase(), tr.color),
+                    None => ("AN EMPTY HOOK".to_string(), 0x6a665e),
+                };
+                o.text(&text, rect[0] + t * 1.6, cy, small, rgba(color, 1.0), Align::Left, true);
+            }
             RowKind::Tabs | RowKind::Leave => {}
         }
     }
@@ -290,7 +376,8 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
             let selected = r == g.shop.row && (c == g.shop.col || row.buttons.len() == 1);
             // The open tab, the archangel he is sworn to, the outfit he wears.
             let active_tab = match b.action {
-                ShopAction::Tab(tab) => !g.shop.loadout && tab == g.shop.tab,
+                ShopAction::Tab(tab) => !g.shop.loadout && g.shop.board.is_none() && tab == g.shop.tab,
+                ShopAction::Board(s) => row.kind == RowKind::Tabs && !g.shop.loadout && g.shop.board == Some(s),
                 ShopAction::Loadout => g.shop.loadout,
                 ShopAction::Patron(a) => prog.patron == Some(a),
                 ShopAction::Outfit(k) => prog.outfit == k,
@@ -315,7 +402,9 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 TEXT
             };
             let size = if row.kind == RowKind::Tabs {
-                t * 0.58
+                // Seven tabs: the longer names are set smaller to fit.
+                let fit = (rect[2] - t * 0.3) / o.measure(&b.label, t * 0.58).max(1.0);
+                t * 0.58 * fit.min(1.0)
             } else if row.buttons.len() > 1 {
                 t * 0.46
             } else {
@@ -364,7 +453,7 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
             o.text(&n.text, x0 + pw / 2.0, ny, t * 0.58, rgba(n.color, a), Align::Center, true);
         }
         None => o.text(
-            "Arrows or stick to choose   Enter or A to take   Tab or LT next tree   Esc to leave",
+            "Arrows or stick to choose   Enter or A to take   Tab or LT next station   Esc to leave",
             x0 + pw / 2.0,
             ny,
             small * 0.85,
@@ -378,7 +467,7 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     let bw = x0 - t * 1.2;
     panel(o, t * 0.4, h - t * 2.6, bw, t * 2.2, t);
     o.text("THE OLD MAN", t * 0.9, h - t * 1.95, small, rgba(GOLD, 1.0), Align::Left, true);
-    wrap_left(o, old_man_line(g), t * 0.9, h - t * 1.2, bw - t * 1.0, t * 0.6, small * 0.95, rgba(TEXT, 1.0));
+    wrap_left(o, &old_man_line(g), t * 0.9, h - t * 1.2, bw - t * 1.0, t * 0.6, small * 0.95, rgba(TEXT, 1.0));
 }
 
 /// The loadout's card: the highlighted archangel, outfit, blade or shield.
@@ -509,6 +598,10 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         return;
     }
     let kind = rows.get(g.shop.row).map(|r| r.kind).unwrap_or(RowKind::Tabs);
+    if g.shop.board.is_some() || kind == RowKind::Trials {
+        draw_board_card(o, g, t, c, kind);
+        return;
+    }
     let (tree, tier) = match kind {
         RowKind::Tier(tr, tier) => (tr, tier),
         RowKind::Repair => (Tree::Shield, g.hero.shield.map(|s| s.tier).unwrap_or(prog.carry)),
@@ -606,6 +699,100 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
             if let Some(&k) = g.belt.get(i) {
                 draw_sprite(o, icon(Icon::Potion(hero, k)), x + slot * 0.1, by + slot * 0.1, slot * 0.8 / 16.0, None, 1.0);
             }
+        }
+    }
+}
+
+/// The card at the war table, the trophy wall and the yard's trials: a general known or not, and
+/// the old man's news; a trophy and his word on it; the trials to come.
+fn draw_board_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], kind: RowKind) {
+    let small = (t * 0.5).max(11.0);
+    let pad = t * 0.5;
+    let (x, w) = (c[0] + pad, c[2] - pad * 2.0);
+    let mut y = c[1] + pad + t * 0.4;
+    let title = |o: &mut Overlay, y: f32, text: &str, color: u32| o.text(text, x, y, t * 0.75, rgba(color, 1.0), Align::Left, true);
+    let station = g.station();
+    match kind {
+        RowKind::Trials => {
+            title(o, y, "TRIALS OF MASTERY", GOLD);
+            y += t * 0.9;
+            wrap_left(
+                o,
+                "Short bouts in the Sparring Ring's rules, one for each rank of your mastery, against the archetypes and the ghosts of the rivals you slew. The old man is still chalking the ring.",
+                x,
+                y,
+                w,
+                t * 0.58,
+                small * 0.95,
+                rgba(TEXT, 1.0),
+            );
+            o.text("SOON", x, c[1] + c[3] - pad - t * 0.2, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Left, true);
+        }
+        RowKind::Trophy(i) => match g.workshop.trophies.get(i as usize) {
+            Some(tr) => {
+                title(o, y, &tr.name.to_uppercase(), tr.color);
+                y += t * 0.9;
+                wrap_left(o, &format!("\"{}\"", tr.line), x, y, w, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
+            }
+            None => {
+                title(o, y, "AN EMPTY HOOK", SAND);
+                y += t * 0.9;
+                wrap_left(
+                    o,
+                    "What you take from below hangs here: the trophies of the rivals you slay, the banners of the generals you break, the princes' keys. Every one has its story, and the old man will tell it.",
+                    x,
+                    y,
+                    w,
+                    t * 0.58,
+                    small * 0.95,
+                    rgba(TEXT, 1.0),
+                );
+            }
+        },
+        _ if station == Station::WarTable => {
+            let i = match kind {
+                RowKind::General(i) => i as usize,
+                _ => 0,
+            };
+            let sin = SINS[i.min(6)];
+            match g.workshop.generals.get(i).and_then(|c| c.as_ref()) {
+                Some(card) => {
+                    title(o, y, &card.name.to_uppercase(), sin.color());
+                    y += t * 0.9;
+                    y = wrap_left(o, &card.note, x, y, w, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
+                }
+                None => {
+                    title(o, y, &format!("THE GENERAL OF {}", sin.title()), sin.color());
+                    y += t * 0.9;
+                    y = wrap_left(
+                        o,
+                        &format!(
+                            "No word yet from {}. Whoever holds it for {} keeps out of sight; the old man will hear of him.",
+                            sin.realm(),
+                            sin.prince()
+                        ),
+                        x,
+                        y,
+                        w,
+                        t * 0.58,
+                        small * 0.95,
+                        rgba(TEXT, 1.0),
+                    );
+                }
+            }
+            // The news he has, at the foot of the card.
+            let ny = (y + t * 0.5).max(c[1] + c[3] * 0.5);
+            o.text("NEWS FROM BELOW", x, ny, small * 0.9, rgba(GOLD, 1.0), Align::Left, true);
+            if g.workshop.news.is_empty() {
+                o.text("None. He only speaks when it matters.", x, ny + t * 0.65, small * 0.88, rgba(TEXT_DIM, 1.0), Align::Left, false);
+            }
+            let mut ly = ny + t * 0.65;
+            for n in g.workshop.news.iter().take(3) {
+                ly = wrap_left(o, n, x, ly, w, t * 0.55, small * 0.88, rgba(TEXT, 1.0)) + t * 0.1;
+            }
+        }
+        _ => {
+            title(o, y, station.name(), GOLD);
         }
     }
 }

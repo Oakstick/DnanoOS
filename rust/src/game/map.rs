@@ -38,6 +38,8 @@ pub fn map_stops() -> Vec<MapStop> {
     // Off the road: dungeons II and III, the levels built to the art direction.
     stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
     stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
+    // The old man's workshop, as after the first Cyclops.
+    stops.push(stop(Stage::Shop(0), "THE OLD MAN'S WORKSHOP".to_string()));
     // The story's scenes, from the start of each place: the graveyard at dusk, and the gateway below.
     for (beat, label) in [(0, "SCENE I - THE GRAVEYARD"), (story::first(Shot::Arrive).unwrap_or(0), "SCENE I - THE DUNGEON GATEWAY")] {
         stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some(beat) });
@@ -186,7 +188,9 @@ impl Game {
         } else {
             match stage {
                 Stage::Dungeon(n) => self.load_level(n),
-                Stage::Arena(n) | Stage::Shop(n) => self.load_boss(n),
+                Stage::Arena(n) => self.load_boss(n),
+                // At the old man's: the dungeon after it waits behind his door (as Continue does).
+                Stage::Shop(n) => self.load_level(n),
                 Stage::Realm(s) => self.load_realm(s),
                 Stage::Court(s) | Stage::SinShop(s) => self.load_court(s),
                 Stage::Gym => self.load_gym(),
@@ -194,7 +198,11 @@ impl Game {
             }
             self.checkpoint(stage);
             self.juice.fade = 1.0;
-            self.enter(Screen::Ready);
+            if matches!(stage, Stage::Shop(_)) {
+                self.open_shop();
+            } else {
+                self.enter(Screen::Ready);
+            }
         }
         for a in [Action::Confirm, Action::Jump, Action::Attack, Action::Tap] {
             self.input.consume(a);

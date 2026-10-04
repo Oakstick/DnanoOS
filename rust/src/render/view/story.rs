@@ -1634,7 +1634,7 @@ impl WorldView {
      * collar's ring is, for the chain.
      */
     #[allow(clippy::too_many_arguments)]
-    fn emit_dog(
+    pub(super) fn emit_dog(
         &self,
         f: &mut Frame,
         feet: Vec3,
@@ -2030,54 +2030,5 @@ fn gateway_door(f: &mut Frame, open: f32, time: f32) {
                 SHADE_UNLIT,
             ));
         }
-    }
-}
-
-/// Where the hero stands at the old man's, and the old man.
-const WARES_HERO: Vec3 = Vec3::new(0.9, 0.0, 0.3);
-const WARES_OLD_MAN: Vec3 = Vec3::new(-1.2, 0.0, -1.1);
-const WARES_DOG: Vec3 = Vec3::new(-0.4, 0.0, -0.45);
-
-impl WorldView {
-    /// The old man's wares: the camera looks past them to the right, where the panel goes.
-    pub(super) fn wares_camera(&self, t: f32) -> (Vec3, Vec3) {
-        let a = (t * 0.2).sin() * 0.12;
-        (GATEWAY + Vec3::new(2.2 + a, 1.85, 3.55), GATEWAY + Vec3::new(1.6 + a * 0.5, 0.8, -1.2))
-    }
-
-    /**
-     * The shop's backdrop: the crypt by the gate to the underworld, the door
-     * shut on its red glow, the old gatekeeper leaning on his staff and talking
-     * now and then, Quitmer lying on his straw wagging, and the hero before
-     * them with the weapon and shield he has chosen.
-     */
-    pub(super) fn emit_wares(&self, s: &SceneState, f: &mut Frame) {
-        let time = s.time as f32;
-        let at = |p: Vec3| GATEWAY + p;
-        f.atmosphere = crypt();
-        f.sets.push(self.story_sets[1].clone());
-        f.sets_blend.push(self.story_mist[1].clone());
-        f.bounds = Vec4::new(GATEWAY.x - 4.5, GATEWAY.z - 3.5, GATEWAY.x + 4.5, GATEWAY.z + 4.5);
-        gateway_lights(f, time);
-        gateway_door(f, 0.0, time);
-
-        // The old man, turned to the hero, a gesture every few seconds.
-        let talk = time % 7.0;
-        self.emit_old_man(f, at(WARES_OLD_MAN), yaw_to(WARES_OLD_MAN, WARES_HERO), 0.0, 0.0, 0.0, Some(talk), time);
-        // Quitmer, off his chain, lying at ease by the old man.
-        let yaw = yaw_to(WARES_DOG, WARES_HERO) - 0.3;
-        self.emit_dog(f, at(WARES_DOG), yaw, 0.0, 0.0, 1.0, 0.0, 0.0, 0.7, time);
-        // The hero, breathing, looking the old man's wares over.
-        let rig = &self.models.hero;
-        let mut pose = Pose::rest(rig);
-        let breathe = (time * 1.8).sin();
-        if let Some(i) = rig.index("head") {
-            pose.rot[i].x = 0.08 + breathe * 0.02;
-        }
-        let root = Mat4::from_translation(at(WARES_HERO))
-            * Mat4::from_rotation_y(yaw_to(WARES_HERO, WARES_OLD_MAN))
-            * Mat4::from_scale(Vec3::new(1.0, 1.0 + breathe * 0.006, 1.0));
-        emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
-        f.lights.push(Light { pos: at(WARES_HERO + Vec3::new(0.6, 1.8, 1.4)), color: lin(0xffe0c0) * 3.0, distance: 4.0 });
     }
 }

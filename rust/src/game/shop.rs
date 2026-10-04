@@ -6,14 +6,16 @@
 //! comes back to him on a timer), the outfit he wears, his blade sharpened
 //! for gold, and a broken shield forged anew. Driven by the keyboard, a
 //! controller or the mouse. The rows are built fresh from the hero's
-//! progress, so labels and prices always tell the truth.
+//! progress, so labels and prices always tell the truth. The tabs are the
+//! stations of his workshop (`workshop.rs`), where the camera and the old man go.
 
+use super::workshop::{QuitmerMood, Station, Work, PAGES, STATIONS, TROPHY_SLOTS};
 use super::{Game, Screen};
 use crate::audio::Sfx;
 use crate::input::Action;
 use crate::logic::angels::{Archangel, ARCHANGELS};
 use crate::logic::gear::{self, ShieldGear, BELT_SLOTS};
-use crate::logic::progression::{self, Refusal, Tree, TIERS, TREES};
+use crate::logic::progression::{self, Refusal, Tree, TIERS};
 use crate::logic::systems::MAX_LIVES;
 use crate::logic::types::{Dir, PotionKind};
 use crate::render::heroes::outfit_names;
@@ -24,6 +26,8 @@ pub enum ShopAction {
     Tab(Tree),
     /// The loadout tab.
     Loadout,
+    /// A station without wares: the war table, the trophy wall.
+    Board(Station),
     /// Swear to an archangel: his power, on its timer.
     Patron(Archangel),
     /// Wear an outfit (0 is his own).
@@ -41,6 +45,8 @@ pub enum ShopAction {
     Bottle(PotionKind),
     Repair,
     Life,
+    /// The training yard's trials of mastery (not yet open).
+    Trials,
     Leave,
 }
 
@@ -55,6 +61,12 @@ pub enum RowKind {
     Sharpen,
     Repair,
     Life,
+    /// The training yard's trials (shut for now).
+    Trials,
+    /// A realm's general at the war table (by the order of `SINS`).
+    General(u8),
+    /// A hook on the trophy wall.
+    Trophy(u8),
     Leave,
 }
 
@@ -96,11 +108,30 @@ pub struct ShopState {
     pub called: bool,
     /// The loadout tab is open (rather than the tree in `tab`).
     pub loadout: bool,
+    /// A station without wares is open (the war table, the trophy wall), rather than `tab`'s.
+    pub board: Option<Station>,
+    /// The old man at work on what was just bought.
+    pub work: Option<Work>,
+    /// Quitmer's mood, and seconds before he lies calm again.
+    pub mood: QuitmerMood,
+    pub mood_t: f32,
 }
 
 impl Default for ShopState {
     fn default() -> Self {
-        Self { tab: Tree::Armory, row: 1, col: 0, note: None, flourish: 0.0, called: false, loadout: false }
+        Self {
+            tab: Tree::Armory,
+            row: 1,
+            col: 0,
+            note: None,
+            flourish: 0.0,
+            called: false,
+            loadout: false,
+            board: None,
+            work: None,
+            mood: QuitmerMood::Calm,
+            mood_t: 0.0,
+        }
     }
 }
 
@@ -116,9 +147,10 @@ impl Game {
         self.enter(Screen::Shop);
     }
 
-    /// The row to start on: the next tier to take in the open tab (the archangels on the loadout).
+    /// The row to start on: the next tier to take in the open tab (the archangels on the loadout,
+    /// the top of a board).
     fn first_row_of_interest(&self) -> usize {
-        if self.shop.loadout {
+        if self.shop.loadout || self.shop.board.is_some() {
             return 1;
         }
         let owned = self.progress.hero(self.hero_kind).owned(self.shop.tab);
@@ -181,14 +213,44 @@ impl Game {
         let hero = self.hero_kind;
         let h = self.progress.hero(hero);
         let tree = self.shop.tab;
-        let mut tabs: Vec<ShopButton> = TREES.iter().map(|&t| button(ShopAction::Tab(t), t.label(), 0, 0, true)).collect();
+        // A tab for each station in the order they stand, then the loadout.
+        let mut tabs: Vec<ShopButton> = STATIONS
+            .iter()
+            .map(|&s| match s.tree() {
+                Some(t) => button(ShopAction::Tab(t), s.label(), 0, 0, true),
+                None => button(ShopAction::Board(s), s.label(), 0, 0, true),
+            })
+            .collect();
         tabs.push(button(ShopAction::Loadout, "LOADOUT", 0, 0, true));
         let mut rows = vec![ShopRow { kind: RowKind::Tabs, buttons: tabs }];
         let leave = if self.shop.called { "BACK TO THE DUNGEON" } else { "DOWN INTO THE DARK" };
+        let leave_row = ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, leave, 0, 0, true)] };
         if self.shop.loadout {
             rows.extend(self.loadout_rows());
-            rows.push(ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, leave, 0, 0, true)] });
+            rows.push(leave_row);
             return rows;
+        }
+        match self.shop.board {
+            Some(Station::WarTable) => {
+                // A row for each realm's general: known, or no word of him yet.
+                for (i, g) in self.workshop.generals.iter().enumerate() {
+                    let label = if g.is_some() { "KNOWN" } else { "NO WORD" };
+                    let b = button(ShopAction::Board(Station::WarTable), label, 0, 0, false);
+                    rows.push(ShopRow { kind: RowKind::General(i as u8), buttons: vec![b] });
+                }
+                rows.push(leave_row);
+                return rows;
+            }
+            Some(_) => {
+                for i in 0..TROPHY_SLOTS {
+                    let label = if i < self.workshop.trophies.len() { "HUNG" } else { "EMPTY" };
+                    let b = button(ShopAction::Board(Station::Trophies), label, 0, 0, false);
+                    rows.push(ShopRow { kind: RowKind::Trophy(i as u8), buttons: vec![b] });
+                }
+                rows.push(leave_row);
+                return rows;
+            }
+            None => {}
         }
         for tier in 1..=TIERS {
             let b = if h.has(tree, tier) {
@@ -236,15 +298,18 @@ impl Game {
                 let p = progression::bottle_price(PotionKind::Life);
                 rows.push(ShopRow { kind: RowKind::Life, buttons: vec![button(ShopAction::Life, format!("BUY {p}"), p, 0, true)] });
             }
+            // The yard keeps a place for the trials of mastery, not yet open.
+            Tree::Path => rows.push(ShopRow { kind: RowKind::Trials, buttons: vec![button(ShopAction::Trials, "SOON", 0, 0, false)] }),
             _ => {}
         }
-        rows.push(ShopRow { kind: RowKind::Leave, buttons: vec![button(ShopAction::Leave, leave, 0, 0, true)] });
+        rows.push(leave_row);
         rows
     }
 
     /// One update of the shop: move the highlight, hover, press.
     pub(super) fn update_shop(&mut self, dt: f64) {
         let dtf = dt as f32;
+        self.update_workshop(dtf);
         self.shop.flourish = (self.shop.flourish - dtf * 1.5).max(0.0);
         if let Some(n) = &mut self.shop.note {
             n.life -= dtf;
@@ -267,7 +332,7 @@ impl Game {
             Some(Dir::Right) if wide > 1 => self.shop.col = (self.shop.col + 1) % wide,
             _ => {}
         }
-        // LT and RT (or Tab, Y) page through the trees.
+        // LT and RT (or Tab, Y) step from station to station.
         if self.input.was_pressed(&[Action::NextPotion, Action::TabNext]) {
             self.switch_tab(1);
         }
@@ -335,27 +400,20 @@ impl Game {
         }
     }
 
-    /// Which tab is open: a tree's (0..4), or the loadout (4).
+    /// Which tab is open: a station's (0..6), or the loadout (6).
     fn tab_index(&self) -> usize {
-        if self.shop.loadout {
-            TREES.len()
-        } else {
-            TREES.iter().position(|&t| t == self.shop.tab).unwrap_or(0)
-        }
+        self.page()
     }
 
     fn switch_tab(&mut self, step: i32) {
-        let n = TREES.len() as i32 + 1;
+        let n = PAGES as i32;
         let i = (self.tab_index() as i32 + step).rem_euclid(n) as usize;
         self.open_tab(i);
     }
 
-    /// Opens tab `i`: a tree's, or the loadout after them.
+    /// Opens tab `i`: a station's, or the loadout after them.
     fn open_tab(&mut self, i: usize) {
-        self.shop.loadout = i >= TREES.len();
-        if !self.shop.loadout {
-            self.shop.tab = TREES[i];
-        }
+        self.open_page(i);
         if self.shop.row != 0 {
             self.shop.row = self.first_row_of_interest();
         }
@@ -381,6 +439,7 @@ impl Game {
     fn sold(&mut self, what: String, color: u32) {
         self.audio.play(Sfx::Buy);
         self.shop.flourish = 1.0;
+        self.start_work(color);
         self.note(what, color);
         self.save_progress();
         self.remember_belt();
@@ -393,8 +452,9 @@ impl Game {
         }
         let hero = self.hero_kind;
         match b.action {
-            ShopAction::Tab(t) => self.open_tab(TREES.iter().position(|&x| x == t).unwrap_or(0)),
-            ShopAction::Loadout => self.open_tab(TREES.len()),
+            ShopAction::Tab(t) => self.open_tab(Station::of_tree(t).index()),
+            ShopAction::Board(s) => self.open_tab(s.index()),
+            ShopAction::Loadout => self.open_tab(STATIONS.len()),
             ShopAction::Patron(a) => {
                 if self.progress.hero(hero).patron == Some(a) {
                     self.note(format!("{} ALREADY WATCHES OVER YOU", a.name().to_uppercase()), a.color());
@@ -519,6 +579,7 @@ impl Game {
                     self.sold(format!("{} ON YOUR BELT", def.name.to_uppercase()), def.color);
                 }
             }
+            ShopAction::Trials => self.audio.play(Sfx::Denied),
             ShopAction::Life => {
                 if self.score.lives >= MAX_LIVES {
                     self.audio.play(Sfx::Denied);
@@ -545,11 +606,21 @@ fn rows_tier(rows: &[ShopRow], row: usize) -> Option<u8> {
 impl Game {
     /**
      * The gatekeeper's promise: wherever he is, the hero can call for help and
-     * the old man's wares open (the dungeon waits).
+     * the old man's workshop opens (the dungeon waits): at the war table if he
+     * has news, otherwise at the station the hero left.
      */
     pub fn call_old_man(&mut self) {
         self.audio.play(Sfx::Whoosh);
+        let last = if self.shop.loadout { None } else { Some(self.station()) };
         self.shop = ShopState { called: true, ..ShopState::default() };
+        match (self.workshop.news.is_empty(), last) {
+            (false, _) => self.go_to_station(Station::WarTable),
+            (true, Some(s)) => self.go_to_station(s),
+            (true, None) => {
+                self.open_page(STATIONS.len());
+                self.shop.row = 1;
+            }
+        }
         self.enter(Screen::Shop);
         self.juice.fade = 1.0;
         self.input.consume(Action::Attack);

@@ -7,7 +7,9 @@
 //! attack, bomb, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
 //! up/down/left/right, `look:dx:dy` for a mouse turn in pixels, `nugget`,
 //! `hurt`, `boss` (the F1 cheat), `wound:N` (N damage to the boss), `daze`,
-//! `shop` (open the blacksmith), `coins:N`, `tab`, `drink`, and `potion:I`
+//! `shop` (open the blacksmith), `workshop:S` (the old man's workshop at station S: 0 the anvil,
+//! 1 the shield wall, 2 the alchemy bench, 3 the training yard, 4 the war table, 5 the trophy
+//! wall), `stocked` (sample news, trophies and generals for its walls), `coins:N`, `tab`, `drink`, and `potion:I`
 //! (drink potion I of the shop's list), `arm:L:N` (weapon line L at level N,
 //! equipped), `shield:I` (shield I, or none past the end) and `tour` (play
 //! the first-run tour on the next confirm), `streak` (three quick kills) and
@@ -78,6 +80,10 @@ pub(crate) enum Cmd {
     /// `god`: god mode on (F5).
     God,
     Shop,
+    /// The old man's workshop at a station (0..6).
+    Workshop(usize),
+    /// Sample news, trophies and generals for the workshop's walls.
+    Stocked,
     Tour,
     Streak,
     Goo,
@@ -160,6 +166,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "slay" => Cmd::Slay,
             "god" => Cmd::God,
             "shop" => Cmd::Shop,
+            "workshop" => Cmd::Workshop(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "stocked" => Cmd::Stocked,
             "tour" => Cmd::Tour,
             "streak" => Cmd::Streak,
             "goo" => Cmd::Goo,
@@ -252,6 +260,13 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Slay => game.debug_wound_boss(1000),
         Cmd::God => game.input.inject(crate::input::Action::Immortal),
         Cmd::Shop => game.open_shop(),
+        Cmd::Workshop(n) => {
+            if game.screen != Screen::Shop {
+                game.open_shop();
+            }
+            game.go_to_station(crate::game::workshop::STATIONS[n.min(5)]);
+        }
+        Cmd::Stocked => game.workshop = crate::game::workshop::sample(),
         Cmd::Tour => game.tour_pending = true,
         Cmd::Streak => game.debug_streak(),
         Cmd::Goo => game.debug_goo(),
