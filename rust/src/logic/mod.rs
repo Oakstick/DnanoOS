@@ -8,6 +8,7 @@ pub mod enemy;
 pub mod garden;
 pub mod gear;
 pub mod grid;
+pub mod guide;
 pub mod gym;
 pub mod hero;
 pub mod heroes;
