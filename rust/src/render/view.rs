@@ -36,6 +36,7 @@ mod animation;
 mod camera;
 mod court_greed;
 mod crypt;
+mod deceit;
 mod duel;
 pub mod effects;
 mod emit;
@@ -66,6 +67,7 @@ pub use animation::SLASH_SECONDS;
 use animation::{EnemyView, Pose, TURN_RATE_HERO};
 use camera::chase;
 pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR, REST_PITCH};
+pub use deceit::DeceitView;
 pub use duel::crown;
 use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
@@ -332,6 +334,8 @@ pub struct WorldView {
     /// The old man's workshop while the shop is up (the station, what the hero owns, the work).
     pub workshop: Option<crate::game::WorkshopView>,
     shop_stage: workshop::WorkshopStage,
+    /// The prince's cheats standing in the world: the false gatekeeper, a mimic chest.
+    pub deceit: DeceitView,
     /// The character screen, while it is up.
     pub select: Option<SelectView>,
     /// The character screen's cavern (built once), how far each hero has stepped forward,
@@ -462,6 +466,7 @@ impl WorldView {
             focus: None,
             forge: false,
             workshop: None,
+            deceit: DeceitView::default(),
             shop_stage: Default::default(),
             select: None,
             select_set: InstanceSet::new(select::cavern()),

@@ -744,6 +744,7 @@ impl WorldView {
         }
         self.emit_fountain(time, f);
         self.emit_gate_and_keys(s, time, hero_pos, f);
+        self.emit_deceits(s, f, time);
         self.emit_smoke(time, f);
         // (In the vaults the fireflies are embers adrift from the braziers.)
         let mote_color = if self.crypt {

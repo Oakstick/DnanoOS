@@ -56,8 +56,13 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
             | RowKind::Sharpen
             | RowKind::Trials
             | RowKind::General(_)
+            | RowKind::Rival(_)
             | RowKind::Trophy(_) => {
-                let extra = if matches!(row.kind, RowKind::Tier(..) | RowKind::General(_) | RowKind::Trophy(_)) { 0.0 } else { t * 0.15 };
+                let extra = if matches!(row.kind, RowKind::Tier(..) | RowKind::General(_) | RowKind::Rival(_) | RowKind::Trophy(_)) {
+                    0.0
+                } else {
+                    t * 0.15
+                };
                 let r = [x0 + pad, y + extra, inner, rh];
                 y += rh + t * 0.08;
                 let bw = t * 7.4;
@@ -108,6 +113,7 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
                 | RowKind::Outfit
                 | RowKind::Trials
                 | RowKind::General(_)
+                | RowKind::Rival(_)
                 | RowKind::Trophy(_)
         ) && p.0 >= b[0]
             && p.0 <= b[0] + b[2]
@@ -116,13 +122,17 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
     })
 }
 
-/// What the old man says, by the station (or because he was called). Later phases make it
-/// counsel: what he says will depend on what just happened down there.
+/// What the old man says: his counsel on what just happened down there (a fall and its answer, a
+/// whisper denied, a lie seen through: `Game::workshop_counsel`), the news at the war table, or
+/// else the station's own line (or that he was called).
 fn old_man_line(g: &Game) -> String {
     if g.station() == Station::WarTable {
         if let Some(news) = g.workshop.news.first() {
             return format!("\"{news}\"");
         }
+    }
+    if let Some(said) = g.workshop_counsel() {
+        return format!("\"{said}\"");
     }
     let line = if g.shop.called {
         "\"You called, and I came. I told you I would. What do you need?\""
@@ -350,6 +360,22 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 };
                 let color = if card.is_some() { sin.color() } else { 0x8a857a };
                 o.text(&name, rect[0] + t * 1.4, cy, small, rgba(color, 1.0), Align::Left, true);
+            }
+            RowKind::Rival(i) => {
+                let r = g.intel_rivals().get(i as usize).and_then(|&id| g.ledger().get(id));
+                o.rect(rect[0], rect[1], rect[2], rect[3], [0.45, 0.2, 0.15, 0.14]);
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                if let Some(r) = r {
+                    let pip = t * 0.11;
+                    for k in 0..r.rank.min(5) {
+                        o.circle(rect[0] + t * 0.5 + k as f32 * pip * 2.6, cy, pip, rgba(0xeab55e, 1.0));
+                    }
+                    let name = r.full_name().to_uppercase();
+                    o.text(&name, rect[0] + t * 1.9, cy, small * 0.92, rgba(0xff9a6a, 1.0), Align::Left, true);
+                }
             }
             RowKind::Trophy(i) => {
                 let trophy = g.workshop.trophies.get(i as usize);
@@ -749,6 +775,25 @@ fn draw_board_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], kind: RowKind
                 );
             }
         },
+        RowKind::Rival(i) => {
+            let Some(r) = g.intel_rivals().get(i as usize).and_then(|&id| g.ledger().get(id)) else { return };
+            title(o, y, &r.full_name().to_uppercase(), 0xff9a6a);
+            y += t * 0.75;
+            let breed = crate::logic::war::names::breed_name(r.kind);
+            o.text(&format!("RANK {} {}", r.rank, breed.to_uppercase()), x, y, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Left, true);
+            y += t * 0.8;
+            let weak = crate::logic::war::ledger::Trait::Weakness(r.weakness);
+            let text = if r.knows(weak) {
+                format!("\"{}\"", crate::logic::war::ledger::counsel_line_for(r))
+            } else {
+                format!(
+                    "\"I know where {} can be had. It will cost you {} silver; what I sell is true.\"",
+                    r.name,
+                    crate::game::counsel::intel_price(r.rank)
+                )
+            };
+            wrap_left(o, &text, x, y, w, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
+        }
         _ if station == Station::WarTable => {
             let i = match kind {
                 RowKind::General(i) => i as usize,
