@@ -16,6 +16,7 @@ use super::*;
 use crate::logic::combat::ails::{Flash, FlashKind};
 use crate::logic::combat::duelist::{Bolt, BoltLook, ALOFT, FIRE_TINT};
 use crate::logic::combat::frames::Shape;
+use crate::logic::combat::fsm::PARRY_FROM;
 use crate::logic::combat::{Archetype, Duelist, MoveId, Phase, Reel, State};
 
 /// The commit flash: the last frames of a startup, when the aim no longer follows.
@@ -669,6 +670,18 @@ impl WorldView {
                             let a = -half + 2.0 * half * k as f32 / n as f32;
                             let dir = aim * a.cos() + side * a.sin();
                             dot(dir * rr, rr <= reach * fill);
+                        }
+                    }
+                    // His mastery's white edge: raised now, the guard would meet it in the parry window.
+                    let left = data.startup.saturating_sub(frame);
+                    if s.parry_edge.is_some_and(|to| phase == Phase::Startup && (PARRY_FROM..=to).contains(&left)) {
+                        let n = ((2.0 * half * (reach + 0.12)) / 0.12).ceil().max(2.0) as i32;
+                        for k in 0..=n {
+                            let a = -half + 2.0 * half * k as f32 / n as f32;
+                            let dir = aim * a.cos() + side * a.sin();
+                            let m = Mat4::from_translation(base + dir * (reach + 0.12) + Vec3::new(0.0, 0.03, 0.0))
+                                * Mat4::from_scale(Vec3::new(0.07, 0.014, 0.07));
+                            f.additive.push(Instance::new(m, Vec3::splat(3.2), 0.95, Vec3::ZERO, SHADE_UNLIT));
                         }
                     }
                 }

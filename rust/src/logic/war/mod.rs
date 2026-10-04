@@ -9,6 +9,7 @@ pub mod counsel;
 pub mod deceit;
 pub mod drum;
 pub mod ledger;
+pub mod mastery;
 pub mod names;
 pub mod pack;
 pub mod save;

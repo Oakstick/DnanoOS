@@ -44,6 +44,8 @@ pub struct Sparring {
     pub last: Option<(usize, BoutStats)>,
     /// The camera before the ring turned it to the top view (the ring is fought from above, like the vaults).
     pub camera_before: Option<CameraMode>,
+    /// A name in place of the bout's (a trial of mastery's).
+    pub label: Option<String>,
 }
 
 impl Default for Sparring {
@@ -54,11 +56,14 @@ impl Default for Sparring {
 
 impl Sparring {
     pub fn new() -> Self {
-        Self { bout: 0, phase: BoutPhase::Idle, last: None, camera_before: None }
+        Self { bout: 0, phase: BoutPhase::Idle, last: None, camera_before: None, label: None }
     }
 
     /// The bout's name, numbered.
     pub fn title(&self) -> String {
+        if let Some(l) = &self.label {
+            return l.clone();
+        }
         format!("BOUT {}: {}", self.bout + 1, gym::BOUTS[self.bout].name)
     }
 }
@@ -186,6 +191,9 @@ impl Game {
                     if let Some(s) = self.spar.as_mut() {
                         s.phase = if matches!(phase, BoutPhase::Won(_)) { BoutPhase::Won(left) } else { BoutPhase::Lost(left) };
                     }
+                } else if self.in_trial() {
+                    // A trial's aftermath: back to the old man's yard.
+                    self.trial_over();
                 } else {
                     if let Some(s) = self.spar.as_mut() {
                         if matches!(phase, BoutPhase::Won(_)) {

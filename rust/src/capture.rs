@@ -21,6 +21,9 @@
 //! `whisper` (the prince whispers false counsel), `gatekeeper` (the false gatekeeper in this realm,
 //! the hero a few steps from him), `sign` (the realm's compass turned), `mimic` (a mimic chest
 //! before him),
+//! `hero:K` (play hero K: 0 Ragnar, 1 Mehmed, 2 Miyamoto), `mastery:N` (his mastery at rank N, its
+//! next rank's deeds part done), `yard` (the training yard, its trials' card up), `trial:N` (his
+//! trial of rank N in the ring) and `toast` (MASTERY RISES),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
 //! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam)
 //! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
@@ -147,6 +150,12 @@ pub(crate) enum Cmd {
     Aim(f32, f32),
     /// Juice event K (`game::juice::JUICE_EVENTS`) on the ring's nearest foe.
     Juice(usize),
+    /// WARBAND.md §11.1: the hero played, his mastery's rank, the yard's card, a trial, the toast.
+    Hero(usize),
+    Mastery(u8),
+    Yard,
+    Trial(u8),
+    Toast,
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -221,6 +230,11 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
             "hurt" => Cmd::Hurt,
             "juice" => Cmd::Juice(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "hero" => Cmd::Hero(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "mastery" => Cmd::Mastery(parts.next().and_then(|v| v.parse().ok()).unwrap_or(2)),
+            "yard" => Cmd::Yard,
+            "trial" => Cmd::Trial(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "toast" => Cmd::Toast,
             "ledger" => Cmd::Ledger,
             "rival" => Cmd::Rival(parts.next().and_then(|v| v.parse().ok()).unwrap_or(3)),
             "counsel" => Cmd::Counsel,
@@ -273,6 +287,11 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             game.view.mouse_look = true;
         }
         Cmd::Juice(k) => game.debug_juice(k),
+        Cmd::Hero(k) => game.debug_hero(k),
+        Cmd::Mastery(n) => game.debug_mastery(n),
+        Cmd::Yard => game.debug_yard(),
+        Cmd::Trial(n) => game.debug_trial(n),
+        Cmd::Toast => game.debug_toast(),
         Cmd::Nugget => game.debug_collect_key(),
         Cmd::Hurt => game.debug_hurt(),
         Cmd::Ledger => game.debug_ledger(),

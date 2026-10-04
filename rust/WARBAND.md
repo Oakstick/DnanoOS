@@ -1235,3 +1235,69 @@ Drum, the packs, the rivals, the threat manager, the juice and the voices all at
 laptop at 1600x900: the fight's simulation (the brawl with the packs and the grudges) 0.03 ms a
 frame at the median, 0.06 at p95, 0.1 at most, inside §15.1's 0.5 ms; the whole frame 2.7 ms at the
 median, 5.8 ms at p99.
+
+### W8 mastery: deeds, ranks and the old man's trials (branch `warband-mastery`)
+
+Built without touching `game/brawl.rs`; `logic/combat/kit.rs` gained two additive `Strike` fields.
+
+* **`logic/war/mastery.rs`**: `Feat` (punish, break, finisher, block, tip, parry, evade), `Way` per
+  hero (§11.1's three, their deeds and five ranks), `Mastery { rank, deeds, tries, best }` (ranks
+  want `DEEDS_FOR` 25/75/150/300/500 deeds of the way **and** the trial: `count`, `ready`, `tried`),
+  every rank's number as a constant, `Stance` and `Kit::with_mastery` (Ragnar 2 finisher +5 poise,
+  Mehmed 1 block ×0.9, Mehmed 4 a free chain, Miyamoto 2 Riposte ×1.15 on the one swing begun
+  within 20 f of a parry, 3 Mushin ×1.3 on the swing after three parries unwounded, 5 parry +1 f),
+  `Temper` (riposte, calm, discipline, the unbroken guard), `WAR_CRY` (30/2/30 f, 2.5 tiles, 24
+  stamina, 360 f rest), `Rule` and `TRIALS` (five a hero, bouts 0-4 of the ring).
+* **`game/mastery.rs`**: `count_deeds` (from `update_war`) folds the war log into deeds: a punish
+  is the first blow into a foe that ended the last frame in its recovery or reeling from a parry;
+  a tip is a blow landed with the last 0.3 tiles of the swing's reach. The rules kept here: Ragnar
+  1 gold glint as a foe opens, 3 a kill under dilation gives 16 stamina, 4 War Cry (F / L3 in a
+  fight; his fighter is held in the cry's frames, a blow in its startup ends it; body foes within
+  reach are staggered through `Fighter::shake`), 5 and Mehmed 5 once a pack the broken guard stands;
+  Mehmed 2 a tip breaks 25% harder (`shake`), 3 Hold the Line (a blocked body foe gets a knock
+  worth 0.5 tiles); Miyamoto 1 the white edge on a telegraph while a guard raised now would parry,
+  4 a leap a blow passes under gives 10 stamina. The toast when a rank's deeds are met.
+  `Game::mastered(k)` puts the rank on the kit: **the integrator adds it last in `hero_kit`**.
+* **Trials**: the yard's row says `TRIAL N`, `DEEDS have/need` or `MASTERED`; pressed, the gym is
+  loaded (no checkpoint written), the ring's bout is the trial's, its banner counts the deeds; the
+  deeds done pass it, a rule broken, defeat, the time (90 s), leaving the ring or all foes down
+  first fail it. The card through the aftermath, then back to the checkpoint's stage at the yard
+  (the `called` flag kept: a dungeon called from starts again from its door, as Continue does).
+* **Save**: `vh.progress` v3 adds 14 numbers a hero; v2 and v1 load with mastery fresh.
+* **Harness**: `--mastery N` (every hero, tiers 1 and 4, novice and expert, rank 0 and 5);
+  `VH_MASTERY=N` runs any harness or test at rank N. The expert bot cries War Cry when a body foe
+  is near and only body foes stand. With the integrator's line, every balance test (the bouts'
+  targets, the third and later stages, the kit growth and parity, the vaults) is green at ranks
+  1-5, and `--balance 3` at rank 0 prints the same table to the digit.
+
+| `--mastery 3`, expert, rank 0 → 5 | Brute | Pack | Trio |
+|---|---|---|---|
+| Ragnar t1 / t4 | 11.4 → 11.4 / 5.9 → 5.9 | 7.3 → 4.9 / 4.3 → 2.4 | 15.9 → 15.9 / 8.1 → 8.1 |
+| Mehmed t1 / t4 | 10.4 → 10.4 / 5.4 → 5.4 | 5.0 → 5.0 / 3.2 → 3.2 | 12.5 → 12.5 / 9.1 → 9.1 |
+| Miyamoto t1 / t4 | 8.9 → 8.7 / 5.4 → 4.5 | 5.8 → 5.8 / 3.4 → 3.4 | 12.7 → 12.2 / 7.4 → 6.9 |
+
+The novice gains nothing anywhere (one Mehmed tier-4 Trio run is 18% slower by chance). Mehmed's
+ranks reward the blocker and the spacing (the adept's Brute at rank 5: 27 → 15 s), not the
+parrying expert.
+
+| Change | Why |
+|---|---|
+| Riposte ×1.25 → ×1.15, for the one swing; Mushin ×1.5 → ×1.3 | the parrying expert bot gained 19% on the Brute and broke the heroes' 1.35× parity from rank 2 |
+| A punish counts a parried foe's reel too | the expert parries the slam, so its punishes never fell in a recovery |
+| War Cry 24 stamina (30 proposed) | the expert never had 30 to spare with a foe beside it |
+
+* Tests: `a_rank_wants_its_deeds_and_its_trial`, `a_mastery_goes_into_the_save_and_back`,
+  `rank_zero_changes_nothing_and_every_rank_stays_inside_the_tables_bounds`,
+  `the_war_cry_keeps_the_frame_rules`, `the_temper_charges_riposte_mushin_and_the_discipline`,
+  `every_trial_is_a_bout_of_the_ring_with_a_deed_of_its_way`,
+  `mastery_is_saved_and_saves_from_before_it_still_load`, `deeds_are_counted_from_the_war_log`,
+  `the_deeds_that_meet_a_rank_raise_the_toast`,
+  `a_trial_from_the_yard_is_fought_in_the_ring_and_returns_to_the_yard_with_its_card` (the expert
+  bot passes Miyamoto's first), `a_trial_is_failed_by_its_rule_and_grants_nothing`,
+  `the_unbroken_guard_stands_once_a_pack_and_hold_the_line_shoves_a_body_foe`,
+  `the_war_cry_holds_him_for_its_frames_and_staggers_the_body_foes_about_him`, and
+  `mastery_grows_the_experts_margin_more_than_the_mashers` (`#[ignore]` until the line in
+  `hero_kit` is in; it passes with it).
+* Captures: `hero:K`, `mastery:N`, `yard`, `trial:N`, `toast`.
+* Open: trials against the ghosts of slain rivals (§12.1), rivals learning a mastery as a habit
+  (§11.2), the white edge for bolts, a sound for the glint.

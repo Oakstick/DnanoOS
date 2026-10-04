@@ -135,6 +135,7 @@ impl Game {
             DrumPhase::Release => crate::audio::DrumLevel::Release,
         });
         self.pace_the_brawl();
+        self.count_deeds(dt);
     }
 
     /// What the Drum allows now (with `VH_NO_DRUM` set, for A/B runs of the harness, it allows

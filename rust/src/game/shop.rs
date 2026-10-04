@@ -45,7 +45,7 @@ pub enum ShopAction {
     Bottle(PotionKind),
     Repair,
     Life,
-    /// The training yard's trials of mastery (not yet open).
+    /// The training yard's trial of mastery that is set.
     Trials,
     /// The war table: a rival's true weakness, bought (WARBAND.md §10.1).
     Intel(crate::logic::war::ledger::RivalId),
@@ -63,7 +63,7 @@ pub enum RowKind {
     Sharpen,
     Repair,
     Life,
-    /// The training yard's trials (shut for now).
+    /// The training yard's trials of mastery.
     Trials,
     /// A realm's general at the war table (by the order of `SINS`).
     General(u8),
@@ -212,6 +212,16 @@ impl Game {
         rows
     }
 
+    /// The yard's trial button: the trial that is set, the deeds it waits for, or mastered.
+    fn trials_button(&self) -> ShopButton {
+        let m = self.progress.hero(self.hero_kind).mastery;
+        match (self.trial_ready(), m.progress()) {
+            (Some(t), _) => button(ShopAction::Trials, format!("TRIAL {}", crate::logic::story::roman(t.rank as usize)), 0, 0, true),
+            (None, Some((have, need))) => button(ShopAction::Trials, format!("DEEDS {have}/{need}"), 0, 0, false),
+            (None, None) => button(ShopAction::Trials, "MASTERED", 0, 0, false),
+        }
+    }
+
     /// The rows of the current tab, top to bottom: tabs, ten tiers, extras, and the way out.
     pub fn shop_rows(&self) -> Vec<ShopRow> {
         let hero = self.hero_kind;
@@ -314,8 +324,8 @@ impl Game {
                 let p = progression::bottle_price(PotionKind::Life);
                 rows.push(ShopRow { kind: RowKind::Life, buttons: vec![button(ShopAction::Life, format!("BUY {p}"), p, 0, true)] });
             }
-            // The yard keeps a place for the trials of mastery, not yet open.
-            Tree::Path => rows.push(ShopRow { kind: RowKind::Trials, buttons: vec![button(ShopAction::Trials, "SOON", 0, 0, false)] }),
+            // The yard: the trial of mastery that is set, or what it waits for.
+            Tree::Path => rows.push(ShopRow { kind: RowKind::Trials, buttons: vec![self.trials_button()] }),
             _ => {}
         }
         rows.push(leave_row);
@@ -595,7 +605,13 @@ impl Game {
                     self.sold(format!("{} ON YOUR BELT", def.name.to_uppercase()), def.color);
                 }
             }
-            ShopAction::Trials => self.audio.play(Sfx::Denied),
+            ShopAction::Trials => {
+                if self.begin_trial() {
+                    self.input.consume(Action::Attack);
+                } else {
+                    self.audio.play(Sfx::Denied);
+                }
+            }
             ShopAction::Intel(id) => self.buy_intel(id),
             ShopAction::Life => {
                 if self.score.lives >= MAX_LIVES {

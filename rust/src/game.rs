@@ -39,6 +39,7 @@ mod juice_tests;
 pub mod ledger;
 mod level;
 mod map;
+pub mod mastery;
 mod movement;
 mod packs;
 mod pickups;
@@ -328,6 +329,8 @@ pub struct Game {
     pub warband: ledger::Warband,
     /// The two voices: the old man's counsel, the line in the panel, the prince's cheats.
     pub voices: counsel::Voices,
+    /// The heroes' mastery in the fight, its toast and its trials (WARBAND.md §11.1).
+    pub mastery: mastery::MasteryRun,
     /// Seconds of freeze-frame left.
     hitstop: f64,
     /// The freezes' budget, the slowing of time and the pace (`juice`); the feel's settings; and
@@ -501,6 +504,7 @@ impl Game {
             war: war::War::default(),
             warband: ledger::Warband::load(),
             voices: counsel::Voices::default(),
+            mastery: mastery::MasteryRun::default(),
             want_fullscreen_toggle: false,
             menu_index: 0,
             quit_requested: false,

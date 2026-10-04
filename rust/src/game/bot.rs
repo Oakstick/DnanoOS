@@ -27,7 +27,7 @@
 use super::sparring::{BoutPhase, BoutStats};
 use super::Game;
 use crate::input::{Action, PadState};
-use crate::logic::combat::archetype::Power;
+use crate::logic::combat::archetype::{Attack, Power};
 use crate::logic::combat::duelist::HERO_RADIUS;
 use crate::logic::combat::frames::{Shape, BOLT_RADIUS, BOLT_SPEED};
 use crate::logic::combat::fsm::GuardRule;
@@ -399,6 +399,25 @@ impl Bot {
         if let Some(p) = self.see_through(g, &mut pad) {
             return p;
         }
+        // Ragnar's War Cry (his mastery's fourth rank): the expert cries when a body foe stands about
+        // him (not reeling) and no other kind is left to strike him in it, and nothing it has seen
+        // lands before the cry is done.
+        if self.skill == Skill::Expert && g.war_cry_ready() {
+            let cry = crate::logic::war::mastery::WAR_CRY;
+            let living: Vec<_> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).collect();
+            let near = living
+                .iter()
+                .filter(|d| d.breed.attack() == Attack::Body && d.f.reeling().is_none())
+                .filter(|d| math::len(math::sub(d.pos, hp)) <= cry.radius + d.radius())
+                .count();
+            // (A bolt or a blade from outside the cry would find him in it.)
+            let worth = near >= 1 && living.iter().all(|d| d.breed.attack() == Attack::Body);
+            if worth && soonest.is_none_or(|t| t.t > cry.total() as f64) && dodges.is_empty() {
+                pad.actions.insert(Action::Step);
+                self.attack_down = false;
+                return pad;
+            }
+        }
 
         // Offence: the most open foe (reeling, then recovering), then the nearest; in the vaults those
         // hunting him first, and when none is, the nearest pack asleep (to wake it).
@@ -564,6 +583,11 @@ pub(super) fn fresh_game(seed: u32) -> Game {
     // (And no grudges carried over from the last run's crawl: each run meets its own.)
     g.warband = Default::default();
     g.hero_kind = HeroKind::Ragnar;
+    // `VH_MASTERY=N`: every hero's mastery at rank N, to run any harness at that rank (WARBAND.md §11.1).
+    let rank = std::env::var("VH_MASTERY").ok().and_then(|v| v.parse::<u8>().ok()).unwrap_or(0);
+    for h in g.progress.heroes.iter_mut() {
+        h.mastery.rank = rank.min(crate::logic::war::mastery::RANKS);
+    }
     g.equip_from_progress();
     g
 }
@@ -604,12 +628,21 @@ pub fn play_bout(bout: usize, skill: Skill, seed: u32) -> BoutResult {
 
 /// The same, with the hero and his kit of `loadout` (none: a fresh Ragnar).
 pub fn play_bout_as(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadout>) -> BoutResult {
+    play_bout_mastered(bout, skill, seed, loadout, 0)
+}
+
+/// The same, with his mastery at `rank` (WARBAND.md §11.1; the bots never cry War Cry).
+pub fn play_bout_mastered(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadout>, rank: u8) -> BoutResult {
     let mut g = fresh_game(seed);
     g.debug_ring(bout + 1);
     if let Some(l) = loadout {
         // (After the jump, which takes the saved run's hero from the title.)
         l.equip(&mut g);
         g.start_bout();
+    }
+    if rank > 0 {
+        let hero = g.hero_kind;
+        g.progress.hero_mut(hero).mastery.rank = rank;
     }
     g.hero.free_move = true;
     let mut bot = Bot::new(skill, seed);
@@ -662,10 +695,15 @@ pub fn summarize(bout: usize, skill: Skill, seeds: &[u32]) -> Summary {
 
 /// The same, with `loadout`.
 pub fn summarize_as(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>) -> Summary {
+    summarize_mastered(bout, skill, seeds, loadout, 0)
+}
+
+/// The same, with his mastery at `rank`.
+pub fn summarize_mastered(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>, rank: u8) -> Summary {
     let mut s = Summary::default();
     let mut win_secs = 0.0;
     for &seed in seeds {
-        let r = play_bout_as(bout, skill, seed, loadout);
+        let r = play_bout_mastered(bout, skill, seed, loadout, rank);
         s.runs += 1;
         if r.won {
             s.wins += 1;
@@ -763,6 +801,65 @@ pub fn stage_report(seeds: &[u32], stage: u8, tiers: &[u8]) -> String {
         }
     }
     out
+}
+
+/// The bouts the mastery sweep plays: the Brute, the Pack and the Trio.
+pub const MASTERY_BOUTS: [usize; 3] = [0, 1, 3];
+
+/**
+ * What mastery is worth (WARBAND.md §11.1): every hero at tiers 1 and 4, the novice and the
+ * expert, each bout of `MASTERY_BOUTS` at rank 0 and rank 5: wins, time to kill (of the wins) and
+ * damage dealt per second of fighting. Mastery rewards skill: the expert's gain should be the
+ * larger.
+ */
+pub fn mastery_sweep(seeds: &[u32]) -> String {
+    let mut out = String::from(
+        "hero      tier skill   bout                 | rank 0: win  ttk   dps | rank 5: win  ttk   dps | dps gain
+",
+    );
+    for hero in ROSTER {
+        for tier in [1, 4] {
+            for skill in [Skill::Novice, Skill::Expert] {
+                for k in MASTERY_BOUTS {
+                    let l = Some(Loadout::all(hero, tier));
+                    let (a, b) = (mastery_line(k, skill, seeds, l, 0), mastery_line(k, skill, seeds, l, 5));
+                    out += &format!(
+                        "{:<9} {:>4} {:<7} {:<20} | {:>10.0}% {:>5.1} {:>5.1} | {:>10.0}% {:>5.1} {:>5.1} | {:>+7.0}%
+",
+                        hero.name(),
+                        tier,
+                        skill.name(),
+                        gym::BOUTS[k].name,
+                        a.0 * 100.0,
+                        a.1,
+                        a.2,
+                        b.0 * 100.0,
+                        b.1,
+                        b.2,
+                        (b.2 / a.2.max(1e-9) - 1.0) * 100.0
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
+/// One bout and skill at a rank: the win rate, the mean time to kill (wins) and the damage dealt
+/// per second of fighting (every run).
+pub fn mastery_line(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>, rank: u8) -> (f64, f64, f64) {
+    let (mut wins, mut win_secs, mut dealt, mut secs) = (0, 0.0, 0.0, 0.0);
+    for &seed in seeds {
+        let r = play_bout_mastered(bout, skill, seed, loadout, rank);
+        if r.won {
+            wins += 1;
+            win_secs += r.secs;
+        }
+        dealt += r.stats.dealt;
+        secs += r.secs;
+    }
+    let n = seeds.len().max(1) as f64;
+    (wins as f64 / n, if wins > 0 { win_secs / wins as f64 } else { 0.0 }, dealt / secs.max(1e-9))
 }
 
 /// The tiers the kit sweep plays.

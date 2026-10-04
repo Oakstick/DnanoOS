@@ -24,6 +24,7 @@ mod controls;
 mod court;
 mod ledger;
 mod map;
+mod mastery;
 mod ring;
 mod shop;
 
@@ -224,6 +225,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         voices::draw_signs(o, g, t);
         ledger::draw_rival_card(o, g, t);
         ring::draw_ring(o, g, t);
+        mastery::draw_mastery_toast(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
         draw_feedback(o, g, t);
         voices::draw_voices(o, g, t);

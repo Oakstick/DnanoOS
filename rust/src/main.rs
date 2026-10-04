@@ -158,6 +158,14 @@ fn main() {
         print!("{}", void_harvest::game::bot::stage_report(&seeds, stage, &tiers));
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--mastery") {
+        // WARBAND.md §11.1: every hero's mastery at rank 0 and 5, the novice and the expert, N seeds.
+        let n: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(3);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let seeds: Vec<u32> = (1..=n).collect();
+        print!("{}", void_harvest::game::bot::mastery_sweep(&seeds));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--balance") {
         // The balance harness (COMBAT.md phase 2): every bout of the Sparring Ring, every bot skill, N seeds.
         let n: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(3);

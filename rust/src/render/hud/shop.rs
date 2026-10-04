@@ -131,6 +131,12 @@ fn old_man_line(g: &Game) -> String {
             return format!("\"{news}\"");
         }
     }
+    // At the yard with a trial set, he says what it is.
+    if g.station() == Station::Yard && !g.shop.loadout {
+        if let Some(tr) = g.trial_ready() {
+            return format!("\"{}\"", tr.line);
+        }
+    }
     if let Some(said) = g.workshop_counsel() {
         return format!("\"{said}\"");
     }
@@ -341,7 +347,19 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                     o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
                 }
                 let cy = rect[1] + rect[3] / 2.0;
-                o.text("TRIALS OF MASTERY", rect[0] + t * 0.5, cy, small, rgba(0x8a857a, 1.0), Align::Left, true);
+                let mst = prog.mastery;
+                let way = crate::logic::war::mastery::way(hero);
+                let lit = if g.trial_ready().is_some() { GOLD } else { SAND };
+                o.text("MASTERY", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(lit, 1.0), Align::Left, true);
+                o.text(
+                    &format!("{}  {}/{}", way.name, mst.rank, crate::logic::war::mastery::RANKS),
+                    rect[0] + t * 0.5,
+                    cy + t * 0.3,
+                    small * 0.78,
+                    rgba(TEXT_DIM, 1.0),
+                    Align::Left,
+                    false,
+                );
             }
             RowKind::General(i) => {
                 let sin = SINS[(i as usize).min(6)];
@@ -740,19 +758,7 @@ fn draw_board_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], kind: RowKind
     let station = g.station();
     match kind {
         RowKind::Trials => {
-            title(o, y, "TRIALS OF MASTERY", GOLD);
-            y += t * 0.9;
-            wrap_left(
-                o,
-                "Short bouts in the Sparring Ring's rules, one for each rank of your mastery, against the archetypes and the ghosts of the rivals you slew. The old man is still chalking the ring.",
-                x,
-                y,
-                w,
-                t * 0.58,
-                small * 0.95,
-                rgba(TEXT, 1.0),
-            );
-            o.text("SOON", x, c[1] + c[3] - pad - t * 0.2, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Left, true);
+            super::mastery::draw_mastery_card(o, g, t, c);
         }
         RowKind::Trophy(i) => match g.workshop.trophies.get(i as usize) {
             Some(tr) => {

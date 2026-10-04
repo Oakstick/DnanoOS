@@ -305,7 +305,8 @@ impl Game {
             k.strike.power *= 2.0;
             k.strike.tempo *= 0.67;
         }
-        k
+        // His mastery of technique (WARBAND.md §11.1): rank 0 changes nothing.
+        self.mastered(k)
     }
 
     /// His buttons: attack and evade into his fighter's buffer; the guard as held.

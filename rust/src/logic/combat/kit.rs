@@ -78,6 +78,10 @@ pub struct Strike {
     pub back_from: f64,
     /// Health each blow that lands costs him (a cursed blade).
     pub blood: f64,
+    /// Poise added to the finisher's (his mastery: the Berserker's Way, WARBAND.md §11.1).
+    pub finisher_poise: f64,
+    /// The share of a swing's stamina it costs (his mastery: a disciplined chain costs nothing).
+    pub stamina: f64,
 }
 
 /// What the shield on his arm (or his bare hands, without one) makes of the guard.
@@ -135,6 +139,8 @@ impl Strike {
         back: 1.0,
         back_from: PI,
         blood: 0.0,
+        finisher_poise: 0.0,
+        stamina: 1.0,
     };
 
     /// `hero`'s blade of `tier` at `edge` (0 to 1), with his path at `path`.
@@ -183,6 +189,8 @@ impl Strike {
             back,
             back_from,
             blood: b.blood as f64,
+            finisher_poise: 0.0,
+            stamina: 1.0,
         }
     }
 }
@@ -281,6 +289,7 @@ impl Kit {
             if mv == MoveId::L3 {
                 d.reach += s.finisher_reach;
                 d.damage *= s.finisher_power;
+                d.poise += s.finisher_poise;
                 if s.whirl {
                     d.half_angle = PI;
                 }
@@ -294,7 +303,7 @@ impl Kit {
 
     /// Stamina a swing costs with this kit.
     pub fn swing_cost(&self) -> f64 {
-        progression::STAMINA_PER_BLOW * self.strike.tempo
+        progression::STAMINA_PER_BLOW * self.strike.tempo * self.strike.stamina
     }
 
     /// The string's damage per second, flat out (each hit at its proration in the combo).
