@@ -67,10 +67,26 @@ fn from_hsv(h: f32, s: f32, v: f32) -> Vec3 {
 
 /// Grades one (linear) albedo into the board, and says whether it reads as stone.
 pub(super) fn grade(c: Vec3) -> (Vec3, bool) {
+    grade_keeping(c, None)
+}
+
+/// How far apart two hues are, in degrees.
+fn hue_gap(a: f32, b: f32) -> f32 {
+    let d = (a - b).rem_euclid(360.0);
+    d.min(360.0 - d)
+}
+
+/// As `grade`, but a colour near the hue of `accent` (a realm's sin) keeps its saturation, a
+/// little deepened: the accent the realm is known by survives the grade.
+pub(super) fn grade_keeping(c: Vec3, accent: Option<f32>) -> (Vec3, bool) {
     let s = Vec3::new(to_srgb(c.x.clamp(0.0, 1.0)), to_srgb(c.y.clamp(0.0, 1.0)), to_srgb(c.z.clamp(0.0, 1.0)));
     let (mut h, mut sat, mut v) = hsv(s);
     let mut stone = false;
-    if sat < 0.2 {
+    if let Some(a) = accent.filter(|&a| sat >= 0.2 && hue_gap(h, a) < 28.0) {
+        h = a + (h - a) * 0.6;
+        sat = (sat * 0.92).min(0.9);
+        v = v.min(0.9) * 0.95;
+    } else if sat < 0.2 {
         // Stone and greys: chalk down to the board's pale stone, warmed a touch.
         if v > 0.45 {
             v = 0.45 + (v - 0.45) * 0.5;
@@ -121,6 +137,13 @@ impl WorldView {
     /// Grades the level's static scenery (the garden, its gate) into the board. Glowing pieces
     /// (lantern glass, candles) keep their colour; plain stone takes the dressed-stone material.
     pub(super) fn grade_estate(&mut self) {
+        self.grade_scenery(None);
+    }
+
+    /// Grades the level's static scenery into the board, keeping the hue of `accent` (a realm's
+    /// sin colour) as its accent.
+    pub(super) fn grade_scenery(&mut self, accent: Option<u32>) {
+        let accent = accent.map(|a| hsv(Vec3::new(((a >> 16) & 255) as f32, ((a >> 8) & 255) as f32, (a & 255) as f32) / 255.0).0);
         // (Trees are not stone, however pale a birch's bark.)
         let mut wood = vec![false; self.static_cubes.len()];
         for t in &self.trees {
@@ -134,7 +157,7 @@ impl WorldView {
             if glowing {
                 continue;
             }
-            let (g, stone) = grade(Vec3::new(c.color[0], c.color[1], c.color[2]));
+            let (g, stone) = grade_keeping(Vec3::new(c.color[0], c.color[1], c.color[2]), accent);
             c.color[0] = g.x;
             c.color[1] = g.y;
             c.color[2] = g.z;

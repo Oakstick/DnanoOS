@@ -638,6 +638,15 @@ builder is `view/crypt.rs`. Both are off the road on the map.
 - **The Cyclops' meadow:** takes the Garden's grade and an amber dusk light instead of magenta
   twilight.
 - **The character screen's cavern:** charcoal and umber stone, amber lava, crystals of mist teal.
+- **The Portals of Hell:**
+  - charcoal basalt, slabs of umber and pale dressed stone;
+  - lava that burns amber and ember instead of blood red;
+  - a charcoal smoke lit amber from below.
+  - The sin portals keep their colours, and the gym keeps its look.
+- **The seven realms and Mammon's vaults:** graded into the board as they are built
+  (`grade_scenery`). Colours near the realm's sin hue keep their saturation as its accent:
+  Pride's violet, Envy's green, Greed's gold, Lust's pink. Everything else (chalk floors, loud
+  stone) comes into the palette.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 
