@@ -8,6 +8,7 @@
 //! the feel.
 
 use super::{Game, MenuItem, Screen};
+use crate::input::Action;
 use crate::logic::juice::{budgeted, Dilation, DilationKind, Stop, BUDGET_WINDOW, DILATION_EVERY, FPS};
 use crate::platform;
 use crate::render::profile::fx;
@@ -56,7 +57,8 @@ impl Feel {
 
 /// The game's clock under the juice: the freezes of the last window (when, in seconds of real
 /// time, and how many frames each held), the slowing of time under way (each with its age in
-/// seconds of real time out of a freeze), when time last slowed, the time scale, and the pace.
+/// seconds of real time out of a freeze), when time last slowed, the time scale, the pace, and the
+/// presses made while the world was frozen, kept for the step that ends the freeze.
 #[derive(Clone, Debug)]
 pub struct Tempo {
     pub(super) freezes: Vec<(f64, f64)>,
@@ -64,11 +66,12 @@ pub struct Tempo {
     pub(super) last_dilation: Option<f64>,
     pub(super) scale: f64,
     pub(super) pace: f64,
+    pub(super) kept: Vec<Action>,
 }
 
 impl Default for Tempo {
     fn default() -> Self {
-        Self { freezes: Vec::new(), dilations: Vec::new(), last_dilation: None, scale: 1.0, pace: 1.0 }
+        Self { freezes: Vec::new(), dilations: Vec::new(), last_dilation: None, scale: 1.0, pace: 1.0, kept: Vec::new() }
     }
 }
 
@@ -143,13 +146,28 @@ impl Game {
         }
     }
 
-    /// One step of play: frozen while a freeze holds (the world waits, the effects and the camera
-    /// go on), else the world runs at the time scale. The slowing of time ages on real time, but
-    /// only out of a freeze (a kill's freeze, then its slow motion).
+    /**
+     * One step of play: frozen while a freeze holds (the world waits, the effects and the camera
+     * go on), else the world runs at the time scale. The slowing of time ages on real time, but
+     * only out of a freeze (a kill's freeze, then its slow motion).
+     *
+     * A button pressed in a freeze is not lost: no step reads it while the world waits, so it is
+     * kept and handed to the step that ends the freeze, as if pressed then (once, however often it
+     * was pressed in the freeze; a held button, the guard, is read as it stands). The fighter's
+     * buffer ages on the fight's frames and none pass in a freeze, so a press at its very start
+     * reaches the buffer as fresh as one at its end, and waits there `fsm::BUFFER` frames as any
+     * other press does. The kept presses are the step's alone: what reads the buttons after it
+     * (and already saw them in the freeze) does not see them again.
+     */
     pub(super) fn play_step(&mut self, dt: f64) {
         if self.hitstop > 0.0 {
             self.hitstop -= dt;
             self.tempo.pace = 0.0;
+            for a in self.input.presses() {
+                if !self.tempo.kept.contains(&a) {
+                    self.tempo.kept.push(a);
+                }
+            }
             return;
         }
         if self.view.cinematic() {
@@ -166,7 +184,11 @@ impl Game {
         });
         self.tempo.scale = scale;
         self.tempo.pace = scale;
+        let kept: Vec<Action> = std::mem::take(&mut self.tempo.kept).into_iter().filter(|&a| self.input.repress(a)).collect();
         self.tick(dt * scale);
+        for a in kept {
+            self.input.consume(a);
+        }
     }
 
     /// Out of play the world's pace is the screen's: still under the pause, else on.
@@ -174,9 +196,11 @@ impl Game {
         self.tempo.pace = if self.screen == Screen::Paused { 0.0 } else { 1.0 };
     }
 
-    /// A new level: no freeze, no slowing of time carried into it.
+    /// A new level (or round): no freeze, no slowing of time, no press kept from a freeze carried
+    /// into it.
     pub(super) fn reset_tempo(&mut self) {
         self.hitstop = 0.0;
+        self.tempo.kept.clear();
         self.tempo.freezes.clear();
         self.tempo.dilations.clear();
         self.tempo.scale = 1.0;
