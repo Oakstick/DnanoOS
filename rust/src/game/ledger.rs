@@ -140,7 +140,7 @@ impl Game {
 
     /// The board is up: any of the back keys (or a click) puts it away.
     pub(super) fn update_ledger_board(&mut self) {
-        let back = [Action::Confirm, Action::Jump, Action::Bomb, Action::Pause, Action::Tap];
+        let back = [Action::Confirm, Action::Jump, Action::Guide, Action::Pause, Action::Tap];
         if !self.input.was_pressed(&back) && self.input.click.is_none() {
             return;
         }

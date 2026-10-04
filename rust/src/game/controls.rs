@@ -46,7 +46,7 @@ impl Game {
             self.input.consume(Action::Attack);
             return;
         }
-        let back = [Action::Confirm, Action::Jump, Action::Bomb, Action::Pause, Action::Tap];
+        let back = [Action::Confirm, Action::Jump, Action::Guide, Action::Pause, Action::Tap];
         if !self.input.was_pressed(&back) && self.input.click.is_none() {
             return;
         }

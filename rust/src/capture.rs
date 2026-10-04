@@ -1,10 +1,10 @@
 //! Headless screenshots for checking builds without a person at the keyboard:
 //!
 //!   void-harvest --capture out.png [--size 1600x900] [--time 6.5]
-//!                [--script "0.1:confirm,3:+up,4.2:-up,4.5:bomb"]
+//!                [--script "0.1:confirm,3:+up,4.2:-up,4.5:guide"]
 //!
 //! The script is `seconds:command` pairs. Commands: an action (confirm,
-//! attack, bomb, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
+//! attack, guide, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
 //! up/down/left/right, `look:dx:dy` for a mouse turn in pixels, `nugget`,
 //! `hurt`, `boss` (the F1 cheat), `wound:N` (N damage to the boss), `daze`,
 //! `shop` (open the blacksmith), `workshop:S` (the old man's workshop at station S: 0 the anvil,
@@ -69,6 +69,8 @@ pub(crate) fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 }
 
 pub(crate) enum Cmd {
+    /// A bomb dropped where he stands (the bomb is disabled in play; the scripts still drop them).
+    Bomb,
     Nugget,
     Hurt,
     Wound(i32),
@@ -178,7 +180,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
         let c = match cmd {
             "confirm" => Cmd::Press(Action::Confirm),
             "attack" => Cmd::Press(Action::Attack),
-            "bomb" => Cmd::Press(Action::Bomb),
+            "guide" => Cmd::Press(Action::Guide),
+            "bomb" => Cmd::Bomb,
             "jump" => Cmd::Press(Action::Jump),
             "step" => Cmd::Press(Action::Step),
             "camera" => Cmd::Press(Action::Camera),
@@ -327,6 +330,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
         Cmd::Slay => game.debug_wound_boss(1000),
         Cmd::God => game.input.inject(crate::input::Action::Immortal),
+        Cmd::Bomb => game.place_bomb(),
         Cmd::Shop => game.open_shop(),
         Cmd::Workshop(n) => {
             if game.screen != Screen::Shop {

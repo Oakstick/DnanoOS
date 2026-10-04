@@ -151,6 +151,7 @@ impl Game {
             Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
             Screen::Title | Screen::Paused if self.show_map => self.update_map(),
             Screen::Title | Screen::Paused if self.warband.board_open => self.update_ledger_board(),
+            Screen::Paused if self.guide_open => self.update_guide(),
             Screen::Title => match self.menu_choice() {
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 Some(MenuItem::Controls) => self.open_controls(),
@@ -414,7 +415,8 @@ impl Game {
             self.audio.toggle_mute();
         }
         // With the controller page or the map open, Esc and Start close it instead.
-        if self.input.was_pressed(&[Action::Pause]) && !self.show_controls && !self.show_map && !self.warband.board_open {
+        if self.input.was_pressed(&[Action::Pause]) && !self.show_controls && !self.show_map && !self.warband.board_open && !self.guide_open
+        {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
                 // A controller's Menu button is Confirm as well: it must not pick Resume at once.

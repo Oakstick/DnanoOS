@@ -1095,7 +1095,7 @@ fn the_controller_page_opens_from_the_title_and_the_pause_menu() {
     g.update(crate::app::STEP);
     assert!(g.show_controls && g.screen == Screen::Title);
     // B closes it, back on the title with the button still highlighted.
-    g.input.inject(Action::Bomb);
+    g.input.inject(Action::Guide);
     g.update(crate::app::STEP);
     assert!(!g.show_controls && g.screen == Screen::Title);
     assert_eq!(g.menu_items()[g.menu_index], MenuItem::Controls);
@@ -1418,11 +1418,11 @@ fn potions_ride_on_the_belt_until_drunk() {
 }
 
 #[test]
-fn right_click_drops_a_bomb_and_left_click_swings() {
+fn right_click_drops_no_bomb_and_left_click_swings() {
     let mut g = playing();
     g.input.mouse_button(winit::event::MouseButton::Right, true);
     g.update(crate::app::STEP);
-    assert_eq!(g.bombs.len(), 1);
+    assert_eq!(g.bombs.len(), 0, "the bomb is disabled");
     g.input.mouse_button(winit::event::MouseButton::Left, true);
     g.update(crate::app::STEP);
     assert!(g.hero.swinging());

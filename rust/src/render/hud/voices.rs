@@ -10,7 +10,7 @@ use crate::game::counsel::{Speaker, AMBER};
 use crate::logic::types::V;
 
 /// The old man's face, from his sculpt: the top of his figure, boxed down.
-fn face() -> &'static Sprite {
+pub(super) fn face() -> &'static Sprite {
     static S: OnceLock<Sprite> = OnceLock::new();
     S.get_or_init(|| {
         let whole = cropped(sprite_from(&crate::render::cast::old_man()));

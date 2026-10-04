@@ -150,7 +150,7 @@ impl App {
             (Button::South, &[Action::Jump]),
             (Button::West, &[Action::Attack]),
             (Button::RightTrigger2, &[Action::Attack, Action::TabNext]),
-            (Button::East, &[Action::Bomb]),
+            (Button::East, &[Action::Guide]),
             (Button::LeftTrigger, &[Action::Block]),
             (Button::North, &[Action::NextPotion]),
             (Button::Start, &[Action::Confirm, Action::Pause]),

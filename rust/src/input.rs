@@ -15,7 +15,8 @@ pub enum Action {
     Tap,
     Attack,
     Jump,
-    Bomb,
+    /// B / pad B: the old man's guide to the place (a pause with his words).
+    Guide,
     Camera,
     Pause,
     Mute,
@@ -149,7 +150,7 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         KeyF => Action::Step,
         KeyH => Action::Call,
         KeyR => Action::Angel,
-        KeyB | KeyL => Action::Bomb,
+        KeyB => Action::Guide,
         ShiftLeft | ShiftRight => Action::Block,
         F11 => Action::Fullscreen,
         _ => return None,
@@ -203,7 +204,6 @@ impl Input {
         use winit::event::MouseButton;
         let actions: &[Action] = match button {
             MouseButton::Left => &[Action::Attack, Action::Tap],
-            MouseButton::Right => &[Action::Bomb],
             _ => &[],
         };
         if down && button == MouseButton::Left {

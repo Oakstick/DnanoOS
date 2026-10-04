@@ -604,8 +604,10 @@ impl Game {
         }
     }
 
-    /// Drops a bomb on the hero's current tile (B, Shift, right click), one per tile, from a stock of three.
-    pub(super) fn place_bomb(&mut self) {
+    /// Drops a bomb on the hero's current tile, one per tile, from a stock of three. The bomb is
+    /// disabled in play (B is the old man's guide now); the capture scripts and the perf scenes
+    /// still drop them (`bomb`) to break walls.
+    pub fn place_bomb(&mut self) {
         if self.bombs_left == 0 || !self.hero.alive || self.hero.airborne() {
             return;
         }

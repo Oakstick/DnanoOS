@@ -32,6 +32,7 @@ mod flow;
 mod foes;
 mod gate;
 pub mod general;
+mod guide;
 mod health;
 mod hub;
 mod juice;
@@ -324,6 +325,8 @@ pub struct Game {
     /// Logical window size, for hit-testing menu buttons.
     pub viewport: (f32, f32),
     pub juice: Juice,
+    /// The old man's guide is open over the pause (B).
+    pub guide_open: bool,
     /// The war log and what reads it (WARBAND.md).
     pub war: war::War,
     /// The run's Warband as saved (the Ledger of Grudges), its name card and its board.
@@ -505,6 +508,7 @@ impl Game {
             nest_slots: Vec::new(),
             events: Vec::new(),
             war: war::War::default(),
+            guide_open: false,
             warband: ledger::Warband::load(),
             voices: counsel::Voices::default(),
             mastery: mastery::MasteryRun::default(),
@@ -679,8 +683,9 @@ impl Game {
         if !ring && self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
             self.audio.play(Sfx::Jump);
         }
-        if (!ring || vault_brawl) && self.input.was_pressed(&[Action::Bomb]) {
-            self.place_bomb();
+        if self.input.was_pressed(&[Action::Guide]) && self.screen == Screen::Playing {
+            self.open_guide();
+            return;
         }
         if self.input.was_pressed(&[Action::NextPotion]) && !self.belt.is_empty() {
             self.belt_index = (self.belt_index + 1) % self.belt.len();

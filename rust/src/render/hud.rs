@@ -4,7 +4,7 @@
 //! Deck to 4K.
 //!
 //! HUD layout: health (portrait, lives, HP, weapon, boons) in the top-left
-//! corner, score (gold, nuggets, best) in the top-right corner, bombs and
+//! corner, score (gold, nuggets, best) in the top-right corner, the guide's key and
 //! the dungeon name tucked into the bottom-right.
 
 use std::sync::OnceLock;
@@ -22,6 +22,7 @@ use crate::render::icons::{icon, Icon};
 
 mod controls;
 mod court;
+mod guide;
 mod ledger;
 mod map;
 mod mastery;
@@ -246,6 +247,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             }
         }
         Screen::Ready => draw_countdown(o, g, t),
+        Screen::Paused if g.guide_open => guide::draw_guide(o, g, t),
         Screen::Paused => {
             o.rect(0.0, 0.0, o.width, o.height, [INK[0], INK[1], INK[2], 0.65]);
             let top = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height)[0][1];
@@ -632,7 +634,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     draw_loadout(o, g, t, fs, small);
     draw_blessing(o, g, t, small);
 
-    // ---- bottom right: bombs and where you are
+    // ---- bottom right: where you are, and the old man's guide on B
     let bh = t * 2.0;
     let by0 = h - margin - bh;
     let name = g.level.data.name.to_uppercase();
@@ -642,13 +644,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     o.text(&name, br, by0 + t * 0.55, small, rgba(SAND, 1.0), Align::Right, true);
     let mut x = br;
     let brow = by0 + t * 1.35;
-    for _ in 0..g.bombs_left {
-        let iw = t * 0.7;
-        draw_sprite(o, icon(Icon::Bomb), x - iw, brow - iw / 2.0, iw / 16.0, None, 1.0);
-        x -= t * 0.78;
-    }
-    let label = if g.bombs_left > 0 { "BOMBS" } else { "NO BOMBS" };
-    o.text(label, x - t * 0.2, brow, small, rgba(TEXT_DIM, 1.0), Align::Right, true);
+    let _ = &mut x;
+    o.text("B  THE OLD MAN'S WORD", x, brow, small * 0.85, rgba(TEXT_DIM, 1.0), Align::Right, true);
 
     if let Some(fps) = fps {
         o.text(&format!("{fps} fps"), margin + t * 0.3, h - margin - t * 0.4, small, rgba(0x99ffff, 1.0), Align::Left, true);
@@ -1671,7 +1668,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
 
     // One line on how to play, tucked under the button.
     o.text(
-        "WASD or the left stick to run   Left click / X attack   Right click / B bomb   Shift / LB shield   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
+        "WASD or the left stick to run   Left click / X attack   B the old man's guide   Shift / LB shield   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
         w / 2.0,
         h * 0.965,
         t * 0.45,
