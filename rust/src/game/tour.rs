@@ -163,7 +163,7 @@ impl Game {
                 EnemyKind::Lucifer => ("LUCIFER", "The prince of Pride, the morning star fallen. His hide turns your blows, but not while he recovers.", 0xfff0c0),
                 EnemyKind::Reflection => ("REFLECTION", "Lucifer's likeness, stepped out of the light to fight beside him. It falls when he does.", 0xc8d8ff),
                 // Envy's court
-                EnemyKind::Leviathan => ("LEVIATHAN", "The prince of Envy, the serpent of the deep. His scales turn your blows, but not while he recovers.", 0x3aa88a),
+                EnemyKind::Leviathan => ("LEVIATHAN", "The prince of Envy, the serpent of the deep. His scales turn your blows, but not while he recovers, nor on the side the hot bell burns.", 0x3aa88a),
                 EnemyKind::Serpentling => ("SERPENTLING", "One of Leviathan's brood. It falls when he does.", 0x5ac0a0),
                 // Wrath's court
                 EnemyKind::Amon => ("AMON", "The prince of Wrath, raven-headed in a wolf's pelt, fire in his throat. He has no hide, and every blow you land angers him. His charge runs straight: step aside, and stone stops him dazed.", 0xe0402a),

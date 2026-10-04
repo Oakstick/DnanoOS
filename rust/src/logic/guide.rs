@@ -398,6 +398,26 @@ fn court(sin: Sin, hail: &str) -> Guide {
     }
 
     // Envy's court, as built (its page to come here).
+    const LEVIATHAN_TALE: &[&str] = &[
+        "this is the Drowned Bell, Leviathan's court: a temple sunk under the sea of envy, a great bronze bell hanging in its middle.",
+        "Leviathan is Isaiah's crooked serpent, the dragon that is in the sea. Envy is his: he begrudges every creature what it has.",
+        "In Japan they tell of Kiyohime, who became a serpent for jealousy and coiled round the bell of Dōjō-ji till it burned. This is that bell.",
+    ];
+    const LEVIATHAN_TASK: &[&str] = &[
+        "Bring Leviathan down. He drops the Key of Envy: take it, and the gate in the south wall opens.",
+        "Through it you come to me, and then back to the Portals of Hell, where Envy's door shuts with its key in the lock.",
+        "Each new mood is named as it comes, and a green cross falls for a breather. If you fall, he rises whole again before his altar.",
+    ];
+    const LEVIATHAN_WATCH: &[&str] = &[
+        "His scales turn most of a blow: strike in his recoveries, or when a parry leaves him reeling. The water is shallow and never slows you.",
+        "The Crooked Serpent lashes wide, spits brine in threes, and dives: a ring follows you on the floor. Walk out of it; he rises there, open.",
+        "The Evil Eye covets the archangel you called on last, in green: fire, thunder, a beam or a wave. Read it as your own. Two serpentlings rise, once.",
+        "The Bell coils round the bronze, and its heat burns his scales away on that side: strike him from the bell's side. Leave the pale ring when he tolls.",
+        "If the Bell-Warden fell in the grotto, no serpentlings come; if the bell was lowered by decree, they come at once.",
+    ];
+    if sin == Sin::Envy {
+        return page("THE DROWNED BELL", hail, LEVIATHAN_TALE, LEVIATHAN_TASK, LEVIATHAN_WATCH);
+    }
 
     // Wrath's court, as built (its page to come here).
     const AMON_TALE: &[&str] = &[

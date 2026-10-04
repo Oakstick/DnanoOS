@@ -568,23 +568,6 @@ pub const ALL_KINDS: &[EnemyKind] = &{
     ]
 };
 
-/// The six princes' and their adds' voices until their own are made: a kin's, stretched in time,
-/// moved in pitch and scaled in gain (`shaped`). `None` for every other kind.
-fn kin_voice(kind: EnemyKind) -> Option<(EnemyKind, f32, f32, f32)> {
-    use EnemyKind as K;
-    Some(match kind {
-        // Envy's court: the root-dragon's, and the cobra's.
-        K::Leviathan => (K::Nidhogg, 1.0, 0.85, 1.0),
-        K::Serpentling => (K::Cobra, 0.9, 1.2, 0.9),
-        // (Wrath's court has its own: Amon's croak and fire, the ravens' caw.)
-        // (Sloth's court has its own: Belphegor's yawn, snore and clocks; the nightmares' giggle.)
-        // Gluttony's court: the gaki's, deep for the prince, thin for his swarms.
-        K::Beelzebub => (K::Gaki, 1.0, 0.7, 1.0),
-        K::FlySwarm => (K::Gaki, 0.8, 1.4, 0.9),
-        _ => return None,
-    })
-}
-
 /// How big a body sounds: pitch goes down as it grows (a giant, 2, speaks an octave below).
 pub fn size_of(kind: EnemyKind) -> f32 {
     use EnemyKind as K;
@@ -871,6 +854,33 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             // Sceptre and hoard: coins poured, and a low laugh under them.
             _ => [coins(0.04, 14, 0.45, 0.03), shaped(&banker_laugh(0.1), 1.0, 0.8, 0.6)].concat(),
         },
+        // ---- the prince of Envy
+        K::Leviathan => match mv {
+            // The covet: his hiss, and under it a whisper of the word, "mine".
+            MoveId::Covet | MoveId::CovetFire | MoveId::CovetThunder | MoveId::CovetBeam | MoveId::CovetWave => [
+                leviathan_hiss(0.0, 0.6),
+                speak(0.12, 70.0, &[(Onset::M, Vowel::I, 0.34, 1.0), (Onset::N, Vowel::E, 0.18, 0.9)], 0.07, true),
+            ]
+            .concat(),
+            // The toll: his hiss, and the bell answering before it is struck.
+            MoveId::BellToll => [leviathan_hiss(0.0, 0.5), bell(0.15, 73.4, 1.4, 0.05)].concat(),
+            // The burning coil: the hiss of water on hot bronze.
+            MoveId::BurningCoil => {
+                [leviathan_hiss(0.0, 0.5), vec![crackle(1.4).at(0.1).dur(0.5).vol(0.4).swell(0.2).hp(2400.0, 0.0)]].concat()
+            }
+            // The dive: the water closing over him.
+            MoveId::Dive => [leviathan_hiss(0.0, 0.4), bubbles(0.15, 180.0, &[0.0, 0.05, 0.13, 0.2, 0.26, 0.34], 0.05)].concat(),
+            // The spit: the brine gathering in his throat.
+            MoveId::BrineSpit => [leviathan_hiss(0.0, 0.5), bubbles(0.2, 260.0, &[0.0, 0.06, 0.1, 0.17], 0.04)].concat(),
+            // His lash, and the rest: the deep hiss and a growl under it.
+            _ => [leviathan_hiss(0.0, 0.6), growl(0.05, 46.0, 0.45, 0.07)].concat(),
+        },
+        // A serpentling: a thin hiss and a wet click.
+        K::Serpentling => vec![
+            hiss(1.0).at(0.0).dur(0.4).vol(0.09).swell(0.05).hold(0.6).bp(5200.0, 2.0),
+            hiss(0.9).at(0.06).dur(0.08).vol(0.4).bp(900.0, 3.0),
+            sine(320.0, 140.0).at(0.08).dur(0.06).vol(0.08),
+        ],
         // A gold golem: gold grinding on gold.
         K::GoldGolem => [
             vec![
@@ -1000,11 +1010,6 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
         },
         // A fly swarm: a thin high buzz, rising.
         K::FlySwarm => [buzz(0.0, 240.0, 0.4, 0.045), buzz(0.06, 310.0, 0.35, 0.03)].concat(),
-        // The other princes and their adds: a kin's voice, for now.
-        K::Leviathan | K::Serpentling => {
-            let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
-            shaped(&breed_tell(kin, mv, hero), time, pitch, gain)
-        }
         // ---- the prince of Lust: three heads, three voices
         K::Asmodeus => match mv {
             // The kiss: a soft "mwah" off his lips and a sweet chime under it.
@@ -1096,6 +1101,15 @@ fn wingbeats(at: f32, n: usize, gap: f32, vol: f32) -> Vec<Layer> {
 fn amon_croak(at: f32) -> Vec<Layer> {
     [caw(at, 320.0, 1, 0.0, 0.13), growl(at + 0.05, 64.0, 0.5, 0.12), vec![hiss(0.5).at(at).dur(0.55).vol(0.4).swell(0.2).lp(650.0, 1.0)]]
         .concat()
+}
+
+/// Leviathan's hiss: the deep's breath through a great throat, a long sibilance over a low rasp.
+fn leviathan_hiss(at: f32, dur: f32) -> Vec<Layer> {
+    vec![
+        hiss(1.0).at(at).dur(dur).vol(0.16).swell(dur * 0.3).hold(0.5).bp(3600.0, 1.6),
+        hiss(0.5).at(at).dur(dur).vol(0.5).swell(dur * 0.25).hold(0.4).lp(420.0, 1.0),
+        saw(41.0, 38.0).at(at).dur(dur).vol(0.08).swell(dur * 0.3).lp(200.0, 1.0).vib(9.0, 0.05),
+    ]
 }
 
 fn banker_laugh(at: f32) -> Vec<Layer> {
@@ -1412,11 +1426,13 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         K::FlySwarm => {
             [buzz(0.0, 260.0, 0.5, 0.04), buzz(0.15, 330.0, 0.35, 0.025)].into_iter().flatten().map(|l| l.vib(9.0, 0.08)).collect()
         }
-        // The other princes and their adds: a kin's fall, for now.
-        K::Leviathan | K::Serpentling => {
-            let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
-            shaped(&death_of(kin), time, pitch, gain)
+        // A long hiss sinking into bubbles, and the bell, once, far down.
+        K::Leviathan => {
+            [leviathan_hiss(0.0, 1.4), bubbles(0.6, 120.0, &[0.0, 0.1, 0.18, 0.3, 0.38, 0.5, 0.6], 0.06), bell(0.9, 55.0, 1.6, 0.06)]
+                .concat()
         }
+        // A hiss cut short, and a splash.
+        K::Serpentling => [vec![hiss(1.0).dur(0.3).vol(0.1).hp(4000.0, 0.0)], squelch(0.2, 0.6)].concat(),
         // Asmodeus: the bull's bellow and the ram's bleat dying under the man's long sigh, and smoke.
         K::Asmodeus => [
             vec![
@@ -1613,11 +1629,27 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         },
         // A swarm darting in.
         K::FlySwarm => [buzz(0.0, 280.0, 0.2, 0.04), whoosh(0.0, 2400.0, 0.15, 0.3)].concat(),
-        // The other princes and their adds: a kin's swing, for now.
-        K::Leviathan | K::Serpentling => {
-            let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
-            shaped(&swing_of(kin, mv).layers, time, pitch, gain)
-        }
+        // Leviathan's: his tail through the air, the brine, the water, the bronze, the fire, and
+        // each archangel's power as it sounds in green.
+        K::Leviathan => match mv {
+            MoveId::BrineSpit => [squelch(0.0, 0.7), whoosh(0.02, 1400.0, 0.18, 0.4)].concat(),
+            MoveId::Dive => [squelch(0.0, 1.0), vec![hiss(0.4).dur(0.7).vol(0.8).swell(0.05).lp(500.0, 1.0)]].concat(),
+            MoveId::BellToll => {
+                [bell(0.0, 73.4, 2.6, 0.12), bell(0.0, 146.8, 1.6, 0.05), vec![sine(36.0, 30.0).dur(1.2).vol(0.25)]].concat()
+            }
+            MoveId::BurningCoil => vec![
+                hiss(0.8).dur(0.6).vol(0.7).swell(0.08).lp(1600.0, 1.0),
+                crackle(1.2).dur(0.6).vol(0.6).hp(1800.0, 0.0),
+                sine(60.0, 40.0).dur(0.5).vol(0.15),
+            ],
+            MoveId::CovetFire => [whoosh(0.0, 900.0, 0.3, 0.7), vec![crackle(1.0).dur(0.3).vol(0.4).hp(2000.0, 0.0)]].concat(),
+            MoveId::CovetThunder => [crack(0.0, 1.0), crack(0.06, 0.7), vec![sine(48.0, 30.0).dur(0.8).vol(0.3)]].concat(),
+            MoveId::CovetBeam => vec![sine(660.0, 990.0).dur(0.5).vol(0.05).vib(14.0, 0.02), hiss(1.4).dur(0.5).vol(0.2).hp(5000.0, 0.0)],
+            MoveId::CovetWave => [whoosh(0.0, 300.0, 0.6, 1.0), vec![sine(40.0, 28.0).dur(0.7).vol(0.3)]].concat(),
+            _ => [whoosh(0.0, 520.0, 0.42, 1.0), squelch(0.25, 0.4)].concat(),
+        },
+        // A quick strike off the coil.
+        K::Serpentling => [whoosh(0.0, 2000.0, 0.09, 0.5), snap(0.07, 260.0, 0.7)].concat(),
         // Asmodeus: his lance whistling, his kiss blown, the bull's hooves, the ram's skull, thorns.
         K::Asmodeus => match mv {
             MoveId::BlownKiss => [kiss_smack(0.0), whoosh(0.02, 1800.0, 0.3, 0.35)].concat(),

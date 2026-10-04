@@ -394,8 +394,6 @@ impl WorldView {
             | EnemyKind::GoldGolem
             | EnemyKind::Lucifer
             | EnemyKind::Reflection
-            | EnemyKind::Leviathan
-            | EnemyKind::Serpentling
             | EnemyKind::Amon
             | EnemyKind::Belphegor
             | EnemyKind::Nightmare
@@ -417,7 +415,6 @@ impl WorldView {
                     // (Lucifer strides in his plate, and so do his Reflections.)
                     EnemyKind::Lucifer | EnemyKind::Reflection => (0.42, 0.18),
                     // (The other princes, for now robed figures: small steps under the robe.)
-                    EnemyKind::Leviathan => (0.3, 0.16),
                     // (Asmodeus glides in his long coat on his goose's feet: long, light steps.)
                     EnemyKind::Asmodeus => (0.42, 0.1),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
@@ -631,6 +628,48 @@ impl WorldView {
                 }
                 v.root_rot.x = 0.0;
                 v.root_rot.y = if moving { (t * 0.8).sin() * 0.1 } else { 0.0 };
+            }
+            EnemyKind::Leviathan => {
+                // The serpent sways on his coil, his neck weaving and his great head riding it, the
+                // jaw working; his fins fan, his tail lashes; moving, he slides from side to side.
+                let t = if moving { v.phase } else { time * 0.9 + i as f32 };
+                if let Some(k) = rig.index("neck") {
+                    v.pose.rot[k] = Vec3::new((t * 0.5).sin() * 0.04, 0.0, t.sin() * if moving { 0.08 } else { 0.05 });
+                }
+                follow(rig, &mut v.pose, "neck", "head");
+                if let Some(k) = rig.index("head") {
+                    v.pose.rot[k] += Vec3::new((t * 0.7).sin() * 0.05, (t * 0.4).sin() * 0.06, -t.sin() * 0.04);
+                }
+                follow(rig, &mut v.pose, "head", "jaw");
+                if let Some(j) = rig.index("jaw") {
+                    v.pose.rot[j].x += 0.05 + (time * 1.7 + i as f32).sin().abs() * 0.05;
+                }
+                for (name, side) in [("leftFin", -1.0f32), ("rightFin", 1.0)] {
+                    if let Some(k) = rig.index(name) {
+                        v.pose.rot[k].z = side * (0.12 + (time * 2.2 + i as f32).sin() * 0.14);
+                    }
+                }
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 1.8 + i as f32).sin() * 0.25;
+                }
+                v.root_rot.x = 0.0;
+                v.root_rot.y = if moving { (t * 0.8).sin() * 0.08 } else { 0.0 };
+            }
+            EnemyKind::Serpentling => {
+                // A sea snake swaying where it stands, its head weaving; moving, it slides from side to side.
+                let t = if moving { v.phase * 1.4 } else { time * 1.6 + i as f32 };
+                if let Some(k) = rig.index("neck") {
+                    v.pose.rot[k] = Vec3::new(0.0, 0.0, t.sin() * if moving { 0.14 } else { 0.08 });
+                }
+                follow(rig, &mut v.pose, "neck", "head");
+                if let Some(k) = rig.index("head") {
+                    v.pose.rot[k] += Vec3::new((t * 0.5).sin() * 0.05, 0.0, -t.sin() * 0.1);
+                }
+                if let Some(k) = rig.index("tail") {
+                    v.pose.rot[k].y = (time * 3.0 + i as f32).sin() * 0.35;
+                }
+                v.root_rot.x = 0.0;
+                v.root_rot.y = if moving { (t * 0.8).sin() * 0.12 } else { 0.0 };
             }
             EnemyKind::Cobra => {
                 // It sways where it stands, hood and head weaving; moving, it slides from side to side.

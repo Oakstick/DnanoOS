@@ -336,7 +336,7 @@ impl Breed {
             K::Lucifer => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::Reflection => (Brute, 0.7, 0.5, 0.9, 1.0, 0.5, 1),
             // Envy's court: Leviathan, and his brood, that bite.
-            K::Leviathan => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::Leviathan => (Prince, 1.15, 1.0, 1.0, 1.0, 0.95, 3),
             K::Serpentling => (Skirmisher, 0.6, 0.7, 0.7, 1.0, 0.36, 1),
             // Wrath's court: Amon, and his ravens, that peck.
             K::Amon => (Prince, 1.3, 1.0, 1.0, 1.0, 0.95, 3),

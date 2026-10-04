@@ -436,7 +436,10 @@ impl Bot {
         let hp = g.hero.pos();
         let threats = self.threats(g);
         let soonest = threats.first().copied();
-        let dodges = self.dodges(g);
+        let mut dodges = self.dodges(g);
+        if g.court_sin() == Some(crate::logic::sins::Sin::Envy) {
+            self.envy_dodges(g, &mut dodges);
+        }
         // (Asmodeus's court: his kisses leapt, his censers lit.)
         if let Some(p) = self.lust_court(g, &threats, &dodges) {
             return p;
@@ -601,6 +604,13 @@ impl Bot {
         let to = math::sub(target.pos, hp);
         let dist = math::len(to) - target.radius();
         let dir = self.way(g, hp, target.pos);
+        if let Some(stand) = self.envy_stand(g, target) {
+            // Leviathan coiled round the bell: round to the side he turns to it first.
+            let dir = self.way(g, hp, stand);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+            return pad;
+        }
         if dist > ENGAGE {
             pad.left = (dir.x as f32, dir.y as f32);
             self.attack_down = false;
@@ -1761,4 +1771,107 @@ pub fn court_fight(sin: crate::logic::sins::Sin, skill: Skill, seed: u32, loadou
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
     out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
     out
+}
+
+// ------------------------------------------------------------------ Leviathan (Envy's court)
+
+impl Bot {
+    /**
+     * Under the drowned bell (not the novice): off the line of Leviathan's coveted beam once it
+     * no longer follows him, off the burning coil's fires, and out of the coveted thunder's three
+     * marks by the way clearest of all of them (toward him, or straight back between the two
+     * behind). These come first among blows from the ground due on the same frame.
+     */
+    fn envy_dodges(&mut self, g: &Game, dodges: &mut Vec<Dodge>) {
+        use crate::logic::combat::duelist::from_segment;
+        use crate::logic::combat::prince::envy::{fire_spots, thunder_marks, FIRE_RADIUS};
+        use crate::logic::combat::MoveId;
+        use crate::logic::court::envy::BELL;
+        let Some(spar) = g.brawl.as_ref().filter(|_| self.skill != Skill::Novice) else { return };
+        let Some(d) = g.prince() else { return };
+        let State::Attack { mv, frame } = d.f.state else { return };
+        let data = d.data(mv);
+        let started = spar.threat.frame.saturating_sub(frame as u32);
+        let seen = self.noticed.get(&d.id).is_some_and(|&(at, delay)| at == started && delay > 0 && frame >= delay);
+        if !seen || frame >= data.startup {
+            return;
+        }
+        let hp = g.hero.pos();
+        let t = (data.startup - frame) as f64;
+        // The way out of a few circles on the floor that clears them all by the most.
+        let clearest = |spots: &[(V, f64)], from: V| {
+            let clearance = |dir: V| {
+                let p = math::add(hp, math::scale(dir, 1.7));
+                spots.iter().map(|(o, r)| math::len(math::sub(p, *o)) - r).fold(f64::MAX, f64::min)
+            };
+            let away = math::sub(hp, from);
+            let base = if math::len(away) < 0.05 { 0.0 } else { math::angle(away) };
+            (0..16)
+                .map(|k| math::from_angle(base + k as f64 * std::f64::consts::TAU / 16.0))
+                .filter(|&dir| Self::keep_in(g, hp, dir) == dir)
+                .max_by(|a, b| clearance(*a).total_cmp(&clearance(*b)))
+                .unwrap_or_else(|| math::from_angle(base))
+        };
+        let mine = match mv {
+            MoveId::CovetBeam if frame >= data.track => {
+                let Shape::Beam { width, .. } = data.shape else { return };
+                let end = math::add(d.pos, math::scale(d.aim, d.lore.span));
+                if from_segment(d.pos, end, hp) > width / 2.0 + HERO_RADIUS + 0.3 {
+                    return;
+                }
+                let side = V::new(-d.aim.y, d.aim.x);
+                let out = if math::dot(side, math::sub(hp, d.pos)) >= 0.0 { side } else { math::scale(side, -1.0) };
+                Some(Dodge { t, out: Self::keep_in(g, hp, out) })
+            }
+            MoveId::BurningCoil => {
+                let spots: Vec<(V, f64)> = fire_spots(BELL, d.lore.mark).into_iter().map(|p| (p, FIRE_RADIUS)).collect();
+                let on = spots
+                    .iter()
+                    .filter(|(p, r)| math::len(math::sub(hp, *p)) < r + HERO_RADIUS + 0.35)
+                    .min_by(|a, b| math::len(math::sub(hp, a.0)).total_cmp(&math::len(math::sub(hp, b.0))));
+                on.map(|(p, _)| Dodge { t, out: clearest(&spots, *p) })
+            }
+            MoveId::CovetThunder => {
+                let Shape::Mark { radius } = data.shape else { return };
+                let spots: Vec<(V, f64)> = thunder_marks(d.lore.mark, d.pos).into_iter().map(|p| (p, radius)).collect();
+                let on = spots.iter().any(|(p, r)| math::len(math::sub(hp, *p)) < r + HERO_RADIUS + 0.35);
+                on.then(|| Dodge { t, out: clearest(&spots, d.lore.mark) })
+            }
+            _ => None,
+        };
+        if let Some(m) = mine {
+            dodges.insert(0, m);
+            dodges.sort_by(|a, b| a.t.total_cmp(&b.t));
+        }
+    }
+
+    /// Leviathan coiled round the bell, and the expert or the adept not yet on the side he turns to
+    /// it (where his scales are burnt off): the place beside him on that side to go to first.
+    fn envy_stand(&self, g: &Game, target: &crate::logic::combat::Duelist) -> Option<V> {
+        use crate::logic::combat::prince::envy::burnt_side;
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Envy) {
+            return None;
+        }
+        let bell = target.lore.bell?;
+        let hp = g.hero.pos();
+        if burnt_side(target.pos, hp, bell) {
+            return None;
+        }
+        // Beside him, round toward the bell on whichever hand is nearer.
+        let toward = math::norm(math::sub(bell, target.pos));
+        let reach = target.radius() + HERO_RADIUS + 0.55;
+        let spots = [0.9f64, -0.9].map(|a| math::add(target.pos, math::scale(math::from_angle(math::angle(toward) + a), reach)));
+        let stand = spots
+            .into_iter()
+            .filter(|p| g.level.grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false))
+            .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
+        // (Round his body, not through it: by his flank on the stand's side first.)
+        let clear = target.radius() + HERO_RADIUS + 0.25;
+        if crate::logic::combat::duelist::from_segment(hp, stand, target.pos) < clear {
+            let side = V::new(-toward.y, toward.x);
+            let side = if math::dot(side, math::sub(stand, target.pos)) >= 0.0 { side } else { math::scale(side, -1.0) };
+            return Some(math::add(target.pos, math::scale(side, clear + 0.4)));
+        }
+        Some(stand)
+    }
 }

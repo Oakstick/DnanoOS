@@ -71,6 +71,7 @@ impl BoltLook {
             EnemyKind::Mammon => BoltLook::Coin,
             EnemyKind::Asmodeus => BoltLook::Kiss,
             EnemyKind::Beelzebub => BoltLook::Flies,
+            EnemyKind::Leviathan => BoltLook::Spit,
             _ => BoltLook::Hex,
         }
     }
@@ -393,6 +394,9 @@ pub struct Lore {
     /// two charges stand (0 none, 1 the first under way, 2 the second due, 3 the second under way).
     pub rage: u8,
     pub twin: u8,
+    /// The hot bell Leviathan is coiled round (Envy's third phase): his scales are burnt off on
+    /// the side he turns to it (`prince::envy::burnt_side`).
+    pub bell: Option<V>,
 }
 
 /// Something a foe's legend did this frame, for the game to show and sound.
@@ -684,7 +688,7 @@ impl Duelist {
             return true;
         }
         match self.f.state {
-            State::Attack { mv: MoveId::Burrow, frame } => frame >= BURROW_SINK && frame < MoveId::Burrow.data().startup,
+            State::Attack { mv: mv @ (MoveId::Burrow | MoveId::Dive), frame } => frame >= BURROW_SINK && frame < mv.data().startup,
             State::Attack { mv: MoveId::Talons, frame } => (ALOFT.0..ALOFT.1).contains(&frame),
             // Lucifer up on his wings, until he comes down on his mark.
             State::Attack { mv: MoveId::PridesFall, frame } => {
@@ -718,11 +722,17 @@ impl Duelist {
     }
 
     /// What a blow from `from` is worth on it: as `taken`, but nothing on an elf-maid's lovely
-    /// front (she is only to be struck from behind), and the whole of it on Lucifer's back.
+    /// front (she is only to be struck from behind), the whole of it on Lucifer's back, and all of
+    /// it on Leviathan's side burnt by the bell.
     pub fn taken_from(&self, from: V) -> f64 {
         if self.breed.power == Power::Vainglory && super::prince::pride::behind(self.pos, self.facing, from) {
             // Pride never looks behind him: a blow from there lands whole.
             return 1.0;
+        }
+        if let Some(bell) = self.lore.bell.filter(|_| self.breed.power.is_hide()) {
+            if super::prince::envy::burnt_side(self.pos, from, bell) {
+                return 1.0;
+            }
         }
         if self.breed.power == Power::Hollow {
             let to = V::new(from.x - self.pos.x, from.y - self.pos.y);
@@ -882,7 +892,7 @@ impl Duelist {
                     }
                     return None;
                 }
-                if mv == MoveId::Burrow {
+                if matches!(mv, MoveId::Burrow | MoveId::Dive) {
                     // Down under the floor and along to its mark, there by its first active frame;
                     // it bursts up, strikes and recovers where it came up.
                     let sink = BURROW_SINK;

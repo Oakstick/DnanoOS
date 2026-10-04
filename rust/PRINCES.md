@@ -339,7 +339,93 @@ No two blows inside 18 frames in any of them. Pinned by
 
 ### Leviathan
 
-(to come)
+Built 2026-10-04. **The Drowned Bell** (`logic/court/envy.rs`): a round hall 27 tiles across
+(radius 13.9 about (16, 16)), the gate in the south wall at (16, 30), the hero at (16, 26) in the
+water, Leviathan at (16, 7) before the drowned altar (14-18, 3-4). The ring of shallow water runs
+from 9.2 to 12.3 tiles out (looks only); six broken columns stand in it, and six springs between
+them are where the serpentlings rise. The bell is a 3 x 3 block of rock in the middle (rim 1.45),
+open floor all round it for him to coil and the hero to walk.
+
+| Phase | Title | Moves (preferred first) | What else |
+|---|---|---|---|
+| 1 | THE CROOKED SERPENT | Brine Spit, Coil Lash, Dive | |
+| 2 | THE EVIL EYE | Covet, Brine Spit, Coil Lash | two serpentlings rise from the springs nearest the hero |
+| 3 | THE BELL | Bell Toll, Burning Coil, Coil Lash | he swims to the bell and keeps within 3.3 of it (7 t/s), pace x1.35, rest x0.6; his scales burnt on the bell's side |
+
+| Move | Startup | Active | Recovery | Damage | Shape |
+|---|---|---|---|---|---|
+| Coil Lash | 34 | 8 | 44 | 24 | cone 1.4 (+0.9), +-85 deg |
+| Brine Spit | 34 | 1 | 34 | 12 x3 | volley of three, +-0.3 rad, 2.6-8 tiles, cooldown 180 |
+| Dive | 60 | 6 | 56 | 26 | mark 1.1 following him for 44 f (Burrow's rules: out of reach under the water) |
+| Covet | 44 | - | - | - | becomes one of the four below on its first frame, cooldown 420 |
+| Coveted Fire (Michael) | 44 | 1 | 36 | 11 x4 | volley of four, +-0.36 rad |
+| Coveted Thunder (Gabriel) | 44 | 6 | 40 | 18 | mark 1.0 (28 f tracking) and two more 1.8 behind him either side |
+| Coveted Beam (Raphael) | 44 | 8 | 40 | 20 | beam 9 x 1.0, locked at frame 12 (block only) |
+| Coveted Wave (Uriel) | 44 | 6 | 46 | 22 | quake 2.2 (+0.9) at 80% |
+| Bell Toll | 72 | 6 | 46 | 28 | mark 3.6 on the bell's middle (no tracking), cooldown 360 |
+| Burning Coil | 46 | 6 | 40 | 20 | six fires (0.85) in a ring 2.8 round the bell and one where he stood, cooldown 330 |
+
+HP x1.15 of the Prince's 900 (`Breed::of`), Scales a hide as Mammon's gold.
+
+**How it is built.** `logic/combat/prince/envy.rs` holds his tables, pace and the pure rules
+(`covet`, `burnt_side`, `fire_spots`, `thunder_marks`, `coiled`); `game/court/envy.rs` his doings
+(the angel watched, the covet turned, the toll's mark pinned to the bell, the fires and the extra
+thunder marks struck on the first active frame through `general_hazard_blow`, the swim and the
+tether, the serpentlings); `game/court/mod.rs` gained one field, `Court::envy` (what the court
+keeps: the angel last called and his move as last seen).
+
+**What changed from the design, and why.**
+
+* *Covet* is one MoveId in the table that becomes `CovetFire`, `CovetThunder`, `CovetBeam` or
+  `CovetWave` on its first frame (a table is static and has four cooldowns). All four start up as
+  the covet does, so only the fire's landing moves (its bolts fly): it is planned again with the
+  threat manager, and if it would land too near another strike he copies Raphael's beam instead.
+  The covet is kept off (its cooldown held) while the hero is out of the coveted move's range.
+  The angel last called is seen from the hero's blessing charges and his patron's wait (no field
+  added to `Game`); none called, he copies Raphael. The banner reads "HE COVETS YOUR <ANGEL>" with
+  what to do.
+* *Gabriel's thunder*, three marks round the hero: the first is a `Shape::Mark` on him, the other
+  two stand behind him from Leviathan, so the way out is toward Leviathan or straight back.
+* *Bell Toll* is a `Shape::Mark` whose mark is set on the bell's middle, radius 3.6, so the pale
+  ring inlaid in the floor shows where it reaches. A ring that wide must give a fifth to spare
+  from its middle (the frames test), hence a 72-frame startup: a long rear-back, punished from the
+  bell's side.
+* *Burning Coil* is a spell with damage: its fires are reckoned from where the hero stood as it
+  began (`Lore::mark`), so the view draws them without new shared state, and they are not
+  `Trap`s (which `emit_traps` draws as Mammon's gold coins).
+* *His hide in the third phase*: `Lore::bell` (new, shared) holds the hot bell; `taken_from` lets
+  the whole blow through from within 100 degrees of the way from him to the bell. To keep him
+  coiled round it he swims back whenever he is more than 3.3 from its middle (the Bell's moves
+  all work from there).
+* *Dive* reuses the burrow's movement and untouchability (`Duelist::think`/`untouchable` now take
+  `MoveId::Dive` with `Burrow`), drawn as water rings instead of heaving earth.
+
+**Shared files touched.** `logic/combat/frames.rs` (his MoveIds, `FOE`, `data()`; the shared-shapes
+test now lets the coveted beam use `Shape::Beam`), `logic/combat/duelist.rs` (`BoltLook` spit for
+him, `Lore::bell`, `taken_from`, `Dive` with `Burrow`), `logic/combat/archetype.rs` (his row: HP
+x1.15), `game/court/mod.rs` (`Court::envy`), `game/bot.rs` (`envy_dodges`, `envy_stand`, two hooks
+in `act`), `render/view/animation.rs`, `render/view/duel.rs` (tells, crown, poses, the dive unseen),
+`audio/voices.rs` (his and the serpentlings' tells, deaths and swings), `logic/guide.rs` (his page),
+`game/tour.rs` (his card's line).
+
+**The bot.** Not the novice: it steps off the coveted beam's locked line, off the fires and out of
+the thunder's three marks by the clearest way, and in the third phase goes round him to the
+bell's side before it strikes.
+
+**Results** (`--court envy SKILL TIER SEED`, three lives, 240 s limit; expert and adept with
+Ragnar's kit at the tier):
+
+| Skill | Tier | Seeds won | Time (s) | Taken | Deaths |
+|---|---|---|---|---|---|
+| expert | 1 | 3/3 | 113-120 | 0 | 0 |
+| expert | 2 | 3/3 | 101-103 | 0-17 | 0 |
+| adept | 1 | 0/3 | timed out in phase 2 | 58-163 | 0-1 |
+| adept | 2 | 0/3 | timed out in phase 2 | 79-172 | 0-1 |
+| novice | 1 | 0/3 | game over in 48 | 384 | all |
+| novice | 2 | 0/3 | game over in 51 | 487 | all |
+
+Pinned by `the_expert_beats_leviathan_in_his_court_and_a_masher_does_not`. Before the bot learnt
+his beam the expert lost two lives a fight to it; at HP x1.0 tier 2 took 86-92 s.
 
 ### Amon
 

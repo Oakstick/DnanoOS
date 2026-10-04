@@ -58,6 +58,9 @@ pub struct Court {
     bower: lust::Bower,
     /// Beelzebub's banquet: his platters, his meal, his flies (`gluttony`).
     pub banquet: gluttony::Banquet,
+    /// What Envy's court keeps of its fight (`envy`): the archangel the hero last called, and the
+    /// prince's move as last seen.
+    pub envy: envy::EnvyState,
 }
 
 /// The prince's bar on the HUD: his name, the phase's title, his health and its trail, and
@@ -157,6 +160,7 @@ impl Game {
             adds_due: terms.adds_at_start,
             bower: lust::Bower::default(),
             banquet: Default::default(),
+            envy: Default::default(),
         });
         match sin {
             Sin::Greed => self.greed_enter(id),
