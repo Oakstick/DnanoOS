@@ -275,7 +275,7 @@ pub struct Score {
     pub lives: u32,
     pub level: usize,
     next_life_at: u32,
-    /// A new high score not yet written. It is written between fights (`save_high`), never on
+    /// A new high score not yet written. It is written between fights (with the snapshot), never on
     /// the kill itself: the save file is read and rewritten whole, which took 2 to 13 ms a kill,
     /// up to 50 ms on a swing that took several (RP06).
     high_unsaved: bool,
@@ -307,11 +307,15 @@ impl Score {
         false
     }
 
-    /// Writes the high score if a new one is pending.
-    pub fn save_high(&mut self) {
-        if std::mem::take(&mut self.high_unsaved) {
-            platform::save(HIGH_SCORE_KEY, &self.high.to_string());
-        }
+    /// The high score's key and value, if a new one is waiting to be written (with the run's
+    /// snapshot, `game::persist`).
+    pub fn high_to_save(&self) -> Option<(&'static str, String)> {
+        self.high_unsaved.then(|| (HIGH_SCORE_KEY, self.high.to_string()))
+    }
+
+    /// The new high score was written.
+    pub fn high_saved(&mut self) {
+        self.high_unsaved = false;
     }
 
     /// Returns true if a life was actually added (not already at the cap).

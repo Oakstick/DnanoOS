@@ -16,7 +16,7 @@ use crate::logic::war::save::WarSave;
 use crate::platform;
 
 /// Where the run's Warband is saved, beside `vh.run`.
-const WARBAND_KEY: &str = "vh.warband";
+pub(super) const WARBAND_KEY: &str = "vh.warband";
 /// How long a rival's name card stays up.
 pub const CARD_SECONDS: f64 = 2.5;
 
@@ -49,7 +49,12 @@ impl Warband {
         if cfg!(test) {
             return Warband::default();
         }
-        let run = platform::load("vh.run").filter(|s| !s.trim().is_empty());
+        Warband::read()
+    }
+
+    /// What the save holds, with a run under way (the Ledger goes with the run).
+    pub(super) fn read() -> Warband {
+        let run = platform::load(super::save::RUN_KEY).filter(|s| !s.trim().is_empty());
         let save = run.and_then(|_| platform::load(WARBAND_KEY)).and_then(|s| WarSave::decode(&s)).unwrap_or_default();
         Warband { save, ..Warband::default() }
     }
@@ -113,20 +118,17 @@ impl Game {
         self.save_warband();
     }
 
-    /// The Warband to the save file, with the run (captures and tests never write it).
-    pub(super) fn save_warband(&self) {
-        if !cfg!(test) && self.saved_run.is_some() {
-            platform::save(WARBAND_KEY, &self.warband.save.encode());
-        }
+    /// The Warband to the save, with the run: the snapshot is marked (`persist`), so a rival's
+    /// fall and his reward are written together, at a calm moment.
+    pub(super) fn save_warband(&mut self) {
+        self.mark_saves();
     }
 
     /// Start over: the Ledger, the generals, the lies seen and the counsel's flags are gone.
     pub(super) fn wipe_warband(&mut self) {
         self.warband = Warband::default();
         self.voices = super::counsel::Voices::default();
-        if !cfg!(test) {
-            platform::save(WARBAND_KEY, "");
-        }
+        self.mark_saves();
     }
 
     /// THE LEDGER from the pause menu: the board over the paused game.
