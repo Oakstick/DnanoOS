@@ -1138,3 +1138,17 @@ The two bolts share a volley, so whichever touches first lands and the other pas
 one strike, one parry turns only one, a leap passes under both. One crossfire a pack at a time.
 Test: `two_casters_cross_their_fire_as_one_strike` (five minutes of a tier-4 vault: crossfires,
 no overlaps).
+
+### The Ledger across runs (`--rivals RUNS SEED SKILL TIER`)
+
+Ten adept crawls at tier 1 with one Ledger: two rivals made in each run the adept falls in, each
+seated as a pack's leader in the next and mostly slain there (9 slain, 7 alive after ten runs).
+
+| Change | Why |
+|---|---|
+| A rival is born at rank 1: the fight that made him is remembered, not counted as a win | every rival came out at rank 2 |
+| No two rivals of a run share a given name, living or slain | the board showed two Grisels and two Morcants |
+| Greedy: a rival within 5 tiles of a foe that falls stops 50 f to eye its spoils | the weakness did nothing |
+
+Open for W9: at tier 1 the adept slays a rival on its second fight, so lessons (rank 3) come only
+from rivals that kill him again; whether a rival that gets away should rank up too is a tuning call.

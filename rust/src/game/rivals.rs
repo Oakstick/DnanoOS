@@ -30,6 +30,9 @@ pub const COWARD_FLEE: f64 = 0.4;
 /// A Schemer calls the next den when hurt below this share, after a horn this long (frames).
 pub const SCHEME_AT: f64 = 0.5;
 pub const SCHEME_HORN: u16 = 60;
+/// A Greedy rival this near a foe that falls stops this long to eye its spoils.
+pub const GREED_RANGE: f64 = 5.0;
+pub const GREED_PAUSE: u16 = 50;
 /// What a feared family's blow does to a rival's poise, against its whole.
 pub const FEAR_POISE: f64 = 3.0;
 
@@ -232,7 +235,10 @@ impl Game {
                         }
                     }
                 }
-                WarEvent::Slain { foe, at, .. } => self.grudge_slain(foe, at),
+                WarEvent::Slain { foe, at, .. } => {
+                    self.grudge_slain(foe, at);
+                    self.greed_stirs(at);
+                }
                 _ => {}
             }
         }
@@ -393,6 +399,23 @@ impl Game {
         }
     }
 
+    /// A foe fell at `at`, and its spoils with it: a Greedy rival near it stops to eye them.
+    fn greed_stirs(&mut self, at: V) {
+        let seated = self.war.grudges.seated.clone();
+        for (id, _) in seated {
+            if !matches!(self.rival_traits(id), Some((_, _, Weakness::Greedy, _))) {
+                continue;
+            }
+            if let Some(d) = self.duel_index(id).and_then(|i| self.enemies[i].duel.as_deref_mut()) {
+                if d.alive() && d.engaged() && dist_sq(d.pos, at) < GREED_RANGE * GREED_RANGE {
+                    d.rest = d.rest.max(GREED_PAUSE);
+                    let p = d.pos;
+                    self.floater(p.x, p.y - 1.6, "HE EYES THE SPOILS", 1.2, Some(0xffd040));
+                }
+            }
+        }
+    }
+
     /// A foe slain: if it was a rival, his fall (his reward, his trophy, his last words), and its
     /// tracker closed either way.
     fn grudge_slain(&mut self, foe: u32, at: V) {
@@ -448,7 +471,9 @@ impl Game {
                             self.progress.silver -= silver;
                             self.warband.save.ledger.took_silver(rival, silver);
                         }
-                        self.rival_fought(rival, t.encounter(place, self.hero_kind, tier, false));
+                        // (The fight that made him is remembered; it is not a rank: he is born at one.)
+                        self.warband.save.ledger.record(rival, t.encounter(place, self.hero_kind, tier, false));
+                        self.save_warband();
                         if let Some(r) = self.ledger().get(rival) {
                             let text = format!("{} REMEMBERS YOU", r.full_name().to_uppercase());
                             let hp = self.hero.pos();
@@ -487,7 +512,8 @@ impl Game {
                     if let Some(deed) = t.deed(0, leader, true) {
                         let rival = self.promote_rival(t.kind, deed);
                         self.war.grudges.promoted += 1;
-                        self.rival_fought(rival, t.encounter(place, self.hero_kind, tier, true));
+                        self.warband.save.ledger.record(rival, t.encounter(place, self.hero_kind, tier, true));
+                        self.save_warband();
                     }
                 }
                 None => {}

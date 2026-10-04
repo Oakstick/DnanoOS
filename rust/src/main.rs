@@ -112,6 +112,16 @@ fn main() {
         );
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--rivals") {
+        // WARBAND.md §15.2: RUNS crawls in a row with one Ledger: `--rivals RUNS SEED SKILL TIER`
+        // (skill 0 novice, 1 adept, 2 expert).
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (runs, seed, skill, tier) = (num(1, 6), num(2, 1), num(3, 1), num(4, 1) as u8);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        print!("{}", void_harvest::game::bot::rivals_report(runs, seed, skill, tier));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--crawl-one") {
         // One crawl through the Vaults of Mammon: `--crawl-one SKILL TIER SEED` (skill 0 novice,
         // 1 adept, 2 expert); what is left standing at the end is listed.

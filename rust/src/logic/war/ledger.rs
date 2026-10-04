@@ -925,10 +925,11 @@ impl Ledger {
         };
         let personality =
             [Personality::Braggart, Personality::Coward, Personality::Duelist, Personality::Schemer, Personality::Avenger][rng.index(5)];
-        // No two living rivals share a name.
+        // No two rivals of the run share a name, living or slain (the board shows both).
         let mut name = names::name(kind, seed);
         for k in 1..64u32 {
-            if !self.live().any(|r| r.name == name) {
+            let given = |n: &str| n.split_whitespace().next().unwrap_or("").to_string();
+            if !self.rivals.iter().any(|r| given(&r.name) == given(&name)) {
                 break;
             }
             name = names::name(kind, seed.wrapping_add(k.wrapping_mul(0x9e37_79b9)));

@@ -864,6 +864,54 @@ pub struct Crawl {
     /// The packs (WARBAND.md §7): broken, and rallies sounded.
     pub routs: u32,
     pub rallies: u32,
+    /// The Ledger (§8): rivals met in the last life, and foes made rivals.
+    pub rivals_met: u32,
+    pub promoted: u32,
+}
+
+/**
+ * `runs` crawls in a row by `skill` with Ragnar's kit at `tier`, one Ledger carried through them all
+ * (WARBAND.md §15.2): how the rivals grow, rank and learn, and how the bot fares against them.
+ */
+pub fn rivals_report(runs: u32, seed: u32, skill: Skill, tier: u8) -> String {
+    use std::fmt::Write;
+    let mut ledger = crate::logic::war::ledger::Ledger::default();
+    let mut out = String::from("run  cleared  kills  deaths  minutes  met  made  live  slain\n");
+    for r in 0..runs {
+        let c = crawl_full(skill, seed + r, Some(Loadout::all(HeroKind::Ragnar, tier)), 900.0, &mut None, Some(&mut ledger));
+        let _ = writeln!(
+            out,
+            "{:>3}  {:>7}  {:>2}/{:<2}  {:>6}  {:>7.1}  {:>3}  {:>4}  {:>4}  {:>5}",
+            r + 1,
+            if c.cleared { "yes" } else { "no" },
+            c.kills,
+            c.foes,
+            c.deaths,
+            c.secs / 60.0,
+            c.rivals_met,
+            c.promoted,
+            ledger.live().count(),
+            ledger.slain
+        );
+    }
+    out += "\nthe Ledger at the end:\n";
+    for r in &ledger.rivals {
+        let lesson = r.lesson.map(|l| format!("{l:?}")).unwrap_or_else(|| "-".into());
+        let _ = writeln!(
+            out,
+            "  {:<40} {:<14} rank {}  {}  lesson {:<10} {:?} / {:?} / {:?}  fights {}",
+            r.full_name(),
+            format!("{:?}", r.kind),
+            r.rank,
+            if r.alive { "alive" } else { "slain" },
+            lesson,
+            r.strength,
+            r.weakness,
+            r.personality,
+            r.memory.len()
+        );
+    }
+    out
 }
 
 /// The Drum, second by second through a crawl: (seconds, intensity, phase).
@@ -884,7 +932,23 @@ pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> C
 
 /// A crawl, with the Drum's trace kept in `trace` if it is given one.
 pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64, trace: &mut Option<DrumTrace>) -> Crawl {
+    crawl_full(skill, seed, loadout, limit, trace, None)
+}
+
+/// A crawl, with the Drum's trace kept in `trace` if it is given one, against `ledger`'s rivals if
+/// it is given one (and what the crawl made of them written back into it).
+fn crawl_full(
+    skill: Skill,
+    seed: u32,
+    loadout: Option<Loadout>,
+    limit: f64,
+    trace: &mut Option<DrumTrace>,
+    mut ledger: Option<&mut crate::logic::war::ledger::Ledger>,
+) -> Crawl {
     let mut g = fresh_game(seed);
+    if let Some(l) = ledger.as_deref() {
+        g.warband.save.ledger = l.clone();
+    }
     if let Some(n) = std::env::var("VH_CRAWL_RIVALS").ok().and_then(|v| v.parse::<usize>().ok()) {
         // Rivals waiting in the vaults (WARBAND.md §8), for a crawl against the Ledger.
         use crate::logic::enemy::EnemyKind;
@@ -956,6 +1020,11 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
             );
         }
     }
+    if let Some(l) = ledger.as_deref_mut() {
+        *l = g.warband.save.ledger.clone();
+    }
+    out.rivals_met = g.war.grudges.met.len() as u32;
+    out.promoted = g.war.grudges.promoted;
     let drum = &g.war.drum;
     out.peak_share = drum.peak_share();
     out.peaks = drum.peaks;
