@@ -1,22 +1,41 @@
 //! Repeatable performance captures (RP08 in the Technical Art and Rendering Plan):
 //!
-//!   AdventuresOfTheAncientBlades --perf [all|garden,battle30,...] [--frames 600] [--size 1920x1080]
-//!                                [--fx-off shadows,ao] [--lod-bias 1] [--out perf]
+//!   AdventuresOfTheAncientBlades --perf [all|garden,battle30,...] [--perf-mode throughput|gameplay]
+//!                                [--frames N] [--size 1920x1080] [--fx-off shadows,ao] [--lod-bias 1]
+//!                                [--out perf]
 //!
-//! Each scene starts from the same seed and script, runs a second of untimed frames so the GPU
-//! leaves its idle clocks and the first uploads are done, then plays `--frames` frames as the
-//! game would: one simulation step per frame, the view emitted, the HUD drawn, the frame
-//! recorded and submitted, with at most two frames in flight (no waiting after each one, unlike
-//! `--bench`). Wall, CPU and GPU times are reported separately (median, 95th and 99th percentile
-//! and worst), with the machine, driver, backend, build and settings, to `perf/` as a Markdown
-//! summary plus one CSV of every frame per scene. Compare captures only at equal settings.
+//! Each scene starts from the same seed and plays its setup script untimed through the driver that
+//! captures use (`driver`: the script, the bot that takes the pad at a `bot:K`, one fixed step at a
+//! time), so a scene with a bot is a scene with a fight. Then it draws `WARM_FRAMES` frames with the
+//! simulation held, so the GPU leaves its idle clocks and the first uploads are done (a fixed count,
+//! so the scene measured begins at the same simulated moment every time), and then measures its
+//! stated simulated duration (`--frames` overrides the count): its own script, the view emitted, the
+//! HUD drawn, the frame recorded and submitted, with at most two frames in flight (no waiting after
+//! each one, unlike `--bench`).
+//!
+//! Two modes. **Throughput** (the default) takes one 1/120 s simulation step per drawn frame: the
+//! scene keeps moving (rigs posing, the bot fighting, things uploaded) however fast the renderer
+//! draws, which is what the renderer's numbers want; its CPU times are not the game's at any frame
+//! rate. **Gameplay** measures each scene twice, as the game's frame loop runs it (`app.rs`'s
+//! accumulator): at 60 FPS, two steps per drawn frame, and at 30 FPS, four, reporting update and
+//! render CPU per drawn frame at those operating points (frames are not paced to the rate: wall
+//! time is still as fast as the machine goes).
+//!
+//! Every scene states what must have happened in it (`Expect`): a fight's swings, damage both ways,
+//! foes engaged and packs slain; a portal's every change of level. A scene that falls short is
+//! marked FAILED in the report, and the run exits with 3.
+//!
+//! Wall, CPU and GPU times are reported separately (median, 95th and 99th percentile and worst),
+//! with the machine, driver, backend, build and settings, to `perf/` as a Markdown summary plus one
+//! CSV of every frame per scene. Compare captures only at equal settings.
 
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::time::Instant;
 
 use crate::app::STEP;
-use crate::capture::{arg, exec, parse_script, Cmd};
+use crate::capture::{arg, parse_script};
+use crate::driver::{Deeds, Driver};
 use crate::game::Game;
 use crate::render::gpu::Gpu;
 use crate::render::hud;
@@ -35,6 +54,76 @@ enum Motion {
     Closeup,
 }
 
+/// What must have happened while a scene was measured.
+#[derive(Clone, Copy)]
+struct Expect {
+    /// A fight: the hero swings and deals damage, foes hunt him and their blows reach him (met on
+    /// his guard or not), and at least `packs` packs (encounters) fall to their last foe.
+    fight: bool,
+    packs: u32,
+    /// He takes damage. (Not asked of the expert bot in the vaults, which parries or blocks every
+    /// blow there: nothing drew blood in 90 simulated seconds of trying.)
+    hurt: bool,
+    /// Changes of level shown.
+    loads: usize,
+}
+
+/// Nothing in particular: a scene for the renderer alone.
+const NOTHING: Expect = Expect { fight: false, packs: 0, hurt: false, loads: 0 };
+
+impl Expect {
+    /// What fell short, if anything.
+    fn check(&self, d: &Deeds) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.fight {
+            if d.swings == 0 {
+                out.push("the hero never swung".to_string());
+            }
+            if d.hits == 0 || d.dealt <= 0.0 {
+                out.push("he dealt no damage".into());
+            }
+            if d.engaged == 0 {
+                out.push("no foe engaged him".into());
+            }
+            if d.met == 0 {
+                out.push("no foe's blow reached him".into());
+            }
+        }
+        if self.hurt && d.taken <= 0.0 {
+            out.push("he took no damage".into());
+        }
+        if d.packs < self.packs {
+            out.push(format!("{} of {} packs slain", d.packs, self.packs));
+        }
+        if d.loads < self.loads {
+            out.push(format!("{} of {} changes of level shown", d.loads, self.loads));
+        }
+        out
+    }
+
+    fn describe(&self) -> String {
+        let mut parts = Vec::new();
+        if self.fight {
+            parts.push("swings, damage dealt, foes engaged, their blows met".to_string());
+        }
+        if self.hurt {
+            parts.push("damage taken".into());
+        }
+        if self.packs > 0 {
+            parts.push(format!("{} pack{} slain", self.packs, if self.packs == 1 { "" } else { "s" }));
+        }
+        if self.loads > 0 {
+            parts.push(format!("{} changes of level shown", self.loads));
+        }
+        if parts.is_empty() {
+            "nothing asserted".into()
+        } else {
+            parts.join("; ")
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 struct Scene {
     name: &'static str,
     what: &'static str,
@@ -45,11 +134,21 @@ struct Scene {
     during: &'static str,
     period: f64,
     motion: Motion,
+    /// The simulated seconds measured.
+    secs: f64,
+    expect: Expect,
 }
+
+/// Frames drawn before measuring, the simulation held.
+const WARM_FRAMES: usize = 120;
+
+/// The gameplay mode's simulation steps per drawn frame: the game's at 60 and at 30 FPS, as its
+/// frame loop's accumulator takes them (`app.rs`).
+const GAMEPLAY_STEPS: [usize; 2] = [2, 4];
 
 /// The plan's scene list: a hero close-up, a dense corridor, a long vista, 30 enemies, transparency,
 /// fast rotation, camera switching, destruction (also in the middle of a 30-foe fight) and portal
-/// arrival.
+/// arrival; and two fights the bot plays, in the vaults and in the Pit.
 const SCENES: &[Scene] = &[
     Scene {
         name: "closeup",
@@ -59,6 +158,8 @@ const SCENES: &[Scene] = &[
         during: "",
         period: 0.0,
         motion: Motion::Closeup,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "garden",
@@ -68,6 +169,8 @@ const SCENES: &[Scene] = &[
         during: "0.0:+up",
         period: 0.0,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "corridor",
@@ -77,6 +180,8 @@ const SCENES: &[Scene] = &[
         during: "0.0:+left,3.0:-left,3.0:+up",
         period: 0.0,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "vista",
@@ -86,6 +191,8 @@ const SCENES: &[Scene] = &[
         during: "",
         period: 0.0,
         motion: Motion::Turn(3.0),
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "battle30",
@@ -95,6 +202,8 @@ const SCENES: &[Scene] = &[
         during: "0.0:attack",
         period: 0.6,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "warband",
@@ -104,6 +213,19 @@ const SCENES: &[Scene] = &[
         during: "",
         period: 0.0,
         motion: Motion::Still,
+        secs: 20.0,
+        expect: Expect { fight: true, packs: 1, hurt: false, loads: 0 },
+    },
+    Scene {
+        name: "pit",
+        what: "The Pit's seventh level with the expert bot fighting its inmates as they come out of the doors",
+        setup: "0.1:pit:7,0.3:bot:2",
+        settle: 10.0,
+        during: "",
+        period: 0.0,
+        motion: Motion::Still,
+        secs: 20.0,
+        expect: Expect { fight: true, packs: 1, hurt: true, loads: 0 },
     },
     Scene {
         name: "souls",
@@ -113,6 +235,8 @@ const SCENES: &[Scene] = &[
         during: "",
         period: 0.0,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "rotate",
@@ -122,6 +246,8 @@ const SCENES: &[Scene] = &[
         during: "",
         period: 0.0,
         motion: Motion::Turn(40.0),
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "switch",
@@ -131,6 +257,8 @@ const SCENES: &[Scene] = &[
         during: "0.5:camera",
         period: 1.0,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "destruction",
@@ -140,6 +268,8 @@ const SCENES: &[Scene] = &[
         during: "0.0:bomb,0.1:+left,0.5:-left,0.5:+right,0.9:-right",
         period: 1.0,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "siege",
@@ -149,6 +279,8 @@ const SCENES: &[Scene] = &[
         during: "0.0:bomb,0.1:+left,0.3:attack,0.5:-left,0.5:+right,0.8:attack,0.9:-right",
         period: 1.0,
         motion: Motion::Still,
+        secs: 5.0,
+        expect: NOTHING,
     },
     Scene {
         name: "portal",
@@ -158,6 +290,8 @@ const SCENES: &[Scene] = &[
         during: "1.0:realm:0,3.0:hub,5.0:realm:0,7.0:hub",
         period: 0.0,
         motion: Motion::Still,
+        secs: 9.0,
+        expect: Expect { fight: false, packs: 0, hurt: false, loads: 4 },
     },
     Scene {
         name: "vault",
@@ -167,6 +301,8 @@ const SCENES: &[Scene] = &[
         during: "",
         period: 0.0,
         motion: Motion::Turn(4.0),
+        secs: 5.0,
+        expect: NOTHING,
     },
 ];
 
@@ -179,8 +315,8 @@ struct Sample {
     gpu: Option<f64>,
     /// The two cascades' passes from the same read-back (near; far with its static cache when drawn).
     shadow: Option<(f64, f64)>,
-    /// The simulation step's sections (RP06).
-    sim: SimTimes,
+    /// The simulation's sections (RP06), summed over the frame's steps (`SimTimes::NAMES`).
+    sim: [f64; 9],
     counts: FrameCounts,
 }
 
@@ -244,20 +380,67 @@ fn new_game(w: u32, h: u32, lod_bias: f32) -> Game {
     game.view.viewport_h = h as f32;
     game.view.lod_bias = lod_bias;
     game.tour_pending = false;
+    // Without the prince's cheats, as the harnesses play (WARBAND.md §10.3): a whisper the bot
+    // refuses opens the old man's workshop, and the fight would be measured paused behind it.
+    game.voices.deceit.off = true;
     game
 }
 
-/// Plays `script` from `*t` until `until`, without drawing.
-fn play(game: &mut Game, script: &[(f64, Cmd)], next: &mut usize, t: &mut f64, until: f64) {
-    let mut bot = None;
-    while *t < until {
-        while *next < script.len() && script[*next].0 <= *t {
-            exec(game, &script[*next].1, &mut bot);
-            *next += 1;
-        }
-        game.update(STEP);
-        *t += STEP;
+/// The scene set: a fresh game with its setup script played untimed by the driver, which then has
+/// the scene's own script next (and keeps the setup's bot playing).
+fn stage(scene: &Scene, (w, h): (u32, u32), lod_bias: f32, juice_off: u32) -> (Game, Driver) {
+    let mut game = new_game(w, h, lod_bias);
+    game.set_juice_off(juice_off);
+    let mut driver = Driver::new(parse_script(scene.setup));
+    driver.run(&mut game, scene.settle);
+    driver.play(parse_script(scene.during), scene.period);
+    // From here on a change of level waits behind the loading screen for the renderer, as in the
+    // game (RP03).
+    game.await_renderer = true;
+    (game, driver)
+}
+
+/// The frames a scene's simulated seconds take at `steps` simulation steps a frame.
+fn frames_for(scene: &Scene, steps: usize) -> usize {
+    (scene.secs / (steps as f64 * STEP)).round().max(1.0) as usize
+}
+
+/// The simulation's part of one measured frame: the camera's motion, then `steps` steps of the
+/// driver (the scene's script and the bot). Returns the update's sections summed over the steps.
+fn advance(game: &mut Game, driver: &mut Driver, scene: &Scene, steps: usize) -> [f64; 9] {
+    if let Motion::Turn(px) = scene.motion {
+        game.view.look(px, 0.0);
     }
+    let mut sim = [0.0; 9];
+    for _ in 0..steps {
+        driver.step(game);
+        for (a, b) in sim.iter_mut().zip(game.sim.values()) {
+            *a += b;
+        }
+    }
+    sim
+}
+
+/// The close-up's camera, `orbit` radians round the hero.
+fn pose(game: &mut Game, scene: &Scene, orbit: f32) {
+    if let Motion::Closeup = scene.motion {
+        let p = game.hero.pos();
+        let y = game.hero.altitude as f32 * crate::render::view::STEP;
+        game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62, p.y as f32), orbit, 2.1);
+    }
+}
+
+/// A scene played as `measure` plays it, without drawing: a renderer that has every level ready at
+/// once. What happened in its measured frames.
+#[cfg(test)]
+fn rehearse(scene: &Scene, steps: usize) -> Deeds {
+    let (mut game, mut driver) = stage(scene, (1920, 1080), 1.0, 0);
+    driver.recount(&game);
+    for _ in 0..frames_for(scene, steps) {
+        advance(&mut game, &mut driver, scene, steps);
+        game.finish_loading();
+    }
+    driver.deeds(&game)
 }
 
 struct Run {
@@ -266,68 +449,45 @@ struct Run {
     first_frame: f64,
     /// Changes of level while measuring, timed from the load to the first frame shown (RP03).
     transitions: Vec<crate::game::Transition>,
+    /// What happened while measuring.
+    deeds: Deeds,
 }
 
-fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_bias: f32) -> Run {
-    let mut game = new_game(w, h, lod_bias);
-    game.set_juice_off(gpu.fx_off);
-    let setup = parse_script(scene.setup);
-    let (mut next, mut t) = (0, 0.0);
-    play(&mut game, &setup, &mut next, &mut t, scene.settle);
-    // From here on a change of level waits behind the loading screen for the renderer, as in the
-    // game (RP03).
-    game.await_renderer = true;
-
+/// Measures `frames` frames of a scene at `steps` simulation steps a frame, after the warm-up.
+fn measure(gpu: &mut Gpu, scene: &Scene, steps: usize, frames: usize, (w, h): (u32, u32), lod_bias: f32) -> Run {
+    let (mut game, mut driver) = stage(scene, (w, h), lod_bias, gpu.fx_off);
     let target = gpu.offscreen();
     let mut frame = Frame::default();
     let mut overlay = Overlay::new();
     let logical = (w as f32, h as f32);
+    let fps = (1.0 / (steps as f64 * STEP)).round() as u32;
     let mut in_flight: VecDeque<wgpu::SubmissionIndex> = VecDeque::new();
-    let during = parse_script(scene.during);
-    let mut during_next = 0;
-    let mut during_t = 0.0;
     let mut orbit = 0.0f32;
-    let mut bot = None;
     let mut first_frame = 0.0;
     let mut samples = Vec::with_capacity(frames);
-    let warm = Instant::now();
-    let mut warming = true;
     let mut last = Instant::now();
     let mut gpu_seen = 0;
-    let mut i = 0;
-    while samples.len() < frames {
+    for i in 0..WARM_FRAMES + frames {
+        let warming = i < WARM_FRAMES;
+        if i == WARM_FRAMES {
+            driver.recount(&game);
+        }
         let mut cpu = CpuTimes::default();
-        // The scene's own goings-on, on the simulation's clock (not during the warm-up).
+        let mut sim = [0.0; 9];
+        // The warm-up draws the scene as the setup left it; the measured frames move it on.
         if !warming {
-            while during_next < during.len() && during[during_next].0 <= during_t {
-                exec(&mut game, &during[during_next].1, &mut bot);
-                during_next += 1;
-            }
-            during_t += STEP;
-            if scene.period > 0.0 && during_t >= scene.period {
-                during_t -= scene.period;
-                during_next = 0;
-            }
-        }
-        match scene.motion {
-            Motion::Turn(px) => game.view.look(px, 0.0),
-            Motion::Closeup | Motion::Still => {}
-        }
-        let s = Instant::now();
-        game.update(STEP);
-        cpu.update = s.elapsed().as_secs_f64() * 1e3;
-        if let Motion::Closeup = scene.motion {
+            let s = Instant::now();
+            sim = advance(&mut game, &mut driver, scene, steps);
+            cpu.update = s.elapsed().as_secs_f64() * 1e3;
             orbit += 0.01;
-            let p = game.hero.pos();
-            let y = game.hero.altitude as f32 * crate::render::view::STEP;
-            game.view.set_closeup(glam::Vec3::new(p.x as f32, y + 0.62, p.y as f32), orbit, 2.1);
         }
+        pose(&mut game, scene, orbit);
         let s = Instant::now();
         game.view.emit(&game.scene(), &mut frame);
         cpu.emit = s.elapsed().as_secs_f64() * 1e3;
         let s = Instant::now();
         overlay.begin(logical.0, logical.1);
-        hud::draw(&mut overlay, &game, 60);
+        hud::draw(&mut overlay, &game, fps);
         cpu.hud = s.elapsed().as_secs_f64() * 1e3;
         let s = Instant::now();
         gpu.sync_static(&mut game.view);
@@ -351,9 +511,8 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
             let _ = gpu.device.poll(wgpu::PollType::Wait);
             first_frame = last.elapsed().as_secs_f64() * 1e3;
             eprintln!(
-                "perf: {} first frame {first_frame:.0} ms (update {:.0}, emit {:.0}, hud {:.0}, upload {:.0}, record {:.0}, GPU wait {:.0})",
+                "perf: {} first frame {first_frame:.0} ms (emit {:.0}, hud {:.0}, upload {:.0}, record {:.0}, GPU wait {:.0})",
                 scene.name,
-                cpu.update,
                 cpu.emit,
                 cpu.hud,
                 cpu.sync,
@@ -361,16 +520,9 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
                 s.elapsed().as_secs_f64() * 1e3
             );
         }
-        i += 1;
         let now = Instant::now();
         let wall = (now - last).as_secs_f64() * 1e3;
         last = now;
-        if warming {
-            if warm.elapsed().as_secs_f64() >= 1.0 {
-                warming = false;
-            }
-            continue;
-        }
         let fresh = gpu.timer.as_ref().filter(|t| t.frames > gpu_seen);
         let gpu_ms = fresh.map(|t| t.total);
         let shadow = fresh.map(|t| {
@@ -380,24 +532,37 @@ fn measure(gpu: &mut Gpu, scene: &Scene, frames: usize, (w, h): (u32, u32), lod_
         if let Some(t) = fresh {
             gpu_seen = t.frames;
         }
-        samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, sim: game.sim, counts: gpu.counts });
+        if !warming {
+            samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, sim, counts: gpu.counts });
+        }
     }
     let _ = gpu.device.poll(wgpu::PollType::Wait);
-    Run { samples, first_frame, transitions: game.transitions }
+    let deeds = driver.deeds(&game);
+    Run { samples, first_frame, transitions: game.transitions, deeds }
 }
 
 pub fn run(args: &[String]) -> i32 {
     std::env::set_var("VH_NO_AUDIO", "1");
-    if std::env::var_os("VH_SAVE_DIR").is_none() {
-        let dir = std::env::temp_dir().join("void-harvest-perf");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::env::set_var("VH_SAVE_DIR", dir);
-    }
+    // Each scene starts from no save at all, in a folder of its own under VH_SAVE_DIR (or the
+    // temporary folder): what one scene saves (progress, the Ledger, a checkpoint) must not change
+    // the next, or a scene would play differently alone and in `all`.
+    let saves =
+        std::env::var_os("VH_SAVE_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("void-harvest-perf"));
     let size = arg(args, "--size")
         .and_then(|s| s.split_once('x'))
         .and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?)))
         .unwrap_or((1920u32, 1080u32));
-    let frames: usize = arg(args, "--frames").and_then(|n| n.parse().ok()).unwrap_or(600);
+    // A frame count overrides the scenes' durations (their checks may then fall short).
+    let frames_arg: Option<usize> = arg(args, "--frames").and_then(|n| n.parse().ok());
+    let gameplay = match arg(args, "--perf-mode") {
+        None | Some("throughput") => false,
+        Some("gameplay") => true,
+        Some(other) => {
+            eprintln!("no such mode {other}; the modes are throughput and gameplay");
+            return 2;
+        }
+    };
+    let rates: &[usize] = if gameplay { &GAMEPLAY_STEPS } else { &[1] };
     let which = arg(args, "--perf").filter(|s| !s.starts_with("--")).unwrap_or("all");
     let fx_list = arg(args, "--fx-off").unwrap_or("");
     let preset = match arg(args, "--preset") {
@@ -454,15 +619,32 @@ pub fn run(args: &[String]) -> i32 {
         if preset.gpu_cull { "GPU" } else { "CPU" }
     );
     let _ = writeln!(md, "| Level-of-detail bias | {lod_bias} |");
-    let _ = writeln!(md, "| Frames per scene | {frames} after 1 s of warm-up, at most 2 in flight |\n");
     let _ = writeln!(
         md,
-        "Times in ms. Wall is the time between frames as the game would pace them; CPU is simulation, emission, HUD, upload and \
-         recording; GPU is from timestamp queries, first pass to last. GPU work overlaps the CPU's.\n"
+        "| Mode | {} |",
+        if gameplay {
+            "gameplay: each scene at 60 FPS (two 1/120 s simulation steps per drawn frame) and at 30 FPS (four), as the game's frame loop runs them; frames not paced to the rate"
+        } else {
+            "throughput: one 1/120 s simulation step per drawn frame (the scene keeps moving however fast it is drawn)"
+        }
     );
     let _ = writeln!(
         md,
-        "| Scene | Wall p50 | p95 | p99 | max | CPU p50 | p95 | GPU p50 | p95 | p99 | max | First frame | Draws | Tri (M) | Upload kB |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+        "| Frames per scene | {}, after {WARM_FRAMES} frames of warm-up with the simulation held; at most 2 in flight |\n",
+        match frames_arg {
+            Some(n) => format!("{n} (set by --frames)"),
+            None => "the scene's simulated seconds (below) at its steps per frame".into(),
+        }
+    );
+    let _ = writeln!(
+        md,
+        "Times in ms. Wall is the time between frames, unpaced; CPU is the update (every simulation step of the frame), \
+         emission, HUD, upload and recording, and Render is CPU without the update; GPU is from timestamp queries, first pass \
+         to last. GPU work overlaps the CPU's.\n"
+    );
+    let _ = writeln!(
+        md,
+        "| Scene | Sim | Wall p50 | p95 | p99 | max | CPU p50 | p95 | Update p50 | p95 | Render p50 | p95 | GPU p50 | p95 | p99 | max | First frame | Draws | Tri (M) | Upload kB |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     );
     let _ = std::fs::create_dir_all(&out_dir);
     let mut cascades = String::new();
@@ -470,26 +652,45 @@ pub fn run(args: &[String]) -> i32 {
     let mut moves = String::new();
     let mut hidden_rows = String::new();
     let mut grain_rows = String::new();
-    for scene in scenes {
-        eprintln!("perf: {} ({frames} frames) ...", scene.name);
-        let run = measure(&mut gpu, scene, frames, size, lod_bias);
+    let mut checks = String::new();
+    let mut failed = Vec::new();
+    let runs: Vec<(&Scene, usize)> = scenes.iter().flat_map(|s| rates.iter().map(move |&k| (*s, k))).collect();
+    for (scene, steps) in runs {
+        let fps = (1.0 / (steps as f64 * STEP)).round() as u32;
+        let (label, sim_label) = if gameplay {
+            (format!("{} @{fps}", scene.name), format!("{fps} FPS, {steps} steps"))
+        } else {
+            (scene.name.to_string(), "1 step".to_string())
+        };
+        let frames = frames_arg.unwrap_or_else(|| frames_for(scene, steps));
+        let file = if gameplay { format!("{}-{fps}fps", scene.name) } else { scene.name.to_string() };
+        let dir = saves.join(format!("perf-{file}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var("VH_SAVE_DIR", &dir);
+        eprintln!("perf: {label} ({frames} frames, {:.1} s simulated) ...", frames as f64 * steps as f64 * STEP);
+        let run = measure(&mut gpu, scene, steps, frames, size, lod_bias);
         let s = &run.samples;
         let wall = percentiles(s.iter().map(|x| x.wall).collect());
         let cpu = percentiles(s.iter().map(|x| x.cpu.total()).collect());
+        let update = percentiles(s.iter().map(|x| x.cpu.update).collect());
+        let render = percentiles(s.iter().map(|x| x.cpu.total() - x.cpu.update).collect());
         let gpu_t = percentiles(s.iter().filter_map(|x| x.gpu).collect());
         let mean = |f: &dyn Fn(&Sample) -> f64| s.iter().map(f).sum::<f64>() / s.len().max(1) as f64;
         let draws = mean(&|x| x.counts.draws as f64);
         let tris = mean(&|x| x.counts.triangles as f64) / 1e6;
         let upload = mean(&|x| x.counts.upload as f64) / 1024.0;
         let line = format!(
-            "| {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.1} | {:.0} | {:.2} | {:.0} |",
-            scene.name,
+            "| {label} | {sim_label} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {:.1} | {:.0} | {:.2} | {:.0} |",
             wall[0],
             wall[1],
             wall[2],
             wall[3],
             cpu[0],
             cpu[1],
+            update[0],
+            update[1],
+            render[0],
+            render[1],
             gpu_t[0],
             gpu_t[1],
             gpu_t[2],
@@ -520,8 +721,7 @@ pub fn run(args: &[String]) -> i32 {
         };
         let _ = writeln!(
             cascades,
-            "| {} | {near_cells} | {:.2} | {:.2} | {:.0}% | {:.0}k |",
-            scene.name,
+            "| {label} | {near_cells} | {:.2} | {:.2} | {:.0}% | {:.0}k |",
             far[0],
             far[1],
             far[1] / b.shadow_far_ms * 100.0,
@@ -562,20 +762,19 @@ pub fn run(args: &[String]) -> i32 {
                 c.busiest_cluster
             );
             csv.pop();
-            for v in x.sim.values() {
+            for v in x.sim {
                 let _ = write!(csv, ",{v:.3}");
             }
             csv.push('\n');
         }
-        let _ = std::fs::write(format!("{out_dir}/{when}-{}.csv", scene.name), csv);
+        let _ = std::fs::write(format!("{out_dir}/{when}-{file}.csv"), csv);
         {
             let by = |f: &dyn Fn(&FrameCounts) -> u64| mean(&|x| f(&x.counts) as f64);
             let (chunk, group, cluster) = (by(&|c| c.faces_by_chunk), by(&|c| c.faces_by_group), by(&|c| c.faces_by_cluster));
             if chunk > 0.0 {
                 let _ = writeln!(
                     grain_rows,
-                    "| {} | {:.0}k | {:.0}k ({:.0}%) | {:.0}k ({:.0}%) |",
-                    scene.name,
+                    "| {label} | {:.0}k | {:.0}k ({:.0}%) | {:.0}k ({:.0}%) |",
                     chunk / 1e3,
                     group / 1e3,
                     group / chunk * 100.0,
@@ -587,33 +786,48 @@ pub fn run(args: &[String]) -> i32 {
         if gpu.measure_occlusion {
             let seen = mean(&|x| x.counts.faces_seen as f64);
             let hidden = mean(&|x| x.counts.faces_hidden as f64);
-            let _ = writeln!(
-                hidden_rows,
-                "| {} | {:.0}k | {:.0}k | {:.1}% |",
-                scene.name,
-                seen / 1e3,
-                hidden / 1e3,
-                hidden / seen.max(1.0) * 100.0
-            );
+            let _ =
+                writeln!(hidden_rows, "| {label} | {:.0}k | {:.0}k | {:.1}% |", seen / 1e3, hidden / 1e3, hidden / seen.max(1.0) * 100.0);
         }
         for tr in &run.transitions {
             let _ = writeln!(
                 moves,
-                "| {} | {} | {} | {:.0} | {:.0} |",
-                scene.name,
+                "| {label} | {} | {} | {:.0} | {:.0} |",
                 tr.label,
                 if tr.cold { "cold" } else { "warm" },
                 tr.load_ms,
                 tr.ms
             );
         }
-        // The step's sections: median, 95th percentile and worst (RP06).
-        let mut row = format!("| {} |", scene.name);
+        // The update's sections: median, 95th percentile and worst (RP06).
+        let mut row = format!("| {label} |");
         for k in 0..SimTimes::NAMES.len() {
-            let p = percentiles(s.iter().map(|x| x.sim.values()[k]).collect());
+            let p = percentiles(s.iter().map(|x| x.sim[k]).collect());
             let _ = write!(row, " {:.2} / {:.2} / {:.1} |", p[0], p[1], p[3]);
         }
         let _ = writeln!(sim_rows, "{row}");
+        // What happened, against what must have.
+        let d = &run.deeds;
+        let short = scene.expect.check(d);
+        let verdict = if short.is_empty() { "passed".to_string() } else { format!("**FAILED**: {}", short.join("; ")) };
+        if !short.is_empty() {
+            eprintln!("perf: {label} FAILED: {}", short.join("; "));
+            failed.push(label.clone());
+        }
+        let _ = writeln!(
+            checks,
+            "| {label} | {:.1} | {} | {} | {:.0} | {} | {:.0} | {} | {} | {} | {} | {verdict} |",
+            d.steps as f64 * STEP,
+            d.swings,
+            d.hits,
+            d.dealt,
+            d.met,
+            d.taken,
+            d.engaged,
+            d.kills,
+            d.packs,
+            d.loads
+        );
     }
     let b = &preset.budget;
     let _ = writeln!(
@@ -625,8 +839,8 @@ pub fn run(args: &[String]) -> i32 {
     );
     let _ = writeln!(
         md,
-        "\n## Simulation step\n\nWhere the update's time goes, per section (ms: median / 95th percentile / worst). The view \
-         section is the camera and animation state; drawing preparation is under CPU emit above.\n\n| Scene | {} |\n|---|{}\n{sim_rows}",
+        "\n## Simulation step\n\nWhere the update's time goes, per section, summed over the frame's simulation steps (ms: median / \
+         95th percentile / worst). The view section is the camera and animation state; drawing preparation is under CPU emit above.\n\n| Scene | {} |\n|---|{}\n{sim_rows}",
         SimTimes::NAMES.join(" | "),
         "---|".repeat(SimTimes::NAMES.len())
     );
@@ -654,12 +868,22 @@ pub fn run(args: &[String]) -> i32 {
              the level's first load in this run of the game, warm a return to it.\n\n| Scene | Level | | Load | To first frame |\n|---|---|---|---|---|\n{moves}"
         );
     }
+    let _ = writeln!(
+        md,
+        "\n## What was played\n\nWhat happened in each scene's measured frames (the driver's count: swings the hero began, his blows \
+         landed, damage dealt, foes' blows that reached him and the damage he took, the most foes hunting him at once, foes and \
+         packs slain, changes of level shown), against what the scene must show.\n\n| Scene | Seconds | Swings | Hits | Dealt | Met | Taken | Engaged | Kills | Packs | Loads | Check |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n{checks}"
+    );
     let _ = writeln!(md, "\n## Scenes\n");
     for scene in SCENES {
-        let _ = writeln!(md, "- **{}**: {}.", scene.name, scene.what);
+        let _ = writeln!(md, "- **{}** ({:.0} s; {}): {}.", scene.name, scene.secs, scene.expect.describe(), scene.what);
     }
     let path = format!("{out_dir}/{when}.md");
     match std::fs::write(&path, md) {
+        Ok(()) if !failed.is_empty() => {
+            eprintln!("perf: wrote {path}; FAILED: {}", failed.join(", "));
+            3
+        }
         Ok(()) => {
             eprintln!("perf: wrote {path}");
             0
@@ -668,5 +892,63 @@ pub fn run(args: &[String]) -> i32 {
             eprintln!("could not write {path}: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scene(name: &str) -> &'static Scene {
+        SCENES.iter().find(|s| s.name == name).expect("a scene of that name")
+    }
+
+    #[test]
+    fn the_gameplay_mode_takes_the_games_steps_per_frame() {
+        for (fps, steps) in [(60.0, GAMEPLAY_STEPS[0]), (30.0, GAMEPLAY_STEPS[1])] {
+            assert_eq!(((1.0 / fps) / STEP).round() as usize, steps, "{fps} FPS");
+        }
+        let garden = scene("garden");
+        let (mut game, mut driver) = stage(garden, (640, 360), 1.0, 0);
+        for steps in [1, 2, 4] {
+            driver.recount(&game);
+            advance(&mut game, &mut driver, garden, steps);
+            assert_eq!(driver.deeds.steps as usize, steps, "{steps} steps a frame");
+            assert_eq!(frames_for(garden, steps) * steps, (garden.secs / STEP).round() as usize, "the same seconds at any rate");
+        }
+    }
+
+    #[test]
+    fn the_warband_scene_fights() {
+        let d = rehearse(scene("warband"), 1);
+        eprintln!("warband: {d:?}");
+        assert_eq!(scene("warband").expect.check(&d), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_pit_scene_fights() {
+        let d = rehearse(scene("pit"), 2);
+        eprintln!("pit: {d:?}");
+        assert_eq!(scene("pit").expect.check(&d), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_portal_scene_makes_every_change_of_level() {
+        let portal = scene("portal");
+        let d = rehearse(portal, 1);
+        assert_eq!(d.loads, portal.expect.loads, "{d:?}");
+        assert!(portal.expect.check(&d).is_empty());
+        // At the old fixed count of 600 frames, its last return was never reached.
+        assert!(portal.secs > 7.0 && frames_for(portal, 1) > 600);
+    }
+
+    #[test]
+    fn a_scene_that_falls_short_says_so() {
+        let idle = Deeds::default();
+        let short = scene("warband").expect.check(&idle);
+        assert_eq!(short.len(), 5, "{short:?}");
+        assert_eq!(scene("pit").expect.check(&idle).len(), 6, "and the Pit asks for blood too");
+        assert_eq!(scene("portal").expect.check(&idle), vec!["0 of 4 changes of level shown".to_string()]);
+        assert!(NOTHING.check(&idle).is_empty());
     }
 }

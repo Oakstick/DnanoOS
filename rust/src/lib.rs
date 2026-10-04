@@ -18,7 +18,7 @@
 //! - `game`: the state of a run and every rule that ties the layers together, one module per part
 //!   (see its docs).
 //! - `app`: the window and the frame loop; `capture` renders scripted frames headless, and `perf`
-//!   times scripted scenes (the rendering plan's performance captures).
+//!   times scripted scenes (the rendering plan's performance captures), both played by `driver`.
 //!
 //! One coupling runs both ways: the game owns the view and calls it directly (sparks, shakes,
 //! rebuilding a level), and the HUD reads the `Game`. Separating them (the game emitting events
@@ -30,6 +30,8 @@ pub mod audio;
 pub mod camcheck;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod capture;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod driver;
 pub mod game;
 pub mod input;
 pub mod logic;
