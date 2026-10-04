@@ -15,8 +15,8 @@ pub(super) mod pal {
     pub const CHAR: u32 = 0x1c1410;
     pub const MUD: u32 = 0x4a1410;
     pub const MUD_L: u32 = 0x6a1c16;
-    pub const OBSIDIAN: u32 = 0x1a1220;
-    pub const OBSIDIAN_L: u32 = 0x3a2a4a;
+    pub const OBSIDIAN: u32 = 0x16141a;
+    pub const OBSIDIAN_L: u32 = 0x2e2c34;
     pub const STEEL: u32 = 0xa4aab2;
     pub const STEEL_D: u32 = 0x6a7078;
     pub const RUST: u32 = 0x7a4a2a;
@@ -31,10 +31,10 @@ pub(super) mod pal {
     pub const BONE_D: u32 = 0xa89878;
     pub const CREAM: u32 = 0xd8c8a0;
     pub const EMBER: u32 = 0xff6a20;
-    pub const LAVA_DEEP: u32 = 0x8a1e06;
-    pub const LAVA: u32 = 0xff4a0a;
-    pub const LAVA_HOT: u32 = 0xffb040;
-    pub const CRUST: u32 = 0x2a120c;
+    pub const LAVA_DEEP: u32 = 0x7a2408;
+    pub const LAVA: u32 = 0xe8541a;
+    pub const LAVA_HOT: u32 = 0xf0a448;
+    pub const CRUST: u32 = 0x1c1612;
     pub const STONE: u32 = 0xc8c2b6;
     pub const STONE_D: u32 = 0x948c80;
     pub const GOLD: u32 = 0xe8b84a;

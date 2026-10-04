@@ -71,9 +71,10 @@ fn lava_look(x: f32, z: f32) -> (Vec3, Vec3) {
     // Pools of heat, and between them a crust broken by thin glowing veins.
     let heat = 0.62 * vnoise(x * 0.13, z * 0.13) + 0.38 * vnoise(x * 0.37 + 7.0, z * 0.37 + 3.0);
     let vein = 1.0 - ((vnoise(x * 0.45 + 3.0, z * 0.45 - 2.0) - 0.5).abs() * 12.0).min(1.0);
-    let hot = ((heat - 0.52) / 0.22).clamp(0.0, 1.0).max(vein * 0.6);
-    let color = lin(CRUST).lerp(lin(LAVA_DEEP), hot);
-    let glow = lin(LAVA).lerp(lin(LAVA_HOT), ((hot - 0.8) / 0.2).max(0.0)) * (hot * hot * 0.45 + 0.03);
+    // (More of it crusted over than not, as the Portals' lava: rivers of heat, not a sea of it.)
+    let hot = ((heat - 0.58) / 0.22).clamp(0.0, 1.0).max(vein * 0.5);
+    let color = lin(CRUST).lerp(lin(LAVA_DEEP), hot * hot);
+    let glow = lin(LAVA).lerp(lin(LAVA_HOT), ((hot - 0.85) / 0.15).max(0.0)) * (hot * hot * 0.16 + 0.02);
     (color, glow)
 }
 
@@ -919,7 +920,7 @@ impl WorldView {
                 continue;
             }
             gaps += 1;
-            lit.push((Vec3::new(t.x as f32, LAVA_Y + 0.2, t.y as f32), lin(0xff5a10) * 1.1, 4.5));
+            lit.push((Vec3::new(t.x as f32, LAVA_Y + 0.2, t.y as f32), lin(0xe8661c) * 0.7, 4.5));
         }
         // Embers rising, and ash falling.
         for k in 0..36 {
@@ -1134,14 +1135,14 @@ pub(super) fn atmosphere(_v: &FieldView, r: &Battlefield, _s: &SceneState) -> At
         background: bg,
         fog_near: 12.0 + k * 10.0,
         fog_far: 30.0 + k * 24.0,
-        hemi_sky: (lin(0x9a6a64) * 1.0).lerp(lin(0xdde4ff) * 2.2, k),
-        hemi_ground: lin(0xff6a2a) * (0.9 + call * 0.35),
-        ambient: (lin(0x6a4a44) * 0.9).lerp(lin(0xc8ccff) * 1.5, k),
+        hemi_sky: (lin(0x8a7a70) * 1.0).lerp(lin(0xdde4ff) * 2.2, k),
+        hemi_ground: lin(0xd0702e) * (0.55 + call * 0.35),
+        ambient: (lin(0x5a4c46) * 0.9).lerp(lin(0xc8ccff) * 1.5, k),
         sun_dir,
-        sun: (lin(0xffb090) * (1.5 + call * 0.2)).lerp(lin(0xeef2ff) * 4.5, k),
-        exposure: 1.3,
+        sun: (lin(0xf0bc90) * (1.5 + call * 0.2)).lerp(lin(0xeef2ff) * 4.5, k),
+        exposure: 1.25,
         night_sky: 0.0,
-        bloom: 1.3,
+        bloom: 1.0,
         moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
         cloud_tint: lin(0x2a0a08),
     }

@@ -659,6 +659,12 @@ builder is `view/crypt.rs`. Both are off the road on the map.
     amber, and its lanterns burn amber instead of lime.
   - The Waterline's light is a cold mist teal from above with more ambient, so the basalt reads
     out of the black. Bloom is 0.95.
+- **The Burning Field (Wrath):**
+  - The lava sea was a blown yellow-red sheet. More of it is now crusted over in charcoal, and its
+    rivers burn ember and amber at about a third of the glow (as in the Portals of Hell).
+  - The obsidian loses its violet for charcoal; the light from below is ember, not scarlet, and
+    the ash sky's light is umber grey. The lava's light through the gaps is softer. Bloom is 1.0.
+  - Amon's red stays in the banners, the blood-mud and the wounds in the slabs.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 
