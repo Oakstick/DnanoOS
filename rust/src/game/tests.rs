@@ -257,8 +257,8 @@ fn the_menus_can_quit() {
     assert!(g.quit_requested);
     assert_eq!(g.screen, Screen::Title);
 
-    // Pause offers Resume / the view / Call the Old Man / Controller / Map / Quit to Title / Quit Game;
-    // clicking a button picks it.
+    // Pause offers Resume / the view / slow motion / the shake / Call the Old Man / Controller / Map /
+    // Quit to Title / Quit Game; clicking a button picks it.
     let mut g = playing();
     g.input.inject(Action::Pause);
     g.update(crate::app::STEP);
@@ -268,6 +268,8 @@ fn the_menus_can_quit() {
         vec![
             MenuItem::Resume,
             MenuItem::ViewFollow,
+            MenuItem::SlowMotion(true),
+            MenuItem::Shake(100),
             MenuItem::CallOldMan,
             MenuItem::Controls,
             MenuItem::Map,
@@ -281,7 +283,8 @@ fn the_menus_can_quit() {
     g.update(crate::app::STEP);
     assert_eq!((g.screen, g.view.camera_mode), (Screen::Paused, view::CameraMode::Top));
     assert_eq!(g.menu_items()[1], MenuItem::ViewTop);
-    let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[5];
+    let quit = g.menu_items().iter().position(|&m| m == MenuItem::QuitToTitle).unwrap();
+    let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[quit];
     g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
     g.input.mouse_button(winit::event::MouseButton::Left, true);
     g.update(crate::app::STEP);

@@ -7,6 +7,7 @@ use crate::logic::boss::{BossEvent, ShotKind, CONTACT_RADIUS, POINTS_CYCLOPS};
 use crate::logic::gear::{COINS_BOSS, RUNES_BOSS};
 use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::heroes::HeroKind;
+use crate::logic::juice::FPS;
 use crate::logic::levels::ARENA;
 use crate::logic::progression;
 use crate::logic::progression::path;
@@ -342,14 +343,14 @@ impl Game {
             self.view.dust(grid, at.x, at.y, 0x8a2a6a, 10, 2.6);
             self.view.sparkle(grid, at.x, at.y, 1.0, 0xfff1c0, 6);
             self.view.shake(0.16);
-            self.hitstop = HITSTOP_BOSS;
             if dying {
                 // Its last scream pops everything still in the air.
                 for s in self.boss_shots.drain(..) {
                     self.view.spark(grid, s.pos.x, s.pos.y, 0xffb060);
                 }
-                self.hitstop = 0.12;
             }
+            // The world holds on the blow, and longer on its last.
+            self.freeze_frames(if dying { 0.12 } else { HITSTOP_BOSS } * FPS);
             self.award(10 * amount as u32);
         }
         for e in events.drain(..) {

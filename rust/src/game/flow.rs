@@ -58,6 +58,9 @@ macro_rules! scene_state {
             flashes: $g.brawl.as_ref().map(|b| b.flashes.as_slice()).unwrap_or(&[]),
             ails: $g.brawl.as_ref().filter(|_| $g.brawling()).map(|b| b.ails).unwrap_or_default(),
             traps: $g.brawl.as_ref().map(|b| b.traps.as_slice()).unwrap_or(&[]),
+            pace: $g.pace() as f32,
+            time_scale: $g.time_scale() as f32,
+            hero_fighter: $g.brawl.as_ref().filter(|_| $g.brawling()).map(|b| &b.hero),
         }
     };
 }
@@ -138,6 +141,7 @@ impl Game {
             .or_else(|| self.hub_focus());
         self.input.poll(dt);
         self.handle_global_keys();
+        self.settle_pace();
 
         match self.screen {
             Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
@@ -174,12 +178,9 @@ impl Game {
             }
             Screen::Playing => {
                 self.keep_immortal();
-                // A freeze-frame on a hit: the world holds for a beat, effects keep moving.
-                if self.hitstop > 0.0 {
-                    self.hitstop -= dt;
-                } else {
-                    self.tick(dt);
-                }
+                // A freeze-frame on a hit: the world holds for a beat, effects keep moving; and
+                // while time is slowed the world runs slower, evenly (`juice`).
+                self.play_step(dt);
             }
             Screen::Toll => {
                 if let Some(choice) = self.menu_choice() {
@@ -193,6 +194,8 @@ impl Game {
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
                 Some(MenuItem::ViewTop | MenuItem::ViewFollow) => self.switch_camera(),
+                Some(MenuItem::SlowMotion(_)) => self.toggle_slow_motion(),
+                Some(MenuItem::Shake(_)) => self.step_shake(),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map) => self.open_map(),
@@ -248,6 +251,7 @@ impl Game {
             }
         }
         let mut lap = crate::render::profile::Lap::start();
+        self.sync_feel();
         let state = scene_state!(self);
         self.view.update(dt, &state);
         self.sim.view += lap.lap();
@@ -273,7 +277,17 @@ impl Game {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
             Screen::Paused => {
-                vec![MenuItem::Resume, self.view_item(), MenuItem::CallOldMan, MenuItem::Controls, MenuItem::Map, MenuItem::QuitToTitle]
+                let [slow, shake] = self.feel_items();
+                vec![
+                    MenuItem::Resume,
+                    self.view_item(),
+                    slow,
+                    shake,
+                    MenuItem::CallOldMan,
+                    MenuItem::Controls,
+                    MenuItem::Map,
+                    MenuItem::QuitToTitle,
+                ]
             }
             Screen::View => return super::viewpick::VIEWS.iter().map(|v| v.0).collect(),
             // Keep first, and highlighted: Mammon would have it so. (A prince's offer in the realms

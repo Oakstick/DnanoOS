@@ -1376,7 +1376,9 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
         }
         _ => {
             let bw = t * 9.0;
-            let gap = t * 0.45;
+            // (A longer list, the pause menu with the feel's settings, packs its buttons closer.)
+            let tight = (7.0 / count.max(7) as f32).max(0.75);
+            let (bh, gap) = (bh * tight, t * 0.45 * tight);
             let y0 = h / 2.0 - t * 0.6;
             (0..count).map(|i| [w / 2.0 - bw / 2.0, y0 + i as f32 * (bh + gap), bw, bh]).collect()
         }

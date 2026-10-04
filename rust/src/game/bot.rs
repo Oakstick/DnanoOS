@@ -502,6 +502,8 @@ pub const LIMIT: f64 = 120.0;
 fn fresh_game(seed: u32) -> Game {
     let mut g = Game::new();
     g.reseed(seed);
+    // The harnesses play without the juice (WARBAND.md §4): their numbers must not move with the feel.
+    g.set_juice_off(crate::render::profile::fx::JUICE);
     g.progress = crate::logic::progression::Progress::default();
     g.saved_run = None;
     g.hero_kind = HeroKind::Ragnar;

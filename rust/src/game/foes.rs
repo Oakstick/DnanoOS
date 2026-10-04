@@ -10,6 +10,7 @@ use crate::logic::enemy::{
 use crate::logic::gear::{COINS_KILL, RUNE_DROP};
 use crate::logic::hero::CONTACT_DAMAGE;
 use crate::logic::heroes::HeroKind;
+use crate::logic::juice::FPS;
 use crate::logic::progression::path;
 use crate::logic::systems::{POINTS_KILL, PUDDLE_SECONDS};
 use crate::logic::types::{dist_sq, Tile, CARDINALS, P, V};
@@ -295,7 +296,7 @@ impl Game {
         let p = self.enemies[i].pos();
         let kind = self.enemies[i].kind();
         self.enemies[i].wound();
-        self.hitstop = self.hitstop.max(HITSTOP_KILL * 0.6);
+        self.freeze_frames(HITSTOP_KILL * 0.6 * FPS);
         match kind {
             EnemyKind::Werewolf => {
                 self.audio.play(Sfx::Howl);
@@ -348,7 +349,9 @@ impl Game {
         self.view.dust(&self.level.grid, p.x, p.y, color, 14, 2.4);
         self.view.sparkle(&self.level.grid, p.x, p.y, 0.5, 0xfff1c0, 8);
         self.view.shake(0.1);
-        self.hitstop = HITSTOP_KILL;
+        // (A BRUTAL's longer freeze, from the spoils, gives way to the kill's.)
+        self.hitstop = 0.0;
+        self.freeze_frames(HITSTOP_KILL * FPS);
     }
 
     /// What a kill at `at` brings: its coins, now and then a rune, the streak (and BRUTAL every
