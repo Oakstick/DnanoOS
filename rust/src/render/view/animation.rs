@@ -27,7 +27,31 @@ impl Pose {
             self.rot[i].x = angle;
         }
     }
+
+    /// Weapons at the ready, for a hero standing (the title stage, the character screen): the
+    /// shield forearm turned so its shield's face looks forward and out (strapped edge-on to his
+    /// front, it showed only its rim), and the sword arm a little forward, the blade clear of it.
+    /// The held parts turn with their arms.
+    pub(super) fn ready(&mut self, rig: &Rig) {
+        for name in ["shieldArm", "shield", "offhand"] {
+            if let Some(i) = rig.index(name) {
+                self.rot[i].x = SHIELD_FORWARD;
+                self.rot[i].y = SHIELD_TURN;
+            }
+        }
+        for name in ["swordArm", "blade"] {
+            if let Some(i) = rig.index(name) {
+                self.rot[i].x = SWORD_FORWARD;
+            }
+        }
+    }
 }
+
+/// The ready stance: how far the shield forearm turns its shield toward the front, and how far
+/// each arm is carried forward of hanging straight.
+pub(super) const SHIELD_TURN: f32 = -0.7;
+pub(super) const SHIELD_FORWARD: f32 = -0.15;
+pub(super) const SWORD_FORWARD: f32 = -0.3;
 
 pub(super) struct EnemyView {
     pub(super) rig: RigId,
@@ -236,9 +260,13 @@ impl WorldView {
         }
         p.rot_x(rig, "leftLeg", stride * 0.75);
         p.rot_x(rig, "rightLeg", -stride * 0.75);
-        // Behind a raised shield his arm comes up across his front.
-        p.rot_x(rig, "shieldArm", if hero.blocking { -1.35 } else { -stride * 0.35 });
-        let swing = if hero.swinging() { (hero.swing_progress() as f32 * PI).sin() * 1.7 } else { stride * 0.35 };
+        // Behind a raised shield his arm comes up across his front; otherwise both arms are at
+        // the ready (see `Pose::ready`), swinging with his stride.
+        p.rot_x(rig, "shieldArm", if hero.blocking { -1.35 } else { SHIELD_FORWARD - stride * 0.35 });
+        if let Some(i) = rig.index("shieldArm") {
+            p.rot[i].y = if hero.blocking { 0.0 } else { SHIELD_TURN };
+        }
+        let swing = if hero.swinging() { (hero.swing_progress() as f32 * PI).sin() * 1.7 } else { SWORD_FORWARD + stride * 0.35 };
         p.rot_x(rig, "swordArm", swing);
         p.rot_x(rig, "head", motion * 0.08 + if hero.swinging() { 0.15 } else { 0.0 });
         self.hero_root_rot.x = motion * if hero.hasted() { 0.14 } else { 0.07 };

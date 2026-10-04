@@ -295,7 +295,8 @@ impl WorldView {
                 (Some((bare, shield)), true) => {
                     // The shield comes off his back and up before him, on his shield arm's side.
                     emit_hero_rig(target, bare, &self.hero_pose, root, tint, alpha, emissive, rust);
-                    let side = self.hero_pose.pos.get(3).map(|p| p.x * 0.55).unwrap_or(-0.12);
+                    // (Far enough out on that side that his fist is behind it, not beside it.)
+                    let side = self.hero_pose.pos.get(3).map(|p| p.x * 0.75).unwrap_or(-0.16);
                     let up = root * Mat4::from_translation(Vec3::new(side, 0.06, 0.12)) * Mat4::from_rotation_y(PI);
                     emit_rig(target, shield, &Pose::rest(shield), up, tint, alpha, emissive);
                 }

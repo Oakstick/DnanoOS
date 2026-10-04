@@ -82,6 +82,7 @@ impl WorldView {
             let root =
                 Mat4::from_translation(feet) * Mat4::from_rotation_y(-x * 0.12) * Mat4::from_scale(Vec3::new(1.12, 1.12 * breathe, 1.12));
             let mut pose = Pose::rest(rig);
+            pose.ready(rig);
             if let Some(hd) = rig.index("head") {
                 pose.rot[hd].y = (time * 0.5 + i as f32 * 2.0).sin() * 0.12;
             }
