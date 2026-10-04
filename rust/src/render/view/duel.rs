@@ -46,6 +46,13 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => return 0xffd860,
         Some(MoveId::Call) => return 0x9ac8ff,
         Some(MoveId::Raise) => return 0x6a8cff,
+        // Leviathan's: the covet in the envious green, the dive the sea's, the toll bronze, the
+        // burning coil fire.
+        Some(MoveId::Covet | MoveId::CovetFire | MoveId::CovetThunder | MoveId::CovetBeam | MoveId::CovetWave) => return 0x5adf7a,
+        Some(MoveId::Dive) => return 0x7af0c0,
+        Some(MoveId::BrineSpit) => return 0x8ae86a,
+        Some(MoveId::BellToll) => return 0xd8a860,
+        Some(MoveId::BurningCoil) => return 0xff8a3a,
         _ => {}
     }
     if d.breed.kind == EnemyKind::Jorogumo {
@@ -87,8 +94,8 @@ pub fn crown(kind: EnemyKind) -> Option<f32> {
         EnemyKind::Lucifer => Some(3.25),
         EnemyKind::Reflection => Some(1.5),
         // Envy's court
-        EnemyKind::Leviathan => Some(3.25),
-        EnemyKind::Serpentling => Some(1.5),
+        EnemyKind::Leviathan => Some(3.15),
+        EnemyKind::Serpentling => Some(1.45),
         // Wrath's court
         EnemyKind::Amon => Some(3.25),
         EnemyKind::Raven => Some(1.5),
@@ -191,10 +198,10 @@ impl WorldView {
             v.light_color = lin(0xc0283a);
             v.light_intensity = 1.2;
         }
-        if d.f.attack().is_some_and(|a| a.0 == MoveId::Burrow) {
-            // Níðhöggr under the floor: nothing shows but the earth heaving over it.
-            let f = d.f.attack().map(|a| a.2).unwrap_or(0);
-            let burrow = MoveId::Burrow.data();
+        if let Some((mv @ (MoveId::Burrow | MoveId::Dive), _, f)) = d.f.attack() {
+            // Níðhöggr under the floor (or Leviathan under the water): nothing shows but the earth
+            // heaving over it (or the water's rings).
+            let burrow = mv.data();
             if f >= crate::logic::combat::duelist::BURROW_SINK && f < burrow.startup {
                 v.visible = false;
                 v.light_intensity = 0.0;
@@ -505,6 +512,79 @@ impl WorldView {
                         v.root_rot.x = if strike == 0.0 { -0.16 * wind } else { 0.28 * (1.0 - rec) };
                         v.root_scale = Vec3::new(1.0, 1.0 - 0.05 * snap * (1.0 - rec), 1.0);
                     }
+                    // Leviathan's: his body twists, his neck draws back and strikes, his jaw gapes.
+                    MoveId::CoilLash => {
+                        // Wound round to one side, his tail drawn back; then the lash right across.
+                        v.root_rot.y = if strike == 0.0 {
+                            -0.8 * wind
+                        } else if rec == 0.0 {
+                            -0.8 + 2.1 * snap
+                        } else {
+                            1.3 * (1.0 - rec)
+                        };
+                        if let Some(t) = rig.index("tail") {
+                            v.pose.rot[t].y = if strike == 0.0 { 0.6 * wind } else { (0.6 - 1.6 * snap) * (1.0 - rec) };
+                        }
+                        levi_neck(rig, &mut v.pose, -0.2 * wind * (1.0 - rec), 0.15 * wind * (1.0 - rec), 0.3 * snap * (1.0 - rec));
+                    }
+                    MoveId::BrineSpit | MoveId::CovetFire | MoveId::CovetBeam | MoveId::Covet => {
+                        // Drawn back, the head lifted; then thrust at him, the jaw wide as it spits.
+                        let neck = if strike == 0.0 { -0.35 * wind } else { (-0.35 + 0.7 * snap) * (1.0 - rec) };
+                        levi_neck(rig, &mut v.pose, neck, -0.25 * wind * (1.0 - rec), (0.25 * wind + 0.45 * snap) * (1.0 - rec));
+                    }
+                    MoveId::CovetThunder => {
+                        // His head thrown back to the sky as the storm gathers; down as it strikes.
+                        let neck = if strike == 0.0 { -0.5 * wind } else { (-0.5 + 0.8 * snap) * (1.0 - rec) };
+                        levi_neck(rig, &mut v.pose, neck, -0.5 * wind * (1.0 - rec), 0.5 * wind * (1.0 - rec));
+                    }
+                    MoveId::CovetWave => {
+                        // He rears up tall, then throws himself down on the floor.
+                        if strike == 0.0 {
+                            v.root_scale = Vec3::new(1.0 - 0.04 * wind, 1.0 + 0.1 * wind, 1.0);
+                            v.root_rot.x = -0.15 * wind;
+                        } else {
+                            let out = 1.0 - rec;
+                            v.root_rot.x = (-0.15 + 0.45 * snap) * out;
+                            v.root_scale = Vec3::new(1.0 + 0.05 * snap * out, 1.0 - 0.08 * snap * out, 1.0);
+                        }
+                        levi_neck(rig, &mut v.pose, 0.2 * snap * (1.0 - rec), 0.0, 0.4 * snap * (1.0 - rec));
+                    }
+                    MoveId::Dive => {
+                        // Down under the water, along under it, and up out of it beneath him.
+                        let sink = crate::logic::combat::duelist::BURROW_SINK as f32;
+                        if f < sink {
+                            v.group_pos.y -= 3.0 * (f / sink);
+                            v.root_rot.x = 0.4 * (f / sink);
+                        } else if strike > 0.0 && rec == 0.0 {
+                            v.group_pos.y -= 2.2 * (1.0 - snap);
+                            levi_neck(rig, &mut v.pose, -0.3 * (1.0 - snap), -0.2, 0.5);
+                        } else if rec > 0.0 {
+                            levi_neck(rig, &mut v.pose, 0.15 * (1.0 - rec), 0.1, 0.2 * (1.0 - rec));
+                        }
+                    }
+                    MoveId::BellToll => {
+                        // Reared back high, then his head brought down like a beam on the bronze.
+                        let neck = if strike == 0.0 {
+                            -0.6 * wind
+                        } else if rec == 0.0 {
+                            -0.6 + 1.3 * snap
+                        } else {
+                            0.7 * (1.0 - rec)
+                        };
+                        v.root_scale = Vec3::new(1.0, 1.0 + 0.08 * wind * (1.0 - rec), 1.0);
+                        levi_neck(rig, &mut v.pose, neck, -0.2 * wind * (1.0 - rec), 0.2 * snap * (1.0 - rec));
+                    }
+                    MoveId::BurningCoil => {
+                        // His coils drawn tight about the bell, his head up, the jaw open on the heat.
+                        let k = wind * (1.0 - rec);
+                        v.root_scale = Vec3::new(1.0 + 0.07 * k, 1.0 - 0.08 * k, 1.0 + 0.07 * k);
+                        levi_neck(rig, &mut v.pose, -0.25 * k, -0.3 * k, 0.6 * k);
+                        for (name, side) in [("leftFin", -1.0f32), ("rightFin", 1.0)] {
+                            if let Some(n) = rig.index(name) {
+                                v.pose.rot[n].z = side * (0.5 * k + (time * 9.0).sin() * 0.1 * k);
+                            }
+                        }
+                    }
                     MoveId::Hex | MoveId::Smokeless => {
                         // Her right hand high, her left reaching out; then the throw.
                         let right = if strike == 0.0 { -2.8 * wind } else { -1.4 * (1.0 - rec) };
@@ -571,6 +651,7 @@ impl WorldView {
                 continue;
             }
             if mv == MoveId::Burrow && frame >= crate::logic::combat::duelist::BURROW_SINK && phase == Phase::Startup {
+                // (Leviathan's dive draws its own rings on the water: `court_envy`.)
                 // The earth heaving over it as it goes.
                 for k in 0..5 {
                     let a = k as f32 * 1.3 + time * 3.0;
@@ -1110,4 +1191,19 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
         }
     };
     f.lights.push(Light { pos: p, color: light, distance: reach });
+}
+
+/// Leviathan's neck bent `neck` (forward, radians), his head on it turned `head` more, his jaw
+/// riding his head and opened `jaw`.
+fn levi_neck(rig: &Rig, pose: &mut super::animation::Pose, neck: f32, head: f32, jaw: f32) {
+    let sway = rig.index("head").map(|h| pose.rot[h]).unwrap_or_default();
+    pose.rot_x(rig, "neck", neck);
+    follow(rig, pose, "neck", "head");
+    if let Some(h) = rig.index("head") {
+        pose.rot[h] += Vec3::new(head + sway.x * 0.3, sway.y, sway.z * 0.3);
+    }
+    follow(rig, pose, "head", "jaw");
+    if let Some(j) = rig.index("jaw") {
+        pose.rot[j].x += jaw;
+    }
 }

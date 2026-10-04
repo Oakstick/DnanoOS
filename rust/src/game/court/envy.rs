@@ -322,3 +322,417 @@ impl Game {
         self.audio.play(Sfx::Drip);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::testing::{self, run};
+    use super::super::{COURT_CADENCE, COURT_CAPACITY};
+    use super::*;
+    use crate::game::{save, Screen};
+    use crate::input::PadState;
+    use crate::logic::angels::Blessing;
+    use crate::logic::combat::archetype::Archetype;
+    use crate::logic::combat::prince::envy::{burnt_side, COIL, FIRES};
+    use crate::logic::combat::prince::phase_of;
+    use crate::logic::combat::{Duelist, Phase};
+    use crate::logic::sins::Sin;
+    use crate::logic::types::{Tile, P};
+
+    fn court() -> Game {
+        let mut g = testing::court(Sin::Envy);
+        // (The stick is the world's way round, as the bots play.)
+        g.view.camera_mode = crate::render::view::CameraMode::Top;
+        g
+    }
+
+    fn leviathan(g: &mut Game) -> &mut Duelist {
+        testing::prince(g)
+    }
+
+    /// Leviathan `dist` tiles north of the hero, facing him, resting, with his token: about to begin.
+    fn poised(g: &mut Game, dist: f64) -> V {
+        let hp = g.hero.pos();
+        let d = leviathan(g);
+        d.pos = V::new(hp.x, hp.y - dist);
+        d.facing = V::new(0.0, 1.0);
+        d.rest = u16::MAX;
+        d.token = true;
+        hp
+    }
+
+    /// The hero walks `dir` (world axes) for `secs`.
+    fn walk(g: &mut Game, dir: V, secs: f64) {
+        g.input.set_pad(Some(PadState { left: (dir.x as f32, dir.y as f32), ..Default::default() }));
+        run(g, secs);
+        g.input.set_pad(Some(PadState::default()));
+    }
+
+    /// `n` combat frames of play.
+    fn frames(g: &mut Game, n: u32) {
+        run(g, n as f64 / 60.0);
+    }
+
+    /// The hero has called on `angel`'s power: a blessing's charge, spent.
+    fn called(g: &mut Game, angel: Archangel) {
+        g.blessing = Some(Blessing { angel, charges: 2 });
+        run(g, 0.05);
+        g.blessing = Some(Blessing { angel, charges: 1 });
+        run(g, 0.05);
+    }
+
+    #[test]
+    fn the_court_of_envy_is_the_drowned_bell_and_leviathan_fights_there_by_frame_data() {
+        let g = court();
+        assert_eq!(g.level.data.name, "The Drowned Bell");
+        assert_eq!(g.realm, Some(Sin::Envy));
+        assert!(g.boss.is_none(), "no Cyclops");
+        assert!(g.arena() && g.brawling(), "a boss's arena, fought by frame data");
+        let b = g.brawl.as_ref().unwrap();
+        assert_eq!((b.threat.capacity, b.threat.cadence), (COURT_CAPACITY, COURT_CADENCE));
+        let d = g.prince().expect("Leviathan rises");
+        assert_eq!((d.breed.kind, d.arch, d.breed.phase), (EnemyKind::Leviathan, Archetype::Prince, 1));
+        assert_eq!(d.stats().cost, 3);
+        assert!(d.lore.bell.is_none(), "not yet coiled round the bell");
+        assert_eq!(g.enemies.len(), 1, "he waits alone");
+        let bar = g.prince_bar().unwrap();
+        assert_eq!((bar.name.as_str(), bar.title), ("LEVIATHAN", "THE CROOKED SERPENT"));
+        assert_eq!(g.keys_total, 1, "one key opens the gate");
+    }
+
+    #[test]
+    fn his_phases_change_at_the_thresholds_the_serpentlings_rise_once_and_the_bell_draws_him() {
+        let mut g = court();
+        let max = leviathan(&mut g).max_hp;
+        leviathan(&mut g).rest = u16::MAX;
+        let from = leviathan(&mut g).pos;
+        let serpentlings = |g: &Game| g.enemies.iter().filter(|e| e.kind() == EnemyKind::Serpentling).count();
+        leviathan(&mut g).hp = max * 0.67 + 1.0;
+        g.call_duel_hit(0, from);
+        run(&mut g, 0.05);
+        let hp = leviathan(&mut g).hp;
+        assert_eq!(leviathan(&mut g).breed.phase, phase_of(hp, max));
+        assert_eq!(serpentlings(&g), 0);
+        // Under two thirds: the Evil Eye, two serpentlings out of the water, a green cross.
+        leviathan(&mut g).hp = max * 0.6;
+        g.call_duel_hit(0, from);
+        run(&mut g, 0.05);
+        assert_eq!(leviathan(&mut g).breed.phase, 2);
+        assert_eq!(serpentlings(&g), SERPENTLINGS as usize, "two serpentlings rise");
+        let rose: Vec<V> =
+            g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.breed.kind == EnemyKind::Serpentling).map(|d| d.pos).collect();
+        assert!(rose.iter().all(|p| crate::logic::court::envy::in_water(p.x, p.y)), "from the water: {rose:?}");
+        assert!(g.level.grid.count(Tile::Charge) >= 1, "a breather");
+        assert!(g.juice.banner.as_ref().is_some_and(|b| b.text.contains("THE EVIL EYE") && b.sub.contains("COVETS")));
+        assert_eq!(leviathan(&mut g).breed.moves()[0], MoveId::Covet);
+        // Under a third: the Bell. He coils round it, swimming to it; no more serpentlings.
+        leviathan(&mut g).hp = max * 0.3;
+        g.call_duel_hit(0, from);
+        run(&mut g, 0.05);
+        assert_eq!(leviathan(&mut g).breed.phase, 3);
+        assert_eq!(serpentlings(&g), SERPENTLINGS as usize, "raised once");
+        assert_eq!(leviathan(&mut g).lore.bell, Some(BELL));
+        assert!(g.juice.banner.as_ref().is_some_and(|b| b.sub.contains("BELL'S SIDE")));
+        assert_eq!(leviathan(&mut g).breed.moves()[0], MoveId::BellToll);
+        run(&mut g, 3.0);
+        let p = leviathan(&mut g).pos;
+        assert!(math::len(math::sub(p, BELL)) <= COIL + 0.1, "coiled round the bell: {p:?}");
+    }
+
+    #[test]
+    fn his_scales_turn_a_blow_but_not_in_his_recovery_nor_on_the_side_burnt_by_the_bell() {
+        let mut g = court();
+        let from = V::new(16.0, 10.0);
+        {
+            let d = leviathan(&mut g);
+            d.pos = V::new(16.0, 12.5);
+            d.rest = u16::MAX;
+        }
+        let blow = |g: &mut Game, from: V| {
+            let before = leviathan(g).hp;
+            g.call_duel_hit(0, from);
+            let d = leviathan(g);
+            let taken = before - d.hp;
+            d.hp = before;
+            taken
+        };
+        let warded = blow(&mut g, from);
+        leviathan(&mut g).f.state = State::Attack { mv: MoveId::CoilLash, frame: 60 };
+        let open = blow(&mut g, from);
+        assert!(warded > 0.0 && open > warded * 2.5, "warded {warded}, open {open}");
+        // Coiled round the hot bell: from the bell's side the whole blow lands, from the other his scales.
+        leviathan(&mut g).f.state = State::Neutral;
+        leviathan(&mut g).lore.bell = Some(BELL);
+        let pos = leviathan(&mut g).pos;
+        let bell_side = V::new(17.2, 13.6);
+        assert!(burnt_side(pos, bell_side, BELL) && !burnt_side(pos, from, BELL));
+        let burnt = blow(&mut g, bell_side);
+        let scaled = blow(&mut g, from);
+        assert!(burnt > scaled * 2.5, "burnt {burnt}, scaled {scaled}");
+    }
+
+    #[test]
+    fn he_covets_the_archangel_last_called_on_raphael_if_none_and_the_banner_says_so() {
+        // None called yet: Raphael's beam.
+        let mut g = court();
+        let hp = poised(&mut g, 5.0);
+        leviathan(&mut g).breed.phase = 2;
+        assert!(leviathan(&mut g).begin(MoveId::Covet, hp));
+        run(&mut g, 0.02);
+        assert_eq!(leviathan(&mut g).f.attack().map(|a| a.0), Some(MoveId::CovetBeam));
+        let text = g.juice.banner.as_ref().map(|b| b.text.clone()).unwrap_or_default();
+        assert_eq!(text, "HE COVETS YOUR RAPHAEL");
+        // A blessing's charge spent on Gabriel: the thunder.
+        let mut g = court();
+        called(&mut g, Archangel::Gabriel);
+        assert_eq!(g.court.as_ref().unwrap().envy.angel, Some(Archangel::Gabriel));
+        let hp = poised(&mut g, 5.0);
+        leviathan(&mut g).breed.phase = 2;
+        assert!(leviathan(&mut g).begin(MoveId::Covet, hp));
+        run(&mut g, 0.02);
+        assert_eq!(leviathan(&mut g).f.attack().map(|a| a.0), Some(MoveId::CovetThunder));
+        assert!(g.juice.banner.as_ref().is_some_and(|b| b.text == "HE COVETS YOUR GABRIEL"));
+        // His patron's power called (its wait begun again): Uriel's wave.
+        let mut g = court();
+        let kind = g.hero_kind;
+        g.progress.hero_mut(kind).patron = Some(Archangel::Uriel);
+        run(&mut g, 0.05);
+        g.patron_wait = 45.0;
+        run(&mut g, 0.05);
+        assert_eq!(g.court.as_ref().unwrap().envy.angel, Some(Archangel::Uriel));
+        // Michael's fire, the last blessing's charge spent: a volley of four, its landing planned
+        // again for the bolts' flight.
+        let mut g = court();
+        g.blessing = Some(Blessing { angel: Archangel::Michael, charges: 1 });
+        run(&mut g, 0.05);
+        g.blessing = None;
+        run(&mut g, 0.05);
+        assert_eq!(g.court.as_ref().unwrap().envy.angel, Some(Archangel::Michael));
+        let hp = poised(&mut g, 6.0);
+        leviathan(&mut g).breed.phase = 2;
+        let id = leviathan(&mut g).id;
+        let lands = leviathan(&mut g).lands_in(MoveId::Covet, hp);
+        let fire = leviathan(&mut g).lands_in(MoveId::CovetFire, hp);
+        assert!(fire > lands, "the fire's bolts take their flight");
+        assert!(leviathan(&mut g).begin(MoveId::Covet, hp));
+        let b = g.brawl.as_mut().unwrap();
+        let now = b.threat.frame;
+        b.threat.grant(&[crate::logic::combat::threat::Request {
+            id,
+            cost: 3,
+            eta: lands as u32,
+            dist: 6.0,
+            front: 1.0,
+            wait: 0,
+            bias: 0.0,
+        }]);
+        b.threat.commit(id, lands);
+        run(&mut g, 0.02);
+        assert_eq!(leviathan(&mut g).f.attack().map(|a| a.0), Some(MoveId::CovetFire));
+        let planned = g.brawl.as_ref().unwrap().threat.landing(id).unwrap();
+        assert!(planned >= now + fire as u32 - 1, "planned again: {planned} for {now} + {fire}");
+        let mut bolts = 0;
+        for _ in 0..120 {
+            g.update(crate::app::STEP);
+            bolts = bolts.max(g.brawl.as_ref().unwrap().bolts.len());
+        }
+        assert_eq!(bolts, 4, "a volley of four");
+    }
+
+    #[test]
+    fn his_dive_goes_under_comes_up_beneath_him_and_can_be_walked_out_of() {
+        // Standing still, he is caught.
+        let mut g = court();
+        g.hero.hp = 1000;
+        let hp = poised(&mut g, 5.0);
+        assert!(leviathan(&mut g).begin(MoveId::Dive, hp));
+        frames(&mut g, 20);
+        assert!(leviathan(&mut g).untouchable(), "under the water, out of reach");
+        let before = g.hero.hp;
+        frames(&mut g, 50);
+        assert!(g.hero.hp < before, "caught: {} of {before}", g.hero.hp);
+        let d = leviathan(&mut g);
+        assert!(!d.untouchable() && math::len(math::sub(d.pos, hp)) < 1.2, "he rose beneath him: {:?}", d.pos);
+        assert!(matches!(d.f.attack(), Some((MoveId::Dive, Phase::Recovery, _))) && d.exposed(), "and lies open");
+        // Walking off as soon as it is seen, he is clear of it.
+        let mut g = court();
+        g.hero.hp = 1000;
+        let hp = poised(&mut g, 5.0);
+        assert!(leviathan(&mut g).begin(MoveId::Dive, hp));
+        frames(&mut g, 15);
+        let before = g.hero.hp;
+        walk(&mut g, V::new(1.0, 0.0), 1.2);
+        assert_eq!(g.hero.hp, before, "stepped out of it in time");
+    }
+
+    /// Leviathan coiled by the bell in his third phase, beginning `mv` on the hero at `at`.
+    fn at_the_bell(at: P, mv: MoveId) -> Game {
+        let mut g = court();
+        g.hero.hp = 1000;
+        g.hero.place(at);
+        let hp = g.hero.pos();
+        let d = leviathan(&mut g);
+        d.breed.phase = 3;
+        d.lore.bell = Some(BELL);
+        d.pos = V::new(18.6, 13.4);
+        d.rest = u16::MAX;
+        d.token = true;
+        assert!(d.begin(mv, hp));
+        g
+    }
+
+    #[test]
+    fn the_bell_tolls_round_itself_and_its_fires_burst_round_it_and_both_can_be_left_in_time() {
+        for stay in [true, false] {
+            let mut g = at_the_bell(P::new(16, 19), MoveId::BellToll);
+            frames(&mut g, 2);
+            assert_eq!(leviathan(&mut g).lore.mark, BELL, "the toll's ring is the bell's");
+            frames(&mut g, 13);
+            let before = g.hero.hp;
+            if stay {
+                frames(&mut g, 70);
+                assert!(g.hero.hp < before, "the floor shakes under him");
+            } else {
+                walk(&mut g, V::new(0.0, 1.0), 1.3);
+                assert_eq!(g.hero.hp, before, "out of its ring in time");
+            }
+        }
+        for stay in [true, false] {
+            let mut g = at_the_bell(P::new(16, 23), MoveId::BurningCoil);
+            let hp = g.hero.pos();
+            frames(&mut g, 2);
+            let fires = fire_spots(BELL, leviathan(&mut g).lore.mark);
+            assert_eq!(fires.len(), FIRES + 1, "a ring round the bell and one on him");
+            assert!(fires.iter().any(|p| math::len(math::sub(*p, hp)) < 0.1));
+            frames(&mut g, 13);
+            let before = g.hero.hp;
+            if stay {
+                frames(&mut g, 45);
+                assert!(g.hero.hp < before, "the fire bursts under him");
+            } else {
+                walk(&mut g, V::new(1.0, 0.0), 0.9);
+                assert_eq!(g.hero.hp, before, "off the fire in time");
+            }
+        }
+    }
+
+    #[test]
+    fn the_coveted_thunder_falls_on_three_marks() {
+        let mut g = court();
+        g.hero.hp = 1000;
+        called(&mut g, Archangel::Gabriel);
+        let hp = poised(&mut g, 4.0);
+        leviathan(&mut g).breed.phase = 2;
+        assert!(leviathan(&mut g).begin(MoveId::Covet, hp));
+        // Past the tracking, he is set down on one of the marks behind him.
+        frames(&mut g, 32);
+        let (mark, from) = (leviathan(&mut g).lore.mark, leviathan(&mut g).pos);
+        let marks = thunder_marks(mark, from);
+        g.hero.place(P::new(marks[1].x.round() as i32, marks[1].y.round() as i32));
+        let before = g.hero.hp;
+        frames(&mut g, 20);
+        assert!(g.hero.hp < before, "the second mark's thunder: {} of {before}", g.hero.hp);
+    }
+
+    #[test]
+    fn leviathan_slain_drops_the_key_of_envy_and_seals_envy() {
+        let mut g = court();
+        let from = leviathan(&mut g).pos;
+        leviathan(&mut g).hp = 1.0;
+        leviathan(&mut g).f.state = State::Attack { mv: MoveId::CoilLash, frame: 60 };
+        leviathan(&mut g).breed.phase = 3;
+        g.call_duel_hit(0, from);
+        assert!(g.prince().is_none(), "he has fallen");
+        assert!(g.court.as_ref().unwrap().slain);
+        assert!(g.red_key.is_some(), "the Key of Envy lies on the floor");
+        assert!(g.sins_cleared & Sin::Envy.bit() != 0, "Envy's bit is set");
+        assert_eq!(g.key_name(), "THE KEY OF ENVY");
+        assert!(g.saved_run.as_ref().is_some_and(|r| r.stage == save::Stage::SinShop(Sin::Envy)), "and the checkpoint is the old man's");
+        let k = g.red_key.unwrap();
+        g.hero.place(k);
+        run(&mut g, 0.3);
+        assert!(g.red_key.is_none() && g.gate_open);
+        let gate = g.gate.unwrap();
+        g.hero.place(P::new(gate.x, gate.y - 1));
+        for _ in 0..1200 {
+            g.update(crate::app::STEP);
+            if g.screen == Screen::Won {
+                break;
+            }
+            let gp = P::new(gate.x, gate.y);
+            if g.door >= 1.0 && g.hero.occupied() != gp {
+                g.hero.place(gp);
+            }
+        }
+        assert_eq!(g.screen, Screen::Won);
+    }
+
+    #[test]
+    fn a_fall_brings_leviathan_back_whole_and_uncoiled_and_continue_comes_back_to_his_court() {
+        let mut g = court();
+        let max = leviathan(&mut g).max_hp;
+        leviathan(&mut g).hp = max * 0.2;
+        leviathan(&mut g).breed.phase = 3;
+        leviathan(&mut g).lore.bell = Some(BELL);
+        g.reset_round();
+        let home = P::new(crate::logic::court::envy::PRINCE.0, crate::logic::court::envy::PRINCE.1).v();
+        let d = leviathan(&mut g);
+        assert_eq!((d.hp, d.breed.phase, d.lore.bell), (max, 1, None));
+        assert_eq!(d.pos, home, "before his altar");
+        g.checkpoint(save::Stage::Court(Sin::Envy));
+        let saved = g.saved_run.clone().unwrap();
+        let mut h = Game::new();
+        h.saved_run = Some(saved);
+        h.continue_game();
+        assert!(h.in_court() && h.prince().is_some());
+        assert_eq!(h.level.data.name, "The Drowned Bell");
+    }
+
+    #[test]
+    fn his_general_slain_no_serpentlings_and_his_decree_done_they_rise_at_once() {
+        use crate::logic::war::general::{Record, Records};
+        let set = |g: &mut Game, r: Record| {
+            let mut all = Records::decode(&g.warband.save.generals);
+            all.set(Sin::Envy, r);
+            g.warband.save.generals = all.encode();
+            g.map_jump(save::Stage::Court(Sin::Envy));
+            g.enter(Screen::Playing);
+            g.hero.free_move = true;
+        };
+        let serpentlings = |g: &Game| g.enemies.iter().filter(|e| e.kind() == EnemyKind::Serpentling).count();
+        // The Bell-Warden slain: none at his second phase.
+        let mut g = court();
+        set(&mut g, Record { met: true, slain: true, ..Default::default() });
+        assert!(leviathan(&mut g).lore.summoned, "his phase-two adds are lost");
+        let (max, from) = (leviathan(&mut g).max_hp, leviathan(&mut g).pos);
+        leviathan(&mut g).hp = max * 0.6;
+        g.call_duel_hit(0, from);
+        run(&mut g, 0.1);
+        assert_eq!(leviathan(&mut g).breed.phase, 2);
+        assert_eq!(serpentlings(&g), 0);
+        // The bell lowered by decree: they rise as the fight begins, and not again.
+        let mut g = court();
+        set(&mut g, Record { met: true, decree_done: true, ..Default::default() });
+        run(&mut g, 0.1);
+        assert_eq!(serpentlings(&g), SERPENTLINGS as usize, "at once");
+        let (max, from) = (leviathan(&mut g).max_hp, leviathan(&mut g).pos);
+        leviathan(&mut g).hp = max * 0.6;
+        g.call_duel_hit(0, from);
+        run(&mut g, 0.1);
+        assert_eq!(serpentlings(&g), SERPENTLINGS as usize, "once");
+    }
+
+    #[test]
+    fn the_expert_beats_leviathan_in_his_court_and_a_masher_does_not() {
+        use crate::game::bot::{court_fight, Loadout, Skill};
+        use crate::logic::heroes::HeroKind;
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        for (tier, seed) in [(1, 1), (2, 2)] {
+            let kit = (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier));
+            let f = court_fight(Sin::Envy, Skill::Expert, seed, kit, 200.0);
+            assert!(f.slain && f.deaths == 0 && f.phase == 3, "tier {tier}: {f:?}");
+            assert_eq!(f.stats.overlaps, 0, "{f:?}");
+        }
+        let f = court_fight(Sin::Envy, Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
+        assert!(!f.slain && f.game_over, "{f:?}");
+    }
+}
