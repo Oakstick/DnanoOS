@@ -161,7 +161,7 @@ mod tests {
             }
         }
         assert_eq!((BELL.x as i32, BELL.y as i32), CENTRE);
-        assert!(BELL_RIM >= 1.4 && BELL_RIM <= 1.6);
+        const { assert!(BELL_RIM >= 1.4 && BELL_RIM <= 1.6) };
         // Open floor all round the bell, wide enough for him to coil round it and the hero to walk it.
         for k in 0..32 {
             let a = k as f64 * std::f64::consts::TAU / 32.0;
