@@ -1383,3 +1383,20 @@ bolt paced late; none of them a general's).
 |---|---|
 | A bot that has pushed a second without moving (outside the ring) takes the tiles' way round | an adept crawl stood 6 minutes wedged on a doorway's corner its straight-line check (±0.28) let through but the hero's body did not; the generals' slower crawl walked it there |
 | The crossfire test plays ten minutes, not five | with a general in the vault the bot meets its packs in another order |
+
+### The herald (W6's last piece) and the gaps closed after the merges
+
+- **The herald**: a muster's horn sends a herald (a slight, quick puppet) from the horn to the
+  glowing gate, paced to reach it as the muster bites. Cut down on the way, the muster fails, and the
+  map he carried marks the general's post (a ping, or an arrow at the screen's edge) and puts a
+  line in the old man's news; whichever way the muster ends, its herald goes. Test:
+  `a_herald_caught_fails_the_muster_and_his_map_marks_the_post`.
+- **The old man names the general** (`general_intel`: his name and where his first standing
+  instrument is from where the hero came in), and **the crooked bargain's price** is that general's
+  decree, done; **a usurper** is seated in the grudges at the general's post, his lesson with him.
+- **The workshop's card weighs** a blade or a shield against his own (damage a second, reach, tempo;
+  parry window, block cost), green where better.
+- **No whisper looks like the old man**: Mammon's in tarnish, Beelzebub's in bile (their sins' gold
+  and orange were too near his amber), the turned needle too.
+- **The false gatekeeper's bottles** are known by their belt slot, the prince's colour in the glass.
+- Rivals: the Finisher lesson (a sway back out of the finisher), Patient, Fears, Greedy; F10; `--rivals`.

@@ -221,6 +221,17 @@ fn draw_pings(o: &mut Overlay, g: &Game, r: &GeneralRun, t: f32) {
             None => edge_arrow(o, g, at, 0xff8a3a, t),
         }
     }
+    // A caught herald's map: his post marked, wherever the hero is.
+    if r.post_known && !r.command.slain {
+        let at = r.posts.post.v();
+        match on_screen(g, at, 1.8, w, h).filter(|&(x, y)| x > t && y > t * 3.0 && x < w - t && y < h - t * 2.5) {
+            Some((x, y)) => {
+                o.circle(x, y, t * 0.42, rgba(gen.cloak, 0.9));
+                o.text("POST", x, y - t * 0.8, t * 0.38, rgba(GOLD, 1.0), Align::Center, true);
+            }
+            None => edge_arrow(o, g, at, gen.cloak, t),
+        }
+    }
     // His name over his head, when he is near.
     if let Some(d) = r.id.and_then(|id| g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id)) {
         if d.alive() && dist(d.pos, hp) < 16.0 {

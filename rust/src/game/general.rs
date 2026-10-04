@@ -55,6 +55,9 @@ const MUSTER_ROOM: usize = 6;
 /// Runes the patrol's leader drops if he is ambushed before the whistle.
 const AMBUSH_RUNES: u32 = 2;
 
+/// The slowest a herald runs (tiles a second), however long his muster's horn.
+pub const HERALD_PACE: f64 = 3.2;
+
 /// A puppet on its way: which duelist, the tiles of its way, how far along (tiles), and what it
 /// does at the end.
 #[derive(Clone, Debug, PartialEq)]
@@ -79,6 +82,9 @@ pub enum Then {
     Round,
     /// A guard sent to an instrument: asleep there, its den about it.
     Hold(P),
+    /// The herald carrying muster `order` from the horn to its gate (WARBAND.md §9.1): caught
+    /// before it bites, the muster fails, and he drops a map of the general's post.
+    Herald(usize),
 }
 
 /// A kindled volley: its marks on the floor, the frame they burst on (once planned), whether the
@@ -129,6 +135,8 @@ pub struct GeneralTally {
     /// Bursts that met him.
     pub burned: u32,
     pub decrees: u32,
+    /// Heralds caught before their muster bit.
+    pub heralds: u32,
     pub slain_at: Option<f64>,
 }
 
@@ -170,6 +178,10 @@ pub struct GeneralRun {
     /// His guard called at half his health: the frames to its coming.
     pub rally: Option<u32>,
     pub rallied: bool,
+    /// The herald on his way with the muster, and whether a caught herald's map has marked the
+    /// general's post.
+    pub herald: Option<u32>,
+    pub post_known: bool,
     /// Foes dealt for his orders, so far.
     dealt: usize,
     pub cards: Vec<OrderCard>,
@@ -370,6 +382,8 @@ impl Game {
             swing: None,
             rally: None,
             rallied: false,
+            herald: None,
+            post_known: false,
             dealt: 0,
             cards: Vec::new(),
             tally: GeneralTally::default(),
@@ -684,7 +698,8 @@ impl Game {
                                     g.gate = Some(i);
                                     g.bar = 0;
                                 }
-                                sub = "A GATE GLOWS - STAND AT IT TO BAR IT".into();
+                                sub = "A GATE GLOWS - BAR IT, OR CATCH HIS HERALD".into();
+                                self.send_herald(order, i, lead);
                             }
                             None => {
                                 // Every gate barred: the horn sounds for nothing.
@@ -719,7 +734,10 @@ impl Game {
                 self.war_note(WarEvent::Order { general: sin, order: kind, stage: OrderStage::Live { left: 0 } });
                 match kind {
                     OrderKind::Watch => self.set_the_watch(),
-                    OrderKind::Muster => self.muster(order),
+                    OrderKind::Muster => {
+                        self.herald_arrives();
+                        self.muster(order);
+                    }
                     OrderKind::Kindle => {
                         if let Some(g) = self.general.as_mut() {
                             g.next_volley = 0;
@@ -736,6 +754,10 @@ impl Game {
                         g.gate = None;
                         g.bar = 0;
                     }
+                }
+                if kind == OrderKind::Muster {
+                    // However it ended, the herald's errand is over.
+                    self.herald_arrives();
                 }
                 match (kind, stage) {
                     (OrderKind::Decree, OrderStage::Done) => {
@@ -869,6 +891,64 @@ impl Game {
                 let at = P::new(d.pos.x.round() as i32, d.pos.y.round() as i32);
                 d.den = Some(Self::den_at(at, 2.0));
             }
+        }
+    }
+
+    /// The muster's herald sets out from the horn for gate `gate`, to reach it as the muster bites
+    /// (`lead` frames): quick, slight, and running on when struck.
+    fn send_herald(&mut self, order: usize, gate: usize, lead: u32) {
+        let Some(g) = self.general.as_ref() else { return };
+        let from = g.command.instruments[order].tile;
+        let to = g.posts.gates[gate];
+        let Some(way) = general::walk(&self.level.grid, from, to).or_else(|| general::walk(&g.layout, from, to)) else { return };
+        let at = self.open_near(from, 1);
+        let Some(id) = self.raise(EnemyKind::Minion, 1, at, None, true, 1.0) else { return };
+        let hp = self.foe(id).map(|d| d.hp).unwrap_or(0.0);
+        let pace = ((way.len() as f64) / (lead as f64 / 60.0 * 0.9)).max(HERALD_PACE);
+        if let Some(i) = self.foe_at(id) {
+            self.enemies[i].b.name = "THE HERALD".into();
+        }
+        if let Some(g) = self.general.as_mut() {
+            g.herald = Some(id);
+            g.walkers.push(Walker { id, path: way, at: 0.0, pace, then: Then::Herald(order), hp });
+        }
+        let p = at.v();
+        self.floater(p.x, p.y - 1.4, "THE HERALD RUNS WITH THE ORDER", 1.6, Some(0xffc08a));
+    }
+
+    /// The herald is cut down before the muster bit: it fails, and the map he carried marks his
+    /// general's post (a ping on the screen, a line in the old man's news).
+    fn herald_caught(&mut self, order: usize, id: u32) {
+        let at = self.foe(id).map(|d| d.pos).unwrap_or(self.hero.pos());
+        let (cue, name) = match self.general.as_mut() {
+            Some(g) => {
+                g.herald = None;
+                g.post_known = true;
+                g.tally.heralds += 1;
+                g.walkers.retain(|w| w.id != id);
+                (g.command.fail(order), g.name.clone())
+            }
+            None => return,
+        };
+        if let Some(c) = cue {
+            self.general_cue(c);
+        }
+        self.floater(at.x, at.y - 1.6, "THE HERALD FALLS: THE MUSTER FAILS", 2.0, Some(0x9ad1ff));
+        self.floater(at.x, at.y - 1.0, format!("HIS MAP MARKS {name}'S POST"), 2.0, Some(0xffc040));
+        self.workshop.news.push(format!("You caught {}'s herald. His map shows where the general keeps his post.", title_case(&name)));
+        self.audio.play_at(Sfx::Clang, at);
+    }
+
+    /// The herald reached his gate (or the muster bit): his errand is done, and he is gone.
+    fn herald_arrives(&mut self) {
+        let Some(id) = self.general.as_mut().and_then(|g| g.herald.take()) else { return };
+        if let Some(g) = self.general.as_mut() {
+            g.walkers.retain(|w| w.id != id);
+        }
+        if let Some(i) = self.foe_at(id).filter(|&i| self.enemies[i].duel.as_ref().is_some_and(|d| d.alive())) {
+            let p = self.enemies[i].pos();
+            self.enemies[i].b.mode = EnemyMode::Eaten;
+            self.view.dust(&self.level.grid, p.x, p.y, 0xd8c8a0, 10, 1.2);
         }
     }
 
@@ -1340,11 +1420,14 @@ impl Game {
             let Some(i) = self.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| d.id == w.id)) else { return false };
             let Some(d) = self.enemies[i].duel.as_deref_mut() else { return false };
             if !d.alive() {
+                if matches!(w.then, Then::Herald(_)) {
+                    done.push((w.clone(), true));
+                }
                 return false;
             }
             let struck = d.hp < w.hp - 0.5;
             w.hp = d.hp;
-            if struck && w.then != Then::Court {
+            if struck && !matches!(w.then, Then::Court | Then::Herald(_)) {
                 done.push((w.clone(), true));
                 return false;
             }
@@ -1388,6 +1471,8 @@ impl Game {
         }
         for (w, struck) in done {
             match (w.then, struck) {
+                (Then::Herald(order), true) => self.herald_caught(order, w.id),
+                (Then::Herald(_), false) => self.herald_arrives(),
                 (Then::Round, true) => {
                     // Ambushed on its round, before any whistle: the watch turns on him.
                     let first = self.general.as_ref().is_some_and(|g| !g.alarmed);
@@ -1750,7 +1835,7 @@ mod tests {
         assert_eq!(r.tally.barred, 1);
         assert_eq!(r.command.stages[m], OrderStage::Ready);
         frames(&mut g, 300);
-        assert_eq!(g.enemies.len(), before, "nobody marched in");
+        assert!(g.enemies.len() <= before, "nobody marched in (the herald gone with his muster)");
         // Broken: three blows on the bell.
         for _ in 0..3 {
             g.strike_instrument(m);
@@ -1761,6 +1846,31 @@ mod tests {
         // He answers: a guard to the next whole instrument, announced first.
         frames(&mut g, general::COUNTER_LEAD + 2);
         assert_eq!(g.general.as_ref().unwrap().tally.answered, 1);
+    }
+
+    /// The muster's herald runs from the horn to the gate; cut down before the muster bites, it
+    /// fails, nobody marches in, and his map marks the general's post (WARBAND.md §9.1).
+    #[test]
+    fn a_herald_caught_fails_the_muster_and_his_map_marks_the_post() {
+        let mut g = at_the_post(Sin::Greed);
+        g.immortal = true;
+        let m = General::of(Sin::Greed).index_of(OrderKind::Muster).unwrap();
+        g.debug_order(m);
+        let herald = g.general.as_ref().unwrap().herald.expect("the herald sets out");
+        frames(&mut g, 30);
+        let before = g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count();
+        if let Some(d) = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == herald) {
+            d.f.kill();
+        }
+        frames(&mut g, 2);
+        let r = g.general.as_ref().unwrap();
+        assert_eq!(r.tally.heralds, 1);
+        assert!(r.post_known, "his map marks the post");
+        assert_eq!(r.command.stages[m], OrderStage::Ready, "the muster failed");
+        assert!(g.workshop.news.iter().any(|n| n.contains("herald")));
+        frames(&mut g, 400);
+        let after = g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count();
+        assert!(after < before, "nobody marched in");
     }
 
     #[test]
