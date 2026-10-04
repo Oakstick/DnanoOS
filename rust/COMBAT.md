@@ -285,7 +285,7 @@ foes, each a breed of an archetype (§10); bouts 9-16 the later stages', with th
 each measured with the kit of its stage (tiers 3, 5, 7 and 9).
 
 * Losing restores the hero and restarts the bout. Winning moves on to the next.
-* **F5**: frame readout (hero state and frame, buffer, threat points, each foe's way of attacking and its state, bout stats).
+* **F8**: frame readout (hero state and frame, buffer, threat points, each foe's way of attacking and its state, bout stats).
 * **F6**: skip to the next bout; **F7**: to the first bout of the next stage's foes.
 * When a bout ends, a **results card** shows its time against the target, the health lost, the
   damage dealt, how the strikes were met (parried, blocked, evaded) and the mistakes (caught

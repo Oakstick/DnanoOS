@@ -38,8 +38,9 @@ pub fn draw_map(o: &mut Overlay, g: &Game, t: f32) {
     for (i, (stop, r)) in stops.iter().zip(&rects).enumerate() {
         let selected = i == g.map_index;
         let arena = matches!(stop.stage, Stage::Arena(_) | Stage::Court(_));
-        // A mark down the left: gold for a dungeon, red for a Cyclops, fire for the hub, the sin's colour for its realm and prince.
+        // A mark down the left: mist teal for a scene, gold for a dungeon, red for a Cyclops, fire for the hub, the sin's colour for its realm and prince.
         let mark = match stop.stage {
+            _ if stop.scene.is_some() => 0xa8c8c4,
             Stage::Realm(s) | Stage::Court(s) => s.color(),
             Stage::Arena(_) => 0xe0604a,
             Stage::Hub => 0xff5a2a,

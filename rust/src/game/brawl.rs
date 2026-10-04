@@ -165,7 +165,7 @@ pub struct Brawl {
     /// His gear as numbers (COMBAT.md §8), and whether his second wind is spent.
     pub kit: Kit,
     wind_used: bool,
-    /// The frame readout (F5).
+    /// The frame readout (F8).
     pub readout: bool,
     /// The foes fight: the ring's bout is under way (always, in the vaults).
     pub live: bool,
@@ -1531,6 +1531,7 @@ impl Game {
             self.floater(hp.x, hp.y - 1.4, "SECOND WIND", 1.4, Some(0xfff1a8));
         }
         self.floater(hp.x, hp.y - 0.5, format!("-{loss}"), 0.9, Some(color));
+        self.keep_immortal();
         let down = self.hero.hp == 0;
         let (live, vault) = self.brawl.as_ref().map(|b| (b.live, b.field == Field::Vault)).unwrap_or((false, false));
         if let Some(b) = self.brawl.as_mut() {

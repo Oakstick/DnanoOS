@@ -481,6 +481,10 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
         );
     }
 
+    if g.immortal {
+        o.text("IMMORTAL  F5", margin + t * 0.35, margin + band + t * 0.5, small, rgba(0xffb050, 1.0), Align::Left, true);
+    }
+
     let row_a = margin + t * 0.8;
     let row_b = margin + t * 1.85;
     let name = g.hero_kind.name().to_uppercase();

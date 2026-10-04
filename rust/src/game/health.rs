@@ -54,6 +54,11 @@ impl Game {
                 self.juice.hurt = 1.0;
                 self.juice.hp_flash = 1.0;
                 self.juice.hp_flash_color = 0xff4d4d;
+                if self.immortal {
+                    // The blow landed, and is forgotten at once.
+                    self.keep_immortal();
+                    return false;
+                }
                 if !self.hero.alive && self.hero.path >= 8 && self.hero_kind != HeroKind::Ragnar && !self.stood {
                     // The last stand (Seppuku Resolve, Blood of the Empire): death is held off, and he strikes triple.
                     self.stood = true;
@@ -112,6 +117,23 @@ impl Game {
         self.save_progress();
         self.floater(hp.x, hp.y - 0.6, "SHIELD DESTROYED", 1.6, Some(0xff8a6a));
         self.floater(hp.x, hp.y - 0.1, "THE OLD MAN CAN REFORGE IT", 1.8, Some(0xe8dcc0));
+    }
+
+    /// F5: immortal on or off.
+    pub(super) fn toggle_immortal(&mut self) {
+        self.immortal = !self.immortal;
+        self.keep_immortal();
+        let hp = self.hero.pos();
+        self.audio.play(if self.immortal { Sfx::Heal } else { Sfx::Nodule });
+        self.floater(hp.x, hp.y - 1.0, if self.immortal { "IMMORTAL" } else { "MORTAL AGAIN" }, 1.4, Some(0xffb050));
+    }
+
+    /// While immortal, his health is always whole again.
+    pub(super) fn keep_immortal(&mut self) {
+        if self.immortal {
+            self.hero.alive = true;
+            self.hero.hp = self.hero.max_hp;
+        }
     }
 
     pub(super) fn kill_hero(&mut self) {

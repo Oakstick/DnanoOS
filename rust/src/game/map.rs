@@ -10,32 +10,43 @@ use crate::input::Action;
 use crate::logic::gym;
 use crate::logic::levels::level_for;
 use crate::logic::sins::SINS;
+use crate::logic::story::{self, Shot};
 use crate::logic::types::Dir;
 use crate::render::hud;
 
-/// One stop on the map: where it goes and what it is called.
+/// One stop on the map: where it goes and what it is called. A scene's stop plays Scene I from
+/// its `scene` beat instead (its stage is where the scene leads).
 pub struct MapStop {
     pub stage: Stage,
     pub label: String,
+    pub scene: Option<usize>,
 }
 
 /// The road down: the Garden and its Cyclops, the Portals of Hell, then each sin's realm and
 /// its prince's court (in any order in play; here in the order of the doors).
 pub fn map_stops() -> Vec<MapStop> {
     let mut stops = vec![
-        MapStop { stage: Stage::Dungeon(0), label: format!("DEPTH I - {}", level_for(0).name.to_uppercase()) },
-        MapStop { stage: Stage::Arena(0), label: "DEPTH I - THE CYCLOPS".to_string() },
-        MapStop { stage: Stage::Hub, label: "DEPTH II - THE PORTALS OF HELL".to_string() },
+        stop(Stage::Dungeon(0), format!("DEPTH I - {}", level_for(0).name.to_uppercase())),
+        stop(Stage::Arena(0), "DEPTH I - THE CYCLOPS".to_string()),
+        stop(Stage::Hub, "DEPTH II - THE PORTALS OF HELL".to_string()),
     ];
     for sin in SINS {
-        stops.push(MapStop { stage: Stage::Realm(sin), label: format!("{} - {}", sin.title(), sin.realm().to_uppercase()) });
-        stops.push(MapStop { stage: Stage::Court(sin), label: format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase()) });
+        stops.push(stop(Stage::Realm(sin), format!("{} - {}", sin.title(), sin.realm().to_uppercase())));
+        stops.push(stop(Stage::Court(sin), format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase())));
     }
-    stops.push(MapStop { stage: Stage::Gym, label: "THE GYM - ONE OF EVERY FOE".to_string() });
+    stops.push(stop(Stage::Gym, "THE GYM - ONE OF EVERY FOE".to_string()));
     // Off the road: dungeons II and III, the levels built to the art direction.
-    stops.push(MapStop { stage: Stage::Dungeon(1), label: format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase()) });
-    stops.push(MapStop { stage: Stage::Dungeon(2), label: format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase()) });
+    stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
+    stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
+    // The story's scenes, from the start of each place: the graveyard at dusk, and the gateway below.
+    for (beat, label) in [(0, "SCENE I - THE GRAVEYARD"), (story::first(Shot::Arrive).unwrap_or(0), "SCENE I - THE DUNGEON GATEWAY")] {
+        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some(beat) });
+    }
     stops
+}
+
+fn stop(stage: Stage, label: String) -> MapStop {
+    MapStop { stage, label, scene: None }
 }
 
 impl Game {
@@ -120,7 +131,31 @@ impl Game {
             self.map_index = i;
         }
         if clicked.is_some() || self.input.was_pressed(&[Action::Confirm, Action::Jump]) {
-            self.map_jump(stops[self.map_index.min(n - 1)].stage);
+            let stop = &stops[self.map_index.min(n - 1)];
+            match stop.scene {
+                Some(beat) => self.map_scene(beat),
+                None => self.map_jump(stop.stage),
+            }
+        }
+    }
+
+    /// Straight into Scene I at `beat`, from the title or the pause menu; it ends, as ever, at
+    /// the choice of hero.
+    pub fn map_scene(&mut self, beat: usize) {
+        self.show_map = false;
+        self.show_controls = false;
+        self.audio.unlock();
+        self.audio.play(Sfx::Whoosh);
+        self.tour = None;
+        self.tour_pending = false;
+        self.story = None;
+        self.begin_story();
+        if beat > 0 {
+            self.story_jump(beat, 0.0);
+        }
+        self.juice.fade = 1.0;
+        for a in [Action::Confirm, Action::Jump, Action::Attack, Action::Tap] {
+            self.input.consume(a);
         }
     }
 

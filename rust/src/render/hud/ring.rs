@@ -1,5 +1,5 @@
 //! The brawl's HUD (COMBAT.md §5, §9): health and poise bars over every duelist in the fight (in
-//! the ring and the vaults), the ring's bout banner and results card, and the frame readout (F5):
+//! the ring and the vaults), the ring's bout banner and results card, and the frame readout (F8):
 //! the hero's state and frame, his buffer, the threat points in use, each foe's state and frame,
 //! his kit, and the fight's numbers.
 
@@ -193,7 +193,7 @@ fn draw_readout(o: &mut Overlay, g: &Game, spar: &Brawl, ring: Option<&Sparring>
     let size = t * 0.46;
     let line = t * 0.62;
     let mut rows: Vec<(String, u32)> = vec![
-        ("FRAME READOUT  (F5)".to_string(), GOLD),
+        ("FRAME READOUT  (F8)".to_string(), GOLD),
         (format!("HERO  {}", state_line(&spar.hero)), TEXT),
         (
             format!(

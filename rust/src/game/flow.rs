@@ -173,6 +173,7 @@ impl Game {
                 }
             }
             Screen::Playing => {
+                self.keep_immortal();
                 // A freeze-frame on a hit: the world holds for a beat, effects keep moving.
                 if self.hitstop > 0.0 {
                     self.hitstop -= dt;
@@ -337,6 +338,9 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::Cheat]) {
             self.cheat_to_boss();
+        }
+        if self.input.was_pressed(&[Action::Immortal]) {
+            self.toggle_immortal();
         }
         if self.input.was_pressed(&[Action::Readout]) {
             if let Some(b) = self.brawl.as_mut() {

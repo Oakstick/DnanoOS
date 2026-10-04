@@ -267,6 +267,8 @@ pub struct Game {
     pub input: Input,
     pub view: WorldView,
     pub show_fps: bool,
+    /// F5 (testing cheat): foes still strike him, but his health always comes back and he never dies.
+    pub immortal: bool,
     /// The renderer's own readout under the frame rate (F3): CPU and GPU times, counts.
     pub perf_lines: Vec<String>,
     rng: Rng,
@@ -437,6 +439,7 @@ impl Game {
             input: Input::new(),
             view: WorldView::new(),
             show_fps: false,
+            immortal: false,
             sim: SimTimes::default(),
             loading: None,
             await_renderer: false,

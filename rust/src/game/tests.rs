@@ -306,8 +306,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 2,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, and the Cisterns and Bone Vaults off the road"
+        3 + 2 * 7 + 1 + 2 + 2,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, and Scene I's two places"
     );
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
     assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
@@ -1783,4 +1783,48 @@ fn coming_back_to_a_level_finds_its_walls_whole_and_keeps_what_he_earned() {
     assert_eq!(g.view.debris_count(), 0, "no debris carried over");
     assert!(g.bombs.is_empty() && g.projectiles.is_empty());
     assert_eq!((g.progress.silver, g.progress.runes), (silver, runes), "his silver and runes stay");
+}
+
+#[test]
+fn f5_makes_him_immortal_blows_land_but_his_health_comes_back() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.load_level(0);
+    g.enter(Screen::Playing);
+    g.input.inject(Action::Immortal);
+    g.update(crate::app::STEP);
+    assert!(g.immortal);
+    // A blow far past his health, by touch and in the brawl: he stands, whole.
+    g.hero.invuln = 0.0;
+    g.hurt_hero(10_000);
+    assert!(g.hero.alive && g.hero.hp == g.hero.max_hp);
+    assert_ne!(g.screen, Screen::Dying);
+    g.wound_hero(10_000.0, 0xff0000);
+    assert!(g.hero.alive && g.hero.hp == g.hero.max_hp);
+    assert_ne!(g.screen, Screen::Dying);
+    // F5 again: mortal, and the next such blow kills.
+    g.input.inject(Action::Immortal);
+    g.update(crate::app::STEP);
+    assert!(!g.immortal);
+    g.hero.invuln = 0.0;
+    g.hero.shield = None;
+    g.hurt_hero(10_000);
+    assert!(!g.hero.alive);
+}
+
+#[test]
+fn the_map_plays_scene_one_from_either_place() {
+    use logic::story::{first, Shot};
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    let stops = map_stops();
+    let scenes: Vec<usize> = stops.iter().filter_map(|s| s.scene).collect();
+    assert_eq!(scenes, vec![0, first(Shot::Arrive).unwrap()], "the graveyard, and the gateway below");
+    g.show_map = true;
+    g.map_index = stops.len() - 1;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(!g.show_map);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| s.beat), Some(first(Shot::Arrive).unwrap()));
 }

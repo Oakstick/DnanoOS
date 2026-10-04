@@ -48,8 +48,10 @@ pub enum Action {
     /// LT / RT in the old man's wares: the tab before, the tab after.
     TabPrev,
     TabNext,
-    /// F5: the Sparring Ring's frame readout on or off.
+    /// F8: the Sparring Ring's frame readout on or off.
     Readout,
+    /// F5: immortal on or off (testing cheat): blows still land, but his health always comes back.
+    Immortal,
     /// F6: the Sparring Ring's next bout; F7: the first of the next stage's.
     NextBout,
     NextStageBout,
@@ -124,7 +126,8 @@ pub fn key_to_action(code: winit::keyboard::KeyCode) -> Option<Action> {
         F2 => Action::KeyCheat,
         F4 => Action::FreeMove,
         F3 => Action::Fps,
-        F5 => Action::Readout,
+        F5 => Action::Immortal,
+        F8 => Action::Readout,
         F6 => Action::NextBout,
         F7 => Action::NextStageBout,
         KeyC => Action::Camera,
