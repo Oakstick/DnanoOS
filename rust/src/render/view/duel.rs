@@ -21,6 +21,27 @@ use crate::logic::combat::{Archetype, Duelist, MoveId, Phase, Reel, State};
 
 /// The commit flash: the last frames of a startup, when the aim no longer follows.
 const COMMIT_FRAMES: u16 = 8;
+/// Frames a weapon's glint shines, from its first.
+const GLINT_LIFE: f32 = 14.0;
+
+/// A weapon's glint at `at`, `k` (0 to 1) through its life: a star in the screen's plane flaring
+/// up at once and dying away, turning a little, about a bright core.
+fn emit_glint(f: &mut Frame, at: Vec3, k: f32, tint: Vec3, size: f32, time: f32) {
+    let flare = (k * 8.0).min(1.0) * (1.0 - k).powf(1.4);
+    if flare <= 0.01 {
+        return;
+    }
+    glow_orb(f, at, (0.12 + 0.2 * flare) * size, tint, 0.95 * flare);
+    let turn = time * 1.5;
+    for (n, (len, thick)) in [(1.0f32, 0.035f32), (1.0, 0.035), (0.5, 0.025), (0.5, 0.025)].iter().enumerate() {
+        let a = turn + n as f32 * std::f32::consts::FRAC_PI_2 * if n < 2 { 1.0 } else { 0.5 } + if n >= 2 { PI / 4.0 } else { 0.0 };
+        let m = Mat4::from_translation(at)
+            * Mat4::from_quat(f.facing)
+            * Mat4::from_rotation_z(a)
+            * Mat4::from_scale(Vec3::new(len * 0.62 * size * flare, thick * size, 0.01));
+        f.additive.push(Instance::new(m, tint * 3.2, 0.95 * flare, Vec3::ZERO, SHADE_UNLIT));
+    }
+}
 
 /// An archetype's telegraph colour.
 fn tell(arch: Archetype) -> u32 {
@@ -885,6 +906,22 @@ impl WorldView {
         }
     }
 
+    /// Where foe `i`'s weapon is now (its tip): the far end of its right arm and what that arm
+    /// holds, or, armless, the front of its head (the jaws), or the front of its body.
+    fn weapon_tip(&self, i: usize) -> Option<Vec3> {
+        let v = self.enemy_views.get(i)?;
+        let rig = self.models.rig(v.rig);
+        let (part, local) = if let Some(a) = rig.index("rightArm") {
+            (a, rig.parts[a].cubes.iter().map(|c| c.0).max_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))?)
+        } else if let Some(h) = rig.index("head") {
+            (h, rig.parts[h].cubes.iter().map(|c| c.0).max_by(|a, b| a.z.total_cmp(&b.z))?)
+        } else {
+            (0, rig.parts.first()?.cubes.iter().map(|c| c.0).max_by(|a, b| (a.z + a.y * 0.5).total_cmp(&(b.z + b.y * 0.5)))?)
+        };
+        let root = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw) * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+        Some((root * Mat4::from_translation(v.pose.pos[part]) * euler(v.pose.rot[part])).transform_point3(local))
+    }
+
     /// The ring's floor tells, token pips and hex bolts.
     pub(super) fn emit_duels(&self, s: &SceneState, f: &mut Frame) {
         let time = s.time as f32;
@@ -1067,32 +1104,24 @@ impl WorldView {
                         Mat4::from_translation(orb) * Mat4::from_rotation_y(time * 6.0) * Mat4::from_scale(Vec3::splat(0.04 + 0.1 * fill));
                     f.additive.push(Instance::new(m, color * 2.4, 0.9, Vec3::ZERO, SHADE_UNLIT));
                 }
-                _ => {
-                    // The cone of the blow, ring by ring.
-                    let (reach, half) = (data.reach as f32, data.half_angle as f32);
-                    let rings = (reach / 0.3).ceil() as i32;
-                    for r in 1..=rings {
-                        let rr = r as f32 * reach / rings as f32;
-                        let n = ((2.0 * half * rr) / 0.3).ceil().max(1.0) as i32;
-                        for k in 0..=n {
-                            let a = -half + 2.0 * half * k as f32 / n as f32;
-                            let dir = aim * a.cos() + side * a.sin();
-                            dot(dir * rr, rr <= reach * fill);
-                        }
+                _ if data.glints() => {
+                    // A plain swing: no floor marks. Its weapon glints `GLINT_AT` frames before it
+                    // lands (and rings: `game::brawl::weapons_glint`), red for a blow no shield holds;
+                    // with his mastery's eye, it burns white again through the parry window.
+                    let Some(tip) = self.weapon_tip(i) else { continue };
+                    let peril = data.guard_rule() != crate::logic::combat::fsm::GuardRule::Full;
+                    let size = (d.radius() as f32 * 1.6).clamp(0.7, 1.6);
+                    let since = frame as f32 - data.glint_frame() as f32;
+                    if phase == Phase::Startup && (0.0..GLINT_LIFE).contains(&since) {
+                        let tint = if peril { lin(0xff2a1a) } else { lin(0xfff2c8) };
+                        emit_glint(f, tip, since / GLINT_LIFE, tint, size, time);
                     }
-                    // His mastery's white edge: raised now, the guard would meet it in the parry window.
                     let left = data.startup.saturating_sub(frame);
                     if s.parry_edge.is_some_and(|to| phase == Phase::Startup && (PARRY_FROM..=to).contains(&left)) {
-                        let n = ((2.0 * half * (reach + 0.12)) / 0.12).ceil().max(2.0) as i32;
-                        for k in 0..=n {
-                            let a = -half + 2.0 * half * k as f32 / n as f32;
-                            let dir = aim * a.cos() + side * a.sin();
-                            let m = Mat4::from_translation(base + dir * (reach + 0.12) + Vec3::new(0.0, 0.03, 0.0))
-                                * Mat4::from_scale(Vec3::new(0.07, 0.014, 0.07));
-                            f.additive.push(Instance::new(m, Vec3::splat(3.2), 0.95, Vec3::ZERO, SHADE_UNLIT));
-                        }
+                        glow_orb(f, tip, 0.22 * size, Vec3::splat(2.6), 0.8 + (time * 30.0).sin().abs() * 0.2);
                     }
                 }
+                _ => {}
             }
         }
         for fl in s.flashes {

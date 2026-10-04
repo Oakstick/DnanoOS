@@ -177,6 +177,10 @@ pub enum MoveId {
     CageRattle,
 }
 
+/// Frames before a plain swing lands that its weapon glints and rings: the reaction floor (COMBAT.md
+/// §0), so the eye and the ear have their time to answer it.
+pub const GLINT_AT: u16 = 18;
+
 /// Where in a move a frame falls.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
@@ -1654,6 +1658,19 @@ impl MoveData {
 
     /// What the guard can do against it: block or parry it, only parry it (a grab), only block it
     /// (a beam), or nothing (what comes from the ground).
+    /// A plain swing (a cone of the blow, or a slam's): its weapon glints and rings `GLINT_AT`
+    /// frames before it lands, and nothing is drawn on the floor for it. What lands from a
+    /// distance (a bolt, a beam, a charge, traps, a mark) keeps its floor tell.
+    pub fn glints(&self) -> bool {
+        matches!(self.shape, Shape::Cone | Shape::Quake { .. }) && !self.projectile
+    }
+
+    /// The frame of its startup on which its weapon glints (the first, if its startup is shorter
+    /// than `GLINT_AT`).
+    pub fn glint_frame(&self) -> u16 {
+        self.startup.saturating_sub(GLINT_AT)
+    }
+
     pub fn guard_rule(&self) -> GuardRule {
         match (self.blockable(), self.parriable()) {
             (true, true) => GuardRule::Full,
@@ -1685,6 +1702,20 @@ impl MoveData {
 mod tests {
     use super::*;
     use crate::logic::combat::fsm::{GUARD_RAISE, PARRY_FROM, PARRY_TO};
+
+    /// Plain swings and slams glint (no floor marks); what lands from afar keeps its floor tell; and
+    /// every glint comes at least the reaction floor before the blow, or at its first frame.
+    #[test]
+    fn plain_swings_glint_and_what_lands_from_afar_keeps_its_floor_tell() {
+        assert!(MoveId::Slam.data().glints() && MoveId::Sceptre.data().glints() && MoveId::HoardSlam.data().glints());
+        for m in [MoveId::CoinToss, MoveId::CoinVolley, MoveId::LanceOfDawn, MoveId::FieryCharge, MoveId::Rift, MoveId::Burrow] {
+            assert!(!m.data().glints(), "{m:?} keeps its floor tell");
+        }
+        for m in MoveId::FOE.iter().filter(|m| m.data().glints()) {
+            let d = m.data();
+            assert!(d.startup - d.glint_frame() == GLINT_AT.min(d.startup), "{m:?}");
+        }
+    }
 
     #[test]
     fn every_foe_attack_can_be_read_before_it_lands() {

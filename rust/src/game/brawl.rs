@@ -336,6 +336,23 @@ impl Game {
         }
     }
 
+    /// A plain swing's weapon glints `GLINT_AT` frames before it lands (the view draws it): its ring,
+    /// once a frame however many glint together, red and rougher for a blow no shield holds.
+    fn weapons_glint(&mut self) {
+        let mut ring = None;
+        for d in self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
+            let State::Attack { mv, frame } = d.f.state else { continue };
+            let data = d.data(mv);
+            if data.glints() && frame == data.glint_frame() {
+                let peril = data.guard_rule() != crate::logic::combat::fsm::GuardRule::Full;
+                ring = Some(ring.unwrap_or(false) || peril);
+            }
+        }
+        if let Some(peril) = ring {
+            self.audio.play(if peril { Sfx::Peril } else { Sfx::Glint });
+        }
+    }
+
     /// One 60 Hz frame: his kit and fighter, then (while the foes fight) theirs, their bolts, the
     /// threat manager, and what the legends do to him.
     fn brawl_frame(&mut self) {
@@ -405,6 +422,7 @@ impl Game {
         self.hero_strikes();
         if live {
             self.foes_frame();
+            self.weapons_glint();
             if self.hero.alive {
                 self.update_ails();
             }

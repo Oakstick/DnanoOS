@@ -132,6 +132,11 @@ pub enum Sfx {
     Whisper,
     /// A mimic chest's hinge creaking.
     Creak,
+    // ---- the tells of a plain swing (no floor marks: the weapon glints and rings)
+    /// A blade's glint: a bright, short metallic ting.
+    Glint,
+    /// A blow no shield holds, glinting red: a harsher, lower double ring.
+    Peril,
 }
 
 /// Whose voice a line of the story types out in: each has its own blip.
@@ -792,6 +797,41 @@ impl AudioManager {
                     let tone = Env::points(vec![(t, 0.0001), (t + 0.5, 0.018 * vg), (t + 0.6, 0.0001)]);
                     s.push(
                         Voice::new(t, t + 0.62, Wave::Sine, Env::ramp(t, 440.0 * vp, 220.0 * vp, 0.6), tone, Bus::Sfx).vibrato(9.0, 0.02),
+                    );
+                }
+                Sfx::Glint => {
+                    // A struck bell-bright ting: inharmonic partials falling away fast, a click of grit.
+                    for (f, d, g) in [(2350.0, 0.32, 0.034), (2350.0 * 2.76, 0.16, 0.016), (2350.0 * 5.4, 0.08, 0.007)] {
+                        blip(s, t, f * vp, d, Wave::Sine, g * vg);
+                    }
+                    s.push(
+                        Voice::new(
+                            t,
+                            t + 0.03,
+                            Wave::Noise { rate: 1.0, offset },
+                            Env::constant(1.0),
+                            Env::ramp(t, 0.05 * vg, 0.001, 0.025),
+                            Bus::Sfx,
+                        )
+                        .filtered(synth::FilterKind::Highpass, 5000.0, 0.7),
+                    );
+                }
+                Sfx::Peril => {
+                    // Two rings a semitone apart, lower and rough, beating against each other.
+                    for (f, d, g) in [(1320.0, 0.42, 0.034), (1398.0, 0.42, 0.03), (1320.0 * 2.76, 0.2, 0.012)] {
+                        blip(s, t, f * vp, d, Wave::Sine, g * vg);
+                    }
+                    blip(s, t + 0.11, 1320.0 * vp, 0.3, Wave::Sine, 0.022 * vg);
+                    s.push(
+                        Voice::new(
+                            t,
+                            t + 0.05,
+                            Wave::Noise { rate: 1.0, offset },
+                            Env::constant(1.0),
+                            Env::ramp(t, 0.07 * vg, 0.001, 0.04),
+                            Bus::Sfx,
+                        )
+                        .filtered(synth::FilterKind::Bandpass, 3000.0, 1.2),
                     );
                 }
                 Sfx::Creak => {
@@ -1622,6 +1662,8 @@ mod tests {
             Sfx::Bark,
             Sfx::Whisper,
             Sfx::Creak,
+            Sfx::Glint,
+            Sfx::Peril,
         ];
         let render = |what: &str| {
             let mut buf = vec![0.0f32; 48_000 * 2];
