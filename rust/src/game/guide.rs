@@ -17,6 +17,7 @@ impl Game {
             Theme::Hell => GuidePlace::Hub,
             Theme::Gym => GuidePlace::Gym,
             Theme::Pit => GuidePlace::Pit(self.pit.as_ref().map(|p| p.level).unwrap_or(1)),
+            Theme::Lair => GuidePlace::Lair,
             Theme::Meadow => GuidePlace::Cyclops(self.dungeon.min(2)),
             Theme::Estate => match self.dungeon {
                 0 => GuidePlace::Garden,

@@ -360,6 +360,8 @@ pub fn matter_of(kind: EnemyKind) -> Matter {
         K::Serpentling | K::FlySwarm => Matter::Chitin,
         K::Raven => Matter::Feather,
         K::Nightmare => Matter::Smoke,
+        // Krampus's lair: his black fur and goat's hide, and his Perchten's.
+        K::Krampus | K::Percht => Matter::Flesh,
     }
 }
 
@@ -381,6 +383,7 @@ pub fn is_giant(kind: EnemyKind) -> bool {
             | K::Belphegor
             | K::Beelzebub
             | K::Asmodeus
+            | K::Krampus
     )
 }
 

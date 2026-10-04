@@ -539,7 +539,7 @@ impl Game {
         }
         // A prince's health fallen into his next phase: its table of moves, rested.
         if du.arch == crate::logic::combat::Archetype::Prince && du.hp > 0.0 {
-            let phase = prince::phase_of(du.hp, du.max_hp);
+            let phase = prince::phase_for(du.breed.kind, du.hp, du.max_hp);
             if phase > du.breed.phase {
                 du.breed.phase = phase;
                 du.cool = [0; 4];
@@ -691,7 +691,10 @@ impl Game {
         if prince && self.in_court() {
             // A prince in his court: his key, and everything a boss's fall brings (`court`).
             self.prince_slain(p);
-        } else if vault && !risen {
+        } else if prince && self.in_lair() {
+            // Krampus at the bottom of the Pit: his slow death, then the cage (`lair`).
+            self.krampus_slain(p);
+        } else if vault && !risen && !self.in_lair() {
             // (The risen dead pay nothing the second time: no farming the Burning Field.)
             self.kill_spoils(p, crate::logic::systems::POINTS_KILL);
             if self.gilded_leader(id) {
@@ -1362,6 +1365,8 @@ impl Game {
                 self.feel_quake(pos);
                 self.view.dust(&self.level.grid, pos.x, pos.y, 0x5a2a1c, 30, 3.4);
             }
+            // Krampus's (FINALE.md §3): his bells, his chain, his sack (`lair`).
+            MoveId::TollOfBells | MoveId::SackSwing | MoveId::ChainLash | MoveId::ChainSweep => self.krampus_strikes(i, mv),
             _ => {}
         }
         if power == Power::Fire && matches!(mv, MoveId::Slam | MoveId::Sweep) {

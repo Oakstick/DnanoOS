@@ -539,6 +539,9 @@ impl Trophy {
             // The other princes, and what they raise (for now a crown and a coin, as Mammon's).
             K::Lucifer | K::Leviathan | K::Amon | K::Belphegor | K::Beelzebub | K::Asmodeus => Trophy::Crown,
             K::Reflection | K::Serpentling | K::Raven | K::Nightmare | K::FlySwarm => Trophy::Coin,
+            // Krampus's lair: his horn, and a Percht's carved mask.
+            K::Krampus => Trophy::Horn,
+            K::Percht => Trophy::Mask,
             K::Ganglot => Trophy::Shroud,
             K::Gaki => Trophy::Bowl,
             K::Ellepige => Trophy::Thorn,

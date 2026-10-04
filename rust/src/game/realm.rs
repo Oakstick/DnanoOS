@@ -104,8 +104,11 @@ impl Game {
         }
     }
 
-    /// The boss before him, by name: the Cyclops, or the prince of the realm.
+    /// The boss before him, by name: the Cyclops, the prince of the realm, or Krampus.
     pub fn boss_name(&self) -> String {
+        if self.in_lair() {
+            return "KRAMPUS".to_string();
+        }
         match self.realm {
             Some(sin) => sin.prince().to_uppercase(),
             None => "THE CYCLOPS".to_string(),

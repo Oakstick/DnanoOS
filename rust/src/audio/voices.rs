@@ -565,6 +565,8 @@ pub const ALL_KINDS: &[EnemyKind] = &{
         Beelzebub,
         FlySwarm,
         Asmodeus,
+        Krampus,
+        Percht,
     ]
 };
 
@@ -601,6 +603,8 @@ pub fn size_of(kind: EnemyKind) -> f32 {
         K::Reflection | K::Nightmare => 1.0,
         K::Serpentling | K::FlySwarm => 0.9,
         K::Raven => 0.8,
+        K::Krampus => 2.2,
+        K::Percht => 1.2,
     }
 }
 
@@ -1039,6 +1043,39 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             ]
             .concat(),
         },
+        // ---- Krampus at the bottom of the Pit (FINALE.md §3): his bells are his signature
+        K::Krampus => match mv {
+            // The bells shaken hard on his chains, and a stamp.
+            MoveId::TollOfBells => {
+                [krampus_bells(0.0, 9, 0.16), goat_roar(0.25, 0.3), vec![sine(46.0, 34.0).at(0.5).dur(0.4).vol(0.16)]].concat()
+            }
+            // The chain gathered in his fist: links rattling, his growl.
+            MoveId::ChainSweep | MoveId::ChainLash => {
+                [chain_rattle(0.0, 10, 0.5), growl(0.12, 58.0, 0.5, 0.11), krampus_bells(0.05, 3, 0.06)].concat()
+            }
+            // Horns down: two snorts, then the goat's bleat torn into a roar.
+            MoveId::HoofCharge => [
+                vec![hiss(1.0).at(0.0).dur(0.07).vol(0.9).bp(800.0, 2.0), hiss(1.0).at(0.12).dur(0.07).vol(0.9).bp(760.0, 2.0)],
+                goat_roar(0.22, 0.5),
+                krampus_bells(0.2, 4, 0.07),
+            ]
+            .concat(),
+            // His hand in the sack of coals: embers crackling, and a low laugh.
+            MoveId::CoalFire => {
+                [vec![crackle(0.9).at(0.0).dur(0.6).vol(0.5).swell(0.3).hp(1600.0, 0.0)], krampus_laugh(0.15, 0.4)].concat()
+            }
+            // The sack swung up: a heave, a grunt, the bells jangling.
+            MoveId::SackSwing => {
+                [goat_roar(0.0, 0.35), krampus_bells(0.1, 5, 0.08), vec![hiss(0.5).at(0.0).dur(0.5).vol(0.4).swell(0.4).lp(500.0, 1.0)]]
+                    .concat()
+            }
+            // At the cage: his laugh, long and slow, bells on it.
+            MoveId::CageRattle => [krampus_laugh(0.0, 0.5), krampus_bells(0.3, 4, 0.06)].concat(),
+            // The birch drawn back: the switches rustling, his tongue's wet growl.
+            _ => [birch_swish(0.0, 0.4), growl(0.06, 66.0, 0.42, 0.1), krampus_bells(0.0, 2, 0.05)].concat(),
+        },
+        // A Percht: small bells on its belt, a growl behind the carved mask.
+        K::Percht => [krampus_bells(0.0, 4, 0.05), growl(0.08, 92.0, 0.4, 0.1)].concat(),
     };
     // A few moves add their own colour (what `tell_sfx` once played for them).
     match mv {
@@ -1051,6 +1088,48 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
     out
 }
 
+/// Krampus's bells (his signature): `n` small brass bells jangling, each its own pitch, falling
+/// out of step.
+fn krampus_bells(at: f32, n: usize, vol: f32) -> Vec<Layer> {
+    const NOTES: [f32; 5] = [1318.5, 1567.98, 1760.0, 2093.0, 1479.98];
+    (0..n).flat_map(|i| bell(at + i as f32 * 0.055 + (i as f32 * 1.7).sin().abs() * 0.03, NOTES[i % NOTES.len()], 0.45, vol)).collect()
+}
+
+/// Krampus's voice: a goat's bleat torn into a roar, his long tongue wet in it.
+fn goat_roar(at: f32, vol: f32) -> Vec<Layer> {
+    [
+        vec![
+            saw(240.0, 170.0).at(at).dur(0.6).vol(vol * 0.5).swell(0.05).hold(0.4).bp(1100.0, 2.5).vib(11.0, 0.07),
+            saw(242.0, 172.0).at(at).dur(0.6).vol(vol * 0.2).swell(0.05).hold(0.4).bp(2100.0, 3.0).vib(11.0, 0.07),
+        ],
+        growl(at + 0.04, 52.0, 0.65, vol * 0.35),
+    ]
+    .concat()
+}
+
+/// Krampus's laugh: deep, slow, through his teeth.
+fn krampus_laugh(at: f32, vol: f32) -> Vec<Layer> {
+    speak(at, 72.0, &[(Onset::H, Vowel::A, 0.16, 1.0), (Onset::H, Vowel::A, 0.16, 0.95), (Onset::H, Vowel::A, 0.3, 0.86)], vol, true)
+}
+
+/// Iron chain: `n` links rattling, and a ring of iron.
+fn chain_rattle(at: f32, n: usize, vol: f32) -> Vec<Layer> {
+    [rattle(at, n, 0.035, 2600.0, vol), vec![sine(1240.0, 1180.0).at(at + 0.05).dur(0.3).vol(vol * 0.03)]].concat()
+}
+
+/// A bundle of birch switches through the air: three quick swishes, one on another.
+fn birch_swish(at: f32, vol: f32) -> Vec<Layer> {
+    (0..3).flat_map(|i| whoosh(at + i as f32 * 0.035, 3400.0 - i as f32 * 400.0, 0.16, vol)).collect()
+}
+
+/// The friend in the cage: a child's frightened whimper, catching.
+fn child_whimper(at: f32, vol: f32) -> Vec<Layer> {
+    [
+        speak(at, 330.0, &[(Onset::H, Vowel::U, 0.14, 1.0), (Onset::None, Vowel::U, 0.26, 1.12)], vol, false),
+        vec![hiss(1.0).at(at + 0.42).dur(0.12).vol(vol * 0.6).bp(2200.0, 2.0)],
+    ]
+    .concat()
+}
 /// The drone of a fly's wings at `f`: two detuned buzzing saws, quivering.
 fn buzz(at: f32, f: f32, dur: f32, vol: f32) -> Vec<Layer> {
     vec![
@@ -1202,6 +1281,7 @@ fn breed_voice(kind: EnemyKind) -> Vec<Layer> {
         K::Lucifer => lucifer_voice(0.0, 0.5),
         K::Amon => amon_croak(0.0),
         K::Asmodeus => [suitor_laugh(0.0), suitor_hum(0.4, 0.3)].concat(),
+        K::Krampus => goat_roar(0.0, 0.45),
         K::Beelzebub => glutton_laugh(0.0),
         // Bones groan; the ringing is the tell's alone.
         K::Gashadokuro => [rattle(0.0, 6, 0.04, 1500.0, 0.7), growl(0.05, 50.0, 0.4, 0.1)].concat(),
@@ -1443,6 +1523,15 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
             speak(0.3, 120.0, &[(Onset::H, Vowel::A, 0.5, 1.0)], 0.35, false),
         ]
         .concat(),
+        // Krampus: the bleat-roar breaking, the breath going out of him, one last shake of his bells.
+        K::Krampus => [
+            goat_roar(0.0, 0.5),
+            vec![hiss(0.5).at(0.4).dur(1.6).vol(0.5).swell(0.5).lp(600.0, 1.0), saw(70.0, 36.0).at(0.3).dur(1.4).vol(0.16).lp(400.0, 1.0)],
+            krampus_bells(0.6, 5, 0.06),
+        ]
+        .concat(),
+        // A Percht: its bells clattering down, a growl cut short.
+        K::Percht => [krampus_bells(0.0, 5, 0.06), growl(0.0, 92.0, 0.3, 0.1)].concat(),
     }
 }
 
@@ -1667,6 +1756,35 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
             }
             _ => [whoosh(0.0, 2400.0, 0.22, 0.7), vec![sine(1975.0, 1975.0).at(0.12).dur(0.3).vol(0.018)]].concat(),
         },
+        // Krampus's: the birch whistling, the chain cracking out, the bells, the sack falling, the
+        // coals, and at the cage the bars shaken and the boy's whimper.
+        K::Krampus => match mv {
+            MoveId::BirchLash => [birch_swish(0.0, 0.9), snap(0.14, 900.0, 0.5)].concat(),
+            MoveId::ChainSweep => [whoosh(0.0, 900.0, 0.4, 0.8), chain_rattle(0.0, 8, 0.6)].concat(),
+            MoveId::ChainLash => {
+                [chain_rattle(0.0, 6, 0.7), crack(0.1, 1.0), vec![sine(1400.0, 900.0).at(0.1).dur(0.2).vol(0.03)]].concat()
+            }
+            MoveId::TollOfBells => {
+                [krampus_bells(0.0, 12, 0.18), vec![sine(58.0, 30.0).dur(0.5).vol(0.3), hiss(0.4).dur(0.5).vol(0.5).lp(260.0, 1.0)]]
+                    .concat()
+            }
+            MoveId::HoofCharge => (0..5)
+                .flat_map(|i| {
+                    [sine(66.0, 38.0).at(i as f32 * 0.1).dur(0.09).vol(0.3), hiss(0.5).at(i as f32 * 0.1).dur(0.07).vol(0.6).lp(320.0, 1.0)]
+                })
+                .chain(krampus_bells(0.0, 4, 0.06))
+                .collect(),
+            MoveId::CoalFire => {
+                vec![hiss(0.7).dur(0.5).vol(0.7).swell(0.06).lp(1500.0, 1.0), crackle(1.3).dur(0.6).vol(0.6).hp(1800.0, 0.0)]
+            }
+            MoveId::SackSwing => {
+                [whoosh(0.0, 320.0, 0.45, 1.0), vec![sine(60.0, 32.0).at(0.3).dur(0.4).vol(0.3)], krampus_bells(0.3, 6, 0.08)].concat()
+            }
+            MoveId::CageRattle => [chain_rattle(0.0, 14, 0.7), crack(0.05, 0.4), child_whimper(0.35, 0.3)].concat(),
+            _ => [whoosh(0.0, 500.0, 0.4, 0.9), krampus_bells(0.1, 3, 0.06)].concat(),
+        },
+        // A Percht's switch.
+        K::Percht => [birch_swish(0.0, 0.6), krampus_bells(0.05, 2, 0.04)].concat(),
     };
     Recipe { layers }
 }
@@ -1711,6 +1829,7 @@ pub fn matter_of(kind: EnemyKind) -> SoundMatter {
         K::Raven => M::Feather,
         K::Nightmare => M::Smoke,
         K::Lucifer | K::Leviathan | K::Amon | K::Belphegor | K::Beelzebub | K::Asmodeus => M::Flesh,
+        K::Krampus | K::Percht => M::Flesh,
         K::Witch
         | K::Minion
         | K::Werewolf
@@ -2424,6 +2543,7 @@ fn default_move(kind: EnemyKind) -> MoveId {
         K::Belphegor => MoveId::Swat,
         K::Beelzebub => MoveId::Cleaver,
         K::Asmodeus => MoveId::LanceThrust,
+        K::Krampus => MoveId::BirchLash,
         _ => match family(kind) {
             Attack::Melee => MoveId::Slam,
             Attack::Body => MoveId::Bite,

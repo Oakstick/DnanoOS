@@ -28,6 +28,8 @@ pub enum GuidePlace {
     Gym,
     /// Level `n` (1 to 7) of the Pit under the House of the Devil.
     Pit(u8),
+    /// Krampus's lair at the bottom of the Pit (FINALE.md §3).
+    Lair,
 }
 
 /// What he says of a place.
@@ -56,6 +58,7 @@ pub fn guide(place: GuidePlace, hero: HeroKind) -> Guide {
         GuidePlace::Court(sin) => court(sin, hail),
         GuidePlace::Gym => page("THE GYM", hail, GYM_TALE, GYM_TASK, GYM_WATCH),
         GuidePlace::Pit(n) => pit(n, hail),
+        GuidePlace::Lair => page("KRAMPUS'S LAIR", hail, LAIR_TALE, LAIR_TASK, LAIR_WATCH),
     }
 }
 
@@ -625,6 +628,29 @@ fn pit(n: u8, hail: &str) -> Guide {
     page(&format!("THE PIT: LEVEL {n}"), hail, PIT_TALE, PIT_TASK, &watch)
 }
 
+// ------------------------------------------------------------------ the bottom of the Pit
+
+const LAIR_TALE: &[&str] = &[
+    "this is the bottom of the world, where Krampus brings the children he carries off. Your friend is in that cage.",
+    "In the Alps he walks on Krampusnacht, the night of 5 December, the dark companion of St Nicholas: the saint brings gifts, he the birch.",
+    "Horned like a goat and black-furred, his long red tongue hanging, chains and bells about him, a basket on his back for the wicked.",
+    "The Perchten walk with him in the winter nights, masked and shaggy, ringing bells. He has called two of them down here with him.",
+];
+
+const LAIR_TASK: &[&str] = &[
+    "Bring Krampus down and free your friend. There is no key here and no gate: when he falls, the cage's lock breaks with him.",
+    "He fights in three moods: the Bells, the Chains and Krampusnacht. Each is named as it comes, and a green cross falls for a breather.",
+    "If you fall, he stands whole again before the cage, and you wake on the platform where it came to rest.",
+];
+
+const LAIR_WATCH: &[&str] = &[
+    "His pelt turns most of a blow: strike in his recoveries, or when a parry leaves him reeling. His bells ring before the floor shakes.",
+    "The Chains lash a chain along a line on the floor: your shield holds it, no parry turns it. Step off it when it stops following you.",
+    "His hoof charge runs straight. Stand before the ice, step aside as it locks, and he runs into it and stands dazed. His Perchten come once.",
+    "Krampusnacht flings live coals in a row that burn on: step off them. He goes to rattle the cage and make the boy cry: strike him then.",
+    "Nothing he does can harm the boy. Keep your eyes on Krampus, and the child will be in your arms soon enough.",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,7 +662,8 @@ mod tests {
     const EXTRA: [char; 12] = ['Ç', 'ç', 'Ö', 'ö', 'Ü', 'ü', 'Ş', 'ş', 'İ', 'ı', 'Ō', 'ō'];
 
     fn places() -> Vec<GuidePlace> {
-        let mut out = vec![GuidePlace::Garden, GuidePlace::Cisterns, GuidePlace::BoneVaults, GuidePlace::Hub, GuidePlace::Gym];
+        let mut out =
+            vec![GuidePlace::Garden, GuidePlace::Cisterns, GuidePlace::BoneVaults, GuidePlace::Hub, GuidePlace::Gym, GuidePlace::Lair];
         out.extend((0..3).map(GuidePlace::Cyclops));
         out.extend(SINS.iter().map(|&s| GuidePlace::Realm(s)));
         out.extend(SINS.iter().map(|&s| GuidePlace::Court(s)));

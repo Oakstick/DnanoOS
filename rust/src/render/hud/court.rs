@@ -1,9 +1,9 @@
 //! A prince's court on the HUD (ROADMAP.md phase 3): his health across the top middle in the
-//! panels' charcoal and copper, his name and the title of his phase over it, notches at the
-//! thirds where his fight changes and a pip lit for each phase reached, the pale trail of what
-//! the last blows cost, and a gold edge while his hide is open (`game::court::PrinceBar`); his health
-//! is in his sin's colour. Under
-//! the score, what the fight wants of him: the fight, the key, the gate.
+//! panels' charcoal and copper, his name and the title of his phase over it, notches where his
+//! fight changes (the thirds, or Krampus's own) and a pip lit for each phase reached, the pale
+//! trail of what the last blows cost, and a gold edge while his hide is open
+//! (`game::court::PrinceBar`); his health is in his sin's colour (Krampus's red). Under the score,
+//! what the fight wants of him: the fight, the key, the gate (in the lair, the fight and the friend).
 
 use super::*;
 
@@ -51,7 +51,7 @@ pub(super) fn draw_prince_bar(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(x0, by, bw * trail, bh, rgba(TRAIL, 0.7));
     o.rect(x0, by, bw * frac, bh, rgba(if b.flash { HEALTH_HIT } else { b.color }, 1.0));
     o.rect(x0, by, bw * frac, bh * 0.3, [1.0, 1.0, 1.0, 0.16]);
-    for k in [1.0f32 / 3.0, 2.0 / 3.0] {
+    for k in b.notches {
         o.rect(x0 + bw * k - 1.0, by - t * 0.12, 2.0, bh + t * 0.24, rgba(COPPER, 0.95));
     }
     if b.open {
@@ -65,6 +65,19 @@ pub(super) fn draw_prince_bar(o: &mut Overlay, g: &Game, t: f32) {
 
 /// Under the score: the fight, then the key, then the gate.
 pub(super) fn draw_status(o: &mut Overlay, g: &Game, rc: f32, ty: f32, small: f32) {
+    if g.in_lair() {
+        // Krampus's lair: no key and no gate, only the fight and the friend in the cage.
+        let held = g.lair.as_ref().is_some_and(|l| l.child.state == crate::game::lair::ChildState::Held);
+        let (text, color) = if g.prince().is_some() {
+            ("THE LAST FIGHT", 0xff8a2a)
+        } else if held {
+            ("YOUR FRIEND IS FREE", 0xfff4d8)
+        } else {
+            ("KRAMPUS IS SLAIN", 0xe8c060)
+        };
+        o.text(text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
+        return;
+    }
     let key = g.key_name();
     let (text, color) = if g.prince().is_some() {
         ("PRINCE FIGHT".to_string(), 0xff8a2a)

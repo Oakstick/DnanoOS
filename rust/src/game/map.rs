@@ -36,6 +36,8 @@ pub fn map_stops() -> Vec<MapStop> {
         stops.push(stop(Stage::Realm(sin), format!("{} - {}", sin.title(), sin.realm().to_uppercase())));
         stops.push(stop(Stage::Court(sin), format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase())));
     }
+    // The bottom of the Pit: Krampus in his lair, the friend in the cage (FINALE.md §3).
+    stops.push(stop(Stage::Lair, "THE BOTTOM OF THE PIT - KRAMPUS".to_string()));
     stops.push(stop(Stage::Gym, "THE GYM - ONE OF EVERY FOE".to_string()));
     // The Pit under the House of the Devil, level by level.
     for n in 1..=crate::logic::pit::LEVELS {
@@ -81,6 +83,8 @@ impl Game {
         let here = if self.screen == Screen::Paused {
             Some(if let Some(p) = &self.pit {
                 Stage::Pit(p.level)
+            } else if self.lair.is_some() {
+                Stage::Lair
             } else if self.hub.is_some() {
                 Stage::Hub
             } else if self.theme().is_gym() {
@@ -222,6 +226,7 @@ impl Game {
                 Stage::Court(s) | Stage::SinShop(s) => self.load_court(s),
                 Stage::Gym => self.load_gym(),
                 Stage::Pit(n) => self.load_pit(n),
+                Stage::Lair => self.load_lair(),
                 Stage::Hub => unreachable!(),
             }
             self.checkpoint(stage);

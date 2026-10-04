@@ -41,6 +41,7 @@ mod hub;
 mod juice;
 #[cfg(test)]
 mod juice_tests;
+pub mod lair;
 pub mod ledger;
 mod level;
 mod map;
@@ -446,6 +447,8 @@ pub struct Game {
     pub run: Option<crate::logic::realms::Run>,
     /// Greed's court, the Counting House, while he is in it: its prince's fight (`court`).
     pub court: Option<court::Court>,
+    /// Krampus's lair at the bottom of the Pit, while he is in it: its fight, the cage, the boy (`lair`).
+    pub lair: Option<lair::Lair>,
     /// The general of the realm he is in, while he is in it (WARBAND.md §9, `general`).
     pub general: Option<general::GeneralRun>,
     /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
@@ -593,6 +596,7 @@ impl Game {
             vault: None,
             run: None,
             court: None,
+            lair: None,
             general: None,
             hoard: Hoard::default(),
             toll_asked: false,
@@ -732,6 +736,9 @@ impl Game {
         }
         if self.court.is_some() {
             self.update_court(dt);
+        }
+        if self.lair.is_some() {
+            self.update_lair(dt);
         }
 
         self.sim.boss += lap.lap();

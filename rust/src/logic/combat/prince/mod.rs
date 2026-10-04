@@ -12,11 +12,13 @@
 //! What is shared lives here: the phases, the hide, the coins on the floor (`Trap`, `scatter`).
 //! Each prince's own table, pace and phase names are his module's: `greed` (Mammon), `pride`
 //! (Lucifer), `envy` (Leviathan), `wrath` (Amon), `sloth` (Belphegor), `gluttony` (Beelzebub)
-//! and `lust` (Asmodeus); `table`, `pace` and `phase_name` here choose by the prince's kind.
+//! and `lust` (Asmodeus); and `krampus`, who is no sin's prince but fights as one at the bottom of
+//! the Pit (FINALE.md §3). `table`, `pace`, `phase_name` and `phase_for` here choose by the kind.
 
 pub mod envy;
 pub mod gluttony;
 pub mod greed;
+pub mod krampus;
 pub mod lust;
 pub mod pride;
 pub mod sloth;
@@ -51,6 +53,15 @@ pub fn phase_of(hp: f64, max: f64) -> u8 {
     }
 }
 
+/// The phase of a prince of `kind` with `hp` of `max` health: the princes' thirds, or Krampus's own
+/// (`krampus::PHASE_AT`).
+pub fn phase_for(kind: EnemyKind, hp: f64, max: f64) -> u8 {
+    match kind {
+        EnemyKind::Krampus => krampus::phase_of(hp, max),
+        _ => phase_of(hp, max),
+    }
+}
+
 /// The prince of `kind`'s moves in `phase`, in the order he prefers them (each prince's table is
 /// his own module's).
 pub fn table(kind: EnemyKind, phase: u8) -> &'static [MoveId] {
@@ -61,6 +72,7 @@ pub fn table(kind: EnemyKind, phase: u8) -> &'static [MoveId] {
         EnemyKind::Belphegor => sloth::table(phase),
         EnemyKind::Beelzebub => gluttony::table(phase),
         EnemyKind::Asmodeus => lust::table(phase),
+        EnemyKind::Krampus => krampus::table(phase),
         _ => greed::table(phase),
     }
 }
@@ -75,6 +87,7 @@ pub fn pace(kind: EnemyKind, phase: u8) -> (f64, f64) {
         EnemyKind::Belphegor => sloth::pace(phase),
         EnemyKind::Beelzebub => gluttony::pace(phase),
         EnemyKind::Asmodeus => lust::pace(phase),
+        EnemyKind::Krampus => krampus::pace(phase),
         _ => greed::pace(phase),
     }
 }
@@ -88,6 +101,7 @@ pub fn phase_name(kind: EnemyKind, phase: u8) -> &'static str {
         EnemyKind::Belphegor => sloth::phase_name(phase),
         EnemyKind::Beelzebub => gluttony::phase_name(phase),
         EnemyKind::Asmodeus => lust::phase_name(phase),
+        EnemyKind::Krampus => krampus::phase_name(phase),
         _ => greed::phase_name(phase),
     }
 }

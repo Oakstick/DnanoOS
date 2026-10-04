@@ -1262,7 +1262,7 @@ pub const KRAMPUS_EYES: [[f32; 3]; 2] = [[40.5, 98.0, 65.5], [50.5, 98.0, 65.5]]
 pub const KRAMPUS_HAND: [f32; 3] = [17.5, 44.0, 61.0];
 
 /// A link of chain at `p` along `t`: a bar seen side-on, or a ring seen face-on, turn about.
-fn link(s: &mut Sculpt, p: Vec3, t: Vec3, bar: bool, c: u32, hi: u32) {
+pub(crate) fn link(s: &mut Sculpt, p: Vec3, t: Vec3, bar: bool, c: u32, hi: u32) {
     if bar {
         let (a, b) = (p - t * 1.6, p + t * 1.6);
         s.capsule((a.x, a.y, a.z), (b.x, b.y, b.z), 0.8, 0.8, c);
@@ -1276,7 +1276,7 @@ fn link(s: &mut Sculpt, p: Vec3, t: Vec3, bar: bool, c: u32, hi: u32) {
 }
 
 /// A bell hanging from `top`: its loop, the dome, the flared lip, the dark mouth, the clapper.
-fn bell(s: &mut Sculpt, top: Vec3, d: i32, c: u32, dark: u32, mouth: u32) {
+pub(crate) fn bell(s: &mut Sculpt, top: Vec3, d: i32, c: u32, dark: u32, mouth: u32) {
     let (tx, tz) = (top.x.round() as i32, top.z.round() as i32);
     s.set(tx, top.y.round() as i32, tz, dark);
     let o = top - Vec3::new(0.0, 3.4, 0.0);
@@ -1296,7 +1296,7 @@ fn bell(s: &mut Sculpt, top: Vec3, d: i32, c: u32, dark: u32, mouth: u32) {
 }
 
 /// A birch switch from `base` to `tip`: pale bark ringed with black, a twig off its side.
-fn birch(s: &mut Sculpt, base: Vec3, tip: Vec3, seed: i32) {
+pub(crate) fn birch(s: &mut Sculpt, base: Vec3, tip: Vec3, seed: i32) {
     use shade::{BIRCH, BIRCH_D};
     let len = base.distance(tip);
     let steps = (len * 2.0) as i32;
@@ -1313,7 +1313,7 @@ fn birch(s: &mut Sculpt, base: Vec3, tip: Vec3, seed: i32) {
 }
 
 /// A horn along `knots`, ridged with rings along its length, its tip paler.
-fn horn(s: &mut Sculpt, knots: &[(Vec3, f32)], base: u32, ring: u32, tip: u32) {
+pub(crate) fn horn(s: &mut Sculpt, knots: &[(Vec3, f32)], base: u32, ring: u32, tip: u32) {
     let total: f32 = knots.windows(2).map(|w| w[0].0.distance(w[1].0)).sum();
     let mut run = 0.0;
     for w in knots.windows(2) {

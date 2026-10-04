@@ -44,6 +44,8 @@ pub enum Theme {
     /// The Pit under the House of the Devil: seven levels of one stone cell, ridden down on its
     /// platform (`logic::pit`).
     Pit,
+    /// Krampus's lair at the bottom of the Pit (FINALE.md §3, `logic::lair`).
+    Lair,
 }
 
 impl Theme {

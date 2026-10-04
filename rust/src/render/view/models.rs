@@ -61,6 +61,9 @@ pub(super) enum RigId {
     FlySwarm,
     // Lust's court
     Asmodeus,
+    // Krampus's lair (FINALE.md §3): Krampus as he fights, and his Perchten
+    Krampus,
+    Percht,
 }
 
 pub(super) struct Models {
@@ -120,6 +123,9 @@ pub(super) struct Models {
     pub(super) beelzebub: Rig,
     pub(super) fly_swarm: Rig,
     pub(super) asmodeus: Rig,
+    /// Krampus as he fights in his lair, and his Perchten (`foes_lair`; Scene I's shade is `krampus`).
+    pub(super) krampus_fight: Rig,
+    pub(super) percht: Rig,
     pub(super) medkit: Mesh,
     pub(super) bomb: Mesh,
     pub(super) arrow: Mesh,
@@ -266,6 +272,11 @@ impl Models {
             use crate::render::foes_court::lust::*;
             build_rig(&asmodeus(), ASMODEUS_RIG, ASMODEUS_VOXEL)
         };
+        // Krampus's lair
+        let (krampus_fight, percht) = {
+            use crate::render::foes_lair::*;
+            (build_rig(&krampus(), KRAMPUS_RIG, KRAMPUS_VOXEL), build_rig(&percht(), PERCHT_RIG, PERCHT_VOXEL))
+        };
         // The played hero and his shield raised, built together (the raised pair is only remade
         // when his kit changes, so it must be made here too, or he blocks with a bare fist).
         let (hero, raised) = forge::hero_rigs(ragnar, forge::Kit::plain(1, Some(1)));
@@ -323,6 +334,8 @@ impl Models {
             beelzebub,
             fly_swarm,
             asmodeus,
+            krampus_fight,
+            percht,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
             arrow: crate::render::props::arrow(),
@@ -411,6 +424,8 @@ impl Models {
             RigId::Beelzebub => &self.beelzebub,
             RigId::FlySwarm => &self.fly_swarm,
             RigId::Asmodeus => &self.asmodeus,
+            RigId::Krampus => &self.krampus_fight,
+            RigId::Percht => &self.percht,
         }
     }
 }

@@ -58,6 +58,7 @@ mod garden;
 mod gate;
 mod hell;
 mod juice;
+mod lair;
 mod lookdev;
 mod meadow;
 mod models;
@@ -191,6 +192,8 @@ pub struct SceneState<'a> {
     pub general: Option<&'a crate::game::general::GeneralRun>,
     /// The Pit, while he is in it: its level, its clock, its platform's descent.
     pub pit: Option<PitView>,
+    /// Krampus's lair: his death, the cage and the boy in it (FINALE.md §3).
+    pub lair: Option<&'a crate::game::lair::Lair>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -280,6 +283,8 @@ pub struct WorldView {
     bower: Option<court_lust::BowerView>,
     /// The Pit, while he is in it: its level as last seen, and the level below as a set.
     pit: Option<pit::PitScene>,
+    /// Krampus's lair at the bottom of the Pit, while he is in it (`lair`).
+    lair: Option<lair::LairView>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -451,6 +456,7 @@ impl WorldView {
             banquet: None,
             bower: None,
             pit: None,
+            lair: None,
             gym: false,
             water: Vec::new(),
             garden: None,
@@ -573,6 +579,7 @@ impl WorldView {
         self.garden = garden.cloned();
         self.fountain = None;
         self.wisps = None;
+        self.lair = None;
         self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
         self.gate_tile = gate;
         self.keys.clear();
@@ -620,6 +627,8 @@ impl WorldView {
             self.build_court(sin, grid);
         } else if theme.is_pit() {
             self.build_pit(grid);
+        } else if theme == Theme::Lair {
+            self.build_lair(grid);
         } else if self.hell {
             self.build_hell(grid);
         } else if meadow {

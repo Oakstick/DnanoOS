@@ -280,17 +280,6 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 ledger::draw_ledger_screen(o, g, t);
             }
         }
-        Screen::Won if g.in_pit() => draw_screen(
-            o,
-            t,
-            &[
-                line("THE BOTTOM OF THE PIT", 2.0, GOLD),
-                line(format!("{} rode the platform down through all seven levels.", g.hero_kind.name()), 0.9, SAND),
-                line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
-                line("Enter, click or tap", 0.8, TEXT_DIM),
-            ],
-            0.7,
-        ),
         Screen::Won => draw_screen(
             o,
             t,
@@ -299,6 +288,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 line(
                     match g.realm {
                         Some(sin) => format!("The key of {} is {}'s. Back to the Portals of Hell.", sin.name(), g.hero_kind.name()),
+                        None if g.in_lair() => format!("The cage is open. {} and his friend are together again.", g.hero_kind.name()),
                         None if g.dungeon == 0 => format!("The Portals of Hell open below. {} goes down.", g.hero_kind.name()),
                         None => format!("The way down lies open. {} goes deeper.", g.hero_kind.name()),
                     },
@@ -592,7 +582,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
             (format!("{key}: TO THE GATE"), g.key_color())
         };
         o.text(&text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
-    } else if g.in_court() {
+    } else if g.in_court() || g.in_lair() {
         court::draw_status(o, g, rc, ty, small);
     } else if g.in_vault() {
         // The hoard: what he carries out of the vaults, for Mammon to ask his toll on.
@@ -1232,7 +1222,9 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 | EnemyKind::Nightmare
                 | EnemyKind::Beelzebub
                 | EnemyKind::FlySwarm
-                | EnemyKind::Asmodeus => 7,
+                | EnemyKind::Asmodeus
+                | EnemyKind::Krampus
+                | EnemyKind::Percht => 7,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;

@@ -564,16 +564,15 @@ impl Game {
     }
 
     /**
-     * The platform has passed the seventh level and come to rest at the bottom of the Pit. (For now
-     * the run ends here, on the Won screen; at the merge this leads into Krampus's lair.)
+     * The platform has passed the seventh level and come to rest at the bottom of the Pit: Krampus's
+     * lair, where the friend waits in his cage (`lair`).
      */
     pub fn pit_reaches_bottom(&mut self) {
         if let Some(p) = self.pit.as_mut() {
             p.phase = PitPhase::Bottom;
         }
         self.audio.play(Sfx::BossSlam);
-        self.audio.play(Sfx::Win);
-        self.enter(Screen::Won);
+        self.enter_lair();
     }
 
     /// What the view needs of the Pit this frame.
@@ -792,13 +791,14 @@ mod tests {
     }
 
     #[test]
-    fn after_the_seventh_level_the_platform_reaches_the_bottom() {
+    fn after_the_seventh_level_the_platform_reaches_the_bottom_and_krampus_waits() {
         let mut g = in_pit(7);
         g.immortal = true;
         g.pit.as_mut().unwrap().clock = pit::LEVEL_SECONDS - 0.01;
         run(&mut g, pit::DESCENT_SECONDS + 0.5);
-        assert_eq!(g.pit.as_ref().unwrap().phase, PitPhase::Bottom);
-        assert_eq!(g.screen, Screen::Won);
+        assert!(g.in_lair() && !g.in_pit(), "at the bottom: Krampus's lair");
+        assert_eq!(g.level.data.theme, crate::logic::level::Theme::Lair);
+        assert!(g.prince().is_some_and(|d| d.breed.kind == EnemyKind::Krampus), "and Krampus in it");
     }
 
     #[test]

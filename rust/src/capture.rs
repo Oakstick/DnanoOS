@@ -27,6 +27,8 @@
 //! light, 15 the rise, 30 the white, 33 the words, 67 the credits),
 //! `pit:N` (level N of the Pit, 1 to 7) and `pitclock:S` (its clock set to S seconds into the
 //! level: 105 for the bell, 120 for the descent),
+//! `lair` (Krampus's lair at the bottom of the Pit), `taunt` (Krampus goes to rattle the cage now) and
+//! `fell` (Krampus's last blow: his death, the cage, the boy),
 //! `general:S` (sin S's realm, before its general's command post: 4 is
 //! the Assessor's) and `order:K` (the realm's general gives his order K now, 0..2),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
@@ -171,6 +173,12 @@ pub(crate) enum Cmd {
     /// Into level N (1 to 7) of the Pit, and its clock set to S seconds into the level.
     Pit(u8),
     PitClock(f64),
+    /// Into Krampus's lair at the bottom of the Pit (FINALE.md §3).
+    Lair,
+    /// Krampus goes to the cage and rattles it now (Krampusnacht, his health under 40%).
+    Taunt,
+    /// Krampus's last blow: he falls, and the cage opens.
+    Fell,
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -213,6 +221,9 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "ending" => Cmd::Ending(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0)),
             "pit" => Cmd::Pit(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "pitclock" => Cmd::PitClock(parts.next().and_then(|v| v.parse().ok()).unwrap_or(100.0)),
+            "lair" => Cmd::Lair,
+            "taunt" => Cmd::Taunt,
+            "fell" => Cmd::Fell,
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -340,6 +351,9 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Ending(at) => game.ending_jump(at),
         Cmd::Pit(n) => game.map_jump(Stage::Pit(n.clamp(1, 7))),
         Cmd::PitClock(s) => game.debug_pit_clock(s),
+        Cmd::Lair => game.map_jump(Stage::Lair),
+        Cmd::Taunt => game.debug_taunt(),
+        Cmd::Fell => game.debug_fell(),
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,

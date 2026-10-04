@@ -15,6 +15,7 @@ pub mod heroes;
 pub mod hub;
 pub mod items;
 pub mod juice;
+pub mod lair;
 pub mod level;
 pub mod levels;
 pub mod mover;

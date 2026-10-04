@@ -52,6 +52,8 @@ pub enum Stage {
     Gym,
     /// At the start of level `n` (1 to 7) of the Pit.
     Pit(u8),
+    /// Krampus's lair at the bottom of the Pit (FINALE.md §3).
+    Lair,
 }
 
 /// A checkpoint of the adventure under way.
@@ -81,6 +83,7 @@ impl Run {
             Stage::SinShop(s) => ('e', s.index()),
             Stage::Gym => ('g', 0),
             Stage::Pit(n) => ('p', n as usize),
+            Stage::Lair => ('k', 0),
         };
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
@@ -106,6 +109,7 @@ impl Run {
             "e" => Stage::SinShop(*SINS.get(n)?),
             "g" => Stage::Gym,
             "p" if (1..=crate::logic::pit::LEVELS as usize).contains(&n) => Stage::Pit(n as u8),
+            "k" => Stage::Lair,
             _ => return None,
         };
         let score = f.next()?.parse().ok()?;
@@ -146,6 +150,7 @@ impl Game {
             Stage::SinShop(_) => "the old man's wares".to_string(),
             Stage::Gym => "the gym".to_string(),
             Stage::Pit(n) => format!("level {n} of the Pit"),
+            Stage::Lair => "Krampus's lair".to_string(),
         };
         Some(format!("{}, {place}", run.hero.name()))
     }
@@ -238,6 +243,10 @@ impl Game {
                 self.load_pit(n);
                 self.enter(Screen::Ready);
             }
+            Stage::Lair => {
+                self.load_lair();
+                self.enter(Screen::Ready);
+            }
         }
         // Back into play: the camera is chosen first.
         if self.screen == Screen::Ready {
@@ -321,6 +330,7 @@ mod tests {
             Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01 },
             Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0 },
             Run { hero: HeroKind::Mehmed, stage: Stage::Pit(4), score: 77, lives: 2, belt: vec![PotionKind::Health], sins: 0x7f },
+            Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 7, lives: 2, belt: Vec::new(), sins: 0x7f },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));

@@ -47,6 +47,8 @@ impl Culture {
             | K::Beelzebub
             | K::FlySwarm
             | K::Asmodeus => Culture::Hellish,
+            // Krampus and his Perchten walk the Alpine winter nights.
+            K::Krampus | K::Percht => Culture::OldEuropean,
         }
     }
 
@@ -146,6 +148,8 @@ pub fn breed_name(kind: EnemyKind) -> &'static str {
         K::Beelzebub => "prince of gluttony",
         K::FlySwarm => "fly swarm",
         K::Asmodeus => "prince of lust",
+        K::Krampus => "krampus",
+        K::Percht => "percht",
     }
 }
 

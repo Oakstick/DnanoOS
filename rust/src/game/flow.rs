@@ -64,6 +64,7 @@ macro_rules! scene_state {
             parry_edge: $g.parry_edge(),
             general: $g.general.as_ref(),
             pit: $g.pit_view(),
+            lair: $g.lair.as_ref(),
         }
     };
 }
@@ -242,14 +243,6 @@ impl Game {
                     }
                     self.juice.fade = 1.0;
                     self.enter(Screen::Ready);
-                }
-            }
-            Screen::Won if self.in_pit() => {
-                // The bottom of the Pit: for now, the end of the run.
-                if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Tap]) {
-                    self.enter(Screen::Title);
-                    self.input.consume(Action::Attack);
-                    self.input.consume(Action::Confirm);
                 }
             }
             Screen::Won => {

@@ -143,6 +143,9 @@ impl WorldView {
             EnemyKind::FlySwarm => (RigId::FlySwarm, 0.3),
             // Lust's court
             EnemyKind::Asmodeus => (RigId::Asmodeus, 0.0),
+            // Krampus's lair
+            EnemyKind::Krampus => (RigId::Krampus, 0.0),
+            EnemyKind::Percht => (RigId::Percht, 0.0),
         };
         let pose = Pose::rest(self.models.rig(rig));
         // Its levels of detail and their meshes, made now rather than in the middle of a fight
@@ -397,11 +400,12 @@ impl WorldView {
             | EnemyKind::Amon
             | EnemyKind::Belphegor
             | EnemyKind::Nightmare
-            | EnemyKind::Asmodeus => {
+            | EnemyKind::Asmodeus
+            | EnemyKind::Percht => {
                 // A walk: the blemmyes, the rasetsu and the oni lumber, the witch and the tengu stride,
                 // the kappa waddles, the skeletons stalk.
                 let (stride, swing) = match v.kind {
-                    EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Oni | EnemyKind::Karakoncolos => (0.6, 0.35),
+                    EnemyKind::Blemmyes | EnemyKind::Rasetsu | EnemyKind::Oni | EnemyKind::Karakoncolos | EnemyKind::Percht => (0.6, 0.35),
                     EnemyKind::Tepegoz | EnemyKind::Gashadokuro | EnemyKind::FrostGiant | EnemyKind::Surtr => (0.5, 0.3),
                     // (Mammon waddles under his robe and his belly; the golems stump.)
                     EnemyKind::Mammon => (0.3, 0.16),
@@ -451,6 +455,22 @@ impl WorldView {
                 if let Some(j) = rig.index("jaw") {
                     v.pose.rot[j].x += 0.14 + (time * 7.0 + i as f32).sin().abs() * 0.08;
                 }
+            }
+            EnemyKind::Krampus => {
+                // He stalks on his goat's legs, hunched, his long arms swinging low with the birch
+                // and the chain, his head bobbing forward at each step and his sack swaying; stood
+                // still, he breathes, his head and his arms rising and falling with it.
+                let s = v.phase.sin();
+                let walk = if moving { 1.0 } else { 0.0 };
+                let breathe = (time * 1.9 + i as f32).sin();
+                v.pose.rot_x(rig, "legR", s * 0.5 * walk);
+                v.pose.rot_x(rig, "legL", -s * 0.5 * walk);
+                v.pose.rot_x(rig, "armR", -s * 0.3 * walk + breathe * 0.04);
+                v.pose.rot_x(rig, "armL", s * 0.3 * walk - breathe * 0.04);
+                v.pose.rot_x(rig, "head", (v.phase * 2.0).sin().abs() * 0.12 * walk + breathe * 0.05);
+                v.pose.rot_x(rig, "sack", s * 0.25 * walk + breathe * 0.03);
+                v.root_rot.z = s * 0.07 * walk;
+                v.root_rot.x = 0.05 + breathe * 0.012;
             }
             EnemyKind::Beelzebub => {
                 // He waddles under his belly on his short legs, rolling from side to side; his wings
