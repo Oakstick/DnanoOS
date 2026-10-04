@@ -376,6 +376,26 @@ fn court(sin: Sin, hail: &str) -> Guide {
         return page("THE COUNTING HOUSE", hail, MAMMON_TALE, MAMMON_TASK, MAMMON_WATCH);
     }
     // Pride's court, as built (its page to come here).
+    const PRIDE_COURT_TALE: &[&str] = &[
+        "this is the Throne of the Morning Star. Isaiah sang it: how art thou fallen from heaven, O Lucifer, son of the morning!",
+        "He was the light-bearer, the most beautiful of the angels, and would set his throne above the stars. It stands empty behind him still.",
+        "He fights you in three moods: the Morning Star, the Mirror, and the Fallen, his six wings burnt black.",
+    ];
+    const PRIDE_COURT_TASK: &[&str] = &[
+        "Bring Lucifer down. He drops the Key of Pride: take it, and the gate in the south wall opens.",
+        "Through it you come to me, and then back to the Portals of Hell, where Pride's door shuts with its key in the lock.",
+        "Each new mood is named as it comes, and a green cross falls for a breather. If you fall, he stands whole again at the foot of his steps.",
+    ];
+    const PRIDE_COURT_WATCH: &[&str] = &[
+        "His light turns most of a blow. But pride never looks behind him: strike his back, or strike in his recoveries, and the whole blow lands.",
+        "His Lance of Dawn burns along a line on the floor. A shield holds it, no parry turns it: when the line stops following you, step off it.",
+        "The Mirror comes out of the glass nearest you and stands long in the open. His two silver Reflections break at one blow; he has the gold halo.",
+        "The Fallen calls stars down round you: step off them, or leap. He comes down on a mark that follows you: walk out of it, strike as he lands.",
+        "If his Chamberlain of Glass fell, no Reflections come; if the throne-mirror was polished, they stand at his side from the start.",
+    ];
+    if sin == Sin::Pride {
+        return page("THE THRONE OF THE MORNING STAR", hail, PRIDE_COURT_TALE, PRIDE_COURT_TASK, PRIDE_COURT_WATCH);
+    }
 
     // Envy's court, as built (its page to come here).
 

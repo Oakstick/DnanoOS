@@ -573,9 +573,6 @@ pub const ALL_KINDS: &[EnemyKind] = &{
 fn kin_voice(kind: EnemyKind) -> Option<(EnemyKind, f32, f32, f32)> {
     use EnemyKind as K;
     Some(match kind {
-        // Pride's court: the Peerless's voice, deeper for the prince, brighter for his reflections.
-        K::Lucifer => (K::Peerless, 1.2, 0.8, 1.0),
-        K::Reflection => (K::Peerless, 0.8, 1.3, 0.9),
         // Envy's court: the root-dragon's, and the cobra's.
         K::Leviathan => (K::Nidhogg, 1.0, 0.85, 1.0),
         K::Serpentling => (K::Cobra, 0.9, 1.2, 0.9),
@@ -908,8 +905,53 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             vec![hiss(1.0).at(0.0).dur(0.5).vol(0.35).swell(0.2).bp(2400.0, 3.0)],
         ]
         .concat(),
+        // ---- the prince of Pride
+        K::Lucifer => match mv {
+            // His lance: a choir swelling into the dawn, the light's hiss rising under it.
+            MoveId::LanceOfDawn => [
+                choir(0.0, 220.0, 0.9, 0.03),
+                vec![
+                    hiss(1.0).at(0.1).dur(0.8).vol(0.35).swell(0.6).bp(3200.0, 2.0),
+                    sine(880.0, 1760.0).at(0.2).dur(0.7).vol(0.018).swell(0.5),
+                ],
+            ]
+            .concat(),
+            // The mirror step: a glass chime and its echo, and the air going still.
+            MoveId::MirrorStep => [
+                bell(0.04, 1568.0, 0.8, 0.06),
+                bell(0.26, 1175.0, 0.8, 0.04),
+                vec![hiss(1.0).at(0.0).dur(0.6).vol(0.3).swell(0.4).hp(5000.0, 0.0)],
+            ]
+            .concat(),
+            // The stars: high chimes falling one after another.
+            MoveId::Starfall => [
+                (0..6).flat_map(|k| bell(0.04 + k as f32 * 0.09, 2637.0 * 0.9f32.powi(k), 0.5, 0.035)).collect::<Vec<_>>(),
+                choir(0.0, 196.0, 0.7, 0.018),
+            ]
+            .concat(),
+            // His fall: his wings beating as he rises, and his voice.
+            MoveId::PridesFall => [wingbeats(0.0, 4, 0.13, 0.9), lucifer_voice(0.25, 0.42)].concat(),
+            // His cut: the sword of light humming, and a proud breath.
+            _ => [
+                vec![
+                    saw(330.0, 330.0).at(0.0).dur(0.5).vol(0.035).swell(0.2).hold(0.4).bp(1400.0, 3.0).vib(9.0, 0.01),
+                    sine(1318.0, 1318.0).at(0.05).dur(0.45).vol(0.02).swell(0.2).vib(6.0, 0.004),
+                ],
+                lucifer_voice(0.08, 0.4),
+            ]
+            .concat(),
+        },
+        // A reflection: a cold chime of glass, a thin note, frost on a pane.
+        K::Reflection => [
+            bell(0.03, 2093.0, 0.6, 0.05),
+            vec![
+                tri(1046.0, 1040.0).at(0.0).dur(0.45).vol(0.04).swell(0.1).vib(6.0, 0.01),
+                hiss(1.0).at(0.0).dur(0.4).vol(0.3).swell(0.2).hp(6000.0, 0.0),
+            ],
+        ]
+        .concat(),
         // The five other princes and their adds: a kin's voice, for now.
-        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
+        K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&breed_tell(kin, mv, hero), time, pitch, gain)
         }
@@ -923,6 +965,35 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
         _ => {}
     }
     out
+}
+
+/// Lucifer's voice: a deep, proud breath of a laugh, the light ringing in it.
+fn lucifer_voice(at: f32, vol: f32) -> Vec<Layer> {
+    [
+        speak(at, 92.0, &[(Onset::H, Vowel::A, 0.2, 1.0), (Onset::None, Vowel::A, 0.34, 0.84)], vol, false),
+        vec![sine(1108.0, 1108.0).at(at).dur(0.6).vol(vol * 0.03).swell(0.2).vib(5.0, 0.004)],
+    ]
+    .concat()
+}
+
+/// A choir's chord on `root` (a major triad and its octave), swelling over `dur`.
+fn choir(at: f32, root: f32, dur: f32, vol: f32) -> Vec<Layer> {
+    [1.0f32, 1.25, 1.5, 2.0]
+        .iter()
+        .enumerate()
+        .flat_map(|(k, r)| {
+            let f = root * r;
+            [
+                tri(f, f).at(at).dur(dur).vol(vol).swell(dur * 0.6).hold(0.3).vib(5.0 + k as f32 * 0.4, 0.006),
+                saw(f, f).at(at).dur(dur).vol(vol * 0.5).swell(dur * 0.6).hold(0.3).bp(730.0, 3.0).vib(5.2 + k as f32 * 0.3, 0.006),
+            ]
+        })
+        .collect()
+}
+
+/// Great wings beating `n` times, `gap` apart.
+fn wingbeats(at: f32, n: usize, gap: f32, vol: f32) -> Vec<Layer> {
+    (0..n).map(|i| hiss(0.6).at(at + i as f32 * gap).dur(0.11).vol(vol).swell(0.045).lp(900.0, 1.0)).collect()
 }
 
 fn banker_laugh(at: f32) -> Vec<Layer> {
@@ -989,6 +1060,7 @@ fn breed_voice(kind: EnemyKind) -> Vec<Layer> {
         K::Mammon => banker_laugh(0.0),
         // Belphegor's cries are his grumble.
         K::Belphegor => sloth_grumble(0.0),
+        K::Lucifer => lucifer_voice(0.0, 0.5),
         // Bones groan; the ringing is the tell's alone.
         K::Gashadokuro => [rattle(0.0, 6, 0.04, 1500.0, 0.7), growl(0.05, 50.0, 0.4, 0.1)].concat(),
         K::Peerless => speak(0.0, 120.0, &[(Onset::H, Vowel::U, 0.18, 1.0)], 0.45, false),
@@ -1171,8 +1243,25 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         K::Nightmare => {
             vec![hiss(1.0).dur(0.9).vol(0.5).swell(0.05).bp(2000.0, 2.0), sine(1046.5, 520.0).dur(0.8).vol(0.03).vib(6.0, 0.02)]
         }
+        // The morning star falling: his choir sliding down an octave, a boom, the light going out.
+        K::Lucifer => [
+            vec![
+                saw(220.0, 110.0).dur(1.8).vol(0.05).swell(0.1).hold(0.4).bp(730.0, 3.0).vib(4.0, 0.01),
+                saw(277.0, 138.0).dur(1.8).vol(0.04).swell(0.1).hold(0.4).bp(1090.0, 3.0).vib(4.3, 0.01),
+                sine(55.0, 35.0).dur(1.6).vol(0.22).swell(0.02),
+                hiss(0.5).dur(2.0).vol(0.5).swell(0.3).lp(1200.0, 1.0),
+            ],
+            bell(0.0, 523.0, 2.0, 0.05),
+        ]
+        .concat(),
+        // A pane of glass shattering, its shards ringing down.
+        K::Reflection => [
+            crack(0.0, 1.0),
+            (0..9).map(|i| sine(3400.0 - 230.0 * i as f32, 3000.0 - 210.0 * i as f32).at(i as f32 * 0.025).dur(0.25).vol(0.025)).collect(),
+        ]
+        .concat(),
         // The five other princes and their adds: a kin's fall, for now.
-        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
+        K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&death_of(kin), time, pitch, gain)
         }
@@ -1307,8 +1396,23 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         },
         // A nightmare's hex: a whisper, and a falling note.
         K::Nightmare => vec![hiss(1.0).dur(0.3).vol(0.5).swell(0.12).bp(2600.0, 3.0), sine(1568.0, 1046.5).dur(0.3).vol(0.02)],
+        // Light: the lance blazing, a chime through the glass, stars streaming down, the rush of his
+        // wings as he falls, the sword of light singing through the air.
+        K::Lucifer => match mv {
+            MoveId::LanceOfDawn => vec![
+                hiss(1.0).dur(0.7).vol(0.7).swell(0.05).hold(0.6).bp(2600.0, 1.0),
+                saw(440.0, 440.0).dur(0.6).vol(0.045).swell(0.03).hold(0.6).lp(3000.0, 1.0),
+                sine(1760.0, 1760.0).dur(0.6).vol(0.02).swell(0.03).hold(0.6),
+            ],
+            MoveId::MirrorStep => [bell(0.0, 1975.0, 0.7, 0.06), whoosh(0.0, 3500.0, 0.25, 0.5)].concat(),
+            MoveId::Starfall => (0..3).flat_map(|i| whoosh(i as f32 * 0.08, 4000.0 - i as f32 * 800.0, 0.25, 0.4)).collect(),
+            MoveId::PridesFall => [whoosh(0.0, 300.0, 0.35, 1.0), vec![sine(70.0, 40.0).at(0.05).dur(0.4).vol(0.2)]].concat(),
+            _ => [whoosh(0.0, 3200.0, 0.22, 0.7), vec![sine(1318.0, 1318.0).at(0.05).dur(0.3).vol(0.02)]].concat(),
+        },
+        // A thin blade of glass.
+        K::Reflection => [whoosh(0.0, 3600.0, 0.18, 0.5), bell(0.08, 2637.0, 0.3, 0.02)].concat(),
         // The five other princes and their adds: a kin's swing, for now.
-        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
+        K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&swing_of(kin, mv).layers, time, pitch, gain)
         }
@@ -2063,6 +2167,7 @@ fn default_move(kind: EnemyKind) -> MoveId {
         K::Hel => MoveId::Raise,
         K::Mammon => MoveId::CoinToss,
         K::Lucifer => MoveId::RadiantCut,
+        K::Reflection => MoveId::RadiantCut,
         K::Leviathan => MoveId::CoilLash,
         K::Amon => MoveId::FlameBreath,
         K::Belphegor => MoveId::Swat,

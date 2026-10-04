@@ -414,8 +414,10 @@ impl WorldView {
                     EnemyKind::Belphegor => (0.24, 0.1),
                     // (A nightmare's wisps trail and sway as it drifts; its thin arms reach.)
                     EnemyKind::Nightmare => (0.35, 0.3),
+                    // (Lucifer strides in his plate, and so do his Reflections.)
+                    EnemyKind::Lucifer | EnemyKind::Reflection => (0.42, 0.18),
                     // (The other princes, for now robed figures: small steps under the robe.)
-                    EnemyKind::Lucifer | EnemyKind::Leviathan | EnemyKind::Amon | EnemyKind::Beelzebub | EnemyKind::Asmodeus => (0.3, 0.16),
+                    EnemyKind::Leviathan | EnemyKind::Amon | EnemyKind::Beelzebub | EnemyKind::Asmodeus => (0.3, 0.16),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)

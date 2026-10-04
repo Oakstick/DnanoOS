@@ -670,6 +670,10 @@ impl Duelist {
         match self.f.state {
             State::Attack { mv: MoveId::Burrow, frame } => frame >= BURROW_SINK && frame < MoveId::Burrow.data().startup,
             State::Attack { mv: MoveId::Talons, frame } => (ALOFT.0..ALOFT.1).contains(&frame),
+            // Lucifer up on his wings, until he comes down on his mark.
+            State::Attack { mv: MoveId::PridesFall, frame } => {
+                (super::prince::pride::FALL_RISE..MoveId::PridesFall.data().startup).contains(&frame)
+            }
             // In the air of a leap (only a puppet of the hero's leaps).
             State::Evade { frame } => frame < super::fsm::EVADE_AIR,
             State::Attack { .. } | State::Reel { .. } => false,
@@ -698,8 +702,12 @@ impl Duelist {
     }
 
     /// What a blow from `from` is worth on it: as `taken`, but nothing on an elf-maid's lovely
-    /// front (she is only to be struck from behind).
+    /// front (she is only to be struck from behind), and the whole of it on Lucifer's back.
     pub fn taken_from(&self, from: V) -> f64 {
+        if self.breed.power == Power::Vainglory && super::prince::pride::behind(self.pos, self.facing, from) {
+            // Pride never looks behind him: a blow from there lands whole.
+            return 1.0;
+        }
         if self.breed.power == Power::Hollow {
             let to = V::new(from.x - self.pos.x, from.y - self.pos.y);
             if to.x * self.facing.x + to.y * self.facing.y > 0.0 {

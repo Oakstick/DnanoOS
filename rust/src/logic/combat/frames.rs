@@ -72,8 +72,16 @@ pub enum MoveId {
     /// Mammon's hoard brought down on the floor: a slam that shakes the ground.
     HoardSlam,
     // Lucifer's (Pride)
-    /// Lucifer's radiant cut: a blade of light swept before him (a placeholder for his table).
+    /// Lucifer's radiant cut: his sword of light swept wide before him.
     RadiantCut,
+    /// Lucifer's lance of dawn: a beam of light along the floor toward the hero.
+    LanceOfDawn,
+    /// Lucifer's mirror step: into one mirror of his court, and out of another near the hero.
+    MirrorStep,
+    /// Lucifer's starfall: stars fall round the hero and burst.
+    Starfall,
+    /// Lucifer's fall: up on his wings, and down on a mark that follows the hero.
+    PridesFall,
     // Leviathan's (Envy)
     /// Leviathan's coil lash: his coils whipped round before him (a placeholder for his table).
     CoilLash,
@@ -303,6 +311,10 @@ impl MoveId {
         MoveId::HoardSlam,
         // Lucifer's (Pride)
         MoveId::RadiantCut,
+        MoveId::LanceOfDawn,
+        MoveId::MirrorStep,
+        MoveId::Starfall,
+        MoveId::PridesFall,
         // Leviathan's (Envy)
         MoveId::CoilLash,
         // Amon's (Wrath)
@@ -769,7 +781,81 @@ impl MoveId {
                 ..BASE
             },
             // Lucifer's (Pride)
-            MoveId::RadiantCut => MoveData { name: "RADIANT CUT", ..PRINCE_PLACEHOLDER },
+            MoveId::RadiantCut => MoveData {
+                name: "RADIANT CUT",
+                startup: 32,
+                active: 8,
+                recovery: 42,
+                damage: 24.0,
+                reach: 1.3,
+                half_angle: deg(100.0),
+                track: 18,
+                hitstop: 6,
+                range: (0.0, 1.3),
+                off: (0.0, deg(80.0)),
+                ..BASE
+            },
+            MoveId::LanceOfDawn => MoveData {
+                name: "LANCE OF DAWN",
+                startup: 52,
+                active: 10,
+                recovery: 40,
+                damage: 26.0,
+                reach: 11.5,
+                half_angle: 0.0,
+                track: 22,
+                hitstop: 6,
+                range: (2.5, 9.0),
+                off: (0.0, deg(60.0)),
+                line: true,
+                shape: Shape::Beam { length: 11.5, width: 1.0 },
+                cooldown: 210,
+                ..BASE
+            },
+            MoveId::MirrorStep => MoveData {
+                name: "MIRROR STEP",
+                startup: 36,
+                active: 1,
+                recovery: 72,
+                reach: 30.0,
+                half_angle: 0.0,
+                track: 30,
+                range: (4.5, 99.0),
+                shape: Shape::Spell,
+                cooldown: 480,
+                ..BASE
+            },
+            MoveId::Starfall => MoveData {
+                name: "STARFALL",
+                startup: 40,
+                active: 1,
+                recovery: 36,
+                damage: 16.0,
+                reach: 12.0,
+                half_angle: 0.0,
+                track: 30,
+                hitstop: 5,
+                range: (0.0, 12.0),
+                shape: Shape::Traps { count: 5, radius: 0.85, fuse: 44, linger: 0 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::PridesFall => MoveData {
+                name: "PRIDE'S FALL",
+                startup: 56,
+                active: 6,
+                recovery: 54,
+                damage: 30.0,
+                reach: 8.0,
+                half_angle: 0.0,
+                track: 36,
+                hitstop: 8,
+                range: (2.0, 8.0),
+                off: (0.0, deg(120.0)),
+                shape: Shape::Mark { radius: 1.4 },
+                cooldown: 260,
+                ..BASE
+            },
             // Leviathan's (Envy)
             MoveId::CoilLash => MoveData { name: "COIL LASH", ..PRINCE_PLACEHOLDER },
             // Amon's (Wrath)
@@ -1024,8 +1110,8 @@ mod tests {
         assert_eq!(MoveId::CoinToss.data().traps(), Some((5, 0.8, 48, 0)), "the coins do not linger");
         assert_eq!(MoveId::Grasp.data().guard_rule(), GuardRule::ParryOnly);
         assert_eq!(MoveId::Sceptre.data().guard_rule(), GuardRule::Full);
-        // No move of the game uses them yet: play is as it was.
-        for m in MoveId::FOE {
+        // No move of the game uses them yet but the princes' that are built for them: play is as it was.
+        for m in MoveId::FOE.iter().filter(|m| !matches!(m, MoveId::LanceOfDawn)) {
             assert!(!matches!(m.data().shape, Shape::Beam { .. } | Shape::Charge { .. } | Shape::TrapLine { .. }), "{m:?}");
         }
     }

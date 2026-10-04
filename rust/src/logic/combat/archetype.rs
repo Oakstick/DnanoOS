@@ -333,7 +333,7 @@ impl Breed {
             // The six other princes, each the Prince himself; what they raise, lighter than the golems.
             // Pride's court: Lucifer, and his reflections, swordsmen.
             K::Lucifer => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
-            K::Reflection => (Brute, 0.7, 0.75, 0.9, 1.0, 0.4, 1),
+            K::Reflection => (Brute, 0.7, 0.5, 0.9, 1.0, 0.5, 1),
             // Envy's court: Leviathan, and his brood, that bite.
             K::Leviathan => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::Serpentling => (Skirmisher, 0.6, 0.7, 0.7, 1.0, 0.36, 1),
@@ -398,6 +398,8 @@ impl Breed {
             K::FrostGiant => &[MoveId::FrostSlam, MoveId::Slam, MoveId::Sweep],
             K::Nidhogg => &[MoveId::Burrow, MoveId::Bite],
             K::Hel => &[MoveId::Raise, MoveId::Hex],
+            // Pride's reflections cut as he does, left-handed.
+            K::Reflection => &[MoveId::RadiantCut],
             _ if self.arch == Archetype::Prince => super::prince::table(self.kind, self.phase),
             _ => self.arch.moves(),
         }

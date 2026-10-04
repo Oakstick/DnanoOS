@@ -207,6 +207,11 @@ impl WorldView {
                 v.light_intensity = 0.0;
             }
         }
+        if matches!(e.kind(), EnemyKind::Lucifer | EnemyKind::Reflection) {
+            // Lucifer's wings and his moves, and his Reflections' (`court_pride`).
+            let rig = self.models.rig(self.enemy_views[i].rig);
+            super::court_pride::dress_lucifer(rig, &mut self.enemy_views[i], d, time);
+        }
     }
 
     /// Its move or its reel, over its gait.
@@ -748,10 +753,11 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
-        if self.court == Some(crate::logic::sins::Sin::Sloth) {
-            self.emit_sand(s.traps, s.grid, time, f);
-        } else {
-            self.emit_traps(s.traps, s.grid, time, f);
+        // Each court's traps in its own look: Belphegor's sand, Lucifer's stars, the coins of the rest.
+        match self.court {
+            Some(Sin::Sloth) => self.emit_sand(s.traps, s.grid, time, f),
+            Some(Sin::Pride) => self.emit_pride_traps(s, s.traps, time, f),
+            _ => self.emit_traps(s.traps, s.grid, time, f),
         }
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.
         for h in s.hazards {
