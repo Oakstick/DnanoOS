@@ -6,7 +6,10 @@
 //! so that nothing they do can touch the simulation (rule I5).
 
 pub mod drum;
+pub mod ledger;
+pub mod names;
 pub mod pack;
+pub mod save;
 
 use crate::logic::combat::fsm::{Defense, Effect};
 use crate::logic::combat::MoveId;

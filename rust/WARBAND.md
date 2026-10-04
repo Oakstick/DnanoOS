@@ -1015,3 +1015,38 @@ the hero's slash (now on his fighter's frames) and the outside callers below.
   circle and the drum levels as WAVs, and prints each one's peak and RMS.
 * Wiring left to the integrator (brawl.rs is not touched): see the W2 report; `feedback.rs` sets
   the listener and the hero each frame.
+
+### W5 The Ledger of Grudges: logic, save, HUD (branch `warband-ledger`)
+
+Built without touching `game/brawl.rs` or `logic/combat/*`; the fight's wiring is the integrator's.
+
+* `logic/war/names.rs`: names by the breed's folklore (`Culture::of`: Norse, Japanese, Turkic,
+  old European, hellish titles), 16+ given names for a he and a she in each, Norse patronyms,
+  Turkic bynames, European places, hellish titles; epithets by `Deed` naming the hero where they
+  fit; `breed_name`, pronouns; every letter drawable by the HUD's font. All from a seed.
+* `logic/war/ledger.rs`: `Rival` (traits, ≤8 `Encounter`s, `known` bits, silver, `Trophy`),
+  `Ledger` (`promote` with nine living at most, `rank_up`, `record`, `after_fight`, `offer`,
+  `slain` → `Reward`, `usurper`, `reveal`, `took_silver`), `choose_lesson` from the hero's most
+  used answer (rank ≥ 3), `Lesson`'s data (`startups`/`hold`, `prefer`, `waits_after_leap`,
+  `shield_wear`, `elixir_scale`, `evades_finisher`), `Rival::dress` (health +8%/rank, Unflinching
+  +15 armor, old wound's poise), `EncounterTracker` (folds the war log into answers and deeds),
+  `bark` by nature and memory, `counsel_line_for` (true by construction).
+* `logic/war/save.rs`: `WarSave`, the sectioned `vh.warband` line
+  (`v1 ledger:…|generals:…|lies:N|counsel:…`, unknown sections kept). Sections must not hold '|'.
+* `game/ledger.rs`: `Warband` on `Game` (`warband`), written with every `write_run`, wiped by
+  Start over, loaded only when a run is saved; `meet_rival`, `rival_bark`, `promote_rival`,
+  `rival_fought`, THE LEDGER in the pause menu, capture hooks `ledger` and `rival:N`.
+* `render/hud/ledger.rs`: the name card beside the rival (2.5 s), and `draw_ledger_board(o,
+  ledger, rect, t, time)` (pinned notes, portraits from each breed's rig by `sprite_from`), shown
+  full-screen from the pause menu; the War Table hosts the same function.
+* Tests: `names_are_deterministic_and_of_the_breeds_folklore`,
+  `nine_live_rivals_at_most_and_a_tenth_replaces_the_lowest_rank`,
+  `the_lesson_comes_from_the_heros_most_used_answer`,
+  `every_rivals_lesson_changes_choices_not_frame_data`, `the_old_man_never_lies` (200 rivals),
+  `a_rival_remembers_and_says_so`, `the_tracker_folds_a_fight_into_answers_and_deeds`,
+  `a_ledger_survives_the_save`, `the_warband_survives_the_save_file`,
+  `the_ledger_opens_from_the_pause_menu_and_is_part_of_the_run`, and others.
+* Left for the integrator: rivals as pack leaders in `raise_packs`, trackers fed in `update_war`,
+  lessons applied where the duelist thinks and begins (`game/brawl.rs`), the 0.5× dilation on
+  meeting, trophies on the workshop's wall, the `--rivals` harness, F10, a Map stop for the rival
+  yard.

@@ -258,7 +258,7 @@ fn the_menus_can_quit() {
     assert_eq!(g.screen, Screen::Title);
 
     // Pause offers Resume / the view / slow motion / the shake / Call the Old Man / Controller / Map /
-    // Quit to Title / Quit Game; clicking a button picks it.
+    // the Ledger / Quit to Title / Quit Game; clicking a button picks it.
     let mut g = playing();
     g.input.inject(Action::Pause);
     g.update(crate::app::STEP);
@@ -273,6 +273,7 @@ fn the_menus_can_quit() {
             MenuItem::CallOldMan,
             MenuItem::Controls,
             MenuItem::Map,
+            MenuItem::Ledger,
             MenuItem::QuitToTitle,
             MenuItem::Quit
         ]
