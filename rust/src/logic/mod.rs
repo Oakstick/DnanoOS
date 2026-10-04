@@ -19,6 +19,7 @@ pub mod level;
 pub mod levels;
 pub mod mover;
 pub mod pathing;
+pub mod pit;
 pub mod progression;
 pub mod projectile;
 pub mod realms;

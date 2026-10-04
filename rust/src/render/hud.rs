@@ -26,13 +26,14 @@ mod guide;
 mod ledger;
 mod map;
 mod mastery;
+mod pit;
 mod ring;
 mod shop;
 mod war;
 
 pub use controls::controls_tab_rects;
 pub use ledger::draw_ledger_board;
-pub use map::map_rects;
+pub use map::{map_cols, map_rects};
 mod story;
 mod voices;
 use crate::logic::angels::Archangel;
@@ -278,6 +279,17 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 ledger::draw_ledger_screen(o, g, t);
             }
         }
+        Screen::Won if g.in_pit() => draw_screen(
+            o,
+            t,
+            &[
+                line("THE BOTTOM OF THE PIT", 2.0, GOLD),
+                line(format!("{} rode the platform down through all seven levels.", g.hero_kind.name()), 0.9, SAND),
+                line(format!("Gold {}   Lives left {}", g.score.score, g.score.lives), 0.9, TEXT),
+                line("Enter, click or tap", 0.8, TEXT_DIM),
+            ],
+            0.7,
+        ),
         Screen::Won => draw_screen(
             o,
             t,
@@ -591,6 +603,9 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     } else if g.in_run() {
         // The realm's own gauges, stacked beneath the panel (its last row holds the purse).
         draw_run_meters(o, g, t, rc, margin + band + small * 1.1, small);
+    } else if g.in_pit() {
+        // Who will ride down, and who is still to come.
+        pit::draw_status(o, g, rc, ty, margin + band + small * 1.1, small);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);
@@ -659,6 +674,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
 
     draw_boss_bar(o, g, t);
     court::draw_prince_bar(o, g, t);
+    pit::draw_clock(o, g, t);
 
     // Frenzy window, centered along the top edge.
     if g.frenzy.active() {
@@ -1121,6 +1137,8 @@ fn where_line(g: &Game) -> String {
         "THE VAULTS OF MAMMON: TAKE ALL YOU CAN CARRY, AND SEE WHAT IT COSTS YOU AT THE FAR PORTAL".to_string()
     } else if g.theme().is_gym() {
         "ONE OF EVERY FOE, STAGE BY STAGE: THEY RISE AGAIN WHEN THEY FALL".to_string()
+    } else if let Some((level, ..)) = g.pit_status() {
+        format!("THE PIT, LEVEL {level} OF 7: RIDE THE PLATFORM DOWN, AND LEAVE WHAT YOU CAN ON THE LEDGE")
     } else if let Some(line) = g.run_where().filter(|_| !g.arena()) {
         line
     } else if let Some(sin) = g.realm {

@@ -4,13 +4,14 @@
 //! realm (`game::realm`); a realm he has cleared keeps its doors shut with
 //! its key in the lock. With all seven keys the seal breaks: the ground
 //! shakes, the wall of fire round the volcano dies and four causeways rise
-//! out of the lava to the House of the Devil.
+//! out of the lava to the House of the Devil, whose door stands open:
+//! walking into it leads down into the Pit (`game::pit`).
 
 use super::{Banner, Game};
 use crate::audio::Sfx;
 use crate::logic::hub::{self, Gate};
 use crate::logic::sins::ALL_SINS;
-use crate::logic::types::{dist_sq, Tile, V};
+use crate::logic::types::{dist_sq, Tile, P, V};
 
 /// Seconds for a portal's doors to swing fully open.
 const DOOR_SECONDS: f64 = 0.9;
@@ -119,19 +120,27 @@ impl Game {
                 self.audio.play(Sfx::Whoosh);
             }
         }
-        // At the House's door, once the way is open.
+        // At the House's door, once the way is open: it stands open, and walking into it leads down
+        // into the Pit.
         let door = hub::house_door();
         let step = V::new(door.x as f64, door.y as f64 + 1.0);
-        if h.seal >= 1.0 && dist_sq(hp, step) < 2.0 && h.hint <= 0.0 {
+        let at_door = h.seal >= 1.0 && self.hero.alive && dist_sq(hp, step) < 2.0;
+        if at_door && h.hint <= 0.0 {
             h.hint = 4.0;
-            self.audio.play(Sfx::Denied);
+            self.audio.play(Sfx::DoorGrind);
             self.juice.banner = Some(Banner {
                 text: "THE HOUSE OF THE DEVIL".into(),
-                sub: "KRAMPUS AND HIS FATHER WAIT WITHIN   THEIR DOORS OPEN LATER".into(),
+                sub: "ITS DOOR STANDS OPEN   WALK IN".into(),
                 color: 0xff3a2a,
                 life: 3.0,
                 max: 3.0,
             });
+        }
+        if at_door && self.hero.occupied() == P::new(door.x, door.y + 1) && self.hero.aim().y < -0.5 {
+            self.hub = Some(h);
+            self.view.shake(0.3);
+            self.enter_pit();
+            return;
         }
         self.hub = Some(h);
     }

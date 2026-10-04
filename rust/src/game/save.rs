@@ -50,6 +50,8 @@ pub enum Stage {
     SinShop(Sin),
     /// The gym, with one of every foe.
     Gym,
+    /// At the start of level `n` (1 to 7) of the Pit.
+    Pit(u8),
 }
 
 /// A checkpoint of the adventure under way.
@@ -78,6 +80,7 @@ impl Run {
             Stage::Court(s) => ('c', s.index()),
             Stage::SinShop(s) => ('e', s.index()),
             Stage::Gym => ('g', 0),
+            Stage::Pit(n) => ('p', n as usize),
         };
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
@@ -102,6 +105,7 @@ impl Run {
             "c" => Stage::Court(*SINS.get(n)?),
             "e" => Stage::SinShop(*SINS.get(n)?),
             "g" => Stage::Gym,
+            "p" if (1..=crate::logic::pit::LEVELS as usize).contains(&n) => Stage::Pit(n as u8),
             _ => return None,
         };
         let score = f.next()?.parse().ok()?;
@@ -141,6 +145,7 @@ impl Game {
             Stage::Court(s) => format!("the court of {}", s.prince()),
             Stage::SinShop(_) => "the old man's wares".to_string(),
             Stage::Gym => "the gym".to_string(),
+            Stage::Pit(n) => format!("level {n} of the Pit"),
         };
         Some(format!("{}, {place}", run.hero.name()))
     }
@@ -229,6 +234,10 @@ impl Game {
                 self.load_gym();
                 self.enter(Screen::Ready);
             }
+            Stage::Pit(n) => {
+                self.load_pit(n);
+                self.enter(Screen::Ready);
+            }
         }
         // Back into play: the camera is chosen first.
         if self.screen == Screen::Ready {
@@ -311,6 +320,7 @@ mod tests {
             Run { hero: HeroKind::Miyamoto, stage: Stage::Court(Sin::Lust), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
             Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01 },
             Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0 },
+            Run { hero: HeroKind::Mehmed, stage: Stage::Pit(4), score: 77, lives: 2, belt: vec![PotionKind::Health], sins: 0x7f },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));
@@ -319,5 +329,6 @@ mod tests {
         assert_eq!(Run::decode("v1 1 d 2 450 3 -").map(|r| (r.stage, r.sins)), Some((Stage::Dungeon(2), 0)));
         assert_eq!(Run::decode(""), None, "a wiped save holds no run");
         assert_eq!(Run::decode("v1 7 d 0 0 3 -"), None);
+        assert_eq!(Run::decode("v2 0 p 8 0 3 - 127"), None, "the Pit has seven levels");
     }
 }

@@ -76,6 +76,9 @@ impl Game {
         self.level = parse_level(&data);
         self.vault = None;
         self.run = None;
+        // (The Pit lays its level out once it is loaded: `pit::load_pit`.)
+        self.pit = None;
+        let pit_level = data.theme.is_pit();
         if let Some(mode) = self.spar.as_mut().and_then(|s| s.camera_before.take()) {
             self.view.camera_mode = mode;
         }
@@ -105,6 +108,9 @@ impl Game {
         } else if self.theme().is_gym() {
             // In the gym he arrives at the west end, facing the foes.
             self.start_facing = Dir::Right;
+        } else if pit_level {
+            // In the Pit he comes in on the lip, facing the platform.
+            self.start_facing = Dir::Up;
         } else if vault_level || run_level {
             // In the Vaults of Mammon he comes through the west portal, facing into the antechamber
             // (and in the realms after them through their own portal: `enter_run` turns him).
@@ -175,7 +181,11 @@ impl Game {
         // No foes in a boss arena (but the boss), nor in the Portals of Hell; the gym's stand at their posts.
         let hell = self.theme().is_hub();
         let gym = self.theme().is_gym();
-        let specs = if self.level.data.boss || hell || gym || vault_level || run_level { Vec::new() } else { self.dungeon_cast(index) };
+        let specs = if self.level.data.boss || hell || gym || vault_level || run_level || pit_level {
+            Vec::new()
+        } else {
+            self.dungeon_cast(index)
+        };
         self.enemies = specs
             .iter()
             .enumerate()
@@ -245,7 +255,8 @@ impl Game {
         self.poison = (0, 0.0, 0.0);
         self.fires.clear();
         self.spirits.clear();
-        self.relic_shrine = if self.level.data.boss || hell || gym || vault_level || run_level { None } else { self.hidden_shrine_spot() };
+        self.relic_shrine =
+            if self.level.data.boss || hell || gym || vault_level || run_level || pit_level { None } else { self.hidden_shrine_spot() };
         self.spawn_timer = SPAWN_FIRST;
         self.spawned = 0;
         if let Some(g) = self.level.gate {
@@ -345,6 +356,7 @@ impl Game {
         self.reset_run();
         self.reset_court();
         self.reset_general();
+        self.reset_pit();
     }
 
     pub(super) fn start_game(&mut self) {

@@ -523,6 +523,10 @@ impl Bot {
         if let Some(p) = self.banquet(g, soonest.map(|t| t.t), &mut pad) {
             return p;
         }
+        // The Pit: onto the platform before it sinks.
+        if let Some(p) = self.pit_board(g, hp) {
+            return p;
+        }
         // Ragnar's War Cry (his mastery's fourth rank): the expert cries when a body foe stands about
         // him (not reeling) and no other kind is left to strike him in it, and nothing it has seen
         // lands before the cry is done.
@@ -583,6 +587,7 @@ impl Bot {
             }
         }
         let foes = if hunting.is_empty() { all } else { hunting };
+        let foes = self.pit_targets(g, foes);
         let openness = |d: &crate::logic::combat::Duelist| {
             if Self::belphegor_asleep(d) || d.f.vulnerable() || d.f.reeling().is_some() {
                 0
@@ -1874,4 +1879,164 @@ impl Bot {
         }
         Some(stand)
     }
+}
+
+// ------------------------------------------------------------------ the Pit
+
+/// Seconds before the platform sinks that each skill makes for it from the ledge (the novice, a
+/// masher, never looks at the clock).
+const BOARD_AT: [f64; 3] = [0.0, 4.0, 7.0];
+
+impl Bot {
+    /**
+     * The Pit (FINALE.md §2): with the platform about to sink and the bot on the ledge, the adept and
+     * the expert walk onto it (the expert sooner), well in from its edge; the guard and the dodges
+     * still come first. The novice leaps after it at zero, and lands hurt.
+     */
+    fn pit_board(&mut self, g: &Game, hp: V) -> Option<PadState> {
+        let (_, left, _, _, _) = g.pit_status()?;
+        let lead = BOARD_AT[self.skill as usize];
+        let r = crate::logic::pit::platform();
+        let (lo, hi) = (V::new(r.x0 as f64 + 0.3, r.y0 as f64 + 0.3), V::new(r.x1 as f64 - 0.3, r.y1 as f64 - 0.3));
+        let aboard = hp.x >= lo.x && hp.x <= hi.x && hp.y >= lo.y && hp.y <= hi.y;
+        if lead <= 0.0 || left > lead || left <= 0.0 || aboard {
+            return None;
+        }
+        let to = V::new(hp.x.clamp(lo.x + 0.6, hi.x - 0.6), hp.y.clamp(lo.y + 0.6, hi.y - 0.6));
+        let dir = self.way(g, hp, to);
+        self.attack_down = false;
+        Some(PadState { left: (dir.x as f32, dir.y as f32), ..PadState::default() })
+    }
+
+    /// While the bell tolls the expert strikes first at what stands on the platform, so that as
+    /// little as it can rides down with it.
+    fn pit_targets<'a>(&self, g: &Game, foes: Vec<&'a crate::logic::combat::Duelist>) -> Vec<&'a crate::logic::combat::Duelist> {
+        let Some((_, left, on, _, _)) = g.pit_status() else { return foes };
+        if self.skill != Skill::Expert || left > crate::logic::pit::BELL_SECONDS || on == 0 {
+            return foes;
+        }
+        let aboard: Vec<_> = foes.iter().copied().filter(|d| crate::logic::pit::on_platform(d.pos)).collect();
+        if aboard.is_empty() {
+            foes
+        } else {
+            aboard
+        }
+    }
+}
+
+/// How a bot's ride down the Pit went: each level's tally, whether it reached the bottom or its lives
+/// ran out, the lives lost, seconds in all, the fight's numbers, and the most foes standing at once.
+#[derive(Clone, Debug, Default)]
+pub struct PitRide {
+    pub levels: Vec<super::pit::LevelTally>,
+    pub bottom: bool,
+    pub game_over: bool,
+    pub deaths: u32,
+    pub secs: f64,
+    pub stats: BoutStats,
+    pub peak: usize,
+    /// The sim's cost per step (ms): its mean, its slowest, and the mean with eight or more standing.
+    pub step_ms: (f64, f64, f64),
+}
+
+/// A bot rides the Pit down from level `from` until it reaches the bottom, its lives run out, or
+/// `limit` seconds pass.
+pub fn pit_ride(skill: Skill, seed: u32, loadout: Option<Loadout>, from: u8, limit: f64) -> PitRide {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Pit(from));
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    // (It plays from the top view, as in the ring and the vaults: its stick is the world's way round.)
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = PitRide::default();
+    let mut t = 0.0;
+    let (mut sum, mut n, mut crowd, mut crowded) = (0.0, 0u32, 0.0, 0u32);
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        let clock = web_time::Instant::now();
+        g.update(step);
+        let ms = clock.elapsed().as_secs_f64() * 1e3;
+        (sum, n) = (sum + ms, n + 1);
+        out.step_ms.1 = out.step_ms.1.max(ms);
+        if g.pit_standing() >= 8 {
+            (crowd, crowded) = (crowd + ms, crowded + 1);
+        }
+        t += step;
+        out.peak = out.peak.max(g.pit_standing());
+        match g.screen {
+            super::Screen::GameOver => {
+                out.game_over = true;
+                break;
+            }
+            super::Screen::Won => {
+                out.bottom = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+    }
+    out.secs = t;
+    out.step_ms.0 = sum / n.max(1) as f64;
+    out.step_ms.2 = crowd / crowded.max(1) as f64;
+    out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
+    out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.levels = g.pit.as_ref().map(|p| p.tallies.clone()).unwrap_or_default();
+    out
+}
+
+/// `--pit SKILL TIER SEED [--pit-level N]`: the ride, level by level.
+pub fn pit_report(skill: Skill, tier: u8, seed: u32, from: u8) -> String {
+    use std::fmt::Write;
+    let kit = Some(Loadout::all(HeroKind::Ragnar, tier));
+    let started = web_time::Instant::now();
+    let r = pit_ride(skill, seed, kit, from, 1500.0);
+    let wall = started.elapsed().as_secs_f64();
+    let mut out = format!("THE PIT {skill:?} tier {tier} seed {seed} from level {from}\n");
+    out += "level  secs  kills  rode in  rode out  left  taken  falls  leapt\n";
+    for l in &r.levels {
+        let _ = writeln!(
+            out,
+            "{:>5}  {:>4.0}  {:>5}  {:>7}  {:>8}  {:>4}  {:>5.0}  {:>5}  {:>5}",
+            l.level,
+            l.secs,
+            l.kills,
+            l.riders_in,
+            l.riders_out,
+            l.left,
+            l.taken,
+            l.falls,
+            if l.leapt { "yes" } else { "no" }
+        );
+    }
+    let end = if r.bottom {
+        "reached the bottom"
+    } else if r.game_over {
+        "game over"
+    } else {
+        "out of time"
+    };
+    let _ = writeln!(
+        out,
+        "{end}: {} lives lost, {:.0} s, {} kills, {:.0} taken, {} overlaps, at most {} standing ({:.1} s to run)",
+        r.deaths, r.secs, r.stats.kills, r.stats.taken, r.stats.overlaps, r.peak, wall
+    );
+    let _ = writeln!(
+        out,
+        "sim per step (120 a second): mean {:.3} ms, {:.3} ms with eight or more standing, slowest {:.2} ms",
+        r.step_ms.0, r.step_ms.2, r.step_ms.1
+    );
+    out
 }

@@ -182,6 +182,8 @@ impl WorldView {
             a
         } else if let Some(a) = self.run_atmosphere(s) {
             a
+        } else if let Some(a) = self.pit_atmosphere() {
+            a
         } else if self.hell {
             hell::hell_atmosphere()
         } else if self.meadow {
@@ -206,6 +208,7 @@ impl WorldView {
             && self.vault.is_none()
             && self.run_view.is_none()
             && self.court.is_none()
+            && self.pit.is_none()
         {
             let a = &mut f.atmosphere;
             a.ambient *= 1.0 + 3.0 * nv;
@@ -244,6 +247,8 @@ impl WorldView {
             haze(0.008, 2.5)
         } else if let Some((density, falloff)) = self.court_haze() {
             haze(density, falloff)
+        } else if self.pit.is_some() {
+            haze(pit::HAZE.0, pit::HAZE.1)
         } else if let Some(r) = &self.run_view {
             match r {
                 realms::RunView::Sloth(_) => haze(0.06, 1.2),
@@ -270,7 +275,8 @@ impl WorldView {
         let hp = hero.pos();
         let (hx, hz) = (hp.x as f32, hp.y as f32);
         let bob = if hero.airborne() { 0.0 } else { hero.motion as f32 * self.hero_phase.cos().abs() * 0.05 };
-        let hero_pos = Vec3::new(hx, hero.altitude as f32 * STEP + bob, hz);
+        // (In the Pit, sunk with the platform on its way down.)
+        let hero_pos = Vec3::new(hx, hero.altitude as f32 * STEP + bob - self.pit_sink(), hz);
         let hero_group = Mat4::from_translation(hero_pos) * Mat4::from_rotation_y(self.hero_yaw);
         let blink = hero.invulnerable() && !hero.invincible() && ((time * 16.0).floor() as i64).rem_euclid(2) == 0;
         let ghost = hero.invisible();
@@ -742,6 +748,10 @@ impl WorldView {
             // A realm after the vaults: its own sky and life, no sea of cloud, no fireflies.
             f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
             self.emit_run(s, time, hero_pos, f);
+        } else if self.pit.is_some() {
+            // The Pit: indoors, its shaft going on up and down into the dark.
+            f.bounds = Vec4::new(-0.5, -0.5, grid.width as f32 - 0.5, grid.height as f32 - 0.5);
+            self.emit_pit(s, time, hero_pos, f);
         } else if !self.crypt {
             // (The vaults are underground: no sea of cloud round them.)
             emit_cloud_sea(grid, f, self.cam_pos);
@@ -763,7 +773,7 @@ impl WorldView {
             lin(MOTE)
         };
         for (i, b) in self.mote_base.iter().enumerate() {
-            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() || self.court.is_some() {
+            if self.meadow || self.hell || self.vault.is_some() || self.run_view.is_some() || self.court.is_some() || self.pit.is_some() {
                 break;
             }
             let fi = i as f32;

@@ -14,6 +14,7 @@
 //! - `angels`, `hub`, `realm`, `vault`, `shop`, `map`, `story`, `tour`, `select`, `controls`,
 //!   `save`: the archangels, the Portals of Hell, the realms, the Vaults of Mammon, the old man's
 //!   wares, the map, Scene I, the first-run tour, the character screen, the controller page, saves
+//! - `pit`: the Pit under the House of the Devil, ridden down level by level (FINALE.md)
 //! - `debug`: testing cheats and the capture tool's hooks
 
 mod angels;
@@ -45,6 +46,7 @@ pub mod mastery;
 mod movement;
 mod packs;
 mod pickups;
+pub mod pit;
 mod realm;
 mod realms;
 #[cfg(test)]
@@ -455,6 +457,8 @@ pub struct Game {
     pub spar: Option<sparring::Sparring>,
     /// Fighting by frame data: the hero's fighter, the threat manager, the bolts (in the gym and the vaults).
     pub brawl: Option<brawl::Brawl>,
+    /// The Pit, while he is in it: its level, its clock, its waves and what rode down (`pit`).
+    pub pit: Option<pit::PitRun>,
 }
 
 impl Game {
@@ -592,6 +596,7 @@ impl Game {
             camera_before_vault: None,
             spar: None,
             brawl: None,
+            pit: None,
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -620,6 +625,10 @@ impl Game {
     }
 
     fn tick(&mut self, dt: f64) {
+        // The Pit's platform going down: nothing fights, nothing walks.
+        if self.pit_holds(dt) {
+            return;
+        }
         let mut lap = Lap::start();
         self.update_mode_schedule(dt);
 
@@ -758,6 +767,7 @@ impl Game {
         self.update_gym(dt);
         self.update_vault(dt);
         self.update_run(dt);
+        self.update_pit(dt);
         self.update_general(dt);
         self.sim.fights += lap.lap();
         self.update_spawns(dt);

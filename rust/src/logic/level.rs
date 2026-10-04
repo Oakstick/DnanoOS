@@ -41,6 +41,9 @@ pub enum Theme {
     Court(Sin),
     /// The gym: platforms over lava, one of every foe (drawn like the Portals of Hell).
     Gym,
+    /// The Pit under the House of the Devil: seven levels of one stone cell, ridden down on its
+    /// platform (`logic::pit`).
+    Pit,
 }
 
 impl Theme {
@@ -76,6 +79,11 @@ impl Theme {
     /// The gym, with one of every foe.
     pub fn is_gym(self) -> bool {
         self == Theme::Gym
+    }
+
+    /// The Pit, the last level.
+    pub fn is_pit(self) -> bool {
+        self == Theme::Pit
     }
 
     /// The Vaults of Mammon: Greed's realm, the one built so far.

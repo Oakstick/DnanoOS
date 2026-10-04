@@ -26,6 +26,8 @@ pub enum GuidePlace {
     Court(Sin),
     /// The gym and its Sparring Ring.
     Gym,
+    /// Level `n` (1 to 7) of the Pit under the House of the Devil.
+    Pit(u8),
 }
 
 /// What he says of a place.
@@ -53,6 +55,7 @@ pub fn guide(place: GuidePlace, hero: HeroKind) -> Guide {
         GuidePlace::Realm(sin) => realm(sin, hail),
         GuidePlace::Court(sin) => court(sin, hail),
         GuidePlace::Gym => page("THE GYM", hail, GYM_TALE, GYM_TASK, GYM_WATCH),
+        GuidePlace::Pit(n) => pit(n, hail),
     }
 }
 
@@ -583,6 +586,45 @@ const GYM_WATCH: &[&str] = &[
     "A red pip marks a foe that holds an attack token. The rest wait their turn on a ring round you.",
 ];
 
+// ------------------------------------------------------------------ the Pit
+
+const PIT_TALE: &[&str] = &[
+    "under the House of the Devil there is no throne and no devil. There is only this: a prison that goes down, one stone cell for every level.",
+    "In each cell's floor a square hole, and in the hole a stone platform with a long table on it. Those above eat first; each level below finds less.",
+    "Krampus took the boy to the very bottom. Seven levels lie between you and him, and the platform is the only way down.",
+];
+
+const PIT_TASK: &[&str] = &[
+    "Every level lasts two minutes; the clock at the top counts them down. At zero the platform sinks to the next level, with you on it.",
+    "Every foe standing on the platform at zero rides down with you and joins the next level's. What stands on the ledge stays behind.",
+    "In the last fifteen seconds the bell tolls and the platform's iron glows: clear the platform, and be on it when it goes.",
+    "If you are on the ledge at zero, you leap after it and land hurt, a tenth of your health. A green cross waits on the platform as each level begins.",
+];
+
+/// What each level holds: its stage's foes, and the one thing to know of each.
+const PIT_FOES: [&str; 7] = [
+    "This level holds the restless dead of the garden: draugr, bats, vampires and bog slimes, every one of them fought blow for blow.",
+    "This level holds the witch's brood: helmeted draugr whose caps ring off your first blow, large bats, the witch, the loup-garou and the blemmyes.",
+    "This level holds the mountain's demons: the quick tengu, the rasetsu with a blade in each fist, the circling dire wolf, the jorogumo's fire, the cobra.",
+    "This level holds the yokai: the oni whose club shakes the ground, the kappa (parry it and it bows, spilling its dish), the rokurokubi, the kitsune.",
+    "This level holds the Anatolian night: the karakoncolos who roars your name, the silent tülükuş, the albastı, the cin who vanishes, the arçura.",
+    "This level holds the legends: Tepegöz (only his eye can be hurt), the gashadokuro, the ejder (never give it the second blow it begs for), the goryō.",
+    "This level holds Ragnarok: the frost giant's frostbite, Surtr's sword that leaves the floor burning, Nidhogg's venom, and Hel, who raises the dead.",
+];
+
+const PIT_WATCH: &[&str] = &[
+    "They come out of the iron doors in the walls, pack by pack. No more than ten stand here at once; the rest wait behind the doors until there is room.",
+    "The doors shut with twenty seconds left, and what is still behind them stays there. Fall, and the level begins again with what rode down with you.",
+];
+
+/// Level `n` of the Pit: its tale and task are the same at every level; what it holds is its own.
+fn pit(n: u8, hail: &str) -> Guide {
+    let n = n.clamp(1, 7);
+    let mut watch = vec![PIT_FOES[(n - 1) as usize]];
+    watch.extend_from_slice(PIT_WATCH);
+    page(&format!("THE PIT: LEVEL {n}"), hail, PIT_TALE, PIT_TASK, &watch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -598,6 +640,7 @@ mod tests {
         out.extend((0..3).map(GuidePlace::Cyclops));
         out.extend(SINS.iter().map(|&s| GuidePlace::Realm(s)));
         out.extend(SINS.iter().map(|&s| GuidePlace::Court(s)));
+        out.extend((1..=7).map(GuidePlace::Pit));
         out
     }
 
@@ -701,6 +744,25 @@ mod tests {
         assert_eq!(guide(GuidePlace::Cyclops(1), HeroKind::Ragnar).title, "THE CYCLOPS' MEADOW 2");
         for sin in SINS {
             assert_eq!(guide(GuidePlace::Realm(sin), HeroKind::Mehmed).title, sin.realm().to_uppercase());
+        }
+        assert_eq!(guide(GuidePlace::Pit(3), HeroKind::Ragnar).title, "THE PIT: LEVEL 3");
+    }
+
+    #[test]
+    fn the_pit_says_what_rides_down_and_what_each_level_holds() {
+        use crate::logic::enemy::EnemyKind;
+        for n in 1..=7u8 {
+            let g = guide(GuidePlace::Pit(n), HeroKind::Ragnar);
+            let said = g.task.join(" ").to_lowercase();
+            for fact in ["two minutes", "rides down with you", "stays behind", "a tenth of your health", "green cross", "bell"] {
+                assert!(said.contains(fact), "level {n}: the task does not say {fact:?}");
+            }
+            assert!(g.tale.iter().any(|l| l.contains("no devil")), "there is no Devil");
+            // Each level's line names some of its own stage's foes, and none of another's alone.
+            let watch = g.watch[0].to_lowercase();
+            let named = EnemyKind::of_stage(n).iter().filter(|k| watch.contains(&format!("{k:?}").to_lowercase())).count();
+            assert!(named >= 1 || n <= 2, "level {n}: {watch}");
+            assert!(g.watch.join(" ").contains("ten"), "the cap");
         }
     }
 }

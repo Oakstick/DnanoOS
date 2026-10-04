@@ -60,6 +60,7 @@ mod juice;
 mod lookdev;
 mod meadow;
 mod models;
+mod pit;
 mod realms;
 mod sanctum;
 mod select;
@@ -89,6 +90,7 @@ pub use frame::{
 pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;
 use models::{Models, RigId};
+pub use pit::PitView;
 pub use select::SelectView;
 use showcase::STAGE;
 pub use story::StoryView;
@@ -186,6 +188,8 @@ pub struct SceneState<'a> {
     pub parry_edge: Option<u16>,
     /// The general of the realm, his instruments and his orders' marks (WARBAND.md §9).
     pub general: Option<&'a crate::game::general::GeneralRun>,
+    /// The Pit, while he is in it: its level, its clock, its platform's descent.
+    pub pit: Option<PitView>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -273,6 +277,8 @@ pub struct WorldView {
     clocks: Option<court_sloth::ClocksView>,
     banquet: Option<court_gluttony::BanquetView>,
     bower: Option<court_lust::BowerView>,
+    /// The Pit, while he is in it: its level as last seen, and the level below as a set.
+    pit: Option<pit::PitScene>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -441,6 +447,7 @@ impl WorldView {
             clocks: None,
             banquet: None,
             bower: None,
+            pit: None,
             gym: false,
             water: Vec::new(),
             garden: None,
@@ -551,6 +558,7 @@ impl WorldView {
         self.tint = theme.sin().filter(|_| vault.is_none() && run.is_none()).map(|s| s.color());
         self.vault = None;
         self.run_view = None;
+        self.pit = None;
         self.clear_courts();
         // A prince's court built to its own plan: its own view and light (the rest, the stand-in meadow).
         let court = theme.sin().filter(|_| theme.is_princes_court());
@@ -606,6 +614,8 @@ impl WorldView {
             self.build_run(grid, r);
         } else if let Some(sin) = court {
             self.build_court(sin, grid);
+        } else if theme.is_pit() {
+            self.build_pit(grid);
         } else if self.hell {
             self.build_hell(grid);
         } else if meadow {
@@ -833,6 +843,7 @@ impl WorldView {
         // The vaults' gold leaves the scene as it is taken; their chests stand open.
         self.update_vault_view(s, dtf);
         self.update_run_view(s, dtf);
+        self.update_pit_view(s);
         for (i, d) in s.diamonds.iter().enumerate() {
             if d.active {
                 if let Some(a) = self.diamond_spin.get_mut(i) {

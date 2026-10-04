@@ -16,6 +16,7 @@ impl Game {
             Theme::Court(sin) => GuidePlace::Court(sin),
             Theme::Hell => GuidePlace::Hub,
             Theme::Gym => GuidePlace::Gym,
+            Theme::Pit => GuidePlace::Pit(self.pit.as_ref().map(|p| p.level).unwrap_or(1)),
             Theme::Meadow => GuidePlace::Cyclops(self.dungeon.min(2)),
             Theme::Estate => match self.dungeon {
                 0 => GuidePlace::Garden,
@@ -62,6 +63,22 @@ impl Game {
                         if rivals == 1 { "One" } else { "Some" },
                         if rivals == 1 { "waits" } else { "wait" }
                     ));
+                }
+            }
+            GuidePlace::Pit(_) => {
+                if let Some((_, left, on, waiting, came)) = self.pit_status() {
+                    let secs = left.ceil() as u32;
+                    now.push(match on {
+                        0 => format!("{secs} seconds until the platform goes down. Nothing stands on it now."),
+                        1 => format!("{secs} seconds until the platform goes down. One foe stands on it: it rides down with you if it is still there."),
+                        n => format!("{secs} seconds until the platform goes down. {n} foes stand on it: they ride down with you if they are still there."),
+                    });
+                    if waiting > 0 {
+                        now.push(format!("{waiting} are still behind the doors."));
+                    }
+                    if came > 0 {
+                        now.push(format!("{came} rode down into this level with you."));
+                    }
                 }
             }
             _ => {}
