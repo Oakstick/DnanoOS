@@ -619,7 +619,14 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - loud blossoms are quieter.
   - Its lanterns and fireflies burn amber, and the night is mist teal under the moon.
 - **The title screen and menus:**
-  - The stage is a dais of dressed stone with a copper band, and copper braziers on legs.
+  - The stage stands in a ruined sanctum (`view/sanctum.rs`, built once):
+    - a great round arch behind Ragnar, open on the moonlit mist;
+    - crumbling walls in charcoal and umber courses;
+    - pillars hung with copper and umber banners with amber sigils;
+    - pale stone hooded knights on either side;
+    - lanterns on brackets, flagstones with mossy seams, and dark pines beyond the walls.
+  - The heroes stand on a dais of dressed stone with a copper band, between copper braziers on
+    legs.
   - The trees take the garden's grade; the soul halos are gentler; the fireflies are amber and
     kept away from the camera.
   - The menu panels are charcoal with pale-stone edges and a copper rule; the gold is amber.

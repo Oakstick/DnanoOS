@@ -23,7 +23,9 @@ impl WorldView {
         // Ground: a wide platform of dark moss; behind the boys a dais of dressed stone, two
         // steps up, in the board's pale stone and charcoal, a copper band along its face.
         let platform = Mat4::from_translation(at(0.0, -0.09, 0.0)) * Mat4::from_scale(Vec3::new(14.0, 1.5, 14.0));
-        f.opaque[cyl].push(Instance::new(platform, lin(0x2a3424), 1.0, Vec3::ZERO, SHADE_LIT));
+        f.opaque[cyl].push(Instance::new(platform, lin(0x1c221c), 1.0, Vec3::ZERO, SHADE_LIT));
+        // The ruined sanctum round them (built once).
+        f.opaque[cube].extend_from_slice(sanctum::sanctum());
         for (k, (w, d, y)) in [(4.9f32, 1.9f32, 0.07f32), (4.5, 1.5, 0.2)].into_iter().enumerate() {
             for gx in 0..8 {
                 let x = -w / 2.0 + (gx as f32 + 0.5) * w / 8.0;
@@ -35,26 +37,11 @@ impl WorldView {
         }
         let band = Mat4::from_translation(at(0.0, 0.07, -0.75 + 0.955)) * Mat4::from_scale(Vec3::new(4.9, 0.03, 0.01));
         f.opaque[cube].push(Instance::new(band, lin(0x9a5b3c), 1.0, Vec3::ZERO, 13.0));
-        // A ring of trees (in the garden's graded colours), and two braziers either side of the
-        // line-up.
+        // A few dark pines beyond the walls (in the garden's graded colours, deep in shadow), and
+        // two braziers either side of the line-up.
         let tree = estate::graded(&self.models.tree);
-        for i in 0..14 {
-            let a = i as f32 / 14.0 * TAU + 0.2;
-            // Leave the camera's side of the ring open (the camera sits toward +z).
-            if a.sin() > 0.35 {
-                continue;
-            }
-            let r = 4.6 + (i % 2) as f32 * 0.9;
-            push_field(
-                &mut f.opaque[cube],
-                &tree,
-                at(a.cos() * r, 0.0, a.sin() * r),
-                a * 3.0,
-                1.9 + (i % 3) as f32 * 0.3,
-                Vec3::ONE,
-                Vec3::ZERO,
-                SHADE_LIT,
-            );
+        for (i, (x, z)) in [(-4.4f32, -4.6f32), (-2.8, -5.6), (3.0, -5.2), (4.9, -4.3), (-6.2, -3.4), (6.4, -3.6)].into_iter().enumerate() {
+            push_field(&mut f.opaque[cube], &tree, at(x, 0.0, z), i as f32 * 2.1, 2.3 + (i % 3) as f32 * 0.35, Vec3::splat(0.55), Vec3::ZERO, SHADE_LIT);
         }
         let braziers = [at(-2.9, 0.0, 0.2), at(2.9, 0.0, 0.2)];
         for p in braziers {
@@ -135,10 +122,22 @@ impl WorldView {
             f.additive.push(Instance::new(m, lin(estate::pal::FIREFLY), 0.5 + (time * 2.2 + fi).sin() * 0.3, Vec3::ZERO, SHADE_UNLIT));
         }
 
-        // Light: warm from the front for the boys' faces, a cool moon rim from behind, the braziers.
+        // The moon through the arch, and mist lying low over the flagstones.
+        glow_orb(f, at(0.0, 2.6, -9.0), 2.6, lin(estate::pal::MOONLIGHT), 0.16);
+        glow_orb(f, at(0.0, 1.4, -3.6), 1.6, lin(estate::pal::MIST_TEAL), 0.1);
+        for (k, (lift, alpha)) in [(0.08f32, 0.3f32), (0.24, 0.22), (0.48, 0.12)].into_iter().enumerate() {
+            let m = Mat4::from_translation(at(0.0, lift, -0.5)) * Mat4::from_scale(Vec3::new(13.0, 0.002, 8.0));
+            f.transparent[cube].push(Instance::new(m, lin(0x7c8a98), alpha, Vec3::new(20.0 + k as f32, lift, 0.0), SHADE_CLOUD));
+        }
+
+        // Light: warm from the front for the boys' faces, a cool moon rim from behind and above
+        // the heroes, the wall's lanterns, the braziers.
         let flicker = 1.0 + (time * 7.0).sin() * 0.05 + (time * 3.1).sin() * 0.04;
         f.lights.push(Light { pos: at(-1.2, 2.2, 3.0), color: lin(0xffc27a) * 22.0 * flicker, distance: 10.0 });
-        f.lights.push(Light { pos: at(2.6, 2.8, -2.6), color: lin(estate::pal::MOONLIGHT) * 20.0, distance: 10.0 });
+        f.lights.push(Light { pos: at(0.6, 3.4, -1.9), color: lin(estate::pal::MOONLIGHT) * 18.0, distance: 9.0 });
+        for (x, y) in sanctum::LANTERNS {
+            f.lights.push(Light { pos: at(x, y, sanctum::LANTERN_Z + 0.25), color: lin(estate::pal::LANTERN) * 3.0 * flicker, distance: 4.5 });
+        }
         f.lights.push(Light { pos: at(0.8, 2.0, 2.2), color: lin(0xfff0e0) * 5.0, distance: 6.0 });
         for p in braziers {
             f.lights.push(Light { pos: p + Vec3::new(0.0, 1.3, 0.0), color: lin(estate::pal::LANTERN) * 4.0 * flicker, distance: 5.0 });
