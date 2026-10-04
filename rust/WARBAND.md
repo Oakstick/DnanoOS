@@ -1050,3 +1050,59 @@ Built without touching `game/brawl.rs` or `logic/combat/*`; the fight's wiring i
   lessons applied where the duelist thinks and begins (`game/brawl.rs`), the 0.5× dilation on
   meeting, trophies on the workshop's wall, the `--rivals` harness, F10, a Map stop for the rival
   yard.
+
+### W8 art: the old man's workshop (set and stations), 2026-10-04
+
+* **Stations** (`game/workshop.rs`): `Station {Anvil, ShieldWall, Bench, Yard, WarTable, Trophies}`
+  over `ShopState` (a tree's tab is its station's: Anvil = Armory, ShieldWall = Shield, Bench =
+  Elixir, Yard = Path; `ShopState.board` opens the two without wares). LT/RT/Tab step through the
+  six in the order they stand, then the **loadout**, which is kept at the anvil (the whetstone is
+  there, and the patron, the outfit and the reforge are about his kit, not a seventh place). The
+  yard holds a disabled TRIALS row ("SOON"); the war table lists the seven realms' generals; the
+  trophy wall ten hooks. Esc goes to the door as before.
+* **Hooks for later phases**: `Game.workshop: WorkshopData { trophies: Vec<Trophy>, news:
+  Vec<String>, generals: [Option<GeneralCard>; 7] }` (placeholder types in `game/workshop.rs`);
+  `Game::set_quitmer_mood(QuitmerMood::{Calm, Wag, Growl}, seconds)`; `Game::go_to_station(s)`.
+  `call_old_man` opens at the war table when `news` is not empty, otherwise at the station the
+  hero left (the loadout if he left it). The old man's box shows the first news line there.
+* **Work**: every sale (`sold`) starts `ShopState.work`: at the anvil and the shield wall the old
+  man strikes three times (`STRIKES`, `Sfx::Anvil`; the last also `Sfx::Clang` and a 0.18 shake),
+  sparks off the anvil; at the bench a puff of the brew's colour; at the yard a raised hand.
+  Quitmer wags for 2.6 s.
+* **The set** (`render/view/workshop.rs`, stage `WORKSHOP` = (-240, 0, -40)): one room, 14 by 10,
+  the hearth and the weapon rack on the back wall with the anvil before them, the shield wall
+  beside them and its reforging block, the bench and shelves on the right wall, the chalk ring
+  with a sparring post and a straw dummy, the war table (the hub's 3x3 with seven sigil sockets)
+  and the Ledger's pinboard (six empty frames) on the front wall, the trophy wall (ten plaques)
+  on the left, the door with the red glow under it. Three dressings over the one layout: Norse
+  (log walls, turf roof, stone hearth, rune-carved anvil, crossed axes), Ottoman (striped tent
+  cloth, carpets, brass lamps, halberds, the kazan), Japanese (boards and tatami, shoji, a clay
+  hodo with bellows, a whetstone, a sword stand). Each is an `InstanceSet` built when first
+  wanted (about 2-4k blocks); what he owns (chains and rune seals on the sealed tiers, a lit
+  shelf under each blade he has, bottles on the shelves, his belt on the bench, sigils, notes,
+  trophies) is a second set rebuilt when it changes. The blades and shields are the armory's own
+  models of the hero played (rigs), lit if his, dimmed if not; the one in his hand and the one on
+  his arm are missing from the wall.
+* **Cast**: the old man, the hero and Quitmer walk to their places at each station (by way of the
+  open middle when it is across the room); the old man faces his work and swings a hammer drawn
+  in his free hand; Quitmer lies down when calm, half rises to wag, strains to growl.
+* **Camera**: a shot per station that frames it in the left 40% of the screen (`Spot.left`),
+  gliding between them; replaces `wares_camera`. `emit_wares` is retired (the crypt set stays
+  for Scene I). Continue, the boss, F0, the pause menu, H, and the Map all reach it through
+  `open_shop`/`call_old_man`.
+* **HUD**: the panel is named for the station ("THE ANVIL"...), the tree's per-hero title under the
+  tabs; seven tabs (labels shrink to fit); board rows and cards for the war table (each general,
+  NEWS FROM BELOW), the trophy wall and the trials.
+* **Captures**: `workshop:S` (0 anvil .. 5 trophy wall) and `stocked` (sample news, three trophies,
+  two generals). Map stop "THE OLD MAN'S WORKSHOP" (`Stage::Shop(0)`, now opening the shop).
+* **Frame time** (RTX 5070 Ti laptop, 1600x900, `--bench 300`, two runs): the old wares 3.6-4.2 ms a frame
+  (GPU 2.4-2.7); the workshop 3.7-4.9 ms (GPU 2.1-2.9), 21 rigs, 11 lights.
+* Tests: `lt_and_rt_step_round_the_six_stations_and_the_loadout`,
+  `calling_him_opens_at_the_war_table_when_he_has_news_else_where_you_left`,
+  `a_sale_at_the_anvil_rings_three_strikes_and_quitmer_wags`,
+  `the_maps_workshop_stop_opens_the_workshop`,
+  `each_station_frames_its_subject_and_keeps_the_cast_in_the_room`,
+  `the_three_dressings_build_moderate_sets`, `the_hammer_rises_and_falls_three_times`.
+* Open: the yard's preview swing at the dummy and its comparison card (needs `Kit`), the hero
+  taking up the new blade after the hammering, a walk cycle for Quitmer, a pass by eye on the
+  Ottoman kazan and the Japanese hodo at close range.

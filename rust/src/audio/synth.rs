@@ -299,7 +299,8 @@ pub const MUSIC_LOWPASS: f64 = 6200.0;
 
 impl Synth {
     pub fn new(sample_rate: f64, music_level: f64) -> Self {
-        let mut rng = Rng::from_time();
+        // (Under test the noise is the same every run, so the level checks are too.)
+        let mut rng = if cfg!(test) { Rng::new(0x5eed) } else { Rng::from_time() };
         let noise = build_noise(sample_rate, &mut rng);
         let white = (0..(sample_rate * 2.0) as usize).map(|_| (rng.next() * 2.0 - 1.0) as f32).collect();
         Self {

@@ -37,7 +37,7 @@ fn choose_view(g: &mut Game) {
     g.update(crate::app::STEP);
 }
 
-fn playing() -> Game {
+pub(super) fn playing() -> Game {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
     start_from_title(&mut g);
@@ -310,8 +310,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 2 + 2,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, and Scene I's two places"
+        3 + 2 * 7 + 1 + 2 + 2 + 1,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places and the old man's workshop"
     );
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
     assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");

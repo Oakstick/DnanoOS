@@ -131,6 +131,7 @@ impl Game {
             souls: s.souls,
         });
         self.view.forge = self.screen == Screen::Shop;
+        self.view.workshop = self.view.forge.then(|| self.workshop_view());
         self.view.tour = self.tour.as_ref().filter(|_| self.screen == Screen::Tour).map(|t| (t.stop().target, t.t as f32, t.index));
         self.view.focus = self
             .boss

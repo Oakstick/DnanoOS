@@ -60,6 +60,7 @@ mod spring;
 mod story;
 mod vault;
 mod vault_decor;
+mod workshop;
 
 pub use animation::SLASH_SECONDS;
 use animation::{EnemyView, Pose, TURN_RATE_HERO};
@@ -328,6 +329,9 @@ pub struct WorldView {
     pub focus: Option<Vec3>,
     /// The shop: the camera looks into the blacksmith's forge.
     pub forge: bool,
+    /// The old man's workshop while the shop is up (the station, what the hero owns, the work).
+    pub workshop: Option<crate::game::WorkshopView>,
+    shop_stage: workshop::WorkshopStage,
     /// The character screen, while it is up.
     pub select: Option<SelectView>,
     /// The character screen's cavern (built once), how far each hero has stepped forward,
@@ -457,6 +461,8 @@ impl WorldView {
             recentering: false,
             focus: None,
             forge: false,
+            workshop: None,
+            shop_stage: Default::default(),
             select: None,
             select_set: InstanceSet::new(select::cavern()),
             select_step: [0.0, 1.0, 0.0],
@@ -800,6 +806,7 @@ impl WorldView {
         }
         self.update_meadow(dtf);
         self.update_forge_fx(dtf, hero);
+        self.update_workshop(dtf);
         self.update_angel_fx(dtf);
         self.update_camera(dtf, s.grid, hero);
         if !self.showcase {

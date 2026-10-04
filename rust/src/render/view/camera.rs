@@ -361,10 +361,11 @@ impl WorldView {
             let base = select::SELECT_STAGE;
             (base + Vec3::new(self.select_cam + sway, 1.0, 3.35), base + Vec3::new(self.select_cam * 1.15, 0.78, 0.0), 6.0)
         } else if self.forge {
-            // The old man's crypt fills the left of the screen; his wares sit on the right.
+            // The old man's workshop: the station he stands at fills the left of the screen, the
+            // wares sit on the right; from station to station the camera glides.
             self.showcase_angle += dt;
-            let (eye, look) = self.wares_camera(self.showcase_angle);
-            (eye, look, 6.0)
+            let (eye, look) = self.workshop_camera(self.showcase_angle);
+            (eye, look, 3.2)
         } else if self.showcase {
             // The title diorama: the camera sways gently in front of Ragnar.
             self.showcase_angle += dt;
@@ -421,7 +422,7 @@ impl WorldView {
         } else if let Some(sel) = self.select {
             select::slot_feet(sel.index, 1.0) + Vec3::new(0.0, 0.7, 0.0)
         } else if self.forge {
-            story::GATEWAY + Vec3::new(-0.4, 0.8, -0.6)
+            self.workshop_focus()
         } else if self.showcase {
             STAGE + Vec3::new(0.0, 0.6, 0.3)
         } else {
@@ -611,7 +612,7 @@ impl WorldView {
         } else if self.select.is_some() {
             (select::SELECT_STAGE + Vec3::new(0.0, 0.6, -0.6), 6.5)
         } else if self.forge {
-            (story::GATEWAY + Vec3::new(-0.5, 1.0, -0.5), 5.5)
+            self.workshop_shadow_box()
         } else if self.showcase {
             (STAGE, 5.0)
         } else {

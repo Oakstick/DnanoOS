@@ -55,6 +55,7 @@ mod tour;
 mod vault;
 mod viewpick;
 pub mod war;
+pub mod workshop;
 
 pub use combat::Spirit;
 pub use court::PrinceBar;
@@ -70,6 +71,7 @@ pub use shop::{RowKind, ShopAction, ShopButton, ShopRow, ShopState};
 pub use story::{Story, STORY_FADE, TYPE_DELAY};
 pub use tour::{Tour, TourArt, TourStop, TOUR_STOP_SECONDS};
 pub use vault::Hoard;
+pub use workshop::{GeneralCard, QuitmerMood, Station, Trophy, WorkshopData, WorkshopView};
 
 use crate::audio::{AudioManager, Sfx};
 use crate::input::{Action, Input};
@@ -352,6 +354,8 @@ pub struct Game {
     pub belt: Vec<PotionKind>,
     pub belt_index: usize,
     pub shop: ShopState,
+    /// What the old man's workshop shows of the war below (trophies, news, the generals known).
+    pub workshop: WorkshopData,
     /// Seconds the boss has left bleeding, and until its next bite.
     boss_bleed: f64,
     bleed_tick: f64,
@@ -521,6 +525,7 @@ impl Game {
             belt: Vec::new(),
             belt_index: 0,
             shop: ShopState::default(),
+            workshop: WorkshopData::default(),
             boss_bleed: 0.0,
             bleed_tick: 0.0,
             decoy: None,
