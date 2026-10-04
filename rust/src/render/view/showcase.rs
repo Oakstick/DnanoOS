@@ -41,7 +41,16 @@ impl WorldView {
         // two braziers either side of the line-up.
         let tree = estate::graded(&self.models.tree);
         for (i, (x, z)) in [(-4.4f32, -4.6f32), (-2.8, -5.6), (3.0, -5.2), (4.9, -4.3), (-6.2, -3.4), (6.4, -3.6)].into_iter().enumerate() {
-            push_field(&mut f.opaque[cube], &tree, at(x, 0.0, z), i as f32 * 2.1, 2.3 + (i % 3) as f32 * 0.35, Vec3::splat(0.55), Vec3::ZERO, SHADE_LIT);
+            push_field(
+                &mut f.opaque[cube],
+                &tree,
+                at(x, 0.0, z),
+                i as f32 * 2.1,
+                2.3 + (i % 3) as f32 * 0.35,
+                Vec3::splat(0.55),
+                Vec3::ZERO,
+                SHADE_LIT,
+            );
         }
         let braziers = [at(-2.9, 0.0, 0.2), at(2.9, 0.0, 0.2)];
         for p in braziers {
@@ -137,7 +146,11 @@ impl WorldView {
         f.lights.push(Light { pos: at(-1.2, 2.2, 3.0), color: lin(0xffc27a) * 22.0 * flicker, distance: 10.0 });
         f.lights.push(Light { pos: at(0.6, 3.4, -1.9), color: lin(estate::pal::MOONLIGHT) * 18.0, distance: 9.0 });
         for (x, y) in sanctum::LANTERNS {
-            f.lights.push(Light { pos: at(x, y, sanctum::LANTERN_Z + 0.25), color: lin(estate::pal::LANTERN) * 3.0 * flicker, distance: 4.5 });
+            f.lights.push(Light {
+                pos: at(x, y, sanctum::LANTERN_Z + 0.25),
+                color: lin(estate::pal::LANTERN) * 3.0 * flicker,
+                distance: 4.5,
+            });
         }
         f.lights.push(Light { pos: at(0.8, 2.0, 2.2), color: lin(0xfff0e0) * 5.0, distance: 6.0 });
         for p in braziers {

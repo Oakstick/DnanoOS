@@ -262,7 +262,12 @@ fn texture(device: &wgpu::Device, label: &str, w: u32, h: u32) -> wgpu::Texture 
 
 fn upload(queue: &wgpu::Queue, tex: &wgpu::Texture, w: u32, y0: u32, rows: u32, rgba: &[u8]) {
     queue.write_texture(
-        wgpu::TexelCopyTextureInfo { texture: tex, mip_level: 0, origin: wgpu::Origin3d { x: 0, y: y0, z: 0 }, aspect: wgpu::TextureAspect::All },
+        wgpu::TexelCopyTextureInfo {
+            texture: tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d { x: 0, y: y0, z: 0 },
+            aspect: wgpu::TextureAspect::All,
+        },
         rgba,
         wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * w), rows_per_image: Some(rows) },
         wgpu::Extent3d { width: w, height: rows, depth_or_array_layers: 1 },
@@ -307,7 +312,11 @@ impl Splash {
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                     count: None,
                 },
                 tex_entry(1),

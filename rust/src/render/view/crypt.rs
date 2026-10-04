@@ -258,7 +258,12 @@ impl WorldView {
                     Quat::from_rotation_x(tilt * 0.5) * Quat::from_rotation_z(tilt),
                     Vec3::new(xf, top + 0.055 - drop, yf) + o,
                 );
-                block_m(&mut self.static_cubes, m, jit(CHARCOAL[(hash(hx + 3.0 + k as f64, hy) * 3.0) as usize % 3], r as f64, 0.08) * 0.85, SHADE_STONE);
+                block_m(
+                    &mut self.static_cubes,
+                    m,
+                    jit(CHARCOAL[(hash(hx + 3.0 + k as f64, hy) * 3.0) as usize % 3], r as f64, 0.08) * 0.85,
+                    SHADE_STONE,
+                );
             }
             if !ruined {
                 self.wall_growth(xf, yf, top, hx, hy);
@@ -478,11 +483,32 @@ impl WorldView {
                 };
                 let w = 0.88 + (h as f32 - 0.5) * 0.04;
                 let y0 = -0.2 + k as f32 * course_h;
-                block(out, t + Vec3::new(0.0, y0 + course_h / 2.0, 0.0), Vec3::new(w, course_h - 0.03, w), (h as f32 - 0.5) * 0.04, c, SHADE_STONE);
+                block(
+                    out,
+                    t + Vec3::new(0.0, y0 + course_h / 2.0, 0.0),
+                    Vec3::new(w, course_h - 0.03, w),
+                    (h as f32 - 0.5) * 0.04,
+                    c,
+                    SHADE_STONE,
+                );
             }
             // A heavy cap, and verdigris down the stone where the water runs.
-            block(out, t + Vec3::new(0.0, tower_top + 0.07, 0.0), Vec3::new(0.98, 0.14, 0.98), 0.0, jit(CHARCOAL[0], gx, 0.05) * 0.8, SHADE_STONE);
-            block(out, t + Vec3::new(side * 0.2, tower_top - 0.5, 0.45), Vec3::new(0.12, 0.9, 0.02), 0.0, jit(VERDIGRIS, gy, 0.1), SHADE_STONE);
+            block(
+                out,
+                t + Vec3::new(0.0, tower_top + 0.07, 0.0),
+                Vec3::new(0.98, 0.14, 0.98),
+                0.0,
+                jit(CHARCOAL[0], gx, 0.05) * 0.8,
+                SHADE_STONE,
+            );
+            block(
+                out,
+                t + Vec3::new(side * 0.2, tower_top - 0.5, 0.45),
+                Vec3::new(0.12, 0.9, 0.02),
+                0.0,
+                jit(VERDIGRIS, gy, 0.1),
+                SHADE_STONE,
+            );
             block(out, t + Vec3::new(-side * 0.15, tower_top + 0.15, 0.25), Vec3::new(0.3, 0.04, 0.3), 0.4, lin(MOSS[1]), SHADE_SOFT);
             // A copper brazier before each tower (its flames are the gate's).
             let b = o + Vec3::new(side * 0.98, 0.0, 0.62);
@@ -503,7 +529,14 @@ impl WorldView {
         let spring = 1.15;
         let r = 0.49;
         for side in [-1.0f32, 1.0] {
-            block(out, o + Vec3::new(side * 0.53, spring / 2.0, 0.02), Vec3::new(0.2, spring, 0.4), 0.0, jit(PALE_STONE[1], gy, 0.05) * 0.8, SHADE_STONE);
+            block(
+                out,
+                o + Vec3::new(side * 0.53, spring / 2.0, 0.02),
+                Vec3::new(0.2, spring, 0.4),
+                0.0,
+                jit(PALE_STONE[1], gy, 0.05) * 0.8,
+                SHADE_STONE,
+            );
         }
         let wedges = 9;
         for k in 0..wedges {
@@ -546,7 +579,14 @@ impl WorldView {
         // The wall over the arch, in courses, up to a cornice and a stepped pale pediment.
         let wall_top = 2.25;
         for (x0, x1) in [(-0.63f32, -0.2f32), (0.2, 0.63)] {
-            block(out, o + Vec3::new((x0 + x1) / 2.0, (spring + 1.62) / 2.0, -0.03), Vec3::new(x1 - x0, 1.62 - spring, 0.32), 0.0, jit(CHARCOAL[1], gx, 0.05) * 0.85, SHADE_STONE);
+            block(
+                out,
+                o + Vec3::new((x0 + x1) / 2.0, (spring + 1.62) / 2.0, -0.03),
+                Vec3::new(x1 - x0, 1.62 - spring, 0.32),
+                0.0,
+                jit(CHARCOAL[1], gx, 0.05) * 0.85,
+                SHADE_STONE,
+            );
         }
         for k in 0..2 {
             let y0 = 1.62 + k as f32 * 0.315;
@@ -556,12 +596,26 @@ impl WorldView {
                 let shift = if k == 0 { 0.0 } else { 0.21 };
                 let a = (-0.63 + j as f32 * 0.42 + shift - 0.21 * (k as f32)).max(-0.63);
                 let b = (a + 0.42 + if k == 0 { 0.0 } else { 0.21 }).min(0.63);
-                block(out, o + Vec3::new((a + b) / 2.0, y0 + 0.155, -0.02), Vec3::new(b - a - 0.02, 0.29, 0.34 + h as f32 * 0.04), 0.0, c, SHADE_STONE);
+                block(
+                    out,
+                    o + Vec3::new((a + b) / 2.0, y0 + 0.155, -0.02),
+                    Vec3::new(b - a - 0.02, 0.29, 0.34 + h as f32 * 0.04),
+                    0.0,
+                    c,
+                    SHADE_STONE,
+                );
             }
         }
         for (k, w) in [1.36f32, 1.0, 0.6].into_iter().enumerate() {
             let c = jit(PALE_STONE[k % 2], gy + k as f64, 0.05) * (0.8 - k as f32 * 0.04);
-            block(out, o + Vec3::new(0.0, wall_top + 0.06 + k as f32 * 0.13, 0.0), Vec3::new(w, 0.13, 0.42 - k as f32 * 0.04), 0.0, c, SHADE_STONE);
+            block(
+                out,
+                o + Vec3::new(0.0, wall_top + 0.06 + k as f32 * 0.13, 0.0),
+                Vec3::new(w, 0.13, 0.42 - k as f32 * 0.04),
+                0.0,
+                c,
+                SHADE_STONE,
+            );
         }
         block(out, o + Vec3::new(0.3, wall_top + 0.14, 0.12), Vec3::new(0.4, 0.04, 0.2), 0.2, lin(MOSS[2]), SHADE_SOFT);
         // Iron sockets for the lock lamps.
@@ -866,13 +920,34 @@ impl WorldView {
         block(&mut self.static_cubes, face + out * 0.13 + Vec3::Y * 0.14, Vec3::new(0.38, 0.06, 0.1), turn, pale * 0.9, SHADE_STONE);
         for side in [-1.0f32, 1.0] {
             let across = Vec3::new(out.z, 0.0, out.x) * side * 0.08;
-            block(&mut self.static_cubes, face + out * 0.145 + across + Vec3::Y * 0.06, Vec3::new(0.05, 0.04, 0.02), turn, lin(0x0e0c0a), SHADE_LIT);
+            block(
+                &mut self.static_cubes,
+                face + out * 0.145 + across + Vec3::Y * 0.06,
+                Vec3::new(0.05, 0.04, 0.02),
+                turn,
+                lin(0x0e0c0a),
+                SHADE_LIT,
+            );
         }
         block(&mut self.static_cubes, face + out * 0.145 - Vec3::Y * 0.06, Vec3::new(0.12, 0.07, 0.02), turn, lin(0x0e0c0a), SHADE_LIT);
         // The copper lip the water runs off, green with age, and the green it has left below.
         let lip = face + out * 0.2 - Vec3::Y * 0.09;
-        block(&mut self.static_cubes, lip, if dx != 0 { Vec3::new(0.16, 0.03, 0.1) } else { Vec3::new(0.1, 0.03, 0.16) }, 0.0, lin(VERDIGRIS) * 1.1, SHADE_BRONZE);
-        block(&mut self.static_cubes, face + out * 0.065 - Vec3::Y * 0.42, Vec3::new(0.14, 0.5, 0.02), turn, jit(VERDIGRIS, hx, 0.1) * 0.8, SHADE_STONE);
+        block(
+            &mut self.static_cubes,
+            lip,
+            if dx != 0 { Vec3::new(0.16, 0.03, 0.1) } else { Vec3::new(0.1, 0.03, 0.16) },
+            0.0,
+            lin(VERDIGRIS) * 1.1,
+            SHADE_BRONZE,
+        );
+        block(
+            &mut self.static_cubes,
+            face + out * 0.065 - Vec3::Y * 0.42,
+            Vec3::new(0.14, 0.5, 0.02),
+            turn,
+            jit(VERDIGRIS, hx, 0.1) * 0.8,
+            SHADE_STONE,
+        );
         let mouth = lip + out * 0.07;
         self.spouts.push((mouth, out, foot));
         // It pools where it falls.
@@ -898,7 +973,13 @@ impl WorldView {
             let drop = mouth.y - foot - 0.03;
             let at = mouth + out * 0.06 - Vec3::Y * drop / 2.0;
             let size = if out.x != 0.0 { Vec3::new(0.002, drop, 0.1) } else { Vec3::new(0.1, drop, 0.002) };
-            f.transparent[cube_i].push(Instance::new(Mat4::from_translation(at) * Mat4::from_scale(size), lin(0xc8dce4), 0.85, Vec3::ZERO, SHADE_WATER));
+            f.transparent[cube_i].push(Instance::new(
+                Mat4::from_translation(at) * Mat4::from_scale(size),
+                lin(0xc8dce4),
+                0.85,
+                Vec3::ZERO,
+                SHADE_WATER,
+            ));
             // Where it lands: fine drops thrown up and out, and rings spreading on the pool.
             let foot_at = Vec3::new(at.x, foot + 0.035, at.z);
             for k in 0..6 {

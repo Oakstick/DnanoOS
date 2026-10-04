@@ -105,7 +105,13 @@ fn wall(s: &mut Set) {
             // Taller by the arch, lower toward the ends, and here and there a gap bitten out.
             let top = (3.1 - (x0 - ARCH_R) * 0.22 - hc * 0.5).max(0.9);
             let cx = side * (x0 + x1) / 2.0;
-            s.block(Vec3::new(cx, top / 2.0, WALL_Z - 0.35), Vec3::new(x1 - x0, top, 0.62), 0.0, jit(CHARCOAL[1], hc as f64, 0.05) * 0.7, SHADE_STONE);
+            s.block(
+                Vec3::new(cx, top / 2.0, WALL_Z - 0.35),
+                Vec3::new(x1 - x0, top, 0.62),
+                0.0,
+                jit(CHARCOAL[1], hc as f64, 0.05) * 0.7,
+                SHADE_STONE,
+            );
             let courses = (top / course).floor() as usize;
             for c in 0..courses {
                 let shift = if c % 2 == 0 { 0.0 } else { 0.22 };
@@ -143,10 +149,22 @@ fn wall(s: &mut Set) {
                 }
             }
             // A pale plinth along the foot, and moss on what is left of the top.
-            s.block(Vec3::new(cx, 0.1, WALL_Z + 0.08), Vec3::new(x1 - x0, 0.2, 0.14), 0.0, jit(PALE_STONE[1], hc as f64, 0.05) * 0.7, SHADE_STONE);
+            s.block(
+                Vec3::new(cx, 0.1, WALL_Z + 0.08),
+                Vec3::new(x1 - x0, 0.2, 0.14),
+                0.0,
+                jit(PALE_STONE[1], hc as f64, 0.05) * 0.7,
+                SHADE_STONE,
+            );
             if hc < 0.6 {
                 let mw = (x1 - x0) * (0.4 + hc * 0.5);
-                s.block(Vec3::new(cx, top + 0.02, WALL_Z - 0.3), Vec3::new(mw, 0.05, 0.45), hc * 0.3, jit(MOSS[col % 3], hc as f64, 0.1), SHADE_SOFT);
+                s.block(
+                    Vec3::new(cx, top + 0.02, WALL_Z - 0.3),
+                    Vec3::new(mw, 0.05, 0.45),
+                    hc * 0.3,
+                    jit(MOSS[col % 3], hc as f64, 0.1),
+                    SHADE_SOFT,
+                );
             }
             x0 = x1;
             col += 1;
@@ -161,7 +179,13 @@ fn arch(s: &mut Set) {
     for side in [-1.0f32, 1.0] {
         let c = jit(PALE_STONE[1], side as f64 + 2.0, 0.05) * 0.75;
         s.block(Vec3::new(side * (ARCH_R + 0.12), SPRING / 2.0, WALL_Z - 0.2), Vec3::new(0.3, SPRING, depth), 0.0, c, SHADE_STONE);
-        s.block(Vec3::new(side * (ARCH_R + 0.1), SPRING + 0.06, WALL_Z - 0.2), Vec3::new(0.42, 0.12, depth + 0.12), 0.0, c * 1.05, SHADE_STONE);
+        s.block(
+            Vec3::new(side * (ARCH_R + 0.1), SPRING + 0.06, WALL_Z - 0.2),
+            Vec3::new(0.42, 0.12, depth + 0.12),
+            0.0,
+            c * 1.05,
+            SHADE_STONE,
+        );
         s.block(Vec3::new(side * (ARCH_R + 0.12), 0.12, WALL_Z - 0.2), Vec3::new(0.42, 0.24, depth + 0.1), 0.0, c * 0.9, SHADE_STONE);
     }
     let wedges = 13;
@@ -196,8 +220,20 @@ fn arch(s: &mut Set) {
             SHADE_STONE,
         );
     }
-    s.block(Vec3::new(0.0, crown + 0.2, WALL_Z - 0.3), Vec3::new(2.0 * ARCH_R + 0.7, 0.4, 0.66), 0.0, jit(CHARCOAL[0], 1.0, 0.05) * 0.85, SHADE_STONE);
-    s.block(Vec3::new(0.0, crown + 0.46, WALL_Z - 0.3), Vec3::new(2.0 * ARCH_R + 0.95, 0.12, 0.8), 0.0, jit(PALE_STONE[1], 2.0, 0.04) * 0.75, SHADE_STONE);
+    s.block(
+        Vec3::new(0.0, crown + 0.2, WALL_Z - 0.3),
+        Vec3::new(2.0 * ARCH_R + 0.7, 0.4, 0.66),
+        0.0,
+        jit(CHARCOAL[0], 1.0, 0.05) * 0.85,
+        SHADE_STONE,
+    );
+    s.block(
+        Vec3::new(0.0, crown + 0.46, WALL_Z - 0.3),
+        Vec3::new(2.0 * ARCH_R + 0.95, 0.12, 0.8),
+        0.0,
+        jit(PALE_STONE[1], 2.0, 0.04) * 0.75,
+        SHADE_STONE,
+    );
     s.block(Vec3::new(0.35, crown + 0.54, WALL_Z - 0.25), Vec3::new(0.7, 0.05, 0.5), 0.2, lin(MOSS[1]), SHADE_SOFT);
     // A copper medallion hung on the keystone, and the dark of the way through.
     s.block(Vec3::new(0.0, SPRING + 0.12 + ARCH_R + 0.05, WALL_Z + 0.26), Vec3::new(0.2, 0.2, 0.04), PI / 4.0, lin(COPPER), SHADE_BRONZE);
