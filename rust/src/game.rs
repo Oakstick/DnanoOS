@@ -37,6 +37,7 @@ mod juice_tests;
 pub mod ledger;
 mod level;
 mod map;
+pub mod mastery;
 mod movement;
 mod packs;
 mod pickups;
@@ -323,6 +324,8 @@ pub struct Game {
     pub war: war::War,
     /// The run's Warband as saved (the Ledger of Grudges), its name card and its board.
     pub warband: ledger::Warband,
+    /// The heroes' mastery in the fight, its toast and its trials (WARBAND.md §11.1).
+    pub mastery: mastery::MasteryRun,
     /// Seconds of freeze-frame left.
     hitstop: f64,
     /// The freezes' budget, the slowing of time and the pace (`juice`); the feel's settings; and
@@ -495,6 +498,7 @@ impl Game {
             events: Vec::new(),
             war: war::War::default(),
             warband: ledger::Warband::load(),
+            mastery: mastery::MasteryRun::default(),
             want_fullscreen_toggle: false,
             menu_index: 0,
             quit_requested: false,

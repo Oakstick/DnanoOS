@@ -44,7 +44,11 @@ pub(super) fn draw_ring(o: &mut Overlay, g: &Game, t: f32) {
     if let Some(spar) = g.spar.as_ref().filter(|_| g.in_ring()) {
         draw_banner(o, g, spar, brawl, t);
         if matches!(spar.phase, BoutPhase::Won(_) | BoutPhase::Lost(_)) {
-            draw_results(o, spar, brawl, t);
+            if g.in_trial() {
+                super::mastery::draw_trial_results(o, g, t);
+            } else {
+                draw_results(o, spar, brawl, t);
+            }
         }
     }
     if brawl.readout && g.brawling() {
@@ -187,10 +191,14 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, brawl: &Brawl, t: f32
     let (sub, color) = match spar.phase {
         BoutPhase::Idle => return,
         BoutPhase::Countdown(left) => (format!("GET READY  {}", left.ceil() as u32), SAND),
-        BoutPhase::Fight => {
-            let alive = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).count();
-            (format!("{alive} LEFT  {:.1}s", brawl.stats.frames as f64 / 60.0), TEXT_DIM)
-        }
+        BoutPhase::Fight => match super::mastery::trial_line(g) {
+            Some(line) => (line, SAND),
+            None => {
+                let alive = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).count();
+                (format!("{alive} LEFT  {:.1}s", brawl.stats.frames as f64 / 60.0), TEXT_DIM)
+            }
+        },
+        BoutPhase::Won(left) | BoutPhase::Lost(left) if g.in_trial() => (format!("BACK TO THE OLD MAN IN {}", left.ceil() as u32), SAND),
         BoutPhase::Won(left) => (format!("THE NEXT BOUT IN {}", left.ceil() as u32), GOLD),
         BoutPhase::Lost(left) => (format!("AGAIN IN {}", left.ceil() as u32), 0xff6a4a),
     };

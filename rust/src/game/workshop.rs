@@ -357,7 +357,7 @@ mod tests {
             }
             assert_eq!(rows.last().map(|r| r.kind), Some(RowKind::Leave), "{s:?}: Esc goes to the door");
         }
-        // The yard holds a place for the trials, shut for now.
+        // The yard holds the trials, shut until a rank's deeds are done.
         g.go_to_station(Station::Yard);
         let trials = g.shop_rows().into_iter().find(|r| r.kind == RowKind::Trials).expect("a trials row");
         assert!(!trials.buttons[0].enabled);

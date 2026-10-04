@@ -171,6 +171,9 @@ pub struct SceneState<'a> {
     pub time_scale: f32,
     /// His fighter, where his fighting goes by frame data: his slash follows its frames.
     pub hero_fighter: Option<&'a crate::logic::combat::Fighter>,
+    /// His last parrying guard frame, when his mastery shows the parry's moment as a white edge on
+    /// the telegraphs (WARBAND.md §11.1, Miyamoto's first rank).
+    pub parry_edge: Option<u16>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
