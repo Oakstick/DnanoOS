@@ -588,8 +588,6 @@ fn kin_voice(kind: EnemyKind) -> Option<(EnemyKind, f32, f32, f32)> {
         // Gluttony's court: the gaki's, deep for the prince, thin for his swarms.
         K::Beelzebub => (K::Gaki, 1.0, 0.7, 1.0),
         K::FlySwarm => (K::Gaki, 0.8, 1.4, 0.9),
-        // Lust's court: the elf-maid's, deeper.
-        K::Asmodeus => (K::Ellepige, 1.0, 0.8, 1.0),
         _ => return None,
     })
 }
@@ -899,11 +897,39 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
         | K::Belphegor
         | K::Nightmare
         | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        | K::FlySwarm => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&breed_tell(kin, mv, hero), time, pitch, gain)
         }
+        // ---- the prince of Lust: three heads, three voices
+        K::Asmodeus => match mv {
+            // The kiss: a soft "mwah" off his lips and a sweet chime under it.
+            MoveId::BlownKiss => [kiss_smack(0.12), bell(0.18, 1046.5, 0.7, 0.03), suitor_hum(0.0, 0.5)].concat(),
+            // The thorns: brambles rustling up, and the man's low laugh.
+            MoveId::ThornLine | MoveId::ThornRing => [
+                vec![crackle(1.3).at(0.0).dur(0.55).vol(0.5).swell(0.3).hp(1800.0, 0.0)],
+                (0..5).flat_map(|i| snap(0.1 + i as f32 * 0.07, 900.0, 0.35)).collect(),
+                suitor_laugh(0.12),
+            ]
+            .concat(),
+            // The bull's head lowered: a snort and a bellow.
+            MoveId::BullCharge => vec![
+                hiss(0.9).at(0.0).dur(0.16).vol(0.8).bp(900.0, 1.5),
+                saw(96.0, 78.0).at(0.14).dur(0.6).vol(0.32).swell(0.1).hold(0.4).bp(420.0, 2.2).vib(5.0, 0.03),
+                saw(48.0, 40.0).at(0.14).dur(0.6).vol(0.12).swell(0.1).hold(0.4).lp(300.0, 1.0),
+            ],
+            // The ram's head: a hard bleat.
+            MoveId::RamButt => vec![
+                saw(250.0, 210.0).at(0.0).dur(0.42).vol(0.2).swell(0.03).hold(0.3).bp(900.0, 3.0).vib(11.0, 0.06),
+                saw(251.5, 211.0).at(0.0).dur(0.42).vol(0.08).swell(0.03).hold(0.3).bp(1700.0, 3.0).vib(11.0, 0.06),
+            ],
+            // The lance (and whatever else): the man's purr and a ring of steel drawn back.
+            _ => [
+                suitor_hum(0.0, 0.45),
+                vec![sine(1568.0, 1568.0).at(0.32).dur(0.35).vol(0.022), hiss(1.0).at(0.3).dur(0.18).vol(0.5).bp(4200.0, 6.0)],
+            ]
+            .concat(),
+        },
     };
     // A few moves add their own colour (what `tell_sfx` once played for them).
     match mv {
@@ -920,6 +946,29 @@ fn banker_laugh(at: f32) -> Vec<Layer> {
     speak(at, 118.0, &[(Onset::H, Vowel::O, 0.14, 1.0), (Onset::H, Vowel::O, 0.14, 0.94), (Onset::H, Vowel::O, 0.22, 0.88)], 0.5, false)
 }
 
+/// Asmodeus's man's head: a low, pleased laugh, falling.
+fn suitor_laugh(at: f32) -> Vec<Layer> {
+    speak(at, 132.0, &[(Onset::H, Vowel::A, 0.11, 1.08), (Onset::H, Vowel::A, 0.11, 1.0), (Onset::H, Vowel::A, 0.2, 0.9)], 0.4, false)
+}
+
+/// Asmodeus's purr: "mmm", warm and low, a breath through it.
+fn suitor_hum(at: f32, dur: f32) -> Vec<Layer> {
+    vec![
+        saw(146.8, 138.6).at(at).dur(dur).vol(0.13).swell(0.12).hold(0.5).lp(520.0, 1.2).vib(4.5, 0.012),
+        tri(293.7, 277.2).at(at).dur(dur).vol(0.05).swell(0.12).hold(0.5).vib(4.5, 0.012),
+        hiss(0.8).at(at).dur(dur).vol(0.18).swell(0.15).hold(0.3).bp(1400.0, 2.0),
+    ]
+}
+
+/// A kiss blown: lips parting, a soft smack.
+fn kiss_smack(at: f32) -> Vec<Layer> {
+    vec![
+        sine(900.0, 1500.0).at(at).dur(0.05).vol(0.07),
+        hiss(1.0).at(at).dur(0.04).vol(0.6).bp(2600.0, 3.0),
+        hiss(0.8).at(at + 0.04).dur(0.25).vol(0.3).swell(0.04).bp(1100.0, 1.2),
+    ]
+}
+
 /// A tell: the family's signature, then the breed's timbre (and for the karakoncolos, the name of
 /// the hero it calls). This replaces brawl.rs's `tell_sfx`.
 pub fn tell_for(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Recipe {
@@ -934,6 +983,7 @@ fn breed_voice(kind: EnemyKind) -> Vec<Layer> {
         // The name is a tell, not a cry: he howls like the winter wind.
         K::Karakoncolos => [growl(0.0, 70.0, 0.4, 0.12), vec![hiss(0.6).at(0.0).dur(0.5).vol(0.6).swell(0.15).bp(500.0, 1.5)]].concat(),
         K::Mammon => banker_laugh(0.0),
+        K::Asmodeus => [suitor_laugh(0.0), suitor_hum(0.4, 0.3)].concat(),
         // Bones groan; the ringing is the tell's alone.
         K::Gashadokuro => [rattle(0.0, 6, 0.04, 1500.0, 0.7), growl(0.05, 50.0, 0.4, 0.1)].concat(),
         K::Peerless => speak(0.0, 120.0, &[(Onset::H, Vowel::U, 0.18, 1.0)], 0.45, false),
@@ -1120,11 +1170,20 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         | K::Belphegor
         | K::Nightmare
         | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        | K::FlySwarm => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&death_of(kin), time, pitch, gain)
         }
+        // Asmodeus: the bull's bellow and the ram's bleat dying under the man's long sigh, and smoke.
+        K::Asmodeus => [
+            vec![
+                saw(90.0, 50.0).dur(1.1).vol(0.22).swell(0.05).bp(380.0, 2.0).vib(4.0, 0.04),
+                saw(240.0, 150.0).at(0.15).dur(0.8).vol(0.08).bp(900.0, 3.0).vib(10.0, 0.06),
+                hiss(0.6).at(0.2).dur(1.6).vol(0.45).swell(0.4).lp(700.0, 1.0),
+            ],
+            speak(0.3, 120.0, &[(Onset::H, Vowel::A, 0.5, 1.0)], 0.35, false),
+        ]
+        .concat(),
     }
 }
 
@@ -1248,11 +1307,27 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         | K::Belphegor
         | K::Nightmare
         | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        | K::FlySwarm => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&swing_of(kin, mv).layers, time, pitch, gain)
         }
+        // Asmodeus: his lance whistling, his kiss blown, the bull's hooves, the ram's skull, thorns.
+        K::Asmodeus => match mv {
+            MoveId::BlownKiss => [kiss_smack(0.0), whoosh(0.02, 1800.0, 0.3, 0.35)].concat(),
+            MoveId::BullCharge => (0..4)
+                .flat_map(|i| {
+                    [
+                        sine(70.0, 40.0).at(i as f32 * 0.11).dur(0.1).vol(0.3),
+                        hiss(0.5).at(i as f32 * 0.11).dur(0.08).vol(0.6).lp(300.0, 1.0),
+                    ]
+                })
+                .collect(),
+            MoveId::RamButt => [crack(0.0, 0.8), vec![sine(110.0, 55.0).dur(0.2).vol(0.35)], whoosh(0.0, 600.0, 0.2, 0.6)].concat(),
+            MoveId::ThornLine | MoveId::ThornRing => {
+                vec![crackle(1.6).dur(0.35).vol(0.6).hp(1500.0, 0.0), hiss(0.6).dur(0.3).vol(0.5).lp(500.0, 1.0)]
+            }
+            _ => [whoosh(0.0, 2400.0, 0.22, 0.7), vec![sine(1975.0, 1975.0).at(0.12).dur(0.3).vol(0.018)]].concat(),
+        },
     };
     Recipe { layers }
 }

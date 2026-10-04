@@ -741,7 +741,12 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
-        self.emit_traps(s.traps, s.grid, time, f);
+        // (Asmodeus's are thorns from the ground; everywhere else they are coins.)
+        if self.court == Some(crate::logic::sins::Sin::Lust) {
+            self.emit_bower_thorns(s.traps, s.grid, time, f);
+        } else {
+            self.emit_traps(s.traps, s.grid, time, f);
+        }
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.
         for h in s.hazards {
             let c = Vec3::new(h.pos.x as f32, floor_at(s.grid, h.pos.x as f32, h.pos.y as f32), h.pos.y as f32);
@@ -1100,6 +1105,32 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
                 add(f, p - v * k as f32 * 0.16, spin, Vec3::new(0.08, 0.08, 0.02), color * (1.8 - k as f32 * 0.4), 0.7 - k as f32 * 0.18);
             }
             (color * 2.0, 2.5)
+        }
+        BoltLook::Kiss => {
+            // A pink heart turning as it flies and beating, small hearts shed behind it.
+            let beat = 1.0 + 0.2 * (time * 13.0 + seed).sin().max(0.0);
+            let heart = |f: &mut Frame, at: Vec3, s: f32, c: Vec3, alpha: f32| {
+                let turn = Quat::from_rotation_y(time * 3.0 + seed);
+                for k in [-1.0f32, 1.0] {
+                    add(f, at + turn * Vec3::new(k * 0.07 * s, 0.045 * s, 0.0), turn, Vec3::new(0.1, 0.1, 0.05) * s, c, alpha);
+                }
+                add(
+                    f,
+                    at + turn * Vec3::new(0.0, -0.03 * s, 0.0),
+                    turn * Quat::from_rotation_z(PI / 4.0),
+                    Vec3::new(0.115, 0.115, 0.05) * s,
+                    c,
+                    alpha,
+                );
+            };
+            heart(f, p, 1.25 * beat, color * 2.6, 0.95);
+            glow_orb(f, p, 0.4, color, 0.7);
+            for k in 1..4 {
+                let t = (time * 1.8 + k as f32 / 3.0).fract();
+                let at = p - v * (0.2 + t * 0.6) + Vec3::new(0.0, t * 0.35, 0.0) + side * ((k as f32 * 2.1 + time * 4.0).sin() * 0.08);
+                heart(f, at, 0.45 * (1.0 - t * 0.5), color * 1.8, 0.8 * (1.0 - t));
+            }
+            (color * 2.4, 2.8)
         }
         BoltLook::Blade => {
             // His blade, spinning flat.
