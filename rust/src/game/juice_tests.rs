@@ -140,7 +140,7 @@ fn play_at(n: usize, scale: f64, frames: u32) -> Vec<String> {
         if f >= frames || !g.hero.alive {
             break;
         }
-        // His buttons go by the fight's frames, never mid-freeze (where no step reads them).
+        // His buttons go by the fight's frames, never mid-freeze (where they would wait for its end).
         if g.hitstop <= 0.0 && pressed != f && matches!(f % 50, 10 | 11) {
             g.input.inject(crate::input::Action::Attack);
             pressed = f;
@@ -275,4 +275,178 @@ fn debris_at_its_budget_is_cheap() {
     let full = time(&mut g, &mut frame);
     eprintln!("debris: {count} pieces cost {:.4} ms a step ({bare:.4} ms bare, {full:.4} ms full)", full - bare);
     assert!(full - bare < 0.3);
+}
+
+/// Bout 1 with its foes standing by: his fighter alone moves, so what it begins is his doing.
+fn still_bout() -> Game {
+    let mut g = bout(1);
+    g.brawl.as_mut().unwrap().live = false;
+    g.update(crate::app::STEP);
+    g
+}
+
+/// A tap of `a`: pressed and let go before the step reads it.
+fn tap(g: &mut Game, a: crate::input::Action) {
+    g.input.inject(a);
+    g.input.inject_release(a);
+}
+
+/// His fighter's state.
+fn his(g: &Game) -> crate::logic::combat::fsm::State {
+    g.brawl.as_ref().unwrap().hero.state
+}
+
+/// What his fighter begins over `steps` updates: each new swing by its move, each new leap "evade".
+fn begun(g: &mut Game, steps: usize) -> Vec<String> {
+    use crate::logic::combat::fsm::State;
+    let mut out = Vec::new();
+    let mut last = his(g);
+    for _ in 0..steps {
+        g.update(crate::app::STEP);
+        let now = his(g);
+        match (last, now) {
+            (State::Attack { mv: a, frame: fa }, State::Attack { mv: b, frame: fb }) if a == b && fb >= fa => {}
+            (_, State::Attack { mv, .. }) => out.push(format!("{mv:?}")),
+            (State::Evade { frame: fa }, State::Evade { frame: fb }) if fb >= fa => {}
+            (_, State::Evade { .. }) => out.push("evade".into()),
+            _ => {}
+        }
+        last = now;
+    }
+    out
+}
+
+#[test]
+fn a_press_in_a_freeze_is_kept_for_the_step_that_ends_it() {
+    use crate::input::Action;
+    use crate::logic::combat::fsm::State;
+    for (action, leap) in [(Action::Attack, false), (Action::Jump, true)] {
+        // With no freeze, the press begins the move on the fight's next frame.
+        let mut g = still_bout();
+        assert_eq!(his(&g), State::Neutral);
+        tap(&mut g, action);
+        let now = begun(&mut g, 2);
+        assert_eq!(now.len(), 1, "{action:?} with no freeze: {now:?}");
+        assert_eq!(now[0] == "evade", leap);
+        let mut more = begun(&mut g, 120);
+        assert!(more.is_empty(), "one move a press: {more:?}");
+        // In a freeze, pressed at its start, in its middle and on its last frozen step: nothing
+        // moves while it holds, then the move begins on the first frame after it, once.
+        for at in ["start", "middle", "end"] {
+            let mut g = still_bout();
+            g.freeze(Stop::Break);
+            let steps = (g.hitstop / crate::app::STEP).round() as usize;
+            assert!(steps >= 12, "{steps}");
+            let mut s = 0;
+            while g.hitstop > 0.0 {
+                // (The end: the step after which the freeze no longer holds.)
+                let last = g.hitstop - crate::app::STEP <= 0.0;
+                if (at == "start" && s == 0) || (at == "middle" && s == steps / 2) || (at == "end" && last) {
+                    tap(&mut g, action);
+                }
+                g.update(crate::app::STEP);
+                assert_eq!(g.pace(), 0.0, "{at}: step {s} is frozen");
+                assert_eq!(his(&g), State::Neutral, "{at}: nothing moves in the freeze");
+                s += 1;
+            }
+            assert!(s >= steps);
+            more = begun(&mut g, 2);
+            assert_eq!(more, now, "{action:?} pressed at the freeze's {at}");
+            let after = begun(&mut g, 120);
+            assert!(after.is_empty(), "{action:?} at the freeze's {at}: one move a press, not {after:?}");
+        }
+    }
+}
+
+#[test]
+fn a_kept_press_is_the_steps_alone() {
+    use crate::input::Action;
+    let mut g = still_bout();
+    g.freeze(Stop::Break);
+    g.input.flush();
+    tap(&mut g, Action::Attack);
+    g.play_step(crate::app::STEP);
+    g.input.flush();
+    while g.hitstop > 0.0 {
+        g.play_step(crate::app::STEP);
+    }
+    // The step that ends the freeze reads it, and what reads the buttons after it does not.
+    g.play_step(crate::app::STEP);
+    assert!(!g.input.was_pressed(&[Action::Attack]));
+    assert!(g.tempo.kept.is_empty());
+    // A press of the same button on that very step is its own, and stays for the rest.
+    let mut g = still_bout();
+    g.freeze(Stop::Break);
+    tap(&mut g, Action::Attack);
+    g.play_step(crate::app::STEP);
+    g.input.flush();
+    while g.hitstop > 0.0 {
+        g.play_step(crate::app::STEP);
+    }
+    tap(&mut g, Action::Attack);
+    g.play_step(crate::app::STEP);
+    assert!(g.input.was_pressed(&[Action::Attack]));
+    // A new round keeps nothing from a freeze.
+    let mut g = still_bout();
+    g.freeze(Stop::Break);
+    tap(&mut g, Action::Attack);
+    g.play_step(crate::app::STEP);
+    assert_eq!(g.tempo.kept, vec![Action::Attack]);
+    g.reset_tempo();
+    assert!(g.tempo.kept.is_empty());
+}
+
+#[test]
+fn the_guard_holds_through_a_freeze() {
+    use crate::input::Action;
+    use crate::logic::combat::fsm::State;
+    let mut g = still_bout();
+    g.freeze(Stop::Break);
+    g.input.inject(Action::Block);
+    while g.hitstop > 0.0 {
+        g.update(crate::app::STEP);
+        assert_eq!(his(&g), State::Neutral);
+    }
+    for _ in 0..4 {
+        g.update(crate::app::STEP);
+    }
+    assert!(matches!(his(&g), State::Guard { .. }), "{:?}", his(&g));
+}
+
+#[test]
+fn slow_motion_keeps_every_press() {
+    use crate::input::Action;
+    for action in [Action::Attack, Action::Jump] {
+        // On each step of a slowed frame of the fight, those that make no frame of their own too.
+        for k in 0..6 {
+            let mut g = still_bout();
+            g.tempo.dilations.push((Dilation { scale: 0.35, hold: 1e9, ease: 0.1 }, 0.0));
+            for _ in 0..k {
+                g.update(crate::app::STEP);
+            }
+            tap(&mut g, action);
+            let now = begun(&mut g, 200);
+            assert_eq!(now.len(), 1, "{action:?} on step {k} of a slowed frame: {now:?}");
+        }
+    }
+}
+
+#[test]
+fn out_of_the_brawl_a_jump_in_a_freeze_comes_after_it() {
+    use crate::input::Action;
+    let mut g = gym();
+    g.update(crate::app::STEP);
+    assert!(!g.brawling());
+    g.freeze_frames(8.0);
+    let mut s = 0;
+    while g.hitstop > 0.0 {
+        if s == 3 {
+            tap(&mut g, Action::Jump);
+        }
+        g.update(crate::app::STEP);
+        assert!(!g.hero.airborne(), "nothing moves in the freeze");
+        s += 1;
+    }
+    g.update(crate::app::STEP);
+    assert!(g.hero.airborne(), "the jump, once the freeze ends");
 }

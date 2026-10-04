@@ -167,7 +167,9 @@ pub enum State {
 
 **Input buffer**: one slot, the latest press, held **8 f** (133 ms). Each frame the state
 tries to consume it, so a press made early in L1 comes out as L2 on L2's first legal
-frame, and a press during hitstun comes out the frame the hitstun ends.
+frame, and a press during hitstun comes out the frame the hitstun ends. A press made in a
+hitstop freeze (when no frame runs) is kept and reaches the buffer on the first frame after
+it, fresh: the buffer ages on frames, and none pass in a freeze (`Game::play_step`).
 
 ---
 

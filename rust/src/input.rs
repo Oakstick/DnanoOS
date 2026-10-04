@@ -409,6 +409,17 @@ impl Input {
         actions.iter().any(|a| self.just.contains(a))
     }
 
+    /// This update's presses, in no order (a freeze keeps them for the step that ends it).
+    pub fn presses(&self) -> impl Iterator<Item = Action> + '_ {
+        self.just.iter().copied()
+    }
+
+    /// A press kept from an earlier update, made new again until `flush` (and not held: the
+    /// button's state is its own). Whether it was not already pressed this update.
+    pub fn repress(&mut self, a: Action) -> bool {
+        self.just.insert(a)
+    }
+
     /// Removes a press so nothing else reacts to it this update.
     pub fn consume(&mut self, a: Action) {
         self.just.remove(&a);
