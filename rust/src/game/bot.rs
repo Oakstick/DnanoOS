@@ -28,11 +28,12 @@ use super::sparring::{BoutPhase, BoutStats};
 use super::Game;
 use crate::input::{Action, PadState};
 use crate::logic::combat::archetype::{Attack, Power};
-use crate::logic::combat::duelist::HERO_RADIUS;
+use crate::logic::combat::duelist::{from_segment, HERO_RADIUS};
 use crate::logic::combat::frames::{Shape, BOLT_RADIUS, BOLT_SPEED};
 use crate::logic::combat::fsm::GuardRule;
 use crate::logic::combat::Kit;
 use crate::logic::combat::{math, Phase, State};
+use crate::logic::enemy::EnemyKind;
 use crate::logic::gym;
 use crate::logic::heroes::{HeroKind, ROSTER};
 use crate::logic::progression::{self, Tree};
@@ -282,10 +283,40 @@ impl Bot {
                 }
             }
         }
+        out.extend(self.lucifer_dodges(g, hp, now));
         for d in out.iter_mut() {
             d.out = Self::keep_in(g, hp, d.out);
         }
         out.sort_by(|a, b| a.t.total_cmp(&b.t));
+        out
+    }
+
+    /**
+     * Lucifer's lance of dawn (PRINCES.md §1), once its reaction has passed: a beam along a line on
+     * the floor that no parry turns. With him in its line, the way out is across it, to the side he
+     * already stands to (the shield would only block it). Only Lucifer's beam: every other fight
+     * plays as it did.
+     */
+    fn lucifer_dodges(&self, g: &Game, hp: V, now: u32) -> Vec<Dodge> {
+        let mut out = Vec::new();
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive() && d.breed.kind == EnemyKind::Lucifer) {
+            let State::Attack { mv, frame } = d.f.state else { continue };
+            let data = d.data(mv);
+            let Shape::Beam { length, width } = data.shape else { continue };
+            let started = now.saturating_sub(frame as u32);
+            let seen = self.noticed.get(&d.id).is_some_and(|&(at, delay)| at == started && delay > 0 && frame >= delay);
+            if data.phase(frame) == Phase::Recovery || !seen {
+                continue;
+            }
+            let span = if d.lore.span > 0.0 { d.lore.span } else { length };
+            let end = math::add(d.pos, math::scale(d.aim, span));
+            if from_segment(d.pos, end, hp) >= width / 2.0 + HERO_RADIUS + 0.45 {
+                continue;
+            }
+            let side = V::new(-d.aim.y, d.aim.x);
+            let out_dir = if math::dot(math::sub(hp, d.pos), side) >= 0.0 { side } else { math::scale(side, -1.0) };
+            out.push(Dodge { t: (data.startup as f64 - frame as f64).max(0.0), out: out_dir });
+        }
         out
     }
 

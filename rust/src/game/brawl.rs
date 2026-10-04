@@ -1342,6 +1342,10 @@ impl Game {
                 self.audio.play(Sfx::BossSlam);
                 self.feel_quake(pos);
             }
+            // Lucifer's (Pride): out of the mirror, down on his mark, his lance ablaze.
+            MoveId::MirrorStep => self.lucifer_steps_out(i),
+            MoveId::PridesFall => self.lucifer_lands(i),
+            MoveId::LanceOfDawn => self.lucifer_lance(i),
             _ => {}
         }
         if power == Power::Fire && matches!(mv, MoveId::Slam | MoveId::Sweep) {
