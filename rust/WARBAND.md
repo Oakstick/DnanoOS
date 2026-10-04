@@ -1106,3 +1106,71 @@ Built without touching `game/brawl.rs` or `logic/combat/*`; the fight's wiring i
 * Open: the yard's preview swing at the dummy and its comparison card (needs `Kit`), the hero
   taking up the new blade after the hammering, a walk cycle for Quitmer, a pass by eye on the
   Ottoman kazan and the Japanese hodo at close range.
+
+### W6 The Prince's Hands: the generals (branch `warband-generals`)
+
+Greed's realm first, then the six on the same machinery. `VH_NO_GENERAL=1` switches the generals
+off for A/B runs.
+
+* **`logic/war/general.rs`** (pure): the seven (§9.3: name, body, cloak, orders, what each
+  instrument is called, the hazard, the decree and what it does); `OrderKind` (lead: Watch 90 f,
+  Muster 240 f, Kindle 120 f then each mark 180 f, Decree 120 f; all ≥ `MIN_LEAD` 60), `OrderStage
+  {Ready, Announced{left}, Live{left}, Broken, Done}`, `Instrument`/`InstrumentKind` (watch-fire,
+  war horn, bell, bellows, chain; 3 blows each). `Command::step_with(build, room)`: an order only
+  while the Drum builds, one at a time, round his three, 25 s apart; `strike` (a broken instrument
+  ends its order for good and owes one counter-order, announced 90 f ahead: a guard pair to the
+  next instrument, or the muster doubled), `turn` (the bellows burns his own), `fail`/`finish`,
+  `slay`. `terms(sin, decree_done, slain)`: Greed's decree done brings Mammon's golems at the start
+  of his fight, his general slain takes his phase-two golems (§17 decision 5); the six Cyclops
+  stand-ins take +25% / −20% health. `Records` (the `generals:` section of `vh.warband`:
+  `I.broken.decree.slain`). `place`: his post on a room's own foe post past the middle of the way
+  (the smaller rooms), each instrument in a room of its own, muster gates on the floor between
+  rooms, the watch's round, the decree's way to the court; on the realm's ground as laid out
+  (Pride's galleries and other floors joined by more than floor count too).
+* **`game/general.rs`**: `GeneralRun` on `Game.general`; the general takes a room foe's post (its
+  pack is his guard, he its leader), health ×2.5 his breed's but not past 300 (×the realm's weight),
+  a horn at half health that steadies his guard; Watch (the patrol asleep at its fire walks its
+  round as puppets; sight 7 tiles → a 60 f whistle that wakes dens within 10, unless the whistler
+  falls; struck on the round, it turns on him and its leader drops runes), Muster (the gate nearest
+  him glows; standing 1.5 s at it bars it for good; a pack marches in, held back while six would
+  hunt him), Kindle (marks about him planned through the threat manager as a no-cost token
+  committed 180 f out, one strike a volley, `GuardRule::Bare`, no rider: never slows), Decree (the
+  realm's foes carry it from his post to the court; kill them all or cut the chain). Instruments
+  break under his swing's active frames (read from his fighter, no brawl hook); F at the bellows
+  turns it. Slain: orders end, carriers flee, banner on the trophy wall (`hang_banners` rebuilds
+  them from the save), the record kept. A Ledger rival of rank ≥ 4 takes his name and body (his
+  death is the rival's in the Ledger). The war table gets his card, the old man news of him.
+* **`game/brawl.rs`**: one new function at its end, `general_hazard_blow` (the kindled burst
+  through `blow_on_hero`).
+* **HUD** (`render/hud/war.rs`): the banner at the top centre (pennant, sigil, name, three order
+  discs: ready, counting down with seconds, under way, crossed out, done), order cards with their
+  countdown, pings over whole instruments (an edge arrow for the one under way), the glowing gate
+  and how far it is barred, his name over his head. **View** (`render/view/war_props.rs`): the
+  instruments in blocks (and as wreckage), the gate's ring of fire, the kindled marks and spikes,
+  his cloak and banner; a few dozen cubes a frame.
+* **Bot**: steps off a kindled mark as soon as it is marked; between fights bars a glowing gate and
+  breaks the instruments it passes (expert 16 tiles out of its way, adept 6); gives up a drop it
+  cannot reach in 10 s (one wedged behind a pillar held a crawl for eight minutes).
+* **Harness** `--general SIN SKILL TIER SEED`: fought, then left alive (his room held out of the
+  fight). Greed, seed 1: expert t4 6.1 / 6.0 min, 3 of 3 broken, −2%; adept t4 10.8 / 9.9 min,
+  3 of 3, −8%; expert t1 (seed 2) 11.7 / 9.9 min, −16%; no overlap from his orders. The six
+  realms' own rules (the Field's lava, the Hall's mirrors) beat the vaults' bot, so its numbers
+  there say nothing yet.
+* **`--crawl 2`** before / after: every clear as before (adept t1 0%, the rest 100%); minutes
+  expert t1 9.7 → 11.2, adept t4 9.4 → 11.3, expert t4 5.5 → 6.8, adept t7 5.4 → 6.7, expert t7
+  4.3 → 4.7; peak ≤ 7; overlaps 0 but adept t4 0.06/min (one, a bolt flying late after a shove,
+  none of the general's).
+* Captures `general:S`, `order:K`; Map stops "SIN - NAME'S POST" ×7.
+* Tests: `every_order_is_announced_a_second_before_it_bites`, `orders_only_come_in_the_build`,
+  `every_instrument_can_be_reached_and_broken`, `a_broken_instrument_ends_its_order_and_the_general_answers_once`,
+  `the_decree_and_the_generals_death_change_the_princes_fight`, `the_generals_record_survives_the_save`,
+  `the_seven_generals_follow_the_plans_table`, `every_realm_has_its_general_at_his_post_with_his_guard_asleep`,
+  `no_order_slows_or_holds_the_hero`, `the_kindled_floor_is_marked_three_seconds_and_bursts_as_planned`,
+  `a_broken_horn_ends_the_muster_and_a_barred_gate_turns_it_back`,
+  `slaying_the_general_ends_his_orders_hangs_his_banner_and_weakens_the_prince`,
+  `the_generals_realm_survives_the_save`.
+* Open: the herald (a fleeing courier) and the "catch him for a map" reward; F11; the usurper's
+  lesson and memory in the fight (the integrator's, with the rivals); per-realm placement for
+  ground that moves (the Field's slabs: his post rides a slab, his instruments stand where the
+  layout put them); Watch only round the fire's own floor in Pride; the Steward's long name on the
+  Map's button.
