@@ -52,6 +52,8 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::ClockHands) => return 0xd8b060,
         // Amon's fire: his breath, his charge, the floor he splits and bursts.
         Some(MoveId::FlameBreath | MoveId::FieryCharge | MoveId::Rift | MoveId::Eruption) => return 0xff5a1a,
+        Some(MoveId::BlownKiss) => return 0xff6aa8,
+        Some(MoveId::ThornLine | MoveId::ThornRing) => return 0xff3a5a,
         _ => {}
     }
     if d.breed.kind == EnemyKind::Jorogumo {
@@ -223,6 +225,10 @@ impl WorldView {
         let cobra = v.kind == EnemyKind::Cobra;
         v.root_rot.y = 0.0;
         v.root_scale = Vec3::ONE;
+        if let Some(r) = rig.index("rightArm").filter(|_| v.kind == EnemyKind::Asmodeus) {
+            // (His lance arm goes out with the thrust: back in its socket unless it is thrusting.)
+            v.pose.pos[r] = rig.parts[r].rest;
+        }
         if let Some(w) = rig.index("water").filter(|_| d.lore.spilled > 0) {
             // The kappa's dish spilled: no water in it until it fills again.
             v.pose.pos[w].y -= 0.3;
@@ -590,6 +596,78 @@ impl WorldView {
                         v.root_rot.x = if strike == 0.0 { -0.15 * wind } else { 0.35 * (1.0 - rec) };
                         v.root_scale = Vec3::new(1.0 + 0.05 * snap * (1.0 - rec), 1.0 - 0.1 * snap * (1.0 - rec), 1.0);
                     }
+                    // Asmodeus's (Lust).
+                    MoveId::LanceThrust => {
+                        // The lance drawn up and back, his weight on his back foot; then driven out and down
+                        // at him, the arm following it out, and held there open.
+                        let out = 1.0 - rec;
+                        let arm = if strike == 0.0 { -0.4 * wind } else { -0.4 + 0.85 * snap };
+                        v.pose.rot_x(rig, "rightArm", arm * out);
+                        if let Some(r) = rig.index("rightArm") {
+                            let z = if strike == 0.0 { -0.15 * wind } else { -0.15 + 0.7 * snap };
+                            v.pose.pos[r] = rig.parts[r].rest + Vec3::new(-0.1 * snap, 0.0, z) * out;
+                        }
+                        v.root_rot.y = if strike == 0.0 { -0.3 * wind } else { -0.3 + 0.45 * snap * out };
+                        v.root_rot.x = if strike == 0.0 { -0.08 * wind } else { 0.14 * out };
+                        v.pose.rot_x(rig, "leftArm", 0.3 * wind * out);
+                    }
+                    MoveId::BlownKiss => {
+                        // The open hand to his lips, his head tipped back; then the kiss blown off it.
+                        let out = 1.0 - rec;
+                        let arm = if strike == 0.0 { -0.35 * wind } else { -0.35 - 0.9 * snap };
+                        v.pose.rot_x(rig, "leftArm", arm * out);
+                        if let Some(l) = rig.index("leftArm") {
+                            v.pose.rot[l].z = 0.25 * snap * out;
+                        }
+                        v.pose.rot_x(rig, "head", if strike == 0.0 { -0.18 * wind } else { 0.1 * out });
+                        v.root_rot.y = 0.2 * wind * out;
+                    }
+                    MoveId::ThornLine | MoveId::ThornRing => {
+                        // The lance raised upright, then its butt struck down into the floor; for the
+                        // ring his other arm swept wide and his tail lashing round.
+                        let out = 1.0 - rec;
+                        let arm = if strike == 0.0 { 0.75 * wind } else { 0.75 - 1.05 * snap };
+                        v.pose.rot_x(rig, "rightArm", arm * out);
+                        v.root_rot.x = if strike == 0.0 { -0.1 * wind } else { 0.12 * out };
+                        if mv == MoveId::ThornRing {
+                            if let Some(l) = rig.index("leftArm") {
+                                v.pose.rot[l].z = -0.9 * wind * out;
+                            }
+                            if let Some(t) = rig.index("tail") {
+                                v.pose.rot[t].y = (time * 9.0).sin() * 0.6 * wind * out;
+                            }
+                        }
+                        v.root_scale = Vec3::new(1.0, 1.0 - 0.04 * snap * out, 1.0);
+                    }
+                    MoveId::BullCharge => {
+                        // The bull's head lowered and the lance couched level; low and leaning into the run.
+                        let down = if strike == 0.0 { wind } else { 1.0 - rec };
+                        v.pose.rot_x(rig, "head", 0.45 * down);
+                        v.pose.rot_x(rig, "rightArm", 0.6 * down);
+                        if let Some(r) = rig.index("rightArm") {
+                            v.pose.pos[r] = rig.parts[r].rest + Vec3::new(0.0, 0.0, 0.35 * down);
+                        }
+                        v.pose.rot_x(rig, "leftArm", 0.4 * down);
+                        v.root_rot.x = 0.28 * down;
+                        if let Some(hd) = rig.index("head") {
+                            v.pose.rot[hd].z = -0.25 * down;
+                        }
+                        if strike > 0.0 && rec == 0.0 {
+                            let s = (time * 16.0).sin();
+                            v.pose.rot_x(rig, "leftLeg", s * 0.6);
+                            v.pose.rot_x(rig, "rightLeg", -s * 0.6);
+                        }
+                    }
+                    MoveId::RamButt => {
+                        // Turned to bring the ram's head round, drawn back; then the butt, snapped in.
+                        let out = 1.0 - rec;
+                        v.root_rot.y = if strike == 0.0 { -0.5 * wind } else { -0.5 + 0.7 * snap } * out;
+                        v.root_rot.x = if strike == 0.0 { -0.15 * wind } else { 0.32 * snap * out };
+                        if let Some(hd) = rig.index("head") {
+                            v.pose.rot[hd].z = 0.3 * wind * out;
+                            v.pose.rot[hd].x = if strike == 0.0 { -0.2 * wind } else { 0.4 * snap * out };
+                        }
+                    }
                     MoveId::Hex | MoveId::Smokeless => {
                         // Her right hand high, her left reaching out; then the throw.
                         let right = if strike == 0.0 { -2.8 * wind } else { -1.4 * (1.0 - rec) };
@@ -734,6 +812,18 @@ impl WorldView {
                         dot(Vec3::new(a.cos(), 0.0, a.sin()) * radius as f32, fill >= 0.7);
                     }
                 }
+                Shape::Traps { radius, .. } if mv == MoveId::ThornRing => {
+                    // Asmodeus's ring of thorns: the band round him where they will burst.
+                    let ring_r = crate::logic::combat::prince::lust::RING as f32;
+                    for rr in [ring_r - radius as f32, ring_r, ring_r + radius as f32] {
+                        let n = ((TAU * rr) / 0.3).ceil() as i32;
+                        for k in 0..n {
+                            let a = k as f32 * TAU / n as f32;
+                            dot(Vec3::new(a.cos(), 0.0, a.sin()) * rr, fill >= (rr - ring_r + radius as f32) / (2.0 * radius as f32));
+                        }
+                    }
+                    continue;
+                }
                 Shape::Traps { .. } => {
                     // Where the coins will land: a ring about him, the gold gathering in the prince's hand.
                     let hp = s.hero.pos();
@@ -826,11 +916,13 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
-        // Each court's traps in its own look: Belphegor's sand, Lucifer's stars, the coins of the rest
+        // Each court's traps in its own look: Belphegor's sand, Lucifer's stars, Asmodeus's thorns,
+        // the coins of the rest
         // (Wrath's court draws its rift's lava itself: `court_wrath::emit_rift`).
         match self.court {
             Some(Sin::Sloth) => self.emit_sand(s.traps, s.grid, time, f),
             Some(Sin::Pride) => self.emit_pride_traps(s, s.traps, time, f),
+            Some(Sin::Lust) => self.emit_bower_thorns(s.traps, s.grid, time, f),
             Some(Sin::Wrath) => {}
             _ => self.emit_traps(s.traps, s.grid, time, f),
         }
@@ -1192,6 +1284,32 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
                 add(f, p - v * k as f32 * 0.16, spin, Vec3::new(0.08, 0.08, 0.02), color * (1.8 - k as f32 * 0.4), 0.7 - k as f32 * 0.18);
             }
             (color * 2.0, 2.5)
+        }
+        BoltLook::Kiss => {
+            // A pink heart turning as it flies and beating, small hearts shed behind it.
+            let beat = 1.0 + 0.2 * (time * 13.0 + seed).sin().max(0.0);
+            let heart = |f: &mut Frame, at: Vec3, s: f32, c: Vec3, alpha: f32| {
+                let turn = Quat::from_rotation_y(time * 3.0 + seed);
+                for k in [-1.0f32, 1.0] {
+                    add(f, at + turn * Vec3::new(k * 0.07 * s, 0.045 * s, 0.0), turn, Vec3::new(0.1, 0.1, 0.05) * s, c, alpha);
+                }
+                add(
+                    f,
+                    at + turn * Vec3::new(0.0, -0.03 * s, 0.0),
+                    turn * Quat::from_rotation_z(PI / 4.0),
+                    Vec3::new(0.115, 0.115, 0.05) * s,
+                    c,
+                    alpha,
+                );
+            };
+            heart(f, p, 1.25 * beat, color * 1.5, 0.95);
+            glow_orb(f, p, 0.45, color, 0.45);
+            for k in 1..4 {
+                let t = (time * 1.8 + k as f32 / 3.0).fract();
+                let at = p - v * (0.2 + t * 0.6) + Vec3::new(0.0, t * 0.35, 0.0) + side * ((k as f32 * 2.1 + time * 4.0).sin() * 0.08);
+                heart(f, at, 0.45 * (1.0 - t * 0.5), color * 1.2, 0.8 * (1.0 - t));
+            }
+            (color * 2.4, 2.8)
         }
         BoltLook::Blade => {
             // His blade, spinning flat.

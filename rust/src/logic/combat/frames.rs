@@ -111,8 +111,19 @@ pub enum MoveId {
     /// Beelzebub's cleaver: a butcher's chop before him (a placeholder for his table).
     Cleaver,
     // Asmodeus's (Lust)
-    /// Asmodeus's lance thrust: his lance driven before him (a placeholder for his table).
+    /// Asmodeus's lance thrust: his lance driven straight before him, long and narrow.
     LanceThrust,
+    /// Asmodeus's blown kiss: a pink heart; if it strikes him he is smitten, and cannot guard for a
+    /// while. Leapt, or struck out of the air by his blade; no shield stops it.
+    BlownKiss,
+    /// Asmodeus's thorn line: thorns burst from the ground in a row toward him.
+    ThornLine,
+    /// Asmodeus's bull's charge: the bull's head lowered, a straight run at him.
+    BullCharge,
+    /// Asmodeus's ram's butt: the ram's head driven into him, close; it shoves him back.
+    RamButt,
+    /// Asmodeus's thorn ring: thorns burst from the ground in a ring round him.
+    ThornRing,
 }
 
 /// Where in a move a frame falls.
@@ -344,6 +355,11 @@ impl MoveId {
         MoveId::Cleaver,
         // Asmodeus's (Lust)
         MoveId::LanceThrust,
+        MoveId::BlownKiss,
+        MoveId::ThornLine,
+        MoveId::BullCharge,
+        MoveId::RamButt,
+        MoveId::ThornRing,
     ];
 
     pub const fn data(self) -> MoveData {
@@ -1040,8 +1056,102 @@ impl MoveId {
             },
             // Beelzebub's (Gluttony)
             MoveId::Cleaver => MoveData { name: "CLEAVER", ..PRINCE_PLACEHOLDER },
-            // Asmodeus's (Lust)
-            MoveId::LanceThrust => MoveData { name: "LANCE THRUST", ..PRINCE_PLACEHOLDER },
+            // Asmodeus's (Lust): a big body, his arm adds to the reach of his lance and his butt.
+            MoveId::LanceThrust => MoveData {
+                name: "LANCE THRUST",
+                startup: 34,
+                active: 6,
+                recovery: 40,
+                damage: 22.0,
+                reach: 2.2,
+                half_angle: deg(20.0),
+                track: 22,
+                hitstop: 6,
+                range: (0.0, 2.0),
+                off: (0.0, deg(40.0)),
+                ..BASE
+            },
+            MoveId::BlownKiss => MoveData {
+                name: "BLOWN KISS",
+                startup: 36,
+                active: 1,
+                recovery: 36,
+                damage: 8.0,
+                reach: BOLT_REACH,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 3,
+                projectile: true,
+                range: (3.2, 8.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                cooldown: 330,
+                ..BASE
+            },
+            MoveId::ThornLine => MoveData {
+                name: "THORN LINE",
+                startup: 36,
+                active: 1,
+                recovery: 38,
+                damage: 18.0,
+                reach: 7.0,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 5,
+                range: (3.0, 7.0),
+                off: (0.0, deg(40.0)),
+                shape: Shape::TrapLine { count: 5, radius: 0.7, fuse: 40, spacing: 1.3, linger: 0 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::BullCharge => MoveData {
+                name: "BULL'S CHARGE",
+                startup: 40,
+                active: 46,
+                recovery: 46,
+                damage: 26.0,
+                reach: 1.25,
+                half_angle: 0.0,
+                track: 30,
+                hitstop: 7,
+                range: (3.2, 7.0),
+                off: (0.0, deg(30.0)),
+                line: true,
+                shape: Shape::Charge { length: 7.0, speed: 9.0 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::RamButt => MoveData {
+                name: "RAM'S BUTT",
+                startup: 32,
+                active: 6,
+                recovery: 38,
+                damage: 16.0,
+                reach: 1.0,
+                half_angle: deg(50.0),
+                track: 18,
+                hitstop: 7,
+                range: (0.0, 1.0),
+                off: (0.0, deg(60.0)),
+                rider: Rider::Shove(2.5),
+                cooldown: 180,
+                ..BASE
+            },
+            MoveId::ThornRing => MoveData {
+                name: "THORN RING",
+                startup: 40,
+                active: 1,
+                recovery: 40,
+                damage: 20.0,
+                reach: 3.4,
+                half_angle: 0.0,
+                track: 0,
+                hitstop: 5,
+                range: (0.0, 3.4),
+                shape: Shape::Traps { count: 9, radius: 0.8, fuse: 46, linger: 0 },
+                cooldown: 300,
+                ..BASE
+            },
         }
     }
 

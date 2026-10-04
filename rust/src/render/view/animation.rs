@@ -418,7 +418,9 @@ impl WorldView {
                     // (Lucifer strides in his plate, and so do his Reflections.)
                     EnemyKind::Lucifer | EnemyKind::Reflection => (0.42, 0.18),
                     // (The other princes, for now robed figures: small steps under the robe.)
-                    EnemyKind::Leviathan | EnemyKind::Beelzebub | EnemyKind::Asmodeus => (0.3, 0.16),
+                    EnemyKind::Leviathan | EnemyKind::Beelzebub => (0.3, 0.16),
+                    // (Asmodeus glides in his long coat on his goose's feet: long, light steps.)
+                    EnemyKind::Asmodeus => (0.42, 0.1),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)

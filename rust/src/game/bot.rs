@@ -437,6 +437,10 @@ impl Bot {
         let threats = self.threats(g);
         let soonest = threats.first().copied();
         let dodges = self.dodges(g);
+        // (Asmodeus's court: his kisses leapt, his censers lit.)
+        if let Some(p) = self.lust_court(g, &threats, &dodges) {
+            return p;
+        }
         let can_leap = !g.hero.airborne();
         let leap = |pad: &mut PadState, out: V| {
             pad.left = (out.x as f32, out.y as f32);
@@ -753,6 +757,124 @@ impl Bot {
             .max_by(|a, b| clear(*a).total_cmp(&clear(*b)))?;
         pad.left = (best.x as f32, best.y as f32);
         self.attack_down = false;
+        Some(pad)
+    }
+}
+
+/// Frames before a blown kiss reaches it that the bot leaps it (Asmodeus's court).
+const KISS_LEAP: f64 = 10.0;
+/// Frames nothing it has seen may land within for it to go and light a censer.
+const CENSER_QUIET: f64 = 45.0;
+
+impl Bot {
+    /**
+     * Asmodeus's court (PRINCES.md §6), for the adept and the expert (a masher knows nothing of
+     * it): a blown kiss on its way is leapt, out of its line, since no shield stops it; and while no
+     * censer smokes and nothing it has seen comes at it soon, it goes to the nearest censer that
+     * will still light and strikes it (the smoke takes his allure away). `None` anywhere else, and
+     * whenever there is nothing of the court's to do: it plays on as everywhere.
+     */
+    fn lust_court(&mut self, g: &Game, threats: &[Threat], dodges: &[Dodge]) -> Option<PadState> {
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Lust) {
+            return None;
+        }
+        let spar = g.brawl.as_ref()?;
+        let hp = g.hero.pos();
+        let mut pad = PadState::default();
+        for b in spar
+            .bolts
+            .iter()
+            .filter(|b| b.look == crate::logic::combat::duelist::BoltLook::Kiss && !b.reflected && !b.touched && b.life > 0)
+        {
+            let dir = math::norm(b.vel);
+            let to = math::sub(hp, b.pos);
+            let along = math::dot(dir, to);
+            let across = (math::len(to).powi(2) - along * along).max(0.0).sqrt();
+            let speed = math::len(b.vel).max(BOLT_SPEED * 0.25);
+            let t = (along - BOLT_RADIUS - HERO_RADIUS).max(0.0) / (speed / 60.0);
+            if along > 0.0 && across < BOLT_RADIUS + HERO_RADIUS + 0.2 && t <= KISS_LEAP {
+                let out = Self::keep_in(g, hp, V::new(-dir.y, dir.x));
+                pad.left = (out.x as f32, out.y as f32);
+                if !g.hero.airborne() {
+                    pad.actions.insert(Action::Jump);
+                }
+                self.attack_down = false;
+                return Some(pad);
+            }
+        }
+        // His elf-maids: no blow tells on their fronts, and they fall with him. Left alone.
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.breed.kind == crate::logic::enemy::EnemyKind::Ellepige) {
+            if !self.ignore.contains(&d.id) {
+                self.ignore.push(d.id);
+            }
+        }
+        // Smitten (no guard): what it would have guarded, it leaps.
+        if let Some(t) = threats.first().filter(|t| g.smitten() && t.t <= LEAP_AT) {
+            let out = Self::keep_in(g, hp, math::norm(math::sub(hp, t.from)));
+            pad.left = (out.x as f32, out.y as f32);
+            if !g.hero.airborne() {
+                pad.actions.insert(Action::Jump);
+            }
+            self.attack_down = false;
+            return Some(pad);
+        }
+        // The bull's charge, with him on its line: guarded as the runner comes (the expert puts it in
+        // its parry window), or leapt while he is smitten.
+        if let Some(d) = g.prince() {
+            if let Some((crate::logic::combat::MoveId::BullCharge, ph, frame)) = d.f.attack() {
+                let data = d.data(crate::logic::combat::MoveId::BullCharge);
+                let to = math::sub(hp, d.pos);
+                let along = math::dot(d.aim, to);
+                let across = (math::len(to).powi(2) - along * along).max(0.0).sqrt();
+                if let (false, false, Shape::Charge { speed, .. }) = (ph == Phase::Recovery, d.struck, data.shape) {
+                    let reach = data.reach + HERO_RADIUS;
+                    let seen = frame >= self.skill.reaction().0;
+                    if seen && along > 0.0 && across < reach + 0.3 {
+                        let run = (along - reach).max(0.0) / (speed / 60.0);
+                        let t = data.startup.saturating_sub(frame) as f64 + run;
+                        let lead = if self.skill == Skill::Expert { self.lead } else { BLOCK_LEAD };
+                        if g.smitten() && t <= LEAP_AT {
+                            let side = V::new(-d.aim.y, d.aim.x);
+                            let out = Self::keep_in(g, hp, side);
+                            pad.left = (out.x as f32, out.y as f32);
+                            pad.actions.insert(Action::Jump);
+                            return Some(pad);
+                        }
+                        if t <= lead {
+                            self.guard_hold = 8;
+                            pad.actions.insert(Action::Block);
+                            let face = math::norm(math::sub(d.pos, hp));
+                            pad.left = (face.x as f32, face.y as f32);
+                            return Some(pad);
+                        }
+                    }
+                }
+            }
+        }
+        let censers = g.censers();
+        let striking = g.prince().is_some_and(|d| matches!(d.f.attack(), Some((_, Phase::Startup | Phase::Active, _))));
+        let quiet = !striking && threats.first().is_none_or(|t| t.t > CENSER_QUIET) && dodges.first().is_none_or(|d| d.t > DODGE_AHEAD);
+        if censers.iter().any(|c| c.1) || !quiet || g.hero.stamina < 16.0 {
+            return None;
+        }
+        let at = censers
+            .iter()
+            .filter(|c| c.2 > 0)
+            .map(|c| c.0)
+            .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
+        let to = math::sub(at, hp);
+        if math::len(to) > 1.25 {
+            let dir = self.way(g, hp, at);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+        } else {
+            let dir = math::norm(to);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
         Some(pad)
     }
 }

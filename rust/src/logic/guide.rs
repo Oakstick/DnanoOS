@@ -446,6 +446,26 @@ fn court(sin: Sin, hail: &str) -> Guide {
     // Gluttony's court, as built (its page to come here).
 
     // Lust's court, as built (its page to come here).
+    const ASMODEUS_TALE: &[&str] = &[
+        "this is the Rose Bower: crimson roses on black thorn, a fountain, and the bridal arch where Asmodeus waits. Seven grooms died under it.",
+        "Three heads he has, a smiling man's, a bull's and a ram's, and a serpent's tail. His moods: the Suitor, the Three Heads, the Bridegroom of Ashes.",
+        "Tobias drove him off with smoke on the embers of incense, as Raphael taught him. The four censers here are cold. Light them.",
+    ];
+    const ASMODEUS_TASK: &[&str] = &[
+        "Bring Asmodeus down. He drops the Key of Lust: take it, and the gate in the south hedge opens. Through it you come to me, then to the Portals.",
+        "Strike a cold censer and it smokes ten seconds. While any smokes his allure is gone, every blow lands whole, and he will not come near the smoke.",
+        "Each censer lights twice. Each new mood is named as it comes, a green cross falls for a breather, and if you fall he stands whole again.",
+    ];
+    const ASMODEUS_WATCH: &[&str] = &[
+        "Outside the smoke his allure turns most of a blow. Strike in his recoveries, or when a parry leaves him reeling.",
+        "His blown kiss is a pink heart no shield stops. Leap it or cut it from the air: if it touches you, you are smitten and cannot guard a while.",
+        "His lance reaches far but narrow: step aside. Thorns burst from the ground where they glow, in a row toward you or a ring round him: step out, or leap.",
+        "At two thirds two elf-maids step from the hedges, once: only their hollow backs can be hurt. The bull's head charges straight; the ram's shoves.",
+        "If the Bridesmaid fell in the garden, no maids come. If her vows were spoken, they come at once, and each censer lights only once.",
+    ];
+    if sin == Sin::Lust {
+        return page("THE ROSE BOWER", hail, ASMODEUS_TALE, ASMODEUS_TASK, ASMODEUS_WATCH);
+    }
 
     let (who, colour) = match sin {
         Sin::Pride => {
@@ -636,7 +656,7 @@ mod tests {
     fn each_place_is_named_as_the_game_names_it() {
         assert_eq!(guide(GuidePlace::Realm(Sin::Greed), HeroKind::Ragnar).title, "THE VAULTS OF MAMMON");
         assert_eq!(guide(GuidePlace::Court(Sin::Greed), HeroKind::Ragnar).title, "THE COUNTING HOUSE");
-        assert_eq!(guide(GuidePlace::Court(Sin::Lust), HeroKind::Ragnar).title, "THE COURT OF ASMODEUS");
+        assert_eq!(guide(GuidePlace::Court(Sin::Lust), HeroKind::Ragnar).title, "THE ROSE BOWER");
         assert_eq!(guide(GuidePlace::Cyclops(0), HeroKind::Ragnar).title, "THE CYCLOPS' MEADOW");
         assert_eq!(guide(GuidePlace::Cyclops(1), HeroKind::Ragnar).title, "THE CYCLOPS' MEADOW 2");
         for sin in SINS {

@@ -489,4 +489,75 @@ little, and in his dream he mends faster than it hurts him: Sloth's lesson. Pinn
 
 ### Asmodeus
 
-(to come)
+Built 2026-10-04. **The Rose Bower** (`logic::court::lust`): a walled garden 27 tiles across
+(33 × 33 grid, corners cut by rose beds), its walls rose hedges; the fountain's basin covers the 13
+tiles about the middle (between the gate and the prince, cover against the kiss and the charge);
+four censers at (9, 11), (23, 11), (9, 21), (23, 21), each open all round and at least six tiles
+from the next; two hedge runs out from the east and west walls (x 5 and 27, y 13 to 19), the
+elf-maids step out beside them; rose beds at the four corners; the bridal arch's two posts at
+(14, 4) and (18, 4) (the way under it open) and the bed behind it (15 to 17, 3). Gate (16, 30), hero
+(16, 26), Asmodeus (16, 8). Art in `render::view::court_lust` (hedges of roses, rose-marble paths
+crossing a lawn of petals and ringing the fountain, its golden rose and arching water, bronze
+censers on marble plinths, lanterns, the arch draped in veils, the canopied bed and its candles,
+moonlight); his sculpt in `render::foes_court::lust` (rose silk, three heads, goose's feet, a
+serpent's tail that is a rig part of its own, the lance and its pennon); his voice and his sounds
+per move (the man's purr and laugh, the kiss, the bull's bellow, the ram's bleat, thorns).
+
+| Move | Startup | Active | Recovery | Damage | Shape | Cooldown |
+|---|---|---|---|---|---|---|
+| Lance Thrust | 34 | 6 | 40 | 22 | cone 2.2 (+0.9), ±20° | |
+| Blown Kiss | 36 | 1 | 36 | 8 | one bolt (a heart), from 3.2-8 tiles | 330 |
+| Thorn Line | 36 | 1 | 38 | 18 | five thorns in a row along his aim, 0.7 wide, 1.3 apart, fuse 40, from 3-7 tiles | 300 |
+| Bull's Charge | 40 | 46 | 46 | 26 | charge 7 tiles at 9 t/s, from 3.2-7 tiles, guard blocks or parries | 300 |
+| Ram's Butt | 32 | 6 | 38 | 16 | cone 1.0 (+0.9), ±50°, shoves 2.5 tiles | 180 |
+| Thorn Ring | 40 | 1 | 40 | 20 | nine thorns in a ring 2.15 tiles round him, 0.8 wide, fuse 46, within 3.4 | 300 |
+
+Phases: the Suitor (kiss, thorn line, lance), the Three Heads (charge, kiss, butt, lance; two
+elf-maids from the hedges, once), the Bridegroom of Ashes (thorn ring, charge, kiss, lance; ×1.35
+walk, ×0.6 rest). His health, poise and pace are the Prince's own (900 at tier 1). The banners say
+what to do ("LIGHT A CENSER, STRIKE THE MAIDS' BACKS"; "STEP OUT, LIGHT A CENSER, THEN STRIKE"), and
+the first moment of the fight puts "STRIKE A CENSER" over the nearest one.
+
+* **The censers** (`game::court::lust`): a blow of his swing on a cold censer lights it for 600
+  frames (one censer for one swing); each lights twice (once if the Bridesmaid's vows were spoken),
+  then is burnt out. While any smokes his Allure is gone (his breed's power is set to none, and
+  back as the last goes cold) and he backs out of three tiles of every smoking one at 3.2 t/s (not
+  in the middle of a move). The censers' state is the court's (`Court::bower`, private to the
+  court); the scene learns of the smoke from an ember the fight leaves in each smoking bowl (a
+  `Hazard` of no width on the censer's own rock tile: no one can stand in it).
+* **The kiss**: Asmodeus's bolt (`BoltLook::Kiss`, a beating pink heart), paced as every bolt to
+  land on the frame the threat manager planned. It is met by the court the frame before it would
+  touch him: no shield stops it and no parry turns it (as `general_hazard_blow`); in a leap it
+  passes under him; his blade in its active frames cuts it out of the air. If it strikes him he is
+  smitten for 90 frames: his guard will not rise (his guard button is ignored), and he walks, leaps
+  and swings as ever.
+* **The thorn ring**: the game throws its traps about the hero as for any `Shape::Traps`; the court
+  lays them round him instead (the threat manager's landing unchanged).
+
+**Changes from the design.** The kiss goes through the shield (the design says it is leapt or
+struck from the air; were it blockable the guard would be the whole answer and "smitten" would
+never come). The elf-maids serve him lighter than in their garden (0.8 of their health, 0.6 of
+their blows): no blow tells on their fronts, and two of them hunting with the prince were the
+bots' deaths. The kiss and the thorn line begin no nearer than 3.2 and 3 tiles, so between them
+and his lance's reach he closes in to thrust rather than standing off throwing (the expert's time
+went to nothing there). The Bull's Charge does not daze him, as designed.
+
+**The bot** (`bot::lust_court`, the adept's and the expert's, only in this court): it leaps a kiss
+on its line in its last 10 frames (out of the line), leaps what it would have guarded while
+smitten, guards the bull's charge as the runner comes (the expert into its parry window; nothing
+else in the bot knows a charge), leaves the elf-maids alone, and when no censer smokes, nothing it
+has seen comes within 45 frames and he is not mid-move, walks to the nearest censer that will
+still light and strikes it.
+
+His court (three lives, `--court lust SKILL TIER SEED`):
+
+| Skill | Tier | Seed 1 | Seed 2 | Seed 3 |
+|---|---|---|---|---|
+| expert | 1 | won 134.8 s, no fall, took 6 | won 120.2 s, no fall, took 39 | won 122.4 s, no fall, took 39 |
+| expert | 2 | won 96.0 s, no fall, took 45 | won 109.8 s, no fall, took 63 | won 89.5 s, no fall, took 96 |
+| adept | 1 | timed out (240 s) in phase 2, 1 fall | timed out in phase 2, 1 fall | timed out in phase 2, 1 fall |
+| adept | 2 | timed out in phase 2, 2 falls | timed out in phase 3, 1 fall | timed out in phase 2, 2 falls |
+| novice | 1 | lost all three lives in phase 1, 48.7 s | the same | the same |
+| novice | 2 | lost all three lives in phase 1, 56.4 s | the same | the same |
+
+Pinned by `the_expert_beats_asmodeus_in_his_court_and_a_masher_does_not` (game::court::lust).
