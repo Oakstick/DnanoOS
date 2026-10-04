@@ -58,7 +58,7 @@ pub struct Sequencer {
     pub running: bool,
     pub bpm: f64,
     pub step: usize,
-    next_time: f64,
+    pub next_time: f64,
     /// Times through the loop so far; the first pass is the build-up.
     pub loops: u32,
 }
