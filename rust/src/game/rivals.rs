@@ -13,6 +13,7 @@ use crate::logic::combat::MoveId;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::juice::{DilationKind, Stop, Trauma};
 use crate::logic::types::{dist_sq, PotionKind, V};
+use crate::logic::war::ledger::Family;
 use crate::logic::war::ledger::{EncounterTracker, Lesson, Personality, Place, RivalId, Side, Situation, Strength, Weakness, SILVER_TAKEN};
 use crate::logic::war::WarEvent;
 
@@ -29,6 +30,8 @@ pub const COWARD_FLEE: f64 = 0.4;
 /// A Schemer calls the next den when hurt below this share, after a horn this long (frames).
 pub const SCHEME_AT: f64 = 0.5;
 pub const SCHEME_HORN: u16 = 60;
+/// What a feared family's blow does to a rival's poise, against its whole.
+pub const FEAR_POISE: f64 = 3.0;
 
 /// The rivals and the trackers of this level.
 #[derive(Clone, Debug, Default)]
@@ -378,6 +381,16 @@ impl Game {
             }
         }
         share
+    }
+
+    /// The poise a blow of the hero's takes from rival `id`, against its whole: three times over if
+    /// he fears the family of the hero's blade.
+    pub(super) fn rival_dreads(&self, id: u32) -> f64 {
+        let Some(r) = self.rival_of(id).and_then(|rival| self.ledger().get(rival)) else { return 1.0 };
+        match r.weakness {
+            Weakness::Fears(f) if f == Family::of(self.hero_kind, self.hero.blade) => FEAR_POISE,
+            _ => 1.0,
+        }
     }
 
     /// A foe slain: if it was a rival, his fall (his reward, his trophy, his last words), and its

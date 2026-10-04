@@ -392,6 +392,10 @@ pub enum Cue {
     Phase(u8),
 }
 
+/// A patient duelist's tracking never runs into this many frames before its blow: a late step
+/// aside still beats it.
+pub const PATIENT_COMMIT: u16 = 12;
+
 #[derive(Clone, Debug)]
 pub struct Duelist {
     pub id: u32,
@@ -430,6 +434,9 @@ pub struct Duelist {
     /// Its legend at work, and what it did this frame.
     pub lore: Lore,
     pub cues: Vec<Cue>,
+    /// Frames its tracking may run past each move's own (a Patient rival, WARBAND.md §8.2), never
+    /// into the last `PATIENT_COMMIT` frames before the blow.
+    pub patient: u16,
     /// A puppet: it never thinks for itself (no token, no walking, no choice of move); whoever
     /// holds its strings moves it and begins its moves (the Peerless, Pride's echo of the hero).
     pub puppet: bool,
@@ -465,6 +472,7 @@ impl Duelist {
             cool: [0; 4],
             lore: Lore::default(),
             cues: Vec::new(),
+            patient: 0,
             puppet: false,
         }
     }
@@ -796,7 +804,8 @@ impl Duelist {
         match self.f.state {
             State::Attack { mv, frame } => {
                 let data = self.data(mv);
-                if frame < data.track {
+                let track = data.track + self.patient.min(data.startup.saturating_sub(PATIENT_COMMIT + data.track));
+                if frame < track {
                     self.facing = turn_toward(self.facing, dir, turn);
                     self.aim = self.facing;
                     if matches!(data.shape, Shape::Mark { .. }) {

@@ -486,8 +486,9 @@ impl Game {
     pub(super) fn duel_hit(&mut self, i: usize, mut hit: Hit, hitstop: u16, from: V) {
         self.wake_den_of(i);
         // A rival's old wound, and the elixir he has learnt.
-        let grudge = self.enemies[i].duel.as_ref().map(|d| self.rival_takes(d.id, from)).unwrap_or(1.0);
-        hit.damage *= grudge;
+        let grudge = self.enemies[i].duel.as_ref().map(|d| (self.rival_takes(d.id, from), self.rival_dreads(d.id))).unwrap_or((1.0, 1.0));
+        hit.damage *= grudge.0;
+        hit.poise *= grudge.1;
         let Some(du) = self.enemies[i].duel.as_mut() else { return };
         if !du.alive() || du.untouchable() {
             return;

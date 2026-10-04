@@ -796,6 +796,9 @@ impl Rival {
         du.f.armor += self.armor_bonus();
         du.f.max_poise *= self.poise_scale();
         du.f.poise = du.f.max_poise;
+        if self.strength == Strength::Patient {
+            du.patient = PATIENT_TRACK;
+        }
     }
 
     /// His name card.
