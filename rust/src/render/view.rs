@@ -60,6 +60,7 @@ mod spring;
 mod story;
 mod vault;
 mod vault_decor;
+mod war_props;
 mod workshop;
 
 pub use animation::SLASH_SECONDS;
@@ -171,6 +172,8 @@ pub struct SceneState<'a> {
     pub time_scale: f32,
     /// His fighter, where his fighting goes by frame data: his slash follows its frames.
     pub hero_fighter: Option<&'a crate::logic::combat::Fighter>,
+    /// The general of the realm, his instruments and his orders' marks (WARBAND.md §9).
+    pub general: Option<&'a crate::game::general::GeneralRun>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the

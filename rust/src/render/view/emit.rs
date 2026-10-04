@@ -226,6 +226,7 @@ impl WorldView {
         self.emit_foes(s, f);
         self.emit_juice(f);
         self.emit_duels(s, f);
+        self.emit_war(s, f);
         let (remedy_points, shrine_points) = self.emit_pickups(s, f);
         self.emit_transients(s, f);
         self.emit_world(s, f, hero_pos);
