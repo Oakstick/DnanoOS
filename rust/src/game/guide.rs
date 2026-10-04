@@ -44,7 +44,12 @@ impl Game {
                         now.push(format!("{name} is slain. His orders died with him, and his prince is weaker for it."));
                     } else {
                         let left = (0..3).filter(|&k| !r.command.instruments[k].broken).count();
-                        now.push(format!("{name} holds this realm for his prince. {left} of his three instruments still stand: break them and his orders fail."));
+                        let standing = match left {
+                            3 => "All three of his instruments still stand".to_string(),
+                            0 => "Every one of his instruments is broken".to_string(),
+                            n => format!("{n} of his three instruments still stand"),
+                        };
+                        now.push(format!("{name} holds this realm for his prince. {standing}: break them and his orders fail."));
                         if r.post_known {
                             now.push("His herald's map marks his post. Strike him there, and his prince fights the weaker.".into());
                         }

@@ -52,7 +52,7 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Move | WASD / arrows (relative to the camera) | Left stick, d-pad |
 | Aim camera | Mouse (click to capture) | Right stick (the camera stays where you aim it; click R3 to swing it back behind Ragnar, or, if you have not moved it, to switch the camera) |
 | Attack / fire | **Left click**, E | X, right trigger |
-| Bomb | **Right click**, B | B |
+| The old man's guide to this place (pauses play) | B | B |
 | Raise the shield (hold) | Shift | Left bumper |
 | Bifrost Step (path level 5) | F | Left stick press (L3) |
 | Call the old gatekeeper | H (or Call the Old Man on the pause menu) | Back |
