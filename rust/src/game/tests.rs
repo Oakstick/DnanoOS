@@ -910,7 +910,7 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     for _ in 0..((CLEARED_SECONDS + 0.1) / STEP) as usize {
         g.update(STEP);
     }
-    assert_eq!((g.screen, g.realm, g.boss.is_some()), (Screen::Ready, Some(Sin::Sloth), true), "Belphegor's court");
+    assert_eq!((g.screen, g.realm, g.boss.is_some() || g.in_court()), (Screen::Ready, Some(Sin::Sloth), true), "Belphegor's court");
     assert_eq!(g.boss_name(), "BELPHEGOR");
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Court(Sin::Sloth)));
     // The prince falls and drops the key of Greed.
@@ -932,7 +932,9 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     g.update(STEP);
     assert!(g.red_key.is_none() && g.gate_open, "the key of Sloth opens the court's gate");
     let gate = g.gate.unwrap();
-    g.hero.m.teleport(P::new(gate.x, gate.y + 1));
+    // (Inside the gate: the meadow's is in its north hedge, a built court's in its south wall.)
+    let inside = if g.in_court() { gate.y - 1 } else { gate.y + 1 };
+    g.hero.m.teleport(P::new(gate.x, inside));
     for _ in 0..(3.0 / STEP) as usize {
         g.update(STEP);
     }

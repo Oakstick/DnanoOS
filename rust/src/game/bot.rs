@@ -538,9 +538,7 @@ impl Bot {
         }
         let foes = if hunting.is_empty() { all } else { hunting };
         let openness = |d: &crate::logic::combat::Duelist| {
-            if Self::belphegor_asleep(d) {
-                0
-            } else if d.f.vulnerable() || d.f.reeling().is_some() {
+            if Self::belphegor_asleep(d) || d.f.vulnerable() || d.f.reeling().is_some() {
                 0
             } else if matches!(d.f.attack(), Some((_, Phase::Recovery, _))) {
                 1

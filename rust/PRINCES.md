@@ -293,7 +293,85 @@ why, and the court's results (the bots' table, as COMBAT.md §13.2).
 
 ### Belphegor
 
-(to come)
+Built 2026-10-04. The court is `logic/court/sloth.rs` (the Hall of Stopped Clocks, 33 × 33, its
+corners cut: 27 across), his fight `logic/combat/prince/sloth.rs` and `game/court/sloth.rs`, his
+sculpt and his nightmares' `render/foes_court/sloth.rs`, the hall's art `render/view/court_sloth.rs`.
+
+**The court.** Worn grey boards under fog (mist sheets and the haze, thickest at the walls), a great
+faded rug in the middle; grey-blue hangings over a wainscot, small clocks hung on the walls (cuckoo
+clocks among them), candles in iron sconces (some guttered), tall moonlit windows in the north
+wall; four timber posts under the beams, cobwebs on beams, posts, clocks, chair and bed. Pieces of
+the floor (rock): his great wing chair against the north wall (3 × 4), the giant hourglass before
+it (off to his right, at (20, 10), so it does not stand between the gate and him), twelve tall
+longcase clocks against the walls, the four posts, a canopied bed in the north-east. The drift of
+sand in the south-west is walked over. While he lives every clock is stopped at its own hour and
+the hourglass's sand hangs in mid-fall; when he falls the pendulums swing, the hands go round and
+the sand runs ("THE CLOCKS START AGAIN").
+
+**His fight.**
+
+| Phase | Title | Moves | What else |
+|---|---|---|---|
+| 0 | ASLEEP | (none) | slumped in his chair; hide open; the first blow lands whole and wakes him (a phase change: roar, banner, cross) |
+| 1 (> 2/3) | THE SLEEPER | Yawn, Swat, Sand of Hours | |
+| 2 | THE DREAMER | (asleep) then Yawn, Swat, Sand of Hours | lies down where he stands; two nightmares, once |
+| 3 (< 1/3) | THE WAKING | Hourglass Slam, Clock Hands, Yawn, Swat | wakes for good; slowest on his feet |
+
+| Move | Startup | Active | Recovery | Damage | Shape | Rider / cooldown |
+|---|---|---|---|---|---|---|
+| Swat | 38 | 8 | 46 | 28 | cone 1.5 (+0.9), ±100° | |
+| Yawn | 36 | 12 | 40 | 8 | cone 2.4 (+0.9), ±32° | shove 2.8 (half blocked, none parried); 240 |
+| Sand of Hours | 36 | 1 | 40 | 16 | six heaps round him (one on him), 0.8 wide, bursting 16 + 50 f after | 270 |
+| Hourglass Slam | 46 | 6 | 54 | 34 | cone 1.4 (+0.9); quake 2.6 (+0.9) at 50% | 300 |
+| Clock Hands | 44 | 10 | 50 | 26 | cone 3.0 (+0.9), ±150° | 150 |
+
+Pace (walk, rest): ×0.85, ×1.1 in his first phases; ×0.75, ×0.9 standing (slower than Mammon in
+every phase: his reach makes up for it).
+
+* **His sleep** is `prince::sloth::Slumber` on his `Lore` (Awake, Drowsy, Nodding, Asleep, Waking),
+  stepped once a combat frame by `sloth_tick`. While he nods off, sleeps or wakes he is a puppet of
+  his own torpor (no token, no walking, no move) and `Duelist::exposed` is true, so Torpor (still a
+  hide, `is_hide`) lets the whole blow through, and the bar says HIS HIDE IS OPEN.
+* **The Dreamer.** At two thirds he finishes his move, then lies down where he stands (40 f). Asleep
+  he mends 0.8% of his health a second (a floater says so), never past the two-thirds line. Blows
+  taking 6% of his health in one sleep, or any blow while the hero's finisher (L3) is out, wake him
+  (54 f, open, "STRUCK AWAKE!"); 540 frames later, if still in his second phase, he nods off again.
+* **The nightmares** are hexers now (they keep their distance and hex; health ×1.4 of the
+  Hexer's), raised either side of him (`nightmare_spots`), weighted as the court's tier. They fall
+  when he does.
+* **His general.** Slain: no nightmares (he still dreams). Decree done (the hourglass wound): he
+  wakes rested, no free blow (phase 1 from the first), and his nightmares come at once.
+
+**What changed from the design, and why.** Phase 2's table is the Sleeper's moves once he is struck
+awake (the design names no moves for it), and he nods off again after nine seconds awake, so the
+phase stays about his sleep rather than one free window. The hourglass stands before the chair but
+off his line to the gate (it hid him from the hero walking in). His waking from his chair is a phase
+change (0 to 1), so it brings a banner and a breather like every other.
+
+**Shared files touched.** `logic/combat/frames.rs` (Swat's real data; Yawn, SandOfHours,
+HourglassSlam, ClockHands in Belphegor's blocks; the coin test counts at least two trap moves),
+`logic/combat/duelist.rs` (`Lore.slumber`; `exposed` true while he sleeps or wakes),
+`logic/combat/archetype.rs` (the nightmare a Hexer; Torpor's doc), `audio/voices.rs` (his own tell,
+swing, cry and fall, and the nightmares'; his and theirs out of the kin arms), `render/view/duel.rs`
+(his pose hook after `overshoot_duel`; Sloth's traps drawn as sand; three tell colours),
+`render/view/animation.rs` (his shuffle, the nightmares' hover and sway), `game/bot.rs` (a sleeping
+Belphegor is the most open target, and it leans into him to face him as it swings:
+`Bot::belphegor_asleep`), `logic/guide.rs` (his page).
+
+**Results** (`--court sloth SKILL TIER SEED`, three seeds):
+
+| Skill | Tier | Win | Time (s) | Deaths | Taken |
+|---|---|---|---|---|---|
+| novice | 1 | 0/3 | lost in 62.8 (phase 1) | 4 | 363 |
+| novice | 2 | 0/3 | lost in 70.7 (phase 1) | 4 | 440 |
+| adept | 1 | 0/3 | timed out (240), phase 2 | 0 | 0-7 |
+| adept | 2 | 0/3 | timed out (240), phase 2 | 0 | 0-24 |
+| expert | 1 | 3/3 | 96.6, 102.6, 118.5 | 0 | 0-42 |
+| expert | 2 | 3/3 | 88.2, 95.0, 106.4 | 0 | 0 |
+
+The expert parries everything and strikes him whenever he sleeps; the adept blocks and strikes
+little, and in his dream he mends faster than it hurts him: Sloth's lesson. Pinned by
+`the_expert_beats_belphegor_in_his_court_and_a_masher_does_not` (game/court/sloth.rs).
 
 ### Beelzebub
 
