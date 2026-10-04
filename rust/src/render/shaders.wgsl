@@ -1456,9 +1456,11 @@ fn dusk_sky(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
     let up = ray.y;
     let u = max(up, 0.0);
     let sun = normalize(g.sky_moon.xyz);
-    var col = mix(vec3<f32>(1.0, 0.58, 0.3), vec3<f32>(0.88, 0.44, 0.48), smoothstep(0.0, 0.08, u));
-    col = mix(col, vec3<f32>(0.4, 0.3, 0.58), smoothstep(0.08, 0.32, u));
-    col = mix(col, vec3<f32>(0.07, 0.08, 0.22), smoothstep(0.32, 0.85, u));
+    // The art direction's dusk: amber at the horizon, into copper, mist-teal grey, a charcoal
+    // zenith (it was pink, mauve and navy).
+    var col = mix(vec3<f32>(1.0, 0.62, 0.32), vec3<f32>(0.74, 0.42, 0.28), smoothstep(0.0, 0.08, u));
+    col = mix(col, vec3<f32>(0.3, 0.35, 0.36), smoothstep(0.08, 0.32, u));
+    col = mix(col, vec3<f32>(0.05, 0.08, 0.09), smoothstep(0.32, 0.85, u));
     let flat_ray = normalize(vec3<f32>(ray.x, 0.0, ray.z) + vec3<f32>(1e-4, 0.0, 0.0));
     let toward = max(dot(flat_ray, normalize(vec3<f32>(sun.x, 0.0, sun.z))), 0.0);
     col = mix(col, col * vec3<f32>(1.15, 0.92, 0.75) + vec3<f32>(0.12, 0.05, 0.0), toward * toward * (1.0 - smoothstep(0.0, 0.45, u)));
@@ -1475,7 +1477,7 @@ fn dusk_sky(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
         let n = cfbm(vec2<f32>(q.x * 0.45 + time * 0.012, q.y * 1.7 + time * 0.004));
         let cover = smoothstep(0.46, 0.76, n) * smoothstep(0.005, 0.1, up) * (1.0 - smoothstep(0.45, 0.85, up));
         let sunward = pow(max(dot(normalize(ray), sun), 0.0), 3.0);
-        let lit = mix(vec3<f32>(0.42, 0.28, 0.42), vec3<f32>(1.0, 0.64, 0.42), clamp(sunward * 1.5 + toward * 0.35, 0.0, 1.0));
+        let lit = mix(vec3<f32>(0.34, 0.3, 0.29), vec3<f32>(1.0, 0.64, 0.4), clamp(sunward * 1.5 + toward * 0.35, 0.0, 1.0));
         col = mix(col, lit * (0.75 + 0.45 * n), cover * 0.85);
     }
     col += star_layer(ray, 90.0, 0.05, px, time) * smoothstep(0.35, 0.8, up) * 0.8;
@@ -1489,19 +1491,23 @@ fn sky_color(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
     }
     let up = ray.y;
 
-    let zenith = vec3<f32>(0.004, 0.006, 0.014);
+    // A teal-charcoal night (the art direction's), the mist's teal glowing low along the horizon.
+    let zenith = vec3<f32>(0.005, 0.011, 0.013);
     var col = mix(g.fog.rgb * 0.6, zenith, smoothstep(-0.2, 0.18, up));
+    col += vec3<f32>(0.045, 0.08, 0.075) * exp(-max(up, 0.0) / 0.09) * smoothstep(-0.06, 0.01, up);
 
     // A faint milky band across the sky.
     let band_n = normalize(vec3<f32>(0.35, 0.3, 0.88));
     let band = exp(-pow(dot(ray, band_n) / 0.2, 2.0));
     let cloud = vnoise2(vec2<f32>(atan2(ray.z, ray.x) * 6.0, ray.y * 9.0)) * vnoise2(vec2<f32>(atan2(ray.z, ray.x) * 17.0, ray.y * 23.0));
     let above = smoothstep(-0.02, 0.2, up);
-    col += vec3<f32>(0.05, 0.055, 0.075) * band * (0.4 + 1.2 * cloud) * above;
+    col += vec3<f32>(0.042, 0.058, 0.058) * band * (0.4 + 1.2 * cloud) * above;
+    col += vec3<f32>(0.03, 0.02, 0.008) * band * band * cloud * above;
 
-    var stars = star_layer(ray, 90.0, 0.07, px, time);
-    stars += star_layer(ray, 170.0, 0.05 + 0.08 * band, px, time) * 0.8;
-    stars += star_layer(ray, 320.0, 0.03 + 0.1 * band, px, time) * 0.6;
+    // Fewer stars than there were (they read as snow), thickest in the band.
+    var stars = star_layer(ray, 90.0, 0.05, px, time);
+    stars += star_layer(ray, 170.0, 0.025 + 0.07 * band, px, time) * 0.75;
+    stars += star_layer(ray, 320.0, 0.012 + 0.08 * band, px, time) * 0.55;
     col += stars * above;
 
     // The full moon.
@@ -1510,8 +1516,8 @@ fn sky_color(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
     let mu = cross(mr, md);
     let radius = 0.042;
     let ang = acos(clamp(dot(ray, md), -1.0, 1.0));
-    let halo = exp(-max(ang - radius, 0.0) * 22.0) * 0.12 + exp(-max(ang - radius, 0.0) * 5.0) * 0.04;
-    col += vec3<f32>(0.55, 0.6, 0.75) * halo;
+    let halo = exp(-max(ang - radius, 0.0) * 22.0) * 0.12 + exp(-max(ang - radius, 0.0) * 4.0) * 0.06;
+    col += vec3<f32>(0.52, 0.68, 0.66) * halo;
     if (ang < radius + px * 2.0) {
         let uv = vec2<f32>(dot(ray, mr), dot(ray, mu)) / radius;
         let r2 = dot(uv, uv);

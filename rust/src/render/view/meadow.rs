@@ -41,19 +41,20 @@ use pal::*;
 /// flame to violet, the first stars out overhead, mauve clouds below.
 pub fn meadow_atmosphere() -> Atmosphere {
     Atmosphere {
-        background: 0x5a4a66,
+        // An amber dusk in the art direction's palette (it was a magenta twilight).
+        background: 0x4e5450,
         fog_near: 18.0,
         fog_far: 52.0,
-        hemi_sky: lin(0x9a8ad8) * 0.55,
-        hemi_ground: lin(0x5a6a30) * 0.5,
-        ambient: lin(0x8a7a90) * 0.24,
+        hemi_sky: lin(0x8aa6a0) * 0.55,
+        hemi_ground: lin(0x4a5230) * 0.5,
+        ambient: lin(0x7e8480) * 0.24,
         sun_dir: Vec3::new(-0.7, 0.6, -0.25).normalize(),
         sun: lin(0xffb070) * 2.2,
         exposure: 1.25,
         night_sky: 2.0,
         bloom: 0.7,
         moon_view: Vec3::new(-0.42, 0.2, -0.9).normalize(),
-        cloud_tint: lin(0x4a3444),
+        cloud_tint: lin(0x3e3a36),
     }
 }
 

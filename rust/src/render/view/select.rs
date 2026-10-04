@@ -13,13 +13,14 @@ pub(super) const SELECT_STAGE: Vec3 = Vec3::new(-120.0, 0.0, -40.0);
 const SLOTS_X: [f32; 3] = [-1.32, 0.0, 1.32];
 
 mod pal {
-    pub const STONE: [u32; 3] = [0x4a4440, 0x3e3935, 0x564f49];
-    pub const ROCK: [u32; 4] = [0x2e2926, 0x3a3430, 0x25211f, 0x453d37];
-    pub const LAVA: u32 = 0xff8a1e;
-    pub const LAVA_HOT: u32 = 0xffd25a;
-    pub const CRUST: u32 = 0x1a0e0a;
-    pub const CRYSTAL: u32 = 0x5cd8ff;
-    pub const CRYSTAL_D: u32 = 0x2a88c8;
+    // The art direction's palette: charcoal and umber stone, amber lava, crystals of mist teal.
+    pub const STONE: [u32; 3] = [0x4a5250, 0x3f4745, 0x5e4c40];
+    pub const ROCK: [u32; 4] = [0x2c3230, 0x363c3a, 0x242a28, 0x40342c];
+    pub const LAVA: u32 = 0xf09038;
+    pub const LAVA_HOT: u32 = 0xffd070;
+    pub const CRUST: u32 = 0x1a120c;
+    pub const CRYSTAL: u32 = 0x8ad0c4;
+    pub const CRYSTAL_D: u32 = 0x4e8a80;
     pub const IRON: u32 = 0x24221f;
     pub const ROPE: u32 = 0x6a5236;
     pub const PLANK: u32 = 0x4e3522;

@@ -630,6 +630,14 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - The trees take the garden's grade; the soul halos are gentler; the fireflies are amber and
     kept away from the camera.
   - The menu panels are charcoal with pale-stone edges and a copper rule; the gold is amber.
+- **The skies:**
+  - The night is teal-charcoal with a low mist-teal glow at the horizon, a warmer milky band,
+    fewer stars and a teal moon halo.
+  - The dusk (the Cyclops' meadow) runs amber at the horizon, through copper and mist-teal grey,
+    to a charcoal zenith, instead of pink, mauve and navy.
+- **The Cyclops' meadow:** takes the Garden's grade and an amber dusk light instead of magenta
+  twilight.
+- **The character screen's cavern:** charcoal and umber stone, amber lava, crystals of mist teal.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 

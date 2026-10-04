@@ -551,8 +551,8 @@ impl WorldView {
             // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
-        // The garden and its gate, graded into the board's palette.
-        if self.estate_art {
+        // The garden and its gate, and the Cyclops' meadow, graded into the board's palette.
+        if self.estate_art || theme == Theme::Meadow {
             self.grade_estate();
         }
         self.mist_set = InstanceSet::new(self.mist.clone());
