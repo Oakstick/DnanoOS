@@ -1,13 +1,13 @@
 //! A prince's court on the HUD (ROADMAP.md phase 3): his health across the top middle in the
 //! panels' charcoal and copper, his name and the title of his phase over it, notches at the
 //! thirds where his fight changes and a pip lit for each phase reached, the pale trail of what
-//! the last blows cost, and a gold edge while his hide is open (`game::court::PrinceBar`). Under
+//! the last blows cost, and a gold edge while his hide is open (`game::court::PrinceBar`); his health
+//! is in his sin's colour. Under
 //! the score, what the fight wants of him: the fight, the key, the gate.
 
 use super::*;
 
-/// The bar's colours: his gold dimmed toward amber, its edge bright while his hide is open.
-const HEALTH: u32 = 0xd8a040;
+/// The bar's colours: a flash as a blow lands, its edge bright while his hide is open.
 const HEALTH_HIT: u32 = 0xfff0c0;
 const OPEN: u32 = 0xffe070;
 const TRAIL: u32 = 0xe8dcc0;
@@ -49,16 +49,17 @@ pub(super) fn draw_prince_bar(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(x0 - 2.0, by - 2.0, bw + 4.0, bh + 4.0, [0.0, 0.0, 0.0, 0.75]);
     o.rect(x0, by, bw, bh, [EDGE[0], EDGE[1], EDGE[2], 0.1]);
     o.rect(x0, by, bw * trail, bh, rgba(TRAIL, 0.7));
-    o.rect(x0, by, bw * frac, bh, rgba(if b.flash { HEALTH_HIT } else { HEALTH }, 1.0));
+    o.rect(x0, by, bw * frac, bh, rgba(if b.flash { HEALTH_HIT } else { b.color }, 1.0));
     o.rect(x0, by, bw * frac, bh * 0.3, [1.0, 1.0, 1.0, 0.16]);
     for k in [1.0f32 / 3.0, 2.0 / 3.0] {
         o.rect(x0 + bw * k - 1.0, by - t * 0.12, 2.0, bh + t * 0.24, rgba(COPPER, 0.95));
     }
     if b.open {
-        // His hide is open: strike now.
+        // His hide is open (or Amon, who has none, is open): strike now.
         let a = 0.55 + (time * 9.0).sin() * 0.35;
         o.rect_outline(x0 - 3.0, by - 3.0, bw + 6.0, bh + 6.0, (t * 0.08).max(2.0), rgba(OPEN, a));
-        o.text("HIS HIDE IS OPEN", w / 2.0, by + bh + t * 0.5, t * 0.42, rgba(OPEN, a), Align::Center, true);
+        let open = if b.hide { "HIS HIDE IS OPEN" } else { "HE IS OPEN" };
+        o.text(open, w / 2.0, by + bh + t * 0.5, t * 0.42, rgba(OPEN, a), Align::Center, true);
     }
 }
 

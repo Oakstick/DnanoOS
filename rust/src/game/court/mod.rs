@@ -75,6 +75,11 @@ pub struct PrinceBar {
     pub trail: f32,
     pub open: bool,
     pub flash: bool,
+    /// His sin's colour, for his health.
+    pub color: u32,
+    /// He wears a hide that turns blows outside his openings (every prince but Amon, whose wrath
+    /// has none: he is only ever open or not).
+    pub hide: bool,
 }
 
 impl Game {
@@ -116,6 +121,8 @@ impl Game {
             trail: c.trail,
             open: d.exposed(),
             flash: d.flash > 0,
+            color: c.sin.color(),
+            hide: d.breed.power.is_hide(),
         })
     }
 
