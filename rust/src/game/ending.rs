@@ -214,7 +214,9 @@ mod tests {
 
     #[test]
     fn the_finished_mark_is_saved_and_read_back() {
-        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        // A save folder of this test's own (the process-wide `VH_SAVE_DIR` is shared with every
+        // other test running at the same time).
+        platform::use_dir_on_this_thread(std::env::temp_dir().join("vh-test-finished"));
         platform::save(FINISHED_KEY, "0");
         assert!(!finished_saved());
         remember_finished();
