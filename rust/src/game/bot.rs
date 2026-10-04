@@ -117,6 +117,12 @@ pub struct Bot {
     lead: f64,
     /// Frames before it may drink again.
     sip: u16,
+    /// Duelists it leaves alone (a general it means to skip, and his room: WARBAND.md §15.1).
+    pub ignore: Vec<u32>,
+    /// The drop it is walking to and for how many updates, and those it gave up on (one wedged
+    /// behind a pillar's corner would hold it for good).
+    chase: (P, u32),
+    given_up: Vec<P>,
 }
 
 impl Bot {
@@ -130,6 +136,9 @@ impl Bot {
             attack_down: false,
             guard_hold: 0,
             lead: PARRY_LEAD,
+            ignore: Vec::new(),
+            chase: (P::new(-1, -1), 0),
+            given_up: Vec::new(),
         }
     }
 
@@ -250,11 +259,67 @@ impl Bot {
                 .unwrap_or_else(|| math::from_angle(base));
             out.push(Dodge { t: t.fuse as f64, out: best });
         }
+        // A general's kindled marks (WARBAND.md §9): off the one he stands on, as its fuse runs out.
+        if let Some(r) = g.general.as_ref() {
+            let reach = crate::logic::war::general::KINDLE_RADIUS + HERO_RADIUS + 0.35;
+            for v in r.volleys.iter().filter(|v| !v.turned && v.burst.is_none()) {
+                let Some(due) = v.due else { continue };
+                for m in v.marks.iter().filter(|m| math::len(math::sub(hp, **m)) < reach) {
+                    let away = math::sub(hp, *m);
+                    let dir = if math::len(away) < 0.05 { V::new(1.0, 0.0) } else { math::norm(away) };
+                    // (Off it as soon as it is seen, while nothing else is close: not in the last
+                    // moment, when other blows may be on their way.)
+                    let _ = due;
+                    out.push(Dodge { t: DODGE_AHEAD * 0.9, out: dir });
+                }
+            }
+        }
         for d in out.iter_mut() {
             d.out = Self::keep_in(g, hp, d.out);
         }
         out.sort_by(|a, b| a.t.total_cmp(&b.t));
         out
+    }
+
+    /**
+     * A general's instruments and the gate his muster glows at (WARBAND.md §15.2): with nothing
+     * hunting it near (never mid-fight), the bot bars a glowing gate it can reach in time and breaks the instruments
+     * it passes, the expert going farther out of its way than the adept (the novice never).
+     */
+    fn general_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        let (out_of_way, gate_reach) = match self.skill {
+            Skill::Novice => return None,
+            Skill::Adept => (6.0, 9.0),
+            Skill::Expert => (16.0, 18.0),
+        };
+        let (instruments, gate) = g.general_targets();
+        let mut pad = PadState::default();
+        if hunting_near {
+            return None;
+        }
+        if let Some(at) = gate.filter(|at| math::len(math::sub(*at, hp)) < gate_reach) {
+            let d = math::len(math::sub(at, hp));
+            if d > 0.35 {
+                let dir = self.way(g, hp, at);
+                pad.left = (dir.x as f32, dir.y as f32);
+            }
+            self.attack_down = false;
+            return Some(pad);
+        }
+        let (_, at) = instruments
+            .into_iter()
+            .filter(|(_, at)| math::len(math::sub(*at, hp)) < out_of_way)
+            .min_by(|a, b| math::len(math::sub(a.1, hp)).total_cmp(&math::len(math::sub(b.1, hp))))?;
+        let to = math::sub(at, hp);
+        let dir = if math::len(to) > 0.6 { self.way(g, hp, at) } else { math::norm(to) };
+        pad.left = (dir.x as f32, dir.y as f32);
+        if math::len(to) <= ENGAGE && g.hero.stamina >= 16.0 {
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
+        Some(pad)
     }
 
     /// `out`, or the nearest way round from it that keeps him on the fight's floor (walking or
@@ -394,21 +459,37 @@ impl Bot {
         // Offence: the most open foe (reeling, then recovering), then the nearest; in the vaults those
         // hunting him first, and when none is, the nearest pack asleep (to wake it).
         // (Nothing out of his reach is a target, nor a felled dragon begging to be struck again.)
-        let all: Vec<_> =
-            g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive() && !d.untouchable() && !d.begging()).collect();
+        let all: Vec<_> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && !d.untouchable() && !d.begging())
+            .filter(|d| !self.ignore.contains(&d.id))
+            .collect();
         let hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
+        // (Between fights only: walking off on an errand mid-fight drags its foes' blows and bolts
+        // off their planned frames.)
+        let hunting_near = hunting.iter().any(|d| !d.puppet);
+        if let Some(errand) = self.general_errand(g, hp, hunting_near) {
+            return errand;
+        }
         // Between fights (or hurt), what lies near goes into the belt first: a potion, a weapon, a boon.
         let hurt = (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.6;
         if self.skill != Skill::Novice && (hunting.is_empty() || hurt) {
             let near = g.vault.as_ref().and_then(|v| {
                 v.drops
                     .iter()
-                    .filter(|d| !d.taken && d.landed())
+                    .filter(|d| !d.taken && d.landed() && !self.given_up.contains(&d.at))
                     .map(|d| d.at.v())
                     .filter(|p| math::len(math::sub(*p, hp)) < 6.0)
                     .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))
             });
             if let Some(p) = near {
+                let at = P::new(p.x.round() as i32, p.y.round() as i32);
+                self.chase = if self.chase.0 == at { (at, self.chase.1 + 1) } else { (at, 0) };
+                if self.chase.1 > 1200 {
+                    self.given_up.push(at);
+                }
                 let dir = self.way(g, hp, p);
                 pad.left = (dir.x as f32, dir.y as f32);
                 return pad;
@@ -882,8 +963,36 @@ pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> C
 
 /// A crawl, with the Drum's trace kept in `trace` if it is given one.
 pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64, trace: &mut Option<DrumTrace>) -> Crawl {
+    crawl_realm(crate::logic::sins::Sin::Greed, skill, seed, loadout, limit, trace, false).0
+}
+
+/// How a crawl through a general's realm went (WARBAND.md §15.2): the crawl, his orders, his
+/// instruments broken, and whether he was slain.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GeneralCrawl {
+    pub crawl: Crawl,
+    pub tally: super::general::GeneralTally,
+    pub broken: usize,
+    pub slain: bool,
+    pub decree_done: bool,
+}
+
+/**
+ * A bot crawls the realm of `sin` with its general, as `crawl` does the vaults: until every foe is
+ * slain (with `skip_general`, every foe but the general's own pack, which it leaves asleep unless
+ * it wakes), its lives run out, or `limit` seconds pass.
+ */
+pub fn crawl_realm(
+    sin: crate::logic::sins::Sin,
+    skill: Skill,
+    seed: u32,
+    loadout: Option<Loadout>,
+    limit: f64,
+    trace: &mut Option<DrumTrace>,
+    skip_general: bool,
+) -> (Crawl, GeneralCrawl) {
     let mut g = fresh_game(seed);
-    g.map_jump(super::save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    g.map_jump(super::save::Stage::Realm(sin));
     if let Some(l) = loadout {
         l.equip(&mut g);
     }
@@ -894,6 +1003,13 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
     }
     g.hero.free_move = true;
     let mut bot = Bot::new(skill, seed);
+    // (Skipping him, the bot goes round his post: his room's pack is held out of the fight, a
+    // stand-in for a player who never sets foot there, while his orders run on.)
+    let skipped = if skip_general { g.general_pack() } else { Vec::new() };
+    for d in g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).filter(|d| skipped.contains(&d.id)) {
+        d.puppet = true;
+    }
+    bot.ignore = skipped.clone();
     let foes = g.enemies.iter().filter(|e| e.duel.is_some()).count() as u32;
     let lives = g.score.lives;
     let step = crate::app::STEP;
@@ -924,7 +1040,8 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
                 tr.push((t, g.war.drum.intensity, g.war.drum.phase));
             }
         }
-        if !g.enemies.iter().any(|e| e.duel.as_ref().is_some_and(|d| d.alive())) {
+        let left = |d: &crate::logic::combat::Duelist| d.alive() && !skipped.contains(&d.id);
+        if !g.enemies.iter().any(|e| e.duel.as_deref().is_some_and(left)) {
             out.cleared = true;
             break;
         }
@@ -932,7 +1049,7 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
     out.secs = t;
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
     out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
-    out.kills = out.foes - g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count() as u32;
+    out.kills = out.foes.saturating_sub(g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count() as u32);
     if std::env::var_os("VH_CRAWL_LEFT").is_some() {
         let hp = g.hero.pos();
         eprintln!("hero at ({:.1}, {:.1})", hp.x, hp.y);
@@ -949,6 +1066,68 @@ pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f6
     out.routs = g.war.tally.routs;
     out.rallies = g.war.tally.rallies;
     out.rest = if drum.rests.is_empty() { 0.0 } else { drum.rests.iter().sum::<f64>() / drum.rests.len() as f64 };
+    let general = g
+        .general
+        .as_ref()
+        .map(|r| GeneralCrawl {
+            crawl: out,
+            tally: r.tally,
+            broken: r.command.broken(),
+            slain: r.command.slain,
+            decree_done: r.command.decree_done,
+        })
+        .unwrap_or(GeneralCrawl { crawl: out, ..GeneralCrawl::default() });
+    (out, general)
+}
+
+/// `--general SIN SKILL TIER SEED`: one realm with its general, the bot taking him on and then
+/// leaving him be, and what his orders came to in each (WARBAND.md §15.2).
+pub fn general_report(sin: crate::logic::sins::Sin, skill: Skill, tier: u8, seed: u32, limit: f64) -> String {
+    let kit = Some(Loadout::all(HeroKind::Ragnar, tier));
+    let mut out = format!(
+        "{} - {} ({}), {} with Ragnar's tier-{tier} kit, seed {seed}
+",
+        sin.realm(),
+        crate::logic::war::general::General::of(sin).name,
+        sin.title(),
+        skill.name()
+    );
+    out += "general  cleared  minutes  deaths  kills/foes  announced  bit  failed  answered  broken  barred  turned  bursts  burned  whistles  decrees  slain-at  overlaps
+";
+    let mut times = [0.0; 2];
+    for (k, skip) in [false, true].into_iter().enumerate() {
+        let (c, r) = crawl_realm(sin, skill, seed, kit, limit, &mut None, skip);
+        times[k] = c.secs;
+        out += &format!(
+            "{:<8} {:>7} {:>8.1} {:>7} {:>5}/{:<5} {:>10} {:>4} {:>7} {:>9} {:>4}/3 {:>7} {:>7} {:>7} {:>7} {:>9} {:>8} {:>9} {:>9}
+",
+            if skip { "alive" } else { "fought" },
+            if c.cleared { "yes" } else { "no" },
+            c.secs / 60.0,
+            c.deaths,
+            c.kills,
+            c.foes,
+            r.tally.announced,
+            r.tally.bitten,
+            r.tally.failed,
+            r.tally.answered,
+            r.broken,
+            r.tally.barred,
+            r.tally.turned,
+            r.tally.bursts,
+            r.tally.burned,
+            r.tally.whistles,
+            r.tally.decrees,
+            r.tally.slain_at.map(|t| format!("{:.0}s", t)).unwrap_or_else(|| if r.slain { "yes".into() } else { "-".into() }),
+            c.stats.overlaps
+        );
+    }
+    let diff = (times[1] - times[0]) / times[0].max(1.0) * 100.0;
+    out += &format!(
+        "time with him alive against slain: {:+.0}% (target within 25%)
+",
+        diff
+    );
     out
 }
 

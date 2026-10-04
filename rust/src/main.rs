@@ -112,6 +112,17 @@ fn main() {
         );
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--general") {
+        // WARBAND.md §15.2: one realm with its general: `--general SIN SKILL TIER SEED` (sin 0 Pride
+        // .. 4 Greed .. 6 Lust; skill 0 novice, 1 adept, 2 expert), fought and then left alive.
+        use void_harvest::game::bot::{general_report, Skill};
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|v| v.parse().ok()).unwrap_or(d);
+        let sin = void_harvest::logic::sins::SINS[(num(1, 4) as usize).min(6)];
+        let skill = Skill::ALL[(num(2, 2) as usize).min(2)];
+        print!("{}", general_report(sin, skill, num(3, 4) as u8, num(4, 1), 900.0));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--crawl-one") {
         // One crawl through the Vaults of Mammon: `--crawl-one SKILL TIER SEED` (skill 0 novice,
         // 1 adept, 2 expert); what is left standing at the end is listed.
