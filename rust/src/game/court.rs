@@ -34,6 +34,8 @@ pub struct Court {
     pub phase: u8,
     pub slain: bool,
     pub trail: f32,
+    /// His golems are to climb out as his fight begins (his general's decree was done, WARBAND.md §9).
+    pub golems_due: bool,
 }
 
 /// The prince's bar on the HUD: his name, the phase's title, his health and its trail, and
@@ -108,11 +110,15 @@ impl Game {
         d.hp = d.max_hp;
         d.breed.damage *= damage;
         d.rest = 90;
+        // His general's realm weighs on his fight: slain, his phase-two adds are lost; his decree
+        // done, his golems come at once.
+        let terms = self.prince_terms(crate::logic::sins::Sin::Greed);
+        d.lore.summoned = !terms.phase_two_adds;
         e.duel = Some(Box::new(d));
         self.enemies = vec![e];
         self.brawl = Some(brawl);
         let trail = self.enemies[0].duel.as_ref().map(|d| d.max_hp as f32).unwrap_or(0.0);
-        self.court = Some(Court { prince: id, phase: 1, slain: false, trail });
+        self.court = Some(Court { prince: id, phase: 1, slain: false, trail, golems_due: terms.golems_at_start });
     }
 
     /// After a fall: the prince whole again before his throne, his golems gone (unless he has
@@ -125,14 +131,17 @@ impl Game {
         let keep = c.prince;
         self.enemies.retain(|e| e.duel.as_ref().is_some_and(|d| d.id == keep));
         let home = P::new(MAMMON.0, MAMMON.1).v();
+        let terms = self.prince_terms(crate::logic::sins::Sin::Greed);
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).next() {
             d.reset_home();
             d.pos = home;
             d.facing = V::new(0.0, 1.0);
             d.rest = 90;
+            d.lore.summoned = !terms.phase_two_adds;
         }
         if let Some(c) = self.court.as_mut() {
             c.phase = 1;
+            c.golems_due = terms.golems_at_start;
             c.trail = self.enemies.first().and_then(|e| e.duel.as_ref()).map(|d| d.max_hp as f32).unwrap_or(0.0);
         }
         self.refresh_foe_views();
@@ -143,6 +152,17 @@ impl Game {
         if self.enemies.iter().any(|e| e.mode() == EnemyMode::Eaten) {
             self.enemies.retain(|e| e.mode() != EnemyMode::Eaten);
             self.refresh_foe_views();
+        }
+        // The golems his general's decree sent ahead, as the fight begins.
+        let due = self.court.as_ref().is_some_and(|c| c.golems_due) && self.screen == super::Screen::Playing;
+        if let Some((id, pos)) = self.prince().map(|d| (d.id, d.pos)).filter(|_| due) {
+            if let Some(c) = self.court.as_mut() {
+                c.golems_due = false;
+            }
+            if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
+                d.lore.summoned = true;
+            }
+            self.raise_golems(id, pos);
         }
         let hp = self.prince().map(|d| d.hp.max(0.0) as f32);
         if let (Some(c), Some(hp)) = (self.court.as_mut(), hp) {

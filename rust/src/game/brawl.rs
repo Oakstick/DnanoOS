@@ -1896,3 +1896,17 @@ impl Game {
         }
     }
 }
+
+// ------------------------------------------------------------------ the generals (WARBAND.md §9)
+
+impl Game {
+    /**
+     * A general's kindled hazard bursts under the hero (`game::general`): one strike on him, its
+     * landing frame planned by the threat manager clear of every other, that no guard turns (he
+     * leaps it or steps off its mark) and that carries nothing: it never slows or holds him.
+     */
+    pub(super) fn general_hazard_blow(&mut self, from: V, damage: f64, by: u32) -> Defense {
+        let blow = Blow { from, damage, hitstop: 5, bolt: false, rule: GuardRule::Bare, rider: Rider::None, by, lands: true };
+        self.blow_on_hero(blow)
+    }
+}

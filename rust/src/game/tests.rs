@@ -310,9 +310,10 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 2 + 2 + 1,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places and the old man's workshop"
+        3 + 2 * 7 + 1 + 2 + 2 + 1 + 7,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop and each general's post"
     );
+    assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
     assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
     // From the title: MAP, down to the fourth stop (the realm of Pride), go.
@@ -466,7 +467,11 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     // Off the road, a realm after the vaults sends the foes met so far, no deeper than its tier allows.
     g.map_jump(save::Stage::Realm(Sin::Sloth));
     let met = crate::logic::realms::roster(g.realm_tier());
-    assert!(g.enemies.iter().all(|e| e.kind().realm_own() || met.iter().any(|n| n.0 == e.kind())));
+    // (But its general, who wears the body the plan gives him: WARBAND.md §9.3.)
+    let general = g.general_pack();
+    assert!(g.enemies.iter().all(|e| e.kind().realm_own()
+        || met.iter().any(|n| n.0 == e.kind())
+        || e.duel.as_ref().is_some_and(|d| general.first() == Some(&d.id))));
     g.map_jump(save::Stage::Gym);
     g.enter(Screen::Playing);
     let o = g.hero.occupied();
