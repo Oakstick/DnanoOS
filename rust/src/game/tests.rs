@@ -310,8 +310,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 2 + 2 + 1 + 7,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop and each general's post"
+        3 + 2 * 7 + 1 + 2 + 2 + 1 + 7 + 1,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, and Scene II"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
@@ -1824,20 +1824,30 @@ fn f5_makes_him_immortal_blows_land_but_his_health_comes_back() {
 }
 
 #[test]
-fn the_map_plays_scene_one_from_either_place() {
-    use logic::story::{first, Shot};
+fn the_map_plays_scene_one_from_either_place_and_scene_two() {
+    use logic::story::{first, Scene, Shot};
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
     let stops = map_stops();
-    let scenes: Vec<usize> = stops.iter().filter_map(|s| s.scene).collect();
-    assert_eq!(scenes, vec![0, first(Shot::Arrive).unwrap()], "the graveyard, and the gateway below");
+    let scenes: Vec<(Scene, usize)> = stops.iter().filter_map(|s| s.scene).collect();
+    let gateway = (Scene::One, first(Shot::Arrive).unwrap());
+    assert_eq!(scenes, vec![(Scene::One, 0), gateway, (Scene::Two, 0)], "the graveyard, the gateway below, and the end");
     g.show_map = true;
-    g.map_index = stops.len() - 1;
+    g.map_index = stops.iter().position(|s| s.scene == Some(gateway)).unwrap();
     g.input.inject(Action::Confirm);
     g.update(crate::app::STEP);
     assert!(!g.show_map);
     assert_eq!(g.screen, Screen::Story);
-    assert_eq!(g.story.as_ref().map(|s| s.beat), Some(first(Shot::Arrive).unwrap()));
+    assert_eq!(g.story.as_ref().map(|s| (s.scene, s.beat)), Some(gateway));
+    // Scene II from the map plays the end, without counting the game as finished.
+    let mut g = Game::new();
+    g.show_map = true;
+    g.map_index = stops.iter().position(|s| s.scene == Some((Scene::Two, 0))).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| (s.scene, s.beat)), Some((Scene::Two, 0)));
+    assert!(!g.finished);
 }
 
 /// F6 (a testing cheat) puts a thousand coins in his purse, every press.

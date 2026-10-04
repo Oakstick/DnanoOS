@@ -85,7 +85,7 @@ const GARDEN_TALE: &[&str] = &[
     "in the Alpine valleys they tell of Krampus: horned and shaggy, the dark companion of St Nicholas, with chains, bells and birch switches.",
     "On Krampusnacht, the night of 5 December, he walks the villages, and a naughty child goes off in the sack or basket on his back.",
     "At dusk, at the graveyard, he took one of four boys. The other three ran after him through the gate and fell into my gateway.",
-    "I gave them the souls of Ragnar, Mehmed and Miyamoto, and you carry one. Krampus is Satan's son: the road runs down to the House of the Devil.",
+    "I gave them the souls of Ragnar, Mehmed and Miyamoto, and you carry one. Krampus takes the children he steals to the bottom of the world.",
     "This garden is the first depth. His statue stands on the fountain at its heart.",
 ];
 
@@ -181,15 +181,15 @@ fn cyclops(n: usize, hail: &str) -> Guide {
 const HUB_TALE: &[&str] = &[
     "these are the Portals of Hell: eight platforms over a sea of lava, round the volcano where the House of the Devil stands.",
     "Seven gates, one for each deadly sin, stand round it in the order of Dante's terraces of Purgatory, from Pride to Lust.",
-    "In 1589 Peter Binsfeld gave each sin a prince. Wrath he gave to Satan himself; here Amon, who stirs up feuds, keeps it for him.",
+    "In 1589 Peter Binsfeld gave each sin a prince, and here each prince keeps his own. Amon, who stirs up feuds, keeps wrath.",
     "Pride is Lucifer's, envy Leviathan's, wrath Amon's, sloth Belphegor's, greed Mammon's, gluttony Beelzebub's, lust Asmodeus's.",
-    "Each prince keeps his sin's key. Krampus waits in the House with his father, behind the seal of the seven.",
+    "Each prince keeps his sin's key. Behind the seal of the seven stands the House of the Devil: no one has ever seen inside it.",
 ];
 
 const HUB_TASK: &[&str] = &[
     "Choose any gate and go through. Each realm ends in its prince's court, and the prince drops his sin's key.",
     "A realm you have taken keeps its doors shut, its key in the lock. Bring all seven keys, and the seal of the seven breaks.",
-    "Then causeways rise from the lava to the House of the Devil. Its doors do not open yet, but that is where the road ends.",
+    "Then causeways rise from the lava to the House of the Devil. The trail runs on through it, down to the bottom of the world.",
 ];
 
 const HUB_WATCH: &[&str] = &[
@@ -264,7 +264,7 @@ const ENVY_WATCH: &[&str] = &[
 
 const WRATH_TALE: &[&str] = &[
     "wrath is the hunger for vengeance, the fire that wants to strike. On Dante's third terrace the wrathful walk blind in black smoke.",
-    "Binsfeld gave wrath to Satan himself; here Amon keeps it for him, a wolf with a serpent's tail breathing fire, who stirs up feuds.",
+    "Here Amon keeps it: a wolf with a serpent's tail breathing fire, who stirs up feuds and lives on them.",
     "The Einherjar of Valhalla fight all day and rise each evening to fight again. On this field the slain rise at every flash of lightning.",
     "The berserkers' rage waits for you here too. It does not end battles; it feeds them.",
 ];

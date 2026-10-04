@@ -417,6 +417,21 @@ impl Synth {
         }
     }
 
+    /// Lets every voice of `group` go: those sounding fade out over `secs` from where they are,
+    /// those still waiting to start never do (the hymn, skipped).
+    pub fn release_group(&mut self, group: u32, secs: f64) {
+        let now = self.now;
+        for v in self.voices.iter_mut().filter(|v| v.group == group && group != 0) {
+            if v.start >= now {
+                v.stop = v.start;
+            } else if v.stop > now + secs {
+                let level = v.gain.value.max(1e-5);
+                v.gain = Env::points(vec![(now, level), (now + secs, level * 1e-3)]);
+                v.stop = now + secs;
+            }
+        }
+    }
+
     /// Ducks everything but the immune for `secs` from now.
     pub fn duck_for(&mut self, secs: f64) {
         self.duck_until = self.duck_until.max(self.now + secs);

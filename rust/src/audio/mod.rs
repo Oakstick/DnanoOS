@@ -1,6 +1,7 @@
 //! Procedural audio: every effect is synthesized, the same voices the web build made with Web
 //! Audio. The music is the synth's own tune or one of the recorded soundtracks (`track`).
 
+pub mod hymn;
 pub mod mix;
 pub mod music;
 pub mod synth;

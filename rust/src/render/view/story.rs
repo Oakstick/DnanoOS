@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::logic::heroes::HeroKind;
-use crate::logic::story::{first, stage, Place, Shot, Speaker, SCENE_ONE};
+use crate::logic::story::{first, stage, Place, Scene, Shot, Speaker};
 use crate::render::cast;
 use crate::render::voxels::PartDef;
 
@@ -29,10 +29,11 @@ const SHADE_METAL: f32 = 6.0;
 const SHADE_CLOTH: f32 = 8.0;
 const SHADE_WOOD: f32 = 12.0;
 
-/// What the story shows this frame: the beat, seconds into it, seconds since the scene
-/// began, how much of the line has typed, and which of the warriors' souls have risen.
+/// What the story shows this frame: the scene and its beat, seconds into it, seconds since the
+/// scene began, how much of the line has typed, and which of the warriors' souls have risen.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StoryView {
+    pub scene: Scene,
     pub beat: usize,
     pub t: f32,
     pub age: f32,
@@ -41,16 +42,21 @@ pub struct StoryView {
 }
 
 impl StoryView {
-    fn shot(&self) -> Shot {
-        SCENE_ONE[self.beat.min(SCENE_ONE.len() - 1)].shot
+    pub(super) fn shot(&self) -> Shot {
+        let beats = self.scene.beats();
+        beats[self.beat.min(beats.len() - 1)].shot
     }
 
     fn speaker(&self) -> Speaker {
-        SCENE_ONE[self.beat.min(SCENE_ONE.len() - 1)].speaker
+        let beats = self.scene.beats();
+        beats[self.beat.min(beats.len() - 1)].speaker
     }
 
     /// Seconds since the first beat of `shot` began: negative before it, large after it.
-    fn since(&self, shot: Shot) -> f32 {
+    pub(super) fn since(&self, shot: Shot) -> f32 {
+        if shot.scene() != self.scene {
+            return -1.0;
+        }
         match first(shot) {
             Some(i) if self.beat == i => self.t,
             Some(i) if self.beat > i => 1000.0,
@@ -65,7 +71,8 @@ impl StoryView {
 
     /// How many lines `who` has spoken before this beat.
     fn said_before(&self, who: Speaker) -> usize {
-        SCENE_ONE[..self.beat.min(SCENE_ONE.len())].iter().filter(|b| b.speaker == who).count()
+        let beats = self.scene.beats();
+        beats[..self.beat.min(beats.len())].iter().filter(|b| b.speaker == who).count()
     }
 }
 
@@ -848,6 +855,13 @@ pub(super) enum Act {
     /// Picking himself up off the floor: 0 flat on his front, 1 standing.
     Up(f32),
     Flail(f32),
+    /// Scene II: holding someone close, arms round his neck (0 open, 1 closed), the cheek laid
+    /// against him.
+    Hug(f32),
+    /// Looking up into the light, with wonder (0..1).
+    Gaze(f32),
+    /// Holding a hand up to someone beside him (0..1), and looking up as `Gaze`.
+    HandUp(f32, f32),
 }
 
 fn ease_out(t: f32) -> f32 {
@@ -866,7 +880,7 @@ pub(super) fn kid_root(feet: Vec3, yaw: f32) -> Mat4 {
 impl WorldView {
     /// The soul-rise smoothing and anything else the story animates by the step.
     pub(super) fn update_story(&mut self, dt: f32, sv: StoryView) {
-        let before = first(Shot::Souls).map(|i| sv.beat < i).unwrap_or(true);
+        let before = sv.scene != Scene::One || first(Shot::Souls).map(|i| sv.beat < i).unwrap_or(true);
         for (i, r) in self.story_rise.iter_mut().enumerate() {
             // The old man names Ragnar first, then Mehmed, then Miyamoto; they stand Mehmed, Ragnar, Miyamoto.
             let bit = [1u8, 0, 2][i];
@@ -897,6 +911,7 @@ impl WorldView {
                 f.bounds = Vec4::new(GATEWAY.x - 4.5, GATEWAY.z - 3.5, GATEWAY.x + 4.5, GATEWAY.z + 4.5);
                 self.emit_gateway(sv, s, f);
             }
+            Place::Pit => self.emit_ascent(sv, s, f),
         }
     }
 
@@ -1609,6 +1624,34 @@ impl WorldView {
                 pose.rot[ab].x = -2.2 - (t * 13.0).cos() * 0.7;
                 pose.rot[hd].x = (t * 6.0).sin() * 0.2;
             }
+            Act::Hug(k) => {
+                // Up on his toes, arms thrown round a neck, the head turned and laid on a shoulder;
+                // a breath, a little sob, shaking his shoulders.
+                let sob = (time * 5.5).sin().max(0.0) * 0.03 * k;
+                pose.rot[aa].x = -1.95 * k + sob;
+                pose.rot[ab].x = -1.95 * k - sob;
+                pose.rot[aa].z = 0.62 * k;
+                pose.rot[ab].z = -0.62 * k;
+                pose.rot[hd].y = 0.55 * k;
+                pose.rot[hd].x = 0.12 * k;
+                lean = 0.1 * k;
+                bob = 0.012 * k;
+            }
+            Act::Gaze(k) => {
+                pose.rot[hd].x = -0.85 * k + breathe * 0.02;
+                pose.rot[aa].x = -0.12 * k;
+                pose.rot[ab].x = -0.12 * k;
+                lean = -0.05 * k;
+            }
+            Act::HandUp(k, gaze) => {
+                // His hand in a bigger one beside him (the one at the model's high x), looking up.
+                pose.rot[ab].x = -0.55 * k;
+                pose.rot[ab].z = 0.32 * k;
+                pose.rot[aa].x = -0.08;
+                pose.rot[hd].x = -0.85 * gaze + breathe * 0.02;
+                pose.rot[hd].y = -0.25 * k * (1.0 - gaze);
+                lean = -0.05 * gaze;
+            }
         }
         (pose, (lean, bob))
     }
@@ -1807,6 +1850,7 @@ impl WorldView {
         let sway = v((sv.age * 0.53).sin() * 0.018, (sv.age * 0.71).sin() * 0.012, (sv.age * 0.37).cos() * 0.01);
         let crane_from = (g + v(4.8, 6.4, 9.6), g + v(0.0, 1.3, -6.0));
         let (eye, look, focus) = match sv.shot() {
+            Shot::Embrace | Shot::Light | Shot::Rise | Shot::White | Shot::Words | Shot::Credits => self.ascent_camera(sv),
             Shot::Title => (crane_from.0, crane_from.1, g + v(0.0, 0.5, 0.0)),
             Shot::Establish => {
                 if t < stage::MISKICK + 0.35 {
@@ -1889,6 +1933,7 @@ impl WorldView {
         match sv.shot().place() {
             Place::Graveyard => (GRAVEYARD + Vec3::new(0.0, 0.6, -2.8), 10.0),
             Place::Gateway => (GATEWAY + Vec3::new(0.0, 1.0, 0.0), 6.5),
+            Place::Pit => self.ascent_shadow_box(sv),
         }
     }
 }

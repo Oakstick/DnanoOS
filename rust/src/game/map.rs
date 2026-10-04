@@ -10,16 +10,16 @@ use crate::input::Action;
 use crate::logic::gym;
 use crate::logic::levels::level_for;
 use crate::logic::sins::SINS;
-use crate::logic::story::{self, Shot};
+use crate::logic::story::{self, Scene, Shot};
 use crate::logic::types::Dir;
 use crate::render::hud;
 
-/// One stop on the map: where it goes and what it is called. A scene's stop plays Scene I from
-/// its `scene` beat instead (its stage is where the scene leads).
+/// One stop on the map: where it goes and what it is called. A scene's stop plays that scene from
+/// its `scene` beat instead (for Scene I its stage is where the scene leads).
 pub struct MapStop {
     pub stage: Stage,
     pub label: String,
-    pub scene: Option<usize>,
+    pub scene: Option<(Scene, usize)>,
     /// The stop is a general's command post in the stage's realm (WARBAND.md §9).
     pub post: bool,
 }
@@ -51,8 +51,11 @@ pub fn map_stops() -> Vec<MapStop> {
     }
     // The story's scenes, from the start of each place: the graveyard at dusk, and the gateway below.
     for (beat, label) in [(0, "SCENE I - THE GRAVEYARD"), (story::first(Shot::Arrive).unwrap_or(0), "SCENE I - THE DUNGEON GATEWAY")] {
-        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some(beat), post: false });
+        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some((Scene::One, beat)), post: false });
     }
+    // The end: Scene II, from the bottom of the Pit to the credits (seen from here, it does not
+    // count as finishing the game).
+    stops.push(MapStop { stage: Stage::Dungeon(0), label: "SCENE II - THE WAY UP".to_string(), scene: Some((Scene::Two, 0)), post: false });
     stops
 }
 
@@ -144,7 +147,7 @@ impl Game {
         if clicked.is_some() || self.input.was_pressed(&[Action::Confirm, Action::Jump]) {
             let stop = &stops[self.map_index.min(n - 1)];
             match stop.scene {
-                Some(beat) => self.map_scene(beat),
+                Some((scene, beat)) => self.map_scene(scene, beat),
                 None => {
                     let post = stop.post;
                     self.map_jump(stop.stage);
@@ -156,9 +159,9 @@ impl Game {
         }
     }
 
-    /// Straight into Scene I at `beat`, from the title or the pause menu; it ends, as ever, at
-    /// the choice of hero.
-    pub fn map_scene(&mut self, beat: usize) {
+    /// Straight into a scene at `beat`, from the title or the pause menu: Scene I ends, as ever,
+    /// at the choice of hero, and Scene II at the title.
+    pub fn map_scene(&mut self, scene: Scene, beat: usize) {
         self.show_map = false;
         self.show_controls = false;
         self.audio.unlock();
@@ -166,7 +169,10 @@ impl Game {
         self.tour = None;
         self.tour_pending = false;
         self.story = None;
-        self.begin_story();
+        match scene {
+            Scene::One => self.begin_story(),
+            Scene::Two => self.play_ending(),
+        }
         if beat > 0 {
             self.story_jump(beat, 0.0);
         }

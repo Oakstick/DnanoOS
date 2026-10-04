@@ -127,7 +127,7 @@ impl Game {
             self.audio.play(Sfx::Denied);
             self.juice.banner = Some(Banner {
                 text: "THE HOUSE OF THE DEVIL".into(),
-                sub: "KRAMPUS AND HIS FATHER WAIT WITHIN   THEIR DOORS OPEN LATER".into(),
+                sub: "NO ONE HAS SEEN INSIDE   ITS DOORS OPEN LATER".into(),
                 color: 0xff3a2a,
                 life: 3.0,
                 max: 3.0,

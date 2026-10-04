@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::game::TYPE_DELAY;
-use crate::logic::story::{stage, Shot, Speaker, SCENE_TITLE};
+use crate::logic::story::{ascent, stage, Scene, Shot, Speaker, SCENE_TITLE};
 
 /// The colour each speaker's name (and the box's edge) is drawn in.
 fn voice_color(s: Speaker) -> u32 {
@@ -113,19 +113,23 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
         Shot::Title => black = 1.0 - smooth(2.7, 3.4, bt),
         Shot::Pursuit => white = smooth(stage::FLASH, stage::FLASH + 0.7, bt),
         Shot::Arrive => white = 1.0 - smooth(0.0, 0.9, bt),
+        // Scene II comes up out of the black the fight left.
+        Shot::Embrace => black = 1.0 - smooth(0.0, ascent::FADE_IN, bt),
         _ => {}
     }
     if black > 0.0 {
         o.rect(0.0, 0.0, w, h, [0.0, 0.0, 0.0, black]);
     }
 
-    // ---- letterbox bars, sliding in as the scene opens
-    let k = smooth(0.0, 0.6, age);
+    // ---- letterbox bars, sliding in as the scene opens (and away into the white at the end)
+    let title = st.scene.title();
+    let open = if st.scene == Scene::Two { 1.0 - smooth(0.0, 1.5, st.scene_time() as f32 - 24.5) } else { 1.0 };
+    let k = smooth(0.0, 0.6, age) * open;
     let bar = h * 0.1 * k;
     o.rect(0.0, 0.0, w, bar, [0.0, 0.0, 0.0, 1.0]);
     o.rect(0.0, h - bar, w, bar, [0.0, 0.0, 0.0, 1.0]);
     o.text("ESC  SKIP", w - t * 0.9, bar / 2.0, t * 0.5, rgba(TEXT_DIM, k * 0.8), Align::Right, false);
-    o.text(&format!("{} - {}", SCENE_TITLE.sub, SCENE_TITLE.title), t * 0.9, bar / 2.0, t * 0.5, rgba(SAND, k * 0.6), Align::Left, false);
+    o.text(&format!("{} - {}", title.sub, title.title), t * 0.9, bar / 2.0, t * 0.5, rgba(SAND, k * 0.6), Align::Left, false);
 
     // ---- the scene's title over black
     if beat.shot == Shot::Title {
@@ -227,6 +231,13 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
 
     if white > 0.0 {
         o.rect(0.0, 0.0, w, h, [1.0, 1.0, 1.0, white]);
+    }
+    if st.scene == Scene::Two {
+        super::ending::draw_ending(o, g, t, beat.shot, bt);
+        if beat.shot == Shot::Credits && bt > 2.0 && st.ending.is_none() {
+            let pulse = 0.35 + 0.25 * (time * 2.0).sin();
+            o.text("ENTER  CONTINUE", w - t * 0.9, h - t * 0.9, t * 0.45, rgba(TEXT_DIM, pulse), Align::Right, false);
+        }
     }
     let fade = st.fade_out();
     if fade > 0.0 {
