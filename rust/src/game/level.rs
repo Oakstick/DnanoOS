@@ -239,8 +239,10 @@ impl Game {
                 self.level.grid.set_landmark(g.x + dx, g.y, true);
             }
         }
-        // Dungeon III and the estates past it are the stone vaults of the art direction.
-        self.view.crypt = self.level.data.theme == crate::logic::level::Theme::Estate && !self.level.data.boss && index >= 2;
+        // Dungeon II on are built in stone to the art direction: the Cisterns flooded, then the
+        // Bone Vaults and the estates past them.
+        self.view.crypt = self.level.data.theme == crate::logic::level::Theme::Estate && !self.level.data.boss && index >= 1;
+        self.view.cisterns = self.view.crypt && index == 1;
         self.view.build_level(
             &self.level.grid,
             &self.enemies,

@@ -4,6 +4,10 @@
 //! verdigris creeping over some blocks, monumental pillars, banners of copper and umber cloth,
 //! wet flagstones underfoot, and amber braziers burning against a cold mist-teal dark.
 //!
+//! The Cisterns (dungeon II) are the same stone, flooded: standing water over the low floors,
+//! copper spouts pouring into it from the walls, a dark wet band along the walls' foot, more
+//! columns and vaults, fewer banners and bones, and a cooler light.
+//!
 //! The palette is the board's six: charcoal, umber, copper, amber, mist teal and pale stone. The
 //! albedos below are lighter than the swatches, which are the colours as they read in the
 //! board's dim light; under the vaults' own light they come out near them.
@@ -65,17 +69,18 @@ fn glowing_block(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, color: Vec3, g
 }
 
 /// The vaults' light: no sky, a cold teal dark lit by its braziers, and a faint teal light
-/// falling from shafts far above (it rims the tops of things).
-pub fn crypt_atmosphere() -> Atmosphere {
+/// falling from shafts far above (it rims the tops of things). The cisterns' is cooler, more of
+/// it from above off the water.
+pub fn crypt_atmosphere(cisterns: bool) -> Atmosphere {
     Atmosphere {
         background: DARK,
         fog_near: 7.0,
         fog_far: 26.0,
-        hemi_sky: lin(MIST_TEAL) * 0.35,
+        hemi_sky: lin(MIST_TEAL) * if cisterns { 0.5 } else { 0.35 },
         hemi_ground: lin(0x3a2e27) * 0.12,
         ambient: lin(0x2a3634) * 0.9,
         sun_dir: Vec3::new(0.35, 1.0, 0.25).normalize(),
-        sun: lin(0x9ec4bc) * 0.3,
+        sun: lin(0x9ec4bc) * if cisterns { 0.42 } else { 0.3 },
         exposure: 1.35,
         night_sky: 0.0,
         bloom: 1.1,
@@ -88,6 +93,12 @@ impl WorldView {
     pub(super) fn build_crypt(&mut self, grid: &Grid) {
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
         let rock = |x: i32, y: i32| grid.get(x, y) == Tile::Rock;
+        let cis = self.cisterns;
+        // In the cisterns the water stands in pools over the low floors, in blocks of rooms.
+        let flooded = |x: i32, y: i32| {
+            let cell = |s: i32, k: f64| hash(x.div_euclid(s) as f64 * 1.7 + k, y.div_euclid(s) as f64 * 2.3 + k);
+            cis && grid.elevation(x, y) == 0 && (cell(3, 11.0) < 0.4 || cell(2, 23.0) < 0.12)
+        };
 
         // ---- floors: flagstones in their grout, raised ground on umber blocks
         for (x, y, t) in grid.cells() {
@@ -132,8 +143,11 @@ impl WorldView {
             }
             // Moss where the damp gathers in the seams.
             self.floor_growth(xf, yf, h, hx, hy);
+            if flooded(x, y) {
+                self.flood.push(Vec3::new(xf, h + 0.03, yf));
+            }
             // Now and then the bones of the vaults' dead, swept to the foot of a wall.
-            if hash(hx * 5.0 + 3.0, hy * 7.0) < 0.05
+            if hash(hx * 5.0 + 3.0, hy * 7.0) < if cis { 0.012 } else { 0.05 }
                 && CARDINALS.iter().any(|d| {
                     let (dx, dy) = d.vec();
                     rock(x + dx, y + dy)
@@ -274,7 +288,24 @@ impl WorldView {
                 continue;
             }
             let pick = hash(hx * 5.0 + 1.0, hy * 3.0 + 2.0);
-            if hash(hx * 3.0, hy * 7.0) < 0.13 {
+            if cis {
+                // The cisterns: columns and spouts, lanterns, few braziers, no banners.
+                let road = roads[(pick * 50.0) as usize % roads.len()];
+                let (dx, dy) = road.vec();
+                let (nx, ny) = (x + dx, y + dy);
+                let plain = grid.get(nx, ny) != Tile::Pit && !grid.is_ramp(nx, ny) && !grid.is_bridge(nx, ny);
+                if hash(hx * 3.0, hy * 7.0) < 0.06 {
+                    braziers.push((P::new(x, y), roads[0]));
+                } else if pick < 0.16 {
+                    self.pillar(xf, yf, base, roads[0], hx, hy);
+                } else if pick < 0.24 && plain && !ruined {
+                    self.spout(xf, yf, base, road, floor_y(nx, ny), hx, hy);
+                } else if pick < 0.26 && !ruined {
+                    self.statue(xf, yf, top + 0.11, roads[0], hx, hy);
+                } else if pick < 0.33 {
+                    self.wall_lantern(P::new(x, y), base, road);
+                }
+            } else if hash(hx * 3.0, hy * 7.0) < 0.13 {
                 braziers.push((P::new(x, y), roads[0]));
             } else if pick < 0.07 {
                 self.pillar(xf, yf, base, roads[0], hx, hy);
@@ -311,7 +342,7 @@ impl WorldView {
                     open(tx + ax, ty + ay) && open(tx - ax, ty - ay) && (floor_y(tx, ty) - h0).abs() < 0.01
                 });
                 let (hx, hy) = (x as f64, y as f64);
-                if !passage || hash(hx * 2.3 + 7.0, hy * 1.9 + 3.0) > 0.07 {
+                if !passage || hash(hx * 2.3 + 7.0, hy * 1.9 + 3.0) > if cis { 0.14 } else { 0.07 } {
                     continue;
                 }
                 // Not one just behind another.
@@ -373,13 +404,15 @@ impl WorldView {
                     fallen += 1;
                 } else if b - a > 0.06 {
                     let roll = hash(hk * 31.0, hx + hy);
-                    let c = if roll < 0.04 {
+                    let c = if roll < if self.cisterns { 0.1 } else { 0.04 } {
                         jit(VERDIGRIS, hk, 0.1)
                     } else if roll < 0.19 {
                         jit(UMBER[(hk * 2.0) as usize % 2], hk, 0.1)
                     } else {
                         jit(CHARCOAL[(hk * 3.0) as usize % 3], hk, 0.12)
                     };
+                    // In the cisterns the lowest course is dark and slick where the water stood.
+                    let c = if self.cisterns && course == 0 { c * 0.55 + lin(0x1c2a24) * 0.35 } else { c };
                     // Each block its own depth out of the core, a touch askew, some chipped short.
                     let depth = 0.08 + hash(hk * 13.0, hy + 1.0) as f32 * 0.08;
                     let chip = if (hk * 29.0).fract() < 0.25 { (hk * 53.0).fract() as f32 * 0.05 } else { 0.0 };
@@ -816,6 +849,73 @@ impl WorldView {
             SHADE_IRON,
         );
         self.hanging_lantern(wall, face + out * 0.3 + Vec3::Y * 0.04, 0.1);
+    }
+
+    /// A spout in the wall's face over the road `d`: a pale stone mask with a dark mouth and a
+    /// copper lip, pouring a thin fall into the water below (drawn each frame), which pools at
+    /// the wall's foot (`foot`, the road's floor).
+    #[allow(clippy::too_many_arguments)]
+    fn spout(&mut self, x: f32, y: f32, base: f32, d: Dir, foot: f32, hx: f64, hy: f64) {
+        let (dx, dy) = d.vec();
+        let out = Vec3::new(dx as f32, 0.0, dy as f32);
+        let turn = if dx != 0 { PI / 2.0 } else { 0.0 };
+        let face = Vec3::new(x, base + 0.78, y) + out * 0.5;
+        let pale = jit(PALE_STONE[(hash(hx, hy) * 2.0) as usize % 2], hash(hy, hx), 0.05) * 0.75;
+        // The mask: a square boss of pale stone, a brow over it, the mouth dark.
+        block(&mut self.static_cubes, face + out * 0.1, Vec3::new(0.34, 0.34, 0.08), turn, pale, SHADE_STONE);
+        block(&mut self.static_cubes, face + out * 0.13 + Vec3::Y * 0.14, Vec3::new(0.38, 0.06, 0.1), turn, pale * 0.9, SHADE_STONE);
+        for side in [-1.0f32, 1.0] {
+            let across = Vec3::new(out.z, 0.0, out.x) * side * 0.08;
+            block(&mut self.static_cubes, face + out * 0.145 + across + Vec3::Y * 0.06, Vec3::new(0.05, 0.04, 0.02), turn, lin(0x0e0c0a), SHADE_LIT);
+        }
+        block(&mut self.static_cubes, face + out * 0.145 - Vec3::Y * 0.06, Vec3::new(0.12, 0.07, 0.02), turn, lin(0x0e0c0a), SHADE_LIT);
+        // The copper lip the water runs off, green with age, and the green it has left below.
+        let lip = face + out * 0.2 - Vec3::Y * 0.09;
+        block(&mut self.static_cubes, lip, if dx != 0 { Vec3::new(0.16, 0.03, 0.1) } else { Vec3::new(0.1, 0.03, 0.16) }, 0.0, lin(VERDIGRIS) * 1.1, SHADE_BRONZE);
+        block(&mut self.static_cubes, face + out * 0.065 - Vec3::Y * 0.42, Vec3::new(0.14, 0.5, 0.02), turn, jit(VERDIGRIS, hx, 0.1) * 0.8, SHADE_STONE);
+        let mouth = lip + out * 0.07;
+        self.spouts.push((mouth, out, foot));
+        // It pools where it falls.
+        let below = Vec3::new(x, 0.0, y) + out;
+        if !self.flood.iter().any(|p| (p.x - below.x).abs() < 0.1 && (p.z - below.z).abs() < 0.1) {
+            self.flood.push(Vec3::new(below.x, foot + 0.03, below.z));
+        }
+    }
+
+    /// The cisterns' water: still pools over the floors, and the spouts' falls with their foam.
+    pub(super) fn emit_cistern_water(&self, time: f32, f: &mut Frame) {
+        let cube_i = MeshKind::Cube as usize;
+        for (i, p) in self.flood.iter().enumerate() {
+            let m = Mat4::from_translation(*p) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
+            // Barely moving: a slow drift, each pool its own way.
+            let a = i as f32 * 0.7;
+            let flow = Vec3::new(a.cos() * 0.03, a.sin() * 0.03, 0.0);
+            // Shallow: the flagstones show through, the water mostly a sheen over them.
+            f.transparent[cube_i].push(Instance::new(m, lin(0x10201f), 0.4, flow, SHADE_WATER));
+        }
+        for (i, &(mouth, out, foot)) in self.spouts.iter().enumerate() {
+            // The fall bows out a little from the lip as it drops.
+            let drop = mouth.y - foot - 0.03;
+            let at = mouth + out * 0.06 - Vec3::Y * drop / 2.0;
+            let size = if out.x != 0.0 { Vec3::new(0.002, drop, 0.1) } else { Vec3::new(0.1, drop, 0.002) };
+            f.transparent[cube_i].push(Instance::new(Mat4::from_translation(at) * Mat4::from_scale(size), lin(0xc8dce4), 0.85, Vec3::ZERO, SHADE_WATER));
+            // Where it lands: fine drops thrown up and out, and rings spreading on the pool.
+            let foot_at = Vec3::new(at.x, foot + 0.035, at.z);
+            for k in 0..6 {
+                let fk = k as f32 * 1.7 + i as f32 * 3.1;
+                let t = (time * 1.6 + fk * 0.31).fract();
+                let a = fk * 2.4;
+                let p = foot_at + Vec3::new(a.cos() * 0.14 * t, 0.12 * (PI * t).sin(), a.sin() * 0.14 * t);
+                let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.018));
+                f.additive.push(Instance::new(m, lin(0xcfe0ea), 0.45 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+            }
+            for k in 0..2 {
+                let t = (time * 0.7 + k as f32 * 0.5 + i as f32 * 0.37).fract();
+                let r = 0.06 + t * 0.32;
+                let m = Mat4::from_translation(foot_at) * Mat4::from_rotation_x(-PI / 2.0) * Mat4::from_scale(Vec3::new(r, r, 1.0));
+                f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, lin(0x9fb8be), 0.3 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+            }
+        }
     }
 
     /// A hooded knight of stone on a plinth on top of the wall, looking down on the road `d`: a

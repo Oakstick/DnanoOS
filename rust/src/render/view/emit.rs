@@ -183,7 +183,7 @@ impl WorldView {
         } else if self.meadow {
             meadow_atmosphere()
         } else if self.crypt {
-            crypt::crypt_atmosphere()
+            crypt::crypt_atmosphere(self.cisterns)
         } else {
             Atmosphere::forest()
         };
@@ -706,6 +706,9 @@ impl WorldView {
             emit_cloud_sea(grid, f, self.cam_pos);
         }
         self.emit_garden(time, f);
+        if self.crypt {
+            self.emit_cistern_water(time, f);
+        }
         self.emit_fountain(time, f);
         self.emit_gate_and_keys(s, time, hero_pos, f);
         self.emit_smoke(time, f);

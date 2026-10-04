@@ -590,6 +590,30 @@ see-through souls.
 
 The latest full capture is in `perf/`; compare new captures against it only at equal settings.
 
+## Stage B: art direction, first levels
+
+Two dungeons follow the shared palette (charcoal, umber, copper, amber, mist teal, pale stone). The
+builder is `view/crypt.rs`. Both are off the road on the map.
+
+- **Dungeon III, the Bone Vaults:**
+  - Walls are dressed-stone masonry in chunky blocks, each at its own depth, askew and chipped.
+  - Fallen blocks lie broken at the walls' feet, and about one wall in six has lost half its top
+    course.
+  - Floors are wet flagstones.
+  - Props: pillars, banners, copper braziers, arches with hanging lanterns, hooded statues on the
+    walls, moss and bones.
+  - The gatehouse is a crypt gate: towers with watchers, a round arch with a skull keystone, iron
+    gates under a grille, and lock lamps in a fan over the arch.
+- **Dungeon II, the Cisterns:** the same stone, flooded.
+  - Shallow standing water lies over the low floors, in blocks of rooms.
+  - Copper-lipped spouts pour thin falls, with splashes and ripples.
+  - The walls' lowest course is dark and wet, with more verdigris.
+  - Columns and arches are more frequent; banners and bones are rare.
+  - The light is cooler, with more of it from above.
+  - The layout and gameplay are unchanged.
+- **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
+  hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
+
 ## Findings
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept

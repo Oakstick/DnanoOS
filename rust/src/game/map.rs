@@ -32,7 +32,8 @@ pub fn map_stops() -> Vec<MapStop> {
         stops.push(MapStop { stage: Stage::Court(sin), label: format!("{} - {}, ITS PRINCE", sin.title(), sin.prince().to_uppercase()) });
     }
     stops.push(MapStop { stage: Stage::Gym, label: "THE GYM - ONE OF EVERY FOE".to_string() });
-    // Off the road: dungeon III, the first level built to the art direction.
+    // Off the road: dungeons II and III, the levels built to the art direction.
+    stops.push(MapStop { stage: Stage::Dungeon(1), label: format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase()) });
     stops.push(MapStop { stage: Stage::Dungeon(2), label: format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase()) });
     stops
 }

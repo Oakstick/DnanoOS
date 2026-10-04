@@ -221,6 +221,12 @@ pub struct WorldView {
     /// The Bone Vaults and the estates deeper still: built in stone to the art direction
     /// (`crypt`), not as a forest. Set before the level is built.
     pub crypt: bool,
+    /// The Cisterns (dungeon II): the same stone, flooded. Set with `crypt`.
+    pub cisterns: bool,
+    /// The cisterns' standing water (tile centres at the water's height), and the spouts pouring
+    /// into it (each mouth, the way it pours, and the floor below).
+    flood: Vec<Vec3>,
+    spouts: Vec<(Vec3, Vec3, f32)>,
     /// The Vaults of Mammon, while he is in them.
     vault: Option<vault::VaultView>,
     /// One of the six realms after the vaults, while he is in it.
@@ -371,6 +377,9 @@ impl WorldView {
             meadow: false,
             hell: false,
             crypt: false,
+            cisterns: false,
+            flood: Vec::new(),
+            spouts: Vec::new(),
             tint: None,
             vault: None,
             run_view: None,
@@ -491,6 +500,8 @@ impl WorldView {
         self.static_cubes.clear();
         self.rings.clear();
         self.water.clear();
+        self.flood.clear();
+        self.spouts.clear();
         self.rock_index.clear();
         self.trees.clear();
         self.tree_index.clear();
