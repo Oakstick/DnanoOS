@@ -665,6 +665,9 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - The obsidian loses its violet for charcoal; the light from below is ember, not scarlet, and
     the ash sky's light is umber grey. The lava's light through the gaps is softer. Bloom is 1.0.
   - Amon's red stays in the banners, the blood-mud and the wounds in the slabs.
+- **The Grey Mire (Sloth):** still flat and shadowless, but its fog and light are a mist-teal grey
+  instead of a cold blue-grey, with a little umber off the peat, and the moss pillows are deeper
+  and nearer olive. Belphegor's slate blue stays in the marsh-lights and the portals.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 

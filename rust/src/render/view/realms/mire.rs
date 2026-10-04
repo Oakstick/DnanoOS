@@ -34,8 +34,8 @@ mod pal {
     pub const MOSS: u32 = 0x5d6650;
     pub const MOSS_L: u32 = 0x737e62;
     pub const MOSS_D: u32 = 0x474e3d;
-    pub const PILLOW: u32 = 0x7a8c62;
-    pub const PILLOW_L: u32 = 0x92a276;
+    pub const PILLOW: u32 = 0x687652;
+    pub const PILLOW_L: u32 = 0x7a8862;
     pub const FLOWER: u32 = 0xe8e4d8;
     pub const MUD: u32 = 0x2a2219;
     pub const MUD_L: u32 = 0x3a2f22;
@@ -91,7 +91,7 @@ mod pal {
     pub const SKIN: u32 = 0x8a8070;
     pub const SKIN_D: u32 = 0x6a6256;
     pub const NAIL: u32 = 0xb8b2a2;
-    pub const FOG: u32 = 0x6c757e;
+    pub const FOG: u32 = 0x5c6866;
     pub const SURGE: u32 = 0xe4e8ec;
 }
 use pal::*;
@@ -1123,16 +1123,17 @@ pub(super) fn atmosphere(_v: &MireView, r: &Mire, _s: &SceneState) -> Atmosphere
         background: mix_hex(FOG, SURGE, surge),
         fog_near: lerp(lerp(7.5, 5.5, drowse), 0.5, surge),
         fog_far: lerp(lerp(17.5, 13.0, drowse), 3.5, surge),
-        hemi_sky: lin(0xc0cad4) * 0.85,
-        hemi_ground: lin(0x5a5f58) * 0.8,
-        ambient: lin(0x737b84) * 0.75,
+        // A flat mist-teal grey from everywhere, a little umber off the peat.
+        hemi_sky: lin(0xb4c6c2) * 0.85,
+        hemi_ground: lin(0x5c5a50) * 0.8,
+        ambient: lin(0x6c7674) * 0.75,
         sun_dir: Vec3::new(0.15, 1.0, 0.25).normalize(),
         sun: lin(0xd8dde2) * 0.22,
         exposure: lerp(1.15, 0.85, drowse),
         night_sky: 0.0,
         bloom: 0.85,
         moon_view: Vec3::new(0.0, 0.4, -1.0).normalize(),
-        cloud_tint: lin(0x8a929a),
+        cloud_tint: lin(0x84908e),
     };
     if sand {
         a.hemi_sky = a.hemi_sky.lerp(lin(SAND) * 0.8, 0.15);
