@@ -502,8 +502,20 @@ impl WorldView {
         self.cam_pitch = chase::REST_PITCH;
     }
 
+    /// The eye this frame, shaken, kicked and rolled (WARBAND.md §4.3): where it is, what it looks
+    /// at, and which way is up.
+    fn eye(&self) -> (Vec3, Vec3, Vec3) {
+        let kick = self.kick_offset();
+        let pos = self.cam_pos + self.shake_offset + kick;
+        let look = self.cam_look + self.shake_offset * 0.6 + kick * 0.5;
+        let fwd = (look - pos).normalize_or(Vec3::NEG_Z);
+        let up = if self.juice.roll != 0.0 { Quat::from_axis_angle(fwd, self.juice.roll) * Vec3::Y } else { Vec3::Y };
+        (pos, look, up)
+    }
+
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_at_rh(self.cam_pos + self.shake_offset, self.cam_look + self.shake_offset * 0.6, Vec3::Y)
+        let (pos, look, up) = self.eye();
+        Mat4::look_at_rh(pos, look, up)
     }
 
     /// Freezes the camera on a close portrait of a point, from `angle` radians around it.
@@ -543,22 +555,22 @@ impl WorldView {
         let fwd = Vec3::new(pitch.cos() * yaw.cos(), pitch.sin(), pitch.cos() * yaw.sin());
         let right = fwd.cross(Vec3::Y).normalize();
         let up = right.cross(fwd);
-        let t = (FOV_DEGREES.to_radians() * 0.5).tan();
+        let t = (self.fov_degrees().to_radians() * 0.5).tan();
         (fwd, right * t * self.aspect.max(0.01), up * t)
     }
 
     /// The camera for reconstructing world positions from depth: position, forward, and right
     /// and up scaled to the screen edges (per unit of depth, or in world units when orthographic).
     pub fn camera_basis(&self) -> (Vec3, Vec3, Vec3, Vec3, bool) {
-        let pos = self.cam_pos + self.shake_offset;
-        let fwd = (self.cam_look + self.shake_offset * 0.6 - pos).normalize_or(Vec3::NEG_Z);
-        let right = fwd.cross(Vec3::Y).normalize_or(Vec3::X);
+        let (pos, look, sky) = self.eye();
+        let fwd = (look - pos).normalize_or(Vec3::NEG_Z);
+        let right = fwd.cross(sky).normalize_or(Vec3::X);
         let up = right.cross(fwd);
         let aspect = self.aspect.max(0.01);
         match self.map_view {
             Some(half) => (pos, fwd, right * half * aspect, up * half, true),
             None => {
-                let t = (FOV_DEGREES.to_radians() * 0.5).tan();
+                let t = (self.fov_degrees().to_radians() * 0.5).tan();
                 (pos, fwd, right * t * aspect, up * t, false)
             }
         }
@@ -628,7 +640,7 @@ impl WorldView {
             let hw = half * self.aspect.max(0.01);
             return Mat4::orthographic_rh(-hw, hw, -half, half, 1.0, 200.0);
         }
-        Mat4::perspective_rh(FOV_DEGREES.to_radians(), self.aspect.max(0.01), NEAR, FAR)
+        Mat4::perspective_rh(self.fov_degrees().to_radians(), self.aspect.max(0.01), NEAR, FAR)
     }
 
     pub fn view_proj(&self) -> Mat4 {
@@ -637,6 +649,11 @@ impl WorldView {
 
     pub fn camera_position(&self) -> Vec3 {
         self.cam_pos
+    }
+
+    /// The camera's roll now (radians), for tools and tests.
+    pub fn camera_roll(&self) -> f32 {
+        self.juice.roll
     }
 
     /// World point to window coordinates (logical pixels), or None if behind the camera.

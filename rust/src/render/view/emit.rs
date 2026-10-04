@@ -224,6 +224,7 @@ impl WorldView {
 
         let hero_pos = self.emit_hero(s, f);
         self.emit_foes(s, f);
+        self.emit_juice(f);
         self.emit_duels(s, f);
         let (remedy_points, shrine_points) = self.emit_pickups(s, f);
         self.emit_transients(s, f);
@@ -295,7 +296,10 @@ impl WorldView {
         }
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
-            let root = hero_group * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge)) * euler(self.hero_root_rot);
+            let root = hero_group
+                * Mat4::from_translation(Vec3::new(0.0, 0.0, self.hero_lunge))
+                * euler(self.hero_root_rot)
+                * Mat4::from_scale(self.hero_squash());
             let target = if ghost { &mut f.rigs_blend } else { &mut f.rigs };
             let rust = ((1.0 - hero.edge) as f32 * 0.9).clamp(0.0, 0.85);
             // He is always drawn whole: under the top camera he covers under 2 px a voxel at 1080p,
@@ -308,7 +312,11 @@ impl WorldView {
                     emit_hero_rig(target, bare, &self.hero_pose, root, tint, alpha, emissive, rust);
                     // (Far enough out on that side that his fist is behind it, not beside it.)
                     let side = self.hero_pose.pos.get(3).map(|p| p.x * 0.75).unwrap_or(-0.16);
-                    let up = root * Mat4::from_translation(Vec3::new(side, 0.06, 0.12)) * Mat4::from_rotation_y(PI);
+                    // (Knocked back by a blow it took, and springing up again: `shield_jolt`.)
+                    let up = root
+                        * Mat4::from_translation(Vec3::new(side, 0.06, 0.12))
+                        * Mat4::from_rotation_x(-self.shield_tilt())
+                        * Mat4::from_rotation_y(PI);
                     emit_rig(target, shield, &Pose::rest(shield), up, tint, alpha, emissive);
                 }
                 _ => emit_hero_rig(target, self.hero_rig(hero), &self.hero_pose, root, tint, alpha, emissive, rust),
@@ -664,8 +672,12 @@ impl WorldView {
 
         // --- debris and blasts
         for d in &self.debris {
-            let m = Mat4::from_translation(d.pos) * euler(d.rot) * Mat4::from_scale(Vec3::splat(0.16));
-            f.opaque[cube].push(Instance::new(m, d.color, 1.0, Vec3::ZERO, SHADE_LIT));
+            // In its last seconds a piece sinks into the floor and shrinks away.
+            let k = if d.fade > 0.0 { (d.life / d.fade).min(1.0) } else { 1.0 };
+            let size = d.size * (0.35 + 0.65 * k);
+            let pos = d.pos - Vec3::Y * d.size.y * (1.0 - k);
+            let m = Mat4::from_translation(pos) * euler(d.rot) * Mat4::from_scale(size);
+            f.opaque[cube].push(Instance::new(m, d.color, 1.0, d.color * d.glow * k, SHADE_LIT));
         }
         for b in &self.blasts {
             let t = 1.0 - b.life / b.seconds;

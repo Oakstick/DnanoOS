@@ -191,8 +191,19 @@ pub mod fx {
     /// The ground haze, and the lamps' glow in the air (RP19).
     pub const HAZE: u32 = 8192;
     pub const VOLUMETRIC: u32 = 16384;
+    /// The juice (WARBAND.md §4), which the game and the view read rather than the GPU: the
+    /// slowing of time; the freeze table and its budget (off, the brawl holds as it always did);
+    /// the camera's roll, kick, FOV punch and trauma by source (the plain shake stays); the
+    /// chips and the shatter; the springs' overshoot. `juice` is all of them, as the harnesses
+    /// run (their numbers must not move with the feel).
+    pub const DILATION: u32 = 1 << 15;
+    pub const HITSTOP: u32 = 1 << 16;
+    pub const SHAKE: u32 = 1 << 17;
+    pub const DEBRIS: u32 = 1 << 18;
+    pub const SPRINGS: u32 = 1 << 19;
+    pub const JUICE: u32 = DILATION | HITSTOP | SHAKE | DEBRIS | SPRINGS;
 
-    pub const NAMES: [(&str, u32); 14] = [
+    pub const NAMES: [(&str, u32); 20] = [
         ("shadows", SHADOWS),
         ("lights", LIGHTS),
         ("grass", GRASS),
@@ -207,6 +218,12 @@ pub mod fx {
         ("backface", BACKFACE),
         ("haze", HAZE),
         ("volumetric", VOLUMETRIC),
+        ("dilation", DILATION),
+        ("hitstop", HITSTOP),
+        ("shake", SHAKE),
+        ("debris", DEBRIS),
+        ("springs", SPRINGS),
+        ("juice", JUICE),
     ];
 
     /// "shadows,ao" to its bits; unknown names are ignored.

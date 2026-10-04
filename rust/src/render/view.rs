@@ -48,6 +48,7 @@ mod frame;
 mod garden;
 mod gate;
 mod hell;
+mod juice;
 mod lookdev;
 mod meadow;
 mod models;
@@ -55,6 +56,7 @@ mod realms;
 mod sanctum;
 mod select;
 mod showcase;
+mod spring;
 mod story;
 mod vault;
 mod vault_decor;
@@ -162,6 +164,12 @@ pub struct SceneState<'a> {
     pub ails: crate::logic::combat::ails::Ails,
     /// A prince's coins lying on the floor, to burst.
     pub traps: &'a [crate::logic::combat::prince::Trap],
+    /// The share of real time the game ran this step (0 in a freeze or the pause), and its time
+    /// scale (below 1 while time is slowed): poses and springs keep the game's time (WARBAND.md §4.5).
+    pub pace: f32,
+    pub time_scale: f32,
+    /// His fighter, where his fighting goes by frame data: his slash follows its frames.
+    pub hero_fighter: Option<&'a crate::logic::combat::Fighter>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
@@ -356,6 +364,8 @@ pub struct WorldView {
     ghosts: Vec<(Vec3, f32, f32)>,
     ghost_clock: f32,
     rng: Rng,
+    /// The juice on screen: the camera's kick, roll and FOV punch, flinches, bodies breaking.
+    juice: juice::JuiceView,
 }
 
 fn tile_key(x: i32, y: i32) -> P {
@@ -472,12 +482,14 @@ impl WorldView {
             ghosts: Vec::new(),
             ghost_clock: 0.0,
             rng: Rng::from_time(),
+            juice: juice::JuiceView::default(),
         }
     }
 
     /// Seeds the view's random generator (particles, fireflies), for repeatable captures.
     pub fn reseed(&mut self, seed: u32) {
         self.rng = Rng::new(seed);
+        self.seed_noise();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -540,6 +552,7 @@ impl WorldView {
         self.rains.clear();
         self.flashes.clear();
         self.ghosts.clear();
+        self.juice.reset();
         self.trauma = 0.0;
         for l in self.effect_lights.iter_mut() {
             l.intensity = 0.0;
@@ -720,6 +733,7 @@ impl WorldView {
         let dtf = dt as f32;
         let time = s.time as f32;
         self.refit_hero(s.hero_kind, s.hero);
+        self.update_juice(dtf, s.pace, s.time_scale, s.hero.airborne());
         self.update_effects(dtf, s);
 
         if let Some(sv) = self.story {
@@ -745,7 +759,18 @@ impl WorldView {
             }
         }
         if self.slash_t >= 0.0 {
-            self.slash_t += dtf;
+            // Where his fighting goes by frame data, his slash keeps his fighter's frame (a freeze
+            // holds it, a slowing of time slows it, a blow that cuts his swing short ends it);
+            // elsewhere it runs on its own clock.
+            let frame = s.hero_fighter.filter(|_| self.slash_timing.is_some()).map(|f| match f.state {
+                crate::logic::combat::State::Attack { frame, .. } => Some(frame),
+                _ => None,
+            });
+            match frame {
+                Some(Some(frame)) => self.slash_t = frame as f32 / 60.0,
+                Some(None) => self.slash_t = f32::INFINITY,
+                None => self.slash_t += dtf,
+            }
             if self.slash_t > self.slash_len() {
                 self.slash_t = -1.0;
                 self.slash_timing = None;
