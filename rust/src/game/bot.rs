@@ -943,7 +943,7 @@ fn crawl_full(
     loadout: Option<Loadout>,
     limit: f64,
     trace: &mut Option<DrumTrace>,
-    mut ledger: Option<&mut crate::logic::war::ledger::Ledger>,
+    ledger: Option<&mut crate::logic::war::ledger::Ledger>,
 ) -> Crawl {
     let mut g = fresh_game(seed);
     if let Some(l) = ledger.as_deref() {
@@ -1020,7 +1020,7 @@ fn crawl_full(
             );
         }
     }
-    if let Some(l) = ledger.as_deref_mut() {
+    if let Some(l) = ledger {
         *l = g.warband.save.ledger.clone();
     }
     out.rivals_met = g.war.grudges.met.len() as u32;
