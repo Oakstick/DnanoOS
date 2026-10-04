@@ -46,6 +46,10 @@ fn tell_of(d: &Duelist) -> u32 {
         Some(MoveId::CoinToss | MoveId::CoinRain | MoveId::CoinVolley) => return 0xffd860,
         Some(MoveId::Call) => return 0x9ac8ff,
         Some(MoveId::Raise) => return 0x6a8cff,
+        // Belphegor's: his yawn pale, the sand of hours sand-gold, the clock's hands brass.
+        Some(MoveId::Yawn) => return 0xc8d4f0,
+        Some(MoveId::SandOfHours) => return 0xdcc290,
+        Some(MoveId::ClockHands) => return 0xd8b060,
         _ => {}
     }
     if d.breed.kind == EnemyKind::Jorogumo {
@@ -123,6 +127,9 @@ impl WorldView {
         self.animate_enemy(i, e, dt, time);
         self.pose_duel(i, d, time);
         self.overshoot_duel(i, d);
+        if d.breed.kind == EnemyKind::Belphegor {
+            self.pose_belphegor(i, d, time);
+        }
         let v = &mut self.enemy_views[i];
         v.visible = d.alive() && d.lore.vanish == 0;
         let glow = lin(tell_of(d));
@@ -741,7 +748,11 @@ impl WorldView {
         for fl in s.flashes {
             self.emit_flash(fl, time, f);
         }
-        self.emit_traps(s.traps, s.grid, time, f);
+        if self.court == Some(crate::logic::sins::Sin::Sloth) {
+            self.emit_sand(s.traps, s.grid, time, f);
+        } else {
+            self.emit_traps(s.traps, s.grid, time, f);
+        }
         // Surtr's fire on the floor: tongues of flame flickering up, and their light.
         for h in s.hazards {
             let c = Vec3::new(h.pos.x as f32, floor_at(s.grid, h.pos.x as f32, h.pos.y as f32), h.pos.y as f32);

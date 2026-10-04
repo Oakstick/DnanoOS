@@ -632,7 +632,9 @@ mod tests {
         if general {
             // The hidden price is his general's decree: the prince fights by it.
             assert!(g.general.as_ref().unwrap().command.decree_done, "the decree is done");
-            assert!(g.prince_terms(Sin::Sloth).health > 1.0, "the prince stronger for it");
+            // (A built court's prince takes it as his adds at once; a stand-in, on his health.)
+            let terms = g.prince_terms(Sin::Sloth);
+            assert!(terms.adds_at_start || terms.health > 1.0, "the prince stronger for it");
             assert_eq!(g.hero.hp, hp, "and nothing else");
         } else {
             assert!(g.hero.hp < hp && g.hero.hp >= 1, "the hidden price");

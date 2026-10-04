@@ -136,7 +136,7 @@ impl WorldView {
             EnemyKind::Raven => (RigId::Raven, 0.0),
             // Sloth's court
             EnemyKind::Belphegor => (RigId::Belphegor, 0.0),
-            EnemyKind::Nightmare => (RigId::Nightmare, 0.0),
+            EnemyKind::Nightmare => (RigId::Nightmare, 0.35),
             // Gluttony's court
             EnemyKind::Beelzebub => (RigId::Beelzebub, 0.0),
             EnemyKind::FlySwarm => (RigId::FlySwarm, 0.0),
@@ -410,13 +410,12 @@ impl WorldView {
                     // (Mammon waddles under his robe and his belly; the golems stump.)
                     EnemyKind::Mammon => (0.3, 0.16),
                     EnemyKind::GoldGolem => (0.5, 0.3),
+                    // (Belphegor shuffles barefoot under his night-robe, his arms hanging heavy.)
+                    EnemyKind::Belphegor => (0.24, 0.1),
+                    // (A nightmare's wisps trail and sway as it drifts; its thin arms reach.)
+                    EnemyKind::Nightmare => (0.35, 0.3),
                     // (The other princes, for now robed figures: small steps under the robe.)
-                    EnemyKind::Lucifer
-                    | EnemyKind::Leviathan
-                    | EnemyKind::Amon
-                    | EnemyKind::Belphegor
-                    | EnemyKind::Beelzebub
-                    | EnemyKind::Asmodeus => (0.3, 0.16),
+                    EnemyKind::Lucifer | EnemyKind::Leviathan | EnemyKind::Amon | EnemyKind::Beelzebub | EnemyKind::Asmodeus => (0.3, 0.16),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)

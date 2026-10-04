@@ -225,7 +225,7 @@ pub enum Power {
     Scales,
     /// Amon's fury (Wrath).
     Fury,
-    /// Belphegor's torpor (Sloth).
+    /// Belphegor's torpor (Sloth): a hide as Mammon's, open while he sleeps and as he wakes.
     Torpor,
     /// Beelzebub's bloat (Gluttony).
     Bloat,
@@ -340,9 +340,9 @@ impl Breed {
             // Wrath's court: Amon, and his ravens, that peck.
             K::Amon => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::Raven => (Skirmisher, 0.45, 0.65, 0.5, 1.05, 0.3, 1),
-            // Sloth's court: Belphegor, and his nightmares, that fall on the sleeper.
+            // Sloth's court: Belphegor, and his nightmares, dream-wisps that keep their distance and hex.
             K::Belphegor => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
-            K::Nightmare => (Skirmisher, 0.7, 0.75, 0.8, 0.95, 0.4, 1),
+            K::Nightmare => (Hexer, 1.4, 0.9, 1.0, 1.0, 0.36, 1),
             // Gluttony's court: Beelzebub, and his swarms.
             K::Beelzebub => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::FlySwarm => (Skirmisher, 0.5, 0.6, 0.5, 1.0, 0.4, 1),

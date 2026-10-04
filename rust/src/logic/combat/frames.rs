@@ -81,8 +81,16 @@ pub enum MoveId {
     /// Amon's flame breath: fire breathed in a cone before him (a placeholder for his table).
     FlameBreath,
     // Belphegor's (Sloth)
-    /// Belphegor's swat: a lazy backhand, heavy as sleep (a placeholder for his table).
+    /// Belphegor's swat: a slow, heavy backhand of his great hand, wide before him.
     Swat,
+    /// Belphegor's yawn: a great breath that pushes him back in a cone; it hurts little.
+    Yawn,
+    /// Belphegor's sand of hours: sand drifts down onto the floor round him and bursts.
+    SandOfHours,
+    /// Belphegor's hourglass lifted and brought down: a slam that shakes the ground.
+    HourglassSlam,
+    /// Belphegor's clock hands: a long sweep all the way round him, from far.
+    ClockHands,
     // Beelzebub's (Gluttony)
     /// Beelzebub's cleaver: a butcher's chop before him (a placeholder for his table).
     Cleaver,
@@ -301,6 +309,10 @@ impl MoveId {
         MoveId::FlameBreath,
         // Belphegor's (Sloth)
         MoveId::Swat,
+        MoveId::Yawn,
+        MoveId::SandOfHours,
+        MoveId::HourglassSlam,
+        MoveId::ClockHands,
         // Beelzebub's (Gluttony)
         MoveId::Cleaver,
         // Asmodeus's (Lust)
@@ -763,7 +775,83 @@ impl MoveId {
             // Amon's (Wrath)
             MoveId::FlameBreath => MoveData { name: "FLAME BREATH", ..PRINCE_PLACEHOLDER },
             // Belphegor's (Sloth)
-            MoveId::Swat => MoveData { name: "SWAT", ..PRINCE_PLACEHOLDER },
+            MoveId::Swat => MoveData {
+                name: "SWAT",
+                startup: 38,
+                active: 8,
+                recovery: 46,
+                damage: 28.0,
+                reach: 1.5,
+                half_angle: deg(100.0),
+                track: 22,
+                hitstop: 7,
+                range: (0.0, 1.5),
+                off: (0.0, deg(80.0)),
+                ..BASE
+            },
+            MoveId::Yawn => MoveData {
+                name: "YAWN",
+                startup: 36,
+                active: 12,
+                recovery: 40,
+                damage: 8.0,
+                reach: 2.4,
+                half_angle: deg(32.0),
+                track: 22,
+                hitstop: 3,
+                range: (0.0, 2.6),
+                off: (0.0, deg(45.0)),
+                rider: Rider::Shove(2.8),
+                cooldown: 240,
+                ..BASE
+            },
+            MoveId::SandOfHours => MoveData {
+                name: "SAND OF HOURS",
+                startup: 36,
+                active: 1,
+                recovery: 40,
+                damage: 16.0,
+                reach: 8.0,
+                half_angle: 0.0,
+                track: 26,
+                hitstop: 5,
+                range: (2.2, 8.0),
+                off: (0.0, deg(70.0)),
+                shape: Shape::Traps { count: 6, radius: 0.8, fuse: 50, linger: 0 },
+                cooldown: 270,
+                ..BASE
+            },
+            MoveId::HourglassSlam => MoveData {
+                name: "HOURGLASS SLAM",
+                startup: 46,
+                active: 6,
+                recovery: 54,
+                damage: 34.0,
+                reach: 1.4,
+                half_angle: deg(40.0),
+                track: 30,
+                hitstop: 8,
+                range: (0.0, 1.4),
+                off: (0.0, deg(60.0)),
+                shape: Shape::Quake { radius: 2.6, share: 0.5 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::ClockHands => MoveData {
+                name: "CLOCK HANDS",
+                startup: 44,
+                active: 10,
+                recovery: 50,
+                damage: 26.0,
+                reach: 3.0,
+                half_angle: deg(150.0),
+                track: 26,
+                hitstop: 6,
+                range: (0.0, 3.0),
+                off: (0.0, deg(120.0)),
+                cooldown: 150,
+                ..BASE
+            },
             // Beelzebub's (Gluttony)
             MoveId::Cleaver => MoveData { name: "CLEAVER", ..PRINCE_PLACEHOLDER },
             // Asmodeus's (Lust)
@@ -920,7 +1008,7 @@ mod tests {
             let gained = fuse.saturating_sub(REACTION) as f64 * walk / 60.0 - 0.25;
             assert!(gained >= (radius + 0.3) * 1.2, "{}: {gained:.2} t to clear {radius} t", d.name);
         }
-        assert_eq!(seen, 2, "the coin toss and the coin rain");
+        assert!(seen >= 2, "the coin toss and the coin rain, and every prince's traps since");
     }
 
     #[test]

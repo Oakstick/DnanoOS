@@ -582,9 +582,7 @@ fn kin_voice(kind: EnemyKind) -> Option<(EnemyKind, f32, f32, f32)> {
         // Wrath's court: the fire giant's, and the dark raven's.
         K::Amon => (K::Surtr, 1.0, 1.1, 1.0),
         K::Raven => (K::Vampire, 1.0, 0.9, 1.0),
-        // Sloth's court: Hel's servants', slowed; the night hag's.
-        K::Belphegor => (K::Ganglot, 1.2, 0.8, 1.0),
-        K::Nightmare => (K::Albasti, 1.0, 1.15, 0.9),
+        // (Sloth's court has its own: Belphegor's yawn, snore and clocks; the nightmares' giggle.)
         // Gluttony's court: the gaki's, deep for the prince, thin for his swarms.
         K::Beelzebub => (K::Gaki, 1.0, 0.7, 1.0),
         K::FlySwarm => (K::Gaki, 0.8, 1.4, 0.9),
@@ -889,18 +887,29 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             coins(0.15, 5, 0.3, 0.04),
         ]
         .concat(),
-        // The six other princes and their adds: a kin's voice, for now.
-        K::Lucifer
-        | K::Reflection
-        | K::Leviathan
-        | K::Serpentling
-        | K::Amon
-        | K::Raven
-        | K::Belphegor
-        | K::Nightmare
-        | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        // ---- the prince of Sloth
+        K::Belphegor => match mv {
+            // A vast yawn, drawn in and let out.
+            MoveId::Yawn => sloth_yawn(0.0),
+            // Sand hissing down through glass, and the tick of a stopped clock.
+            MoveId::SandOfHours => [sand(0.0, 0.6, 0.3), tick_tock(0.05, 4, 0.16, 0.5)].concat(),
+            // The hourglass heaved up: a grunt, and its sand shifting.
+            MoveId::HourglassSlam => [speak(0.04, 78.0, &[(Onset::H, Vowel::U, 0.42, 1.0)], 0.5, false), sand(0.1, 0.5, 0.25)].concat(),
+            // The clock's hands wound: a ratchet ticking, and its great bell.
+            MoveId::ClockHands => [tick_tock(0.0, 8, 0.06, 0.6), bell(0.1, 130.8, 1.4, 0.08)].concat(),
+            // The swat: a sleepy grumble.
+            _ => sloth_grumble(0.03),
+        },
+        // A nightmare: a child's giggle falling away, and a music box in a minor key.
+        K::Nightmare => [
+            cackle(0.02, 520.0, 3, 0.09, 0.93, 0.12),
+            bell(0.12, 1046.5, 0.5, 0.03),
+            bell(0.26, 1244.5, 0.5, 0.025),
+            vec![hiss(1.0).at(0.0).dur(0.5).vol(0.35).swell(0.2).bp(2400.0, 3.0)],
+        ]
+        .concat(),
+        // The five other princes and their adds: a kin's voice, for now.
+        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&breed_tell(kin, mv, hero), time, pitch, gain)
         }
@@ -920,6 +929,50 @@ fn banker_laugh(at: f32) -> Vec<Layer> {
     speak(at, 118.0, &[(Onset::H, Vowel::O, 0.14, 1.0), (Onset::H, Vowel::O, 0.14, 0.94), (Onset::H, Vowel::O, 0.22, 0.88)], 0.5, false)
 }
 
+/// Belphegor's yawn: a vast breath drawn in through the nose, let out in a long falling "haaa-oh".
+fn sloth_yawn(at: f32) -> Vec<Layer> {
+    [
+        vec![hiss(0.7).at(at).dur(0.35).vol(0.5).swell(0.3).bp(900.0, 1.2)],
+        speak(at + 0.38, 92.0, &[(Onset::H, Vowel::A, 0.55, 1.0), (Onset::None, Vowel::O, 0.35, 0.8)], 0.42, false),
+        vec![saw(46.0, 38.0).at(at + 0.38).dur(0.9).vol(0.08).swell(0.15).lp(260.0, 1.0)],
+    ]
+    .concat()
+}
+
+/// Belphegor's grumble, half asleep: "mmm-hoh".
+fn sloth_grumble(at: f32) -> Vec<Layer> {
+    speak(at, 84.0, &[(Onset::M, Vowel::U, 0.3, 1.0), (Onset::H, Vowel::O, 0.3, 0.85)], 0.45, false)
+}
+
+/// Belphegor's snore: a rattling breath in, a thin whistle out.
+fn snore(at: f32) -> Vec<Layer> {
+    vec![
+        saw(58.0, 52.0).at(at).dur(0.6).vol(0.3).swell(0.25).hold(0.3).bp(320.0, 3.0).vib(24.0, 0.08),
+        hiss(0.6).at(at).dur(0.6).vol(0.4).swell(0.25).bp(700.0, 1.5),
+        sine(900.0, 600.0).at(at + 0.7).dur(0.45).vol(0.02).swell(0.1),
+        hiss(1.0).at(at + 0.7).dur(0.45).vol(0.15).swell(0.1).bp(1800.0, 4.0),
+    ]
+}
+
+/// A clock's tick and tock, `n` of them `gap` apart.
+fn tick_tock(at: f32, n: usize, gap: f32, vol: f32) -> Vec<Layer> {
+    (0..n)
+        .flat_map(|i| {
+            let t = at + i as f32 * gap;
+            let f = if i % 2 == 0 { 3200.0 } else { 2400.0 };
+            [hiss(1.0).at(t).dur(0.015).vol(vol).bp(f, 8.0), sine(f * 0.5, f * 0.5).at(t).dur(0.03).vol(vol * 0.05)]
+        })
+        .collect()
+}
+
+/// Sand running through glass.
+fn sand(at: f32, dur: f32, vol: f32) -> Vec<Layer> {
+    vec![
+        hiss(1.2).at(at).dur(dur).vol(vol).swell(dur * 0.3).hold(0.4).hp(3500.0, 0.0),
+        crackle(2.5).at(at).dur(dur).vol(vol * 0.5).swell(dur * 0.3).hp(4000.0, 0.0),
+    ]
+}
+
 /// A tell: the family's signature, then the breed's timbre (and for the karakoncolos, the name of
 /// the hero it calls). This replaces brawl.rs's `tell_sfx`.
 pub fn tell_for(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Recipe {
@@ -934,6 +987,8 @@ fn breed_voice(kind: EnemyKind) -> Vec<Layer> {
         // The name is a tell, not a cry: he howls like the winter wind.
         K::Karakoncolos => [growl(0.0, 70.0, 0.4, 0.12), vec![hiss(0.6).at(0.0).dur(0.5).vol(0.6).swell(0.15).bp(500.0, 1.5)]].concat(),
         K::Mammon => banker_laugh(0.0),
+        // Belphegor's cries are his grumble.
+        K::Belphegor => sloth_grumble(0.0),
         // Bones groan; the ringing is the tell's alone.
         K::Gashadokuro => [rattle(0.0, 6, 0.04, 1500.0, 0.7), growl(0.05, 50.0, 0.4, 0.1)].concat(),
         K::Peerless => speak(0.0, 120.0, &[(Onset::H, Vowel::U, 0.18, 1.0)], 0.45, false),
@@ -1110,18 +1165,14 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         // An avalanche of coins.
         K::Mammon => [coins(0.0, 40, 1.4, 0.03), vec![hiss(0.5).dur(1.4).vol(0.6).lp(500.0, 1.0)]].concat(),
         K::GoldGolem => [coins(0.0, 16, 0.6, 0.05), vec![crackle(0.4).dur(0.6).vol(1.2).lp(400.0, 1.0)]].concat(),
-        // The six other princes and their adds: a kin's fall, for now.
-        K::Lucifer
-        | K::Reflection
-        | K::Leviathan
-        | K::Serpentling
-        | K::Amon
-        | K::Raven
-        | K::Belphegor
-        | K::Nightmare
-        | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        // Belphegor: a last long snore that stops, and the clocks ticking again, and their bell.
+        K::Belphegor => [shaped(&snore(0.0), 1.4, 0.8, 1.0), tick_tock(1.3, 8, 0.25, 0.5), bell(1.3, 130.8, 2.0, 0.08)].concat(),
+        // A nightmare: a breath of a sigh, and its music box running down.
+        K::Nightmare => {
+            vec![hiss(1.0).dur(0.9).vol(0.5).swell(0.05).bp(2000.0, 2.0), sine(1046.5, 520.0).dur(0.8).vol(0.03).vib(6.0, 0.02)]
+        }
+        // The five other princes and their adds: a kin's fall, for now.
+        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&death_of(kin), time, pitch, gain)
         }
@@ -1238,18 +1289,26 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         },
         // A golden fist, and a jingle.
         K::GoldGolem => [whoosh(0.0, 420.0, 0.35, 0.9), coins(0.1, 3, 0.15, 0.03)].concat(),
-        // The six other princes and their adds: a kin's swing, for now.
-        K::Lucifer
-        | K::Reflection
-        | K::Leviathan
-        | K::Serpentling
-        | K::Amon
-        | K::Raven
-        | K::Belphegor
-        | K::Nightmare
-        | K::Beelzebub
-        | K::FlySwarm
-        | K::Asmodeus => {
+        // Belphegor: his great hand, his breath, the sand, the hourglass coming down, the clock's hands.
+        K::Belphegor => match mv {
+            MoveId::Yawn => {
+                vec![hiss(0.6).dur(0.7).vol(0.9).swell(0.2).hold(0.4).lp(900.0, 1.0), sine(60.0, 45.0).dur(0.6).vol(0.1).swell(0.2)]
+            }
+            MoveId::SandOfHours => sand(0.0, 0.9, 0.35),
+            MoveId::HourglassSlam => [
+                whoosh(0.0, 300.0, 0.4, 1.0),
+                bell(0.1, 1480.0, 0.5, 0.03),
+                vec![sine(55.0, 28.0).at(0.1).dur(0.5).vol(0.4), crackle(0.4).at(0.1).dur(0.4).vol(0.6).lp(500.0, 1.0)],
+                sand(0.15, 0.5, 0.25),
+            ]
+            .concat(),
+            MoveId::ClockHands => [whoosh(0.0, 600.0, 0.55, 1.0), tick_tock(0.0, 6, 0.06, 0.6)].concat(),
+            _ => [whoosh(0.0, 380.0, 0.4, 1.0), vec![sine(80.0, 50.0).at(0.15).dur(0.25).vol(0.15)]].concat(),
+        },
+        // A nightmare's hex: a whisper, and a falling note.
+        K::Nightmare => vec![hiss(1.0).dur(0.3).vol(0.5).swell(0.12).bp(2600.0, 3.0), sine(1568.0, 1046.5).dur(0.3).vol(0.02)],
+        // The five other princes and their adds: a kin's swing, for now.
+        K::Lucifer | K::Reflection | K::Leviathan | K::Serpentling | K::Amon | K::Raven | K::Beelzebub | K::FlySwarm | K::Asmodeus => {
             let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
             shaped(&swing_of(kin, mv).layers, time, pitch, gain)
         }
