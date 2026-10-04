@@ -86,8 +86,16 @@ pub enum MoveId {
     /// Leviathan's coil lash: his coils whipped round before him (a placeholder for his table).
     CoilLash,
     // Amon's (Wrath)
-    /// Amon's flame breath: fire breathed in a cone before him (a placeholder for his table).
+    /// Amon's flame breath: fire breathed from his throat in a cone before him, longer than an arm.
     FlameBreath,
+    /// Amon's axe cleave: his great iron axe brought down overhead, narrow and far.
+    AxeCleave,
+    /// Amon's fiery charge: head down, he runs straight along his locked aim; stone stops him dazed.
+    FieryCharge,
+    /// Amon's rift: his axe splits the floor in a line toward the hero; the seam bursts into lava.
+    Rift,
+    /// Amon's eruption: the floor round him bursts (a quake).
+    Eruption,
     // Belphegor's (Sloth)
     /// Belphegor's swat: a slow, heavy backhand of his great hand, wide before him.
     Swat,
@@ -260,6 +268,9 @@ pub const UNSTOPPABLE: f64 = 1e6;
 /// half his pace, so one who walks away at once leaves it behind.
 pub const MARK_FOLLOW: f64 = 2.6;
 
+/// Poise a blow needs to stop one of Amon's moves (Wrath has no hide: his rage carries him through).
+pub const AMON_ARMOR: f64 = 70.0;
+
 /// A prince's first move before his fight is built: a wide cone swept before him like Mammon's
 /// sceptre, slow to start, readable, and punishable in its long recovery (a big body: his arm adds
 /// to its reach, `Breed::reach`).
@@ -319,6 +330,10 @@ impl MoveId {
         MoveId::CoilLash,
         // Amon's (Wrath)
         MoveId::FlameBreath,
+        MoveId::AxeCleave,
+        MoveId::FieryCharge,
+        MoveId::Rift,
+        MoveId::Eruption,
         // Belphegor's (Sloth)
         MoveId::Swat,
         MoveId::Yawn,
@@ -858,8 +873,93 @@ impl MoveId {
             },
             // Leviathan's (Envy)
             MoveId::CoilLash => MoveData { name: "COIL LASH", ..PRINCE_PLACEHOLDER },
-            // Amon's (Wrath)
-            MoveId::FlameBreath => MoveData { name: "FLAME BREATH", ..PRINCE_PLACEHOLDER },
+            // Amon's (Wrath): no hide, so his blows are hard to stop (`AMON_ARMOR`); a big body, his
+            // arm adds to a cone's reach (`Breed::reach`: 2.2 tiles of fire, 2.6 of axe).
+            MoveId::FlameBreath => MoveData {
+                name: "FLAME BREATH",
+                startup: 34,
+                active: 14,
+                recovery: 40,
+                damage: 22.0,
+                reach: 1.3,
+                half_angle: deg(35.0),
+                armor: AMON_ARMOR,
+                track: 22,
+                hitstop: 5,
+                range: (0.0, 1.3),
+                off: (0.0, deg(40.0)),
+                ..BASE
+            },
+            MoveId::AxeCleave => MoveData {
+                name: "AXE CLEAVE",
+                startup: 38,
+                active: 6,
+                recovery: 46,
+                damage: 30.0,
+                reach: 1.7,
+                half_angle: deg(22.0),
+                armor: AMON_ARMOR,
+                track: 26,
+                hitstop: 8,
+                range: (0.0, 1.7),
+                off: (0.0, deg(45.0)),
+                cooldown: 150,
+                ..BASE
+            },
+            MoveId::FieryCharge => MoveData {
+                name: "FIERY CHARGE",
+                startup: 40,
+                active: 40,
+                recovery: 44,
+                damage: 26.0,
+                // (Struck if he comes within this of the runner's middle: his girth and his beak.)
+                reach: 1.15,
+                half_angle: deg(60.0),
+                armor: AMON_ARMOR,
+                // (The aim locks fourteen frames before he sets off: the line on the floor holds still.)
+                track: 26,
+                hitstop: 7,
+                range: (0.0, 7.0),
+                off: (0.0, deg(40.0)),
+                line: true,
+                shape: Shape::Charge { length: 7.0, speed: 11.0 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::Rift => MoveData {
+                name: "RIFT",
+                startup: 38,
+                active: 1,
+                recovery: 40,
+                damage: 20.0,
+                reach: 8.0,
+                half_angle: 0.0,
+                track: 26,
+                hitstop: 5,
+                range: (2.2, 8.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                shape: Shape::TrapLine { count: 6, radius: 0.65, fuse: 50, spacing: 1.25, linger: 150 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::Eruption => MoveData {
+                name: "ERUPTION",
+                startup: 44,
+                active: 6,
+                recovery: 50,
+                damage: 30.0,
+                reach: 1.2,
+                half_angle: deg(40.0),
+                armor: AMON_ARMOR,
+                track: 28,
+                hitstop: 8,
+                range: (0.0, 2.2),
+                off: (0.0, PI),
+                shape: Shape::Quake { radius: 2.6, share: 0.6 },
+                cooldown: 240,
+                ..BASE
+            },
             // Belphegor's (Sloth)
             MoveId::Swat => MoveData {
                 name: "SWAT",
@@ -1110,10 +1210,6 @@ mod tests {
         assert_eq!(MoveId::CoinToss.data().traps(), Some((5, 0.8, 48, 0)), "the coins do not linger");
         assert_eq!(MoveId::Grasp.data().guard_rule(), GuardRule::ParryOnly);
         assert_eq!(MoveId::Sceptre.data().guard_rule(), GuardRule::Full);
-        // No move of the game uses them yet but the princes' that are built for them: play is as it was.
-        for m in MoveId::FOE.iter().filter(|m| !matches!(m, MoveId::LanceOfDawn)) {
-            assert!(!matches!(m.data().shape, Shape::Beam { .. } | Shape::Charge { .. } | Shape::TrapLine { .. }), "{m:?}");
-        }
     }
 
     #[test]

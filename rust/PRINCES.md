@@ -343,7 +343,63 @@ No two blows inside 18 frames in any of them. Pinned by
 
 ### Amon
 
-(to come)
+Built 2026-10-04. The court is `logic/court/wrath.rs` (the Anvil of Wrath: a round basalt hall 27
+tiles across inside a 33 grid, the gate south at (16, 30), the hero at (16, 26), Amon before his
+anvil at (16, 8); the dais (12-20, 3-5) with the anvil on it as three solid tiles (15-17, 5), the
+throne in the north wall behind; four broken pillars two tiles by two at (9, 11), (22, 11),
+(9, 20), (22, 20), each 6-8 tiles from the middle with open floor all round it; six perches by
+the banners where the ravens come down). His fight is `logic/combat/prince/wrath.rs` (tables,
+pace, rage) and `game/court/wrath.rs` (the daze, the twin charge, the ravens); his art
+`render/foes_court/wrath.rs` (Amon 100 x 124 x 80 at 0.025 in seven parts with a tail; a raven
+80 x 64 x 54 at 0.025, hovering in its grid) and `render/view/court_wrath.rs`.
+
+| Move | Startup | Active | Recovery | Damage | Shape | Cooldown |
+|---|---|---|---|---|---|---|
+| Fiery Charge | 40 (tracks 26) | 40 | 44 | 26 | charge 7 tiles at 11 t/s, struck within 1.15 of his middle | 300 |
+| Axe Cleave | 38 | 6 | 46 | 30 | cone 1.7 (+0.9), ±22° | 150 |
+| Flame Breath | 34 | 14 | 40 | 22 | cone 1.3 (+0.9 = 2.2), ±35° | 0 |
+| Rift | 38 | 1 | 40 | 20 | a row of six lava seams, 0.65 wide, 1.25 apart, fuse 50, lingering 150 | 300 |
+| Eruption | 44 | 6 | 50 | 30 | cone 1.2 (+0.9); quake 2.6 (+0.9) at 60% | 240 |
+
+Phases: the Wolf (charge, cleave, breath), the Raven (rift, charge, breath; three ravens come
+down), the Fury (charge twice running, eruption, breath; pace x1.25, rest x0.65). His moves carry
+armour 70 (`frames::AMON_ARMOR`): with no hide the finisher would otherwise stop every one.
+
+What changed from the design, and why:
+
+* **The charge from any distance** (range 0-7). The players and the bots fight him at arm's
+  length, where a charge kept for 2.4 tiles and more never came (two in a fight). Now when it is
+  rested he lowers his head wherever he stands; the line of his run shows on the floor and stops
+  following 14 frames before he sets off (not "as his startup ends": a lock on the last frame
+  could not be side-stepped), so it is parried, blocked, leapt or stepped out of, and he runs on.
+* **The daze** is 150 frames staggered (the whole blow and a half lands), and it spends his rage.
+  The brawl's `Cue::Crashed` only shows dust; `wrath_tick` turns a crashed charge into the daze.
+* **Rage**: a step for every blow that lands (`brawl::duel_hit`), up to five; each step +6% to his
+  pace and -8% to his rest (`prince::wrath::enraged`, read by `Duelist::stats`); his startups never
+  shorten. Only stone (or a fall) empties it. His health is 1.3 times the prince's.
+* **Twice running**: a Fury charge that ends on open floor has its cooldown cleared and his rest
+  cut to 8 frames (`Lore::twin`), so the second still asks the threat manager for its landing.
+* **The rift's lingering lava** stings every 30 frames for a quarter of its damage; those stings no
+  longer count as landings (`brawl::update_traps`): they are the floor he chose to stand on, as
+  Surtr's fire is, and the threat manager cannot plan them.
+* **The old man's counsel** on Amon is no longer "his hide turns your blade": a new answer,
+  `BaitIntoStone`, says his charge runs straight and stone dazes him.
+
+The bots: the expert (only in this court, `Bot::amon_court`) steps aside once the charge's aim
+has locked with it in the path (leaping if too late to walk), and the adept and the expert walk
+out of the lingering lava. Results (`--court wrath SKILL TIER SEED`, Ragnar's kit at the tier):
+
+| Skill | Tier | Won | Time (s) | Deaths | Taken | His charges / dazed |
+|---|---|---|---|---|---|---|
+| expert | 1 | 3/3 | 123.7, 129.1, 127.0 | 0 | 0-0 | 18 / 2-10 |
+| expert | 2 | 3/3 | 99.0, 100.5, 101.0 | 0 | 0-12 | 13-15 / 1-5 |
+| adept | 1 | 0/3 | timed out (240) twice, lost once | 2-4 | 315-355 | 29-31 / 7-11 |
+| adept | 2 | 0/3 | timed out (240) twice, lost once | 2-4 | 302-376 | 26-35 / 5-7 |
+| novice | 1 | 0/3 | lost all lives in 48 s, in his first phase | 4 | 372 | 9 / 0 |
+| novice | 2 | 0/3 | lost all lives in 59 s, in his first phase | 4 | 427 | 8 / 0 |
+
+Pinned by `the_expert_beats_amon_in_his_court_and_a_masher_does_not` (tiers 1 and 2, no
+overlaps, at most one fall; the masher loses).
 
 ### Belphegor
 

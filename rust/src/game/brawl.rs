@@ -533,6 +533,10 @@ impl Game {
         hit.poise *= share;
         let r = du.f.take_hit(&hit);
         du.hp -= r.damage;
+        if du.breed.power == Power::Fury && r.damage > 0.0 {
+            // Amon's rage: every blow he takes quickens him (`game::court::wrath`).
+            du.lore.rage = (du.lore.rage + 1).min(prince::wrath::RAGE_MAX);
+        }
         // A prince's health fallen into his next phase: its table of moves, rested.
         if du.arch == crate::logic::combat::Archetype::Prince && du.hp > 0.0 {
             let phase = prince::phase_of(du.hp, du.max_hp);
@@ -1346,6 +1350,18 @@ impl Game {
             MoveId::MirrorStep => self.lucifer_steps_out(i),
             MoveId::PridesFall => self.lucifer_lands(i),
             MoveId::LanceOfDawn => self.lucifer_lance(i),
+            MoveId::Eruption => {
+                // Amon's: the floor all round him bursts, fire through its cracks.
+                let mut f = Flash::new(FlashKind::Quake, pos);
+                if let Shape::Quake { radius, .. } = d.shape {
+                    f.length = radius;
+                }
+                self.flash(f);
+                self.flash(Flash::new(FlashKind::Erupt, pos));
+                self.audio.play(Sfx::BossSlam);
+                self.feel_quake(pos);
+                self.view.dust(&self.level.grid, pos.x, pos.y, 0x5a2a1c, 30, 3.4);
+            }
             _ => {}
         }
         if power == Power::Fire && matches!(mv, MoveId::Slam | MoveId::Sweep) {
@@ -1919,8 +1935,10 @@ impl Game {
         for p in bursts {
             self.view.sparkle(&self.level.grid, p.x, p.y, 0.7, 0xffd860, 14);
         }
-        let stings = stung.into_iter().map(|t| Trap { damage: t.damage * prince::LINGER_SHARE, ..t });
-        for t in on_him.into_iter().chain(stings) {
+        // (A lingering ground's sting is the floor he stands on, as Surtr's fire is: not a strike the
+        // threat manager plans, so not a landing.)
+        let stings = stung.into_iter().map(|t| (Trap { damage: t.damage * prince::LINGER_SHARE, ..t }, false));
+        for (t, lands) in on_him.into_iter().map(|t| (t, true)).chain(stings) {
             let blow = Blow {
                 from: t.pos,
                 damage: t.damage,
@@ -1929,7 +1947,7 @@ impl Game {
                 rule: GuardRule::Bare,
                 rider: Rider::None,
                 by: t.owner,
-                lands: true,
+                lands,
             };
             self.blow_on_hero(blow);
             if !self.hero.alive {

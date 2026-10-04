@@ -223,7 +223,8 @@ pub enum Power {
     Vainglory,
     /// Leviathan's scales (Envy).
     Scales,
-    /// Amon's fury (Wrath).
+    /// Amon's fury (Wrath): no hide; every blow he takes quickens him (`Lore::rage`,
+    /// `prince::wrath::enraged`), and a charge that ends in stone dazes him and spends it.
     Fury,
     /// Belphegor's torpor (Sloth): a hide as Mammon's, open while he sleeps and as he wakes.
     Torpor,
@@ -237,7 +238,7 @@ impl Power {
     /// A prince's hide: it turns most of a blow outside his recoveries (`prince::HIDE_SHARE`).
     /// Mammon's gold, and for now every other prince's power too.
     pub const fn is_hide(self) -> bool {
-        matches!(self, Power::GoldHide | Power::Vainglory | Power::Scales | Power::Fury | Power::Torpor | Power::Bloat | Power::Allure)
+        matches!(self, Power::GoldHide | Power::Vainglory | Power::Scales | Power::Torpor | Power::Bloat | Power::Allure)
     }
 }
 
@@ -338,7 +339,7 @@ impl Breed {
             K::Leviathan => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::Serpentling => (Skirmisher, 0.6, 0.7, 0.7, 1.0, 0.36, 1),
             // Wrath's court: Amon, and his ravens, that peck.
-            K::Amon => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::Amon => (Prince, 1.3, 1.0, 1.0, 1.0, 0.95, 3),
             K::Raven => (Skirmisher, 0.45, 0.65, 0.5, 1.05, 0.3, 1),
             // Sloth's court: Belphegor, and his nightmares, dream-wisps that keep their distance and hex.
             K::Belphegor => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
