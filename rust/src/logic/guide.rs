@@ -375,6 +375,18 @@ fn court(sin: Sin, hail: &str) -> Guide {
     if sin == Sin::Greed {
         return page("THE COUNTING HOUSE", hail, MAMMON_TALE, MAMMON_TASK, MAMMON_WATCH);
     }
+    // Pride's court, as built (its page to come here).
+
+    // Envy's court, as built (its page to come here).
+
+    // Wrath's court, as built (its page to come here).
+
+    // Sloth's court, as built (its page to come here).
+
+    // Gluttony's court, as built (its page to come here).
+
+    // Lust's court, as built (its page to come here).
+
     let (who, colour) = match sin {
         Sin::Pride => {
             ("Lucifer fell from the morning star to the foot of the pit, and here at the foot of his spire he keeps his court.", "violet")
