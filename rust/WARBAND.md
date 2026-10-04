@@ -906,7 +906,8 @@ the hero's slash (now on his fighter's frames) and the outside callers below.
   squash; his blade's follow-through (12%).
 * **Debris**: `MAX_DEBRIS` 160 → 480, one instanced cube batch, the oldest retired first and counts
   scaled down past half; pieces fly by their matter, rest, then sink and shrink over 2.5 s; debris
-  slows with the time scale. Measured: see `debris_at_its_budget_is_cheap`.
+  slows with the time scale. Measured (`debris_at_its_budget_is_cheap`, quick profile): 480 pieces
+  cost 0.014 ms a step, flying and drawn (budget 0.3 ms).
 * **The hero's slash** follows his fighter's frame wherever the brawl drives him (a freeze holds
   it, a parry or a blow that ends his swing ends it); the garden's plain slash keeps its clock.
 * **Switches**: `--fx-off dilation,hitstop,shake,debris,springs` or `juice` (all); the bots'
