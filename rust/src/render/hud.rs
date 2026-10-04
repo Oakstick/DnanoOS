@@ -241,7 +241,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused => {
             o.rect(0.0, 0.0, o.width, o.height, [INK[0], INK[1], INK[2], 0.65]);
-            let top = menu_rects(Screen::Paused, &[MenuItem::Resume], o.width, o.height)[0][1];
+            let top = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height)[0][1];
             o.text("PAUSED", o.width / 2.0, top - t * 2.6, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
             o.text("Esc or Start to resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center, false);
             draw_menu(o, g, t);
@@ -1388,7 +1388,10 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
             // (A longer list, the pause menu with the feel's settings, packs its buttons closer.)
             let tight = (7.0 / count.max(7) as f32).max(0.75);
             let (bh, gap) = (bh * tight, t * 0.45 * tight);
-            let y0 = h / 2.0 - t * 0.6;
+            // (A list longer than seven is centred as a whole, so what is written under it, the
+            // road down in the pause menu, stays clear of the belt at the bottom.)
+            let total = count as f32 * (bh + gap) - gap;
+            let y0 = if count > 7 { (h / 2.0 - total / 2.0 - t * 1.2).max(t * 4.2) } else { h / 2.0 - t * 0.6 };
             (0..count).map(|i| [w / 2.0 - bw / 2.0, y0 + i as f32 * (bh + gap), bw, bh]).collect()
         }
     }
