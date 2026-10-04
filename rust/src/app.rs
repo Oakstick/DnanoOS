@@ -39,6 +39,14 @@ pub struct Options {
 #[cfg(target_arch = "wasm32")]
 type Pending = std::rc::Rc<std::cell::RefCell<Option<Result<Gpu, String>>>>;
 
+/// Word from the renderer starting on its own thread.
+#[cfg(not(target_arch = "wasm32"))]
+enum Starting {
+    /// The window has been painted: it can be shown.
+    Painted,
+    Ready(Result<Box<Gpu>, String>),
+}
+
 pub struct App {
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     opts: Options,
@@ -46,6 +54,9 @@ pub struct App {
     gpu: Option<Gpu>,
     #[cfg(target_arch = "wasm32")]
     pending: Pending,
+    /// The renderer starting on its own thread, so the window answers Windows meanwhile.
+    #[cfg(not(target_arch = "wasm32"))]
+    starting: Option<std::sync::mpsc::Receiver<Starting>>,
     game: Game,
     overlay: Overlay,
     frame: Frame,
@@ -79,6 +90,8 @@ impl App {
             gpu: None,
             #[cfg(target_arch = "wasm32")]
             pending: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            starting: None,
             game: Game::new(),
             overlay: Overlay::new(),
             frame: Frame::default(),
@@ -294,6 +307,58 @@ impl App {
     }
 }
 
+impl App {
+    /// Takes the renderer's word as it starts: show the window once it is painted, and take the
+    /// renderer when it is ready.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn poll_starting(&mut self, el: &ActiveEventLoop) {
+        let Some(rx) = self.starting.take() else { return };
+        loop {
+            match rx.try_recv() {
+                Ok(Starting::Painted) => {
+                    if let Some(w) = &self.window {
+                        w.set_visible(true);
+                    }
+                }
+                Ok(Starting::Ready(Ok(mut gpu))) => {
+                    if self.opts.no_vsync {
+                        gpu.set_vsync(false);
+                    }
+                    if let Some(p) = self.opts.preset {
+                        gpu.set_preset(p);
+                    }
+                    if let Some(w) = &self.window {
+                        // In case it was resized (or made fullscreen) while the renderer started.
+                        let size = w.inner_size();
+                        gpu.resize(size.width, size.height);
+                        w.set_visible(true);
+                    }
+                    self.game.view.lod_bias = gpu.preset().lod_bias;
+                    self.game.await_renderer = true;
+                    eprintln!("renderer: {}", gpu.backend);
+                    self.gpu = Some(*gpu);
+                    self.last = Instant::now();
+                    return;
+                }
+                Ok(Starting::Ready(Err(e))) => {
+                    eprintln!("could not start the renderer: {e}");
+                    el.exit();
+                    return;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    eprintln!("could not start the renderer: its thread stopped");
+                    el.exit();
+                    return;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.starting = Some(rx);
+                    return;
+                }
+            }
+        }
+    }
+}
+
 impl ApplicationHandler for App {
     fn exiting(&mut self, _el: &ActiveEventLoop) {
         self.game.score.save_high();
@@ -309,6 +374,9 @@ impl ApplicationHandler for App {
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             .with_min_inner_size(winit::dpi::LogicalSize::new(480.0, 270.0))
             .with_window_icon(Self::window_icon());
+        // Hidden until the renderer has painted it, so it never opens as a white square.
+        #[cfg(not(target_arch = "wasm32"))]
+        let attrs = attrs.with_visible(false);
         #[cfg(target_arch = "wasm32")]
         {
             use winit::platform::web::WindowAttributesExtWebSys;
@@ -329,26 +397,20 @@ impl ApplicationHandler for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
+            // The renderer takes seconds to start (its shaders compile): on its own thread, so
+            // the event loop keeps answering and Windows never calls the window not responding.
+            // (Its surfaces are made here, where Windows gives out the window's handle.)
             let size = window.inner_size();
-            match pollster::block_on(Gpu::new(Some(window.clone()), (size.width, size.height))) {
-                Ok(mut gpu) => {
-                    if self.opts.no_vsync {
-                        gpu.set_vsync(false);
-                    }
-                    if let Some(p) = self.opts.preset {
-                        gpu.set_preset(p);
-                    }
-                    self.game.view.lod_bias = gpu.preset().lod_bias;
-                    self.game.await_renderer = true;
-                    eprintln!("renderer: {}", gpu.backend);
-                    self.gpu = Some(gpu);
-                }
-                Err(e) => {
-                    eprintln!("could not start the renderer: {e}");
-                    el.exit();
-                    return;
-                }
-            }
+            let candidates = Gpu::surfaces(Some(&window));
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let painted = tx.clone();
+                let gpu = Gpu::start(candidates, (size.width, size.height), move || {
+                    let _ = painted.send(Starting::Painted);
+                });
+                let _ = tx.send(Starting::Ready(pollster::block_on(gpu).map(Box::new)));
+            });
+            self.starting = Some(rx);
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -413,6 +475,10 @@ impl ApplicationHandler for App {
                 self.game.focus_lost();
             }
             WindowEvent::RedrawRequested => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if self.starting.is_some() {
+                    return;
+                }
                 #[cfg(target_arch = "wasm32")]
                 if self.gpu.is_none() {
                     if let Some(result) = self.pending.borrow_mut().take() {
@@ -444,11 +510,24 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(w) = &self.window {
-            w.request_redraw();
+        {
+            if self.starting.is_some() {
+                self.poll_starting(el);
+            }
+            if self.starting.is_some() {
+                // Idle while the renderer starts, rather than spin a core its compiler could use.
+                el.set_control_flow(ControlFlow::WaitUntil(std::time::Instant::now() + std::time::Duration::from_millis(30)));
+                return;
+            }
+            el.set_control_flow(ControlFlow::Poll);
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
         }
+        #[cfg(target_arch = "wasm32")]
+        let _ = el;
     }
 }
 

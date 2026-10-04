@@ -575,9 +575,23 @@ pub struct Gpu {
     pub adapter: wgpu::AdapterInfo,
 }
 
+/// The colour the window shows from the moment it opens until the title screen is ready: the
+/// vaults' charcoal dark.
+const SPLASH: wgpu::Color = wgpu::Color { r: 0.07, g: 0.094, b: 0.1, a: 1.0 };
+
+/// Graphics APIs to start the renderer on, each with the window's surface (`Gpu::surfaces`).
+pub type Surfaces = Vec<(wgpu::Instance, Option<wgpu::Surface<'static>>)>;
+
 impl Gpu {
     /// Opens the GPU on a window surface. `size` is in physical pixels.
     pub async fn new(window: Option<Arc<winit::window::Window>>, size: (u32, u32)) -> Result<Self, String> {
+        let candidates = Self::surfaces(window.as_ref());
+        Self::start(candidates, size, || ()).await
+    }
+
+    /// The graphics APIs to try, in order, each with the window's surface made on it. Called on
+    /// the window's own thread: Windows gives out a window's handle only there.
+    pub fn surfaces(window: Option<&Arc<winit::window::Window>>) -> Surfaces {
         // Direct3D 12 first on Windows: it is what the Steam overlay and capture
         // tools know best. Anything else (or WGPU_BACKEND) as the fallback.
         let preferred = if cfg!(windows) { wgpu::Backends::DX12 } else { wgpu::Backends::all() };
@@ -585,16 +599,31 @@ impl Gpu {
             Some(b) => vec![b],
             None => vec![preferred, wgpu::Backends::all()],
         };
-        let mut found = None;
+        let mut out = Vec::new();
         for backends in order {
             let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor { backends, ..Default::default() });
-            let surface = match &window {
+            let surface = match window {
                 Some(w) => match instance.create_surface(w.clone()) {
                     Ok(s) => Some(s),
                     Err(_) => continue,
                 },
                 None => None,
             };
+            out.push((instance, surface));
+        }
+        out
+    }
+
+    /// Starts the renderer on the first of `candidates` with a GPU for it (any thread will do).
+    /// With a window, it paints the window the splash colour as soon as it can draw into it and
+    /// calls `painted` (the window may be shown from then on), then builds its pipelines.
+    pub async fn start(
+        candidates: Surfaces,
+        size: (u32, u32),
+        painted: impl FnOnce(),
+    ) -> Result<Self, String> {
+        let mut found = None;
+        for (instance, surface) in candidates {
             let request = instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: surface.as_ref(),
@@ -653,7 +682,28 @@ impl Gpu {
         };
         if let Some(s) = &surface {
             s.configure(&device, &config);
+            // Paint the window the game's dark before the shaders compile (seconds on DX12), so
+            // it never shows unpainted.
+            if let Ok(frame) = s.get_current_texture() {
+                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("splash") });
+                enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("splash"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        // (The target is not sRGB: this is the colour as displayed.)
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(SPLASH), store: wgpu::StoreOp::Store },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                queue.submit([enc.finish()]);
+                frame.present();
+            }
         }
+        painted();
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("shaders"),
