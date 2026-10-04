@@ -575,6 +575,28 @@ pub struct Gpu {
     pub adapter: wgpu::AdapterInfo,
 }
 
+/// The Direct3D 12 shader compiler: Microsoft's DXC, when its two DLLs sit next to the exe
+/// (build.rs puts them there), compiles the game's shaders many times faster than FXC, wgpu's
+/// default: about a second at start-up instead of ten. Without them, FXC. WGPU_DX12_COMPILER
+/// overrides.
+fn dx12_compiler() -> wgpu::Dx12Compiler {
+    if let Some(c) = wgpu::Dx12Compiler::from_env() {
+        return c;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(std::path::PathBuf::from)) {
+        let (dxc, dxil) = (dir.join("dxcompiler.dll"), dir.join("dxil.dll"));
+        if dxc.exists() && dxil.exists() {
+            return wgpu::Dx12Compiler::DynamicDxc {
+                dxc_path: dxc.to_string_lossy().into_owned(),
+                dxil_path: dxil.to_string_lossy().into_owned(),
+                max_shader_model: wgpu::DxcShaderModel::V6_7,
+            };
+        }
+    }
+    wgpu::Dx12Compiler::Fxc
+}
+
 /// Graphics APIs to start the renderer on, each with the window's surface (`Gpu::surfaces`).
 pub type Surfaces = Vec<(wgpu::Instance, Option<wgpu::Surface<'static>>)>;
 
@@ -597,7 +619,9 @@ impl Gpu {
         };
         let mut out = Vec::new();
         for backends in order {
-            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor { backends, ..Default::default() });
+            let backend_options =
+                wgpu::BackendOptions { dx12: wgpu::Dx12BackendOptions { shader_compiler: dx12_compiler() }, ..Default::default() };
+            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor { backends, backend_options, ..Default::default() });
             let surface = match window {
                 Some(w) => match instance.create_surface(w.clone()) {
                     Ok(s) => Some(s),
