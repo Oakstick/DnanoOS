@@ -34,7 +34,14 @@ use crate::render::foliage::{FOREST, MEADOW};
 mod angels;
 mod animation;
 mod camera;
+mod court_envy;
+mod court_gluttony;
 mod court_greed;
+mod court_lust;
+mod court_pride;
+mod court_sloth;
+mod court_wrath;
+mod courts;
 mod crypt;
 mod deceit;
 mod duel;
@@ -255,8 +262,17 @@ pub struct WorldView {
     vault: Option<vault::VaultView>,
     /// One of the six realms after the vaults, while he is in it.
     run_view: Option<realms::RunView>,
+    /// The sin of the prince's court he is in, while it is one built to its own plan (`courts`).
+    court: Option<Sin>,
     /// Greed's court, the Counting House, while he is in it.
     counting: Option<court_greed::CountingView>,
+    /// The six other courts, each while he is in it (once it is built).
+    throne: Option<court_pride::ThroneView>,
+    bell: Option<court_envy::BellView>,
+    anvil: Option<court_wrath::AnvilView>,
+    clocks: Option<court_sloth::ClocksView>,
+    banquet: Option<court_gluttony::BanquetView>,
+    bower: Option<court_lust::BowerView>,
     /// Stream tiles (bridges included) and whether the water runs along x.
     water: Vec<(P, bool)>,
     /// Dungeon I's landscape garden, when this level is it.
@@ -417,7 +433,14 @@ impl WorldView {
             tint: None,
             vault: None,
             run_view: None,
+            court: None,
             counting: None,
+            throne: None,
+            bell: None,
+            anvil: None,
+            clocks: None,
+            banquet: None,
+            bower: None,
             gym: false,
             water: Vec::new(),
             garden: None,
@@ -528,8 +551,10 @@ impl WorldView {
         self.tint = theme.sin().filter(|_| vault.is_none() && run.is_none()).map(|s| s.color());
         self.vault = None;
         self.run_view = None;
-        self.counting = None;
-        let counting = theme.is_court_of_greed();
+        self.clear_courts();
+        // A prince's court built to its own plan: its own view and light (the rest, the stand-in meadow).
+        let court = theme.sin().filter(|_| theme.is_princes_court());
+        let counting = court.is_some();
         if counting {
             self.tint = None;
         }
@@ -579,8 +604,8 @@ impl WorldView {
             self.build_vault(grid, v);
         } else if let Some(r) = run {
             self.build_run(grid, r);
-        } else if counting {
-            self.build_counting_house(grid);
+        } else if let Some(sin) = court {
+            self.build_court(sin, grid);
         } else if self.hell {
             self.build_hell(grid);
         } else if meadow {
@@ -598,7 +623,7 @@ impl WorldView {
         if self.estate_art || theme == Theme::Meadow || (self.hell && !self.gym) {
             self.grade_estate();
         } else if vault.is_some() || run.is_some() || counting || matches!(theme, Theme::Court(_)) {
-            // The sin realms, Greed's court and the princes' stand-in courts: graded into the board,
+            // The sin realms, the princes' courts and their stand-ins: graded into the board,
             // their sin's colour kept as their accent.
             self.grade_scenery(theme.sin().map(|s| s.color()));
         }

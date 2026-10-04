@@ -44,6 +44,23 @@ pub(super) enum RigId {
     /// The courts' own: Mammon and his gold golems.
     Mammon,
     GoldGolem,
+    // Pride's court
+    Lucifer,
+    Reflection,
+    // Envy's court
+    Leviathan,
+    Serpentling,
+    // Wrath's court
+    Amon,
+    Raven,
+    // Sloth's court
+    Belphegor,
+    Nightmare,
+    // Gluttony's court
+    Beelzebub,
+    FlySwarm,
+    // Lust's court
+    Asmodeus,
 }
 
 pub(super) struct Models {
@@ -91,6 +108,18 @@ pub(super) struct Models {
     /// The courts' own: Mammon and his gold golems.
     pub(super) mammon: Rig,
     pub(super) gold_golem: Rig,
+    /// The six other princes and what they raise (`foes_court`, a module per sin).
+    pub(super) lucifer: Rig,
+    pub(super) reflection: Rig,
+    pub(super) leviathan: Rig,
+    pub(super) serpentling: Rig,
+    pub(super) amon: Rig,
+    pub(super) raven: Rig,
+    pub(super) belphegor: Rig,
+    pub(super) nightmare: Rig,
+    pub(super) beelzebub: Rig,
+    pub(super) fly_swarm: Rig,
+    pub(super) asmodeus: Rig,
     pub(super) medkit: Mesh,
     pub(super) bomb: Mesh,
     pub(super) arrow: Mesh,
@@ -207,6 +236,36 @@ impl Models {
             use crate::render::foes_court::{gold_golem, mammon, GOLEM_RIG, GOLEM_VOXEL, MAMMON_RIG, MAMMON_VOXEL};
             (build_rig(&mammon(), MAMMON_RIG, MAMMON_VOXEL), build_rig(&gold_golem(), GOLEM_RIG, GOLEM_VOXEL))
         };
+        // Pride's court
+        let (lucifer, reflection) = {
+            use crate::render::foes_court::pride::*;
+            (build_rig(&lucifer(), LUCIFER_RIG, LUCIFER_VOXEL), build_rig(&reflection(), REFLECTION_RIG, REFLECTION_VOXEL))
+        };
+        // Envy's court
+        let (leviathan, serpentling) = {
+            use crate::render::foes_court::envy::*;
+            (build_rig(&leviathan(), LEVIATHAN_RIG, LEVIATHAN_VOXEL), build_rig(&serpentling(), SERPENTLING_RIG, SERPENTLING_VOXEL))
+        };
+        // Wrath's court
+        let (amon, raven) = {
+            use crate::render::foes_court::wrath::*;
+            (build_rig(&amon(), AMON_RIG, AMON_VOXEL), build_rig(&raven(), RAVEN_RIG, RAVEN_VOXEL))
+        };
+        // Sloth's court
+        let (belphegor, nightmare) = {
+            use crate::render::foes_court::sloth::*;
+            (build_rig(&belphegor(), BELPHEGOR_RIG, BELPHEGOR_VOXEL), build_rig(&nightmare(), NIGHTMARE_RIG, NIGHTMARE_VOXEL))
+        };
+        // Gluttony's court
+        let (beelzebub, fly_swarm) = {
+            use crate::render::foes_court::gluttony::*;
+            (build_rig(&beelzebub(), BEELZEBUB_RIG, BEELZEBUB_VOXEL), build_rig(&fly_swarm(), FLY_SWARM_RIG, FLY_SWARM_VOXEL))
+        };
+        // Lust's court
+        let asmodeus = {
+            use crate::render::foes_court::lust::*;
+            build_rig(&asmodeus(), ASMODEUS_RIG, ASMODEUS_VOXEL)
+        };
         // The played hero and his shield raised, built together (the raised pair is only remade
         // when his kit changes, so it must be made here too, or he blocks with a bare fist).
         let (hero, raised) = forge::hero_rigs(ragnar, forge::Kit::plain(1, Some(1)));
@@ -253,6 +312,17 @@ impl Models {
             ellepige,
             mammon,
             gold_golem,
+            lucifer,
+            reflection,
+            leviathan,
+            serpentling,
+            amon,
+            raven,
+            belphegor,
+            nightmare,
+            beelzebub,
+            fly_swarm,
+            asmodeus,
             medkit: crate::render::props::medkit(),
             bomb: crate::render::props::bomb(),
             arrow: crate::render::props::arrow(),
@@ -330,6 +400,17 @@ impl Models {
             RigId::Ellepige => &self.ellepige,
             RigId::Mammon => &self.mammon,
             RigId::GoldGolem => &self.gold_golem,
+            RigId::Lucifer => &self.lucifer,
+            RigId::Reflection => &self.reflection,
+            RigId::Leviathan => &self.leviathan,
+            RigId::Serpentling => &self.serpentling,
+            RigId::Amon => &self.amon,
+            RigId::Raven => &self.raven,
+            RigId::Belphegor => &self.belphegor,
+            RigId::Nightmare => &self.nightmare,
+            RigId::Beelzebub => &self.beelzebub,
+            RigId::FlySwarm => &self.fly_swarm,
+            RigId::Asmodeus => &self.asmodeus,
         }
     }
 }

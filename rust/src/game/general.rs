@@ -477,7 +477,11 @@ impl Game {
         let note = if g.command.slain {
             format!(
                 "Slain. His banner hangs on your wall. {}",
-                if gen.sin == Sin::Greed { "Mammon fights without his golems." } else { "His prince is weaker for it." }
+                if crate::logic::court::built(gen.sin) {
+                    format!("{} fights without his {}.", gen.sin.prince(), crate::logic::court::adds(gen.sin))
+                } else {
+                    "His prince is weaker for it.".to_string()
+                }
             )
         } else {
             format!("He {}.", known.join("; he "))
@@ -1890,7 +1894,7 @@ mod tests {
         assert!(r.command.slain && r.carriers.is_empty() && r.command.running.is_none());
         assert!(g.workshop.trophies.iter().any(|t| t.name.contains("BANNER")));
         let t = g.prince_terms(Sin::Greed);
-        assert!(!t.phase_two_adds && !t.golems_at_start);
+        assert!(!t.phase_two_adds && !t.adds_at_start);
         // Mammon's court: no golems at his second phase.
         g.map_jump(Stage::Court(Sin::Greed));
         let m = g.prince().unwrap();

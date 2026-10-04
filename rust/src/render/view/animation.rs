@@ -125,6 +125,23 @@ impl WorldView {
             EnemyKind::Ellepige => (RigId::Ellepige, 0.0),
             EnemyKind::Mammon => (RigId::Mammon, 0.0),
             EnemyKind::GoldGolem => (RigId::GoldGolem, 0.0),
+            // Pride's court
+            EnemyKind::Lucifer => (RigId::Lucifer, 0.0),
+            EnemyKind::Reflection => (RigId::Reflection, 0.0),
+            // Envy's court
+            EnemyKind::Leviathan => (RigId::Leviathan, 0.0),
+            EnemyKind::Serpentling => (RigId::Serpentling, 0.0),
+            // Wrath's court
+            EnemyKind::Amon => (RigId::Amon, 0.0),
+            EnemyKind::Raven => (RigId::Raven, 0.0),
+            // Sloth's court
+            EnemyKind::Belphegor => (RigId::Belphegor, 0.0),
+            EnemyKind::Nightmare => (RigId::Nightmare, 0.0),
+            // Gluttony's court
+            EnemyKind::Beelzebub => (RigId::Beelzebub, 0.0),
+            EnemyKind::FlySwarm => (RigId::FlySwarm, 0.0),
+            // Lust's court
+            EnemyKind::Asmodeus => (RigId::Asmodeus, 0.0),
         };
         let pose = Pose::rest(self.models.rig(rig));
         // Its levels of detail and their meshes, made now rather than in the middle of a fight
@@ -373,7 +390,18 @@ impl WorldView {
             | EnemyKind::Gaki
             | EnemyKind::Ellepige
             | EnemyKind::Mammon
-            | EnemyKind::GoldGolem => {
+            | EnemyKind::GoldGolem
+            | EnemyKind::Lucifer
+            | EnemyKind::Reflection
+            | EnemyKind::Leviathan
+            | EnemyKind::Serpentling
+            | EnemyKind::Amon
+            | EnemyKind::Raven
+            | EnemyKind::Belphegor
+            | EnemyKind::Nightmare
+            | EnemyKind::Beelzebub
+            | EnemyKind::FlySwarm
+            | EnemyKind::Asmodeus => {
                 // A walk: the blemmyes, the rasetsu and the oni lumber, the witch and the tengu stride,
                 // the kappa waddles, the skeletons stalk.
                 let (stride, swing) = match v.kind {
@@ -382,6 +410,13 @@ impl WorldView {
                     // (Mammon waddles under his robe and his belly; the golems stump.)
                     EnemyKind::Mammon => (0.3, 0.16),
                     EnemyKind::GoldGolem => (0.5, 0.3),
+                    // (The other princes, for now robed figures: small steps under the robe.)
+                    EnemyKind::Lucifer
+                    | EnemyKind::Leviathan
+                    | EnemyKind::Amon
+                    | EnemyKind::Belphegor
+                    | EnemyKind::Beelzebub
+                    | EnemyKind::Asmodeus => (0.3, 0.16),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
                     EnemyKind::Albasti => (0.6, 0.22),
                     // (Under a long robe: small steps.)

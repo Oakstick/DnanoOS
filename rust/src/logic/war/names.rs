@@ -36,6 +36,17 @@ impl Culture {
                 Culture::OldEuropean
             }
             K::Peerless | K::Ganglot | K::Gaki | K::Ellepige | K::Mammon | K::GoldGolem => Culture::Hellish,
+            K::Lucifer
+            | K::Reflection
+            | K::Leviathan
+            | K::Serpentling
+            | K::Amon
+            | K::Raven
+            | K::Belphegor
+            | K::Nightmare
+            | K::Beelzebub
+            | K::FlySwarm
+            | K::Asmodeus => Culture::Hellish,
         }
     }
 
@@ -124,6 +135,17 @@ pub fn breed_name(kind: EnemyKind) -> &'static str {
         K::Ellepige => "ellepige",
         K::Mammon => "prince of greed",
         K::GoldGolem => "gold golem",
+        K::Lucifer => "prince of pride",
+        K::Reflection => "reflection",
+        K::Leviathan => "prince of envy",
+        K::Serpentling => "serpentling",
+        K::Amon => "prince of wrath",
+        K::Raven => "raven of amon",
+        K::Belphegor => "prince of sloth",
+        K::Nightmare => "nightmare",
+        K::Beelzebub => "prince of gluttony",
+        K::FlySwarm => "fly swarm",
+        K::Asmodeus => "prince of lust",
     }
 }
 

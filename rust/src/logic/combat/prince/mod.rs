@@ -4,18 +4,29 @@
 //! - **Phases by health.** Above two thirds he fights with one table of moves, down to a third
 //!   with a second, below it with a third, quicker on his feet and quicker to strike again
 //!   (`phase_of`, `table`, `pace`). Each change is a cue for the game: a banner, a breather.
-//! - **Armour windows.** Mammon's hide is sewn with coins: outside his recoveries it turns most of
-//!   a blow, damage and poise alike (`HIDE_SHARE`), as Tepegöz's ring does.
+//! - **Armour windows.** A prince's hide (Mammon's is sewn with coins) turns most of a blow
+//!   outside his recoveries, damage and poise alike (`HIDE_SHARE`), as Tepegöz's ring does.
 //! - **A token of three.** He fills the threat manager's pool by himself; what he raises shares
 //!   the rest.
 //!
-//! Mammon, the prince of Greed, fights so: the Banker sweeps his sceptre and tosses coins that lie
-//! on the floor and burst into gold spikes (`Trap`); the Collector raises two gold golems from his
-//! heaps and grasps, holding him and draining his silver until he is struck; the Hoard rains coins
-//! from above, flings them from afar, and brings his hoard down on the floor.
+//! What is shared lives here: the phases, the hide, the coins on the floor (`Trap`, `scatter`).
+//! Each prince's own table, pace and phase names are his module's: `greed` (Mammon), `pride`
+//! (Lucifer), `envy` (Leviathan), `wrath` (Amon), `sloth` (Belphegor), `gluttony` (Beelzebub)
+//! and `lust` (Asmodeus); `table`, `pace` and `phase_name` here choose by the prince's kind.
+
+pub mod envy;
+pub mod gluttony;
+pub mod greed;
+pub mod lust;
+pub mod pride;
+pub mod sloth;
+pub mod wrath;
+
+pub use greed::{COIN_FLIGHT, DRAIN_EVERY, DRAIN_HEAL, DRAIN_SILVER, FIST, GOLEMS, GOLEM_RISE, GRASP_HOLD, SPIKES};
 
 use super::frames::MoveId;
 use super::math::{add, from_angle, len, scale, sub};
+use crate::logic::enemy::EnemyKind;
 use crate::logic::types::V;
 use std::f64::consts::TAU;
 
@@ -23,23 +34,6 @@ use std::f64::consts::TAU;
 pub const PHASE_AT: [f64; 2] = [2.0 / 3.0, 1.0 / 3.0];
 /// The share of a blow his hide lets through outside his recoveries.
 pub const HIDE_SHARE: f64 = 0.3;
-/// Frames his fist may hold the hero before it lets go of itself, and how often it drains him:
-/// the silver it takes each time, and the share of his whole health each draught gives back.
-pub const GRASP_HOLD: u16 = 300;
-pub const DRAIN_EVERY: u16 = 30;
-pub const DRAIN_SILVER: u32 = 10;
-pub const DRAIN_HEAL: f64 = 0.012;
-/// How far from his middle the held hero stands: in his fist, within reach of a blow.
-pub const FIST: f64 = 0.75;
-/// The gold golems raised from his heaps as the second phase begins (once in a fight), and the
-/// frames they take to climb out of the gold.
-pub const GOLEMS: u8 = 2;
-pub const GOLEM_RISE: u16 = 60;
-/// Frames a coin takes to fly from his hand to the floor (or to fall from above).
-pub const COIN_FLIGHT: u16 = 16;
-/// Frames the gold spikes stand after a coin bursts (for the view).
-pub const SPIKES: u16 = 24;
-
 /// The phase of a prince with `hp` of `max` health: 1, 2 or 3.
 pub fn phase_of(hp: f64, max: f64) -> u8 {
     let share = hp / max.max(1e-9);
@@ -52,32 +46,44 @@ pub fn phase_of(hp: f64, max: f64) -> u8 {
     }
 }
 
-/// His moves in `phase`, in the order he prefers them: the Banker's sceptre and coin toss; the
-/// Collector's grasp besides; the Hoard's rain of coins, his slam and volley, and the sceptre.
-pub fn table(phase: u8) -> &'static [MoveId] {
-    match phase {
-        0 | 1 => &[MoveId::CoinToss, MoveId::Sceptre],
-        2 => &[MoveId::Grasp, MoveId::CoinToss, MoveId::Sceptre],
-        _ => &[MoveId::CoinRain, MoveId::HoardSlam, MoveId::CoinVolley, MoveId::Sceptre],
+/// The prince of `kind`'s moves in `phase`, in the order he prefers them (each prince's table is
+/// his own module's).
+pub fn table(kind: EnemyKind, phase: u8) -> &'static [MoveId] {
+    match kind {
+        EnemyKind::Lucifer => pride::table(phase),
+        EnemyKind::Leviathan => envy::table(phase),
+        EnemyKind::Amon => wrath::table(phase),
+        EnemyKind::Belphegor => sloth::table(phase),
+        EnemyKind::Beelzebub => gluttony::table(phase),
+        EnemyKind::Asmodeus => lust::table(phase),
+        _ => greed::table(phase),
     }
 }
 
-/// His pace in `phase` (a multiple of his walk) and his rest between moves (a multiple of his
-/// archetype's): the Hoard comes on quicker, and strikes again sooner.
-pub fn pace(phase: u8) -> (f64, f64) {
-    if phase >= 3 {
-        (1.35, 0.6)
-    } else {
-        (1.0, 1.0)
+/// The prince of `kind`'s pace in `phase` (a multiple of his walk) and his rest between moves (a
+/// multiple of his archetype's).
+pub fn pace(kind: EnemyKind, phase: u8) -> (f64, f64) {
+    match kind {
+        EnemyKind::Lucifer => pride::pace(phase),
+        EnemyKind::Leviathan => envy::pace(phase),
+        EnemyKind::Amon => wrath::pace(phase),
+        EnemyKind::Belphegor => sloth::pace(phase),
+        EnemyKind::Beelzebub => gluttony::pace(phase),
+        EnemyKind::Asmodeus => lust::pace(phase),
+        _ => greed::pace(phase),
     }
 }
 
-/// The title of `phase`, for the banner and the boss bar.
-pub fn phase_name(phase: u8) -> &'static str {
-    match phase {
-        0 | 1 => "THE BANKER",
-        2 => "THE COLLECTOR",
-        _ => "THE HOARD",
+/// The title of the prince of `kind`'s `phase`, for the banner and the boss bar.
+pub fn phase_name(kind: EnemyKind, phase: u8) -> &'static str {
+    match kind {
+        EnemyKind::Lucifer => pride::phase_name(phase),
+        EnemyKind::Leviathan => envy::phase_name(phase),
+        EnemyKind::Amon => wrath::phase_name(phase),
+        EnemyKind::Belphegor => sloth::phase_name(phase),
+        EnemyKind::Beelzebub => gluttony::phase_name(phase),
+        EnemyKind::Asmodeus => lust::phase_name(phase),
+        _ => greed::phase_name(phase),
     }
 }
 
@@ -167,7 +173,6 @@ mod tests {
     use super::*;
     use crate::logic::combat::archetype::{Archetype, Breed, Power};
     use crate::logic::combat::frames::{Rider, Shape};
-    use crate::logic::enemy::EnemyKind;
 
     #[test]
     fn his_phases_change_at_two_thirds_and_one_third() {
@@ -189,7 +194,7 @@ mod tests {
         for phase in 1..=3 {
             m.phase = phase;
             let moves = m.moves();
-            assert_eq!(moves, table(phase));
+            assert_eq!(moves, table(EnemyKind::Mammon, phase));
             assert!(moves.len() <= 4, "a cooldown for each");
             assert!(moves.iter().all(|mv| MoveId::FOE.contains(mv)));
             assert!(m.main_move().data().strikes() && !m.main_move().data().projectile, "he closes in to strike");

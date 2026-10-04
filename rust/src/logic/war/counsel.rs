@@ -131,7 +131,10 @@ impl Answer {
             Power::Omen => Some(Answer::AfterTheCry),
             Power::Shade => Some(Answer::WatchTheRearing),
             Power::Grow => Some(Answer::CloseWhenItGrows),
-            Power::GoldHide => Some(Answer::HideTurns),
+            // A prince's hide (for now every prince's power is one).
+            Power::GoldHide | Power::Vainglory | Power::Scales | Power::Fury | Power::Torpor | Power::Bloat | Power::Allure => {
+                Some(Answer::HideTurns)
+            }
             Power::Rattle | Power::None => None,
         };
         if let Some(a) = by_power {
@@ -184,7 +187,7 @@ impl Answer {
             Answer::CloseWhenItGrows => b.power == Power::Grow,
             Answer::ParryTheClub => any(&|m| m.data().armor >= UNSTOPPABLE),
             Answer::StepOutOfTheCall => moves.contains(&MoveId::Call),
-            Answer::HideTurns => b.power == Power::GoldHide,
+            Answer::HideTurns => b.power.is_hide(),
         }
     }
 
@@ -591,7 +594,7 @@ mod tests {
 
     #[test]
     fn every_breed_has_a_true_answer_read_from_its_data() {
-        for kind in KINDS {
+        for &kind in KINDS {
             let a = Answer::of(kind);
             assert!(a.holds(kind), "{kind:?}: {a:?} does not hold");
         }
@@ -618,7 +621,7 @@ mod tests {
     #[test]
     fn the_old_man_never_lies() {
         // No answer's keyword turns up in another answer's line, for any breed.
-        for kind in KINDS {
+        for &kind in KINDS {
             for a in Answer::ALL {
                 let line = a.body(kind).to_lowercase();
                 assert!(line.contains(a.keyword()), "{a:?} on {kind:?}: {line}");
@@ -628,7 +631,7 @@ mod tests {
             }
         }
         // Every breed's counsel, in every hero's register, names one answer, and it is true.
-        for kind in KINDS {
+        for &kind in KINDS {
             for hero in ROSTER {
                 let line = breed_line(kind, hero).to_lowercase();
                 let named: Vec<Answer> = Answer::ALL.iter().copied().filter(|a| line.contains(a.keyword())).collect();

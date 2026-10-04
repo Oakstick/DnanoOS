@@ -10,6 +10,7 @@ use crate::logic::combat::threat::CAPACITY;
 use crate::logic::combat::{Breed, Duelist, MoveId};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::gym;
+use crate::logic::sins::Sin;
 use crate::logic::types::{Dir, V};
 use crate::render::view::CameraMode;
 
@@ -661,11 +662,11 @@ fn the_expert_beats_mammon_in_his_court_and_a_masher_does_not() {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     for (tier, seed) in [(1, 1), (2, 2)] {
         let kit = (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier));
-        let f = court_fight(Skill::Expert, seed, kit, 200.0);
+        let f = court_fight(Sin::Greed, Skill::Expert, seed, kit, 200.0);
         assert!(f.slain && f.deaths == 0 && f.phase == 3, "tier {tier}: {f:?}");
         assert_eq!(f.stats.overlaps, 0, "{f:?}");
     }
-    let f = court_fight(Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
+    let f = court_fight(Sin::Greed, Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
     assert!(!f.slain && f.game_over, "{f:?}");
 }
 

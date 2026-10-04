@@ -147,15 +147,20 @@ fn main() {
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--court") {
-        // Greed's prince in his court, played by a bot: `--court SKILL TIER SEED` (skill 0 novice,
-        // 1 adept, 2 expert).
+        // A sin's prince in his court, played by a bot: `--court SIN SKILL TIER SEED` (SIN a sin's
+        // name: greed, pride, envy, wrath, sloth, gluttony, lust; skill 0 novice, 1 adept, 2
+        // expert). Without a sin's name, `--court SKILL TIER SEED` is Greed's.
+        let named = args.get(i + 1).and_then(|s| void_harvest::logic::sins::Sin::from_name(s));
+        let sin = named.unwrap_or(void_harvest::logic::sins::Sin::Greed);
+        let i = if named.is_some() { i + 1 } else { i };
         let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
         let (skill, tier, seed) = (num(1, 2), num(2, 1) as u8, num(3, 1));
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
         let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
         let kit = (tier > 1).then(|| void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, tier));
-        let r = void_harvest::game::bot::court_fight(skill, seed, kit, 240.0);
-        println!("THE COUNTING HOUSE {skill:?} tier {tier} seed {seed}: {r:?}");
+        let r = void_harvest::game::bot::court_fight(sin, skill, seed, kit, 240.0);
+        let name = void_harvest::logic::sins::Sin::prince(sin);
+        println!("THE COURT OF {} {skill:?} tier {tier} seed {seed}: {r:?}", name.to_uppercase());
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--stage") {

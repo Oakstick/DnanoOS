@@ -80,7 +80,7 @@ pub const SILVER_DEED: u32 = 100;
 pub const RUNES_PER_RANK: u32 = 1;
 
 /// Every kind, in the order the save names them (append only).
-pub const KINDS: [EnemyKind; 38] = {
+pub const KINDS: &[EnemyKind] = &{
     use EnemyKind as K;
     [
         K::Skeleton,
@@ -121,6 +121,18 @@ pub const KINDS: [EnemyKind; 38] = {
         K::Ellepige,
         K::Mammon,
         K::GoldGolem,
+        // The six other princes' courts
+        K::Lucifer,
+        K::Reflection,
+        K::Leviathan,
+        K::Serpentling,
+        K::Amon,
+        K::Raven,
+        K::Belphegor,
+        K::Nightmare,
+        K::Beelzebub,
+        K::FlySwarm,
+        K::Asmodeus,
     ]
 };
 
@@ -524,6 +536,9 @@ impl Trophy {
             K::Ejder => Trophy::Scale,
             K::Goryo => Trophy::Mask,
             K::Hel | K::Mammon => Trophy::Crown,
+            // The other princes, and what they raise (for now a crown and a coin, as Mammon's).
+            K::Lucifer | K::Leviathan | K::Amon | K::Belphegor | K::Beelzebub | K::Asmodeus => Trophy::Crown,
+            K::Reflection | K::Serpentling | K::Raven | K::Nightmare | K::FlySwarm => Trophy::Coin,
             K::Ganglot => Trophy::Shroud,
             K::Gaki => Trophy::Bowl,
             K::Ellepige => Trophy::Thorn,
@@ -1461,7 +1476,7 @@ fn rival_code(r: &Rival) -> String {
     let memory: Vec<String> = r.memory.iter().map(encounter_code).collect();
     [
         r.id.0.to_string(),
-        index_of(&KINDS, &r.kind).to_string(),
+        index_of(KINDS, &r.kind).to_string(),
         esc(&r.name),
         esc(&r.epithet),
         r.rank.to_string(),

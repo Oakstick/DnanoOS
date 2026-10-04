@@ -96,23 +96,37 @@ impl Game {
     }
 
     /// Capture hook: the prince stands where he is, faces the hero and begins move `m` of his
-    /// (0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam).
+    /// (Mammon's: 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam; any
+    /// other prince's: his moves through his three phases' tables, in the order they first come).
     pub fn debug_prince_move(&mut self, m: usize) {
-        use crate::logic::combat::{math, MoveId};
-        const MOVES: [MoveId; 6] =
+        use crate::logic::combat::{math, prince, MoveId};
+        use crate::logic::enemy::EnemyKind;
+        const MAMMON: [MoveId; 6] =
             [MoveId::Sceptre, MoveId::CoinToss, MoveId::Grasp, MoveId::CoinVolley, MoveId::CoinRain, MoveId::HoardSlam];
         let hp = self.hero.pos();
-        let Some(id) = self.prince().map(|d| d.id) else { return };
+        let Some((id, kind)) = self.prince().map(|d| (d.id, d.breed.kind)) else { return };
+        let moves: Vec<MoveId> = if kind == EnemyKind::Mammon {
+            MAMMON.to_vec()
+        } else {
+            let mut all: Vec<MoveId> = Vec::new();
+            for mv in (1..=3).flat_map(|phase| prince::table(kind, phase).iter().copied()) {
+                if !all.contains(&mv) {
+                    all.push(mv);
+                }
+            }
+            all
+        };
+        let Some(&mv) = moves.get(m.min(moves.len().saturating_sub(1))) else { return };
         let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) else { return };
-        if matches!(m, 0 | 2 | 5) {
-            // (Within his reach for a blow: just north of him, as he stands before the throne.)
+        if mv.data().range.1 <= 2.0 {
+            // (Within his reach for a blow: just north of him, as he stands before his throne.)
             d.pos = crate::logic::types::V::new(hp.x, hp.y - 1.9);
         }
         d.facing = math::norm(math::sub(hp, d.pos));
         d.f.state = crate::logic::combat::State::Neutral;
         d.rest = u16::MAX;
         d.token = true;
-        d.begin(MOVES[m.min(5)], hp);
+        d.begin(mv, hp);
     }
 
     /// Capture hook: three quick kills, for a BRUTAL streak.

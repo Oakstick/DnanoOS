@@ -1437,11 +1437,12 @@ pub struct CourtFight {
     pub stats: BoutStats,
 }
 
-/// A bot fights Greed's prince in his court, the Counting House, until he falls, its lives run
-/// out, or `limit` seconds pass.
-pub fn court_fight(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> CourtFight {
+/// A bot fights the prince of `sin` in his court (Greed's: the Counting House) until he falls, its
+/// lives run out, or `limit` seconds pass. (A court not yet built is the Cyclops' meadow: no prince
+/// stands there to fall.)
+pub fn court_fight(sin: crate::logic::sins::Sin, skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> CourtFight {
     let mut g = fresh_game(seed);
-    g.map_jump(super::save::Stage::Court(crate::logic::sins::Sin::Greed));
+    g.map_jump(super::save::Stage::Court(sin));
     if let Some(l) = loadout {
         l.equip(&mut g);
     }

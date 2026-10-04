@@ -168,7 +168,7 @@ impl Archetype {
             Archetype::Brute => &[MoveId::Slam, MoveId::Sweep],
             Archetype::Skirmisher => &[MoveId::Bite],
             Archetype::Hexer => &[MoveId::Hex],
-            Archetype::Prince => super::prince::table(1),
+            Archetype::Prince => super::prince::table(EnemyKind::Mammon, 1),
         }
     }
 
@@ -218,6 +218,27 @@ pub enum Power {
     /// Mammon's hide, sewn with coins: it turns most of a blow except in his recoveries, reeling,
     /// or while his fist is closed on him.
     GoldHide,
+    // The six princes' powers: for now each a hide like Mammon's (`is_hide`), until his fight is built.
+    /// Lucifer's vainglory (Pride).
+    Vainglory,
+    /// Leviathan's scales (Envy).
+    Scales,
+    /// Amon's fury (Wrath).
+    Fury,
+    /// Belphegor's torpor (Sloth).
+    Torpor,
+    /// Beelzebub's bloat (Gluttony).
+    Bloat,
+    /// Asmodeus's allure (Lust).
+    Allure,
+}
+
+impl Power {
+    /// A prince's hide: it turns most of a blow outside his recoveries (`prince::HIDE_SHARE`).
+    /// Mammon's gold, and for now every other prince's power too.
+    pub const fn is_hide(self) -> bool {
+        matches!(self, Power::GoldHide | Power::Vainglory | Power::Scales | Power::Fury | Power::Torpor | Power::Bloat | Power::Allure)
+    }
 }
 
 /**
@@ -309,6 +330,24 @@ impl Breed {
             // The courts' own: Mammon is the Prince himself; his golems, slow and heavy brutes.
             K::Mammon => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             K::GoldGolem => (Brute, 0.9, 0.8, 1.2, 0.6, 0.55, 1),
+            // The six other princes, each the Prince himself; what they raise, lighter than the golems.
+            // Pride's court: Lucifer, and his reflections, swordsmen.
+            K::Lucifer => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::Reflection => (Brute, 0.7, 0.75, 0.9, 1.0, 0.4, 1),
+            // Envy's court: Leviathan, and his brood, that bite.
+            K::Leviathan => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::Serpentling => (Skirmisher, 0.6, 0.7, 0.7, 1.0, 0.36, 1),
+            // Wrath's court: Amon, and his ravens, that peck.
+            K::Amon => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::Raven => (Skirmisher, 0.45, 0.65, 0.5, 1.05, 0.3, 1),
+            // Sloth's court: Belphegor, and his nightmares, that fall on the sleeper.
+            K::Belphegor => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::Nightmare => (Skirmisher, 0.7, 0.75, 0.8, 0.95, 0.4, 1),
+            // Gluttony's court: Beelzebub, and his swarms.
+            K::Beelzebub => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
+            K::FlySwarm => (Skirmisher, 0.5, 0.6, 0.5, 1.0, 0.4, 1),
+            // Lust's court: Asmodeus (his elf-maids are the realm's own).
+            K::Asmodeus => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
         };
         // A big body's arm reaches as far again as its girth outgrows a man's.
         let reach = if radius > 0.55 { (radius - 0.5) * 2.0 } else { 0.0 };
@@ -329,6 +368,12 @@ impl Breed {
             K::Hel => (Rider::Drain, Power::Necromancy),
             K::Ellepige => (Rider::None, Power::Hollow),
             K::Mammon => (Rider::None, Power::GoldHide),
+            K::Lucifer => (Rider::None, Power::Vainglory),
+            K::Leviathan => (Rider::None, Power::Scales),
+            K::Amon => (Rider::None, Power::Fury),
+            K::Belphegor => (Rider::None, Power::Torpor),
+            K::Beelzebub => (Rider::None, Power::Bloat),
+            K::Asmodeus => (Rider::None, Power::Allure),
             _ => (Rider::None, Power::None),
         };
         Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power, phase: 1 }
@@ -353,7 +398,7 @@ impl Breed {
             K::FrostGiant => &[MoveId::FrostSlam, MoveId::Slam, MoveId::Sweep],
             K::Nidhogg => &[MoveId::Burrow, MoveId::Bite],
             K::Hel => &[MoveId::Raise, MoveId::Hex],
-            _ if self.arch == Archetype::Prince => super::prince::table(self.phase),
+            _ if self.arch == Archetype::Prince => super::prince::table(self.kind, self.phase),
             _ => self.arch.moves(),
         }
     }
@@ -372,7 +417,7 @@ impl Breed {
     /// The archetype's numbers as this body has them (a prince in his last phase quicker).
     pub fn stats(&self) -> Stats {
         let s = self.arch.stats();
-        let (pace, rest) = if self.arch == Archetype::Prince { super::prince::pace(self.phase) } else { (1.0, 1.0) };
+        let (pace, rest) = if self.arch == Archetype::Prince { super::prince::pace(self.kind, self.phase) } else { (1.0, 1.0) };
         let speed = self.speed * pace;
         Stats {
             hp: s.hp * self.hp,

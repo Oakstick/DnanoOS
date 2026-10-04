@@ -444,7 +444,7 @@ mod tests {
         let tells = cheat(CheatKind::Whisper, Sin::Pride).tells;
         assert!(tells.contains(&Tell::SinColour) && tells.contains(&Tell::ReversedEcho) && tells.contains(&Tell::NoBark));
         for sin in SINS {
-            for (k, kind) in KINDS.into_iter().enumerate() {
+            for (k, &kind) in KINDS.iter().enumerate() {
                 for hero in ROSTER {
                     let w = whisper_breed(kind, sin, hero, k as u32 * 31 + sin.index() as u32);
                     assert!(w.claim.is_false(None, None), "{kind:?}: {:?} holds", w.claim);

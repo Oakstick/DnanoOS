@@ -117,7 +117,7 @@ impl Game {
         }
         // Dungeon I is a landscape garden: a fountain and its bridged channels, a churchyard, temples and flower beds.
         self.garden = None;
-        if self.level.data.boss && !data.theme.is_court_of_greed() {
+        if self.level.data.boss && !data.theme.is_princes_court() {
             // The arena's stream runs in a stone channel under stone bridges too.
             self.garden = garden::stream_plan(&self.level.grid);
             if let Some(plan) = &self.garden {
@@ -192,11 +192,11 @@ impl Game {
         }
         // The realm's general at his post (WARBAND.md §9; none outside the realms).
         self.enter_general();
-        // Greed's court: Mammon by frame data, not the Cyclops (`court`).
-        let court = data.theme.is_court_of_greed();
+        // A prince's court built to its own plan: the prince by frame data, not the Cyclops (`court`).
+        let court = data.theme.is_princes_court();
         self.court = None;
-        if court {
-            self.enter_court();
+        if let Some(sin) = data.theme.sin().filter(|_| court) {
+            self.enter_court(sin);
         }
         self.boss = if self.level.data.boss && !court {
             let (x0, y0, x1, y1) = ARENA;

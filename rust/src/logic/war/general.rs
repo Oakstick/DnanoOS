@@ -304,26 +304,29 @@ impl General {
 /// What the prince's fight is, after his general's decree and his death (§9.2, §17 decision 5).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PrinceTerms {
-    /// Mammon's golems climb out of the gold as his fight begins (the treasurers' decree done).
-    pub golems_at_start: bool,
+    /// His adds come as his fight begins (his general's decree done): Mammon's golems climb out
+    /// of the gold at once.
+    pub adds_at_start: bool,
     /// His second phase brings its adds (his general lives).
     pub phase_two_adds: bool,
-    /// His health as a multiple (the six princes still stood in by Cyclopes take their decree and
-    /// their general's death this way: a decree done raises it, a general slain lowers it).
+    /// His health as a multiple (a prince still stood in by a Cyclops takes his general's decree
+    /// and death this way: a decree done raises it, a general slain lowers it).
     pub health: f64,
 }
 
 impl PrinceTerms {
-    pub const WHOLE: PrinceTerms = PrinceTerms { golems_at_start: false, phase_two_adds: true, health: 1.0 };
+    pub const WHOLE: PrinceTerms = PrinceTerms { adds_at_start: false, phase_two_adds: true, health: 1.0 };
 }
 
-/// The prince of `sin`'s fight, his general's decree done or not, his general slain or not.
+/// The prince of `sin`'s fight, his general's decree done or not, his general slain or not. In a
+/// court built to its own plan the decree brings his adds at once and his general's death loses
+/// him those of his second phase; a prince stood in by a Cyclops takes them on his health.
 pub fn terms(sin: Sin, decree_done: bool, slain: bool) -> PrinceTerms {
-    if sin == Sin::Greed {
-        return PrinceTerms { golems_at_start: decree_done, phase_two_adds: !slain, health: 1.0 };
+    if crate::logic::court::built(sin) {
+        return PrinceTerms { adds_at_start: decree_done, phase_two_adds: !slain, health: 1.0 };
     }
     let health = 1.0 + if decree_done { 0.25 } else { 0.0 } - if slain { 0.2 } else { 0.0 };
-    PrinceTerms { golems_at_start: false, phase_two_adds: true, health }
+    PrinceTerms { adds_at_start: false, phase_two_adds: true, health }
 }
 
 /// How the general answers the loss of an instrument (once for each).
@@ -1083,10 +1086,10 @@ mod tests {
     fn the_decree_and_the_generals_death_change_the_princes_fight() {
         assert_eq!(terms(Sin::Greed, false, false), PrinceTerms::WHOLE);
         let t = terms(Sin::Greed, true, false);
-        assert!(t.golems_at_start && t.phase_two_adds, "the treasurers' decree done: the golems come sooner");
+        assert!(t.adds_at_start && t.phase_two_adds, "the treasurers' decree done: the golems come sooner");
         let t = terms(Sin::Greed, false, true);
-        assert!(!t.golems_at_start && !t.phase_two_adds, "the Assessor slain: no golems in phase two");
-        for sin in SINS.into_iter().filter(|&s| s != Sin::Greed) {
+        assert!(!t.adds_at_start && !t.phase_two_adds, "the Assessor slain: no golems in phase two");
+        for sin in SINS.into_iter().filter(|&s| !crate::logic::court::built(s)) {
             assert!(terms(sin, true, false).health > 1.0 && terms(sin, false, true).health < 1.0, "{sin:?}");
         }
         // Slain, every order ends at once and nothing more is given.

@@ -818,16 +818,11 @@ pub fn realm_level(sin: Sin, tier: usize) -> LevelData {
     }
 }
 
-/// The prince's court beyond the realm's gate: Greed's is the Counting House (`court`); the others
-/// for now the Cyclops' meadow under the sin's sky, and the prince a Cyclops in the sin's colour.
+/// The prince's court beyond the realm's gate, each sin's its own (`court`): Greed's is the
+/// Counting House; a court not yet built is the Cyclops' meadow under the sin's sky, and the prince
+/// a Cyclops in the sin's colour.
 pub fn sin_arena(sin: Sin, tier: usize) -> LevelData {
-    if sin == Sin::Greed {
-        return super::court::counting_house(tier);
-    }
-    let mut data = boss_arena(tier);
-    data.name = format!("The Court of {}", sin.prince());
-    data.theme = Theme::Court(sin);
-    data
+    super::court::court_level(sin, tier)
 }
 
 #[cfg(test)]

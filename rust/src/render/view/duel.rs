@@ -83,6 +83,23 @@ pub fn crown(kind: EnemyKind) -> Option<f32> {
         EnemyKind::Goryo => Some(1.62),
         EnemyKind::Mammon => Some(3.25),
         EnemyKind::GoldGolem => Some(1.7),
+        // Pride's court
+        EnemyKind::Lucifer => Some(3.25),
+        EnemyKind::Reflection => Some(1.5),
+        // Envy's court
+        EnemyKind::Leviathan => Some(3.25),
+        EnemyKind::Serpentling => Some(1.5),
+        // Wrath's court
+        EnemyKind::Amon => Some(3.25),
+        EnemyKind::Raven => Some(1.5),
+        // Sloth's court
+        EnemyKind::Belphegor => Some(3.25),
+        EnemyKind::Nightmare => Some(1.5),
+        // Gluttony's court
+        EnemyKind::Beelzebub => Some(3.25),
+        EnemyKind::FlySwarm => Some(1.5),
+        // Lust's court
+        EnemyKind::Asmodeus => Some(3.25),
         _ => None,
     }
 }

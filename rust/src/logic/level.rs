@@ -54,12 +54,13 @@ impl Theme {
 
     /// A boss arena's sunny meadow: the Cyclops', or a prince's court still standing in for his own.
     pub fn is_meadow(self) -> bool {
-        matches!(self, Theme::Meadow | Theme::Court(_)) && !self.is_court_of_greed()
+        matches!(self, Theme::Meadow | Theme::Court(_)) && !self.is_princes_court()
     }
 
-    /// Greed's court, the Counting House: the first prince's court built to its own plan (`court`).
-    pub fn is_court_of_greed(self) -> bool {
-        self == Theme::Court(Sin::Greed)
+    /// A prince's court built to its own plan (`court`), its prince fought as himself: Greed's
+    /// Counting House, and each other court once its module is `BUILT`.
+    pub fn is_princes_court(self) -> bool {
+        matches!(self, Theme::Court(s) if super::court::built(s))
     }
 
     /// Platforms over a sea of lava: the Portals of Hell, or the gym.

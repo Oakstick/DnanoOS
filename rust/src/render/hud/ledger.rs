@@ -67,6 +67,17 @@ fn rig_of(kind: EnemyKind) -> Collected {
         K::Ellepige => foes_thorns::ellepige(),
         K::Mammon => foes_court::mammon(),
         K::GoldGolem => foes_court::gold_golem(),
+        K::Lucifer => foes_court::pride::lucifer(),
+        K::Reflection => foes_court::pride::reflection(),
+        K::Leviathan => foes_court::envy::leviathan(),
+        K::Serpentling => foes_court::envy::serpentling(),
+        K::Amon => foes_court::wrath::amon(),
+        K::Raven => foes_court::wrath::raven(),
+        K::Belphegor => foes_court::sloth::belphegor(),
+        K::Nightmare => foes_court::sloth::nightmare(),
+        K::Beelzebub => foes_court::gluttony::beelzebub(),
+        K::FlySwarm => foes_court::gluttony::fly_swarm(),
+        K::Asmodeus => foes_court::lust::asmodeus(),
     }
 }
 

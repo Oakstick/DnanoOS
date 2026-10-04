@@ -665,7 +665,7 @@ impl Duelist {
         }
     }
 
-    /// Tepegöz's eye within reach (or Mammon's hide open): bent over in a recovery, reeling, or
+    /// Tepegöz's eye within reach (or a prince's hide open): bent over in a recovery, reeling, or
     /// holding the hero in his fist.
     pub fn exposed(&self) -> bool {
         matches!(self.f.attack(), Some((_, Phase::Recovery, _))) || self.f.reeling().is_some() || self.lore.hold > 0
@@ -676,7 +676,7 @@ impl Duelist {
     pub fn taken(&self) -> f64 {
         match self.breed.power {
             Power::Ward if !self.exposed() => WARD_SHARE,
-            Power::GoldHide if !self.exposed() => super::prince::HIDE_SHARE,
+            p if p.is_hide() && !self.exposed() => super::prince::HIDE_SHARE,
             Power::Dish if self.lore.spilled > 0 => SPILLED_TAKEN,
             _ => 1.0,
         }

@@ -354,13 +354,34 @@ pub fn matter_of(kind: EnemyKind) -> Matter {
         K::Karakoncolos | K::FrostGiant | K::Peerless => Matter::Ice,
         K::Tepegoz => Matter::Stone,
         K::Mammon | K::GoldGolem => Matter::Gold,
+        // The other princes and what they raise, for now: flesh (and the reflections glass).
+        K::Lucifer | K::Leviathan | K::Amon | K::Belphegor | K::Beelzebub | K::Asmodeus => Matter::Flesh,
+        K::Reflection => Matter::Ice,
+        K::Serpentling | K::FlySwarm => Matter::Chitin,
+        K::Raven => Matter::Feather,
+        K::Nightmare => Matter::Smoke,
     }
 }
 
 /// The giants: their shatter is bigger, and raises a ring of dust.
 pub fn is_giant(kind: EnemyKind) -> bool {
     use EnemyKind as K;
-    matches!(kind, K::Tepegoz | K::Gashadokuro | K::Ejder | K::FrostGiant | K::Surtr | K::Nidhogg | K::Mammon)
+    matches!(
+        kind,
+        K::Tepegoz
+            | K::Gashadokuro
+            | K::Ejder
+            | K::FrostGiant
+            | K::Surtr
+            | K::Nidhogg
+            | K::Mammon
+            | K::Lucifer
+            | K::Leviathan
+            | K::Amon
+            | K::Belphegor
+            | K::Beelzebub
+            | K::Asmodeus
+    )
 }
 
 /// Chips a blow throws off (fewer from a light blow, more from a finisher), before the ±25% of

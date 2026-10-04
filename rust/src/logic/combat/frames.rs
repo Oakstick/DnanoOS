@@ -70,6 +70,24 @@ pub enum MoveId {
     CoinRain,
     /// Mammon's hoard brought down on the floor: a slam that shakes the ground.
     HoardSlam,
+    // Lucifer's (Pride)
+    /// Lucifer's radiant cut: a blade of light swept before him (a placeholder for his table).
+    RadiantCut,
+    // Leviathan's (Envy)
+    /// Leviathan's coil lash: his coils whipped round before him (a placeholder for his table).
+    CoilLash,
+    // Amon's (Wrath)
+    /// Amon's flame breath: fire breathed in a cone before him (a placeholder for his table).
+    FlameBreath,
+    // Belphegor's (Sloth)
+    /// Belphegor's swat: a lazy backhand, heavy as sleep (a placeholder for his table).
+    Swat,
+    // Beelzebub's (Gluttony)
+    /// Beelzebub's cleaver: a butcher's chop before him (a placeholder for his table).
+    Cleaver,
+    // Asmodeus's (Lust)
+    /// Asmodeus's lance thrust: his lance driven before him (a placeholder for his table).
+    LanceThrust,
 }
 
 /// Where in a move a frame falls.
@@ -212,10 +230,29 @@ pub const UNSTOPPABLE: f64 = 1e6;
 /// half his pace, so one who walks away at once leaves it behind.
 pub const MARK_FOLLOW: f64 = 2.6;
 
+/// A prince's first move before his fight is built: a wide cone swept before him like Mammon's
+/// sceptre, slow to start, readable, and punishable in its long recovery (a big body: his arm adds
+/// to its reach, `Breed::reach`).
+const PRINCE_PLACEHOLDER: MoveData = MoveData {
+    name: "",
+    startup: 32,
+    active: 8,
+    recovery: 42,
+    damage: 24.0,
+    reach: 1.3,
+    half_angle: deg(105.0),
+    track: 18,
+    hitstop: 6,
+    range: (0.0, 1.3),
+    off: (0.0, deg(80.0)),
+    ..BASE
+};
+
 impl MoveId {
     pub const HERO: [MoveId; 3] = [MoveId::L1, MoveId::L2, MoveId::L3];
-    /// Every foe's move: the archetypes' four, the folklore moves, then the princes'.
-    pub const FOE: [MoveId; 26] = [
+    /// Every foe's move: the archetypes' four, the folklore moves, then the princes', each
+    /// prince's in a group of its own.
+    pub const FOE: &[MoveId] = &[
         MoveId::Slam,
         MoveId::Sweep,
         MoveId::Bite,
@@ -242,6 +279,18 @@ impl MoveId {
         MoveId::CoinVolley,
         MoveId::CoinRain,
         MoveId::HoardSlam,
+        // Lucifer's (Pride)
+        MoveId::RadiantCut,
+        // Leviathan's (Envy)
+        MoveId::CoilLash,
+        // Amon's (Wrath)
+        MoveId::FlameBreath,
+        // Belphegor's (Sloth)
+        MoveId::Swat,
+        // Beelzebub's (Gluttony)
+        MoveId::Cleaver,
+        // Asmodeus's (Lust)
+        MoveId::LanceThrust,
     ];
 
     pub const fn data(self) -> MoveData {
@@ -693,6 +742,18 @@ impl MoveId {
                 shape: Shape::Quake { radius: 2.4, share: 0.45 },
                 ..BASE
             },
+            // Lucifer's (Pride)
+            MoveId::RadiantCut => MoveData { name: "RADIANT CUT", ..PRINCE_PLACEHOLDER },
+            // Leviathan's (Envy)
+            MoveId::CoilLash => MoveData { name: "COIL LASH", ..PRINCE_PLACEHOLDER },
+            // Amon's (Wrath)
+            MoveId::FlameBreath => MoveData { name: "FLAME BREATH", ..PRINCE_PLACEHOLDER },
+            // Belphegor's (Sloth)
+            MoveId::Swat => MoveData { name: "SWAT", ..PRINCE_PLACEHOLDER },
+            // Beelzebub's (Gluttony)
+            MoveId::Cleaver => MoveData { name: "CLEAVER", ..PRINCE_PLACEHOLDER },
+            // Asmodeus's (Lust)
+            MoveId::LanceThrust => MoveData { name: "LANCE THRUST", ..PRINCE_PLACEHOLDER },
         }
     }
 
@@ -785,7 +846,7 @@ mod tests {
     #[test]
     fn every_melee_foe_attack_can_be_parried_on_reaction() {
         const { assert!(PARRY_TO - PARRY_FROM + 1 == 8 && GUARD_RAISE == PARRY_FROM) };
-        for m in MoveId::FOE.into_iter().filter(|m| !m.data().projectile) {
+        for m in MoveId::FOE.iter().filter(|m| !m.data().projectile) {
             let d = m.data();
             // Guard pressed REACTION frames after the tell begins is up before the hit, and a
             // later press can still put the hit inside the window.

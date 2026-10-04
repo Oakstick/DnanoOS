@@ -90,6 +90,34 @@ pub enum EnemyKind {
     Mammon,
     /// A gold golem: coins and bars fused into a lumbering body, raised by Mammon from his heaps.
     GoldGolem,
+    // Pride's court
+    /// Lucifer, the prince of Pride: the morning star fallen, fought on his throne.
+    Lucifer,
+    /// A reflection: Lucifer's likeness, stepped out of the light to fight beside him.
+    Reflection,
+    // Envy's court
+    /// Leviathan, the prince of Envy: the great serpent of the deep, fought under the drowned bell.
+    Leviathan,
+    /// A serpentling: one of Leviathan's brood.
+    Serpentling,
+    // Wrath's court
+    /// Amon, the prince of Wrath: a wolf-bodied demon with a serpent's tail, breathing flame.
+    Amon,
+    /// A raven of Amon: his black birds, flung at the hero.
+    Raven,
+    // Sloth's court
+    /// Belphegor, the prince of Sloth: the dozing lord of the hall of stopped clocks.
+    Belphegor,
+    /// A nightmare: a dream of Belphegor's, sent to sit on the sleeper's chest.
+    Nightmare,
+    // Gluttony's court
+    /// Beelzebub, the prince of Gluttony: the lord of the flies at his banquet.
+    Beelzebub,
+    /// A fly swarm: a cloud of Beelzebub's flies.
+    FlySwarm,
+    // Lust's court (his adds are the elf-maids, `Ellepige`)
+    /// Asmodeus, the prince of Lust: the lancer of the rose bower.
+    Asmodeus,
 }
 
 impl EnemyKind {
@@ -110,7 +138,28 @@ impl EnemyKind {
     pub const REALMS_OWN: [EnemyKind; 4] = [EnemyKind::Peerless, EnemyKind::Ganglot, EnemyKind::Gaki, EnemyKind::Ellepige];
 
     /// The princes' courts' own: the princes, and what they raise.
-    pub const COURTS_OWN: [EnemyKind; 2] = [EnemyKind::Mammon, EnemyKind::GoldGolem];
+    pub const COURTS_OWN: &[EnemyKind] = &[
+        // Greed's court
+        EnemyKind::Mammon,
+        EnemyKind::GoldGolem,
+        // Pride's court
+        EnemyKind::Lucifer,
+        EnemyKind::Reflection,
+        // Envy's court
+        EnemyKind::Leviathan,
+        EnemyKind::Serpentling,
+        // Wrath's court
+        EnemyKind::Amon,
+        EnemyKind::Raven,
+        // Sloth's court
+        EnemyKind::Belphegor,
+        EnemyKind::Nightmare,
+        // Gluttony's court
+        EnemyKind::Beelzebub,
+        EnemyKind::FlySwarm,
+        // Lust's court
+        EnemyKind::Asmodeus,
+    ];
 
     /// One of the courts' own.
     pub fn court_own(self) -> bool {
@@ -786,7 +835,18 @@ impl Brain {
             | EnemyKind::Gaki
             | EnemyKind::Ellepige
             | EnemyKind::Mammon
-            | EnemyKind::GoldGolem => hp,
+            | EnemyKind::GoldGolem
+            | EnemyKind::Lucifer
+            | EnemyKind::Reflection
+            | EnemyKind::Leviathan
+            | EnemyKind::Serpentling
+            | EnemyKind::Amon
+            | EnemyKind::Raven
+            | EnemyKind::Belphegor
+            | EnemyKind::Nightmare
+            | EnemyKind::Beelzebub
+            | EnemyKind::FlySwarm
+            | EnemyKind::Asmodeus => hp,
             // Swoops at where he is heading, but short of it, and swerves on the way.
             EnemyKind::LargeBat => {
                 let v = ctx.hero.dir.vecf();
@@ -1042,6 +1102,23 @@ pub fn realm_foe_spec(kind: EnemyKind) -> Option<EnemySpec> {
         EnemyKind::Ellepige => ("Ellepige", 0xf0e0ea, 1.0),
         EnemyKind::Mammon => ("Mammon", 0xf2c53d, 0.8),
         EnemyKind::GoldGolem => ("Gold Golem", 0xd8a83a, 0.6),
+        // Pride's court
+        EnemyKind::Lucifer => ("Lucifer", 0xfff0c0, 0.8),
+        EnemyKind::Reflection => ("Reflection", 0xc8d8ff, 0.9),
+        // Envy's court
+        EnemyKind::Leviathan => ("Leviathan", 0x3aa88a, 0.8),
+        EnemyKind::Serpentling => ("Serpentling", 0x5ac0a0, 1.0),
+        // Wrath's court
+        EnemyKind::Amon => ("Amon", 0xe0402a, 0.8),
+        EnemyKind::Raven => ("Raven of Amon", 0x3a3040, 1.1),
+        // Sloth's court
+        EnemyKind::Belphegor => ("Belphegor", 0x8a96b0, 0.8),
+        EnemyKind::Nightmare => ("Nightmare", 0x6a5a9a, 0.9),
+        // Gluttony's court
+        EnemyKind::Beelzebub => ("Beelzebub", 0x9ab030, 0.8),
+        EnemyKind::FlySwarm => ("Fly Swarm", 0x4a5020, 1.0),
+        // Lust's court
+        EnemyKind::Asmodeus => ("Asmodeus", 0xe0507a, 0.8),
         _ => return None,
     };
     Some(EnemySpec { kind, name: name.into(), color, scatter_target: P::new(0, 0), exit_delay: 0.0, speed_factor })

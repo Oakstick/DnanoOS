@@ -1,17 +1,24 @@
-//! The princes' courts, built to their own plans as their fights come (ROADMAP.md, phases 3 to
-//! 9). The first is Greed's: **the Counting House**, where Mammon sits.
+//! Greed's court, the first of the princes' courts built to its own plan: **the Counting House**,
+//! where Mammon sits.
 //!
 //! An octagonal hall about thirty tiles across, floored in gold-veined dark marble with a ring of
 //! coin mosaic. A ring of eight black-and-gold pillars stands about its middle; heaps of coins and
 //! spilled chests lie against its walls, and counting tables piled with ledgers stand east and
 //! west. At the north end Mammon's throne stands on a dais under his giant brass scales. The hero
 //! comes in from the south, and the gate he came through locks behind him: the prince's key opens
-//! it. (The art is `render::view::court_greed`; the fight, `game::court`.)
+//! it. (The art is `render::view::court_greed`; the fight, `game::court` and `game::court::greed`.)
 
-use super::level::{LevelData, Theme};
-use super::levels::level_for;
-use super::sins::Sin;
-use super::types::P;
+use crate::logic::level::{LevelData, Theme};
+use crate::logic::levels::level_for;
+use crate::logic::sins::Sin;
+use crate::logic::types::P;
+
+/// The Counting House is built: Mammon fights in it as himself.
+pub const BUILT: bool = true;
+/// The court's name.
+pub const NAME: &str = "The Counting House";
+/// What Mammon raises against the hero.
+pub const ADDS: &str = "golems";
 
 /// The grid's side, and its middle.
 pub const SIZE: i32 = 33;
@@ -25,6 +32,8 @@ pub const GATE: (i32, i32) = (16, 30);
 pub const HERO: (i32, i32) = (16, 26);
 /// Where Mammon stands as the fight begins: before his throne.
 pub const MAMMON: (i32, i32) = (16, 8);
+/// Where the prince stands as the fight begins (Mammon, before his throne).
+pub const PRINCE: (i32, i32) = MAMMON;
 /// The throne's dais (inclusive, x0..=x1, y0..=y1), against the north wall under the scales.
 pub const DAIS: (i32, i32, i32, i32) = (13, 3, 19, 4);
 /// Where the great scales stand, behind the throne (a point in the north wall, for the art).
@@ -39,14 +48,6 @@ pub const CHESTS: [(i32, i32); 4] = [(3, 11), (3, 21), (29, 11), (29, 21)];
 pub const TABLES: [(i32, i32, i32); 2] = [(5, 6, 16), (26, 27, 16)];
 /// The radius of the coin-mosaic ring on the floor.
 pub const MOSAIC: f64 = 5.5;
-
-/// What the prince (and what he raises) is multiplied by in a court of `tier`: his health and his
-/// damage. The first court the hero comes to is the measure; every key held before it makes the
-/// prince stronger, as it does the realms.
-pub fn weight(tier: usize) -> (f64, f64) {
-    let t = tier.max(1) as f64 - 1.0;
-    (1.0 + 0.3 * t, 0.85 + 0.1 * t)
-}
 
 /// Is (x, y) inside the octagon's floor?
 pub fn in_hall(x: i32, y: i32) -> bool {
@@ -82,6 +83,11 @@ pub fn piece(x: i32, y: i32) -> Option<Piece> {
     }
 }
 
+/// The court as a level, as hard as dungeon `tier`: the Counting House.
+pub fn level(tier: usize) -> LevelData {
+    counting_house(tier)
+}
+
 /// The Counting House as a level, as hard as dungeon `tier`.
 pub fn counting_house(tier: usize) -> LevelData {
     let base = level_for(tier);
@@ -98,7 +104,7 @@ pub fn counting_house(tier: usize) -> LevelData {
     rows[HERO.1 as usize][HERO.0 as usize] = 'P';
     rows[MAMMON.1 as usize][MAMMON.0 as usize] = 'G';
     LevelData {
-        name: "The Counting House".to_string(),
+        name: NAME.to_string(),
         rows: rows.iter().map(|r| r.iter().collect()).collect(),
         heights: vec!["0".repeat(SIZE as usize); SIZE as usize],
         hero_speed: base.hero_speed,
@@ -157,5 +163,6 @@ mod tests {
         }
         // The way from him to Mammon is open.
         assert!(seen.contains(&level.enemy_spawn));
+        super::super::tests::court_is_sound(Sin::Greed);
     }
 }

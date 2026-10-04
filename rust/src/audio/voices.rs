@@ -513,7 +513,7 @@ pub fn name_call(hero: HeroKind) -> Vec<Layer> {
 // ------------------------------------------------------------------- the breeds' timbres
 
 /// Every body in the game, for the tests and the audio sheet.
-pub const ALL_KINDS: [EnemyKind; 38] = {
+pub const ALL_KINDS: &[EnemyKind] = &{
     use EnemyKind::*;
     [
         Skeleton,
@@ -554,8 +554,45 @@ pub const ALL_KINDS: [EnemyKind; 38] = {
         Ellepige,
         Mammon,
         GoldGolem,
+        Lucifer,
+        Reflection,
+        Leviathan,
+        Serpentling,
+        Amon,
+        Raven,
+        Belphegor,
+        Nightmare,
+        Beelzebub,
+        FlySwarm,
+        Asmodeus,
     ]
 };
+
+/// The six princes' and their adds' voices until their own are made: a kin's, stretched in time,
+/// moved in pitch and scaled in gain (`shaped`). `None` for every other kind.
+fn kin_voice(kind: EnemyKind) -> Option<(EnemyKind, f32, f32, f32)> {
+    use EnemyKind as K;
+    Some(match kind {
+        // Pride's court: the Peerless's voice, deeper for the prince, brighter for his reflections.
+        K::Lucifer => (K::Peerless, 1.2, 0.8, 1.0),
+        K::Reflection => (K::Peerless, 0.8, 1.3, 0.9),
+        // Envy's court: the root-dragon's, and the cobra's.
+        K::Leviathan => (K::Nidhogg, 1.0, 0.85, 1.0),
+        K::Serpentling => (K::Cobra, 0.9, 1.2, 0.9),
+        // Wrath's court: the fire giant's, and the dark raven's.
+        K::Amon => (K::Surtr, 1.0, 1.1, 1.0),
+        K::Raven => (K::Vampire, 1.0, 0.9, 1.0),
+        // Sloth's court: Hel's servants', slowed; the night hag's.
+        K::Belphegor => (K::Ganglot, 1.2, 0.8, 1.0),
+        K::Nightmare => (K::Albasti, 1.0, 1.15, 0.9),
+        // Gluttony's court: the gaki's, deep for the prince, thin for his swarms.
+        K::Beelzebub => (K::Gaki, 1.0, 0.7, 1.0),
+        K::FlySwarm => (K::Gaki, 0.8, 1.4, 0.9),
+        // Lust's court: the elf-maid's, deeper.
+        K::Asmodeus => (K::Ellepige, 1.0, 0.8, 1.0),
+        _ => return None,
+    })
+}
 
 /// How big a body sounds: pitch goes down as it grows (a giant, 2, speaks an octave below).
 pub fn size_of(kind: EnemyKind) -> f32 {
@@ -586,6 +623,10 @@ pub fn size_of(kind: EnemyKind) -> f32 {
         K::Oni | K::GoldGolem => 1.4,
         K::Ejder | K::Nidhogg => 1.8,
         K::Tepegoz | K::Gashadokuro | K::FrostGiant | K::Surtr | K::Mammon => 2.0,
+        K::Lucifer | K::Leviathan | K::Amon | K::Belphegor | K::Beelzebub | K::Asmodeus => 2.0,
+        K::Reflection | K::Nightmare => 1.0,
+        K::Serpentling | K::FlySwarm => 0.9,
+        K::Raven => 0.8,
     }
 }
 
@@ -848,6 +889,21 @@ fn breed_tell(kind: EnemyKind, mv: MoveId, hero: HeroKind) -> Vec<Layer> {
             coins(0.15, 5, 0.3, 0.04),
         ]
         .concat(),
+        // The six other princes and their adds: a kin's voice, for now.
+        K::Lucifer
+        | K::Reflection
+        | K::Leviathan
+        | K::Serpentling
+        | K::Amon
+        | K::Raven
+        | K::Belphegor
+        | K::Nightmare
+        | K::Beelzebub
+        | K::FlySwarm
+        | K::Asmodeus => {
+            let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
+            shaped(&breed_tell(kin, mv, hero), time, pitch, gain)
+        }
     };
     // A few moves add their own colour (what `tell_sfx` once played for them).
     match mv {
@@ -1054,6 +1110,21 @@ fn death_of(kind: EnemyKind) -> Vec<Layer> {
         // An avalanche of coins.
         K::Mammon => [coins(0.0, 40, 1.4, 0.03), vec![hiss(0.5).dur(1.4).vol(0.6).lp(500.0, 1.0)]].concat(),
         K::GoldGolem => [coins(0.0, 16, 0.6, 0.05), vec![crackle(0.4).dur(0.6).vol(1.2).lp(400.0, 1.0)]].concat(),
+        // The six other princes and their adds: a kin's fall, for now.
+        K::Lucifer
+        | K::Reflection
+        | K::Leviathan
+        | K::Serpentling
+        | K::Amon
+        | K::Raven
+        | K::Belphegor
+        | K::Nightmare
+        | K::Beelzebub
+        | K::FlySwarm
+        | K::Asmodeus => {
+            let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
+            shaped(&death_of(kin), time, pitch, gain)
+        }
     }
 }
 
@@ -1167,6 +1238,21 @@ fn swing_of(kind: EnemyKind, mv: MoveId) -> Recipe {
         },
         // A golden fist, and a jingle.
         K::GoldGolem => [whoosh(0.0, 420.0, 0.35, 0.9), coins(0.1, 3, 0.15, 0.03)].concat(),
+        // The six other princes and their adds: a kin's swing, for now.
+        K::Lucifer
+        | K::Reflection
+        | K::Leviathan
+        | K::Serpentling
+        | K::Amon
+        | K::Raven
+        | K::Belphegor
+        | K::Nightmare
+        | K::Beelzebub
+        | K::FlySwarm
+        | K::Asmodeus => {
+            let (kin, time, pitch, gain) = kin_voice(kind).unwrap_or((K::Mammon, 1.0, 1.0, 1.0));
+            shaped(&swing_of(kin, mv).layers, time, pitch, gain)
+        }
     };
     Recipe { layers }
 }
@@ -1206,6 +1292,11 @@ pub fn matter_of(kind: EnemyKind) -> SoundMatter {
         K::Tepegoz => M::Stone,
         K::FrostGiant | K::Peerless => M::Ice,
         K::Mammon | K::GoldGolem => M::Gold,
+        K::Reflection => M::Ice,
+        K::Serpentling | K::FlySwarm => M::Chitin,
+        K::Raven => M::Feather,
+        K::Nightmare => M::Smoke,
+        K::Lucifer | K::Leviathan | K::Amon | K::Belphegor | K::Beelzebub | K::Asmodeus => M::Flesh,
         K::Witch
         | K::Minion
         | K::Werewolf
@@ -1828,7 +1919,7 @@ pub fn audio_sheet() -> Vec<SheetSound> {
     let l = Listener::default();
     a.set_listener(l);
     let take = |name: String, secs: f64, out: &mut Vec<SheetSound>| out.push(SheetSound { name, samples: render_secs(&synth, secs) });
-    for kind in ALL_KINDS {
+    for &kind in ALL_KINDS {
         let k = snake(kind);
         let mv = default_move(kind);
         let heroes: &[HeroKind] =
@@ -1912,6 +2003,12 @@ fn default_move(kind: EnemyKind) -> MoveId {
         K::Nidhogg => MoveId::Burrow,
         K::Hel => MoveId::Raise,
         K::Mammon => MoveId::CoinToss,
+        K::Lucifer => MoveId::RadiantCut,
+        K::Leviathan => MoveId::CoilLash,
+        K::Amon => MoveId::FlameBreath,
+        K::Belphegor => MoveId::Swat,
+        K::Beelzebub => MoveId::Cleaver,
+        K::Asmodeus => MoveId::LanceThrust,
         _ => match family(kind) {
             Attack::Melee => MoveId::Slam,
             Attack::Body => MoveId::Bite,
@@ -1962,7 +2059,7 @@ mod tests {
         }
         // Every tell, for every move and hero, opens with its family's signature, whole.
         let moves = [MoveId::Slam, MoveId::Bite, MoveId::Hex, MoveId::Call, MoveId::Grasp, MoveId::CoinToss, MoveId::Raise, MoveId::Burrow];
-        for kind in ALL_KINDS {
+        for &kind in ALL_KINDS {
             let sig = signature(family(kind));
             for mv in moves {
                 for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
@@ -2007,7 +2104,7 @@ mod tests {
 
     #[test]
     fn every_voice_renders_clean_and_its_family_is_heard() {
-        for kind in ALL_KINDS {
+        for &kind in ALL_KINDS {
             let size = size_of(kind) as f64;
             let how = Render { pitch: 1.0 / size, sig_pitch: 1.0 / size.sqrt(), ..Default::default() };
             let tell = tell_for(kind, default_move(kind), HeroKind::Mehmed);
@@ -2071,8 +2168,9 @@ mod tests {
     #[test]
     fn a_struck_hero_ducks_the_rest_and_a_tell_is_never_stolen() {
         let (mut a, synth) = offline();
-        // A crowd of effects, more than the budget holds.
-        for kind in ALL_KINDS {
+        // A crowd of effects, more than the budget holds (the first stages' and the realms' kinds:
+        // every kind's would overrun the synth's store of voices, stolen ones and all).
+        for &kind in &ALL_KINDS[..38] {
             a.swing(kind, default_move(kind), V::new(1.0, 1.0));
             a.foe_cry(kind, Cry::Death, V::new(1.0, 1.0));
         }

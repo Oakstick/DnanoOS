@@ -4,6 +4,8 @@
 //! clockwise from the entrance in the order of the terraces of Dante's
 //! Purgatory.
 
+use super::enemy::EnemyKind;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Sin {
     Pride,
@@ -43,6 +45,11 @@ impl Sin {
         }
     }
 
+    /// The sin of `name` (any case): "greed", "Pride"...
+    pub fn from_name(name: &str) -> Option<Sin> {
+        SINS.into_iter().find(|s| s.name().eq_ignore_ascii_case(name))
+    }
+
     /// Its name in capitals, for titles.
     pub fn title(self) -> &'static str {
         match self {
@@ -80,6 +87,24 @@ impl Sin {
             Sin::Gluttony => "Beelzebub",
             Sin::Lust => "Asmodeus",
         }
+    }
+
+    /// The prince of this sin as a foe: fought as himself in his court once it is built.
+    pub fn prince_kind(self) -> EnemyKind {
+        match self {
+            Sin::Pride => EnemyKind::Lucifer,
+            Sin::Envy => EnemyKind::Leviathan,
+            Sin::Wrath => EnemyKind::Amon,
+            Sin::Sloth => EnemyKind::Belphegor,
+            Sin::Greed => EnemyKind::Mammon,
+            Sin::Gluttony => EnemyKind::Beelzebub,
+            Sin::Lust => EnemyKind::Asmodeus,
+        }
+    }
+
+    /// The sin whose prince `kind` is, if he is one.
+    pub fn of_prince(kind: EnemyKind) -> Option<Sin> {
+        SINS.into_iter().find(|s| s.prince_kind() == kind)
     }
 
     /// The realm behind the door.
@@ -122,5 +147,23 @@ mod tests {
         colours.dedup();
         assert_eq!(colours.len(), 7, "each sin its own colour");
         assert!(SINS.iter().all(|s| s.name().is_ascii() && s.door().is_ascii()));
+        assert!(SINS.iter().all(|&s| Sin::from_name(&s.name().to_lowercase()) == Some(s)));
+        assert_eq!(Sin::from_name("avarice"), None);
+    }
+
+    #[test]
+    fn every_sins_prince_is_a_prince_by_frame_data() {
+        use crate::logic::combat::archetype::{Archetype, Breed};
+        use crate::logic::enemy::realm_foe_spec;
+        for sin in SINS {
+            let kind = sin.prince_kind();
+            assert_eq!(Breed::of(kind).arch, Archetype::Prince, "{sin:?}");
+            assert!(kind.court_own(), "{sin:?}");
+            assert_eq!(realm_foe_spec(kind).map(|s| s.name), Some(sin.prince().to_string()), "{sin:?}");
+        }
+        let kinds: std::collections::HashSet<EnemyKind> = SINS.iter().map(|s| s.prince_kind()).collect();
+        assert_eq!(kinds.len(), 7, "seven princes");
+        assert!(SINS.iter().all(|&s| Sin::of_prince(s.prince_kind()) == Some(s)));
+        assert_eq!(Sin::of_prince(EnemyKind::GoldGolem), None);
     }
 }

@@ -1199,8 +1199,21 @@ fn draw_tour_art(o: &mut Overlay, hero: HeroKind, art: TourArt, x: f32, y: f32, 
                 EnemyKind::Ganglot => 0,
                 EnemyKind::Gaki => sp.cast.iter().position(|c| c.1 == "Gaki").unwrap_or(7),
                 EnemyKind::Ellepige => sp.cast.iter().position(|c| c.1 == "Ellepige").unwrap_or(3),
-                // (The courts' own have no card of their own yet: Mammon is drawn as the blemmyes.)
-                EnemyKind::Mammon | EnemyKind::GoldGolem => 7,
+                // (The courts' own have no card of their own yet: the princes are drawn as the
+                // blemmyes.)
+                EnemyKind::Mammon
+                | EnemyKind::GoldGolem
+                | EnemyKind::Lucifer
+                | EnemyKind::Reflection
+                | EnemyKind::Leviathan
+                | EnemyKind::Serpentling
+                | EnemyKind::Amon
+                | EnemyKind::Raven
+                | EnemyKind::Belphegor
+                | EnemyKind::Nightmare
+                | EnemyKind::Beelzebub
+                | EnemyKind::FlySwarm
+                | EnemyKind::Asmodeus => 7,
             };
             let tint = if kind == EnemyKind::Vampire { Some(0x9a3060) } else { None };
             let s = &sp.cast[i].0;

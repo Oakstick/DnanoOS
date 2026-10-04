@@ -159,6 +159,23 @@ impl Game {
                 EnemyKind::Ellepige => ("ELLEPIGE", "An elf-maid, lovely from the front and hollow as a kneading trough behind. No blow tells on her face: strike her back.", 0xf0e0ea),
                 EnemyKind::Mammon => ("MAMMON", "The prince of Greed. His hide is sewn with coins and turns your blows, but not while he recovers. His coins lie on the floor and burst into spikes: step off them. His fist holds you and drains your silver until you strike him.", 0xf2c53d),
                 EnemyKind::GoldGolem => ("GOLD GOLEM", "Coins and bars fused into a body, raised from Mammon's heaps. Slow and heavy; it falls when he does.", 0xd8a83a),
+                // Pride's court
+                EnemyKind::Lucifer => ("LUCIFER", "The prince of Pride, the morning star fallen. His hide turns your blows, but not while he recovers.", 0xfff0c0),
+                EnemyKind::Reflection => ("REFLECTION", "Lucifer's likeness, stepped out of the light to fight beside him. It falls when he does.", 0xc8d8ff),
+                // Envy's court
+                EnemyKind::Leviathan => ("LEVIATHAN", "The prince of Envy, the serpent of the deep. His scales turn your blows, but not while he recovers.", 0x3aa88a),
+                EnemyKind::Serpentling => ("SERPENTLING", "One of Leviathan's brood. It falls when he does.", 0x5ac0a0),
+                // Wrath's court
+                EnemyKind::Amon => ("AMON", "The prince of Wrath, a wolf with a serpent's tail who breathes flame. His fury turns your blows, but not while he recovers.", 0xe0402a),
+                EnemyKind::Raven => ("RAVEN OF AMON", "One of Amon's black birds. It falls when he does.", 0x3a3040),
+                // Sloth's court
+                EnemyKind::Belphegor => ("BELPHEGOR", "The prince of Sloth, dozing among his stopped clocks. His torpor turns your blows, but not while he recovers.", 0x8a96b0),
+                EnemyKind::Nightmare => ("NIGHTMARE", "A dream of Belphegor's, sent to sit on the sleeper's chest. It falls when he does.", 0x6a5a9a),
+                // Gluttony's court
+                EnemyKind::Beelzebub => ("BEELZEBUB", "The prince of Gluttony, the lord of the flies. His bloat turns your blows, but not while he recovers.", 0x9ab030),
+                EnemyKind::FlySwarm => ("FLY SWARM", "A cloud of Beelzebub's flies. It falls when he does.", 0x4a5020),
+                // Lust's court
+                EnemyKind::Asmodeus => ("ASMODEUS", "The prince of Lust, the lancer of the rose bower. His allure turns your blows, but not while he recovers.", 0xe0507a),
                 EnemyKind::Hel => ("HEL", "Queen of the dead, half living and half corpse. Distance: her bolts drain your life into hers, and she raises the dead from the floor. When she falls, they fall with her.", 0x7aa0e8),
             };
             stops.push(TourStop { target, title, body: body.into(), color, art: TourArt::Enemy(e.kind()) });

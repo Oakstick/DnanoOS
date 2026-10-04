@@ -1,5 +1,5 @@
-//! The princes' courts' own (ROADMAP.md, phase 3): Mammon, the prince of Greed, and the gold
-//! golems he raises from his heaps. Each faces +z, stands in the middle of its grid and is
+//! Greed's court's own (ROADMAP.md, phase 3): Mammon, the prince of Greed, and the gold golems he
+//! raises from his heaps. Each faces +z, stands in the middle of its grid and is
 //! sculpted in the parts its rig swings.
 //!
 //! Mammon is a corpulent demon-king two and a half times the hero's height: a robe of umber wool
@@ -15,9 +15,9 @@ use std::f32::consts::TAU;
 
 use glam::Vec3;
 
-use super::carve::{ball, limb, nz, v};
-use super::characters::{mat, Sculpt};
-use super::voxels::{Collected, PartDef};
+use crate::render::carve::{ball, limb, nz, v};
+use crate::render::characters::{mat, Sculpt};
+use crate::render::voxels::{Collected, PartDef};
 
 mod pal {
     use super::mat;
