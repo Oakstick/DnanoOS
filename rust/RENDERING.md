@@ -674,6 +674,14 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - The Stomach's acid and glands go from lime to a sick olive-amber, and its pools glow less.
   - The light is a little lower and the bloom 0.95 to 1.25 (was 1.15 to 1.45), so the candles
     no longer blow out in halos.
+- **The Garden of Thorns (Lust):**
+  - The moon is the board's: mist-teal light over a charcoal-rose dark, instead of blue-white.
+  - The perfume mist was pooling as loud magenta sheets; it is a dusty rose, and thinner.
+  - The pink marble and flagstones come down from near-white to rose-cast pale stone. Bloom 1.0.
+  - Asmodeus's rose stays in the roses, the lanterns, the silk and the portals.
+- **Props:** each realm was checked for bare stretches in both views. Their own dressing (wrecks
+  and spear-fields, sunk cottages and gears, tables and ovens, bowers and bramble, ribs and
+  rafts) already breaks every silhouette, so none was added; the passes are palette and light.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 

@@ -21,12 +21,12 @@ pub(super) mod pal {
     pub const BRAMBLE_L: u32 = 0x2c1820;
     pub const THORN: u32 = 0x0a0507;
     pub const DEAD_LEAF: u32 = 0x3a2a1c;
-    pub const FLAG: u32 = 0xdcbcc8;
-    pub const FLAG_D: u32 = 0xc6a2b2;
+    pub const FLAG: u32 = 0xbcaaac;
+    pub const FLAG_D: u32 = 0xa69496;
     pub const GROUT: u32 = 0x6a4a58;
-    pub const MARBLE: u32 = 0xf2e0e8;
-    pub const MARBLE_D: u32 = 0xd6bcc8;
-    pub const MARBLE_W: u32 = 0xfaf4f6;
+    pub const MARBLE: u32 = 0xd8cacc;
+    pub const MARBLE_D: u32 = 0xbaa8ae;
+    pub const MARBLE_W: u32 = 0xe2d8da;
     pub const GOLD: u32 = 0xe0b45a;
     pub const GOLD_D: u32 = 0xa88038;
     pub const EARTH: u32 = 0x463028;

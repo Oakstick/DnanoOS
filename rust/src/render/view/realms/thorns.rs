@@ -242,9 +242,9 @@ impl WorldView {
         let mut mist: Vec<&P> = r.mist.iter().collect();
         mist.sort();
         for p in mist {
-            for (k, &(lift, alpha)) in [(0.08f32, 0.3f32), (0.24, 0.24), (0.46, 0.15), (0.72, 0.08)].iter().enumerate() {
+            for (k, &(lift, alpha)) in [(0.08f32, 0.22f32), (0.24, 0.17), (0.46, 0.1), (0.72, 0.05)].iter().enumerate() {
                 let m = Mat4::from_translation(Vec3::new(p.x as f32, lift, p.y as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
-                self.mist.push(Instance::new(m, lin(0xffb8dc), alpha, Vec3::new(20.0 + k as f32, lift, 0.0), SHADE_CLOUD));
+                self.mist.push(Instance::new(m, lin(0xd8aebe), alpha, Vec3::new(20.0 + k as f32, lift, 0.0), SHADE_CLOUD));
             }
         }
         ThornsView(Box::new(view))
@@ -944,14 +944,15 @@ pub(super) fn atmosphere(_v: &ThornsView, r: &Thorns, _s: &SceneState) -> Atmosp
         background: 0x1a0a16,
         fog_near: 16.0,
         fog_far: 44.0,
-        hemi_sky: lin(0x8a98d0) * 0.5,
-        hemi_ground: lin(0x4a1a30) * 0.42,
-        ambient: lin(0x50304c) * 0.5,
+        // The board's moon: mist teal, over a charcoal rose dark.
+        hemi_sky: lin(0x7e9c9a) * 0.5,
+        hemi_ground: lin(0x40202c) * 0.42,
+        ambient: lin(0x40303a) * 0.5,
         sun_dir: Vec3::new(-0.35, 1.0, 0.55).normalize(),
-        sun: lin(0xc8d4ff) * 1.15,
-        exposure: 1.18,
+        sun: lin(0xa8c8c4) * 1.1,
+        exposure: 1.15,
         night_sky: 1.0,
-        bloom: 1.25,
+        bloom: 1.0,
         moon_view: Vec3::new(-0.4, 0.5, -1.0).normalize(),
         cloud_tint: lin(0x24101c),
     };
