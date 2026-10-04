@@ -575,10 +575,6 @@ pub struct Gpu {
     pub adapter: wgpu::AdapterInfo,
 }
 
-/// The colour the window shows from the moment it opens until the title screen is ready: the
-/// vaults' charcoal dark.
-const SPLASH: wgpu::Color = wgpu::Color { r: 0.07, g: 0.094, b: 0.1, a: 1.0 };
-
 /// Graphics APIs to start the renderer on, each with the window's surface (`Gpu::surfaces`).
 pub type Surfaces = Vec<(wgpu::Instance, Option<wgpu::Surface<'static>>)>;
 
@@ -615,13 +611,9 @@ impl Gpu {
     }
 
     /// Starts the renderer on the first of `candidates` with a GPU for it (any thread will do).
-    /// With a window, it paints the window the splash colour as soon as it can draw into it and
-    /// calls `painted` (the window may be shown from then on), then builds its pipelines.
-    pub async fn start(
-        candidates: Surfaces,
-        size: (u32, u32),
-        painted: impl FnOnce(),
-    ) -> Result<Self, String> {
+    /// With a window, the engine's loading screen draws in it while the pipelines compile, and
+    /// `painted` is called once it is up (the window may be shown from then on).
+    pub async fn start(candidates: Surfaces, size: (u32, u32), painted: impl FnOnce() + Send + 'static) -> Result<Self, String> {
         let mut found = None;
         for (instance, surface) in candidates {
             let request = instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -634,7 +626,8 @@ impl Gpu {
                 break;
             }
         }
-        let (surface, adapter) = found.ok_or_else(|| "no GPU adapter supports this window".to_string())?;
+        #[allow(unused_mut)]
+        let (mut surface, adapter) = found.ok_or_else(|| "no GPU adapter supports this window".to_string())?;
         let info = adapter.get_info();
         let backend = format!("{:?} {}", info.backend, info.name);
         let adapter_info = info.clone();
@@ -682,28 +675,36 @@ impl Gpu {
         };
         if let Some(s) = &surface {
             s.configure(&device, &config);
-            // Paint the window the game's dark before the shaders compile (seconds on DX12), so
-            // it never shows unpainted.
-            if let Ok(frame) = s.get_current_texture() {
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("splash") });
-                enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("splash"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        // (The target is not sRGB: this is the colour as displayed.)
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(SPLASH), store: wgpu::StoreOp::Store },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                queue.submit([enc.finish()]);
-                frame.present();
-            }
         }
+        // The engine's loading screen, while the shaders compile (seconds on DX12): on its own
+        // thread, with the surface, until the renderer is ready. (If it cannot be made, the
+        // window is painted plain instead.)
+        #[cfg(not(target_arch = "wasm32"))]
+        let progress = super::splash::Progress::default();
+        #[cfg(not(target_arch = "wasm32"))]
+        let loading = match surface.take() {
+            Some(s) => match super::splash::Splash::new(&device, &queue, format, (config.width, config.height)) {
+                Some(screen) => Some(screen.run(s, device.clone(), queue.clone(), config.clone(), progress.clone(), painted)),
+                None => {
+                    super::splash::clear(&device, &queue, &s);
+                    surface = Some(s);
+                    painted();
+                    None
+                }
+            },
+            None => {
+                painted();
+                None
+            }
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let step = |n: u32| progress.step(n);
+        #[cfg(target_arch = "wasm32")]
+        let step = |_: u32| ();
+        #[cfg(target_arch = "wasm32")]
         painted();
+        // The checklist's steps: the device is up; then the runtime, then the shaders.
+        step(1);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("shaders"),
@@ -1019,6 +1020,7 @@ impl Gpu {
                 attributes: &wgpu::vertex_attr_array![1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4],
             },
         ];
+        step(2);
         let shadow_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("shadow"),
             layout: Some(&shadow_pl),
@@ -1576,6 +1578,10 @@ impl Gpu {
         let timer = GpuTimer::new(&device, &queue);
         let rig_draw_buf = Dyn::new(&device, "rig draws", wgpu::BufferUsages::STORAGE, 1 << 14);
         let rig_part_buf = Dyn::new(&device, "rig parts", wgpu::BufferUsages::STORAGE, 1 << 16);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(screen) = loading {
+            surface = Some(screen.finish());
+        }
         Ok(Self {
             shadow_maps,
             shadow_views,
