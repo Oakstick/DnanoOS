@@ -126,6 +126,7 @@ impl Game {
             denied: self.select_denied as f32,
         });
         self.view.story = self.story.as_ref().filter(|_| self.screen == Screen::Story).map(|s| StoryView {
+            scene: s.scene,
             beat: s.beat,
             t: s.t as f32,
             age: s.age as f32,

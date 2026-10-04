@@ -135,4 +135,68 @@ Three parts built in parallel, each in its own files, joined at two seams:
 
 ### The end
 
-(to come)
+**Built (finale-end).** `Game::begin_ending()` (`game/ending.rs`) plays **Scene II, "The Way Up"**,
+in the story's own player: `logic::story` now has two scenes (`Scene::One`, `Scene::Two`, each
+with its beats; `Story` and `StoryView` carry which), so Scene II is staged, timed, captioned and
+skipped exactly as Scene I is. Its beats, all action (`SCENE_TWO`, times in `story::ascent`):
+
+| Beat | Seconds | What happens |
+|---|---|---|
+| Embrace | 8 | up out of black at the bottom of the Pit; the boy (red bobble cap) runs from the broken cage across the snow, the hero kneels, they hold each other (card: THE BOTTOM OF THE PIT) |
+| Light | 7 | the shaft seen from below, its levels stacked up into a light that comes down it; the first chord of the hymn at 1.6 s, the light on them at 3 s; they look up; he stands, the boy's hand in his |
+| Rise | 15 | the platform rises through the seven levels (cells empty, lamps lit warm), from above and then from below them; the white floods in from 10.8 s |
+| White | 3 | nothing but white |
+| Words | 34 | the poem of §4, exactly, line by line on the white turning to cream; held, then fading down into the dark |
+| Credits | 44 | the roll (title; the three warriors; the old man and Quitmer; and the friend who was taken; the Pit and Krampus; the seven princes; the archangels, "who sent help"; Made with Claude), then THE END; then the title |
+
+Esc skips (to the title, the hymn let go over a second and a half); Enter during the credits lets
+them go. The save's `vh.finished` remembers the game was finished (`Game::finished`, read at
+start; the Map's Scene II stop does not set it); the title shows a gold diamond and THE TALE IS
+TOLD in its top-left corner once it is.
+
+**The set** (`render/view/ascent.rs`) stands on its own at (-240, 0, -40), so it needs neither the
+Pit's nor the lair's code: a frozen hollow at the bottom (black stone, drifted snow, icicles, the
+fallen cage burst open with its door in the snow and its chain coiled by it, still bells on hanging
+chains, Krampus's sack, basket and birch switches, a wooden horse, a split drum, a doll), then
+seven levels six units apart, each a 25-wide cell round an 11-wide hole: a ledge of flagstones,
+stone pillars and lintels, barred cells with a straw pallet and a lamp lit warm in each, an iron
+door, and the level's number carved huge on the north wall. The platform (11 by 11, dressed
+stone, its edge glowing faintly warmer as it rises) carries the long table with the feast picked
+to the bones and the cup on its side. The hero (whichever of the three is played) has laid his
+weapon on the stone; he kneels with his legs folded under him and holds the boy (`Act::Hug`,
+`Act::Gaze`, `Act::HandUp` are new for the boy). The light is the shaft's sky going white far up
+(the fog fades the upper levels into it), a soft column of glow and faint rays coming down, the
+sun turning from cold to white on them, and motes of light; the cold blue of the bottom gives way
+to it.
+
+**The hymn** (`audio/hymn.rs`): 21 bars of 4.8 s in D major (D, G/D, Bm, Gadd9, Em7, Asus4, A),
+a choir of five parts, each two singers a little apart in pitch and vibrato through the two
+formants of "oo" or "ah", a pure tone under each, a breath of high air over them, slow to swell
+(1.5 s) and slow to die (2.8 s; the last chord 7 s), and high celesta-like bells. It swells through
+the rise, opens into the white on bar 4 (a falling cascade of bells), lies softly under the words
+on "oo", sings under the credits on "ah". The game sounds it bar by bar (`ending::bar_between`), so
+Esc releases it (`Synth::release_group`); the game's music is hushed for it. At most about 90
+voices sound at once, inside the mix's budget.
+
+**Satan is cut** (§5): Scene I's narrator now ends "The trail led past the House of the Devil,
+which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the
+world" (the beats and timing unchanged); `ROUTE`, the objective and the module's words follow it;
+the old man's Garden page says the same; the hub page no longer says Wrath was Satan's or that
+Krampus waits with his father (no one has seen inside the House; the trail runs through it, down
+to the bottom of the world); Wrath's page says Amon keeps it; the tour's stop and the banner at the
+House's door lose "his father". A test greps the story's and the guide's sources and everything
+they show for the name and for "his father".
+
+**Seams and shared files.** `begin_ending()` is the seam; `lair_won()` should call it once the
+child has reached the hero. Touched outside my own files: `logic/story.rs` (Scene II, the cut),
+`render/view/story.rs` (`StoryView::scene`, the boy's three new acts, Place::Pit routed to
+`ascent`), `game/story.rs` (both scenes), `render/hud/story.rs` (the letterbox names the scene;
+Scene II's overlay), `game.rs` (`mod ending`, the `finished` field), `game/flow.rs` (the view's
+scene), `game/map.rs` (a stop's scene is now `(Scene, beat)`; SCENE II - THE WAY UP added last),
+`game/tests.rs` (the two map tests: the stop count, and the scene stops), `render/view.rs` (`mod ascent`, the set), `render/hud.rs`
+(`mod ending`, the title's mark), `audio/mod.rs` (`mod hymn`), `audio/synth.rs`
+(`release_group`), `capture.rs` (`ending` / `ending:T`, after the last command), `logic/guide.rs`,
+`game/hub.rs` (the House banner's sub-line: the Pit builder may rewrite that banner), `game/tour.rs`.
+
+**Captures:** `--script "0.1:ending:T" --time 0.2` shows Scene II T seconds in (0 the embrace, 8
+the light, 15 the rise, 30 the white, 33 the words, 67 the credits).

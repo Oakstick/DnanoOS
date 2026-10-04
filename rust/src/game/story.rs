@@ -1,13 +1,13 @@
-//! Scene I, "The Threshold", as it plays after Play on the title. Action
-//! beats run for their time; each line of dialogue types itself out, and
-//! Enter, Space, a click or A shows the rest at once and then moves on. Esc
-//! (or Start) skips it. Either way the character screen comes next: the old
-//! man has just offered the boys the three warriors' souls.
+//! The story's scenes as they play. Scene I, "The Threshold", comes after Play on the title.
+//! Action beats run for their time; each line of dialogue types itself out, and Enter, Space, a
+//! click or A shows the rest at once and then moves on. Esc (or Start) skips it. Either way the
+//! character screen comes next: the old man has just offered the boys the three warriors' souls.
+//! Scene II, "The Way Up", plays the same way at the end (`ending`), and the title follows it.
 
 use super::{Game, Screen};
 use crate::audio::{Sfx, Speech};
 use crate::input::Action;
-use crate::logic::story::{first, pause_after, stage, Beat, Place, Shot, Speaker, SCENE_ONE, SOULS_LINE};
+use crate::logic::story::{first, pause_after, stage, Beat, Place, Scene, Shot, Speaker, SOULS_LINE};
 
 /// Letters a second the typewriter shows.
 pub const TYPE_RATE: f64 = 42.0;
@@ -16,11 +16,13 @@ pub const TYPE_DELAY: f64 = 0.3;
 /// Seconds the picture takes to go to black at the end of the scene.
 pub const STORY_FADE: f64 = 0.9;
 /// Seconds it takes when the scene is skipped.
-const SKIP_FADE: f64 = 0.45;
+pub(super) const SKIP_FADE: f64 = 0.45;
 
 /// The scene in progress.
 #[derive(Clone, Debug, Default)]
 pub struct Story {
+    /// Which scene: the first, or the last.
+    pub scene: Scene,
     pub beat: usize,
     /// Seconds into the beat.
     pub t: f64,
@@ -41,8 +43,19 @@ pub struct Story {
 }
 
 impl Story {
+    /// A scene from its first beat.
+    pub(super) fn of(scene: Scene) -> Self {
+        Self { scene, ambience: 0.5, ..Default::default() }
+    }
+
     pub fn beat(&self) -> &'static Beat {
-        &SCENE_ONE[self.beat.min(SCENE_ONE.len() - 1)]
+        let beats = self.scene.beats();
+        &beats[self.beat.min(beats.len() - 1)]
+    }
+
+    /// Seconds since the scene began, by its beats (`age` also counts a skip's fade).
+    pub fn scene_time(&self) -> f64 {
+        self.scene.time_at(self.beat, self.t)
     }
 
     /// Has the whole line typed out?
@@ -71,13 +84,13 @@ impl Game {
             self.begin_story();
         }
         if let Some(st) = self.story.as_mut() {
-            st.beat = beat.min(SCENE_ONE.len() - 1);
+            st.beat = beat.min(st.scene.beats().len() - 1);
             st.t = t;
             st.age = st.age.max(1.0) + t;
             st.shown = st.beat().line.len() as f64;
             st.typed = 0;
             st.ending = None;
-            if first(Shot::Souls).is_some_and(|souls| st.beat >= souls) {
+            if st.scene == Scene::One && first(Shot::Souls).is_some_and(|souls| st.beat >= souls) {
                 st.souls = 0b111;
             }
         }
@@ -88,6 +101,7 @@ impl Game {
             self.open_select();
             return;
         };
+        let scene = st.scene;
         let prev = st.t;
         st.t += dt;
         st.age += dt;
@@ -100,7 +114,11 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::Pause]) {
             st.ending = Some((SKIP_FADE, SKIP_FADE));
-            self.audio.play(Sfx::Whoosh);
+            if scene == Scene::Two {
+                self.skip_ending();
+            } else {
+                self.audio.play(Sfx::Whoosh);
+            }
             return;
         }
         let beat = *st.beat();
@@ -142,8 +160,14 @@ impl Game {
         } else if t >= beat.hold {
             next = true;
         }
+        // At the end, a press once the credits are rolling lets them go.
+        let done = beat.shot == Shot::Credits && pressed && t > 2.0;
+        if done {
+            st.ending = Some((STORY_FADE, STORY_FADE));
+        }
         st.ambience -= dt;
-        let gust = st.ambience <= 0.0;
+        // (Scene II has no wind or water: the voices are the first gentle sound in a long while.)
+        let gust = st.ambience <= 0.0 && scene == Scene::One;
         if gust {
             st.ambience = 2.5 + (st.age * 7.31).sin().abs() * 3.0;
         }
@@ -177,8 +201,12 @@ impl Game {
         for _ in 0..risen {
             self.audio.play(Sfx::Soul);
         }
-        self.story_cues(beat.shot, prev, t);
-        if next {
+        if scene == Scene::Two {
+            self.ending_cues(beat.shot, prev, t);
+        } else {
+            self.story_cues(beat.shot, prev, t);
+        }
+        if next && !done {
             self.next_beat();
         }
     }
@@ -268,22 +296,27 @@ impl Game {
         st.shown = 0.0;
         st.hold = 0.0;
         st.typed = 0;
-        if st.beat >= SCENE_ONE.len() {
-            st.beat = SCENE_ONE.len() - 1;
-            st.t = 30.0;
+        let len = st.scene.beats().len();
+        if st.beat >= len {
+            st.beat = len - 1;
+            st.t = if st.scene == Scene::Two { st.beat().hold } else { 30.0 };
             st.shown = st.beat().line.len() as f64;
             st.ending = Some((STORY_FADE, STORY_FADE));
             return;
         }
-        if Some(st.beat) == first(Shot::Arrive) {
+        if st.scene == Scene::One && Some(st.beat) == first(Shot::Arrive) {
             self.audio.set_threat(0.25);
         }
     }
 
-    /// Off to the character screen.
+    /// Off to the character screen (or, after the last scene, the title).
     fn finish_story(&mut self) {
-        self.story = None;
+        let scene = self.story.take().map(|s| s.scene).unwrap_or_default();
         self.audio.set_threat(0.0);
+        if scene == Scene::Two {
+            self.finish_ending();
+            return;
+        }
         self.open_select();
         self.juice.fade = 1.0;
     }

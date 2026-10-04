@@ -15,6 +15,7 @@
 //!   `save`: the archangels, the Portals of Hell, the realms, the Vaults of Mammon, the old man's
 //!   wares, the map, Scene I, the first-run tour, the character screen, the controller page, saves
 //! - `debug`: testing cheats and the capture tool's hooks
+//! - `ending`: the end, Scene II, the words and the credits (FINALE.md §4)
 
 mod angels;
 mod boss;
@@ -26,6 +27,7 @@ pub mod counsel;
 mod court;
 mod debug;
 pub mod deceit;
+pub mod ending;
 mod feedback;
 mod feel;
 mod flow;
@@ -455,6 +457,8 @@ pub struct Game {
     pub spar: Option<sparring::Sparring>,
     /// Fighting by frame data: the hero's fighter, the threat manager, the bolts (in the gym and the vaults).
     pub brawl: Option<brawl::Brawl>,
+    /// The game has been finished (the end has played, here or in an earlier run): the title shows it.
+    pub finished: bool,
 }
 
 impl Game {
@@ -592,6 +596,7 @@ impl Game {
             camera_before_vault: None,
             spar: None,
             brawl: None,
+            finished: !cfg!(test) && ending::finished_saved(),
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));

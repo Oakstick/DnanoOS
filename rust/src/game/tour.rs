@@ -235,7 +235,7 @@ impl Game {
             target: Vec3::new(cx, 2.4, cy + 2.0),
             title: "THE HOUSE OF THE DEVIL",
             body:
-                "Where Krampus carried your friend, to his father. A wall of fire guards the volcano until the seal of the seven is broken."
+                "No one has ever seen inside it; Krampus carried your friend past it, down to the bottom of the world. A wall of fire guards the volcano until the seal of the seven is broken."
                     .into(),
             color: 0xff3a2a,
             art: TourArt::Volcano,

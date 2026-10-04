@@ -33,6 +33,7 @@ use crate::render::foliage::{FOREST, MEADOW};
 
 mod angels;
 mod animation;
+mod ascent;
 mod camera;
 mod court_envy;
 mod court_gluttony;
@@ -377,6 +378,8 @@ pub struct WorldView {
     story_mist: [InstanceSet; 2],
     story_rise: [f32; 3],
     was_story: bool,
+    /// Scene II's set: the shaft of the Pit, its seven levels and its bottom (built once).
+    ascent_set: InstanceSet,
     /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
     pub tour: Option<(Vec3, f32, usize)>,
     tour_index: Option<usize>,
@@ -509,6 +512,7 @@ impl WorldView {
             story_mist: [InstanceSet::new(story::graveyard_mist()), InstanceSet::new(story::gateway_mist())],
             story_rise: [0.0; 3],
             was_story: false,
+            ascent_set: InstanceSet::new(ascent::pit_set()),
             tour: None,
             tour_index: None,
             tour_angle: 0.0,

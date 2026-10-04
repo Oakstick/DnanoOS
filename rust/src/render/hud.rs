@@ -33,6 +33,7 @@ mod war;
 pub use controls::controls_tab_rects;
 pub use ledger::draw_ledger_board;
 pub use map::map_rects;
+mod ending;
 mod story;
 mod voices;
 use crate::logic::angels::Archangel;
@@ -1720,6 +1721,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     }
     draw_menu(o, g, t);
     o.text(&format!("Best {}", g.score.high), w - t * 0.6, h * 0.035, t * 0.5, rgba(TEXT_DIM, 1.0), Align::Right, false);
+    ending::draw_finished_mark(o, g, t);
 }
 
 /// The title word: a dark outline, a bronze bevel below, gold on top, and a
