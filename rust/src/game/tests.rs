@@ -304,7 +304,11 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
     let stops = map_stops();
-    assert_eq!(stops.len(), 3 + 2 * 7 + 1, "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, and the gym");
+    assert_eq!(
+        stops.len(),
+        3 + 2 * 7 + 1 + 1,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, the gym, and the Bone Vaults off the road"
+    );
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
     assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
     // From the title: MAP, down to the fourth stop (the realm of Pride), go.
