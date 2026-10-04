@@ -108,8 +108,21 @@ pub enum MoveId {
     /// Belphegor's clock hands: a long sweep all the way round him, from far.
     ClockHands,
     // Beelzebub's (Gluttony)
-    /// Beelzebub's cleaver: a butcher's chop before him (a placeholder for his table).
+    /// Beelzebub's cleaver: a butcher's chop before him.
     Cleaver,
+    /// Beelzebub's swarm: a fan of slow flies flung at him.
+    Swarm,
+    /// Beelzebub eats from a platter (or a green cross on the floor): no blow; it heals him, unless
+    /// a blow chokes him first.
+    Gorge,
+    /// Beelzebub bursts into flies and gathers again where he stands, landing with a belly slam.
+    Scatter,
+    /// Beelzebub rolls on his belly in a straight line.
+    BellyRoll,
+    /// Beelzebub spews bile that bursts on the floor and lies there burning.
+    BileSpew,
+    /// Beelzebub's belly slammed on the floor: a blow that shakes the ground.
+    BellySlam,
     // Asmodeus's (Lust)
     /// Asmodeus's lance thrust: his lance driven straight before him, long and narrow.
     LanceThrust,
@@ -353,6 +366,12 @@ impl MoveId {
         MoveId::ClockHands,
         // Beelzebub's (Gluttony)
         MoveId::Cleaver,
+        MoveId::Swarm,
+        MoveId::Gorge,
+        MoveId::Scatter,
+        MoveId::BellyRoll,
+        MoveId::BileSpew,
+        MoveId::BellySlam,
         // Asmodeus's (Lust)
         MoveId::LanceThrust,
         MoveId::BlownKiss,
@@ -1055,7 +1074,113 @@ impl MoveId {
                 ..BASE
             },
             // Beelzebub's (Gluttony)
-            MoveId::Cleaver => MoveData { name: "CLEAVER", ..PRINCE_PLACEHOLDER },
+            MoveId::Cleaver => MoveData {
+                name: "CLEAVER",
+                startup: 34,
+                active: 6,
+                recovery: 44,
+                damage: 26.0,
+                reach: 1.4,
+                half_angle: deg(55.0),
+                track: 20,
+                hitstop: 7,
+                range: (0.0, 1.4),
+                off: (0.0, deg(70.0)),
+                ..BASE
+            },
+            MoveId::Swarm => MoveData {
+                name: "SWARM",
+                startup: 36,
+                active: 1,
+                recovery: 36,
+                damage: 9.0,
+                reach: BOLT_REACH,
+                half_angle: 0.0,
+                track: 28,
+                hitstop: 3,
+                projectile: true,
+                range: (2.6, 8.0),
+                off: (0.0, deg(45.0)),
+                line: true,
+                shape: Shape::Volley { count: 5, spread: 0.5 },
+                cooldown: 210,
+                ..BASE
+            },
+            MoveId::Gorge => MoveData {
+                name: "GORGE",
+                startup: 60,
+                active: 1,
+                recovery: 44,
+                reach: 0.0,
+                half_angle: 0.0,
+                // (Never chosen against him: the court sends him to his food, `game::court::gluttony`.)
+                range: (99.0, 99.0),
+                shape: Shape::Spell,
+                ..BASE
+            },
+            MoveId::Scatter => MoveData {
+                name: "SCATTER",
+                startup: 64,
+                active: 6,
+                recovery: 48,
+                damage: 28.0,
+                reach: 12.0,
+                half_angle: 0.0,
+                track: 40,
+                hitstop: 8,
+                range: (3.0, 12.0),
+                shape: Shape::Mark { radius: 1.3 },
+                cooldown: 420,
+                ..BASE
+            },
+            MoveId::BellyRoll => MoveData {
+                name: "BELLY ROLL",
+                startup: 40,
+                active: 46,
+                recovery: 46,
+                damage: 30.0,
+                reach: 1.25,
+                half_angle: 0.0,
+                track: 30,
+                hitstop: 8,
+                range: (2.6, 7.5),
+                off: (0.0, deg(35.0)),
+                line: true,
+                shape: Shape::Charge { length: 7.0, speed: 9.5 },
+                cooldown: 300,
+                ..BASE
+            },
+            MoveId::BileSpew => MoveData {
+                name: "BILE SPEW",
+                startup: 38,
+                active: 1,
+                recovery: 38,
+                damage: 16.0,
+                reach: 9.0,
+                half_angle: 0.0,
+                track: 30,
+                hitstop: 5,
+                range: (2.0, 9.0),
+                off: (0.0, deg(60.0)),
+                shape: Shape::Traps { count: 4, radius: 0.85, fuse: 50, linger: 180 },
+                cooldown: 330,
+                ..BASE
+            },
+            MoveId::BellySlam => MoveData {
+                name: "BELLY SLAM",
+                startup: 42,
+                active: 6,
+                recovery: 50,
+                damage: 30.0,
+                reach: 1.2,
+                half_angle: deg(45.0),
+                track: 28,
+                hitstop: 8,
+                range: (0.0, 1.2),
+                off: (0.0, deg(60.0)),
+                shape: Shape::Quake { radius: 2.4, share: 0.45 },
+                ..BASE
+            },
             // Asmodeus's (Lust): a big body, his arm adds to the reach of his lance and his butt.
             MoveId::LanceThrust => MoveData {
                 name: "LANCE THRUST",

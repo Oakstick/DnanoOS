@@ -52,6 +52,8 @@ pub enum BoltLook {
     Coin,
     /// Asmodeus's blown kiss, a pink heart.
     Kiss,
+    /// Beelzebub's flies, a buzzing knot of them.
+    Flies,
     Blade,
 }
 
@@ -68,6 +70,7 @@ impl BoltLook {
             EnemyKind::Hel => BoltLook::Drain,
             EnemyKind::Mammon => BoltLook::Coin,
             EnemyKind::Asmodeus => BoltLook::Kiss,
+            EnemyKind::Beelzebub => BoltLook::Flies,
             _ => BoltLook::Hex,
         }
     }
@@ -85,6 +88,7 @@ impl BoltLook {
             BoltLook::Drain => 0x5a7cff,
             BoltLook::Coin => 0xe8b030,
             BoltLook::Kiss => 0xff6aa8,
+            BoltLook::Flies => 0x7a8a2a,
             BoltLook::Blade => REFLECT_TINT,
         }
     }

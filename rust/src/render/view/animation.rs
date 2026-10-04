@@ -139,7 +139,8 @@ impl WorldView {
             EnemyKind::Nightmare => (RigId::Nightmare, 0.35),
             // Gluttony's court
             EnemyKind::Beelzebub => (RigId::Beelzebub, 0.0),
-            EnemyKind::FlySwarm => (RigId::FlySwarm, 0.0),
+            // (The flies hang in the air.)
+            EnemyKind::FlySwarm => (RigId::FlySwarm, 0.3),
             // Lust's court
             EnemyKind::Asmodeus => (RigId::Asmodeus, 0.0),
         };
@@ -398,8 +399,6 @@ impl WorldView {
             | EnemyKind::Amon
             | EnemyKind::Belphegor
             | EnemyKind::Nightmare
-            | EnemyKind::Beelzebub
-            | EnemyKind::FlySwarm
             | EnemyKind::Asmodeus => {
                 // A walk: the blemmyes, the rasetsu and the oni lumber, the witch and the tengu stride,
                 // the kappa waddles, the skeletons stalk.
@@ -418,7 +417,7 @@ impl WorldView {
                     // (Lucifer strides in his plate, and so do his Reflections.)
                     EnemyKind::Lucifer | EnemyKind::Reflection => (0.42, 0.18),
                     // (The other princes, for now robed figures: small steps under the robe.)
-                    EnemyKind::Leviathan | EnemyKind::Beelzebub => (0.3, 0.16),
+                    EnemyKind::Leviathan => (0.3, 0.16),
                     // (Asmodeus glides in his long coat on his goose's feet: long, light steps.)
                     EnemyKind::Asmodeus => (0.42, 0.1),
                     EnemyKind::Witch | EnemyKind::Tengu | EnemyKind::Arcura => (0.7, 0.3),
@@ -455,6 +454,41 @@ impl WorldView {
                 if let Some(j) = rig.index("jaw") {
                     v.pose.rot[j].x += 0.14 + (time * 7.0 + i as f32).sin().abs() * 0.08;
                 }
+            }
+            EnemyKind::Beelzebub => {
+                // He waddles under his belly on his short legs, rolling from side to side; his wings
+                // never still, buzzing faster as he walks.
+                let s = v.phase.sin();
+                v.pose.rot_x(rig, "leftLeg", s * 0.28);
+                v.pose.rot_x(rig, "rightLeg", -s * 0.28);
+                v.pose.rot_x(rig, "leftArm", -s * 0.14);
+                v.pose.rot_x(rig, "rightArm", s * 0.14);
+                v.pose.rot_x(rig, "head", (v.phase * 2.0).sin() * 0.08 + (time * 1.3 + i as f32).sin() * 0.04);
+                v.root_rot.z = s * 0.08;
+                let buzz = if moving { 46.0 } else { 30.0 };
+                let flutter = (time * buzz + i as f32).sin() * if moving { 0.16 } else { 0.08 };
+                if let (Some(l), Some(r)) = (rig.index("leftWing"), rig.index("rightWing")) {
+                    v.pose.rot[l] = Vec3::new(flutter * 0.5, -0.1 + flutter * 0.3, 0.12 + flutter);
+                    v.pose.rot[r] = Vec3::new(flutter * 0.5, 0.1 - flutter * 0.3, -0.12 - flutter);
+                }
+            }
+            EnemyKind::FlySwarm => {
+                // A cloud: it bobs in the air, its four clouds of flies turning about its heart, two
+                // one way and two the other, and it leans into its flight.
+                let t = time + i as f32 * 1.7;
+                v.group_pos.y += (t * 2.3).sin() * 0.08;
+                for (k, name) in ["cloud1", "cloud2", "cloud3", "cloud4"].into_iter().enumerate() {
+                    if let Some(c) = rig.index(name) {
+                        let dir = if k % 2 == 0 { 1.0 } else { -1.3 };
+                        v.pose.rot[c] = Vec3::new(
+                            (t * 1.1 + k as f32).sin() * 0.12,
+                            t * dir * (1.2 + k as f32 * 0.3),
+                            (t * 0.9 + k as f32 * 2.0).cos() * 0.12,
+                        );
+                    }
+                }
+                v.root_rot.x = if moving { 0.15 } else { 0.0 };
+                v.root_rot.z = (t * 1.4).sin() * 0.05;
             }
             EnemyKind::Goryo => {
                 // It floats, bobbing; its sleeves drift, its head tilts.

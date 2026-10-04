@@ -3,7 +3,7 @@
 //! the atmosphere, and keeps what they share: the portals in and out (Greed's are the vaults'
 //! own).
 
-mod feast;
+pub(super) mod feast;
 mod field;
 mod grotto;
 mod mire;

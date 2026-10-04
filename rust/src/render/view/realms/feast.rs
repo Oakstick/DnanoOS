@@ -18,7 +18,7 @@
 //! crumbs rolling north and every flame leaning into the throat's draught. In the Last Course the
 //! walls close in, acid floods the rim, the swarm hunts him as a cloud and food flies at him.
 
-mod art;
+pub(in crate::render::view) mod art;
 
 use super::super::vault_decor::{self, push_merged, Merged, CANVAS, CANVAS_PX};
 use super::super::*;

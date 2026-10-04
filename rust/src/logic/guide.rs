@@ -444,6 +444,26 @@ fn court(sin: Sin, hail: &str) -> Guide {
     }
 
     // Gluttony's court, as built (its page to come here).
+    const BEELZEBUB_TALE: &[&str] = &[
+        "this is the Banquet of Flies: the feast laid round his hall in a U, and all of it gone grey with mould.",
+        "Beelzebub, Baal-Zebub, the lord of the flies: a bloated lord with a fly's head, a cleaver in his hand. He is never full.",
+        "Three moods: the Lord of Flies, the Swarm, and the Glutton. Every one of them is hungry.",
+    ];
+    const BEELZEBUB_TASK: &[&str] = &[
+        "Bring Beelzebub down. He drops the Key of Gluttony: take it, and the gate in the south wall opens to me.",
+        "Hurt, he goes to his table to eat, and it mends him. Strike him while he eats: he chokes, open, and the platter spoils.",
+        "Take the green crosses yourself, and soon: he eats one left lying on the floor. If you fall, he and his table stand whole again.",
+    ];
+    const BEELZEBUB_WATCH: &[&str] = &[
+        "His bloat turns most of a blow. Strike in his recoveries, when a parry leaves him reeling, or while he chokes.",
+        "The Lord of Flies chops with his cleaver and flings slow flies in a fan: block them, or parry them back.",
+        "The Swarm bursts into flies and falls on a ring that follows you: walk out of it at once. Two swarms rise from the food.",
+        "The Glutton rolls at you in a line, spews bile that burns where it lies, and slams his belly: step aside, step off.",
+        "If his steward fell in the feast, no swarms come; if the last course was laid, six platters wait and the swarms come at once.",
+    ];
+    if sin == Sin::Gluttony {
+        return page("THE BANQUET OF FLIES", hail, BEELZEBUB_TALE, BEELZEBUB_TASK, BEELZEBUB_WATCH);
+    }
 
     // Lust's court, as built (its page to come here).
     const ASMODEUS_TALE: &[&str] = &[

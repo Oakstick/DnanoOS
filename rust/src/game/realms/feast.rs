@@ -1010,7 +1010,7 @@ mod tests {
         g.update(STEP);
         assert_eq!(g.screen, Screen::Cleared, "through the pylorus");
         run(&mut g, CLEARED_SECONDS + 0.1);
-        assert_eq!((g.screen, g.realm, g.boss.is_some()), (Screen::Ready, Some(Sin::Gluttony), true), "Beelzebub's court");
+        assert_eq!((g.screen, g.realm, g.court_sin()), (Screen::Ready, Some(Sin::Gluttony), Some(Sin::Gluttony)), "Beelzebub's court");
         assert!(g.run.is_none());
     }
 
