@@ -125,16 +125,17 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     let tree = g.shop.tab;
 
     // The panel.
-    o.rect(x0, y0, pw, ph, [0.03, 0.03, 0.04, 0.95]);
-    o.rect_outline(x0, y0, pw, ph, (t * 0.08).max(1.5), rgba(0x6a7a9a, 0.9));
-    o.rect_outline(x0 + t * 0.15, y0 + t * 0.15, pw - t * 0.3, ph - t * 0.3, 1.0, rgba(0x3a4458, 0.8));
+    // Charcoal, a copper edge and a fine pale-stone line inside it.
+    o.rect(x0, y0, pw, ph, [INK[0], INK[1], INK[2], 0.95]);
+    o.rect_outline(x0, y0, pw, ph, (t * 0.08).max(1.5), rgba(COPPER, 0.9));
+    o.rect_outline(x0 + t * 0.15, y0 + t * 0.15, pw - t * 0.3, ph - t * 0.3, 1.0, [EDGE[0], EDGE[1], EDGE[2], 0.18]);
     let flourish = g.shop.flourish;
     o.text(
         "THE OLD GATEKEEPER",
         x0 + t * 0.7,
         y0 + t * 1.15,
         t * (0.95 + flourish * 0.08),
-        rgba(mix_rgb(0xa8c4e8, 0xffffff, flourish * 0.6), 1.0),
+        rgba(mix_rgb(GOLD, 0xffffff, flourish * 0.6), 1.0),
         Align::Left,
         true,
     );
@@ -175,7 +176,7 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 let bg = if owned {
                     [0.55, 0.45, 0.25, 0.14]
                 } else if next {
-                    [0.4, 0.55, 0.8, 0.12]
+                    [0.43, 0.6, 0.56, 0.12]
                 } else {
                     [1.0, 1.0, 1.0, 0.03]
                 };
@@ -296,13 +297,13 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 _ => false,
             };
             let afford = b.price <= g.progress.silver && b.runes <= g.progress.runes;
-            let base = if active_tab { [0.25, 0.32, 0.5, 0.95] } else { [0.02, 0.02, 0.03, 0.85] };
+            let base = if active_tab { [0.36, 0.2, 0.12, 0.95] } else { [INK[0], INK[1], INK[2], 0.85] };
             o.rect(rect[0], rect[1], rect[2], rect[3], base);
             if selected && b.enabled {
                 o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.12]);
             }
             let edge =
-                if selected && (row.buttons.len() > 1 || row.kind == RowKind::Leave) { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.16] };
+                if selected && (row.buttons.len() > 1 || row.kind == RowKind::Leave) { rgba(GOLD, pulse) } else { rgba(COPPER, 0.45) };
             o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), edge);
             let color = if !b.enabled {
                 0x7f7a70
@@ -376,7 +377,7 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     // The old man's words, bottom left under the crypt.
     let bw = x0 - t * 1.2;
     panel(o, t * 0.4, h - t * 2.6, bw, t * 2.2, t);
-    o.text("THE OLD MAN", t * 0.9, h - t * 1.95, small, rgba(0xa8c4e8, 1.0), Align::Left, true);
+    o.text("THE OLD MAN", t * 0.9, h - t * 1.95, small, rgba(GOLD, 1.0), Align::Left, true);
     wrap_left(o, old_man_line(g), t * 0.9, h - t * 1.2, bw - t * 1.0, t * 0.6, small * 0.95, rgba(TEXT, 1.0));
 }
 
@@ -501,8 +502,8 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     let hero = g.hero_kind;
     let prog = g.progress.hero(hero);
     let small = (t * 0.5).max(11.0);
-    o.rect(c[0], c[1], c[2], c[3], [0.0, 0.0, 0.0, 0.35]);
-    o.rect_outline(c[0], c[1], c[2], c[3], 1.0, [1.0, 1.0, 1.0, 0.12]);
+    o.rect(c[0], c[1], c[2], c[3], [INK[0], INK[1], INK[2], 0.5]);
+    o.rect_outline(c[0], c[1], c[2], c[3], 1.0, rgba(COPPER, 0.4));
     if g.shop.loadout {
         draw_loadout_card(o, g, t, c, rows);
         return;

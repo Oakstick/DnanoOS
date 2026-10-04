@@ -50,8 +50,8 @@ const PANEL_ROWS: f32 = 3.0;
 const TEXT: u32 = 0xe6e0d2;
 const TEXT_DIM: u32 = 0xaaa293;
 const SAND: u32 = 0xd7ccb8;
-// The art direction's UI: charcoal panels with a teal cast, pale-stone edges, amber where the
-// eye should go (the board's amber, lifted to read as text), a copper rule.
+// The art direction's UI: charcoal panels with a teal cast and copper edges, amber where the eye
+// should go (the board's amber, lifted to read as text), pale stone for quiet lines.
 const GOLD: u32 = 0xeab55e;
 const INK: [f32; 3] = [12.0 / 255.0, 17.0 / 255.0, 17.0 / 255.0];
 const EDGE: [f32; 3] = [0.62, 0.6, 0.54];
@@ -420,11 +420,12 @@ fn draw_sprite(o: &mut Overlay, s: &Sprite, x: f32, y: f32, scale: f32, tint: Op
 
 // ---------------------------------------------------------------------- HUD
 
+/// A charcoal panel with a copper edge, and a brighter copper rule along its top that ties the
+/// panels together.
 fn panel(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, t: f32) {
-    o.rect(x, y, w, h, [INK[0], INK[1], INK[2], 0.82]);
-    o.rect_outline(x, y, w, h, (t * 0.06).max(1.0), [EDGE[0], EDGE[1], EDGE[2], 0.26]);
-    // A thin copper rule along the top edge ties the panels together.
-    o.rect(x + t * 0.3, y, w - t * 0.6, (t * 0.06).max(1.0), rgba(COPPER, 0.6));
+    o.rect(x, y, w, h, [INK[0], INK[1], INK[2], 0.84]);
+    o.rect_outline(x, y, w, h, (t * 0.06).max(1.0), rgba(COPPER, 0.55));
+    o.rect(x + t * 0.3, y, w - t * 0.6, (t * 0.07).max(1.0), rgba(COPPER, 0.9));
 }
 
 /// Where flying keys land: the row of keys in the top-right panel.
@@ -1384,10 +1385,10 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
     for (i, (item, r)) in items.iter().zip(rects).enumerate() {
         let selected = i == g.menu_index;
         let quit = matches!(item, MenuItem::Quit | MenuItem::QuitToTitle | MenuItem::StartOver);
-        let bg = if selected { [EDGE[0], EDGE[1], EDGE[2], 0.26] } else { [1.0, 1.0, 1.0, 0.05] };
-        o.rect(r[0], r[1], r[2], r[3], [INK[0], INK[1], INK[2], 0.85]);
+        let bg = if selected { rgba(COPPER, 0.24) } else { [1.0, 1.0, 1.0, 0.03] };
+        o.rect(r[0], r[1], r[2], r[3], [INK[0], INK[1], INK[2], 0.88]);
         o.rect(r[0], r[1], r[2], r[3], bg);
-        let edge = if selected { rgba(GOLD, pulse) } else { [EDGE[0], EDGE[1], EDGE[2], 0.32] };
+        let edge = if selected { rgba(GOLD, pulse) } else { rgba(COPPER, 0.6) };
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), edge);
         let color = if selected {
             if quit {

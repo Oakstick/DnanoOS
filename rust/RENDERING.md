@@ -638,6 +638,16 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - The trees take the garden's grade; the soul halos are gentler; the fireflies are amber and
     kept away from the camera.
   - The menu panels are charcoal with pale-stone edges and a copper rule; the gold is amber.
+- **The HUD, the pause menu and the shop** (`hud.rs`, `hud/shop.rs`):
+  - The in-play panels are charcoal (`INK`) with a copper edge and a brighter copper rule along
+    the top, instead of a faint pale-stone edge.
+  - The menu buttons (the pause menu, and the title's) sit on charcoal with copper edges; the
+    highlighted one is washed copper under its amber outline.
+  - The old gatekeeper's panel was a blue-grey frame on black: it is charcoal with a copper edge
+    and a fine pale-stone line inside, its title amber. The open tab is a dark copper instead of
+    blue, the next tier to buy is washed mist teal instead of blue, and the buttons and the card
+    have copper edges.
+  - Text keeps its colours (pale stone, amber, the warning red), so it reads as before.
 - **The skies:**
   - The night is teal-charcoal with a low mist-teal glow at the horizon, a warmer milky band,
     fewer stars and a teal moon halo.
