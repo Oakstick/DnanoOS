@@ -552,7 +552,7 @@ impl WorldView {
             self.build_gate(grid, g, if meadow { 1 } else { 8 });
         }
         // The garden and its gate, and the Cyclops' meadow, graded into the board's palette.
-        if self.estate_art || theme == Theme::Meadow {
+        if self.estate_art || theme == Theme::Meadow || (self.hell && !self.gym) {
             self.grade_estate();
         }
         self.mist_set = InstanceSet::new(self.mist.clone());

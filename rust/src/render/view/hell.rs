@@ -16,12 +16,14 @@ use crate::logic::sins::{Sin, SINS};
 use crate::render::voxels::Mesh;
 
 mod pal {
-    pub const BASALT: [u32; 4] = [0x3e3838, 0x4a4242, 0x585050, 0x363030];
-    pub const SLAB: [u32; 4] = [0x6a605a, 0x5a524e, 0x786c64, 0x645a54];
-    pub const CRUST: u32 = 0x2a120c;
-    pub const LAVA_DEEP: u32 = 0x8a1e06;
-    pub const LAVA: u32 = 0xff4a0a;
-    pub const LAVA_HOT: u32 = 0xffb040;
+    // The art direction's palette: charcoal basalt, dressed slabs of umber and pale stone, and
+    // lava burning amber and ember rather than blood red.
+    pub const BASALT: [u32; 4] = [0x383e3c, 0x434947, 0x4f5552, 0x313735];
+    pub const SLAB: [u32; 4] = [0x6e665c, 0x5e5850, 0x7a7064, 0x665e54];
+    pub const CRUST: u32 = 0x24140c;
+    pub const LAVA_DEEP: u32 = 0x8a3006;
+    pub const LAVA: u32 = 0xf2661a;
+    pub const LAVA_HOT: u32 = 0xffbc4a;
     pub const BONE: u32 = 0xd8ccb0;
     pub const BONE_D: u32 = 0xa89878;
     pub const WOOD: [u32; 3] = [0x5a3a22, 0x4a3020, 0x6a4428];
@@ -61,19 +63,20 @@ const SEAL_RING: f32 = 0.5;
 /// Dusk in hell: a dark red sky, the lava lighting everything from below, embers in the air.
 pub fn hell_atmosphere() -> Atmosphere {
     Atmosphere {
-        background: 0x2a0a0e,
+        // A charcoal smoke over the lava, its light amber from below (it was a red murk).
+        background: 0x1c1614,
         fog_near: 18.0,
         fog_far: 52.0,
-        hemi_sky: lin(0x9a6a7a) * 0.9,
-        hemi_ground: lin(0xff5a1a) * 0.6,
-        ambient: lin(0x6a4448) * 0.6,
+        hemi_sky: lin(0x7e8480) * 0.75,
+        hemi_ground: lin(0xf07a2a) * 0.55,
+        ambient: lin(0x564a44) * 0.6,
         sun_dir: Vec3::new(0.35, 0.8, 0.45).normalize(),
-        sun: lin(0xffb08a) * 1.7,
+        sun: lin(0xffc08a) * 1.6,
         exposure: 1.3,
         night_sky: 0.0,
         bloom: 1.2,
         moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
-        cloud_tint: lin(0x3a1010),
+        cloud_tint: lin(0x2a1a14),
     }
 }
 
