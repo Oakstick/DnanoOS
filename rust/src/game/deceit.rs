@@ -101,7 +101,10 @@ pub enum Asking {
 /// from the realm's own (Pride's Glory).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tainted {
-    pub elixirs: Vec<PotionKind>,
+    /// The belt's slots that hold his false bottles (a slot, not a kind: a true bottle of the same
+    /// elixir beside it is his own), and whether the bottle drunk this frame was one.
+    pub slots: Vec<usize>,
+    pub drank: bool,
     pub blade: Option<u32>,
     pub turned: f64,
     pub shattered: f64,
@@ -111,11 +114,23 @@ pub struct Tainted {
 
 impl Default for Tainted {
     fn default() -> Self {
-        Tainted { elixirs: Vec::new(), blade: None, turned: 0.0, shattered: 0.0, applied: 1.0, expect: f64::NAN }
+        Tainted { slots: Vec::new(), drank: false, blade: None, turned: 0.0, shattered: 0.0, applied: 1.0, expect: f64::NAN }
     }
 }
 
 impl Tainted {
+    /// Slot `slot` of the belt is drunk: whether it held a false bottle (the slots after it move
+    /// down one, as the belt does).
+    pub fn drink_slot(&mut self, slot: usize) -> bool {
+        let was = self.slots.contains(&slot);
+        self.slots.retain(|&s| s != slot);
+        for s in self.slots.iter_mut().filter(|s| **s > slot) {
+            *s -= 1;
+        }
+        self.drank |= was;
+        was
+    }
+
     /// What the false wares do to his blows now.
     pub fn might(&self) -> f64 {
         let mut m = 1.0;
@@ -132,7 +147,7 @@ impl Tainted {
     }
 
     pub fn any(&self) -> bool {
-        !self.elixirs.is_empty() || self.blade.is_some() || self.turned > 0.0 || self.shattered > 0.0
+        !self.slots.is_empty() || self.blade.is_some() || self.turned > 0.0 || self.shattered > 0.0
     }
 }
 
@@ -198,11 +213,14 @@ impl Game {
     /// blows his own again), and every cheat with it.
     pub(super) fn leave_deceit(&mut self) {
         let t = std::mem::take(&mut self.voices.deceit.tainted);
-        for k in &t.elixirs {
-            if let Some(i) = self.belt.iter().rposition(|b| b == k) {
+        let mut slots = t.slots.clone();
+        slots.sort_unstable_by(|a, b| b.cmp(a));
+        for i in slots {
+            if i < self.belt.len() {
                 self.belt.remove(i);
             }
         }
+        self.belt_index = self.belt_index.min(self.belt.len().saturating_sub(1));
         if let Some(b) = self.brawl.as_mut() {
             if (b.might - t.expect).abs() < 1e-12 {
                 b.might /= t.applied;
@@ -641,7 +659,8 @@ impl Game {
         match ware.kind {
             WareKind::Elixir(p) => {
                 self.belt.push(p);
-                self.voices.deceit.tainted.elixirs.push(p);
+                let slot = self.belt.len() - 1;
+                self.voices.deceit.tainted.slots.push(slot);
             }
             WareKind::Blade => self.voices.deceit.tainted.blade = Some(BLADE_BLOWS),
         }
@@ -656,10 +675,9 @@ impl Game {
         let events = self.war.read.clone();
         for e in events {
             match e {
-                WarEvent::Drank { potion } => {
+                WarEvent::Drank { .. } => {
                     let t = &mut self.voices.deceit.tainted;
-                    if let Some(i) = t.elixirs.iter().position(|&k| k == potion) {
-                        t.elixirs.remove(i);
+                    if std::mem::take(&mut t.drank) {
                         t.turned = TURN_SECONDS;
                         self.audio.play(Sfx::Denied);
                         self.floater(hp.x, hp.y - 1.2, "THE ELIXIR TURNS: YOUR ARMS GO WEAK", 2.0, Some(sin.color()));
@@ -844,6 +862,18 @@ pub fn biter_of(stage: u8) -> EnemyKind {
 
 #[cfg(test)]
 mod tests {
+
+    /// His own bottle of the same elixir beside a false one is his own: only the false one turns.
+    #[test]
+    fn a_true_bottle_beside_a_false_one_stays_true() {
+        let mut t = Tainted::default();
+        t.slots.push(1); // the false strength in slot 1, his own in slot 0
+        assert!(!t.drink_slot(0), "his own bottle");
+        assert_eq!(t.slots, vec![0], "the false one moves down a slot");
+        assert!(!std::mem::take(&mut t.drank));
+        assert!(t.drink_slot(0), "the false one");
+        assert!(t.drank && t.slots.is_empty());
+    }
     use super::super::realms::tests::{in_realm, STEP};
     use super::*;
     use crate::logic::progression::TREES;
@@ -897,7 +927,8 @@ mod tests {
         assert!((g.brawl.as_ref().unwrap().might - base * BLADE_MIGHT).abs() < 1e-9, "the bright blade bites");
         // A second bottle of his, drunk: it turns.
         g.belt.push(PotionKind::Strength);
-        g.voices.deceit.tainted.elixirs.push(PotionKind::Strength);
+        g.voices.deceit.tainted.slots.push(g.belt.len() - 1);
+        assert!(g.voices.deceit.tainted.drink_slot(g.belt.len() - 1));
         g.belt.pop();
         g.war.read = vec![WarEvent::Drank { potion: PotionKind::Strength }];
         g.update_deceit(STEP);
@@ -925,7 +956,7 @@ mod tests {
         assert!(g.enemies.last().unwrap().duel.is_some());
         // Leave the realm: every false ware is gone, and nothing he owns went with it.
         g.war.read.clear();
-        assert_eq!(g.voices.deceit.tainted.elixirs.len(), 1, "the bottle he bought, not yet drunk");
+        assert_eq!(g.voices.deceit.tainted.slots.len(), 1, "the bottle he bought, not yet drunk");
         g.leave_deceit();
         assert_eq!(bottles(&g), on_belt - 1, "the false bottle is gone from his belt");
         assert!(!g.voices.deceit.tainted.any());

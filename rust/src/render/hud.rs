@@ -867,6 +867,15 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
         o.rect(x, y, slot, slot, [1.0, 1.0, 1.0, 0.06]);
         if let Some(&k) = g.belt.get(i) {
             draw_sprite(o, icon(Icon::Potion(hk, k)), x + slot * 0.08, y + slot * 0.08, slot * 0.84 / 16.0, None, 1.0);
+            if g.voices.deceit.tainted.slots.contains(&i) {
+                // A false bottle from the prince's gatekeeper: the wrong colour swims in the glass.
+                let tint = match g.level.data.theme {
+                    crate::logic::level::Theme::Realm(sin) => sin.color(),
+                    _ => 0x8a3ac0,
+                };
+                let pulse = 0.22 + 0.1 * (g.time as f32 * 3.0).sin();
+                o.rect(x + slot * 0.3, y + slot * 0.45, slot * 0.4, slot * 0.4, rgba(tint, pulse));
+            }
         }
         let sel = i == g.belt_index && i < g.belt.len();
         o.rect_outline(
