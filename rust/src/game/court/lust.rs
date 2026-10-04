@@ -4,8 +4,9 @@
 //! - **The censers** (Tobit): a blow on a cold censer lights it, and it smokes for ten seconds.
 //!   While any smokes, his allure is gone (his hide turns nothing) and he will not stand within
 //!   three tiles of a smoking one: he backs away from it. Each censer lights twice in a fight (once,
-//!   if his general's decree was done). The smoke is shown as puffs on the scene (`Flash`es of
-//!   smoke at the censer, which the court's view also reads to light its embers).
+//!   if his general's decree was done). Its embers burn in the bowl, on the scene as fire no one can
+//!   stand in (a `Hazard` of no width on the censer's own tile), which the court's view reads to draw
+//!   the embers and the smoke.
 //! - **The blown kiss**: a pink heart, his one bolt. No shield stops it and no parry turns it: it
 //!   is leapt, or struck out of the air by the hero's blade. If it strikes him he is smitten for a
 //!   moment: his guard will not rise (he still walks, leaps and swings). It is met here, the frame
@@ -17,7 +18,7 @@
 
 use crate::audio::Sfx;
 use crate::game::{Game, Screen};
-use crate::logic::combat::ails::{Flash, FlashKind};
+use crate::logic::combat::ails::Hazard;
 use crate::logic::combat::archetype::Power;
 use crate::logic::combat::duelist::{BoltLook, Flow, GridTerrain, Lore, Terrain, HERO_RADIUS};
 use crate::logic::combat::frames::{BOLT_RADIUS, BOLT_SPEED};
@@ -35,8 +36,8 @@ use crate::logic::types::{dist_sq, P, V};
 
 /// A censer's body, for a blow's reach.
 const CENSER_RADIUS: f64 = 0.4;
-/// Frames between the puffs of a smoking censer.
-const PUFF_EVERY: u32 = 10;
+/// Frames the embers in a smoking censer's bowl are kept on the scene for (renewed every tick).
+const EMBERS: u16 = 4;
 /// Pink, the colour of his kisses and his court's floaters.
 const ROSE: u32 = 0xff6aa8;
 
@@ -58,7 +59,6 @@ pub struct Bower {
     ring: u32,
     swing: Option<u32>,
     smoking: bool,
-    puffed: u32,
     told: bool,
 }
 
@@ -178,11 +178,14 @@ impl Game {
             self.floater(at.x, at.y - 1.0, "ITS LAST FIRE", 1.4, Some(0xc8b8a8));
         }
         self.audio.play(Sfx::RaphaelBeam);
+        if let Some(b) = self.brawl.as_mut() {
+            b.hazards.push(Hazard { pos: at, radius: 0.0, life: EMBERS });
+        }
         self.view.sparkle(&self.level.grid, at.x, at.y, 1.2, 0xffd890, 26);
         self.view.dust(&self.level.grid, at.x, at.y, 0xd8d0e0, 14, 1.2);
     }
 
-    /// The smoke: puffs from every smoking censer, his allure gone while any smokes (and back as the
+    /// The smoke: embers in every smoking censer's bowl, his allure gone while any smokes (back as the
     /// last goes cold), and he backs away from each smoking one.
     fn censers_smoke(&mut self, id: u32, frame: u32, dt: f64) {
         let Some(b) = self.bower() else { return };
@@ -190,14 +193,10 @@ impl Game {
         let was = std::mem::replace(&mut b.smoking, smokes);
         let lit: Vec<V> =
             CENSERS.iter().zip(b.censers.iter()).filter(|(_, c)| c.until > frame).map(|(&(x, y), _)| P::new(x, y).v()).collect();
-        let puff = b.puffed != frame && frame.is_multiple_of(PUFF_EVERY);
-        if puff {
-            b.puffed = frame;
-        }
-        if puff {
-            if let Some(br) = self.brawl.as_mut() {
-                br.flashes.extend(lit.iter().map(|&p| Flash::new(FlashKind::Smoke, p)));
-            }
+        if let Some(br) = self.brawl.as_mut() {
+            // The embers in the bowls of those that smoke (a fire no one can stand in: no width).
+            br.hazards.retain(|h| h.radius > 0.0);
+            br.hazards.extend(lit.iter().map(|&p| Hazard { pos: p, radius: 0.0, life: EMBERS }));
         }
         let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id && d.alive()) else { return };
         d.breed.power = if smokes { Power::None } else { Power::Allure };
@@ -530,7 +529,7 @@ mod tests {
         strike_censer(&mut g, 1);
         let c = g.censers()[1];
         assert!(c.1 && c.2 == LIGHTS - 1, "lit once by one swing: {c:?}");
-        assert!(g.brawl.as_ref().unwrap().flashes.iter().any(|f| f.kind == FlashKind::Smoke), "its smoke shows");
+        assert!(g.brawl.as_ref().unwrap().hazards.iter().any(|h| h.radius == 0.0), "its embers show");
         // He will not stand within three tiles of it: set beside it, he backs away.
         let at = g.censers()[1].0;
         asmodeus(&mut g).pos = math::add(at, V::new(1.6, 0.6));
