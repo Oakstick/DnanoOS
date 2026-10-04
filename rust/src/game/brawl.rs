@@ -348,6 +348,9 @@ impl Game {
         for e in events {
             match e {
                 Event::Began(mv) => {
+                    if mv == MoveId::L3 {
+                        self.rivals_read_the_finisher();
+                    }
                     self.hero.exert(cost);
                     let d = self.brawl.as_ref().map(|b| b.hero.data(mv)).unwrap_or(mv.data());
                     self.view.sword_slash_timed(secs(d.startup) as f32, secs(d.active) as f32, secs(d.recovery) as f32);

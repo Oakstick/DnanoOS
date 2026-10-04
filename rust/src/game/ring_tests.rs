@@ -812,3 +812,55 @@ fn two_casters_cross_their_fire_as_one_strike() {
     let s = g.brawl.as_ref().unwrap().stats;
     assert_eq!(s.overlaps, 0, "{s:?}");
 }
+
+/// A rival who has learnt his finisher (WARBAND.md §8.3) sways back out of it as it begins:
+/// untouchable through the sway's first frames, carried a step back, the finisher passing him by.
+#[test]
+fn a_rival_who_knows_his_finisher_sways_out_of_it() {
+    use super::bot::fresh_game;
+    use crate::logic::war::ledger::Lesson;
+    use crate::logic::war::names::Deed;
+    let mut g = fresh_game(9);
+    g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
+    g.enter(Screen::Playing);
+    for _ in 0..10 {
+        g.update(crate::app::STEP);
+    }
+    g.hero.face(Dir::Up);
+    let hp = g.hero.pos();
+    let (id, kind) = {
+        let d = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).next().unwrap();
+        // (Out of the string's first blows' reach, inside the sway's: a staggered rival sways from nothing.)
+        d.pos = V::new(hp.x, hp.y - 2.4);
+        d.facing = V::new(0.0, 1.0);
+        d.rest = u16::MAX;
+        if let Some(den) = d.den.as_mut() {
+            den.awake = true;
+        }
+        (d.id, d.breed.kind)
+    };
+    let rival = g.promote_rival(kind, Deed::KillingBlow);
+    if let Some(r) = g.warband.save.ledger.get_mut(rival) {
+        r.rank = 3;
+        r.lesson = Some(Lesson::Finisher);
+    }
+    g.war.grudges.seated.push((id, rival));
+    let mut swayed = false;
+    for _ in 0..(3.0 / crate::app::STEP) as usize {
+        g.hero.hp = g.hero.max_hp;
+        // (He holds his ground at the string's edge until the finisher comes.)
+        if !g.brawl.as_ref().unwrap().hero.attack().is_some_and(|a| a.0 == MoveId::L3) {
+            let d = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id).unwrap();
+            d.pos = V::new(hp.x, hp.y - 2.4);
+        }
+        g.input.inject(crate::input::Action::Attack);
+        g.update(crate::app::STEP);
+        let d = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id).unwrap();
+        if matches!(d.f.state, crate::logic::combat::fsm::State::Evade { .. }) {
+            swayed = true;
+            assert!(g.brawl.as_ref().unwrap().hero.attack().is_some_and(|a| a.0 == MoveId::L3), "it sways as the finisher comes");
+            break;
+        }
+    }
+    assert!(swayed, "he read the finisher");
+}

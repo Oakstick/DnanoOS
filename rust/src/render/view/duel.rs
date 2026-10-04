@@ -512,6 +512,13 @@ impl WorldView {
                     }
                 }
             }
+            State::Evade { frame } if !d.puppet => {
+                // A rival swaying back out of his finisher: low, leaning away, then up again.
+                let u = (frame as f32 / d.f.evade_total.max(1) as f32).min(1.0);
+                let arc = (u * PI).sin();
+                v.root_rot.x = -0.45 * arc;
+                v.root_scale = Vec3::new(1.0 + 0.06 * arc, 1.0 - 0.14 * arc, 1.0 + 0.06 * arc);
+            }
             _ => {}
         }
     }

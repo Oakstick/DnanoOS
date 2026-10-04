@@ -33,6 +33,11 @@ pub const SCHEME_HORN: u16 = 60;
 /// A Greedy rival this near a foe that falls stops this long to eye its spoils.
 pub const GREED_RANGE: f64 = 5.0;
 pub const GREED_PAUSE: u16 = 50;
+/// A rival who learnt his finisher sways back from it: within this of him, at most once in this
+/// many frames, carried back this fast (tiles a second, fading as any knock does).
+pub const SWAY_NEAR: f64 = 3.2;
+pub const SWAY_EVERY: u32 = 300;
+pub const SWAY_SPEED: f64 = 4.0;
 /// What a feared family's blow does to a rival's poise, against its whole.
 pub const FEAR_POISE: f64 = 3.0;
 
@@ -51,6 +56,8 @@ pub struct Grudges {
     pub promoted: u32,
     /// A rival waiting before he strikes (his lesson): (duelist id, frames left).
     pub waiting: Vec<(u32, u16)>,
+    /// Rivals who read his finisher, and the frame they last swayed from it.
+    pub swayed: Vec<(u32, u32)>,
     /// A Schemer's horn: (duelist id, frames left); and the schemers who have blown theirs.
     pub horns: Vec<(u32, u16)>,
     pub schemed: Vec<u32>,
@@ -396,6 +403,46 @@ impl Game {
         match r.weakness {
             Weakness::Fears(f) if f == Family::of(self.hero_kind, self.hero.blade) => FEAR_POISE,
             _ => 1.0,
+        }
+    }
+
+    /**
+     * He begins his finisher: a rival who has learnt it (the Finisher lesson) and stands free near
+     * him sways back out of it, untouchable through the sway's first frames and carried a step
+     * back. A choice, not a frame of any move (I6); once in five seconds.
+     */
+    pub(super) fn rivals_read_the_finisher(&mut self) {
+        if !self.grudges_kept() {
+            return;
+        }
+        let hp = self.hero.pos();
+        let now = self.brawl.as_ref().map(|b| b.threat.frame).unwrap_or(0);
+        let seated = self.war.grudges.seated.clone();
+        for (id, _) in seated {
+            if !matches!(self.rival_traits(id), Some((Some(Lesson::Finisher), ..))) {
+                continue;
+            }
+            if self.war.grudges.swayed.iter().any(|s| s.0 == id && now.saturating_sub(s.1) < SWAY_EVERY) {
+                continue;
+            }
+            let Some(d) = self.duel_index(id).and_then(|i| self.enemies[i].duel.as_deref_mut()) else { continue };
+            if !d.alive() || !d.f.is_neutral() || dist_sq(d.pos, hp) > SWAY_NEAR * SWAY_NEAR {
+                continue;
+            }
+            // (One walking in with its token gives it back: it sways instead of striking.)
+            let held = std::mem::take(&mut d.token);
+            d.f.evade();
+            let away = crate::logic::combat::math::norm(crate::logic::combat::math::sub(d.pos, hp));
+            d.knock = crate::logic::combat::math::scale(away, SWAY_SPEED);
+            let p = d.pos;
+            self.war.grudges.swayed.retain(|s| s.0 != id);
+            self.war.grudges.swayed.push((id, now));
+            if held {
+                if let Some(b) = self.brawl.as_mut() {
+                    b.threat.release(id);
+                }
+            }
+            self.floater(p.x, p.y - 1.6, "HE KNOWS YOUR FINISHER", 1.2, Some(0xffc040));
         }
     }
 
