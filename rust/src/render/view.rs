@@ -554,8 +554,9 @@ impl WorldView {
         // The garden and its gate, and the Cyclops' meadow, graded into the board's palette.
         if self.estate_art || theme == Theme::Meadow || (self.hell && !self.gym) {
             self.grade_estate();
-        } else if vault.is_some() || run.is_some() {
-            // The sin realms: graded into the board, their sin's colour kept as their accent.
+        } else if vault.is_some() || run.is_some() || matches!(theme, Theme::Court(s) if s != Sin::Greed) {
+            // The sin realms, and the princes' stand-in courts (Mammon's is his own): graded into
+            // the board, their sin's colour kept as their accent.
             self.grade_scenery(theme.sin().map(|s| s.color()));
         }
         self.mist_set = InstanceSet::new(self.mist.clone());

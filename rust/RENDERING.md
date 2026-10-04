@@ -661,6 +661,11 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - lava that burns amber and ember instead of blood red;
   - a charcoal smoke lit amber from below.
   - The sin portals keep their colours, and the gym keeps its look.
+- **The princes' stand-in courts** (`court:0..6` but Greed's, which is Mammon's own): the Cyclops'
+  meadow under the sin's sky is graded as the realms are (`grade_scenery` with the sin's hue
+  kept), so its grass and hedges come to moss and olive, its walls and pillars to pale dressed
+  stone, and only the sin's own colour stays loud. The sin's tint on the sky and the light is
+  unchanged.
 - **The seven realms and Mammon's vaults:** graded into the board as they are built
   (`grade_scenery`). Colours near the realm's sin hue keep their saturation as its accent:
   Pride's violet, Envy's green, Greed's gold, Lust's pink. Everything else (chalk floors, loud
