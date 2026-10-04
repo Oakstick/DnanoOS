@@ -190,6 +190,8 @@ impl Game {
         if let Some(sin) = run_sin {
             self.enter_run(sin);
         }
+        // The realm's general at his post (WARBAND.md §9; none outside the realms).
+        self.enter_general();
         // Greed's court: Mammon by frame data, not the Cyclops (`court`).
         let court = data.theme.is_court_of_greed();
         self.court = None;
@@ -198,7 +200,11 @@ impl Game {
         }
         self.boss = if self.level.data.boss && !court {
             let (x0, y0, x1, y1) = ARENA;
-            let hp = CYCLOPS_HP + CYCLOPS_HP_STEP * index as i32;
+            let mut hp = CYCLOPS_HP + CYCLOPS_HP_STEP * index as i32;
+            // (A prince stood in by a Cyclops: his general's decree and death weigh on his health.)
+            if let Some(sin) = self.theme().sin() {
+                hp = (hp as f64 * self.prince_terms(sin).health).round() as i32;
+            }
             let min = V::new(x0 as f64 + 1.0, y0 as f64 + 0.5);
             let max = V::new(x1 as f64 - 1.0, y1 as f64 - 0.5);
             Some(Cyclops::new(self.level.enemy_spawn.v(), min, max, hp, self.rng.index(1 << 30) as u32))
@@ -338,6 +344,7 @@ impl Game {
         self.boss_shots.clear();
         self.reset_run();
         self.reset_court();
+        self.reset_general();
     }
 
     pub(super) fn start_game(&mut self) {

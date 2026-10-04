@@ -31,6 +31,7 @@ mod feel;
 mod flow;
 mod foes;
 mod gate;
+pub mod general;
 mod health;
 mod hub;
 mod juice;
@@ -438,6 +439,8 @@ pub struct Game {
     pub run: Option<crate::logic::realms::Run>,
     /// Greed's court, the Counting House, while he is in it: its prince's fight (`court`).
     pub court: Option<court::Court>,
+    /// The general of the realm he is in, while he is in it (WARBAND.md §9, `general`).
+    pub general: Option<general::GeneralRun>,
     /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
     pub hoard: Hoard,
     toll_asked: bool,
@@ -578,6 +581,7 @@ impl Game {
             vault: None,
             run: None,
             court: None,
+            general: None,
             hoard: Hoard::default(),
             toll_asked: false,
             vault_kit: (Vec::new(), 0),
@@ -749,6 +753,7 @@ impl Game {
         self.update_gym(dt);
         self.update_vault(dt);
         self.update_run(dt);
+        self.update_general(dt);
         self.sim.fights += lap.lap();
         self.update_spawns(dt);
         self.update_slime_trails(dt);

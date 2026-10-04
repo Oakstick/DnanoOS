@@ -62,6 +62,7 @@ macro_rules! scene_state {
             time_scale: $g.time_scale() as f32,
             hero_fighter: $g.brawl.as_ref().filter(|_| $g.brawling()).map(|b| &b.hero),
             parry_edge: $g.parry_edge(),
+            general: $g.general.as_ref(),
         }
     };
 }

@@ -27,6 +27,7 @@ mod map;
 mod mastery;
 mod ring;
 mod shop;
+mod war;
 
 pub use controls::controls_tab_rects;
 pub use ledger::draw_ledger_board;
@@ -224,6 +225,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         draw_world_overlays(o, g, t);
         voices::draw_signs(o, g, t);
         ledger::draw_rival_card(o, g, t);
+        war::draw_war(o, g, t);
         ring::draw_ring(o, g, t);
         mastery::draw_mastery_toast(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });

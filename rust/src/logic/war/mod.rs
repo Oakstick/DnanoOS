@@ -8,6 +8,7 @@
 pub mod counsel;
 pub mod deceit;
 pub mod drum;
+pub mod general;
 pub mod ledger;
 pub mod mastery;
 pub mod names;
@@ -18,7 +19,9 @@ use crate::logic::combat::fsm::{Defense, Effect};
 use crate::logic::combat::MoveId;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::rng::Rng;
+use crate::logic::sins::Sin;
 use crate::logic::types::{PotionKind, V};
+use general::{OrderKind, OrderStage};
 
 /// One thing that happened in a fight, as the layers above and around it hear of it. The brawl
 /// writes them in the order they happen; `game::war` reads them once a frame.
@@ -40,6 +43,10 @@ pub enum WarEvent {
     Slain { foe: u32, kind: EnemyKind, at: V, dir: V, last_of_pack: bool },
     /// He drank a potion.
     Drank { potion: PotionKind },
+    /// A general's order moved on (WARBAND.md §9): announced, under way, broken, done, ready again.
+    Order { general: Sin, order: OrderKind, stage: OrderStage },
+    /// One of a general's instruments was struck (`broken` once its last blow fell).
+    Instrument { general: Sin, id: u16, broken: bool },
 }
 
 impl WarEvent {
@@ -51,7 +58,7 @@ impl WarEvent {
             | WarEvent::Whiffed { foe, .. }
             | WarEvent::HeroHit { foe, .. }
             | WarEvent::Slain { foe, .. } => Some(foe),
-            WarEvent::Drank { .. } => None,
+            WarEvent::Drank { .. } | WarEvent::Order { .. } | WarEvent::Instrument { .. } => None,
         }
     }
 }

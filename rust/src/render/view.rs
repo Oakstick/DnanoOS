@@ -61,6 +61,7 @@ mod spring;
 mod story;
 mod vault;
 mod vault_decor;
+mod war_props;
 mod workshop;
 
 pub use animation::SLASH_SECONDS;
@@ -176,6 +177,8 @@ pub struct SceneState<'a> {
     /// His last parrying guard frame, when his mastery shows the parry's moment as a white edge on
     /// the telegraphs (WARBAND.md §11.1, Miyamoto's first rank).
     pub parry_edge: Option<u16>,
+    /// The general of the realm, his instruments and his orders' marks (WARBAND.md §9).
+    pub general: Option<&'a crate::game::general::GeneralRun>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the

@@ -20,6 +20,8 @@ pub struct MapStop {
     pub stage: Stage,
     pub label: String,
     pub scene: Option<usize>,
+    /// The stop is a general's command post in the stage's realm (WARBAND.md §9).
+    pub post: bool,
 }
 
 /// The road down: the Garden and its Cyclops, the Portals of Hell, then each sin's realm and
@@ -40,15 +42,22 @@ pub fn map_stops() -> Vec<MapStop> {
     stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
     // The old man's workshop, as after the first Cyclops.
     stops.push(stop(Stage::Shop(0), "THE OLD MAN'S WORKSHOP".to_string()));
+    // Each realm's general at his command post.
+    for sin in SINS {
+        // (The Steward of the Last Course is the Steward on the Map's button.)
+        let full = crate::logic::war::general::General::of(sin).name;
+        let name = if full.len() > 26 { full.split(" OF ").next().unwrap_or(full) } else { full };
+        stops.push(MapStop { stage: Stage::Realm(sin), label: format!("{} - {name}'S POST", sin.title()), scene: None, post: true });
+    }
     // The story's scenes, from the start of each place: the graveyard at dusk, and the gateway below.
     for (beat, label) in [(0, "SCENE I - THE GRAVEYARD"), (story::first(Shot::Arrive).unwrap_or(0), "SCENE I - THE DUNGEON GATEWAY")] {
-        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some(beat) });
+        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some(beat), post: false });
     }
     stops
 }
 
 fn stop(stage: Stage, label: String) -> MapStop {
-    MapStop { stage, label, scene: None }
+    MapStop { stage, label, scene: None, post: false }
 }
 
 impl Game {
@@ -136,7 +145,13 @@ impl Game {
             let stop = &stops[self.map_index.min(n - 1)];
             match stop.scene {
                 Some(beat) => self.map_scene(beat),
-                None => self.map_jump(stop.stage),
+                None => {
+                    let post = stop.post;
+                    self.map_jump(stop.stage);
+                    if post {
+                        self.jump_to_post();
+                    }
+                }
             }
         }
     }

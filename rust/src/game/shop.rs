@@ -146,6 +146,7 @@ fn button(action: ShopAction, label: impl Into<String>, price: u32, runes: u32, 
 impl Game {
     /// The old man's wares after a Cyclops, on the first row of weapons.
     pub fn open_shop(&mut self) {
+        self.hang_banners();
         self.shop = ShopState::default();
         self.shop.row = self.first_row_of_interest();
         self.enter(Screen::Shop);

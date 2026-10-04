@@ -23,7 +23,9 @@
 //! before him),
 //! `hero:K` (play hero K: 0 Ragnar, 1 Mehmed, 2 Miyamoto), `mastery:N` (his mastery at rank N, its
 //! next rank's deeds part done), `yard` (the training yard, its trials' card up), `trial:N` (his
-//! trial of rank N in the ring) and `toast` (MASTERY RISES),
+//! trial of rank N in the ring), `toast` (MASTERY RISES),
+//! `general:S` (sin S's realm, before its general's command post: 4 is
+//! the Assessor's) and `order:K` (the realm's general gives his order K now, 0..2),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
 //! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam)
 //! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
@@ -156,6 +158,10 @@ pub(crate) enum Cmd {
     Yard,
     Trial(u8),
     Toast,
+    /// Into sin S's realm, before its general's command post (WARBAND.md §9).
+    General(usize),
+    /// The realm's general gives his order K (0..2) now.
+    Order(usize),
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -192,6 +198,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "bot" => Cmd::Bot(parts.next().and_then(|v| v.parse().ok()).unwrap_or(2)),
             "readout" => Cmd::Press(Action::Readout),
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "general" => Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4)),
+            "order" => Cmd::Order(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -313,6 +321,11 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             *bot = Some(crate::game::bot::Bot::new(crate::game::bot::Skill::ALL[k.min(2)], 1));
         }
         Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
+        Cmd::General(n) => {
+            game.map_jump(Stage::Realm(SINS[n.min(6)]));
+            game.jump_to_post();
+        }
+        Cmd::Order(k) => game.debug_order(k),
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
