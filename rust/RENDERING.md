@@ -618,6 +618,14 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - chalk paving comes down to pale stone, with the dressed-stone material;
   - loud blossoms are quieter.
   - Its lanterns and fireflies burn amber, and the night is mist teal under the moon.
+- **The Krampus fountain plaza** (`view/fountain.rs`):
+  - The basin is dressed stone (the grade gives it the material) under a copper coping with a
+    dark copper lip, verdigris in its seams; the bowl's rim is copper too.
+  - The water is the board's mist teal instead of cyan, and the lamp under it is a soft mist
+    teal at about half its old strength.
+  - An amber lantern on an iron post, with a copper cap, stands at each outer corner of the
+    plaza. Each throws a small, soft pool of light, gentler than the garden's lanterns, so the
+    plaza does not glare.
 - **The title screen and menus:**
   - The stage stands in a ruined sanctum (`view/sanctum.rs`, built once):
     - a great round arch behind Ragnar, open on the moonlit mist;
