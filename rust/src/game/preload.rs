@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn the_lair_makes_ready_krampus_and_his_perchten() {
-        let (missed, seen) = unready("0.1:lair,0.5:bot:2,4:wound:300,12:wound:300,20:wound:300", 40.0);
+        let (missed, seen) = unready("0.1:lair,0.5:bot:2,4:wound:500,12:wound:500,20:wound:500", 40.0);
         assert!(seen.contains(&EnemyKind::Percht), "{seen:?}");
         assert!(missed.is_empty(), "came unready: {missed:?} of {seen:?}");
         let mut g = Game::new();
