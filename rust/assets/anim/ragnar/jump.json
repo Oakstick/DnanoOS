@@ -1,12 +1,12 @@
 {
  "clip": "jump",
  "fps": 60,
- "frames": 37,
+ "frames": 50,
  "loop": false,
  "markers": {
-  "takeoff": 0,
-  "apex": 12,
-  "land": 25,
-  "recover_end": 37
+  "takeoff": 3,
+  "apex": 26,
+  "land": 44,
+  "recover_end": 50
  }
 }

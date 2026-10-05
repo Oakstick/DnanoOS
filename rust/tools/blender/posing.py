@@ -52,9 +52,9 @@ class Rig:
             "upper_arm.R": (j["forearm.R"] - j["upper_arm.R"]).normalized(),
             "forearm.R": (j["hand.R"] - j["forearm.R"]).normalized(),
             "hand.R": (j["blade"] - j["hand.R"]).normalized(),
-            # The weapons point up out of the fist as they are sculpted.
-            "blade": Y.copy(),
-            "offhand": Y.copy(),
+            # The weapons point up out of the fist as they are sculpted, leaning forward.
+            "blade": vh.WEAPON_REST.copy(),
+            "offhand": vh.WEAPON_REST.copy(),
         }
         self.thigh = (j["shin.L"] - j["thigh.L"]).length
         self.shin = (j["foot.L"] - j["shin.L"]).length

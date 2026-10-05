@@ -41,6 +41,9 @@ def main():
     for act in list(bpy.data.actions):
         if only and act.name not in only:
             continue
+        # (Only actions of his bones: an imported source's own action, left in the file, is not his.)
+        if not any('pose.bones["hips"]' in fc.data_path for fc in vh.fcurves(act)):
+            continue
         arm.animation_data.action = act
         f0, f1 = int(act.frame_range[0]), int(act.frame_range[1])
         scene.frame_start, scene.frame_end = f0, f1

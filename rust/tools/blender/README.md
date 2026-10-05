@@ -82,8 +82,31 @@ taken out (the drift from first frame to last; the sway and the bob stay; `--kee
 Saves the .blend (the one opened, unless `--save`). Add markers with `--marker`, then
 `export_clips.py`.
 
+The options for his build (Mixamo's bot is tall and thin, he is stocky): `--face DEG` sets the way
+his hips face at the first frame (or `--turn DEG` turns the whole clip), `--yaw-keep K` keeps only a
+share of the source's turning about the upright (a spin becomes a cut struck where he stands),
+`--arms-out DEG` carries his arms out from his body, `--sword-turn YAW,PITCH` swings the sword arm
+round his shoulder (toward his right, then up), `--hold DEG` sets the blade in his fist. An FBX's
+frame rate is read from the file (Mixamo's sword and shield pack is at 30 fps, whatever was asked
+for); a loop's last 8 frames are eased onto its first.
+
 `--selftest` builds a Mixamo-named armature in a T-pose, animates it at 30 fps (arms down and
 bent, a leg lifted, the spine turned, the hips carried a metre forward and up), retargets it and
 checks every mapped limb points the way the source's does on every sixth frame (within 4 degrees),
 that his hips stay over his feet and rise by the source's rise times the leg scale. It prints PASS
 or FAIL (exit 1) and renders `retarget_selftest.png` (him and the source's bones, last frame).
+
+## mixamo_ragnar.py: his clips from Mixamo
+
+```
+blender -b ragnar.blend -P tools/blender/mixamo_ragnar.py -- C:/Users/ulask/Games/mixamo ragnar.blend [slot ...]
+```
+
+The picks (a table at its top: slot, file, corrections) retargeted from Mixamo's Pro Sword And
+Shield Pack and two extras into his .blend, each as the action the game knows by that name
+(replacing the scripted one): `idle`, `walk`, `run`, `slash_fore`, `slash_back` (the forehand run
+backward), `slash_heavy`, `block`, `block_idle`, `jump`, `roll`, `hit`, and `parry` built from the
+block and the flinch. Their markers are found from the motion (a strike's from the blade tip's
+speed, a leap's from the feet, the guard's from the shield, the flinch's from the chest) and the
+lead-in before a strike's blade stirs is cut away. The FBX files stay outside the repository; then
+`export_clips.py` the .blend. Why each pick is in `rust/ANIMATION.md` §6.

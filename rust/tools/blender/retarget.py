@@ -3,6 +3,7 @@ tools, motion capture, any humanoid) second, baked to keys at 60 fps as a new ac
 
     blender -b ragnar.blend -P tools/blender/retarget.py -- --source run.fbx --name run_mixamo
         [--loop] [--stride 2.2] [--marker foot_l=0 ...] [--keep-travel] [--save OUT.blend]
+        [--face DEG | --turn DEG] [--yaw-keep K] [--arms-out DEG] [--sword-turn YAW,PITCH] [--hold DEG]
     blender -b -P tools/blender/retarget.py -- --selftest ragnar_rig.glb [OUT_DIR]
 
 How it goes:
@@ -21,7 +22,14 @@ How it goes:
   source's.
 * **In place.** His travel over the ground is taken out (the game moves him): the drift from the
   first frame to the last, leaving the sway; `--keep-travel` keeps it. The rise and fall stay.
-* **Baked** at 60 fps whatever the source's rate, every bone keyed every frame.
+* **Baked** at 60 fps whatever the source's rate (an FBX's own, read from the file: Mixamo's sword
+  and shield pack came at 30 whatever was asked; a BVH's from its frame time), every bone keyed
+  every frame; a loop's last frames eased onto its first.
+* **His build.** `--face` sets the way his hips face at the first frame (or `--turn` turns the whole
+  clip), `--yaw-keep` keeps only a share of the source's turning (a spin becomes a cut struck where
+  he stands), `--arms-out` carries his short arms out from his wide body, `--sword-turn` swings the
+  sword arm round his shoulder (toward his right, then up) so a cut passes where the camera behind
+  him sees it, `--hold` sets the blade in his fist.
 
 The self-test builds a Mixamo-named armature in a T-pose, animates it (arms down and bent, a leg
 lifted, the spine turned, the hips carried forward and up, at 30 fps), retargets it onto Ragnar
@@ -77,8 +85,19 @@ CHILD = {
     "upper_arm.L": "forearm.L", "forearm.L": "hand.L", "upper_arm.R": "forearm.R", "forearm.R": "hand.R",
     "thigh.L": "shin.L", "shin.L": "foot.L", "thigh.R": "shin.R", "shin.R": "foot.R",
 }
-# The hold of his weapons in his fists where the source has none (degrees about his hand's x).
+# His weapons, and the source's fist each is held in (its finger bones show how: `Retarget.grip`).
+GRIPS = {"blade": "Right", "offhand": "Left"}
+# The hold of his weapons in his fists where the source has no fingers (degrees about his hand's x).
 HOLD = {"blade": 90.0, "offhand": 90.0, "shield": 0.0}
+
+
+def swap(bone):
+    """His bone on the other side (`upper_arm.L` for `upper_arm.R`), or the same one."""
+    if bone.endswith(".L"):
+        return bone[:-2] + ".R"
+    if bone.endswith(".R"):
+        return bone[:-2] + ".L"
+    return bone
 
 
 def short(name):
@@ -135,8 +154,22 @@ def direction(h, bone, child_of, parent_dir=None, fallback=None):
 
 
 class Retarget:
-    def __init__(self, src, tgt, facing=Vector((0, -1, 0))):
+    def __init__(self, src, tgt, facing=Vector((0, -1, 0)), mirror=False, arms_out=0.0, hold=None, turn=0.0, yaw_keep=1.0, sword_turn=(0.0, 0.0), face=None):
         self.src, self.tgt = src, tgt
+        # The sword arm swung round his shoulder as one, `sword_turn` (degrees toward his right
+        # about the upright, then up), so its cuts pass out where they are seen past his body.
+        yaw, pitch = sword_turn
+        self.sword_q = Quaternion(Vector((0, 0, 1)), math.radians(-yaw)) @ Quaternion(Vector((1, 0, 0)), math.radians(-pitch))
+        self.mirror, self.arms_out = mirror, arms_out
+        # A turn of the whole of him (degrees, toward his left), and how much of the source's own
+        # turning about the upright to keep (1 all, 0 none: a spinning blow becomes one struck where
+        # he stands, his chest still twisting against his hips).
+        self.turn, self.yaw_keep = turn, yaw_keep
+        # Or his hips set to face `face` degrees (toward his left) at the first frame, whatever the
+        # source's heading: clips laid over one another (the guard on the idle) then agree.
+        self.face = face
+        self.yaw0 = self.yaw_last = None
+        self.hold = dict(HOLD, **(hold or {}))
         self.label, self.map = pick_map(src)
         self.facing = facing
         # The source's chain: the source bone of each of his bones' next joint down.
@@ -188,28 +221,89 @@ class Retarget:
         tw = tgt.matrix_world.to_quaternion()
         g2b = vh.G2B.to_quaternion()
         posed, out = {}, {}
+        corr = Quaternion()
         for b in vh.BONES:
             rest = self.rest_arm[b]
             parent = vh.PARENTS.get(b)
             # Where the bone would turn to with no turn of its own: carried by its parent.
             carried = posed[parent] @ self.rest_arm[parent].inverted() @ rest if parent else rest
             if b in self.map:
-                s = self.map[b]
+                # (Mirrored, his left takes the source's right, turned through the mirror.)
+                s = self.map[swap(b)] if self.mirror and swap(b) in self.map else self.map[b]
                 d = self.g @ world_rot(src, src.pose.bones[s].matrix) @ self.rest_src[s].inverted()
-                want = tw.inverted() @ (d @ self.k[b] @ (tw @ rest))
+                if self.mirror:
+                    d = Quaternion((d.w, d.x, -d.y, -d.z))
+                want = d @ self.k[b] @ (tw @ rest)
+                if b == "hips":
+                    corr = self.yaw_correction(want @ (tw @ rest).inverted())
+                want = corr @ want
+                if b in ("upper_arm.R", "forearm.R", "hand.R"):
+                    want = corr @ self.sword_q @ corr.inverted() @ want
+                if b.startswith("upper_arm") and self.arms_out:
+                    # His short arms carried out from his wide body (about his forward axis).
+                    sign = 1.0 if b.endswith(".L") else -1.0
+                    want = Quaternion(self.facing, sign * math.radians(self.arms_out)) @ want
+                want = tw.inverted() @ want
+                basis_q = carried.inverted() @ want
+            elif b in GRIPS and not self.mirror and self.grip(b) is not None:
+                # The weapon held as the source's fist holds it (`grip`).
+                grip, knuckles = self.grip(b)
+                r0 = tw @ rest
+                want = (basis(grip, knuckles) @ basis(r0 @ vh.WEAPON_REST, r0 @ Vector((0, 0, 1))).transposed()).to_quaternion() @ r0
+                want = corr @ want
+                if b == "blade":
+                    want = corr @ self.sword_q @ corr.inverted() @ want
+                want = tw.inverted() @ want
                 basis_q = carried.inverted() @ want
             else:
-                basis_q = rest.inverted() @ g2b @ vh.quat_g(HOLD.get(b, 0.0)) @ g2b.inverted() @ rest
+                basis_q = rest.inverted() @ g2b @ vh.quat_g(self.hold.get(b, 0.0)) @ g2b.inverted() @ rest
                 want = carried @ basis_q
             posed[b] = want
             out[b] = basis_q
         hips_now = self.g @ (src.matrix_world @ src.pose.bones[self.map["hips"]].head)
-        return out, (hips_now - self.hips_rest) * self.scale
+        off = (hips_now - self.hips_rest) * self.scale
+        if self.mirror:
+            off.x = -off.x
+        return out, corr @ off
+
+    def grip(self, bone):
+        """Where the source's fist points a weapon held in it, in the world: along the grip, from the
+        little finger's knuckle to the forefinger's (the blade leaves the fist on the thumb's side),
+        its flat toward the knuckles (as his sculpted fist holds it). None without finger bones."""
+        side = GRIPS[bone]
+        names = {short(b.name): b.name for b in self.src.data.bones}
+        need = [side + "HandIndex1", side + "HandPinky1", side + "HandMiddle1", side + "Hand"]
+        if not all(n in names for n in need):
+            return None
+        at = {n: self.g @ (self.src.matrix_world @ self.src.pose.bones[names[n]].head) for n in need}
+        grip = at[side + "HandIndex1"] - at[side + "HandPinky1"]
+        knuckles = at[side + "HandMiddle1"] - at[side + "Hand"]
+        if grip.length < 1e-6 or knuckles.length < 1e-6:
+            return None
+        return grip.normalized(), knuckles.normalized()
+
+    def yaw_correction(self, hips_turn):
+        """The turn about the upright that brings his hips' heading (`hips_turn` from rest) to the
+        source's first heading plus `yaw_keep` of its turning since, plus `turn`."""
+        f = hips_turn @ self.facing
+        yaw = math.atan2(f.x, -f.y)
+        if self.yaw_last is not None:
+            while yaw - self.yaw_last > math.pi:
+                yaw -= 2 * math.pi
+            while yaw - self.yaw_last < -math.pi:
+                yaw += 2 * math.pi
+        if self.yaw0 is None:
+            self.yaw0 = yaw
+        self.yaw_last = yaw
+        start = math.radians(self.face) if self.face is not None else self.yaw0 + math.radians(self.turn)
+        want = start + self.yaw_keep * (yaw - self.yaw0)
+        return Quaternion(Vector((0, 0, 1)), want - yaw)
 
 
-def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, frames=None, fps_src=None):
+def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, frames=None, fps_src=None, close=8):
     """Keys the source's action (its frames at `fps_src`, the scene's rate unless given) onto his
-    armature as action `name`, at 60 fps."""
+    armature as action `name`, at 60 fps. A loop is closed: its last `close` frames ease onto its
+    first, so it wraps without a hitch."""
     scene = bpy.context.scene
     src, tgt = rt.src, rt.tgt
     act_src = src.animation_data.action
@@ -223,6 +317,20 @@ def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, fra
         samples.append(rt.pose())
     # In place: the drift over the ground from first frame to last taken out (the sway stays).
     first, last = samples[0][1], samples[-1][1]
+    if loop and close and n > 2 * close:
+        rots0, off0 = samples[0]
+        for k in range(1, close + 1):
+            f = n - close + k
+            u = k / close
+            u = u * u * (3 - 2 * u)
+            rots, off = samples[f]
+            samples[f] = ({b: rots[b].slerp(rots0[b], u) for b in rots}, off.lerp(off0 + (last - first) * (f / n), u))
+    # Each bone's turns kept on one side of the sphere, frame to frame (Blender eases between keys by component).
+    for f in range(1, len(samples)):
+        prev, cur = samples[f - 1][0], samples[f][0]
+        for b in cur:
+            if prev[b].dot(cur[b]) < 0:
+                cur[b] = -cur[b]
     act = vh.new_action(tgt, name)
     tgt.animation_data.action = act
     hips_rest = tgt.data.bones["hips"].matrix_local.to_quaternion()
@@ -252,20 +360,26 @@ def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, fra
         act["vh_stride"] = stride
     for k, v in (markers or {}).items():
         act.pose_markers.new(k).frame = int(v)
+    print(f"retarget: {name}: the source's hips face {math.degrees(rt.yaw0 or 0.0):.0f} degrees at its start")
     print(f"retarget: {name}: {n + 1} frames at 60 fps from {s1 - s0} at {fps_src:g} ({rt.label} names, {len(rt.map)} bones), scale {rt.scale:.3f}")
     return act
 
 
 def load_source(path):
-    """Imports the source; returns its armature and the rate its frames run at (a BVH's own, from
-    its frame time: Blender lays a BVH's frames one to a frame of the scene; an FBX's are already
-    at the scene's)."""
+    """Imports the source; returns its armature and the rate its frames run at: a BVH's from its
+    frame time (Blender lays its frames one to a frame of the scene), an FBX's from the file (Mixamo
+    writes 30 or 60 fps whatever was asked for: the sword and shield pack came at 30, the dodge at 60)."""
     before = set(bpy.data.objects)
     scene = bpy.context.scene
     fps = scene.render.fps / scene.render.fps_base
     ext = os.path.splitext(path)[1].lower()
     if ext == ".fbx":
+        # (The importer sets the scene to the file's own rate and lays its keys out at it: read the
+        # rate, and give the scene back its 60.)
+        keep = (scene.render.fps, scene.render.fps_base)
         bpy.ops.import_scene.fbx(filepath=path, automatic_bone_orientation=False, use_anim=True)
+        fps = scene.render.fps / scene.render.fps_base
+        scene.render.fps, scene.render.fps_base = keep
     elif ext == ".bvh":
         bpy.ops.import_anim.bvh(filepath=path, update_scene_fps=False, rotate_mode="NATIVE")
         with open(path) as f:
@@ -443,7 +557,8 @@ def main():
         i = a.index("--selftest")
         ok = selftest(a[i + 1], a[i + 2] if len(a) > i + 2 else None)
         sys.exit(0 if ok else 1)
-    opts = {"--source": None, "--name": None, "--save": None, "--stride": None}
+    opts = {"--source": None, "--name": None, "--save": None, "--stride": None, "--turn": "0", "--face": None, "--yaw-keep": "1",
+            "--arms-out": "0", "--hold": None, "--sword-turn": "0,0"}
     markers, loop, keep = {}, False, False
     i = 0
     while i < len(a):
@@ -466,10 +581,13 @@ def main():
     src, fps = load_source(opts["--source"])
     if tgt.animation_data is None:
         tgt.animation_data_create()
-    rt = Retarget(src, tgt)
+    rt = Retarget(src, tgt, arms_out=float(opts["--arms-out"]), turn=float(opts["--turn"]), yaw_keep=float(opts["--yaw-keep"]),
+                  face=float(opts["--face"]) if opts["--face"] else None, hold={"blade": float(opts["--hold"])} if opts["--hold"] else None,
+                  sword_turn=tuple(float(x) for x in opts["--sword-turn"].split(",")))
     bake(rt, opts["--name"], keep, loop, float(opts["--stride"]) if opts["--stride"] else None, markers, fps_src=fps)
     bpy.data.objects.remove(src)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(opts["--save"] or bpy.data.filepath))
 
 
-main()
+if __name__ == "__main__":
+    main()

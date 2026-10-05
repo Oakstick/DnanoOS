@@ -35,6 +35,10 @@ PARENTS = {
     "blade": "hand.R", "offhand": "hand.L", "shield": "forearm.L",
 }
 
+# The way a held weapon points out of his fist at rest, in the game's axes (the bone's own): up, and
+# leaning forward 0.42 voxels a voxel (`armory::LEAN`: held at the ready, clear of his arm).
+WEAPON_REST = Vector((0.0, 1.0, 0.42)).normalized()
+
 # Game axes to Blender's, as a rotation.
 G2B = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
 

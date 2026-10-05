@@ -1,9 +1,9 @@
 {
  "clip": "block",
  "fps": 60,
- "frames": 66,
+ "frames": 34,
  "loop": false,
  "markers": {
-  "raised": 6
+  "raised": 21
  }
 }
