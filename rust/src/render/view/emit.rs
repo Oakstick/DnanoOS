@@ -279,7 +279,9 @@ impl WorldView {
         let hero = s.hero;
         let hp = hero.pos();
         let (hx, hz) = (hp.x as f32, hp.y as f32);
-        let bob = if hero.airborne() { 0.0 } else { hero.motion as f32 * self.hero_phase.cos().abs() * 0.05 };
+        // (His clips carry their own bob, his hips rising and falling with his stride.)
+        let clip = self.clip_pose();
+        let bob = if hero.airborne() || clip.is_some() { 0.0 } else { hero.motion as f32 * self.hero_phase.cos().abs() * 0.05 };
         // (In the Pit, sunk with the platform on its way down.)
         let hero_pos = Vec3::new(hx, hero.altitude as f32 * STEP + bob - self.pit_sink(), hz);
         let hero_group = Mat4::from_translation(hero_pos) * Mat4::from_rotation_y(self.hero_yaw);
@@ -319,6 +321,13 @@ impl WorldView {
             let bias = target.lod.bias;
             target.lod.bias = 0.0;
             match (&self.models.raised, hero.blocking) {
+                // By his clips: his lean, lunge and guard are in them; the landing's squash is laid on.
+                _ if clip.is_some() => {
+                    if let Some((jointed, mats)) = clip {
+                        let root = hero_group * Mat4::from_scale(self.hero_squash());
+                        target.push_matrices(jointed, mats, root, tint, alpha, emissive, rig_look::TINT_ALL, rust);
+                    }
+                }
                 (Some((bare, shield)), true) => {
                     // The shield comes off his back and up before him, on his shield arm's side.
                     emit_hero_rig(target, bare, &self.hero_pose, root, tint, alpha, emissive, rust);

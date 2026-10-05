@@ -32,6 +32,26 @@ fn main() {
             }
         });
     }
+    if let Some(i) = args.iter().position(|a| a == "--export-rig") {
+        // --export-rig HERO OUT.glb: the jointed hero (ragnar, or one with a joint table) for Blender (ANIMATION.md).
+        let hero = args.get(i + 1).map(String::as_str).unwrap_or("ragnar");
+        let path = args.get(i + 2).map(String::as_str).unwrap_or("ragnar.glb");
+        std::process::exit(match void_harvest::render::anim::export::export_rig(hero, path) {
+            Ok(line) => {
+                println!("{line}");
+                0
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
+    }
+    if args.iter().any(|a| a == "--anim-bench") {
+        // The clips: how long they take to read, and what sampling and posing him costs a frame.
+        print!("{}", void_harvest::render::anim::export::bench());
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--audio-sheet") {
         // --audio-sheet DIR: every breed's tell, swing, hit and death, the hits and the war drum, as WAVs.
         let dir = args.get(i + 1).map(String::as_str).unwrap_or("target/audio-sheet");

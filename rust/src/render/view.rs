@@ -84,6 +84,7 @@ pub use duel::crown;
 use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
 pub use fade::TREE_FADE_MIN;
+pub use forge::jointed_hero;
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{
@@ -333,6 +334,13 @@ pub struct WorldView {
     /// A slash keyed to frame data (startup, active, recovery seconds); none for the plain one.
     slash_timing: Option<[f32; 3]>,
     hero_lunge: f32,
+    /// Counts his swings (each a fresh strike for the clips).
+    slash_serial: u32,
+    /// The hero animated by his clips (`anim`): the animator, how he is animated (`VH_ANIM`), and
+    /// this frame's matrices for his jointed rig's parts, when his clips pose him.
+    hero_anim: crate::render::anim::hero::Animator,
+    anim_mode: crate::render::anim::library::Mode,
+    hero_mats: Option<[Mat4; crate::render::anim::skeleton::BONE_COUNT]>,
     particles: Vec<Particle>,
     /// 0..1 accumulated impact, driving the screen shake.
     trauma: f32,
@@ -495,6 +503,10 @@ impl WorldView {
             slash_side: 1.0,
             slash_timing: None,
             hero_lunge: 0.0,
+            slash_serial: 0,
+            hero_anim: Default::default(),
+            anim_mode: crate::render::anim::library::Mode::from_env(),
+            hero_mats: None,
             particles: Vec::new(),
             trauma: 0.0,
             shake_clock: 0.0,
@@ -854,6 +866,7 @@ impl WorldView {
             if hero.free_move { (hero.heading.cos() as f32).atan2(hero.heading.sin() as f32) } else { dir_to_rotation(hero.facing) };
         self.hero_yaw = lerp_angle(self.hero_yaw, turn_to, 1.0 - (-TURN_RATE_HERO * dtf).exp());
         self.animate_hero(hero);
+        self.animate_clips(hero, s, dtf);
 
         for (i, e) in s.enemies.iter().enumerate() {
             if i >= self.enemy_views.len() {

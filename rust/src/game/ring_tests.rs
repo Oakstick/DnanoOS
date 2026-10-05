@@ -867,3 +867,36 @@ fn a_rival_who_knows_his_finisher_sways_out_of_it() {
     }
     assert!(swayed, "he read the finisher");
 }
+
+/// Nothing in the simulation reads the animation (ANIMATION.md): a bout played with the hero
+/// animated by his clips and by the code comes out the same, step for step, his swings, guards and
+/// leaps and the foes' answers alike.
+#[test]
+fn the_clips_leave_the_fight_untouched() {
+    let play = |code: bool| {
+        let mut g = gym();
+        g.view.set_anim_mode(code);
+        g.debug_ring(1);
+        let (mut trace, mut posed) = (Vec::new(), 0);
+        for step in 0..1500 {
+            let k = step % 150;
+            g.brawl_input(k == 10 || k == 34 || k == 58, k == 100, (120..140).contains(&k));
+            g.update(crate::app::STEP);
+            posed += usize::from(g.view.posed_by_clips());
+            let p = g.hero.pos();
+            let state = g.brawl.as_ref().map(|b| b.hero.state);
+            trace.push(format!("{:.9} {:.9} {} {:.6} {:.6} {state:?}", p.x, p.y, g.hero.hp, g.hero.stamina, g.hero.altitude));
+            for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()) {
+                trace.push(format!("{:.9} {:.9} {:.6} {:?}", d.pos.x, d.pos.y, d.hp, d.f.state));
+            }
+        }
+        (trace, posed)
+    };
+    let ((code, by_code), (clips, by_clips)) = (play(true), play(false));
+    assert_eq!(by_code, 0, "the code animated him");
+    assert!(by_clips > 1000, "his clips posed him ({by_clips} steps)");
+    assert_eq!(code.len(), clips.len());
+    for (k, (a, b)) in code.iter().zip(&clips).enumerate() {
+        assert_eq!(a, b, "line {k} differs");
+    }
+}

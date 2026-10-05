@@ -128,6 +128,10 @@ pub struct RigPart {
     pub shade: Vec<f32>,
     /// Lowest cube face below the joint (negative when the part hangs below it).
     pub min_y: f32,
+    /// The part it hangs from, when it has one (always an earlier part): it then turns with that
+    /// part about its own joint (see `RigList::push`). The foes, the cast and the heroes as the code
+    /// animates them have none; the jointed heroes do (`anim::skeleton`).
+    pub parent: Option<usize>,
 }
 
 pub struct Rig {
@@ -222,7 +226,7 @@ impl Rig {
                     shade.push(common);
                 }
                 let min_y = cubes.iter().map(|(q, _)| q.y - size / 2.0).fold(f32::INFINITY, f32::min);
-                RigPart { name: p.name, rest: p.rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
+                RigPart { name: p.name, rest: p.rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 }, parent: p.parent }
             })
             .collect();
         Rig::new(size, parts)
@@ -358,7 +362,7 @@ fn make_part(c: &Collected, name: &'static str, list: &[Voxel], pivot: [f32; 3],
         let min_y = cubes.iter().map(|(p, _)| p.y - size / 2.0).fold(f32::INFINITY, f32::min);
         // The top byte of a voxel's color names its material; 0 is plain lit.
         let shade = list.iter().map(|v| if v.c >> 24 == 0 { 0.0 } else { 5.0 + (v.c >> 24) as f32 }).collect();
-        RigPart { name, rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 } }
+        RigPart { name, rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 }, parent: None }
     }
 }
 
@@ -407,7 +411,14 @@ mod tests {
         assert!(faces * 5 < voxels * 6 * 3, "{faces} faces left of {}", voxels * 6);
         assert!(mesh.faces.iter().all(|f| ((f.part_face & 0xff) as usize) < rig.parts.len() && f.part_face >> 8 < 6));
         // A lone voxel keeps all six; two touching keep ten.
-        let part = |cubes: Vec<(Vec3, Vec3)>| RigPart { name: "body", rest: Vec3::ZERO, shade: vec![0.0; cubes.len()], cubes, min_y: 0.0 };
+        let part = |cubes: Vec<(Vec3, Vec3)>| RigPart {
+            name: "body",
+            rest: Vec3::ZERO,
+            shade: vec![0.0; cubes.len()],
+            cubes,
+            min_y: 0.0,
+            parent: None,
+        };
         let one = Rig::new(0.5, vec![part(vec![(Vec3::ZERO, Vec3::ONE)])]);
         assert_eq!(one.mesh().faces.len(), 6);
         assert!(Arc::ptr_eq(&one.mesh(), &one.mesh()), "built once");

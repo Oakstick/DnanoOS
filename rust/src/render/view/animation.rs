@@ -186,6 +186,7 @@ impl WorldView {
         self.slash_t = 0.0;
         self.slash_side = -self.slash_side;
         self.slash_timing = None;
+        self.slash_serial = self.slash_serial.wrapping_add(1);
     }
 
     /// A slash keyed to a move's frame data: the wind-up fills its startup, the strike its active
@@ -304,6 +305,74 @@ impl WorldView {
             self.pose_slash();
         }
         self.sync_hands();
+    }
+
+    /**
+     * The hero by his clips (`anim::hero`), after the code has posed him (which stays the fallback
+     * and the comparison): what he is doing is read off him as the code reads it, and his strike
+     * by the fighter's frames where frame data rules it (`slash_t`). Leaves `hero_mats` empty when
+     * he has no jointed rig or clips, or the moment needs a clip he lacks.
+     */
+    pub(super) fn animate_clips(&mut self, hero: &Hero, s: &SceneState, dt: f32) {
+        use crate::logic::combat::{Reel, State};
+        use crate::render::anim::{hero::Drive, hero::Strike, library, warp::move_bounds};
+        self.hero_mats = None;
+        if self.anim_mode == library::Mode::Code {
+            return;
+        }
+        let (Some(rig), Some(clips)) = (self.models.jointed.as_ref(), library::clips(s.hero_kind)) else { return };
+        let strike = (self.slash_t >= 0.0).then(|| {
+            // (A swing not keyed to frame data has the old swing's proportions: wind-up to 0.2, strike to 0.47.)
+            let [st, a, r] = self.slash_timing.unwrap_or([SLASH_SECONDS * 0.2, SLASH_SECONDS * 0.27, SLASH_SECONDS * 0.53]);
+            Strike { t: self.slash_t, bounds: move_bounds(st, a, r), side: self.slash_side, serial: self.slash_serial }
+        });
+        let reel = s.hero_fighter.and_then(|f| match f.state {
+            State::Reel { kind: Reel::Hitstun | Reel::GuardBroken, left, total } => Some(1.0 - left as f32 / total.max(1) as f32),
+            _ => None,
+        });
+        let drive = Drive {
+            dt,
+            speed: (hero.m.speed * hero.motion) as f32,
+            motion: hero.motion as f32,
+            airborne: hero.airborne().then(|| hero.jump_progress() as f32),
+            strike,
+            blocking: hero.blocking,
+            reel,
+            springs: self.juice.off & crate::render::profile::fx::SPRINGS == 0,
+            shield_tilt: self.shield_tilt(),
+        };
+        if let Some((locals, extra)) = self.hero_anim.step(clips, &drive) {
+            let joints: [Vec3; crate::render::anim::skeleton::BONE_COUNT] =
+                std::array::from_fn(|i| rig.parts.get(i).map(|p| p.rest).unwrap_or(Vec3::ZERO));
+            self.hero_mats = Some(clips.skeleton.matrices(&locals, &joints, &extra));
+        }
+    }
+
+    /// The hero as his clips pose him this frame (his jointed rig and its parts' matrices in the
+    /// model), unless the code animates him (`VH_ANIM=code`, or no clip for the moment).
+    pub(super) fn clip_pose(&self) -> Option<(&Rig, &[Mat4])> {
+        if self.anim_mode == crate::render::anim::library::Mode::Code {
+            return None;
+        }
+        Some((self.models.jointed.as_ref()?, self.hero_mats.as_ref()?.as_slice()))
+    }
+
+    /// Whether his clips posed him this frame (tests).
+    #[cfg(test)]
+    pub fn posed_by_clips(&self) -> bool {
+        self.clip_pose().is_some()
+    }
+
+    /// Draws the hero by his clips or by the code (a capture renders both, `--anim-compare`).
+    pub fn set_anim_mode(&mut self, code: bool) {
+        use crate::render::anim::library::Mode;
+        self.anim_mode = if code {
+            Mode::Code
+        } else if Mode::from_env() == Mode::Code {
+            Mode::Clips
+        } else {
+            Mode::from_env()
+        };
     }
 
     /// The weapons (layered parts of his rig) move with the arms that hold them.

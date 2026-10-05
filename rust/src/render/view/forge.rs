@@ -194,6 +194,41 @@ pub(super) fn hero_rigs(hero: HeroKind, kit: Kit) -> (Rig, Option<(Rig, Rig)>) {
     (rig(&arm), raised)
 }
 
+/// A hero's sculpt grid (width, height, depth), which his joint table is measured in.
+fn sculpt_size(hero: HeroKind) -> (i32, i32, i32) {
+    match hero {
+        HeroKind::Ragnar => heroes::RAGNAR_SIZE,
+        HeroKind::Mehmed => heroes::MEHMED_SIZE,
+        HeroKind::Miyamoto => heroes::MIYAMOTO_SIZE,
+    }
+}
+
+/// The hero's rig `rig` (as `hero_rigs` makes it) cut into his skeleton's bones, if he has a joint
+/// table (`anim::skeleton`). With `VH_ANIM=bones` every voxel is painted its bone's colour, to
+/// check the cut.
+pub(super) fn jointed_of(hero: HeroKind, rig: &Rig) -> Option<Rig> {
+    use crate::render::anim::{library::Mode, skeleton};
+    let joints = skeleton::joints(hero)?;
+    let (w, _, d) = sculpt_size(hero);
+    let mut cut = skeleton::jointed(rig, joints, w, d);
+    if Mode::from_env() == Mode::Bones {
+        for (i, part) in cut.parts.iter_mut().enumerate() {
+            let c = skeleton::bone_color(i);
+            for (k, (_, color)) in part.cubes.iter_mut().enumerate() {
+                // (A little of the voxel's own shade kept, so the shapes still read.)
+                *color = c * (0.7 + 0.3 * (k % 3) as f32 / 2.0);
+            }
+            part.shade.iter_mut().for_each(|m| *m = 0.0);
+        }
+    }
+    Some(cut)
+}
+
+/// The jointed hero as he stands with blade `blade` and shield `shield` (`--export-rig`, tests).
+pub fn jointed_hero(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig> {
+    jointed_of(hero, &hero_model(hero, blade, shield))
+}
+
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
 pub(super) fn thrown_model(hero: HeroKind, blade: u8) -> Rig {
     let w = progression::node(hero, Tree::Armory, blade);
@@ -224,11 +259,15 @@ impl WorldView {
         if key != self.models.hero_key {
             match self.models.spare.take() {
                 // His shield broke: the rig made for it with the level (no shield, none raised).
-                Some((k, rig)) if k == key => {
+                Some((k, rig, jointed)) if k == key => {
                     self.models.hero = rig;
                     self.models.raised = None;
+                    self.models.jointed = jointed;
                 }
-                _ => (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1),
+                _ => {
+                    (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1);
+                    self.models.jointed = jointed_of(key.0, &self.models.hero);
+                }
             }
             // (His weapon thrown is only made again for another weapon.)
             if (key.0, key.1.blade) != (self.models.hero_key.0, self.models.hero_key.1.blade) {
@@ -237,6 +276,7 @@ impl WorldView {
             if key.0 != self.models.hero_key.0 {
                 // Another hero's joints sit elsewhere: start his pose afresh.
                 self.hero_pose = Pose::rest(&self.models.hero);
+                self.hero_anim.reset();
             }
             self.models.hero_key = key;
         }
@@ -252,7 +292,9 @@ impl WorldView {
         }
         let key = (hero, Kit { shield: None, ..kit });
         if self.models.spare.as_ref().is_none_or(|s| s.0 != key) {
-            self.models.spare = Some((key, hero_rigs(key.0, key.1).0));
+            let rig = hero_rigs(key.0, key.1).0;
+            let jointed = jointed_of(key.0, &rig);
+            self.models.spare = Some((key, rig, jointed));
         }
     }
 
@@ -326,7 +368,11 @@ impl WorldView {
             let rig = self.hero_rig(hero);
             for (p, yaw, life) in &self.ghosts {
                 let root = Mat4::from_translation(*p) * Mat4::from_rotation_y(*yaw);
-                emit_rig(&mut f.rigs_blend, rig, &self.hero_pose, root, lin(0xffe066), 0.28 * life, lin(0xffd23a) * 0.4);
+                let (tint, alpha, glow) = (lin(0xffe066), 0.28 * life, lin(0xffd23a) * 0.4);
+                match self.clip_pose() {
+                    Some((jointed, mats)) => f.rigs_blend.push_matrices(jointed, mats, root, tint, alpha, glow, rig_look::TINT_ALL, 0.0),
+                    None => emit_rig(&mut f.rigs_blend, rig, &self.hero_pose, root, tint, alpha, glow),
+                }
             }
             let fx = &hero.fx;
             if fx.strength > 0.0 || fx.fury > 0.0 {

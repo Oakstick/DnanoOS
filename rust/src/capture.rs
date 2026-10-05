@@ -51,6 +51,8 @@
 //! `--lod-bias B` drops rigs' detail sooner (B > 1) or never (0), and `--lod-debug` tints each
 //! level of detail (whole, half green, quarter red); `--light-heat` tints each pixel by how many
 //! lights its cluster holds (blue none, green some, red 16 or more).
+//! `--anim-compare` renders the hero twice at the same moment, animated by the code (left) and by
+//! his clips (right), side by side (ANIMATION.md; `VH_ANIM=code` or `bones` for the whole run).
 //! `juice:K` fires juice event K on the ring's nearest foe (WARBAND.md §4; 0 kick, 1 FOV punch,
 //! 2-13 chips of each matter, 14 shatter, 15 shatter in slow motion, 16 sparks off the shield,
 //! 17 a flinch, 18 the shield jolted: `game::juice::JUICE_EVENTS`), e.g.
@@ -507,6 +509,12 @@ pub fn run(args: &[String]) -> i32 {
             Dir::Left => -std::f32::consts::FRAC_PI_2,
             Dir::Right => std::f32::consts::FRAC_PI_2,
         };
+        // (For the comparisons, his heading where he moves freely: the camera keeps to his front.)
+        let face = if game.hero.free_move && args.iter().any(|a| a == "--anim-compare") {
+            (game.hero.heading.cos() as f32).atan2(game.hero.heading.sin() as f32)
+        } else {
+            face
+        };
         game.view.set_closeup(
             glam::Vec3::new(p.x as f32, y + 0.62 + (2.1 - dist).max(0.0) * 0.12, p.y as f32),
             face + deg.to_radians(),
@@ -598,6 +606,20 @@ pub fn run(args: &[String]) -> i32 {
         for line in crate::render::profile::readout(&cpu, &gpu.counts, gpu.timer.as_ref()).iter().skip(1) {
             eprintln!("bench: {line}");
         }
+    }
+    let (mut w, mut rgba) = (w, rgba);
+    if args.iter().any(|a| a == "--anim-compare") {
+        // The same moment with the hero animated by the code, on the left of the one by his clips.
+        game.view.set_anim_mode(true);
+        let mut old = Frame::default();
+        game.view.emit(&game.scene(), &mut old);
+        let left = gpu.capture(&game.view, &old, &overlay.verts, (w as f32, h as f32));
+        game.view.set_anim_mode(false);
+        let row = w as usize * 4;
+        let both: Vec<u8> = (0..h as usize)
+            .flat_map(|y| left[y * row..(y + 1) * row].iter().chain(&rgba[y * row..(y + 1) * row]).copied().collect::<Vec<u8>>())
+            .collect();
+        (w, rgba) = (w * 2, both);
     }
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {

@@ -18,6 +18,7 @@ fn main() {
         println!("cargo:rustc-env=VH_BUILD={hash}{}", if dirty { "-modified" } else { "" });
     }
     println!("cargo:rerun-if-changed=assets/icon.ico");
+    embed_clips();
     let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
     if windows {
         copy_dxc();
@@ -58,5 +59,52 @@ fn copy_dxc() {
                 println!("cargo:warning=could not copy {dll}: {e}");
             }
         }
+    }
+}
+
+/// Lists every animation clip under `assets/anim/<hero>/` (a `.glb` with its markers' `.json`
+/// beside it) for `render::anim::library` to embed: drop a clip's two files in and build.
+fn embed_clips() {
+    println!("cargo:rerun-if-changed=assets/anim");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets").join("anim");
+    let mut rows = Vec::new();
+    let mut heroes: Vec<_> =
+        std::fs::read_dir(&root).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()).unwrap_or_default();
+    heroes.sort();
+    for dir in heroes {
+        println!("cargo:rerun-if-changed={}", dir.display());
+        let hero = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let mut glbs: Vec<_> = std::fs::read_dir(&dir)
+            .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "glb")).collect())
+            .unwrap_or_default();
+        glbs.sort();
+        for glb in glbs {
+            let json = glb.with_extension("json");
+            if !json.exists() {
+                println!("cargo:warning=animation clip {} has no markers beside it: left out", glb.display());
+                continue;
+            }
+            let clip = glb.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            rows.push(format!(
+                "    ({hero:?}, {clip:?}, include_bytes!({:?}), include_str!({:?})),",
+                glb.display().to_string(),
+                json.display().to_string()
+            ));
+        }
+    }
+    let code = format!(
+        "/// Every embedded clip: hero, clip, its GLB, its markers.
+pub const EMBEDDED: &[(&str, &str, &[u8], &str)] = &[
+{}
+];
+",
+        rows.join(
+            "
+"
+        )
+    );
+    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR")).join("anim_clips.rs");
+    if std::fs::read_to_string(&out).ok().as_deref() != Some(code.as_str()) {
+        std::fs::write(out, code).expect("write the clip list");
     }
 }
