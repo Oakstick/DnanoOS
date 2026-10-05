@@ -67,6 +67,7 @@ mod tour;
 mod vault;
 mod viewpick;
 pub mod war;
+pub mod whole_run;
 pub mod workshop;
 
 pub use combat::Spirit;

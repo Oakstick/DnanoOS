@@ -18,7 +18,7 @@ use crate::logic::heroes::HeroKind;
 /// Ranks of each mastery.
 pub const RANKS: u8 = 5;
 /// The deeds (of his way, all kinds together) each rank wants before its trial is set.
-pub const DEEDS_FOR: [u32; RANKS as usize] = [25, 75, 150, 300, 500];
+pub const DEEDS_FOR: [u32; RANKS as usize] = [50, 150, 300, 600, 1000];
 
 // ---- what the ranks do, as numbers
 

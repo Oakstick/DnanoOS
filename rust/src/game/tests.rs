@@ -919,7 +919,8 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
         g.hero.invuln = 1.0;
     }
     assert_eq!(g.screen, Screen::Playing);
-    g.debug_wound_boss(1000);
+    // (His whole health and more: the courts weigh their princes 1.15 above their breeds, W9.)
+    g.debug_wound_boss(100_000);
     g.hero.m.teleport(P::new(ARENA_HERO.0, ARENA_HERO.1));
     for _ in 0..(6.0 / STEP) as usize {
         g.update(STEP);

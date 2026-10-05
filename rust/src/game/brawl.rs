@@ -500,7 +500,7 @@ impl Game {
             }
             if self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault) {
                 // In the vaults his edge wears as in any real fight (the ring's never does).
-                self.dull_blade();
+                self.dull_blade_by(crate::logic::gear::EDGE_LOSS_DUEL);
             }
         }
     }

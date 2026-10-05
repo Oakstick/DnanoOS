@@ -194,9 +194,14 @@ impl Game {
     /// Every swing that lands takes a little off the blade's edge; he is told when it turns dull, and
     /// again when it rusts. The old man sharpens it for gold.
     pub(super) fn dull_blade(&mut self) {
+        self.dull_blade_by(EDGE_LOSS);
+    }
+
+    /// The same, the edge worn by `loss` (out of 100): a fight by frame data wears it slower.
+    pub(super) fn dull_blade_by(&mut self, loss: f64) {
         let tier = self.hero.blade;
         let before = self.hero.edge;
-        self.edge_carry += EDGE_LOSS;
+        self.edge_carry += loss;
         let whole = self.edge_carry.floor();
         self.edge_carry -= whole;
         if whole <= 0.0 {

@@ -85,6 +85,9 @@ pub struct PitRun {
     leaping: bool,
     /// Seconds each door has left standing open.
     pub doors: [f64; 8],
+    /// The clock when each door began to grind open for the pack due behind it (WARBAND.md I7: a
+    /// door is heard and seen a second before anything comes out of it).
+    grind: [Option<f64>; 8],
     /// The last-seconds banner has been shown this level.
     warned: bool,
     /// How many rode down at the last descent (for the floater as the next level begins).
@@ -105,6 +108,7 @@ impl PitRun {
             leap_in: false,
             leaping: false,
             doors: [0.0; 8],
+            grind: [None; 8],
             warned: false,
             rode: 0,
             tallies: vec![LevelTally { level, ..LevelTally::default() }],
@@ -334,21 +338,50 @@ impl Game {
         let clock = p.clock;
         let mut room = pit::MAX_STANDING.saturating_sub(self.pit_standing());
         let mut out: Vec<(Arrival, usize)> = Vec::new();
+        let hp = self.hero.pos();
         let Some(p) = self.pit.as_mut() else { return };
+        // The doors whose packs are due within the tell, while there is room for them, grind open
+        // first; a pack held back for the cap is told again when its room comes.
+        let mut grinding = Vec::new();
+        for a in p.pending.iter().take_while(|a| a.at as f64 <= clock + pit::DOOR_TELL).take(room) {
+            if p.grind[a.door].is_none() {
+                p.grind[a.door] = Some(clock);
+                p.doors[a.door] = DOOR_OPEN;
+                grinding.push(a.door);
+            }
+        }
         // (Each door's mouth has three tiles; a pack spreads over them.)
         let mut slot = [0usize; 8];
-        while room > 0 && p.pending.first().is_some_and(|a| a.at as f64 <= clock) {
+        while room > 0
+            && p.pending
+                .first()
+                .is_some_and(|a| a.at as f64 <= clock && p.grind[a.door].is_some_and(|t| clock - t >= pit::DOOR_TELL - 1e-9))
+        {
             let a = p.pending.remove(0);
             out.push((a, slot[a.door]));
             slot[a.door] += 1;
             room -= 1;
+            if !p.pending.iter().any(|b| b.door == a.door && b.at as f64 <= clock) {
+                p.grind[a.door] = None;
+            }
+        }
+        if room == 0 {
+            // (The rest wait behind shut doors, and grind open again when there is room.)
+            p.grind = [None; 8];
+        }
+        for door in grinding {
+            let f = pit::doors()[door].front();
+            self.audio.play(Sfx::DoorGrind);
+            self.view.dust(&self.level.grid, f.x as f64, f.y as f64, 0x5a5650, 14, 1.6);
+            if dist_sq(f.v(), hp) < 14.0 * 14.0 {
+                self.floater(f.x as f64, f.y as f64 - 0.8, "THE DOOR OPENS", 1.2, Some(0xc8c0b0));
+            }
         }
         if out.is_empty() {
             return;
         }
         let tier = self.realm_tier();
         let Some(mut b) = self.brawl.take() else { return };
-        let hp = self.hero.pos();
         let mut opened = Vec::new();
         for (a, k) in out {
             let door = pit::doors()[a.door];
@@ -374,12 +407,6 @@ impl Game {
         for door in opened {
             if let Some(p) = self.pit.as_mut() {
                 p.doors[door] = DOOR_OPEN;
-            }
-            let f = pit::doors()[door].front();
-            self.audio.play(Sfx::DoorGrind);
-            self.view.dust(&self.level.grid, f.x as f64, f.y as f64, 0x5a5650, 14, 1.6);
-            if dist_sq(f.v(), hp) < 14.0 * 14.0 {
-                self.floater(f.x as f64, f.y as f64 - 0.8, "THE DOOR OPENS", 1.2, Some(0xc8c0b0));
             }
         }
         self.disband_packs();
@@ -671,6 +698,46 @@ mod tests {
             let home = d.den.map(|d| P::new(d.home.x.round() as i32, d.home.y.round() as i32));
             assert!(home.is_some_and(|h| doors.contains(&h)), "out of a door: {home:?}");
         }
+    }
+
+    /// WARBAND.md I7 (W9): every pack out of a door was heard and seen a second before, the door
+    /// grinding open; and one held back for the cap is told again when its room comes.
+    #[test]
+    fn a_door_grinds_open_a_second_before_its_pack_comes_out() {
+        let mut g = in_pit(2);
+        g.immortal = true;
+        let mut told: [Option<f64>; 8] = [None; 8];
+        let mut seen: Vec<u32> = duelists(&g).iter().map(|d| d.id).collect();
+        let mut out = 0;
+        for _ in 0..(100.0 / STEP) as usize {
+            g.update(STEP);
+            hold_still(&mut g);
+            let p = g.pit.as_ref().unwrap();
+            for (k, at) in p.grind.iter().enumerate() {
+                if at.is_some() && told[k].is_none() {
+                    told[k] = *at;
+                }
+            }
+            let clock = p.clock;
+            for d in duelists(&g) {
+                if seen.contains(&d.id) {
+                    continue;
+                }
+                seen.push(d.id);
+                let door =
+                    pit::doors().iter().position(|dr| dr.mouth().iter().any(|m| (m.x as f64 - d.pos.x).hypot(m.y as f64 - d.pos.y) < 0.6));
+                let Some(door) = door else { continue };
+                let since = told[door].map(|t| clock - t).unwrap_or(0.0);
+                assert!(since >= pit::DOOR_TELL - 1e-6, "a {:?} out of door {door} {since:.2} s after it began to grind", d.breed.kind);
+                out += 1;
+            }
+            for (k, at) in p.grind.iter().enumerate() {
+                if at.is_none() {
+                    told[k] = None;
+                }
+            }
+        }
+        assert!(out >= pit::MAX_STANDING, "{out} came out");
     }
 
     #[test]

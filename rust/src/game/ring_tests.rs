@@ -794,7 +794,9 @@ fn two_casters_cross_their_fire_as_one_strike() {
     let mut g = fresh_game(4);
     g.sins_cleared = 0b0111; // three keys held: the fourth tier
     g.map_jump(save::Stage::Realm(crate::logic::sins::Sin::Greed));
-    Loadout::all(crate::logic::heroes::HeroKind::Ragnar, 6).equip(&mut g);
+    // (A kit that lets the fights last: with the sixth tier's blade kept keen (W9) its casters fell
+    // before two of them were ever free together.)
+    Loadout::all(crate::logic::heroes::HeroKind::Ragnar, 3).equip(&mut g);
     g.enter(Screen::Playing);
     let kit = g.hero_kit();
     g.brawl.as_mut().unwrap().reset(kit);

@@ -355,7 +355,7 @@ impl Breed {
             K::Asmodeus => (Prince, 1.0, 1.0, 1.0, 1.0, 0.95, 3),
             // Krampus's lair (FINALE.md §3): the last of them, larger and longer than any prince,
             // harder to stagger; his Perchten, masked brutes with switches, lighter than golems.
-            K::Krampus => (Prince, 1.35, 1.0, 1.3, 1.05, 1.0, 3),
+            K::Krampus => (Prince, 2.1, 1.0, 1.3, 1.05, 1.0, 3),
             K::Percht => (Brute, 0.8, 0.6, 0.9, 1.05, 0.5, 1),
         };
         // A big body's arm reaches as far again as its girth outgrows a man's.

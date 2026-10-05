@@ -155,6 +155,11 @@ pub struct Drum {
     /// Peaks begun since the level began, and the rests between them (seconds of each finished rest).
     pub peaks: u32,
     pub rests: Vec<f64>,
+    /// Seconds since the level began, when the last peak ended, and the breaths between one peak's
+    /// end and the next one's start (§15.1's "rest between peaks": release, rest and build alike).
+    pub clock: f64,
+    peak_end: Option<f64>,
+    pub gaps: Vec<f64>,
 }
 
 impl Drum {
@@ -199,6 +204,7 @@ impl Drum {
         self.taken.retain(|t| t.0 < WINDOW);
         self.landings.retain(|&t| t < WINDOW);
         self.age += dt;
+        self.clock += dt;
         self.spent[self.phase as usize] += dt;
         self.idle = if pulse.engaged == 0 { self.idle + dt } else { 0.0 };
         self.since_reckon += dt;
@@ -229,8 +235,14 @@ impl Drum {
         if self.phase == DrumPhase::Rest {
             self.rests.push(self.age);
         }
+        if self.phase == DrumPhase::Peak {
+            self.peak_end = Some(self.clock);
+        }
         if p == DrumPhase::Peak {
             self.peaks += 1;
+            if let Some(end) = self.peak_end {
+                self.gaps.push(self.clock - end);
+            }
         }
         self.phase = p;
         self.age = 0.0;
@@ -302,6 +314,31 @@ mod tests {
         run(&mut d, Pacing::Standard.release() + 1.0, calm);
         assert_eq!(d.phase, DrumPhase::Rest);
         assert!(d.bounds().voices && !d.bounds().orders);
+    }
+
+    /// §15.1's "rest between peaks" (W9): from one peak's end to the next one's start, release, rest
+    /// and build together.
+    #[test]
+    fn the_breath_between_peaks_is_measured_from_one_peaks_end_to_the_next() {
+        let mut d = Drum::new(Pacing::Standard);
+        let calm = Pulse { engaged: 0, hp: 1.0, max_hp: 100.0 };
+        let fight = Pulse { engaged: 4, hp: 0.6, max_hp: 100.0 };
+        let peak = |d: &mut Drum| {
+            for _ in 0..(3 * 60) {
+                if d.landings.len() < 5 {
+                    d.hear(&landed(10.0));
+                }
+                d.tick(1.0 / 60.0, fight);
+            }
+        };
+        peak(&mut d);
+        assert_eq!(d.phase, DrumPhase::Peak);
+        assert!(d.gaps.is_empty(), "no breath before the first peak");
+        run(&mut d, 20.0, calm);
+        assert_eq!(d.phase, DrumPhase::Rest);
+        peak(&mut d);
+        assert_eq!((d.peaks, d.gaps.len()), (2, 1));
+        assert!(d.gaps[0] > 20.0 && d.gaps[0] < 24.0, "{:?}", d.gaps);
     }
 
     #[test]

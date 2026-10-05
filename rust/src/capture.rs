@@ -356,7 +356,8 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
-        Cmd::Slay => game.debug_wound_boss(1000),
+        // (Past any prince's health at any tier: from W9 even the first court's pass a thousand.)
+        Cmd::Slay => game.debug_wound_boss(100_000),
         Cmd::God => game.input.inject(crate::input::Action::Immortal),
         Cmd::Bomb => game.place_bomb(),
         Cmd::Shop => game.open_shop(),
