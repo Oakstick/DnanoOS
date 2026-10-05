@@ -116,7 +116,7 @@ def fetch(url, cache, filename):
     path = os.path.join(cache, filename)
     if os.path.isfile(path) and os.path.getsize(path) > 0:
         return path
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/octet-stream"})
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
     tmp = path + ".part"
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r, open(tmp, "wb") as f:  # proxies come from HTTPS_PROXY
         shutil.copyfileobj(r, f)
@@ -227,8 +227,9 @@ def extension(name, pkg_id, dry):
             log("FAILED", name, f"installing {pkg_id}: {e}; command line: {e2}")
             return
     if module in module_names():
-        log("SUCCESS", name, f"installed {pkg_id}")
-        enable(name, module, dry)
+        log("SUCCESS", name, f"installed {pkg_id}" + (" and enabled" if is_enabled(module) else ""))
+        if not is_enabled(module):
+            enable(name, module, dry)
     else:
         log("FAILED", name, f"{pkg_id} did not appear after installing")
 
@@ -251,7 +252,8 @@ def edgeflow_legacy(args):
             path = fetch(zips[0]["browser_download_url"], args.cache, zips[0]["name"])
             install_zip(path)
         else:
-            path = fetch(rel["zipball_url"], args.cache, f"EdgeFlow-{rel['tag_name']}.zip")
+            url = f"https://github.com/BenjaminSauder/EdgeFlow/archive/refs/tags/{rel['tag_name']}.zip"
+            path = fetch(url, args.cache, f"EdgeFlow-{rel['tag_name']}.zip")
             install_folder_zip(path, module)
         log("SUCCESS", name, f"installed {rel['tag_name']}")
     except Exception as e:  # noqa: BLE001
@@ -273,7 +275,9 @@ def blendergis(args):
         return
     try:
         rel = github_latest("domlysz/BlenderGIS")
-        path = fetch(rel["zipball_url"], args.cache, f"BlenderGIS-{rel['tag_name']}.zip")
+        # (The release's source zip from github.com itself: the API's zipball refuses a download's headers.)
+        url = f"https://github.com/domlysz/BlenderGIS/archive/refs/tags/{rel['tag_name']}.zip"
+        path = fetch(url, args.cache, f"BlenderGIS-{rel['tag_name']}.zip")
         install_folder_zip(path, module)
         addon_utils.modules(refresh=True)
         log("SUCCESS", name, f"installed release {rel['tag_name']} (GDAL is optional: without it, raster import is limited)")
