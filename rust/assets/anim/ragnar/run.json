@@ -1,0 +1,11 @@
+{
+ "clip": "run",
+ "fps": 60,
+ "frames": 26,
+ "loop": true,
+ "markers": {
+  "foot_l": 0,
+  "foot_r": 13
+ },
+ "stride": 2.2
+}
