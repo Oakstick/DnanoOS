@@ -195,6 +195,8 @@ impl Game {
             self.view.add_enemy(&e);
             self.enemies.push(e);
         }
+        // Made ready as a level's foes are (and what they bring: the witches' minions).
+        self.prepare_level();
     }
 
     /// A fresh slime trail along the tiles around Ragnar, for screenshots.

@@ -50,8 +50,8 @@ fn mesh_all(w: &Want) -> Vec<Arc<RigMesh>> {
 impl WorldView {
     /// Makes ready, behind the loading screen, every rig the level can show: the foes of `kinds`
     /// (and those they bring), the hero as he is equipped (also with his shield raised, see-through,
-    /// as his shield's breaking would leave him, his thrown weapon and his spirits), and in a boss's
-    /// meadow the Cyclops and his boulders.
+    /// as his shield's breaking would leave him, his thrown weapon and his spirits), the archangels'
+    /// shrines, the Hall of Mirrors' statues, and in a boss's meadow the Cyclops and his boulders.
     /// Their meshes are built now (on every core natively; in order on the web, which has no
     /// threads), and the GPU keeps them until the next level is prepared.
     pub fn prepare_rigs(&mut self, kinds: &[EnemyKind], hero_kind: HeroKind, hero: &Hero) {
@@ -76,6 +76,14 @@ impl WorldView {
             HeroKind::Mehmed => wants.push(Want { rig: &m.spirits[0], whole: true }),
             HeroKind::Miyamoto => wants.push(Want { rig: &m.spirits[1], whole: true }),
             HeroKind::Ragnar => {}
+        }
+        // The archangels' shrines, where the level has them (small: a statue each).
+        for shrine in &m.angel_shrines {
+            wants.push(Want { rig: shrine, whole: false });
+        }
+        // The Hall of Mirrors' statues of him.
+        if let Some(realms::RunView::Pride(v)) = &self.run_view {
+            wants.push(Want { rig: v.statue(), whole: false });
         }
         if self.meadow {
             wants.push(Want { rig: &m.cyclops, whole: false });

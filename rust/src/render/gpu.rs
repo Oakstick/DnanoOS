@@ -75,6 +75,8 @@ const CINEMA_DOF_FULL: f32 = 20.0;
 /// The environment cube (RP14): its first mip's size, and how many mips (roughness 0 to 1).
 const ENV_SIZE: u32 = 128;
 const ENV_MIPS: u32 = 6;
+/// The environment's render passes: each mip's six faces, the first drawn, the rest prefiltered.
+const ENV_PASSES: u32 = ENV_MIPS * 6;
 const ENV_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// Static scenery is cut into square chunks this many world units across, culled as a whole.
 const CHUNK: f32 = 8.0;
@@ -601,6 +603,10 @@ pub struct Gpu {
     env_draw_pipe: wgpu::RenderPipeline,
     env_prefilter_pipe: wgpu::RenderPipeline,
     env_key: Option<Vec<u32>>,
+    /// The level (static upload) the environment was last drawn for, and its next pass to draw
+    /// (`ENV_PASSES` when it is all drawn).
+    env_level: u64,
+    env_next: u32,
     screen: wgpu::Buffer,
     overlay_bind: wgpu::BindGroup,
     meshes: Vec<MeshBuf>,
@@ -1808,6 +1814,8 @@ impl Gpu {
             env_draw_pipe,
             env_prefilter_pipe,
             env_key: None,
+            env_level: 0,
+            env_next: ENV_PASSES,
             screen,
             overlay_bind,
             meshes,
@@ -1887,13 +1895,17 @@ impl Gpu {
             return;
         }
         let (order, mut chunks) = chunk_static(&view.static_cubes);
-        self.static_slot = vec![0; order.len()];
+        self.static_slot = Vec::with_capacity(order.len() + STATIC_SPARE);
+        self.static_slot.resize(order.len(), 0);
         let mut sorted = Vec::with_capacity(order.len());
         for (slot, &i) in order.iter().enumerate() {
             sorted.push(view.static_cubes[i as usize]);
             self.static_slot[i as usize] = slot as u32;
         }
-        let index = StaticFaces::build(&sorted);
+        let mut index = StaticFaces::build(&sorted);
+        // Room for the cubes added later (rubble, patches), so the first of them grows no table
+        // of a million entries (copying them cost milliseconds the frame a wall fell).
+        index.reserve(STATIC_SPARE);
         // Cubes that can fade keep their back faces: they go with the turned ones.
         let mut fades = vec![false; sorted.len()];
         for (start, len) in view.fade_ranges() {
@@ -1971,13 +1983,11 @@ impl Gpu {
             })
         });
         self.static_count = sorted.len() as u32;
-        self.static_bounds = sorted
-            .iter()
-            .map(|c| {
-                let (at, half) = cube_bounds(c);
-                (at - half, at + half)
-            })
-            .collect();
+        self.static_bounds = Vec::with_capacity(sorted.len() + STATIC_SPARE);
+        self.static_bounds.extend(sorted.iter().map(|c| {
+            let (at, half) = cube_bounds(c);
+            (at - half, at + half)
+        }));
         self.static_level += 1;
         // The same groups in clusters of at most 64 faces, each with its own box.
         let mut clusters = Vec::new();
@@ -2429,7 +2439,7 @@ impl Gpu {
                 None => visible(light_vp),
             };
             if std::env::var_os("VH_PROBE_STATS").is_some() {
-                eprintln!("shadow cache: {part:?} of {size}, {} casters", far.iter().map(|c| c.1).sum::<u32>());
+                eprintln!("shadow cache: {part:?} of {size}, {} casters at {}", far.iter().map(|c| c.1).sum::<u32>(), self.frame_no);
             }
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow cache"),
@@ -2488,28 +2498,20 @@ impl Gpu {
             .chain([atm.night_sky, atm.exposure, atm.background as f32])
             .map(f32::to_bits)
             .collect();
+        // A new level's (or the first) is drawn whole at once; the light changing within a level
+        // (the Pit's on the way down, a few steps a second) is followed a mip a frame, six passes,
+        // so no frame records all 36 (1 to 9 ms of the CPU's frame, several times a descent).
         if self.env_key.as_ref() != Some(&env_key) {
-            for k in 0..ENV_MIPS * 6 {
-                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("environment"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &self.env_faces[k as usize],
-                        resolve_target: None,
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: if k == 0 { self.timer.as_mut().and_then(|t| t.pass("environment")) } else { None },
-                    occlusion_query_set: None,
-                });
-                pass.set_pipeline(if k < 6 { &self.env_draw_pipe } else { &self.env_prefilter_pipe });
-                pass.set_bind_group(0, &self.env_globals, &[]);
-                if k >= 6 {
-                    pass.set_bind_group(1, &self.env_src, &[]);
-                }
-                pass.draw(0..3, k..k + 1);
-                counts.draw(1, 3);
-            }
+            let fresh = self.env_key.is_none() || self.env_level != self.static_level;
             self.env_key = Some(env_key);
+            self.env_level = self.static_level;
+            self.env_next = 0;
+            if fresh {
+                self.env_passes(&mut enc, ENV_PASSES, &mut counts);
+            }
+        }
+        if self.env_next < ENV_PASSES {
+            self.env_passes(&mut enc, 6, &mut counts);
         }
 
         // ---- shadow maps, fine cascade then coarse (the fine one is skipped when unused)
@@ -3066,10 +3068,37 @@ impl Gpu {
                 self.pending_upload += data.len() as u64 * 2;
             }
             if std::env::var_os("VH_PROBE_STATS").is_some() {
-                eprintln!("probes: {:?} of {:?} sent in {:.1} ms", b.size(), p.dims, t.elapsed().as_secs_f64() * 1e3);
+                eprintln!("probes: {:?} of {:?} sent in {:.1} ms at {}", b.size(), p.dims, t.elapsed().as_secs_f64() * 1e3, self.frame_no);
             }
         }
         true
+    }
+
+    /// The environment's next `n` passes (of `ENV_PASSES`, in order: the first mip's faces, then
+    /// each mip prefiltered from it).
+    fn env_passes(&mut self, enc: &mut wgpu::CommandEncoder, n: u32, counts: &mut FrameCounts) {
+        let end = (self.env_next + n).min(ENV_PASSES);
+        for k in self.env_next..end {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("environment"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.env_faces[k as usize],
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: if k == self.env_next { self.timer.as_mut().and_then(|t| t.pass("environment")) } else { None },
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(if k < 6 { &self.env_draw_pipe } else { &self.env_prefilter_pipe });
+            pass.set_bind_group(0, &self.env_globals, &[]);
+            if k >= 6 {
+                pass.set_bind_group(1, &self.env_src, &[]);
+            }
+            pass.draw(0..3, k..k + 1);
+            counts.draw(1, 3);
+        }
+        self.env_next = end;
     }
 
     /// Draws runs of static faces (start, count) with `pipe`, which reads the static store.
