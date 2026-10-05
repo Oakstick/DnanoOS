@@ -342,7 +342,7 @@ impl Models {
         // The played hero and his shield raised, built together (the raised pair is only remade
         // when his kit changes, so it must be made here too, or he blocks with a bare fist).
         let (hero, raised) = forge::hero_rigs(ragnar, forge::Kit::plain(1, Some(1)));
-        let jointed = forge::jointed_of(ragnar, &hero);
+        let jointed = forge::jointed_rig(ragnar, forge::Kit::plain(1, Some(1)));
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
             hero,

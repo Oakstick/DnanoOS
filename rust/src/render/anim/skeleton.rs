@@ -130,6 +130,9 @@ pub struct Cut {
 
 const INF: f32 = f32::INFINITY;
 
+/// The shade mode of a skin voxel in a rig part (`voxels::make_part`: 5 and the material).
+const SKIN_SHADE: f32 = 5.0 + (crate::render::characters::mat::SKIN >> 24) as f32;
+
 impl Cut {
     /// Below the plane `y` (a joint across the limb).
     const fn below(from: Bone, to: Bone, y: f32) -> Self {
@@ -230,9 +233,20 @@ pub fn assign(rig: &Rig, joints: &Joints, width: i32, depth: i32) -> Vec<Vec<usi
         .iter()
         .map(|part| {
             let start = FROM_PART.iter().find(|(n, _)| *n == part.name).map(|(_, b)| *b).unwrap_or(Bone::Hips);
+            // A held weapon is modelled with the fist round its grip: the fist stays with the hand,
+            // so a turn of the weapon in it turns the weapon alone.
+            let fist = match start {
+                Bone::Blade => Some(Bone::HandR),
+                Bone::Offhand => Some(Bone::HandL),
+                _ => None,
+            };
             part.cubes
                 .iter()
-                .map(|(off, _)| {
+                .enumerate()
+                .map(|(j, (off, _))| {
+                    if let (Some(hand), true) = (fist, part.shade.get(j).copied() == Some(SKIN_SHADE)) {
+                        return hand.index();
+                    }
                     let at = part.rest + *off;
                     let g = [ox - at.x / size, at.y / size - 0.5, at.z / size + oz];
                     let mut bone = start;

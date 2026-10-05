@@ -106,20 +106,26 @@ mod tests {
     fn ragnars_clips_all_read_and_carry_their_markers() {
         let c = clips(HeroKind::Ragnar).expect("Ragnar's clips are embedded");
         assert!(c.errors.is_empty(), "{:?}", c.errors);
-        for name in ["idle", "run", "slash_fore", "slash_back", "block", "jump", "hit"] {
+        for name in
+            ["idle", "walk", "run", "slash_fore", "slash_back", "slash_heavy", "block", "block_idle", "jump", "roll", "hit", "parry"]
+        {
             let clip = c.get(name).unwrap_or_else(|| panic!("no {name}"));
             assert!(clip.frame_count() > 10, "{name}");
         }
-        assert!(c.get("idle").unwrap().markers.looping && c.get("run").unwrap().markers.looping);
+        for cycle in ["idle", "walk", "run", "block_idle"] {
+            assert!(c.get(cycle).unwrap().markers.looping, "{cycle} loops");
+        }
         assert!(c.get("run").unwrap().markers.stride.is_some());
-        for name in ["slash_fore", "slash_back"] {
+        for name in ["slash_fore", "slash_back", "slash_heavy"] {
             let k = c.get(name).unwrap();
             let m = |n: &str| k.mark(n).unwrap_or_else(|| panic!("{name} has no {n}"));
             assert!(0.0 < m("windup_end") && m("windup_end") < m("active_end") && m("active_end") <= m("recover_end"));
             assert!((m("recover_end") - k.duration()).abs() < 1e-4, "{name} ends at its last frame");
         }
-        let j = c.get("jump").unwrap();
-        assert!(j.mark("takeoff").unwrap() < j.mark("land").unwrap() && j.mark("land").unwrap() < j.mark("recover_end").unwrap());
+        for leap in ["jump", "roll"] {
+            let j = c.get(leap).unwrap();
+            assert!(j.mark("takeoff").unwrap() < j.mark("land").unwrap() && j.mark("land").unwrap() < j.mark("recover_end").unwrap());
+        }
         assert!(c.get("block").unwrap().mark("raised").is_some());
         assert!(clips(HeroKind::Mehmed).is_none() && embedded(HeroKind::Miyamoto).is_empty());
     }

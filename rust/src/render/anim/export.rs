@@ -212,6 +212,7 @@ pub fn bench() -> String {
             bounds: [0.0, 0.1, 0.167, 0.4],
             side: if f % 480 < 240 { 1.0 } else { -1.0 },
             serial: (f / 240) as u32,
+            heavy: f % 720 >= 480,
         });
         let d = Drive {
             dt: 1.0 / 60.0,

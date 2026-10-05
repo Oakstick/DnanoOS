@@ -30,6 +30,9 @@ const GUARD_RAISE_FRAMES: f32 = crate::logic::combat::fsm::GUARD_RAISE as f32;
 const OVERSHOOT: f32 = 0.14;
 /// Metres a run cycle carries him when its markers do not say.
 const DEFAULT_STRIDE: f32 = 2.0;
+/// His speed over the ground (tiles a second) where the walk gives way to the run: all walk below
+/// the first, all run above the second. (Under his guard he moves at about 2.9, a walk.)
+const WALK_TO_RUN: [f32; 2] = [2.4, 4.0];
 
 /// A strike under way.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,6 +46,8 @@ pub struct Strike {
     pub side: f32,
     /// Counts his swings, so a new one on the same side starts afresh.
     pub serial: u32,
+    /// The string's finisher (L3): its own, heavier clip where he has one.
+    pub heavy: bool,
 }
 
 /// What the hero is doing this frame, as the view reads it.
@@ -54,6 +59,10 @@ pub struct Drive {
     pub motion: f32,
     /// How far through a leap (0 to 1), while he is in the air.
     pub airborne: Option<f32>,
+    /// The leap is his evade in a fight (the roll, where he has one, rather than the jump).
+    pub evade: bool,
+    /// Seconds since his guard turned a blow (a parry), while its snap and recoil play.
+    pub parry: Option<f32>,
     pub strike: Option<Strike>,
     /// His shield is up.
     pub blocking: bool,
@@ -97,6 +106,8 @@ pub struct Animator {
     /// Seconds since he landed, while the leap's landing plays out.
     landing: Option<f32>,
     was_airborne: bool,
+    /// The leap under way (or landing) is the evade's roll.
+    rolling: bool,
     guard_t: f32,
     guard_w: f32,
     hit_t: f32,
@@ -113,6 +124,7 @@ impl Default for Animator {
             run_cycle: 0.0,
             landing: None,
             was_airborne: false,
+            rolling: false,
             guard_t: 0.0,
             guard_w: 0.0,
             hit_t: 0.0,
@@ -147,11 +159,20 @@ impl Animator {
         let dt = d.dt.max(0.0);
 
         // On his feet: idle and run, the run's rate matched to his speed (a stride a cycle).
+        // (With a walk, the walk and the run share one cycle, its rate from the stride between theirs.)
         self.idle_t += dt;
-        let stride = run.markers.stride.unwrap_or(DEFAULT_STRIDE).max(0.1);
+        let walk = clips.get("walk");
+        let run_stride = run.markers.stride.unwrap_or(DEFAULT_STRIDE).max(0.1);
+        let running = if walk.is_some() { smooth((d.speed - WALK_TO_RUN[0]) / (WALK_TO_RUN[1] - WALK_TO_RUN[0])) } else { 1.0 };
+        let stride =
+            walk.map(|w| w.markers.stride.unwrap_or(run_stride).max(0.1)).unwrap_or(run_stride) * (1.0 - running) + run_stride * running;
         self.run_cycle = (self.run_cycle + dt * d.speed.max(0.0) / stride).fract();
         let pace = smooth(d.motion);
-        let mut feet = blend(&idle.sample(self.idle_t), &run.sample(self.run_cycle * run.duration()), pace);
+        let mut gait = run.sample(self.run_cycle * run.duration());
+        if let (Some(w), true) = (walk, running < 1.0) {
+            gait = blend(&w.sample(self.run_cycle * w.duration()), &gait, running);
+        }
+        let mut feet = blend(&idle.sample(self.idle_t), &gait, pace);
 
         // The guard over his upper body: raised in the guard's frames, then held (the clip's hold loops).
         if d.blocking {
@@ -167,13 +188,13 @@ impl Animator {
             let block = clips.get("block")?;
             let raised = block.mark("raised").unwrap_or(0.1 * block.duration());
             let rise = GUARD_RAISE_FRAMES / FPS;
-            let t = if self.guard_t <= rise {
-                warp(self.guard_t, &[0.0, rise], &[0.0, raised])
-            } else {
-                let hold = (block.duration() - raised).max(1e-3);
-                raised + (self.guard_t - rise).rem_euclid(hold)
+            // (Held, his own hold where he has one; else the raise's tail, looping.)
+            let pose = match (self.guard_t <= rise, clips.get("block_idle")) {
+                (true, _) => block.sample(warp(self.guard_t, &[0.0, rise], &[0.0, raised])),
+                (false, Some(hold)) => hold.sample(self.guard_t - rise),
+                (false, None) => block.sample(raised + (self.guard_t - rise).rem_euclid((block.duration() - raised).max(1e-3))),
             };
-            feet = layer(&feet, &block.sample(t), smooth(self.guard_w), &UPPER);
+            feet = layer(&feet, &pose, smooth(self.guard_w), &UPPER);
         }
         // A blow's flinch over his upper body, through its reel.
         if let Some(p) = d.reel {
@@ -188,15 +209,26 @@ impl Animator {
             }
         }
 
-        // The leap, and its landing.
+        // A parry: the shield snapped up and knocked back, over his upper body.
+        if let (Some(t), Some(parry)) = (d.parry, clips.get("parry")) {
+            if t <= parry.duration() {
+                let w = smooth((parry.duration() - t) / (LAYER_OUT_FRAMES / FPS)).min(1.0);
+                feet = layer(&feet, &parry.sample(t), w, &UPPER);
+            }
+        }
+
+        // The leap (the roll, for the evade in a fight), and its landing.
         if self.was_airborne && d.airborne.is_none() {
             self.landing = Some(0.0);
+        }
+        if d.airborne.is_some() && !self.was_airborne {
+            self.rolling = d.evade && clips.get("roll").is_some();
         }
         self.was_airborne = d.airborne.is_some();
         if let Some(l) = self.landing.as_mut() {
             *l += dt;
         }
-        let jump = clips.get("jump");
+        let jump = clips.get(if self.rolling { "roll" } else { "jump" });
         if d.airborne.is_some() || self.landing.is_some() {
             jump?;
         }
@@ -211,7 +243,14 @@ impl Animator {
         let (body, pose) = if let (Some(p), Some(j), Some(m)) = (d.airborne, jump, &jump_marks) {
             (Body::Leap, j.sample(m[0] + (m[1] - m[0]) * p.clamp(0.0, 1.0)))
         } else if let Some(s) = d.strike {
-            let clip = clips.get(if s.side < 0.0 { "slash_fore" } else { "slash_back" })?;
+            let name = if s.heavy && clips.get("slash_heavy").is_some() {
+                "slash_heavy"
+            } else if s.side < 0.0 {
+                "slash_fore"
+            } else {
+                "slash_back"
+            };
+            let clip = clips.get(name)?;
             let m = marks(clip, &["windup_end", "active_end", "recover_end"], &[0.3, 0.45, 1.0]);
             let t = warp(s.t, &s.bounds, &[0.0, m[0], m[1], m[2]]);
             (Body::Strike(s.serial), clip.sample(t))
@@ -313,7 +352,7 @@ mod tests {
         }
         // L1's frames (6, 4, 14) at the move's first frame: the clip's first frame, no blend from the idle.
         let bounds = [0.0, 6.0 / 60.0, 10.0 / 60.0, 24.0 / 60.0];
-        let strike = |t: f32| Drive { strike: Some(Strike { t, bounds, side: -1.0, serial: 1 }), ..d };
+        let strike = |t: f32| Drive { strike: Some(Strike { t, bounds, side: -1.0, serial: 1, heavy: false }), ..d };
         let (p, _) = a.step(&c, &strike(0.0)).unwrap();
         assert!(spine(&p).abs() < 1e-4, "{}", spine(&p));
         // The startup's end shows the clip's wind-up end (frame 12 of 40: 0.3 of the turn).
@@ -322,7 +361,7 @@ mod tests {
         let (p, _) = a.step(&c, &strike(bounds[2])).unwrap();
         assert!((spine(&p) - 0.45).abs() < 1e-3, "{}", spine(&p));
         // The backhand plays its own clip.
-        let (p, _) = a.step(&c, &Drive { strike: Some(Strike { t: bounds[1], bounds, side: 1.0, serial: 2 }), ..d }).unwrap();
+        let (p, _) = a.step(&c, &Drive { strike: Some(Strike { t: bounds[1], bounds, side: 1.0, serial: 2, heavy: false }), ..d }).unwrap();
         assert!((spine(&p) + 0.3).abs() < 1e-3, "{}", spine(&p));
     }
 
@@ -332,7 +371,7 @@ mod tests {
         let mut a = Animator::default();
         let d = Drive { dt: 1.0 / 60.0, ..Default::default() };
         let bounds = [0.0, 0.1, 0.2, 0.4];
-        a.step(&c, &Drive { strike: Some(Strike { t: 0.4, bounds, side: -1.0, serial: 1 }), ..d }).unwrap();
+        a.step(&c, &Drive { strike: Some(Strike { t: 0.4, bounds, side: -1.0, serial: 1, heavy: false }), ..d }).unwrap();
         // The frame after, the pose is still near the strike's end (1.0) and comes back over the blend.
         let (p, _) = a.step(&c, &d).unwrap();
         assert!(spine(&p) > 0.9, "{}", spine(&p));
@@ -370,13 +409,52 @@ mod tests {
     }
 
     #[test]
+    fn the_finisher_the_roll_and_the_parry_have_their_own_clips() {
+        let mut c = clips();
+        c.clips.push(ramp("slash_heavy", 41, 2.0, &[("windup_end", 12.0), ("active_end", 18.0), ("recover_end", 40.0)], false));
+        c.clips.push(ramp("roll", 41, -0.8, &[("takeoff", 0.0), ("land", 30.0), ("recover_end", 40.0)], false));
+        c.clips.push(ramp("parry", 21, 0.9, &[("raised", 3.0)], false));
+        let mut a = Animator::default();
+        let d = Drive { dt: 1.0 / 60.0, ..Default::default() };
+        let bounds = [0.0, 0.1, 0.2, 0.4];
+        let (p, _) = a.step(&c, &Drive { strike: Some(Strike { t: 0.1, bounds, side: -1.0, serial: 1, heavy: true }), ..d }).unwrap();
+        assert!((spine(&p) - 0.6).abs() < 1e-3, "the finisher's clip: {}", spine(&p));
+        // The evade leaps by the roll, a leap elsewhere by the jump (both to their land at the leap's end).
+        let mut a = Animator::default();
+        let (p, _) = a.step(&c, &Drive { airborne: Some(1.0), evade: true, ..d }).unwrap();
+        assert!(spine(&p) < 0.0, "rolled: {}", spine(&p));
+        let mut a = Animator::default();
+        let (p, _) = a.step(&c, &Drive { airborne: Some(1.0), ..d }).unwrap();
+        assert!(spine(&p) > 0.0, "jumped: {}", spine(&p));
+        // The parry's snap over his upper body, then gone when it has played.
+        let mut a = Animator::default();
+        let (p, _) = a.step(&c, &Drive { parry: Some(0.1), ..d }).unwrap();
+        assert!((spine(&p) - 0.27).abs() < 1e-3, "parried: {}", spine(&p));
+        let (p, _) = a.step(&c, &Drive { parry: Some(1.0), ..d }).unwrap();
+        assert!(spine(&p) < 0.1, "{}", spine(&p));
+    }
+
+    #[test]
+    fn a_walk_gives_way_to_the_run_with_his_speed() {
+        let mut c = clips();
+        c.clips.push(ramp("walk", 31, -0.5, &[], true));
+        let mut a = Animator::default();
+        let thigh = |p: &Locals| p[Bone::ThighL.index()].t.y;
+        let slow = Drive { dt: 1.0 / 60.0, speed: 1.0, motion: 1.0, ..Default::default() };
+        let (p, _) = a.step(&c, &slow).unwrap();
+        assert!((thigh(&p) + 0.5).abs() < 1e-4, "walking: {}", thigh(&p));
+        let (p, _) = a.step(&c, &Drive { speed: 5.0, ..slow }).unwrap();
+        assert!((thigh(&p) - 0.2).abs() < 1e-4, "running: {}", thigh(&p));
+    }
+
+    #[test]
     fn a_missing_clip_hands_back_to_the_code() {
         let mut c = clips();
         c.clips.retain(|k| k.name != "slash_back");
         let mut a = Animator::default();
         let d = Drive { dt: 1.0 / 60.0, ..Default::default() };
         assert!(a.step(&c, &d).is_some());
-        let back = Drive { strike: Some(Strike { t: 0.0, bounds: [0.0, 0.1, 0.2, 0.4], side: 1.0, serial: 1 }), ..d };
+        let back = Drive { strike: Some(Strike { t: 0.0, bounds: [0.0, 0.1, 0.2, 0.4], side: 1.0, serial: 1, heavy: false }), ..d };
         assert!(a.step(&c, &back).is_none());
         c.clips.retain(|k| k.name != "idle");
         assert!(a.step(&c, &d).is_none());

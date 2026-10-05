@@ -187,6 +187,7 @@ impl WorldView {
         self.slash_side = -self.slash_side;
         self.slash_timing = None;
         self.slash_serial = self.slash_serial.wrapping_add(1);
+        self.slash_heavy = false;
     }
 
     /// A slash keyed to a move's frame data: the wind-up fills its startup, the strike its active
@@ -194,6 +195,16 @@ impl WorldView {
     pub fn sword_slash_timed(&mut self, startup: f32, active: f32, recovery: f32) {
         self.sword_slash();
         self.slash_timing = Some([startup.max(1e-3), active.max(1e-3), recovery.max(1e-3)]);
+    }
+
+    /// The slash under way is his string's finisher (L3): his clips swing it heavier.
+    pub fn sword_finisher(&mut self) {
+        self.slash_heavy = true;
+    }
+
+    /// His guard turned a blow: his clips snap the shield up and show its recoil.
+    pub fn hero_parried(&mut self) {
+        self.parry_t = Some(0.0);
     }
 
     /// How long the slash under way lasts.
@@ -324,14 +335,29 @@ impl WorldView {
         let strike = (self.slash_t >= 0.0).then(|| {
             // (A swing not keyed to frame data has the old swing's proportions: wind-up to 0.2, strike to 0.47.)
             let [st, a, r] = self.slash_timing.unwrap_or([SLASH_SECONDS * 0.2, SLASH_SECONDS * 0.27, SLASH_SECONDS * 0.53]);
-            Strike { t: self.slash_t, bounds: move_bounds(st, a, r), side: self.slash_side, serial: self.slash_serial }
+            Strike {
+                t: self.slash_t,
+                bounds: move_bounds(st, a, r),
+                side: self.slash_side,
+                serial: self.slash_serial,
+                heavy: self.slash_heavy,
+            }
         });
         let reel = s.hero_fighter.and_then(|f| match f.state {
             State::Reel { kind: Reel::Hitstun | Reel::GuardBroken, left, total } => Some(1.0 - left as f32 / total.max(1) as f32),
             _ => None,
         });
+        if let Some(t) = self.parry_t.as_mut() {
+            *t += dt;
+            if *t > 2.0 {
+                self.parry_t = None;
+            }
+        }
+        let evade = s.hero_fighter.is_some_and(|f| matches!(f.state, State::Evade { .. }));
         let drive = Drive {
             dt,
+            evade,
+            parry: self.parry_t,
             speed: (hero.m.speed * hero.motion) as f32,
             motion: hero.motion as f32,
             airborne: hero.airborne().then(|| hero.jump_progress() as f32),

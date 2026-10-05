@@ -119,6 +119,7 @@ impl Game {
                 }
                 self.view.sparks_block(&self.level.grid, hp, dir);
                 self.view.shield_jolt();
+                self.view.hero_parried();
             }
             Met::Blocked => {
                 self.freeze(Stop::Blocked);
