@@ -377,6 +377,17 @@ const SCENES: &[Scene] = &[
         expect: Expect { loads: 4, ..NOTHING },
     },
     Scene {
+        name: "start",
+        what: "Start: the Garden of Krampus loaded cold, as choosing a hero begins the adventure",
+        setup: "0.1:hub",
+        settle: 2.0,
+        during: "1.0:dungeon:0",
+        period: 0.0,
+        motion: Motion::Still,
+        secs: 4.0,
+        expect: Expect { loads: 1, ..NOTHING },
+    },
+    Scene {
         name: "vault",
         what: "The Vaults of Mammon at the entrance",
         setup: "0.1:realm:4",

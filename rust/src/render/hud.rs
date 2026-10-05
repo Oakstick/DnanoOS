@@ -349,11 +349,23 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     draw_loading(o, g, t);
 }
 
+/// Seconds a level may take to make ready before the loading screen's words come up: a shorter
+/// wait (the Garden's cold start, about 0.2 s; a portal's, under 0.15 s) is a plain cut through
+/// black, not a card that flashes up and is gone.
+const LOADING_WORDS_AFTER: f32 = 0.6;
+/// Seconds the words take to come up once they do.
+const LOADING_WORDS_FADE: f32 = 0.3;
+
+/// How far the loading screen's words have come up, `age` seconds into the wait.
+fn loading_words(age: f32) -> f32 {
+    ((age - LOADING_WORDS_AFTER) / LOADING_WORDS_FADE).clamp(0.0, 1.0)
+}
+
 /// The loading screen (RP03): over the black, the level's name and a pulse, once the wait is long
-/// enough to notice. The HUD under it is drawn all the same, so its sprites are ready on reveal.
+/// enough to need saying. The HUD under it is drawn all the same, so its sprites are ready on reveal.
 fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     let Some(l) = &g.loading else { return };
-    let show = ((l.age as f32 - 0.12) / 0.15).clamp(0.0, 1.0);
+    let show = loading_words(l.age as f32);
     if show <= 0.0 {
         return;
     }
@@ -1954,4 +1966,19 @@ fn wrap_left(o: &mut Overlay, text: &str, x: f32, mut y: f32, max_width: f32, li
         y += line_height;
     }
     y
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_quick_load_is_a_cut_through_black_and_a_slow_one_says_so() {
+        // The Garden's cold start (about 0.2 s, one long frame in it) shows no words at all.
+        for age in [0.0, 0.12, 0.2, 0.35, 0.5, LOADING_WORDS_AFTER] {
+            assert_eq!(loading_words(age), 0.0, "{age} s");
+        }
+        assert!(loading_words(LOADING_WORDS_AFTER + 0.1) > 0.0);
+        assert_eq!(loading_words(LOADING_WORDS_AFTER + LOADING_WORDS_FADE), 1.0);
+    }
 }

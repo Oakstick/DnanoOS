@@ -402,6 +402,10 @@ courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to r
   (`Gpu::level_ready`: scenery uploaded, probes worked out), then fades in on a finished frame.
   - The camera is cut to the level's start during the hold, so the prepared frame is the one shown.
   - The clock restarts on reveal, so the fade-in does not jump the time the load took.
+  - The name and the pulse come up only when the wait passes 0.6 s (2026-10-05). The Garden's cold
+    start takes about 0.2 s (`--perf start`: 30-40 ms building it, one 140-165 ms frame sending
+    its scenery up, then its probes), and a portal under 0.15 s; with the words at 0.12 s they
+    flashed up half-seen and were gone. A quicker wait is a plain cut through black.
   - It gives up waiting after 10 s.
   - The game and `--perf` wait; tests and `--capture` (with no renderer between steps) do not.
   - `--capture --await-renderer` shows the screen.
