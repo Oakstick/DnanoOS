@@ -28,11 +28,19 @@ use super::sins::Sin;
 
 /// What the prince (and what he raises) is multiplied by in a court of `tier`: his health and his
 /// damage. The first court the hero comes to is the measure; every key held before it makes the
-/// prince stronger, as it does the realms.
+/// prince stronger, as it does the realms, and a little more with each (WARBAND.md W9: on a straight
+/// line the kit a hero buys on the way outgrew the courts, the seventh prince falling sooner than
+/// the first).
 pub fn weight(tier: usize) -> (f64, f64) {
     let t = tier.max(1) as f64 - 1.0;
-    (1.0 + 0.3 * t, 0.85 + 0.1 * t)
+    (COURT_HEALTH * (1.0 + 0.3 * t + COURT_CURVE * t * (t - 1.0)), 0.85 + 0.1 * t)
 }
+
+/// The princes' health above their breed's (WARBAND.md W9: with the blade no longer rusting through
+/// in a fight, the expert's first two courts fell in 78 to 103 seconds, under PRINCES.md's 90).
+pub const COURT_HEALTH: f64 = 1.15;
+/// The courts' health, curved upward by this much per key held squared (the second court as before).
+pub const COURT_CURVE: f64 = 0.02;
 
 /// Is the court of `sin` built to its own plan, its prince fought as himself? (If not, he is the
 /// Cyclops in the meadow under the sin's sky.)

@@ -102,6 +102,9 @@ const PARRY_LEAD: f64 = 6.0;
 const BLOCK_LEAD: f64 = 22.0;
 /// The reach it closes to before swinging: the string's reach, less a little.
 const ENGAGE: f64 = 1.3;
+/// ...and on Belphegor asleep, who turns to no one (WARBAND.md W9: from 1.3 off, a swing leant
+/// into him from beside his hourglass met nothing, and he mended for good).
+const SLEEPER_ENGAGE: f64 = 0.9;
 /// Stamina the adept keeps for its guard.
 const RESERVE: f64 = 24.0;
 /// Frames from pressing attack until the guard can come up again (L1's cancel frame, and the raise).
@@ -362,6 +365,18 @@ impl Bot {
         Some(pad)
     }
 
+    /// Floor it may walk on: the grid's, less the Burning Field's lava (a third of his health each
+    /// time; WARBAND.md W9 taught the bots that much of the realm).
+    pub(super) fn floor(g: &Game, t: P) -> bool {
+        if !g.level.grid.is_walkable(t.x, t.y, false) {
+            return false;
+        }
+        match g.run.as_ref() {
+            Some(crate::logic::realms::Run::Wrath(f)) => !f.lava_at(t),
+            _ => true,
+        }
+    }
+
     /// `out`, or the nearest way round from it that keeps him on the fight's floor (walking or
     /// leaping off the ring calls the bout off).
     fn keep_in(g: &Game, hp: V, out: V) -> V {
@@ -370,7 +385,7 @@ impl Bot {
                 let (lo, hi) = gym::ring_bounds();
                 p.x > lo.x + 0.8 && p.x < hi.x - 0.8 && p.y > lo.y + 0.8 && p.y < hi.y - 0.8
             } else {
-                g.level.grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false)
+                Self::floor(g, P::new(p.x.round() as i32, p.y.round() as i32))
             }
         };
         let base = math::angle(out);
@@ -400,10 +415,9 @@ impl Bot {
         let clear = !wedged
             && (0..=n).all(|k| {
                 let p = math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64));
-                [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)].iter().all(|&(dx, dy)| {
-                    let t = tile(V::new(p.x + dx, p.y + dy));
-                    grid.is_walkable(t.x, t.y, false)
-                })
+                [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)]
+                    .iter()
+                    .all(|&(dx, dy)| Self::floor(g, tile(V::new(p.x + dx, p.y + dy))))
             });
         if clear {
             self.route = None;
@@ -422,12 +436,51 @@ impl Bot {
             }
             None => to,
         };
+        // (The tiles' way knows nothing of the Burning Field's lava: it stands rather than walk in.)
+        let into = tile(step);
+        if grid.is_walkable(into.x, into.y, false) && !Self::floor(g, into) && Self::floor(g, a) {
+            self.route = None;
+            return V::new(0.0, 0.0);
+        }
         self.route = Some((a, b, step));
         math::norm(math::sub(step, from))
     }
 
     /// This update's stick and buttons.
     pub fn act(&mut self, g: &Game) -> PadState {
+        let mut pad = self.decide(g);
+        // On the Burning Field no stick leads him off his ground into the lava (a leap may cross it).
+        // Nor does it fight with its back to the lava: off an edge as soon as nothing is about to land,
+        // a blow's shove would put it in (the adept and the expert).
+        if let (Some(crate::logic::realms::Run::Wrath(f)), false) = (g.run.as_ref(), pad.actions.contains(&Action::Jump)) {
+            let hp = g.hero.pos();
+            let dir = V::new(pad.left.0 as f64, pad.left.1 as f64);
+            let ahead = math::add(hp, math::scale(dir, 0.45));
+            if math::len(dir) > 0.01 && !Self::floor(g, P::new(ahead.x.round() as i32, ahead.y.round() as i32)) {
+                pad.left = (0.0, 0.0);
+            }
+            let guarding = pad.actions.contains(&Action::Block);
+            if self.skill != Skill::Novice && !guarding && f.edge_near(hp, 1.2) {
+                let t = P::new(hp.x.round() as i32, hp.y.round() as i32);
+                let lava = (-2..=2)
+                    .flat_map(|dy| (-2..=2).map(move |dx| P::new(t.x + dx, t.y + dy)))
+                    .filter(|p| f.lava_at(*p))
+                    .min_by(|a, b| math::len(math::sub(a.v(), hp)).total_cmp(&math::len(math::sub(b.v(), hp))));
+                if let Some(l) = lava {
+                    let away = math::norm(math::sub(hp, l.v()));
+                    let on = math::add(hp, math::scale(away, 0.6));
+                    if Self::floor(g, P::new(on.x.round() as i32, on.y.round() as i32)) {
+                        pad.left = (away.x as f32, away.y as f32);
+                    }
+                }
+            }
+        }
+        pad
+    }
+
+    /// The stick and buttons as the bot's reading of the fight gives them (`act` keeps the
+    /// Burning Field's lava out of them).
+    fn decide(&mut self, g: &Game) -> PadState {
         let mut pad = PadState::default();
         let Some(spar) = g.brawl.as_ref() else { return pad };
         if !spar.live || !g.brawling() {
@@ -617,7 +670,25 @@ impl Bot {
             self.attack_down = false;
             return pad;
         }
-        if dist > ENGAGE {
+        // (A sleeper turns to no one: it closes right in on him, round his bed if it must, so the
+        // swing it leans into reaches him.)
+        let engage = if Self::belphegor_asleep(target) { SLEEPER_ENGAGE } else { ENGAGE };
+        if dist > engage {
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+            return pad;
+        }
+        // An elf-maid takes no blow on her lovely front (the old man's answer: from behind). The
+        // adept and the expert go round to her back first.
+        if self.skill != Skill::Novice && target.breed.power == Power::Hollow && math::dot(math::sub(hp, target.pos), target.facing) > -0.2
+        {
+            let back = math::add(target.pos, math::scale(target.facing, -(target.radius() + HERO_RADIUS + 0.4)));
+            let side = V::new(-target.facing.y, target.facing.x);
+            let side = if math::dot(math::sub(hp, target.pos), side) >= 0.0 { side } else { math::scale(side, -1.0) };
+            // (Round her flank, not through her.)
+            let via = math::add(target.pos, math::scale(side, target.radius() + HERO_RADIUS + 0.6));
+            let goal = if math::dot(math::sub(hp, target.pos), target.facing) > 0.3 { via } else { back };
+            let dir = self.way(g, hp, goal);
             pad.left = (dir.x as f32, dir.y as f32);
             self.attack_down = false;
             return pad;
@@ -886,7 +957,8 @@ impl Bot {
             .map(|c| c.0)
             .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
         let to = math::sub(at, hp);
-        if math::len(to) > 1.25 {
+        // (Within its reach: from the north the hero stands 1.3 from its middle at the nearest.)
+        if math::len(to) > 1.45 {
             let dir = self.way(g, hp, at);
             pad.left = (dir.x as f32, dir.y as f32);
             self.attack_down = false;

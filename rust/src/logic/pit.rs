@@ -46,6 +46,9 @@ pub const MAX_STANDING: usize = 10;
 pub const LEAP_SHARE: f64 = 0.1;
 /// Seconds into the level that each wave's doors open.
 pub const WAVE_TIMES: [f64; 4] = [3.0, 26.0, 50.0, 74.0];
+/// Seconds a door grinds open, heard and seen, before its pack comes out (WARBAND.md I7: no
+/// pressure without a tell of a second).
+pub const DOOR_TELL: f64 = 1.0;
 
 /// The platform's tiles: the hole in the middle of the cell.
 pub const fn platform() -> Rect {

@@ -186,6 +186,48 @@ fn main() {
         println!("KRAMPUS'S LAIR {skill:?} tier {tier} seed {seed}: {r:?}");
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--run") {
+        // WARBAND.md W9: the whole run by one bot, one save carried through it: `--run SKILL SEED
+        // [ORDER]` (skill 0 novice, 1 adept, 2 expert; order 0 the vaults first, 1 the reverse).
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (skill, seed, order) = (num(1, 2), num(2, 1), num(3, 0));
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join(format!("vh-run-{skill}-{seed}-{order}")));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        let r = void_harvest::game::whole_run::whole_run(skill, seed, order as usize);
+        print!("{}", void_harvest::game::whole_run::run_table(&r));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--runs") {
+        // WARBAND.md W9: `--runs SKILL N [ORDER]`: the whole run by one skill on seeds 1 to N, each
+        // run's end and the parts side by side.
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (skill, n, order) = (num(1, 2), num(2, 3), num(3, 0));
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join(format!("vh-runs-{skill}-{order}")));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        let runs: Vec<_> = (1..=n).map(|seed| void_harvest::game::whole_run::whole_run(skill, seed, order as usize)).collect();
+        print!("{}", void_harvest::game::whole_run::runs_summary(&runs));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--court-at") {
+        // A prince as the run meets him: `--court-at SIN SKILL KIT KEYS SEED` (Ragnar's kit at KIT,
+        // KEYS other keys held: the court weighed at tier KEYS + 1).
+        let sin =
+            args.get(i + 1).and_then(|s| void_harvest::logic::sins::Sin::from_name(s)).unwrap_or(void_harvest::logic::sins::Sin::Greed);
+        let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let (skill, kit, keys, seed) = (num(2, 2), num(3, 1) as u8, num(4, 0) as usize, num(5, 1));
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
+        let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
+        let l = void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, kit);
+        let limit = std::env::var("VH_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(240.0);
+        let (slain, secs, phase, left, lost) = void_harvest::game::whole_run::court_at(sin, skill, seed, l, keys, limit);
+        println!(
+            "{} {skill:?} kit {kit} tier {}: slain {slain} in {secs:.0} s, phase {phase}, {:.0}% left, {lost} lives lost",
+            sin.prince(),
+            keys + 1,
+            left * 100.0
+        );
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--stage") {
         // COMBAT.md §11: stage S's bouts, every bot skill, Ragnar's kit at three tiers about the
         // bouts' own, N seeds: `--stage S N`.

@@ -207,6 +207,12 @@ Balance, Ragnar's kit at TIER, seeds 1 to 3 (lives lost; the run is three lives 
 | Adept | game over at level 2 to 3 | game over at level 3 to 5 | the bottom, 1 / 0 / 1 |
 | Novice | game over at level 2 | game over at level 2 | game over at level 2 |
 
+W9 (WARBAND.md's tuning log): each door now grinds open a second before its pack comes out
+(`pit::DOOR_TELL`; a pack held back for the cap is told again when its room comes). With the blade's
+slower wear in a fight, at tier 8 the expert reaches the bottom 0 / 0 / 0, the adept 0 / 1 / 1, and
+the novice falls at level 4; the adept at tier 7 at level 3 to 5. In the whole run levels 1-3 are a
+breather for the expert (0-24 taken each) and 5-6 the hard ones (69-115 taken, 7-9 left on the ledge).
+
 The expert kills 100 to 140 of the 168 foes, takes 40 to 290 damage over the seven levels, and lets
 0 to 2 ride down a level; the cap holds at ten from the doors (the peak of 14 to 18 counts what the
 deeper stages raise: Hel's dead, the kitsune's illusions). Cost: the sim at 0.02 ms a step with eight
@@ -240,9 +246,9 @@ are where his Perchten come out. No gate: the way out is up. Pinned by
 `the_lair_is_a_round_hollow_with_the_platform_in_the_south_and_the_cage_in_the_north`.
 
 **His fight.** `EnemyKind::Krampus` on `Archetype::Prince`, `Power::Pelt` (a hide as Mammon's: 30%
-of a blow outside his recoveries); HP 1.35 × the Prince's 900, poise 1.3 ×, radius 1.0 (a tile of
-arm), then the courts' weight for tier 8 (`court::weight`: health × 3.1, blows × 1.55): 3766
-health at the bottom of the Pit. His phases fall at 70% and 40% (`krampus::PHASE_AT`, through the
+of a blow outside his recoveries); HP 2.1 × the Prince's 900 (1.35 until W9), poise 1.3 ×, radius
+1.0 (a tile of arm), then the courts' straight weight for tier 8 (`lair::lair_weight`: health × 3.1,
+blows × 1.55): 5859 health at the bottom of the Pit. His phases fall at 70% and 40% (`krampus::PHASE_AT`, through the
 new `prince::phase_for`), so Krampusnacht is the longest.
 
 | Phase | Title | Moves (preferred first) | Pace, rest | What else |
@@ -301,6 +307,7 @@ his phases to `krampus_phase`, `brawl::slay` hands his fall to `krampus_slain`, 
 | His coals' lingering stings are not landings | as Amon's lava (`brawl::update_traps`): the floor he chose to stand on |
 | Entering the lair gives all seven keys (`load_lair`) | no one reaches the bottom without them, and the map's jump must meet him at tier 8 |
 | HP 1.35 (from a first 1.6) | at 1.6 the expert took 205 s at tier 8 and 256 s at tier 7; at 1.35 both sit in 150-250 s |
+| HP 2.1 (WARBAND.md W9, from 1.35) | the 1.35 was measured with the blade rusting through mid-fight; kept keen (W9's slower wear in a fight) the expert felled him in 105 s at tier 8 |
 
 **His body** (`render::foes_lair::krampus`, 100 × 130 × 96 at 0.025, 3.25 tiles tall): Scene I's
 Krampus as he fights, with the birch bundle bound in red ribbon in his right fist, the chain and its
@@ -344,6 +351,11 @@ companion, the birch and the basket, the Perchten; what to do; what to watch for
 
 No two blows inside 18 frames in any of them; 16-25 charges a fight, 3-13 of them dazed in stone,
 three taunts. Pinned by `the_expert_beats_krampus_in_his_lair_and_a_masher_does_not`.
+
+**W9** (WARBAND.md's tuning log), at HP 2.1 with the blade's slower wear: the expert at tier 8 164 /
+137 / 157 s, at tier 7 178 / 178 / 186 s, no fall; the adept at tier 8 timed out in the Chains with
+two falls; the novice lost every life in the Bells in 38 s. In the whole run (the expert's own kit,
+8-8-8, mastery rank 5) he takes 2.7-2.9 minutes, the longest fight of the run (the princes 1.4-2.3).
 
 **Shared files touched.** `logic/enemy.rs` (Krampus, Percht; `LAIR_OWN`), `logic/combat/archetype.rs`
 (their rows; `Power::Pelt`), `logic/combat/frames.rs` (his MoveIds), `logic/combat/prince/mod.rs`

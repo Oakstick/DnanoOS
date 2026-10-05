@@ -994,9 +994,11 @@ impl Ledger {
         }
     }
 
-    /// A fight with him is over: it is remembered, and if he won it (or got away) he ranks up.
+    /// A fight with him is over: it is remembered, and unless the hero slew him he ranks up: he won
+    /// it, fled it low, or saw it end with the hero gone (walked off, or fallen to another). WARBAND.md
+    /// W9: with only his wins and his flights counted, no rival of fifteen whole runs reached a lesson.
     pub fn after_fight(&mut self, id: RivalId, e: Encounter) {
-        let won = matches!(e.outcome, Outcome::RivalWon | Outcome::RivalFled);
+        let won = matches!(e.outcome, Outcome::RivalWon | Outcome::RivalFled | Outcome::HeroLeft);
         self.record(id, e);
         if won {
             self.rank_up(id);

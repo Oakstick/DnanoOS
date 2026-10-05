@@ -43,6 +43,11 @@ pub fn reforge_price(tier: u8) -> u32 {
 
 /// Edge a blade loses (out of 100) with every swing that lands: keen to rusted in about 170 blows.
 pub const EDGE_LOSS: f64 = 0.6;
+/// The same in a fight by frame data (the vaults, the realms, the courts, the Pit): keen to rusted
+/// in about 1000 swings, so a realm's crawl (500 to 800 swings that land) leaves it dull, not
+/// rusted through (WARBAND.md W9: at the Garden's rate it rusted a third of the way into every realm
+/// and every prince was fought at four tenths of the blade).
+pub const EDGE_LOSS_DUEL: f64 = 0.1;
 /// Below this edge a blade is dull, and he is told so; below the second it is rusted.
 pub const DULL_EDGE: f64 = 0.4;
 pub const RUSTED_EDGE: f64 = 0.2;
@@ -120,7 +125,7 @@ pub const FOUND_POTIONS: [PotionKind; 5] =
 
 /// Silver for each golden key, each foe, and a fallen boss.
 pub const COINS_KEY: u32 = 30;
-pub const COINS_KILL: u32 = 5;
+pub const COINS_KILL: u32 = 10;
 pub const COINS_BOSS: u32 = 250;
 /// Rune fragments a fallen Cyclops leaves (one more for each dungeon deeper), and one in each hidden shrine.
 pub const RUNES_BOSS: u32 = 3;

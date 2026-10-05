@@ -41,7 +41,6 @@ use crate::logic::combat::prince::krampus::{
 };
 use crate::logic::combat::prince::phase_name;
 use crate::logic::combat::{math, Breed, Duelist, MoveId, Phase, Reel, State};
-use crate::logic::court::weight;
 use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::juice::{DilationKind, Stop, Trauma};
 use crate::logic::lair::{self as plan, CAGE_MIDDLE, CAGE_STAND, CLEFTS, KRAMPUS};
@@ -54,9 +53,11 @@ const BRASS: u32 = 0xe8c060;
 const FROST: u32 = 0xc8e4ff;
 
 /// His health and his blows at the bottom of the Pit, by the tier of the hero who reaches it (all
-/// seven keys held: tier 8): the courts' weight (`court::weight`), and his own breed's on top.
+/// seven keys held: tier 8): the courts' straight line (without their curve: his own breed's
+/// health, tuned against it, carries the rest), and his own breed's on top.
 pub fn lair_weight(tier: usize) -> (f64, f64) {
-    weight(tier)
+    let t = tier.max(1) as f64 - 1.0;
+    (1.0 + 0.3 * t, 0.85 + 0.1 * t)
 }
 
 /// His death, as it plays out (seconds since the killing blow): the bells fall silent one every
@@ -879,7 +880,7 @@ mod tests {
         assert!(bar.hide);
         // He is heavier than any prince at the tier he is met at.
         let max = krampus(&mut g).max_hp;
-        let (w, _) = weight(8);
+        let (w, _) = crate::logic::court::weight(8);
         assert!(max > 900.0 * w * 1.3, "{max}");
         // The way in: the platform comes to rest, the adventure saved there.
         let mut h = Game::new();
