@@ -372,6 +372,9 @@ impl Game {
                     self.hero.exert(cost);
                     let d = self.brawl.as_ref().map(|b| b.hero.data(mv)).unwrap_or(mv.data());
                     self.view.sword_slash_timed(secs(d.startup) as f32, secs(d.active) as f32, secs(d.recovery) as f32);
+                    if mv == MoveId::L3 {
+                        self.view.sword_finisher();
+                    }
                     self.audio.play(Sfx::Slash);
                     let aim = self.assisted_aim(d.reach);
                     if let Some(b) = self.brawl.as_mut() {

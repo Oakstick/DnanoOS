@@ -1,5 +1,6 @@
 //! Rendering: the scene description (`view`), voxel models, the HUD, and the wgpu backend.
 
+pub mod anim;
 pub mod armory;
 mod brdf;
 mod carve;

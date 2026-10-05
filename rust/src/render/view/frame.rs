@@ -207,9 +207,61 @@ pub struct RigList {
 
 impl RigList {
     /// Poses `rig` at `root` and queues it at the level of detail its size on screen calls for.
-    /// See-through, it is drawn with every face (`Rig::mesh_whole`).
+    /// See-through, it is drawn with every face (`Rig::mesh_whole`). A part with a parent turns
+    /// with it: its joint rides on the parent's matrix, worked out first.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn push(&mut self, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3, look: u32, rust: f32) {
+        self.queue(rig, root, tint, alpha, emissive, look, rust, |parts| {
+            let base = parts.len();
+            for (i, part) in rig.parts.iter().enumerate() {
+                let m = match part.parent {
+                    // (Multiplied as it always was, so a rig without parents draws exactly as before.)
+                    None => root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i]),
+                    Some(p) => {
+                        Mat4::from_cols_array(&parts[base + p])
+                            * Mat4::from_translation(pose.pos[i] - rig.parts[p].rest)
+                            * euler(pose.rot[i])
+                    }
+                };
+                parts.push(m.to_cols_array());
+            }
+        });
+    }
+
+    /// Queues `rig` with each part's matrix given in the model's space (a clip's pose,
+    /// `anim::Skeleton::matrices`), placed at `root`.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn push_matrices(
+        &mut self,
+        rig: &Rig,
+        mats: &[Mat4],
+        root: Mat4,
+        tint: Vec3,
+        alpha: f32,
+        emissive: Vec3,
+        look: u32,
+        rust: f32,
+    ) {
+        self.queue(rig, root, tint, alpha, emissive, look, rust, |parts| {
+            parts
+                .extend(rig.parts.iter().enumerate().map(|(i, _)| (root * mats.get(i).copied().unwrap_or(Mat4::IDENTITY)).to_cols_array()));
+        });
+    }
+
+    /// Picks the level of detail, adds the parts' matrices (`parts` writes them) and queues the
+    /// draw and its far cascade's twin.
+    #[allow(clippy::too_many_arguments)]
+    fn queue(
+        &mut self,
+        rig: &Rig,
+        root: Mat4,
+        tint: Vec3,
+        alpha: f32,
+        emissive: Vec3,
+        look: u32,
+        rust: f32,
+        parts: impl FnOnce(&mut Vec<[f32; 16]>),
+    ) {
         let turn = self.turns.entry(rig.id()).or_insert(0);
         let key = (rig.id(), *turn);
         *turn += 1;
@@ -223,9 +275,7 @@ impl RigList {
         let shown = rig.lod(level);
         let mesh = if alpha < 1.0 { shown.mesh_whole() } else { shown.mesh() };
         let part_base = self.parts.len() as u32;
-        for i in 0..rig.parts.len() {
-            self.parts.push((root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i])).to_cols_array());
-        }
+        parts(&mut self.parts);
         let draw = RigDraw {
             tint: [tint.x, tint.y, tint.z, alpha],
             emissive: [emissive.x, emissive.y, emissive.z, rust],
@@ -437,5 +487,49 @@ mod tests {
         assert!((near - 5.0).abs() < 1e-4 && (far - 1.25).abs() < 1e-4);
         let map = LodPolicy { ortho: true, px_per_unit: 50.0, ..lod };
         assert_eq!(map.pixels(0.01, Vec3::new(0.0, 0.0, 2.0)), map.pixels(0.01, Vec3::new(0.0, 0.0, 80.0)));
+    }
+
+    #[test]
+    fn a_rig_without_parents_is_posed_exactly_as_before() {
+        // A foe's rig in a pose with every part turned and moved: each part's matrix is the root,
+        // then its joint, then its turn, to the bit (what the GPU drew before parts had parents).
+        let rig = crate::render::voxels::build_rig(&crate::render::foes::draugr(), crate::render::foes::DRAUGR_RIG, 0.0125);
+        assert!(rig.parts.iter().all(|p| p.parent.is_none()));
+        let mut pose = super::super::Pose::rest(&rig);
+        for (i, (p, r)) in pose.pos.iter_mut().zip(pose.rot.iter_mut()).enumerate() {
+            *p += Vec3::new(0.01 * i as f32, -0.02, 0.03);
+            *r = Vec3::new(0.3 * i as f32, -0.2, 0.11 * i as f32);
+        }
+        let root =
+            Mat4::from_translation(Vec3::new(3.0, 0.5, -2.0)) * Mat4::from_rotation_y(0.7) * Mat4::from_scale(Vec3::new(1.1, 0.9, 1.1));
+        let mut list = RigList::default();
+        list.push(&rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO, 0, 0.0);
+        for i in 0..rig.parts.len() {
+            let before = (root * Mat4::from_translation(pose.pos[i]) * euler(pose.rot[i])).to_cols_array();
+            assert_eq!(list.parts[i], before, "part {i}");
+        }
+    }
+
+    #[test]
+    fn a_part_with_a_parent_turns_with_it() {
+        let part = |rest: Vec3, parent| crate::render::voxels::RigPart {
+            name: "p",
+            rest,
+            cubes: vec![(Vec3::ZERO, Vec3::ONE)],
+            shade: vec![0.0],
+            min_y: 0.0,
+            parent,
+        };
+        let rig = Rig::new(0.1, vec![part(Vec3::new(0.0, 1.0, 0.0), None), part(Vec3::new(0.0, 0.5, 0.0), Some(0))]);
+        let mut pose = super::super::Pose::rest(&rig);
+        // The parent turned a quarter about z: the child, half a unit below its joint, swings out to +x...
+        pose.rot[0] = Vec3::new(0.0, 0.0, std::f32::consts::FRAC_PI_2);
+        let mut list = RigList::default();
+        list.push(&rig, &pose, Mat4::IDENTITY, Vec3::ONE, 1.0, Vec3::ZERO, 0, 0.0);
+        let child = Mat4::from_cols_array(&list.parts[1]);
+        let at = child.transform_point3(Vec3::ZERO);
+        assert!(at.abs_diff_eq(Vec3::new(0.5, 1.0, 0.0), 1e-5), "{at}");
+        // ...and turned with it.
+        assert!(child.transform_vector3(Vec3::X).abs_diff_eq(Vec3::Y, 1e-5));
     }
 }

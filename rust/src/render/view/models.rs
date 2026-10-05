@@ -216,7 +216,9 @@ pub(super) struct Models {
     pub(super) raised: Option<(Rig, Rig)>,
     /// The hero as his shield's breaking would leave him (and that kit), made with the level so
     /// that a shield broken mid-fight swaps it in rather than building it then (`refit_hero`).
-    pub(super) spare: Option<((HeroKind, forge::Kit), Rig)>,
+    pub(super) spare: Option<((HeroKind, forge::Kit), Rig, Option<Rig>)>,
+    /// The hero cut into his skeleton's bones, for his clips (`anim`), if he has a joint table.
+    pub(super) jointed: Option<Rig>,
     pub(super) thrown: Rig,
     /// The other two heroes as they are shown on the title and character screens, as
     /// souls in Scene I and as ancestral spirits (Ragnar is `ragnar`).
@@ -340,10 +342,12 @@ impl Models {
         // The played hero and his shield raised, built together (the raised pair is only remade
         // when his kit changes, so it must be made here too, or he blocks with a bare fist).
         let (hero, raised) = forge::hero_rigs(ragnar, forge::Kit::plain(1, Some(1)));
+        let jointed = forge::jointed_rig(ragnar, forge::Kit::plain(1, Some(1)));
         Self {
             ragnar: forge::hero_model(ragnar, 1, Some(1)),
             hero,
             hero_key: (ragnar, forge::Kit::plain(1, Some(1))),
+            jointed,
             raised,
             spare: None,
             thrown: forge::thrown_model(ragnar, 1),

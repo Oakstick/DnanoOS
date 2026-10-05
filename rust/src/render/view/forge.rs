@@ -117,7 +117,7 @@ fn back_shield(with: &Collected, bare: &Collected) -> Collected {
 
 /// The shield off his back and strapped to his shield forearm, a little smaller: turned edge-on
 /// to his front, its face looking out from his side, the inside of it against the arm.
-fn strapped(back: &Collected, hero: HeroKind) -> Collected {
+fn strapped(back: &Collected, hero: HeroKind, scale: f32) -> Collected {
     let (ax, ay, az, girth) = forearm(hero);
     let span = |f: fn(&Voxel) -> i32| {
         let lo = back.voxels.iter().map(f).min().unwrap_or(0);
@@ -132,12 +132,11 @@ fn strapped(back: &Collected, hero: HeroKind) -> Collected {
     let against = (ax - girth - 0.5).round() as i32;
     // Each voxel of the smaller shield takes the colour of the one it shrank from (its face
     // across his front and back, its height up his arm, its thickness out from his side).
-    let reach =
-        |lo: i32, hi: i32, c: f32| ((lo as f32 - c) * STRAPPED_SCALE).floor() as i32..=((hi as f32 - c) * STRAPPED_SCALE).ceil() as i32;
+    let reach = |lo: i32, hi: i32, c: f32| ((lo as f32 - c) * scale).floor() as i32..=((hi as f32 - c) * scale).ceil() as i32;
     let mut voxels = Vec::new();
     for dy in reach(y0, y1, cy) {
         for dx in reach(x0, x1, cx) {
-            let (sx, sy) = ((cx + dx as f32 / STRAPPED_SCALE).round() as i32, (cy + dy as f32 / STRAPPED_SCALE).round() as i32);
+            let (sx, sy) = ((cx + dx as f32 / scale).round() as i32, (cy + dy as f32 / scale).round() as i32);
             for z in inner + 1 - SHIELD_THICK..=inner {
                 if let Some(v) = at.get(&(sx, sy, z)) {
                     voxels.push(Voxel {
@@ -169,12 +168,17 @@ fn mirror(c: &mut Collected, width: i32) {
  * without it, and the shield on its own as it hung on his back, to be turned and set before him.
  */
 pub(super) fn hero_rigs(hero: HeroKind, kit: Kit) -> (Rig, Option<(Rig, Rig)>) {
+    hero_rigs_strapped(hero, kit, STRAPPED_SCALE)
+}
+
+/// `hero_rigs` with the shield on his arm at `strap` of its size on his back.
+fn hero_rigs_strapped(hero: HeroKind, kit: Kit, strap: f32) -> (Rig, Option<(Rig, Rig)>) {
     let w = progression::node(hero, Tree::Armory, kit.blade);
     let (mut body, defs) = hero_body(hero, Kit { shield: None, ..kit });
     let (width, depth, height) = (body.width, body.depth, body.height);
     let empty = || Collected { voxels: Vec::new(), width, depth, height };
     let mut back = kit.shield.map(|_| back_shield(&hero_body(hero, kit).0, &body));
-    let mut arm = back.as_ref().map(|b| strapped(b, hero)).unwrap_or_else(empty);
+    let mut arm = back.as_ref().map(|b| strapped(b, hero, strap)).unwrap_or_else(empty);
     let mut main = armory::weapon_for(hero, w.form, w.color, false);
     let mut off = if armory::paired(w.form) { armory::weapon_for(hero, w.form, w.color, true) } else { empty() };
     // He is sculpted with his weapon in the fist at the model's high x: his left as he faces out.
@@ -192,6 +196,51 @@ pub(super) fn hero_rigs(hero: HeroKind, kit: Kit) -> (Rig, Option<(Rig, Rig)>) {
     };
     let raised = back.map(|b| (rig(&empty()), build_rig(&b, &[], HERO_VOXEL)));
     (rig(&arm), raised)
+}
+
+/// A hero's sculpt grid (width, height, depth), which his joint table is measured in.
+fn sculpt_size(hero: HeroKind) -> (i32, i32, i32) {
+    match hero {
+        HeroKind::Ragnar => heroes::RAGNAR_SIZE,
+        HeroKind::Mehmed => heroes::MEHMED_SIZE,
+        HeroKind::Miyamoto => heroes::MIYAMOTO_SIZE,
+    }
+}
+
+/// The shield on his arm as his clips carry it: as big as it hung on his back (they raise it before
+/// him to block, where the code swaps in the shield off his back, `WorldView::emit`).
+const JOINTED_STRAP: f32 = 1.0;
+
+/// The hero dressed and armed for `kit` cut into his skeleton's bones, if he has a joint table
+/// (`anim::skeleton`). With `VH_ANIM=bones` every voxel is painted its bone's colour, to check the
+/// cut.
+pub(super) fn jointed_rig(hero: HeroKind, kit: Kit) -> Option<Rig> {
+    crate::render::anim::skeleton::joints(hero)?;
+    jointed_of(hero, &hero_rigs_strapped(hero, kit, JOINTED_STRAP).0)
+}
+
+/// The hero's rig `rig` (as `hero_rigs` makes it) cut into his skeleton's bones.
+fn jointed_of(hero: HeroKind, rig: &Rig) -> Option<Rig> {
+    use crate::render::anim::{library::Mode, skeleton};
+    let joints = skeleton::joints(hero)?;
+    let (w, _, d) = sculpt_size(hero);
+    let mut cut = skeleton::jointed(rig, joints, w, d);
+    if Mode::from_env() == Mode::Bones {
+        for (i, part) in cut.parts.iter_mut().enumerate() {
+            let c = skeleton::bone_color(i);
+            for (k, (_, color)) in part.cubes.iter_mut().enumerate() {
+                // (A little of the voxel's own shade kept, so the shapes still read.)
+                *color = c * (0.7 + 0.3 * (k % 3) as f32 / 2.0);
+            }
+            part.shade.iter_mut().for_each(|m| *m = 0.0);
+        }
+    }
+    Some(cut)
+}
+
+/// The jointed hero as he stands with blade `blade` and shield `shield` (`--export-rig`, tests).
+pub fn jointed_hero(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig> {
+    jointed_rig(hero, Kit::plain(blade, shield))
 }
 
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
@@ -224,11 +273,15 @@ impl WorldView {
         if key != self.models.hero_key {
             match self.models.spare.take() {
                 // His shield broke: the rig made for it with the level (no shield, none raised).
-                Some((k, rig)) if k == key => {
+                Some((k, rig, jointed)) if k == key => {
                     self.models.hero = rig;
                     self.models.raised = None;
+                    self.models.jointed = jointed;
                 }
-                _ => (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1),
+                _ => {
+                    (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1);
+                    self.models.jointed = jointed_rig(key.0, key.1);
+                }
             }
             // (His weapon thrown is only made again for another weapon.)
             if (key.0, key.1.blade) != (self.models.hero_key.0, self.models.hero_key.1.blade) {
@@ -237,6 +290,7 @@ impl WorldView {
             if key.0 != self.models.hero_key.0 {
                 // Another hero's joints sit elsewhere: start his pose afresh.
                 self.hero_pose = Pose::rest(&self.models.hero);
+                self.hero_anim.reset();
             }
             self.models.hero_key = key;
         }
@@ -252,7 +306,9 @@ impl WorldView {
         }
         let key = (hero, Kit { shield: None, ..kit });
         if self.models.spare.as_ref().is_none_or(|s| s.0 != key) {
-            self.models.spare = Some((key, hero_rigs(key.0, key.1).0));
+            let rig = hero_rigs(key.0, key.1).0;
+            let jointed = jointed_rig(key.0, key.1);
+            self.models.spare = Some((key, rig, jointed));
         }
     }
 
@@ -326,7 +382,11 @@ impl WorldView {
             let rig = self.hero_rig(hero);
             for (p, yaw, life) in &self.ghosts {
                 let root = Mat4::from_translation(*p) * Mat4::from_rotation_y(*yaw);
-                emit_rig(&mut f.rigs_blend, rig, &self.hero_pose, root, lin(0xffe066), 0.28 * life, lin(0xffd23a) * 0.4);
+                let (tint, alpha, glow) = (lin(0xffe066), 0.28 * life, lin(0xffd23a) * 0.4);
+                match self.clip_pose() {
+                    Some((jointed, mats)) => f.rigs_blend.push_matrices(jointed, mats, root, tint, alpha, glow, rig_look::TINT_ALL, 0.0),
+                    None => emit_rig(&mut f.rigs_blend, rig, &self.hero_pose, root, tint, alpha, glow),
+                }
             }
             let fx = &hero.fx;
             if fx.strength > 0.0 || fx.fury > 0.0 {

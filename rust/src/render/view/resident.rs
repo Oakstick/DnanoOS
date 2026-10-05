@@ -68,8 +68,16 @@ impl WorldView {
             wants.push(Want { rig: bare, whole: true });
             wants.push(Want { rig: shield, whole: true });
         }
-        if let Some((_, spare)) = &m.spare {
+        if let Some((_, spare, jointed)) = &m.spare {
             wants.push(Want { rig: spare, whole: true });
+            if let Some(j) = jointed {
+                wants.push(Want { rig: j, whole: true });
+            }
+        }
+        // His jointed rig for his clips, and the clips themselves (read once, now rather than mid-fight).
+        if let Some(j) = &m.jointed {
+            wants.push(Want { rig: j, whole: true });
+            crate::render::anim::library::clips(hero_kind);
         }
         wants.push(Want { rig: &m.thrown, whole: false });
         match hero_kind {
