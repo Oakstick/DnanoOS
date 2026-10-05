@@ -216,7 +216,19 @@ const JOINTED_STRAP: f32 = 1.0;
 /// cut.
 pub(super) fn jointed_rig(hero: HeroKind, kit: Kit) -> Option<Rig> {
     crate::render::anim::skeleton::joints(hero)?;
-    jointed_of(hero, &hero_rigs_strapped(hero, kit, JOINTED_STRAP).0)
+    Some(cloaked(hero, jointed_of(hero, &hero_rigs_strapped(hero, kit, JOINTED_STRAP).0)?))
+}
+
+/// The jointed hero with his cloak cut out into the patches the cloth carries (`anim::cloth`),
+/// if he wears one that flows.
+fn cloaked(hero: HeroKind, rig: Rig) -> Rig {
+    match crate::render::anim::cloth::spec(hero) {
+        Some(spec) => {
+            let (w, _, d) = sculpt_size(hero);
+            crate::render::anim::cloth::split(rig, spec, w, d)
+        }
+        None => rig,
+    }
 }
 
 /// The hero's rig `rig` (as `hero_rigs` makes it) cut into his skeleton's bones.
@@ -238,9 +250,23 @@ fn jointed_of(hero: HeroKind, rig: &Rig) -> Option<Rig> {
     Some(cut)
 }
 
-/// The jointed hero as he stands with blade `blade` and shield `shield` (`--export-rig`, tests).
+/// The jointed hero as he stands with blade `blade` and shield `shield`, his cloak on his back as
+/// sculpted (`--export-rig`, tests).
 pub fn jointed_hero(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig> {
+    crate::render::anim::skeleton::joints(hero)?;
+    jointed_of(hero, &hero_rigs_strapped(hero, Kit::plain(blade, shield), JOINTED_STRAP).0)
+}
+
+/// The jointed hero as the game draws him, his cloak cut into the cloth's patches (tests).
+#[cfg(test)]
+pub fn jointed_hero_cloaked(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig> {
     jointed_rig(hero, Kit::plain(blade, shield))
+}
+
+/// The same in outfit `outfit` (tests).
+#[cfg(test)]
+pub fn jointed_hero_outfit(hero: HeroKind, outfit: u8) -> Option<Rig> {
+    jointed_rig(hero, Kit { outfit, ..Kit::plain(1, Some(1)) })
 }
 
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.

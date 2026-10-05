@@ -370,7 +370,19 @@ impl WorldView {
         if let Some((locals, extra)) = self.hero_anim.step(clips, &drive) {
             let joints: [Vec3; crate::render::anim::skeleton::BONE_COUNT] =
                 std::array::from_fn(|i| rig.parts.get(i).map(|p| p.rest).unwrap_or(Vec3::ZERO));
-            self.hero_mats = Some(clips.skeleton.matrices(&locals, &joints, &extra));
+            let bones = clips.skeleton.matrices(&locals, &joints, &extra);
+            // His cloak flows on the bones as they now stand (`anim::cloth`).
+            let root = self.hero_clip_root(hero);
+            if self.cape.as_ref().map(|c| c.0) != Some(rig.id()) {
+                self.cape = crate::render::anim::cloth::Cape::of(rig).map(|c| (rig.id(), c));
+                self.cloth.reset();
+            }
+            let cape = self.cape.as_ref().map(|c| &c.1);
+            if let Some(cape) = cape {
+                let all: Vec<Vec3> = rig.parts.iter().map(|p| p.rest).collect();
+                self.cloth.step(cape, &bones, &all, root, dt);
+            }
+            self.hero_mats = Some(crate::render::anim::cloth::with_cloak(&bones, cape.map(|c| (&self.cloth, c)), root));
         }
     }
 

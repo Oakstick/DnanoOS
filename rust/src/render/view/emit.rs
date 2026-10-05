@@ -273,6 +273,14 @@ impl WorldView {
 
     /// The hero: his body, his gifts' glow, his lantern, the trail of his swing and his shadow.
     /// Returns where he stands, for what is drawn around him.
+    /// Where his clips place him: on his tile, at his height (sunk with the Pit's platform),
+    /// turned his way, squashed by a landing (their own bob is in them).
+    pub(super) fn hero_clip_root(&self, hero: &Hero) -> Mat4 {
+        let hp = hero.pos();
+        let at = Vec3::new(hp.x as f32, hero.altitude as f32 * STEP - self.pit_sink(), hp.y as f32);
+        Mat4::from_translation(at) * Mat4::from_rotation_y(self.hero_yaw) * Mat4::from_scale(self.hero_squash())
+    }
+
     fn emit_hero(&self, s: &SceneState, f: &mut Frame) -> Vec3 {
         let time = s.time as f32;
         let grid = s.grid;
@@ -324,7 +332,7 @@ impl WorldView {
                 // By his clips: his lean, lunge and guard are in them; the landing's squash is laid on.
                 _ if clip.is_some() => {
                     if let Some((jointed, mats)) = clip {
-                        let root = hero_group * Mat4::from_scale(self.hero_squash());
+                        let root = self.hero_clip_root(hero);
                         target.push_matrices(jointed, mats, root, tint, alpha, emissive, rig_look::TINT_ALL, rust);
                     }
                 }

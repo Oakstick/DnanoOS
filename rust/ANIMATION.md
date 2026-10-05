@@ -378,7 +378,39 @@ Mixamo step (12 clips).
 
 ---
 
+## 9a. Cloth: his cloak (`render/anim/cloth.rs`, 2026-10-06)
+
+His red cloak flows. It was carved onto his back as part of his body; now (longer, to his knees)
+it is cut out of the jointed rig into a grid of 6 × 6 patches (`cloth::split`, by its colours in
+every outfit, `heroes::RAGNAR_CLOAK`, in a box behind him), appended after the skeleton's bones as
+parts `cape.N`. A small cloth runs on the grid's 7 × 7 points each frame, in the world, at 120 Hz:
+
+- **Hung** from his chest: the top line follows the chest bone as the clip moves it.
+- **Weight and air**: gravity; a little drag in every direction; and the air pushing on the
+  cloak's *face* only (`FACE_DRAG`), so it slips through edge-on and trails at a slant (about 33
+  degrees behind a sprint) rather than flying flat; a slow breath of wind so it is never still.
+- **Inertia** (`INERTIA`): it feels 40% of his travel and turning; a sprint starts at full speed
+  in one frame, and the whole jolt flipped it over his head.
+- **Kept off him**: every point stays behind his back as far as it hung at rest (measured level,
+  not along his leaning back, which pushed it up onto his shoulders), out of his thighs, and never
+  lifts past about 60 degrees.
+- **Lengths**: along and across the grid, its diagonals, and a little stiffness over two patches
+  so it folds rather than crumples; five passes a step.
+- Each patch's voxels ride on its four corners (a frame across, up and through them, stretched a
+  little with them), so the cloak stays voxels.
+
+A jump of over 1.5 tiles in a frame (a portal) lays it back at rest about him. It is presentation
+only and runs on the frame's own time; the code path (`VH_ANIM=code`) keeps the cloak carved on
+his back, and `--export-rig` exports the rig before the cut (the cloak on his back as sculpted).
+Tests: the cut keeps every cloak voxel (in every outfit), the patches sit where the cloak was at
+rest, it never passes through his back while he sprints and settles when he stops, a portal lays
+it back at rest.
+
 ## 10. What is left
+
+- **Cloth to come**: the tunic's skirt flaps, his beard braids and belt tassels on short chains;
+  the same cloth for Mehmed's kaftan and Miyamoto's sleeves, Krampus's fur and chains, the princes'
+  robes, the old man's coat.
 
 - **What still reads wrong** (2026-10-05, Mixamo's clips):
   - A blow still hides the blade for about a third of its active frames from behind: Mixamo's cuts

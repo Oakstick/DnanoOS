@@ -85,6 +85,8 @@ use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
 pub use fade::TREE_FADE_MIN;
 pub use forge::jointed_hero;
+#[cfg(test)]
+pub use forge::{jointed_hero_cloaked, jointed_hero_outfit};
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{
@@ -343,7 +345,11 @@ pub struct WorldView {
     /// this frame's matrices for his jointed rig's parts, when his clips pose him.
     hero_anim: crate::render::anim::hero::Animator,
     anim_mode: crate::render::anim::library::Mode,
-    hero_mats: Option<[Mat4; crate::render::anim::skeleton::BONE_COUNT]>,
+    hero_mats: Option<Vec<Mat4>>,
+    /// His cloak's cloth (`anim::cloth`): how it hangs, for the jointed rig it was worked out from,
+    /// and its points as they move.
+    cape: Option<(u64, crate::render::anim::cloth::Cape)>,
+    cloth: crate::render::anim::cloth::Cloth,
     particles: Vec<Particle>,
     /// 0..1 accumulated impact, driving the screen shake.
     trauma: f32,
@@ -512,6 +518,8 @@ impl WorldView {
             hero_anim: Default::default(),
             anim_mode: crate::render::anim::library::Mode::from_env(),
             hero_mats: None,
+            cape: None,
+            cloth: Default::default(),
             particles: Vec::new(),
             trauma: 0.0,
             shake_clock: 0.0,

@@ -4,6 +4,7 @@
 //! The code's animation (`view::animation`) stays as the fallback and the comparison.
 
 pub mod clip;
+pub mod cloth;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod export;
 pub mod hero;
