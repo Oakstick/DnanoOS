@@ -1701,8 +1701,8 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         }
     }
 
-    // The release's version, small in the top corner.
-    o.text(concat!("v", env!("CARGO_PKG_VERSION")), w - t * 0.6, t * 0.9, t * 0.45, rgba(TEXT_DIM, 0.8), Align::Right, false);
+    // The release's version, small in the top left corner.
+    o.text(concat!("v", env!("CARGO_PKG_VERSION")), t * 0.6, t * 0.9, t * 0.45, rgba(TEXT_DIM, 0.8), Align::Left, false);
 
     // One line on how to play, tucked under the button.
     o.text(
