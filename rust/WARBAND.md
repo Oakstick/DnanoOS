@@ -9,8 +9,9 @@ the combat core. Everything here sits **above** it, as a layer that decides *who
 
 Status: approved 2026-10-04 ("I like the plan... Lets go"), §17 settled on the proposals the same
 day, and W0 to W8 built and merged on `rust-port` that day (the build log at the end says what
-and how; several parts were built in parallel worktrees). Left: W9, the tuning pass, which wants a
-playthrough by hand (the bots cannot play the six later realms' own ground).
+and how; several parts were built in parallel worktrees). W9's bots' half is done (2026-10-05: the
+whole-run harness, the tuning log and the checklist at the end of the build log); left is the
+playthrough by hand that closes it.
 
 ---
 
@@ -1425,3 +1426,174 @@ bolt paced late; none of them a general's).
   0.4 s): the realm's needle and the old man's amber lamp. Test: `the_compass_shows_only_while_he_stands_idle`.
 - **F6 puts a thousand coins in his purse**, every press (a testing cheat); the ring's next bout
   moved to F9. Test: `f6_gives_a_thousand_coins_every_press`.
+
+### W9 Tune: the whole run (2026-10-05, branch `tune-w9`)
+
+**The harness** (`game/whole_run.rs`): one bot plays the run in order with one game: one save, one
+purse, one Ledger, the kit it buys and the mastery it earns carried through; the tier rises with the
+keys (`realm_tier`). `--run SKILL SEED [ORDER]` prints one run part by part (tier, kit, rank, time,
+lives, damage, kills, rivals met/made/slain, the Drum, routs, instruments, overlaps, silver and runes
+in and spent, what was bought); `--runs SKILL N [ORDER]` the parts of N seeds side by side;
+`--court-at SIN SKILL KIT KEYS SEED` a prince as the run meets him (`VH_GENERAL=slain|decree` for
+his general's terms). Order 0 is the vaults first, order 1 the reverse, so every realm is met early
+and late. About 40 s for an expert's run, 6 s for an adept's (quick profile).
+
+* **Stand-ins.** The Garden and its Cyclops are not played (no bot walks the Garden): the run begins
+  at the old man's with the Garden's purse (every key's silver, the Cyclops' bounty and runes and his
+  relic: 490 silver, 3 runes, no kills counted). The bots walk the vaults and the Rotting Feast as a
+  player does; the other five realms' spatial lies defeat them, so their fights are played on their
+  own ground and rules, and the harness *carries* the bot to the doorstep of the nearest den when it
+  has gone 30 s without a blow either way, 60 s without a kill, or 6 s standing still with nothing
+  hunting it (counted per realm). Such a realm has 10 minutes, and lost to its ground it does not end
+  the run. The gate's last trap is not played: a realm is done when every foe he can reach is down.
+  A trial at the yard is the trial's bout of the ring, passed on a win.
+* **The shopping rule** (`shop`, the old man before each court, after it, and at the bottom of the
+  Pit, as H does anywhere): sharpen the blade below 70%, reforge or mend the shield, then raise the
+  lowest of blade, shield and path (in that order on a tie) while the purse holds the price and 60
+  more (a sealed tier wants its runes, or a relic), then fill the belt with health bottles; a rank
+  whose deeds are met is tried.
+* **Tries.** A part lost (all lives gone, or a fight not won in its time: courts 8 min, Krampus 10)
+  is played again from its checkpoint by Continue, up to three tries; the run ends at a part lost
+  thrice.
+* **The bots, taught the least they needed** (`game/bot.rs`): on the Burning Field the lava is not
+  floor (`Bot::floor`): no stick leads off the ground into it and the adept and the expert step off
+  an edge between blows (a shove at an isle's edge cost a third of his health each time); an
+  elf-maid (`Power::Hollow`) is struck from behind; a censer is struck from 1.45 tiles (from the
+  north the hero stood 1.3 from its middle at the nearest and walked at it for ever: with his
+  general slain Asmodeus could not be finished); Belphegor asleep is closed on to 0.9 tiles (from
+  1.3 a swing leant into him beside his hourglass met nothing and he mended for good).
+
+**The measures** added for §15.1: the Drum's breath between one peak's end and the next one's start
+(`Drum::gaps`: §15.1's "rest between peaks"; the old `rests` count only the rest phase, which a
+player walking straight to the next den never has); foes come in mid-fight that could land a blow
+within 60 frames of being seen (`sudden`; one out of a Pit door is credited the door's second).
+
+#### What the run found, and the tuning
+
+Before is the game as merged (the same harness and the same taught bots), after is this branch.
+Three seeds each; experts and adepts in both orders.
+
+| Change | Why | Before | After |
+|---|---|---|---|
+| A fight by frame data wears the blade at 0.1 a swing that lands (`gear::EDGE_LOSS_DUEL`; the Garden keeps 0.6) | at the Garden's rate a blade rusted through a third of the way into every realm (a crawl lands 500-800 swings): every prince and Krampus were fought at 40% of the blade, and Belphegor out-mended it | edge at a realm's end 0% (rusted) in every realm; the expert lost the run at Belphegor in 2 of 3 runs (order 0) | the expert's blade loses 25% in the vaults, 13-86% across the realms (the Feast's fifteen minutes the most), 90% through the Pit; 6 of 6 expert runs reach the ending |
+| Krampus's health 1.35 → 2.1 of a prince's (`archetype.rs`) | with a keen blade the expert felled him in 105 s at tier 8, shorter than FINALE's 150-250 and than the lair test's 120 | 105 s (tier 8, seed 1) | tier 8: 136-164 s; tier 7: 178-186 s; in the run 2.7-2.9 min, the longest fight |
+| The princes 1.15 of their breed's health (`court::COURT_HEALTH`) | with a keen blade the expert's first two courts fell in 78-103 s, under PRINCES.md's 90 | 88-139 s (rusted) / 78-103 s (keen) | 85-127 s |
+| The courts' health curves up with the keys (`court::COURT_CURVE` 0.02 × t(t−1)), Krampus's line kept straight (`lair_weight`) | the kit bought on the way outgrew the straight line: the seventh prince fell sooner than the first | expert, courts 1-7: 1.7, 1.7, 2.2, 3.0, 17.5 (lost twice), 2.3, 2.5 min (rust) | 1.4, 1.9, 2.3, 2.0, 2.1, 1.8, 2.1 min (order 0); 1.6, 1.6, 2.0, 2.0, 2.0, 1.8, 1.5 (order 1) |
+| A kill pays 10 silver (`gear::COINS_KILL`, from 5) | the adept reached Mammon with tier-2 blade and shield and could not beat him in a life (he needs tier 3 at the first court) | adept beats Mammon 1 of 3 (order 0) | 3 of 3, and one of three Lucifer too |
+| Mastery's deeds ×2: 50 / 150 / 300 / 600 / 1000 (`mastery::DEEDS_FOR`) | the expert was a master (rank 5) a third of the way into the run: nothing left to earn | rank 5 by the sixth part of sixteen | rank 5 by the tenth (order 0) or the eighth (order 1); the vaults give about 140 deeds, the Feast 350, a court 35-90 |
+| A rival ranks up when the fight ends with the hero gone, not only when he wins or flees (`Ledger::after_fight`: `Outcome::HeroLeft`) | §8's open question, decided by measure: in 15 whole runs no rival carried a lesson (the ones that ranked were the masher's killers, who learn nothing from a masher) | ranks at most 1-4, lessons in 0 of 15 runs | ranks up to 5, lessons in 3 of 15 runs (two adepts', one expert's) |
+| The Pit's doors grind open a second before their pack comes out (`pit::DOOR_TELL`, `PitRun::grind`); a pack held back for the cap is told again when its room comes | I7: the packs stood up at the door mouths with no warning | 0-0.5 foes a Pit able to land within 60 f of coming out | 0 |
+
+Measured and left alone:
+
+* **The Drum** (35-55% at peak, ≥ 8 s between peaks): the adept, the player the pacing is for (W3),
+  spends 53% of the vaults at peak, 60% of the Hall of Mirrors (where it dies), 49% of the Grotto;
+  the expert 12-51% (it ends fights before they peak); the Pit 32-42%. The breath between peaks is
+  10-77 s in every realm but the Mire's (0-6 s: the bot never leaves its first pack, a stand-in's
+  number). Lowering the peak's threshold would push the adept over 55%; the decision of §17 (the Drum
+  paces, it does not read skill) stands. Unchanged.
+* **Morale and the rout**: 5-6 routs in the vaults, 1-5 in the Feast, none in the small packs of the
+  later realms (three foes a den: the last falls before the morale runs out). A lower morale would
+  rout a three-foe pack at one death and end fights the release already eases. Unchanged.
+* **The general**: the expert breaks 2.3-3 of 3 instruments in the realms it can walk or is carried
+  through (§15.1: ≥ 2), but 0-0.3 on the Field and 1 in the Mire, where it never reaches them; the
+  adept 1.7-2.7 (≥ 1); alive against slain stays inside 25% where the bots can walk (W6's
+  `--general`).
+* **Overlaps**: 0 for the expert in every part but Belphegor's court (one in three runs) and the Pit
+  (0.7-1.0 a run: a bolt paced late after a shove); the adept 0.3 in the vaults.
+* **Pressure without a tell**: 0 in 15 runs (one measured case was the harness counting a fallen
+  foe's id handed to a raised skeleton; fixed in the measure).
+* **Rivals met a realm** (§15.1: 1-2): 0 for the expert until it first dies (no rival exists: it makes
+  them only in its falls, mostly on the Burning Field), then 1.3-2.0 a realm; the adept 1.0 a realm
+  from the second on.
+
+#### The curve
+
+Expert, order 0, after (means of three seeds; minutes, lives lost, damage taken):
+
+| | vaults | Mammon | Mirrors | Lucifer | Grotto | Leviathan | Field | Amon | Mire | Belphegor | Feast | Beelzebub | Thorns | Asmodeus | Pit | Krampus |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| tier / kit | 1 / 2-2-1 | 1 / 3-2-2 | 2 / 3-3-2 | 2 / 3-3-3 | 3 / 4-3-3 | 3 / 4-3-3 | 4 / 4-4-4 | 4 / 5-5-4 | 5 / 7-5-4 | 5 / 7-5-5 | 6 / 7-6-6 | 6 / 7-7-7 | 7 / 8-7-7 | 7 / 8-7-7 | 8 / 8-8-7 | 8 / 8-8-8 |
+| min | 6.4 | 1.4 | 2.7 | 1.9 | 6.7 | 2.3 | 14.3 | 2.0 | 10.0 | 2.1 | 15.0 | 1.8 | 3.2 | 2.1 | 16.5 | 2.9 |
+| lives lost | 0 | 0 | 0 | 0 | 0.3 | 0 | 6.7 | 0 | 0.3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| taken | 42 | 0 | 47 | 25 | 86 | 0 | 1594 | 9 | 303 | 6 | 392 | 0 | 232 | 28 | 181 | 0 |
+
+* **The expert finishes** the whole run in all six runs (87-112 minutes), its lost tries (0-3) all on
+  the Burning Field, the bots' worst ground (a stand-in: carried round its slabs, it still dies to
+  shoves into the lava at the isles' edges).
+* **The adept** clears the vaults and fells Mammon in every run of order 0, then falls at Lucifer (2)
+  or Leviathan (1). In order 1 it dies on the Garden of Thorns' ground (the elf-maids) and then to
+  Asmodeus at tier 1. **It does not get "well into" the run.** Its wall is the princes: a prince is
+  whole again after each of its falls, and the adept's guard-first play (it blocks 233 of Lucifer's
+  260 blows, and is caught by the 13 it swings into) cannot take him down in one life without a kit
+  two or three tiers above the court (Lucifer at tier 1, before the princes' 1.15: lost at kit 3,
+  won at kit 4 in 132 s). The economy now buys the
+  first prince; no count or rate buys the rest without making the expert's courts trivial. This is
+  left for the user (below).
+* **The novice** (a masher) loses every life in the vaults three times over (4 minutes, 18 kills).
+* **The seam into the Pit**: a step up in length (16.5 minutes) but not in danger for the expert (181
+  taken, none of its lives); levels 1-3 are a breather (0-24 taken each: stage 1-3 foes against a
+  tier-8 hero), the danger is in levels 5-6 (69-115 taken, 7-9 left on the ledge). The adept with a
+  tier-8 kit reaches the bottom with 0-1 lives lost, with tier 7 it falls at level 3 to 5; the
+  novice at level 4. Left as designed (the descent through the bestiary).
+* **Krampus against the hardest prince**: 2.7-2.9 minutes against the courts' 1.4-2.3, his damage
+  dealt to the expert 0 (the princes' 0-28). The adept at tier 8 runs out of time in the Chains with 2
+  lives lost; the novice loses every life in the Bells in 38 s.
+* **The economy**: the purse ends at 230-1440 silver; the kit reaches 7-7-7 by the seventh court and
+  8-8-8 for Krampus, most of the sealed tiers by the seven princes' relics (each unseals the next
+  sealed tier of the tree with most left). So **runes are meaningless in a whole run**: 61-80 are
+  left unspent at the end (a sealed tier is free by relic before the runes are wanted); the bots'
+  rule leaves the elixir tree alone and still wants for nothing. Nothing the late parts assume is unaffordable to a hero who fights
+  well. Left for the user (below).
+* **Greed taken last** (order 1, tier 7) is the longest realm: 61 foes of every stage, the deepest
+  legends among them; the expert has not cleared it in 15 minutes in two of three runs (a Goryō
+  hovering out of reach, a Tepegöz half-slain).
+
+#### Closed from the build log
+
+* **Rival ranking** (W5's open question): decided as above, a rival who saw the fight end with the
+  hero gone ranks up.
+* **Hold the door** (§7.2) **stays out.** Its answers were "bomb or archangel, or bait it out", and
+  the bomb is disabled (B is the old man's guide); with the 1.2-tile gap §7.1 keeps (no trapping) a
+  vanguard in a one-tile mouth either holds it shut, which traps him outside or in (against I3's
+  spirit), or leaves the gap and holds nothing; and the realms' dens are open ground or rooms with
+  several ways in, so it would rarely fire. The vanguard's Screen does its job in the open.
+* **Crossfire's test** plays a tier-3 kit (it played tier 6): with the blade kept keen its casters
+  fell before two were ever free together.
+
+#### Left for the user
+
+* **The adept's wall at the second prince.** Ways to open it, for a decision: a prince keeps the
+  wounds of one fall on Steady (the harness says the adept would then fell Lucifer); a cheaper
+  first-tier price list; or accept that the princes are for a player who reads (the expert) and the
+  adept is to grow (mastery, trials) before the second court.
+* **Runes.** Make them worth having in a run (the relics unseal fewer tiers, or runes buy the trials,
+  the elixir tree's sealed tiers, or reforging), or let them be the second run's currency.
+* **The five realms the bots cannot read** were not measured as a player meets them (carried from
+  den to den): their times, deaths and deeds (the Mire and the Feast loop to their time limits)
+  are stand-ins. The playthrough below is their measure.
+* `capture.rs`'s `slay` now wounds by 100 000 (a prince at tier 1 passes 1000 health).
+
+#### The playthrough by hand: what to watch at each part
+
+1. **The Garden and the Cyclops**: does the old man's first visit afford the second blade and shield
+   (490 silver, the bots' estimate)?
+2. **The vaults** (first or last): the blade's edge through a whole realm (now 13-45% lost in a
+   walked realm: does the DULL warning still come at a sensible moment, and does sharpening feel
+   worth the silver?); the generals' orders and their instruments; the rivals' name cards once one
+   exists, and whether a lesson is ever met in your run.
+3. **The Hall of Mirrors, the Grotto, the Mire, the Garden of Thorns**: the spatial lies themselves
+   (the bots were carried): how long each takes, whether its rules read. The elf-maids: is "strike
+   from behind" learnable without the old man's page?
+4. **The Burning Field**: the isles' edges. The bots died to shoves into the lava (5-7 lives a run
+   for the expert): is the edge readable, and is a shove into it fair, or does the lava want a lip?
+5. **The courts**: Belphegor asleep (close in), Asmodeus's censers (reach), the length of each (the
+   expert 1.4-2.3 min); does the seventh feel harder than the first?
+6. **The Pit's descent**: the doors' new second of grinding before a pack ("THE DOOR OPENS", the grind
+   sound, the door rising) before anything comes out; the five seconds of the platform sinking; the
+   bell's fifteen; whether levels 1-3 feel a breather or dull, and 5-6 a climax.
+7. **Krampus's phases** (70%, 40%): now 2.7-3 minutes for an expert; the cage taunt's three seconds
+   open; the Perchten; is it long in the right way?
+8. **The ending**: the words held long enough to read (the 34-second beat), the hymn and the choir
+   under the rise, the credits.
+9. **The glint** (Ragnar's first mastery rank) and its missing sound (W8's open item).

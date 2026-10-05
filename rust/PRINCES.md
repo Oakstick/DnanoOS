@@ -33,7 +33,12 @@ These come from COMBAT.md §0 and §13 and WARBAND.md, and they are not bent:
   Continue comes back to his court.
 * **Balance targets**, played by the bots in his court (`--court SIN SKILL TIER SEED`): the expert
   beats him at tiers 1 and 2 without losing all three lives, in about 90 to 150 seconds; a masher
-  (novice) cannot. Pinned by a test as Mammon's is.
+  (novice) cannot. Pinned by a test as Mammon's is. (W9, WARBAND.md's tuning log: with the blade no
+  longer rusting through mid-fight the princes are weighed 1.15 above their breeds,
+  `court::COURT_HEALTH`, and the courts' health curves upward with the keys, `COURT_CURVE`: the
+  expert at tiers 1 and 2 now takes 85-127 s, 88-139 before; in the whole run 1.4-2.3 minutes from
+  the first prince to the seventh. The adept, a blocker, fells the first with a tier-3 kit and falls
+  to the second.)
 * **Determinism.** The sim uses its own seeded rolls; the view and the sound have their own.
 * **Art.** The prince is a voxel sculpt in parts its rig swings, about two and a half times the
   hero's height (as Mammon, 100 × 124 × 80 at 0.025), built at startup, so no larger than his.
