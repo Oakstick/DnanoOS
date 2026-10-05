@@ -1701,6 +1701,9 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         }
     }
 
+    // The release's version, small in the top corner.
+    o.text(concat!("v", env!("CARGO_PKG_VERSION")), w - t * 0.6, t * 0.9, t * 0.45, rgba(TEXT_DIM, 0.8), Align::Right, false);
+
     // One line on how to play, tucked under the button.
     o.text(
         "WASD or the left stick to run   Left click / X attack   B the old man's guide   Shift / LB shield   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
