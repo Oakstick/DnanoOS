@@ -85,6 +85,13 @@ pub(in crate::render::view) struct MirrorsView {
     art: Box<Art>,
 }
 
+impl MirrorsView {
+    /// The statues' rig (made ready with the realm: `WorldView::prepare_rigs`).
+    pub(in crate::render::view) fn statue(&self) -> &Rig {
+        &self.art.statue
+    }
+}
+
 /// The realm's sculpted pieces, and the statues' rig and pose.
 struct Art {
     throne: Merged,

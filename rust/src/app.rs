@@ -367,8 +367,10 @@ impl App {
 
 impl ApplicationHandler for App {
     fn exiting(&mut self, _el: &ActiveEventLoop) {
-        // The run's snapshot, if anything is still marked (on the web, the page unloading).
+        // The run's snapshot, if anything is still marked (on the web, the page unloading), and
+        // every write behind done before the game closes.
         self.game.flush_saves();
+        crate::platform::finish_writes();
     }
 
     /// On the web, the page hidden into the browser's history (it may never come back).
@@ -544,6 +546,8 @@ impl ApplicationHandler for App {
 }
 
 pub fn run(opts: Options) {
+    // The game's saves are written behind, off the frame (`platform::write_behind`).
+    crate::platform::write_behind();
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
     #[allow(unused_mut)]
@@ -551,6 +555,7 @@ pub fn run(opts: Options) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = event_loop.run_app(&mut app);
+        crate::platform::finish_writes();
     }
     #[cfg(target_arch = "wasm32")]
     {

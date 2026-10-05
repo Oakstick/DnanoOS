@@ -117,10 +117,21 @@ fn shrink(s: Sprite, max: i32) -> Sprite {
     Sprite { width: w, height: h, pixels }
 }
 
+/// The portraits made so far, one per breed.
+static PORTRAITS: Mutex<Option<HashMap<EnemyKind, Sprite>>> = Mutex::new(None);
+
+/// Makes the portraits of `kinds` now (as a level loads), not the first time a card shows one.
+pub(super) fn warm(kinds: &[EnemyKind]) {
+    let mut guard = PORTRAITS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+    for &kind in kinds {
+        map.entry(kind).or_insert_with(|| shrink(cropped(sprite_from(&rig_of(kind))), 44));
+    }
+}
+
 /// Draws the portrait of `kind` fitted into the square at (x, y), made once per breed.
 fn draw_portrait(o: &mut Overlay, kind: EnemyKind, x: f32, y: f32, size: f32, alpha: f32) {
-    static CACHE: Mutex<Option<HashMap<EnemyKind, Sprite>>> = Mutex::new(None);
-    let mut guard = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = PORTRAITS.lock().unwrap_or_else(|e| e.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
     let s = map.entry(kind).or_insert_with(|| shrink(cropped(sprite_from(&rig_of(kind))), 44));
     let scale = (size * 0.92) / s.width.max(s.height) as f32;

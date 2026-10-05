@@ -260,6 +260,9 @@ pub struct FrameCounts {
     pub rig_voxels: u64,
     /// Rigs drawn whole, at half and at a quarter of their resolution.
     pub rig_levels: [u32; 3],
+    /// Rig meshes drawn this frame that the level had not made ready at its load (each one meshed
+    /// and sent up in this frame: a stall mid-fight; `WorldView::prepare_rigs`).
+    pub rig_misses: u32,
     /// With occlusion measured (`Gpu::measure_occlusion`, RP20): static faces in the camera's
     /// view, and those in chunks wholly hidden behind nearer scenery.
     pub faces_seen: u64,

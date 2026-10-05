@@ -93,22 +93,30 @@ impl Game {
                 p.writes += 1;
                 self.score.high_saved();
             }
-            Err(e) => {
-                // Kept marked, and tried again in a while.
-                p.dirty = true;
-                p.retry = RETRY;
-                p.failures += 1;
-                platform::warn(&format!("could not save the run (try {}): {e}", p.failures));
-                if p.failures == TELL_AFTER && self.screen == Screen::Playing {
-                    let at = self.hero.pos();
-                    self.floater(at.x, at.y - 2.2, "THE GAME COULD NOT BE SAVED", 3.0, Some(0xff7a5a));
-                }
-            }
+            Err(e) => self.save_failed(&e),
+        }
+    }
+
+    /// A write failed (now, or behind: `platform::take_write_failure`): the snapshot is kept marked
+    /// and tried again in a while, and after several failures the player is told.
+    fn save_failed(&mut self, e: &str) {
+        let p = &mut self.persist;
+        p.dirty = true;
+        p.retry = RETRY;
+        p.failures += 1;
+        platform::warn(&format!("could not save the run (try {}): {e}", p.failures));
+        if p.failures == TELL_AFTER && self.screen == Screen::Playing {
+            let at = self.hero.pos();
+            self.floater(at.x, at.y - 2.2, "THE GAME COULD NOT BE SAVED", 3.0, Some(0xff7a5a));
         }
     }
 
     /// Every update: a marked snapshot is written once the moment is calm, or a second on.
     pub(super) fn tick_saves(&mut self, dt: f64) {
+        // A write behind that failed is tried again, as one that failed in place.
+        if let Some(e) = platform::take_write_failure() {
+            self.save_failed(&e);
+        }
         if !self.persist.dirty {
             return;
         }

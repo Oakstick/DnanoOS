@@ -22,7 +22,9 @@
 //! time is still as fast as the machine goes).
 //!
 //! Every scene states what must have happened in it (`Expect`): a fight's swings, damage both ways,
-//! foes engaged and packs slain; a portal's every change of level. A scene that falls short is
+//! foes engaged and packs slain; a portal's every change of level; for a fight, that no frame
+//! stalled (its CPU time within `FIGHT_BUDGET_MS`, no rig meshed and sent up mid-fight) and, where
+//! the scene brings one in, that a kind of foe new to the fight came. A scene that falls short is
 //! marked FAILED in the report, and the run exits with 3.
 //!
 //! Wall, CPU and GPU times are reported separately (median, 95th and 99th percentile and worst),
@@ -66,10 +68,63 @@ struct Expect {
     hurt: bool,
     /// Changes of level shown.
     loads: usize,
+    /// No measured frame may take more CPU time than this (ms), nor draw a rig the level had not
+    /// made ready (`FrameCounts::rig_misses`): a fight never stutters.
+    budget: Option<f64>,
+    /// A kind of foe not in the fight as it was measured from comes into it (the preload's test).
+    fresh: bool,
 }
 
 /// Nothing in particular: a scene for the renderer alone.
-const NOTHING: Expect = Expect { fight: false, packs: 0, hurt: false, loads: 0 };
+const NOTHING: Expect = Expect { fight: false, packs: 0, hurt: false, loads: 0, budget: None, fresh: false };
+
+/**
+ * A fight's frame budget: no frame's CPU time (update, emission, HUD, upload and recording) over
+ * 8 ms, half a 60 FPS frame. A fight's frames take 1.3 to 2.5 ms of it at the median here, so
+ * that is three times the usual frame with room to spare for the GPU's work and the OS; the
+ * stalls this catches cost 9 to 26 ms (a kind of foe meshed and sent up as it came, the probes
+ * worked out again round a coin taken, a wall broken). Measured after the warm-up, on the dev
+ * laptop (RENDERING.md, "No stalls mid-fight").
+ */
+const FIGHT_BUDGET_MS: f64 = 8.0;
+
+/// What a measured fight showed of its frame budget.
+#[derive(Clone, Copy, Debug, Default)]
+struct Stalls {
+    /// The slowest frame's CPU time (ms) and which it was.
+    worst: f64,
+    worst_at: usize,
+    /// Frames over the budget, and rig meshes drawn unprepared.
+    over: usize,
+    misses: u32,
+}
+
+impl Stalls {
+    fn of(samples: &[Sample], budget: f64) -> Self {
+        let mut s = Stalls::default();
+        for (i, x) in samples.iter().enumerate() {
+            let cpu = x.cpu.total();
+            if cpu > s.worst {
+                (s.worst, s.worst_at) = (cpu, i);
+            }
+            s.over += usize::from(cpu > budget);
+            s.misses += x.counts.rig_misses;
+        }
+        s
+    }
+
+    /// What broke the budget, if anything.
+    fn check(&self, budget: f64) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.over > 0 {
+            out.push(format!("{} frames over {budget:.0} ms of CPU (the worst {:.1} ms, frame {})", self.over, self.worst, self.worst_at));
+        }
+        if self.misses > 0 {
+            out.push(format!("{} rigs meshed and sent up mid-fight", self.misses));
+        }
+        out
+    }
+}
 
 impl Expect {
     /// What fell short, if anything.
@@ -101,6 +156,16 @@ impl Expect {
         out
     }
 
+    /// What fell short of the frames (`budget`) and of the foes that came (`fresh`): `stalls` as
+    /// measured, `fresh` the kinds of foe new to the fight that came into it.
+    fn check_frames(&self, stalls: &Stalls, fresh: &[crate::logic::enemy::EnemyKind]) -> Vec<String> {
+        let mut out = self.budget.map(|b| stalls.check(b)).unwrap_or_default();
+        if self.fresh && fresh.is_empty() {
+            out.push("no kind of foe new to the fight came".into());
+        }
+        out
+    }
+
     fn describe(&self) -> String {
         let mut parts = Vec::new();
         if self.fight {
@@ -114,6 +179,12 @@ impl Expect {
         }
         if self.loads > 0 {
             parts.push(format!("{} changes of level shown", self.loads));
+        }
+        if self.fresh {
+            parts.push("a kind of foe new to the fight".into());
+        }
+        if let Some(b) = self.budget {
+            parts.push(format!("no frame over {b:.0} ms of CPU, no rig meshed mid-fight"));
         }
         if parts.is_empty() {
             "nothing asserted".into()
@@ -148,7 +219,8 @@ const GAMEPLAY_STEPS: [usize; 2] = [2, 4];
 
 /// The plan's scene list: a hero close-up, a dense corridor, a long vista, 30 enemies, transparency,
 /// fast rotation, camera switching, destruction (also in the middle of a 30-foe fight) and portal
-/// arrival; and two fights the bot plays, in the vaults and in the Pit.
+/// arrival; and three fights the bot plays, in the vaults and in the Pit (one of them on into its
+/// next level, where foes of a new kind come).
 const SCENES: &[Scene] = &[
     Scene {
         name: "closeup",
@@ -203,7 +275,7 @@ const SCENES: &[Scene] = &[
         period: 0.6,
         motion: Motion::Still,
         secs: 5.0,
-        expect: NOTHING,
+        expect: Expect { budget: Some(FIGHT_BUDGET_MS), ..NOTHING },
     },
     Scene {
         name: "warband",
@@ -214,7 +286,7 @@ const SCENES: &[Scene] = &[
         period: 0.0,
         motion: Motion::Still,
         secs: 20.0,
-        expect: Expect { fight: true, packs: 1, hurt: false, loads: 0 },
+        expect: Expect { fight: true, packs: 1, hurt: false, loads: 0, budget: Some(FIGHT_BUDGET_MS), fresh: false },
     },
     Scene {
         name: "pit",
@@ -225,7 +297,18 @@ const SCENES: &[Scene] = &[
         period: 0.0,
         motion: Motion::Still,
         secs: 20.0,
-        expect: Expect { fight: true, packs: 1, hurt: true, loads: 0 },
+        expect: Expect { fight: true, packs: 1, hurt: true, loads: 0, budget: Some(FIGHT_BUDGET_MS), fresh: false },
+    },
+    Scene {
+        name: "descent",
+        what: "The Pit's sixth level with the expert bot fighting, its clock run on to the bell: the platform goes down and the seventh level's giants come out of the doors",
+        setup: "0.1:pit:6,0.3:bot:2",
+        settle: 8.0,
+        during: "0.0:pitclock:112",
+        period: 0.0,
+        motion: Motion::Still,
+        secs: 22.0,
+        expect: Expect { fight: true, packs: 0, hurt: false, loads: 0, budget: Some(FIGHT_BUDGET_MS), fresh: true },
     },
     Scene {
         name: "souls",
@@ -280,7 +363,7 @@ const SCENES: &[Scene] = &[
         period: 1.0,
         motion: Motion::Still,
         secs: 5.0,
-        expect: NOTHING,
+        expect: Expect { budget: Some(FIGHT_BUDGET_MS), ..NOTHING },
     },
     Scene {
         name: "portal",
@@ -291,7 +374,7 @@ const SCENES: &[Scene] = &[
         period: 0.0,
         motion: Motion::Still,
         secs: 9.0,
-        expect: Expect { fight: false, packs: 0, hurt: false, loads: 4 },
+        expect: Expect { loads: 4, ..NOTHING },
     },
     Scene {
         name: "vault",
@@ -318,6 +401,8 @@ struct Sample {
     /// The simulation's sections (RP06), summed over the frame's steps (`SimTimes::NAMES`).
     sim: [f64; 9],
     counts: FrameCounts,
+    /// The run's snapshot written in this frame (`game::persist`).
+    saves: u32,
 }
 
 fn percentiles(mut v: Vec<f64>) -> [f64; 4] {
@@ -434,13 +519,32 @@ fn pose(game: &mut Game, scene: &Scene, orbit: f32) {
 /// once. What happened in its measured frames.
 #[cfg(test)]
 fn rehearse(scene: &Scene, steps: usize) -> Deeds {
+    rehearse_with_kinds(scene, steps).0
+}
+
+/// The kinds of foe that came into the fight while it was measured, not in it at the start.
+fn fresh_kinds(start: &[crate::logic::enemy::EnemyKind], game: &Game, seen: &mut Vec<crate::logic::enemy::EnemyKind>) {
+    for e in &game.enemies {
+        if !start.contains(&e.kind()) && !seen.contains(&e.kind()) {
+            seen.push(e.kind());
+        }
+    }
+}
+
+/// `rehearse`, with the kinds of foe new to the fight that came, and every kind the fight showed.
+#[cfg(test)]
+fn rehearse_with_kinds(scene: &Scene, steps: usize) -> (Deeds, Vec<crate::logic::enemy::EnemyKind>, Vec<crate::logic::enemy::EnemyKind>) {
     let (mut game, mut driver) = stage(scene, (1920, 1080), 1.0, 0);
     driver.recount(&game);
+    let start: Vec<_> = game.enemies.iter().map(|e| e.kind()).collect();
+    let (mut fresh, mut all) = (Vec::new(), Vec::new());
     for _ in 0..frames_for(scene, steps) {
         advance(&mut game, &mut driver, scene, steps);
         game.finish_loading();
+        fresh_kinds(&start, &game, &mut fresh);
+        fresh_kinds(&[], &game, &mut all);
     }
-    driver.deeds(&game)
+    (driver.deeds(&game), fresh, all)
 }
 
 struct Run {
@@ -451,6 +555,11 @@ struct Run {
     transitions: Vec<crate::game::Transition>,
     /// What happened while measuring.
     deeds: Deeds,
+    /// Kinds of foe new to the fight that came into it while measuring.
+    fresh: Vec<crate::logic::enemy::EnemyKind>,
+    /// What preparing the level's rigs cost: meshing them (CPU, ms) and making their buffers
+    /// (ms, bytes), at the last preparation.
+    prepared: (f64, f64, u64),
 }
 
 /// Measures `frames` frames of a scene at `steps` simulation steps a frame, after the warm-up.
@@ -467,11 +576,15 @@ fn measure(gpu: &mut Gpu, scene: &Scene, steps: usize, frames: usize, (w, h): (u
     let mut samples = Vec::with_capacity(frames);
     let mut last = Instant::now();
     let mut gpu_seen = 0;
+    let mut start_kinds = Vec::new();
+    let mut new_kinds = Vec::new();
     for i in 0..WARM_FRAMES + frames {
         let warming = i < WARM_FRAMES;
         if i == WARM_FRAMES {
             driver.recount(&game);
+            start_kinds = game.enemies.iter().map(|e| e.kind()).collect();
         }
+        let writes = game.persist.writes;
         let mut cpu = CpuTimes::default();
         let mut sim = [0.0; 9];
         // The warm-up draws the scene as the setup left it; the measured frames move it on.
@@ -533,16 +646,20 @@ fn measure(gpu: &mut Gpu, scene: &Scene, steps: usize, frames: usize, (w, h): (u
             gpu_seen = t.frames;
         }
         if !warming {
-            samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, sim, counts: gpu.counts });
+            samples.push(Sample { wall, cpu, gpu: gpu_ms, shadow, sim, counts: gpu.counts, saves: game.persist.writes - writes });
+            fresh_kinds(&start_kinds, &game, &mut new_kinds);
         }
     }
     let _ = gpu.device.poll(wgpu::PollType::Wait);
     let deeds = driver.deeds(&game);
-    Run { samples, first_frame, transitions: game.transitions, deeds }
+    let prepared = (game.view.resident().ms, gpu.resident_cost.0, gpu.resident_cost.1);
+    Run { samples, first_frame, transitions: game.transitions, deeds, fresh: new_kinds, prepared }
 }
 
 pub fn run(args: &[String]) -> i32 {
     std::env::set_var("VH_NO_AUDIO", "1");
+    // Saves are written behind, as the game writes them.
+    crate::platform::write_behind();
     // Each scene starts from no save at all, in a folder of its own under VH_SAVE_DIR (or the
     // temporary folder): what one scene saves (progress, the Ledger, a checkpoint) must not change
     // the next, or a scene would play differently alone and in `all`.
@@ -653,6 +770,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut hidden_rows = String::new();
     let mut grain_rows = String::new();
     let mut checks = String::new();
+    let mut budget_rows = String::new();
     let mut failed = Vec::new();
     let runs: Vec<(&Scene, usize)> = scenes.iter().flat_map(|s| rates.iter().map(move |&k| (*s, k))).collect();
     for (scene, steps) in runs {
@@ -665,6 +783,7 @@ pub fn run(args: &[String]) -> i32 {
         let frames = frames_arg.unwrap_or_else(|| frames_for(scene, steps));
         let file = if gameplay { format!("{}-{fps}fps", scene.name) } else { scene.name.to_string() };
         let dir = saves.join(format!("perf-{file}"));
+        crate::platform::finish_writes();
         let _ = std::fs::remove_dir_all(&dir);
         std::env::set_var("VH_SAVE_DIR", &dir);
         eprintln!("perf: {label} ({frames} frames, {:.1} s simulated) ...", frames as f64 * steps as f64 * STEP);
@@ -727,7 +846,7 @@ pub fn run(args: &[String]) -> i32 {
             far[1] / b.shadow_far_ms * 100.0,
             mean(&|x| (x.counts.shadow_static - x.counts.shadow_near) as f64) / 1e3,
         );
-        let mut csv = String::from("frame,wall_ms,cpu_ms,update_ms,emit_ms,hud_ms,upload_ms,record_ms,gpu_ms,shadow_near_ms,shadow_far_ms,draws,instances,triangles,upload_bytes,static_drawn,shadow_static,shadow_near,rigs,rig_voxels,lights,lights_dropped,light_pairs,busiest_cluster");
+        let mut csv = String::from("frame,wall_ms,cpu_ms,update_ms,emit_ms,hud_ms,upload_ms,record_ms,gpu_ms,shadow_near_ms,shadow_far_ms,draws,instances,triangles,upload_bytes,static_drawn,shadow_static,shadow_near,rigs,rig_voxels,lights,lights_dropped,light_pairs,busiest_cluster,rig_misses,saves");
         for n in SimTimes::NAMES {
             let _ = write!(csv, ",sim_{n}_ms");
         }
@@ -736,7 +855,7 @@ pub fn run(args: &[String]) -> i32 {
             let c = &x.counts;
             let _ = writeln!(
                 csv,
-                "{i},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{i},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                 x.wall,
                 x.cpu.total(),
                 x.cpu.update,
@@ -759,7 +878,9 @@ pub fn run(args: &[String]) -> i32 {
                 c.lights,
                 c.lights_dropped,
                 c.light_pairs,
-                c.busiest_cluster
+                c.busiest_cluster,
+                c.rig_misses,
+                x.saves
             );
             csv.pop();
             for v in x.sim {
@@ -806,9 +927,26 @@ pub fn run(args: &[String]) -> i32 {
             let _ = write!(row, " {:.2} / {:.2} / {:.1} |", p[0], p[1], p[3]);
         }
         let _ = writeln!(sim_rows, "{row}");
+        // The frames against the fight's budget (no stalls), and what the level made ready.
+        let budget = scene.expect.budget.unwrap_or(FIGHT_BUDGET_MS);
+        let stalls = Stalls::of(s, budget);
+        let saves: u32 = s.iter().map(|x| x.saves).sum();
+        let _ = writeln!(
+            budget_rows,
+            "| {label} | {} | {:.1} (frame {}) | {} | {} | {saves} | {:.0} | {:.0} | {:.1} |",
+            scene.expect.budget.map(|b| format!("{b:.0} ms")).unwrap_or_else(|| "none".into()),
+            stalls.worst,
+            stalls.worst_at,
+            stalls.over,
+            stalls.misses,
+            run.prepared.0,
+            run.prepared.1,
+            run.prepared.2 as f64 / 1e6
+        );
         // What happened, against what must have.
         let d = &run.deeds;
-        let short = scene.expect.check(d);
+        let mut short = scene.expect.check(d);
+        short.extend(scene.expect.check_frames(&stalls, &run.fresh));
         let verdict = if short.is_empty() { "passed".to_string() } else { format!("**FAILED**: {}", short.join("; ")) };
         if !short.is_empty() {
             eprintln!("perf: {label} FAILED: {}", short.join("; "));
@@ -836,6 +974,14 @@ pub fn run(args: &[String]) -> i32 {
          ({:.1} ms near, {:.1} ms far). Far includes redrawing its static cache when that happens. Casters are static \
          instances (thousands).\n\n| Scene | Near p50 | p95 | of budget | casters | Far p50 | p95 | of budget | casters |\n|---|---|---|---|---|---|---|---|---|\n{cascades}",
         b.shadow_near_ms, b.shadow_far_ms
+    );
+    let _ = writeln!(
+        md,
+        "\n## Frame budget\n\nNo stalls mid-fight: each scene's slowest frame of CPU time (ms) and which it was, the frames over \
+         its budget (a fight's: {FIGHT_BUDGET_MS:.0} ms), the rig meshes drawn that the level had not made ready as it loaded \
+         (each one meshed and sent up in its frame), and the run's snapshot written while measuring. Then what the level's \
+         preparation cost behind the loading screen: meshing its rigs (CPU ms), making their buffers (ms) and their size \
+         (MB), at the scene's last level.\n\n| Scene | Budget | Worst | Over | Rig misses | Saves | Meshing | Buffers | MB |\n|---|---|---|---|---|---|---|---|---|\n{budget_rows}"
     );
     let _ = writeln!(
         md,
@@ -930,6 +1076,43 @@ mod tests {
         let d = rehearse(scene("pit"), 2);
         eprintln!("pit: {d:?}");
         assert_eq!(scene("pit").expect.check(&d), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_descent_scene_brings_a_new_kind_of_foe_into_the_fight_and_the_pit_made_it_ready() {
+        let descent = scene("descent");
+        let (d, fresh, all) = rehearse_with_kinds(descent, 2);
+        eprintln!("descent: {d:?}, new kinds {fresh:?}");
+        assert_eq!(descent.expect.check(&d), Vec::<String>::new());
+        assert!(!fresh.is_empty(), "the seventh level's foes came: {all:?}");
+        // Every kind the fight showed was made ready as the Pit was loaded.
+        let (g, _) = stage(descent, (640, 360), 1.0, 0);
+        let ready = g.level_kinds();
+        assert!(all.iter().all(|k| ready.contains(k)), "{all:?} against {ready:?}");
+    }
+
+    #[test]
+    fn a_fight_over_its_budget_or_with_a_rig_meshed_mid_fight_says_so() {
+        let frame = |cpu: f64, misses: u32| {
+            let mut x = Sample { cpu: CpuTimes { update: cpu, ..Default::default() }, ..Default::default() };
+            x.counts.rig_misses = misses;
+            x
+        };
+        let calm = [frame(2.0, 0), frame(3.0, 0)];
+        let stalls = Stalls::of(&calm, FIGHT_BUDGET_MS);
+        assert!(stalls.check(FIGHT_BUDGET_MS).is_empty());
+        assert_eq!((stalls.worst, stalls.worst_at), (3.0, 1));
+        let stalled = [frame(2.0, 0), frame(14.0, 1), frame(9.0, 0)];
+        let s = Stalls::of(&stalled, FIGHT_BUDGET_MS);
+        assert_eq!((s.over, s.misses, s.worst_at), (2, 1, 1));
+        assert_eq!(s.check(FIGHT_BUDGET_MS).len(), 2);
+        // Each fight scene keeps the budget; the renderer's own scenes do not.
+        for name in ["warband", "pit", "battle30", "siege", "descent"] {
+            assert_eq!(scene(name).expect.budget, Some(FIGHT_BUDGET_MS), "{name}");
+            assert!(scene(name).expect.check_frames(&s, &[]).len() >= 2, "{name}");
+        }
+        assert!(scene("garden").expect.check_frames(&s, &[]).is_empty());
+        assert_eq!(scene("descent").expect.check_frames(&Stalls::of(&calm, FIGHT_BUDGET_MS), &[]).len(), 1, "no new kind came");
     }
 
     #[test]

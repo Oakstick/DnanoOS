@@ -149,6 +149,14 @@ impl StaticFaces {
             .fold(0, |bits, f| bits | 1 << f)
     }
 
+    /// Room for `n` cubes more (`add`) without growing a table.
+    pub fn reserve(&mut self, n: usize) {
+        self.covers.reserve(n);
+        self.keys.reserve(n);
+        self.open.reserve(n);
+        self.at.reserve(n);
+    }
+
     /// A cube added in the next free slot: its open faces.
     pub fn add(&mut self, slot: u32, c: &Instance) -> u8 {
         debug_assert_eq!(slot as usize, self.keys.len());

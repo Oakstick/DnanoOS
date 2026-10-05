@@ -5,6 +5,11 @@
 //! the settings file it replaces is kept as `settings.txt.bak`; a settings file that is missing or
 //! will not parse is read from that copy instead. `save_all` writes several keys in one go (the
 //! run's snapshot: `game::persist`) and says when it could not.
+//!
+//! The game itself writes behind (`write_behind`): its writes go, in order, to a thread of their
+//! own, so a save at a calm moment mid-fight no longer stalls the frame (3 to 10 ms of file work on
+//! the game thread); a failure is told later (`take_write_failure`), a read first waits for the
+//! writes before it, and the game waits for the last of them as it closes (`finish_writes`).
 
 #[cfg(not(target_arch = "wasm32"))]
 mod imp {
@@ -72,7 +77,68 @@ mod imp {
     }
 
     pub fn load(key: &str) -> Option<String> {
+        // (What is still being written is read as written.)
+        finish_writes();
         read_all().remove(key)
+    }
+
+    /// The writer the game's writes go to when it writes behind: its queue, the writes not yet
+    /// done, and the failures not yet told.
+    /// One write behind: the save folder, and the keys and values.
+    type Job = (PathBuf, Vec<(String, String)>);
+
+    struct Behind {
+        #[cfg_attr(test, allow(dead_code))]
+        jobs: std::sync::Mutex<std::sync::mpsc::Sender<Job>>,
+        busy: std::sync::Mutex<usize>,
+        idle: std::sync::Condvar,
+        failures: std::sync::Mutex<Vec<String>>,
+    }
+
+    static BEHIND: std::sync::OnceLock<Behind> = std::sync::OnceLock::new();
+
+    /// From now on, writes go to a thread of their own, in order (the game, and the performance
+    /// harness that measures it; tests and tools write in place).
+    pub fn write_behind() {
+        BEHIND.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<Job>();
+            std::thread::spawn(move || {
+                for (dir, entries) in rx {
+                    let pairs: Vec<(&str, &str)> = entries.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                    let result = write_all(&dir, &pairs);
+                    if let Some(b) = BEHIND.get() {
+                        if let Err(e) = result {
+                            b.failures.lock().unwrap_or_else(|e| e.into_inner()).push(e);
+                        }
+                        let mut busy = b.busy.lock().unwrap_or_else(|e| e.into_inner());
+                        *busy -= 1;
+                        b.idle.notify_all();
+                    }
+                }
+            });
+            Behind {
+                jobs: std::sync::Mutex::new(tx),
+                busy: std::sync::Mutex::new(0),
+                idle: std::sync::Condvar::new(),
+                failures: std::sync::Mutex::new(Vec::new()),
+            }
+        });
+    }
+
+    /// Waits until every write handed to the writer is done (none when writing in place).
+    pub fn finish_writes() {
+        let Some(b) = BEHIND.get() else { return };
+        let mut busy = b.busy.lock().unwrap_or_else(|e| e.into_inner());
+        while *busy > 0 {
+            busy = b.idle.wait(busy).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+
+    /// A write behind that failed since last asked, if any (what went wrong).
+    pub fn take_write_failure() -> Option<String> {
+        let b = BEHIND.get()?;
+        let mut f = b.failures.lock().unwrap_or_else(|e| e.into_inner());
+        (!f.is_empty()).then(|| f.remove(0))
     }
 
     /// Appends `line` to the log file `name` in the save folder, starting it with `header`.
@@ -94,6 +160,22 @@ mod imp {
     /// was whole) becomes the copy.
     pub fn save_all(entries: &[(&str, &str)]) -> Result<(), String> {
         let Some(dir) = save_dir() else { return Ok(()) };
+        #[cfg(not(test))]
+        if let Some(b) = BEHIND.get() {
+            // Behind: queued in order; a failure is told by `take_write_failure`.
+            let owned = entries.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            *b.busy.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+            if b.jobs.lock().unwrap_or_else(|e| e.into_inner()).send((dir.clone(), owned)).is_ok() {
+                return Ok(());
+            }
+            *b.busy.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        }
+        write_all(&dir, entries)
+    }
+
+    /// `entries` written into the settings file in `dir`, as `save_all` says.
+    fn write_all(dir: &Path, entries: &[(&str, &str)]) -> Result<(), String> {
+        let dir = dir.to_path_buf();
         let (mut map, whole) = read_state(&dir);
         for (k, v) in entries {
             map.insert(k.to_string(), v.to_string());
@@ -178,6 +260,15 @@ mod imp {
         if let Err(e) = save_all(&[(key, value)]) {
             warn(&format!("could not save {key}: {e}"));
         }
+    }
+
+    /// (The web writes in place: local storage is quick.)
+    pub fn write_behind() {}
+
+    pub fn finish_writes() {}
+
+    pub fn take_write_failure() -> Option<String> {
+        None
     }
 
     /// A line for whoever reads the log (the browser's console).

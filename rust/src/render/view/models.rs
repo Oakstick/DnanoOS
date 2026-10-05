@@ -66,6 +66,63 @@ pub(super) enum RigId {
     Percht,
 }
 
+#[cfg(test)]
+impl RigId {
+    /// Every foe's rig.
+    pub(super) const ALL: [RigId; 50] = [
+        RigId::Skeleton,
+        RigId::Bat,
+        RigId::Vampire,
+        RigId::Slime,
+        RigId::Witch,
+        RigId::Minion,
+        RigId::Helmeted,
+        RigId::Werewolf,
+        RigId::Blemmyes,
+        RigId::LargeBat,
+        RigId::Tengu,
+        RigId::Rasetsu,
+        RigId::DireWolf,
+        RigId::Jorogumo,
+        RigId::Cobra,
+        RigId::Kappa,
+        RigId::Rokurokubi,
+        RigId::Kitsune,
+        RigId::Oni,
+        RigId::Tulukus,
+        RigId::Albasti,
+        RigId::Cin,
+        RigId::Arcura,
+        RigId::Karakoncolos,
+        RigId::FrostGiant,
+        RigId::Surtr,
+        RigId::Nidhogg,
+        RigId::Hel,
+        RigId::Tepegoz,
+        RigId::Gashadokuro,
+        RigId::Ejder,
+        RigId::Goryo,
+        RigId::Ganglot,
+        RigId::Gaki,
+        RigId::Ellepige,
+        RigId::Mammon,
+        RigId::GoldGolem,
+        RigId::Lucifer,
+        RigId::Reflection,
+        RigId::Leviathan,
+        RigId::Serpentling,
+        RigId::Amon,
+        RigId::Raven,
+        RigId::Belphegor,
+        RigId::Nightmare,
+        RigId::Beelzebub,
+        RigId::FlySwarm,
+        RigId::Asmodeus,
+        RigId::Krampus,
+        RigId::Percht,
+    ];
+}
+
 pub(super) struct Models {
     pub(super) ragnar: Rig,
     pub(super) skeleton: Rig,
@@ -157,6 +214,9 @@ pub(super) struct Models {
     pub(super) hero_key: (HeroKind, forge::Kit),
     /// The hero without the shield on his back, and the shield itself: drawn while he holds it up.
     pub(super) raised: Option<(Rig, Rig)>,
+    /// The hero as his shield's breaking would leave him (and that kit), made with the level so
+    /// that a shield broken mid-fight swaps it in rather than building it then (`refit_hero`).
+    pub(super) spare: Option<((HeroKind, forge::Kit), Rig)>,
     pub(super) thrown: Rig,
     /// The other two heroes as they are shown on the title and character screens, as
     /// souls in Scene I and as ancestral spirits (Ragnar is `ragnar`).
@@ -285,6 +345,7 @@ impl Models {
             hero,
             hero_key: (ragnar, forge::Kit::plain(1, Some(1))),
             raised,
+            spare: None,
             thrown: forge::thrown_model(ragnar, 1),
             skeleton,
             bat,
@@ -427,5 +488,30 @@ impl Models {
             RigId::Krampus => &self.krampus_fight,
             RigId::Percht => &self.percht,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every foe's rig at every level of detail, as the GPU keeps them (32 bytes a face): what
+    /// preparing a level's rigs can cost at most. Run with `--nocapture` for each one's size.
+    #[test]
+    fn every_foes_rig_meshed_at_every_level_fits_in_little_memory() {
+        let m = Models::new();
+        assert_eq!(std::mem::size_of::<RigFace>(), 32);
+        let mut total = 0;
+        for id in RigId::ALL {
+            let rig = m.rig(id);
+            let sizes: Vec<usize> = (0..LOD_LEVELS).map(|l| rig.lod(l).mesh().bytes()).collect();
+            eprintln!("rig {}: {:?} kB", id as u8, sizes.iter().map(|b| b / 1024).collect::<Vec<_>>());
+            assert!(sizes[2] < sizes[1] && sizes[1] < sizes[0], "each level smaller");
+            total += sizes.iter().sum::<usize>();
+        }
+        eprintln!("every foe: {} MB", total >> 20);
+        // (Before the faces were records of their own, four corners and six indices each, the
+        // same took 455 MB.)
+        assert!(total < 100 << 20, "{} MB", total >> 20);
     }
 }

@@ -64,6 +64,7 @@ mod meadow;
 mod models;
 mod pit;
 mod realms;
+mod resident;
 mod sanctum;
 mod select;
 mod showcase;
@@ -93,6 +94,7 @@ pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;
 use models::{Models, RigId};
 pub use pit::PitView;
+pub use resident::Resident;
 pub use select::SelectView;
 use showcase::STAGE;
 pub use story::StoryView;
@@ -358,6 +360,8 @@ pub struct WorldView {
     /// clear of; worked out again when the scenery changes (`camera::Spans`).
     tops: camera::Spans,
     tops_dirty: bool,
+    /// Tiles whose scenery changed since (a wall blown away), worked out again on their own.
+    tops_tiles: Vec<(i32, i32)>,
     was_showcase: bool,
     /// R3 was pressed: the camera is swinging back behind him.
     recentering: bool,
@@ -408,6 +412,8 @@ pub struct WorldView {
     ghosts: Vec<(Vec3, f32, f32)>,
     ghost_clock: f32,
     rng: Rng,
+    /// The rigs the level keeps ready on the GPU from its load to the next (`prepare_rigs`).
+    resident: Resident,
     /// The juice on screen: the camera's kick, roll and FOV punch, flinches, bodies breaking.
     juice: juice::JuiceView,
 }
@@ -506,6 +512,7 @@ impl WorldView {
             switching: 0.0,
             tops: Default::default(),
             tops_dirty: true,
+            tops_tiles: Vec::new(),
             was_showcase: false,
             recentering: false,
             focus: None,
@@ -539,6 +546,7 @@ impl WorldView {
             ghosts: Vec::new(),
             ghost_clock: 0.0,
             rng: Rng::from_time(),
+            resident: Resident::default(),
             juice: juice::JuiceView::default(),
         }
     }
@@ -741,7 +749,7 @@ impl WorldView {
                 .collect();
             self.hide_range(range);
         }
-        self.tops_dirty = true;
+        self.tops_tiles.push((x, y));
         if let Some((_, range)) = self.torches.remove(&k) {
             self.hide_range(range);
         }

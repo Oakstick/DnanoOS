@@ -77,69 +77,134 @@ pub(super) struct Spans {
     /// he shows through glass).
     cols: Vec<Vec<(f32, f32)>>,
     opaque: Vec<Vec<(f32, f32)>>,
+    /// The cubes over each tile, and how many of the level's cubes have been looked at: a wall
+    /// broken mid-fight works out its own tiles again (`refresh`), not the whole level (which cost
+    /// 7 ms in the Garden, the frame the wall fell).
+    members: Vec<Vec<u32>>,
+    seen: usize,
+}
+
+/// Where a cube stands for the camera: the tiles it covers (x0..=x1, z0..=z1), its span of height,
+/// and whether it is see-through.
+struct Footprint {
+    x0: usize,
+    x1: usize,
+    z0: usize,
+    z1: usize,
+    span: (f32, f32),
+    clear: bool,
+}
+
+/// A cube's footprint; none if the camera need not keep clear of it.
+fn footprint(c: &Instance, w: usize, h: usize) -> Option<Footprint> {
+    let shade = c.emissive[3];
+    if shade == SHADE_GRASS || shade == SHADE_CLOUD || shade >= SHADE_WATER || c.color[3] <= 0.0 {
+        return None;
+    }
+    let m = Mat4::from_cols_array(&c.m);
+    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+    for k in 0..8 {
+        let l = Vec3::new(if k & 1 == 0 { -0.5 } else { 0.5 }, if k & 2 == 0 { -0.5 } else { 0.5 }, if k & 4 == 0 { -0.5 } else { 0.5 });
+        let p = m.transform_point3(l);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    if (hi - lo).max_element() < 0.12 {
+        return None;
+    }
+    // The tiles it covers (tile x spans x - 0.5 to x + 0.5), not counting a sliver over the edge.
+    let x0 = (lo.x + 0.55).floor().max(0.0) as usize;
+    let x1 = ((hi.x + 0.45).floor().max(-1.0) as isize).min(w as isize - 1);
+    let z0 = (lo.z + 0.55).floor().max(0.0) as usize;
+    let z1 = ((hi.z + 0.45).floor().max(-1.0) as isize).min(h as isize - 1);
+    if x1 < 0 || z1 < 0 || (x1 as usize) < x0 || (z1 as usize) < z0 {
+        return None;
+    }
+    Some(Footprint { x0, x1: x1 as usize, z0, z1: z1 as usize, span: (lo.y, hi.y), clear: c.color[3] < 0.999 })
+}
+
+/// Spans merged where they touch, bottom up.
+fn merge(col: &mut Vec<(f32, f32)>) {
+    col.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut merged: Vec<(f32, f32)> = Vec::with_capacity(col.len().min(4));
+    for &(lo, hi) in col.iter() {
+        match merged.last_mut() {
+            Some(last) if lo <= last.1 + 0.02 => last.1 = last.1.max(hi),
+            _ => merged.push((lo, hi)),
+        }
+    }
+    *col = merged;
 }
 
 impl Spans {
     pub(super) fn build(cubes: &[Instance], skip: &[(usize, usize)], w: usize, h: usize) -> Spans {
-        let mut cols: Vec<Vec<(f32, f32)>> = vec![Vec::new(); w * h];
-        let mut opaque: Vec<Vec<(f32, f32)>> = vec![Vec::new(); w * h];
         let mut skipped = vec![false; cubes.len()];
         for &(start, len) in skip {
             for s in skipped.iter_mut().skip(start).take(len) {
                 *s = true;
             }
         }
-        for (c, _) in cubes.iter().zip(&skipped).filter(|(_, &s)| !s) {
-            let shade = c.emissive[3];
-            if shade == SHADE_GRASS || shade == SHADE_CLOUD || shade >= SHADE_WATER || c.color[3] <= 0.0 {
-                continue;
-            }
-            let m = Mat4::from_cols_array(&c.m);
-            let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
-            for k in 0..8 {
-                let l = Vec3::new(
-                    if k & 1 == 0 { -0.5 } else { 0.5 },
-                    if k & 2 == 0 { -0.5 } else { 0.5 },
-                    if k & 4 == 0 { -0.5 } else { 0.5 },
-                );
-                let p = m.transform_point3(l);
-                lo = lo.min(p);
-                hi = hi.max(p);
-            }
-            if (hi - lo).max_element() < 0.12 {
-                continue;
-            }
-            // The tiles it covers (tile x spans x - 0.5 to x + 0.5), not counting a sliver over the edge.
-            let x0 = (lo.x + 0.55).floor().max(0.0) as usize;
-            let x1 = ((hi.x + 0.45).floor().max(-1.0) as isize).min(w as isize - 1);
-            let z0 = (lo.z + 0.55).floor().max(0.0) as usize;
-            let z1 = ((hi.z + 0.45).floor().max(-1.0) as isize).min(h as isize - 1);
-            if x1 < 0 || z1 < 0 {
-                continue;
-            }
-            let clear = c.color[3] < 0.999;
-            for z in z0..=z1 as usize {
-                for x in x0..=x1 as usize {
-                    cols[z * w + x].push((lo.y, hi.y));
-                    if !clear {
-                        opaque[z * w + x].push((lo.y, hi.y));
+        let mut members: Vec<Vec<u32>> = vec![Vec::new(); w * h];
+        for (i, c) in cubes.iter().enumerate().filter(|(i, _)| !skipped[*i]) {
+            if let Some(f) = footprint(c, w, h) {
+                for z in f.z0..=f.z1 {
+                    for x in f.x0..=f.x1 {
+                        members[z * w + x].push(i as u32);
                     }
                 }
             }
         }
-        // Each column's spans merged where they touch.
-        for col in cols.iter_mut().chain(opaque.iter_mut()) {
-            col.sort_by(|a, b| a.0.total_cmp(&b.0));
-            let mut merged: Vec<(f32, f32)> = Vec::with_capacity(col.len().min(4));
-            for &(lo, hi) in col.iter() {
-                match merged.last_mut() {
-                    Some(last) if lo <= last.1 + 0.02 => last.1 = last.1.max(hi),
-                    _ => merged.push((lo, hi)),
+        let mut spans = Spans { w, h, cols: vec![Vec::new(); w * h], opaque: vec![Vec::new(); w * h], members, seen: cubes.len() };
+        for t in 0..w * h {
+            spans.work_out(cubes, t);
+        }
+        spans
+    }
+
+    /// Tile `t`'s spans worked out again from the cubes over it.
+    fn work_out(&mut self, cubes: &[Instance], t: usize) {
+        let (mut col, mut opaque) = (Vec::new(), Vec::new());
+        for &i in &self.members[t] {
+            if let Some(f) = cubes.get(i as usize).and_then(|c| footprint(c, self.w, self.h)) {
+                col.push(f.span);
+                if !f.clear {
+                    opaque.push(f.span);
                 }
             }
-            *col = merged;
         }
-        Spans { w, h, cols, opaque }
+        merge(&mut col);
+        merge(&mut opaque);
+        self.cols[t] = col;
+        self.opaque[t] = opaque;
+    }
+
+    /**
+     * The scenery changed on `tiles` (a wall blown away: its cubes hidden) and cubes may have been
+     * added since (its rubble, the floor patched): those tiles and the added cubes' are worked out
+     * again, the same as building it all again would (tested), at a few tiles' cost.
+     */
+    pub(super) fn refresh(&mut self, cubes: &[Instance], tiles: &[(i32, i32)]) {
+        let mut dirty: Vec<usize> = tiles
+            .iter()
+            .filter(|&&(x, z)| x >= 0 && z >= 0 && (x as usize) < self.w && (z as usize) < self.h)
+            .map(|&(x, z)| z as usize * self.w + x as usize)
+            .collect();
+        for (i, c) in cubes.iter().enumerate().skip(self.seen) {
+            if let Some(f) = footprint(c, self.w, self.h) {
+                for z in f.z0..=f.z1 {
+                    for x in f.x0..=f.x1 {
+                        self.members[z * self.w + x].push(i as u32);
+                        dirty.push(z * self.w + x);
+                    }
+                }
+            }
+        }
+        self.seen = cubes.len();
+        dirty.sort_unstable();
+        dirty.dedup();
+        for t in dirty {
+            self.work_out(cubes, t);
+        }
     }
 
     /// Is height `y` at (`x`, `z`) within `room` of the scenery there (of its opaque part, with
@@ -335,7 +400,11 @@ impl WorldView {
             let trees: Vec<(usize, usize)> = self.trees.iter().map(|t| t.range).collect();
             self.tops = Spans::build(&self.static_cubes, &trees, grid.width as usize, grid.height as usize);
             self.tops_dirty = false;
+            self.tops_tiles.clear();
             self.fit_trees();
+        } else if !self.tops_tiles.is_empty() {
+            let tiles = std::mem::take(&mut self.tops_tiles);
+            self.tops.refresh(&self.static_cubes, &tiles);
         }
         let story_cam = self.story.map(|sv| self.story_camera(sv));
         let (desired, look, pos_lerp) = if let Some((eye, look, _)) = story_cam {
@@ -673,5 +742,118 @@ impl WorldView {
             return None;
         }
         Some(((ndc.x + 1.0) / 2.0 * width, (1.0 - ndc.y) / 2.0 * height))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Columns = Vec<Vec<(f32, f32)>>;
+
+    fn block(at: Vec3, size: Vec3, alpha: f32) -> Instance {
+        Instance::new(Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at), Vec3::ONE, alpha, Vec3::ZERO, SHADE_LIT)
+    }
+
+    fn old_build(cubes: &[Instance], skip: &[(usize, usize)], w: usize, h: usize) -> (Columns, Columns) {
+        let mut cols: Vec<Vec<(f32, f32)>> = vec![Vec::new(); w * h];
+        let mut opaque: Vec<Vec<(f32, f32)>> = vec![Vec::new(); w * h];
+        let mut skipped = vec![false; cubes.len()];
+        for &(start, len) in skip {
+            for s in skipped.iter_mut().skip(start).take(len) {
+                *s = true;
+            }
+        }
+        for (c, _) in cubes.iter().zip(&skipped).filter(|(_, &s)| !s) {
+            let shade = c.emissive[3];
+            if shade == SHADE_GRASS || shade == SHADE_CLOUD || shade >= SHADE_WATER || c.color[3] <= 0.0 {
+                continue;
+            }
+            let m = Mat4::from_cols_array(&c.m);
+            let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+            for k in 0..8 {
+                let l = Vec3::new(
+                    if k & 1 == 0 { -0.5 } else { 0.5 },
+                    if k & 2 == 0 { -0.5 } else { 0.5 },
+                    if k & 4 == 0 { -0.5 } else { 0.5 },
+                );
+                let p = m.transform_point3(l);
+                lo = lo.min(p);
+                hi = hi.max(p);
+            }
+            if (hi - lo).max_element() < 0.12 {
+                continue;
+            }
+            // The tiles it covers (tile x spans x - 0.5 to x + 0.5), not counting a sliver over the edge.
+            let x0 = (lo.x + 0.55).floor().max(0.0) as usize;
+            let x1 = ((hi.x + 0.45).floor().max(-1.0) as isize).min(w as isize - 1);
+            let z0 = (lo.z + 0.55).floor().max(0.0) as usize;
+            let z1 = ((hi.z + 0.45).floor().max(-1.0) as isize).min(h as isize - 1);
+            if x1 < 0 || z1 < 0 {
+                continue;
+            }
+            let clear = c.color[3] < 0.999;
+            for z in z0..=z1 as usize {
+                for x in x0..=x1 as usize {
+                    cols[z * w + x].push((lo.y, hi.y));
+                    if !clear {
+                        opaque[z * w + x].push((lo.y, hi.y));
+                    }
+                }
+            }
+        }
+        // Each column's spans merged where they touch.
+        for col in cols.iter_mut().chain(opaque.iter_mut()) {
+            col.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut merged: Vec<(f32, f32)> = Vec::with_capacity(col.len().min(4));
+            for &(lo, hi) in col.iter() {
+                match merged.last_mut() {
+                    Some(last) if lo <= last.1 + 0.02 => last.1 = last.1.max(hi),
+                    _ => merged.push((lo, hi)),
+                }
+            }
+            *col = merged;
+        }
+        (cols, opaque)
+    }
+
+    #[test]
+    fn spans_match_the_old_build_on_real_levels() {
+        let mut g = crate::game::Game::new();
+        for level in 0..3 {
+            g.load_level(level);
+            let v = &g.view;
+            let trees: Vec<(usize, usize)> = v.trees.iter().map(|t| t.range).collect();
+            let (w, h) = (v.level_dims.x as usize, v.level_dims.y as usize);
+            let new = Spans::build(&v.static_cubes, &trees, w, h);
+            let (cols, opaque) = old_build(&v.static_cubes, &trees, w, h);
+            assert!(new.cols == cols && new.opaque == opaque, "level {level}");
+        }
+    }
+
+    #[test]
+    fn a_wall_broken_works_out_its_own_tiles_as_building_it_all_again_would() {
+        let mut cubes = vec![
+            block(Vec3::new(2.0, 0.5, 2.0), Vec3::splat(1.0), 1.0),
+            block(Vec3::new(2.0, 1.5, 2.0), Vec3::splat(1.0), 1.0),
+            block(Vec3::new(3.0, 0.4, 2.0), Vec3::new(1.0, 0.8, 1.0), 0.5),
+            block(Vec3::new(2.5, 2.4, 3.0), Vec3::new(2.0, 0.2, 1.0), 1.0),
+            block(Vec3::new(5.0, 0.5, 5.0), Vec3::splat(1.0), 1.0),
+        ];
+        let mut spans = Spans::build(&cubes, &[(4, 1)], 8, 8);
+        assert!(spans.solid(2.0, 2.0, 1.2, 0.0, true));
+        assert!(!spans.solid(5.0, 5.0, 0.5, 0.0, false), "the skipped tree is left out");
+        // The wall on (2, 2) falls: its cubes hidden, rubble and a patch added.
+        let hidden = Mat4::from_translation(Vec3::new(0.0, -50.0, 0.0)) * Mat4::from_scale(Vec3::ZERO);
+        cubes[0].m = hidden.to_cols_array();
+        cubes[1].m = hidden.to_cols_array();
+        cubes.push(block(Vec3::new(2.0, 0.1, 2.0), Vec3::new(1.0, 0.2, 1.0), 1.0));
+        cubes.push(block(Vec3::new(1.0, 0.1, 2.0), Vec3::new(0.4, 0.2, 0.4), 1.0));
+        spans.refresh(&cubes, &[(2, 2)]);
+        let again = Spans::build(&cubes, &[(4, 1)], 8, 8);
+        assert_eq!(spans.cols, again.cols);
+        assert_eq!(spans.opaque, again.opaque);
+        assert!(!spans.solid(2.0, 2.0, 1.2, 0.0, true), "the wall is gone");
+        assert!(spans.solid(1.0, 2.0, 0.1, 0.0, true), "its rubble is there");
     }
 }

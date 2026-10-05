@@ -51,6 +51,7 @@ mod packs;
 mod persist;
 mod pickups;
 pub mod pit;
+mod preload;
 mod realm;
 mod realms;
 #[cfg(test)]

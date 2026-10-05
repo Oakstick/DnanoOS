@@ -193,6 +193,24 @@ impl Occupancy {
     }
 }
 
+/// A box of probes in the volume's grid (x, layer, z), first and last inclusive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProbeBox {
+    pub lo: [u32; 3],
+    pub hi: [u32; 3],
+}
+
+impl ProbeBox {
+    /// The whole volume of `dims` probes.
+    pub fn all(dims: [u32; 3]) -> Self {
+        Self { lo: [0; 3], hi: [dims[0] - 1, dims[1] - 1, dims[2] - 1] }
+    }
+
+    pub fn size(&self) -> [u32; 3] {
+        [self.hi[0] - self.lo[0] + 1, self.hi[1] - self.lo[1] + 1, self.hi[2] - self.lo[2] + 1]
+    }
+}
+
 /// The level's probes, and the cells they were built from.
 #[derive(Clone)]
 pub struct ProbeVolume {
@@ -327,8 +345,9 @@ impl ProbeVolume {
     }
 
     /// A broken wall or anything else changed inside the box `lo`..`hi`: lays its cells again from
-    /// `cubes`, works out the sun there again, and traces the probes that can see it.
-    pub fn refresh(&mut self, cubes: &[Instance], lo: Vec3, hi: Vec3) {
+    /// `cubes` (every cube that reaches into the box; others are left out), works out the sun there
+    /// again, and traces the probes that can see it. Which probes those are.
+    pub fn refresh(&mut self, cubes: &[Instance], lo: Vec3, hi: Vec3) -> Option<ProbeBox> {
         let region = (lo - Vec3::splat(CELL), hi + Vec3::splat(CELL));
         for i in self.occ.cells_in(region.0, region.1) {
             self.occ.cells[i] = 0;
@@ -341,7 +360,19 @@ impl ProbeVolume {
         let sun = self.atm.sun_dir.normalize_or(Vec3::Y);
         self.occ.light(sun, Some((region.0 - Vec3::splat(2.0), region.1 + Vec3::splat(2.0))));
         let reach = Vec3::splat(REACH);
-        self.trace(Some((region.0 - reach, region.1 + reach)));
+        let (a, b) = (region.0 - reach, region.1 + reach);
+        self.trace(Some((a, b)));
+        self.probes_in(a, b)
+    }
+
+    /// The probes (x, layer, z: first and last, inclusive) standing within `lo`..`hi`, if any.
+    pub fn probes_in(&self, lo: Vec3, hi: Vec3) -> Option<ProbeBox> {
+        let last = |k: usize| self.dims[k] as f32 - 1.0;
+        let (x0, x1) = (lo.x.ceil().max(0.0), hi.x.floor().min(last(0)));
+        let (z0, z1) = (lo.z.ceil().max(0.0), hi.z.floor().min(last(2)));
+        let (y0, y1) = (((lo.y - Y0) / DY).ceil().max(0.0), ((hi.y - Y0) / DY).floor().min(last(1)));
+        (x0 <= x1 && y0 <= y1 && z0 <= z1)
+            .then_some(ProbeBox { lo: [x0 as u32, y0 as u32, z0 as u32], hi: [x1 as u32, y1 as u32, z1 as u32] })
     }
 }
 
@@ -407,7 +438,9 @@ mod tests {
         let mut v = ProbeVolume::build(&[floor, wall], 8.0, 8.0, &atm());
         let mut gone = wall;
         gone.m = (Mat4::from_translation(Vec3::new(0.0, -50.0, 0.0)) * Mat4::from_scale(Vec3::ZERO)).to_cols_array();
-        v.refresh(&[floor, gone], Vec3::new(5.0, -1.0, 3.0), Vec3::new(6.0, 2.0, 5.0));
+        let changed = v.refresh(&[floor, gone], Vec3::new(5.0, -1.0, 3.0), Vec3::new(6.0, 2.0, 5.0));
+        // Every probe within a ray's reach of the box: here the whole small level.
+        assert_eq!(changed, Some(ProbeBox::all(v.dims)));
         let fresh = ProbeVolume::build(&[floor], 8.0, 8.0, &atm());
         for s in 0..6 {
             for (a, b) in v.sides[s].iter().zip(&fresh.sides[s]) {
