@@ -64,6 +64,8 @@ impl Game {
     pub(super) fn load(&mut self, data: LevelData, index: usize) {
         let started = web_time::Instant::now();
         self.load_inner(data, index);
+        // Every rig the level can show, made ready behind the loading screen.
+        self.prepare_level();
         self.begin_loading(self.level.data.name.clone(), started);
     }
 

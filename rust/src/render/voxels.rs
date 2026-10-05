@@ -231,21 +231,22 @@ impl Rig {
 
 // ------------------------------------------------------------ GPU meshes
 
-/// One corner of a voxel face in a rig's GPU mesh.
+/// One open voxel face in a rig's GPU mesh, drawn as a quad whose corners the shader makes (as
+/// static faces are: `FACE_CORNERS`), as the shader's `RigFace` reads it. 32 bytes a face, where
+/// four corners of 36 bytes and six 4-byte indices took 168: Surtr's three levels went from 20 MB
+/// to under 4.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
-pub struct RigVertex {
+pub struct RigFace {
     /// The voxel's centre relative to the part's joint, in world units (the shader adds the
     /// corner, so a face's four corners agree exactly on where the face is).
     pub pos: [f32; 3],
-    /// The corner in the voxel's own unit cube, as -1 or 1 (halved by the shader), for per-voxel
-    /// detail; then which face it is on (0 to 5: +x, -x, +y, -y, +z, -z).
-    pub local: [i8; 4],
+    /// Which part (and so which joint matrix) it belongs to, in the low byte; which face it is in
+    /// the next (0 to 5: +x, -x, +y, -y, +z, -z).
+    pub part_face: u32,
     /// Linear colour and the shade mode. (Full floats: the shader seeds each voxel's detail from
     /// its exact colour, so rounding it would change the pattern.)
     pub color: [f32; 4],
-    /// Which part (and so which joint matrix) it belongs to.
-    pub part: u32,
 }
 
 /**
@@ -255,26 +256,26 @@ pub struct RigVertex {
  */
 pub struct RigMesh {
     pub id: u64,
-    pub vertices: Vec<RigVertex>,
-    pub indices: Vec<u32>,
+    pub faces: Vec<RigFace>,
     pub voxels: u32,
     /// Parts whose metal rusts with a dull blade (the held weapon and shield), one bit each.
     pub rust_mask: u32,
 }
 
-/// The six faces of a unit cube: the outward axis, then the four corners in order round the face.
-const FACES: [([i32; 3], [[i8; 3]; 4]); 6] = [
-    ([1, 0, 0], [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]]),
-    ([-1, 0, 0], [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]]),
-    ([0, 1, 0], [[-1, 1, -1], [-1, 1, 1], [1, 1, 1], [1, 1, -1]]),
-    ([0, -1, 0], [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]]),
-    ([0, 0, 1], [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]),
-    ([0, 0, -1], [[-1, -1, -1], [-1, 1, -1], [1, 1, -1], [1, -1, -1]]),
-];
+impl RigMesh {
+    /// Its size on the GPU, in bytes.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of_val(self.faces.as_slice())
+    }
+}
+
+/// The six faces of a unit cube by their outward axis (the shader's `FACE_CORNERS` walks each
+/// one's corners).
+const FACES: [[i32; 3]; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 impl RigMesh {
     fn build(rig: &Rig, cull: bool) -> Self {
-        let (mut vertices, mut indices) = (Vec::new(), Vec::new());
+        let mut faces = Vec::new();
         let mut voxels = 0;
         let mut rust_mask = 0;
         // Offsets sit on a grid of `size` shifted by the joint's fraction: doubled and rounded, neighbours are 2 apart.
@@ -282,6 +283,7 @@ impl RigMesh {
             let k = (p / rig.size * 2.0).round();
             (k.x as i32, k.y as i32, k.z as i32)
         };
+        assert!(rig.parts.len() <= 256, "a rig's part must fit in a byte");
         for (pi, part) in rig.parts.iter().enumerate() {
             if pi < 32 && matches!(part.name, "blade" | "offhand") {
                 rust_mask |= 1 << pi;
@@ -292,24 +294,15 @@ impl RigMesh {
                 let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(0.0);
                 let color = [c.x, c.y, c.z, shade];
                 let k = key(*off);
-                for (fi, (dir, corners)) in FACES.into_iter().enumerate() {
+                for (fi, dir) in FACES.into_iter().enumerate() {
                     if cull && filled.contains(&(k.0 + dir[0] * 2, k.1 + dir[1] * 2, k.2 + dir[2] * 2)) {
                         continue;
                     }
-                    let base = vertices.len() as u32;
-                    for q in corners {
-                        vertices.push(RigVertex {
-                            pos: off.to_array(),
-                            local: [q[0] * 127, q[1] * 127, q[2] * 127, fi as i8],
-                            color,
-                            part: pi as u32,
-                        });
-                    }
-                    indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+                    faces.push(RigFace { pos: off.to_array(), part_face: pi as u32 | (fi as u32) << 8, color });
                 }
             }
         }
-        Self { id: rig.id * 2 + u64::from(!cull), vertices, indices, voxels, rust_mask }
+        Self { id: rig.id * 2 + u64::from(!cull), faces, voxels, rust_mask }
     }
 }
 
@@ -409,20 +402,19 @@ mod tests {
         let mesh = rig.mesh();
         let voxels: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
         assert_eq!(mesh.voxels as usize, voxels);
-        assert_eq!(mesh.indices.len() % 6, 0);
-        let faces = mesh.indices.len() / 6;
+        let faces = mesh.faces.len();
         // The sculpts are hollow already, so about half their faces stay open.
         assert!(faces * 5 < voxels * 6 * 3, "{faces} faces left of {}", voxels * 6);
-        assert!(mesh.vertices.iter().all(|v| (v.part as usize) < rig.parts.len()));
+        assert!(mesh.faces.iter().all(|f| ((f.part_face & 0xff) as usize) < rig.parts.len() && f.part_face >> 8 < 6));
         // A lone voxel keeps all six; two touching keep ten.
         let part = |cubes: Vec<(Vec3, Vec3)>| RigPart { name: "body", rest: Vec3::ZERO, shade: vec![0.0; cubes.len()], cubes, min_y: 0.0 };
         let one = Rig::new(0.5, vec![part(vec![(Vec3::ZERO, Vec3::ONE)])]);
-        assert_eq!(one.mesh().indices.len(), 36);
+        assert_eq!(one.mesh().faces.len(), 6);
         assert!(Arc::ptr_eq(&one.mesh(), &one.mesh()), "built once");
         assert_ne!(one.mesh().id, one.mesh_whole().id);
-        assert_eq!(rig.mesh_whole().indices.len(), voxels * 36);
+        assert_eq!(rig.mesh_whole().faces.len(), voxels * 6);
         let two = Rig::new(0.5, vec![part(vec![(Vec3::new(0.25, 0.25, 0.0), Vec3::ONE), (Vec3::new(0.75, 0.25, 0.0), Vec3::ONE)])]);
-        assert_eq!(two.mesh().indices.len(), 60);
+        assert_eq!(two.mesh().faces.len(), 10);
     }
 
     #[test]

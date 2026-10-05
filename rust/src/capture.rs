@@ -25,6 +25,8 @@
 //! trial of rank N in the ring), `toast` (MASTERY RISES),
 //! `ending` or `ending:T` (the end, Scene II, from its start or T seconds in: 0 the embrace, 8 the
 //! light, 15 the rise, 30 the white, 33 the words, 67 the credits),
+//! `--draw-at T` draws a frame T seconds in first (the capture then shows what changed since on the
+//! renderer's caches: the shadow cascade's part redrawn), and
 //! `pit:N` (level N of the Pit, 1 to 7) and `pitclock:S` (its clock set to S seconds into the
 //! level: 105 for the bell, 120 for the descent),
 //! `lair` (Krampus's lair at the bottom of the Pit), `taunt` (Krampus goes to rattle the cage now) and
@@ -462,7 +464,25 @@ pub fn run(args: &[String]) -> i32 {
     game.viewport = (w as f32, h as f32);
     game.tour_pending = false;
     game.set_juice_off(gpu.fx_off);
-    crate::driver::Driver::new(script).run(&mut game, until);
+    let mut driver = crate::driver::Driver::new(script);
+    if let Some(t) = arg(args, "--draw-at").and_then(|t| t.parse::<f64>().ok()) {
+        // A frame drawn on the way, so the one captured is drawn on what that left (its caches).
+        driver.run(&mut game, t);
+        let (mut frame, mut overlay) = (Frame::default(), Overlay::new());
+        game.view.aspect = w as f32 / h as f32;
+        game.view.emit(&game.scene(), &mut frame);
+        overlay.begin(w as f32, h as f32);
+        // (Until the level's light is worked out, so the capture never depends on when that ends.)
+        for _ in 0..500 {
+            gpu.sync_static(&mut game.view);
+            let _ = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+            if gpu.level_ready(&game.view) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+    driver.run(&mut game, until);
 
     let mut frame = Frame::default();
     let mut overlay = Overlay::new();

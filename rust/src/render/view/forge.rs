@@ -222,13 +222,37 @@ impl WorldView {
     pub(super) fn refit_hero(&mut self, hero: HeroKind, h: &Hero) {
         let key = (hero, Kit::of(h));
         if key != self.models.hero_key {
-            (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1);
-            self.models.thrown = thrown_model(key.0, key.1.blade);
+            match self.models.spare.take() {
+                // His shield broke: the rig made for it with the level (no shield, none raised).
+                Some((k, rig)) if k == key => {
+                    self.models.hero = rig;
+                    self.models.raised = None;
+                }
+                _ => (self.models.hero, self.models.raised) = hero_rigs(key.0, key.1),
+            }
+            // (His weapon thrown is only made again for another weapon.)
+            if (key.0, key.1.blade) != (self.models.hero_key.0, self.models.hero_key.1.blade) {
+                self.models.thrown = thrown_model(key.0, key.1.blade);
+            }
             if key.0 != self.models.hero_key.0 {
                 // Another hero's joints sit elsewhere: start his pose afresh.
                 self.hero_pose = Pose::rest(&self.models.hero);
             }
             self.models.hero_key = key;
+        }
+    }
+
+    /// Makes, with the level, the hero as a broken shield would leave him (kept for `refit_hero`),
+    /// unless he has none to break.
+    pub(super) fn make_spare_hero(&mut self) {
+        let (hero, kit) = self.models.hero_key;
+        if kit.shield.is_none() {
+            self.models.spare = None;
+            return;
+        }
+        let key = (hero, Kit { shield: None, ..kit });
+        if self.models.spare.as_ref().is_none_or(|s| s.0 != key) {
+            self.models.spare = Some((key, hero_rigs(key.0, key.1).0));
         }
     }
 

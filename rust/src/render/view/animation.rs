@@ -75,6 +75,74 @@ pub(super) struct EnemyView {
     pub(super) eye: f32,
 }
 
+/// The rig a foe of `kind` is drawn with, and how high it hovers.
+pub(super) fn rig_for(kind: EnemyKind) -> (RigId, f32) {
+    match kind {
+        EnemyKind::Skeleton => (RigId::Skeleton, 0.0),
+        EnemyKind::Bat => (RigId::Bat, 0.55),
+        EnemyKind::Vampire => (RigId::Vampire, 0.65),
+        EnemyKind::Slime => (RigId::Slime, 0.0),
+        EnemyKind::Witch => (RigId::Witch, 0.0),
+        EnemyKind::Minion => (RigId::Minion, 0.0),
+        EnemyKind::Helmeted => (RigId::Helmeted, 0.0),
+        EnemyKind::Werewolf => (RigId::Werewolf, 0.0),
+        EnemyKind::Blemmyes => (RigId::Blemmyes, 0.0),
+        EnemyKind::LargeBat => (RigId::LargeBat, 0.6),
+        EnemyKind::Tengu => (RigId::Tengu, 0.0),
+        EnemyKind::Rasetsu => (RigId::Rasetsu, 0.0),
+        EnemyKind::DireWolf => (RigId::DireWolf, 0.0),
+        EnemyKind::Jorogumo => (RigId::Jorogumo, 0.0),
+        EnemyKind::Cobra => (RigId::Cobra, 0.0),
+        EnemyKind::Kappa => (RigId::Kappa, 0.0),
+        EnemyKind::Rokurokubi => (RigId::Rokurokubi, 0.0),
+        EnemyKind::Kitsune => (RigId::Kitsune, 0.0),
+        EnemyKind::Oni => (RigId::Oni, 0.0),
+        EnemyKind::Tulukus => (RigId::Tulukus, 0.0),
+        EnemyKind::Albasti => (RigId::Albasti, 0.0),
+        EnemyKind::Cin => (RigId::Cin, 0.0),
+        EnemyKind::Arcura => (RigId::Arcura, 0.0),
+        EnemyKind::Karakoncolos => (RigId::Karakoncolos, 0.0),
+        EnemyKind::FrostGiant => (RigId::FrostGiant, 0.0),
+        EnemyKind::Surtr => (RigId::Surtr, 0.0),
+        EnemyKind::Nidhogg => (RigId::Nidhogg, 0.0),
+        EnemyKind::Hel => (RigId::Hel, 0.0),
+        EnemyKind::Tepegoz => (RigId::Tepegoz, 0.0),
+        EnemyKind::Gashadokuro => (RigId::Gashadokuro, 0.0),
+        EnemyKind::Ejder => (RigId::Ejder, 0.0),
+        // (The ghost floats.)
+        EnemyKind::Goryo => (RigId::Goryo, 0.12),
+        // The realms' own: the Peerless is drawn by the Hall of Mirrors in his own likeness
+        // (this is only its stand-in); Hel's servants, the gaki and the elf-maids have their own.
+        EnemyKind::Peerless => (RigId::Helmeted, 0.0),
+        EnemyKind::Ganglot => (RigId::Ganglot, 0.0),
+        EnemyKind::Gaki => (RigId::Gaki, 0.0),
+        EnemyKind::Ellepige => (RigId::Ellepige, 0.0),
+        EnemyKind::Mammon => (RigId::Mammon, 0.0),
+        EnemyKind::GoldGolem => (RigId::GoldGolem, 0.0),
+        // Pride's court
+        EnemyKind::Lucifer => (RigId::Lucifer, 0.0),
+        EnemyKind::Reflection => (RigId::Reflection, 0.0),
+        // Envy's court
+        EnemyKind::Leviathan => (RigId::Leviathan, 0.0),
+        EnemyKind::Serpentling => (RigId::Serpentling, 0.0),
+        // Wrath's court
+        EnemyKind::Amon => (RigId::Amon, 0.0),
+        EnemyKind::Raven => (RigId::Raven, 0.0),
+        // Sloth's court
+        EnemyKind::Belphegor => (RigId::Belphegor, 0.0),
+        EnemyKind::Nightmare => (RigId::Nightmare, 0.35),
+        // Gluttony's court
+        EnemyKind::Beelzebub => (RigId::Beelzebub, 0.0),
+        // (The flies hang in the air.)
+        EnemyKind::FlySwarm => (RigId::FlySwarm, 0.3),
+        // Lust's court
+        EnemyKind::Asmodeus => (RigId::Asmodeus, 0.0),
+        // Krampus's lair
+        EnemyKind::Krampus => (RigId::Krampus, 0.0),
+        EnemyKind::Percht => (RigId::Percht, 0.0),
+    }
+}
+
 impl WorldView {
     /// Drops every enemy's view (the capture's line-up of foes replaces them).
     pub fn clear_enemies(&mut self) {
@@ -83,70 +151,7 @@ impl WorldView {
 
     /// Adds a view for an enemy; call again for enemies that arrive mid-level. Order must match the game's list.
     pub fn add_enemy(&mut self, e: &Enemy) {
-        let (rig, hover) = match e.kind() {
-            EnemyKind::Skeleton => (RigId::Skeleton, 0.0),
-            EnemyKind::Bat => (RigId::Bat, 0.55),
-            EnemyKind::Vampire => (RigId::Vampire, 0.65),
-            EnemyKind::Slime => (RigId::Slime, 0.0),
-            EnemyKind::Witch => (RigId::Witch, 0.0),
-            EnemyKind::Minion => (RigId::Minion, 0.0),
-            EnemyKind::Helmeted => (RigId::Helmeted, 0.0),
-            EnemyKind::Werewolf => (RigId::Werewolf, 0.0),
-            EnemyKind::Blemmyes => (RigId::Blemmyes, 0.0),
-            EnemyKind::LargeBat => (RigId::LargeBat, 0.6),
-            EnemyKind::Tengu => (RigId::Tengu, 0.0),
-            EnemyKind::Rasetsu => (RigId::Rasetsu, 0.0),
-            EnemyKind::DireWolf => (RigId::DireWolf, 0.0),
-            EnemyKind::Jorogumo => (RigId::Jorogumo, 0.0),
-            EnemyKind::Cobra => (RigId::Cobra, 0.0),
-            EnemyKind::Kappa => (RigId::Kappa, 0.0),
-            EnemyKind::Rokurokubi => (RigId::Rokurokubi, 0.0),
-            EnemyKind::Kitsune => (RigId::Kitsune, 0.0),
-            EnemyKind::Oni => (RigId::Oni, 0.0),
-            EnemyKind::Tulukus => (RigId::Tulukus, 0.0),
-            EnemyKind::Albasti => (RigId::Albasti, 0.0),
-            EnemyKind::Cin => (RigId::Cin, 0.0),
-            EnemyKind::Arcura => (RigId::Arcura, 0.0),
-            EnemyKind::Karakoncolos => (RigId::Karakoncolos, 0.0),
-            EnemyKind::FrostGiant => (RigId::FrostGiant, 0.0),
-            EnemyKind::Surtr => (RigId::Surtr, 0.0),
-            EnemyKind::Nidhogg => (RigId::Nidhogg, 0.0),
-            EnemyKind::Hel => (RigId::Hel, 0.0),
-            EnemyKind::Tepegoz => (RigId::Tepegoz, 0.0),
-            EnemyKind::Gashadokuro => (RigId::Gashadokuro, 0.0),
-            EnemyKind::Ejder => (RigId::Ejder, 0.0),
-            // (The ghost floats.)
-            EnemyKind::Goryo => (RigId::Goryo, 0.12),
-            // The realms' own: the Peerless is drawn by the Hall of Mirrors in his own likeness
-            // (this is only its stand-in); Hel's servants, the gaki and the elf-maids have their own.
-            EnemyKind::Peerless => (RigId::Helmeted, 0.0),
-            EnemyKind::Ganglot => (RigId::Ganglot, 0.0),
-            EnemyKind::Gaki => (RigId::Gaki, 0.0),
-            EnemyKind::Ellepige => (RigId::Ellepige, 0.0),
-            EnemyKind::Mammon => (RigId::Mammon, 0.0),
-            EnemyKind::GoldGolem => (RigId::GoldGolem, 0.0),
-            // Pride's court
-            EnemyKind::Lucifer => (RigId::Lucifer, 0.0),
-            EnemyKind::Reflection => (RigId::Reflection, 0.0),
-            // Envy's court
-            EnemyKind::Leviathan => (RigId::Leviathan, 0.0),
-            EnemyKind::Serpentling => (RigId::Serpentling, 0.0),
-            // Wrath's court
-            EnemyKind::Amon => (RigId::Amon, 0.0),
-            EnemyKind::Raven => (RigId::Raven, 0.0),
-            // Sloth's court
-            EnemyKind::Belphegor => (RigId::Belphegor, 0.0),
-            EnemyKind::Nightmare => (RigId::Nightmare, 0.35),
-            // Gluttony's court
-            EnemyKind::Beelzebub => (RigId::Beelzebub, 0.0),
-            // (The flies hang in the air.)
-            EnemyKind::FlySwarm => (RigId::FlySwarm, 0.3),
-            // Lust's court
-            EnemyKind::Asmodeus => (RigId::Asmodeus, 0.0),
-            // Krampus's lair
-            EnemyKind::Krampus => (RigId::Krampus, 0.0),
-            EnemyKind::Percht => (RigId::Percht, 0.0),
-        };
+        let (rig, hover) = rig_for(e.kind());
         let pose = Pose::rest(self.models.rig(rig));
         // Its levels of detail and their meshes, made now rather than in the middle of a fight
         // (once per kind: every later foe of it shares them).

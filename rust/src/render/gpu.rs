@@ -8,17 +8,17 @@
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
 use super::clusters;
 use super::faces::StaticFaces;
 use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
 use super::preset::{Preset, Shadows};
-use super::probes::{self, ProbeVolume};
+use super::probes::{self, ProbeBox, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
 use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS, NEAR};
-use super::voxels::{RigMesh, RigVertex};
+use super::voxels::RigMesh;
 
 const SAMPLES: u32 = 4;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -154,6 +154,62 @@ fn cube_bounds(c: &Instance) -> (Vec3, Vec3) {
     (Vec3::new(m[12], m[13], m[14]), (a(0) + a(4) + a(8)) * 0.5)
 }
 
+/// The coarse cascade's view down the light (toward `sun_dir`) over the box about `center`,
+/// `radius` across each way, and its projection: what keys the cached static part (with the
+/// scenery's generation), so it holds as long as the light and the level do.
+fn far_light(center: Vec3, radius: f32, sun_dir: Vec3) -> (Mat4, Mat4) {
+    let l = sun_dir.normalize_or(Vec3::Y);
+    let up = if l.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
+    let light_view = Mat4::look_at_rh(center + l * 90.0, center, up);
+    (light_view, Mat4::orthographic_rh(-radius, radius, -radius, radius, 1.0, 200.0) * light_view)
+}
+
+/// Whether a rig mesh's buffers are kept: while its level lives (`pinned`), or while it was drawn
+/// in the last `RIG_IDLE_FRAMES`.
+fn rig_kept(pinned: bool, used: u64, now: u64) -> bool {
+    pinned || now.saturating_sub(used) < RIG_IDLE_FRAMES
+}
+
+/// The texels (x, y, width, height) of a `size`-texel cascade under `light_vp` that what lies in the
+/// box `b` can shadow, a texel and a half to spare round it; none when that is over a quarter of
+/// the map (drawing it all again is as cheap) or off it.
+fn far_part(light_vp: Mat4, b: (Vec3, Vec3), size: u32) -> Option<[u32; 4]> {
+    if !(b.0.cmple(b.1).all()) {
+        return None;
+    }
+    let (mut lo, mut hi) = (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY));
+    for k in 0..8 {
+        let p = Vec3::new(
+            if k & 1 == 0 { b.0.x } else { b.1.x },
+            if k & 2 == 0 { b.0.y } else { b.1.y },
+            if k & 4 == 0 { b.0.z } else { b.1.z },
+        );
+        let c = light_vp.project_point3(p);
+        // (Texels run down from the map's top: its NDC y up.)
+        let t = Vec2::new((c.x * 0.5 + 0.5) * size as f32, (0.5 - c.y * 0.5) * size as f32);
+        lo = lo.min(t);
+        hi = hi.max(t);
+    }
+    let x0 = (lo.x - 1.5).floor().max(0.0) as u32;
+    let y0 = (lo.y - 1.5).floor().max(0.0) as u32;
+    let x1 = ((hi.x + 1.5).ceil().max(0.0) as u32).min(size);
+    let y1 = ((hi.y + 1.5).ceil().max(0.0) as u32).min(size);
+    if x1 <= x0 || y1 <= y0 || (x1 - x0) as u64 * (y1 - y0) as u64 * 4 > size as u64 * size as u64 {
+        return None;
+    }
+    Some([x0, y0, x1 - x0, y1 - y0])
+}
+
+/// The cascade's view narrowed to texels `r` of its `size` (light `light_view`, half-width
+/// `radius`): to find the casters whose column of the light reaches them.
+fn far_part_view(light_view: &Mat4, radius: f32, r: [u32; 4], size: u32) -> Mat4 {
+    let s = size as f32;
+    let at = |t: u32| t as f32 / s * 2.0 - 1.0;
+    let (left, right) = (at(r[0]) * radius, at(r[0] + r[2]) * radius);
+    let (bottom, top) = (-at(r[1] + r[3]) * radius, -at(r[1]) * radius);
+    Mat4::orthographic_rh(left, right, bottom, top, 1.0, 200.0) * *light_view
+}
+
 /// Orders the static instances chunk by chunk (stably, so a tile's run stays a run) and bounds
 /// each chunk. Instances too big for a chunk share one of their own; hidden ones (scaled to
 /// nothing) widen no box.
@@ -254,12 +310,14 @@ struct MeshBuf {
     count: u32,
 }
 
-/// A rig's mesh on the GPU, and the frame it was last drawn in.
+/// A rig's mesh on the GPU, the frame it was last drawn in, and whether the level keeps it
+/// (made ready at its load: never let go while the level lives).
 struct RigBuf {
-    vertices: wgpu::Buffer,
-    indices: wgpu::Buffer,
+    /// Its faces, bound for the vertex shader to read (`vs_rig`).
+    faces: wgpu::BindGroup,
     count: u32,
     used: u64,
+    pinned: bool,
 }
 
 /// A prebuilt instance set on the GPU, and the frame it was last drawn in.
@@ -268,6 +326,10 @@ struct SetBuf {
     count: u32,
     used: u64,
 }
+
+/// Probes refreshed on a worker thread, and those that changed.
+#[cfg(not(target_arch = "wasm32"))]
+type Refreshed = (ProbeVolume, Option<ProbeBox>);
 
 /// Rig meshes not drawn for this many frames are let go.
 const RIG_IDLE_FRAMES: u64 = 600;
@@ -458,6 +520,11 @@ pub struct Gpu {
     shadow_cache: wgpu::Texture,
     shadow_cache_view: wgpu::TextureView,
     shadow_cache_key: Option<(u64, [f32; 16])>,
+    /// What changed in the static scenery since the cache was drawn, where that is known and local
+    /// (a coin taken, a wall broken): only the cache's texels it can shadow are drawn again.
+    far_dirty: Option<(Vec3, Vec3)>,
+    /// Clears the depth of a part of a map (the part of the cache drawn again).
+    depth_clear: wgpu::RenderPipeline,
     shadow_pipe: wgpu::RenderPipeline,
     shadow_binds: [wgpu::BindGroup; 2],
     cascade_bufs: [wgpu::Buffer; 2],
@@ -468,9 +535,14 @@ pub struct Gpu {
     rig_prepass: wgpu::RenderPipeline,
     rig_shadow: wgpu::RenderPipeline,
     rig_layout: wgpu::BindGroupLayout,
+    rig_face_layout: wgpu::BindGroupLayout,
     /// The resident rig meshes by rig id, this frame's draw records and part matrices, and
     /// 0, 1, 2, ... as an instance stream so each draw finds its record.
     rig_meshes: std::collections::HashMap<u64, RigBuf>,
+    /// Which of the view's preparations the pinned rig meshes are (`WorldView::prepare_rigs`), and
+    /// what making their buffers last cost (ms, bytes).
+    resident_gen: u64,
+    pub resident_cost: (f64, u64),
     rig_draw_buf: Dyn,
     rig_part_buf: Dyn,
     rig_ids: wgpu::Buffer,
@@ -503,10 +575,18 @@ pub struct Gpu {
     /// what for (the cache key and the static upload), and where the result comes back.
     #[cfg(not(target_arch = "wasm32"))]
     probe_job: Option<(u64, u64, std::sync::mpsc::Receiver<ProbeVolume>)>,
+    /// The probes being refreshed round a change on a worker thread (natively), for which static
+    /// upload, and where they come back with the probes that changed. The textures keep the light
+    /// as it was meanwhile, a frame or two: a coin taken in the vaults cost 11 to 13 ms in the
+    /// frame it went (worked out on the spot, every side of every probe sent up again).
+    #[cfg(not(target_arch = "wasm32"))]
+    probe_refresh: Option<(u64, std::sync::mpsc::Receiver<Refreshed>)>,
     /// The level (full static upload) the probes were built for, the boxes changed since, and the
     /// bounds of every static cube as last sent (so a hidden one's place is known).
     probe_level: u64,
     probe_dirty: Vec<(Vec3, Vec3)>,
+    /// The hash of the static cubes for the probe cache's key, and the upload it was worked out for.
+    probe_key: Option<(u64, u64)>,
     static_bounds: Vec<(Vec3, Vec3)>,
     static_level: u64,
     /// Clustered lights: every light, each cluster's run, the runs (`clusters`).
@@ -1147,28 +1227,25 @@ impl Gpu {
             label: Some("rigs"),
             entries: &[storage_entry(0), storage_entry(1)],
         });
+        // Each rig mesh's faces, read by the vertex shader (six vertices a face, their corners made there).
+        let rig_face_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("rig faces"), entries: &[storage_entry(0)] });
         let rig_scene_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("rig scene"),
-            bind_group_layouts: &[&scene_layout, &rig_layout],
+            bind_group_layouts: &[&scene_layout, &rig_layout, &rig_face_layout],
             push_constant_ranges: &[],
         });
         let rig_shadow_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("rig shadow"),
-            bind_group_layouts: &[&shadow_layout, &rig_layout],
+            bind_group_layouts: &[&shadow_layout, &rig_layout, &rig_face_layout],
             push_constant_ranges: &[],
         });
-        let rig_vertex_layouts = [
-            wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<RigVertex>() as u64,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Snorm8x4, 2 => Float32x4, 3 => Uint32],
-            },
-            wgpu::VertexBufferLayout {
-                array_stride: 4,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &wgpu::vertex_attr_array![4 => Uint32],
-            },
-        ];
+        // The draw's record: one instance per rig drawn, its id from the stream 0, 1, 2, ...
+        let rig_vertex_layouts = [wgpu::VertexBufferLayout {
+            array_stride: 4,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![0 => Uint32],
+        }];
         let rig_pipe = |label: &str, blend: Option<wgpu::BlendState>, depth_write: bool, fs: &str, writes: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
@@ -1294,6 +1371,33 @@ impl Gpu {
                 depth_compare: wgpu::CompareFunction::LessEqual,
                 stencil: Default::default(),
                 bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+            }),
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        });
+        // A part of the cached cascade drawn again: its depth cleared to the far plane first.
+        let depth_clear = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("depth clear"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("depth clear"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            })),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_depth_clear"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: None,
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: Default::default(),
+                bias: Default::default(),
             }),
             multisample: Default::default(),
             multiview: None,
@@ -1613,6 +1717,8 @@ impl Gpu {
             shadow_cache,
             shadow_cache_view,
             shadow_cache_key: None,
+            far_dirty: None,
+            depth_clear,
             static_chunks: Vec::new(),
             face_buf: Dyn::new(&device, "static faces", wgpu::BufferUsages::VERTEX, 1 << 20),
             static_faces: None,
@@ -1657,7 +1763,10 @@ impl Gpu {
             rig_prepass,
             rig_shadow,
             rig_layout,
+            rig_face_layout,
             rig_meshes: std::collections::HashMap::new(),
+            resident_gen: 0,
+            resident_cost: (0.0, 0),
             rig_draw_buf,
             rig_part_buf,
             rig_ids,
@@ -1683,8 +1792,11 @@ impl Gpu {
             probe_cache: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
             probe_job: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            probe_refresh: None,
             probe_level: 0,
             probe_dirty: Vec::new(),
+            probe_key: None,
             static_bounds: Vec::new(),
             static_level: 0,
             light_buf,
@@ -1708,7 +1820,11 @@ impl Gpu {
     /// The view's level is up and lit: its static scenery uploaded and its probes worked out
     /// (RP03: the loading screen waits for this).
     pub fn level_ready(&self, view: &WorldView) -> bool {
-        !view.static_dirty && self.static_count > 0 && self.probes.is_some() && self.probe_level == self.static_level
+        !view.static_dirty
+            && self.static_count > 0
+            && self.probes_held()
+            && self.probe_level == self.static_level
+            && self.resident_gen == view.resident().gen
     }
 
     /// How many facing groups and 64-face clusters the level's static faces make (RP21).
@@ -1763,6 +1879,7 @@ impl Gpu {
     /// and the faces a hidden cube had covered as a short extra run. Only a cube that moves, or
     /// more added cubes than there is room for, sends the whole level up again.
     pub fn sync_static(&mut self, view: &mut WorldView) {
+        self.sync_resident(view);
         if !view.static_dirty && !self.sync_static_changes(view) {
             view.static_dirty = true;
         }
@@ -1896,6 +2013,7 @@ impl Gpu {
         self.extra_faces.clear();
         self.extra_box = (Vec3::INFINITY, Vec3::NEG_INFINITY);
         self.static_gen += 1;
+        self.far_dirty = None;
         view.static_dirty = false;
         view.static_patches.clear();
     }
@@ -1905,6 +2023,9 @@ impl Gpu {
         let Some(index) = self.static_faces.as_mut() else { return view.static_cubes.is_empty() };
         let stride = std::mem::size_of::<Instance>() as u64;
         let mut extras_changed = false;
+        // (The boxes what changed lay in, as the probes are told of them, and where moved cubes went.)
+        let dirt_from = self.probe_dirty.len();
+        let mut went: Vec<(Vec3, Vec3)> = Vec::new();
         // A cube hidden or moved changes the shadows too (RP04: a wall blown away no longer
         // casts in the cached cascade), even where no neighbour's face opens.
         let mut moved = false;
@@ -1914,24 +2035,31 @@ impl Gpu {
             b.0 = b.0.min(at - half * 3.0);
             b.1 = b.1.max(at + half * 3.0);
         };
-        // Cubes added since: into the spare slots, with their open faces in the extra run.
+        // Cubes added since: into the spare slots, with their open faces in the extra run. (They
+        // take the next slots in turn, so they go up in one write: a wall's rubble, written cube by
+        // cube, cost milliseconds in the frame it fell.)
+        let first = self.static_count;
+        let added = view.static_cubes.len().saturating_sub(self.static_slot.len());
+        if added > 0 && (first as u64 + added as u64) * stride > self.static_buf.cap {
+            return false;
+        }
         while self.static_slot.len() < view.static_cubes.len() {
             let slot = self.static_count;
-            if (slot as u64 + 1) * stride > self.static_buf.cap {
-                return false;
-            }
             let c = view.static_cubes[self.static_slot.len()];
             let (at, half) = cube_bounds(&c);
             self.static_bounds.push((at - half, at + half));
             self.probe_dirty.push((at - half, at + half));
-            self.queue.write_buffer(&self.static_buf.buf, slot as u64 * stride, bytemuck::bytes_of(&c));
-            self.pending_upload += stride;
             self.static_slot.push(slot);
             self.static_count += 1;
             let open = index.add(slot, &c);
             push_faces(&mut self.extra_faces, slot, open);
             grow(&mut self.extra_box, &c);
             extras_changed = true;
+        }
+        if added > 0 {
+            let bytes: &[u8] = bytemuck::cast_slice(&view.static_cubes[view.static_cubes.len() - added..]);
+            self.queue.write_buffer(&self.static_buf.buf, first as u64 * stride, bytes);
+            self.pending_upload += bytes.len() as u64;
         }
         // Rewritten cubes go up run by run, wherever the chunk order put them; a hidden one opens
         // its neighbours' faces.
@@ -1954,6 +2082,9 @@ impl Gpu {
                         if (lo - (at - half)).length_squared() + (hi - (at + half)).length_squared() > 1e-8 {
                             moved = true;
                             self.probe_dirty.push((lo, hi));
+                            if half.max_element() > 0.0 {
+                                went.push((at - half, at + half));
+                            }
                             self.static_bounds[slot as usize] = (at - half, at + half);
                         }
                     }
@@ -1971,6 +2102,15 @@ impl Gpu {
                 }
                 i = j;
             }
+        }
+        if moved || extras_changed {
+            // Shadows change too: the cached cascade's part over what changed is drawn again. (The
+            // faces a hidden cube opens lie on its own bounds.)
+            let mut b = self.far_dirty.unwrap_or((Vec3::INFINITY, Vec3::NEG_INFINITY));
+            for &(lo, hi) in self.probe_dirty[dirt_from..].iter().chain(&went) {
+                b = (b.0.min(lo), b.1.max(hi));
+            }
+            self.far_dirty = Some(b);
         }
         if moved && !extras_changed {
             self.static_gen += 1;
@@ -2039,9 +2179,7 @@ impl Gpu {
         // one over the whole level (or the diorama on show).
         let (center, radius) = view.shadow_box();
         let l = atm.sun_dir.normalize_or(Vec3::Y);
-        let up = if l.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
-        let light_view = Mat4::look_at_rh(center + l * 90.0, center, up);
-        let light_vp = Mat4::orthographic_rh(-radius, radius, -radius, radius, 1.0, 200.0) * light_view;
+        let (light_view, light_vp) = far_light(center, radius, atm.sun_dir);
         let near_r = NEAR_CASCADE;
         let light_vp_near = match view.shadow_focus() {
             Some(focus) => {
@@ -2064,10 +2202,11 @@ impl Gpu {
             cluster: [self.config.width as f32, self.config.height as f32, NEAR, FAR],
             haze: [frame.haze.density, frame.haze.floor, frame.haze.falloff, 0.0],
             probe_min: [-0.5, probes::Y0 - probes::DY * 0.5, -0.5, if use_probes { 1.0 } else { 0.0 }],
+            // (From the textures: the volume itself may be out being refreshed.)
             probe_size: self
-                .probes
-                .as_ref()
-                .map_or([1.0; 4], |p| [p.dims[0] as f32, probes::LAYERS as f32 * probes::DY, p.dims[2] as f32, 0.0]),
+                .probe_tex
+                .first()
+                .map_or([1.0; 4], |t| [t.width() as f32, probes::LAYERS as f32 * probes::DY, t.depth_or_array_layers() as f32, 0.0]),
             shadow_q: [self.preset.shadows.search_taps as f32, self.preset.shadows.filter_taps as f32, 0.0, 0.0],
             hemi_sky: v4(atm.hemi_sky, 0.0),
             hemi_ground: v4(atm.hemi_ground, fog_light.x),
@@ -2276,18 +2415,41 @@ impl Gpu {
             }
         }
         if use_static && !cache_fresh {
-            let far = visible(light_vp);
+            // Where only the scenery changed, and somewhere small (a coin taken, a wall broken), only
+            // the cache's texels over it are drawn again: cleared, then every caster whose column
+            // of the light reaches them, as a whole redraw would draw them there. Else all of it.
+            let size = self.preset.shadows.far_size;
+            let part = match (self.shadow_cache_key, self.far_dirty) {
+                // (`VH_FAR_WHOLE` draws it all again, to check the part against.)
+                (Some((_, m)), Some(b)) if m == cache_key.1 && std::env::var_os("VH_FAR_WHOLE").is_none() => far_part(light_vp, b, size),
+                _ => None,
+            };
+            let far = match part {
+                Some(r) => visible(far_part_view(&light_view, radius, r, size)),
+                None => visible(light_vp),
+            };
+            if std::env::var_os("VH_PROBE_STATS").is_some() {
+                eprintln!("shadow cache: {part:?} of {size}, {} casters", far.iter().map(|c| c.1).sum::<u32>());
+            }
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow cache"),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.shadow_cache_view,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: if part.is_some() { wgpu::LoadOp::Load } else { wgpu::LoadOp::Clear(1.0) },
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: self.timer.as_mut().and_then(|t| t.pass("shadow cache")),
                 occlusion_query_set: None,
             });
+            if let Some([x, y, w, h]) = part {
+                pass.set_scissor_rect(x, y, w, h);
+                pass.set_pipeline(&self.depth_clear);
+                pass.draw(0..3, 0..1);
+            }
             pass.set_bind_group(0, &self.shadow_binds[1], &[]);
             if gpu_cull {
                 self.draw_faces_gpu(&mut pass, &self.face_shadow, 2, &mut counts);
@@ -2297,6 +2459,7 @@ impl Gpu {
             counts.shadow_static += far.iter().map(|c| c.1 as u64).sum::<u64>();
             drop(pass);
             self.shadow_cache_key = Some(cache_key);
+            self.far_dirty = None;
         }
         if use_static {
             enc.copy_texture_to_texture(
@@ -2316,8 +2479,10 @@ impl Gpu {
             );
         }
 
-        // ---- the environment, drawn again when the light it shows changes
-        let env_key: Vec<u32> = [atm.hemi_sky, atm.hemi_ground, atm.moon_view, sky_fwd.normalize_or_zero()]
+        // ---- the environment, drawn again when the light it shows changes. (It is seen by world
+        // direction, not from the camera: keyed by the camera's heading too, it was drawn again,
+        // 36 passes and up to 13 ms of the CPU's frame, whenever the chase camera turned.)
+        let env_key: Vec<u32> = [atm.hemi_sky, atm.hemi_ground, atm.moon_view]
             .iter()
             .flat_map(|v| v.to_array())
             .chain([atm.night_sky, atm.exposure, atm.background as f32])
@@ -2636,6 +2801,35 @@ impl Gpu {
         self.counts = counts;
     }
 
+    /// Makes the buffers of every rig mesh the level keeps (`WorldView::prepare_rigs`) when the view
+    /// has prepared a new level, and keeps them (pinned) until the next; the last level's that are
+    /// not wanted again are let go at once. (Behind the loading screen: `level_ready` waits for it.)
+    fn sync_resident(&mut self, view: &WorldView) {
+        let r = view.resident();
+        if r.gen == self.resident_gen {
+            return;
+        }
+        let t = web_time::Instant::now();
+        let mut bytes = 0;
+        for b in self.rig_meshes.values_mut() {
+            b.pinned = false;
+        }
+        for mesh in &r.meshes {
+            let (device, layout) = (&self.device, &self.rig_face_layout);
+            let buf = self.rig_meshes.entry(mesh.id).or_insert_with(|| {
+                bytes += mesh.bytes() as u64;
+                rig_buf(device, layout, mesh)
+            });
+            buf.pinned = true;
+        }
+        // (What the last frame or two drew stays a while, as before.)
+        let now = self.frame_no;
+        self.rig_meshes.retain(|_, b| b.pinned || now.saturating_sub(b.used) < 2);
+        self.pending_upload += bytes;
+        self.resident_gen = r.gen;
+        self.resident_cost = (t.elapsed().as_secs_f64() * 1e3, bytes);
+    }
+
     /// Makes sure every rig this frame draws has its mesh on the GPU, uploads the frame's
     /// draw records and part matrices, and lets go of meshes long unused. The bind group
     /// for the records, if any rig is drawn.
@@ -2644,7 +2838,7 @@ impl Gpu {
         let total: usize = lists.iter().map(|l| l.len()).sum();
         let now = self.frame_no;
         if self.frame_no.is_multiple_of(60) {
-            self.rig_meshes.retain(|_, b| now - b.used < RIG_IDLE_FRAMES);
+            self.rig_meshes.retain(|_, b| rig_kept(b.pinned, b.used, now));
         }
         if total == 0 {
             return None;
@@ -2664,11 +2858,15 @@ impl Gpu {
         draws.extend_from_slice(&frame.rigs.far_draws);
         for mesh in frame.rigs.meshes.iter().chain(&frame.rigs_blend.meshes).chain(&frame.rigs.far_meshes) {
             {
-                let device = &self.device;
+                let (device, layout) = (&self.device, &self.rig_face_layout);
                 let buf = self.rig_meshes.entry(mesh.id).or_insert_with(|| {
-                    counts.upload +=
-                        (std::mem::size_of_val(mesh.vertices.as_slice()) + std::mem::size_of_val(mesh.indices.as_slice())) as u64;
-                    rig_buf(device, mesh)
+                    // Not made ready with the level: meshed (if it was not) and sent up now.
+                    counts.rig_misses += 1;
+                    if std::env::var_os("VH_RIG_MISSES").is_some() {
+                        eprintln!("rig miss: mesh {} ({} voxels)", mesh.id, mesh.voxels);
+                    }
+                    counts.upload += mesh.bytes() as u64;
+                    rig_buf(device, layout, mesh)
                 });
                 buf.used = now;
             }
@@ -2698,8 +2896,20 @@ impl Gpu {
     /// (on a worker thread, natively: none until it is done).
     fn level_probes(&mut self, view: &WorldView, (w, h): (f32, f32), atm: &super::view::Atmosphere) -> Option<ProbeVolume> {
         use std::hash::{Hash, Hasher};
+        // (Worked out once per upload: hashing every cube took 10 ms a frame while the probes were
+        // being built behind the loading screen.)
+        let cubes = match self.probe_key {
+            Some((level, key)) if level == self.static_level => key,
+            _ => {
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                bytemuck::cast_slice::<_, u8>(&view.static_cubes).hash(&mut hasher);
+                let key = hasher.finish();
+                self.probe_key = Some((self.static_level, key));
+                key
+            }
+        };
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        bytemuck::cast_slice::<_, u8>(&view.static_cubes).hash(&mut hasher);
+        cubes.hash(&mut hasher);
         format!("{atm:?} {w} {h}").hash(&mut hasher);
         let key = hasher.finish();
         if let Some(i) = self.probe_cache.iter().position(|c| c.0 == key) {
@@ -2742,53 +2952,121 @@ impl Gpu {
         }
     }
 
+    /// The level's probes are here (or out being refreshed: their light is on the GPU).
+    fn probes_held(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.probe_refresh.as_ref().is_some_and(|r| r.0 == self.static_level) {
+            return true;
+        }
+        self.probes.is_some()
+    }
+
+    /// The static cubes that reach into `lo`..`hi` (by their bounds as last sent), for a refresh.
+    fn cubes_near(&self, view: &WorldView, lo: Vec3, hi: Vec3) -> Vec<Instance> {
+        let (lo, hi) = (lo - Vec3::splat(probes::CELL), hi + Vec3::splat(probes::CELL));
+        self.static_slot
+            .iter()
+            .enumerate()
+            .filter(|&(_, &slot)| self.static_bounds.get(slot as usize).is_some_and(|&(a, b)| a.cmple(hi).all() && b.cmpge(lo).all()))
+            .filter_map(|(i, _)| view.static_cubes.get(i).copied())
+            .collect()
+    }
+
     fn sync_probes(&mut self, view: &WorldView, frame: &Frame) -> bool {
         if frame.skip_static || self.static_count == 0 {
             return false;
         }
         let t = std::time::Instant::now();
-        let mut changed = false;
-        if self.probe_level != self.static_level || self.probes.is_none() {
+        // What to send up: the whole volume, or the probes a refresh changed.
+        let mut send: Option<Option<ProbeBox>> = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some((level, rx)) = &self.probe_refresh {
+            if *level != self.static_level {
+                // A new level since: its probes are built afresh, and this one is let go.
+                self.probe_refresh = None;
+            } else if let Ok((p, changed)) = rx.try_recv() {
+                self.probes = Some(p);
+                self.probe_refresh = None;
+                send = Some(changed);
+            } else {
+                return true;
+            }
+        }
+        if self.probe_level != self.static_level || !self.probes_held() {
             let (w, h) = view.level_size();
             match self.level_probes(view, (w, h), &frame.atmosphere) {
                 Some(p) => {
                     self.probes = Some(p);
                     self.probe_level = self.static_level;
                     self.probe_dirty.clear();
-                    changed = true;
+                    send = Some(None);
                 }
                 // Still being built: the level is not ready, and is drawn without them meanwhile.
                 None => return false,
             }
-        } else if !self.probe_dirty.is_empty() {
+        } else if !self.probe_dirty.is_empty() && self.probes.is_some() {
             let (mut lo, mut hi) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
             for (a, b) in self.probe_dirty.drain(..) {
                 lo = lo.min(a);
                 hi = hi.max(b);
             }
-            if let Some(p) = self.probes.as_mut() {
-                p.refresh(&view.static_cubes, lo, hi);
+            let near = self.cubes_near(view, lo, hi);
+            let mut p = self.probes.take().unwrap();
+            // Natively the work goes to a worker thread, and the light comes a frame or two later;
+            // on the web, which has no threads, here and now.
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let changed = p.refresh(&near, lo, hi);
+                    let _ = tx.send((p, changed));
+                });
+                self.probe_refresh = Some((self.static_level, rx));
+                return true;
             }
-            changed = true;
+            #[cfg(target_arch = "wasm32")]
+            {
+                let changed = p.refresh(&near, lo, hi);
+                self.probes = Some(p);
+                send = Some(changed);
+            }
         }
-        if changed {
+        if let Some(changed) = send {
             let p = self.probes.as_ref().unwrap();
+            // Only the probes that changed go up (all of them for a new level, or new textures).
+            let mut b = changed.unwrap_or(ProbeBox::all(p.dims));
             if self.probe_tex.first().is_none_or(|t| [t.width(), t.height(), t.depth_or_array_layers()] != p.dims) {
                 self.probe_tex = probe_textures(&self.device, p.dims);
                 self.scene_bind = self.scene_inputs.bind(&self.device, &self.probe_tex);
+                b = ProbeBox::all(p.dims);
             }
+            let [w, h, d] = b.size();
+            let (dx, dy) = (p.dims[0] as usize, p.dims[1] as usize);
             for (s, tex) in self.probe_tex.iter().enumerate() {
-                let data: Vec<u16> = p.sides[s].iter().flat_map(|v| v.map(super::brdf::f16)).collect();
+                let mut data: Vec<u16> = Vec::with_capacity((w * h * d * 4) as usize);
+                for z in b.lo[2]..=b.hi[2] {
+                    for y in b.lo[1]..=b.hi[1] {
+                        let row = (z as usize * dy + y as usize) * dx;
+                        for v in &p.sides[s][row + b.lo[0] as usize..=row + b.hi[0] as usize] {
+                            data.extend(v.map(super::brdf::f16));
+                        }
+                    }
+                }
                 self.queue.write_texture(
-                    tex.as_image_copy(),
+                    wgpu::TexelCopyTextureInfo {
+                        texture: tex,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x: b.lo[0], y: b.lo[1], z: b.lo[2] },
+                        aspect: wgpu::TextureAspect::All,
+                    },
                     bytemuck::cast_slice(&data),
-                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(p.dims[0] * 8), rows_per_image: Some(p.dims[1]) },
-                    wgpu::Extent3d { width: p.dims[0], height: p.dims[1], depth_or_array_layers: p.dims[2] },
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 8), rows_per_image: Some(h) },
+                    wgpu::Extent3d { width: w, height: h, depth_or_array_layers: d },
                 );
                 self.pending_upload += data.len() as u64 * 2;
             }
             if std::env::var_os("VH_PROBE_STATS").is_some() {
-                eprintln!("probes: {:?} in {:.1} ms", p.dims, t.elapsed().as_secs_f64() * 1e3);
+                eprintln!("probes: {:?} of {:?} sent in {:.1} ms", b.size(), p.dims, t.elapsed().as_secs_f64() * 1e3);
             }
         }
         true
@@ -2874,14 +3152,15 @@ impl Gpu {
 
     /// Draws a list of rigs with the pipeline already set; `first` is the list's first record.
     fn draw_rigs(&self, pass: &mut wgpu::RenderPass<'_>, meshes: &[std::sync::Arc<RigMesh>], first: u32, counts: &mut FrameCounts) {
-        pass.set_vertex_buffer(1, self.rig_ids.slice(..));
+        pass.set_vertex_buffer(0, self.rig_ids.slice(..));
         for (k, mesh) in meshes.iter().enumerate() {
             let id = first + k as u32;
-            let Some(buf) = self.rig_meshes.get(&mesh.id).filter(|_| id < MAX_RIG_DRAWS) else { continue };
-            pass.set_vertex_buffer(0, buf.vertices.slice(..));
-            pass.set_index_buffer(buf.indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..buf.count, 0, id..id + 1);
-            counts.draw(1, buf.count);
+            let Some(buf) = self.rig_meshes.get(&mesh.id).filter(|b| id < MAX_RIG_DRAWS && b.count > 0) else { continue };
+            pass.set_bind_group(2, &buf.faces, &[]);
+            pass.draw(0..buf.count * 6, id..id + 1);
+            counts.draws += 1;
+            counts.instances += 1;
+            counts.triangles += buf.count as u64 * 2;
         }
     }
 
@@ -3316,18 +3595,21 @@ impl SceneInputs {
     }
 }
 
-fn rig_buf(device: &wgpu::Device, mesh: &RigMesh) -> RigBuf {
-    let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("rig vertices"),
-        contents: bytemuck::cast_slice(&mesh.vertices),
-        usage: wgpu::BufferUsages::VERTEX,
+fn rig_buf(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, mesh: &RigMesh) -> RigBuf {
+    // (A binding cannot be empty: a rig with no faces keeps one it never draws.)
+    let none = [<super::voxels::RigFace as bytemuck::Zeroable>::zeroed()];
+    let contents: &[u8] = bytemuck::cast_slice(if mesh.faces.is_empty() { &none[..] } else { &mesh.faces[..] });
+    let buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("rig faces"),
+        contents,
+        usage: wgpu::BufferUsages::STORAGE,
     });
-    let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("rig indices"),
-        contents: bytemuck::cast_slice(&mesh.indices),
-        usage: wgpu::BufferUsages::INDEX,
+    let faces = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("rig faces"),
+        layout,
+        entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }],
     });
-    RigBuf { vertices, indices, count: mesh.indices.len() as u32, used: 0 }
+    RigBuf { faces, count: mesh.faces.len() as u32, used: 0, pinned: false }
 }
 
 /// Index buffers must be a multiple of four bytes.
@@ -3453,6 +3735,55 @@ mod tests {
             let back = aces_filmic(untonemap(t));
             assert!((back - t).abs().max_element() < 1e-3, "{hex:06x}: {t} came back as {back}");
         }
+    }
+
+    #[test]
+    fn a_rig_the_level_keeps_is_never_let_go_while_it_lives() {
+        // Kept, however long unseen (a kind that comes out of its door minutes in).
+        assert!(rig_kept(true, 0, 1_000_000));
+        // Not kept, it goes after RIG_IDLE_FRAMES unseen; drawn lately, it stays.
+        assert!(!rig_kept(false, 0, RIG_IDLE_FRAMES));
+        assert!(rig_kept(false, 100, 100 + RIG_IDLE_FRAMES - 1));
+    }
+
+    #[test]
+    fn walking_about_the_level_never_moves_the_far_cascade_so_its_cache_holds() {
+        let mut g = crate::game::Game::new();
+        g.load_level(0);
+        let atm = crate::render::view::Atmosphere::forest();
+        let mut seen = Vec::new();
+        for (x, y) in [(10.0, 10.0), (11.0, 10.0), (30.0, 22.0), (60.0, 55.0), (2.0, 60.0)] {
+            g.hero.place(crate::logic::types::P::new(x as i32, y as i32));
+            for _ in 0..30 {
+                g.update(1.0 / 120.0);
+            }
+            let (center, radius) = g.view.shadow_box();
+            seen.push(far_light(center, radius, atm.sun_dir).1.to_cols_array());
+        }
+        assert!(seen.windows(2).all(|w| w[0] == w[1]), "the cascade's box follows the level, not him");
+    }
+
+    #[test]
+    fn a_small_change_redraws_only_its_part_of_the_far_cache() {
+        let (center, radius) = (Vec3::new(30.0, 0.5, 30.0), 45.0);
+        let (view, vp) = far_light(center, radius, Vec3::new(-6.0, 14.0, 8.0));
+        let size = 4096;
+        // A coin, a wall: a few dozen texels, a margin round them.
+        let coin = (Vec3::new(20.0, 0.1, 25.0), Vec3::new(20.2, 0.3, 25.2));
+        let r = far_part(vp, coin, size).expect("a part");
+        assert!(r[2] < 40 && r[3] < 40 && r[2] > 3 && r[3] > 3, "{r:?}");
+        let wall = (Vec3::new(19.5, 0.0, 24.5), Vec3::new(20.5, 2.5, 25.5));
+        assert!(far_part(vp, wall, size).is_some_and(|w| w[2] * w[3] < size * size / 400));
+        // The whole level, or nothing: drawn whole.
+        assert_eq!(far_part(vp, (Vec3::splat(-10.0), Vec3::splat(80.0)), size), None);
+        assert_eq!(far_part(vp, (Vec3::splat(1.0), Vec3::splat(-1.0)), size), None);
+        // The part's view sees what stands over its texels, along the light, and not what is beside.
+        let part = Frustum::new(far_part_view(&view, radius, r, size));
+        assert!(part.sees(coin.0, coin.1));
+        let l = Vec3::new(-6.0, 14.0, 8.0).normalize();
+        let above = coin.0 + l * 6.0;
+        assert!(part.sees(above, above + Vec3::splat(0.1)), "a caster up the light's way");
+        assert!(!part.sees(Vec3::new(40.0, 0.0, 40.0), Vec3::new(41.0, 1.0, 41.0)), "one elsewhere");
     }
 
     #[test]

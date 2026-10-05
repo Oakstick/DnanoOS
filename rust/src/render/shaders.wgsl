@@ -175,9 +175,11 @@ fn vs_shadow(v: VIn) -> @builtin(position) vec4<f32> {
 
 // ------------------------------------------------------------ resident rigs
 //
-// Characters stay on the GPU as meshes of their open voxel faces (`voxels::RigMesh`). Each
-// frame brings only a record per rig drawn and its parts' matrices; the vertex picks its
-// part's matrix and colours itself as the record says (`frame::rig_look`).
+// Characters stay on the GPU as meshes of their open voxel faces (`voxels::RigMesh`), one quad
+// per face, six vertices whose corners the shader makes (as for static faces) from the face it
+// reads (`rig_faces`, bound per mesh). Each frame brings only a record
+// per rig drawn and its parts' matrices; the vertex picks its part's matrix and colours itself
+// as the record says (`frame::rig_look`).
 
 struct RigDraw {
     tint: vec4<f32>,     // rgb tint, a opacity
@@ -196,23 +198,36 @@ const LOOK_FADED: u32 = 2u;
 const LOOK_GHOST: u32 = 4u;
 const LOOK_TINT_ALL: u32 = 8u;
 
+// One voxel face of a rig (`voxels::RigFace`).
+struct RigFace {
+    pos: vec3<f32>,
+    part_face: u32,   // the part in the low byte, the face (0 to 5) in the next
+    color: vec4<f32>,
+};
+
+@group(2) @binding(0) var<storage, read> rig_faces: array<RigFace>;
+
+// The corner each of a quad's six vertices takes, as its two triangles walk them.
+const QUAD_CORNERS = array<u32, 6>(0u, 1u, 2u, 0u, 2u, 3u);
+
 struct RIn {
-    @location(0) pos: vec3<f32>,
-    @location(1) local: vec4<f32>,
-    @location(2) color: vec4<f32>,
-    @location(3) part: u32,
-    @location(4) draw: u32,
+    @location(0) draw: u32,
+    @builtin(vertex_index) vertex: u32,
 };
 
 @vertex
 fn vs_rig(v: RIn) -> VOut {
     let d = rig_draws[v.draw];
-    let pm = rig_parts[d.part_base + v.part];
-    let w = pm * vec4<f32>(v.pos + v.local.xyz * 0.5 * d.size, 1.0);
-    var c = v.color.rgb;
-    var shade = v.color.a;
+    let f = rig_faces[v.vertex / 6u];
+    let part = f.part_face & 0xffu;
+    let face = (f.part_face >> 8u) & 7u;
+    let local = FACE_CORNERS[face * 4u + QUAD_CORNERS[v.vertex % 6u]];
+    let pm = rig_parts[d.part_base + part];
+    let w = pm * vec4<f32>(f.pos + local * d.size, 1.0);
+    var c = f.color.rgb;
+    var shade = f.color.a;
     // A dull blade: its metal (material 1, mode 6) turns to rust on the parts that rust.
-    if (d.emissive.a > 0.0 && abs(shade - 6.0) < 0.5 && ((d.rust_mask >> v.part) & 1u) != 0u) {
+    if (d.emissive.a > 0.0 && abs(shade - 6.0) < 0.5 && ((d.rust_mask >> part) & 1u) != 0u) {
         c = mix(c, vec3<f32>(0.32, 0.12, 0.05), d.emissive.a);
     }
     var tint = d.tint.rgb;
@@ -243,12 +258,11 @@ fn vs_rig(v: RIn) -> VOut {
     out.color = vec4<f32>(color, d.tint.a);
     out.emissive = vec4<f32>(emissive, shade);
     out.depth = out.clip.w;
-    out.local = v.local.xyz * 0.5;
+    out.local = local;
     // As for static faces: a solid rig's faces turned from the eye never show. (The face's centre
     // comes from the same numbers at all four corners, so they all decide alike.)
-    let face = u32(round(v.local.w * 127.0));
     let outward = (pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz;
-    let center = (pm * vec4<f32>(v.pos + FACE_NORMALS[face] * 0.5 * d.size, 1.0)).xyz;
+    let center = (pm * vec4<f32>(f.pos + FACE_NORMALS[face] * 0.5 * d.size, 1.0)).xyz;
     let to_eye = select(-g.cam_fwd.xyz, g.cam_pos.xyz - center, g.cam_pos.w > 0.5);
     if (dot(outward, to_eye) <= 0.0 && d.tint.a > 0.999 && (d.look & LOOK_FADED) == 0u && !fx_off(FX_BACKFACE)) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
@@ -260,13 +274,14 @@ fn vs_rig(v: RIn) -> VOut {
 fn vs_rig_shadow(v: RIn) -> @builtin(position) vec4<f32> {
     // As for static faces: a face turned from the light is skipped (RP16).
     let d = rig_draws[v.draw];
-    let pm = rig_parts[d.part_base + v.part];
-    let face = u32(round(v.local.w * 127.0));
+    let f = rig_faces[v.vertex / 6u];
+    let pm = rig_parts[d.part_base + (f.part_face & 0xffu)];
+    let face = (f.part_face >> 8u) & 7u;
     let away = vec3<f32>(cascade_vp[0].z, cascade_vp[1].z, cascade_vp[2].z);
     if (dot((pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz, away) > 0.0) {
         return vec4<f32>(2.0, 2.0, 2.0, 1.0);
     }
-    return cascade_vp * (pm * vec4<f32>(v.pos + v.local.xyz * 0.5 * d.size, 1.0));
+    return cascade_vp * (pm * vec4<f32>(f.pos + FACE_CORNERS[face * 4u + QUAD_CORNERS[v.vertex % 6u]] * d.size, 1.0));
 }
 
 // ------------------------------------------------------------ static faces
@@ -329,6 +344,14 @@ fn vs_face(v: FIn) -> VOut {
     out.depth = out.clip.w;
     out.local = local;
     return out;
+}
+
+// The whole target at the far plane: clears the depth of the part a scissor leaves (the part of
+// the cached cascade drawn again).
+@vertex
+fn vs_depth_clear(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u)) * 2.0 - 1.0;
+    return vec4<f32>(p, 1.0, 1.0);
 }
 
 @vertex

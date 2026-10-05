@@ -164,6 +164,8 @@ impl Game {
         if let Some(p) = self.pit.as_mut() {
             p.leap_in = true;
         }
+        // The waves of this level and every one below it, made ready with the cell.
+        self.prepare_level();
     }
 
     /// The level's fight laid out: the fight by frame data, its riders on the platform, its inmates

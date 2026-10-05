@@ -196,6 +196,17 @@ pub fn tile_for(w: f32, h: f32) -> f32 {
 }
 
 /// Builds the whole overlay for this frame.
+/// Makes, as a level loads (behind its loading screen), the pictures the HUD makes the first
+/// time it shows them: the heroes' portraits and the foes' cast, the old man's face for his
+/// counsel, the icons, and the portraits on the Ledger's cards of `kinds` (the level's foes).
+/// Made in the middle of a fight, the old man's first word cost 12 ms in its frame.
+pub fn warm(kinds: &[crate::logic::enemy::EnemyKind]) {
+    let _ = sprites();
+    let _ = voices::face();
+    let _ = icon(Icon::Lock);
+    ledger::warm(kinds);
+}
+
 pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
     let (w, h) = (o.width, o.height);
     let t = tile_for(w, h);
