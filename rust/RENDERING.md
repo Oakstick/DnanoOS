@@ -22,10 +22,10 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
   mist, backface`. Each one captures the same scene without one effect, as the plan's per-effect
   comparisons need.
 - **RP08, performance captures** (`src/perf.rs`, `--perf [all|names] [--perf-mode throughput|gameplay]
-  [--frames N] [--size WxH] [--fx-off …] [--out dir]`). There are fourteen scenes: close-up, garden,
+  [--frames N] [--size WxH] [--fx-off …] [--out dir]`). There are fifteen scenes: close-up, garden,
   corridor, vista, 30 foes, the warband (the vaults with the expert bot fighting), souls, fast rotation,
-  camera switching, destruction, siege, portal arrival, vault, and the Pit's seventh level with the
-  expert bot. Each has a fixed seed and script, played by the same driver as `--capture`
+  camera switching, destruction, siege, portal arrival, vault, the Pit's seventh level with the
+  expert bot, and its sixth run on into the seventh (the descent). Each has a fixed seed and script, played by the same driver as `--capture`
   (`src/driver.rs`: the script, the bot's pad every step), a stated simulated duration the frame count
   comes from, and 120 warm-up frames with the simulation held. **Throughput** mode (the default) takes
   one simulation step per drawn frame, so the scene keeps moving however fast it is drawn; **gameplay**
@@ -51,11 +51,13 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
   after a CPU frustum test. Each shadow cascade culls its own casters, so off-screen objects still cast.
   Tree fades still patch in place.
 - **RP16 (part), cached static shadow.** The coarse cascade's static part is drawn once and copied in each
-  frame. It is drawn again only when the light, its box or the static scenery changes.
+  frame. It is drawn again only when the light, its box or the static scenery changes, and for a
+  change of the scenery only over it (no stalls mid-fight, below).
 - **Depth prepass** for opaque geometry: the expensive shading then runs once per pixel. Fades dither
   the same way in both passes; water, clouds and glows are left out of the prepass.
 - **RP10 and RP11, resident rigs** (`voxels::RigMesh`). Each rig is meshed once, per part, keeping only
-  the voxel faces nothing in the same part covers; faces at joints stay. Each frame uploads only a
+  the voxel faces nothing in the same part covers; faces at joints stay, each a 32-byte record the
+  vertex shader reads. Each frame uploads only a
   48-byte record and the part matrices per rig, instead of 96 bytes per voxel. Ghosts and fades use a
   mesh with every face, since their look depends on the inner layers.
 - **RP11, static surfaces** (`render/faces.rs`). A static cube's face is dropped when an identical cube
@@ -74,7 +76,7 @@ comparisons on this machine are meaningful. **Nothing here has been measured on 
 
 - **Levels** (`Rig::lod`): every rig has three, itself plus copies at half and a quarter of the
   resolution, made on first use and cached on the rig. Parts and joints are the same at every level, so
-  one pose drives them all. A foe's levels are made when it joins the view, not mid-fight. The
+  one pose drives them all. A foe's levels are made as its level loads, not mid-fight (below). The
   hand-kept `foes_far` copies and the fixed 6-unit switch are gone.
 - **Choosing a level** (`frame::LodPolicy`): by projected size, i.e. pixels per voxel under the actual
   projection (perspective or the orthographic map) and screen height. A rig drops to half below 2 pixels
@@ -502,6 +504,77 @@ courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to r
   On this machine the GPU is the cost. RP06's gameplay rule holds: none of these settings touch the
   simulation, and the presets and level of detail are view-only.
 
+### No stalls mid-fight (2026-10-05)
+
+A fight must never stutter. The gameplay benchmark of 4 October showed fight frames of 2 to 4 ms
+with spikes of 11 to 26 ms; the fight scenes found more once measured frame by frame (the CSV's
+`rig_misses` and `saves` columns). What each one was, and what was done:
+
+| Stall | Cost in its frame | Why | Now |
+|---|---|---|---|
+| A kind of foe's first appearance (a pack waking, a Pit door opening) | 5 to 26 ms | Its levels of detail meshed in the update that brought it (`add_enemy`) and its buffers made the first frame it was drawn, up to 35 MB at once (two giants' full and half-resolution meshes at 168 bytes a face); a kind unseen for 10 s let go and sent up again | Made ready with the level (below); kept while it lives |
+| The hero raising his shield, blinking after a blow, his shield breaking | 6 to 14 ms | His shield-up, see-through and shieldless rigs meshed and sent up the first time | Made ready with the level; the shieldless one swapped in |
+| A coin taken in the vaults (every 5 s or so as he walks) | 11 to 13 ms | Not the far cascade: the probes worked out again round the coin on the spot, laying every static cube of the level, and every side of every probe sent up again | Refreshed on a worker thread from the cubes near it, the light following a frame or two later; only the probes that changed go up (0.2 ms) |
+| The far cascade's cache drawn again (the same coin, a wall) | 0.7 ms GPU, 1.1 M casters | The whole level's casters drawn again for a coin | Only its texels over what changed: cleared under a scissor, the casters of that column of the light drawn (60 k for a broken wall) |
+| The chase camera turning | 1 to 13 ms | The environment map (36 passes) was keyed by the camera's heading too, though it is seen by world direction | Keyed by its light alone |
+| The Pit's descent | 6 to 9 ms, several times | The light changes by steps on the way down, each one the environment drawn whole | Within a level, followed a mip a frame (6 passes); a new level's drawn whole at once |
+| A wall broken | 7 + 3 to 4 ms | The chase camera's spans worked out for the whole level; the rubble written to the GPU cube by cube; the first added cube growing tables of a million entries | Its own tiles worked out again (tested equal to a whole rebuild); one write; room kept |
+| The run's snapshot written at a calm moment | 3 to 10 ms | File work on the game thread | Written behind, in order, on a thread of its own (`platform::write_behind`; reads and quitting wait for it) |
+| The old man's first word | 12 ms | His face's sprite made on first use | The HUD's first-use pictures made with the level |
+| 30 foes hunting through the Garden's maze | up to 6 ms (30 FPS) | Their way-finding searched on a hash map | On a dense grid: the same ways (tested), foes p95 4.6 to 0.9 ms |
+
+- **Prepared with the level** (`Game::level_kinds`, `WorldView::prepare_rigs`, `Gpu::sync_resident`):
+  every kind the level can deal (its foes; a dungeon's reinforcements; a realm's or the vaults'
+  roster, its general's, its rivals', its own kind; the Pit's waves on every level from this one
+  down; and what each brings: illusions, the raised dead, minions, a prince's adds, Krampus's
+  Perchten), the hero's rigs, the archangels' shrines and the Hall of Mirrors' statues, at every level
+  of detail. Meshed on every core natively (in order on the web, which has no threads); their
+  buffers made before the loading screen lifts (`level_ready` waits) and pinned until the next
+  level, the last level's let go. The lazy path stays, and counts `rig_misses`. `VH_NO_PRELOAD`
+  turns it off, for comparison; `VH_RIG_MISSES` names each miss.
+- **Rig meshes a fifth the size.** A face is a 32-byte record the vertex shader reads from a storage
+  buffer bound per mesh (six vertices a face, their corners made as for static faces), where four
+  36-byte corners and six 4-byte indices took 168. Every foe at every level: 455 MB to 86 MB (tested
+  under 100); Surtr's three levels 20 MB to 4. Building them is three times faster. Renders the same
+  (the capture suite matches, under FXC and DXC). What could shrink further changes the look:
+  rounded colours (the shader seeds each voxel's detail from its exact colour) or merged faces.
+  See-through (whole) meshes are made only for the hero's rigs.
+- **What it costs at load** (the *Frame budget* table, the scene's last level, cold, dev laptop):
+  meshing 1 to 25 ms, buffers 5 to 12 ms, 18 to 42 MB kept; the Pit entered from its first level
+  (35 kinds) about 50 ms with the rest of its load. The levels' load and first frame fell where measured (the Hall of Mirrors
+  cold: load 34 to 16 ms, first frame 238 to 123 ms; warm: 58 to 34 ms).
+- **The Pit's fight simulation** at 30 FPS: its worst frame 0.71 to 0.37 ms (p95 0.38 to 0.14),
+  under the 0.5 ms budget, with the simulation unchanged (`--pit 2 8 1` gives the same 1007 s, 133
+  kills, 232 taken; the warband and Pit scenes the same swings, hits and damage). Played alone the
+  fights cost under 0.08 ms; their peaks in the harness were the new kinds meshed in the fight's own
+  lap as they came out of the doors.
+- **Asserted** (`--perf`): the fight scenes (warband, pit, battle30, siege and the new **descent**,
+  the Pit's sixth level run on to the bell so the platform goes down and the seventh level's giants
+  come out of the doors) fail if any measured frame takes over 8 ms of CPU (half a 60 FPS frame:
+  three times their usual frame, the stalls above 9 to 26 ms) or draws a rig not made ready; the
+  descent also if no kind of foe new to the fight came. Tests: each level's preparation covers what
+  the bot meets in the vaults, a realm, four courts (wounded through their phases), the Pit's levels
+  and the lair; a kept mesh is never let go; walking never moves the far cascade's box; a coin's or a
+  wall's part of the cache is small and its view sees its casters.
+- **Measured** (perf/2026-10-05-102926 before, -103108 after; release, gameplay mode, interleaved in
+  one sitting, dev laptop):
+
+  | Scene | Worst CPU frame, before | after | Frames over 8 ms, before | after | CPU p50, before | after |
+  |---|---|---|---|---|---|---|
+  | warband @60 / @30 | 13.8 / 16.1 | 4.6 / 6.2 | 4 / 4 | 0 / 0 | 1.6 / 1.9 | 1.1 / 1.7 |
+  | pit @60 / @30 | 18.1 / 13.9 | 4.7 / 5.0 | 2 / 2 | 0 / 0 | 1.6 / 2.6 | 1.3 / 1.1 |
+  | battle30 @60 / @30 | 25.7 / 9.6 | 5.0 / 4.2 | 2 / 2 | 0 / 0 | 2.3 / 2.5 | 2.2 / 2.3 |
+  | siege @60 / @30 | 35.6 / 41.0 | 4.4 / 5.0 | 9 / 10 | 0 / 0 | 3.7 / 4.6 | 1.6 / 1.8 |
+  | destruction @60 / @30 | 27.0 / 24.8 | 4.5 / 4.0 | 2 / 2 | 0 / 0 | 2.6 / 2.2 | 1.6 / 1.4 |
+  | descent @60 / @30 | (new) | 4.1 / 4.5 | | 0 / 0 | | 1.1 / 1.3 |
+
+  GPU time is within noise or lower (the environment no longer drawn again as the camera turns).
+  This laptop shared its CPU with other work during some runs; the budget wants a quiet machine.
+- **Left:** the Pit entered cold meshes its seven levels' kinds in the step that loads it (about
+  50 ms before the loading screen shows; building them on a worker thread while it animates would
+  hide it). Scene I's cast is not prepared (it is no fight). A shield broken mid-fight is covered;
+  other changes of kit mid-level (none in play) would mesh as they came.
+
 ## Stage F: advanced rendering, evaluated
 
 The plan gates stage F on measuring the indexed path on both target GPUs. That was waived by
@@ -774,7 +847,8 @@ builder is `view/crypt.rs`. Both are off the road on the map.
     roofs and arches in the top view.
   - A numerical portal-loading target, set on the target machines.
   - TA07's broken pieces and the cue that a wall can be broken; the rubble is a stand-in.
-  - Rare foe pathfinding peaks, up to 5 ms, in the Garden maze.
+  - Foe pathfinding in the Garden maze: its peaks fell from up to 8 ms to 2 ms a frame (no stalls
+    mid-fight); a 30-foe fight's frame is now dominated by the GPU.
 - **F, advanced:** RP20 to RP22 evaluated (above). GPU visibility is built but off by default; Hi-Z
   and mesh shaders were not built, by measurement.
 - **G, shipping:** the GTX 1080 and RTX 3060 presets, and packaged validation.
