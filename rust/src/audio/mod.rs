@@ -39,9 +39,9 @@ pub enum Sfx {
     Win,
     Jump,
     Heal,
-    /// Countdown beep.
+    /// READY, before play.
     Tick,
-    /// Countdown release.
+    /// GO!, as play begins.
     Go,
     /// Landing from a jump.
     Land,

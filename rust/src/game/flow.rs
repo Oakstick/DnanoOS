@@ -93,7 +93,7 @@ impl Game {
             _ => {}
         }
         if screen == Screen::Ready {
-            self.audio.play(Sfx::Tick); // "3"
+            self.audio.play(Sfx::Tick); // "READY"
         }
         self.screen_timer = match screen {
             Screen::Ready => READY_SECONDS,
@@ -173,7 +173,6 @@ impl Game {
             Screen::Story => self.update_story(dt),
             Screen::Select => self.update_select(dt),
             Screen::Ready => {
-                let before = self.screen_timer.ceil();
                 self.screen_timer -= dt;
                 if self.screen_timer <= 0.0 {
                     self.enter(Screen::Playing);
@@ -182,8 +181,6 @@ impl Game {
                     if let Some(b) = &mut self.boss {
                         b.wake();
                     }
-                } else if self.screen_timer.ceil() < before {
-                    self.audio.play(Sfx::Tick); // "2", "1"
                 }
             }
             Screen::Playing => {

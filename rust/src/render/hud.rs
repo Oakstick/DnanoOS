@@ -1046,21 +1046,24 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
     }
 }
 
-/// The countdown before play: 3, 2, 1, each landing big and settling.
+/// Before play: READY lands big and settles, breathes while the level's name is read, and gathers
+/// itself in as GO! comes (`juice.go`).
 fn draw_countdown(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.3]);
     let left = g.screen_timer.max(0.0) as f32;
-    let n = left.ceil().max(1.0) as u32;
-    let k = left - left.floor(); // 1 -> 0 through each second
-    let k = if k == 0.0 { 1.0 } else { k };
-    let pop = 1.0 + 0.7 * k.powi(4);
-    let alpha = (k * 3.0).min(1.0);
+    let age = crate::game::READY_SECONDS as f32 - left;
+    let land = 1.0 + 0.7 * (1.0 - (age / 0.3).min(1.0)).powi(4);
+    let breathe = 1.0 + 0.03 * (age * 5.0).sin();
+    let gather = (left / 0.2).min(1.0);
+    let alpha = (age / 0.12).min(1.0) * gather;
+    let size = t * 4.0 * land * breathe * (0.85 + 0.15 * gather);
     let y = h * 0.42;
-    o.circle(w / 2.0, y, t * 3.2 * pop, [1.0, 1.0, 1.0, 0.05 * alpha]);
-    o.text(&n.to_string(), w / 2.0, y, t * 5.0 * pop, rgba(GOLD, alpha), Align::Center, true);
-    let ready = if g.arena() { format!("{} AWAITS", g.boss_name()) } else { "GET READY".to_string() };
-    o.text(&ready, w / 2.0, y + t * 3.2, t * 0.9, rgba(if g.arena() { 0xff8a2a } else { TEXT }, 1.0), Align::Center, true);
+    o.circle(w / 2.0, y, t * 4.2 * land, [1.0, 1.0, 1.0, 0.05 * alpha]);
+    o.text("READY", w / 2.0, y, size, rgba(GOLD, alpha), Align::Center, true);
+    if g.arena() {
+        o.text(&format!("{} AWAITS", g.boss_name()), w / 2.0, y + t * 3.2, t * 0.9, rgba(0xff8a2a, 1.0), Align::Center, true);
+    }
     // The level's name, large and gold across the top, as the count begins.
     let name = g.level.data.name.to_uppercase();
     let fit = w * 0.86 / (name.chars().count().max(1) as f32 * o.measure("M", 1.0));

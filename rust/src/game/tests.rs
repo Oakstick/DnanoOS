@@ -175,7 +175,7 @@ fn every_second_key_quickens_the_music() {
 }
 
 #[test]
-fn ragnar_starts_in_the_middle_after_a_countdown() {
+fn ragnar_starts_in_the_middle_after_ready_go() {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
     let spawn = g.level.hero_spawn;
@@ -190,10 +190,10 @@ fn ragnar_starts_in_the_middle_after_a_countdown() {
     }
     start_from_title(&mut g);
     assert_eq!(g.screen, Screen::Ready);
-    for _ in 0..(2.9 / crate::app::STEP) as usize {
+    for _ in 0..((crate::game::READY_SECONDS - 0.1) / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
     }
-    assert_eq!(g.screen, Screen::Ready, "still counting down at 2.9 s");
+    assert_eq!(g.screen, Screen::Ready, "still READY just before GO");
     for _ in 0..(0.2 / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
     }

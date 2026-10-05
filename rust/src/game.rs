@@ -143,8 +143,8 @@ const DOOR_SECONDS: f64 = 1.6;
 /// wander to their corners (as the arcade ghosts did). Frozen while they are stunned.
 const MODE_SCHEDULE: [(GlobalMode, f64); 1] = [(GlobalMode::Chase, f64::INFINITY)];
 
-/// The countdown before play: 3, 2, 1, then GO.
-pub const READY_SECONDS: f64 = 3.0;
+/// The beat before play: READY, then GO!
+pub const READY_SECONDS: f64 = 2.0;
 
 /// The fanfare and the fade into the boss arena.
 pub const CLEARED_SECONDS: f64 = 3.4;
