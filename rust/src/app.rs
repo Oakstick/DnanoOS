@@ -292,6 +292,8 @@ impl App {
         let t = Instant::now();
         gpu.sync_static(&mut self.game.view);
         self.cpu.sync = t.elapsed().as_secs_f64() * 1e3;
+        // The portraits the HUD asked for, made before the frame that shows them.
+        gpu.render_portraits(&self.game.view, &self.overlay.portraits.due);
 
         let Some(surface) = &gpu.surface else { return };
         match surface.get_current_texture() {

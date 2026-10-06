@@ -270,6 +270,37 @@ fn vs_rig(v: RIn) -> VOut {
     return out;
 }
 
+// A portrait (UI.md §6, `Gpu::render_portraits`): the rig lit for the HUD on a clear ground, a
+// warm key from above the camera's left, a cool fill from its right, a rim behind; tone mapped and
+// written as display colour, solid (the clear ground stays transparent).
+@fragment
+fn fs_portrait(in: VOut) -> @location(0) vec4<f32> {
+    var n = normalize(cross(dpdx(in.world), dpdy(in.world)));
+    let to_eye = normalize(g.cam_pos.xyz - in.world);
+    if (dot(n, to_eye) < 0.0) {
+        n = -n;
+    }
+    let fwd = normalize(g.cam_fwd.xyz);
+    let right = normalize(cross(fwd, vec3<f32>(0.0, 1.0, 0.0)));
+    let up = cross(right, fwd);
+    let key = normalize(-right * 0.55 + up * 0.8 - fwd * 0.5);
+    let fill = normalize(right * 0.85 + up * 0.15 - fwd * 0.5);
+    let rim = normalize(right * 0.35 + up * 0.55 + fwd * 0.9);
+    let albedo = in.color.rgb;
+    var c = albedo * (vec3<f32>(0.16, 0.15, 0.17)
+        + max(dot(n, key), 0.0) * vec3<f32>(1.25, 1.12, 0.95)
+        + max(dot(n, fill), 0.0) * vec3<f32>(0.32, 0.38, 0.48));
+    let edge = pow(1.0 - max(dot(n, to_eye), 0.0), 2.0);
+    c += vec3<f32>(1.0, 0.82, 0.55) * edge * max(dot(n, rim) + 0.25, 0.0) * 0.55;
+    c += in.emissive.rgb;
+    if (abs(in.emissive.w - 16.0) < 0.5) {
+        // A voxel lit from within keeps its own light.
+        c = max(c, albedo * 1.4);
+    }
+    let shown = aces_filmic(c, 1.0);
+    return vec4<f32>(pow(shown, vec3<f32>(1.0 / 2.2)), 1.0);
+}
+
 @vertex
 fn vs_rig_shadow(v: RIn) -> @builtin(position) vec4<f32> {
     // As for static faces: a face turned from the light is skipped (RP16).

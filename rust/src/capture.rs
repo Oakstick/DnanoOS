@@ -601,9 +601,45 @@ pub fn run(args: &[String]) -> i32 {
         // The type and the overlay's quads on a plain ground (`hud::specimen`).
         hud::specimen::draw(&mut overlay, hud::tile_for(w as f32, h as f32));
     } else if !args.iter().any(|a| a == "--no-hud") {
+        let at = std::time::Instant::now();
+        hud::draw(&mut overlay, &game, 60);
+        let hud_ms = at.elapsed().as_secs_f64() * 1e3;
+        // (Again, as a frame after the first would: the type laid out once already.)
+        let at = std::time::Instant::now();
+        overlay.portraits.begin_frame();
+        overlay.begin(w as f32, h as f32);
+        hud::draw(&mut overlay, &game, 60);
+        eprintln!(
+            "hud: {hud_ms:.2} ms the first time, {:.3} ms after; {} vertices; the type's atlas made in {:.1} ms, the UI's textures up in {:.1} ms",
+            at.elapsed().as_secs_f64() * 1e3,
+            overlay.verts.len(),
+            gpu.ui_ms.0,
+            gpu.ui_ms.1
+        );
+        overlay.portraits.forget();
+        overlay.begin(w as f32, h as f32);
         hud::draw(&mut overlay, &game, 60);
     }
     gpu.sync_static(&mut game.view);
+    if !overlay.portraits.due.is_empty() {
+        let n = overlay.portraits.due.len();
+        let first = gpu.render_portraits(&game.view, &overlay.portraits.due);
+        // Then made again and again, as a live one is, waiting for the GPU each time (its share too).
+        let mut times: Vec<f64> = (0..30)
+            .map(|_| {
+                let at = std::time::Instant::now();
+                gpu.render_portraits(&game.view, &overlay.portraits.due);
+                let _ = gpu.device.poll(wgpu::PollType::Wait);
+                at.elapsed().as_secs_f64() * 1e3
+            })
+            .collect();
+        times.sort_by(f64::total_cmp);
+        eprintln!(
+            "portraits: {n} made in {first:.2} ms the first time; again, waiting for the GPU: median {:.2} ms, best {:.2} ms",
+            times[times.len() / 2],
+            times[0]
+        );
+    }
     let mut rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     if game.show_fps && !args.iter().any(|a| a == "--no-hud") {
         // The F3 readout reports the frame before: draw once more with this one's numbers.
@@ -614,6 +650,7 @@ pub fn run(args: &[String]) -> i32 {
         game.perf_lines = crate::render::profile::readout(&Default::default(), &gpu.counts, gpu.timer.as_ref());
         overlay.begin(w as f32, h as f32);
         hud::draw(&mut overlay, &game, 60);
+        gpu.render_portraits(&game.view, &overlay.portraits.due);
         rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     }
     if let Some(n) = arg(args, "--bench").and_then(|n| n.parse::<u32>().ok()) {

@@ -370,6 +370,12 @@ fn loading_words(age: f32) -> f32 {
 /// enough to need saying. The HUD under it is drawn all the same, so its sprites are ready on reveal.
 fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     let Some(l) = &g.loading else { return };
+    // The portraits the level will show, made behind the loading screen (their first making costs
+    // the most: the meshes go up and the driver readies the pipeline), drawn unseen.
+    use crate::render::portrait::{PortraitId, Pose};
+    let hero_px = PANEL_ROWS * t - t * 0.4;
+    o.portrait(PortraitId::Hero(g.hero_kind), Pose::live(g.time as f32, 1.0), 0.0, 0.0, hero_px, hero_px, false, [0.0; 4]);
+    o.portrait(PortraitId::OldMan, Pose::live(g.time as f32, 1.0), 0.0, 0.0, t * 3.0, t * 3.0, false, [0.0; 4]);
     let show = loading_words(l.age as f32);
     if show <= 0.0 {
         return;
@@ -497,10 +503,9 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let time = g.time as f32;
 
     // ---- top left: health
-    let portrait = portrait_of(g.hero_kind);
+    // His live portrait, made by the renderer (once a second: his gear and his breath).
     let portrait_h = band - t * 0.4;
-    let scale = portrait_h / portrait.height as f32;
-    let portrait_w = portrait.width as f32 * scale;
+    let portrait_w = portrait_h;
     let px0 = margin + t * 0.35;
     let py0 = margin + t * 0.2;
     let cx0 = px0 + portrait_w + t * 0.7;
@@ -518,7 +523,10 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     } else {
         None
     };
-    draw_sprite(o, portrait, px0, py0, scale, tint, if ghost { 0.4 } else { 1.0 });
+    let pose = crate::render::portrait::Pose::live(time, 1.0);
+    let tint = tint.map(|c| rgba(c, 1.0)).unwrap_or([1.0; 4]);
+    let tint = [tint[0], tint[1], tint[2], if ghost { 0.4 } else { 1.0 }];
+    o.portrait(crate::render::portrait::PortraitId::Hero(g.hero_kind), pose, px0, py0, portrait_w, portrait_h, false, tint);
     if hero.shield.is_some() {
         o.rect_outline(
             px0 - t * 0.15,

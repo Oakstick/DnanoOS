@@ -75,10 +75,12 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
         o.circle(fx + fs / 2.0 + drift, fy + fs * 0.45, fs * 0.22, rgba(color, 0.18 * fade));
         o.circle(fx + fs / 2.0 - drift, fy + fs * 0.5, fs * 0.12, rgba(color, 0.12 * fade));
     } else {
-        let f = face();
-        let scale = (fs * 0.94) / f.width.max(f.height) as f32;
-        let (sw, sh) = (f.width as f32 * scale, f.height as f32 * scale);
-        draw_sprite(o, f, fx + (fs - sw) / 2.0, fy + (fs - sh) / 2.0, scale, None, fade);
+        // His live portrait, made by the renderer: every frame while his words type out (his head
+        // and his hand move with them), once a second while they stand.
+        use crate::render::portrait::{PortraitId, Pose};
+        let talking = s.shown(g.time) < s.text.chars().count();
+        let pose = if talking { Pose::talking(g.time as f32, age) } else { Pose::live(g.time as f32, 1.0) };
+        o.portrait(PortraitId::OldMan, pose, fx, fy, fs, fs, false, [1.0, 1.0, 1.0, fade]);
     }
     o.rect_outline(fx, fy, fs, fs, (t * 0.08).max(1.5), rgba(color, 0.95 * fade));
     // The name over the words: the old man's, or the prince's own (he never takes the old man's).
@@ -93,7 +95,7 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
         // Quitmer's mark beside his name.
         o.text(
             "& QUITMER",
-            tx + o.measure("THE OLD MAN ", small),
+            tx + o.measure_as("THE OLD MAN ", small, true),
             y + t * 0.62,
             small * 0.8,
             rgba(TEXT_DIM, 0.8 * fade),

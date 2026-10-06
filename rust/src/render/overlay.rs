@@ -471,8 +471,8 @@ impl Overlay {
 
     /**
      * A portrait made by the renderer (UI.md §6), drawn over `x, y, w, h`: asks for it (made this
-     * frame if it is new or due, see `portrait::PortraitBook`) and draws its slot. Masked round
-     * with `round`.
+     * frame if it is new or due, see `portrait::PortraitBook`) and draws its slot, tinted (white
+     * for its own colours). Masked round with `round`.
      */
     #[allow(clippy::too_many_arguments)]
     pub fn portrait(
@@ -484,18 +484,13 @@ impl Overlay {
         w: f32,
         h: f32,
         round: bool,
-        alpha: f32,
+        tint: [f32; 4],
     ) {
         let px = w.max(h).round() as u32;
         let Some((slot, size)) = self.portraits.request(id, pose, px) else { return };
         let [u0, v0, u1, v1] = portrait_slot(slot).sub(0, 0, size, size).uv();
         let flags = FLAG_PREMULTIPLIED | if round { FLAG_CIRCLE } else { 0 };
-        self.textured_quad(
-            [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
-            [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
-            [1.0, 1.0, 1.0, alpha],
-            flags,
-        );
+        self.textured_quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], tint, flags);
     }
 
     // ------------------------------------------------------------ shapes
