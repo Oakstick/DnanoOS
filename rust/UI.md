@@ -426,3 +426,122 @@ Left for the on-screen builder (U1a proper, after U0): own a `MapImage` beside t
 round minimap (7t, north-up or turning) from it with the markers as U0's shapes and glyphs, the
 full map (zoom and pan, legend, objective, the realm's name), L3 for zoom; the colour-blind palette
 for the foes' dots; the Map stop.
+
+### U1a, the minimap and the full map on screen (2026-10-07)
+
+Built on `ui-u1a`, on U0 and the map's data above. Nothing of the game reads any of it: the
+harnesses print what they printed before (`--court`, `--pit 2 8 1`, `--bout 1..16 2 1 1`).
+
+**The image on the GPU** (`render/minimap.rs`, `MapLayer`). The `MapImage` is held in the overlay
+(`Overlay::map`: the HUD has the overlay mutably and the game only to read), brought up to date as
+the HUD draws (`sync`, every frame the minimap or the full map shows, and behind the loading
+screen, so a new level's image, 9-19 ms in the vaults, is built under the black). After the HUD
+the app sends what changed (`overlay.map.upload(|r, px| gpu.write_atlas(r, px))`, in `App::render`,
+the capture and the perf harness): a new level's image whole, with the rest of `MAP_REGION` cleared
+(1024 x 1024 x 4 = 4 MB, once a level, so nothing of the last level shows past the new one's edge);
+after that only the rectangle the fog or the ground changed, as packed rows of a part of the region
+(U0's `write_atlas` takes any sub-rectangle: no new writer was needed).
+
+**The minimap** (`render/hud/minimap.rs`). Top right inside the safe area (`rect`: `[w - safe - 7t,
+safe, 7t, 7t]`, `safe` 5% of the shorter edge), round. A soft shadow, a copper rim lit from above,
+the level through a round window centred on the hero, a soft shadow inside the rim; the camera's
+view as a faint wedge from him; what the map knows as small shapes in their colours
+(`draw_marker`, shared with the full map: foes red dots, a pack's leader a red dot in a gold ring,
+a rival a gold diamond, a general a crown, a boss a skull; shrines diamonds in their angel's colour
+with a breathing halo, grey when spent; golden and red keys, remedies, potions, gold, chests, the
+gate shut or open, the way in, the hub's portals in their sin's colour (ringed once conquered), the
+House's door, the Pit's doors and its platform drawn to scale and cut to the circle, the old man's
+lamp in amber, the general's instruments and post, the cage); the hero's arrow on top. The north
+mark (a gold N in a copper ring) sits on the rim where north is. Out of range, the objectives (the
+exit, the lamp, unspent shrines, the boss; the gate left to the lamp where both stand on the far
+portal) become arrows on the rim pointing their way, the lamp's breathing (`plan`, `objective`);
+nothing else does. Three zooms, 9, 15 and 26 tiles to the rim, stepped by L3 (`MinimapZoom`) and
+shown as three pips on the rim (L3's glyph beside them on a controller); saved as
+`vh.minimap_zoom`. North up, or turning with the camera (`Game::map_ui.turn`, saved as
+`vh.minimap_turn` by `Game::set_minimap_turn`, which U1b's Settings toggle calls): the camera's
+heading along the ground is up (for a camera looking straight down, its screen's up). Shown in
+play, the countdown, the fall, the fanfare and the pause (under its dim); hidden on the title, in
+the story, the tour, the wares, the character screen, the won, fallen and toll screens, under the
+full map and behind the loading screen (`shown`).
+
+The round window is not U0's `region_circle`: past `MAP_REGION`'s edge that reads the icons'
+region or a portrait, and the window passes the edge whenever the hero is near the level's. It is
+`image_polygon`: the circle's square clipped (in screen space, by the four planes of the image's
+texel centres, the screen-to-image map being affine) to the image, drawn as a fan of vertices that
+carry the circle mask's coordinates, through a new `Overlay::raw_triangle` (vertices as they are;
+also the gradients of the rim and the shadows). The full map draws through it too, clipped to its
+panel.
+
+**The full map** (`render/hud/fullmap.rs`, `game/fullmap.rs`). The map action (View, the D-pad's
+up, M or Tab) from play pauses under it and opens it; from the pause menu MAP or the map action
+opens it over the menu. Over a dim: the place's name in the display type, what he must do there
+(the old man's guide's first word on it, `guide_now().task`, wrapped to two lines), the explored
+level large in a panel with a faint grid every eight tiles, the markers with the hub's portals
+named, the north mark, off-panel objectives as arrows at its edge; a legend of what is marked here
+(only the kinds known on this level, each drawn as on the map); the controls below in the glyphs of
+the device used last. It opens framed on what he has explored, as close as that allows (up to
+three units a tile). The left stick or the run keys pan it, a drag of the mouse moves it with the
+pointer; the wheel (about the pointer), the right stick, the bumpers or Q and E zoom (1: the whole
+level fits, to three units a tile); Y or R brings it back to him. Whatever is bound to the map
+action puts it away (so Tab, M, View, the D-pad's up, or a rebinding; not the press that opened
+it), and so do B, Esc and Menu: back to play if it came from play, else to the pause menu with MAP
+highlighted. Its middle stays on the level. Input for it, added to `Input` and read as it is:
+`went_down(control)` (the controls that went down this update, so the map action closes it however
+it is bound), `wheel_turned()` and `sticks()`.
+
+**The developer's map** (`game/map.rs`, `render/hud/map.rs`, unchanged in look). The pause menu's
+MAP is the player's map now. The list of stops is the developer's map: **F12 opens it in every
+build** (from the title, play, the pause menu, or over the full map; a fixed key like the other
+testing keys, taken out of the keys the player may bind), and **DEV MAP** stands on the title and
+in the pause menu in developer builds, with `--dev` on the command line, or for the rest of the
+session once F12 has opened it (`Game::dev`). Decided so because the user tests with the release
+build: one key from anywhere, and its buttons back after the first press. It gained two stops, the
+full map of the garden and of the vaults (every new screen on the Map). On the web, F12 reaches the
+page (the browser's tools want it too: a debug build or the buttons after one press).
+
+**The HUD** (`render/hud.rs`, kept to calls into the new files): the minimap drawn after the
+corners, the full map over the pause, the image prepared under the loading screen; the score and
+purse panel moved down under the minimap (`minimap::below`) until U1c's layout places it.
+
+**Captures**: `fullmap` opens the full map, `mapzoom:Z` and `mappan:X:Y` set it; `minizoom:N` and
+`miniturn` set the minimap (none saved). The capture prints the bytes sent to the atlas.
+
+**Changed from the plan.** The round window clipped on the CPU in place of `region_circle` (above).
+The image lives in the overlay rather than beside it. The keyboard has no minimap zoom by default
+(L3 only, as U0's defaults have it; the action is rebindable). The minimap shows during the fall and
+the fanfare too (they are play). The colour-blind palette for the foes' dots waits for U1b's
+setting. At 3840 x 2160 logical pixels the HUD's unit stops at 28 px (`tile_for`), so the minimap
+is 196 px there like everything else; on a real 4K screen the window's scale factor makes the
+logical size 1920-2560 wide. A UI scale is U1b's.
+
+**Numbers** (this laptop, the `quick` profile; tests `the_minimap_is_quick_and_sends_up_only_what_changed`,
+`the_page_fits_the_screen_and_draws_quickly`):
+- The minimap, every frame, in the vaults (their 1390 marks the most of any level; the image's
+  sync, the markers listed and drawn, the frame): 0.021 ms of CPU, 1,194 vertices.
+- The full map over the vaults at 1080p: 0.064 ms, 4,575 vertices.
+- Sent to the GPU: a new level's image once, 4,194,304 bytes (the whole region, cleared round it);
+  then a step that reveals ground sends its patch, 106 KB on average and 118 KB at most on a walk in
+  the garden (the new tiles' rectangle and two round it; 3 of 12 steps revealed any); nothing while
+  nothing changes.
+- The image's build for a new level (behind the loading screen): 9-19 ms for the vaults.
+- The harnesses (`--court`, `--pit 2 8 1`, `--bout 1..16 2 1 1`) print the same before and after,
+  but for their own wall-clock timings.
+
+Tests: the minimap keeps him in its middle (north up: north above him, east to his right) and turns
+with the camera when set (the way the camera looks is up, east and south tried; screen and tile
+agree both ways); only objectives out of range go to the rim as arrows (the lamp, the boss, an
+unspent shrine, the gate; not a foe, a key, a chest or a spent shrine; never what is unknown; the
+gate left to the lamp on the far portal); it shows in play, the countdown and the pause and hides
+on the title, in the story, the wares, the character screen, the won, fallen and toll screens,
+under the full map and behind the loading card; the map action opens and closes the full map from
+play and from the pause (and Esc, Back, the pause menu's MAP, a rebinding); it pans, zooms and comes
+back to him, and keeps to the level; L3 steps the minimap's zoom and its turning is saved; F12 opens
+the developer's map from the title, play, the pause and over the full map, its DEV MAP buttons
+appear after, and its full-map stop opens the full map; the expert bot through the vaults with the
+minimap drawn, sent up, zoomed and turned plays the same game as without; the page fits 720p,
+1080p and 2160p. The menus' and the D-pad's and the keyboard's tests updated for the player's map.
+
+Left: U1c's panel look for the rim and the full map's panels (each drawn in one place: the rim in
+`minimap::draw`, the panels by `panel()` in `fullmap::draw`); the score panel's place (U1c); the
+Settings toggle for turning (U1b, on `set_minimap_turn`); the colour-blind palette; a key for the
+minimap's zoom if wanted.

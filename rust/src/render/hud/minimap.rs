@@ -227,7 +227,10 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     for &(i, _, arrow) in &plan {
         if let Some(a) = arrow {
             let size = (rw * 1.1).max(u * 1.7);
-            let at = outer + size * 0.3;
+            // (Past the north mark, where it would sit on it.)
+            let off = (a - (win.angle - FRAC_PI_2) + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI;
+            let clear = off.abs() * outer > nr + size;
+            let at = if clear { outer + size * 0.3 } else { outer - rw * 0.5 + nr + size * 0.75 };
             let lamp = ms[i].kind == MarkerKind::Lamp;
             pointer(o, cx + a.cos() * at, cy + a.sin() * at, a, ms[i].color(), size, g.time as f32, lamp);
         }
