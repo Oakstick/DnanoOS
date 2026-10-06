@@ -81,6 +81,26 @@ pub fn parse(text: &str) -> Vec<Piece> {
     merged
 }
 
+/// `text` with each `{Token}` as its control's name on the device used last ("RT", "Shift",
+/// "Left click"), for prose that is wrapped as words (the old man's guide).
+pub fn words(input: &Input, text: &str) -> String {
+    if !text.contains('{') {
+        return text.to_string();
+    }
+    let d = input.last_device();
+    parse(text)
+        .into_iter()
+        .map(|p| match p {
+            Piece::Text(t) => t,
+            Piece::Action(a) => input.prompt(a).unwrap_or_default(),
+            Piece::Move => if d.is_pad() { "the left stick" } else { "W A S D" }.into(),
+            Piece::Look => if d.is_pad() { "the right stick" } else { "the mouse" }.into(),
+            Piece::Nav => if d.is_pad() { "the D-pad" } else { "the arrows" }.into(),
+            Piece::NavLR => if d.is_pad() { "the D-pad" } else { "the arrows" }.into(),
+        })
+        .collect()
+}
+
 /// The words a piece stands for, for a reader or a log ("[RT] use the blessing").
 pub fn plain(input: &Input, text: &str) -> String {
     let d = input.last_device();

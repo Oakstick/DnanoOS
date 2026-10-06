@@ -1,5 +1,5 @@
 //! The two voices on screen (WARBAND.md §10, §13): the panel in the bottom-left corner where the
-//! old man speaks (his face in an amber frame, his name, his words typed out in amber) and where
+//! old man speaks (his live portrait in an amber frame, his name, his words typed out in amber) and where
 //! the prince's whisper speaks under his own name (an empty frame, the name in the sin's colour, the
 //! words in the sin's colour); and in a realm, the signs about the hero: the realm's compass needle
 //! (pale, or turned toward a den, flickering in the sin's colour) and the old man's amber lamp,
@@ -8,23 +8,6 @@
 use super::*;
 use crate::game::counsel::{Speaker, AMBER};
 use crate::logic::types::V;
-
-/// The old man's face, from his sculpt: the top of his figure, boxed down.
-pub(super) fn face() -> &'static Sprite {
-    static S: OnceLock<Sprite> = OnceLock::new();
-    S.get_or_init(|| {
-        let whole = cropped(sprite_from(&crate::render::cast::old_man()));
-        // His hood and face: the top third of him, a little narrower than his staff and sleeves.
-        let h = (whole.height as f32 * 0.3) as i32;
-        let (x0, x1) = ((whole.width as f32 * 0.12) as i32, (whole.width as f32 * 0.88) as i32);
-        let pixels = (0..h).map(|y| (x0..x1).map(|x| whole.pixels[y as usize][x as usize]).collect()).collect();
-        let head = cropped(Sprite { width: x1 - x0, height: h, pixels });
-        // Every other voxel: a few hundred squares.
-        let (w2, h2) = ((head.width + 1) / 2, (head.height + 1) / 2);
-        let pixels = (0..h2).map(|y| (0..w2).map(|x| head.pixels[(y * 2) as usize][(x * 2) as usize]).collect()).collect();
-        Sprite { width: w2, height: h2, pixels }
-    })
-}
 
 /// The panel's rectangle (x, y, width, height) for `lines` lines of words: over the bottom bar, on
 /// the left.

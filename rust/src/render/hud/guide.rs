@@ -22,10 +22,8 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
     let fs = t * 3.6;
     let (fx, fy) = (px + t * 0.6, py + t * 0.6);
     o.rect(fx, fy, fs, fs, [0.0, 0.0, 0.0, 0.6]);
-    let f = voices::face();
-    let scale = (fs * 0.94) / f.width.max(f.height) as f32;
-    let (sw, sh) = (f.width as f32 * scale, f.height as f32 * scale);
-    draw_sprite(o, f, fx + (fs - sw) / 2.0, fy + (fs - sh) / 2.0, scale, None, 1.0);
+    let pose = crate::render::portrait::Pose::live(g.time as f32, 1.0);
+    o.portrait(crate::render::portrait::PortraitId::OldMan, pose, fx, fy, fs, fs, false, [1.0; 4]);
     o.rect_outline(fx, fy, fs, fs, (t * 0.08).max(1.5), rgba(0xffa83a, 0.95));
     let tx = fx + fs + t * 0.6;
     o.text("THE OLD MAN SPEAKS", tx, fy + t * 0.45, t * 0.5, rgba(0xffa83a, 1.0), Align::Left, true);
@@ -57,7 +55,9 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
                 break;
             }
             o.text("-", x, y, size, rgba(color, 0.8), Align::Left, false);
-            y = wrap_left(o, l, x + t * 0.5, y, width - t * 0.5, line, size, rgba(TEXT, 1.0));
+            // (His words name the controls by their tokens: here, as the device used last calls them.)
+            let l = super::glyphs::words(&g.input, l);
+            y = wrap_left(o, &l, x + t * 0.5, y, width - t * 0.5, line, size, rgba(TEXT, 1.0));
             y += line * 0.15;
         }
         y += line * 0.45;
