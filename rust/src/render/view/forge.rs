@@ -257,18 +257,6 @@ pub fn jointed_hero(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig
     jointed_of(hero, &hero_rigs_strapped(hero, Kit::plain(blade, shield), JOINTED_STRAP).0)
 }
 
-/// The jointed hero as the game draws him, his cloak cut into the cloth's patches (tests).
-#[cfg(test)]
-pub fn jointed_hero_cloaked(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig> {
-    jointed_rig(hero, Kit::plain(blade, shield))
-}
-
-/// The same in outfit `outfit` (tests).
-#[cfg(test)]
-pub fn jointed_hero_outfit(hero: HeroKind, outfit: u8) -> Option<Rig> {
-    jointed_rig(hero, Kit { outfit, ..Kit::plain(1, Some(1)) })
-}
-
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.
 pub(super) fn thrown_model(hero: HeroKind, blade: u8) -> Rig {
     let w = progression::node(hero, Tree::Armory, blade);

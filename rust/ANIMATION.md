@@ -380,6 +380,16 @@ Mixamo step (12 clips).
 
 ## 9a. Cloth: his cloak (`render/anim/cloth.rs`, 2026-10-06)
 
+**2026-10-06, later: the cloak was taken off Ragnar** (the user's call), so no hero wears a flowing
+cloak now (`cloth::spec` gives none); the cloth and its tests (on a test cloak of their own) stay
+for the characters that will. In the same change the heroes are sculpted **solid**
+(`Sculpt::finish_solid`: the enclosed voxels kept, so a joint that opens shows cloth and flesh, not
+a hollow shell) and every joint across a limb has a **sleeve** (`skeleton::SLEEVE`: 2.5 voxels of
+the bone above it laid on the bone below too, so a bend overlaps itself). Ragnar: 16,018 voxels
+and 43,624 faces before, 46,233 voxels and 29,440 faces after (the hidden ones draw nothing).
+
+What follows describes the cloth as it was built for his cloak.
+
 His red cloak flows. It was carved onto his back as part of his body; now (longer, to his knees)
 it is cut out of the jointed rig into a grid of 6 × 6 patches (`cloth::split`, by its colours in
 every outfit, `heroes::RAGNAR_CLOAK`, in a box behind him), appended after the skeleton's bones as

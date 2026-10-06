@@ -85,8 +85,6 @@ use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
 use fade::Tree;
 pub use fade::TREE_FADE_MIN;
 pub use forge::jointed_hero;
-#[cfg(test)]
-pub use forge::{jointed_hero_cloaked, jointed_hero_outfit};
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{

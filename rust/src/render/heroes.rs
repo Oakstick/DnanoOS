@@ -64,23 +64,6 @@ fn strands(s: &mut Sculpt, of: &[u32], dark: u32, mid: u32, light: u32) {
 
 // ------------------------------------------------------------------ Ragnar
 
-/// Ragnar's cloak's colours in each of his outfits (the cloth his clips let flow, `anim::cloth`;
-/// the outfits' as `outfit_swaps` has them).
-pub const RAGNAR_CLOAK: [u32; 12] = [
-    viking::CLOAK,
-    viking::CLOAK_D,
-    viking::CLOAK_L,
-    0x3a3c44,
-    0x2a2c32,
-    0x4a4c56,
-    0xd8d4c8,
-    0xbab6aa,
-    0xeae6dc,
-    0x1e2a5a,
-    0x16204a,
-    0x2a3870,
-];
-
 mod viking {
     use super::mat;
     pub const SKIN: u32 = 0xf0c49c | mat::SKIN;
@@ -134,7 +117,7 @@ pub const RAGNAR_SIZE: (i32, i32, i32) = (60, 92, 36);
  * horns ringed with growth; fierce blue eyes under bushy red brows, a broken
  * nose, a scar; a red beard in strands with two gold-ringed braids, a braid
  * down his back; a fur mantle with a gold brooch, a blue woollen tunic with
- * an embroidered hem, a red cloak falling in folds; a stitched belt with a
+ * an embroidered hem; a stitched belt with a
  * gold buckle, a pouch and a seax across his front; laced leather bracers;
  * cross-gartered trousers and fur-cuffed, laced boots. His weapon is a model
  * of its own (see `armory`), held in his right fist; a shield of his tree
@@ -210,27 +193,6 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
             TUNIC
         })
     });
-    // The red cloak down his back to his knees, hanging in folds, its hem ragged (his clips let it
-    // flow: `anim::cloth`).
-    for y in 20..=56 {
-        let spread = (56 - y) as f32 * 0.07;
-        for x in (14.0 - spread) as i32..=(45.0 + spread) as i32 {
-            let fold = (x as f32 * 0.8).sin();
-            let z = (7.2 + fold * 0.9).round() as i32;
-            if (y == 20 && nz(x, y, 0) > 0.45) || (y == 21 && nz(x, y, 0) > 0.8) {
-                continue;
-            }
-            let c = if fold < -0.5 {
-                CLOAK_D
-            } else if fold > 0.7 {
-                CLOAK_L
-            } else {
-                CLOAK
-            };
-            s.set(x, y, z, c);
-            s.set(x, y, z + 1, CLOAK);
-        }
-    }
     // ---- the belt: stitched leather, a gold buckle with its prong, the tongue hanging
     slab(&mut s, cx, cz, 16.8, 8.8, 2.6, 31, 35, BELT);
     s.paint(|x, y, z, c| (c == BELT && (y == 31 || y == 35) && (x + z) % 2 == 0).then_some(STITCH));
@@ -399,7 +361,7 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
         ball(&mut s, v(bx, 32.0, 28.6), v(1.6, 1.4, 1.4), BEARD_L);
     }
     strands(&mut s, &[BEARD], BEARD_D, BEARD, BEARD_L);
-    // A braid down his back, over the cloak, a gold ring round it.
+    // A braid down his back, a gold ring round it.
     for y in 44..=72 {
         let fy = y as f32;
         let z = 5.5 + (fy - 44.0) * 0.08;
@@ -477,7 +439,7 @@ pub fn ragnar_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     if let Some((form, color, tier)) = shield {
         super::armory::back_shield(&mut s, form, color, tier);
     }
-    s.finish(0.03)
+    s.finish_solid(0.03)
 }
 
 /// Ragnar's joints.
@@ -763,7 +725,7 @@ pub fn mehmed_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     if let Some((form, color, tier)) = shield {
         super::armory::back_shield_at(&mut s, form, color, tier, MEHMED_SHIELD_AT);
     }
-    s.finish(0.03)
+    s.finish_solid(0.03)
 }
 
 /// Mehmed's joints.
@@ -1109,7 +1071,7 @@ pub fn miyamoto_hd(shield: Option<(Form, u32, u8)>) -> Collected {
     if let Some((form, color, tier)) = shield {
         super::armory::back_shield_at(&mut s, form, color, tier, MIYAMOTO_SHIELD_AT);
     }
-    s.finish(0.03)
+    s.finish_solid(0.03)
 }
 
 /// Miyamoto's joints.
@@ -1172,19 +1134,6 @@ fn outfit_swaps(hero: HeroKind, outfit: u8) -> Vec<(u32, u32)> {
             pairs(&src, dst)
         }
         _ => Vec::new(),
-    }
-}
-
-#[cfg(test)]
-#[test]
-fn every_outfit_of_ragnar_has_its_cloak_in_the_cloth_list() {
-    use viking::*;
-    for outfit in 1..=3 {
-        for (src, dst) in outfit_swaps(HeroKind::Ragnar, outfit) {
-            if [CLOAK, CLOAK_D, CLOAK_L].contains(&src) {
-                assert!(RAGNAR_CLOAK.contains(&(dst & 0xff_ffff)), "outfit {outfit}: {dst:06x}");
-            }
-        }
     }
 }
 

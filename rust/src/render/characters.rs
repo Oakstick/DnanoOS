@@ -156,7 +156,19 @@ impl Sculpt {
         self.finish_on(jitter, true)
     }
 
+    /// Like `finish`, keeping every voxel, the enclosed ones too: a model whose parts are cut
+    /// again and bent at joints inside them (the heroes' skeletons, `anim::skeleton`) shows solid
+    /// cloth and flesh where a joint opens, never the hollow inside of a shell. (A face covered by
+    /// another voxel of its part is not drawn, so the filling costs no faces.)
+    pub fn finish_solid(self, jitter: f32) -> Collected {
+        self.finish_with(jitter, false, true)
+    }
+
     fn finish_on(self, jitter: f32, grounded: bool) -> Collected {
+        self.finish_with(jitter, grounded, false)
+    }
+
+    fn finish_with(self, jitter: f32, grounded: bool, solid: bool) -> Collected {
         let mut voxels = Vec::new();
         for y in 0..self.h {
             for z in 0..self.d {
@@ -167,7 +179,7 @@ impl Sculpt {
                         (grounded && y + dy < 0)
                             || (self.get(x + dx, y + dy, z + dz).is_some() && self.tag_at(x + dx, y + dy, z + dz) == tag)
                     });
-                    if hidden {
+                    if hidden && !solid {
                         continue;
                     }
                     let k = 1.0 + (noise(x, y, z) - 0.5) * 2.0 * jitter;

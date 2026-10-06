@@ -31,18 +31,12 @@ pub struct CapeSpec {
     pub hi: [f32; 3],
 }
 
-/// Ragnar's red cloak down his back, from his shoulders to his knees.
-pub const RAGNAR: CapeSpec = CapeSpec {
-    colors: &crate::render::heroes::RAGNAR_CLOAK,
-    lo: [f32::NEG_INFINITY, 0.0, f32::NEG_INFINITY],
-    hi: [f32::INFINITY, 57.0, 9.5],
-};
-
-/// A hero's cloak, if he wears one that flows.
+/// A hero's cloak, if he wears one that flows. (None does now: Ragnar's cloak was taken off on
+/// 2026-10-06; the cloth stays for the characters that will wear one: a spec names its colours
+/// and the box behind the hero they hang in, as the tests' cloak does.)
 pub fn spec(hero: HeroKind) -> Option<&'static CapeSpec> {
     match hero {
-        HeroKind::Ragnar => Some(&RAGNAR),
-        HeroKind::Mehmed | HeroKind::Miyamoto => None,
+        HeroKind::Ragnar | HeroKind::Mehmed | HeroKind::Miyamoto => None,
     }
 }
 
@@ -463,8 +457,35 @@ pub fn with_cloak(bones: &[Mat4; BONE_COUNT], cloak: Option<(&Cloth, &Cape)>, ro
 mod tests {
     use super::*;
 
+    /// The tests' cloak: a red sheet two voxels thick hanging down Ragnar's back from his
+    /// shoulders to his knees, flaring toward the hem.
+    const RED: u32 = 0x7d2a24;
+    const TEST: CapeSpec = CapeSpec { colors: &[RED], lo: [f32::NEG_INFINITY, 0.0, f32::NEG_INFINITY], hi: [f32::INFINITY, 57.0, 9.5] };
+
     fn cloaked() -> Rig {
-        crate::render::view::jointed_hero_cloaked(HeroKind::Ragnar, 1, Some(1)).expect("Ragnar is jointed")
+        let mut rig = crate::render::view::jointed_hero(HeroKind::Ragnar, 1, Some(1)).expect("Ragnar is jointed");
+        let size = rig.size;
+        let (w, _, d) = crate::render::heroes::RAGNAR_SIZE;
+        let (ox, oz) = ((w - 1) as f32 / 2.0, (d - 1) as f32 / 2.0);
+        for y in 20..=56 {
+            let spread = (56 - y) as f32 * 0.07;
+            for x in (14.0 - spread) as i32..=(45.0 + spread) as i32 {
+                for z in [6, 7] {
+                    let at = Vec3::new((ox - x as f32) * size, (y as f32 + 0.5) * size, (z as f32 - oz) * size);
+                    let bone = if y as f32 >= 45.5 {
+                        Bone::Chest
+                    } else if y as f32 >= 35.5 {
+                        Bone::Spine
+                    } else {
+                        Bone::Hips
+                    };
+                    let part = &mut rig.parts[bone.index()];
+                    part.cubes.push((at - part.rest, lin(RED)));
+                    part.shade.push(0.0);
+                }
+            }
+        }
+        split(rig, &TEST, w, d)
     }
 
     fn rest_bones(rig: &Rig) -> [Mat4; BONE_COUNT] {
@@ -480,21 +501,11 @@ mod tests {
         let cloak: usize = rig.parts[BONE_COUNT..].iter().map(|p| p.cubes.len()).sum();
         assert!(cloak > 1000, "the cloak has {cloak} voxels");
         // Nothing red is left on his back.
-        let red: Vec<Vec3> = RAGNAR.colors.iter().map(|&c| lin(c)).collect();
+        let red: Vec<Vec3> = TEST.colors.iter().map(|&c| lin(c)).collect();
         for b in FROM {
             let p = &rig.parts[b.index()];
             let left = p.cubes.iter().filter(|(o, c)| (p.rest + *o).z < -0.1 && red.iter().any(|r| shade_of(*c, *r)));
             assert_eq!(left.count(), 0, "cloak left on {:?}", b);
-        }
-    }
-
-    #[test]
-    fn every_outfit_s_cloak_flows() {
-        use crate::render::view::jointed_hero_outfit;
-        for outfit in 0..4 {
-            let rig = jointed_hero_outfit(HeroKind::Ragnar, outfit).unwrap();
-            let cloak: usize = rig.parts.iter().filter(|p| is_patch(p)).map(|p| p.cubes.len()).sum();
-            assert!(cloak > 1000, "outfit {outfit}: the cloak has {cloak} voxels");
         }
     }
 

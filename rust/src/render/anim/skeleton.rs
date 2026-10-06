@@ -130,6 +130,9 @@ pub struct Cut {
 
 const INF: f32 = f32::INFINITY;
 
+/// How deep, in voxels, the band of a bone above a joint that the bone below it carries too.
+const SLEEVE: f32 = 2.5;
+
 /// The shade mode of a skin voxel in a rig part (`voxels::make_part`: 5 and the material).
 const SKIN_SHADE: f32 = 5.0 + (crate::render::characters::mat::SKIN >> 24) as f32;
 
@@ -142,6 +145,20 @@ impl Cut {
     /// Above the plane `y`.
     const fn above(from: Bone, to: Bone, y: f32) -> Self {
         Self { from, to, lo: [-INF, y, -INF], hi: [INF, INF, INF] }
+    }
+
+    /// A cut across the limb at a height (`below` or `above`): its plane, and whether the bone it
+    /// sends voxels to lies below it.
+    fn plane(&self) -> Option<(f32, bool)> {
+        let open = |k: usize| self.lo[k] == -INF && self.hi[k] == INF;
+        if !(open(0) && open(2)) {
+            return None;
+        }
+        match (self.lo[1] == -INF, self.hi[1] == INF) {
+            (true, false) => Some((self.hi[1], true)),
+            (false, true) => Some((self.lo[1], false)),
+            _ => None,
+        }
     }
 
     fn holds(&self, g: [f32; 3]) -> bool {
@@ -274,10 +291,28 @@ pub fn jointed(rig: &Rig, joints: &Joints, width: i32, depth: i32) -> Rig {
     let rest: Vec<Vec3> = joints.at.iter().map(|&g| joint_in_model(g, width, depth, size)).collect();
     let mut cubes: Vec<Vec<(Vec3, Vec3)>> = vec![Vec::new(); BONE_COUNT];
     let mut shade: Vec<Vec<f32>> = vec![Vec::new(); BONE_COUNT];
+    let (ox, oz) = ((width - 1) as f32 / 2.0, (depth - 1) as f32 / 2.0);
     for (part, bones) in rig.parts.iter().zip(assign(rig, joints, width, depth)) {
         for (j, ((off, c), bone)) in part.cubes.iter().zip(bones).enumerate() {
-            cubes[bone].push((part.rest + *off - rest[bone], *c));
-            shade[bone].push(part.shade.get(j).copied().unwrap_or(0.0));
+            let at = part.rest + *off;
+            let m = part.shade.get(j).copied().unwrap_or(0.0);
+            cubes[bone].push((at - rest[bone], *c));
+            shade[bone].push(m);
+            // The sleeve: a band of the bone above a joint across its limb is laid on the bone below
+            // as well, so a bend overlaps itself rather than opening a gap at the crease.
+            let gy = at.y / size - 0.5;
+            let gx = ox - at.x / size;
+            let gz = at.z / size + oz;
+            for cut in joints.cuts {
+                let Some((plane, down)) = cut.plane() else { continue };
+                let inside = (0..3).filter(|&k| k != 1).all(|k| [gx, gy, gz][k] >= cut.lo[k] && [gx, gy, gz][k] <= cut.hi[k]);
+                let near = if down { (plane..=plane + SLEEVE).contains(&gy) } else { (plane - SLEEVE..=plane).contains(&gy) };
+                if cut.from.index() == bone && inside && near {
+                    let to = cut.to.index();
+                    cubes[to].push((at - rest[to], *c));
+                    shade[to].push(m);
+                }
+            }
         }
     }
     let parts = BONES
@@ -348,14 +383,18 @@ mod tests {
         let cut = jointed(&rig, &RAGNAR, w, d);
         assert_eq!(cut.parts.len(), BONE_COUNT);
         let count = |r: &Rig| r.parts.iter().map(|p| p.cubes.len()).sum::<usize>();
-        assert_eq!(count(&cut), count(&rig));
-        // Every voxel stays where it was, as the code rig's rest pose has it.
+        // Every voxel stays where it was, as the code rig's rest pose has it; the only ones added
+        // are the sleeves' copies, each where a voxel already is.
         let mut before: Vec<(i64, i64, i64)> =
             rig.parts.iter().flat_map(|p| p.cubes.iter().map(move |(o, _)| p.rest + *o)).map(key).collect();
         let mut after: Vec<(i64, i64, i64)> =
             cut.parts.iter().flat_map(|p| p.cubes.iter().map(move |(o, _)| p.rest + *o)).map(key).collect();
         before.sort_unstable();
         after.sort_unstable();
+        let extra = count(&cut) - count(&rig);
+        assert!(extra > 0 && extra < count(&rig) / 5, "the sleeves add {extra} of {}", count(&rig));
+        after.dedup();
+        before.dedup();
         assert_eq!(before, after);
         // Every bone of his body has voxels (the weapons are empty here).
         for (i, p) in cut.parts.iter().enumerate().take(Bone::Blade.index()) {
