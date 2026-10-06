@@ -62,6 +62,9 @@
 //! 17 a flinch, 18 the shield jolted: `game::juice::JUICE_EVENTS`), e.g.
 //! `--script "0.1:ring:1,0.6:juice:14" --time 0.75`. `--fx-off juice` (or `dilation`, `hitstop`,
 //! `shake`, `debris`, `springs`) switches the juice off. Captures never write the settings.
+//! `fullmap` opens the full map (UI.md §7) over the pause, `mapzoom:Z` sets its zoom (1 the whole
+//! level) and `mappan:X:Y` its middle (tiles); `minizoom:N` sets the minimap's zoom (0 near, 1 mid,
+//! 2 far) and `miniturn` turns it with the camera (neither saved).
 //! `--minimap` also writes the minimap's image (its fog and markers drawn on the CPU,
 //! `render::minimap::debug_picture`) beside the capture, as `NAME-minimap.png`.
 
@@ -192,6 +195,12 @@ pub(crate) enum Cmd {
     Taunt,
     /// Krampus's last blow: he falls, and the cage opens.
     Fell,
+    /// The full map, its zoom and its middle; the minimap's zoom, and its turning.
+    FullMap,
+    MapZoom(f32),
+    MapPan(f32, f32),
+    MiniZoom(usize),
+    MiniTurn,
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -224,6 +233,14 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "at" => Cmd::At(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0), parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "hub" => Cmd::Hub,
             "map" => Cmd::Map,
+            "fullmap" => Cmd::FullMap,
+            "mapzoom" => Cmd::MapZoom(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1.0)),
+            "mappan" => Cmd::MapPan(
+                parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
+                parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0),
+            ),
+            "minizoom" => Cmd::MiniZoom(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "miniturn" => Cmd::MiniTurn,
             "gym" => Cmd::Gym,
             "ring" | "bout" => Cmd::Ring(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "bot" => Cmd::Bot(parts.next().and_then(|v| v.parse().ok()).unwrap_or(2)),
@@ -358,6 +375,19 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::At(x, y) => game.hero.place(P::new(x, y)),
         Cmd::Hub => game.map_jump(Stage::Hub),
         Cmd::Map => game.open_map(),
+        Cmd::FullMap => game.open_full_map(),
+        Cmd::MapZoom(z) => {
+            if let Some(m) = game.map_ui.full.as_mut() {
+                m.zoom = z.max(1.0);
+            }
+        }
+        Cmd::MapPan(x, y) => {
+            if let Some(m) = game.map_ui.full.as_mut() {
+                m.centre = (x, y);
+            }
+        }
+        Cmd::MiniZoom(n) => game.map_ui.zoom = n.min(crate::game::fullmap::MINIMAP_ZOOMS - 1),
+        Cmd::MiniTurn => game.map_ui.turn = !game.map_ui.turn,
         Cmd::Gym => game.map_jump(Stage::Gym),
         Cmd::Ring(n) => game.debug_ring(n),
         Cmd::Bot(k) => {
@@ -621,6 +651,11 @@ pub fn run(args: &[String]) -> i32 {
         overlay.portraits.forget();
         overlay.begin(w as f32, h as f32);
         hud::draw(&mut overlay, &game, 60);
+    }
+    // The minimap's image, up whole (its first sending).
+    let sent = overlay.map.upload(|r, px| gpu.write_atlas(r, px));
+    if sent > 0 {
+        eprintln!("minimap: {sent} bytes sent to the atlas");
     }
     gpu.sync_static(&mut game.view);
     if !overlay.portraits.due.is_empty() {

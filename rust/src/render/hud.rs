@@ -23,11 +23,13 @@ use crate::render::icons::{icon, Icon};
 
 mod controls;
 mod court;
+mod fullmap;
 pub mod glyphs;
 mod guide;
 mod ledger;
 mod map;
 mod mastery;
+pub mod minimap;
 mod pit;
 mod ring;
 mod shop;
@@ -35,6 +37,7 @@ pub mod specimen;
 mod war;
 
 pub use controls::controls_tab_rects;
+pub use fullmap::{fit as fullmap_fit, layout as fullmap_layout, max_zoom as fullmap_max_zoom, Layout as FullMapLayout};
 pub use ledger::draw_ledger_board;
 pub use map::{map_cols, map_rects};
 mod ending;
@@ -245,6 +248,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         ring::draw_ring(o, g, t);
         mastery::draw_mastery_toast(o, g, t);
         draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
+        minimap::draw(o, g, t);
         draw_feedback(o, g, t);
         voices::draw_voices(o, g, t);
     }
@@ -283,6 +287,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 t * 0.5,
                 rgba(TEXT_DIM, 1.0),
             );
+            fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);
             }
@@ -375,6 +380,8 @@ fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     let hero_px = PANEL_ROWS * t - t * 0.4;
     o.portrait(PortraitId::Hero(g.hero_kind), Pose::live(g.time as f32, 1.0), 0.0, 0.0, hero_px, hero_px, false, [0.0; 4]);
     o.portrait(PortraitId::OldMan, Pose::live(g.time as f32, 1.0), 0.0, 0.0, t * 3.0, t * 3.0, false, [0.0; 4]);
+    // The new level's minimap image, built and sent up behind the black too.
+    minimap::prepare(o, g);
     let show = loading_words(l.age as f32);
     if show <= 0.0 {
         return;
@@ -487,7 +494,7 @@ fn panel(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, t: f32) {
 pub fn key_target(w: f32, h: f32) -> (f32, f32) {
     let t = tile_for(w, h);
     let margin = t * 0.4;
-    (w - margin - t * 2.6, margin + t * 1.95)
+    (w - margin - t * 2.6, minimap::below(w, h) + t * 1.95)
 }
 
 fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
@@ -583,13 +590,14 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     };
     o.rect(cx0, sy, bar_w * if hero.tireless() { 1.0 } else { sfrac }, sh, rgba(scolor, 1.0));
 
-    // ---- top right: score
+    // ---- top right: the minimap (`minimap`), and the score under it
+    let top = minimap::below(w, h);
     let right_w = t * 8.6;
     let rx = w - margin - right_w;
-    panel(o, rx, margin, right_w, band, t);
+    panel(o, rx, top, right_w, band, t);
     let rc = rx + right_w - t * 0.5;
-    o.text("SCORE", rc, margin + t * 0.5, small, rgba(SAND, 1.0), Align::Right, true);
-    o.text(&format!("{:06}", j.score_shown.round() as u64), rc, margin + t * 1.2, fs * 1.3, rgba(TEXT, 1.0), Align::Right, true);
+    o.text("SCORE", rc, top + t * 0.5, small, rgba(SAND, 1.0), Align::Right, true);
+    o.text(&format!("{:06}", j.score_shown.round() as u64), rc, top + t * 1.2, fs * 1.3, rgba(TEXT, 1.0), Align::Right, true);
     // The counter jumps when a nugget lands in it.
     let punch = j.key_punch;
     let ncolor = if punch > 0.0 { mix_rgb(GOLD, 0xffffff, punch * 0.7) } else { GOLD };
@@ -628,10 +636,10 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
         o.text("HOARD", rc - o.measure(&gold, gs) - t * 0.3, ty, small, rgba(0xffc85a, 1.0), Align::Right, true);
     } else if g.in_run() {
         // The realm's own gauges, stacked beneath the panel (its last row holds the purse).
-        draw_run_meters(o, g, t, rc, margin + band + small * 1.1, small);
+        draw_run_meters(o, g, t, rc, top + band + small * 1.1, small);
     } else if g.in_pit() {
         // Who will ride down, and who is still to come.
-        pit::draw_status(o, g, rc, ty, margin + band + small * 1.1, small);
+        pit::draw_status(o, g, rc, ty, top + band + small * 1.1, small);
     } else {
         // A row of keys: gold for each one found, shadows for the rest.
         let n = g.keys_total.max(1);
@@ -661,7 +669,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let cp = j.coin_punch;
     let cs = small * (1.0 + 0.35 * cp);
     let coins = format!("{}", g.progress.silver);
-    let cy = margin + t * 2.65;
+    let cy = top + t * 2.65;
     o.text(&coins, rc, cy, cs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
     let ciw = small * 1.2;
     let cx = rc - o.measure(&coins, cs) - ciw - t * 0.15;

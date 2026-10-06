@@ -330,6 +330,9 @@ pub struct Overlay {
     pub shadow: f32,
     /// The portraits the HUD drew this frame, for the renderer to make (`portrait`).
     pub portraits: super::portrait::PortraitBook,
+    /// The minimap's image of the level, kept up to date as the HUD draws and sent to
+    /// `MAP_REGION` by the app (`minimap::MapLayer::upload`).
+    pub map: super::minimap::MapLayer,
 }
 
 /// Share of the font size a glyph cell is tall; keeps capitals near a system font's cap height.
@@ -342,7 +345,15 @@ const DISPLAY_FROM: f32 = 0.85;
 
 impl Overlay {
     pub fn new() -> Self {
-        Self { verts: Vec::with_capacity(16_384), width: 1.0, height: 1.0, alpha: 1.0, shadow: 0.0, portraits: Default::default() }
+        Self {
+            verts: Vec::with_capacity(16_384),
+            width: 1.0,
+            height: 1.0,
+            alpha: 1.0,
+            shadow: 0.0,
+            portraits: Default::default(),
+            map: Default::default(),
+        }
     }
 
     pub fn begin(&mut self, width: f32, height: f32) {
@@ -354,7 +365,8 @@ impl Overlay {
         self.portraits.begin_frame();
     }
 
-    fn solid_uv() -> [f32; 2] {
+    /// Where the atlas's solid texel is, for a shape drawn with `raw_triangle`.
+    pub fn solid_uv() -> [f32; 2] {
         let c = (SOLID % COLS) * CELL + CELL / 2;
         let r = (SOLID / COLS) * CELL + CELL / 2;
         [c as f32 / ATLAS_W as f32, r as f32 / ATLAS_H as f32]
@@ -521,6 +533,17 @@ impl Overlay {
             let a0 = i as f32 / n as f32 * std::f32::consts::TAU;
             let a1 = (i + 1) as f32 / n as f32 * std::f32::consts::TAU;
             self.tri([cx, cy], [cx + r * a0.cos(), cy + r * a0.sin()], [cx + r * a1.cos(), cy + r * a1.sin()], color);
+        }
+    }
+
+    /**
+     * One triangle of vertices as they are (their alpha times the overlay's), for what the other
+     * calls do not make: a window onto the atlas clipped to a region, a gradient (the minimap).
+     */
+    pub fn raw_triangle(&mut self, v: [OVertex; 3]) {
+        for mut p in v {
+            p.color[3] *= self.alpha;
+            self.verts.push(p);
         }
     }
 

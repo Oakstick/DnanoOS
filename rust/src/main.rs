@@ -288,6 +288,7 @@ fn main() {
         windowed: args.iter().any(|a| a == "--windowed"),
         fullscreen: args.iter().any(|a| a == "--fullscreen"),
         no_vsync: args.iter().any(|a| a == "--no-vsync"),
+        dev: args.iter().any(|a| a == "--dev"),
         preset: args
             .iter()
             .position(|a| a == "--preset")
