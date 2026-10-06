@@ -43,6 +43,44 @@ pub fn draw(o: &mut Overlay, t: f32) {
         t * 0.8,
         &body,
     );
+    // The glyphs: every control on each device, and a line of prompts in each.
+    use crate::input::{Control, Device, Input, MouseButton, PadButton};
+    let mut gy = by + t * 3.4;
+    let gh = t * 0.9;
+    for d in [Device::KeyboardMouse, Device::Xbox, Device::PlayStation, Device::Generic] {
+        let mut input = Input::new();
+        input.set_last_device(d);
+        let mut gx = x;
+        let controls: Vec<Control> = if d.is_pad() {
+            PadButton::ALL.iter().map(|&b| Control::Pad(b)).collect()
+        } else {
+            use winit::keyboard::KeyCode::*;
+            vec![
+                Control::Key(KeyW),
+                Control::Key(Space),
+                Control::Key(ShiftLeft),
+                Control::Key(Escape),
+                Control::Key(ArrowUp),
+                Control::Mouse(MouseButton::Left),
+                Control::Mouse(MouseButton::Right),
+                Control::WheelUp,
+                Control::WheelDown,
+            ]
+        };
+        for c in controls {
+            gx += glyphs::draw_control(o, c, d, gx, gy, gh) + t * 0.25;
+        }
+        let line = Style::body(t * 0.6, rgba(TEXT, 1.0));
+        glyphs::prompt_text(
+            o,
+            &input,
+            "{Move} run   {Attack} strike   {Block} shield   {Angel} archangel   {Confirm} take   {Back} leave",
+            gx + t * 0.5,
+            gy,
+            &line,
+        );
+        gy += gh + t * 0.45;
+    }
     // The quads: a picture turned, the same through a round window, and a 9-slice panel of it.
     let pic = crate::render::overlay::Picture::ViewTop.region();
     let (qx, qy) = (w - t * 9.0, y + t * 2.6);

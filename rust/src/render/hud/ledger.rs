@@ -250,7 +250,7 @@ pub(super) fn draw_ledger_screen(o: &mut Overlay, g: &Game, t: f32) {
     let bh = h - t * 3.2;
     let rect = [w / 2.0 - bw / 2.0, t * 0.8, bw, bh];
     draw_ledger_board(o, g.ledger(), rect, t, g.time as f32);
-    o.text("Esc, B or a click to close", w / 2.0, h - t * 1.1, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
+    super::glyphs::prompt_line(o, &g.input, "{Back} or a click to close", w / 2.0, h - t * 1.1, t * 0.5, rgba(SAND, 0.9), Align::Center);
 }
 
 /**

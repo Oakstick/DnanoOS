@@ -14,7 +14,7 @@ use crate::render::hud;
 impl Game {
     pub fn open_controls(&mut self) {
         self.show_controls = true;
-        self.controls_keyboard = !self.input.pad_connected;
+        self.controls_keyboard = !self.input.last_device().is_pad();
         self.audio.play(Sfx::Whoosh);
         self.input.consume(Action::Confirm);
         self.input.consume(Action::Jump);

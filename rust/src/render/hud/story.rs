@@ -128,7 +128,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
     let bar = h * 0.1 * k;
     o.rect(0.0, 0.0, w, bar, [0.0, 0.0, 0.0, 1.0]);
     o.rect(0.0, h - bar, w, bar, [0.0, 0.0, 0.0, 1.0]);
-    o.text("ESC  SKIP", w - t * 0.9, bar / 2.0, t * 0.5, rgba(TEXT_DIM, k * 0.8), Align::Right, false);
+    super::glyphs::prompt_line(o, &g.input, "{Pause} SKIP", w - t * 0.9, bar / 2.0, t * 0.5, rgba(TEXT_DIM, k * 0.8), Align::Right);
     o.text(&format!("{} - {}", title.sub, title.title), t * 0.9, bar / 2.0, t * 0.5, rgba(SAND, k * 0.6), Align::Left, false);
 
     // ---- the scene's title over black
@@ -193,7 +193,16 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
             );
             if st.line_done() {
                 let pulse = 0.5 + 0.5 * (time * 4.0).sin();
-                o.text("ENTER  CONTINUE", w / 2.0, h - bar / 2.0, t * 0.45, rgba(TEXT_DIM, pulse), Align::Center, false);
+                super::glyphs::prompt_line(
+                    o,
+                    &g.input,
+                    "{Confirm} CONTINUE",
+                    w / 2.0,
+                    h - bar / 2.0,
+                    t * 0.45,
+                    rgba(TEXT_DIM, pulse),
+                    Align::Center,
+                );
             }
         } else {
             let color = voice_color(beat.speaker);
@@ -236,7 +245,16 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
         super::ending::draw_ending(o, g, t, beat.shot, bt);
         if beat.shot == Shot::Credits && bt > 2.0 && st.ending.is_none() {
             let pulse = 0.35 + 0.25 * (time * 2.0).sin();
-            o.text("ENTER  CONTINUE", w - t * 0.9, h - t * 0.9, t * 0.45, rgba(TEXT_DIM, pulse), Align::Right, false);
+            super::glyphs::prompt_line(
+                o,
+                &g.input,
+                "{Confirm} CONTINUE",
+                w - t * 0.9,
+                h - t * 0.9,
+                t * 0.45,
+                rgba(TEXT_DIM, pulse),
+                Align::Right,
+            );
         }
     }
     let fade = st.fade_out();

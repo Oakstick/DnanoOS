@@ -62,5 +62,14 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
         }
         y += line * 0.45;
     }
-    o.text("B, ESC OR ENTER: BACK TO THE ROAD", px + pw / 2.0, py + ph - t * 0.6, t * 0.42, rgba(TEXT_DIM, 1.0), Align::Center, true);
+    super::glyphs::prompt_line(
+        o,
+        &g.input,
+        "{Back} BACK TO THE ROAD",
+        px + pw / 2.0,
+        py + ph - t * 0.6,
+        t * 0.42,
+        rgba(TEXT_DIM, 1.0),
+        Align::Center,
+    );
 }

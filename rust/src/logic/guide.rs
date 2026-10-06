@@ -202,7 +202,7 @@ const HUB_WATCH: &[&str] = &[
     "No foe walks these platforms. Only the wooden bridges cross the lava. Walk up to a gate and its doors open on its realm.",
     "Every realm you take makes the next one harder, and its packs bring the beasts of one more depth. Choose your order with care.",
     "In the realms the princes lie, in their own voices and colours. My words are amber, and Quitmer barks with them.",
-    "If a whisper comes in another colour, press H and I will tell you the truth. Stand still in a realm, and my amber lamp shows the far portal.",
+    "If a whisper comes in another colour, call me and I will tell you the truth. Stand still in a realm, and my amber lamp shows the far portal.",
 ];
 
 // ------------------------------------------------------------------ the realms
@@ -329,7 +329,7 @@ const GREED_WATCH: &[&str] = &[
     "Every foe fights by its frames: watch its wind-up, raise your guard as the blow lands to parry it, then strike while it reels.",
     "Your shield wears as it blocks and can break for good, and your blade dulls with every blow. Call me with H to mend and sharpen.",
     "A chest that breathes, whose coins never glint and whose hinge creaks, is a mimic. Strike it first, and it pays double.",
-    "A whisper without Quitmer's bark is Mammon's, never mine: press H and I will set it right. Stand still, and my amber lamp shows the way.",
+    "A whisper without Quitmer's bark is Mammon's, never mine: call me and I will set it right. Stand still, and my amber lamp shows the way.",
 ];
 
 const GLUTTONY_TALE: &[&str] = &[
@@ -582,7 +582,7 @@ const GYM_TASK: &[&str] = &[
 ];
 
 const GYM_WATCH: &[&str] = &[
-    "Your string is three blows on E or a left click, the third the heaviest. A press during a swing comes out as the next blow.",
+    "Your string is three blows of the attack, the third the heaviest. A press during a swing comes out as the next blow.",
     "Guard with Shift or LB: in its first frames it parries and the foe reels; after that it blocks for stamina, until the stamina runs out.",
     "The leap (Space or A) leaves you untouchable in the air. A foe glows as it winds up, flashes as it strikes, and dims in recovery: punish then.",
     "The Brute swings slow: wait, then punish. The Skirmisher bites from beside you: parry it. The Hexer keeps away: close in, or parry its bolt.",

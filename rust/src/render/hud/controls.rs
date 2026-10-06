@@ -5,16 +5,13 @@
 //! keyboard is every key as a keycap beside what it does.
 
 use super::*;
+use crate::input::{Control, PadButton};
 
 const BODY: u32 = 0x2a2e38;
 const EDGE: u32 = 0x626a7c;
 const DARK: u32 = 0x15171d;
 const CAP: u32 = 0x3e4452;
 const SHINE: u32 = 0x8a93a6;
-const A_GREEN: u32 = 0x5cc84a;
-const B_RED: u32 = 0xe0544a;
-const X_BLUE: u32 = 0x4a8ee8;
-const Y_YELLOW: u32 = 0xf2c53d;
 const LINE: u32 = 0x9aa3b8;
 
 /// The two tabs at the top of the page: the controller, then the keyboard and mouse.
@@ -25,43 +22,104 @@ pub fn controls_tab_rects(w: f32, h: f32) -> [[f32; 4]; 2] {
     [[w / 2.0 - bw - gap / 2.0, y, bw, bh], [w / 2.0 + gap / 2.0, y, bw, bh]]
 }
 
-/// The keyboard and mouse, as keycaps beside what they do, in two columns.
-fn draw_keyboard(o: &mut Overlay, t: f32) {
+/// What an action does, in a few words, for the page.
+fn does(a: Action) -> &'static str {
+    match a {
+        Action::Attack => "Attack",
+        Action::Jump => "Jump; evade in a fight",
+        Action::Block => "Hold: raise your shield",
+        Action::Step => "Bifrost Step, once learned",
+        Action::Angel => "Archangel's power",
+        Action::Drink => "Drink the chosen potion",
+        Action::PotionPrev => "Previous potion",
+        Action::PotionNext => "Next potion",
+        Action::Call => "Call the old man (his wares)",
+        Action::Guide => "The old man's word on this place",
+        Action::Map => "The map",
+        Action::Camera => "Switch the camera",
+        Action::CameraReset => "Recentre the camera",
+        Action::MinimapZoom => "Minimap: zoom",
+        Action::Pause => "Pause and resume",
+        Action::Confirm => "Select",
+        Action::Back => "Back",
+        Action::TabPrev => "Previous tab",
+        Action::TabNext => "Next tab",
+        Action::Secondary => "Secondary",
+        _ => crate::input::action_name(a),
+    }
+}
+
+/// The keyboard and mouse rows: each action's keys (as bound) beside what it does.
+const KEY_ROWS: [Action; 14] = [
+    Action::Attack,
+    Action::Jump,
+    Action::Block,
+    Action::Step,
+    Action::Angel,
+    Action::Drink,
+    Action::PotionNext,
+    Action::Call,
+    Action::Guide,
+    Action::Map,
+    Action::Camera,
+    Action::Pause,
+    Action::Confirm,
+    Action::Slot(0),
+];
+
+/// The keyboard and mouse, as keycaps beside what they do, in two columns, from the bindings.
+fn draw_keyboard(o: &mut Overlay, g: &Game, t: f32) {
+    use winit::keyboard::KeyCode;
     let (w, h) = (o.width, o.height);
-    let keys: [(&str, &str); 18] = [
-        ("W A S D", "Run (arrows too), relative to the camera"),
-        ("SPACE", "Jump; pick in menus"),
-        ("LEFT CLICK", "Attack (E too)"),
-        ("B", "The old man's guide to this place"),
-        ("SHIFT", "Hold: raise your shield"),
-        ("F", "Bifrost Step, once learned"),
-        ("R", "Archangel's power"),
-        ("Q", "Drink the chosen potion"),
-        ("TAB", "Next potion; shop: next tab"),
-        ("1 - 5", "Drink from that belt slot"),
-        ("MOUSE", "Look (click the game to capture it)"),
-        ("C", "Switch the camera"),
-        ("H", "Call the old man"),
-        ("ESC", "Pause and resume"),
-        ("ENTER", "Pick in menus"),
-        ("F4", "Free or grid movement"),
-        ("M", "Sound on or off"),
-        ("F11", "Fullscreen"),
+    let kbm = crate::input::Device::KeyboardMouse;
+    // Each row: its glyphs (`[Control]` tokens and `{Action}` ones) and what it does.
+    let mut rows: Vec<(String, String)> = vec![
+        ("{Move}".into(), "Run, relative to the camera (arrows too)".into()),
+        ("{Look}".into(), "Look (click the game to capture the mouse)".into()),
     ];
+    for a in KEY_ROWS {
+        let mut controls: Vec<Control> = g.input.bindings.controls(a).into_iter().filter(|c| !c.is_pad()).collect();
+        // (Two keys of one name, Enter and the keypad's, show once.)
+        controls.dedup_by_key(|c| crate::input::control_name(*c, kbm));
+        controls.truncate(2);
+        let (glyph, what) = match a {
+            Action::PotionNext => ("{PotionPrev} {PotionNext}".to_string(), "Choose a potion on the belt".to_string()),
+            Action::Slot(_) => ("[Digit1] - [Digit5]".to_string(), "Drink from that belt slot".to_string()),
+            _ if controls.is_empty() => continue,
+            _ => (controls.iter().map(|c| format!("[{}]", c.token())).collect::<Vec<_>>().join(" "), does(a).to_string()),
+        };
+        rows.push((glyph, what));
+    }
+    rows.push(("[F4]".into(), "Free or grid movement".into()));
+    rows.push(("[ControlLeft] + [KeyM]".into(), "Sound on or off".into()));
+    rows.push(("[F11]".into(), "Fullscreen (Alt + Enter too)".into()));
+    let per_col = rows.len().div_ceil(2);
     let size = (t * 0.52).max(11.0);
-    let (top, row) = (t * 5.0, ((h - t * 9.5) / 9.0).min(t * 1.35));
+    let (top, row) = (t * 5.0, ((h - t * 9.5) / per_col as f32).min(t * 1.35));
     let col_w = (w * 0.42).min(t * 22.0);
     let x0 = w / 2.0 - col_w - t * 0.5;
-    for (i, (key, does)) in keys.iter().enumerate() {
-        let (cx, cy) = (x0 + (i / 9) as f32 * (col_w + t * 1.0), top + (i % 9) as f32 * row);
-        // The keycap: a dark rounded key with a lighter rim and its name on it.
-        let kw = o.measure(key, size) + t * 0.9;
-        let (kx, ky, kh) = (cx, cy, row * 0.78);
-        o.rect(kx - 1.0, ky - 1.0, kw + 2.0, kh + 2.0, rgba(EDGE, 1.0));
-        o.rect(kx, ky, kw, kh, rgba(CAP, 1.0));
-        o.rect(kx, ky + kh * 0.82, kw, kh * 0.18, rgba(DARK, 0.6));
-        o.text(key, kx + kw / 2.0, ky + kh * 0.45, size, rgba(0xf0ebe0, 1.0), Align::Center, true);
-        o.text(does, kx + kw + t * 0.45, ky + kh * 0.45, size * 0.95, rgba(TEXT, 1.0), Align::Left, false);
+    let gh = row * 0.62;
+    let body = crate::render::overlay::Style::body(size, rgba(TEXT, 1.0));
+    for (i, (glyph, what)) in rows.iter().enumerate() {
+        let (cx, cy) = (x0 + (i / per_col) as f32 * (col_w + t * 1.0), top + (i % per_col) as f32 * row + row * 0.4);
+        let mut pen = cx;
+        for part in glyph.split(' ') {
+            let control = part.strip_prefix('[').and_then(|p| p.strip_suffix(']')).and_then(|tok| {
+                Control::from_token(tok).or(match tok {
+                    "F4" => Some(Control::Key(KeyCode::F4)),
+                    "F11" => Some(Control::Key(KeyCode::F11)),
+                    "ControlLeft" => Some(Control::Key(KeyCode::ControlLeft)),
+                    "Digit1" => Some(Control::Key(KeyCode::Digit1)),
+                    "Digit5" => Some(Control::Key(KeyCode::Digit5)),
+                    _ => None,
+                })
+            });
+            pen += match control {
+                Some(c) => glyphs::draw_control(o, c, kbm, pen, cy, gh),
+                None => glyphs::prompt_text_on(o, &g.input, kbm, part, pen, cy, &body),
+            } + t * 0.15;
+        }
+        o.text(what, cx + t * 4.4, cy, size * 0.95, rgba(TEXT, 1.0), Align::Left, false);
     }
 }
 
@@ -95,9 +153,37 @@ fn pill(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
 /// One button called out: where it is on the pad, its name, its colour and what it does.
 struct Callout {
     at: [f32; 2],
-    name: &'static str,
+    name: String,
     color: u32,
-    does: &'static str,
+    does: String,
+}
+
+/// What a controller button does, from the bindings: its play action, then what it does in menus.
+fn pad_does(g: &Game, b: PadButton) -> String {
+    use crate::input::Context;
+    let c = Control::Pad(b);
+    let play: Vec<&str> = g.input.bindings.actions(c, Context::Play).into_iter().map(does).collect();
+    let menu: Vec<String> = g
+        .input
+        .bindings
+        .actions(c, Context::Menu)
+        .into_iter()
+        .filter(|a| !matches!(a, Action::NavUp | Action::NavDown | Action::NavLeft | Action::NavRight))
+        .map(|a| does(a).to_lowercase())
+        .collect();
+    let mut out = if play.is_empty() { "-".to_string() } else { play.join(", ") };
+    if !menu.is_empty() {
+        out += &format!("; menus: {}", menu.join(", "));
+    }
+    out
+}
+
+/// The D-pad's four ways in play, and in menus.
+fn dpad_does(g: &Game) -> String {
+    use crate::input::Context;
+    let way =
+        |b: PadButton| g.input.bindings.actions(Control::Pad(b), Context::Play).first().map(|&a| does(a)).unwrap_or("-").to_lowercase();
+    format!("Left, right: potion; up: {}; down: {}; menus: move", way(PadButton::DPadUp), way(PadButton::DPadDown))
 }
 
 pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
@@ -112,13 +198,28 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
         o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.06).max(1.0), if open { rgba(GOLD, pulse) } else { [1.0, 1.0, 1.0, 0.16] });
         o.text(name, r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.5, rgba(if open { 0xffffff } else { TEXT_DIM }, 1.0), Align::Center, true);
     }
-    o.text("Left and right, LT and RT, or Tab switch between them", w / 2.0, t * 4.2, t * 0.42, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "{NavLR} or {TabPrev} {TabNext} switch between them",
+        w / 2.0,
+        t * 4.2,
+        t * 0.42,
+        rgba(TEXT_DIM, 1.0),
+        Align::Center,
+    );
     if g.controls_keyboard {
-        draw_keyboard(o, t);
+        draw_keyboard(o, g, t);
         draw_back(o, g, t);
         return;
     }
 
+    // The pad's buttons are named as the controller in use names them (Xbox's for one we do not know).
+    let names_device = match g.input.last_device() {
+        crate::input::Device::PlayStation => crate::input::Device::PlayStation,
+        _ => crate::input::Device::Xbox,
+    };
+    let names = |b: PadButton| crate::input::control_name(Control::Pad(b), names_device).into_owned();
     // ---- the pad, about 20 units wide and 13 tall, centred a little above the middle
     let u = (w * 0.33).min(h * 0.58) / 20.0;
     let (cx, cy) = (w / 2.0, h * 0.5);
@@ -135,8 +236,9 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
         pill(o, bx, by, 4.6 * u, 1.1 * u, rgba(CAP, 1.0));
     }
     let (lt, rt, lb, rb) = (p(-6.4, -5.55), p(6.4, -5.55), p(-6.0, -4.25), p(6.0, -4.25));
-    for (at, name) in [(lt, "LT"), (rt, "RT"), (lb, "LB"), (rb, "RB")] {
-        o.text(name, at[0], at[1], u * 0.62, rgba(SHINE, 1.0), Align::Center, false);
+    for (at, b) in [(lt, PadButton::LeftTrigger), (rt, PadButton::RightTrigger), (lb, PadButton::LeftBumper), (rb, PadButton::RightBumper)]
+    {
+        o.text(&names(b), at[0], at[1], u * 0.62, rgba(SHINE, 1.0), Align::Center, false);
     }
 
     // The body: a rounded slab, two lobes and the grips, rimmed first and then filled.
@@ -163,22 +265,53 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
 
     // ---- what each does, called out to either side (drawn under the buttons, so each line meets its button's edge)
     let face_at = |dx: f32, dy: f32| [face[0] + dx * u, face[1] + dy * u];
+    let say = |b: PadButton| pad_does(g, b);
     let left = [
-        Callout { at: lt_at, name: "LT", color: SHINE, does: "Archangel's power; shop: tab back" },
-        Callout { at: lb_at, name: "LB", color: SHINE, does: "Hold: raise your shield" },
-        Callout { at: view, name: "View", color: SHINE, does: "Call the old man" },
-        Callout { at: ls, name: "Left stick", color: SHINE, does: "Run; press: Bifrost Step" },
-        Callout { at: dpad, name: "D-pad", color: SHINE, does: "Run; choose in menus" },
+        Callout { at: lt_at, name: names(PadButton::LeftTrigger), color: SHINE, does: say(PadButton::LeftTrigger) },
+        Callout { at: lb_at, name: names(PadButton::LeftBumper), color: SHINE, does: say(PadButton::LeftBumper) },
+        Callout { at: view, name: names(PadButton::View), color: SHINE, does: say(PadButton::View) },
+        Callout {
+            at: ls,
+            name: "Left stick".into(),
+            color: SHINE,
+            does: format!("Run; press: {}", say(PadButton::LeftStick).to_lowercase()),
+        },
+        Callout { at: dpad, name: "D-pad".into(), color: SHINE, does: dpad_does(g) },
     ];
     let right = [
-        Callout { at: rt_at, name: "RT", color: SHINE, does: "Attack; shop: next tab" },
-        Callout { at: rb_at, name: "RB", color: SHINE, does: "Drink the chosen potion" },
-        Callout { at: menu, name: "Menu", color: SHINE, does: "Pause and resume; pick in menus" },
-        Callout { at: face_at(0.0, -1.3), name: "Y", color: Y_YELLOW, does: "Next potion on the belt" },
-        Callout { at: face_at(1.3, 0.0), name: "B", color: B_RED, does: "The old man's guide; back in menus" },
-        Callout { at: face_at(-1.3, 0.0), name: "X", color: X_BLUE, does: "Attack" },
-        Callout { at: face_at(0.0, 1.3), name: "A", color: A_GREEN, does: "Jump; pick in menus" },
-        Callout { at: rs, name: "Right stick", color: SHINE, does: "Look; press: recentre, or switch camera" },
+        Callout { at: rt_at, name: names(PadButton::RightTrigger), color: SHINE, does: say(PadButton::RightTrigger) },
+        Callout { at: rb_at, name: names(PadButton::RightBumper), color: SHINE, does: say(PadButton::RightBumper) },
+        Callout { at: menu, name: names(PadButton::Menu), color: SHINE, does: say(PadButton::Menu) },
+        Callout {
+            at: face_at(0.0, -1.3),
+            name: names(PadButton::North),
+            color: glyphs::face_color(PadButton::North, names_device),
+            does: say(PadButton::North),
+        },
+        Callout {
+            at: face_at(1.3, 0.0),
+            name: names(PadButton::East),
+            color: glyphs::face_color(PadButton::East, names_device),
+            does: say(PadButton::East),
+        },
+        Callout {
+            at: face_at(-1.3, 0.0),
+            name: names(PadButton::West),
+            color: glyphs::face_color(PadButton::West, names_device),
+            does: say(PadButton::West),
+        },
+        Callout {
+            at: face_at(0.0, 1.3),
+            name: names(PadButton::South),
+            color: glyphs::face_color(PadButton::South, names_device),
+            does: say(PadButton::South),
+        },
+        Callout {
+            at: rs,
+            name: "Right stick".into(),
+            color: SHINE,
+            does: format!("Look; press: {}", say(PadButton::RightStick).to_lowercase()),
+        },
     ];
     // Top to bottom by where they sit on the pad, so the lines out to them cross as little as they can.
     let mut left = left;
@@ -198,13 +331,13 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
             let elbow = [edge - side * 0.8 * u, y];
             o.line(c.at, elbow, (u * 0.06).max(1.0), rgba(LINE, 0.6));
             o.line(elbow, [edge, y], (u * 0.06).max(1.0), rgba(LINE, 0.6));
-            let name_w = o.measure(c.name, size);
+            let name_w = o.measure_as(&c.name, size, true);
             if side < 0.0 {
-                o.text(c.name, edge - gap * 0.4, y, size, rgba(c.color, 1.0), Align::Right, true);
-                o.text(c.does, edge - gap * 0.4 - name_w - gap, y, size * 0.92, rgba(TEXT, 1.0), Align::Right, false);
+                o.text(&c.name, edge - gap * 0.4, y, size, rgba(c.color, 1.0), Align::Right, true);
+                o.text(&c.does, edge - gap * 0.4 - name_w - gap, y, size * 0.92, rgba(TEXT, 1.0), Align::Right, false);
             } else {
-                o.text(c.name, edge + gap * 0.4, y, size, rgba(c.color, 1.0), Align::Left, true);
-                o.text(c.does, edge + gap * 0.4 + name_w + gap, y, size * 0.92, rgba(TEXT, 1.0), Align::Left, false);
+                o.text(&c.name, edge + gap * 0.4, y, size, rgba(c.color, 1.0), Align::Left, true);
+                o.text(&c.does, edge + gap * 0.4 + name_w + gap, y, size * 0.92, rgba(TEXT, 1.0), Align::Left, false);
             }
         }
     }
@@ -219,11 +352,12 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
     pill(o, dpad[0] - 1.35 * u, dpad[1] - 0.45 * u, 2.7 * u, 0.9 * u, rgba(CAP, 1.0));
     pill(o, dpad[0] - 0.45 * u, dpad[1] - 1.35 * u, 0.9 * u, 2.7 * u, rgba(CAP, 1.0));
     o.circle(dpad[0], dpad[1], 0.25 * u, rgba(DARK, 1.0));
-    let buttons = [("Y", 0.0, -1.3, Y_YELLOW), ("B", 1.3, 0.0, B_RED), ("A", 0.0, 1.3, A_GREEN), ("X", -1.3, 0.0, X_BLUE)];
-    for &(name, dx, dy, color) in &buttons {
+    // The face buttons as the controller in use marks them (letters, or PlayStation's symbols).
+    for (b, dx, dy) in
+        [(PadButton::North, 0.0, -1.3), (PadButton::East, 1.3, 0.0), (PadButton::South, 0.0, 1.3), (PadButton::West, -1.3, 0.0)]
+    {
         let (bx, by) = (face[0] + dx * u, face[1] + dy * u);
-        disc(o, bx, by, 0.62 * u, color, DARK, lw * 0.6);
-        o.text(name, bx, by, u * 0.62, rgba(DARK, 1.0), Align::Center, true);
+        glyphs::draw_control(o, Control::Pad(b), names_device, bx - 0.68 * u, by, 1.36 * u);
     }
     disc(o, guide[0], guide[1], 0.7 * u, DARK, SHINE, lw * 0.5);
     for b in [view, menu] {
@@ -237,15 +371,16 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
 
     // ---- notes, and the way back
     let notes_y = cy + 7.4 * u;
-    o.text("In menus: the d-pad or left stick chooses, A or Menu picks.", w / 2.0, notes_y, t * 0.5, rgba(SAND, 1.0), Align::Center, false);
-    o.text(
-        "On a PlayStation pad: A is Cross, B Circle, X Square, Y Triangle, View is Share and Menu is Options.",
+    glyphs::prompt_line_on(
+        o,
+        &g.input,
+        names_device,
+        "In menus: {Nav} or {Move} move, {Confirm} select, {Back} back",
         w / 2.0,
-        notes_y + t * 0.9,
-        t * 0.45,
-        rgba(TEXT_DIM, 1.0),
+        notes_y,
+        t * 0.5,
+        rgba(SAND, 1.0),
         Align::Center,
-        false,
     );
     draw_back(o, g, t);
 }
@@ -259,5 +394,14 @@ fn draw_back(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(r[0], r[1], r[2], r[3], [1.0, 1.0, 1.0, 0.14]);
     o.rect_outline(r[0], r[1], r[2], r[3], (t * 0.08).max(1.0), rgba(GOLD, pulse));
     o.text("BACK", r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.6, rgba(GOLD, 1.0), Align::Center, true);
-    o.text("B, Esc or a click to go back", w / 2.0, r[1] + r[3] + t * 0.45, t * 0.42, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "{Back} or a click to go back",
+        w / 2.0,
+        r[1] + r[3] + t * 0.45,
+        t * 0.42,
+        rgba(TEXT_DIM, 1.0),
+        Align::Center,
+    );
 }
