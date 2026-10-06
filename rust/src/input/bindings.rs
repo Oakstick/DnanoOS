@@ -1,6 +1,6 @@
 //! The action map (UI.md §3): which controls stand for which actions, as data. Two layers: play,
 //! which the player may rebind and which is saved (`vh.bindings`), and the menus', fixed. The
-//! testing keys (F1-F10, 0) and F11 sit outside both and never move. Besides the map: the devices
+//! testing keys (F1-F10, F12, 0) and F11 sit outside both and never move. Besides the map: the devices
 //! a prompt can be drawn for, the names of keys and buttons, and the tokens prompt strings use.
 
 use std::borrow::Cow;
@@ -250,7 +250,6 @@ pub const KEYS: &[KeyCode] = {
         End,
         PageUp,
         PageDown,
-        F12,
         Numpad1,
         Numpad2,
         Numpad3,
@@ -269,7 +268,8 @@ pub const KEYS: &[KeyCode] = {
     ]
 };
 
-/// The keys that never move: the testing keys (F1-F10, 0) and F11 for the full screen. (Ctrl+M,
+/// The keys that never move: the testing keys (F1-F10, 0; F12 the developer's map) and F11 for the
+/// full screen. (Ctrl+M,
 /// mute, is read before the layers too: see `Input::key_down`.)
 pub fn fixed_key(code: KeyCode) -> Option<Action> {
     use KeyCode::*;
@@ -285,6 +285,7 @@ pub fn fixed_key(code: KeyCode) -> Option<Action> {
         F9 => Action::NextBout,
         F10 => Action::MakeRival,
         F11 => Action::Fullscreen,
+        F12 => Action::DevMap,
         Digit0 | Numpad0 => Action::ShopCheat,
         _ => return None,
     })
@@ -827,11 +828,12 @@ pub fn action_name(a: Action) -> &'static str {
         Action::NextBout => "Next bout",
         Action::Gold => "A thousand coins",
         Action::NextStageBout => "Next stage's bout",
+        Action::DevMap => "Developer's map",
     }
 }
 
 /// Every action and its token, for prompt strings and the saved bindings (stable: never renamed).
-const TOKENS: [(Action, &str); 47] = [
+const TOKENS: [(Action, &str); 48] = [
     (Action::MoveUp, "MoveUp"),
     (Action::MoveDown, "MoveDown"),
     (Action::MoveLeft, "MoveLeft"),
@@ -879,6 +881,7 @@ const TOKENS: [(Action, &str); 47] = [
     (Action::NextBout, "NextBout"),
     (Action::Gold, "Gold"),
     (Action::NextStageBout, "NextStageBout"),
+    (Action::DevMap, "DevMap"),
 ];
 
 /// An action's stable token ("Attack", "Jump", "Block", "Step", "Angel", "Confirm", "Back"...).

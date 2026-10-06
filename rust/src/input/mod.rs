@@ -98,6 +98,8 @@ pub enum Action {
     /// F6: a thousand coins into his purse, every press (testing cheat).
     Gold,
     NextStageBout,
+    /// F12: the developer's map, the list of stops to jump to (testing).
+    DevMap,
 }
 
 impl Action {
@@ -183,6 +185,10 @@ pub struct Input {
     device: Device,
     /// A device has been used (a key, a click, a button: `device` is a real one's).
     device_known: bool,
+    /// The controls that went down this update (keys, buttons, the wheel's notches), and the
+    /// wheel's notches turned (up positive): for a page that reads them as they are, the map.
+    went_down: HashSet<Control>,
+    wheel_turned: i32,
     rumble: RumbleLevel,
     /// The sticks' deadzones (running, the camera), the mouse's turn and up and down turned over
     /// (the settings: presentation only, and a bot's readings are full pushes either way).
@@ -329,6 +335,7 @@ impl Input {
             self.held.retain(|&h| h != d);
             self.held.push(d);
         }
+        self.went_down.insert(c);
         let menu = self.bindings.actions(c, Context::Menu);
         if let Some(d) = menu.iter().find_map(|a| a.nav_dir()) {
             self.nav = Some(d);
@@ -425,6 +432,7 @@ impl Input {
         self.wheel = (self.wheel + lines).clamp(-4.0, 4.0);
         while self.wheel.abs() >= 1.0 {
             let c = if self.wheel > 0.0 { Control::WheelUp } else { Control::WheelDown };
+            self.wheel_turned += if self.wheel > 0.0 { 1 } else { -1 };
             self.wheel -= self.wheel.signum();
             self.raw.push(c);
             self.control_down(c);
@@ -528,6 +536,7 @@ impl Input {
             let new = !self.pad_buttons.contains(&b);
             if new {
                 self.raw.push(Control::Pad(b));
+                self.went_down.insert(Control::Pad(b));
             }
             if let Some(d) = self.bindings.actions(Control::Pad(b), Context::Play).iter().find_map(|a| a.run_dir()) {
                 if button_dir == Dir::None {
@@ -704,6 +713,8 @@ impl Input {
     pub fn flush(&mut self) {
         self.just.clear();
         self.raw.clear();
+        self.went_down.clear();
+        self.wheel_turned = 0;
         self.click = None;
         self.nav = None;
         self.cursor_moved = false;
@@ -711,6 +722,25 @@ impl Input {
 
     /// Is `a` held down now (a key, a mouse button or a controller button)? With the shield by
     /// toggle, the shield is up while its latch is.
+    /// Whether `c` went down this update (whatever it stands for in the layer of the moment).
+    pub fn went_down(&self, c: Control) -> bool {
+        self.went_down.contains(&c)
+    }
+
+    /// The wheel's whole notches turned this update, up positive.
+    pub fn wheel_turned(&self) -> i32 {
+        self.wheel_turned
+    }
+
+    /// The controller's two sticks as they are now (y down), each past its deadzone or nothing,
+    /// for a page that reads them as they are (the map pans and zooms by them).
+    pub fn sticks(&self) -> ((f32, f32), (f32, f32)) {
+        let Some(p) = &self.pad else { return ((0.0, 0.0), (0.0, 0.0)) };
+        let past = |(x, y): (f32, f32)| if x.abs().max(y.abs()) >= LOOK_DEADZONE { (x, y) } else { (0.0, 0.0) };
+        (past(p.left), past(p.right))
+    }
+
+    /// Is `a` held down now (a key, a mouse button or a controller button)?
     pub fn held(&self, a: Action) -> bool {
         self.pressed.contains(&a) || (a == Action::Block && self.block_latched)
     }

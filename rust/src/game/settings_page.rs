@@ -309,7 +309,7 @@ impl Game {
             Row::SlowMotion => on(self.feel.slow_motion),
             Row::Shake if self.feel.shake == 0 => "Off".into(),
             Row::Shake => format!("{}%", self.feel.shake),
-            Row::MinimapTurn => on(s.minimap_turn),
+            Row::MinimapTurn => on(self.map_ui.turn),
             Row::ShieldMode => if s.shield_toggle { "Toggle" } else { "Hold" }.into(),
             Row::Sensitivity => format!("{}%", s.mouse_sensitivity),
             Row::InvertMouse => on(s.invert_mouse_y),
@@ -435,10 +435,8 @@ impl Game {
                 }
             }
             Row::SlowMotion => self.toggle_slow_motion(),
-            Row::MinimapTurn => {
-                self.settings.minimap_turn = !self.settings.minimap_turn;
-                self.settings_changed();
-            }
+            // (U1a's setting, saved by it as `vh.minimap_turn`.)
+            Row::MinimapTurn => self.set_minimap_turn(!self.map_ui.turn),
             Row::ShieldMode => {
                 self.settings.shield_toggle = !self.settings.shield_toggle;
                 self.settings_changed();

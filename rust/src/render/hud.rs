@@ -24,6 +24,7 @@ mod angel;
 mod controls;
 mod court;
 mod dialogue;
+mod fullmap;
 pub mod glyphs;
 mod guide;
 pub mod layout;
@@ -31,6 +32,7 @@ mod ledger;
 pub mod legend;
 mod map;
 mod mastery;
+pub mod minimap;
 mod pit;
 mod play;
 mod ring;
@@ -41,6 +43,7 @@ pub mod style;
 mod war;
 
 pub use controls::controls_tab_rects;
+pub use fullmap::{fit as fullmap_fit, layout as fullmap_layout, max_zoom as fullmap_max_zoom, Layout as FullMapLayout};
 pub use ledger::draw_ledger_board;
 pub use map::{map_cols, map_rects};
 mod ending;
@@ -269,6 +272,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         mastery::draw_mastery_toast(o, g, t);
         angel::draw_arrows(o, g);
         draw_hud(o, g, if g.show_fps { Some(fps) } else { None });
+        minimap::draw(o, g, t);
         draw_feedback(o, g, t);
         dialogue::draw(o, g);
     }
@@ -311,6 +315,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 rgba(TEXT_DIM, 1.0),
             );
             play::draw_pause_summary(o, g, t, below + t * 0.5);
+            fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);
             }
@@ -407,6 +412,8 @@ fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     let (hero_px, face) = (hud.t * 3.2, hud.t * dialogue::FACE);
     o.portrait(PortraitId::Hero(g.hero_kind), Pose::live(g.time as f32, 1.0), 0.0, 0.0, hero_px, hero_px, false, [0.0; 4]);
     o.portrait(PortraitId::OldMan, Pose::live(g.time as f32, 1.0), 0.0, 0.0, face, face, false, [0.0; 4]);
+    // The new level's minimap image, built and sent up behind the black too.
+    minimap::prepare(o, g);
     let show = loading_words(l.age as f32);
     if show <= 0.0 {
         return;
@@ -911,29 +918,25 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
             (0..count).map(|i| [px + (pw - 2.0 * bw - gap) / 2.0 + i as f32 * (bw + gap), y, bw, bh]).collect()
         }
         Screen::Title => {
-            // Continue and Start side by side in the middle below the line-up; Quit (desktop) small in the corner.
+            // Continue and Start side by side in the middle below the line-up; the controller page,
+            // the settings (and the developer's map) small in the bottom-left corner; Quit (desktop)
+            // small in the other.
             let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
-            let big =
-                items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls | MenuItem::Map | MenuItem::Settings)).count();
+            let small = |i: &MenuItem| matches!(i, MenuItem::Controls | MenuItem::Settings | MenuItem::Map | MenuItem::DevMap);
+            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit) && !small(i)).count();
             let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
+            let (cw, ch) = (t * 4.6, t * 1.1);
+            let mut corner = 0.0;
             items
                 .iter()
                 .enumerate()
                 .map(|(i, item)| {
                     if *item == MenuItem::Quit {
-                        let (qw, qh) = (t * 4.6, t * 1.1);
-                        [w - qw - t * 0.6, h - qh - t * 0.6, qw, qh]
-                    } else if *item == MenuItem::Controls {
-                        let (cw, ch) = (t * 4.6, t * 1.1);
-                        [t * 0.6, h - ch - t * 0.6, cw, ch]
-                    } else if *item == MenuItem::Map {
-                        // Beside the controller button in the corner.
-                        let (cw, ch) = (t * 4.6, t * 1.1);
-                        [t * 0.6 + cw + t * 0.4, h - ch - t * 0.6, cw, ch]
-                    } else if *item == MenuItem::Settings {
-                        // And the settings beside the map.
-                        let (cw, ch) = (t * 4.6, t * 1.1);
-                        [t * 0.6 + 2.0 * (cw + t * 0.4), h - ch - t * 0.6, cw, ch]
+                        [w - cw - t * 0.6, h - ch - t * 0.6, cw, ch]
+                    } else if small(item) {
+                        let x = t * 0.6 + corner * (cw + t * 0.4);
+                        corner += 1.0;
+                        [x, h - ch - t * 0.6, cw, ch]
                     } else {
                         [x0 + i as f32 * (bw + gap), h * 0.875 - bh / 2.0, bw, bh]
                     }

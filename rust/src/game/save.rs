@@ -300,14 +300,21 @@ impl Game {
     }
 
     /// The title's buttons: Continue (when there is something to continue), Start, the
-    /// controller page and the map, or the two answers while it asks whether to start over.
+    /// controller page and (developing) the developer's map, or the two answers while it asks
+    /// whether to start over.
     pub(super) fn title_items(&self) -> Vec<MenuItem> {
         if self.confirm_reset {
             vec![MenuItem::StartOver, MenuItem::KeepProgress]
-        } else if self.can_continue() {
-            vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Settings]
         } else {
-            vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Settings]
+            let mut items = vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings];
+            if self.can_continue() {
+                items.insert(0, MenuItem::Continue);
+            }
+            // The developer's map, while developing (F12 opens it in any build).
+            if self.dev {
+                items.push(MenuItem::DevMap);
+            }
+            items
         }
     }
 }

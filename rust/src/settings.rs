@@ -1,9 +1,10 @@
-//! The player's settings that are not kept elsewhere (UI.md §8): the minimap's turning, the
-//! shield's hold or toggle, the mouse and the sticks, the four volumes, the quality preset, the UI's
-//! scale and the size of its prose, and the accessibility options. Each is a `vh.*` key in the
-//! settings file (`platform`), read forgivingly: a value missing or not understood is its default.
+//! The player's settings that are not kept elsewhere (UI.md §8): the shield's hold or toggle, the
+//! mouse and the sticks, the four volumes, the quality preset, the UI's scale and the size of its
+//! prose, and the accessibility options. Each is a `vh.*` key in the settings file (`platform`), read
+//! forgivingly: a value missing or not understood is its default.
 //!
-//! The settings kept where they always were stay there: the camera (`vh.camera`), free movement
+//! The settings kept where they always were stay there: the camera (`vh.camera`), the minimap's
+//! turning (`vh.minimap_turn`, `game::fullmap`), free movement
 //! (`vh.free_move`), slow motion and the shake (`game::Feel`), the rumble (`vh.rumble`), the full
 //! screen (`vh.fullscreen`), mute (`vh.muted`) and the bindings (`vh.bindings`). The settings page
 //! shows them all together. Nothing here is read by the simulation: they change what is drawn and
@@ -89,8 +90,6 @@ impl TextSize {
 /// The settings (see the module's words), as the player has them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
-    /// The minimap turns with the camera (else north is up).
-    pub minimap_turn: bool,
     /// The shield is raised by a press and lowered by the next (else it is held).
     pub shield_toggle: bool,
     /// The mouse's turn of the camera, in percent.
@@ -122,7 +121,6 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            minimap_turn: false,
             shield_toggle: false,
             mouse_sensitivity: 100,
             invert_mouse_y: false,
@@ -178,8 +176,7 @@ pub const UI_SCALE: Range = Range { min: 80, max: 150, step: 10 };
 pub const BACKING: Range = Range { min: 0, max: 100, step: 5 };
 
 /// The keys, each once (the round trip's test walks them).
-pub const KEYS: [&str; 17] = [
-    "vh.minimap_turn",
+pub const KEYS: [&str; 16] = [
     "vh.shield_toggle",
     "vh.mouse_sensitivity",
     "vh.invert_mouse_y",
@@ -206,7 +203,6 @@ impl Settings {
     /// Each setting as its key and saved value, in `KEYS`' order.
     pub fn entries(&self) -> Vec<(&'static str, String)> {
         let values = [
-            flag(self.minimap_turn),
             flag(self.shield_toggle),
             self.mouse_sensitivity.to_string(),
             flag(self.invert_mouse_y),
@@ -244,7 +240,6 @@ impl Settings {
         let colour_blind =
             get("vh.colour_blind").and_then(|v| ColourBlind::ALL.into_iter().find(|c| c.name() == v.trim())).unwrap_or_default();
         Self {
-            minimap_turn: flag("vh.minimap_turn", d.minimap_turn),
             shield_toggle: flag("vh.shield_toggle", d.shield_toggle),
             mouse_sensitivity: num("vh.mouse_sensitivity", SENSITIVITY, d.mouse_sensitivity),
             invert_mouse_y: flag("vh.invert_mouse_y", d.invert_mouse_y),
@@ -345,7 +340,6 @@ mod tests {
         assert_eq!(Settings::read(platform::load), Settings::default());
         // Every one changed from its default, saved, and read back from the file.
         let s = Settings {
-            minimap_turn: true,
             shield_toggle: true,
             mouse_sensitivity: 175,
             invert_mouse_y: true,
@@ -386,7 +380,7 @@ mod tests {
                     "vh.preset" => "ultra",
                     "vh.text_size" => "huge",
                     "vh.colour_blind" => "plaid",
-                    "vh.minimap_turn" => "yes",
+                    "vh.shield_toggle" => "yes",
                     "vh.deadzone_move" => "2",
                     _ => "junk",
                 }

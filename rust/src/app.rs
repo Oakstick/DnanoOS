@@ -33,6 +33,8 @@ pub struct Options {
     pub no_vsync: bool,
     /// The quality preset (`--preset high|low`); none takes the build's default.
     pub preset: Option<crate::render::preset::Preset>,
+    /// `--dev`: the developer's map on the title and the pause menu (F12 opens it in any build).
+    pub dev: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -87,6 +89,8 @@ impl App {
         } else {
             saved_full.unwrap_or(!cfg!(debug_assertions) && !cfg!(target_arch = "wasm32"))
         };
+        let mut game = Game::new();
+        game.dev |= opts.dev;
         Self {
             opts,
             window: None,
@@ -95,7 +99,7 @@ impl App {
             pending: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             starting: None,
-            game: Game::new(),
+            game,
             overlay: Overlay::new(),
             frame: Frame::default(),
             gilrs: gilrs::Gilrs::new().ok(),
@@ -301,6 +305,8 @@ impl App {
         self.overlay.begin(logical.0, logical.1);
         hud::draw(&mut self.overlay, &self.game, self.fps);
         self.cpu.hud = t.elapsed().as_secs_f64() * 1e3;
+        // The minimap's image where the fog lifted or the ground changed (a new level's whole).
+        self.overlay.map.upload(|r, px| gpu.write_atlas(r, px));
         let t = Instant::now();
         gpu.sync_static(&mut self.game.view);
         self.cpu.sync = t.elapsed().as_secs_f64() * 1e3;

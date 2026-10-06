@@ -63,13 +63,13 @@ pub fn health(mode: ColourBlind, frac: f32) -> u32 {
 /// healing swapped; everything else as it is.
 pub fn marker(m: &Marker, mode: ColourBlind) -> u32 {
     if mode == ColourBlind::Off {
-        return m.color();
+        return m.own_color();
     }
     match m.kind {
         MarkerKind::Foe(FoeRank::Plain) => foe(mode),
         MarkerKind::RedKey => peril(mode),
         MarkerKind::Remedy | MarkerKind::Gate { open: true } | MarkerKind::Cage { open: true } => safe(mode),
-        _ => m.color(),
+        _ => m.own_color(),
     }
 }
 
@@ -104,9 +104,9 @@ mod tests {
         }
         let foe_dot = Marker { kind: MarkerKind::Foe(FoeRank::Plain), at: V::new(0.0, 0.0), known: true };
         let key = Marker { kind: MarkerKind::Key, at: V::new(0.0, 0.0), known: true };
-        assert_eq!(marker(&foe_dot, ColourBlind::Off), foe_dot.color());
-        assert_ne!(marker(&foe_dot, ColourBlind::Deuteranopia), foe_dot.color());
-        assert_eq!(marker(&key, ColourBlind::Protanopia), key.color(), "what is not red or green keeps its colour");
+        assert_eq!(marker(&foe_dot, ColourBlind::Off), foe_dot.own_color());
+        assert_ne!(marker(&foe_dot, ColourBlind::Deuteranopia), foe_dot.own_color());
+        assert_eq!(marker(&key, ColourBlind::Protanopia), key.own_color(), "what is not red or green keeps its colour");
         // The health bar's high and low ends, which a deuteranope sees as near alike in the game's
         // own colours, are told apart under the palette.
         let seen = |c: u32| as_deuteranope(c);

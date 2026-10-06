@@ -618,6 +618,7 @@ fn measure(gpu: &mut Gpu, scene: &Scene, steps: usize, frames: usize, (w, h): (u
         overlay.begin(logical.0, logical.1);
         hud::draw(&mut overlay, &game, fps);
         cpu.hud = s.elapsed().as_secs_f64() * 1e3;
+        overlay.map.upload(|r, px| gpu.write_atlas(r, px));
         let s = Instant::now();
         gpu.sync_static(&mut game.view);
         cpu.sync = s.elapsed().as_secs_f64() * 1e3;
