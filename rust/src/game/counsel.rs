@@ -55,6 +55,11 @@ pub struct Spoken {
 }
 
 impl Spoken {
+    /// A line from `who` beginning at `since` (the game's time).
+    pub fn new(who: Speaker, text: String, since: f64) -> Self {
+        Self { who, text, since, blips: 0, echoed: false }
+    }
+
     /// Letters shown by `now`.
     pub fn shown(&self, now: f64) -> usize {
         (((now - self.since).max(0.0) * TYPE_RATE) as usize).min(self.text.chars().count())
@@ -223,7 +228,7 @@ impl Game {
         if who == Speaker::OldMan {
             self.audio.play(Sfx::Bark);
         }
-        self.voices.spoken = Some(Spoken { who, text, since: self.time, blips: 0, echoed: false });
+        self.voices.spoken = Some(Spoken::new(who, text, self.time));
     }
 
     /// Once a frame: the counsel's flags from the save (once), a realm entered or left, the
@@ -244,7 +249,20 @@ impl Game {
         ((self.voices.idle - COMPASS_AFTER) / COMPASS_FADE).clamp(0.0, 1.0) as f32
     }
 
+    /// Enter (the play layer's Confirm) while a line is in the panel: it types out at once, or,
+    /// typed out, goes (as if its time had passed; the next line keeps its gap).
+    fn skip_line(&mut self) {
+        let now = self.time;
+        let Some(s) = self.voices.spoken.as_mut() else { return };
+        let typing = s.text.chars().count() as f64 / TYPE_RATE;
+        s.since = if now - s.since < typing { now - typing } else { (now - typing - HOLD + 0.15).min(s.since) };
+    }
+
     pub(super) fn update_voices(&mut self, dt: f64) {
+        if self.screen == Screen::Playing && self.voices_line().is_some() && self.input.was_pressed(&[crate::input::Action::Confirm]) {
+            self.input.consume(crate::input::Action::Confirm);
+            self.skip_line();
+        }
         // Idle: not moving, not swinging (his stillness, for the compass).
         let hp = self.hero.pos();
         let swinging = self.brawl.as_ref().is_some_and(|b| b.hero.attack().is_some());
@@ -520,5 +538,24 @@ mod tests {
         assert!(said.contains(&Trait::Weakness(rv.weakness).keyword()), "and he says it: {said}");
         // Known, it is not sold twice.
         assert!(!g.shop_rows()[r].buttons[0].enabled);
+    }
+
+    /// Enter while he speaks: the line types out at once, then a second press puts it away, and
+    /// the next line still waits out its gap.
+    #[test]
+    fn enter_types_his_line_out_and_then_puts_it_away() {
+        let mut g = playing();
+        g.speak(Speaker::OldMan, "Up, Ragnar. The bog slime strikes from afar.".to_string());
+        let since = g.voices_line().unwrap().since;
+        g.input.inject(crate::input::Action::Confirm);
+        g.update_voices(0.0);
+        let s = g.voices_line().expect("still up").clone();
+        assert_eq!(s.shown(g.time), s.text.chars().count(), "typed out at once");
+        g.input.flush();
+        g.input.inject(crate::input::Action::Confirm);
+        g.update_voices(0.0);
+        g.time += 0.2;
+        assert!(g.voices_line().is_none(), "put away");
+        assert!(g.voices.spoken.as_ref().unwrap().since <= since);
     }
 }

@@ -2,6 +2,7 @@
 //! juice (banners, flashes, flying coins) and the effects that tick while the world moves.
 
 use super::Game;
+use crate::logic::angels::{Archangel, Blessing};
 use crate::logic::heroes::HeroKind;
 use crate::logic::types::{dist_sq, manhattan};
 
@@ -97,7 +98,17 @@ pub struct Juice {
     pub coin_punch: f32,
     /// 1 on a BRUTAL streak, fading: a hot flash over the screen.
     pub brutal: f32,
+    /// The archangel whose blessing he held last (or his patron): the HUD's emblem shows from his
+    /// first meeting with one on (UI.md §6).
+    pub angel_met: Option<Archangel>,
+    /// A blessing just given: whose, and the seconds its banner has left.
+    pub blessed: Option<(Archangel, f32)>,
+    /// The blessing he held at the last update, to see a new one given.
+    pub held: Option<Blessing>,
 }
+
+/// Seconds the banner of a blessing given stays up.
+pub const BLESSED_SECONDS: f32 = 2.5;
 
 impl Game {
     pub(super) fn floater(&mut self, x: f64, y: f64, text: impl Into<String>, life: f64, color: Option<u32>) {
@@ -227,5 +238,27 @@ impl Game {
                 j.banner = None;
             }
         }
+        // The archangels: a blessing given (whole, and not the one held before) raises its banner;
+        // the emblem shows from the first met on.
+        if let Some((_, left)) = &mut j.blessed {
+            *left -= dtf;
+            if *left <= 0.0 {
+                j.blessed = None;
+            }
+        }
+        if let Some(b) = self.blessing {
+            if b.charges == b.angel.charges() && j.held != Some(b) {
+                j.blessed = Some((b.angel, BLESSED_SECONDS));
+            }
+            j.angel_met = Some(b.angel);
+        } else if let Some(a) = self.progress.hero(self.hero_kind).patron {
+            j.angel_met.get_or_insert(a);
+        }
+        j.held = self.blessing;
+    }
+
+    /// The screen's juice ticked on by `dt` seconds alone (for the HUD's tests).
+    pub fn debug_tick_juice(&mut self, dt: f64) {
+        self.update_juice(dt);
     }
 }

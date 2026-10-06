@@ -287,11 +287,13 @@ fn fs_portrait(in: VOut) -> @location(0) vec4<f32> {
     let fill = normalize(right * 0.85 + up * 0.15 - fwd * 0.5);
     let rim = normalize(right * 0.35 + up * 0.55 + fwd * 0.9);
     let albedo = in.color.rgb;
-    var c = albedo * (vec3<f32>(0.16, 0.15, 0.17)
-        + max(dot(n, key), 0.0) * vec3<f32>(1.25, 1.12, 0.95)
-        + max(dot(n, fill), 0.0) * vec3<f32>(0.32, 0.38, 0.48));
+    // (A warm key like a lamp's, a cool soft fill, a warm rim that lifts the head off the ground.)
+    var c = albedo * (vec3<f32>(0.19, 0.17, 0.18)
+        + max(dot(n, key), 0.0) * vec3<f32>(1.38, 1.16, 0.88)
+        + max(dot(n, fill), 0.0) * vec3<f32>(0.3, 0.36, 0.5)
+        + max(n.y, 0.0) * vec3<f32>(0.1, 0.09, 0.08));
     let edge = pow(1.0 - max(dot(n, to_eye), 0.0), 2.0);
-    c += vec3<f32>(1.0, 0.82, 0.55) * edge * max(dot(n, rim) + 0.25, 0.0) * 0.55;
+    c += vec3<f32>(1.0, 0.78, 0.5) * edge * max(dot(n, rim) + 0.3, 0.0) * 0.7;
     c += in.emissive.rgb;
     if (abs(in.emissive.w - 16.0) < 0.5) {
         // A voxel lit from within keeps its own light.
