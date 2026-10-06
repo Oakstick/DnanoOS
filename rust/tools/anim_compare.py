@@ -1,10 +1,12 @@
-"""Old and new side by side: Ragnar at the same moments animated by the code (left) and by his clips
+"""Old and new side by side: a hero at the same moments animated by the code (left) and by his clips
 (right), each moment one picture (`--anim-compare`), in the gym's Sparring Ring where his fighting
 goes by frame data; each moment seen close (from before him) and from the game's own chase camera
 (behind and above him, as it is played). With `--also EXE2` (a build carrying other clips), each
 picture has three panels: the code, EXE2's clips, EXE's clips. See ANIMATION.md.
 
-    python tools/anim_compare.py OUT_DIR [EXE] [--also EXE2] [moment ...]
+    python tools/anim_compare.py OUT_DIR [EXE] [--also EXE2] [--hero K] [moment ...]
+
+`--hero` picks the hero (0 Ragnar, the default; 1 Mehmed; 2 Miyamoto: the capture script's `hero:K`).
 
 EXE defaults to the quick build (target/quick), then the release build. Needs only the Python
 standard library.
@@ -86,13 +88,15 @@ def encode(path, w, h, rows):
     open(path, 'wb').write(png)
 
 
-def capture(exe, png, script, t, cam, save):
+def capture(exe, png, script, t, cam, save, hero=0):
     shutil.rmtree(save, ignore_errors=True)
     os.makedirs(save)
     env = dict(os.environ, VH_SAVE_DIR=save)
     env.pop('VH_ANIM', None)
     # (A script starting with ! is played as it is, outside the ring.)
     full = script[1:] if script.startswith('!') else RING + (',' + script if script else '')
+    if hero:
+        full = f'0:hero:{hero},' + full
     if cam is None:
         # The chase camera (behind him), and he turned away from it, up the ring, before he acts.
         turn = '0.5:camera' if script.startswith('!') else f'0.5:camera,{GO - 0.6}:+up,{GO - 0.5}:-up'
@@ -110,10 +114,14 @@ def main():
     if not args:
         sys.exit(__doc__)
     out = args.pop(0)
-    also = None
+    also, hero = None, 0
     if '--also' in args:
         i = args.index('--also')
         also = args[i + 1]
+        del args[i:i + 2]
+    if '--hero' in args:
+        i = args.index('--hero')
+        hero = int(args[i + 1])
         del args[i:i + 2]
     exe = args[0] if args and os.path.isfile(args[0]) else None
     names = [a for a in args if not os.path.isfile(a)]
@@ -131,10 +139,10 @@ def main():
         if names and name not in names:
             continue
         png = os.path.join(out, name + '.png')
-        capture(exe, png, script, t, cam, save)
+        capture(exe, png, script, t, cam, save, hero)
         if also:
             other = os.path.join(out, name + '.other.png')
-            capture(also, other, script, t, cam, save)
+            capture(also, other, script, t, cam, save, hero)
             w, h, new = decode(png)
             _, _, old = decode(other)
             half = w // 2 * 4

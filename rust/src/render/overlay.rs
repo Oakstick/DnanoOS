@@ -89,14 +89,25 @@ impl AtlasRegion {
 pub const ICON_REGION: AtlasRegion = AtlasRegion::new(512, 0, 512, 512);
 /// Free for the minimap's level and its fog (UI.md §7), written with `Gpu::write_atlas`.
 pub const MAP_REGION: AtlasRegion = AtlasRegion::new(1024, 0, 1024, 1024);
-/// The portraits' slots: `PORTRAIT_SLOTS` squares `PORTRAIT_SIZE` across, from row 1024 down.
+/// The portraits' slots: `PORTRAIT_SLOTS` squares `PORTRAIT_SIZE` across in rows 1024 to 1536,
+/// then `BIG_SLOTS` squares `BIG_PORTRAIT` across in rows 1536 to 2048, for the portraits drawn
+/// larger than a small slot (the old man's dialogue and his guide at 1440p and 4K).
 pub const PORTRAIT_SIZE: u32 = 256;
-pub const PORTRAIT_SLOTS: usize = 32;
+pub const PORTRAIT_SLOTS: usize = 16;
+pub const BIG_PORTRAIT: u32 = 512;
+pub const BIG_SLOTS: usize = 4;
+/// Every slot, small then big.
+pub const ALL_SLOTS: usize = PORTRAIT_SLOTS + BIG_SLOTS;
 
-/// Portrait slot `k`'s square in the atlas.
+/// Portrait slot `k`'s square in the atlas (the small ones first, then the big).
 pub const fn portrait_slot(k: usize) -> AtlasRegion {
-    let per_row = (ATLAS_W / PORTRAIT_SIZE) as usize;
-    AtlasRegion::new((k % per_row) as u32 * PORTRAIT_SIZE, 1024 + (k / per_row) as u32 * PORTRAIT_SIZE, PORTRAIT_SIZE, PORTRAIT_SIZE)
+    if k < PORTRAIT_SLOTS {
+        let per_row = (ATLAS_W / PORTRAIT_SIZE) as usize;
+        AtlasRegion::new((k % per_row) as u32 * PORTRAIT_SIZE, 1024 + (k / per_row) as u32 * PORTRAIT_SIZE, PORTRAIT_SIZE, PORTRAIT_SIZE)
+    } else {
+        let k = k - PORTRAIT_SLOTS;
+        AtlasRegion::new(k as u32 * BIG_PORTRAIT, 1536, BIG_PORTRAIT, BIG_PORTRAIT)
+    }
 }
 
 /// An extra letter's glyph: font8x8's own where it has one, else its base letter with a cedilla
@@ -818,7 +829,7 @@ mod tests {
     #[test]
     fn the_regions_keep_apart() {
         let mut all = vec![AtlasRegion::new(0, 0, LEGACY, LEGACY), ICON_REGION, MAP_REGION];
-        all.extend((0..PORTRAIT_SLOTS).map(portrait_slot));
+        all.extend((0..ALL_SLOTS).map(portrait_slot));
         for (i, a) in all.iter().enumerate() {
             assert!(a.x + a.w <= ATLAS_W && a.y + a.h <= ATLAS_H, "{a:?} inside");
             for b in &all[i + 1..] {

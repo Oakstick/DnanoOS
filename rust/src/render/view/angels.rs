@@ -5,7 +5,8 @@
 //! marble glowing faintly in their colour, a soft shaft falling on the statue
 //! and a pool of that light on the floor round it, steady as a lamp (all gone
 //! grey and dark when that archangel has given this level, or all four
-//! have). And their powers:
+//! have), and while it has a blessing to give a tall pillar of their light over it, seen from
+//! across the level. And their powers:
 //! Gabriel's thunderbolts, Raphael's beam and Uriel's wave. Michael's fire
 //! flies as a shot (`emit_forged_shot`); the foes it turns glow blue and
 //! wear a halo (`update_enemy`, the enemies' emitter).
@@ -23,6 +24,10 @@ pub(super) const SHRINE_VOXEL: f32 = 0.0175;
 const SHRINE_SIZE: (i32, i32, i32) = (32, 52, 28);
 /// Where the statue's head is in its grid, for the halo.
 const HEAD: [f32; 3] = [15.5, 41.0, 13.8];
+
+/// The shrine's pillar of light: this many glows, this far apart (about 16 units tall).
+const PILLAR_STEPS: usize = 9;
+const PILLAR_STEP: f32 = 1.8;
 
 const THUNDER_SECONDS: f32 = 0.5;
 const BEAM_SECONDS: f32 = 0.75;
@@ -348,6 +353,31 @@ impl WorldView {
     }
 
     /**
+     * A shrine's pillar of light (UI.md §6), seen from across the level: a tall soft column in
+     * its angel's colour standing on the plinth, drawn as glows turned to face the camera about
+     * the upright (so it stays a column from any side), brightest at its foot and fading as it
+     * rises, gently breathing. Drawn only while the shrine has a blessing to give.
+     */
+    fn emit_shrine_pillar(&self, base: Vec3, color: Vec3, f: &mut Frame) {
+        let fwd = self.cam_look - self.cam_pos;
+        let flat = Vec3::new(fwd.x, 0.0, fwd.z).normalize_or(Vec3::NEG_Z);
+        let right = flat.cross(Vec3::Y).normalize_or(Vec3::X);
+        let turn = Quat::from_mat3(&glam::Mat3::from_cols(right, Vec3::Y, -flat));
+        let breathe = 0.85 + 0.15 * (f.time * 1.3 + base.x * 0.7).sin();
+        // Overlapping tall glows a step apart, so the column reads smooth: a wide soft one, and a
+        // bright thin core.
+        for k in 0..PILLAR_STEPS {
+            let rise = k as f32 / PILLAR_STEPS as f32;
+            let fade = (1.0 - rise).powf(1.4) * breathe;
+            let at = base + Vec3::new(0.0, 0.9 + k as f32 * PILLAR_STEP, 0.0);
+            for (wide, strength, tint) in [(1.1, 0.13, color), (0.5, 0.2, color), (0.16, 0.5, Vec3::ONE.lerp(color, 0.55))] {
+                let m = Mat4::from_scale_rotation_translation(Vec3::new(wide, PILLAR_STEP * 1.45, 1.0), turn, at);
+                f.glow.push(Instance::new(m, tint, strength * fade, Vec3::ZERO, SHADE_GLOW));
+            }
+        }
+    }
+
+    /**
      * An archangel's shrine: the plinth and statue of whoever it honours now
      * (turned to face a path beside it), the halo, and their light baked into
      * the spot: a faint glow in the marble, a shaft from above, a pool on the
@@ -372,11 +402,14 @@ impl WorldView {
         // Lit, the marble itself holds a little of their light.
         let inner = if lit { color * 0.1 } else { Vec3::ZERO };
         emit_rig(&mut f.rigs, rig, &Pose::rest(rig), root, tint, 1.0, inner);
-        // The halo over the statue's head.
+        // The halo over the statue's head (brighter while it has a blessing to give).
         let head = root.transform_point3(Vec3::new(0.0, (HEAD[1] + 3.8) * SHRINE_VOXEL, (HEAD[2] - 13.5 - 0.6) * SHRINE_VOXEL));
-        let glow = if lit { 1.0 } else { 0.15 };
-        let m = Mat4::from_translation(head) * Mat4::from_rotation_x(-PI / 2.0 + 0.35) * Mat4::from_scale(Vec3::new(0.075, 0.075, 1.0));
-        f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, color * 2.5 * glow, 0.85, Vec3::ZERO, SHADE_UNLIT));
+        let glow = if lit { 1.6 } else { 0.15 };
+        let m = Mat4::from_translation(head) * Mat4::from_rotation_x(-PI / 2.0 + 0.35) * Mat4::from_scale(Vec3::new(0.085, 0.085, 1.0));
+        f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, color * 2.5 * glow, 0.9, Vec3::ZERO, SHADE_UNLIT));
+        if lit {
+            self.emit_shrine_pillar(base, color, f);
+        }
         if lit {
             // A pool of their light on the floor, brightest at the plinth's foot ...
             let pool = |r: f32| {
@@ -393,9 +426,43 @@ impl WorldView {
             }
         }
         if lit {
-            glow_orb(f, head, 0.35, color, 0.35);
+            glow_orb(f, head, 0.42, color, 0.55);
         }
         // Lit, it joins the pool of shrine lights (see `emit`).
         lit.then_some((base, color))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game::Game;
+    use crate::logic::items::DiamondKind;
+    use crate::render::view::Frame;
+
+    /// The pillars' glows in a frame: the tall narrow ones.
+    fn pillars(f: &Frame) -> usize {
+        let len = |c: &[f32]| glam::Vec3::from_slice(&c[..3]).length();
+        f.glow.iter().filter(|i| len(&i.m[4..8]) > 2.0 * len(&i.m[0..4])).count()
+    }
+
+    #[test]
+    fn a_shrine_has_its_pillar_only_while_it_has_a_blessing_to_give() {
+        let mut g = Game::new();
+        let shrines = g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel).count();
+        assert!(shrines > 0, "the garden has its shrines");
+        let mut f = Frame::default();
+        g.view.emit(&g.scene(), &mut f);
+        let lit = pillars(&f);
+        assert_eq!(lit, shrines * super::PILLAR_STEPS * 3, "every unspent shrine has its pillar");
+        // One angel has given: the shrines showing him lose theirs.
+        let showing = |g: &Game, a: usize| g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel && d.index == a).count();
+        let a = (0..4).find(|&a| showing(&g, a) > 0).unwrap();
+        g.angels_used[a] = true;
+        g.view.emit(&g.scene(), &mut f);
+        assert_eq!(pillars(&f), (shrines - showing(&g, a)) * super::PILLAR_STEPS * 3);
+        // All spent: none.
+        g.angels_used = [true; 4];
+        g.view.emit(&g.scene(), &mut f);
+        assert_eq!(pillars(&f), 0);
     }
 }

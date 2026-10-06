@@ -15,30 +15,17 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 use super::*;
 use crate::logic::types::V;
 use crate::render::minimap::{markers, FoeRank, MapLayer, Marker, MarkerKind};
-use crate::render::overlay::{OVertex, Style, FLAG_CIRCLE};
+use crate::render::overlay::{OVertex, FLAG_CIRCLE};
 
-/// This share of the shorter edge is kept clear at every edge of the screen (UI.md §2).
-pub const SAFE: f32 = 0.05;
-/// The minimap is this many units across.
-const ACROSS: f32 = 7.0;
 /// Tiles from the minimap's middle to its rim at each zoom: near, mid, far.
 pub const ZOOM_TILES: [f32; 3] = [9.0, 15.0, 26.0];
 /// The dark under every marker, so it reads on any floor.
 const SHADOW: u32 = 0x0a0c0c;
 
-/// The minimap's square on screen: top right, inside the safe area (UI.md §5; the HUD's layout
-/// keeps the space for it).
+/// The minimap's square on screen: the one play's HUD keeps for it, top right inside the safe
+/// area, seven units across (`layout::minimap_rect`).
 pub fn rect(w: f32, h: f32) -> [f32; 4] {
-    let t = tile_for(w, h);
-    let safe = w.min(h) * SAFE;
-    let s = t * ACROSS;
-    [w - safe - s, safe, s, s]
-}
-
-/// Where what stands under the minimap on the right (the purse's panel) begins.
-pub fn below(w: f32, h: f32) -> f32 {
-    let r = rect(w, h);
-    r[1] + r[3] + tile_for(w, h) * 0.45
+    super::layout::minimap_rect(w, h)
 }
 
 /// Whether the minimap is up: in play, the countdown, the fall and the pause, never in a composed
@@ -107,9 +94,9 @@ impl Window {
 
 /// The minimap's window for the game as it is (its middle on the hero).
 pub fn window(g: &Game, w: f32, h: f32) -> Window {
-    let r = rect(w, h);
-    let t = tile_for(w, h);
-    let radius = r[2] / 2.0 - rim(t);
+    let lay = super::layout::HudLayout::of(w, h);
+    let r = lay.minimap;
+    let radius = r[2] / 2.0 - rim(lay.t);
     let hp = g.hero.pos();
     Window {
         cx: r[0] + r[2] / 2.0,
@@ -172,12 +159,16 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     let outer = win.radius + rw;
     let (cx, cy) = (win.cx, win.cy);
 
-    // The frame: a soft shadow, the copper rim, the dark ground the level lies on.
-    disc(o, cx, cy + t * 0.08, outer + t * 0.22, [0.0, 0.0, 0.0, 0.28]);
-    disc(o, cx, cy + t * 0.04, outer + t * 0.08, [0.0, 0.0, 0.0, 0.5]);
-    disc(o, cx, cy, outer, rgba(COPPER, 1.0));
-    gradient_ring(o, cx, cy, outer, outer - rw * 0.55, rgba(0xe0a070, 0.55), rgba(0xe0a070, 0.0), Some(-FRAC_PI_2));
-    disc(o, cx, cy, win.radius + 1.0, [0.0, 0.0, 0.0, 0.85]);
+    // The frame, in the HUD's glass (`style`): a soft shadow, a ring of the dark glass with its
+    // copper rule outside and a fainter one in, lit a little from above; the dark ground the level
+    // lies on.
+    let t = super::layout::HudLayout::of(o.width, o.height).t;
+    style::glow(o, cx, cy + t * 0.12, outer + t * 0.7, [0.0, 0.0, 0.0, 0.55]);
+    disc(o, cx, cy, outer, [INK[0], INK[1], INK[2], 0.9]);
+    gradient_ring(o, cx, cy, outer, outer - rw, [1.0, 1.0, 1.0, 0.1], [1.0, 1.0, 1.0, 0.0], Some(-FRAC_PI_2));
+    let rule = (t * 0.07).max(1.5);
+    style::ring(o, cx, cy, outer - rule / 2.0, rule, 0.0, TAU, rgba(COPPER, 0.85));
+    style::ring(o, cx, cy, win.radius + rule * 0.5, rule * 0.7, 0.0, TAU, rgba(COPPER, 0.45));
     disc(o, cx, cy, win.radius, [INK[0] * 0.8, INK[1] * 0.8, INK[2] * 0.8, 0.94]);
 
     // The level, through the round window.
@@ -219,10 +210,7 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     let (ns, nc) = (win.angle - FRAC_PI_2).sin_cos();
     let (nx, ny) = (cx + nc * (outer - rw * 0.5), cy + ns * (outer - rw * 0.5));
     let nr = (t * 0.36).max(7.0);
-    disc(o, nx, ny, nr + 1.5, rgba(COPPER, 1.0));
-    disc(o, nx, ny, nr, [INK[0], INK[1], INK[2], 1.0]);
-    let n = Style::display(nr * 1.45, rgba(GOLD, 1.0)).centered();
-    o.text_styled("N", nx, ny, &n);
+    style::badge(o, "N", nx, ny, nr, GOLD, 1.0);
 
     for &(i, _, arrow) in &plan {
         if let Some(a) = arrow {
@@ -244,7 +232,7 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     for k in 0..ZOOM_TILES.len() {
         let px = cx + (k as f32 - 1.0) * pr * 3.4;
         disc(o, px, py, pr + 1.0, [0.0, 0.0, 0.0, 0.8]);
-        disc(o, px, py, pr, if k <= zoom { rgba(GOLD, 1.0) } else { rgba(0x5a3a2a, 1.0) });
+        disc(o, px, py, pr, if k <= zoom { rgba(GOLD, 1.0) } else { rgba(COPPER, 0.45) });
     }
     if g.input.last_device().is_pad() && g.input.bindings.shown(Action::MinimapZoom, g.input.last_device()).is_some() {
         let size = t * 0.62;
@@ -666,7 +654,8 @@ mod tests {
         let r = rect(w, h);
         // Top right, inside the safe area, seven units across.
         assert_eq!(r[2], tile_for(w, h) * 7.0);
-        assert!((r[0] + r[2] - (w - h * SAFE)).abs() < 1e-3 && (r[1] - h * SAFE).abs() < 1e-3);
+        let safe = style::safe(w, h);
+        assert!((r[0] + r[2] - (w - safe)).abs() < 1e-3 && (r[1] - safe).abs() < 1e-3);
         let win = window(&g, w, h);
         let hp = g.hero.pos();
         let (x, y) = win.place(hp);

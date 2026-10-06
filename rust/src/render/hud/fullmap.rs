@@ -4,11 +4,10 @@
 //! legend of what is marked here beside it; and the controls below, in the glyphs of the device
 //! used last.
 
-use super::minimap::{clip_to_rect, disc, draw_marker, image_polygon, objective, platform, pointer, SAFE};
+use super::minimap::{clip_to_rect, draw_marker, image_polygon, objective, platform, pointer};
 use super::*;
 use crate::logic::types::V;
 use crate::render::minimap::{markers, FoeRank, MarkerKind};
-use crate::render::overlay::Style;
 
 /// The page's parts on screen.
 #[derive(Clone, Copy, Debug)]
@@ -27,7 +26,7 @@ pub struct Layout {
 /// Where the page's parts sit on a screen `w` by `h`.
 pub fn layout(w: f32, h: f32) -> Layout {
     let t = tile_for(w, h);
-    let safe = w.min(h) * SAFE;
+    let safe = style::safe(w, h);
     let top = safe + t * 3.1;
     let bottom = h - safe - t * 1.4;
     let legend_w = (t * 10.0).min(w * 0.26);
@@ -101,11 +100,11 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     // Over the pause: a dim, the place's name and what he must do there.
     o.rect(0.0, 0.0, w, h, [INK[0] * 0.6, INK[1] * 0.6, INK[2] * 0.6, 0.94]);
     let (guide, _) = g.guide_now();
-    let title = Style::display(t * 1.15, rgba(GOLD, 1.0)).centered().shadow(2.0, 3.0).tracking(0.04);
+    let title = style::name(t, 1.15, rgba(GOLD, 1.0)).centered();
     o.text_styled(&guide.title, w / 2.0, lay.title_y, &title);
     if let Some(task) = guide.task.first() {
-        let body = Style::body(t * 0.62, rgba(SAND, 1.0)).centered();
-        let lines = o.wrap_lines(task, (w - 2.0 * w.min(h) * SAFE).min(t * 40.0), &body);
+        let body = style::body(t, style::size::BODY, rgba(SAND, 1.0)).centered();
+        let lines = o.wrap_lines(task, (w - 2.0 * style::safe(w, h)).min(t * 40.0), &body);
         let line_h = t * 0.75;
         let y0 = lay.objective_y - (lines.len().min(2) as f32 - 1.0) * line_h / 2.0;
         for (k, line) in lines.iter().take(2).enumerate() {
@@ -116,7 +115,7 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
 
     // The map's panel, and the level in it.
     let [px, py, pw, ph] = lay.panel;
-    panel(o, px, py, pw, ph, t);
+    style::panel_glass(o, [px, py, pw, ph], t, 1.0);
     let [ix, iy, iw2, ih2] = lay.inner;
     o.rect(ix, iy, iw2, ih2, [0.0, 0.0, 0.0, 0.45]);
     let pc = (ix + iw2 / 2.0, iy + ih2 / 2.0);
@@ -148,7 +147,7 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     let inside = |(x, y): (f32, f32), r: f32| x >= ix + r && x <= ix + iw2 - r && y >= iy + r && y <= iy + ih2 - r;
     let mut present = [false; LEGEND_ROWS];
     let mut samples: [Option<(MarkerKind, u32)>; LEGEND_ROWS] = [None; LEGEND_ROWS];
-    let label = Style::body(t * 0.48, rgba(TEXT, 1.0)).centered().shadow(1.0, 1.5);
+    let label = style::label(t, style::size::MARK, rgba(TEXT, 1.0)).centered();
     for mk in ms.iter().filter(|m| m.known) {
         if let Some((row, _)) = legend_row(mk.kind) {
             present[row] = true;
@@ -178,17 +177,15 @@ pub fn draw(o: &mut Overlay, g: &Game, t: f32) {
     }
     // The north mark, in the panel's corner.
     let (nx, ny, nr) = (ix + iw2 - t * 0.75, iy + t * 0.75, t * 0.42);
-    disc(o, nx, ny, nr + 1.5, rgba(COPPER, 1.0));
-    disc(o, nx, ny, nr, [INK[0], INK[1], INK[2], 1.0]);
-    o.text_styled("N", nx, ny, &Style::display(nr * 1.45, rgba(GOLD, 1.0)).centered());
+    style::badge(o, "N", nx, ny, nr, GOLD, 1.0);
 
     // The legend: what is marked here.
-    let [lx, ly, lw, lh] = lay.legend;
-    panel(o, lx, ly, lw, lh, t);
-    o.text_styled("LEGEND", lx + lw / 2.0, ly + t * 0.85, &Style::display(t * 0.72, rgba(GOLD, 1.0)).centered().tracking(0.06));
-    let row_h = (t * 0.95).min((lh - t * 2.0) / present.iter().filter(|&&p| p).count().max(1) as f32);
-    let text = Style::body(t * 0.56, rgba(TEXT, 1.0));
-    let mut y = ly + t * 1.9;
+    let [lx, ly, _, lh] = lay.legend;
+    style::panel_glass(o, lay.legend, t, 1.0);
+    let below = style::panel_header(o, lay.legend, "LEGEND", t, GOLD, 1.0);
+    let row_h = (t * 0.95).min((ly + lh - below - t * 0.5) / present.iter().filter(|&&p| p).count().max(1) as f32);
+    let text = style::body(t, style::size::LABEL, rgba(TEXT, 1.0));
+    let mut y = below + row_h * 0.6;
     let lu = (row_h * 0.22).min(t * 0.24);
     for row in 0..LEGEND_ROWS {
         let (Some((kind, color)), true) = (samples[row], present[row]) else { continue };

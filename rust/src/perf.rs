@@ -6,7 +6,7 @@
 //!
 //! Each scene starts from the same seed and plays its setup script untimed through the driver that
 //! captures use (`driver`: the script, the bot that takes the pad at a `bot:K`, one fixed step at a
-//! time), so a scene with a bot is a scene with a fight. Then it draws `WARM_FRAMES` frames with the
+//! time), so a scene with a bot is a scene with a fight (`VH_PERF_HERO=K` plays it as hero K). Then it draws `WARM_FRAMES` frames with the
 //! simulation held, so the GPU leaves its idle clocks and the first uploads are done (a fixed count,
 //! so the scene measured begins at the same simulated moment every time), and then measures its
 //! stated simulated duration (`--frames` overrides the count): its own script, the view emitted, the
@@ -487,7 +487,12 @@ fn new_game(w: u32, h: u32, lod_bias: f32) -> Game {
 fn stage(scene: &Scene, (w, h): (u32, u32), lod_bias: f32, juice_off: u32) -> (Game, Driver) {
     let mut game = new_game(w, h, lod_bias);
     game.set_juice_off(juice_off);
-    let mut driver = Driver::new(parse_script(scene.setup));
+    // (`VH_PERF_HERO=K` plays the scene as hero K: 0 Ragnar, 1 Mehmed, 2 Miyamoto.)
+    let setup = match std::env::var("VH_PERF_HERO").ok().and_then(|k| k.trim().parse::<usize>().ok()) {
+        Some(k) => format!("0:hero:{k},{}", scene.setup),
+        None => scene.setup.to_string(),
+    };
+    let mut driver = Driver::new(parse_script(&setup));
     driver.run(&mut game, scene.settle);
     driver.play(parse_script(scene.during), scene.period);
     // From here on a change of level waits behind the loading screen for the renderer, as in the

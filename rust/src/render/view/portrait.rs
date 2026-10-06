@@ -96,8 +96,13 @@ impl WorldView {
             }
         }
         let mid = if blo.x <= bhi.x { (blo + bhi) * 0.5 } else { (lo + hi) * 0.5 };
-        // Head and shoulders: a little over the crown down to the chest.
-        let (top, bottom) = (crown + head_h * 0.25, crown - head_h * 2.3);
+        // Head and shoulders: a little over the crown down to the chest (the old man closer, his
+        // face and beard filling the frame: he speaks from it).
+        let (top, bottom) = if id == PortraitId::OldMan {
+            (crown + head_h * 0.18, crown - head_h * 1.9)
+        } else {
+            (crown + head_h * 0.25, crown - head_h * 2.3)
+        };
         let target = Vec3::new(mid.x, (top + bottom) * 0.5, mid.z);
         // (Wide enough for what stands out from the head: horns, a hat's brim.)
         let span = if blo.x <= bhi.x { (bhi.x - blo.x).max(bhi.z - blo.z) } else { 0.0 };

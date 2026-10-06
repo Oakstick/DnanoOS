@@ -75,7 +75,8 @@ pub mod workshop;
 pub use combat::Spirit;
 pub use court::PrinceBar;
 pub use feedback::{
-    streak_tier, Banner, Floater, FlyingCoin, Juice, BRUTAL_STREAK, COIN_FLIGHT_SECONDS, DOUBLE_POINTS_SECONDS, STREAK_CALLS,
+    streak_tier, Banner, Floater, FlyingCoin, Juice, BLESSED_SECONDS, BRUTAL_STREAK, COIN_FLIGHT_SECONDS, DOUBLE_POINTS_SECONDS,
+    STREAK_CALLS,
 };
 pub use juice::{Feel, JUICE_EVENTS, SHAKE_STEPS};
 pub use level::center_spawn;

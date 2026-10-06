@@ -3,16 +3,15 @@
 //! scales with the shorter window side so text stays legible from a Steam
 //! Deck to 4K.
 //!
-//! HUD layout: health (portrait, lives, HP, weapon, boons) in the top-left
-//! corner, score (gold, nuggets, best) in the top-right corner, the guide's key and
-//! the dungeon name tucked into the bottom-right.
+//! Play's HUD is laid out in `layout` (UI.md §5) and drawn in `style`'s glass by `play` (the
+//! corners), `dialogue` (the old man's words, a prince's whisper) and `angel` (the archangels).
 
 use std::sync::OnceLock;
 
 use glam::Vec3;
 
 use super::foes::{bog_slime, draugr, raven};
-use super::overlay::{rgba, Align, Overlay, Picture};
+use super::overlay::{rgba, Align, Overlay, Picture, Style};
 use super::view::STEP;
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen, TourArt, DOUBLE_POINTS_SECONDS, TOUR_STOP_SECONDS};
@@ -21,19 +20,24 @@ use crate::logic::items::{weapon, weapon_label, Offer, WeaponKind};
 use crate::logic::progression::{self, Tree};
 use crate::render::icons::{icon, Icon};
 
+mod angel;
 mod controls;
 mod court;
+mod dialogue;
 mod fullmap;
 pub mod glyphs;
 mod guide;
+pub mod layout;
 mod ledger;
 mod map;
 mod mastery;
 pub mod minimap;
 mod pit;
+mod play;
 mod ring;
 mod shop;
 pub mod specimen;
+pub mod style;
 mod war;
 
 pub use controls::controls_tab_rects;
@@ -44,7 +48,6 @@ mod ending;
 mod story;
 mod voices;
 use crate::logic::angels::Archangel;
-use crate::logic::boss::BossState;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::gear::{BELT_SLOTS, COINS_BOSS, RUNES_BOSS};
 use crate::logic::heroes::{HeroKind, ROSTER};
@@ -54,13 +57,6 @@ use crate::logic::types::{PotionKind, Tile};
 use crate::logic::{gear, hub};
 use crate::render::view::floor_at;
 pub use shop::{shop_rects, shop_row_at};
-
-const LAYOUT_COLS: f32 = 64.0;
-const LAYOUT_ROWS: f32 = 36.0;
-const MIN_TILE: f32 = 12.0;
-const MAX_TILE: f32 = 28.0;
-/// Panel height in tiles.
-const PANEL_ROWS: f32 = 3.0;
 
 const TEXT: u32 = 0xe6e0d2;
 const TEXT_DIM: u32 = 0xaaa293;
@@ -197,8 +193,9 @@ fn line(text: impl Into<String>, size: f32, color: u32) -> OverlayLine {
     OverlayLine { text: text.into(), size, color }
 }
 
+/// The HUD's unit for a `w` by `h` screen, with the player's UI scale (`style::unit`).
 pub fn tile_for(w: f32, h: f32) -> f32 {
-    (w / LAYOUT_COLS).min(h / LAYOUT_ROWS).clamp(MIN_TILE, MAX_TILE)
+    style::unit(w, h)
 }
 
 /// Builds the whole overlay for this frame.
@@ -247,10 +244,11 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         war::draw_war(o, g, t);
         ring::draw_ring(o, g, t);
         mastery::draw_mastery_toast(o, g, t);
-        draw_hud(o, g, t, if g.show_fps { Some(fps) } else { None });
+        angel::draw_arrows(o, g);
+        draw_hud(o, g, if g.show_fps { Some(fps) } else { None });
         minimap::draw(o, g, t);
         draw_feedback(o, g, t);
-        voices::draw_voices(o, g, t);
+        dialogue::draw(o, g);
     }
     match g.screen {
         Screen::Title => {
@@ -278,7 +276,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             let y = rects.last().map(|r| r[1] + r[3]).unwrap_or(o.height / 2.0) + t * 1.4;
             o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
             o.text(&where_line(g), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
-            o.wrap_text(
+            let below = o.wrap_text(
                 crate::logic::story::objective(),
                 o.width / 2.0,
                 y + t * 1.7,
@@ -287,6 +285,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 t * 0.5,
                 rgba(TEXT_DIM, 1.0),
             );
+            play::draw_pause_summary(o, g, t, below + t * 0.5);
             fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);
@@ -377,9 +376,10 @@ fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     // The portraits the level will show, made behind the loading screen (their first making costs
     // the most: the meshes go up and the driver readies the pipeline), drawn unseen.
     use crate::render::portrait::{PortraitId, Pose};
-    let hero_px = PANEL_ROWS * t - t * 0.4;
+    let hud = layout::HudLayout::of(o.width, o.height);
+    let (hero_px, face) = (hud.t * 3.2, hud.t * dialogue::FACE);
     o.portrait(PortraitId::Hero(g.hero_kind), Pose::live(g.time as f32, 1.0), 0.0, 0.0, hero_px, hero_px, false, [0.0; 4]);
-    o.portrait(PortraitId::OldMan, Pose::live(g.time as f32, 1.0), 0.0, 0.0, t * 3.0, t * 3.0, false, [0.0; 4]);
+    o.portrait(PortraitId::OldMan, Pose::live(g.time as f32, 1.0), 0.0, 0.0, face, face, false, [0.0; 4]);
     // The new level's minimap image, built and sent up behind the black too.
     minimap::prepare(o, g);
     let show = loading_words(l.age as f32);
@@ -391,66 +391,6 @@ fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     o.text(&l.label.to_uppercase(), cx, cy - t * 0.9, t * 0.8, rgba(GOLD, 0.95 * show), Align::Center, true);
     let pulse = 0.45 + 0.35 * ((l.age as f32) * 5.0).sin().abs();
     o.text("LOADING", cx, cy + t * 0.3, t * 0.5, rgba(SAND, pulse * show), Align::Center, false);
-}
-
-/**
- * The boss's health across the top middle: its name, a long bar that flashes
- * when struck and leaves a pale trail of what the blow cost, and notches at
- * the thirds where it grows angrier.
- */
-fn draw_boss_bar(o: &mut Overlay, g: &Game, t: f32) {
-    let Some(b) = &g.boss else { return };
-    if matches!(b.state, BossState::Hidden | BossState::Dead) {
-        return;
-    }
-    let w = o.width;
-    let margin = t * 0.4;
-    let bw = (w * 0.34).min(t * 19.0);
-    let x0 = w / 2.0 - bw / 2.0;
-    let y0 = margin + t * 0.35;
-    let time = g.time as f32;
-    let who = g.boss_name();
-    let name = match b.phase() {
-        1 => who,
-        2 => format!("{who} - ENRAGED"),
-        _ => format!("{who} - FURIOUS"),
-    };
-    let name_color = match b.phase() {
-        1 => SAND,
-        2 => 0xff8a2a,
-        _ => 0xff4d4d,
-    };
-    o.text(&name, w / 2.0, y0 + t * 0.2, t * 0.62, rgba(name_color, 1.0), Align::Center, true);
-    let by = y0 + t * 0.75;
-    let bh = t * 0.55;
-    let frac = b.hp as f32 / b.max_hp as f32;
-    let trail = (g.juice.boss_trail / b.max_hp as f32).clamp(0.0, 1.0);
-    o.rect(x0 - 3.0, by - 3.0, bw + 6.0, bh + 6.0, [0.0, 0.0, 0.0, 0.8]);
-    o.rect(x0, by, bw, bh, [1.0, 1.0, 1.0, 0.1]);
-    o.rect(x0, by, bw * trail, bh, [1.0, 0.95, 0.85, 0.8]);
-    let color = if b.flash > 0.3 {
-        0xffffff
-    } else if b.dazed() {
-        mix_rgb(0xc24bd8, 0xffe066, (time * 8.0).sin() * 0.5 + 0.5)
-    } else {
-        0xc24bd8
-    };
-    o.rect(x0, by, bw * frac, bh, rgba(color, 1.0));
-    o.rect(x0, by, bw * frac, bh * 0.3, [1.0, 1.0, 1.0, 0.2]);
-    for k in [1.0f32 / 3.0, 2.0 / 3.0] {
-        o.rect(x0 + bw * k - 1.0, by - t * 0.1, 2.0, bh + t * 0.2, [0.0, 0.0, 0.0, 0.85]);
-    }
-    if b.dazed() {
-        o.text(
-            "DAZED - STRIKE NOW!",
-            w / 2.0,
-            by + bh + t * 0.55,
-            t * 0.55,
-            rgba(0xffe066, 0.7 + (time * 10.0).sin() * 0.3),
-            Align::Center,
-            true,
-        );
-    }
 }
 
 fn bar(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, frac: f32, color: u32) {
@@ -482,506 +422,24 @@ fn draw_sprite(o: &mut Overlay, s: &Sprite, x: f32, y: f32, scale: f32, tint: Op
 
 // ---------------------------------------------------------------------- HUD
 
-/// A charcoal panel with a copper edge, and a brighter copper rule along its top that ties the
-/// panels together.
+/// A panel of the HUD's glass (`style::panel_glass`): its shadow, the glass, the copper rule, the
+/// notched corners.
 fn panel(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, t: f32) {
-    o.rect(x, y, w, h, [INK[0], INK[1], INK[2], 0.84]);
-    o.rect_outline(x, y, w, h, (t * 0.06).max(1.0), rgba(COPPER, 0.55));
-    o.rect(x + t * 0.3, y, w - t * 0.6, (t * 0.07).max(1.0), rgba(COPPER, 0.9));
+    style::panel_glass(o, [x, y, w, h], t, 1.0);
 }
 
-/// Where flying keys land: the row of keys in the top-right panel.
+/// Where flying keys land: the row of keys in the purse under the minimap.
 pub fn key_target(w: f32, h: f32) -> (f32, f32) {
-    let t = tile_for(w, h);
-    let margin = t * 0.4;
-    (w - margin - t * 2.6, minimap::below(w, h) + t * 1.95)
+    play::key_target(w, h)
 }
 
-fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
-    let w = o.width;
-    let h = o.height;
-    let hero = &g.hero;
-    let j = &g.juice;
-    let fs = (t * 0.68).max(12.0);
-    let small = (t * 0.52).max(11.0);
-    let margin = t * 0.4;
-    let band = PANEL_ROWS * t;
-    let time = g.time as f32;
-
-    // ---- top left: health
-    // His live portrait, made by the renderer (once a second: his gear and his breath).
-    let portrait_h = band - t * 0.4;
-    let portrait_w = portrait_h;
-    let px0 = margin + t * 0.35;
-    let py0 = margin + t * 0.2;
-    let cx0 = px0 + portrait_w + t * 0.7;
-    let bar_w = t * 7.0;
-    let left_w = (cx0 - margin) + bar_w + t * 3.2;
-    panel(o, margin, margin, left_w, band, t);
-    o.rect(px0 - t * 0.15, py0 - t * 0.1, portrait_w + t * 0.3, portrait_h + t * 0.2, [1.0, 1.0, 1.0, 0.06]);
-    let ghost = hero.invisible();
-    let golden = hero.invincible() && ((time * 6.0).floor() as i64).rem_euclid(2) == 0;
-    let hurt_red = j.hurt > 0.5 && ((time * 20.0).floor() as i64).rem_euclid(2) == 0;
-    let tint = if golden {
-        Some(0xffd84a)
-    } else if hurt_red {
-        Some(0xff5a5a)
-    } else {
-        None
-    };
-    let pose = crate::render::portrait::Pose::live(time, 1.0);
-    let tint = tint.map(|c| rgba(c, 1.0)).unwrap_or([1.0; 4]);
-    let tint = [tint[0], tint[1], tint[2], if ghost { 0.4 } else { 1.0 }];
-    o.portrait(crate::render::portrait::PortraitId::Hero(g.hero_kind), pose, px0, py0, portrait_w, portrait_h, false, tint);
-    if hero.shield.is_some() {
-        o.rect_outline(
-            px0 - t * 0.15,
-            py0 - t * 0.1,
-            portrait_w + t * 0.3,
-            portrait_h + t * 0.2,
-            (t * 0.08).max(1.0),
-            [127.0 / 255.0, 215.0 / 255.0, 1.0, 0.9],
-        );
-    }
-
-    if g.immortal {
-        let label = "GOD MODE  (F5)";
-        let gy = margin + band + t * 0.2;
-        panel(o, margin, gy, o.measure(label, fs) + t * 0.9, t * 1.0, t);
-        o.text(label, margin + t * 0.45, gy + t * 0.5, fs, rgba(0xffb050, 1.0), Align::Left, true);
-    }
-
-    let row_a = margin + t * 0.8;
-    let row_b = margin + t * 1.85;
-    let name = g.hero_kind.name().to_uppercase();
-    o.text(&name, cx0, row_a, small, rgba(SAND, 1.0), Align::Left, true);
-    let mut hx = cx0 + o.measure(&name, small) + t * 0.6;
-    for i in 0..MAX_LIVES {
-        let color = if i < g.score.lives { rgba(0xff4d6d, 1.0) } else { [1.0, 1.0, 1.0, 0.2] };
-        o.text("♥", hx, row_a, fs * 1.1, color, Align::Left, false);
-        hx += t * 0.85;
-    }
-    // Health bar: a white chunk trails behind a hit so you see how much it cost.
-    let frac = hero.hp as f32 / hero.max_hp as f32;
-    let trail = (j.hp_trail / hero.max_hp as f32).clamp(0.0, 1.0);
-    let bh = t * 0.62;
-    let by = row_b - bh / 2.0;
-    o.rect(cx0 - 2.0, by - 2.0, bar_w + 4.0, bh + 4.0, [0.0, 0.0, 0.0, 0.75]);
-    o.rect(cx0, by, bar_w, bh, [1.0, 1.0, 1.0, 0.1]);
-    o.rect(cx0, by, bar_w * trail, bh, [1.0, 1.0, 1.0, 0.75]);
-    let low = frac <= 0.25 && ((time * 4.0).sin() > 0.0);
-    o.rect(cx0, by, bar_w * frac, bh, rgba(hp_color(frac), if low { 0.7 } else { 1.0 }));
-    o.rect(cx0, by, bar_w * frac, bh * 0.3, [EDGE[0], EDGE[1], EDGE[2], 0.32]);
-    if j.hp_flash > 0.0 {
-        o.rect_outline(cx0 - 2.0, by - 2.0, bar_w + 4.0, bh + 4.0, (t * 0.1).max(2.0), rgba(j.hp_flash_color, j.hp_flash));
-    }
-    o.text(&format!("{} / {}", hero.hp, hero.max_hp), cx0 + bar_w + t * 0.35, row_b, small, rgba(TEXT, 1.0), Align::Left, true);
-    // Stamina: every blow spends it; orange while Forge-Heart makes blows free.
-    let sfrac = (hero.stamina / progression::STAMINA_MAX) as f32;
-    let sy = by + bh + t * 0.22;
-    let sh = (t * 0.22).max(4.0);
-    o.rect(cx0 - 1.0, sy - 1.0, bar_w + 2.0, sh + 2.0, [0.0, 0.0, 0.0, 0.7]);
-    let scolor = if hero.tireless() {
-        0xff9a3a
-    } else if sfrac < 0.2 && (time * 6.0).sin() > 0.0 {
-        0x4a7aa8
-    } else {
-        0x7ad8ff
-    };
-    o.rect(cx0, sy, bar_w * if hero.tireless() { 1.0 } else { sfrac }, sh, rgba(scolor, 1.0));
-
-    // ---- top right: the minimap (`minimap`), and the score under it
-    let top = minimap::below(w, h);
-    let right_w = t * 8.6;
-    let rx = w - margin - right_w;
-    panel(o, rx, top, right_w, band, t);
-    let rc = rx + right_w - t * 0.5;
-    o.text("SCORE", rc, top + t * 0.5, small, rgba(SAND, 1.0), Align::Right, true);
-    o.text(&format!("{:06}", j.score_shown.round() as u64), rc, top + t * 1.2, fs * 1.3, rgba(TEXT, 1.0), Align::Right, true);
-    // The counter jumps when a nugget lands in it.
-    let punch = j.key_punch;
-    let ncolor = if punch > 0.0 { mix_rgb(GOLD, 0xffffff, punch * 0.7) } else { GOLD };
-    let (tx, ty) = key_target(w, h);
-    if g.hub.is_some() {
-        // The seven sins' keys: a gem in each one's colour, lit for those he holds.
-        let held = SINS.iter().filter(|s| g.sins_cleared & s.bit() != 0).count();
-        let gs = small * 0.55;
-        let gap = gs * 2.6;
-        let x0 = rc - gap * 6.0 - gs;
-        o.text(&format!("SIN KEYS {held}/7"), x0 - t * 0.4, ty, small, rgba(0xff8a5a, 1.0), Align::Right, true);
-        for (i, sin) in SINS.iter().enumerate() {
-            let got = g.sins_cleared & sin.bit() != 0;
-            let x = x0 + i as f32 * gap;
-            o.circle(x + gs, ty, gs, rgba(if got { sin.color() } else { 0x3a3440 }, if got { 1.0 } else { 0.8 }));
-        }
-    } else if let Some(b) = &g.boss {
-        // The fight, then the key, then the gate.
-        let key = g.realm.map(|s| format!("THE KEY OF {}", s.title())).unwrap_or_else(|| "THE RED KEY".to_string());
-        let (text, color) = if b.alive() {
-            ("BOSS FIGHT".to_string(), 0xff8a2a)
-        } else if g.red_key.is_some() {
-            (format!("TAKE {key}"), g.key_color())
-        } else {
-            (format!("{key}: TO THE GATE"), g.key_color())
-        };
-        o.text(&text, rc, ty, small, rgba(color, 1.0), Align::Right, true);
-    } else if g.in_court() || g.in_lair() {
-        court::draw_status(o, g, rc, ty, small);
-    } else if g.in_vault() {
-        // The hoard: what he carries out of the vaults, for Mammon to ask his toll on.
-        let cp = j.coin_punch;
-        let gold = format!("{}", g.hoard.gold);
-        let gs = small * 1.3 * (1.0 + 0.3 * cp);
-        o.text(&gold, rc, ty, gs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
-        o.text("HOARD", rc - o.measure(&gold, gs) - t * 0.3, ty, small, rgba(0xffc85a, 1.0), Align::Right, true);
-    } else if g.in_run() {
-        // The realm's own gauges, stacked beneath the panel (its last row holds the purse).
-        draw_run_meters(o, g, t, rc, top + band + small * 1.1, small);
-    } else if g.in_pit() {
-        // Who will ride down, and who is still to come.
-        pit::draw_status(o, g, rc, ty, top + band + small * 1.1, small);
-    } else {
-        // A row of keys: gold for each one found, shadows for the rest.
-        let n = g.keys_total.max(1);
-        let ks = small * 1.3;
-        let gap = ks * 0.92;
-        let x0 = rc - gap * n as f32 + gap - ks;
-        o.text("KEYS", x0 - t * 0.2, ty, small, rgba(ncolor, 1.0), Align::Right, true);
-        for i in 0..n {
-            let got = i < g.keys_shown();
-            let pop = if got && i + 1 == g.keys_shown() { 1.0 + 0.5 * punch } else { 1.0 };
-            let s = ks * pop;
-            draw_sprite(
-                o,
-                icon(Icon::Key),
-                x0 + i as f32 * gap - (s - ks) / 2.0,
-                ty - s / 2.0,
-                s / 16.0,
-                if got { None } else { Some(0x3a3a44) },
-                if got { 1.0 } else { 0.75 },
-            );
-        }
-    }
-    if punch > 0.0 {
-        o.circle(tx + t * 0.2, ty, t * 0.9 * (1.0 - punch) + t * 0.2, rgba(GOLD, punch * 0.25));
-    }
-    // The purse: silver and rune fragments to spend at the old man's.
-    let cp = j.coin_punch;
-    let cs = small * (1.0 + 0.35 * cp);
-    let coins = format!("{}", g.progress.silver);
-    let cy = top + t * 2.65;
-    o.text(&coins, rc, cy, cs, rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0), Align::Right, true);
-    let ciw = small * 1.2;
-    let cx = rc - o.measure(&coins, cs) - ciw - t * 0.15;
-    draw_sprite(o, icon(Icon::Money(g.hero_kind)), cx, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
-    let runes = format!("{}", g.progress.runes);
-    let rx2 = cx - t * 0.5;
-    o.text(&runes, rx2, cy, small, rgba(0x9ad1ff, 1.0), Align::Right, true);
-    draw_sprite(o, icon(Icon::Gem(g.hero_kind)), rx2 - o.measure(&runes, small) - ciw - t * 0.1, cy - ciw / 2.0, ciw / 16.0, None, 1.0);
-
-    // ---- bottom middle: weapon, shield and potions
-    draw_loadout(o, g, t, fs, small);
-    draw_blessing(o, g, t, small);
-
-    // ---- bottom right: where you are, and the old man's guide on B
-    let bh = t * 2.0;
-    let by0 = h - margin - bh;
-    let name = g.level.data.name.to_uppercase();
-    let bw = (o.measure(&name, small) + t * 1.0).max(t * 6.5);
-    panel(o, w - margin - bw, by0, bw, bh, t);
-    let br = w - margin - t * 0.5;
-    o.text(&name, br, by0 + t * 0.55, small, rgba(SAND, 1.0), Align::Right, true);
-    let mut x = br;
-    let brow = by0 + t * 1.35;
-    let _ = &mut x;
-    glyphs::prompt_line(o, &g.input, "{Guide} THE OLD MAN'S WORD", x, brow, small * 0.85, rgba(TEXT_DIM, 1.0), Align::Right);
-
-    if let Some(fps) = fps {
-        o.text(&format!("{fps} fps"), margin + t * 0.3, h - margin - t * 0.4, small, rgba(0x99ffff, 1.0), Align::Left, true);
-        // The renderer's readout above it, oldest line at the top.
-        let n = g.perf_lines.len();
-        for (i, line) in g.perf_lines.iter().enumerate() {
-            let y = h - margin - t * 0.4 - (n - i) as f32 * small * 1.25;
-            o.text(line, margin + t * 0.3, y, small * 0.8, rgba(0x99ffff, 0.9), Align::Left, true);
-        }
-    }
-
-    draw_boss_bar(o, g, t);
-    court::draw_prince_bar(o, g, t);
-    pit::draw_clock(o, g, t);
-
-    // Frenzy window, centered along the top edge.
-    if g.frenzy.active() {
-        let bw = w * 0.3;
-        let bxx = w / 2.0 - bw / 2.0;
-        let byy = margin + t * 0.1;
-        o.rect(bxx, byy, bw, t * 0.14, [1.0, 1.0, 1.0, 0.12]);
-        let color = if g.frenzy.warning() { FRENZIED_WARN } else { FRENZIED };
-        o.rect(bxx, byy, bw * g.frenzy.fraction() as f32, t * 0.14, rgba(color, 1.0));
-    }
-}
-
-/**
- * The bottom-middle panel: what Ragnar holds and what protects him. Left,
- * the weapon (its level as pips, ammo for a shrine weapon); middle, the
- * shield and how much it has left; right, the potion belt with the one Q
- * drinks outlined. Running potion effects sit in a row just above it.
- */
-/**
- * The archangel's blessing he carries, bottom left: whose it is in their
- * colour, a pip for every use left, and the key; and while Uriel rests, how
- * long until he grants his again.
- */
-fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
-    let patron = g.progress.hero(g.hero_kind).patron;
-    if g.blessing.is_none() && g.uriel_rest <= 0.0 && patron.is_none() {
-        return;
-    }
-    let h = o.height;
-    let margin = t * 0.4;
-    let (pw, ph) = (t * 9.4, t * 2.6);
-    let (x0, y0) = (margin, h - margin - ph);
-    panel(o, x0, y0, pw, ph, t);
-    let time = g.time as f32;
-    match g.blessing {
-        Some(b) => {
-            let color = b.angel.color();
-            // A haloed emblem in their colour.
-            let (ex, ey, r) = (x0 + t * 1.3, y0 + ph / 2.0, t * 0.75);
-            o.circle(ex, ey, r * (1.0 + (time * 3.0).sin() * 0.04), rgba(color, 0.9));
-            o.circle(ex, ey, r * 0.55, rgba(0xf0ebe0, 1.0));
-            o.arc(ex, ey - r * 0.85, r * 0.55, 0.0, std::f32::consts::TAU, (t * 0.08).max(1.2), rgba(0xffe070, 1.0));
-            let tx = x0 + t * 2.5;
-            o.text(&b.angel.name().to_uppercase(), tx, y0 + t * 0.75, small * 1.1, rgba(color, 1.0), Align::Left, true);
-            let pip = t * 0.34;
-            for i in 0..b.angel.charges() {
-                let px = tx + i as f32 * (pip + t * 0.18);
-                let c = if i < b.charges { rgba(color, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
-                o.rect(px, y0 + t * 1.55 - pip / 2.0, pip, pip, c);
-            }
-            glyphs::draw_prompt_right(o, &g.input, Action::Angel, x0 + pw - t * 0.4, y0 + t * 1.55, small * 1.2);
-        }
-        None => match patron {
-            Some(a) => {
-                // The patron: his emblem filling as his power comes back, bright and breathing when it has.
-                let color = a.color();
-                let ready = g.patron_wait <= 0.0;
-                let fill = if ready { 1.0 } else { (1.0 - g.patron_wait / a.recharge()) as f32 };
-                let (ex, ey, r) = (x0 + t * 1.3, y0 + ph / 2.0, t * 0.75);
-                o.circle(ex, ey, r * 1.12, [0.0, 0.0, 0.0, 0.6]);
-                o.arc(
-                    ex,
-                    ey,
-                    r * 1.0,
-                    -std::f32::consts::FRAC_PI_2,
-                    -std::f32::consts::FRAC_PI_2 + fill * std::f32::consts::TAU,
-                    (t * 0.14).max(2.0),
-                    rgba(color, 1.0),
-                );
-                let core = if ready { 0.9 + (time * 4.0).sin() * 0.1 } else { 0.35 };
-                o.circle(ex, ey, r * 0.62, rgba(color, core));
-                o.circle(ex, ey, r * 0.34, rgba(0xf0ebe0, if ready { 1.0 } else { 0.5 }));
-                let tx = x0 + t * 2.5;
-                o.text(&a.name().to_uppercase(), tx, y0 + t * 0.75, small * 1.1, rgba(color, 1.0), Align::Left, true);
-                let (state, sc) =
-                    if ready { ("READY".to_string(), 0x7dff9a) } else { (format!("{}s", g.patron_wait.ceil() as u32), TEXT_DIM) };
-                o.text(&state, tx, y0 + t * 1.6, small, rgba(sc, 1.0), Align::Left, true);
-                glyphs::draw_prompt_right(o, &g.input, Action::Angel, x0 + pw - t * 0.4, y0 + t * 1.55, small * 1.2);
-            }
-            None => {
-                o.text("NO BLESSING", x0 + t * 0.5, y0 + t * 0.9, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
-            }
-        },
-    }
-    if g.uriel_rest > 0.0 {
-        let left = g.uriel_rest.ceil() as u32;
-        let red = Archangel::Uriel.color();
-        o.text(
-            &format!("URIEL RESTS {}:{:02}", left / 60, left % 60),
-            x0 + t * 0.5,
-            y0 - t * 0.35,
-            t * 0.42,
-            rgba(red, 0.9),
-            Align::Left,
-            true,
-        );
-    }
-}
-
-fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
-    let (w, h) = (o.width, o.height);
-    let hero = &g.hero;
-    let time = g.time as f32;
-    let margin = t * 0.4;
-    let pw = t * 27.0;
-    let ph = t * 2.6;
-    let x0 = w / 2.0 - pw / 2.0;
-    let y0 = h - margin - ph;
-    panel(o, x0, y0, pw, ph, t);
-
-    // Weapon.
-    let hk = g.hero_kind;
-    let (wname, wcolor) = weapon_label(hk, hero.weapon, hero.blade);
-    let ic = match hero.weapon {
-        WeaponKind::Ranged(r) if hero.holding_pickup() => Icon::Pickup(r),
-        _ => Icon::Node(hk, Tree::Armory, hero.blade),
-    };
-    let iw = t * 2.0 * if hero.swinging() { 1.12 } else { 1.0 };
-    o.rect(x0 + t * 0.3, y0 + t * 0.3, t * 2.0, t * 2.0, [1.0, 1.0, 1.0, 0.06]);
-    draw_sprite(o, icon(ic), x0 + t * 1.3 - iw / 2.0, y0 + t * 1.3 - iw / 2.0, iw / 16.0, None, 1.0);
-    let tx = x0 + t * 2.6;
-    let wname = wname.to_uppercase();
-    let wsize = (fs * 0.9).min(fs * 0.9 * t * 6.7 / o.measure(&wname, fs * 0.9).max(1.0));
-    o.text(&wname, tx, y0 + t * 0.75, wsize, rgba(wcolor, 1.0), Align::Left, true);
-    let row2 = y0 + t * 1.65;
-    if hero.holding_pickup() {
-        let WeaponKind::Ranged(r) = hero.weapon else { unreachable!() };
-        let max = weapon(r).ammo;
-        let pip = t * 0.28;
-        for i in 0..max {
-            let c = if i < hero.ammo { rgba(wcolor, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
-            o.rect(tx + i as f32 * (pip + t * 0.1), row2 - pip / 2.0, pip, pip, c);
-        }
-    } else {
-        // Its tier, then whether it is ready.
-        let tier = format!("TIER {}", hero.blade);
-        o.text(&tier, tx, row2, small, rgba(GOLD, 1.0), Align::Left, true);
-        let ready = if hero.weapon == WeaponKind::Sword { hero.attack_cooldown <= 0.0 } else { hero.fire_cooldown <= 0.0 };
-        let (label, color) = if ready { ("READY", 0x7dff9a) } else { ("...", TEXT_DIM) };
-        o.text(label, tx + o.measure(&tier, small) + t * 0.5, row2, small, rgba(color, 1.0), Align::Left, true);
-        // The blade's edge: keen gold, dulling amber, rusted red.
-        let edge = hero.edge as f32;
-        let ec = if hero.edge >= crate::logic::gear::DULL_EDGE {
-            0xe8c860
-        } else if hero.edge >= crate::logic::gear::RUSTED_EDGE {
-            0xd88a3a
-        } else {
-            0xc84a2a
-        };
-        bar(o, tx, y0 + t * 2.12, t * 6.2, t * 0.18, edge, ec);
-    }
-
-    // Shield.
-    let sx0 = x0 + t * 9.6;
-    o.rect(sx0, y0 + t * 0.35, (t * 0.05).max(1.0), ph - t * 0.7, [1.0, 1.0, 1.0, 0.12]);
-    let sx = sx0 + t * 0.4;
-    match hero.shield {
-        Some(sh) => {
-            let def = progression::node(hk, Tree::Shield, sh.tier);
-            let siw = t * 1.7;
-            draw_sprite(o, icon(Icon::Node(hk, Tree::Shield, sh.tier)), sx, y0 + (ph - siw) / 2.0, siw / 16.0, None, 1.0);
-            let bx = sx + siw + t * 0.3;
-            let name = def.name.to_uppercase();
-            let size = if o.measure(&name, small) > t * 5.6 { small * 0.8 } else { small };
-            o.text(&name, bx, y0 + t * 0.75, size, rgba(def.color, 1.0), Align::Left, true);
-            let frac = sh.fraction();
-            let low = frac < 0.3 && (time * 5.0).sin() > 0.0;
-            bar(
-                o,
-                bx,
-                y0 + t * 1.45,
-                t * 4.2,
-                t * 0.32,
-                frac,
-                if frac > 0.3 {
-                    0x9ad1ff
-                } else if low {
-                    0xff4a3a
-                } else {
-                    0xff8a6a
-                },
-            );
-        }
-        None => {
-            let p = g.progress.hero(hk);
-            if p.is_broken(p.carry) {
-                o.text("SHIELD DESTROYED", sx, y0 + t * 0.9, small, rgba(0xff8a6a, 1.0), Align::Left, true);
-                o.text("THE OLD MAN CAN REFORGE IT", sx, y0 + t * 1.65, small * 0.8, rgba(TEXT_DIM, 1.0), Align::Left, false);
-            } else {
-                o.text("NO SHIELD", sx, y0 + ph / 2.0, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
-            }
-        }
-    }
-    if hero.blocking {
-        // Raised: a bright rim round the shield's corner of the panel.
-        o.rect_outline(sx0 + t * 0.15, y0 + t * 0.15, t * 7.8, ph - t * 0.3, (t * 0.08).max(1.5), rgba(0x9ad1ff, 0.9));
-        o.text("RAISED", sx0 + t * 7.7, y0 + t * 2.1, small * 0.8, rgba(0x9ad1ff, 1.0), Align::Right, true);
-    }
-
-    // The potion belt.
-    let bx0 = x0 + t * 17.6;
-    o.rect(bx0, y0 + t * 0.35, (t * 0.05).max(1.0), ph - t * 0.7, [1.0, 1.0, 1.0, 0.12]);
-    let slot = t * 1.55;
-    for i in 0..BELT_SLOTS {
-        let x = bx0 + t * 0.4 + i as f32 * (slot + t * 0.2);
-        let y = y0 + t * 0.3;
-        o.rect(x, y, slot, slot, [1.0, 1.0, 1.0, 0.06]);
-        if let Some(&k) = g.belt.get(i) {
-            draw_sprite(o, icon(Icon::Potion(hk, k)), x + slot * 0.08, y + slot * 0.08, slot * 0.84 / 16.0, None, 1.0);
-        }
-        let sel = i == g.belt_index && i < g.belt.len();
-        o.rect_outline(
-            x,
-            y,
-            slot,
-            slot,
-            if sel { (t * 0.08).max(1.5) } else { 1.0 },
-            if sel { rgba(GOLD, 0.95) } else { [EDGE[0], EDGE[1], EDGE[2], 0.32] },
-        );
-        o.text(&format!("{}", i + 1), x + slot / 2.0, y + slot + t * 0.35, t * 0.36, rgba(TEXT_DIM, 1.0), Align::Center, false);
-    }
-    if let Some(&k) = g.belt.get(g.belt_index) {
-        let def = gear::potion(hk, k);
-        glyphs::prompt_line(
-            o,
-            &g.input,
-            &format!("{{Drink}} {}", def.name.to_uppercase()),
-            bx0 + t * 0.4,
-            y0 - t * 0.35,
-            t * 0.42,
-            rgba(def.color, 1.0),
-            Align::Left,
-        );
-    }
-
-    // Running effects, each with a bar that drains as it wears off.
-    let fx = &hero.fx;
-    let mut effects: Vec<(Icon, f64, f64, u32)> = Vec::new();
-    let mut add = |kind: PotionKind, left: f64| {
-        if left > 0.0 {
-            let d = gear::potion(hk, kind);
-            effects.push((Icon::Potion(hk, kind), left, d.seconds.max(left), d.color));
-        }
-    };
-    use PotionKind as K;
-    add(K::Invulnerability, hero.invincible_timer);
-    add(K::Haste, fx.haste.max(hero.speed_timer));
-    add(K::Strength, fx.strength);
-    add(K::Fury, fx.fury);
-    add(K::Fire, fx.fire);
-    add(K::Ragnarok, fx.ragnarok);
-    add(K::Spirit, fx.spirit);
-    if hero.heart > 0.0 {
-        let n = progression::node(hk, Tree::Path, 7);
-        effects.push((Icon::Node(hk, Tree::Path, 7), hero.heart, progression::path::HEART_SECONDS, n.color));
-    }
-    if hero.bark > 0 {
-        let d = gear::potion(hk, K::Bark);
-        effects.push((Icon::Potion(hk, K::Bark), hero.bark as f64, 50.0, d.color));
-    }
-    let ew = t * 1.1;
-    let mut ex = x0 + t * 0.3;
-    let ey = y0 - t * 1.55;
-    for (ic, left, total, color) in effects {
-        o.rect(ex - 2.0, ey - 2.0, ew + 4.0, ew + t * 0.35, [0.0, 0.0, 0.0, 0.55]);
-        draw_sprite(o, icon(ic), ex, ey, ew / 16.0, None, 1.0);
-        let fr = (left / total.max(0.01)).clamp(0.0, 1.0) as f32;
-        o.rect(ex, ey + ew + t * 0.05, ew * fr, t * 0.14, rgba(color, 1.0));
-        ex += ew + t * 0.3;
-    }
-    if hero.slowed() {
-        o.text("SLOWED", ex, ey + ew / 2.0, small * 0.9, rgba(0x5cff6a, 1.0), Align::Left, true);
-    }
+/// Play's HUD (UI.md §5): the corners (`play`), the archangel (`angel`); the prince's bar and the
+/// Pit's clock in the top centre.
+fn draw_hud(o: &mut Overlay, g: &Game, fps: Option<u32>) {
+    play::draw(o, g, fps);
+    angel::draw(o, g);
+    court::draw_prince_bar(o, g);
+    pit::draw_clock(o, g);
 }
 
 fn mix_rgb(a: u32, b: u32, k: f32) -> u32 {
@@ -1000,39 +458,12 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
 
     // BRUTAL: a hot flash that burns off from the middle out.
     if j.brutal > 0.0 {
-        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, 0.22 * j.brutal * j.brutal]);
-        let bands = 8;
-        let bw = t * 0.45;
-        for i in 0..bands {
-            let a = j.brutal * 0.5 * (1.0 - i as f32 / bands as f32);
-            let inset = i as f32 * bw;
-            o.rect_outline(inset + bw / 2.0, inset + bw / 2.0, w - 2.0 * inset - bw, h - 2.0 * inset - bw, bw, rgba(0xff5a1a, a));
-        }
+        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, 0.2 * j.brutal * j.brutal]);
+        style::vignette(o, t * 3.6, rgba(0xff5a1a, 0.6 * j.brutal));
     }
-    // Double points: a badge under the score while it lasts.
-    if g.double_points > 0.0 && g.screen == Screen::Playing {
-        let margin = t * 0.4;
-        let bw = t * 8.6;
-        let x = w - margin - bw;
-        let y = margin + PANEL_ROWS * t + t * 0.25;
-        let pulse = 0.8 + (g.time as f32 * 8.0).sin() * 0.2;
-        o.rect(x, y, bw, t * 1.1, [0.35, 0.05, 0.02, 0.8]);
-        o.rect_outline(x, y, bw, t * 1.1, (t * 0.07).max(1.0), rgba(0xff5a3a, pulse));
-        let secs = g.double_points.ceil() as u32;
-        o.text(&format!("x2 POINTS  {secs}s"), x + bw / 2.0, y + t * 0.45, t * 0.6, rgba(0xffd0a0, 1.0), Align::Center, true);
-        let fr = (g.double_points / DOUBLE_POINTS_SECONDS) as f32;
-        o.rect(x + t * 0.3, y + t * 0.85, (bw - t * 0.6) * fr, t * 0.1, rgba(0xff5a3a, 1.0));
-    }
-
-    // Red at the screen edges when hurt.
+    // Red at the screen's edges when hurt.
     if j.hurt > 0.0 {
-        let bands = 10;
-        let bw = t * 0.3;
-        for i in 0..bands {
-            let a = j.hurt * 0.38 * (1.0 - i as f32 / bands as f32);
-            let inset = i as f32 * bw;
-            o.rect_outline(inset + bw / 2.0, inset + bw / 2.0, w - 2.0 * inset - bw, h - 2.0 * inset - bw, bw, rgba(0xd8262e, a));
-        }
+        style::vignette(o, t * 3.0, rgba(0xd8262e, 0.55 * j.hurt));
     }
 
     // Nuggets flying to the counter along an arc, with a short trail.
@@ -1054,24 +485,28 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
         }
     }
 
-    // Milestone banner.
+    // A milestone's banner: a band across the screen, the call in the display serif popping in.
     if let Some(b) = &j.banner {
         let age = b.max - b.life;
         let big = b.text == "BRUTAL!";
         let pop = if big { 1.0 + 1.6 * (1.0 - (age / 0.25).min(1.0)).powi(3) } else { 1.0 + 0.55 * (1.0 - (age / 0.2).min(1.0)).powi(2) };
         let pop = if big { pop * 1.7 } else { pop };
-        let alpha = (b.life / 0.4).min(1.0);
+        let alpha = (b.life / 0.4).min(1.0) * (age / 0.12).min(1.0);
         let y = h * 0.27;
-        o.rect(0.0, y - t * 1.3, w, t * 2.6, [INK[0], INK[1], INK[2], 0.45 * alpha]);
-        o.text(&b.text, w / 2.0, y - t * 0.25, t * 1.4 * pop, rgba(b.color, alpha), Align::Center, true);
-        o.text(&b.sub, w / 2.0, y + t * 0.85, t * 0.6, rgba(SAND, alpha), Align::Center, true);
+        style::band(o, y, t * 2.9, t, b.color, alpha);
+        let title = style::name(t, 1.4 * pop, rgba(b.color, alpha)).centered().glow(t * 0.3, rgba(b.color, 0.35 * alpha));
+        o.text_styled(&b.text, w / 2.0, y - t * 0.3, &title);
+        o.text_styled(&b.sub, w / 2.0, y + t * 0.85, &style::label(t, style::size::LABEL, rgba(SAND, alpha)).centered());
     }
+    angel::draw_banner(o, g, t);
 
     // GO!
     if j.go > 0.0 {
         let k = j.go / 0.8;
-        let size = t * 4.5 * (1.0 + (1.0 - k) * 0.7);
-        o.text("GO!", w / 2.0, h * 0.42, size, rgba(0x7dff9a, k.min(1.0)), Align::Center, true);
+        let units = 4.5 * (1.0 + (1.0 - k) * 0.7);
+        let a = k.min(1.0);
+        let st = style::name(t, units, rgba(0x9dffb4, a)).centered().glow(t * 0.5, rgba(0x2a8a4a, 0.6 * a));
+        o.text_styled("GO!", w / 2.0, h * 0.42, &st);
     }
 }
 
@@ -1338,7 +773,8 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
             let bw = t * 1.8;
             let bh = (t * 0.22).max(5.0);
             let frac = g.hero.hp as f32 / g.hero.max_hp as f32;
-            bar(o, x - bw / 2.0, y, bw, bh, frac, hp_color(frac));
+            let trail = g.juice.hp_trail / g.hero.max_hp.max(1) as f32;
+            style::bar(o, [x - bw / 2.0, y, bw, bh], frac, trail, hp_color(frac), 1.0);
         }
     }
     if g.hero.sees() && g.screen == Screen::Playing {
@@ -1408,9 +844,12 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
                 } else {
                     a.name().to_uppercase()
                 };
-                o.text(&text, x, y, t * 0.52, rgba(0x7a7a80, 1.0), Align::Center, true);
+                o.text_styled(&text, x, y, &style::name(t, 0.58, rgba(0x8a8a90, 1.0)).centered());
             } else {
-                o.text(&offer.name().to_uppercase(), x, y, t * 0.52, rgba(offer.color(), 1.0), Align::Center, true);
+                // A name in the display serif, lit in its colour.
+                let c = offer.color();
+                let st = style::name(t, 0.64, rgba(mix_rgb(c, 0xffffff, 0.25), 1.0)).centered().glow(t * 0.22, rgba(c, 0.45));
+                o.text_styled(&offer.name().to_uppercase(), x, y, &st);
             }
         }
     }
@@ -1422,7 +861,11 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
             // Pop in big, settle, then drift up and fade.
             let age = (f.max_life - f.life) as f32;
             let pop = 1.0 + 0.8 * (1.0 - (age / 0.15).min(1.0)).powi(2);
-            o.text(&f.text, x, y, t * 0.64 * pop, rgba(f.color.unwrap_or(GOLD), alpha), Align::Center, true);
+            let st = Style::body(t * 0.68 * pop, rgba(f.color.unwrap_or(GOLD), alpha))
+                .weight(0.45)
+                .outline((t * 0.06).max(1.0), [0.0, 0.0, 0.0, 0.7 * alpha])
+                .centered();
+            o.text_styled(&f.text, x, y, &st);
         }
     }
 }
@@ -1811,7 +1254,6 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
 /// shimmer of light sweeping through the letters, each letter bobbing on its own (set by the
 /// face's own advances, so the word keeps its spacing).
 fn draw_logo_word(o: &mut Overlay, word: &str, cx: f32, cy: f32, size: f32, time: f32) {
-    use crate::render::overlay::Style;
     let style = Style::display(size, rgba(GOLD, 1.0)).tracking(0.04);
     let n = word.chars().count() as f32;
     let (pens, width) = o.pens(word, &style);
