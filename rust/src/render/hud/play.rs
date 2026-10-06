@@ -87,7 +87,8 @@ fn draw_health(o: &mut Overlay, g: &Game, l: &HudLayout) {
     o.rect(px, py, ps, ps, [0.0, 0.0, 0.0, 0.45]);
     style::glow(o, px + ps * 0.45, py + ps * 0.42, ps * 0.62, rgba(0xc0884a, 0.28));
     let golden = hero.invincible() && ((time * 6.0).floor() as i64).rem_euclid(2) == 0;
-    let hurt_red = j.hurt > 0.5 && ((time * 20.0).floor() as i64).rem_euclid(2) == 0;
+    // (A 20 Hz blink, held steady with reduce flashing on.)
+    let hurt_red = j.hurt > 0.5 && (prefs().reduce_flashing || ((time * 20.0).floor() as i64).rem_euclid(2) == 0);
     let tint = if golden {
         rgba(0xffd84a, 1.0)
     } else if hurt_red {
@@ -430,7 +431,7 @@ fn draw_boss_bar(o: &mut Overlay, g: &Game, l: &HudLayout) {
     let r = [x + pad, y + t * 1.35, w - pad * 2.0, t * 0.6];
     let frac = b.hp as f32 / b.max_hp.max(1) as f32;
     let trail = g.juice.boss_trail / b.max_hp.max(1) as f32;
-    let color = if b.flash > 0.3 {
+    let color = if b.flash > 0.3 && !prefs().reduce_flashing {
         0xffffff
     } else if b.dazed() {
         mix_rgb(0xc24bd8, 0xffe066, (time * 8.0).sin() * 0.5 + 0.5)

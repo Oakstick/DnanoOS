@@ -7,7 +7,7 @@
 //! as they always were, with no budget, and time never slows: the bots' numbers do not move with
 //! the feel.
 
-use super::{Game, MenuItem, Screen};
+use super::{Game, Screen};
 use crate::input::Action;
 use crate::logic::juice::{budgeted, Dilation, DilationKind, Stop, BUDGET_WINDOW, DILATION_EVERY, FPS};
 use crate::platform;
@@ -17,7 +17,7 @@ use crate::render::profile::fx;
 const SLOW_MOTION_KEY: &str = "vh.slow_motion";
 const SHAKE_KEY: &str = "vh.shake";
 
-/// The steps the shake setting goes through, from the pause menu.
+/// The steps the shake setting goes through (the settings page's slider).
 pub const SHAKE_STEPS: [u8; 5] = [100, 75, 50, 25, 0];
 
 /// The player's settings for the feel.
@@ -209,11 +209,6 @@ impl Game {
     /// The settings and switches the view reads each step.
     pub(super) fn sync_feel(&mut self) {
         self.view.set_feel(self.feel.shake as f32 / 100.0, self.juice_off);
-    }
-
-    /// The pause menu's buttons for the feel, showing the settings as they stand.
-    pub(super) fn feel_items(&self) -> [MenuItem; 2] {
-        [MenuItem::SlowMotion(self.feel.slow_motion), MenuItem::Shake(self.feel.shake)]
     }
 
     /// Slow motion on kills, on or off (and remembered).

@@ -226,23 +226,27 @@ fn chips_and_trauma_stay_in_their_budgets() {
 }
 
 #[test]
-fn the_pause_menu_steps_the_feels_settings() {
+fn the_settings_page_steps_the_feels_settings() {
+    use super::settings_page::{rows, Row, Tab};
     let mut g = bout(1);
     g.enter(Screen::Paused);
-    let items = g.menu_items();
-    let k = items.iter().position(|&m| m == MenuItem::Shake(100)).expect("the shake's button");
-    g.menu_index = k;
-    g.input.inject(crate::input::Action::Confirm);
+    g.open_settings_on(Tab::Gameplay);
+    g.update(crate::app::STEP);
+    let row = |r: Row| rows(Tab::Gameplay).iter().position(|&x| x == r).unwrap();
+    // The shake: a step down from full, and its value as the page writes it.
+    g.settings_page.row = row(Row::Shake);
+    g.input.nav = Some(crate::logic::types::Dir::Left);
     g.update(crate::app::STEP);
     assert_eq!(g.feel.shake, 75);
-    assert_eq!(g.menu_items()[k], MenuItem::Shake(75));
-    assert_eq!(MenuItem::Shake(75).label(), "SCREEN SHAKE: 75%");
-    let k = items.iter().position(|&m| m == MenuItem::SlowMotion(true)).unwrap();
-    g.menu_index = k;
+    assert_eq!(g.settings_value(Row::Shake), "75%");
+    // Slow motion, off.
+    g.settings_page.row = row(Row::SlowMotion);
     g.input.inject(crate::input::Action::Confirm);
     g.update(crate::app::STEP);
     assert!(!g.feel.slow_motion);
-    assert_eq!(g.screen, Screen::Paused, "and the pause menu stays");
+    assert_eq!(g.settings_value(Row::SlowMotion), "Off");
+    assert_eq!(g.screen, Screen::Paused, "and the game stays paused");
+    assert!(g.settings_page.open);
 }
 
 /// The debris at its budget (480 pieces) costs the view under 0.3 ms a step, flying and drawn

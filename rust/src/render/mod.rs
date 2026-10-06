@@ -25,8 +25,10 @@ pub mod gpu;
 pub mod heroes;
 pub mod hud;
 pub mod icons;
+pub mod legend;
 pub mod minimap;
 pub mod overlay;
+pub mod palette;
 pub mod portrait;
 pub mod preset;
 #[cfg(test)]

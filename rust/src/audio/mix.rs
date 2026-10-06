@@ -63,11 +63,13 @@ pub struct Stamp {
     /// A ducking sound's own voices are not ducked.
     pub immune: bool,
     pub gain: f64,
+    /// A voice (a cry, a word typed out): the voices' volume, not the effects', sets its level.
+    pub voice: bool,
 }
 
 impl Default for Stamp {
     fn default() -> Self {
-        Self { pan_l: 1.0, pan_r: 1.0, prio: Priority::Rest, group: 0, immune: false, gain: 1.0 }
+        Self { pan_l: 1.0, pan_r: 1.0, prio: Priority::Rest, group: 0, immune: false, gain: 1.0, voice: false }
     }
 }
 

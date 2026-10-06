@@ -175,7 +175,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
             for i in 0..bands {
                 let v = i as f32 / (bands - 1) as f32;
                 let y0 = top - t * 1.2 + v * (h - top + t * 1.2);
-                o.rect(0.0, y0, w, (h - top + t * 1.2) / bands as f32 + 1.0, [0.0, 0.0, 0.0, 0.55 * v * appear]);
+                o.rect(0.0, y0, w, (h - top + t * 1.2) / bands as f32 + 1.0, [0.0, 0.0, 0.0, 0.65 * prefs().backing * v * appear]);
             }
             typed(
                 o,
@@ -212,7 +212,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
             let by = h - bar * 0.55 - bh;
             let rise = (1.0 - appear) * t * 0.6;
             let by = by + rise;
-            o.rect(bx, by, bw, bh, [4.0 / 255.0, 6.0 / 255.0, 10.0 / 255.0, 0.86 * appear]);
+            o.rect(bx, by, bw, bh, [4.0 / 255.0, 6.0 / 255.0, 10.0 / 255.0, prefs().backing * appear]);
             o.rect_outline(bx, by, bw, bh, 1.0, [1.0, 1.0, 1.0, 0.16 * appear]);
             o.rect(bx, by, t * 0.14, bh, rgba(color, 0.9 * appear));
             // The name on a tab above the box's corner, the stage direction after it.
@@ -239,7 +239,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
     }
 
     if white > 0.0 {
-        o.rect(0.0, 0.0, w, h, [1.0, 1.0, 1.0, white]);
+        o.rect(0.0, 0.0, w, h, [1.0, 1.0, 1.0, flash(white)]);
     }
     if st.scene == Scene::Two {
         super::ending::draw_ending(o, g, t, beat.shot, bt);

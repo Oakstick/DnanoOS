@@ -175,6 +175,32 @@ pub struct AudioManager {
     robin: mix::RoundRobin,
     /// Where the next `play` sounds from (`play_at`): pan and gain.
     place_next: Option<(f64, f64)>,
+    /// The player's four volumes (UI.md §8).
+    volumes: Volumes,
+}
+
+/// The player's volumes, each 0 to 1: everything (on top of the game's own master level), the
+/// music, the effects and the voices.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Volumes {
+    pub master: f64,
+    pub music: f64,
+    pub effects: f64,
+    pub voices: f64,
+}
+
+impl Default for Volumes {
+    fn default() -> Self {
+        Self { master: 1.0, music: 1.0, effects: 1.0, voices: 1.0 }
+    }
+}
+
+impl Volumes {
+    /// From the settings' percentages.
+    pub fn of(s: &crate::settings::Settings) -> Self {
+        let k = |v: u8| v as f64 / 100.0;
+        Self { master: k(s.master), music: k(s.music), effects: k(s.effects), voices: k(s.voices) }
+    }
 }
 
 impl Default for AudioManager {
@@ -201,7 +227,34 @@ impl AudioManager {
             hero: Default::default(),
             robin: Default::default(),
             place_next: None,
+            volumes: Volumes::default(),
         }
+    }
+
+    /// The master level the mixer is given: none while muted, else the game's own level scaled by
+    /// the player's.
+    fn master_level(&self) -> f64 {
+        if self.muted {
+            0.0
+        } else {
+            MASTER_VOLUME * self.volumes.master
+        }
+    }
+
+    /// The player's volumes, into the mixer at once (and kept for when the device opens).
+    pub fn set_volumes(&mut self, v: Volumes) {
+        self.volumes = v;
+        let master = self.master_level();
+        self.with(|s| {
+            s.master = master;
+            s.music_volume = v.music;
+            s.sfx_volume = v.effects;
+            s.voice_volume = v.voices;
+        });
+    }
+
+    pub fn volumes(&self) -> Volumes {
+        self.volumes
     }
 
     /// Opens the audio device on first use. On the web this must follow a user gesture.
@@ -213,7 +266,10 @@ impl AudioManager {
             Some((synth, stream)) => {
                 {
                     let mut s = synth.lock().unwrap();
-                    s.master = if self.muted { 0.0 } else { MASTER_VOLUME };
+                    s.master = self.master_level();
+                    s.music_volume = self.volumes.music;
+                    s.sfx_volume = self.volumes.effects;
+                    s.voice_volume = self.volumes.voices;
                     s.music.running = self.soundtrack.is_none() && !self.hushed;
                     s.music.bpm = BASE_BPM * TEMPO_STEP.powi(self.tempo_step as i32);
                     s.music_target = if self.ducked { MUSIC_VOLUME * 0.3 } else { MUSIC_VOLUME };
@@ -241,8 +297,8 @@ impl AudioManager {
 
     pub fn toggle_mute(&mut self) -> bool {
         self.muted = !self.muted;
-        let muted = self.muted;
-        self.with(|s| s.master = if muted { 0.0 } else { MASTER_VOLUME });
+        let master = self.master_level();
+        self.with(|s| s.master = master);
         platform::save("vh.muted", if self.muted { "1" } else { "0" });
         self.muted
     }
@@ -331,6 +387,8 @@ impl AudioManager {
         let offset = self.rng.next() * 2.0;
         self.with(|s| {
             let t = s.now;
+            // (On the voices' volume.)
+            s.stamp.voice = true;
             match voice {
                 Speech::Child => {
                     blip(s, t, 640.0 * p, 0.035, Wave::Square, 0.022);
@@ -368,6 +426,7 @@ impl AudioManager {
                 }
                 Speech::Narrator => blip(s, t, 392.0 * p, 0.05, Wave::Triangle, 0.018),
             }
+            s.stamp = mix::Stamp::default();
         });
     }
 
@@ -1628,6 +1687,52 @@ mod tests {
         a.muted = false;
         a.synth = Some(synth.clone());
         (a, synth)
+    }
+
+    #[test]
+    fn the_volumes_reach_the_mixer() {
+        let (mut a, synth) = silent();
+        a.hush();
+        // The loudest sample of the next `secs` seconds.
+        let peak = |secs: f64| {
+            let mut buf = vec![0.0f32; (48_000.0 * secs) as usize * 2];
+            let mut s = synth.lock().unwrap();
+            for block in buf.chunks_mut(512) {
+                s.render(block, 2);
+            }
+            buf.iter().fold(0.0f32, |m, v| m.max(v.abs()))
+        };
+        let vol = |master, music, effects, voices| Volumes { master, music, effects, voices };
+        a.set_volumes(vol(0.8, 0.3, 0.6, 0.4));
+        {
+            let s = synth.lock().unwrap();
+            assert!((s.master - MASTER_VOLUME * 0.8).abs() < 1e-9);
+            assert_eq!((s.music_volume, s.sfx_volume, s.voice_volume), (0.3, 0.6, 0.4));
+        }
+        // The effects' volume at nothing: an effect is not heard (nor the bed, the music's at nothing).
+        a.set_volumes(vol(1.0, 0.0, 0.0, 1.0));
+        a.play(Sfx::Clang);
+        assert!(peak(1.5) < 1e-5, "an effect at no effects' volume");
+        a.set_volumes(vol(1.0, 0.0, 1.0, 1.0));
+        a.play(Sfx::Clang);
+        assert!(peak(1.5) > 1e-3, "and heard at full");
+        // The voices apart from the effects: the old man's word typed out.
+        a.set_volumes(vol(1.0, 0.0, 1.0, 0.0));
+        a.play_voice(Speech::Old);
+        assert!(peak(0.5) < 1e-5, "a voice at no voices' volume");
+        a.set_volumes(vol(1.0, 0.0, 0.0, 1.0));
+        a.play_voice(Speech::Old);
+        assert!(peak(0.5) > 1e-3, "heard on the voices' own");
+        // Everything at nothing, and mute over the volumes (and back to them).
+        a.set_volumes(vol(0.0, 1.0, 1.0, 1.0));
+        a.play(Sfx::Clang);
+        assert!(peak(1.5) < 1e-5);
+        a.muted = true;
+        a.set_volumes(vol(0.5, 1.0, 1.0, 1.0));
+        assert_eq!(synth.lock().unwrap().master, 0.0);
+        a.muted = false;
+        a.set_volumes(vol(0.5, 1.0, 1.0, 1.0));
+        assert!((synth.lock().unwrap().master - MASTER_VOLUME * 0.5).abs() < 1e-9);
     }
 
     #[test]

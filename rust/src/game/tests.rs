@@ -244,9 +244,9 @@ fn the_right_stick_turns_the_camera_and_it_stays_put() {
 fn the_menus_can_quit() {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
-    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
-    // Right twice, then Enter, on the title picks Quit.
-    for _ in 0..2 {
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit]);
+    // Right three times, then Enter, on the title picks Quit.
+    for _ in 0..3 {
         g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
         g.update(crate::app::STEP);
         g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
@@ -257,8 +257,8 @@ fn the_menus_can_quit() {
     assert!(g.quit_requested);
     assert_eq!(g.screen, Screen::Title);
 
-    // Pause offers Resume / the view / slow motion / the shake / Call the Old Man / Controller / Map /
-    // the Ledger / Quit to Title / Quit Game; clicking a button picks it.
+    // Pause offers Resume / Settings / Controller / Map / the Ledger / Call the Old Man / Quit to
+    // Title / Quit Game (UI.md §8); clicking a button picks it.
     let mut g = playing();
     g.input.inject(Action::Pause);
     g.update(crate::app::STEP);
@@ -267,23 +267,28 @@ fn the_menus_can_quit() {
         g.menu_items(),
         vec![
             MenuItem::Resume,
-            MenuItem::ViewFollow,
-            MenuItem::SlowMotion(true),
-            MenuItem::Shake(100),
-            MenuItem::CallOldMan,
+            MenuItem::Settings,
             MenuItem::Controls,
             MenuItem::Map,
             MenuItem::Ledger,
+            MenuItem::CallOldMan,
             MenuItem::QuitToTitle,
             MenuItem::Quit
         ]
     );
-    // The view's button switches the camera, and stays in the pause menu.
+    // Settings opens over the pause, and the camera is switched there.
     g.menu_index = 1;
     g.input.inject(Action::Confirm);
     g.update(crate::app::STEP);
+    assert!(g.settings_page.open);
+    assert_eq!(g.settings_row(), Some(crate::game::settings_page::Row::Camera));
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
     assert_eq!((g.screen, g.view.camera_mode), (Screen::Paused, view::CameraMode::Top));
-    assert_eq!(g.menu_items()[1], MenuItem::ViewTop);
+    g.input.inject(Action::Back);
+    g.update(crate::app::STEP);
+    assert!(!g.settings_page.open);
+    assert_eq!(g.screen, Screen::Paused, "back to the pause menu, still paused");
     let quit = g.menu_items().iter().position(|&m| m == MenuItem::QuitToTitle).unwrap();
     let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[quit];
     g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
@@ -310,8 +315,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II and the full map of two places"
+        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2 + 2,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II, the full map of two places, and the UI's settings and loading card"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
@@ -978,7 +983,7 @@ fn free_movement_lasts_from_dungeon_to_dungeon() {
 #[test]
 fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     let mut g = Game::new();
-    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit], "nothing to continue yet");
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit], "nothing to continue yet");
     start_from_title(&mut g);
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(0)), "an adventure is saved from its start");
 
@@ -989,7 +994,7 @@ fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     g.belt = vec![PotionKind::Health, PotionKind::Life];
     g.checkpoint(save::Stage::Arena(0));
     g.enter(Screen::Title);
-    assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+    assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit]);
     g.hero_kind = HeroKind::Ragnar;
     g.score.reset();
     g.belt.clear();
@@ -1034,7 +1039,7 @@ fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     assert_eq!(g.progress, Progress::default());
     assert!(g.saved_run.is_none());
     g.enter(Screen::Title);
-    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit]);
 }
 
 #[test]

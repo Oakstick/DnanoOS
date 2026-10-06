@@ -306,7 +306,7 @@ impl Game {
         if self.confirm_reset {
             vec![MenuItem::StartOver, MenuItem::KeepProgress]
         } else {
-            let mut items = vec![MenuItem::Play, MenuItem::Controls];
+            let mut items = vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings];
             if self.can_continue() {
                 items.insert(0, MenuItem::Continue);
             }

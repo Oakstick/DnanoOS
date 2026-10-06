@@ -37,7 +37,8 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
         .filter(|p| !p.1.is_empty())
         .map(|(head, ls, c)| (*head, ls.iter().map(|l| glyphs::words(&g.input, l)).collect(), *c))
         .collect();
-    let mut units = size::BODY * 0.92;
+    // (The guide is prose: at the size the player chose for it, smaller only to fit.)
+    let mut units = size::BODY * 0.92 * prefs().prose;
     let height = |o: &Overlay, units: f32| {
         let st = style::body(t, units, [1.0; 4]);
         let line = t * units * 1.36;

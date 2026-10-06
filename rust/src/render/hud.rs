@@ -29,12 +29,14 @@ pub mod glyphs;
 mod guide;
 pub mod layout;
 mod ledger;
+pub mod legend;
 mod map;
 mod mastery;
 pub mod minimap;
 mod pit;
 mod play;
 mod ring;
+pub mod settings;
 mod shop;
 pub mod specimen;
 pub mod style;
@@ -193,6 +195,30 @@ fn line(text: impl Into<String>, size: f32, color: u32) -> OverlayLine {
     OverlayLine { text: text.into(), size, color }
 }
 
+thread_local! {
+    /// The settings the HUD reads as it draws (`crate::settings::UiPrefs`), set by the game as
+    /// they change. Per thread: the game and its HUD run on one, and each test on its own.
+    static PREFS: std::cell::Cell<crate::settings::UiPrefs> = std::cell::Cell::new(crate::settings::UiPrefs::default());
+}
+
+/// The UI's scale, the prose's size, the colour-blind palette, the backing and the flashes.
+pub fn prefs() -> crate::settings::UiPrefs {
+    PREFS.with(|p| p.get())
+}
+
+pub fn set_prefs(p: crate::settings::UiPrefs) {
+    PREFS.with(|c| c.set(p));
+}
+
+/// A flash's strength as the player has it: dimmed to a third with reduce flashing on.
+pub fn flash(k: f32) -> f32 {
+    if prefs().reduce_flashing {
+        k * 0.33
+    } else {
+        k
+    }
+}
+
 /// The HUD's unit for a `w` by `h` screen, with the player's UI scale (`style::unit`).
 pub fn tile_for(w: f32, h: f32) -> f32 {
     style::unit(w, h)
@@ -262,6 +288,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             if g.warband.board_open {
                 ledger::draw_ledger_screen(o, g, t);
             }
+            if g.settings_page.open {
+                settings::draw_settings(o, g, t);
+            }
         }
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused if g.guide_open => guide::draw_guide(o, g, t),
@@ -295,6 +324,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             }
             if g.warband.board_open {
                 ledger::draw_ledger_screen(o, g, t);
+            }
+            if g.settings_page.open {
+                settings::draw_settings(o, g, t);
             }
         }
         Screen::Won => draw_screen(
@@ -386,11 +418,8 @@ fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     if show <= 0.0 {
         return;
     }
-    o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, 1.0]);
-    let (cx, cy) = (o.width / 2.0, o.height * 0.55);
-    o.text(&l.label.to_uppercase(), cx, cy - t * 0.9, t * 0.8, rgba(GOLD, 0.95 * show), Align::Center, true);
-    let pulse = 0.45 + 0.35 * ((l.age as f32) * 5.0).sin().abs();
-    o.text("LOADING", cx, cy + t * 0.3, t * 0.5, rgba(SAND, pulse * show), Align::Center, false);
+    // The card: the controller legend, the level's name and a tip from the old man (`legend`).
+    legend::draw_loading_card(o, g, l, t, show);
 }
 
 fn bar(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, frac: f32, color: u32) {
@@ -399,14 +428,9 @@ fn bar(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, frac: f32, color: u32) {
     o.rect(x, y, w * frac.clamp(0.0, 1.0), h, rgba(color, 1.0));
 }
 
+/// The health bar's colour, high to low (the colour-blind palette's when it is on).
 fn hp_color(frac: f32) -> u32 {
-    if frac > 0.5 {
-        0x5cff6a
-    } else if frac > 0.25 {
-        GOLD
-    } else {
-        0xd8262e
-    }
+    super::palette::health(prefs().colour_blind, frac)
 }
 
 fn draw_sprite(o: &mut Overlay, s: &Sprite, x: f32, y: f32, scale: f32, tint: Option<u32>, alpha: f32) {
@@ -458,12 +482,12 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
 
     // BRUTAL: a hot flash that burns off from the middle out.
     if j.brutal > 0.0 {
-        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, 0.2 * j.brutal * j.brutal]);
-        style::vignette(o, t * 3.6, rgba(0xff5a1a, 0.6 * j.brutal));
+        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, flash(0.2 * j.brutal * j.brutal)]);
+        style::vignette(o, t * 3.6, rgba(0xff5a1a, flash(0.6 * j.brutal)));
     }
     // Red at the screen's edges when hurt.
     if j.hurt > 0.0 {
-        style::vignette(o, t * 3.0, rgba(0xd8262e, 0.55 * j.hurt));
+        style::vignette(o, t * 3.0, rgba(0xd8262e, flash(0.55 * j.hurt)));
     }
 
     // Nuggets flying to the counter along an arc, with a short trail.
@@ -894,24 +918,25 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
             (0..count).map(|i| [px + (pw - 2.0 * bw - gap) / 2.0 + i as f32 * (bw + gap), y, bw, bh]).collect()
         }
         Screen::Title => {
-            // Continue and Start side by side in the middle below the line-up; Quit (desktop) small in the corner.
+            // Continue and Start side by side in the middle below the line-up; the controller page,
+            // the settings (and the developer's map) small in the bottom-left corner; Quit (desktop)
+            // small in the other.
             let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
-            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls | MenuItem::Map)).count();
+            let small = |i: &MenuItem| matches!(i, MenuItem::Controls | MenuItem::Settings | MenuItem::Map | MenuItem::DevMap);
+            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit) && !small(i)).count();
             let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
+            let (cw, ch) = (t * 4.6, t * 1.1);
+            let mut corner = 0.0;
             items
                 .iter()
                 .enumerate()
                 .map(|(i, item)| {
                     if *item == MenuItem::Quit {
-                        let (qw, qh) = (t * 4.6, t * 1.1);
-                        [w - qw - t * 0.6, h - qh - t * 0.6, qw, qh]
-                    } else if *item == MenuItem::Controls {
-                        let (cw, ch) = (t * 4.6, t * 1.1);
-                        [t * 0.6, h - ch - t * 0.6, cw, ch]
-                    } else if *item == MenuItem::Map {
-                        // Beside the controller button in the corner.
-                        let (cw, ch) = (t * 4.6, t * 1.1);
-                        [t * 0.6 + cw + t * 0.4, h - ch - t * 0.6, cw, ch]
+                        [w - cw - t * 0.6, h - ch - t * 0.6, cw, ch]
+                    } else if small(item) {
+                        let x = t * 0.6 + corner * (cw + t * 0.4);
+                        corner += 1.0;
+                        [x, h - ch - t * 0.6, cw, ch]
                     } else {
                         [x0 + i as f32 * (bw + gap), h * 0.875 - bh / 2.0, bw, bh]
                     }

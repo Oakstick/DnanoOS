@@ -14,7 +14,7 @@ pub mod rumble;
 use std::collections::{HashMap, HashSet};
 
 pub use bindings::{action_name, control_name, from_token, key_name, pad_kind, token, trigger_latch, Bindings, Context, Control, Device};
-pub use bindings::{MouseButton, PadButton};
+pub use bindings::{MouseButton, PadButton, Rebound, Resolve};
 pub use rumble::{Pulse, Rumble, RumbleLevel, Rumbler};
 
 use crate::logic::types::Dir;
@@ -183,11 +183,27 @@ pub struct Input {
     motion: f64,
     context: Context,
     device: Device,
+    /// A device has been used (a key, a click, a button: `device` is a real one's).
+    device_known: bool,
     /// The controls that went down this update (keys, buttons, the wheel's notches), and the
     /// wheel's notches turned (up positive): for a page that reads them as they are, the map.
     went_down: HashSet<Control>,
     wheel_turned: i32,
     rumble: RumbleLevel,
+    /// The sticks' deadzones (running, the camera), the mouse's turn and up and down turned over
+    /// (the settings: presentation only, and a bot's readings are full pushes either way).
+    move_deadzone: f32,
+    look_deadzone: f32,
+    mouse_sensitivity: f64,
+    invert_mouse_y: bool,
+    invert_stick_y: bool,
+    /// The shield by toggle: a press raises it and the next lowers it (`held(Block)` reads the
+    /// latch); a bot's or a script's guard is held as ever.
+    shield_toggle: bool,
+    block_latched: bool,
+    /// Every key, mouse button, notch of the wheel and controller button pressed this update, as
+    /// it is (the rebinding page listens to these), the fixed keys too.
+    raw: Vec<Control>,
     /// The action map: play's layer as the player has bound it (the menus' is fixed).
     pub bindings: Bindings,
     /// Once the right stick has moved the camera, it stays where it was put
@@ -209,7 +225,58 @@ pub struct Input {
 
 impl Input {
     pub fn new() -> Self {
-        Self { pad_dir: Dir::None, touch_dir: Dir::None, pad_aim_age: PAD_AIM_MEMORY, ..Default::default() }
+        Self {
+            pad_dir: Dir::None,
+            touch_dir: Dir::None,
+            pad_aim_age: PAD_AIM_MEMORY,
+            move_deadzone: MOVE_DEADZONE,
+            look_deadzone: LOOK_DEADZONE,
+            mouse_sensitivity: 1.0,
+            ..Default::default()
+        }
+    }
+
+    /// The settings of the controls (`crate::settings`): the deadzones, the mouse's turn, up and
+    /// down turned over, the shield held or toggled.
+    pub fn apply(&mut self, s: &crate::settings::Settings) {
+        self.move_deadzone = s.move_deadzone as f32 / 100.0;
+        self.look_deadzone = s.look_deadzone as f32 / 100.0;
+        self.mouse_sensitivity = s.mouse_sensitivity as f64 / 100.0;
+        self.invert_mouse_y = s.invert_mouse_y;
+        self.invert_stick_y = s.invert_stick_y;
+        if !s.shield_toggle {
+            self.block_latched = false;
+        }
+        self.shield_toggle = s.shield_toggle;
+    }
+
+    /// A device used: it is the one used last, and one has been used at all.
+    fn used(&mut self, d: Device) {
+        self.device = d;
+        self.device_known = true;
+    }
+
+    /// The device used last, once one has been used (none before the first key, click or button).
+    pub fn device_used(&self) -> Option<Device> {
+        self.device_known.then_some(self.device)
+    }
+
+    /// The controls pressed this update as they are (keys, mouse buttons, the wheel, the pad's
+    /// buttons), for the rebinding page.
+    pub fn raw_presses(&self) -> &[Control] {
+        &self.raw
+    }
+
+    /// The shield's toggle: a fresh press of Block by a control flips the latch (and is not held).
+    /// Whether `a` was taken by it.
+    fn toggled(&mut self, a: Action, new: bool) -> bool {
+        if a != Action::Block || !self.shield_toggle {
+            return false;
+        }
+        if new {
+            self.block_latched = !self.block_latched;
+        }
+        true
     }
 
     /// The player's bindings and rumble, as saved (tests keep to the defaults).
@@ -234,7 +301,7 @@ impl Input {
 
     /// Sets the device used last (captures, to draw the prompts in each device's glyphs).
     pub fn set_last_device(&mut self, device: Device) {
-        self.device = device;
+        self.used(device);
     }
 
     /// The rumble setting.
@@ -276,6 +343,7 @@ impl Input {
         let layer = if self.context == Context::Play { play } else { menu };
         let acts: Vec<Action> =
             layer.into_iter().filter(|a| a.run_dir().is_none() && a.nav_dir().is_none()).flat_map(Action::put_down).collect();
+        let acts: Vec<Action> = acts.into_iter().filter(|&a| !self.toggled(a, true)).collect();
         for &a in &acts {
             self.press(a);
         }
@@ -296,7 +364,8 @@ impl Input {
         if repeat {
             return;
         }
-        self.device = Device::KeyboardMouse;
+        self.used(Device::KeyboardMouse);
+        self.raw.push(Control::Key(code));
         if matches!(code, KeyCode::ControlLeft | KeyCode::ControlRight) {
             self.ctrl = true;
         }
@@ -321,7 +390,7 @@ impl Input {
     pub fn cursor_moved_to(&mut self, x: f32, y: f32) {
         if let Some((px, py)) = self.cursor {
             if (x - px).abs() + (y - py).abs() > MOUSE_MEANINGFUL as f32 {
-                self.device = Device::KeyboardMouse;
+                self.used(Device::KeyboardMouse);
             }
         }
         if self.cursor != Some((x, y)) {
@@ -333,7 +402,7 @@ impl Input {
     /// A mouse button, through the bindings (left click attacks and right click shields in play);
     /// in a menu the left click is a tap too, picking what it lands on.
     pub fn mouse_button(&mut self, button: winit::event::MouseButton, down: bool) {
-        self.device = Device::KeyboardMouse;
+        self.used(Device::KeyboardMouse);
         let Some(b) = MouseButton::from_winit(button) else { return };
         let c = Control::Mouse(b);
         if !down {
@@ -343,6 +412,7 @@ impl Input {
         if b == MouseButton::Left {
             self.click = self.cursor;
         }
+        self.raw.push(c);
         self.control_down(c);
         if b == MouseButton::Left && self.context == Context::Menu {
             self.press(Action::Tap);
@@ -355,7 +425,7 @@ impl Input {
         if lines == 0.0 || !lines.is_finite() {
             return;
         }
-        self.device = Device::KeyboardMouse;
+        self.used(Device::KeyboardMouse);
         if self.wheel.signum() != lines.signum() {
             self.wheel = 0.0;
         }
@@ -364,6 +434,7 @@ impl Input {
             let c = if self.wheel > 0.0 { Control::WheelUp } else { Control::WheelDown };
             self.wheel_turned += if self.wheel > 0.0 { 1 } else { -1 };
             self.wheel -= self.wheel.signum();
+            self.raw.push(c);
             self.control_down(c);
             self.control_up(c);
         }
@@ -372,17 +443,18 @@ impl Input {
     pub fn mouse_motion(&mut self, dx: f64, dy: f64) {
         self.motion += dx.abs() + dy.abs();
         if self.motion > MOUSE_MEANINGFUL {
-            self.device = Device::KeyboardMouse;
+            self.used(Device::KeyboardMouse);
         }
         if self.mouse_captured {
-            self.look.0 += dx;
-            self.look.1 += dy;
+            let k = self.mouse_sensitivity;
+            self.look.0 += dx * k;
+            self.look.1 += dy * k * if self.invert_mouse_y { -1.0 } else { 1.0 };
         }
     }
 
     pub fn touch(&mut self, id: u64, phase: winit::event::TouchPhase, x: f64, y: f64) {
         use winit::event::TouchPhase::*;
-        self.device = Device::KeyboardMouse;
+        self.used(Device::KeyboardMouse);
         match phase {
             Started => {
                 if self.touch.is_none() {
@@ -427,6 +499,7 @@ impl Input {
         self.pressed.clear();
         self.by_control.clear();
         self.ctrl = false;
+        self.block_latched = false;
         self.touch = None;
         self.touch_dir = Dir::None;
     }
@@ -462,6 +535,7 @@ impl Input {
         for &b in &order {
             let new = !self.pad_buttons.contains(&b);
             if new {
+                self.raw.push(Control::Pad(b));
                 self.went_down.insert(Control::Pad(b));
             }
             if let Some(d) = self.bindings.actions(Control::Pad(b), Context::Play).iter().find_map(|a| a.run_dir()) {
@@ -480,6 +554,9 @@ impl Input {
                     continue;
                 }
                 for p in a.put_down() {
+                    if self.toggled(p, new) {
+                        continue;
+                    }
                     if new {
                         fresh.push(p);
                     }
@@ -502,10 +579,10 @@ impl Input {
 
         // A real controller's button pressed, or a stick pushed out past its deadzone: the
         // controller is the device in use.
-        let out = [pad.left, pad.right].iter().any(|&(x, y)| x.abs().max(y.abs()) >= MOVE_DEADZONE);
+        let out = [pad.left, pad.right].iter().any(|&(x, y)| x.abs().max(y.abs()) >= self.move_deadzone);
         if let Some(kind) = pad.kind {
             if buttons.iter().any(|b| !self.pad_buttons.contains(b)) || (out && !self.stick_out) {
-                self.device = kind;
+                self.used(kind);
             }
         }
         self.stick_out = out;
@@ -514,7 +591,7 @@ impl Input {
         // The left stick chooses the corridor (or a button bound to running; the D-pad does not run).
         let mut dir = button_dir;
         let (x, y) = pad.left;
-        if x.abs().max(y.abs()) >= MOVE_DEADZONE {
+        if x.abs().max(y.abs()) >= self.move_deadzone {
             dir = if x.abs() > y.abs() {
                 if x > 0.0 {
                     Dir::Right
@@ -533,8 +610,8 @@ impl Input {
         self.pad_dir = dir;
 
         // Right stick aims, squared so small pushes stay fine and full tilt is quick.
-        let lx = curve(pad.right.0);
-        let ly = curve(pad.right.1);
+        let lx = curve(pad.right.0, self.look_deadzone);
+        let ly = curve(pad.right.1, self.look_deadzone) * if self.invert_stick_y { -1.0 } else { 1.0 };
         if lx != 0.0 || ly != 0.0 {
             self.look.0 += lx as f64 * PAD_LOOK_SPEED * dt;
             self.look.1 += ly as f64 * PAD_LOOK_SPEED * dt;
@@ -576,7 +653,7 @@ impl Input {
             v.0 += x as f64;
             v.1 += y as f64;
         };
-        let stick = self.pad.as_ref().map(|p| p.left).filter(|&(x, y)| x.abs().max(y.abs()) >= MOVE_DEADZONE);
+        let stick = self.pad.as_ref().map(|p| p.left).filter(|&(x, y)| x.abs().max(y.abs()) >= self.move_deadzone);
         if let Some((x, y)) = stick {
             let a = (y as f64).atan2(x as f64);
             return (a.cos(), a.sin());
@@ -635,6 +712,7 @@ impl Input {
 
     pub fn flush(&mut self) {
         self.just.clear();
+        self.raw.clear();
         self.went_down.clear();
         self.wheel_turned = 0;
         self.click = None;
@@ -642,6 +720,8 @@ impl Input {
         self.cursor_moved = false;
     }
 
+    /// Is `a` held down now (a key, a mouse button or a controller button)? With the shield by
+    /// toggle, the shield is up while its latch is.
     /// Whether `c` went down this update (whatever it stands for in the layer of the moment).
     pub fn went_down(&self, c: Control) -> bool {
         self.went_down.contains(&c)
@@ -662,7 +742,7 @@ impl Input {
 
     /// Is `a` held down now (a key, a mouse button or a controller button)?
     pub fn held(&self, a: Action) -> bool {
-        self.pressed.contains(&a)
+        self.pressed.contains(&a) || (a == Action::Block && self.block_latched)
     }
 
     /// Feeds a scripted press (for captures and tests).
@@ -672,6 +752,9 @@ impl Input {
 
     pub fn inject_release(&mut self, a: Action) {
         self.pressed.remove(&a);
+        if a == Action::Block {
+            self.block_latched = false;
+        }
     }
 
     pub fn hold_dir(&mut self, d: Dir, down: bool) {
@@ -683,11 +766,11 @@ impl Input {
 }
 
 /// Stick response: squared past the deadzone, so a nudge is a nudge.
-fn curve(v: f32) -> f32 {
-    if v.abs() < LOOK_DEADZONE {
+fn curve(v: f32, deadzone: f32) -> f32 {
+    if v.abs() < deadzone {
         return 0.0;
     }
-    let t = (v.abs() - LOOK_DEADZONE) / (1.0 - LOOK_DEADZONE);
+    let t = (v.abs() - deadzone) / (1.0 - deadzone).max(1e-3);
     v.signum() * t * t
 }
 

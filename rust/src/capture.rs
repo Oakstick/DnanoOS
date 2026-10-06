@@ -67,6 +67,13 @@
 //! 2 far) and `miniturn` turns it with the camera (neither saved).
 //! `--minimap` also writes the minimap's image (its fog and markers drawn on the CPU,
 //! `render::minimap::debug_picture`) beside the capture, as `NAME-minimap.png`.
+//! The settings page (UI.md §8): `settings:N` opens it on tab N (0 Gameplay .. 4 Accessibility),
+//! `setrow:N` highlights row N, `settingspad` shows the controller's bindings, `rebind:Action` waits
+//! to bind the action's first slot (`Attack`, `Block`...), `key:KeyQ` presses and lets go a key,
+//! `padbtn:PadNorth` a controller button, `uiscale:N` sets the UI's scale (80..150) and
+//! `colourblind:K` the palette (0 off .. 3 tritanopia); `loading` shows the in-game loading card.
+//! `--splash out.png` draws the engine's start screen instead (`--splash-step N`,
+//! `--splash-progress F`, `--splash-device kbm|xbox|ps`; the size from `--size`).
 
 use crate::audio::synth::Synth;
 use crate::game::{Game, Screen, Stage};
@@ -195,6 +202,19 @@ pub(crate) enum Cmd {
     Taunt,
     /// Krampus's last blow: he falls, and the cage opens.
     Fell,
+    /// UI.md §8, §9: the settings page on tab N (0 Gameplay .. 4 Accessibility), row N of it
+    /// highlighted, its binding rows on the controller's side, waiting to bind an action's first
+    /// slot; a key pressed and let go (by its name: `KeyQ`, `Escape`); a controller button pressed
+    /// and let go (`PadNorth`); the UI's scale and the colour-blind palette; the loading card.
+    Settings(usize),
+    SettingsRow(usize),
+    SettingsPad,
+    Rebind(Action),
+    Key(winit::keyboard::KeyCode),
+    PadButton(crate::input::PadButton),
+    UiScale(u8),
+    ColourBlind(usize),
+    Loading,
     /// The full map, its zoom and its middle; the minimap's zoom, and its turning.
     FullMap,
     MapZoom(f32),
@@ -283,6 +303,24 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "keyboard" => Cmd::Keyboard,
             "block" => Cmd::Press(Action::Block),
             "unblock" => Cmd::Unblock,
+            "settings" => Cmd::Settings(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "setrow" => Cmd::SettingsRow(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "settingspad" => Cmd::SettingsPad,
+            "rebind" => match parts.next().and_then(crate::input::from_token) {
+                Some(a) => Cmd::Rebind(a),
+                None => continue,
+            },
+            "key" => match parts.next().and_then(crate::input::Control::from_token) {
+                Some(crate::input::Control::Key(k)) => Cmd::Key(k),
+                _ => continue,
+            },
+            "padbtn" => match parts.next().and_then(crate::input::Control::from_token) {
+                Some(crate::input::Control::Pad(b)) => Cmd::PadButton(b),
+                _ => continue,
+            },
+            "uiscale" => Cmd::UiScale(parts.next().and_then(|v| v.parse().ok()).unwrap_or(100)),
+            "colourblind" => Cmd::ColourBlind(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "loading" => Cmd::Loading,
             "row" => Cmd::Row(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "call" => Cmd::Call,
             "tab" => Cmd::Press(Action::PotionNext),
@@ -464,6 +502,43 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Controls => game.open_controls(),
         Cmd::Keyboard => game.controls_keyboard = true,
         Cmd::Unblock => game.input.inject_release(Action::Block),
+        Cmd::Settings(k) => game.open_settings_on(crate::game::settings_page::Tab::ALL[k.min(4)]),
+        Cmd::SettingsRow(k) => game.settings_page.row = k,
+        Cmd::SettingsPad => game.settings_page.pad = true,
+        Cmd::Rebind(a) => {
+            let tab = crate::game::settings_page::Tab::Controls;
+            if !game.settings_page.open || game.settings_page.tab != tab {
+                game.open_settings_on(tab);
+            }
+            let rows = crate::game::settings_page::rows(tab);
+            game.settings_page.row = rows.iter().position(|&r| r == crate::game::settings_page::Row::Bind(a)).unwrap_or(0);
+            game.settings_page.column = 0;
+            game.listen(a, 0);
+        }
+        Cmd::Key(k) => {
+            game.input.key_down(k, false);
+            game.input.key_up(k);
+        }
+        Cmd::PadButton(b) => {
+            // A real controller's press, held for this update (`Driver` keeps no pad: the next poll lets go).
+            let kind = Some(if game.input.last_device() == crate::input::Device::PlayStation {
+                crate::input::Device::PlayStation
+            } else {
+                crate::input::Device::Xbox
+            });
+            game.input.set_pad(Some(crate::input::PadState { buttons: [b].into_iter().collect(), kind, ..Default::default() }));
+            game.input.poll(0.0);
+            game.input.set_pad(None);
+        }
+        Cmd::UiScale(n) => {
+            game.settings.ui_scale = n.clamp(80, 150);
+            game.apply_settings();
+        }
+        Cmd::ColourBlind(k) => {
+            game.settings.colour_blind = crate::settings::ColourBlind::ALL[k.min(3)];
+            game.apply_settings();
+        }
+        Cmd::Loading => game.show_loading_card(30.0),
         Cmd::Call => game.call_old_man(),
         // Drink brew number N (0 = tier 1 .. 9 = tier 10, 10 = an extra life) at once, to see its effect.
         Cmd::Potion(i) => game.debug_drink(ALL_POTIONS[i.min(10)]),
@@ -496,6 +571,30 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     eprintln!("renderer: {} (ready in {:.0} ms)", gpu.backend, started.elapsed().as_secs_f64() * 1e3);
+    if let Some(out) = arg(args, "--splash") {
+        // The engine's start screen (UI.md §9): one frame of it, at the step and the bar's place
+        // given (`--splash-step N`, `--splash-progress F`), for the device given (`--splash-device
+        // kbm|xbox|ps`) or the one saved.
+        let step = arg(args, "--splash-step").and_then(|s| s.parse().ok()).unwrap_or(2);
+        let progress = arg(args, "--splash-progress").and_then(|s| s.parse().ok()).unwrap_or(0.62);
+        let shown = arg(args, "--splash-device").and_then(crate::input::Device::from_name);
+        return match crate::render::splash::capture(&gpu.device, &gpu.queue, (w, h), step, progress, 3.0, shown) {
+            Some((rgba, ms)) => match std::fs::write(out, encode_png(w, h, &rgba)) {
+                Ok(()) => {
+                    eprintln!("wrote {out} ({w}x{h}): the start screen, its legend set in {ms:.1} ms");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("could not write {out}: {e}");
+                    1
+                }
+            },
+            None => {
+                eprintln!("could not make the start screen");
+                1
+            }
+        };
+    }
     gpu.fx_off = arg(args, "--fx-off").map(crate::render::profile::fx::parse).unwrap_or(0);
     if let Some(p) = arg(args, "--preset").and_then(crate::render::preset::Preset::named) {
         gpu.set_preset(p);

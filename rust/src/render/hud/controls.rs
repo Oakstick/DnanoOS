@@ -7,10 +7,6 @@
 use super::*;
 use crate::input::{Control, PadButton};
 
-const BODY: u32 = 0x2a2e38;
-const EDGE: u32 = 0x626a7c;
-const DARK: u32 = 0x15171d;
-const CAP: u32 = 0x3e4452;
 const SHINE: u32 = 0x8a93a6;
 const LINE: u32 = 0x9aa3b8;
 
@@ -130,26 +126,6 @@ fn controls_back_rect(w: f32, h: f32) -> [f32; 4] {
     [w / 2.0 - bw / 2.0, h - bh - t * 0.9, bw, bh]
 }
 
-/// A filled circle with a rim a little lighter than it, the way the pad's plastic catches the light.
-fn disc(o: &mut Overlay, x: f32, y: f32, r: f32, fill: u32, rim: u32, lw: f32) {
-    o.circle(x, y, r + lw, rgba(rim, 1.0));
-    o.circle(x, y, r, rgba(fill, 1.0));
-}
-
-/// A rectangle with rounded ends (a bumper, a trigger, the d-pad's arms).
-fn pill(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
-    let r = h.min(w) / 2.0;
-    if w >= h {
-        o.rect(x + r, y, w - 2.0 * r, h, color);
-        o.circle(x + r, y + r, r, color);
-        o.circle(x + w - r, y + r, r, color);
-    } else {
-        o.rect(x, y + r, w, h - 2.0 * r, color);
-        o.circle(x + r, y + r, r, color);
-        o.circle(x + r, y + h - r, r, color);
-    }
-}
-
 /// One button called out: where it is on the pad, its name, its colour and what it does.
 struct Callout {
     at: [f32; 2],
@@ -224,42 +200,13 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
     let u = (w * 0.33).min(h * 0.58) / 20.0;
     let (cx, cy) = (w / 2.0, h * 0.5);
     let p = |x: f32, y: f32| [cx + x * u, cy + y * u];
-    let lw = (u * 0.22).max(1.5);
 
-    // Triggers and bumpers behind the body.
-    for s in [-1.0f32, 1.0] {
-        let [tx, ty] = p(s * 6.4 - 1.5, -6.3);
-        pill(o, tx - lw, ty - lw, 3.0 * u + 2.0 * lw, 1.5 * u + 2.0 * lw, rgba(EDGE, 1.0));
-        pill(o, tx, ty, 3.0 * u, 1.5 * u, rgba(CAP, 1.0));
-        let [bx, by] = p(s * 6.0 - 2.3, -4.8);
-        pill(o, bx - lw, by - lw, 4.6 * u + 2.0 * lw, 1.1 * u + 2.0 * lw, rgba(EDGE, 1.0));
-        pill(o, bx, by, 4.6 * u, 1.1 * u, rgba(CAP, 1.0));
-    }
-    let (lt, rt, lb, rb) = (p(-6.4, -5.55), p(6.4, -5.55), p(-6.0, -4.25), p(6.0, -4.25));
-    for (at, b) in [(lt, PadButton::LeftTrigger), (rt, PadButton::RightTrigger), (lb, PadButton::LeftBumper), (rb, PadButton::RightBumper)]
-    {
-        o.text(&names(b), at[0], at[1], u * 0.62, rgba(SHINE, 1.0), Align::Center, false);
-    }
-
-    // The body: a rounded slab, two lobes and the grips, rimmed first and then filled.
-    let shapes: [(f32, f32, f32); 6] =
-        [(-5.6, -1.4, 3.4), (5.6, -1.4, 3.4), (-6.3, 2.4, 3.0), (6.3, 2.4, 3.0), (-7.0, 4.3, 2.3), (7.0, 4.3, 2.3)];
-    for pass in 0..2 {
-        let (grow, color) = if pass == 0 { (lw, EDGE) } else { (0.0, BODY) };
-        for &(x, y, r) in &shapes {
-            let [sx, sy] = p(x, y);
-            o.circle(sx, sy, r * u + grow, rgba(color, 1.0));
-        }
-        let [rx, ry] = p(-5.6, -4.3);
-        o.rect(rx - grow, ry - grow, 11.2 * u + 2.0 * grow, 6.3 * u + 2.0 * grow, rgba(color, 1.0));
-    }
-    // A soft highlight along the top of the body.
-    let [hx, hy] = p(-4.0, -4.0);
-    o.rect(hx, hy, 8.0 * u, 0.18 * u, rgba(SHINE, 0.35));
+    // Triggers and bumpers behind the body, then the body (`legend`, as the loading card has it).
+    super::legend::draw_pad_body(o, cx, cy, u, names_device);
 
     // Where the sticks, the d-pad, the face buttons and the three in the middle sit.
     let (ls, rs, dpad, face) = (p(-5.4, -1.5), p(2.9, 1.7), p(-2.9, 1.7), p(5.4, -1.5));
-    let (view, menu, guide) = (p(-1.6, -2.0), p(1.6, -2.0), p(0.0, -3.3));
+    let (view, menu) = (p(-1.6, -2.0), p(1.6, -2.0));
     // The triggers and bumpers are called out from their outer ends, clear of their names.
     let (lt_at, rt_at, lb_at, rb_at) = (p(-7.7, -5.55), p(7.7, -5.55), p(-8.1, -4.25), p(8.1, -4.25));
 
@@ -342,32 +289,8 @@ pub fn draw_controls(o: &mut Overlay, g: &Game, t: f32) {
         }
     }
 
-    // Sticks, d-pad, face buttons and the three in the middle.
-    for s in [ls, rs] {
-        disc(o, s[0], s[1], 1.55 * u, DARK, EDGE, lw * 0.6);
-        disc(o, s[0], s[1], 1.1 * u, CAP, SHINE, lw * 0.4);
-        o.circle(s[0], s[1], 0.35 * u, rgba(DARK, 1.0));
-    }
-    disc(o, dpad[0], dpad[1], 1.75 * u, DARK, EDGE, lw * 0.4);
-    pill(o, dpad[0] - 1.35 * u, dpad[1] - 0.45 * u, 2.7 * u, 0.9 * u, rgba(CAP, 1.0));
-    pill(o, dpad[0] - 0.45 * u, dpad[1] - 1.35 * u, 0.9 * u, 2.7 * u, rgba(CAP, 1.0));
-    o.circle(dpad[0], dpad[1], 0.25 * u, rgba(DARK, 1.0));
-    // The face buttons as the controller in use marks them (letters, or PlayStation's symbols).
-    for (b, dx, dy) in
-        [(PadButton::North, 0.0, -1.3), (PadButton::East, 1.3, 0.0), (PadButton::South, 0.0, 1.3), (PadButton::West, -1.3, 0.0)]
-    {
-        let (bx, by) = (face[0] + dx * u, face[1] + dy * u);
-        glyphs::draw_control(o, Control::Pad(b), names_device, bx - 0.68 * u, by, 1.36 * u);
-    }
-    disc(o, guide[0], guide[1], 0.7 * u, DARK, SHINE, lw * 0.5);
-    for b in [view, menu] {
-        disc(o, b[0], b[1], 0.42 * u, DARK, EDGE, lw * 0.5);
-    }
-    // The View button's two panes, the Menu button's three lines.
-    o.rect_outline(view[0] - 0.2 * u, view[1] - 0.14 * u, 0.3 * u, 0.22 * u, (u * 0.06).max(1.0), rgba(SHINE, 1.0));
-    for k in 0..3 {
-        o.rect(menu[0] - 0.2 * u, menu[1] - 0.15 * u + k as f32 * 0.14 * u, 0.4 * u, (u * 0.06).max(1.0), rgba(SHINE, 1.0));
-    }
+    // Sticks, d-pad, face buttons (as the controller in use marks them) and the three in the middle.
+    super::legend::draw_pad_buttons(o, cx, cy, u, names_device);
 
     // ---- notes, and the way back
     let notes_y = cy + 7.4 * u;

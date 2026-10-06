@@ -88,7 +88,8 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
     let pad = t * 0.5;
     let text_x0 = if look.portrait { pad + face + t * 0.65 } else { t * 3.4 };
     let room = l.dialogue[2] - text_x0 - pad - t * 0.2;
-    let mut ws = style::body(t, WORDS, rgba(look.words, fade));
+    // (Prose: at the size the player chose for it.)
+    let mut ws = style::body(t, WORDS * prefs().prose, rgba(look.words, fade));
     let per_letter = o.measure_styled("the old man walks with his dog, quitmer", &ws) / 39.0;
     let measure = (per_letter * MEASURE as f32).min(room);
     let words = glyphs::words(&g.input, &s.text);
@@ -117,13 +118,15 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
     let width = text_x0 + words_w.max(name_w).max(prompt_w).max(t * 12.0) + pad * 1.6;
     let [x, y, pw, ph] = panel_rect(&l, look.portrait, width, lines.len(), line_h);
     let y = y + slide * t * 0.8;
+    // The backing as dark as the player has it (85%, the default, is the glass as it is).
+    let back = (prefs().backing / 0.85).clamp(0.3, 1.0);
     o.alpha = fade;
     if look.portrait {
-        style::panel_ruled(o, [x, y, pw, ph], t, 1.0, AMBER);
+        style::panel_ruled(o, [x, y, pw, ph], t, back, AMBER);
     } else {
         // The whisper: darker glass, its rule in the sin's colour.
         style::shadow(o, [x, y, pw, ph], t, 1.0);
-        style::glass(o, [x, y, pw, ph], t, 1.0);
+        style::glass(o, [x, y, pw, ph], t, back);
         o.rect(x + t * 0.2, y + t * 0.2, pw - t * 0.4, ph - t * 0.4, [0.0, 0.0, 0.0, 0.25]);
         style::frame(o, [x, y, pw, ph], t, rgba(look.accent, 0.85));
     }

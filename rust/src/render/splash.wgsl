@@ -1,5 +1,5 @@
-// The engine's loading screen (splash.rs): the backdrop art filling the window (or a dark
-// gradient without it), a slow push in, the logo breathing light with a sheen sweeping over
+// The engine's loading screen (splash.rs): the controller legend (the text layer) over a dark
+// gradient (or backdrop art, dimmed), a slow push in, the logo breathing light with a sheen sweeping over
 // it, the progress bar, a spinner on the step under way, and the text layer over all.
 // Colours are display values: the target is not sRGB and the art is not converted.
 
@@ -84,6 +84,8 @@ fn fs(in: VOut) -> @location(0) vec4<f32> {
     let s = u.res.w;
     let p = in.pos.xy;
     var col = backdrop(in.uv, time);
+    // Art behind the controller legend is dimmed well under it.
+    col = mix(col, col * 0.3, u.res.z);
 
     // The bar: a hairline track, the filled part a blue gradient with a glow and a bright head,
     // and a glint running along what is filled.

@@ -15,6 +15,7 @@
 //! ```
 
 use std::f32::consts::{FRAC_PI_2, TAU};
+#[cfg(not(test))]
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use super::{mix_rgb, COPPER, GOLD, INK, SAND, TEXT};
@@ -23,7 +24,13 @@ use crate::render::overlay::{rgba, Align, AtlasRegion, Overlay, Style, ICON_REGI
 // ------------------------------------------------------------------ the unit
 
 /// The player's UI scale (80% to 150%), as f32 bits; the settings page sets it (`set_ui_scale`).
+/// (Under test, each test's thread has its own, so one that changes it never moves another's.)
+#[cfg(not(test))]
 static UI_SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000);
+#[cfg(test)]
+thread_local! {
+    static UI_SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
 
 /// The UI scale's range.
 pub const UI_SCALE_MIN: f32 = 0.8;
@@ -31,12 +38,23 @@ pub const UI_SCALE_MAX: f32 = 1.5;
 
 /// Sets the UI scale (clamped to its range); every size in the HUD follows from the next frame.
 pub fn set_ui_scale(scale: f32) {
-    UI_SCALE.store(scale.clamp(UI_SCALE_MIN, UI_SCALE_MAX).to_bits(), Ordering::Relaxed);
+    let scale = scale.clamp(UI_SCALE_MIN, UI_SCALE_MAX);
+    #[cfg(not(test))]
+    UI_SCALE.store(scale.to_bits(), Ordering::Relaxed);
+    #[cfg(test)]
+    UI_SCALE.with(|s| s.set(scale));
 }
 
 /// The UI scale now (1 unless the settings have changed it).
+#[cfg(not(test))]
 pub fn ui_scale() -> f32 {
     f32::from_bits(UI_SCALE.load(Ordering::Relaxed))
+}
+
+/// The UI scale now (this test's thread's).
+#[cfg(test)]
+pub fn ui_scale() -> f32 {
+    UI_SCALE.with(|s| s.get())
 }
 
 /// The layout's grid: the unit is the screen's width over this many, or its height over that many,

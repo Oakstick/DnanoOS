@@ -674,3 +674,108 @@ minimap drawn, sent up, zoomed and turned plays the same game as without; the pa
 
 Left: the Settings toggle for turning (U1b, on `set_minimap_turn`); the colour-blind palette; a key for the
 minimap's zoom if wanted.
+
+### U1b, the settings, rebinding and the loading legends (2026-10-07)
+
+Built on `ui-u1b`, then merged with U1c's look and U1a's maps. The harnesses (`--court`, `--pit 2 8 1`,
+the sixteen bouts `--bout 1..16 2 1 1`, `--stage-three 1`) print what they printed before U1b, line
+for line, before and after both merges.
+
+**The settings** (`settings.rs`: the data; `game/settings_page.rs`: the page's rules;
+`render/hud/settings.rs`: the page). SETTINGS on the title (in the corner, beside the controller
+page) and in the pause menu, which is now Resume, Settings, Controller, Map, The Ledger, Call the
+Old Man, Quit to Title, Quit Game (and DEV MAP while developing). Five tabs, LB / RB (Q / E) or a
+click between them; up and down choose a row, left and right change it, A / Enter chooses, B / Esc /
+Menu goes back; the mouse hovers, clicks a slider where it lands, clicks a slot to bind it; a long
+tab scrolls with the highlight. Under the list, a line on what the highlighted row does (its
+controls as glyphs). Every change is applied at once and saved.
+- Gameplay: the camera, free movement, slow motion, the shake (all saved where they were before),
+  the minimap turning with the camera (U1a's `set_minimap_turn`, `vh.minimap_turn`), the shield
+  held or toggled (`vh.shield_toggle`: in `Input`, a press of the shield's control flips a latch
+  and `held(Block)` reads it; a bot's or a script's guard is held as ever, so the fight's rules and
+  the harnesses are untouched).
+- Controls: mouse sensitivity (25-250%), up and down inverted for the mouse and for the right stick
+  apart, the two sticks' deadzones, rumble (off / low / high), which side the bindings show
+  (keyboard and mouse, or the controller), one row per play action with two slots and a reset, and
+  Reset every binding (asked twice).
+- Audio: master, music, effects, voices (0-100% each), mute. The mixer has bus volumes now
+  (`Synth::{music_volume, sfx_volume, voice_volume}`; a voice is marked by its stamp: the foes' and
+  the heroes' cries, the story's typed words), the master on top of the game's own level.
+- Display: full screen, the quality preset (high / low, switched at once: `Gpu::set_preset` makes the
+  shadow maps again; `--preset` still wins at start), the UI's scale (80-150%, `style::set_ui_scale`,
+  so every `t` follows), the size of the prose (small / normal / large: the old man's dialogue, his
+  guide, the tips). On the web, only the scale and the text size.
+- Accessibility: colour-blind palettes (`render/palette.rs`: deuteranopia and protanopia turn danger
+  orange and safety blue, tritanopia keeps red but leans it crimson, with teal for safety): the red
+  glint of a blow no shield holds, the minimap's and the full map's foe dots and green markers
+  (through `Marker::color`; `own_color` is the palette aside), the health bars; the backing behind
+  subtitles and dialogue (0-100%); reduce flashing (the BRUTAL and hurt flashes and vignettes at a
+  third, the health portrait's 20 Hz blink held steady, the boss's white flash and the Cyclops' death
+  strobe off, the foes' hit flash dimmed, Scene I's flashes dimmed and Scene II's white-out a soft
+  grey); the shake again.
+
+Keys: `vh.shield_toggle`, `vh.mouse_sensitivity`, `vh.invert_mouse_y`, `vh.invert_stick_y`,
+`vh.deadzone_move`, `vh.deadzone_look`, `vh.volume_master|music|effects|voices`, `vh.preset`,
+`vh.ui_scale`, `vh.text_size`, `vh.colour_blind`, `vh.backing`, `vh.reduce_flashing`,
+`vh.last_device`; a value missing, out of its range or unknown reads as its default.
+
+**Rebinding.** A slot chosen listens for the next control pressed (`Input::raw_presses`: keys, mouse
+buttons, the wheel's notches, the pad's buttons, as they are, the fixed keys too) for five seconds
+(its time runs out along the slot's foot); Esc or the Menu button cancels, a control of the other
+side is passed over with a hint, a fixed key (F1-F12, 0) is refused by name. A control another action
+has asks: SWAP (the other takes this slot's old control), TAKE IT (the other loses it) or CANCEL
+(`Bindings::rebind` with `Resolve::{Ask, Swap, Clear}`; `clear_slot`, `side`). While the page listens
+or asks, the testing keys do nothing. The bindings are saved on each change (`Bindings::save`, at last
+called). The minimap's zoom has no key by default (the pad's L3); its row is there to give it one.
+
+**The engine's start screen** (`render/splash.rs`). Its backdrop is the controller legend: the title
+in Cinzel over a copper rule, the gamepad drawn large left of the middle (sized to leave its labels
+room), every part called out to what it does from the saved bindings (`vh.bindings`, read from the
+settings file as `engine_start_secs` is), the face buttons as the family used last marks them, the
+keyboard and mouse's column on the right, the device used last lit (`vh.last_device`, saved by the
+game as it changes; the controller until one is known), the bar and its steps as they were, and the
+engine's name small under them. The game's two faces are its type (`text::BODY_TTF`, `DISPLAY_TTF`,
+shared, not embedded twice). The legend is set on the screen's own thread before its first frame, so
+the renderer goes straight on to its shaders. Backdrop art, if `assets/engine/splash.png` is ever
+there, is dimmed under it. `--splash out.png [--size WxH] [--splash-device kbm|xbox|ps]` draws a frame
+of it to a picture.
+
+**The in-game loading card** (`render/hud/legend.rs`, from `draw_loading`): the level's name, the
+same legend drawn with the overlay (the pad's shapes shared with the controls page, the parts' glyphs
+by `draw_control`), the keyboard and mouse's column spread down the room, the device used last lit,
+and a tip from the old man in his amber panel, turning with each load (`render::legend::TIPS`:
+fourteen, true and kind, naming the controls by token). Its data (the pad's geometry, `callouts`,
+`key_rows`, the tips) is `render/legend.rs`, shared by both screens. On the Map: THE UI - SETTINGS and
+THE UI - THE LOADING CARD (held six seconds: `Loading::hold`); in captures, `loading`.
+
+**Changed from the plan.** The shield's toggle lives in `Input` (one latch), not in the fight. The UI
+scale is U1c's (`style::set_ui_scale`; under test each thread has its own, so a test that changes it
+never moves another's unit); the prose's size, the palette, the backing and the flashes are
+`hud::prefs()` (per thread, set by the game). Fixed controls cancel listening (Esc, Menu) rather than
+the menus' Back, so B can be bound on a pad. The start screen is not shown on the web (no threads),
+as before.
+
+**Numbers** (this laptop, quick profile): the start screen's legend set in 4.6 ms at 720p, 9.1 ms at
+1080p, 33.5 ms at 2160p, once, on its own thread before its first frame; the HUD with the settings page
+open 0.19-0.23 ms a frame (25,800-33,200 vertices; the pause menu alone about 0.1 ms), the loading card
+0.15-0.21 ms; the mixer's volumes are three multiplies a sample.
+
+**Tests.** Every setting round-trips through the settings file (and junk reads as the defaults); each
+row of each tab changes and comes back, applied live (the UI scale changes `t`, the volumes reach the
+mixer, colour-blind reaches the view's tells and the HUD); a click on a slider; rebinding (bind, a
+second slot, a conflict asked, swap, take it, cancel, Esc, a fixed key refused, the other side passed
+over, the timeout, the reset of a row and of all, on the keyboard and on a PlayStation pad, the Menu
+button cancelling; `Bindings::rebind` alone, saved and read back from the file); the shield's toggle
+(mouse, pad, a bot's guard held as ever); sensitivity, inverts and deadzones; the raw presses; the
+volumes in the mixer (an effect and a voice silent at nothing, heard at full, mute over them); the
+palettes (swapped, apart, the health bar's ends told apart by a simulated deuteranope); the legend
+lists every action bound on each device (rebound too); the tips name real controls; the loading card
+at three sizes and three devices; the page fits 720p to 4K and at 150%; the pause menu's and the
+title's items; the Map's stops; the harnesses unchanged.
+
+**Captures** (the session's scratchpad, `u1b/f720`, `f1080`, `f2160`): the five tabs, the bindings on
+both sides, listening, a conflict, 150%, the loading card for each device, the start screen for each.
+
+Left: icons on the rows (with U1c's 64 px set); the full screen and the quality rows are applied by
+the app (looked at by hand, not under test); a generic pad's legend uses Xbox's positions with plain
+letters, as the glyphs do.

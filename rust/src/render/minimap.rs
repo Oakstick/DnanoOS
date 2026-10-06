@@ -787,8 +787,13 @@ pub struct Marker {
 }
 
 impl Marker {
-    /// Its colour, as 0xRRGGBB.
+    /// Its colour under the colour-blind palette the player chose (`render::palette`).
     pub fn color(&self) -> u32 {
+        crate::render::palette::marker(self, crate::render::hud::prefs().colour_blind)
+    }
+
+    /// Its own colour, the palette aside.
+    pub fn own_color(&self) -> u32 {
         match self.kind {
             MarkerKind::Hero { .. } => 0xfff4dc,
             MarkerKind::Foe(FoeRank::Plain) => 0xe8382a,

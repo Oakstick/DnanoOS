@@ -32,10 +32,11 @@ pub(super) fn draw_ending(o: &mut Overlay, g: &Game, t: f32, shot: Shot, bt: f32
         Shot::Rise => {
             let white = smooth(ascent::WHITEOUT, crate::logic::story::SCENE_TWO[2].hold as f32, bt);
             if white > 0.0 {
-                o.rect(0.0, 0.0, w, h, [1.0, 0.985, 0.96, white]);
+                let c = white_out();
+                o.rect(0.0, 0.0, w, h, [c[0], c[1], c[2], white]);
             }
         }
-        Shot::White => o.rect(0.0, 0.0, w, h, [1.0, 0.985, 0.96, 1.0]),
+        Shot::White => o.rect(0.0, 0.0, w, h, white_out()),
         Shot::Words => draw_words(o, t, bt),
         Shot::Credits => draw_credits(o, g, t, bt),
         _ => {}
@@ -167,4 +168,13 @@ pub(super) fn draw_finished_mark(o: &mut Overlay, g: &Game, t: f32) {
     o.line([x + r, y], [x, y + r], lw, c);
     o.line([x, y + r], [x - r, y], lw, c);
     o.text("THE TALE IS TOLD", x + t * 0.55, y, t * 0.5, rgba(SAND, 0.85), Align::Left, false);
+}
+
+/// The white the platform rises into: a soft warm grey instead with reduce flashing on.
+fn white_out() -> [f32; 4] {
+    if prefs().reduce_flashing {
+        [0.8, 0.78, 0.74, 1.0]
+    } else {
+        [1.0, 0.985, 0.96, 1.0]
+    }
 }

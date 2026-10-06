@@ -173,6 +173,8 @@ pub struct Voice {
     immune: bool,
     /// A gain on top of its envelope: the stamp's, lifted by merged repeats.
     boost: f64,
+    /// A voice, on the voices' volume (else an effect, on theirs).
+    voice: bool,
     /// When it was stolen by the voice budget: it fades out over `mix::STEAL_FADE`.
     stolen: Option<f64>,
 }
@@ -197,6 +199,7 @@ impl Voice {
             group: 0,
             immune: false,
             boost: 1.0,
+            voice: false,
             stolen: None,
         }
     }
@@ -241,6 +244,11 @@ pub struct Synth {
     pub rng: Rng,
 
     pub master: f64,
+    /// The player's volumes (UI.md §8), 0 to 1: the music (the tune, the recordings and the bed
+    /// under them), the effects, and the voices (cries, the story's words).
+    pub music_volume: f64,
+    pub sfx_volume: f64,
+    pub voice_volume: f64,
     music_level: f64,
     pub music_target: f64,
     tone: Biquad,
@@ -311,6 +319,9 @@ impl Synth {
             white,
             rng,
             master: 0.5,
+            music_volume: 1.0,
+            sfx_volume: 1.0,
+            voice_volume: 1.0,
             music_level,
             music_target: music_level,
             tone: Biquad::new(FilterKind::Lowpass, MUSIC_LOWPASS, 0.6, sample_rate),
@@ -359,6 +370,7 @@ impl Synth {
             v.group = st.group;
             v.immune = st.immune;
             v.boost = st.gain;
+            v.voice = st.voice;
             let now = self.now;
             let live = self
                 .voices
@@ -519,7 +531,7 @@ impl Synth {
                 }
                 match v.bus {
                     Bus::Sfx => {
-                        s *= v.boost;
+                        s *= v.boost * if v.voice { self.voice_volume } else { self.sfx_volume };
                         if let Some(at) = v.stolen {
                             s *= (1.0 - (t - at) / mix::STEAL_FADE).max(0.0);
                         }
@@ -573,12 +585,13 @@ impl Synth {
             sl[1] += (sl[0] - sl[1]) * k;
             sl[2] += (music_out + tr - sl[2]) * k;
             sl[3] += (sl[2] - sl[3]) * k;
-            let (music_l, music_r) = (sl[1], sl[3]);
+            let mv = self.music_volume;
+            let (music_l, music_r) = (sl[1] * mv, sl[3] * mv);
             // A parry or a struck hero ducks everything but its own voices.
             let duck_target = if t < self.duck_until { mix::DUCK_GAIN } else { 1.0 };
             self.duck += (duck_target - self.duck) * duck_k;
             let d = self.duck;
-            let bed = drone + frenzy;
+            let bed = (drone + frenzy) * mv;
             let (left, right) = self
                 .limiter
                 .process((keep_l + d * (sfx_l + music_l) + bed) * self.master, (keep_r + d * (sfx_r + music_r) + bed) * self.master);

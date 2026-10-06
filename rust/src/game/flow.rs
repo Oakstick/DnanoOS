@@ -79,6 +79,7 @@ impl Game {
         self.confirm_reset = false;
         self.show_controls = false;
         self.show_map = false;
+        self.settings_page = Default::default();
         self.map_ui.full = None;
         self.warband.board_open = false;
         // The backing track steps back when the game does, and under the fanfare.
@@ -150,10 +151,12 @@ impl Game {
             .or_else(|| self.hub_focus());
         self.input.set_context(self.input_context());
         self.input.poll(dt);
+        self.note_device();
         self.handle_global_keys();
         self.settle_pace();
 
         match self.screen {
+            Screen::Title | Screen::Paused if self.settings_page.open => self.update_settings(),
             Screen::Paused if self.full_map_open() => self.update_full_map(dt),
             Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
             Screen::Title | Screen::Paused if self.show_map => self.update_map(),
@@ -163,6 +166,7 @@ impl Game {
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map | MenuItem::DevMap) => self.open_map(),
+                Some(MenuItem::Settings) => self.open_settings(),
                 Some(MenuItem::Continue) => self.continue_game(),
                 Some(MenuItem::StartOver) => self.answer_reset(true),
                 Some(MenuItem::KeepProgress) => self.answer_reset(false),
@@ -206,9 +210,7 @@ impl Game {
             }
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
-                Some(MenuItem::ViewTop | MenuItem::ViewFollow) => self.switch_camera(),
-                Some(MenuItem::SlowMotion(_)) => self.toggle_slow_motion(),
-                Some(MenuItem::Shake(_)) => self.step_shake(),
+                Some(MenuItem::Settings) => self.open_settings(),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map) => self.open_full_map(),
@@ -283,7 +285,12 @@ impl Game {
     /// The layer the controls read through now: play's while the hero moves with nothing open
     /// over him, and the menus' otherwise (presentation only).
     pub fn input_context(&self) -> Context {
-        let over = self.show_controls || self.show_map || self.guide_open || self.warband.board_open || self.full_map_open();
+        let over = self.show_controls
+            || self.show_map
+            || self.guide_open
+            || self.warband.board_open
+            || self.full_map_open()
+            || self.settings_page.open;
         if matches!(self.screen, Screen::Playing | Screen::Ready | Screen::Dying | Screen::Cleared) && !over {
             Context::Play
         } else {
@@ -317,21 +324,19 @@ impl Game {
         let mut items = match self.screen {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
+            // (The view, slow motion and the shake are on the settings page now.)
             Screen::Paused => {
-                let [slow, shake] = self.feel_items();
                 let mut items = vec![
                     MenuItem::Resume,
-                    self.view_item(),
-                    slow,
-                    shake,
-                    MenuItem::CallOldMan,
+                    MenuItem::Settings,
                     MenuItem::Controls,
                     MenuItem::Map,
                     MenuItem::Ledger,
+                    MenuItem::CallOldMan,
                     MenuItem::QuitToTitle,
                 ];
                 if self.dev {
-                    items.insert(7, MenuItem::DevMap);
+                    items.insert(4, MenuItem::DevMap);
                 }
                 items
             }
@@ -394,6 +399,12 @@ impl Game {
     }
 
     pub(super) fn handle_global_keys(&mut self) {
+        // While the settings page waits for a control to bind (or asks about one), every press
+        // is its own: even the testing keys do nothing (it tells the player they are kept).
+        if self.settings_page.listen.is_some() || self.settings_page.conflict.is_some() {
+            let _ = self.input.take_look();
+            return;
+        }
         if self.input.was_pressed(&[Action::Fps]) {
             self.show_fps = !self.show_fps;
         }
@@ -438,6 +449,7 @@ impl Game {
             && !self.show_controls
             && !self.show_map
             && !self.full_map_open()
+            && !self.settings_page.open
         {
             self.call_old_man();
         }
@@ -450,7 +462,12 @@ impl Game {
         }
         // M, Tab, View or the D-pad's up: the full map, from play or the pause menu. Pressed again,
         // it is put away (`update_full_map`).
-        let pages = self.show_controls || self.show_map || self.warband.board_open || self.guide_open || self.full_map_open();
+        let pages = self.show_controls
+            || self.show_map
+            || self.warband.board_open
+            || self.guide_open
+            || self.full_map_open()
+            || self.settings_page.open;
         if self.input.was_pressed(&[Action::Map]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !pages {
             self.open_full_map();
         }
@@ -465,6 +482,7 @@ impl Game {
                 self.enter(Screen::Paused);
             }
             (self.show_controls, self.guide_open, self.warband.board_open) = (false, false, false);
+            self.settings_page.open = false;
             self.map_ui.full = None;
             self.open_map();
             self.input.consume(Action::DevMap);
@@ -473,13 +491,14 @@ impl Game {
         if self.input.was_pressed(&[Action::MinimapZoom]) && matches!(self.screen, Screen::Playing | Screen::Ready) {
             self.cycle_minimap_zoom();
         }
-        // With the controller page or a map open, Esc and Start close it instead.
+        // With the controller page, a map or the settings open, Esc and Start close it instead.
         if self.input.was_pressed(&[Action::Pause])
             && !self.show_controls
             && !self.show_map
             && !self.warband.board_open
             && !self.guide_open
             && !self.full_map_open()
+            && !self.settings_page.open
         {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);

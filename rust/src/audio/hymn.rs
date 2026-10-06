@@ -101,7 +101,7 @@ fn hz(midi: u8) -> f64 {
 /// Pushes a voice of the hymn into the mix, panned, where nothing else can take its place.
 fn put(s: &mut Synth, v: Voice, pan: f64) {
     let (pan_l, pan_r) = mix::pan_gains(pan.clamp(-1.0, 1.0));
-    s.stamp = Stamp { pan_l, pan_r, prio: Priority::Hero, group: GROUP, immune: true, gain: 1.0 };
+    s.stamp = Stamp { pan_l, pan_r, prio: Priority::Hero, group: GROUP, immune: true, gain: 1.0, voice: false };
     s.push(v);
     s.stamp = Stamp::default();
 }
