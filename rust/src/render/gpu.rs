@@ -13,10 +13,11 @@ use wgpu::util::DeviceExt;
 
 use super::clusters;
 use super::faces::StaticFaces;
-use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
+use super::overlay::{build_atlas, AtlasRegion, OVertex, ATLAS_H, ATLAS_W, LEGACY};
 use super::preset::{Preset, Shadows};
 use super::probes::{self, ProbeBox, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
+use super::text::SDF_W;
 use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS, NEAR};
 use super::voxels::RigMesh;
 
@@ -609,6 +610,11 @@ pub struct Gpu {
     env_next: u32,
     screen: wgpu::Buffer,
     overlay_bind: wgpu::BindGroup,
+    /// The UI atlas (`overlay`'s regions), for the regions written after start-up.
+    atlas: wgpu::Texture,
+    /// What the type's atlas cost at start-up, in ms: making the field, then all of the UI's
+    /// textures (the field included) up on the GPU.
+    pub ui_ms: (f64, f64),
     meshes: Vec<MeshBuf>,
     static_buf: Dyn,
     static_count: u32,
@@ -1622,26 +1628,46 @@ impl Gpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let atlas = device.create_texture_with_data(
+        // The UI atlas: the old one in its corner, the rest clear for the icons, the minimap and the
+        // portraits (`overlay`'s regions), written on the GPU; and the type's field (`text`), with
+        // its mip levels so small text reads it smoothly.
+        let ui_start = web_time::Instant::now();
+        let atlas = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ui atlas"),
+            size: wgpu::Extent3d { width: ATLAS_W, height: ATLAS_H, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        write_region(&queue, &atlas, AtlasRegion::new(0, 0, LEGACY, LEGACY), &build_atlas());
+        let atlas_view = atlas.create_view(&Default::default());
+        let fonts = super::text::fonts();
+        let sdf_mips = sdf_mip_chain(&fonts.pixels, SDF_W, fonts.height);
+        let sdf = device.create_texture_with_data(
             &queue,
             &wgpu::TextureDescriptor {
-                label: Some("font"),
-                size: wgpu::Extent3d { width: ATLAS_W, height: ATLAS_H, depth_or_array_layers: 1 },
-                mip_level_count: 1,
+                label: Some("type"),
+                size: wgpu::Extent3d { width: SDF_W, height: fonts.height, depth_or_array_layers: 1 },
+                mip_level_count: SDF_MIPS,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: wgpu::TextureFormat::R8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             },
             wgpu::util::TextureDataOrder::LayerMajor,
-            &build_atlas(),
+            &sdf_mips,
         );
-        let atlas_view = atlas.create_view(&Default::default());
+        let sdf_view = sdf.create_view(&Default::default());
+        let ui_ms = (fonts.build_ms, ui_start.elapsed().as_secs_f64() * 1e3);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("font"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let overlay_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1664,6 +1690,16 @@ impl Gpu {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 17,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let overlay_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1673,6 +1709,7 @@ impl Gpu {
                 wgpu::BindGroupEntry { binding: 0, resource: screen.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&atlas_view) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 17, resource: wgpu::BindingResource::TextureView(&sdf_view) },
             ],
         });
         let overlay_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1689,7 +1726,7 @@ impl Gpu {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<OVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Float32x4],
                 }],
                 compilation_options: Default::default(),
             },
@@ -1818,6 +1855,8 @@ impl Gpu {
             env_next: ENV_PASSES,
             screen,
             overlay_bind,
+            atlas,
+            ui_ms,
             meshes,
             static_count: 0,
             backend,
@@ -3193,6 +3232,16 @@ impl Gpu {
         }
     }
 
+    /**
+     * Writes tightly packed RGBA rows (`r.w * r.h * 4` bytes, sRGB like the rest of the HUD) over a
+     * region of the UI atlas: the minimap's level and fog (`overlay::MAP_REGION`), redrawn icons
+     * (`overlay::ICON_REGION`). It shows from the next frame drawn.
+     */
+    pub fn write_atlas(&self, r: AtlasRegion, rgba: &[u8]) {
+        assert!(r.x + r.w <= ATLAS_W && r.y + r.h <= ATLAS_H && rgba.len() == (r.w * r.h * 4) as usize, "{r:?} in the atlas");
+        write_region(&self.queue, &self.atlas, r, rgba);
+    }
+
     /// A texture the size of the screen to draw into without a window.
     pub fn offscreen(&self) -> wgpu::TextureView {
         self.device
@@ -3293,6 +3342,44 @@ impl Gpu {
         }
         out
     }
+}
+
+/// The type's field has its full size and this many halvings, for small text.
+const SDF_MIPS: u32 = 1;
+
+/// The type's field with its mip levels after it, each a box-filtered halving of the last.
+fn sdf_mip_chain(base: &[u8], w: u32, h: u32) -> Vec<u8> {
+    let mut out = base.to_vec();
+    let (mut lw, mut lh) = (w as usize, h as usize);
+    let mut level = base.to_vec();
+    for _ in 1..SDF_MIPS {
+        let (nw, nh) = ((lw / 2).max(1), (lh / 2).max(1));
+        let mut next = vec![0u8; nw * nh];
+        for y in 0..nh {
+            for x in 0..nw {
+                let at = |dx: usize, dy: usize| level[(2 * y + dy).min(lh - 1) * lw + (2 * x + dx).min(lw - 1)] as u32;
+                next[y * nw + x] = ((at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1) + 2) / 4) as u8;
+            }
+        }
+        out.extend_from_slice(&next);
+        (lw, lh, level) = (nw, nh, next);
+    }
+    out
+}
+
+/// Writes tightly packed RGBA rows over a region of the UI atlas.
+fn write_region(queue: &wgpu::Queue, atlas: &wgpu::Texture, r: AtlasRegion, rgba: &[u8]) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: atlas,
+            mip_level: 0,
+            origin: wgpu::Origin3d { x: r.x, y: r.y, z: 0 },
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba,
+        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(r.w * 4), rows_per_image: Some(r.h) },
+        wgpu::Extent3d { width: r.w, height: r.h, depth_or_array_layers: 1 },
+    );
 }
 
 /**

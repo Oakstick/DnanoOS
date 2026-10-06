@@ -29,6 +29,7 @@ mod mastery;
 mod pit;
 mod ring;
 mod shop;
+pub mod specimen;
 mod war;
 
 pub use controls::controls_tab_rects;
@@ -1763,29 +1764,29 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     ending::draw_finished_mark(o, g, t);
 }
 
-/// The title word: a dark outline, a bronze bevel below, gold on top, and a
-/// shimmer of light sweeping through the letters.
+/// The title word in the display serif: a dark outline, a bronze bevel below, gold on top, and a
+/// shimmer of light sweeping through the letters, each letter bobbing on its own (set by the
+/// face's own advances, so the word keeps its spacing).
 fn draw_logo_word(o: &mut Overlay, word: &str, cx: f32, cy: f32, size: f32, time: f32) {
-    let shadow = std::mem::replace(&mut o.shadow, 0.0);
+    use crate::render::overlay::Style;
+    let style = Style::display(size, rgba(GOLD, 1.0)).tracking(0.04);
     let n = word.chars().count() as f32;
-    let adv = o.measure("M", size);
-    let x0 = cx - adv * n / 2.0;
+    let (pens, width) = o.pens(word, &style);
+    let x0 = cx - width / 2.0;
     let sweep = ((time * 0.35) % 1.6) * (n + 6.0) - 3.0;
     let d = (size * 0.05).max(2.0);
-    for (i, ch) in word.chars().enumerate() {
+    for (i, (ch, pen)) in word.chars().zip(pens).enumerate() {
+        let x = x0 + pen;
         let s = ch.to_string();
-        let x = x0 + adv * (i as f32 + 0.5);
         let bounce = (time * 2.2 + i as f32 * 0.5).sin() * size * 0.015;
         let y = cy + bounce;
-        for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d), (-d, -d), (d, d), (-d, d), (d, -d)] {
-            o.text(&s, x + dx, y + dy + d, size, [0.0, 0.0, 0.0, 0.85], Align::Center, true);
-        }
-        o.text(&s, x, y + d * 1.2, size, rgba(0x8a5a14, 1.0), Align::Center, true);
+        let edge = style.outline(d, [0.0, 0.0, 0.0, 0.85]).shadow(d * 0.6, d);
+        o.text_styled(&s, x, y + d, &edge.color([0.0, 0.0, 0.0, 0.85]));
+        o.text_styled(&s, x, y + d * 1.2, &style.color(rgba(0x8a5a14, 1.0)));
         let glint = (1.0 - ((i as f32 - sweep).abs() / 1.6)).clamp(0.0, 1.0);
         let color = mix_rgb(GOLD, 0xfff6d0, glint * 0.85);
-        o.text(&s, x, y, size, rgba(color, 1.0), Align::Center, true);
+        o.text_styled(&s, x, y, &style.color(rgba(color, 1.0)));
     }
-    o.shadow = shadow;
 }
 
 // ---------------------------------------------------------- character screen

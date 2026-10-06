@@ -2425,6 +2425,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "steamworks",
+ "ttf-parser",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

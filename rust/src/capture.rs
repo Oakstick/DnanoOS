@@ -40,6 +40,8 @@
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
 //! where `pause` skips it).
+//! `--specimen` draws the type specimen instead of the HUD (both faces at the HUD's sizes, and the
+//! overlay's textured quads: `render::hud::specimen`).
 //! `--iso` renders the whole level from an isometric map camera instead;
 //! `--closeup [angle] [distance]` a portrait of the hero (angle in degrees around him, 0 = his front);
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
@@ -580,7 +582,10 @@ pub fn run(args: &[String]) -> i32 {
         a.hemi_ground *= 2.5;
     }
     overlay.begin(w as f32, h as f32);
-    if !args.iter().any(|a| a == "--no-hud") {
+    if args.iter().any(|a| a == "--specimen") {
+        // The type and the overlay's quads on a plain ground (`hud::specimen`).
+        hud::specimen::draw(&mut overlay, hud::tile_for(w as f32, h as f32));
+    } else if !args.iter().any(|a| a == "--no-hud") {
         hud::draw(&mut overlay, &game, 60);
     }
     gpu.sync_static(&mut game.view);

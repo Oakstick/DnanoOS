@@ -1572,17 +1572,21 @@ struct Screen {
 @group(0) @binding(0) var<uniform> screen: Screen;
 @group(0) @binding(1) var atlas: texture_2d<f32>;
 @group(0) @binding(2) var atlas_sampler: sampler;
+// The type's signed distance field (`render::text`): 0.5 on the outline, more inside.
+@group(0) @binding(17) var sdf_atlas: texture_2d<f32>;
 
 struct OIn {
     @location(0) pos: vec2<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
+    @location(3) extra: vec4<f32>,
 };
 
 struct OOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) color: vec4<f32>,
+    @location(2) extra: vec4<f32>,
 };
 
 @vertex
@@ -1591,12 +1595,50 @@ fn vs_overlay(v: OIn) -> OOut {
     out.clip = vec4<f32>(v.pos.x / screen.size.x * 2.0 - 1.0, 1.0 - v.pos.y / screen.size.y * 2.0, 0.0, 1.0);
     out.uv = v.uv;
     out.color = v.color;
+    out.extra = v.extra;
     return out;
 }
 
+// How a vertex's texel is read (`overlay::FLAG_*`).
+const O_SDF: u32 = 1u;
+const O_CIRCLE: u32 = 2u;
+const O_PREMULTIPLIED: u32 = 4u;
+// A pixel's four samples for text, in pixels from its centre.
+const O_GRID = array<vec2<f32>, 4>(vec2<f32>(-0.125, -0.375), vec2<f32>(0.375, -0.125), vec2<f32>(0.125, 0.375), vec2<f32>(-0.375, 0.125));
+
 @fragment
 fn fs_overlay(in: OOut) -> @location(0) vec4<f32> {
-    // Glyphs are white with their coverage as alpha; the pictures carry their own colour.
+    // Both textures read, and their derivatives taken, while control flow is still uniform.
     let t = textureSample(atlas, atlas_sampler, in.uv);
-    return vec4<f32>(in.color.rgb * t.rgb, in.color.a * t.a);
+    let d = textureSample(sdf_atlas, atlas_sampler, in.uv).r;
+    let fw = max(fwidth(d), 1e-4);
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    let r = length(in.extra.yz);
+    let fr = max(fwidth(r), 1e-4);
+    let flags = u32(in.extra.x + 0.5);
+    if ((flags & O_SDF) != 0u) {
+        // The outline's edge moved out by `extra.y` (a heavier weight, an outline, a glow), softened
+        // over `extra.z` more. Four samples a pixel on a rotated grid, each anti-aliased over its
+        // quarter, so small text keeps its shape where one sample would skip texels.
+        let edge = 0.5 - in.extra.y;
+        let w = fw * 0.5;
+        var a = 0.0;
+        for (var k = 0; k < 4; k++) {
+            let o = O_GRID[k];
+            let s = textureSampleLevel(sdf_atlas, atlas_sampler, in.uv + du * o.x + dv * o.y, 0.0).r;
+            a += smoothstep(edge - in.extra.z - w, edge + w, s);
+        }
+        return vec4<f32>(in.color.rgb, in.color.a * a * 0.25);
+    }
+    // Glyphs of the pixel font are white with their coverage as alpha; the pictures carry their own colour.
+    var rgb = t.rgb;
+    var a = t.a;
+    if ((flags & O_PREMULTIPLIED) != 0u) {
+        rgb = t.rgb / max(t.a, 1e-3);
+    }
+    if ((flags & O_CIRCLE) != 0u) {
+        a = a * (1.0 - smoothstep(1.0 - fr, 1.0, r));
+    }
+    return vec4<f32>(in.color.rgb * rgb, in.color.a * a);
 }
