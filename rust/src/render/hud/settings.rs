@@ -191,7 +191,7 @@ pub fn draw_settings(o: &mut Overlay, g: &Game, t: f32) {
                 let on = g.settings_value(row) == "On";
                 let (sw, sh) = (t * 1.6, t * 0.7);
                 let (sx, sy) = (v[0] + t * 0.3, cy - sh / 2.0);
-                super::legend::pill(o, sx, sy, sw, sh, if on { rgba(GOLD, 0.85) } else { [1.0, 1.0, 1.0, 0.12] });
+                super::legend::pill(o, sx, sy, sw, sh, if on { rgba(0xc89a50, 1.0) } else { rgba(0x3a3f48, 1.0) });
                 let kx = if on { sx + sw - sh / 2.0 } else { sx + sh / 2.0 };
                 o.circle(kx, cy, sh * 0.38, if on { rgba(0x1a1612, 1.0) } else { rgba(TEXT_DIM, 1.0) });
                 o.text_styled(&g.settings_value(row), sx + sw + t * 0.5, cy, &value.color(rgba(if on { GOLD } else { TEXT_DIM }, 1.0)));
