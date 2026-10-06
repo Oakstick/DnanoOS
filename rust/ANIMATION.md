@@ -1,16 +1,18 @@
-# Animation by clips: the pipeline, piloted on Ragnar
+# Animation by clips: the pipeline, piloted on Ragnar, now all three heroes
 
 How the heroes (and later the cast and the foes) are animated by clips made in Blender, from
 motion of any source (keyed by hand or by script, Mixamo, video-to-motion, text-to-motion, paid
 services later), instead of only by curves written in code. The pilot is Ragnar: his skeleton, his
 first seven clips keyed by script, then twelve clips from Mixamo's sword and shield motion, the
-whole chain from Blender to the game, and the old animation beside the new for comparison.
+whole chain from Blender to the game, and the old animation beside the new for comparison. Mehmed
+and Miyamoto followed: their joint tables, and twelve clips each from Mixamo (§6.5, §6.6).
 
 Status: the pilot is built on `anim-ragnar` (2026-10-05), and the Mixamo step is done (§6): Ragnar
 plays by twelve clips retargeted from Mixamo by default; `VH_ANIM=code` gives the old animation
 back. The scripted clips of the first pass are kept in the history (and in `block_ragnar.py`) for
-comparison, not in the build. Mehmed and Miyamoto play as before until their joint tables (§1.3)
-and clips exist. What is left is in §10.
+comparison, not in the build. Mehmed (the janissary, sabre and kalkan) and Miyamoto (the samurai,
+his katana in both fists, his shield slung on his back) play by clips of their own since
+`anim-heroes` (2026-10-07). What is left is in §10.
 
 ---
 
@@ -88,12 +90,68 @@ weapons and shield in theirs). Ragnar's (grid 60 × 92 × 36):
 | blade, offhand | 51.5 / 7.5, 29.8, 17.4 | the grip in each fist |
 | shield | 7.5, 40, 17 | the middle of the shield forearm, where it is strapped |
 
-Mehmed and Miyamoto follow with tables of their own in `skeleton::joints` (their grids are
-`heroes::MEHMED_SIZE` and `MIYAMOTO_SIZE`; their parts are tagged as Ragnar's are). Until then they
-have no jointed rig and play by the code. The tests check the cut keeps every voxel exactly once
-and in its place, that none lies below the next joint down its limb or beyond its bone's reach,
-and that the left limbs stay on his left; `VH_ANIM=bones` paints each bone its own colour in the
-game, and `import_rig.py` renders the same in Blender (§8).
+A cut across a limb at a height is **sleeved** (`skeleton::SLEEVE`: the band of the bone above the
+joint laid on the bone below as well, so a bend overlaps itself). Where the plane would cross other
+parts too, the cut is kept to a box across the limb (`Cut::below_within`, its sleeve with it), and a
+joint hidden under a skirt is cut unsleeved (`Cut::bare`: its sleeve would lay a band of the skirt
+on the shin). A box cut (the neck, the toe) is never sleeved.
+
+**Mehmed's** (grid 96 × 124 × 40, `heroes::MEHMED_SIZE`; his left at low x):
+
+| Joint | At (x, y, z) | Cut |
+|---|---|---|
+| hips | 47.5, 30, 19.5 | his sash; the skirt below it goes to the thighs (below) |
+| spine | 47.5, 35.5, 19.5 | the hips above y 35.5 (the top of his sash) |
+| chest | 47.5, 46, 19.5 | the spine above y 46 (the frogging up, the collar) |
+| neck | 47.5, 56.5, 18.5 | the head's voxels in the box x 42.5..52.5, y below 60.5, z 13..19.4: the column of skin behind his beard |
+| head | 47.5, 60.5, 18.5 | (the beard, the moustache, the börk and its flap) |
+| upper arm | 21.5 / 73.5, 54, 18.5 | (the code's shoulder pivots; the wide sleeve) |
+| forearm | 21.5 / 73.5, 41.5, 19.2 | the upper arm below y 41.5; the gold cuff stays on it |
+| hand | 21.5 / 73.5, 28.5, 19.5 | the forearm below y 28.5 (the fist) |
+| thigh | 39.5 / 55.5, 28, 20.5 | **the skirt's halves**: the hips below y 29.5, cut down the middle (x 47.5), each half to its thigh, sleeved |
+| shin | 39.5 / 55.5, 14.5, 21 | the thigh below y 14.5, unsleeved: the boot from the hem down |
+| foot | 39.5 / 55.5, 5.5, 21.5 | the shin below y 5.5, and the turned-up toe (z from 27.5, y up to 8.5) |
+| blade, offhand | 73.5 / 21.5, 26, 19.5 | the grip in each fist (where `armory::weapon_for` leans the weapon from) |
+| shield | 21.5, 36, 19.5 | the middle of the shield forearm, where the kalkan is strapped (`forge::forearm`) |
+
+His kaftan's skirt (and the crimson robe under it, and the sash's hanging end) rides his thighs, half
+on each, rather than his hips: from the chase camera his stride shows as the skirt parts and swings
+(as the long kaftan does over the janissary's wide trousers), where a skirt kept on his hips would
+hide his legs and slide over his boots. Under the skirt only his boots are sculpted, so his knee is
+hidden; the knees are cut before the skirt joins the thighs (the cuts apply in order), so the skirt
+never goes down to a shin.
+
+**Miyamoto's** (grid 96 × 120 × 44, `heroes::MIYAMOTO_SIZE`):
+
+| Joint | At (x, y, z) | Cut |
+|---|---|---|
+| hips | 47.5, 30, 21.5 | the obi, the short sword and the top lame of the armoured skirt |
+| spine | 47.5, 37.5, 21.5 | the hips above y 37.5 (the top of the obi); the short sword's hilt (x 30..39, y 35..42, z from 32.5) back to the hips |
+| chest | 47.5, 48, 21.5 | the spine above y 48 (the dō from the middle of its lames up) |
+| neck | 47.5, 54.5, 21 | the head's voxels in the box x 37..58, y below 59.5, z 12..31: the lacquered throat guard |
+| head | 47.5, 60, 20.5 | (the mask, the kabuto, its neck guard, turnbacks and crest) |
+| upper arm | 21.5 / 73.5, 52, 19.5 | (the code's shoulder pivots) with the **shoulder guards** (sode), as sculpted to swing with the arm |
+| forearm | 21.5 / 73.5, 37, 20 | the upper arm below y 37: below the sode, so the elbow's sleeve is two rows of silk and mail, none of the lames |
+| hand | 21.5 / 73.5, 29.5, 20.5 | the forearm below y 29.5 (the gauntlet and the fist) |
+| thigh | 39.5 / 55.5, 29, 23 | **the armoured skirt's halves**: the hips below y 29.5 (between its top lame and the next), down the middle, each to its thigh, sleeved (the lower lames and the hakama's seat) |
+| shin | 39.5 / 55.5, 15.5, 24 | the thigh below y 15.5 within x 7 of the leg (its sleeve kept to the leg): the shin guards and the hakama's legs |
+| foot | 39.5 / 55.5, 5.5, 24.5 | the shin below y 5.5: the tabi and sandal |
+| blade, offhand | 73.5 / 21.5, 26, 19.5 | the grip in each fist |
+| shield | 47.5, 42.5, 10 | **the middle of the shield slung on his back** (`heroes::MIYAMOTO_SHIELD_AT`): his jointed rig keeps it there (`forge::jointed_strap`), and the animator brings it before him to guard (§3, `anim::hold`) |
+
+His kusazuri is cut between its lames, the top lame staying under his obi, the lower ones parting
+with his stride like the panels they are; the hakama's wide legs (rows 16 to 19, at the knee) go
+with his thighs above the knee and his shins below it. The short sword through his obi stays with
+his hips (its hilt cut back from the spine); the scabbard's end, out at the back under the skirt,
+rides the left thigh (the middle of it is inside the skirt, so no break shows).
+
+The tests (`skeleton::tests`, for all three) check the cut keeps every voxel exactly once and in its
+place, that none lies below the next joint down its limb (but Mehmed's skirt) or beyond its bone's
+reach (scaled by the hero's height; the skirts' reach is their own), that the left limbs and the
+left half of a skirt stay on his left, and that every sleeve's voxel is a copy of the bone above a
+joint laid on its child within a few voxels of the crease (and never a skirt on Mehmed's shin);
+`VH_ANIM=bones` paints each bone its own colour in the game, and `import_rig.py` renders the same in
+Blender (§8).
 
 ---
 
@@ -113,22 +171,25 @@ changed). Every script is described in `tools/blender/README.md`.
    parents, each mesh weighted 1 to its own bone, colours present; a Workbench render in his
    colours and one in the bones' colours.
 3. **The clips.** Keyed by hand in Blender, by script (`block_ragnar.py`), or retargeted from
-   outside motion (`retarget.py`, `mixamo_ragnar.py`, §6): each an action on his armature, with
+   outside motion (`retarget.py`, `mixamo_hero.py`, §6): each an action on his armature, with
    its markers as pose markers on the action, `vh_loop` and `vh_stride` as custom properties.
    `blender -b -P tools/blender/block_ragnar.py -- ragnar_rig.glb ragnar.blend` (the armature and
    the scripted clips), then
-   `blender -b ragnar.blend -P tools/blender/mixamo_ragnar.py -- C:/Users/ulask/Games/mixamo ragnar.blend`
-   (the Mixamo clips, replacing the scripted ones of the same names).
+   `blender -b ragnar.blend -P tools/blender/mixamo_hero.py -- ragnar C:/Users/ulask/Games/mixamo ragnar.blend`
+   (the Mixamo clips, replacing the scripted ones of the same names). For Mehmed and Miyamoto, the
+   .blend `import_rig.py` saves (`--export-rig mehmed`, `miyamoto`) and `mixamo_hero.py -- mehmed`
+   or `-- miyamoto`.
 4. **A look before the game.**
    `blender -b ragnar.blend -P tools/blender/preview.py -- OUT [action ...] [--yaw 180 --rise 0.7]`
-   renders each action as contact sheets.
+   renders each action as contact sheets (`--at 0.62 --dist 2.7` for the taller two).
 5. **Out to the game.**
    `blender -b ragnar.blend -P tools/blender/export_clips.py -- assets/anim/ragnar` writes
    `<action>.glb` (the armature alone, sampled at 60 fps) and `<action>.json` (markers, loop,
    stride) for each action.
 6. **Build.** `build.rs` lists every `assets/anim/<hero>/<clip>.glb` that has its `.json` beside it;
    `render/anim/library.rs` embeds them. Nothing else to register.
-7. **Compare.** `python tools/anim_compare.py OUT` (§8); `--anim-bench` for the numbers (§9).
+7. **Compare.** `python tools/anim_compare.py OUT [--hero K]` (§8); `--anim-bench` and
+   `--blade-view` for the numbers (§9).
 
 ---
 
@@ -170,16 +231,39 @@ changed). Every script is described in `tools/blender/README.md`.
   - **The leap**: `jump` from `takeoff` to `land` by the leap's progress, then its landing to
     `recover_end` in real time (cut short by a strike, the guard or a run). In a fight the leap is
     the evade (the fighter's `Evade` state): `roll`, the same way.
+  - **What he carries** (`Drive::two_hands`, `Drive::slung`, laid on the finished pose by
+    `hold.rs`): both fists on the grip, his shield slung on his back but to guard (Miyamoto, §6.6).
   - **The juice**: the upper sword arm carried on past the strike's end and back
-    (`BLADE_OVERSHOOT`'s spring, about his upright) unless the springs are off; the shield forearm
-    knocked back by `shield_tilt`; the landing's squash on the root.
+    (`BLADE_OVERSHOOT`'s spring, about his upright; his chest, with both arms, when he holds his
+    weapon two-handed) unless the springs are off; the shield forearm knocked back by
+    `shield_tilt` (a slung shield before him, about its own middle); the landing's squash on the
+    root.
+- **`hold.rs`**: what he carries, laid on the pose after the clips are sampled and blended (so a
+  crossfade, the guard laid over his upper body or a flinch never parts his hands from the hilt):
+  - `two_hands`: the sword hand keeps the weapon where the clip holds it, turned square round its
+    grip; the off hand closes on the grip a fist below it (`FIST_GAP`), turned as the blade is; a
+    two-bone solve bends each arm to reach, the elbows on the side the clip bends them. The heroes'
+    arms are short against their shoulders, so where the two cannot meet where the clip holds the
+    grip (the clip's arms leave it out at his side, where the source's long arms had it in the
+    middle), the grip is drawn in toward his middle (`INWARD`) and before his breastplate
+    (`BEFORE`), as far toward the middle of his front as it takes, and each shoulder comes forward
+    and in, level, up to `REACH_IN`.
+  - `sling`: the shield rides his chest on his back (a little lower than it was carved and to his
+    shield side, `SLUNG`, so his sword shoulder and his cuts show over it from the chase camera),
+    and by the guard's weight (or a parry's) comes round his shield side to stand before him,
+    square to the foe, a little before the middle of his shield forearm (`GUARD_OUT`), wherever his
+    guard holds that arm.
 - **`library.rs`**: the embedded clips, read once per hero (`clips(hero)`, also called from
   `prepare_rigs` so it happens behind the loading screen), and `Mode` (`VH_ANIM`).
-- **`export.rs`** (native only): `--export-rig` and `--anim-bench`.
+- **`export.rs`** (native only): `--export-rig`, `--anim-bench` (all three heroes) and
+  `--blade-view` (§9).
 
 In the view: `forge::jointed_rig` cuts the hero's rig each time his kit changes (and the spare for a
 broken shield with it), its shield strapped to his arm at its full size (the code's arm carries it at
-0.8 and swaps in the shield off his back to block; the clips raise the one on his arm); `prepare_rigs` meshes it at every level of detail with the level;
+0.8 and swaps in the shield off his back to block; the clips raise the one on his arm), or for
+Miyamoto left on his back as carved (`forge::jointed_strap`); `prepare_rigs` meshes it at every
+level of detail with the level; `animate_clips` tells the animator Miyamoto holds his weapon in both
+fists (but a pair of blades, a bow or a gun) and slings his shield;
 `animation::animate_clips` runs after the code's `animate_hero` (which always runs: it stays the
 fallback, and the Hall of Mirrors' reflections still use it) and leaves the parts' matrices in
 `hero_mats`; `emit` draws the jointed rig with `RigList::push_matrices` when they are there (and
@@ -220,7 +304,8 @@ A strike without markers is read as 0.3, 0.45 and 1 of its length; a leap as 0, 
 2. Add its markers (pose markers in the action editor, §4), and for a cycle `vh_loop` (and for a
    gait `vh_stride`) as custom properties of the action.
 3. `export_clips.py` it into `assets/anim/<hero>/`, build, and compare (§8). The tests check every
-   clip of Ragnar reads, has its markers in order and rests on the joints the game cut him at.
+   clip of each hero reads, has its markers in order and rests on the joints the game cut him at,
+   and that no two heroes share an idle or a strike.
 
 A new kind of moment (a sidestep, a death) is a clip and a few lines in `Animator::step` choosing
 it from what `Drive` says.
@@ -229,8 +314,8 @@ it from what `Drive` says.
 
 ## 6. Outside motion: the Mixamo step (done 2026-10-05)
 
-`retarget.py` (see `tools/blender/README.md`): Mixamo FBX, or BVH from any tool, onto his armature,
-baked at 60 fps, in place, scaled by leg length, his weapons in his hold. Its self-test on a
+`retarget.py` (see `tools/blender/README.md`): Mixamo FBX, or BVH from any tool, onto a hero's
+armature, baked at 60 fps, in place, scaled by leg length, his weapons in his hold. Its self-test on a
 synthetic Mixamo-named armature: every mapped limb follows the source's direction to within a
 hundredth of a degree, the hips stay over his feet and rise by the source's rise times the leg
 scale (0.33); a BVH read lying down is stood up first.
@@ -240,9 +325,12 @@ scale (0.33); a BVH read lying down is stood up first.
 Mixamo's Pro Sword And Shield Pack (51 clips) and "X Bot", and "Dodging Right" and "Stand To Roll",
 downloaded as FBX Binary without skin, kept **outside the repository**
 (`C:/Users/ulask/Games/mixamo/sword-shield/` and `extra/`): Mixamo's motion may ship in the game,
-its files may not be passed on. Only the clips exported from his .blend go into `assets/anim/`.
+its files may not be passed on. Only the clips exported from his .blend go into `assets/anim/`. For
+Mehmed and Miyamoto the same, and Mixamo's **Great Sword Pack** (51 clips, two-handed:
+`great-sword/`) and its "Sword And Shield Pack" (`sword-shield-classic/`: the same clips as the Pro
+pack but drawing and sheathing, so not needed).
 
-**Frame rate.** The pack was asked for at 60 fps but came at 30: its keys fall on whole frames at
+**Frame rate.** The pack was asked for at 60 fps but came at 30 (so did the Great Sword Pack): its keys fall on whole frames at
 30 (one curve of one clip has a few stray keys between them, Mixamo's own). The two extras came at
 60. Blender's FBX import sets the scene to each file's own rate and lays the keys out at it;
 `retarget.load_source` reads the rate after the import and gives the scene back its 60, and the
@@ -253,8 +341,8 @@ by the import (centimetres), which the world-space retarget takes as it comes.
 
 ### 6.2 The picks, and why
 
-All made by `tools/blender/mixamo_ragnar.py` (the table is there), from his .blend:
-`blender -b ragnar.blend -P tools/blender/mixamo_ragnar.py -- C:/Users/ulask/Games/mixamo ragnar.blend`,
+All made by `tools/blender/mixamo_hero.py` (his table is there), from his .blend:
+`blender -b ragnar.blend -P tools/blender/mixamo_hero.py -- ragnar C:/Users/ulask/Games/mixamo ragnar.blend`,
 then `export_clips.py`. Every candidate was retargeted and looked at as contact sheets from before
 him and from behind; the strikes were also measured: the share of their active frames on which the
 blade can be seen from the game's chase camera (behind and above him, `camera::chase`), by casting
@@ -281,7 +369,7 @@ casting, power up, drawing and sheathing (nothing in the game asks for them yet)
 ### 6.3 His build against Mixamo's
 
 Mixamo's bot is 1.8 m with long limbs; Ragnar is stocky, with a big head and horns, short arms and
-a wide body. What the retarget does about it (`retarget.Retarget`, per pick in `mixamo_ragnar.py`):
+a wide body. What the retarget does about it (`retarget.Retarget`, per pick in `mixamo_hero.py`):
 
 - **His stance.** Mixamo fights side-on, the shield first, its hips 55 to 67 degrees to the right.
   Every clip of the stance (`idle`, `walk`, `block`, `block_idle`, `hit`, the strikes' starts) is set
@@ -312,17 +400,90 @@ turning the weapon in his hand no longer turns a second fist with it.
 
 ### 6.4 Markers, found from the motion
 
-`mixamo_ragnar.py` finds them, so a pick changed is marked again the same way: a strike's from the
+`mixamo_hero.py` finds them, so a pick changed is marked again the same way: a strike's from the
 blade's tip speed (`hit` at its fastest, `windup_end` where it first runs at half that, `active_end`
 where it falls back under half, `recover_end` at the end; the lead-in before the blade first stirs
 cut away), so the first active frame shows the blade already on its way through; a leap's from the
 feet (`takeoff` the first frame both are off the floor, `land` back) or for the roll from the hips;
-the guard's `raised` where the shield stops rising; the flinch's `impact` at the chest's quickest
+the guard's `raised` where the shield (or, slung, the off hand) stops rising; the flinch's `impact` at the chest's quickest
 turn. Loops are closed: their last 8 frames ease onto their first.
 
 **Other motion** (BVH out of video- or text-to-motion tools): `retarget.py --source take.bvh`. The
 SMPL names (`pelvis`, `left_hip`, ... `right_wrist`) and the usual BVH names are both mapped. Clean
 such takes in Blender before export: foot sliding and jitter are common in them.
+
+### 6.5 Mehmed's picks, and why (2026-10-07)
+
+From the same sword-and-shield pack as Ragnar's (Mixamo's other "Sword And Shield Pack" turned out
+to be the same clips), but none of his idle or strikes are Ragnar's, so the two do not move alike;
+and his carriage is his own, by the retarget's stance settings: squarer to the foe (his hips 30
+degrees to his right where Ragnar's are 50), his back straight and his chest out (`posture`: the
+spine and chest straightened 6 and 10 degrees from Mixamo's crouch), the janissary's discipline.
+His wide sleeves are carried a little further out from his kaftan (8 degrees). His first blade is
+the short yatagan; the kilij and the rest follow in his fist as Ragnar's do.
+
+| Slot | From | Corrections | Why |
+|---|---|---|---|
+| `idle` | Sword And Shield Idle (3), 4.0 to 7.0 s | his stance and carriage; his head raised (the neck and head 10 and 17 degrees more) | A calm three seconds: the blade turned idly in his fist, his weight settling. Mixamo's soldier looks down at his feet there; Mehmed looks at the foe. Idle (4) is Ragnar's, Idle (1) turns round to look behind him, Idle (2) whirls the blade. |
+| `walk` | Walk (2) | stance + 10, carriage, stride 1.3 | Ragnar's is the Walk. |
+| `run` | Run (2) | stride 2.4, the spine straightened 4 | The guarded jog behind the shield: the soldier's run, kept in formation (Ragnar's is the open sprint). |
+| `slash_fore` | Slash (1) | stance, carriage, sword arm 15 degrees right and 35 up | A diagonal cut from high at his right down across his front, reaching 0.9 m before him. Seen on 66% of its active frames from behind (50% with the arm 20 up: his tall börk hides what passes over his head). |
+| `slash_back` | Attack (3) | its whirl taken out (`yaw_keep` 0), sword arm 15 up | The long, low sweep from his left out to his right, the blade a metre out at his right: the longest reach of the pack, the "halberd-tip" blow his mastery is about (WARBAND.md §11.1). Mixamo whirls him round in its wind-up; he stays square, his chest coiling and uncoiling. 85%. |
+| `slash_heavy` | Attack (1) | stance, carriage | The blade raised high over his head and brought down in a chop before him: the soldier's heaviest blow. 100%. |
+| `block`, `block_idle` | Block (2), Block Idle | stance, carriage | Block Idle is the pack's only held guard (Ragnar's too): the stance and carriage set his apart. |
+| `jump` | Jump (2) | arms out 8 | Ragnar's is the Jump. |
+| `roll` | Stand To Roll | as Ragnar's | The only roll there is. |
+| `hit` | Impact (1) | stance, carriage | A short flinch with little twist (Ragnar's is Impact (2)). |
+| `parry` | built, as Ragnar's | | |
+
+Tried and set aside: Attack (4) (an overhead blow that ends 0.2 m before him), Attack (2) and Slash
+(4) (a whole turn, then the cut), Slash (2) (a combination of cuts, 3 s long).
+
+### 6.6 Miyamoto's picks, his grip and his shield (2026-10-07)
+
+From the **Great Sword Pack**: a long blade held in both fists, which is kenjutsu's hold (both hands
+on the hilt, the guard before him, big diagonal cuts). His stance is near square to the foe (his
+hips 15 degrees to his right, as the pack's own guard has them).
+
+| Slot | From | Corrections | Why |
+|---|---|---|---|
+| `idle` | Great Sword Idle | stance, arms out 4 | A steady guard, the blade raised before him, breathing; two seconds. Idle (2) turns about, (3) to (5) take a hand off the hilt. |
+| `walk` | Great Sword Walk | stance, stride 1.3 | |
+| `run` | Great Sword Run | stride 3.0 | Running with the blade held across before him; Run (2) runs side-on. |
+| `slash_fore` | Great Sword Slash | stance | The diagonal cut (kesa-giri): coiled to his right, then from high at his right down through the foe to low at his left. 78%. |
+| `slash_back` | Great Sword Slash (3) | stance | Coiled to his left, then the level cut at the height of his shoulders out to his right. The pair chains: each ends in the guard the other starts from. 84%. |
+| `slash_heavy` | Great Sword Jump Attack | its whirls taken out (`yaw_keep` 0), and its travel (`still`) | The leaping cut: he springs where he stands and brings the blade down at his right. Mixamo's turns him round once in the wind-up and once in the recovery. The High Spin Attack cuts first and then spins him a whole turn, slamming down in its recovery: his back to the foe for half a second after the blow, and a second blow where the game has none; the leap keeps his face to the foe through the blow. 80%. |
+| `block`, `block_idle` | Great Sword Blocking, Blocking (2) | stance | The blade raised across before him in both fists; the shield comes before him over it (below). |
+| `jump` | Great Sword Jump (2) | arms out 4 | The Jump travels 1.7 m; this one leaps where he stands. |
+| `roll` | Stand To Roll | as Ragnar's | |
+| `hit` | Great Sword Impact (2) | stance | Impact (1) is from the guard's stance, (3) lets go of the hilt, (4) and (5) from crouches. |
+| `parry` | built, as Ragnar's | | |
+
+**The two-handed grip, solved in the game** (`anim::hold::two_hands`), not in the retarget: it
+holds through everything laid on the clips after they are sampled (a crossfade between two clips, the
+guard over his upper body, a flinch, the overshoot, which turns his chest rather than his sword arm
+when he holds the blade in both fists), and it is left off for the weapons of his tree not held
+that way (the pair of ninjato, the bow, the gun). The clips keep the source's arms, retargeted by
+direction. That alone parts his hands: Mixamo's are 0.07 to 0.17 m apart on the hilt, Miyamoto's
+come out 0.55 to 0.67 m apart, his fists at his sides, because his arms reach 0.33 m to the grip and
+his shoulders are 0.65 m apart (his sode make them wide): from where the clip holds the grip the two
+cannot meet at all. So the grip is drawn in toward his middle and out before his breastplate,
+keeping its height, as far as it takes for both arms to reach it, his shoulders coming forward and
+in up to 9 cm (his upper arms, sode and all, close in over his chest, as a swordsman's do); the
+sword hand keeps the clip's turn of the blade, squared round its grip, and the off hand closes on
+the grip a fist below it (`FIST_GAP`, 8.4 voxels: the katana's hilt below the sword fist is one fist
+long), turned as the blade is. The elbows bend the way the clip bends them.
+
+**The shield slung on his back** (`anim::hold::sling`): his jointed rig keeps the tate on his back
+as it was carved (`forge::jointed_strap`), and every frame the animator hangs it from his chest
+there, a little lower and to his shield side (`SLUNG`), so his sword shoulder and his cuts show over
+it from the chase camera. To guard (the guard's weight, or a parry's), it comes round his shield
+side (out 16 cm half way) to stand before him, square to the foe whatever way his chest is turned,
+its middle a little before the middle of his shield forearm (`GUARD_OUT`), which carries it as his
+guard moves; a blow it takes knocks it back about its own middle. What reads best from behind and
+from his side: the samurai's guard, the blade raised across in both fists, with the tate before it
+(the shield alone before him, his sword arm free, read as Ragnar's guard; the guard alone, as no
+shield at all). The code's animation (`VH_ANIM=code`) keeps it strapped on his arm as before.
 
 ---
 
@@ -330,7 +491,7 @@ such takes in Blender before export: foot sliding and jitter are common in them.
 
 | Source | May its motion ship in the game? |
 |---|---|
-| Mixamo | Yes: Adobe allows Mixamo's characters and animations in commercial games. **The raw FBX files must not be redistributed**: they stay outside the repository (§6.1); only the retargeted clips go into `assets/`. |
+| Mixamo | Yes: Adobe allows Mixamo's characters and animations in commercial games. **The raw FBX files must not be redistributed**: they stay outside the repository (§6.1; the Great Sword Pack too); only the retargeted clips go into `assets/`. |
 | Clips keyed by hand or by script here | Yes: ours. |
 | MoMask (text to motion) | **Reference only.** Its models are trained on research-licensed data (HumanML3D, from AMASS): look at its output, key our own. |
 | GVHMR (video to motion) | **Reference only.** It outputs SMPL, whose body model's licence is non-commercial. |
@@ -341,7 +502,7 @@ such takes in Blender before export: foot sliding and jitter are common in them.
 
 ## 8. Comparisons
 
-- `python tools/anim_compare.py OUT [EXE] [--also EXE2] [moment ...]` renders 30 moments in the
+- `python tools/anim_compare.py OUT [EXE] [--also EXE2] [--hero K] [moment ...]` renders 30 moments in the
   Sparring Ring (idle and a breath; the run, and from the chase camera; the walk under the guard;
   the first and second swings and the finisher at wind-up, blow, through and settle; the guard
   rising and held; the evade's roll rising, at its top and landing) and the leap in the Garden,
@@ -351,6 +512,11 @@ such takes in Blender before export: foot sliding and jitter are common in them.
   --anim-compare`: the frame is drawn twice, once each way). With `--also EXE2`, a build carrying
   other clips, it is three panels: the code, EXE2's clips, EXE's. The comparisons of §6 were made
   with the build of the scripted clips as EXE2: **the code | the scripted clips | Mixamo's**.
+  `--hero K` plays hero K (0 Ragnar, 1 Mehmed, 2 Miyamoto: `hero:K` in the capture's script, which
+  any capture can use to show any of the three).
+- `--blade-view` reports, for each hero's strikes, the share of their active frames on which the
+  blade can be seen from the chase camera at rest, by casting rays from it at points along the blade
+  against all his other voxels, the clips posed as the game holds them.
 - `VH_ANIM=bones` with any capture paints every voxel its bone's colour (a stranded voxel shows as a
   speck of the wrong colour); `import_rig.py` renders the same split in Blender.
 - `VH_ANIM=code` with any capture, run or the capture suite gives the old animation:
@@ -375,6 +541,21 @@ Mixamo step (12 clips).
 | The blade seen from the chase camera on a strike's active frames | the scripted forehand 10%, backhand 100% | Mixamo's forehand and backhand 69%, finisher 66% |
 | `--court`, `--pit 2 8 1`, the sixteen `--bout`s | | identical, line for line (but the wall-clock lines) |
 | `tools/capture_suite.py` with `VH_ANIM=code` | | MATCH (within its GPU noise) |
+
+**Mehmed and Miyamoto** (2026-10-07, `anim-heroes`; before: the build they branched from, where
+both played by the code):
+
+| What | Before | After |
+|---|---|---|
+| Release exe | | 38,673,408 B (their 24 clips, 994 KB of GLB and JSON: 36 clips, 1,427 KB embedded in all) |
+| Their jointed rigs (`--export-rig`) | none | Mehmed 65,449 voxels, 32,728 faces; Miyamoto 68,599 voxels, 40,352 faces (Ragnar 46,233 and 29,440) |
+| Reading a hero's clips (once, with the level; release) | | Ragnar 2.4 ms, Mehmed 2.1 ms, Miyamoto 2.0 ms |
+| A frame of his animation (`--anim-bench`, release) | | Ragnar 1.8 µs, Mehmed 1.8 µs, Miyamoto 2.7 µs (the grip's solve and the sling) |
+| Resident rig buffers of the level (`--perf` battle30) | | 59.6 MB with Ragnar, 82.0 with Mehmed, 85.1 with Miyamoto (their sculpts are bigger, and their jointed rigs are new) |
+| `--perf` fight scenes (battle30, warband, pit, descent, siege, at 60 and 30 FPS; `VH_PERF_HERO`) | | all within 8 ms for each hero: worst frame Ragnar 5.4, Mehmed 5.8, Miyamoto 5.5 ms. (The pit scene's own checks, a wound taken and a pack slain, are Ragnar's: they fail for the other two with `VH_ANIM=code` as well.) |
+| The blade seen from the chase camera on a strike's active frames (`--blade-view`) | | Mehmed forehand 66%, backhand 85%, finisher 100%; Miyamoto 78%, 84%, 80% (Ragnar's, measured the same way: 72%, 72%, 85%) |
+| `--court`, `--pit 2 8 1`, the sixteen `--bout`s (Ragnar's harness) | | identical to the build before, line for line (but the wall-clock lines) |
+| A bout in the ring played by the clips and by the code, step for step (`the_clips_leave_the_fight_untouched`) | Ragnar | identical for each of the three |
 
 ---
 
@@ -434,8 +615,21 @@ it back at rest.
   - The parry is built (Mixamo has none); a parry keyed by hand would be sharper.
   - Strikes start from the clip's first frame with no blend (the rule): a strike begun from the
     run snaps from the run's pose to the stance.
-- **Mehmed and Miyamoto**: their joint tables (`skeleton::joints`), then their clips (the same
-  Mixamo set retargets onto any of the three once their bones exist).
+- **What still reads wrong for Mehmed and Miyamoto** (2026-10-07):
+  - Miyamoto's arms are too short for his shoulders to hold a grip where Mixamo holds it: the grip
+    is drawn in before his chest and his shoulders closed in (`anim::hold`), so his cuts travel less
+    far out to his sides than the source's, and with the sode on his upper arms his shoulders look
+    hunched in the guard. Longer arms in his sculpt would cure it at the root.
+  - The tate slung on his back is big: from the chase camera it hides his back and most of his
+    arms (slung lower than it was carved, his sword shoulder and cuts show over it).
+  - The clips in Blender (and `preview.py`'s sheets) do not show Miyamoto's grip and slung shield:
+    they are the game's; Blender's `--measure` is only a guide for him.
+  - Mehmed's börk is tall: what passes over his head is hidden from behind (his forehand is the
+    least seen of all the strikes, 66%).
+  - The pack's only held guard (Block Idle) is Ragnar's too; Mehmed's stance and carriage set it
+    apart, not the motion. The roll is the same clip for all three.
+  - Mehmed's low sweep (his backhand) drops him into a deep lunge for a moment: it reads as reach,
+    and it is his longest, but it is low for a soldier's carriage.
 - **More moments**: a death (the game does not show his body after he falls), a sidestep (the
   dodge clip is ready in the pack), turning on the spot.
 - **The Hall of Mirrors' reflections** and the select screen still pose him by the code.

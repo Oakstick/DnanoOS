@@ -354,6 +354,16 @@ impl WorldView {
             }
         }
         let evade = s.hero_fighter.is_some_and(|f| matches!(f.state, State::Evade { .. }));
+        // Miyamoto fights two-handed, his shield slung on his back but to guard (a pair of blades, a
+        // bow or a gun is held as it comes).
+        let (two_hands, slung) = match s.hero_kind {
+            crate::logic::heroes::HeroKind::Miyamoto => {
+                use crate::logic::progression::{self, Form, Tree};
+                let form = progression::node(s.hero_kind, Tree::Armory, hero.blade).form;
+                (!crate::render::armory::paired(form) && !matches!(form, Form::Bow | Form::Gun), true)
+            }
+            _ => (false, false),
+        };
         let drive = Drive {
             dt,
             evade,
@@ -366,6 +376,8 @@ impl WorldView {
             reel,
             springs: self.juice.off & crate::render::profile::fx::SPRINGS == 0,
             shield_tilt: self.shield_tilt(),
+            two_hands,
+            slung,
         };
         if let Some((locals, extra)) = self.hero_anim.step(clips, &drive) {
             let joints: [Vec3; crate::render::anim::skeleton::BONE_COUNT] =

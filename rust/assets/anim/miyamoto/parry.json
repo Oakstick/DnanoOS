@@ -1,0 +1,11 @@
+{
+ "clip": "parry",
+ "fps": 60,
+ "frames": 22,
+ "loop": false,
+ "markers": {
+  "raised": 3,
+  "impact": 6,
+  "recover_end": 22
+ }
+}

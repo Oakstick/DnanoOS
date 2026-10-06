@@ -6,7 +6,7 @@
 //!
 //! The cut is data: each hero has a table of joints, measured on his sculpt as it stands, and a
 //! list of cuts, each moving the voxels of one bone that lie in a box to the next bone down the
-//! limb (`Joints`). Ragnar's table is here; Mehmed and Miyamoto follow with theirs.
+//! limb (`Joints`). The three heroes' tables are here.
 
 use glam::Vec3;
 
@@ -119,13 +119,16 @@ const FROM_PART: [(&str, Bone); 9] = [
 ];
 
 /// A cut: every voxel of `from` whose place in the sculpt's grid lies in the box `lo..=hi`
-/// (voxel centres; unbounded sides are infinite) goes to `to`.
+/// (voxel centres; unbounded sides are infinite) goes to `to`. A cut across a limb at a height
+/// (`below`, `above`, `below_within`) is sleeved: the band of the bone above it is laid on the bone
+/// below as well (`SLEEVE`), within the cut's box across the limb.
 #[derive(Clone, Copy, Debug)]
 pub struct Cut {
     pub from: Bone,
     pub to: Bone,
     pub lo: [f32; 3],
     pub hi: [f32; 3],
+    pub sleeve: bool,
 }
 
 const INF: f32 = f32::INFINITY;
@@ -139,19 +142,34 @@ const SKIN_SHADE: f32 = 5.0 + (crate::render::characters::mat::SKIN >> 24) as f3
 impl Cut {
     /// Below the plane `y` (a joint across the limb).
     const fn below(from: Bone, to: Bone, y: f32) -> Self {
-        Self { from, to, lo: [-INF, -INF, -INF], hi: [INF, y, INF] }
+        Self { from, to, lo: [-INF, -INF, -INF], hi: [INF, y, INF], sleeve: true }
     }
 
     /// Above the plane `y`.
     const fn above(from: Bone, to: Bone, y: f32) -> Self {
-        Self { from, to, lo: [-INF, y, -INF], hi: [INF, INF, INF] }
+        Self { from, to, lo: [-INF, y, -INF], hi: [INF, INF, INF], sleeve: true }
+    }
+
+    /// Below the plane `y` within the box `lo..=hi` across it (x and z): a joint of one limb where
+    /// the plane would also cross another part (a skirt's halves, a leg inside a skirt).
+    const fn below_within(from: Bone, to: Bone, y: f32, lo: [f32; 2], hi: [f32; 2]) -> Self {
+        Self { from, to, lo: [lo[0], -INF, lo[1]], hi: [hi[0], y, hi[1]], sleeve: true }
+    }
+
+    /// A box, unsleeved.
+    const fn boxed(from: Bone, to: Bone, lo: [f32; 3], hi: [f32; 3]) -> Self {
+        Self { from, to, lo, hi, sleeve: false }
+    }
+
+    /// The same cut without its sleeve (a joint hidden under a skirt, whose band would be the skirt's).
+    const fn bare(self) -> Self {
+        Self { sleeve: false, ..self }
     }
 
     /// A cut across the limb at a height (`below` or `above`): its plane, and whether the bone it
     /// sends voxels to lies below it.
     fn plane(&self) -> Option<(f32, bool)> {
-        let open = |k: usize| self.lo[k] == -INF && self.hi[k] == INF;
-        if !(open(0) && open(2)) {
+        if !self.sleeve {
             return None;
         }
         match (self.lo[1] == -INF, self.hi[1] == INF) {
@@ -211,7 +229,7 @@ pub const RAGNAR: Joints = {
             Cut::above(Hips, Spine, 35.5),
             Cut::above(Spine, Chest, 45.5),
             // The neck: the column of skin under the head, not the beard before it.
-            Cut { from: Head, to: Neck, lo: [23.5, -INF, 10.5], hi: [35.5, 60.5, 20.5] },
+            Cut::boxed(Head, Neck, [23.5, -INF, 10.5], [35.5, 60.5, 20.5]),
             Cut::below(UpperArmL, ForearmL, 44.5),
             Cut::below(ForearmL, HandL, 34.5),
             Cut::below(UpperArmR, ForearmR, 44.5),
@@ -219,20 +237,145 @@ pub const RAGNAR: Joints = {
             Cut::below(ThighL, ShinL, 14.5),
             Cut::below(ShinL, FootL, 4.5),
             // The toe of the boot, reaching out before the shaft above the ankle.
-            Cut { from: ShinL, to: FootL, lo: [-INF, -INF, 24.5], hi: [INF, 8.5, INF] },
+            Cut::boxed(ShinL, FootL, [-INF, -INF, 24.5], [INF, 8.5, INF]),
             Cut::below(ThighR, ShinR, 14.5),
             Cut::below(ShinR, FootR, 4.5),
-            Cut { from: ShinR, to: FootR, lo: [-INF, -INF, 24.5], hi: [INF, 8.5, INF] },
+            Cut::boxed(ShinR, FootR, [-INF, -INF, 24.5], [INF, 8.5, INF]),
         ],
     }
 };
 
-/// A hero's joint table, if he has one yet.
-pub fn joints(hero: HeroKind) -> Option<&'static Joints> {
-    match hero {
-        HeroKind::Ragnar => Some(&RAGNAR),
-        HeroKind::Mehmed | HeroKind::Miyamoto => None,
+/// Mehmed's joints (his grid is 96 × 124 × 40, `heroes::MEHMED_SIZE`). His waist is the top of
+/// his sash (y 35.5), his chest from the frogging up (46); his neck is the column of skin behind his
+/// beard (y 56 to 60), the beard, the börk and its flap go with his head. His wide sleeves bend at
+/// the elbow (41.5), and their gold cuffs stay on the forearm, the fist below the wrist (28.5).
+///
+/// His kaftan's skirt (and the crimson robe under it, and the sash's hanging end) is cut down the
+/// middle below the sash (y 29.5), each half riding its thigh: his stride shows from behind as the
+/// skirt parts and swings, where a skirt kept on his hips would hide his legs and slide over his
+/// boots. Under the skirt only his boots are sculpted: the knee (14.5) is hidden, so it is cut
+/// unsleeved (a sleeve there would lay a band of the skirt on his shin), and the shin is the boot
+/// from the hem down to the ankle (5.5), the foot the boot below it and its turned-up toe.
+pub const MEHMED: Joints = {
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid) = (21.5, 73.5, 39.5, 55.5, 47.5);
+    Joints {
+        at: [
+            [mid, 30.0, 19.5],
+            [mid, 35.5, 19.5],
+            [mid, 46.0, 19.5],
+            [mid, 56.5, 18.5],
+            [mid, 60.5, 18.5],
+            [l_arm, 54.0, 18.5],
+            [l_arm, 41.5, 19.2],
+            [l_arm, 28.5, 19.5],
+            [r_arm, 54.0, 18.5],
+            [r_arm, 41.5, 19.2],
+            [r_arm, 28.5, 19.5],
+            [l_leg, 28.0, 20.5],
+            [l_leg, 14.5, 21.0],
+            [l_leg, 5.5, 21.5],
+            [r_leg, 28.0, 20.5],
+            [r_leg, 14.5, 21.0],
+            [r_leg, 5.5, 21.5],
+            // The grip in each fist (where `armory::weapon_for` leans the weapon from), and the middle
+            // of the shield forearm where the kalkan is strapped (`forge::forearm`).
+            [r_arm, 26.0, 19.5],
+            [l_arm, 26.0, 19.5],
+            [l_arm, 36.0, 19.5],
+        ],
+        cuts: &[
+            Cut::above(Hips, Spine, 35.5),
+            Cut::above(Spine, Chest, 46.0),
+            // The neck: the column of skin behind the beard.
+            Cut::boxed(Head, Neck, [42.5, -INF, 13.0], [52.5, 60.5, 19.4]),
+            Cut::below(UpperArmL, ForearmL, 41.5),
+            Cut::below(ForearmL, HandL, 28.5),
+            Cut::below(UpperArmR, ForearmR, 41.5),
+            Cut::below(ForearmR, HandR, 28.5),
+            // (The boots, before the skirt joins the thighs: the knee's cut is not to take the skirt.)
+            Cut::below(ThighL, ShinL, 14.5).bare(),
+            Cut::below(ShinL, FootL, 5.5),
+            Cut::boxed(ShinL, FootL, [-INF, -INF, 27.5], [INF, 8.5, INF]),
+            Cut::below(ThighR, ShinR, 14.5).bare(),
+            Cut::below(ShinR, FootR, 5.5),
+            Cut::boxed(ShinR, FootR, [-INF, -INF, 27.5], [INF, 8.5, INF]),
+            // The skirt's halves.
+            Cut::below_within(Hips, ThighL, 29.5, [-INF, -INF], [mid, INF]),
+            Cut::below_within(Hips, ThighR, 29.5, [mid, -INF], [INF, INF]),
+        ],
     }
+};
+
+/// Miyamoto's joints (his grid is 96 × 120 × 44, `heroes::MIYAMOTO_SIZE`). His waist is the top of
+/// his obi (y 37.5), the short sword thrust through it staying with his hips; his chest is the dō from
+/// the middle of its lames up (48); his neck is the lacquered throat guard (y 54 to 59), and the
+/// kabuto, its neck guard and crest go with his head. His shoulder guards (sode) hang over the upper
+/// arms and swing with them, as sculpted; the elbow is below them (37, its sleeve two rows of silk
+/// and mail, none of the lames), the gauntlet and fist below the wrist (29.5).
+///
+/// His armoured skirt (kusazuri) is cut between its top lame and the next (y 29.5): the top lame
+/// stays on his hips under the obi, the lower lames and the seat of his hakama are cut down the
+/// middle, each half riding its thigh, so the panels part and swing with his stride. The knee is at
+/// the top of his shin guards (15.5), its sleeve kept to the leg; the foot is the tabi and sandal.
+///
+/// His shield is not strapped to his arm: it hangs on his back while he fights two-handed (the
+/// shield's joint is its middle there), and the animator brings it before him to guard
+/// (`anim::hold`).
+pub const MIYAMOTO: Joints = {
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid) = (21.5, 73.5, 39.5, 55.5, 47.5);
+    Joints {
+        at: [
+            [mid, 30.0, 21.5],
+            [mid, 37.5, 21.5],
+            [mid, 48.0, 21.5],
+            [mid, 54.5, 21.0],
+            [mid, 60.0, 20.5],
+            [l_arm, 52.0, 19.5],
+            [l_arm, 37.0, 20.0],
+            [l_arm, 29.5, 20.5],
+            [r_arm, 52.0, 19.5],
+            [r_arm, 37.0, 20.0],
+            [r_arm, 29.5, 20.5],
+            [l_leg, 29.0, 23.0],
+            [l_leg, 15.5, 24.0],
+            [l_leg, 5.5, 24.5],
+            [r_leg, 29.0, 23.0],
+            [r_leg, 15.5, 24.0],
+            [r_leg, 5.5, 24.5],
+            [r_arm, 26.0, 19.5],
+            [l_arm, 26.0, 19.5],
+            // The middle of the shield slung on his back (`heroes::MIYAMOTO_SHIELD_AT`).
+            [mid, 42.5, 10.0],
+        ],
+        cuts: &[
+            Cut::above(Hips, Spine, 37.5),
+            // The short sword's hilt, above the obi, stays with the scabbard on his hips.
+            Cut::boxed(Spine, Hips, [30.0, 35.0, 32.5], [39.0, 42.0, 42.0]),
+            Cut::above(Spine, Chest, 48.0),
+            Cut::boxed(Head, Neck, [37.0, -INF, 12.0], [58.0, 59.5, 31.0]),
+            Cut::below(UpperArmL, ForearmL, 37.0),
+            Cut::below(ForearmL, HandL, 29.5),
+            Cut::below(UpperArmR, ForearmR, 37.0),
+            Cut::below(ForearmR, HandR, 29.5),
+            Cut::below_within(ThighL, ShinL, 15.5, [l_leg - 7.0, -INF], [l_leg + 7.0, INF]),
+            Cut::below(ShinL, FootL, 5.5),
+            Cut::below_within(ThighR, ShinR, 15.5, [r_leg - 7.0, -INF], [r_leg + 7.0, INF]),
+            Cut::below(ShinR, FootR, 5.5),
+            Cut::below_within(Hips, ThighL, 29.5, [-INF, -INF], [mid, INF]),
+            Cut::below_within(Hips, ThighR, 29.5, [mid, -INF], [INF, INF]),
+        ],
+    }
+};
+
+/// A hero's joint table.
+pub fn joints(hero: HeroKind) -> Option<&'static Joints> {
+    Some(match hero {
+        HeroKind::Ragnar => &RAGNAR,
+        HeroKind::Mehmed => &MEHMED,
+        HeroKind::Miyamoto => &MIYAMOTO,
+    })
 }
 
 /// Where a joint of the sculpt's grid lies in the model (as `voxels::make_part` places a pivot,
@@ -340,17 +483,25 @@ pub fn bone_color(i: usize) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::voxels::{build_layered_rig, build_rig};
+    use crate::render::voxels::build_layered_rig;
 
-    /// Ragnar's code rig as `forge::hero_rigs` builds it for the play (mirrored), from his bare sculpt.
-    fn ragnar_rig() -> (Rig, i32, i32) {
-        let body = crate::render::heroes::ragnar_hd(None);
-        let (w, d) = (body.width, body.depth);
+    const HEROES: [HeroKind; 3] = [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto];
+
+    /// A hero's code rig as `forge::hero_rigs` builds it for the play (mirrored), from his bare
+    /// sculpt, and his grid's width, depth and height.
+    fn code_rig(hero: HeroKind) -> (Rig, i32, i32, i32) {
+        use crate::render::heroes;
+        let (body, defs) = match hero {
+            HeroKind::Ragnar => (heroes::ragnar_hd(None), heroes::RAGNAR_HD_RIG),
+            HeroKind::Mehmed => (heroes::mehmed_hd(None), heroes::MEHMED_HD_RIG),
+            HeroKind::Miyamoto => (heroes::miyamoto_hd(None), heroes::MIYAMOTO_HD_RIG),
+        };
+        let (w, d, h) = (body.width, body.depth, body.height);
         let mut c = body;
         for v in c.voxels.iter_mut() {
             v.x = w - 1 - v.x;
         }
-        let defs: Vec<_> = crate::render::heroes::RAGNAR_HD_RIG
+        let defs: Vec<_> = defs
             .iter()
             .map(|p| crate::render::voxels::PartDef {
                 name: p.name,
@@ -365,7 +516,14 @@ mod tests {
             &[("blade", &empty, [0.0; 3]), ("offhand", &empty, [0.0; 3]), ("shield", &empty, [0.0; 3])],
             0.0125,
         );
-        (rig, w, d)
+        (rig, w, d, h)
+    }
+
+    /// A hero's code rig, cut, and his grid's height.
+    fn cut_of(hero: HeroKind) -> (Rig, Rig, i32) {
+        let (rig, w, d, h) = code_rig(hero);
+        let cut = jointed(&rig, joints(hero).unwrap(), w, d);
+        (rig, cut, h)
     }
 
     #[test]
@@ -379,27 +537,28 @@ mod tests {
 
     #[test]
     fn the_cut_keeps_every_voxel_once() {
-        let (rig, w, d) = ragnar_rig();
-        let cut = jointed(&rig, &RAGNAR, w, d);
-        assert_eq!(cut.parts.len(), BONE_COUNT);
-        let count = |r: &Rig| r.parts.iter().map(|p| p.cubes.len()).sum::<usize>();
-        // Every voxel stays where it was, as the code rig's rest pose has it; the only ones added
-        // are the sleeves' copies, each where a voxel already is.
-        let mut before: Vec<(i64, i64, i64)> =
-            rig.parts.iter().flat_map(|p| p.cubes.iter().map(move |(o, _)| p.rest + *o)).map(key).collect();
-        let mut after: Vec<(i64, i64, i64)> =
-            cut.parts.iter().flat_map(|p| p.cubes.iter().map(move |(o, _)| p.rest + *o)).map(key).collect();
-        before.sort_unstable();
-        after.sort_unstable();
-        let extra = count(&cut) - count(&rig);
-        assert!(extra > 0 && extra < count(&rig) / 5, "the sleeves add {extra} of {}", count(&rig));
-        after.dedup();
-        before.dedup();
-        assert_eq!(before, after);
-        // Every bone of his body has voxels (the weapons are empty here).
-        for (i, p) in cut.parts.iter().enumerate().take(Bone::Blade.index()) {
-            assert!(p.cubes.len() > 20, "{} has {} voxels", BONES[i], p.cubes.len());
-            assert_eq!(p.parent, PARENTS[i]);
+        for hero in HEROES {
+            let (rig, cut, _) = cut_of(hero);
+            assert_eq!(cut.parts.len(), BONE_COUNT);
+            let count = |r: &Rig| r.parts.iter().map(|p| p.cubes.len()).sum::<usize>();
+            // Every voxel stays where it was, as the code rig's rest pose has it; the only ones added
+            // are the sleeves' copies, each where a voxel already is.
+            let mut before: Vec<(i64, i64, i64)> =
+                rig.parts.iter().flat_map(|p| p.cubes.iter().map(move |(o, _)| p.rest + *o)).map(key).collect();
+            let mut after: Vec<(i64, i64, i64)> =
+                cut.parts.iter().flat_map(|p| p.cubes.iter().map(move |(o, _)| p.rest + *o)).map(key).collect();
+            before.sort_unstable();
+            after.sort_unstable();
+            let extra = count(&cut) - count(&rig);
+            assert!(extra > 0 && extra < count(&rig) / 5, "{hero:?}: the sleeves add {extra} of {}", count(&rig));
+            after.dedup();
+            before.dedup();
+            assert_eq!(before, after, "{hero:?}");
+            // Every bone of his body has voxels (the weapons and shield are empty here).
+            for (i, p) in cut.parts.iter().enumerate().take(Bone::Blade.index()) {
+                assert!(p.cubes.len() > 20, "{hero:?}: {} has {} voxels", BONES[i], p.cubes.len());
+                assert_eq!(p.parent, PARENTS[i]);
+            }
         }
     }
 
@@ -410,38 +569,97 @@ mod tests {
 
     #[test]
     fn no_voxel_is_stranded_on_another_limb() {
-        // Each voxel lies on its own bone's side of the joint below it, and within reach of its joint.
-        let (rig, w, d) = ragnar_rig();
-        let cut = jointed(&rig, &RAGNAR, w, d);
-        let size = cut.size;
-        for (i, part) in cut.parts.iter().enumerate() {
-            for (off, _) in &part.cubes {
-                // Nothing on a limb lies further than its length from its joint.
-                let reach = match i {
-                    0..=2 => 40.0,
-                    4 => 45.0,
-                    _ => 16.0,
-                } * size;
-                assert!(off.length() <= reach, "{} has a voxel {:.3} from its joint", BONES[i], off.length());
+        for hero in HEROES {
+            let (_, cut, h) = cut_of(hero);
+            let size = cut.size;
+            // (Reaches in Ragnar's voxels, scaled to the hero's height.)
+            let scale = h as f32 / crate::render::heroes::RAGNAR_SIZE.1 as f32;
+            // A skirt's halves ride the thighs, reaching out and down past the knee.
+            let skirt = match hero {
+                HeroKind::Ragnar => None,
+                HeroKind::Mehmed => Some(30.0),
+                HeroKind::Miyamoto => Some(24.0),
+            };
+            for (i, part) in cut.parts.iter().enumerate() {
+                for (off, _) in &part.cubes {
+                    // Nothing on a limb lies further than its length from its joint.
+                    let reach = match (i, skirt) {
+                        (0..=2, _) => 40.0 * scale,
+                        (4, _) => 45.0 * scale,
+                        (11 | 14, Some(r)) => r,
+                        _ => 16.0 * scale,
+                    } * size;
+                    let g = (part.rest + *off) / size;
+                    assert!(off.length() <= reach, "{hero:?}: {} has a voxel {:.3} from its joint (at {g})", BONES[i], off.length());
+                }
             }
-        }
-        // Down each limb, a bone's voxels lie above the next bone's joint.
-        for (a, b) in [(5, 6), (6, 7), (8, 9), (9, 10), (11, 12), (12, 13), (14, 15), (15, 16)] {
-            let (up, down) = (&cut.parts[a], &cut.parts[b]);
-            let joint = down.rest.y - up.rest.y;
-            assert!(up.cubes.iter().all(|(o, _)| o.y >= joint - size * 0.6), "{} has a voxel below {}", BONES[a], BONES[b]);
-        }
-        // The sides keep to their own side of him: the left limbs at +x, the right at -x.
-        for (name, sign) in [("hand.L", 1.0), ("hand.R", -1.0), ("foot.L", 1.0), ("foot.R", -1.0)] {
-            let p = &cut.parts[cut.index(name).unwrap()];
-            assert!(p.cubes.iter().all(|(o, _)| (p.rest.x + o.x) * sign > 0.0), "{name} reaches across");
+            // Down each limb, a bone's voxels lie above the next bone's joint (but a skirt's).
+            for (a, b) in [(5, 6), (6, 7), (8, 9), (9, 10), (11, 12), (12, 13), (14, 15), (15, 16)] {
+                if hero == HeroKind::Mehmed && (a == 11 || a == 14) {
+                    continue;
+                }
+                let (up, down) = (&cut.parts[a], &cut.parts[b]);
+                let joint = down.rest.y - up.rest.y;
+                assert!(up.cubes.iter().all(|(o, _)| o.y >= joint - size * 0.6), "{hero:?}: {} has a voxel below {}", BONES[a], BONES[b]);
+            }
+            // The sides keep to their own side of him: the left limbs at +x, the right at -x (the
+            // skirt's halves too).
+            for (name, sign) in [("hand.L", 1.0), ("hand.R", -1.0), ("foot.L", 1.0), ("foot.R", -1.0), ("thigh.L", 1.0), ("thigh.R", -1.0)]
+            {
+                let p = &cut.parts[cut.index(name).unwrap()];
+                assert!(p.cubes.iter().all(|(o, _)| (p.rest.x + o.x) * sign > 0.0), "{hero:?}: {name} reaches across");
+            }
         }
     }
 
     #[test]
-    fn only_ragnar_has_a_table_yet() {
-        assert!(joints(HeroKind::Ragnar).is_some());
-        let rig = build_rig(&crate::render::characters::ragnar(), crate::render::characters::RAGNAR_RIG, 0.05);
+    fn the_sleeves_lie_at_their_joints() {
+        // A sleeve's voxel is a copy of one of the bone above a joint, laid on the bone below it
+        // within a band of the joint: never on another limb, never far from the crease.
+        for hero in HEROES {
+            let (_, cut, _) = cut_of(hero);
+            let size = cut.size;
+            let mut owners: std::collections::HashMap<(i64, i64, i64), Vec<usize>> = std::collections::HashMap::new();
+            for (i, p) in cut.parts.iter().enumerate() {
+                for (o, _) in &p.cubes {
+                    owners.entry(key(p.rest + *o)).or_default().push(i);
+                }
+            }
+            let mut sleeves = 0;
+            for (k, bones) in &owners {
+                if bones.len() < 2 {
+                    continue;
+                }
+                sleeves += 1;
+                assert_eq!(bones.len(), 2, "{hero:?}: a voxel in {} bones", bones.len());
+                let (a, b) = (bones[0].min(bones[1]), bones[0].max(bones[1]));
+                assert_eq!(PARENTS[b], Some(a), "{hero:?}: a sleeve between {} and {}", BONES[a], BONES[b]);
+                let y = k.1 as f32 * size / 2.0;
+                let joint = cut.parts[b].rest.y;
+                assert!(
+                    (y - joint).abs() <= (SLEEVE + 3.0) * size,
+                    "{hero:?}: a sleeve of {} {:.1} voxels from its joint",
+                    BONES[b],
+                    (y - joint) / size
+                );
+            }
+            assert!(sleeves > 100, "{hero:?}: {sleeves} sleeve voxels");
+            // Mehmed's skirt never rides his shins (their knee is unsleeved, under the skirt).
+            if hero == HeroKind::Mehmed {
+                for shin in ["shin.L", "shin.R"] {
+                    let p = &cut.parts[cut.index(shin).unwrap()];
+                    assert!(p.cubes.iter().all(|(o, _)| p.rest.y + o.y < 8.0 * size), "{shin} carries the skirt");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_hero_has_a_table_and_the_code_rigs_stay_flat() {
+        for hero in HEROES {
+            assert!(joints(hero).is_some());
+        }
+        let rig = crate::render::voxels::build_rig(&crate::render::characters::ragnar(), crate::render::characters::RAGNAR_RIG, 0.05);
         assert!(rig.parts.iter().all(|p| p.parent.is_none()), "the code's rigs have no parents");
     }
 }

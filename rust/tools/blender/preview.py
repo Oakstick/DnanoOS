@@ -2,8 +2,10 @@
 (its markers among them), rendered with Workbench in the voxels' colours.
 
     blender -b ragnar.blend -P tools/blender/preview.py -- OUT_DIR [action ...] [--yaw DEG] [--rise R] [--frames N]
+        [--at HEIGHT] [--dist D]
 
 Writes OUT_DIR/<action>.png (rows of five frames) for each action (all of them when none is named).
+`--at` is the height the camera looks at and `--dist` its distance (a taller hero wants both larger).
 """
 import os
 import sys
@@ -42,7 +44,7 @@ def main():
     a = vh.args()
     out = a[0]
     os.makedirs(out, exist_ok=True)
-    yaw, rise, count = 30.0, 0.2, 8
+    yaw, rise, count, at, dist = 30.0, 0.2, 8, 0.56, 2.1
     names = []
     i = 1
     while i < len(a):
@@ -55,13 +57,19 @@ def main():
         elif a[i] == "--frames":
             count = int(a[i + 1])
             i += 2
+        elif a[i] == "--at":
+            at = float(a[i + 1])
+            i += 2
+        elif a[i] == "--dist":
+            dist = float(a[i + 1])
+            i += 2
         else:
             names.append(a[i])
             i += 1
     scene = bpy.context.scene
     arm = vh.armature()
     vh.setup_render(scene, 300, 360)
-    vh.camera(scene, at=(0.0, 0.56, 0.0), yaw=yaw, dist=2.1, rise=rise)
+    vh.camera(scene, at=(0.0, at, 0.0), yaw=yaw, dist=dist, rise=rise)
     for act in bpy.data.actions:
         if names and act.name not in names:
             continue
