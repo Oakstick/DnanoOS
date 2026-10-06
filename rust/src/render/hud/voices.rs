@@ -14,7 +14,7 @@ use crate::logic::types::V;
 pub fn panel_rect(w: f32, h: f32, lines: usize) -> [f32; 4] {
     let t = tile_for(w, h);
     let pw = (w * 0.4).min(t * 22.0);
-    let ph = (t * 1.75 + lines as f32 * t * 0.56).max(t * 3.6);
+    let ph = (t * 1.75 + lines as f32 * t * 0.56 * prefs().prose).max(t * 3.6);
     [t * 0.4, h - t * 3.9 - ph, pw, ph]
 }
 
@@ -40,12 +40,13 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
     let small = (t * 0.5).max(11.0);
     let probe = panel_rect(o.width, o.height, 1);
     let words_w = probe[2] - (probe[3] - t * 0.6) - t * 1.1;
-    let [x, y, pw, ph] = panel_rect(o.width, o.height, lines_of(o, &s.text, small * 0.92, words_w));
+    let prose = prefs().prose;
+    let [x, y, pw, ph] = panel_rect(o.width, o.height, lines_of(o, &s.text, small * 0.92 * prose, words_w));
     let age = (g.time - s.since) as f32;
     let fade = (age * 4.0).min(1.0);
     let color = s.color();
     let whisper = matches!(s.who, Speaker::Whisper(_));
-    o.rect(x, y, pw, ph, [INK[0], INK[1], INK[2], 0.88 * fade]);
+    o.rect(x, y, pw, ph, [INK[0], INK[1], INK[2], prefs().backing * fade]);
     o.rect_outline(x, y, pw, ph, (t * 0.06).max(1.0), rgba(if whisper { color } else { COPPER }, 0.6 * fade));
     o.rect(x + t * 0.3, y, pw - t * 0.6, (t * 0.07).max(1.0), rgba(color, 0.9 * fade));
     // The portrait: his face in an amber frame; for the whisper, an empty frame and a shadow.
@@ -87,7 +88,7 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
         );
     }
     let shown: String = s.text.chars().take(s.shown(g.time)).collect();
-    wrap_left(o, &shown, tx, y + t * 1.35, tw, t * 0.56, small * 0.92, rgba(color, fade));
+    wrap_left(o, &shown, tx, y + t * 1.35, tw, t * 0.56 * prose, small * 0.92 * prose, rgba(color, fade));
 }
 
 /// Where a world point lands on screen.

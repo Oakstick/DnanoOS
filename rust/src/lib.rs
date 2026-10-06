@@ -39,6 +39,7 @@ pub mod logic;
 pub mod perf;
 pub mod platform;
 pub mod render;
+pub mod settings;
 #[cfg(feature = "steam")]
 pub mod steam;
 

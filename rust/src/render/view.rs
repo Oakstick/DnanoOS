@@ -239,6 +239,10 @@ pub struct WorldView {
     /// whether each level is tinted to show where it switches.
     pub lod_bias: f32,
     pub lod_debug: bool,
+    /// The colour-blind palette for the fight's tells (the settings: `render::palette`).
+    pub colour_blind: crate::settings::ColourBlind,
+    /// Hit flashes dimmed and strobes held still (the settings' reduce flashing).
+    pub reduce_flashing: bool,
     /// Title screen: the camera circles Ragnar instead of chasing him.
     pub showcase: bool,
     /// Free movement: the chase camera turns after him only while he runs straight ahead.
@@ -453,6 +457,8 @@ impl WorldView {
             aspect: 16.0 / 9.0,
             viewport_h: 1080.0,
             lod_bias: 1.0,
+            colour_blind: Default::default(),
+            reduce_flashing: false,
             lod_debug: false,
             showcase: false,
             follow_heading: false,

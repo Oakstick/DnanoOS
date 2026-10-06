@@ -134,8 +134,8 @@ pub fn fonts() -> &'static Fonts {
     FONTS.get_or_init(build)
 }
 
-const BODY_TTF: &[u8] = include_bytes!("../../assets/fonts/AlegreyaSans-Medium.ttf");
-const DISPLAY_TTF: &[u8] = include_bytes!("../../assets/fonts/Cinzel-Variable.ttf");
+pub(crate) const BODY_TTF: &[u8] = include_bytes!("../../assets/fonts/AlegreyaSans-Medium.ttf");
+pub(crate) const DISPLAY_TTF: &[u8] = include_bytes!("../../assets/fonts/Cinzel-Variable.ttf");
 /// Cinzel's weight axis is set to this (its bold).
 const DISPLAY_WEIGHT: f32 = 700.0;
 

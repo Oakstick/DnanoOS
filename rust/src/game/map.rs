@@ -22,6 +22,17 @@ pub struct MapStop {
     pub scene: Option<(Scene, usize)>,
     /// The stop is a general's command post in the stage's realm (WARBAND.md §9).
     pub post: bool,
+    /// The stop is a screen of the UI rather than a place (UI.md §8, §9).
+    pub page: Option<MapPage>,
+}
+
+/// The UI's screens on the Map, to look at without playing to them.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MapPage {
+    /// The settings page (over the pause menu, or the title).
+    Settings,
+    /// The in-game loading card, over where he stands, for a few seconds.
+    LoadingCard,
 }
 
 /// The road down: the Garden and its Cyclops, the Portals of Hell, then each sin's realm and
@@ -53,20 +64,42 @@ pub fn map_stops() -> Vec<MapStop> {
         // (The Steward of the Last Course is the Steward on the Map's button.)
         let full = crate::logic::war::general::General::of(sin).name;
         let name = if full.len() > 26 { full.split(" OF ").next().unwrap_or(full) } else { full };
-        stops.push(MapStop { stage: Stage::Realm(sin), label: format!("{} - {name}'S POST", sin.title()), scene: None, post: true });
+        stops.push(MapStop {
+            stage: Stage::Realm(sin),
+            label: format!("{} - {name}'S POST", sin.title()),
+            scene: None,
+            post: true,
+            page: None,
+        });
     }
     // The story's scenes, from the start of each place: the graveyard at dusk, and the gateway below.
     for (beat, label) in [(0, "SCENE I - THE GRAVEYARD"), (story::first(Shot::Arrive).unwrap_or(0), "SCENE I - THE DUNGEON GATEWAY")] {
-        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: Some((Scene::One, beat)), post: false });
+        stops.push(MapStop {
+            stage: Stage::Dungeon(0),
+            label: label.to_string(),
+            scene: Some((Scene::One, beat)),
+            post: false,
+            page: None,
+        });
     }
     // The end: Scene II, from the bottom of the Pit to the credits (seen from here, it does not
     // count as finishing the game).
-    stops.push(MapStop { stage: Stage::Dungeon(0), label: "SCENE II - THE WAY UP".to_string(), scene: Some((Scene::Two, 0)), post: false });
+    stops.push(MapStop {
+        stage: Stage::Dungeon(0),
+        label: "SCENE II - THE WAY UP".to_string(),
+        scene: Some((Scene::Two, 0)),
+        post: false,
+        page: None,
+    });
+    // The UI's screens: the settings, and the loading card with its legend.
+    for (page, label) in [(MapPage::Settings, "THE UI - SETTINGS"), (MapPage::LoadingCard, "THE UI - THE LOADING CARD")] {
+        stops.push(MapStop { stage: Stage::Dungeon(0), label: label.to_string(), scene: None, post: false, page: Some(page) });
+    }
     stops
 }
 
 fn stop(stage: Stage, label: String) -> MapStop {
-    MapStop { stage, label, scene: None, post: false }
+    MapStop { stage, label, scene: None, post: false, page: None }
 }
 
 impl Game {
@@ -156,6 +189,14 @@ impl Game {
         }
         if clicked.is_some() || self.input.was_pressed(&[Action::Confirm, Action::Jump]) {
             let stop = &stops[self.map_index.min(n - 1)];
+            if let Some(page) = stop.page {
+                self.show_map = false;
+                match page {
+                    MapPage::Settings => self.open_settings(),
+                    MapPage::LoadingCard => self.show_loading_card(6.0),
+                }
+                return;
+            }
             match stop.scene {
                 Some((scene, beat)) => self.map_scene(scene, beat),
                 None => {

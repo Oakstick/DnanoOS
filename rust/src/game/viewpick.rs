@@ -22,11 +22,6 @@ pub(super) fn saved_camera() -> CameraMode {
 pub const VIEWS: [(MenuItem, CameraMode); 2] = [(MenuItem::ViewTop, CameraMode::Top), (MenuItem::ViewFollow, CameraMode::Third)];
 
 impl Game {
-    /// The button for the camera now in use (the pause menu's: choosing it switches to the other).
-    pub(super) fn view_item(&self) -> MenuItem {
-        VIEWS.iter().find(|v| v.1 == self.view.camera_mode).map(|v| v.0).unwrap_or(MenuItem::ViewFollow)
-    }
-
     /// Sets the camera, and remembers it.
     pub(super) fn choose_camera(&mut self, mode: CameraMode) {
         self.view.camera_mode = mode;

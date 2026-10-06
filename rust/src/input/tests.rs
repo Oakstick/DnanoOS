@@ -263,3 +263,101 @@ fn prompts_name_the_control_on_the_device_used_last() {
     assert_eq!(i.prompt(Action::Confirm).as_deref(), Some("Cross"));
     assert_eq!(i.prompt(Action::MoveUp), None, "the stick runs");
 }
+
+#[test]
+fn the_shield_by_toggle_is_raised_by_one_press_and_lowered_by_the_next() {
+    use crate::settings::Settings;
+    let mut i = Input::new();
+    i.set_context(Context::Play);
+    // Held (the default): up while the right button is down.
+    i.mouse_button(winit::event::MouseButton::Right, true);
+    assert!(i.held(Action::Block));
+    i.mouse_button(winit::event::MouseButton::Right, false);
+    assert!(!i.held(Action::Block));
+    // By toggle: a click raises it and it stays; the next lowers it.
+    i.apply(&Settings { shield_toggle: true, ..Settings::default() });
+    i.mouse_button(winit::event::MouseButton::Right, true);
+    i.mouse_button(winit::event::MouseButton::Right, false);
+    assert!(i.held(Action::Block), "raised by the press, and kept");
+    i.mouse_button(winit::event::MouseButton::Right, true);
+    assert!(!i.held(Action::Block), "lowered by the next");
+    i.mouse_button(winit::event::MouseButton::Right, false);
+    // The pad's LB the same, a press at a time (held across polls, it flips once).
+    step(&mut i, Some(pad(&[PadButton::LeftBumper], Device::Xbox)));
+    step(&mut i, Some(pad(&[PadButton::LeftBumper], Device::Xbox)));
+    assert!(i.held(Action::Block));
+    step(&mut i, Some(pad(&[], Device::Xbox)));
+    assert!(i.held(Action::Block));
+    step(&mut i, Some(pad(&[PadButton::LeftBumper], Device::Xbox)));
+    assert!(!i.held(Action::Block));
+    // A bot's guard (or a script's) is held as ever, the toggle or not.
+    let bot = PadState { actions: [Action::Block].into_iter().collect(), ..Default::default() };
+    step(&mut i, Some(bot));
+    assert!(i.held(Action::Block));
+    step(&mut i, Some(PadState::default()));
+    assert!(!i.held(Action::Block));
+    // A rule that lowers the guard lowers the latch too; switched back to held, it is down.
+    i.mouse_button(winit::event::MouseButton::Right, true);
+    i.mouse_button(winit::event::MouseButton::Right, false);
+    i.inject_release(Action::Block);
+    assert!(!i.held(Action::Block));
+    i.mouse_button(winit::event::MouseButton::Right, true);
+    i.mouse_button(winit::event::MouseButton::Right, false);
+    i.apply(&Settings::default());
+    assert!(!i.held(Action::Block));
+}
+
+#[test]
+fn the_mouse_and_sticks_follow_the_settings() {
+    use crate::settings::Settings;
+    let mut i = Input::new();
+    i.mouse_captured = true;
+    i.mouse_motion(10.0, 10.0);
+    assert_eq!(i.take_look(), (10.0, 10.0));
+    i.apply(&Settings { mouse_sensitivity: 200, invert_mouse_y: true, ..Settings::default() });
+    i.mouse_motion(10.0, 10.0);
+    assert_eq!(i.take_look(), (20.0, -20.0));
+    // The right stick: up turned over on its own setting.
+    let look = |i: &mut Input, y: f32| {
+        step(i, Some(PadState { right: (0.0, y), kind: Some(Device::Xbox), ..Default::default() }));
+        i.take_look().1
+    };
+    assert!(look(&mut i, 1.0) > 0.0, "the stick is not turned over by the mouse's setting");
+    i.apply(&Settings { invert_stick_y: true, ..Settings::default() });
+    assert!(look(&mut i, 1.0) < 0.0);
+    // The deadzones: a push of 0.3 runs only once the deadzone is under it.
+    let push = PadState { left: (0.3, 0.0), kind: Some(Device::Xbox), ..Default::default() };
+    i.apply(&Settings::default());
+    step(&mut i, Some(push.clone()));
+    assert_eq!(i.direction(), Dir::None);
+    i.apply(&Settings { move_deadzone: 25, ..Settings::default() });
+    step(&mut i, Some(push));
+    assert_eq!(i.direction(), Dir::Right);
+    // And the look's: a nudge of 0.2 turns nothing at the default, something at 0.1.
+    i.apply(&Settings::default());
+    assert_eq!(look(&mut i, 0.15), 0.0);
+    i.apply(&Settings { look_deadzone: 10, ..Settings::default() });
+    assert!(look(&mut i, 0.15) > 0.0);
+}
+
+#[test]
+fn every_control_pressed_is_heard_as_it_is_for_the_rebinding_page() {
+    let mut i = Input::new();
+    i.set_context(Context::Menu);
+    i.key_down(KeyCode::KeyQ, false);
+    i.key_down(KeyCode::F1, false);
+    i.mouse_button(winit::event::MouseButton::Back, true);
+    i.wheel(-1.0);
+    assert_eq!(
+        i.raw_presses(),
+        &[Control::Key(KeyCode::KeyQ), Control::Key(KeyCode::F1), Control::Mouse(MouseButton::Back), Control::WheelDown]
+    );
+    i.flush();
+    assert!(i.raw_presses().is_empty());
+    i.set_pad(Some(pad(&[PadButton::RightTrigger], Device::Xbox)));
+    i.poll(1.0 / 120.0);
+    assert_eq!(i.raw_presses(), &[Control::Pad(PadButton::RightTrigger)]);
+    i.flush();
+    i.poll(1.0 / 120.0);
+    assert!(i.raw_presses().is_empty(), "held, it is not pressed again");
+}

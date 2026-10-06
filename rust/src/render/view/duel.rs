@@ -218,7 +218,7 @@ impl WorldView {
             v.light_intensity = 0.0;
         }
         if d.flash > 0 {
-            let k = d.flash as f32 / 6.0;
+            let k = d.flash as f32 / 6.0 * if self.reduce_flashing { 0.35 } else { 1.0 };
             v.emissive += Vec3::splat(1.3 * k);
             v.mat_color *= 1.0 + 0.4 * k;
         }
@@ -1113,7 +1113,7 @@ impl WorldView {
                     let size = (d.radius() as f32 * 1.6).clamp(0.7, 1.6);
                     let since = frame as f32 - data.glint_frame() as f32;
                     if phase == Phase::Startup && (0.0..GLINT_LIFE).contains(&since) {
-                        let tint = if peril { lin(0xff2a1a) } else { lin(0xfff2c8) };
+                        let tint = if peril { lin(crate::render::palette::peril(self.colour_blind)) } else { lin(0xfff2c8) };
                         emit_glint(f, tip, since / GLINT_LIFE, tint, size, time);
                     }
                     let left = data.startup.saturating_sub(frame);

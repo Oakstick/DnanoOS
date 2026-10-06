@@ -576,12 +576,20 @@ impl WorldView {
             pose.rot[i].x = 1.2 * shut;
         }
 
-        let flash = b.flash as f32;
+        let flash = b.flash as f32 * if self.reduce_flashing { 0.35 } else { 1.0 };
         let glow = b.glow() as f32;
         let rage = if b.phase() >= 3 { 0.1 + (time * 6.0).sin().abs() * 0.1 } else { 0.0 };
         let body_emissive = Vec3::splat(flash * 0.5)
             + lin(0xff2a2a) * rage
-            + Vec3::splat(if dying > 0.0 && (time * 14.0).sin() > 0.3 { 0.6 * dying } else { 0.0 });
+            + Vec3::splat(if dying > 0.0 && (self.reduce_flashing || (time * 14.0).sin() > 0.3) {
+                if self.reduce_flashing {
+                    0.25 * dying
+                } else {
+                    0.6 * dying
+                }
+            } else {
+                0.0
+            });
         let tint = if flash > 0.0 { Vec3::ONE.lerp(Vec3::new(1.0, 0.55, 0.55), flash) } else { Vec3::ONE };
         // A prince: the Cyclops' hide in his sin's colour.
         let tint = tint * self.tint.map(sin_skin).unwrap_or(Vec3::ONE);

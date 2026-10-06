@@ -305,9 +305,9 @@ impl Game {
         if self.confirm_reset {
             vec![MenuItem::StartOver, MenuItem::KeepProgress]
         } else if self.can_continue() {
-            vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Map]
+            vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Settings]
         } else {
-            vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map]
+            vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Settings]
         }
     }
 }

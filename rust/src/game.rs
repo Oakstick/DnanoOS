@@ -13,7 +13,8 @@
 //! - `feedback`: floating text, points, streaks and the screen's juice
 //! - `angels`, `hub`, `realm`, `vault`, `shop`, `map`, `story`, `tour`, `select`, `controls`,
 //!   `save`: the archangels, the Portals of Hell, the realms, the Vaults of Mammon, the old man's
-//!   wares, the map, Scene I, the first-run tour, the character screen, the controller page, saves
+//!   wares, the map, Scene I, the first-run tour, the character screen, the controller page, saves;
+//!   `settings_page`: the settings (UI.md §8) and the rebinding of the controls
 //! - `pit`: the Pit under the House of the Devil, ridden down level by level (FINALE.md)
 //! - `debug`: testing cheats and the capture tool's hooks
 //! - `ending`: the end, Scene II, the words and the credits (FINALE.md §4)
@@ -59,6 +60,7 @@ mod ring_tests;
 mod rivals;
 mod save;
 mod select;
+pub mod settings_page;
 mod shop;
 pub mod sparring;
 mod story;
@@ -187,14 +189,12 @@ pub enum MenuItem {
     DropAll,
     /// An answer to a prince's offer in one of the realms after the vaults, in its own words.
     Choice(&'static str),
-    /// The camera: from above, or over his shoulder (the choice before play; in the pause menu,
-    /// the one in use, which choosing switches).
+    /// The camera: from above, or over his shoulder (the choice before play).
     ViewTop,
     ViewFollow,
-    /// The feel's settings in the pause menu (WARBAND.md §4): slow motion on kills (on or off),
-    /// and the screen's shake (percent); choosing either steps it.
-    SlowMotion(bool),
-    Shake(u8),
+    /// The settings page (UI.md §8), from the title and the pause menu: the camera, slow motion
+    /// and the shake live there now, with everything else.
+    Settings,
 }
 
 impl MenuItem {
@@ -216,14 +216,7 @@ impl MenuItem {
             MenuItem::Choice(words) => words,
             MenuItem::ViewTop => "VIEW: TOP-DOWN",
             MenuItem::ViewFollow => "VIEW: FOLLOW",
-            MenuItem::SlowMotion(true) => "SLOW MOTION: ON",
-            MenuItem::SlowMotion(false) => "SLOW MOTION: OFF",
-            MenuItem::Shake(100) => "SCREEN SHAKE: 100%",
-            MenuItem::Shake(75) => "SCREEN SHAKE: 75%",
-            MenuItem::Shake(50) => "SCREEN SHAKE: 50%",
-            MenuItem::Shake(25) => "SCREEN SHAKE: 25%",
-            MenuItem::Shake(0) => "SCREEN SHAKE: OFF",
-            MenuItem::Shake(_) => "SCREEN SHAKE",
+            MenuItem::Settings => "SETTINGS",
         }
     }
 }
@@ -250,6 +243,8 @@ pub struct Loading {
     pub age: f64,
     /// The first time this level was loaded in this run of the game (nothing of it cached yet).
     pub cold: bool,
+    /// Held at least this many seconds, ready or not (the loading card's preview, from the Map).
+    pub hold: f64,
 }
 
 /// One change of level, timed (RP03): from the load to the first frame shown, in ms.
@@ -478,6 +473,13 @@ pub struct Game {
     /// The fog of war over the level, for the minimap (UI.md §7): presentation only, nothing in
     /// the game reads it.
     pub explore: crate::logic::explore::Explore,
+    /// The player's settings (UI.md §8: `crate::settings`), and the page that changes them.
+    pub settings: crate::settings::Settings,
+    pub settings_page: settings_page::SettingsPage,
+    /// The window fills the screen (the app keeps it so, for the settings page to show).
+    pub fullscreen: bool,
+    /// The device used last as last saved (`vh.last_device`, for the engine's start screen).
+    device_saved: Option<crate::input::Device>,
 }
 
 impl Game {
@@ -621,7 +623,13 @@ impl Game {
             finished: !cfg!(test) && ending::finished_saved(),
             pit: None,
             explore: crate::logic::explore::Explore::new(),
+            settings: crate::settings::Settings::load(),
+            settings_page: Default::default(),
+            fullscreen: false,
+            device_saved: None,
         };
+        // The settings into the input, the mixer, the HUD and the view.
+        g.apply_settings();
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
         // Free movement is on unless the player turned it off (tests keep to the grid).
@@ -824,12 +832,15 @@ impl Game {
         }
         let cold = !self.visited.contains(&label);
         let load_ms = started.elapsed().as_secs_f64() * 1e3;
-        self.loading = Some(Loading { label, started, load_ms, age: 0.0, cold });
+        self.loading = Some(Loading { label, started, load_ms, age: 0.0, cold, hold: 0.0 });
         self.juice.fade = 1.0;
     }
 
     /// The renderer has the new level ready: the hold ends and the level fades in.
     pub fn finish_loading(&mut self) {
+        if self.loading.as_ref().is_some_and(|l| l.age < l.hold) {
+            return;
+        }
         if let Some(l) = self.loading.take() {
             let ms = l.started.elapsed().as_secs_f64() * 1e3;
             self.visited.insert(l.label.clone());

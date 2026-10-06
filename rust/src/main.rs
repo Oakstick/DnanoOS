@@ -281,7 +281,7 @@ fn main() {
     if args.iter().any(|a| a == "--camera-check") {
         std::process::exit(void_harvest::camcheck::run(&args));
     }
-    if args.iter().any(|a| a == "--capture") {
+    if args.iter().any(|a| a == "--capture" || a == "--splash") {
         std::process::exit(void_harvest::capture::run(&args));
     }
     let opts = Options {

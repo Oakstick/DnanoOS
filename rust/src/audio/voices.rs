@@ -2223,11 +2223,13 @@ pub struct Play {
     pub immune: bool,
     /// It ducks everything else (`mix::DUCK_SECS`).
     pub duck: bool,
+    /// A voice (a cry): on the voices' volume.
+    pub voice: bool,
 }
 
 impl Default for Play {
     fn default() -> Self {
-        Self { prio: Priority::Rest, pitch: 1.0, sig_pitch: 1.0, stretch: 1.0, immune: false, duck: false }
+        Self { prio: Priority::Rest, pitch: 1.0, sig_pitch: 1.0, stretch: 1.0, immune: false, duck: false, voice: false }
     }
 }
 
@@ -2279,7 +2281,7 @@ impl AudioManager {
 
     fn foe_cry_at(&mut self, kind: EnemyKind, cry: Cry, at: Option<V>) {
         let size = size_of(kind) as f64;
-        let how = Play { pitch: 1.0 / size, stretch: size.powf(0.35), ..Default::default() };
+        let how = Play { pitch: 1.0 / size, stretch: size.powf(0.35), voice: true, ..Default::default() };
         self.play_recipe(&cry_of(kind, cry), key(3, kind as u64, cry as u64), at, how);
     }
 
@@ -2289,7 +2291,7 @@ impl AudioManager {
     }
 
     fn hero_cry_with(&mut self, hero: HeroKind, cry: HeroCry, immune: bool) {
-        let how = Play { prio: Priority::Hero, immune, ..Default::default() };
+        let how = Play { prio: Priority::Hero, immune, voice: true, ..Default::default() };
         self.play_recipe(&hero_voice(hero, cry), key(4, hero as u64, cry as u64), None, how);
     }
 
@@ -2349,7 +2351,7 @@ impl AudioManager {
             s.duck_for(mix::DUCK_SECS);
         }
         let (pan_l, pan_r) = mix::pan_gains(pan);
-        s.stamp = Stamp { pan_l, pan_r, prio: how.prio, group, immune: how.immune, gain: gain * vg };
+        s.stamp = Stamp { pan_l, pan_r, prio: how.prio, group, immune: how.immune, gain: gain * vg, voice: how.voice };
         let t = s.now;
         render(&mut s, r, t, Render { pitch: how.pitch * vp, sig_pitch: how.sig_pitch * vp, stretch: how.stretch, variant });
         s.stamp = Stamp::default();

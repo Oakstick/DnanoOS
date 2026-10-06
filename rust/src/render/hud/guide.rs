@@ -39,7 +39,8 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
     ];
     let x = px + t * 0.9;
     let width = pw - t * 1.8;
-    let size = (t * 0.48).max(11.0);
+    // (The guide is prose: at the size the player chose for it.)
+    let size = (t * 0.48).max(11.0) * prefs().prose;
     let line = size * 1.32;
     let mut y = fy + fs + t * 0.9;
     let bottom = py + ph - t * 1.4;

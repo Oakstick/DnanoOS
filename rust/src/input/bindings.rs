@@ -393,6 +393,31 @@ impl Default for Bindings {
     }
 }
 
+/// How a rebind settles a control already on other actions.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Resolve {
+    /// Change nothing: report the conflict (the page asks the player).
+    Ask,
+    /// The others get the control the slot had, in its place.
+    Swap,
+    /// The others lose it.
+    Clear,
+}
+
+/// What a rebind did.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Rebound {
+    Done,
+    /// It is on these other actions: nothing changed (`Resolve::Ask`).
+    Conflict(Vec<Action>),
+    /// It was on these other actions, and they were settled as asked.
+    Resolved(Vec<Action>),
+    /// A fixed key, and what it does (if anything).
+    Fixed(Option<Action>),
+    /// A control of the other side, or not a play action.
+    WrongSide,
+}
+
 /// The settings key, and the version of the saved form (`v1;Attack=MouseLeft,PadWest;...`).
 pub const BINDINGS_KEY: &str = "vh.bindings";
 const VERSION: &str = "v1";
@@ -461,6 +486,91 @@ impl Bindings {
     pub fn unbind(&mut self, action: Action, control: Control) {
         if let Some(cs) = self.entry_mut(action) {
             cs.retain(|&c| c != control);
+        }
+    }
+
+    /// The controls of `action` on one side, in order: the controller's (`pad`), or the keyboard
+    /// and mouse's.
+    pub fn side(&self, action: Action, pad: bool) -> Vec<Control> {
+        self.controls(action).into_iter().filter(|c| c.is_pad() == pad).collect()
+    }
+
+    /// Takes the control in slot `slot` of `action`'s side off it, and says what it was.
+    pub fn clear_slot(&mut self, action: Action, pad: bool, slot: usize) -> Option<Control> {
+        let c = *self.side(action, pad).get(slot)?;
+        self.unbind(action, c);
+        Some(c)
+    }
+
+    /**
+     * The rebinding page's bind: `control` into slot `slot` of `action`'s side (in place of what
+     * was there, or after the others). A fixed key is refused (naming what it does), and so is a
+     * control of the other side. A control already on another play action is a conflict: `Ask`
+     * changes nothing and names them; `Swap` gives each of them the control this slot had in its
+     * place (or nothing, when the slot was empty); `Clear` takes it from them. A control already
+     * in another of the action's own slots changes places with this one.
+     */
+    pub fn rebind(&mut self, action: Action, pad: bool, slot: usize, control: Control, resolve: Resolve) -> Rebound {
+        if reserved(control) {
+            return Rebound::Fixed(match control {
+                Control::Key(k) => fixed_key(k),
+                _ => None,
+            });
+        }
+        if control.is_pad() != pad || !PLAY.contains(&action) {
+            return Rebound::WrongSide;
+        }
+        let side = self.side(action, pad);
+        let old = side.get(slot).copied();
+        if old == Some(control) {
+            return Rebound::Done;
+        }
+        let others = self.conflicts(action, control);
+        if !others.is_empty() {
+            match resolve {
+                Resolve::Ask => return Rebound::Conflict(others),
+                Resolve::Swap => {
+                    for &o in &others {
+                        if let Some(cs) = self.entry_mut(o) {
+                            match old {
+                                // (Where the other has `old` already, it simply loses `control`.)
+                                Some(prev) if !cs.contains(&prev) => {
+                                    for c in cs.iter_mut().filter(|c| **c == control) {
+                                        *c = prev;
+                                    }
+                                }
+                                _ => cs.retain(|&c| c != control),
+                            }
+                        }
+                    }
+                }
+                Resolve::Clear => {
+                    for &o in &others {
+                        self.unbind(o, control);
+                    }
+                }
+            }
+        }
+        let Some(cs) = self.entry_mut(action) else { return Rebound::WrongSide };
+        let at = |cs: &Vec<Control>, c: Control| cs.iter().position(|&x| x == c);
+        match (old, at(cs, control)) {
+            // Already in another of its own slots: the two change places.
+            (Some(prev), Some(j)) => {
+                let i = at(cs, prev).unwrap_or(j);
+                cs.swap(i, j);
+            }
+            (None, Some(_)) => {}
+            (Some(prev), None) => {
+                if let Some(i) = at(cs, prev) {
+                    cs[i] = control;
+                }
+            }
+            (None, None) => cs.push(control),
+        }
+        if others.is_empty() {
+            Rebound::Done
+        } else {
+            Rebound::Resolved(others)
         }
     }
 
@@ -945,6 +1055,64 @@ mod tests {
         b.reset_action(Action::Drink);
         assert_eq!(b.controls(Action::Drink), default_controls(Action::Drink).to_vec());
         assert_ne!(b, Bindings::default());
+        b.reset();
+        assert_eq!(b, Bindings::default());
+    }
+
+    #[test]
+    fn the_rebinding_page_binds_asks_swaps_clears_and_saves() {
+        use Control::{Key, Mouse, Pad};
+        let mut b = Bindings::default();
+        // Bind: F into the attack's first keyboard slot, in place of the left click.
+        assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyF), Resolve::Ask), Rebound::Done);
+        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyF)]);
+        assert_eq!(b.side(Action::Attack, true), vec![Pad(PadButton::West)], "the pad's side untouched");
+        // A second slot, empty until now: added after.
+        assert_eq!(b.rebind(Action::Attack, false, 1, Mouse(MouseButton::Left), Resolve::Ask), Rebound::Done);
+        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyF), Mouse(MouseButton::Left)]);
+        // A conflict: Q is the drink's. Asked, nothing changes (the page's cancel leaves it so).
+        let before = b.clone();
+        assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyQ), Resolve::Ask), Rebound::Conflict(vec![Action::Drink]));
+        assert_eq!(b, before);
+        // Swapped: the drink takes F, the attack Q.
+        assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyQ), Resolve::Swap), Rebound::Resolved(vec![Action::Drink]));
+        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyQ), Mouse(MouseButton::Left)]);
+        assert_eq!(b.side(Action::Drink, false), vec![Key(KeyCode::KeyF)]);
+        assert!(b.conflicts(Action::Attack, Key(KeyCode::KeyQ)).is_empty());
+        // Cleared: B is the guide's; the guide loses it and is left with only its button.
+        assert_eq!(b.rebind(Action::Call, false, 0, Key(KeyCode::KeyB), Resolve::Clear), Rebound::Resolved(vec![Action::Guide]));
+        assert_eq!(b.side(Action::Call, false), vec![Key(KeyCode::KeyB)]);
+        assert!(b.side(Action::Guide, false).is_empty());
+        assert_eq!(b.side(Action::Guide, true), vec![Pad(PadButton::East)]);
+        // On the pad: Y onto the shield swaps with LB for the call.
+        assert_eq!(b.rebind(Action::Block, true, 0, Pad(PadButton::North), Resolve::Swap), Rebound::Resolved(vec![Action::Call]));
+        assert_eq!(b.side(Action::Block, true), vec![Pad(PadButton::North)]);
+        assert_eq!(b.side(Action::Call, true), vec![Pad(PadButton::LeftBumper)]);
+        // A swap into an empty slot leaves the other without it.
+        assert_eq!(b.rebind(Action::Slot(0), true, 0, Pad(PadButton::RightBumper), Resolve::Swap), Rebound::Resolved(vec![Action::Drink]));
+        assert!(b.side(Action::Drink, true).is_empty());
+        // Its own other slot: the two change places.
+        b.rebind(Action::Map, false, 1, Key(KeyCode::KeyM), Resolve::Ask);
+        assert_eq!(b.side(Action::Map, false), vec![Key(KeyCode::Tab), Key(KeyCode::KeyM)]);
+        // Refused: a fixed key, and a control of the other side.
+        assert_eq!(b.rebind(Action::Jump, false, 0, Key(KeyCode::F2), Resolve::Swap), Rebound::Fixed(Some(Action::KeyCheat)));
+        assert_eq!(b.rebind(Action::Jump, false, 0, Pad(PadButton::South), Resolve::Swap), Rebound::WrongSide);
+        assert_eq!(b.rebind(Action::Back, false, 0, Key(KeyCode::KeyJ), Resolve::Swap), Rebound::WrongSide);
+        // Cleared slot by slot.
+        assert_eq!(b.clear_slot(Action::Attack, false, 1), Some(Mouse(MouseButton::Left)));
+        assert_eq!(b.clear_slot(Action::Attack, false, 5), None);
+        // Saved and read back, through the settings form and through the settings file itself.
+        let back = Bindings::from_setting(&b.to_setting());
+        assert_eq!(back, b);
+        let dir = std::env::temp_dir().join(format!("vh-rebind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        platform::use_dir_on_this_thread(dir.clone());
+        platform::save(BINDINGS_KEY, &b.to_setting());
+        assert_eq!(platform::load(BINDINGS_KEY).map(|s| Bindings::from_setting(&s)), Some(b.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // Reset one, then all.
+        b.reset_action(Action::Attack);
+        assert_eq!(b.controls(Action::Attack), default_controls(Action::Attack).to_vec());
         b.reset();
         assert_eq!(b, Bindings::default());
     }

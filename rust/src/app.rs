@@ -242,6 +242,18 @@ impl App {
         if std::mem::take(&mut self.game.want_fullscreen_toggle) {
             self.toggle_fullscreen();
         }
+        self.game.fullscreen = self.fullscreen;
+        // The quality preset chosen on the settings page, switched at once (the shadow maps made
+        // again at their new size).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(gpu) = &mut self.gpu {
+            if gpu.preset().name != self.game.settings.preset {
+                if let Some(p) = crate::render::preset::Preset::named(self.game.settings.preset) {
+                    gpu.set_preset(crate::render::preset::Preset { gpu_cull: gpu.preset().gpu_cull, ..p });
+                    self.game.view.lod_bias = p.lod_bias;
+                }
+            }
+        }
         // The pointer belongs to the game only while playing.
         if !matches!(self.game.screen, Screen::Playing | Screen::Ready | Screen::Dying) {
             self.set_capture(false);
@@ -365,9 +377,14 @@ impl App {
                     if self.opts.no_vsync {
                         gpu.set_vsync(false);
                     }
-                    if let Some(p) = self.opts.preset {
+                    // The preset asked for (`--preset`), else the one chosen in the settings.
+                    let chosen = crate::render::preset::Preset::named(self.game.settings.preset);
+                    if let Some(p) =
+                        self.opts.preset.or(chosen.map(|p| crate::render::preset::Preset { gpu_cull: gpu.preset().gpu_cull, ..p }))
+                    {
                         gpu.set_preset(p);
                     }
+                    self.game.settings.preset = gpu.preset().name;
                     if let Some(w) = &self.window {
                         // In case it was resized (or made fullscreen) while the renderer started.
                         let size = w.inner_size();

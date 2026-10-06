@@ -79,6 +79,7 @@ impl Game {
         self.confirm_reset = false;
         self.show_controls = false;
         self.show_map = false;
+        self.settings_page = Default::default();
         self.warband.board_open = false;
         // The backing track steps back when the game does, and under the fanfare.
         self.audio
@@ -149,10 +150,12 @@ impl Game {
             .or_else(|| self.hub_focus());
         self.input.set_context(self.input_context());
         self.input.poll(dt);
+        self.note_device();
         self.handle_global_keys();
         self.settle_pace();
 
         match self.screen {
+            Screen::Title | Screen::Paused if self.settings_page.open => self.update_settings(),
             Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
             Screen::Title | Screen::Paused if self.show_map => self.update_map(),
             Screen::Title | Screen::Paused if self.warband.board_open => self.update_ledger_board(),
@@ -161,6 +164,7 @@ impl Game {
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map) => self.open_map(),
+                Some(MenuItem::Settings) => self.open_settings(),
                 Some(MenuItem::Continue) => self.continue_game(),
                 Some(MenuItem::StartOver) => self.answer_reset(true),
                 Some(MenuItem::KeepProgress) => self.answer_reset(false),
@@ -204,9 +208,7 @@ impl Game {
             }
             Screen::Paused => match self.menu_choice() {
                 Some(MenuItem::Resume) => self.enter(Screen::Playing),
-                Some(MenuItem::ViewTop | MenuItem::ViewFollow) => self.switch_camera(),
-                Some(MenuItem::SlowMotion(_)) => self.toggle_slow_motion(),
-                Some(MenuItem::Shake(_)) => self.step_shake(),
+                Some(MenuItem::Settings) => self.open_settings(),
                 Some(MenuItem::CallOldMan) => self.call_old_man(),
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map) => self.open_map(),
@@ -280,7 +282,7 @@ impl Game {
     /// The layer the controls read through now: play's while the hero moves with nothing open
     /// over him, and the menus' otherwise (presentation only).
     pub fn input_context(&self) -> Context {
-        let over = self.show_controls || self.show_map || self.guide_open || self.warband.board_open;
+        let over = self.show_controls || self.show_map || self.guide_open || self.warband.board_open || self.settings_page.open;
         if matches!(self.screen, Screen::Playing | Screen::Ready | Screen::Dying | Screen::Cleared) && !over {
             Context::Play
         } else {
@@ -314,20 +316,16 @@ impl Game {
         let mut items = match self.screen {
             Screen::Title if self.confirm_reset => return self.title_items(),
             Screen::Title => self.title_items(),
-            Screen::Paused => {
-                let [slow, shake] = self.feel_items();
-                vec![
-                    MenuItem::Resume,
-                    self.view_item(),
-                    slow,
-                    shake,
-                    MenuItem::CallOldMan,
-                    MenuItem::Controls,
-                    MenuItem::Map,
-                    MenuItem::Ledger,
-                    MenuItem::QuitToTitle,
-                ]
-            }
+            // (The view, slow motion and the shake are on the settings page now.)
+            Screen::Paused => vec![
+                MenuItem::Resume,
+                MenuItem::Settings,
+                MenuItem::Controls,
+                MenuItem::Map,
+                MenuItem::Ledger,
+                MenuItem::CallOldMan,
+                MenuItem::QuitToTitle,
+            ],
             Screen::View => return super::viewpick::VIEWS.iter().map(|v| v.0).collect(),
             // Keep first, and highlighted: Mammon would have it so. (A prince's offer in the realms
             // after the vaults puts the answer he would have first, too.)
@@ -387,6 +385,12 @@ impl Game {
     }
 
     pub(super) fn handle_global_keys(&mut self) {
+        // While the settings page waits for a control to bind (or asks about one), every press
+        // is its own: even the testing keys do nothing (it tells the player they are kept).
+        if self.settings_page.listen.is_some() || self.settings_page.conflict.is_some() {
+            let _ = self.input.take_look();
+            return;
+        }
         if self.input.was_pressed(&[Action::Fps]) {
             self.show_fps = !self.show_fps;
         }
@@ -430,6 +434,7 @@ impl Game {
             && matches!(self.screen, Screen::Playing | Screen::Paused)
             && !self.show_controls
             && !self.show_map
+            && !self.settings_page.open
         {
             self.call_old_man();
         }
@@ -442,7 +447,7 @@ impl Game {
         }
         // M, Tab, View or the D-pad's up: the map, over the pause (the Map's stops for now; the
         // full map comes with the minimap). Pressed again, it is put away (`update_map`).
-        let pages = self.show_controls || self.show_map || self.warband.board_open || self.guide_open;
+        let pages = self.show_controls || self.show_map || self.warband.board_open || self.guide_open || self.settings_page.open;
         if self.input.was_pressed(&[Action::Map]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !pages {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
@@ -451,8 +456,8 @@ impl Game {
             self.input.consume(Action::Map);
         }
         // With the controller page or the map open, Esc and Start close it instead.
-        if self.input.was_pressed(&[Action::Pause]) && !self.show_controls && !self.show_map && !self.warband.board_open && !self.guide_open
-        {
+        let pages = self.show_controls || self.show_map || self.warband.board_open || self.guide_open || self.settings_page.open;
+        if self.input.was_pressed(&[Action::Pause]) && !pages {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
                 // Nothing pressed with it may pick Resume at once.

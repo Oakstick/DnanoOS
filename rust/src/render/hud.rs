@@ -26,10 +26,12 @@ mod court;
 pub mod glyphs;
 mod guide;
 mod ledger;
+pub mod legend;
 mod map;
 mod mastery;
 mod pit;
 mod ring;
+pub mod settings;
 mod shop;
 pub mod specimen;
 mod war;
@@ -194,8 +196,34 @@ fn line(text: impl Into<String>, size: f32, color: u32) -> OverlayLine {
     OverlayLine { text: text.into(), size, color }
 }
 
+/// The HUD's unit for a window: a 64 x 36 grid's cell, kept between 12 and 28 pixels, times the
+/// player's UI scale (80% to 150%: `prefs`).
 pub fn tile_for(w: f32, h: f32) -> f32 {
-    (w / LAYOUT_COLS).min(h / LAYOUT_ROWS).clamp(MIN_TILE, MAX_TILE)
+    (w / LAYOUT_COLS).min(h / LAYOUT_ROWS).clamp(MIN_TILE, MAX_TILE) * prefs().scale
+}
+
+thread_local! {
+    /// The settings the HUD reads as it draws (`crate::settings::UiPrefs`), set by the game as
+    /// they change. Per thread: the game and its HUD run on one, and each test on its own.
+    static PREFS: std::cell::Cell<crate::settings::UiPrefs> = std::cell::Cell::new(crate::settings::UiPrefs::default());
+}
+
+/// The UI's scale, the prose's size, the colour-blind palette, the backing and the flashes.
+pub fn prefs() -> crate::settings::UiPrefs {
+    PREFS.with(|p| p.get())
+}
+
+pub fn set_prefs(p: crate::settings::UiPrefs) {
+    PREFS.with(|c| c.set(p));
+}
+
+/// A flash's strength as the player has it: dimmed to a third with reduce flashing on.
+pub fn flash(k: f32) -> f32 {
+    if prefs().reduce_flashing {
+        k * 0.33
+    } else {
+        k
+    }
 }
 
 /// Builds the whole overlay for this frame.
@@ -260,6 +288,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             if g.warband.board_open {
                 ledger::draw_ledger_screen(o, g, t);
             }
+            if g.settings_page.open {
+                settings::draw_settings(o, g, t);
+            }
         }
         Screen::Ready => draw_countdown(o, g, t),
         Screen::Paused if g.guide_open => guide::draw_guide(o, g, t),
@@ -291,6 +322,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             }
             if g.warband.board_open {
                 ledger::draw_ledger_screen(o, g, t);
+            }
+            if g.settings_page.open {
+                settings::draw_settings(o, g, t);
             }
         }
         Screen::Won => draw_screen(
@@ -379,11 +413,8 @@ fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     if show <= 0.0 {
         return;
     }
-    o.rect(0.0, 0.0, o.width, o.height, [0.0, 0.0, 0.0, 1.0]);
-    let (cx, cy) = (o.width / 2.0, o.height * 0.55);
-    o.text(&l.label.to_uppercase(), cx, cy - t * 0.9, t * 0.8, rgba(GOLD, 0.95 * show), Align::Center, true);
-    let pulse = 0.45 + 0.35 * ((l.age as f32) * 5.0).sin().abs();
-    o.text("LOADING", cx, cy + t * 0.3, t * 0.5, rgba(SAND, pulse * show), Align::Center, false);
+    // The card: the controller legend, the level's name and a tip from the old man (`legend`).
+    legend::draw_loading_card(o, g, l, t, show);
 }
 
 /**
@@ -421,7 +452,7 @@ fn draw_boss_bar(o: &mut Overlay, g: &Game, t: f32) {
     o.rect(x0 - 3.0, by - 3.0, bw + 6.0, bh + 6.0, [0.0, 0.0, 0.0, 0.8]);
     o.rect(x0, by, bw, bh, [1.0, 1.0, 1.0, 0.1]);
     o.rect(x0, by, bw * trail, bh, [1.0, 0.95, 0.85, 0.8]);
-    let color = if b.flash > 0.3 {
+    let color = if b.flash > 0.3 && !prefs().reduce_flashing {
         0xffffff
     } else if b.dazed() {
         mix_rgb(0xc24bd8, 0xffe066, (time * 8.0).sin() * 0.5 + 0.5)
@@ -452,14 +483,9 @@ fn bar(o: &mut Overlay, x: f32, y: f32, w: f32, h: f32, frac: f32, color: u32) {
     o.rect(x, y, w * frac.clamp(0.0, 1.0), h, rgba(color, 1.0));
 }
 
+/// The health bar's colour, high to low (the colour-blind palette's when it is on).
 fn hp_color(frac: f32) -> u32 {
-    if frac > 0.5 {
-        0x5cff6a
-    } else if frac > 0.25 {
-        GOLD
-    } else {
-        0xd8262e
-    }
+    super::palette::health(prefs().colour_blind, frac)
 }
 
 fn draw_sprite(o: &mut Overlay, s: &Sprite, x: f32, y: f32, scale: f32, tint: Option<u32>, alpha: f32) {
@@ -514,7 +540,8 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     o.rect(px0 - t * 0.15, py0 - t * 0.1, portrait_w + t * 0.3, portrait_h + t * 0.2, [1.0, 1.0, 1.0, 0.06]);
     let ghost = hero.invisible();
     let golden = hero.invincible() && ((time * 6.0).floor() as i64).rem_euclid(2) == 0;
-    let hurt_red = j.hurt > 0.5 && ((time * 20.0).floor() as i64).rem_euclid(2) == 0;
+    // (A 20 Hz blink, held steady with reduce flashing on.)
+    let hurt_red = j.hurt > 0.5 && (prefs().reduce_flashing || ((time * 20.0).floor() as i64).rem_euclid(2) == 0);
     let tint = if golden {
         Some(0xffd84a)
     } else if hurt_red {
@@ -992,11 +1019,11 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
 
     // BRUTAL: a hot flash that burns off from the middle out.
     if j.brutal > 0.0 {
-        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, 0.22 * j.brutal * j.brutal]);
+        o.rect(0.0, 0.0, w, h, [1.0, 0.35, 0.15, flash(0.22 * j.brutal * j.brutal)]);
         let bands = 8;
         let bw = t * 0.45;
         for i in 0..bands {
-            let a = j.brutal * 0.5 * (1.0 - i as f32 / bands as f32);
+            let a = flash(j.brutal * 0.5 * (1.0 - i as f32 / bands as f32));
             let inset = i as f32 * bw;
             o.rect_outline(inset + bw / 2.0, inset + bw / 2.0, w - 2.0 * inset - bw, h - 2.0 * inset - bw, bw, rgba(0xff5a1a, a));
         }
@@ -1021,7 +1048,7 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
         let bands = 10;
         let bw = t * 0.3;
         for i in 0..bands {
-            let a = j.hurt * 0.38 * (1.0 - i as f32 / bands as f32);
+            let a = flash(j.hurt * 0.38 * (1.0 - i as f32 / bands as f32));
             let inset = i as f32 * bw;
             o.rect_outline(inset + bw / 2.0, inset + bw / 2.0, w - 2.0 * inset - bw, h - 2.0 * inset - bw, bw, rgba(0xd8262e, a));
         }
@@ -1445,7 +1472,8 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
         Screen::Title => {
             // Continue and Start side by side in the middle below the line-up; Quit (desktop) small in the corner.
             let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
-            let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls | MenuItem::Map)).count();
+            let big =
+                items.iter().filter(|i| !matches!(i, MenuItem::Quit | MenuItem::Controls | MenuItem::Map | MenuItem::Settings)).count();
             let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
             items
                 .iter()
@@ -1461,6 +1489,10 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
                         // Beside the controller button in the corner.
                         let (cw, ch) = (t * 4.6, t * 1.1);
                         [t * 0.6 + cw + t * 0.4, h - ch - t * 0.6, cw, ch]
+                    } else if *item == MenuItem::Settings {
+                        // And the settings beside the map.
+                        let (cw, ch) = (t * 4.6, t * 1.1);
+                        [t * 0.6 + 2.0 * (cw + t * 0.4), h - ch - t * 0.6, cw, ch]
                     } else {
                         [x0 + i as f32 * (bw + gap), h * 0.875 - bh / 2.0, bw, bh]
                     }
