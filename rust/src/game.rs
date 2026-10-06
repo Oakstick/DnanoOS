@@ -33,6 +33,7 @@ mod feedback;
 mod feel;
 mod flow;
 mod foes;
+pub mod fullmap;
 mod gate;
 pub mod general;
 mod guide;
@@ -172,8 +173,11 @@ pub enum MenuItem {
     KeepProgress,
     /// The controller page: what every button does.
     Controls,
-    /// The map: jump to any dungeon or Cyclops (for testing, for now).
+    /// The full map of the level (the pause menu's).
     Map,
+    /// The developer's map: jump to any stop on the road (testing; on the title and the pause
+    /// menu in developer builds, `--dev`, or once F12 has opened it).
+    DevMap,
     /// The Ledger of Grudges: the run's rivals, on their board.
     Ledger,
     Resume,
@@ -207,6 +211,7 @@ impl MenuItem {
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Controls => "CONTROLLER",
             MenuItem::Map => "MAP",
+            MenuItem::DevMap => "DEV MAP",
             MenuItem::Ledger => "THE LEDGER",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
@@ -430,6 +435,11 @@ pub struct Game {
     /// The map page is open over the title or the pause menu; which stop is highlighted.
     pub show_map: bool,
     pub map_index: usize,
+    /// The minimap's settings and the full map while it is open (`fullmap`).
+    pub map_ui: fullmap::MapUi,
+    /// Developer builds, `--dev`, or F12 pressed once: the developer's map on the title and the
+    /// pause menu.
+    pub dev: bool,
     /// The archangel's blessing he carries (from dungeon to dungeon), if any.
     pub blessing: Option<crate::logic::angels::Blessing>,
     /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
@@ -597,6 +607,8 @@ impl Game {
             show_controls: false,
             show_map: false,
             map_index: 0,
+            map_ui: fullmap::MapUi::load(),
+            dev: cfg!(debug_assertions) && !cfg!(test),
             blessing: None,
             uriel_rest: 0.0,
             refused_at: -10.0,

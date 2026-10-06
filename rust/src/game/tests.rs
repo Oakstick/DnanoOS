@@ -244,9 +244,9 @@ fn the_right_stick_turns_the_camera_and_it_stays_put() {
 fn the_menus_can_quit() {
     std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
     let mut g = Game::new();
-    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit]);
-    // Right three times, then Enter, on the title picks Quit.
-    for _ in 0..3 {
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
+    // Right twice, then Enter, on the title picks Quit.
+    for _ in 0..2 {
         g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
         g.update(crate::app::STEP);
         g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
@@ -310,14 +310,16 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels and Scene II"
+        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II and the full map of two places"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
     assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
-    // From the title: MAP, down to the fourth stop (the realm of Pride), go.
-    g.menu_index = g.menu_items().iter().position(|&m| m == MenuItem::Map).unwrap();
+    // From the title (developing): DEV MAP, down to the fourth stop (the realm of Pride), go.
+    assert!(!g.menu_items().contains(&MenuItem::DevMap), "not for the player");
+    g.dev = true;
+    g.menu_index = g.menu_items().iter().position(|&m| m == MenuItem::DevMap).unwrap();
     g.input.inject(Action::Confirm);
     g.update(crate::app::STEP);
     assert!(g.show_map);
@@ -976,7 +978,7 @@ fn free_movement_lasts_from_dungeon_to_dungeon() {
 #[test]
 fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     let mut g = Game::new();
-    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit], "nothing to continue yet");
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit], "nothing to continue yet");
     start_from_title(&mut g);
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(0)), "an adventure is saved from its start");
 
@@ -987,7 +989,7 @@ fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     g.belt = vec![PotionKind::Health, PotionKind::Life];
     g.checkpoint(save::Stage::Arena(0));
     g.enter(Screen::Title);
-    assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit]);
+    assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
     g.hero_kind = HeroKind::Ragnar;
     g.score.reset();
     g.belt.clear();
@@ -1032,7 +1034,7 @@ fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
     assert_eq!(g.progress, Progress::default());
     assert!(g.saved_run.is_none());
     g.enter(Screen::Title);
-    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Map, MenuItem::Quit]);
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Quit]);
 }
 
 #[test]
@@ -1463,18 +1465,21 @@ fn in_play_the_d_pad_turns_the_belt_shows_the_map_and_the_camera_and_never_runs(
     g.input.set_pad(Some(pad(&[])));
     g.update(crate::app::STEP);
     assert_eq!(g.input.last_device(), Device::Xbox);
-    // Down switches the camera; up opens the map over the pause, and View puts it away.
+    // Down switches the camera; up opens the full map over the pause, and View (or up again) puts
+    // it away, back to play.
     let mode = g.view.camera_mode;
     press(&mut g, PadButton::DPadDown);
     assert_ne!(g.view.camera_mode, mode);
     press(&mut g, PadButton::DPadUp);
-    assert!(g.show_map && g.screen == Screen::Paused);
-    // (In the map, the D-pad moves its highlight.)
-    let i = g.map_index;
+    assert!(g.full_map_open() && g.screen == Screen::Paused);
     press(&mut g, PadButton::DPadDown);
-    assert_ne!(g.map_index, i);
+    assert!(g.full_map_open(), "the D-pad's other ways leave it open");
     press(&mut g, PadButton::View);
-    assert!(!g.show_map && g.screen == Screen::Paused);
+    assert!(!g.full_map_open() && g.screen == Screen::Playing);
+    press(&mut g, PadButton::DPadUp);
+    press(&mut g, PadButton::DPadUp);
+    assert!(!g.full_map_open() && g.screen == Screen::Playing);
+    press(&mut g, PadButton::Menu);
     // B backs out of the pause, and Menu pauses again.
     press(&mut g, PadButton::East);
     assert_eq!(g.screen, Screen::Playing);
@@ -1509,11 +1514,13 @@ fn the_keyboard_and_mouse_defaults_in_play() {
     key(&mut g, KeyCode::KeyC);
     assert_ne!(g.view.camera_mode, mode);
     key(&mut g, KeyCode::Tab);
-    assert!(g.show_map && g.screen == Screen::Paused, "Tab opens the map");
+    assert!(g.full_map_open() && g.screen == Screen::Paused, "Tab opens the map");
+    key(&mut g, KeyCode::Tab);
+    assert!(!g.full_map_open() && g.screen == Screen::Playing, "and Tab puts it away");
     key(&mut g, KeyCode::KeyM);
-    assert!(!g.show_map, "and M puts it away");
+    assert!(g.full_map_open(), "M too");
     key(&mut g, KeyCode::Escape);
-    assert_eq!(g.screen, Screen::Playing);
+    assert_eq!((g.full_map_open(), g.screen), (false, Screen::Playing), "and Esc");
     key(&mut g, KeyCode::KeyB);
     assert!(g.guide_open, "B: the old man's word");
     key(&mut g, KeyCode::KeyB);

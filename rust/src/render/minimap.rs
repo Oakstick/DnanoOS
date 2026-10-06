@@ -616,6 +616,94 @@ impl MapImage {
     }
 }
 
+// ---------------------------------------------------------------------- the image on the GPU
+
+/**
+ * The minimap's image as the screen shows it (UI.md §7): owned beside the overlay
+ * (`Overlay::map`), brought up to date as the HUD draws (`sync`), and what changed sent to the UI
+ * atlas's `MAP_REGION` by the app after the HUD is laid out (`upload`). A new level's image goes
+ * up whole, with the rest of the region cleared (so nothing of the last level shows past its
+ * edge); after that only the rectangle the fog or the ground changed.
+ */
+#[derive(Default)]
+pub struct MapLayer {
+    pub image: Option<MapImage>,
+    /// What to send, in the image's pixels: the whole region (a new level), or a rectangle.
+    pending: Option<Pending>,
+    scratch: Vec<u8>,
+    /// Bytes sent by the last upload, and how many uploads in all (for the readout and tests).
+    pub sent_last: usize,
+    pub uploads: u32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Pending {
+    Whole,
+    Rect(PixelRect),
+}
+
+impl MapLayer {
+    /// Brings the image up to date with the level the game is in (built the first time and for
+    /// each new level, patched otherwise), and notes what the GPU must be sent.
+    pub fn sync(&mut self, game: &Game) {
+        let img = match &mut self.image {
+            Some(img) => {
+                img.sync(game);
+                img
+            }
+            None => self.image.insert(MapImage::build(game)),
+        };
+        let Some(d) = img.take_dirty() else { return };
+        let whole = d == PixelRect { x: 0, y: 0, w: img.w, h: img.h };
+        self.pending = Some(match (self.pending, whole) {
+            (_, true) | (Some(Pending::Whole), _) => Pending::Whole,
+            (Some(Pending::Rect(r)), false) => Pending::Rect(r.union(d)),
+            (None, false) => Pending::Rect(d),
+        });
+    }
+
+    /// Whether something waits to be sent.
+    pub fn dirty(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /**
+     * Sends what changed to the atlas through `write` (`Gpu::write_atlas`): tightly packed RGBA
+     * rows of a part of `MAP_REGION`. Returns the bytes sent.
+     */
+    pub fn upload(&mut self, mut write: impl FnMut(crate::render::overlay::AtlasRegion, &[u8])) -> usize {
+        use crate::render::overlay::MAP_REGION;
+        let (Some(p), Some(img)) = (self.pending.take(), &self.image) else { return 0 };
+        let (r, from) = match p {
+            Pending::Whole => (MAP_REGION, PixelRect { x: 0, y: 0, w: MAP_REGION.w, h: MAP_REGION.h }),
+            Pending::Rect(d) => (MAP_REGION.sub(d.x, d.y, d.w, d.h), d),
+        };
+        let row = (r.w * 4) as usize;
+        self.scratch.clear();
+        self.scratch.resize(row * r.h as usize, 0);
+        for y in 0..r.h {
+            let iy = from.y + y;
+            if iy >= img.h || from.x >= img.w {
+                continue;
+            }
+            let n = (r.w.min(img.w - from.x) * 4) as usize;
+            let src = ((iy * img.w + from.x) * 4) as usize;
+            let dst = y as usize * row;
+            self.scratch[dst..dst + n].copy_from_slice(&img.rgba[src..src + n]);
+        }
+        write(r, &self.scratch);
+        self.sent_last = self.scratch.len();
+        self.uploads += 1;
+        self.sent_last
+    }
+
+    /// Where a point of the image (in its pixels) is in the atlas (0..1).
+    pub fn atlas_uv(px: f32, py: f32) -> [f32; 2] {
+        use crate::render::overlay::{ATLAS_H, ATLAS_W, MAP_REGION};
+        [(MAP_REGION.x as f32 + px) / ATLAS_W as f32, (MAP_REGION.y as f32 + py) / ATLAS_H as f32]
+    }
+}
+
 // -------------------------------------------------------------------------------- the markers
 
 /// How much a foe matters, for its mark: red dots for the plain, gold for a pack's leader and a
