@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 
 use super::clusters;
 use super::faces::StaticFaces;
-use super::overlay::{build_atlas, AtlasRegion, OVertex, ATLAS_H, ATLAS_W, LEGACY, PORTRAIT_SIZE};
+use super::overlay::{build_atlas, AtlasRegion, OVertex, ATLAS_H, ATLAS_W, BIG_PORTRAIT, LEGACY};
 use super::preset::{Preset, Shadows};
 use super::probes::{self, ProbeBox, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
@@ -1649,6 +1649,8 @@ impl Gpu {
             view_formats: &[],
         });
         write_region(&queue, &atlas, AtlasRegion::new(0, 0, LEGACY, LEGACY), &build_atlas());
+        // The HUD's glass, glows, and the archangels' wings and halo, made from shapes (UI.md §4).
+        write_region(&queue, &atlas, super::overlay::ICON_REGION, &super::hud::style::art::bake());
         let atlas_view = atlas.create_view(&Default::default());
         let fonts = super::text::fonts();
         let sdf = device.create_texture_with_data(
@@ -3277,7 +3279,7 @@ impl Gpu {
                     wgpu::BindGroupEntry { binding: 1, resource: kit.parts.buf.as_entire_binding() },
                 ],
             });
-            let size = job.size.min(PORTRAIT_SIZE);
+            let size = job.size.min(BIG_PORTRAIT);
             let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("portrait") });
             {
                 let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -3860,10 +3862,11 @@ impl PortraitKit {
             multiview: None,
             cache: None,
         });
-        let size = (PORTRAIT_SIZE, PORTRAIT_SIZE);
+        // (As large as the largest slot: the dialogue's and the guide's at 1440p and 4K.)
+        let size = (BIG_PORTRAIT, BIG_PORTRAIT);
         let resolve = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("portrait"),
-            size: wgpu::Extent3d { width: PORTRAIT_SIZE, height: PORTRAIT_SIZE, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d { width: BIG_PORTRAIT, height: BIG_PORTRAIT, depth_or_array_layers: 1 },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
