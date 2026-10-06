@@ -189,7 +189,7 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, brawl: &Brawl, t: f32
         return;
     }
     let w = o.width;
-    let y = PANEL_ROWS * t + t * 1.4;
+    let y = super::layout::HudLayout::of(w, o.height).top[1] + t * 0.8;
     let (sub, color) = match spar.phase {
         BoutPhase::Idle => return,
         BoutPhase::Countdown(left) => (format!("GET READY  {}", left.ceil() as u32), SAND),
@@ -210,8 +210,9 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, brawl: &Brawl, t: f32
 
 /// The frame readout, down the left side.
 fn draw_readout(o: &mut Overlay, g: &Game, spar: &Brawl, ring: Option<&Sparring>, t: f32) {
-    let x = t * 0.6;
-    let mut y = PANEL_ROWS * t + t * 1.6;
+    let hud = super::layout::HudLayout::of(o.width, o.height);
+    let x = hud.safe;
+    let mut y = hud.effects[1] + hud.effects[3] + t * 0.6;
     let size = t * 0.46;
     let line = t * 0.62;
     let mut rows: Vec<(String, u32)> = vec![

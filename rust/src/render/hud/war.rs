@@ -43,11 +43,11 @@ fn draw_banner(o: &mut Overlay, g: &Game, r: &GeneralRun, t: f32) {
     let w = o.width;
     let time = g.time as f32;
     let gen = r.general();
-    let margin = t * 0.4;
-    let bw = (t * 15.0).min(w - t * 22.0).max(t * 11.0);
+    let top = super::layout::HudLayout::of(w, o.height).top;
+    let bw = (t * 15.0).min(top[2]);
     let bh = t * 2.3;
     let x0 = w / 2.0 - bw / 2.0;
-    let y0 = margin;
+    let y0 = top[1];
     panel(o, x0, y0, bw, bh, t);
     // The pennant: his cloak's colour hanging from the panel's rule, his sin's sigil on it.
     let pw = t * 1.5;
@@ -116,7 +116,7 @@ fn fit_text(o: &mut Overlay, text: &str, x: f32, y: f32, size: f32, max: f32, co
 /// card counts down to its bite.
 fn draw_cards(o: &mut Overlay, g: &Game, r: &GeneralRun, t: f32) {
     let w = o.width;
-    let mut y = t * 0.4 + t * 2.3 + t * 0.25;
+    let mut y = super::layout::HudLayout::of(w, o.height).top[1] + t * 2.3 + t * 0.25;
     for c in r.cards.iter().rev() {
         let age = (g.time - c.since) as f32;
         let slide = 1.0 - (age / 0.22).min(1.0);

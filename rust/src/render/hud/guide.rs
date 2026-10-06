@@ -1,75 +1,103 @@
-//! The old man's guide on screen (B): over the paused game, a charcoal page with his face in its
-//! amber frame, the place's name, and his words in four parts: the tale, what you must do, what to
-//! watch for, and what is so here now.
+//! The old man's guide on screen (B): over the paused game, a glass page ruled in his amber, his
+//! live portrait 9 units square on a warm ground beside the place's name, and his words in four
+//! parts: the tale, what you must do, what to watch for, and what is so here now.
 
+use super::style::{self, size};
 use super::*;
+use crate::game::counsel::AMBER;
 
 /// The page's parts: (heading, its lines, the heading's colour).
 type Part<'a> = (&'a str, &'a [String], u32);
 
+/// The portrait's size, in units (UI.md §6).
+pub const FACE: f32 = 9.0;
+
 pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
     let (w, h) = (o.width, o.height);
     let (guide, now) = g.guide_now();
-    o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.82]);
-    let pw = (t * 40.0).min(w - t * 2.0);
-    let ph = (h - t * 3.0).min(t * 33.0);
-    let (px, py) = ((w - pw) / 2.0, (h - ph) / 2.0);
-    o.rect(px, py, pw, ph, [INK[0], INK[1], INK[2], 0.96]);
-    o.rect_outline(px, py, pw, ph, (t * 0.07).max(1.5), rgba(COPPER, 0.8));
-    o.rect(px + t * 0.4, py, pw - t * 0.8, (t * 0.08).max(1.5), rgba(0xffa83a, 0.9));
+    o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.8]);
+    let safe = style::safe(w, h);
+    let pw = (t * 46.0).min(w - safe * 2.0);
+    let px = (w - pw) / 2.0;
+    let room = h - safe * 2.0;
+    let pad = t * 0.8;
 
-    // His face, and who is speaking.
-    let fs = t * 3.6;
-    let (fx, fy) = (px + t * 0.6, py + t * 0.6);
-    o.rect(fx, fy, fs, fs, [0.0, 0.0, 0.0, 0.6]);
-    let pose = crate::render::portrait::Pose::live(g.time as f32, 1.0);
-    o.portrait(crate::render::portrait::PortraitId::OldMan, pose, fx, fy, fs, fs, false, [1.0; 4]);
-    o.rect_outline(fx, fy, fs, fs, (t * 0.08).max(1.5), rgba(0xffa83a, 0.95));
-    let tx = fx + fs + t * 0.6;
-    o.text("THE OLD MAN SPEAKS", tx, fy + t * 0.45, t * 0.5, rgba(0xffa83a, 1.0), Align::Left, true);
-    o.text(&guide.title, tx, fy + t * 1.45, t * 0.95, rgba(GOLD, 1.0), Align::Left, true);
-    o.text("Quitmer lies at his feet while he talks.", tx, fy + t * 2.45, t * 0.42, rgba(TEXT_DIM, 1.0), Align::Left, false);
-
-    // His words, part by part, down the page.
+    // His words, part by part, in a column beside his face; smaller only if they would overflow.
     let parts: [Part; 4] = [
-        ("THE TALE", &guide.tale, 0xffa83a),
+        ("THE TALE", &guide.tale, AMBER),
         ("WHAT YOU MUST DO", &guide.task, GOLD),
         ("WHAT TO WATCH FOR", &guide.watch, 0x9ad1ff),
         ("HERE, NOW", &now, 0x7dff9a),
     ];
-    let x = px + t * 0.9;
-    let width = pw - t * 1.8;
-    let size = (t * 0.48).max(11.0);
-    let line = size * 1.32;
-    let mut y = fy + fs + t * 0.9;
-    let bottom = py + ph - t * 1.4;
-    for (head, lines, color) in parts {
-        if lines.is_empty() || y > bottom {
-            continue;
+    let face = t * FACE;
+    let col_x = px + pad + face + t * 0.9;
+    let col_w = px + pw - pad - col_x;
+    let lines: Vec<(&str, Vec<String>, u32)> = parts
+        .iter()
+        .filter(|p| !p.1.is_empty())
+        .map(|(head, ls, c)| (*head, ls.iter().map(|l| glyphs::words(&g.input, l)).collect(), *c))
+        .collect();
+    let mut units = size::BODY * 0.92;
+    let height = |o: &Overlay, units: f32| {
+        let st = style::body(t, units, [1.0; 4]);
+        let line = t * units * 1.36;
+        let mut y = t * 3.1;
+        for (_, ls, _) in &lines {
+            y += t * 1.25;
+            for l in ls {
+                y += o.wrap_lines(l, col_w - t * 0.6, &st).len() as f32 * line + line * 0.2;
+            }
+            y += t * 0.35;
         }
-        o.text(head, x, y, size * 1.05, rgba(color, 1.0), Align::Left, true);
-        o.rect(x, y + size * 0.75, o.measure(head, size * 1.05), (t * 0.04).max(1.0), rgba(color, 0.5));
-        y += line * 1.15;
-        for l in lines.iter() {
+        y + t * 1.6
+    };
+    while units > 0.5 && height(o, units) > room {
+        units *= 0.94;
+    }
+    let ph = height(o, units).max(face + pad * 2.0 + t * 2.4).min(room);
+    let py = (h - ph) / 2.0;
+    style::panel_ruled(o, [px, py, pw, ph], t, 1.0, AMBER);
+
+    // His face on a warm ground, framed in gold, and who is speaking under it.
+    let (fx, fy) = (px + pad, py + pad);
+    o.rect(fx, fy, face, face, [0.03, 0.02, 0.01, 0.85]);
+    style::glow(o, fx + face * 0.42, fy + face * 0.4, face * 0.75, rgba(0xd08a3a, 0.42));
+    let pose = crate::render::portrait::Pose::live(g.time as f32, 1.0);
+    o.portrait(crate::render::portrait::PortraitId::OldMan, pose, fx, fy, face, face, false, [1.0; 4]);
+    o.rect_outline(fx, fy, face, face, (t * 0.06).max(1.0), rgba(0xf2c46a, 0.9));
+    for (cx, cy) in [(fx, fy), (fx + face, fy), (fx, fy + face), (fx + face, fy + face)] {
+        style::diamond(o, cx, cy, t * 0.13, rgba(0xf2c46a, 1.0));
+    }
+    let under_face = style::label(t, 0.58, rgba(AMBER, 1.0)).centered();
+    o.text_styled("THE OLD MAN SPEAKS", fx + face / 2.0, fy + face + t * 0.7, &under_face);
+    let dog = style::body(t, 0.56, rgba(TEXT_DIM, 1.0)).centered();
+    o.text_styled("Quitmer lies at his feet while he talks.", fx + face / 2.0, fy + face + t * 1.45, &dog);
+
+    // The place's name, then the parts.
+    let title = style::name(t, 1.05, rgba(GOLD, 1.0));
+    o.text_styled(&guide.title, col_x, py + pad + t * 0.75, &title);
+    style::divider(o, col_x, py + pad + t * 1.65, col_w, t, rgba(COPPER, 0.7));
+    let st = style::body(t, units, rgba(TEXT, 1.0));
+    let line = t * units * 1.36;
+    let mut y = py + t * 3.1;
+    let bottom = py + ph - t * 1.4;
+    for (head, ls, color) in &lines {
+        if y > bottom {
+            break;
+        }
+        let hs = style::label(t, size::LABEL, rgba(*color, 1.0)).tracking(0.04);
+        let hw = o.text_styled(head, col_x, y, &hs);
+        o.rect(col_x, y + t * 0.42, hw, (t * 0.04).max(1.0), rgba(*color, 0.5));
+        y += t * 1.25;
+        for l in ls {
             if y > bottom {
                 break;
             }
-            o.text("-", x, y, size, rgba(color, 0.8), Align::Left, false);
-            // (His words name the controls by their tokens: here, as the device used last calls them.)
-            let l = super::glyphs::words(&g.input, l);
-            y = wrap_left(o, &l, x + t * 0.5, y, width - t * 0.5, line, size, rgba(TEXT, 1.0));
-            y += line * 0.15;
+            style::diamond(o, col_x + t * 0.12, y, t * 0.09, rgba(*color, 0.85));
+            y = o.wrap_styled(l, col_x + t * 0.5, y, col_w - t * 0.6, line, &st) + line * 0.2;
         }
-        y += line * 0.45;
+        y += t * 0.35;
     }
-    super::glyphs::prompt_line(
-        o,
-        &g.input,
-        "{Back} BACK TO THE ROAD",
-        px + pw / 2.0,
-        py + ph - t * 0.6,
-        t * 0.42,
-        rgba(TEXT_DIM, 1.0),
-        Align::Center,
-    );
+    let back = style::label(t, 0.58, rgba(TEXT_DIM, 1.0)).centered();
+    glyphs::prompt_text(o, &g.input, "{Back} BACK TO THE ROAD", px + pw / 2.0, py + ph - t * 0.65, &back);
 }
