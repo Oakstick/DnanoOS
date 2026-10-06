@@ -426,3 +426,130 @@ Left for the on-screen builder (U1a proper, after U0): own a `MapImage` beside t
 round minimap (7t, north-up or turning) from it with the markers as U0's shapes and glyphs, the
 full map (zoom and pan, legend, objective, the realm's name), L3 for zoom; the colour-blind palette
 for the foes' dots; the Map stop.
+
+### U1c, play's HUD, the old man's dialogue and the archangels (2026-10-07)
+
+Built on `ui-u1c`: the look (§4), play's HUD laid out anew (§5), the old man's dialogue and the
+archangels on screen and in the world (§6). The simulation is untouched: `--court`, `--pit 2 8 1`
+and the sixteen ring bouts (`--bout 1..16 2 1 1`) and `--stage-three 1` print the same numbers as
+U0's build, line for line.
+
+**The look** (`render/hud/style.rs`). Dark glass panels as 9-slice art made from shapes at start-up
+into `ICON_REGION` (`style::art::bake`, written by `Gpu::new`): the glass (ink at 86-92% with a teal
+cast, lit a little at its top, a faint sheen inside its top edge, the corners cut), its rule apart
+(white, so it is tinted: copper for the HUD, the old man's amber, a sin's colour), and a soft
+shadow under every panel so it holds over the vaults' gold and the ending's white. Beside them a
+soft glow, a crisp disc (large circles no longer show their sides), a halo, the archangels' wings
+(feathers laid over feathers, each darker at its own edge), the whisper's smoke and a fade.
+
+```rust
+let t = style::unit(w, h);            // = hud::tile_for: 20 px at 720p, 28 at 1080p, 56 at 2160p, times the UI scale
+style::set_ui_scale(1.25);             // 0.8..1.5, for the settings page (U1b); every size follows
+style::safe(w, h);                     // 5% of the shorter edge
+style::panel_glass(o, [x, y, w, h], t, alpha);   // shadow, glass, copper rule; panel_ruled(.., rule)
+style::panel_header(o, rect, "TITLE", t, color, alpha) -> y;   style::divider(o, x, y, w, t, color);
+style::bar(o, [x, y, w, h], frac, trail, color, alpha);        // track, trail, lit fill, glow edge
+style::notches(..); style::pill(o, text, x, y, &style, back, edge) -> w; style::badge(..);
+style::glow / disc / ring / pie / cooldown / diamond / fade_quad / vignette / band(..);
+let (alpha, slide) = style::appear(age, left);  // in and out over 0.15 s, eased
+style::under(o, |o| content -> bottom, |o, bottom| panel);  // a panel as tall as what is in it
+style::body(t, units, c) / label(..) / name(..)  // the type's three voices, shadowed or outlined
+```
+
+The unit no longer stops at 28 px past 1080p: it grows in proportion (1440p 37, 4K 56), so a 4K
+screen at 100% shows the HUD as 1080p does, not at half its size (at 1080p and below nothing
+changes). `hud::panel()` (every older screen's panel: the general's banner, the rival's card, the
+mastery toast, the Ledger, the shop's) now draws the glass.
+
+**Play's HUD** (`render/hud/layout.rs`, `render/hud/play.rs`). `HudLayout::of(w, h)` gives every
+corner's rectangle inside the safe area: health top left (the live portrait at 3.2 units, the name
+in the display serif, lives, health with its trail, flash and the glow at its edge, stamina), the
+effects under it (each an icon in a little glass, a draining bar and its seconds, then SLOWED and
+GOD MODE as pills), **the minimap's square top right at `[w - safe - 7t, safe, 7t, 7t]`
+(`layout::minimap_rect`: nothing is drawn there; the map builder draws in it)**, under it the
+objective (the guide's first "what you must do", made short: `play::short`) and the purse (keys,
+sin keys or what the fight wants, silver and runes, the realm's meters, double points), the top
+centre for the boss's, a prince's, the Pit's and a general's banners (restyled: the same data, the
+glass, `style::bar`), the loadout at the bottom centre (the weapon with its cooldown sweeping over
+its icon, the shield, the belt with the chosen potion lit and raised; each with its control's glyph:
+the attack's and the shield's on their slots' corners, the keyboard's 1-5 on the belt's slots, the
+D-pad's arms at the belt's ends on a pad, the drink's before the potion's name), the archangel
+bottom left and the location bottom right (the level's name with the guide's glyph). The layout's
+test keeps every part inside the safe area and apart at 16:9, 16:10, 21:9 and 4:3, from 720p to
+2160p, at UI scales 0.8 to 1.5 (a scale too large for the screen is held to what fits). The score
+left play's HUD: it is in the pause menu's summary and on the fallen and won screens. Banners, the
+blessing's and the milestones', are a band of glass across the screen; floaters, shrine names, GO!
+and the hurt and BRUTAL vignettes are in the new type and soft edges.
+
+**The old man's dialogue** (`render/hud/dialogue.rs`). Bottom centre above the loadout: a glass
+panel ruled in his amber, his live portrait at 7 units (196 px at 1080p) on a warm ground in a gold
+frame, his name plate in the display serif (with "& QUITMER, HIS DOG" when the line speaks of the
+dog), his words in the body sans at 0.72 units (20 px at 1080p), wrapped whole at a measure of
+about sixty letters (so lines never jump as they type), typed as before with a caret, the panel as
+wide as the words; at its foot `{Confirm} skip` and `{Guide} his guide`. Enter (play's Confirm) now
+types the line out at once, and a second press puts it away (`Game::skip_line`, presentation only:
+the next line keeps its gap). The prince's whisper keeps its own frame: no face (smoke drifting in
+the sin's colour where one would be), its rule, name and words in `whisper_color`, never amber or
+gold. The guide page (`hud/guide.rs`) is the same glass with his portrait at 9 units, the parts in
+a column beside it at 0.66 units (shrinking only if they would overflow). The portrait's framing is
+closer for the old man (his face and beard fill it) and the portrait's light is warmer (a lamp's key,
+a cooler fill, a stronger warm rim, a little light from above).
+
+**The archangels** (`render/hud/angel.rs`, `render/view/angels.rs`). Bottom left, once he has met
+one (a shrine's blessing or his patron; `Juice::angel_met`, presentation only): a 4-unit emblem in
+the angel's colour (the wings round a light, the halo over them, on a dark disc), the charges as
+diamonds round its foot, the ring filling while the patron's power comes back, a pulse and the
+`{Angel}` glyph when ready, the name in Cinzel on a glass plate with "2 OF 3", READY or the seconds;
+dim with NONE HELD when the blessing is spent; Uriel's rest over it. A blessing given raises a
+banner across the screen for 2.5 s (`Juice::blessed`): the emblem, "GABRIEL'S BLESSING", what it
+does and its control. In the world each unspent shrine stands under a pillar of its light, about
+16 units tall, seen from across the level: glows turned to the camera about the upright (so it is
+a column from any side), a wide soft one and a bright core, fading as it rises, breathing; gone
+when spent. Its halo burns brighter. Off screen within 25 tiles, an arrow at the screen's edge (kept
+clear of the corners) in the angel's colour with a small emblem and the distance, its direction
+taken from the camera's own axes (sound for a shrine behind the camera).
+
+**Portrait slots for 4K.** The portrait rows of the atlas are now 16 slots of 256 and 4 of 512
+(`overlay::BIG_PORTRAIT`): a portrait larger than 256 px (the dialogue's at 1440p and up, the
+guide's) takes a big slot; the portraits' targets are 512 square. The atlas keeps its 2048 square
+(WebGL2's floor).
+
+**Changed from the plan.** The old man's rig has no eyelids or jaw (his head, staff arm and free
+arm are the joints), so he does not blink or move his mouth: his head nods and his hand moves while
+he talks, as U0 made it; a jaw would need his model re-rigged. The skip needs a control: in play it
+is Enter (Confirm); a controller has none free in play, so on a pad only the guide's glyph shows.
+The icons are still the 16 px sprites (the redrawn 64 px icons of §4 are left). The effects moved
+from over the belt to under the health panel; the potion's name and its drink control sit over the
+belt. The minimap's square is left empty (no placeholder: the map builder's merge fills it).
+
+**Numbers** (this machine, `quick`, Direct3D 12):
+- The HUD's CPU time a frame: 0.15-0.21 ms in the garden with the old man speaking and an angel
+  held (19,638 vertices; U0's HUD 0.05-0.06 ms and 14,142), 0.5 ms the first frame; Mammon's court
+  0.04-0.13 ms; the guide page 0.6-0.8 ms (33,000 vertices, its words wrapped each frame).
+- The panels' art made from shapes at start-up, on the renderer's thread: about 20 ms (the UI's
+  textures up 118-127 ms after the type's atlas at 98-102, against U0's 6 ms between them).
+- The portraits: the hero's and the old man's (talking, every frame) 0.6 ms together waiting for
+  the GPU at 720p and 1080p, 0.7 ms at 4K with his at 400 px in a big slot.
+- A shrine's pillar: 27 glows (108 for the garden's four), drawn with the other glows.
+- The atlas is still 2048 square: no memory added.
+
+**Captures** (720p, 1080p, and 2160p for some): the garden with the old man speaking and Gabriel
+held, a blessing's banner, the whisper, the guide, the vaults mid-fight, Mammon's court with the
+prince's bar, the Pit with its clock, shrines from afar with their pillars and an arrow to one out
+of sight, the patron ready, pause, the ring, the shop and the Ledger in the new glass.
+
+Tests: the layout (inside the safe area and apart at four shapes of screen and four scales; the
+minimap's promised square; the unit at 720p, 1080p, 1440p and 4K and growing without a jump), the
+art (its regions apart and inside `ICON_REGION`; the glass solid with its corners cut, the rule on
+the edge, the wings on both sides), panels coming in and going in 0.15 s, the dialogue never looking
+like a whisper or a whisper like him (amber and a face against the sin's colour and none, for every
+sin; the dog only when named), the words at 18 px or more and the face at 196 px at 1080p, the
+emblem's charges and the patron's power coming back and dim when none is held, a blessing given
+raising its banner and the emblem staying, the shrine's pillar only while it has a blessing to give
+(and gone for the angel who has given, and for all when all have), the objective made short for
+every place, portraits larger than a small slot made in a big one.
+
+Left: the 64 px icons (§4); a jaw and eyelids for the old man's rig; the colour-blind variants of
+the angels' and the HUD's reds and greens (U1b's settings); the map builder draws the minimap in
+`layout::minimap_rect` and the settings page calls `style::set_ui_scale`; U1a's and U1b's panels
+switch to `style::panel_glass` at the merge (their `panel()` calls already draw it).
