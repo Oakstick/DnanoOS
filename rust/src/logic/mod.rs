@@ -5,6 +5,7 @@ pub mod boss;
 pub mod combat;
 pub mod court;
 pub mod enemy;
+pub mod explore;
 pub mod garden;
 pub mod gear;
 pub mod grid;

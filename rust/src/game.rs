@@ -472,6 +472,9 @@ pub struct Game {
     pub finished: bool,
     /// The Pit, while he is in it: its level, its clock, its waves and what rode down (`pit`).
     pub pit: Option<pit::PitRun>,
+    /// The fog of war over the level, for the minimap (UI.md §7): presentation only, nothing in
+    /// the game reads it.
+    pub explore: crate::logic::explore::Explore,
 }
 
 impl Game {
@@ -609,6 +612,7 @@ impl Game {
             brawl: None,
             finished: !cfg!(test) && ending::finished_saved(),
             pit: None,
+            explore: crate::logic::explore::Explore::new(),
         };
         g.load_level(0);
         g.audio.set_soundtrack(Some(crate::audio::Soundtrack::Menu));
@@ -665,6 +669,8 @@ impl Game {
         let before = self.hero.pos();
         self.hero.update(dt, &self.level.grid, wanted);
         self.footsteps(before);
+        // (The minimap's fog: it only looks, and nothing reads it.)
+        self.explore.observe(&self.level.grid, self.hero.pos());
         self.collect();
         self.update_gate(dt);
         self.update_hub(dt);

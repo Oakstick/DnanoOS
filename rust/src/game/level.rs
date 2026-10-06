@@ -291,6 +291,8 @@ impl Game {
             self.open_hub();
         }
         self.juice.boss_trail = self.boss.as_ref().map(|b| b.hp as f32).unwrap_or(0.0);
+        // The minimap's fog: kept if this is the level he was in, begun again for another.
+        self.explore.enter(&self.level);
         self.reset_round();
         if let Some((WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
             self.hero.equip(w);
@@ -365,6 +367,7 @@ impl Game {
         self.reset_lair();
         self.reset_general();
         self.reset_pit();
+        self.explore.observe(&self.level.grid, self.hero.pos());
     }
 
     pub(super) fn start_game(&mut self) {

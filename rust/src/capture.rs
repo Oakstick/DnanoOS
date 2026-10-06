@@ -58,6 +58,8 @@
 //! 17 a flinch, 18 the shield jolted: `game::juice::JUICE_EVENTS`), e.g.
 //! `--script "0.1:ring:1,0.6:juice:14" --time 0.75`. `--fx-off juice` (or `dilation`, `hitstop`,
 //! `shake`, `debris`, `springs`) switches the juice off. Captures never write the settings.
+//! `--minimap` also writes the minimap's image (its fog and markers drawn on the CPU,
+//! `render::minimap::debug_picture`) beside the capture, as `NAME-minimap.png`.
 
 use crate::audio::synth::Synth;
 use crate::game::{Game, Screen, Stage};
@@ -620,6 +622,19 @@ pub fn run(args: &[String]) -> i32 {
             .flat_map(|y| left[y * row..(y + 1) * row].iter().chain(&rgba[y * row..(y + 1) * row]).copied().collect::<Vec<u8>>())
             .collect();
         (w, rgba) = (w * 2, both);
+    }
+    if args.iter().any(|a| a == "--minimap") {
+        // The minimap's image with its fog and markers, drawn on the CPU, beside the capture.
+        let (mw, mh, map) = crate::render::minimap::debug_picture(&game);
+        let out = match path.rsplit_once('.') {
+            Some((stem, ext)) => format!("{stem}-minimap.{ext}"),
+            None => format!("{path}-minimap.png"),
+        };
+        let known = crate::render::minimap::markers(&game).iter().filter(|m| m.known).count();
+        match std::fs::write(&out, encode_png(mw, mh, &map)) {
+            Ok(()) => eprintln!("wrote {out} ({mw}x{mh}, {} tiles seen, {known} markers known)", game.explore.revealed()),
+            Err(e) => eprintln!("could not write {out}: {e}"),
+        }
     }
     match std::fs::write(&path, encode_png(w, h, &rgba)) {
         Ok(()) => {
