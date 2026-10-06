@@ -72,13 +72,14 @@ pub fn draw_map(o: &mut Overlay, g: &Game, t: f32) {
         o.text(&stop.label, r[0] + t * 0.8, r[1] + r[3] / 2.0, t * 0.58, rgba(color, 1.0), Align::Left, true);
     }
     let bottom = rects.iter().map(|r| r[1] + r[3]).max_by(f32::total_cmp).unwrap_or(h / 2.0);
-    o.text(
-        "Up / Down / Left / Right or LT / RT: choose     Enter or A: go     Esc or B: back",
+    super::glyphs::prompt_line(
+        o,
+        &g.input,
+        "{Nav} or {TabPrev} {TabNext} choose     {Confirm} go     {Back} back",
         w / 2.0,
         bottom + t * 1.2,
         t * 0.48,
         rgba(TEXT_DIM, 1.0),
         Align::Center,
-        false,
     );
 }

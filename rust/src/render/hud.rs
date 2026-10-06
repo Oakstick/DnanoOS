@@ -16,12 +16,14 @@ use super::overlay::{rgba, Align, Overlay, Picture};
 use super::view::STEP;
 use super::voxels::{sprite_from, Sprite};
 use crate::game::{Game, MenuItem, Screen, TourArt, DOUBLE_POINTS_SECONDS, TOUR_STOP_SECONDS};
+use crate::input::Action;
 use crate::logic::items::{weapon, weapon_label, Offer, WeaponKind};
 use crate::logic::progression::{self, Tree};
 use crate::render::icons::{icon, Icon};
 
 mod controls;
 mod court;
+pub mod glyphs;
 mod guide;
 mod ledger;
 mod map;
@@ -29,6 +31,7 @@ mod mastery;
 mod pit;
 mod ring;
 mod shop;
+pub mod specimen;
 mod war;
 
 pub use controls::controls_tab_rects;
@@ -197,12 +200,11 @@ pub fn tile_for(w: f32, h: f32) -> f32 {
 
 /// Builds the whole overlay for this frame.
 /// Makes, as a level loads (behind its loading screen), the pictures the HUD makes the first
-/// time it shows them: the heroes' portraits and the foes' cast, the old man's face for his
-/// counsel, the icons, and the portraits on the Ledger's cards of `kinds` (the level's foes).
-/// Made in the middle of a fight, the old man's first word cost 12 ms in its frame.
+/// time it shows them: the heroes' sprites and the foes' cast, the icons, and the portraits on the
+/// Ledger's cards of `kinds` (the level's foes). (The old man's and the hero's live portraits are
+/// made by the renderer behind the loading screen: `draw_loading`.)
 pub fn warm(kinds: &[crate::logic::enemy::EnemyKind]) {
     let _ = sprites();
-    let _ = voices::face();
     let _ = icon(Icon::Lock);
     ledger::warm(kinds);
 }
@@ -265,7 +267,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             o.rect(0.0, 0.0, o.width, o.height, [INK[0], INK[1], INK[2], 0.65]);
             let top = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height)[0][1];
             o.text("PAUSED", o.width / 2.0, top - t * 2.6, t * 1.45, rgba(TEXT, 1.0), Align::Center, true);
-            o.text("Esc or Start to resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center, false);
+            glyphs::prompt_line(o, &g.input, "{Pause} resume", o.width / 2.0, top - t * 1.1, t * 0.6, rgba(SAND, 1.0), Align::Center);
             draw_menu(o, g, t);
             // Where the story stands: the road down after Krampus, below the last button.
             let rects = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height);
@@ -293,6 +295,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         }
         Screen::Won => draw_screen(
             o,
+            &g.input,
             t,
             &[
                 line(format!("{} IS SLAIN", g.boss_name()), 2.0, GOLD),
@@ -319,18 +322,19 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                     0.9,
                     GOLD,
                 ),
-                line("Enter, click or tap: the old gatekeeper's wares", 0.8, TEXT_DIM),
+                line("{Confirm} or a click: the old gatekeeper's wares", 0.8, TEXT_DIM),
             ],
             0.7,
         ),
         Screen::GameOver => draw_screen(
             o,
+            &g.input,
             t,
             &[
                 line(format!("{} HAS FALLEN", g.hero_kind.name().to_uppercase()), 1.6, 0xd8262e),
                 line(format!("Gold {}", g.score.score), 0.9, TEXT),
                 line(format!("Best {}", g.score.high), 0.8, SAND),
-                line("Enter, click or tap to try again", 0.8, TEXT_DIM),
+                line("{Confirm} or a click to try again", 0.8, TEXT_DIM),
             ],
             0.65,
         ),
@@ -365,6 +369,12 @@ fn loading_words(age: f32) -> f32 {
 /// enough to need saying. The HUD under it is drawn all the same, so its sprites are ready on reveal.
 fn draw_loading(o: &mut Overlay, g: &Game, t: f32) {
     let Some(l) = &g.loading else { return };
+    // The portraits the level will show, made behind the loading screen (their first making costs
+    // the most: the meshes go up and the driver readies the pipeline), drawn unseen.
+    use crate::render::portrait::{PortraitId, Pose};
+    let hero_px = PANEL_ROWS * t - t * 0.4;
+    o.portrait(PortraitId::Hero(g.hero_kind), Pose::live(g.time as f32, 1.0), 0.0, 0.0, hero_px, hero_px, false, [0.0; 4]);
+    o.portrait(PortraitId::OldMan, Pose::live(g.time as f32, 1.0), 0.0, 0.0, t * 3.0, t * 3.0, false, [0.0; 4]);
     let show = loading_words(l.age as f32);
     if show <= 0.0 {
         return;
@@ -492,10 +502,9 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let time = g.time as f32;
 
     // ---- top left: health
-    let portrait = portrait_of(g.hero_kind);
+    // His live portrait, made by the renderer (once a second: his gear and his breath).
     let portrait_h = band - t * 0.4;
-    let scale = portrait_h / portrait.height as f32;
-    let portrait_w = portrait.width as f32 * scale;
+    let portrait_w = portrait_h;
     let px0 = margin + t * 0.35;
     let py0 = margin + t * 0.2;
     let cx0 = px0 + portrait_w + t * 0.7;
@@ -513,7 +522,10 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     } else {
         None
     };
-    draw_sprite(o, portrait, px0, py0, scale, tint, if ghost { 0.4 } else { 1.0 });
+    let pose = crate::render::portrait::Pose::live(time, 1.0);
+    let tint = tint.map(|c| rgba(c, 1.0)).unwrap_or([1.0; 4]);
+    let tint = [tint[0], tint[1], tint[2], if ghost { 0.4 } else { 1.0 }];
+    o.portrait(crate::render::portrait::PortraitId::Hero(g.hero_kind), pose, px0, py0, portrait_w, portrait_h, false, tint);
     if hero.shield.is_some() {
         o.rect_outline(
             px0 - t * 0.15,
@@ -674,7 +686,7 @@ fn draw_hud(o: &mut Overlay, g: &Game, t: f32, fps: Option<u32>) {
     let mut x = br;
     let brow = by0 + t * 1.35;
     let _ = &mut x;
-    o.text("B  THE OLD MAN'S WORD", x, brow, small * 0.85, rgba(TEXT_DIM, 1.0), Align::Right, true);
+    glyphs::prompt_line(o, &g.input, "{Guide} THE OLD MAN'S WORD", x, brow, small * 0.85, rgba(TEXT_DIM, 1.0), Align::Right);
 
     if let Some(fps) = fps {
         o.text(&format!("{fps} fps"), margin + t * 0.3, h - margin - t * 0.4, small, rgba(0x99ffff, 1.0), Align::Left, true);
@@ -739,7 +751,7 @@ fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
                 let c = if i < b.charges { rgba(color, 1.0) } else { [1.0, 1.0, 1.0, 0.15] };
                 o.rect(px, y0 + t * 1.55 - pip / 2.0, pip, pip, c);
             }
-            o.text("R / LT", x0 + pw - t * 0.4, y0 + t * 1.55, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Right, true);
+            glyphs::draw_prompt_right(o, &g.input, Action::Angel, x0 + pw - t * 0.4, y0 + t * 1.55, small * 1.2);
         }
         None => match patron {
             Some(a) => {
@@ -766,7 +778,7 @@ fn draw_blessing(o: &mut Overlay, g: &Game, t: f32, small: f32) {
                 let (state, sc) =
                     if ready { ("READY".to_string(), 0x7dff9a) } else { (format!("{}s", g.patron_wait.ceil() as u32), TEXT_DIM) };
                 o.text(&state, tx, y0 + t * 1.6, small, rgba(sc, 1.0), Align::Left, true);
-                o.text("R / LT", x0 + pw - t * 0.4, y0 + t * 1.55, small * 0.9, rgba(TEXT_DIM, 1.0), Align::Right, true);
+                glyphs::draw_prompt_right(o, &g.input, Action::Angel, x0 + pw - t * 0.4, y0 + t * 1.55, small * 1.2);
             }
             None => {
                 o.text("NO BLESSING", x0 + t * 0.5, y0 + t * 0.9, small, rgba(TEXT_DIM, 1.0), Align::Left, true);
@@ -912,7 +924,16 @@ fn draw_loadout(o: &mut Overlay, g: &Game, t: f32, fs: f32, small: f32) {
     }
     if let Some(&k) = g.belt.get(g.belt_index) {
         let def = gear::potion(hk, k);
-        o.text(&format!("Q  {}", def.name.to_uppercase()), bx0 + t * 0.4, y0 - t * 0.35, t * 0.42, rgba(def.color, 1.0), Align::Left, true);
+        glyphs::prompt_line(
+            o,
+            &g.input,
+            &format!("{{Drink}} {}", def.name.to_uppercase()),
+            bx0 + t * 0.4,
+            y0 - t * 0.35,
+            t * 0.42,
+            rgba(def.color, 1.0),
+            Align::Left,
+        );
     }
 
     // Running effects, each with a bar that drains as it wears off.
@@ -1141,7 +1162,16 @@ fn draw_tour(o: &mut Overlay, g: &Game, t: f32) {
     }
     let left = (TOUR_STOP_SECONDS - tour.t).max(0.0) as f32 / TOUR_STOP_SECONDS as f32;
     o.rect(cx, cy + chh - t * 0.08, cw * left, t * 0.08, rgba(stop.color, 0.6 * fade));
-    o.text("Enter / click / A: next     Esc: skip the tour", w - t * 0.8, h - bar_h / 2.0, t * 0.5, rgba(TEXT_DIM, k), Align::Right, false);
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "{Confirm} next     {Pause} skip the tour",
+        w - t * 0.8,
+        h - bar_h / 2.0,
+        t * 0.5,
+        rgba(TEXT_DIM, k),
+        Align::Right,
+    );
     o.text("ADVENTURES OF THE ANCIENT BLADES", t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Left, false);
     o.text(&format!("{} / {}", tour.index + 1, n), w - t * 0.8, bar_h / 2.0, t * 0.5, rgba(SAND, k * 0.8), Align::Right, false);
 }
@@ -1595,15 +1625,16 @@ fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
         );
     }
     let foot = rects.iter().map(|r| r[1] + r[3]).fold(0.0, f32::max) + t * 1.2;
-    o.text("Left / Right to choose    Enter or click to play", o.width / 2.0, foot, t * 0.6, rgba(TEXT, 0.9), Align::Center, false);
-    o.text(
-        "Switch at any time with C (R3 on a controller), or from the pause menu",
+    glyphs::prompt_line(o, &g.input, "{NavLR} choose    {Confirm} play", o.width / 2.0, foot, t * 0.6, rgba(TEXT, 0.9), Align::Center);
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "Switch at any time with {Camera}, or from the pause menu",
         o.width / 2.0,
         foot + t * 0.85,
         t * 0.5,
         rgba(SAND, 0.85),
         Align::Center,
-        false,
     );
 }
 
@@ -1642,7 +1673,7 @@ fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
 }
 
 /// Centered overlay for ready, pause, win, and game over screens.
-fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
+fn draw_screen(o: &mut Overlay, input: &crate::input::Input, t: f32, lines: &[OverlayLine], dim: f32) {
     let (w, h) = (o.width, o.height);
     o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], dim]);
     let total: f32 = lines.iter().map(|l| l.size * t * 1.4).sum();
@@ -1650,7 +1681,11 @@ fn draw_screen(o: &mut Overlay, t: f32, lines: &[OverlayLine], dim: f32) {
     for l in lines {
         let size = l.size * t * 0.9;
         y += size * 0.7;
-        o.text(&l.text, w / 2.0, y, size, rgba(l.color, 1.0), Align::Center, true);
+        if l.text.contains('{') {
+            glyphs::prompt_line(o, input, &l.text, w / 2.0, y, size, rgba(l.color, 1.0), Align::Center);
+        } else {
+            o.text(&l.text, w / 2.0, y, size, rgba(l.color, 1.0), Align::Center, true);
+        }
         y += size * 0.85;
     }
 }
@@ -1720,14 +1755,15 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     o.text(concat!("v", env!("CARGO_PKG_VERSION")), t * 0.6, t * 0.9, t * 0.45, rgba(TEXT_DIM, 0.8), Align::Left, false);
 
     // One line on how to play, tucked under the button.
-    o.text(
-        "WASD or the left stick to run   Left click / X attack   B the old man's guide   Shift / LB shield   Space / A jump   R / LT archangel   H / Back call the old man   Esc pause",
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "{Move} run   {Attack} attack   {Jump} jump   {Block} shield   {Step} step   {Angel} archangel   {Guide} his word   {Call} call the old man   {Pause} pause",
         w / 2.0,
         h * 0.965,
         t * 0.45,
         rgba(TEXT_DIM, 0.9),
         Align::Center,
-        false,
     );
 
     // Under the buttons: where Continue leads, and that Start begins anew.
@@ -1763,29 +1799,29 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     ending::draw_finished_mark(o, g, t);
 }
 
-/// The title word: a dark outline, a bronze bevel below, gold on top, and a
-/// shimmer of light sweeping through the letters.
+/// The title word in the display serif: a dark outline, a bronze bevel below, gold on top, and a
+/// shimmer of light sweeping through the letters, each letter bobbing on its own (set by the
+/// face's own advances, so the word keeps its spacing).
 fn draw_logo_word(o: &mut Overlay, word: &str, cx: f32, cy: f32, size: f32, time: f32) {
-    let shadow = std::mem::replace(&mut o.shadow, 0.0);
+    use crate::render::overlay::Style;
+    let style = Style::display(size, rgba(GOLD, 1.0)).tracking(0.04);
     let n = word.chars().count() as f32;
-    let adv = o.measure("M", size);
-    let x0 = cx - adv * n / 2.0;
+    let (pens, width) = o.pens(word, &style);
+    let x0 = cx - width / 2.0;
     let sweep = ((time * 0.35) % 1.6) * (n + 6.0) - 3.0;
     let d = (size * 0.05).max(2.0);
-    for (i, ch) in word.chars().enumerate() {
+    for (i, (ch, pen)) in word.chars().zip(pens).enumerate() {
+        let x = x0 + pen;
         let s = ch.to_string();
-        let x = x0 + adv * (i as f32 + 0.5);
         let bounce = (time * 2.2 + i as f32 * 0.5).sin() * size * 0.015;
         let y = cy + bounce;
-        for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d), (-d, -d), (d, d), (-d, d), (d, -d)] {
-            o.text(&s, x + dx, y + dy + d, size, [0.0, 0.0, 0.0, 0.85], Align::Center, true);
-        }
-        o.text(&s, x, y + d * 1.2, size, rgba(0x8a5a14, 1.0), Align::Center, true);
+        let edge = style.outline(d, [0.0, 0.0, 0.0, 0.85]).shadow(d * 0.6, d);
+        o.text_styled(&s, x, y + d, &edge.color([0.0, 0.0, 0.0, 0.85]));
+        o.text_styled(&s, x, y + d * 1.2, &style.color(rgba(0x8a5a14, 1.0)));
         let glint = (1.0 - ((i as f32 - sweep).abs() / 1.6)).clamp(0.0, 1.0);
         let color = mix_rgb(GOLD, 0xfff6d0, glint * 0.85);
-        o.text(&s, x, y, size, rgba(color, 1.0), Align::Center, true);
+        o.text_styled(&s, x, y, &style.color(rgba(color, 1.0)));
     }
-    o.shadow = shadow;
 }
 
 // ---------------------------------------------------------- character screen
@@ -1924,7 +1960,16 @@ fn draw_select(o: &mut Overlay, g: &Game, t: f32) {
         };
         o.text(label, r[0] + r[2] / 2.0, r[1] + r[3] / 2.0, t * 0.7, rgba(color, 1.0), Align::Center, true);
     }
-    o.text("Left / Right choose     Enter begin     Esc back", w / 2.0, h * 0.985, t * 0.45, rgba(TEXT_DIM, 1.0), Align::Center, false);
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "{NavLR} choose     {Confirm} begin     {Back} back",
+        w / 2.0,
+        h * 0.985,
+        t * 0.45,
+        rgba(TEXT_DIM, 1.0),
+        Align::Center,
+    );
 }
 
 /// A knotwork-style rule: a line with diamonds at the ends and a gem in the middle.

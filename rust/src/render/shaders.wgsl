@@ -270,6 +270,37 @@ fn vs_rig(v: RIn) -> VOut {
     return out;
 }
 
+// A portrait (UI.md §6, `Gpu::render_portraits`): the rig lit for the HUD on a clear ground, a
+// warm key from above the camera's left, a cool fill from its right, a rim behind; tone mapped and
+// written as display colour, solid (the clear ground stays transparent).
+@fragment
+fn fs_portrait(in: VOut) -> @location(0) vec4<f32> {
+    var n = normalize(cross(dpdx(in.world), dpdy(in.world)));
+    let to_eye = normalize(g.cam_pos.xyz - in.world);
+    if (dot(n, to_eye) < 0.0) {
+        n = -n;
+    }
+    let fwd = normalize(g.cam_fwd.xyz);
+    let right = normalize(cross(fwd, vec3<f32>(0.0, 1.0, 0.0)));
+    let up = cross(right, fwd);
+    let key = normalize(-right * 0.55 + up * 0.8 - fwd * 0.5);
+    let fill = normalize(right * 0.85 + up * 0.15 - fwd * 0.5);
+    let rim = normalize(right * 0.35 + up * 0.55 + fwd * 0.9);
+    let albedo = in.color.rgb;
+    var c = albedo * (vec3<f32>(0.16, 0.15, 0.17)
+        + max(dot(n, key), 0.0) * vec3<f32>(1.25, 1.12, 0.95)
+        + max(dot(n, fill), 0.0) * vec3<f32>(0.32, 0.38, 0.48));
+    let edge = pow(1.0 - max(dot(n, to_eye), 0.0), 2.0);
+    c += vec3<f32>(1.0, 0.82, 0.55) * edge * max(dot(n, rim) + 0.25, 0.0) * 0.55;
+    c += in.emissive.rgb;
+    if (abs(in.emissive.w - 16.0) < 0.5) {
+        // A voxel lit from within keeps its own light.
+        c = max(c, albedo * 1.4);
+    }
+    let shown = aces_filmic(c, 1.0);
+    return vec4<f32>(pow(shown, vec3<f32>(1.0 / 2.2)), 1.0);
+}
+
 @vertex
 fn vs_rig_shadow(v: RIn) -> @builtin(position) vec4<f32> {
     // As for static faces: a face turned from the light is skipped (RP16).
@@ -1572,17 +1603,21 @@ struct Screen {
 @group(0) @binding(0) var<uniform> screen: Screen;
 @group(0) @binding(1) var atlas: texture_2d<f32>;
 @group(0) @binding(2) var atlas_sampler: sampler;
+// The type's signed distance field (`render::text`): 0.5 on the outline, more inside.
+@group(0) @binding(17) var sdf_atlas: texture_2d<f32>;
 
 struct OIn {
     @location(0) pos: vec2<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
+    @location(3) extra: vec4<f32>,
 };
 
 struct OOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) color: vec4<f32>,
+    @location(2) extra: vec4<f32>,
 };
 
 @vertex
@@ -1591,12 +1626,50 @@ fn vs_overlay(v: OIn) -> OOut {
     out.clip = vec4<f32>(v.pos.x / screen.size.x * 2.0 - 1.0, 1.0 - v.pos.y / screen.size.y * 2.0, 0.0, 1.0);
     out.uv = v.uv;
     out.color = v.color;
+    out.extra = v.extra;
     return out;
 }
 
+// How a vertex's texel is read (`overlay::FLAG_*`).
+const O_SDF: u32 = 1u;
+const O_CIRCLE: u32 = 2u;
+const O_PREMULTIPLIED: u32 = 4u;
+// A pixel's four samples for text, in pixels from its centre.
+const O_GRID = array<vec2<f32>, 4>(vec2<f32>(-0.125, -0.375), vec2<f32>(0.375, -0.125), vec2<f32>(0.125, 0.375), vec2<f32>(-0.375, 0.125));
+
 @fragment
 fn fs_overlay(in: OOut) -> @location(0) vec4<f32> {
-    // Glyphs are white with their coverage as alpha; the pictures carry their own colour.
+    // Both textures read, and their derivatives taken, while control flow is still uniform.
     let t = textureSample(atlas, atlas_sampler, in.uv);
-    return vec4<f32>(in.color.rgb * t.rgb, in.color.a * t.a);
+    let d = textureSample(sdf_atlas, atlas_sampler, in.uv).r;
+    let fw = max(fwidth(d), 1e-4);
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    let r = length(in.extra.yz);
+    let fr = max(fwidth(r), 1e-4);
+    let flags = u32(in.extra.x + 0.5);
+    if ((flags & O_SDF) != 0u) {
+        // The outline's edge moved out by `extra.y` (a heavier weight, an outline, a glow), softened
+        // over `extra.z` more. Four samples a pixel on a rotated grid, each anti-aliased over its
+        // quarter, so small text keeps its shape where one sample would skip texels.
+        let edge = 0.5 - in.extra.y;
+        let w = fw * 0.5;
+        var a = 0.0;
+        for (var k = 0; k < 4; k++) {
+            let o = O_GRID[k];
+            let s = textureSampleLevel(sdf_atlas, atlas_sampler, in.uv + du * o.x + dv * o.y, 0.0).r;
+            a += smoothstep(edge - in.extra.z - w, edge + w, s);
+        }
+        return vec4<f32>(in.color.rgb, in.color.a * a * 0.25);
+    }
+    // Glyphs of the pixel font are white with their coverage as alpha; the pictures carry their own colour.
+    var rgb = t.rgb;
+    var a = t.a;
+    if ((flags & O_PREMULTIPLIED) != 0u) {
+        rgb = t.rgb / max(t.a, 1e-3);
+    }
+    if ((flags & O_CIRCLE) != 0u) {
+        a = a * (1.0 - smoothstep(1.0 - fr, 1.0, r));
+    }
+    return vec4<f32>(in.color.rgb * rgb, in.color.a * a);
 }

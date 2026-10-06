@@ -616,6 +616,7 @@ fn measure(gpu: &mut Gpu, scene: &Scene, steps: usize, frames: usize, (w, h): (u
         let s = Instant::now();
         gpu.sync_static(&mut game.view);
         cpu.sync = s.elapsed().as_secs_f64() * 1e3;
+        gpu.render_portraits(&game.view, &overlay.portraits.due);
         let s = Instant::now();
         gpu.draw(&target, &game.view, &frame, &overlay.verts, logical);
         if game.loading.is_some() && gpu.level_ready(&game.view) {

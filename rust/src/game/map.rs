@@ -145,7 +145,7 @@ impl Game {
             }
         }
         self.input.consume(Action::Attack);
-        if self.input.was_pressed(&[Action::Guide, Action::Pause]) {
+        if self.input.was_pressed(&[Action::Guide, Action::Pause, Action::Map]) {
             self.input.consume(Action::Pause);
             self.close_map();
             return;

@@ -496,15 +496,18 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
             let a = (n.life * 2.0).min(1.0);
             o.text(&n.text, x0 + pw / 2.0, ny, t * 0.58, rgba(n.color, a), Align::Center, true);
         }
-        None => o.text(
-            "Arrows or stick to choose   Enter or A to take   Tab or LT next station   Esc to leave",
-            x0 + pw / 2.0,
-            ny,
-            small * 0.85,
-            rgba(TEXT_DIM, 1.0),
-            Align::Center,
-            false,
-        ),
+        None => {
+            super::glyphs::prompt_line(
+                o,
+                &g.input,
+                "{Nav} choose   {Confirm} take   {TabPrev} {TabNext} station   {Pause} leave",
+                x0 + pw / 2.0,
+                ny,
+                small * 0.85,
+                rgba(TEXT_DIM, 1.0),
+                Align::Center,
+            );
+        }
     }
 
     // The old man's words, bottom left under the crypt.
@@ -547,7 +550,10 @@ fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[Sho
             y += t * 0.75;
             wrap_left(
                 o,
-                "Call on him with R or LT. A blessing from a shrine is used first while you carry one; then his power, each time it comes back.",
+                &format!(
+                    "Call on him with {}. A blessing from a shrine is used first while you carry one; then his power, each time it comes back.",
+                    g.input.prompt(crate::input::Action::Angel).unwrap_or_default()
+                ),
                 x,
                 y,
                 w,
@@ -606,9 +612,10 @@ fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[Sho
                 )
             } else {
                 format!(
-                    "Durability {} of {}. Hold LB or Shift to raise it: it takes the whole of every blow, but you walk slower and cannot strike. If it breaks, it is gone until it is reforged.",
+                    "Durability {} of {}. Hold {} to raise it: it takes the whole of every blow, but you walk slower and cannot strike. If it breaks, it is gone until it is reforged.",
                     g.hero.shield.map(|s| s.durability).unwrap_or(0),
-                    progression::ward(tier).durability
+                    progression::ward(tier).durability,
+                    g.input.prompt(crate::input::Action::Block).unwrap_or_default()
                 )
             };
             wrap_left(o, &text, x, y, w, t * 0.58, small * 0.95, rgba(TEXT, 1.0));

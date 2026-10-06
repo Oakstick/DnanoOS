@@ -63,6 +63,7 @@ mod lookdev;
 mod meadow;
 mod models;
 mod pit;
+mod portrait;
 mod realms;
 mod resident;
 mod sanctum;
@@ -95,6 +96,7 @@ pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;
 use models::{Models, RigId};
 pub use pit::PitView;
+pub use portrait::PortraitCamera;
 pub use resident::Resident;
 pub use select::SelectView;
 use showcase::STAGE;
@@ -245,6 +247,8 @@ pub struct WorldView {
     showcase_timer: f32,
 
     models: Models,
+    /// The heroes not played, as their portraits show them (made the first time one is asked for).
+    portrait_heroes: [std::sync::OnceLock<Rig>; 3],
     /// Level geometry that only changes when a bomb or a pickup changes it.
     pub static_cubes: Vec<Instance>,
     pub static_dirty: bool,
@@ -455,6 +459,7 @@ impl WorldView {
             showcase_angle: 0.6,
             showcase_timer: 0.0,
             models,
+            portrait_heroes: Default::default(),
             static_cubes: Vec::new(),
             static_dirty: true,
             rock_index: HashMap::new(),

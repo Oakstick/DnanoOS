@@ -39,7 +39,11 @@
 //! 0 Michael .. 3 Uriel) and `angel` (use it),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
-//! where `pause` skips it).
+//! where `pause` skips it); `wheel:up` / `wheel:down` (a notch of the mouse wheel), `belt:prev` /
+//! `belt:next` (the belt's potion before or after) and `device:kbm|xbox|ps|pad` (the device used last,
+//! for the prompts' glyphs).
+//! `--specimen` draws the type specimen instead of the HUD (both faces at the HUD's sizes, and the
+//! overlay's textured quads: `render::hud::specimen`).
 //! `--iso` renders the whole level from an isometric map camera instead;
 //! `--closeup [angle] [distance]` a portrait of the hero (angle in degrees around him, 0 = his front);
 //! `--view x:y:z:angle:distance[:rise]` looks at a world point from `angle` degrees around it
@@ -143,6 +147,10 @@ pub(crate) enum Cmd {
     Call,
     Potion(usize),
     Press(Action),
+    /// A notch of the mouse wheel, up or down (through the bindings, as the context reads it).
+    Wheel(bool),
+    /// The device used last, for the prompts' glyphs (`device:kbm|xbox|ps|pad`).
+    Device(crate::input::Device),
     Hold(Dir, bool),
     /// A menu step (the arrow keys' one-shot navigation).
     Nav(Dir),
@@ -260,8 +268,15 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "unblock" => Cmd::Unblock,
             "row" => Cmd::Row(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "call" => Cmd::Call,
-            "tab" => Cmd::Press(Action::NextPotion),
+            "tab" => Cmd::Press(Action::PotionNext),
             "drink" => Cmd::Press(Action::Drink),
+            "wheel" => Cmd::Wheel(parts.next() != Some("down")),
+            "device" => match parts.next().and_then(crate::input::Device::from_name) {
+                Some(d) => Cmd::Device(d),
+                None => continue,
+            },
+            // The belt's potion before or after (`potion:N` is a potion found).
+            "belt" => Cmd::Press(if parts.next() == Some("prev") { Action::PotionPrev } else { Action::PotionNext }),
             "coins" => Cmd::Coins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(500)),
             "potion" => Cmd::Potion(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
@@ -313,6 +328,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
 pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot::Bot>) {
     match *cmd {
         Cmd::Press(a) => game.input.inject(a),
+        Cmd::Wheel(up) => game.input.wheel(if up { 1.0 } else { -1.0 }),
+        Cmd::Device(d) => game.input.set_last_device(d),
         Cmd::Hold(d, down) => game.input.hold_dir(d, down),
         Cmd::Nav(d) => game.input.nav = Some(d),
         Cmd::Beat(n, at) => game.story_jump(n, at),
@@ -582,10 +599,49 @@ pub fn run(args: &[String]) -> i32 {
         a.hemi_ground *= 2.5;
     }
     overlay.begin(w as f32, h as f32);
-    if !args.iter().any(|a| a == "--no-hud") {
+    if args.iter().any(|a| a == "--specimen") {
+        // The type and the overlay's quads on a plain ground (`hud::specimen`).
+        hud::specimen::draw(&mut overlay, hud::tile_for(w as f32, h as f32));
+    } else if !args.iter().any(|a| a == "--no-hud") {
+        let at = std::time::Instant::now();
+        hud::draw(&mut overlay, &game, 60);
+        let hud_ms = at.elapsed().as_secs_f64() * 1e3;
+        // (Again, as a frame after the first would: the type laid out once already.)
+        let at = std::time::Instant::now();
+        overlay.portraits.begin_frame();
+        overlay.begin(w as f32, h as f32);
+        hud::draw(&mut overlay, &game, 60);
+        eprintln!(
+            "hud: {hud_ms:.2} ms the first time, {:.3} ms after; {} vertices; the type's atlas made in {:.1} ms, the UI's textures up in {:.1} ms",
+            at.elapsed().as_secs_f64() * 1e3,
+            overlay.verts.len(),
+            gpu.ui_ms.0,
+            gpu.ui_ms.1
+        );
+        overlay.portraits.forget();
+        overlay.begin(w as f32, h as f32);
         hud::draw(&mut overlay, &game, 60);
     }
     gpu.sync_static(&mut game.view);
+    if !overlay.portraits.due.is_empty() {
+        let n = overlay.portraits.due.len();
+        let first = gpu.render_portraits(&game.view, &overlay.portraits.due);
+        // Then made again and again, as a live one is, waiting for the GPU each time (its share too).
+        let mut times: Vec<f64> = (0..30)
+            .map(|_| {
+                let at = std::time::Instant::now();
+                gpu.render_portraits(&game.view, &overlay.portraits.due);
+                let _ = gpu.device.poll(wgpu::PollType::Wait);
+                at.elapsed().as_secs_f64() * 1e3
+            })
+            .collect();
+        times.sort_by(f64::total_cmp);
+        eprintln!(
+            "portraits: {n} made in {first:.2} ms the first time; again, waiting for the GPU: median {:.2} ms, best {:.2} ms",
+            times[times.len() / 2],
+            times[0]
+        );
+    }
     let mut rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     if game.show_fps && !args.iter().any(|a| a == "--no-hud") {
         // The F3 readout reports the frame before: draw once more with this one's numbers.
@@ -596,6 +652,7 @@ pub fn run(args: &[String]) -> i32 {
         game.perf_lines = crate::render::profile::readout(&Default::default(), &gpu.counts, gpu.timer.as_ref());
         overlay.begin(w as f32, h as f32);
         hud::draw(&mut overlay, &game, 60);
+        gpu.render_portraits(&game.view, &overlay.portraits.due);
         rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     }
     if let Some(n) = arg(args, "--bench").and_then(|n| n.parse::<u32>().ok()) {

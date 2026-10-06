@@ -27,6 +27,7 @@ pub mod hud;
 pub mod icons;
 pub mod minimap;
 pub mod overlay;
+pub mod portrait;
 pub mod preset;
 #[cfg(test)]
 pub mod preview;
@@ -35,5 +36,6 @@ pub mod profile;
 pub mod props;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod splash;
+pub mod text;
 pub mod view;
 pub mod voxels;

@@ -159,6 +159,7 @@ impl Game {
                 self.view.dust(grid, p.x, p.y, 0x5aa834, 16, 3.0);
                 let d = dist_sq(p, self.hero.pos()).sqrt() as f32;
                 self.view.shake(0.7 * (1.0 - d / 14.0).max(0.2));
+                self.rumble(crate::input::Rumble::Quake((1.0 - d / 14.0).max(0.2)));
             }
             BossEvent::Enraged(phase) => {
                 self.audio.set_tempo_step(phase as u32);

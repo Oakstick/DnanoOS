@@ -6,6 +6,7 @@
 use super::Game;
 use crate::audio::voices::matter_of as sound_matter;
 use crate::audio::{HitSound, ShieldTier, SoundMatter};
+use crate::input::Rumble;
 use crate::logic::combat::fsm::Effect;
 use crate::logic::combat::Archetype;
 use crate::logic::enemy::EnemyKind;
@@ -43,6 +44,9 @@ impl Game {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn feel_hero_hit(&mut self, i: usize, kind: EnemyKind, effect: Effect, finisher: bool, dir: V, at: V, hitstop: u16) {
         self.freeze(Stop::Blow(hitstop));
+        if effect != Effect::Armored {
+            self.rumble(Rumble::HitLanded);
+        }
         let id = self.enemies[i].duel.as_ref().map(|d| d.id).unwrap_or(0);
         let matter = matter_of(kind);
         match effect {
@@ -114,6 +118,7 @@ impl Game {
             Met::Parried => {
                 let prince = self.is_prince(by);
                 self.freeze(Stop::Parry { prince });
+                self.rumble(Rumble::Parry);
                 if prince {
                     self.dilate(DilationKind::PrinceParry);
                 }
@@ -128,11 +133,13 @@ impl Game {
             }
             Met::GuardBroken => {
                 self.freeze(Stop::GuardBroken);
+                self.rumble(Rumble::GuardBroken);
                 self.view.trauma(Trauma::GuardBroken);
                 self.view.shield_jolt();
             }
             Met::Struck => {
                 self.freeze(Stop::Struck(hitstop));
+                self.rumble(Rumble::HitTaken);
                 self.view.trauma(Trauma::Struck { dmg });
                 self.view.kick(dir, KICK_STRUCK);
             }
@@ -143,6 +150,8 @@ impl Game {
     pub(super) fn feel_quake(&mut self, at: V) {
         let dist = dist_sq(at, self.hero.pos()).sqrt();
         self.view.trauma(Trauma::Quake { dist });
+        // Felt in the hands within twelve tiles, the harder the nearer.
+        self.rumble(Rumble::Quake((1.0 - dist as f32 / 12.0).max(0.0)));
         if dist < 4.0 {
             self.view.fov_punch(FOV_QUAKE.0, FOV_QUAKE.1);
         }

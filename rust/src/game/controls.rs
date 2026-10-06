@@ -14,7 +14,7 @@ use crate::render::hud;
 impl Game {
     pub fn open_controls(&mut self) {
         self.show_controls = true;
-        self.controls_keyboard = !self.input.pad_connected;
+        self.controls_keyboard = !self.input.last_device().is_pad();
         self.audio.play(Sfx::Whoosh);
         self.input.consume(Action::Confirm);
         self.input.consume(Action::Jump);
@@ -22,12 +22,12 @@ impl Game {
     }
 
     pub(super) fn update_controls(&mut self) {
-        // Controller or keyboard: left and right, LT and RT, Tab or Y, or a click on a tab.
+        // Controller or keyboard: left and right, LB and RB, Q and E or Tab, or a click on a tab.
         let tabs = hud::controls_tab_rects(self.viewport.0, self.viewport.1);
         let on_tab = |p: (f32, f32)| tabs.iter().position(|r| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]);
         let mut want = None;
         if matches!(self.input.nav, Some(Dir::Left) | Some(Dir::Right))
-            || self.input.was_pressed(&[Action::TabPrev, Action::TabNext, Action::NextPotion])
+            || self.input.was_pressed(&[Action::TabPrev, Action::TabNext, Action::PotionNext])
         {
             want = Some(!self.controls_keyboard);
         }

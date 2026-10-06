@@ -104,9 +104,9 @@ const GARDEN_TASK: &[&str] = &[
 const GARDEN_WATCH: &[&str] = &[
     "Draugr fall to pieces and pull themselves together again, and hunt by the sound of your steps. Ravens fly over the pits.",
     "Bog slimes leave a trail that slows you, but they cannot cross the bridges. The slain gather in the hollow and come out again.",
-    "Every key angers the garden: more foes come out, and faster. Strike with E or a left click; leap the pits with Space or A.",
-    "An archangel's shrine stands in each quarter. Strike one to change its angel, step on it for his blessing, and use it with R or LT.",
-    "Raise your shield with Shift or LB, drink with Q or RB, and call me with H whenever you need. B brings you back to these words.",
+    "Every key angers the garden: more foes come out, and faster. Strike with {Attack}; leap the pits with {Jump}.",
+    "An archangel's shrine stands in each quarter. Strike one to change its angel, step on it for his blessing, and use it with {Angel}.",
+    "Raise your shield with {Block}, drink with {Drink}, and call me with {Call} whenever you need. {Guide} brings you back to these words.",
 ];
 
 const CISTERNS_TALE: &[&str] = &[
@@ -168,13 +168,13 @@ fn cyclops(n: usize, hail: &str) -> Guide {
         next,
     ];
     let hide = if n == 0 {
-        "This first one is the weakest. The archangels' powers (R or LT) wound it exactly, dazed or not."
+        "This first one is the weakest. The archangels' powers ({Angel}) wound it exactly, dazed or not."
     } else {
         "From this depth on its hide turns a point of every blow, unless your blade cuts through armour. Each Cyclops is tougher than the last."
     };
     let watch = [
         "When its eye squints and glows it is about to throw: fans and rings of bolts, a stream that follows you, boulders that roll.",
-        "Keep the pillars and the low walls between you. Raise your shield with Shift or LB, but you walk slowly and cannot strike behind it.",
+        "Keep the pillars and the low walls between you. Raise your shield with {Block}, but you walk slowly and cannot strike behind it.",
         "Wounded, it grows faster and starts to dive at you. A dive that misses leaves it dazed on the grass: then every blow counts double.",
         "Its touch hurts, except while it lies dazed or rises again. Close in when it is down, and get clear before it is up.",
         hide,
@@ -202,7 +202,7 @@ const HUB_WATCH: &[&str] = &[
     "No foe walks these platforms. Only the wooden bridges cross the lava. Walk up to a gate and its doors open on its realm.",
     "Every realm you take makes the next one harder, and its packs bring the beasts of one more depth. Choose your order with care.",
     "In the realms the princes lie, in their own voices and colours. My words are amber, and Quitmer barks with them.",
-    "If a whisper comes in another colour, press H and I will tell you the truth. Stand still in a realm, and my amber lamp shows the far portal.",
+    "If a whisper comes in another colour, call me and I will tell you the truth. Stand still in a realm, and my amber lamp shows the far portal.",
 ];
 
 // ------------------------------------------------------------------ the realms
@@ -327,9 +327,9 @@ const GREED_TASK: [&str; 3] = [
 const GREED_WATCH: &[&str] = &[
     "The packs sleep in their rooms and wake as you come near. They hunt you while you stay close, and go home when you are long gone.",
     "Every foe fights by its frames: watch its wind-up, raise your guard as the blow lands to parry it, then strike while it reels.",
-    "Your shield wears as it blocks and can break for good, and your blade dulls with every blow. Call me with H to mend and sharpen.",
+    "Your shield wears as it blocks and can break for good, and your blade dulls with every blow. Call me with {Call} to mend and sharpen.",
     "A chest that breathes, whose coins never glint and whose hinge creaks, is a mimic. Strike it first, and it pays double.",
-    "A whisper without Quitmer's bark is Mammon's, never mine: press H and I will set it right. Stand still, and my amber lamp shows the way.",
+    "A whisper without Quitmer's bark is Mammon's, never mine: call me and I will set it right. Stand still, and my amber lamp shows the way.",
 ];
 
 const GLUTTONY_TALE: &[&str] = &[
@@ -542,7 +542,7 @@ fn court(sin: Sin, hail: &str) -> Guide {
         "When his eye squints and glows he is about to throw: fans and rings of bolts, a stream that follows you, boulders that roll.",
         "Keep the pillars and the low walls between you. Wounded, he grows faster and starts to dive at you.",
         "A dive that misses leaves him dazed on the grass: close in then, for every blow counts double. His touch hurts, except while dazed.",
-        "His hide turns a point of every blow, unless your blade cuts through armour. The archangels' powers (R or LT) wound him exactly.",
+        "His hide turns a point of every blow, unless your blade cuts through armour. The archangels' powers ({Angel}) wound him exactly.",
     ];
     page(&format!("THE COURT OF {}", sin.prince().to_uppercase()), hail, &tale, &task, &watch)
 }
@@ -582,9 +582,9 @@ const GYM_TASK: &[&str] = &[
 ];
 
 const GYM_WATCH: &[&str] = &[
-    "Your string is three blows on E or a left click, the third the heaviest. A press during a swing comes out as the next blow.",
-    "Guard with Shift or LB: in its first frames it parries and the foe reels; after that it blocks for stamina, until the stamina runs out.",
-    "The leap (Space or A) leaves you untouchable in the air. A foe glows as it winds up, flashes as it strikes, and dims in recovery: punish then.",
+    "Your string is three blows of the attack, the third the heaviest. A press during a swing comes out as the next blow.",
+    "Guard with {Block}: in its first frames it parries and the foe reels; after that it blocks for stamina, until the stamina runs out.",
+    "The leap ({Jump}) leaves you untouchable in the air. A foe glows as it winds up, flashes as it strikes, and dims in recovery: punish then.",
     "The Brute swings slow: wait, then punish. The Skirmisher bites from beside you: parry it. The Hexer keeps away: close in, or parry its bolt.",
     "A red pip marks a foe that holds an attack token. The rest wait their turn on a ring round you.",
 ];

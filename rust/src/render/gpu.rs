@@ -13,11 +13,12 @@ use wgpu::util::DeviceExt;
 
 use super::clusters;
 use super::faces::StaticFaces;
-use super::overlay::{build_atlas, OVertex, ATLAS_H, ATLAS_W};
+use super::overlay::{build_atlas, AtlasRegion, OVertex, ATLAS_H, ATLAS_W, LEGACY, PORTRAIT_SIZE};
 use super::preset::{Preset, Shadows};
 use super::probes::{self, ProbeBox, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
-use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, WorldView, FAR, MESH_KINDS, NEAR};
+use super::text::SDF_W;
+use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, WorldView, FAR, MESH_KINDS, NEAR};
 use super::voxels::RigMesh;
 
 const SAMPLES: u32 = 4;
@@ -609,6 +610,15 @@ pub struct Gpu {
     env_next: u32,
     screen: wgpu::Buffer,
     overlay_bind: wgpu::BindGroup,
+    /// The UI atlas (`overlay`'s regions), for the regions written after start-up.
+    atlas: wgpu::Texture,
+    /// What the portraits are drawn with, and what the last ones cost (ms, on the CPU recording
+    /// and sending them; the GPU's share is in its own frame).
+    portrait: PortraitKit,
+    pub portrait_ms: f64,
+    /// What the type's atlas cost at start-up, in ms: making the field, then all of the UI's
+    /// textures (the field included) up on the GPU.
+    pub ui_ms: (f64, f64),
     meshes: Vec<MeshBuf>,
     static_buf: Dyn,
     static_count: u32,
@@ -1286,6 +1296,8 @@ impl Gpu {
                 cache: None,
             })
         };
+        // The portraits (UI.md §6): the rigs' own vertex shader, lit for a portrait.
+        let portrait = PortraitKit::new(&device, &shader, &rig_layout, &rig_face_layout);
         let rig_shadow = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("rig shadow"),
             layout: Some(&rig_shadow_pl),
@@ -1622,26 +1634,45 @@ impl Gpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let atlas = device.create_texture_with_data(
+        // The UI atlas: the old one in its corner, the rest clear for the icons, the minimap and the
+        // portraits (`overlay`'s regions), written on the GPU; and the type's field (`text`), one
+        // level (small text samples it four times a pixel instead: `fs_overlay`).
+        let ui_start = web_time::Instant::now();
+        let atlas = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ui atlas"),
+            size: wgpu::Extent3d { width: ATLAS_W, height: ATLAS_H, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        write_region(&queue, &atlas, AtlasRegion::new(0, 0, LEGACY, LEGACY), &build_atlas());
+        let atlas_view = atlas.create_view(&Default::default());
+        let fonts = super::text::fonts();
+        let sdf = device.create_texture_with_data(
             &queue,
             &wgpu::TextureDescriptor {
-                label: Some("font"),
-                size: wgpu::Extent3d { width: ATLAS_W, height: ATLAS_H, depth_or_array_layers: 1 },
+                label: Some("type"),
+                size: wgpu::Extent3d { width: SDF_W, height: fonts.height, depth_or_array_layers: 1 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: wgpu::TextureFormat::R8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             },
             wgpu::util::TextureDataOrder::LayerMajor,
-            &build_atlas(),
+            &fonts.pixels,
         );
-        let atlas_view = atlas.create_view(&Default::default());
+        let sdf_view = sdf.create_view(&Default::default());
+        let ui_ms = (fonts.build_ms, ui_start.elapsed().as_secs_f64() * 1e3);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("font"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let overlay_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1664,6 +1695,16 @@ impl Gpu {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 17,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let overlay_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1673,6 +1714,7 @@ impl Gpu {
                 wgpu::BindGroupEntry { binding: 0, resource: screen.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&atlas_view) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 17, resource: wgpu::BindingResource::TextureView(&sdf_view) },
             ],
         });
         let overlay_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1689,7 +1731,7 @@ impl Gpu {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<OVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Float32x4],
                 }],
                 compilation_options: Default::default(),
             },
@@ -1818,6 +1860,10 @@ impl Gpu {
             env_next: ENV_PASSES,
             screen,
             overlay_bind,
+            atlas,
+            ui_ms,
+            portrait,
+            portrait_ms: 0.0,
             meshes,
             static_count: 0,
             backend,
@@ -3193,6 +3239,100 @@ impl Gpu {
         }
     }
 
+    /**
+     * Draws the portraits due this frame (`overlay.portraits.due`) into their atlas slots: each
+     * model posed by the view (`WorldView::portrait_rigs`), lit from the front and above with a
+     * rim behind, on a clear ground, 4x multisampled, then copied into its slot. Call it after the
+     * HUD is laid out and before the frame is drawn, so a portrait asked for shows this frame. The
+     * milliseconds it took on the CPU.
+     */
+    pub fn render_portraits(&mut self, view: &WorldView, jobs: &[super::portrait::Job]) -> f64 {
+        if jobs.is_empty() {
+            return 0.0;
+        }
+        let start = web_time::Instant::now();
+        for job in jobs {
+            let mut rigs = RigList::default();
+            let cam = view.portrait_rigs(job.id, &job.pose, &mut rigs);
+            let mut counts = FrameCounts::default();
+            for mesh in &rigs.meshes {
+                let (device, layout) = (&self.device, &self.rig_face_layout);
+                let buf = self.rig_meshes.entry(mesh.id).or_insert_with(|| rig_buf(device, layout, mesh));
+                buf.used = self.frame_no;
+            }
+            let mut g = <Globals as Zeroable>::zeroed();
+            g.view_proj = cam.view_proj.to_cols_array();
+            g.cam_pos = [cam.eye.x, cam.eye.y, cam.eye.z, 1.0];
+            g.cam_fwd = [cam.fwd.x, cam.fwd.y, cam.fwd.z, 0.0];
+            let kit = &mut self.portrait;
+            self.queue.write_buffer(&kit.globals, 0, bytemuck::bytes_of(&g));
+            kit.draws.write(&self.device, &self.queue, bytemuck::cast_slice(&rigs.draws));
+            kit.parts.write(&self.device, &self.queue, bytemuck::cast_slice(&rigs.parts));
+            let kit = &self.portrait;
+            let rig_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("portrait rigs"),
+                layout: &self.rig_layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: kit.draws.buf.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 1, resource: kit.parts.buf.as_entire_binding() },
+                ],
+            });
+            let size = job.size.min(PORTRAIT_SIZE);
+            let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("portrait") });
+            {
+                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("portrait"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &kit.msaa,
+                        resolve_target: Some(&kit.resolve_view),
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Discard },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &kit.depth,
+                        depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Discard }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                pass.set_viewport(0.0, 0.0, size as f32, size as f32, 0.0, 1.0);
+                pass.set_pipeline(&kit.pipe);
+                pass.set_bind_group(0, &kit.bind, &[]);
+                pass.set_bind_group(1, &rig_bind, &[]);
+                self.draw_rigs(&mut pass, &rigs.meshes, 0, &mut counts);
+            }
+            let r = job.region();
+            enc.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &kit.resolve,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.atlas,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: r.x, y: r.y, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d { width: r.w, height: r.h, depth_or_array_layers: 1 },
+            );
+            self.queue.submit([enc.finish()]);
+        }
+        self.portrait_ms = start.elapsed().as_secs_f64() * 1e3;
+        self.portrait_ms
+    }
+
+    /**
+     * Writes tightly packed RGBA rows (`r.w * r.h * 4` bytes, sRGB like the rest of the HUD) over a
+     * region of the UI atlas: the minimap's level and fog (`overlay::MAP_REGION`), redrawn icons
+     * (`overlay::ICON_REGION`). It shows from the next frame drawn.
+     */
+    pub fn write_atlas(&self, r: AtlasRegion, rgba: &[u8]) {
+        assert!(r.x + r.w <= ATLAS_W && r.y + r.h <= ATLAS_H && rgba.len() == (r.w * r.h * 4) as usize, "{r:?} in the atlas");
+        write_region(&self.queue, &self.atlas, r, rgba);
+    }
+
     /// A texture the size of the screen to draw into without a window.
     pub fn offscreen(&self) -> wgpu::TextureView {
         self.device
@@ -3293,6 +3433,21 @@ impl Gpu {
         }
         out
     }
+}
+
+/// Writes tightly packed RGBA rows over a region of the UI atlas.
+fn write_region(queue: &wgpu::Queue, atlas: &wgpu::Texture, r: AtlasRegion, rgba: &[u8]) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: atlas,
+            mip_level: 0,
+            origin: wgpu::Origin3d { x: r.x, y: r.y, z: 0 },
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba,
+        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(r.w * 4), rows_per_image: Some(r.h) },
+        wgpu::Extent3d { width: r.w, height: r.h, depth_or_array_layers: 1 },
+    );
 }
 
 /**
@@ -3621,6 +3776,112 @@ impl SceneInputs {
             entries.push(wgpu::BindGroupEntry { binding: 10 + k as u32, resource: wgpu::BindingResource::TextureView(v) });
         }
         device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("scene"), layout: &self.layout, entries: &entries })
+    }
+}
+
+/// The portraits' pipeline and targets (UI.md §6): the rigs' vertex shader with its own globals
+/// (the portrait's camera) and a fragment shader lighting them for a portrait (`fs_portrait`),
+/// drawn 4x multisampled into a slot-sized target that is resolved and copied into the UI atlas.
+struct PortraitKit {
+    pipe: wgpu::RenderPipeline,
+    globals: wgpu::Buffer,
+    bind: wgpu::BindGroup,
+    msaa: wgpu::TextureView,
+    resolve: wgpu::Texture,
+    resolve_view: wgpu::TextureView,
+    depth: wgpu::TextureView,
+    draws: Dyn,
+    parts: Dyn,
+}
+
+/// The portraits' colour: the atlas's.
+const PORTRAIT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+impl PortraitKit {
+    fn new(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        rig_layout: &wgpu::BindGroupLayout,
+        face_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        let globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("portrait globals"),
+            size: std::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("portrait"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                count: None,
+            }],
+        });
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("portrait"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() }],
+        });
+        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("portrait"),
+            bind_group_layouts: &[&layout, rig_layout, face_layout],
+            push_constant_ranges: &[],
+        });
+        let pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("portrait"),
+            layout: Some(&pl),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vs_rig"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: 4,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![0 => Uint32],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some("fs_portrait"),
+                targets: &[Some(wgpu::ColorTargetState { format: PORTRAIT_FORMAT, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState { count: SAMPLES, ..Default::default() },
+            multiview: None,
+            cache: None,
+        });
+        let size = (PORTRAIT_SIZE, PORTRAIT_SIZE);
+        let resolve = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("portrait"),
+            size: wgpu::Extent3d { width: PORTRAIT_SIZE, height: PORTRAIT_SIZE, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: PORTRAIT_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        Self {
+            pipe,
+            globals,
+            bind,
+            msaa: texture(device, "portrait msaa", size, PORTRAIT_FORMAT, SAMPLES, false),
+            resolve_view: resolve.create_view(&Default::default()),
+            resolve,
+            depth: texture(device, "portrait depth", size, DEPTH, SAMPLES, false),
+            draws: Dyn::new(device, "portrait draws", wgpu::BufferUsages::STORAGE, 1 << 10),
+            parts: Dyn::new(device, "portrait parts", wgpu::BufferUsages::STORAGE, 1 << 12),
+        }
     }
 }
 

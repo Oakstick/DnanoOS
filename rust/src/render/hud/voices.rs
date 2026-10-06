@@ -1,5 +1,5 @@
 //! The two voices on screen (WARBAND.md §10, §13): the panel in the bottom-left corner where the
-//! old man speaks (his face in an amber frame, his name, his words typed out in amber) and where
+//! old man speaks (his live portrait in an amber frame, his name, his words typed out in amber) and where
 //! the prince's whisper speaks under his own name (an empty frame, the name in the sin's colour, the
 //! words in the sin's colour); and in a realm, the signs about the hero: the realm's compass needle
 //! (pale, or turned toward a den, flickering in the sin's colour) and the old man's amber lamp,
@@ -8,23 +8,6 @@
 use super::*;
 use crate::game::counsel::{Speaker, AMBER};
 use crate::logic::types::V;
-
-/// The old man's face, from his sculpt: the top of his figure, boxed down.
-pub(super) fn face() -> &'static Sprite {
-    static S: OnceLock<Sprite> = OnceLock::new();
-    S.get_or_init(|| {
-        let whole = cropped(sprite_from(&crate::render::cast::old_man()));
-        // His hood and face: the top third of him, a little narrower than his staff and sleeves.
-        let h = (whole.height as f32 * 0.3) as i32;
-        let (x0, x1) = ((whole.width as f32 * 0.12) as i32, (whole.width as f32 * 0.88) as i32);
-        let pixels = (0..h).map(|y| (x0..x1).map(|x| whole.pixels[y as usize][x as usize]).collect()).collect();
-        let head = cropped(Sprite { width: x1 - x0, height: h, pixels });
-        // Every other voxel: a few hundred squares.
-        let (w2, h2) = ((head.width + 1) / 2, (head.height + 1) / 2);
-        let pixels = (0..h2).map(|y| (0..w2).map(|x| head.pixels[(y * 2) as usize][(x * 2) as usize]).collect()).collect();
-        Sprite { width: w2, height: h2, pixels }
-    })
-}
 
 /// The panel's rectangle (x, y, width, height) for `lines` lines of words: over the bottom bar, on
 /// the left.
@@ -75,10 +58,12 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
         o.circle(fx + fs / 2.0 + drift, fy + fs * 0.45, fs * 0.22, rgba(color, 0.18 * fade));
         o.circle(fx + fs / 2.0 - drift, fy + fs * 0.5, fs * 0.12, rgba(color, 0.12 * fade));
     } else {
-        let f = face();
-        let scale = (fs * 0.94) / f.width.max(f.height) as f32;
-        let (sw, sh) = (f.width as f32 * scale, f.height as f32 * scale);
-        draw_sprite(o, f, fx + (fs - sw) / 2.0, fy + (fs - sh) / 2.0, scale, None, fade);
+        // His live portrait, made by the renderer: every frame while his words type out (his head
+        // and his hand move with them), once a second while they stand.
+        use crate::render::portrait::{PortraitId, Pose};
+        let talking = s.shown(g.time) < s.text.chars().count();
+        let pose = if talking { Pose::talking(g.time as f32, age) } else { Pose::live(g.time as f32, 1.0) };
+        o.portrait(PortraitId::OldMan, pose, fx, fy, fs, fs, false, [1.0, 1.0, 1.0, fade]);
     }
     o.rect_outline(fx, fy, fs, fs, (t * 0.08).max(1.5), rgba(color, 0.95 * fade));
     // The name over the words: the old man's, or the prince's own (he never takes the old man's).
@@ -93,7 +78,7 @@ pub(super) fn draw_voices(o: &mut Overlay, g: &Game, t: f32) {
         // Quitmer's mark beside his name.
         o.text(
             "& QUITMER",
-            tx + o.measure("THE OLD MAN ", small),
+            tx + o.measure_as("THE OLD MAN ", small, true),
             y + t * 0.62,
             small * 0.8,
             rgba(TEXT_DIM, 0.8 * fade),
