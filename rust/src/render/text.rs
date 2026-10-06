@@ -459,6 +459,7 @@ mod tests {
             assert!(face.cap > 0.5 && face.cap < 0.8, "capitals {}", face.cap);
         }
         assert!(f.height <= 2048, "the atlas fits a WebGL2 texture: {}", f.height);
+        eprintln!("the type's atlas: {} x {}, made in {:.1} ms", SDF_W, f.height, f.build_ms);
     }
 
     #[test]

@@ -545,7 +545,7 @@ impl Overlay {
 
     /// The style the old `text` call stands for: the body sans, or for bold lines of title size
     /// the display serif (bold small lines stay the sans, heavier); the old drop shadow, softened.
-    fn legacy_style(&self, size: f32, color: [f32; 4], align: Align, bold: bool) -> Style {
+    pub fn legacy_style(&self, size: f32, color: [f32; 4], align: Align, bold: bool) -> Style {
         let unit = self.height / 36.0;
         let mut s = if bold && size >= unit * DISPLAY_FROM { Style::display(size, color) } else { Style::body(size, color) };
         if bold && s.family == Family::Body {
@@ -561,7 +561,7 @@ impl Overlay {
         s
     }
 
-    /// The width of `text` at `size`, in the type `text` would draw it in (regular weight).
+    /// The width of `text` at `size`, in the type the old `text` draws regular lines in.
     pub fn measure(&self, text: &str, size: f32) -> f32 {
         self.measure_styled(text, &Style::body(size, [1.0; 4]))
     }

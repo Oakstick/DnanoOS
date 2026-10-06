@@ -73,18 +73,18 @@ fn typed(
         let ly = y + i as f32 * lh;
         if shake > 0.0 {
             // Letter by letter, each jittering on its own.
-            let full = o.measure(line, size);
-            let mut pen = match align {
+            let style = o.legacy_style(size, color, Align::Left, true);
+            let (pens, full) = o.pens(line, &style);
+            let pen = match align {
                 Align::Left => x,
                 Align::Center => x - full / 2.0,
                 Align::Right => x - full,
             };
-            for (k, ch) in part.chars().enumerate() {
+            for (k, (ch, at)) in part.chars().zip(pens).enumerate() {
                 let s = ch.to_string();
                 let jx = (time * 47.0 + k as f32 * 1.7).sin() * shake;
                 let jy = (time * 53.0 + k as f32 * 2.3).cos() * shake;
-                o.text(&s, pen + jx, ly + jy, size, color, Align::Left, true);
-                pen += o.measure(&s, size);
+                o.text_styled(&s, pen + at + jx, ly + jy, &style);
             }
         } else {
             let full = o.measure(line, size);

@@ -92,7 +92,11 @@ pub fn words(input: &Input, text: &str) -> String {
         .into_iter()
         .map(|p| match p {
             Piece::Text(t) => t,
-            Piece::Action(a) => input.prompt(a).unwrap_or_default(),
+            // ("left click" mid-sentence; a key or a button keeps its name.)
+            Piece::Action(a) => match input.bindings.shown(a, d) {
+                Some(c @ (Control::Mouse(_) | Control::WheelUp | Control::WheelDown)) => crate::input::control_name(c, d).to_lowercase(),
+                _ => input.prompt(a).unwrap_or_default(),
+            },
             Piece::Move => if d.is_pad() { "the left stick" } else { "W A S D" }.into(),
             Piece::Look => if d.is_pad() { "the right stick" } else { "the mouse" }.into(),
             Piece::Nav => if d.is_pad() { "the D-pad" } else { "the arrows" }.into(),
