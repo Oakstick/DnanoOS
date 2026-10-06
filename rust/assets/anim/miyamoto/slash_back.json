@@ -1,0 +1,12 @@
+{
+ "clip": "slash_back",
+ "fps": 60,
+ "frames": 107,
+ "loop": false,
+ "markers": {
+  "windup_end": 45,
+  "hit": 53,
+  "active_end": 63,
+  "recover_end": 107
+ }
+}

@@ -870,12 +870,20 @@ fn a_rival_who_knows_his_finisher_sways_out_of_it() {
 
 /// Nothing in the simulation reads the animation (ANIMATION.md): a bout played with the hero
 /// animated by his clips and by the code comes out the same, step for step, his swings, guards and
-/// leaps and the foes' answers alike.
+/// leaps and the foes' answers alike; for each of the three heroes (Miyamoto with his fists on the
+/// grip and his shield slung).
 #[test]
 fn the_clips_leave_the_fight_untouched() {
+    for hero in 0..3 {
+        clips_leave_the_fight_untouched(hero);
+    }
+}
+
+fn clips_leave_the_fight_untouched(hero: usize) {
     let play = |code: bool| {
         let mut g = gym();
         g.view.set_anim_mode(code);
+        g.debug_hero(hero);
         g.debug_ring(1);
         let (mut trace, mut posed) = (Vec::new(), 0);
         for step in 0..1500 {
@@ -893,10 +901,10 @@ fn the_clips_leave_the_fight_untouched() {
         (trace, posed)
     };
     let ((code, by_code), (clips, by_clips)) = (play(true), play(false));
-    assert_eq!(by_code, 0, "the code animated him");
-    assert!(by_clips > 1000, "his clips posed him ({by_clips} steps)");
+    assert_eq!(by_code, 0, "the code animated hero {hero}");
+    assert!(by_clips > 1000, "hero {hero}'s clips posed him ({by_clips} steps)");
     assert_eq!(code.len(), clips.len());
     for (k, (a, b)) in code.iter().zip(&clips).enumerate() {
-        assert_eq!(a, b, "line {k} differs");
+        assert_eq!(a, b, "hero {hero}: line {k} differs");
     }
 }

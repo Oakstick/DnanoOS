@@ -45,11 +45,15 @@ point. Angles and directions are in the game's axes (X his left, Y up, Z forward
 
 ```
 blender -b ragnar.blend -P tools/blender/preview.py -- OUT_DIR [action ...] [--yaw DEG] [--rise R] [--frames N]
+    [--at HEIGHT] [--dist D]
 ```
 
 Renders each action (all, or those named) as rows of frames, its markers among them, to
 `OUT_DIR/<action>.png`: a quick look without building the game. `--yaw` turns the camera round
-from his front (180 is behind him, as the game's camera mostly is), `--rise` lifts it.
+from his front (180 is behind him, as the game's camera mostly is), `--rise` lifts it, `--at` sets
+the height it looks at and `--dist` its distance (Mehmed and Miyamoto are taller: `--at 0.62 --dist
+2.7`). It shows the clips as Blender has them: Miyamoto's off hand and slung shield are the game's
+(`anim::hold`), so look at him in the game (`anim_compare.py --hero 2`).
 
 ## export_clips.py: the clips out to the game
 
@@ -86,7 +90,11 @@ The options for his build (Mixamo's bot is tall and thin, he is stocky): `--face
 his hips face at the first frame (or `--turn DEG` turns the whole clip), `--yaw-keep K` keeps only a
 share of the source's turning about the upright (a spin becomes a cut struck where he stands),
 `--arms-out DEG` carries his arms out from his body, `--sword-turn YAW,PITCH` swings the sword arm
-round his shoulder (toward his right, then up), `--hold DEG` sets the blade in his fist. An FBX's
+round his shoulder (toward his right, then up), `--hold DEG` sets the blade in his fist. From a
+script, `Retarget(posture=...)` straightens his torso (degrees back from the source's lean for the
+spine, chest, neck and head, each carrying those above it; his arms keep the source's aim), and
+`bake(still=True)` takes out all his movement over the ground (a leaping blow struck where he
+stands), the rise and fall kept. An FBX's
 frame rate is read from the file (Mixamo's sword and shield pack is at 30 fps, whatever was asked
 for); a loop's last 8 frames are eased onto its first.
 
@@ -96,17 +104,29 @@ checks every mapped limb points the way the source's does on every sixth frame (
 that his hips stay over his feet and rise by the source's rise times the leg scale. It prints PASS
 or FAIL (exit 1) and renders `retarget_selftest.png` (him and the source's bones, last frame).
 
-## mixamo_ragnar.py: his clips from Mixamo
+## mixamo_hero.py: each hero's clips from Mixamo
 
 ```
-blender -b ragnar.blend -P tools/blender/mixamo_ragnar.py -- C:/Users/ulask/Games/mixamo ragnar.blend [slot ...]
+blender -b HERO.blend -P tools/blender/mixamo_hero.py -- HERO C:/Users/ulask/Games/mixamo OUT.blend [slot ...]
+blender -b HERO.blend -P tools/blender/mixamo_hero.py -- HERO C:/Users/ulask/Games/mixamo OUT.blend --try FILE[:OPTS] ...
+blender -b HERO.blend -P tools/blender/mixamo_hero.py -- HERO --measure [action ...]
 ```
 
-The picks (a table at its top: slot, file, corrections) retargeted from Mixamo's Pro Sword And
-Shield Pack and two extras into his .blend, each as the action the game knows by that name
-(replacing the scripted one): `idle`, `walk`, `run`, `slash_fore`, `slash_back` (the forehand run
-backward), `slash_heavy`, `block`, `block_idle`, `jump`, `roll`, `hit`, and `parry` built from the
-block and the flinch. Their markers are found from the motion (a strike's from the blade tip's
-speed, a leap's from the feet, the guard's from the shield, the flinch's from the chest) and the
-lead-in before a strike's blade stirs is cut away. The FBX files stay outside the repository; then
+HERO is `ragnar`, `mehmed` or `miyamoto`; HERO.blend is his rig as `import_rig.py` saves it. The
+picks (a table for each hero at its top: slot, file, corrections) are retargeted from Mixamo's packs
+(`sword-shield/` for Ragnar and Mehmed, `great-sword/` for Miyamoto, and the two extras) into his
+.blend, each as the action the game knows by that name: `idle`, `walk`, `run`, `slash_fore`,
+`slash_back`, `slash_heavy`, `block`, `block_idle`, `jump`, `roll`, `hit`, and `parry` built from
+the block and the flinch. Their markers are found from the motion (a strike's from the blade tip's
+speed, a leap's from the feet, the guard's from the shield or, where it is slung, the off hand, the
+flinch's from the chest) and the lead-in before a strike's blade stirs is cut away. A pick can keep
+only some seconds of its source (`span`), play it backward (`reverse`), straighten him (`posture`)
+or keep him where he stands (`still`). The FBX files stay outside the repository; then
 `export_clips.py` the .blend. Why each pick is in `rust/ANIMATION.md` §6.
+
+`--try` retargets candidates instead (each an action named after its file, with a pick's options
+after a colon as Python keywords: `"great-sword/great sword slash.fbx:kind='strike',face=-15"`), to
+look at with `preview.py` before choosing. `--measure` reports a strike's blade as the chase camera
+sees it on its active frames, by rays against his voxels in Blender; the game's own
+`--blade-view` does the same with the clips as the game holds them (Miyamoto's fists on the grip,
+his shield slung), and is the one to trust.

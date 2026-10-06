@@ -52,6 +52,11 @@ fn main() {
         print!("{}", void_harvest::render::anim::export::bench());
         return;
     }
+    if args.iter().any(|a| a == "--blade-view") {
+        // The heroes' strikes: on how many of their active frames the chase camera sees the blade.
+        print!("{}", void_harvest::render::anim::export::blade_view());
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--audio-sheet") {
         // --audio-sheet DIR: every breed's tell, swing, hit and death, the hits and the war drum, as WAVs.
         let dir = args.get(i + 1).map(String::as_str).unwrap_or("target/audio-sheet");

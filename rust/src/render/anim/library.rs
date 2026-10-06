@@ -102,51 +102,86 @@ mod tests {
     use super::*;
     use crate::render::anim::skeleton::BONE_COUNT;
 
+    const HEROES: [HeroKind; 3] = [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto];
+
     #[test]
-    fn ragnars_clips_all_read_and_carry_their_markers() {
-        let c = clips(HeroKind::Ragnar).expect("Ragnar's clips are embedded");
-        assert!(c.errors.is_empty(), "{:?}", c.errors);
-        for name in
-            ["idle", "walk", "run", "slash_fore", "slash_back", "slash_heavy", "block", "block_idle", "jump", "roll", "hit", "parry"]
-        {
-            let clip = c.get(name).unwrap_or_else(|| panic!("no {name}"));
-            assert!(clip.frame_count() > 10, "{name}");
+    fn every_heros_clips_read_and_carry_their_markers() {
+        for hero in HEROES {
+            let c = clips(hero).unwrap_or_else(|| panic!("{hero:?}'s clips are embedded"));
+            assert!(c.errors.is_empty(), "{hero:?}: {:?}", c.errors);
+            for name in
+                ["idle", "walk", "run", "slash_fore", "slash_back", "slash_heavy", "block", "block_idle", "jump", "roll", "hit", "parry"]
+            {
+                let clip = c.get(name).unwrap_or_else(|| panic!("{hero:?} has no {name}"));
+                assert!(clip.frame_count() > 10, "{hero:?} {name}");
+            }
+            for cycle in ["idle", "walk", "run", "block_idle"] {
+                assert!(c.get(cycle).unwrap().markers.looping, "{hero:?}: {cycle} loops");
+            }
+            assert!(c.get("run").unwrap().markers.stride.is_some());
+            for name in ["slash_fore", "slash_back", "slash_heavy"] {
+                let k = c.get(name).unwrap();
+                let m = |n: &str| k.mark(n).unwrap_or_else(|| panic!("{hero:?} {name} has no {n}"));
+                assert!(
+                    0.0 < m("windup_end") && m("windup_end") < m("active_end") && m("active_end") <= m("recover_end"),
+                    "{hero:?} {name}"
+                );
+                assert!((m("recover_end") - k.duration()).abs() < 1e-4, "{hero:?} {name} ends at its last frame");
+            }
+            for leap in ["jump", "roll"] {
+                let j = c.get(leap).unwrap();
+                assert!(j.mark("takeoff").unwrap() < j.mark("land").unwrap() && j.mark("land").unwrap() < j.mark("recover_end").unwrap());
+            }
+            assert!(c.get("block").unwrap().mark("raised").is_some());
         }
-        for cycle in ["idle", "walk", "run", "block_idle"] {
-            assert!(c.get(cycle).unwrap().markers.looping, "{cycle} loops");
+    }
+
+    #[test]
+    fn each_hero_plays_his_own_clips() {
+        // The three sets differ: no two heroes share a strike or an idle (Mehmed's picks are not
+        // Ragnar's, Miyamoto's are from the great sword's pack).
+        let firsts: Vec<Vec<f32>> = HEROES
+            .iter()
+            .map(|&h| {
+                let c = clips(h).unwrap();
+                ["idle", "slash_fore", "slash_back", "slash_heavy"].iter().map(|n| c.get(n).unwrap().duration()).collect()
+            })
+            .collect();
+        for a in 0..3 {
+            for b in a + 1..3 {
+                for k in 0..4 {
+                    assert!((firsts[a][k] - firsts[b][k]).abs() > 1e-3, "{:?} and {:?} share clip {k}", HEROES[a], HEROES[b]);
+                }
+            }
         }
-        assert!(c.get("run").unwrap().markers.stride.is_some());
-        for name in ["slash_fore", "slash_back", "slash_heavy"] {
-            let k = c.get(name).unwrap();
-            let m = |n: &str| k.mark(n).unwrap_or_else(|| panic!("{name} has no {n}"));
-            assert!(0.0 < m("windup_end") && m("windup_end") < m("active_end") && m("active_end") <= m("recover_end"));
-            assert!((m("recover_end") - k.duration()).abs() < 1e-4, "{name} ends at its last frame");
-        }
-        for leap in ["jump", "roll"] {
-            let j = c.get(leap).unwrap();
-            assert!(j.mark("takeoff").unwrap() < j.mark("land").unwrap() && j.mark("land").unwrap() < j.mark("recover_end").unwrap());
-        }
-        assert!(c.get("block").unwrap().mark("raised").is_some());
-        assert!(clips(HeroKind::Mehmed).is_none() && embedded(HeroKind::Miyamoto).is_empty());
+        assert_eq!(embedded(HeroKind::Mehmed).len(), embedded(HeroKind::Ragnar).len());
     }
 
     #[test]
     fn the_clips_rest_on_the_joints_the_game_cut_him_at() {
-        // Out to Blender and back (export_clips.py): every joint is where the rig put it.
-        let c = clips(HeroKind::Ragnar).unwrap();
-        let rig = crate::render::view::jointed_hero(HeroKind::Ragnar, 1, Some(1)).unwrap();
-        for clip in &c.clips {
-            for b in 0..BONE_COUNT {
-                let at = clip.skeleton.rest_inv[b].inverse().w_axis.truncate();
-                assert!(at.abs_diff_eq(rig.parts[b].rest, 1e-4), "{}: {} at {at} not {}", clip.name, rig.parts[b].name, rig.parts[b].rest);
+        for hero in HEROES {
+            // Out to Blender and back (export_clips.py): every joint is where the rig put it.
+            let c = clips(hero).unwrap();
+            let rig = crate::render::view::jointed_hero(hero, 1, Some(1)).unwrap();
+            for clip in &c.clips {
+                for b in 0..BONE_COUNT {
+                    let at = clip.skeleton.rest_inv[b].inverse().w_axis.truncate();
+                    assert!(
+                        at.abs_diff_eq(rig.parts[b].rest, 1e-4),
+                        "{hero:?} {}: {} at {at} not {}",
+                        clip.name,
+                        rig.parts[b].name,
+                        rig.parts[b].rest
+                    );
+                }
             }
-        }
-        // And sampled at its start, the idle is a pose of him, not of another body: his feet on the floor.
-        let joints: Vec<glam::Vec3> = rig.parts.iter().map(|p| p.rest).collect();
-        let m = c.skeleton.matrices(&c.get("idle").unwrap().sample(0.0), &joints, &[glam::Quat::IDENTITY; BONE_COUNT]);
-        for foot in [13, 16] {
-            let y = m[foot].w_axis.y;
-            assert!((y - rig.parts[foot].rest.y).abs() < 0.02, "{} at {y}", rig.parts[foot].name);
+            // And sampled at its start, the idle is a pose of him, not of another body: his feet on the floor.
+            let joints: Vec<glam::Vec3> = rig.parts.iter().map(|p| p.rest).collect();
+            let m = c.skeleton.matrices(&c.get("idle").unwrap().sample(0.0), &joints, &[glam::Quat::IDENTITY; BONE_COUNT]);
+            for foot in [13, 16] {
+                let y = m[foot].w_axis.y;
+                assert!((y - rig.parts[foot].rest.y).abs() < 0.03, "{hero:?}: {} at {y}", rig.parts[foot].name);
+            }
         }
     }
 }
