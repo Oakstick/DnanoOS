@@ -1167,7 +1167,7 @@ fn the_old_man_sells_each_tree_in_order_and_equips() {
 fn the_old_man_can_be_called_from_the_dungeon_and_it_waits() {
     let mut g = playing();
     let at = g.hero.pos();
-    g.input.key_down(winit::keyboard::KeyCode::KeyH, false);
+    g.input.key_down(winit::keyboard::KeyCode::KeyE, false);
     g.update(crate::app::STEP);
     assert_eq!(g.screen, Screen::Shop);
     assert!(g.shop.called);
@@ -1421,14 +1421,105 @@ fn potions_ride_on_the_belt_until_drunk() {
 }
 
 #[test]
-fn right_click_drops_no_bomb_and_left_click_swings() {
+fn right_click_raises_the_shield_and_left_click_swings() {
     let mut g = playing();
     g.input.mouse_button(winit::event::MouseButton::Right, true);
     g.update(crate::app::STEP);
     assert_eq!(g.bombs.len(), 0, "the bomb is disabled");
+    assert!(g.input.held(Action::Block), "held, the shield is up");
+    g.input.mouse_button(winit::event::MouseButton::Right, false);
+    g.update(crate::app::STEP);
+    assert!(!g.input.held(Action::Block));
     g.input.mouse_button(winit::event::MouseButton::Left, true);
     g.update(crate::app::STEP);
     assert!(g.hero.swinging());
+}
+
+#[test]
+fn in_play_the_d_pad_turns_the_belt_shows_the_map_and_the_camera_and_never_runs() {
+    use crate::input::{Device, PadButton, PadState};
+    let mut g = playing();
+    g.belt = vec![PotionKind::Strength, PotionKind::Health, PotionKind::Life];
+    let at = g.hero.pos();
+    let pad = |b: &[PadButton]| PadState { buttons: b.iter().copied().collect(), kind: Some(Device::Xbox), ..Default::default() };
+    let press = |g: &mut Game, b: PadButton| {
+        g.input.set_pad(Some(pad(&[b])));
+        g.update(crate::app::STEP);
+        g.input.set_pad(Some(pad(&[])));
+        g.update(crate::app::STEP);
+    };
+    press(&mut g, PadButton::DPadRight);
+    assert_eq!(g.belt_index, 1);
+    press(&mut g, PadButton::DPadLeft);
+    press(&mut g, PadButton::DPadLeft);
+    assert_eq!(g.belt_index, 2, "round from the first to the last");
+    // Held for a second, the D-pad moves him nowhere and turns the belt once.
+    g.input.set_pad(Some(pad(&[PadButton::DPadRight])));
+    for _ in 0..120 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.belt_index, 0);
+    assert_eq!(g.hero.pos(), at, "the D-pad does not run");
+    g.input.set_pad(Some(pad(&[])));
+    g.update(crate::app::STEP);
+    assert_eq!(g.input.last_device(), Device::Xbox);
+    // Down switches the camera; up opens the map over the pause, and View puts it away.
+    let mode = g.view.camera_mode;
+    press(&mut g, PadButton::DPadDown);
+    assert_ne!(g.view.camera_mode, mode);
+    press(&mut g, PadButton::DPadUp);
+    assert!(g.show_map && g.screen == Screen::Paused);
+    // (In the map, the D-pad moves its highlight.)
+    let i = g.map_index;
+    press(&mut g, PadButton::DPadDown);
+    assert_ne!(g.map_index, i);
+    press(&mut g, PadButton::View);
+    assert!(!g.show_map && g.screen == Screen::Paused);
+    // B backs out of the pause, and Menu pauses again.
+    press(&mut g, PadButton::East);
+    assert_eq!(g.screen, Screen::Playing);
+    press(&mut g, PadButton::Menu);
+    assert_eq!(g.screen, Screen::Paused);
+    // In the pause menu the D-pad moves the highlight and A picks: Resume.
+    press(&mut g, PadButton::DPadDown);
+    assert_eq!(g.menu_index, 1);
+    press(&mut g, PadButton::DPadUp);
+    press(&mut g, PadButton::South);
+    assert_eq!(g.screen, Screen::Playing);
+}
+
+#[test]
+fn the_keyboard_and_mouse_defaults_in_play() {
+    use winit::keyboard::KeyCode;
+    let mut g = playing();
+    g.belt = vec![PotionKind::Strength, PotionKind::Health];
+    let key = |g: &mut Game, k: KeyCode| {
+        g.input.key_down(k, false);
+        g.update(crate::app::STEP);
+        g.input.key_up(k);
+        g.update(crate::app::STEP);
+    };
+    g.input.wheel(-1.0);
+    g.update(crate::app::STEP);
+    assert_eq!(g.belt_index, 1, "the wheel down: the next potion");
+    g.input.wheel(1.0);
+    g.update(crate::app::STEP);
+    assert_eq!(g.belt_index, 0);
+    let mode = g.view.camera_mode;
+    key(&mut g, KeyCode::KeyC);
+    assert_ne!(g.view.camera_mode, mode);
+    key(&mut g, KeyCode::Tab);
+    assert!(g.show_map && g.screen == Screen::Paused, "Tab opens the map");
+    key(&mut g, KeyCode::KeyM);
+    assert!(!g.show_map, "and M puts it away");
+    key(&mut g, KeyCode::Escape);
+    assert_eq!(g.screen, Screen::Playing);
+    key(&mut g, KeyCode::KeyB);
+    assert!(g.guide_open, "B: the old man's word");
+    key(&mut g, KeyCode::KeyB);
+    assert!(!g.guide_open && g.screen == Screen::Playing, "and B again puts it away");
+    key(&mut g, KeyCode::KeyQ);
+    assert_eq!(g.belt, vec![PotionKind::Health], "Q drinks the chosen potion");
 }
 
 // ------------------------------------------------------------------ the loadout

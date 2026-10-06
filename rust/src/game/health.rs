@@ -35,6 +35,7 @@ impl Game {
         if self.hero.shield_broke {
             self.hero.shield_broke = false;
             self.shatter_shield();
+            self.rumble(crate::input::Rumble::GuardBroken);
         }
         match result {
             DamageResult::Blocked => {
@@ -51,6 +52,7 @@ impl Game {
                 self.view.spark(&self.level.grid, hp.x, hp.y, 0xd8262e);
                 self.view.dust(&self.level.grid, hp.x, hp.y, 0xd8262e, 10, 2.2);
                 self.view.shake(0.42);
+                self.rumble(crate::input::Rumble::HitTaken);
                 self.juice.hurt = 1.0;
                 self.juice.hp_flash = 1.0;
                 self.juice.hp_flash_color = 0xff4d4d;

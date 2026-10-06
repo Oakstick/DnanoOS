@@ -324,6 +324,9 @@ pub struct Game {
     pub floaters: Vec<Floater>,
     nest_slots: Vec<P>,
     pub events: Vec<GameEvent>,
+    /// The rumbles the fight asks for since the app last played them (presentation only: nothing
+    /// in the simulation reads them; a few at most are kept).
+    pub rumbles: Vec<crate::input::Rumble>,
     /// Set when the player asks for fullscreen; the app layer applies it.
     pub want_fullscreen_toggle: bool,
     /// The highlighted menu button.
@@ -503,7 +506,11 @@ impl Game {
             frenzy: Frenzy::default(),
             score: Score::new(),
             audio: AudioManager::new(),
-            input: Input::new(),
+            input: {
+                let mut input = Input::new();
+                input.load_settings();
+                input
+            },
             view: WorldView::new(),
             show_fps: false,
             immortal: false,
@@ -524,6 +531,7 @@ impl Game {
             floaters: Vec::new(),
             nest_slots: Vec::new(),
             events: Vec::new(),
+            rumbles: Vec::new(),
             war: war::War::default(),
             guide_open: false,
             warband: ledger::Warband::load(),
@@ -708,8 +716,11 @@ impl Game {
             self.open_guide();
             return;
         }
-        if self.input.was_pressed(&[Action::NextPotion]) && !self.belt.is_empty() {
-            self.belt_index = (self.belt_index + 1) % self.belt.len();
+        // The wheel or the D-pad's left and right: the potion before or after on the belt.
+        let turn = self.input.was_pressed(&[Action::PotionNext]) as usize
+            + self.belt.len().saturating_sub(1) * self.input.was_pressed(&[Action::PotionPrev]) as usize;
+        if turn > 0 && !self.belt.is_empty() {
+            self.belt_index = (self.belt_index + turn) % self.belt.len();
             self.audio.play(Sfx::Nodule);
         }
         if self.input.was_pressed(&[Action::Drink]) {
