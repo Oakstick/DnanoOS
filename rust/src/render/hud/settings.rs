@@ -139,12 +139,16 @@ pub fn draw_settings(o: &mut Overlay, g: &Game, t: f32) {
     let l = layout(w, h, n, page.scroll);
     let pulse = 0.75 + (g.time as f32 * 4.0).sin() * 0.25;
     o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.72]);
-    let [px, py, pw, ph] = l.panel;
-    // (Opaque under the panel: the pause menu must not read through it.)
-    o.rect(px, py, pw, ph, [INK[0], INK[1], INK[2], 0.94]);
-    panel(o, px, py, pw, ph, t);
-    let title = Style::display(t * 1.25, rgba(GOLD, 1.0)).centered().tracking(0.08).shadow(2.0, 3.0);
-    o.text_styled("SETTINGS", px + pw / 2.0, py + t * 1.35, &title);
+    let [px, py, pw, _] = l.panel;
+    // The glass laid twice (the pause menu must not read through it), its copper rule, the title
+    // in the display serif over a divider.
+    let r = l.panel;
+    style::shadow(o, r, t, 1.0);
+    style::glass(o, r, t, 1.0);
+    style::glass(o, r, t, 0.85);
+    style::frame(o, r, t, rgba(COPPER, 0.8));
+    o.text_styled("SETTINGS", px + pw / 2.0, py + t * 1.35, &style::name(t, 1.25, rgba(GOLD, 1.0)).centered());
+    style::divider(o, px + pw * 0.3, py + t * 2.05, pw * 0.4, t, rgba(COPPER, 0.8));
 
     // ---- the tabs, the open one lit, LB and RB at their ends
     for (k, (r, tab)) in l.tabs.iter().zip(Tab::ALL).enumerate() {
@@ -326,8 +330,11 @@ pub fn draw_settings(o: &mut Overlay, g: &Game, t: f32) {
     if let Some(c) = &page.conflict {
         o.rect(0.0, 0.0, w, h, [0.0, 0.0, 0.0, 0.55]);
         let [x, y, cw, ch] = conflict_panel(w, h);
-        o.rect(x, y, cw, ch, [INK[0], INK[1], INK[2], 0.97]);
-        panel(o, x, y, cw, ch, t);
+        let r = [x, y, cw, ch];
+        style::shadow(o, r, t, 1.0);
+        style::glass(o, r, t, 1.0);
+        style::glass(o, r, t, 0.9);
+        style::frame(o, r, t, rgba(GOLD, 0.7));
         let name = crate::input::control_name(c.control, device);
         let others: Vec<&str> = c.others.iter().map(|&a| crate::input::action_name(a)).collect();
         let head = Style::display(t * 0.75, rgba(GOLD, 1.0)).centered();
@@ -382,10 +389,10 @@ mod tests {
         }
         // At 150% the page is larger, and still on screen at 720p.
         let base = layout(1280.0, 720.0, 6, 0).tabs[0][3];
-        set_prefs(crate::settings::UiPrefs { scale: 1.5, ..Default::default() });
+        style::set_ui_scale(1.5);
         let l = layout(1280.0, 720.0, 40, 0);
         assert!((l.tabs[0][3] / base - 1.5).abs() < 1e-3);
         assert!(l.panel[1] + l.panel[3] <= 720.0 && !l.rows.is_empty());
-        set_prefs(Default::default());
+        style::set_ui_scale(1.0);
     }
 }

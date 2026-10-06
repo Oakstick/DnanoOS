@@ -156,51 +156,42 @@ pub fn export_rig(name: &str, path: &str) -> Result<String, String> {
     Ok(format!("wrote {path}: {} bones, {voxels} voxels, {} faces, {} KB", BONE_COUNT, rig.mesh().faces.len(), glb.len() / 1024))
 }
 
-/// What the clips cost: reading them (once), and a frame of the animator and the hierarchy for
-/// the hero, timed over many frames of a run, a swing, a guard and a leap.
+/// What the clips cost, for each hero: reading them (once), and a frame of the animator and the
+/// hierarchy, timed over many frames of a run, a swing, a guard and a leap (with the hold of what he
+/// carries, as he holds it).
 pub fn bench() -> String {
-    use super::hero::{Animator, Drive, Strike};
-    use super::library;
     use crate::logic::heroes::HeroKind;
     let mut out = String::new();
+    for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
+        out += &bench_hero(hero);
+    }
+    let bytes: usize = super::library::EMBEDDED.iter().map(|e| e.2.len() + e.3.len()).sum();
+    out += &format!("embedded: {} clips, {} KB of GLB and JSON\n", super::library::EMBEDDED.len(), bytes / 1024);
+    out
+}
+
+fn bench_hero(hero: crate::logic::heroes::HeroKind) -> String {
+    use super::hero::{Animator, Drive, Strike};
+    use super::library;
+    let mut out = String::new();
     let t = std::time::Instant::now();
-    let Some(clips) = library::clips(HeroKind::Ragnar) else {
-        return "no clips for Ragnar
-"
-        .into();
+    let Some(clips) = library::clips(hero) else {
+        return format!("{hero:?}: no clips\n");
     };
     let first = t.elapsed().as_secs_f64() * 1e3;
     out += &format!(
-        "clips: {} read in {:.2} ms ({} embedded: {})
-",
+        "{hero:?}: {} clips read in {:.2} ms (first call {first:.2} ms, {} errors): {}\n",
         clips.clips.len(),
         clips.load_ms,
-        library::embedded(HeroKind::Ragnar).len(),
-        library::embedded(HeroKind::Ragnar).join(", ")
-    );
-    out += &format!(
-        "clips: first call {first:.2} ms; {} errors
-",
-        clips.errors.len()
+        clips.errors.len(),
+        library::embedded(hero).join(", ")
     );
     for c in &clips.clips {
-        out += &format!(
-            "  {:12} {:3} frames {:.2} s, markers {:?}
-",
-            c.name,
-            c.frame_count(),
-            c.duration(),
-            c.markers.marks
-        );
+        out += &format!("  {:12} {:3} frames {:.2} s, markers {:?}\n", c.name, c.frame_count(), c.duration(), c.markers.marks);
     }
-    let bytes: usize = super::library::EMBEDDED.iter().map(|e| e.2.len() + e.3.len()).sum();
-    out += &format!(
-        "embedded: {} KB of GLB and JSON
-",
-        bytes / 1024
-    );
-    let rig = crate::render::view::jointed_hero(HeroKind::Ragnar, 1, Some(1)).expect("Ragnar's joints");
+    let rig = crate::render::view::jointed_hero(hero, 1, Some(1)).expect("every hero is jointed");
     let joints: [Vec3; BONE_COUNT] = std::array::from_fn(|i| rig.parts[i].rest);
+    let held = hero == crate::logic::heroes::HeroKind::Miyamoto;
     let mut a = Animator::default();
     let frames = 20_000;
     let t = std::time::Instant::now();
@@ -222,6 +213,8 @@ pub fn bench() -> String {
             strike,
             blocking: (160..200).contains(&k),
             springs: true,
+            two_hands: held,
+            slung: held,
             ..Default::default()
         };
         if let Some((locals, extra)) = a.step(clips, &d) {
@@ -230,12 +223,97 @@ pub fn bench() -> String {
         }
     }
     let us = t.elapsed().as_secs_f64() * 1e6 / frames as f64;
-    out += &format!(
-        "a frame: {us:.2} µs to sample, blend and pose his {} bones (checksum {sink:.1})
-",
-        BONE_COUNT
-    );
+    out += &format!("  a frame: {us:.2} µs to sample, blend, hold and pose his {BONE_COUNT} bones (checksum {sink:.1})\n");
     out
+}
+
+/// The chase camera at rest, from the hero (the model's axes, metres): behind him, above, over his
+/// right shoulder (`camera::chase`: its pivot 1.7 up and 0.3 to his right, 3.4 back along a pitch of
+/// -0.44).
+const CHASE_EYE: Vec3 = Vec3::new(-0.3, 1.7 + 3.4 * 0.425_939, -3.4 * 0.904_752);
+
+/**
+ * `--blade-view`: for each hero's strikes, the share of their active frames (from `windup_end` to
+ * `active_end`) on which his blade can be seen from the chase camera at rest. A frame counts when at
+ * least a quarter of the points along the blade (every few of its voxels, his first blade) can be
+ * reached by a ray from the eye that strikes none of his other voxels first. He is posed by the clip
+ * with the hold he fights with (both fists on the grip and the shield slung, for Miyamoto).
+ */
+pub fn blade_view() -> String {
+    use crate::logic::heroes::HeroKind;
+    let mut out = String::new();
+    for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
+        let (Some(clips), Some(rig)) = (super::library::clips(hero), crate::render::view::jointed_hero(hero, 1, Some(1))) else {
+            continue;
+        };
+        let joints: Vec<Vec3> = rig.parts.iter().map(|p| p.rest).collect();
+        let blade = super::skeleton::Bone::Blade.index();
+        for name in ["slash_fore", "slash_back", "slash_heavy"] {
+            let Some(clip) = clips.get(name) else { continue };
+            let (a, b) = (clip.markers.get("windup_end").unwrap_or(0.0), clip.markers.get("active_end").unwrap_or(0.0));
+            let (mut seen, mut total) = (0, 0);
+            for f in a.round() as usize..=b.round() as usize {
+                let mut pose = clip.sample(f as f32 / super::clip::FPS);
+                if hero == HeroKind::Miyamoto {
+                    super::hold::two_hands(&clips.skeleton, &mut pose);
+                    super::hold::sling(&clips.skeleton, &mut pose, 0.0);
+                }
+                let m = clips.skeleton.matrices(&pose, &joints, &[glam::Quat::IDENTITY; BONE_COUNT]);
+                total += 1;
+                if blade_seen(&rig, &m, blade) {
+                    seen += 1;
+                }
+            }
+            out += &format!("{hero:?} {name:12} the blade seen on {seen} of {total} active frames ({}%)\n", 100 * seen / total.max(1));
+        }
+    }
+    out
+}
+
+/// Whether a quarter of the points along part `blade` of `rig` posed by `m` are in plain sight of
+/// `CHASE_EYE`.
+fn blade_seen(rig: &Rig, m: &[Mat4; BONE_COUNT], blade: usize) -> bool {
+    let cubes = &rig.parts[blade].cubes;
+    let step = (cubes.len() / 48).max(1);
+    let points: Vec<Vec3> = cubes.iter().step_by(step).map(|(o, _)| m[blade].transform_point3(*o)).collect();
+    let h = rig.size * 0.5;
+    // Each other part's voxels, and the box round them, in its own frame.
+    let parts: Vec<(usize, Vec3, Vec3)> = rig
+        .parts
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| *i != blade && !p.cubes.is_empty())
+        .map(|(i, p)| {
+            let lo = p.cubes.iter().fold(Vec3::INFINITY, |a, (o, _)| a.min(*o)) - Vec3::splat(h);
+            let hi = p.cubes.iter().fold(Vec3::NEG_INFINITY, |a, (o, _)| a.max(*o)) + Vec3::splat(h);
+            (i, lo, hi)
+        })
+        .collect();
+    let clear = points
+        .iter()
+        .filter(|&&p| {
+            parts.iter().all(|&(i, lo, hi)| {
+                let inv = m[i].inverse();
+                let (o, e) = (inv.transform_point3(CHASE_EYE), inv.transform_point3(p));
+                // (Stopped a voxel and a half short of the point, so the blade's own fist never counts.)
+                let d = e - o;
+                let len = d.length();
+                let d = d / len;
+                let reach = len - rig.size * 1.5;
+                !hits_box(o, d, lo, hi, reach)
+                    || !rig.parts[i].cubes.iter().any(|(c, _)| hits_box(o, d, *c - Vec3::splat(h), *c + Vec3::splat(h), reach))
+            })
+        })
+        .count();
+    clear * 4 >= points.len()
+}
+
+/// Whether the ray from `o` along `d` (a unit vector) meets the box `lo..hi` within `reach`.
+fn hits_box(o: Vec3, d: Vec3, lo: Vec3, hi: Vec3, reach: f32) -> bool {
+    let inv = d.recip();
+    let (a, b) = ((lo - o) * inv, (hi - o) * inv);
+    let (near, far) = (a.min(b).max_element(), a.max(b).min_element());
+    near <= far && far >= 0.0 && near <= reach
 }
 
 /// The GLB container: its header, the JSON chunk (padded with spaces) and the binary chunk (with zeros).

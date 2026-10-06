@@ -85,6 +85,8 @@ CHILD = {
     "upper_arm.L": "forearm.L", "forearm.L": "hand.L", "upper_arm.R": "forearm.R", "forearm.R": "hand.R",
     "thigh.L": "shin.L", "shin.L": "foot.L", "thigh.R": "shin.R", "shin.R": "foot.R",
 }
+# The bones of his torso, which his carriage (`Retarget.posture`) straightens.
+TORSO = ("spine", "chest", "neck", "head")
 # His weapons, and the source's fist each is held in (its finger bones show how: `Retarget.grip`).
 GRIPS = {"blade": "Right", "offhand": "Left"}
 # The hold of his weapons in his fists where the source has no fingers (degrees about his hand's x).
@@ -154,7 +156,7 @@ def direction(h, bone, child_of, parent_dir=None, fallback=None):
 
 
 class Retarget:
-    def __init__(self, src, tgt, facing=Vector((0, -1, 0)), mirror=False, arms_out=0.0, hold=None, turn=0.0, yaw_keep=1.0, sword_turn=(0.0, 0.0), face=None):
+    def __init__(self, src, tgt, facing=Vector((0, -1, 0)), mirror=False, arms_out=0.0, hold=None, turn=0.0, yaw_keep=1.0, sword_turn=(0.0, 0.0), face=None, posture=None):
         self.src, self.tgt = src, tgt
         # The sword arm swung round his shoulder as one, `sword_turn` (degrees toward his right
         # about the upright, then up), so its cuts pass out where they are seen past his body.
@@ -168,6 +170,9 @@ class Retarget:
         # Or his hips set to face `face` degrees (toward his left) at the first frame, whatever the
         # source's heading: clips laid over one another (the guard on the idle) then agree.
         self.face = face
+        # His carriage: his torso's bones straightened (degrees, back from the source's lean, each
+        # bone carrying those above it), his arms keeping the source's aim.
+        self.posture = posture or {}
         self.yaw0 = self.yaw_last = None
         self.hold = dict(HOLD, **(hold or {}))
         self.label, self.map = pick_map(src)
@@ -222,6 +227,7 @@ class Retarget:
         g2b = vh.G2B.to_quaternion()
         posed, out = {}, {}
         corr = Quaternion()
+        upright = {}
         for b in vh.BONES:
             rest = self.rest_arm[b]
             parent = vh.PARENTS.get(b)
@@ -237,6 +243,12 @@ class Retarget:
                 if b == "hips":
                     corr = self.yaw_correction(want @ (tw @ rest).inverted())
                 want = corr @ want
+                if b == "hips":
+                    # (His left, as his hips turn now: the axis his torso straightens about.)
+                    side = (want @ (tw @ rest).inverted()) @ (tw @ Vector((1, 0, 0)))
+                if b in TORSO:
+                    upright[b] = upright.get(vh.PARENTS.get(b), Quaternion()) @ Quaternion(side, math.radians(-self.posture.get(b, 0.0)))
+                    want = upright[b] @ want
                 if b in ("upper_arm.R", "forearm.R", "hand.R"):
                     want = corr @ self.sword_q @ corr.inverted() @ want
                 if b.startswith("upper_arm") and self.arms_out:
@@ -300,10 +312,11 @@ class Retarget:
         return Quaternion(Vector((0, 0, 1)), want - yaw)
 
 
-def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, frames=None, fps_src=None, close=8):
+def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, frames=None, fps_src=None, close=8, still=False):
     """Keys the source's action (its frames at `fps_src`, the scene's rate unless given) onto his
     armature as action `name`, at 60 fps. A loop is closed: its last `close` frames ease onto its
-    first, so it wraps without a hitch."""
+    first, so it wraps without a hitch. `still` takes out all his movement over the ground (a leaping
+    blow struck where he stands), the rise and fall kept."""
     scene = bpy.context.scene
     src, tgt = rt.src, rt.tgt
     act_src = src.animation_data.action
@@ -337,7 +350,9 @@ def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, fra
     tw = tgt.matrix_world.to_quaternion()
     for f, (rots, off) in enumerate(samples):
         off = off.copy()
-        if not keep_travel:
+        if still:
+            off.x, off.y = 0.0, 0.0
+        elif not keep_travel:
             u = f / max(1, n)
             drift = first.lerp(last, u)
             off.x -= drift.x

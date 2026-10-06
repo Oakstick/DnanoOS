@@ -109,6 +109,11 @@ impl Skeleton {
         let world = world_of(locals, self.pre, extra);
         std::array::from_fn(|i| world[i] * self.rest_inv[i] * Mat4::from_translation(joints.get(i).copied().unwrap_or(Vec3::ZERO)))
     }
+
+    /// Every bone's matrix in the model for pose `locals` (no juice).
+    pub fn world(&self, locals: &Locals) -> [Mat4; BONE_COUNT] {
+        world_of(locals, self.pre, &[Quat::IDENTITY; BONE_COUNT])
+    }
 }
 
 /// Every bone's matrix in the model for `locals`, parents first; `extra` turns a bone about its

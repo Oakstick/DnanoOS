@@ -72,6 +72,10 @@ pub struct Drive {
     /// blow it took (radians).
     pub springs: bool,
     pub shield_tilt: f32,
+    /// He holds his weapon in both fists (`hold::two_hands`), and carries his shield slung on his back
+    /// but to guard (`hold::sling`).
+    pub two_hands: bool,
+    pub slung: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -210,10 +214,11 @@ impl Animator {
         }
 
         // A parry: the shield snapped up and knocked back, over his upper body.
+        let mut parried = 0.0;
         if let (Some(t), Some(parry)) = (d.parry, clips.get("parry")) {
             if t <= parry.duration() {
-                let w = smooth((parry.duration() - t) / (LAYER_OUT_FRAMES / FPS)).min(1.0);
-                feet = layer(&feet, &parry.sample(t), w, &UPPER);
+                parried = smooth((parry.duration() - t) / (LAYER_OUT_FRAMES / FPS)).min(1.0);
+                feet = layer(&feet, &parry.sample(t), parried, &UPPER);
             }
         }
 
@@ -281,6 +286,14 @@ impl Animator {
         }
         self.last = Some(out);
 
+        // What he carries, held on the finished pose: both fists on the grip, the shield slung.
+        if d.two_hands {
+            super::hold::two_hands(&clips.skeleton, &mut out);
+        }
+        if d.slung {
+            super::hold::sling(&clips.skeleton, &mut out, smooth(self.guard_w).max(parried));
+        }
+
         // The juice: the blade carried on past the strike's end and back, the shield knocked back.
         let mut extra = [Quat::IDENTITY; BONE_COUNT];
         if let (Body::Strike(_), Some(s), true) = (body, d.strike, d.springs) {
@@ -288,12 +301,16 @@ impl Animator {
             let u = (s.t - s.bounds[2]) / rec;
             if u > 0.0 {
                 let k = (std::f32::consts::PI * (u / 0.4).min(1.0)).sin();
-                // (The forehand carries on round to his left, about his upright; the backhand to his right.)
-                extra[Bone::UpperArmR.index()] = Quat::from_rotation_y(-OVERSHOOT * k * s.side.signum());
+                // (The forehand carries on round to his left, about his upright; the backhand to his
+                // right. In both fists, his chest carries the two arms round together.)
+                let carrier = if d.two_hands { Bone::Chest } else { Bone::UpperArmR };
+                extra[carrier.index()] = Quat::from_rotation_y(-OVERSHOOT * k * s.side.signum());
             }
         }
         if d.shield_tilt != 0.0 && self.guard_w > 0.0 {
-            extra[Bone::ForearmL.index()] = Quat::from_rotation_x(-d.shield_tilt * smooth(self.guard_w));
+            // (A slung shield before him is knocked back about its own middle; one strapped on, with his forearm.)
+            let tilted = if d.slung { Bone::Shield } else { Bone::ForearmL };
+            extra[tilted.index()] = Quat::from_rotation_x(-d.shield_tilt * smooth(self.guard_w));
         }
         Some((out, extra))
     }

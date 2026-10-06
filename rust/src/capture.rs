@@ -64,6 +64,13 @@
 //! `shake`, `debris`, `springs`) switches the juice off. Captures never write the settings.
 //! `--minimap` also writes the minimap's image (its fog and markers drawn on the CPU,
 //! `render::minimap::debug_picture`) beside the capture, as `NAME-minimap.png`.
+//! The settings page (UI.md §8): `settings:N` opens it on tab N (0 Gameplay .. 4 Accessibility),
+//! `setrow:N` highlights row N, `settingspad` shows the controller's bindings, `rebind:Action` waits
+//! to bind the action's first slot (`Attack`, `Block`...), `key:KeyQ` presses and lets go a key,
+//! `padbtn:PadNorth` a controller button, `uiscale:N` sets the UI's scale (80..150) and
+//! `colourblind:K` the palette (0 off .. 3 tritanopia); `loading` shows the in-game loading card.
+//! `--splash out.png` draws the engine's start screen instead (`--splash-step N`,
+//! `--splash-progress F`, `--splash-device kbm|xbox|ps`; the size from `--size`).
 
 use crate::audio::synth::Synth;
 use crate::game::{Game, Screen, Stage};

@@ -14,7 +14,7 @@
 //! o.portrait(PortraitId::OldMan, pose, x, y, size, size, false, 1.0);
 //! ```
 
-use super::overlay::{portrait_slot, AtlasRegion, PORTRAIT_SIZE, PORTRAIT_SLOTS};
+use super::overlay::{portrait_slot, AtlasRegion, ALL_SLOTS, BIG_PORTRAIT, PORTRAIT_SIZE, PORTRAIT_SLOTS};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::heroes::HeroKind;
 use crate::logic::sins::Sin;
@@ -92,7 +92,7 @@ struct Held {
 /// Which slot holds which portrait (see the module's notes).
 #[derive(Debug)]
 pub struct PortraitBook {
-    slots: [Option<Held>; PORTRAIT_SLOTS],
+    slots: [Option<Held>; ALL_SLOTS],
     frame: u64,
     /// The portraits to make this frame, for `Gpu::render_portraits`.
     pub due: Vec<Job>,
@@ -100,13 +100,22 @@ pub struct PortraitBook {
 
 impl Default for PortraitBook {
     fn default() -> Self {
-        Self { slots: [None; PORTRAIT_SLOTS], frame: 0, due: Vec::new() }
+        Self { slots: [None; ALL_SLOTS], frame: 0, due: Vec::new() }
     }
 }
 
-/// The pixels a portrait asked for at `px` is made at: rounded up to a 16th, at most a slot.
+/// The pixels a portrait asked for at `px` is made at: rounded up to a 16th, at most a big slot.
 pub fn made_size(px: u32) -> u32 {
-    px.clamp(16, PORTRAIT_SIZE).div_ceil(16) * 16
+    px.clamp(16, BIG_PORTRAIT).div_ceil(16) * 16
+}
+
+/// The slots a portrait made at `size` may take: the small ones, or the big ones past their size.
+fn pool(size: u32) -> std::ops::Range<usize> {
+    if size > PORTRAIT_SIZE {
+        PORTRAIT_SLOTS..ALL_SLOTS
+    } else {
+        0..PORTRAIT_SLOTS
+    }
 }
 
 impl PortraitBook {
@@ -125,11 +134,11 @@ impl PortraitBook {
         let k = match self.slots.iter().position(|s| s.is_some_and(|h| h.id == id && h.size == size)) {
             Some(k) => k,
             None => {
-                // A free slot, else the one asked for longest ago (never one in use this frame).
-                let k = self.slots.iter().position(Option::is_none).or_else(|| {
-                    (0..PORTRAIT_SLOTS)
-                        .filter(|&k| self.slots[k].is_some_and(|h| h.used < frame))
-                        .min_by_key(|&k| self.slots[k].map(|h| h.used))
+                // A free slot of its size, else the one asked for longest ago (never one in use
+                // this frame).
+                let range = pool(size);
+                let k = range.clone().find(|&k| self.slots[k].is_none()).or_else(|| {
+                    range.filter(|&k| self.slots[k].is_some_and(|h| h.used < frame)).min_by_key(|&k| self.slots[k].map(|h| h.used))
                 })?;
                 self.slots[k] = Some(Held { id, size, made: None, used: frame });
                 k
@@ -151,7 +160,7 @@ impl PortraitBook {
 
     /// Forgets every portrait (a new level: the hero's gear or the models may have changed).
     pub fn forget(&mut self) {
-        self.slots = [None; PORTRAIT_SLOTS];
+        self.slots = [None; ALL_SLOTS];
     }
 }
 
@@ -201,9 +210,25 @@ mod tests {
             }
         }
         assert!(b.request(PortraitId::OldMan, Pose::still(), 64).is_none(), "all in use this frame");
+        // (A large one has slots of its own.)
+        let (big, size) = b.request(PortraitId::OldMan, Pose::still(), 392).unwrap();
+        assert!(big >= PORTRAIT_SLOTS && size == 400 && portrait_slot(big).w == BIG_PORTRAIT);
         b.begin_frame();
         let (k, _) = b.request(PortraitId::OldMan, Pose::still(), 64).unwrap();
         assert_eq!(k, 0, "the first made is the longest unused");
         assert_eq!(b.due.len(), 1);
+    }
+
+    #[test]
+    fn a_portrait_larger_than_a_small_slot_is_made_in_a_big_one() {
+        let mut b = PortraitBook::default();
+        b.begin_frame();
+        assert_eq!(made_size(196), 208);
+        assert_eq!(made_size(600), BIG_PORTRAIT);
+        let (k, size) = b.request(PortraitId::OldMan, Pose::still(), 252).unwrap();
+        assert!(k < PORTRAIT_SLOTS && size == 256);
+        let (k, size) = b.request(PortraitId::OldMan, Pose::still(), 504).unwrap();
+        assert!(k >= PORTRAIT_SLOTS && size == 512);
+        assert_eq!(Job { slot: k, id: PortraitId::OldMan, pose: Pose::still(), size }.region(), portrait_slot(k));
     }
 }

@@ -292,7 +292,6 @@ impl Settings {
     /// What the HUD needs of them as it draws.
     pub fn ui(&self) -> UiPrefs {
         UiPrefs {
-            scale: self.ui_scale as f32 / 100.0,
             prose: self.text_size.scale(),
             colour_blind: self.colour_blind,
             backing: self.backing as f32 / 100.0,
@@ -301,11 +300,11 @@ impl Settings {
     }
 }
 
-/// The settings the HUD reads as it draws (`render::hud::prefs`): the UI's scale, the prose's,
-/// the colour-blind palette, the backing's darkness and the flashes dimmed.
+/// The settings the HUD reads as it draws (`render::hud::prefs`; the UI's scale is
+/// `hud::style`'s): the prose's size, the colour-blind palette, the backing's darkness and the
+/// flashes dimmed.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct UiPrefs {
-    pub scale: f32,
     pub prose: f32,
     pub colour_blind: ColourBlind,
     pub backing: f32,

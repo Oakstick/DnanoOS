@@ -237,7 +237,7 @@ pub fn draw_loading_card(o: &mut Overlay, g: &Game, l: &Loading, t: f32, show: f
     let pulse = 0.45 + 0.35 * ((l.age as f32) * 5.0).sin().abs();
     let small = Style::body(t * 0.5, rgba(SAND, pulse * show)).centered().tracking(0.2);
     o.text_styled("LOADING", w / 2.0, t * 3.1, &small);
-    o.rect(w / 2.0 - t * 3.0, t * 3.6, t * 6.0, (t * 0.05).max(1.0), rgba(COPPER, 0.7 * show));
+    style::divider(o, w / 2.0 - t * 4.0, t * 3.6, t * 8.0, t, rgba(COPPER, 0.8 * show));
 
     // The legend: smaller than the start screen's, the pad left of the middle and the keys right.
     let device = g.input.last_device();
@@ -255,16 +255,15 @@ pub fn draw_loading_card(o: &mut Overlay, g: &Game, l: &Loading, t: f32, show: f
     let [cx, pad_top] = draw_pad_legend(o, &g.input, device, area, size);
     head(o, if device.is_pad() { "CONTROLLER  ·  USED LAST" } else { "CONTROLLER" }, cx, pad_top - t * 0.6, used(true), Align::Center);
     head(o, if device.is_pad() { "KEYBOARD AND MOUSE" } else { "KEYBOARD AND MOUSE  ·  USED LAST" }, kx, top, used(false), Align::Left);
-    o.rect(kx, top + t * 0.45, key_w, (t * 0.04).max(1.0), rgba(COPPER, 0.6 * show));
+    style::divider(o, kx, top + t * 0.45, key_w, t, rgba(COPPER, 0.7 * show));
     draw_key_column(o, &g.input, [kx, top + t * 0.8, key_w, bottom - top - t * 0.8], size);
 
     // The old man's tip, in his amber frame, turning with each load.
     let prose = prefs().prose;
     let tw = (w * 0.62).min(t * 34.0);
     let (tx, ty) = ((w - tw) / 2.0, h - tip_h - t * 0.6);
-    o.rect(tx, ty, tw, tip_h, [INK[0], INK[1], INK[2], 0.92 * show]);
-    o.rect_outline(tx, ty, tw, tip_h, (t * 0.05).max(1.0), rgba(AMBER, 0.55 * show));
-    o.rect(tx + t * 0.4, ty, tw - t * 0.8, (t * 0.07).max(1.0), rgba(AMBER, 0.9 * show));
+    // (In his amber, as his dialogue is.)
+    style::panel_ruled(o, [tx, ty, tw, tip_h], t, show, AMBER);
     let name = Style::display(t * 0.55, rgba(AMBER, show)).tracking(0.08);
     o.text_styled("THE OLD MAN SAYS", tx + t * 0.6, ty + t * 0.65, &name);
     let tip = glyphs::words(&g.input, data::tip(g.transitions.len()));

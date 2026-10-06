@@ -168,17 +168,24 @@ fn mirror(c: &mut Collected, width: i32) {
  * without it, and the shield on its own as it hung on his back, to be turned and set before him.
  */
 pub(super) fn hero_rigs(hero: HeroKind, kit: Kit) -> (Rig, Option<(Rig, Rig)>) {
-    hero_rigs_strapped(hero, kit, STRAPPED_SCALE)
+    hero_rigs_strapped(hero, kit, Some(STRAPPED_SCALE))
 }
 
-/// `hero_rigs` with the shield on his arm at `strap` of its size on his back.
-fn hero_rigs_strapped(hero: HeroKind, kit: Kit, strap: f32) -> (Rig, Option<(Rig, Rig)>) {
+/// `hero_rigs` with the shield on his arm at `strap` of its size on his back, or (none) left on
+/// his back as carved.
+fn hero_rigs_strapped(hero: HeroKind, kit: Kit, strap: Option<f32>) -> (Rig, Option<(Rig, Rig)>) {
     let w = progression::node(hero, Tree::Armory, kit.blade);
     let (mut body, defs) = hero_body(hero, Kit { shield: None, ..kit });
     let (width, depth, height) = (body.width, body.depth, body.height);
     let empty = || Collected { voxels: Vec::new(), width, depth, height };
     let mut back = kit.shield.map(|_| back_shield(&hero_body(hero, kit).0, &body));
-    let mut arm = back.as_ref().map(|b| strapped(b, hero, strap)).unwrap_or_else(empty);
+    let mut arm = back
+        .as_ref()
+        .map(|b| match strap {
+            Some(scale) => strapped(b, hero, scale),
+            None => Collected { voxels: b.voxels.clone(), ..*b },
+        })
+        .unwrap_or_else(empty);
     let mut main = armory::weapon_for(hero, w.form, w.color, false);
     let mut off = if armory::paired(w.form) { armory::weapon_for(hero, w.form, w.color, true) } else { empty() };
     // He is sculpted with his weapon in the fist at the model's high x: his left as he faces out.
@@ -207,16 +214,23 @@ fn sculpt_size(hero: HeroKind) -> (i32, i32, i32) {
     }
 }
 
-/// The shield on his arm as his clips carry it: as big as it hung on his back (they raise it before
-/// him to block, where the code swaps in the shield off his back, `WorldView::emit`).
-const JOINTED_STRAP: f32 = 1.0;
+/// The shield as his clips carry it: on his arm, as big as it hung on his back (they raise it before
+/// him to block, where the code swaps in the shield off his back, `WorldView::emit`); Miyamoto's
+/// stays on his back while he fights two-handed, and the animator brings it before him to guard
+/// (`anim::hold`).
+fn jointed_strap(hero: HeroKind) -> Option<f32> {
+    match hero {
+        HeroKind::Miyamoto => None,
+        HeroKind::Ragnar | HeroKind::Mehmed => Some(1.0),
+    }
+}
 
 /// The hero dressed and armed for `kit` cut into his skeleton's bones, if he has a joint table
 /// (`anim::skeleton`). With `VH_ANIM=bones` every voxel is painted its bone's colour, to check the
 /// cut.
 pub(super) fn jointed_rig(hero: HeroKind, kit: Kit) -> Option<Rig> {
     crate::render::anim::skeleton::joints(hero)?;
-    Some(cloaked(hero, jointed_of(hero, &hero_rigs_strapped(hero, kit, JOINTED_STRAP).0)?))
+    Some(cloaked(hero, jointed_of(hero, &hero_rigs_strapped(hero, kit, jointed_strap(hero)).0)?))
 }
 
 /// The jointed hero with his cloak cut out into the patches the cloth carries (`anim::cloth`),
@@ -254,7 +268,7 @@ fn jointed_of(hero: HeroKind, rig: &Rig) -> Option<Rig> {
 /// sculpted (`--export-rig`, tests).
 pub fn jointed_hero(hero: HeroKind, blade: u8, shield: Option<u8>) -> Option<Rig> {
     crate::render::anim::skeleton::joints(hero)?;
-    jointed_of(hero, &hero_rigs_strapped(hero, Kit::plain(blade, shield), JOINTED_STRAP).0)
+    jointed_of(hero, &hero_rigs_strapped(hero, Kit::plain(blade, shield), jointed_strap(hero)).0)
 }
 
 /// A thrown armory weapon on its own, for its flight: the model without the fist, centred.

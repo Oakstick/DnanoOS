@@ -259,6 +259,7 @@ impl Game {
         self.input.apply(&self.settings);
         self.audio.set_volumes(Volumes::of(&self.settings));
         hud::set_prefs(self.settings.ui());
+        hud::style::set_ui_scale(self.settings.ui_scale as f32 / 100.0);
         self.view.colour_blind = self.settings.colour_blind;
         self.view.reduce_flashing = self.settings.reduce_flashing;
     }
@@ -927,6 +928,7 @@ mod tests {
         }
         // Back to the defaults for the other tests on this thread.
         hud::set_prefs(crate::settings::Settings::default().ui());
+        hud::style::set_ui_scale(1.0);
     }
 
     #[test]
