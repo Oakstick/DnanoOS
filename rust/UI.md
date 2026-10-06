@@ -204,4 +204,83 @@ break, a short one on a parry; scaled by the setting (off, low, high).
 
 ## Build log
 
-(to come)
+### U1a, the map's data (2026-10-06)
+
+The part of U1a that needs no new drawing, built beside U0: the fog, the map's image and its
+markers, as pure code in two new files, with a debug picture to look at before the overlay can
+draw it. Nothing of the overlay, the HUD, input or the renderer was touched.
+
+- **The fog** (`logic/explore.rs`, `Explore`, held as `Game::explore`): a radius of 9 tiles round
+  the hero, by line of sight (Bresenham from his tile; rock blocks it, and so do two rocks meeting
+  at a corner), the walls about every floor tile in sight revealed with it. It looks again only
+  when he comes onto another tile (and every 20 steps while he stands, for a door opening before
+  him). Kept while the level lives and through a fall; on a load it is kept if the level is the one
+  he was in (its name and its rock layout hashed: a restart, Continue into the same stage) and
+  begun again otherwise. **Revealed whole from the start**: the hub, the gym, the Pit, the lair, and
+  every boss arena and court (`revealed_whole`): small, walled by lava or stone, and nothing in them
+  is a secret to find. The estates and the realms (the vaults included) are explored. It keeps a log
+  of the tiles revealed, in order, for the image to patch. Wiring: `enter` as a level loads
+  (`load_inner`), `observe` at the end of `reset_round` and in `tick` after the hero moves. Nothing
+  reads it but the map; `Explore::off` switches it off for the test that proves so.
+- **The image** (`render/minimap.rs`, `MapImage`): RGBA, the grid's north up, at
+  `px_per_tile(w, h)` = as many pixels a tile as fit 1024 (8 at most, 2 at least): the garden 8, the
+  hub 8, the vaults 7, the Serpent Grotto 4. Each tile is a class (`class::VOID, WALL, FLOOR, RAMP,
+  BRIDGE, WATER, HOLE, SPECIAL`) in a `Style` of the level (`Style::of(theme, boss, dungeon)`: the
+  garden, the Cisterns, the crypts, the meadow, the hub, the gym, the vaults, each realm and court by
+  its sin, the Pit, the lair) and its `Palette`, muted toward grey so the markers read: floor
+  lighter by 8% a level it stands up, a dark lip where it drops, a grain; walls lighter than the
+  floor with a dark outline where they meet it; rock that touches no floor left clear, so the level
+  reads as its own shape; the garden's and the arena's watercourses, the realms' pools and bogs as
+  water; lava darkened but hot (the hub, the gym, Wrath's court, Gluttony's crust); chasms near
+  black; bridges as planks across the way over; ramps as steps; the hollow and the Pit's platform
+  as their own floor. The fog: unseen tiles clear, each pixel as seen as the four tile middles
+  about it (smoothed over 0.3..1), so the frontier fades inside the seen side; clear rock next to a
+  seen tile counts as seen, so walls never fade on their outside. Built once a level; `sync(game)`
+  rebuilds on a new level (the fog's epoch), patches the tiles the fog's log has revealed since (and
+  two round them), and looks over 4 rows of the grid a call for ground that changed (a gate opened,
+  a causeway risen, a realm's rules), repainting that tile and its neighbours. `dirty` (a
+  `PixelRect`) is the union of what changed since `take_dirty()`.
+- **The markers** (`markers(&Game) -> Vec<Marker>`, places first, foes, the hero last): `Marker {
+  kind, at: V (tiles), known }`, `Marker::color()`. Kinds: `Hero { heading }`, `Foe(FoeRank::
+  Plain | Elite | Rival | General | Boss)` (a pack's leader is elite; the prince, Krampus and the
+  Cyclops are bosses), `Shrine { angel, spent }`, `Key`, `RedKey`, `Remedy`, `Potion`,
+  `ItemShrine`, `Loot`, `Chest`, `Gate { open }`, `Entry`, `Portal { sin, conquered }`,
+  `HouseDoor { open }`, `PitDoor { open }`, `Platform { half }`, `Lamp` (where the old man's lamp
+  points: the realm's far portal, always true and always known), `Instrument { order, broken }`,
+  `Post`, `Cage { open }`. Known: the hero, the lamp and the boss always; foes while in his sight
+  (within 18 tiles where the level is revealed whole); the post once seen or marked by a caught
+  herald; everything else once its tile is seen. The prince's turned needle is not a marker: the
+  map never shows a lie.
+- **The debug picture**: `--capture out.png ... --minimap` writes `out-minimap.png`
+  (`debug_picture`: the image over the ink panel with a faint grid every 8 tiles, enlarged up to
+  4x, every known marker drawn on the CPU: the hero an arrow, foes red dots, gold for leaders and
+  rivals with a red ring for the rival, a crown for a general, a skull for a boss, shrines as
+  diamonds in their angel's colour with a halo, keys gold diamonds, chests, gates, portal rings in
+  their sin's colour, the lamp an amber diamond). Looked at for the garden after a walk, a crypt,
+  the vaults and two realms crawled by the bot, the hub, the Pit, a court, the lair and the
+  Cyclops' meadow; the lava and the floors were darkened and the frontier's fade moved into the
+  seen side after the first look.
+
+Numbers (quick profile, this laptop): the largest map, the Vaults of Mammon (138 x 102 tiles,
+966 x 714 at 7 px), built in 9-11 ms; a step of the fog (a full look from a new tile) 0.006 ms;
+patching 400 looks' worth of fog 0.9 ms; an idle `sync` (nothing new, 4 rows looked over) 0.006 ms;
+`markers` for the vaults (1390, their gold) 0.08 ms. The harnesses print the same numbers before
+and after: `--crawl 1` (six crawls), `--general 1 2 4 1` and `--run 2 1` (the whole run to the
+ending, 87 min of play) are identical line for line.
+
+Tests: `explore` (it reveals round him and not through walls, and sees into a room only through
+its door; kept through a reload and forgotten for another level, the whole-revealed kinds; its log
+holds each tile once; off reveals nothing), `minimap` (the image's size and colours for the garden,
+the Cisterns, a crypt, the meadow, the vaults, two realms, the hub, two courts, the gym, the Pit
+and the lair; a patch covers exactly the new tiles and two round them and matches a fresh build,
+changed ground is found and patched round its tile, a new level rebuilds; the markers in the
+garden (shrines, the gate, the keys, the foes known only in sight), the vaults' lamp and chests,
+the hub's seven portals, the Pit's doors and platform, a court's prince; the fog never changes the
+game (the bot through the vaults and a walk in the garden, with the fog and without: the same
+deeds, hero, foes and score); the timings above, the fog's step held under 0.1 ms).
+
+Left for the on-screen builder (U1a proper, after U0): own a `MapImage` beside the overlay, call
+`sync(&game)` each frame and upload `take_dirty()`'s rows into a texture (1024² at most); draw the
+round minimap (7t, north-up or turning) from it with the markers as U0's shapes and glyphs, the
+full map (zoom and pan, legend, objective, the realm's name), L3 for zoom; the colour-blind palette
+for the foes' dots; the Map stop.
