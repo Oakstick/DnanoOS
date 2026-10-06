@@ -39,7 +39,9 @@
 //! 0 Michael .. 3 Uriel) and `angel` (use it),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
-//! where `pause` skips it).
+//! where `pause` skips it); `wheel:up` / `wheel:down` (a notch of the mouse wheel), `belt:prev` /
+//! `belt:next` (the belt's potion before or after) and `device:kbm|xbox|ps|pad` (the device used last,
+//! for the prompts' glyphs).
 //! `--specimen` draws the type specimen instead of the HUD (both faces at the HUD's sizes, and the
 //! overlay's textured quads: `render::hud::specimen`).
 //! `--iso` renders the whole level from an isometric map camera instead;
@@ -143,6 +145,10 @@ pub(crate) enum Cmd {
     Call,
     Potion(usize),
     Press(Action),
+    /// A notch of the mouse wheel, up or down (through the bindings, as the context reads it).
+    Wheel(bool),
+    /// The device used last, for the prompts' glyphs (`device:kbm|xbox|ps|pad`).
+    Device(crate::input::Device),
     Hold(Dir, bool),
     /// A menu step (the arrow keys' one-shot navigation).
     Nav(Dir),
@@ -260,8 +266,15 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "unblock" => Cmd::Unblock,
             "row" => Cmd::Row(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "call" => Cmd::Call,
-            "tab" => Cmd::Press(Action::NextPotion),
+            "tab" => Cmd::Press(Action::PotionNext),
             "drink" => Cmd::Press(Action::Drink),
+            "wheel" => Cmd::Wheel(parts.next() != Some("down")),
+            "device" => match parts.next().and_then(crate::input::Device::from_name) {
+                Some(d) => Cmd::Device(d),
+                None => continue,
+            },
+            // The belt's potion before or after (`potion:N` is a potion found).
+            "belt" => Cmd::Press(if parts.next() == Some("prev") { Action::PotionPrev } else { Action::PotionNext }),
             "coins" => Cmd::Coins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(500)),
             "potion" => Cmd::Potion(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "wound" => Cmd::Wound(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
@@ -313,6 +326,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
 pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot::Bot>) {
     match *cmd {
         Cmd::Press(a) => game.input.inject(a),
+        Cmd::Wheel(up) => game.input.wheel(if up { 1.0 } else { -1.0 }),
+        Cmd::Device(d) => game.input.set_last_device(d),
         Cmd::Hold(d, down) => game.input.hold_dir(d, down),
         Cmd::Nav(d) => game.input.nav = Some(d),
         Cmd::Beat(n, at) => game.story_jump(n, at),

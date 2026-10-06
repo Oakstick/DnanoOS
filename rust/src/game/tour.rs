@@ -80,6 +80,29 @@ pub fn forget_tour() {
 }
 
 impl Game {
+    /// The hero's stop's words: how to move, strike, jump and turn the view, named for the device
+    /// used last as it is bound.
+    fn tour_controls(&self) -> String {
+        let device = self.input.last_device();
+        let name = |a: Action| match self.input.bindings.shown(a, device) {
+            // ("left click" mid-sentence; a key or a button keeps its name.)
+            Some(c @ crate::input::Control::Mouse(_)) => crate::input::control_name(c, device).to_lowercase(),
+            Some(c) => crate::input::control_name(c, device).into_owned(),
+            None => "-".into(),
+        };
+        let run = if device.is_pad() {
+            "the left stick".to_string()
+        } else {
+            [Action::MoveUp, Action::MoveLeft, Action::MoveDown, Action::MoveRight].map(name).concat()
+        };
+        format!(
+            "That's you, with a blade, a shield and a friend to win back. Move with {run}, strike with {}, jump with {}. {} switches the view.",
+            name(Action::Attack),
+            name(Action::Jump),
+            name(Action::Camera)
+        )
+    }
+
     /// The stops for the first dungeon, kept short: the hero, the goal, one foe and the objective.
     fn tour_stops(&self) -> Vec<TourStop> {
         if self.hub.is_some() {
@@ -101,8 +124,7 @@ impl Game {
                 HeroKind::Mehmed => "MEHMED",
                 HeroKind::Miyamoto => "MIYAMOTO",
             },
-            body: "That's you, with a blade, a shield and a friend to win back. Move with WASD or the stick, strike with left click, jump with Space. C switches the view."
-                .into(),
+            body: self.tour_controls(),
             color: 0xf2e3c4,
             art: TourArt::Hero,
         }];

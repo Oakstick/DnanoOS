@@ -359,8 +359,8 @@ impl Game {
             Some(Dir::Right) if wide > 1 => self.shop.col = (self.shop.col + 1) % wide,
             _ => {}
         }
-        // LT and RT (or Tab, Y) step from station to station.
-        if self.input.was_pressed(&[Action::NextPotion, Action::TabNext]) {
+        // LB and RB (or Q and E, or Tab) step from station to station.
+        if self.input.was_pressed(&[Action::PotionNext, Action::TabNext]) {
             self.switch_tab(1);
         }
         if self.input.was_pressed(&[Action::TabPrev]) {

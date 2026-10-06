@@ -1,6 +1,6 @@
 //! The archangels' blessings in play (see `logic::angels` for what each
 //! does): taken at their shrines, carried from dungeon to dungeon and into
-//! the boss fights, spent with LT or R. Michael's fire turns foes to the
+//! the boss fights, spent with RT or R. Michael's fire turns foes to the
 //! hero's side, Gabriel's thunder strikes down every foe near him, Raphael's
 //! beam cuts down all in its path, and Uriel's wave rolls out over the whole
 //! quarter.
@@ -74,10 +74,12 @@ impl Game {
         self.view.sparkle(&self.level.grid, x, y, 1.2, angel.color(), 40);
         self.view.flash_light(&self.level.grid, V::new(x, y), angel.color());
         self.floater(x, y - 0.9, format!("{}'S BLESSING", angel.name().to_uppercase()), 1.8, Some(angel.color()));
-        self.floater(x, y - 0.3, format!("{}   LT / R  x{}", angel.power().to_uppercase(), angel.charges()), 2.2, Some(0xe8dcc0));
+        // (The control named is the one bound on the device used last.)
+        let key = self.input.prompt(crate::input::Action::Angel).unwrap_or_default().to_uppercase();
+        self.floater(x, y - 0.3, format!("{}   {key}  x{}", angel.power().to_uppercase(), angel.charges()), 2.2, Some(0xe8dcc0));
     }
 
-    /// LT or R: one use of a shrine's blessing if he carries one, and otherwise his patron's power,
+    /// RT or R: one use of a shrine's blessing if he carries one, and otherwise his patron's power,
     /// if it has come back (Michael in ten seconds, Gabriel twenty, Raphael thirty, Uriel forty-five).
     pub(super) fn invoke_blessing(&mut self) {
         if !self.hero.alive {

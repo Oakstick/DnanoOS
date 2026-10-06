@@ -6,14 +6,13 @@ use std::sync::Arc;
 
 use web_time::Instant;
 use winit::application::ApplicationHandler;
-use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::{CursorGrabMode, Fullscreen, Icon, Window, WindowId};
 
 use crate::game::{Game, Screen};
-use crate::input::{Action, PadState};
-use crate::logic::types::Dir;
+use crate::input::{pad_kind, trigger_latch, PadButton, PadState, Rumbler};
 use crate::platform;
 use crate::render::characters::ragnar;
 use crate::render::gpu::Gpu;
@@ -61,6 +60,10 @@ pub struct App {
     overlay: Overlay,
     frame: Frame,
     gilrs: Option<gilrs::Gilrs>,
+    /// The controller read last (the one that rumbles), and its triggers as buttons.
+    pad_id: Option<gilrs::GamepadId>,
+    triggers: [bool; 2],
+    rumbler: Rumbler,
     last: Instant,
     acc: f64,
     fps_frames: u32,
@@ -96,6 +99,9 @@ impl App {
             overlay: Overlay::new(),
             frame: Frame::default(),
             gilrs: gilrs::Gilrs::new().ok(),
+            pad_id: None,
+            triggers: [false; 2],
+            rumbler: Rumbler::default(),
             last: Instant::now(),
             acc: 0.0,
             fps_frames: 0,
@@ -139,44 +145,70 @@ impl App {
         self.apply_fullscreen();
     }
 
+    /// The first connected controller as a reading: its buttons by position (the analog triggers
+    /// latched into buttons past their threshold), its sticks, and its family. The game reads the
+    /// buttons through the bindings (`Input::poll`).
     fn poll_pad(&mut self) -> Option<PadState> {
         use gilrs::{Axis, Button};
         let gilrs = self.gilrs.as_mut()?;
         while gilrs.next_event().is_some() {}
-        let (_, pad) = gilrs.gamepads().find(|(_, g)| g.is_connected())?;
-        let mut actions = HashSet::new();
-        let map: [(Button, &[Action]); 12] = [
-            // (LT and RT also page through the old man's wares.)
-            (Button::South, &[Action::Jump]),
-            (Button::West, &[Action::Attack]),
-            (Button::RightTrigger2, &[Action::Attack, Action::TabNext]),
-            (Button::East, &[Action::Guide]),
-            (Button::LeftTrigger, &[Action::Block]),
-            (Button::North, &[Action::NextPotion]),
-            (Button::Start, &[Action::Confirm, Action::Pause]),
-            (Button::Select, &[Action::Call]),
-            (Button::LeftThumb, &[Action::Step]),
-            (Button::RightThumb, &[Action::CameraReset]),
-            (Button::RightTrigger, &[Action::Drink]),
-            (Button::LeftTrigger2, &[Action::Angel, Action::TabPrev]),
+        let Some((id, pad)) = gilrs.gamepads().find(|(_, g)| g.is_connected()) else {
+            self.pad_id = None;
+            self.triggers = [false; 2];
+            return None;
+        };
+        self.pad_id = Some(id);
+        let map: [(Button, PadButton); 14] = [
+            (Button::South, PadButton::South),
+            (Button::East, PadButton::East),
+            (Button::West, PadButton::West),
+            (Button::North, PadButton::North),
+            // (gilrs's LeftTrigger is the bumper; LeftTrigger2 the trigger.)
+            (Button::LeftTrigger, PadButton::LeftBumper),
+            (Button::RightTrigger, PadButton::RightBumper),
+            (Button::LeftThumb, PadButton::LeftStick),
+            (Button::RightThumb, PadButton::RightStick),
+            (Button::DPadUp, PadButton::DPadUp),
+            (Button::DPadDown, PadButton::DPadDown),
+            (Button::DPadLeft, PadButton::DPadLeft),
+            (Button::DPadRight, PadButton::DPadRight),
+            (Button::Select, PadButton::View),
+            (Button::Start, PadButton::Menu),
         ];
-        for (b, acts) in map {
-            if pad.is_pressed(b) {
-                actions.extend(acts.iter().copied());
+        let mut buttons: HashSet<PadButton> = map.iter().filter(|(b, _)| pad.is_pressed(*b)).map(|&(_, p)| p).collect();
+        // A trigger without an analog reading is all or nothing.
+        let pull = |b: Button| pad.button_data(b).map(|d| d.value()).unwrap_or(if pad.is_pressed(b) { 1.0 } else { 0.0 });
+        for (k, (b, p)) in
+            [(Button::LeftTrigger2, PadButton::LeftTrigger), (Button::RightTrigger2, PadButton::RightTrigger)].into_iter().enumerate()
+        {
+            self.triggers[k] = trigger_latch(self.triggers[k], pull(b));
+            if self.triggers[k] {
+                buttons.insert(p);
             }
         }
-        let dpad =
-            [(Button::DPadUp, Dir::Up), (Button::DPadDown, Dir::Down), (Button::DPadLeft, Dir::Left), (Button::DPadRight, Dir::Right)]
-                .into_iter()
-                .find(|(b, _)| pad.is_pressed(*b))
-                .map(|(_, d)| d);
         // gilrs reports y up; the game uses the web convention, y down.
         Some(PadState {
-            actions,
-            dpad,
             left: (pad.value(Axis::LeftStickX), -pad.value(Axis::LeftStickY)),
             right: (pad.value(Axis::RightStickX), -pad.value(Axis::RightStickY)),
+            buttons,
+            kind: Some(pad_kind(pad.vendor_id(), pad.name())),
+            ..Default::default()
         })
+    }
+
+    /// Plays the rumbles the game asked for, on the controller, scaled by the setting, while a
+    /// controller is the device in use.
+    fn play_rumbles(&mut self) {
+        let wanted = std::mem::take(&mut self.game.rumbles);
+        self.rumbler.tidy();
+        let level = self.game.input.rumble();
+        let (Some(gilrs), Some(id)) = (self.gilrs.as_mut(), self.pad_id) else { return };
+        if !self.game.input.last_device().is_pad() {
+            return;
+        }
+        for p in wanted.into_iter().filter_map(|r| r.pulse(level)) {
+            self.rumbler.play(gilrs, id, p);
+        }
     }
 
     fn frame(&mut self) {
@@ -206,6 +238,7 @@ impl App {
             self.acc = 0.0;
         }
         self.cpu.update = sim.elapsed().as_secs_f64() * 1e3;
+        self.play_rumbles();
         if std::mem::take(&mut self.game.want_fullscreen_toggle) {
             self.toggle_fullscreen();
         }
@@ -479,6 +512,14 @@ impl ApplicationHandler for App {
                     self.set_capture(true);
                 }
                 self.game.input.mouse_button(button, down);
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                // A touchpad scrolls in pixels: forty of them make a notch.
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / 40.0,
+                };
+                self.game.input.wheel(lines);
             }
             WindowEvent::Touch(t) => {
                 let scale = self.window.as_ref().map(|w| w.scale_factor()).unwrap_or(1.0);

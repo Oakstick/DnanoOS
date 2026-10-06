@@ -1,7 +1,7 @@
 //! The old man's workshop: his wares as a place. Six stations stand round one
 //! room (the anvil, the shield wall, the alchemy bench, the training yard,
 //! the war table and the trophy wall), and each wraps a tab of the wares
-//! (`ShopState` is kept: a tree's tab is its station's). LT, RT and Tab step
+//! (`ShopState` is kept: a tree's tab is its station's). LB, RB and Q, E or Tab step
 //! from station to station, the camera following and the old man walking
 //! over to work there; Quitmer follows the hero. What a station shows of the
 //! war below (the trophies taken, the old man's news, the generals known)
@@ -33,11 +33,11 @@ pub enum Station {
     Trophies,
 }
 
-/// The stations in the order LT and RT step through them (the loadout follows the last).
+/// The stations in the order LB and RB step through them (the loadout follows the last).
 pub const STATIONS: [Station; 6] =
     [Station::Anvil, Station::ShieldWall, Station::Bench, Station::Yard, Station::WarTable, Station::Trophies];
 
-/// How many pages LT and RT step through: the six stations and the loadout.
+/// How many pages LB and RB step through: the six stations and the loadout.
 pub const PAGES: usize = STATIONS.len() + 1;
 
 /// How many hooks the trophy wall has.
@@ -183,7 +183,7 @@ impl Game {
         station_of(&self.shop)
     }
 
-    /// The page LT and RT are on: a station (0..6) or the loadout (6).
+    /// The page LB and RB are on: a station (0..6) or the loadout (6).
     pub(super) fn page(&self) -> usize {
         if self.shop.loadout {
             STATIONS.len()

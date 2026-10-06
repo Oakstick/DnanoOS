@@ -3,7 +3,7 @@
 
 use super::{save, Game, MenuItem, Screen, CLEARED_SECONDS, READY_SECONDS};
 use crate::audio::{Sfx, Soundtrack};
-use crate::input::Action;
+use crate::input::{Action, Context};
 use crate::logic::boss::BossState;
 use crate::logic::types::Dir;
 use crate::platform;
@@ -147,6 +147,7 @@ impl Game {
             .map(|b| glam::Vec3::new(b.pos.x as f32, 0.0, b.pos.y as f32))
             .or_else(|| self.prince_focus())
             .or_else(|| self.hub_focus());
+        self.input.set_context(self.input_context());
         self.input.poll(dt);
         self.handle_global_keys();
         self.settle_pace();
@@ -270,7 +271,29 @@ impl Game {
         self.sim.view += lap.lap();
         // A marked save is written once the fight gives it a calm moment.
         self.tick_saves(dt);
+        // (Set again for the keys and clicks that come before the next update: the screen may
+        // have changed.)
+        self.input.set_context(self.input_context());
         self.input.flush();
+    }
+
+    /// The layer the controls read through now: play's while the hero moves with nothing open
+    /// over him, and the menus' otherwise (presentation only).
+    pub fn input_context(&self) -> Context {
+        let over = self.show_controls || self.show_map || self.guide_open || self.warband.board_open;
+        if matches!(self.screen, Screen::Playing | Screen::Ready | Screen::Dying | Screen::Cleared) && !over {
+            Context::Play
+        } else {
+            Context::Menu
+        }
+    }
+
+    /// The fight asks for a rumble in the hands (UI.md §3): queued for the app, which plays it
+    /// scaled by the setting; a few at most wait (no app drains them under the harnesses).
+    pub(super) fn rumble(&mut self, r: crate::input::Rumble) {
+        if self.rumbles.len() < 8 {
+            self.rumbles.push(r);
+        }
     }
 
     /// Play on the title: Scene I first (unless it is switched off), then the heroes.
@@ -417,12 +440,22 @@ impl Game {
             self.audio.unlock();
             self.audio.toggle_mute();
         }
+        // M, Tab, View or the D-pad's up: the map, over the pause (the Map's stops for now; the
+        // full map comes with the minimap). Pressed again, it is put away (`update_map`).
+        let pages = self.show_controls || self.show_map || self.warband.board_open || self.guide_open;
+        if self.input.was_pressed(&[Action::Map]) && matches!(self.screen, Screen::Playing | Screen::Paused) && !pages {
+            if self.screen == Screen::Playing {
+                self.enter(Screen::Paused);
+            }
+            self.open_map();
+            self.input.consume(Action::Map);
+        }
         // With the controller page or the map open, Esc and Start close it instead.
         if self.input.was_pressed(&[Action::Pause]) && !self.show_controls && !self.show_map && !self.warband.board_open && !self.guide_open
         {
             if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
-                // A controller's Menu button is Confirm as well: it must not pick Resume at once.
+                // Nothing pressed with it may pick Resume at once.
                 self.input.consume(Action::Confirm);
                 self.input.consume(Action::Jump);
             } else if self.screen == Screen::Paused {

@@ -130,6 +130,7 @@ impl Game {
         let landed_any = !hits.is_empty();
         if landed_any {
             self.view.shake(0.14 + 0.02 * self.hero.blade as f32);
+            self.rumble(crate::input::Rumble::HitLanded);
         }
         // A rusted blade glances off now and then: the foe staggers, but stands.
         let rusted = self.hero.edge < RUSTED_EDGE;
