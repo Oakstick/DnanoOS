@@ -332,7 +332,7 @@ impl WorldView {
             floor: v.group_pos.y - v.hover,
             yaw: v.yaw,
             root_rot: v.root_rot,
-            root_scale: v.root_scale,
+            root_scale: v.root_scale * super::animation::shown_scale(v.kind),
             tint: v.mat_color,
             dir: flat(dir),
             matter: juice::matter_of(v.kind),

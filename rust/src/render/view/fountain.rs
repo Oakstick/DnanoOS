@@ -26,7 +26,6 @@ mod pal {
     pub const COPPER_D: u32 = 0x6e4026;
     pub const VERDIGRIS: u32 = 0x4a7a68;
     pub const GLASS: u32 = 0xffd48a;
-    pub const PAVER: [u32; 3] = [0xa8a290, 0x9a9482, 0xb4ae9c];
     pub const PAVER_D: u32 = 0x7c7666;
     // The statue.
     pub const ROCK: u32 = 0x6a6c64;
@@ -518,25 +517,28 @@ impl WorldView {
             }
             let top = grid.elevation(x, y) as f32 * STEP;
             let post = Vec3::new(x as f32 + dx as f32 * 0.38, top, y as f32 + dz as f32 * 0.38);
-            lanterns.push(self.plaza_lantern(post));
+            let start = self.static_cubes.len();
+            lanterns.push(garden_beds::lamp_post(&mut self.static_cubes, post, Vec3::new(dx as f32, 0.0, dz as f32), 0.95));
             for i in 0..3 {
                 for j in 0..3 {
                     let (u, w) = (x as f32 + (i as f32 - 1.0) / 3.0, y as f32 + (j as f32 - 1.0) / 3.0);
                     let ring = ((u - xf).powi(2) + (w - zf).powi(2)).sqrt();
                     let h = hash(u as f64 * 7.0, w as f64 * 5.0);
+                    // Pale dressed stone in rings round the basin, a charcoal course between.
                     let color = if (ring * 3.0) as i32 % 3 == 0 {
-                        lin(PAVER_D)
+                        crypt::jit(crypt::pal::CHARCOAL[(h * 3.0) as usize % 3], h, 0.08)
                     } else {
-                        lin(PAVER[(h * 3.0) as usize % 3]) * (0.95 + h as f32 * 0.1)
+                        crypt::jit(crypt::pal::PALE_STONE[(h * 2.0) as usize % 2], h, 0.06) * 0.8
                     };
                     let m = Mat4::from_scale_rotation_translation(
                         Vec3::new(0.31, 0.03, 0.31),
                         Quat::from_rotation_y((h as f32 - 0.5) * 0.06),
                         Vec3::new(u, top + 0.012, w),
                     );
-                    self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
+                    self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, crypt::SHADE_FLAG));
                 }
             }
+            self.authored.push((start, self.static_cubes.len() - start));
         }
 
         // The spouts: one at the foot of the basin on each side a channel leaves from.
@@ -565,22 +567,6 @@ impl WorldView {
         self.fountain = Some(FountainView { base, outlets, lanterns });
     }
 
-    /// A lantern on an iron post: a stone foot, the post, a copper cap over amber glass. Returns
-    /// where its glass is (it is lit each frame, more softly than the garden's lanterns).
-    fn plaza_lantern(&mut self, at: Vec3) -> Vec3 {
-        let out = &mut self.static_cubes;
-        let mut put = |pos: Vec3, size: Vec3, color: Vec3, glow: Vec3| {
-            out.push(Instance::new(Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at + pos), color, 1.0, glow, SHADE_LIT));
-        };
-        put(Vec3::new(0.0, 0.04, 0.0), Vec3::new(0.14, 0.08, 0.14), lin(STONE_D), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.32, 0.0), Vec3::new(0.05, 0.5, 0.05), lin(IRON), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.6, 0.0), Vec3::new(0.13, 0.03, 0.13), lin(IRON), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.68, 0.0), Vec3::new(0.08, 0.12, 0.08), lin(GLASS), lin(0xffb050) * 2.2);
-        put(Vec3::new(0.0, 0.76, 0.0), Vec3::new(0.15, 0.03, 0.15), lin(COPPER), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.06, 0.04, 0.06), lin(COPPER_D), Vec3::ZERO);
-        at + Vec3::new(0.0, 0.68, 0.0)
-    }
-
     /// The fountain's water: basin and bowl, the veil over the bowl's rim, the jets, the tongue's stream, splashes, spray and glints.
     pub(super) fn emit_fountain(&self, time: f32, f: &mut Frame) {
         let Some(fv) = &self.fountain else { return };
@@ -594,8 +580,8 @@ impl WorldView {
         );
         let flat = Mat4::from_rotation_x(-PI / 2.0);
         // The board's mist teal: the still water, and the jets paler.
-        let water_tint = lin(0x2a5450);
-        let jet_tint = lin(0xc4dcd6);
+        let water_tint = lin(0x24453f);
+        let jet_tint = lin(0x8fb2aa);
         let basin_y = o.y + BASIN_WATER;
         let bowl_y = o.y + BOWL_WATER;
 
@@ -610,7 +596,7 @@ impl WorldView {
         let fall = top - basin_y;
         let m = Mat4::from_translation(Vec3::new(o.x, (top + basin_y) / 2.0, o.z))
             * Mat4::from_scale(Vec3::new(BOWL_R + 0.004, fall, BOWL_R + 0.004));
-        f.transparent[tube].push(Instance::new(m, lin(0xc8dcd8), 0.5, Vec3::ZERO, SHADE_WATER));
+        f.transparent[tube].push(Instance::new(m, lin(0x9cbcb4), 0.38, Vec3::ZERO, SHADE_WATER));
 
         // Four jets arc in from the basin's sides and land in the bowl at his hooves.
         let mut splashes: Vec<(Vec3, f32)> = vec![];
@@ -629,7 +615,7 @@ impl WorldView {
                 0.011,
                 0.014,
                 jet_tint,
-                0.62,
+                0.5,
                 seed,
             );
             splashes.push((land, 0.7));
@@ -639,8 +625,8 @@ impl WorldView {
                 let p = start.lerp(land, t) + Vec3::new(0.0, 4.0 * lift * t * (1.0 - t), 0.0);
                 f.additive.push(Instance::new(
                     Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.012)),
-                    lin(0xe8fbff),
-                    0.7,
+                    lin(0xc8e4dc),
+                    0.35,
                     Vec3::ZERO,
                     SHADE_UNLIT,
                 ));
@@ -697,7 +683,7 @@ impl WorldView {
             let r = 0.3 + ph * 0.25;
             let p = Vec3::new(o.x + a.cos() * r, basin_y + 0.05 + ph * 0.5, o.z + a.sin() * r);
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.07 + ph * 0.12));
-            f.transparent[sphere].push(Instance::new(m, lin(0xbcd4dc), 0.07 * (PI * ph).sin(), Vec3::ZERO, SHADE_LIT));
+            f.transparent[sphere].push(Instance::new(m, lin(0x9ab8b0), 0.035 * (PI * ph).sin(), Vec3::ZERO, SHADE_LIT));
         }
 
         // The spouts under the bridges pour into the channels.
@@ -712,21 +698,30 @@ impl WorldView {
                 Vec3::ZERO,
                 SHADE_WATER,
             ));
-            self.foam(Vec3::new(at.x + dir.x * 0.1, water + 0.02, at.z + dir.y * 0.1), time, 20.0 + i as f32, f);
+            // (Rings where it lands, not foam: under the bridge, foam would rise through its deck.)
+            for k in 0..2 {
+                let t = (time * 0.7 + k as f32 * 0.5 + i as f32 * 0.37).fract();
+                let r = 0.05 + t * 0.2;
+                let m = Mat4::from_translation(Vec3::new(at.x + dir.x * 0.08, water + 0.005, at.z + dir.y * 0.08))
+                    * flat
+                    * Mat4::from_scale(Vec3::new(r, r, 1.0));
+                f.transparent[annulus].push(Instance::new(m, lin(0x9fb8b4), 0.25 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+            }
         }
 
         // The plaza's lanterns: a soft amber pool each, and a halo in the damp air.
         for (i, &p) in fv.lanterns.iter().enumerate() {
             let flick = 1.0 + (time * 7.0 + i as f32 * 1.9).sin() * 0.06;
-            glow_orb(f, p, 0.3, lin(0xffb050), 0.16 * flick);
-            f.lights.push(Light { pos: p, color: lin(0xffb050) * 1.3 * flick, distance: 2.6 });
+            glow_orb(f, p, 0.32, lin(0xffb050), 0.18 * flick);
+            // (Warm pools on the wet paving and on the bronze: the plaza is the first thing seen.)
+            f.lights.push(Light { pos: p, color: lin(0xffb050) * 2.3 * flick, distance: 3.4 });
         }
         // A lamp under the water lights him from below, shimmering as the surface moves.
         let shimmer = (time * 2.7).sin() * 0.25 + (time * 5.3 + 1.0).sin() * 0.15;
         if o.distance_squared(self.focus_point) > 20.0 * 20.0 {
             return;
         }
-        f.lights.push(Light { pos: Vec3::new(o.x, o.y + 0.36, o.z), color: lin(0x6ec0b0) * (0.8 + shimmer * 0.5), distance: 3.0 });
+        f.lights.push(Light { pos: Vec3::new(o.x, o.y + 0.36, o.z), color: lin(0x6ea89c) * (0.45 + shimmer * 0.25), distance: 2.6 });
     }
 }
 

@@ -164,6 +164,7 @@ impl WorldView {
         let ground = floor_at(s.grid, x, z) - self.pit_sunk_at(d.pos);
         {
             let v = &mut self.enemy_views[i];
+            v.hover = super::animation::duel_hover(v.kind);
             v.group_pos = Vec3::new(x, ground + v.hover, z);
             let goal = (d.facing.x as f32).atan2(d.facing.y as f32);
             v.yaw = lerp_angle(v.yaw, goal, 1.0 - (-24.0 * dt).exp());
@@ -926,8 +927,10 @@ impl WorldView {
             // By its clips: the far end of what it strikes with (its weapon, or its jaws).
             let part = ["offhand", "blade", "jaw", "head"].iter().filter_map(|n| rig.index(n)).find(|&k| !rig.parts[k].cubes.is_empty())?;
             let local = rig.parts[part].cubes.iter().map(|c| c.0).max_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))?;
-            let root =
-                Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw) * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+            let root = Mat4::from_translation(v.group_pos)
+                * Mat4::from_rotation_y(v.yaw)
+                * euler(v.root_rot)
+                * Mat4::from_scale(v.root_scale * super::animation::shown_scale(v.kind));
             return Some((root * mats[part]).transform_point3(local));
         }
         let rig = self.models.rig(v.rig);
@@ -938,7 +941,10 @@ impl WorldView {
         } else {
             (0, rig.parts.first()?.cubes.iter().map(|c| c.0).max_by(|a, b| (a.z + a.y * 0.5).total_cmp(&(b.z + b.y * 0.5)))?)
         };
-        let root = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw) * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+        let root = Mat4::from_translation(v.group_pos)
+            * Mat4::from_rotation_y(v.yaw)
+            * euler(v.root_rot)
+            * Mat4::from_scale(v.root_scale * super::animation::shown_scale(v.kind));
         Some((root * Mat4::from_translation(v.pose.pos[part]) * euler(v.pose.rot[part])).transform_point3(local))
     }
 
@@ -1359,21 +1365,26 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
     };
     let (light, reach) = match b.look {
         BoltLook::Spit => {
-            // A glob of green bog spit, wobbling as it flies, dripping onto the floor behind it.
+            // A gob of the bog slime's own jelly (`emit::GOO_TRAIL`: gold once it flies at the foes),
+            // glossy and see-through round a darker knot, wobbling as it flies, stretched along its
+            // flight, dripping onto the floor behind it.
+            let gold = b.tint != BoltLook::Spit.tint();
+            let (goo, knot) = if gold { (color, color * 0.4) } else { (lin(super::emit::GOO_TRAIL_L), lin(0x1a3226)) };
             let wob = (time * 18.0).sin() * 0.04;
-            let m = Mat4::from_scale_rotation_translation(
-                Vec3::new(0.2 + wob, 0.16 - wob, 0.24),
-                Quat::from_rotation_y(yaw),
-                p - Vec3::new(0.0, 0.1, 0.0),
-            );
-            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, color * 0.9, 0.85, color * 0.35, SHADE_UNLIT));
+            let at = p - Vec3::new(0.0, 0.1, 0.0);
+            let rot = Quat::from_rotation_y(yaw);
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.17 + wob, 0.14 - wob, 0.23), rot, at);
+            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, goo, 0.6, goo * 0.05, super::emit::SHADE_GOO));
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.08, 0.07, 0.1), rot, at - v * 0.02);
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, knot, 1.0, Vec3::ZERO, super::emit::SHADE_GOO));
             for k in 1..4 {
                 let t = ((time * 2.5 + k as f32 * 0.33).fract()) * 0.5;
                 let at = p - v * (0.18 + 0.12 * k as f32) - Vec3::new(0.0, 0.1 + t * 1.6, 0.0);
-                let m = Mat4::from_scale_rotation_translation(Vec3::splat(0.05 - k as f32 * 0.008), Quat::IDENTITY, at);
-                f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, color, 0.8, color * 0.3, SHADE_UNLIT));
+                let r = 0.05 - k as f32 * 0.008;
+                let m = Mat4::from_scale_rotation_translation(Vec3::new(r, r * 1.5, r), Quat::IDENTITY, at);
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, goo, 0.7, Vec3::ZERO, super::emit::SHADE_GOO));
             }
-            (color * 1.2, 2.2)
+            (if gold { color * 1.2 } else { goo * 0.6 }, 2.2)
         }
         BoltLook::Hex => {
             // A violet star (two cubes crossed) turning in a ring of the same light, sparks behind.

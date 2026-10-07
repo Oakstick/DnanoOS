@@ -145,8 +145,10 @@ def move_marks(fd):
 class Flyer:
     """A bat or a raven: `beat` frames a wingbeat, `amp` degrees of it, `bob` metres of lift."""
 
-    def __init__(self, beat, amp, bob, bank=0.0, wrap=False, stride=1.0):
+    def __init__(self, beat, amp, bob, bank=0.0, wrap=False, stride=1.0, dive=0.14):
         self.beat, self.amp, self.bob, self.bank, self.wrap, self.stride = beat, amp, bob, bank, wrap, stride
+        # (How far its bite dives down at him, metres: the ravens fly higher than the large bat.)
+        self.dive = dive
 
     def wings(self, p, w, fold, sweep=0.0):
         """Both wings at `w` degrees up (negative down), their hands folded `fold` degrees back and
@@ -228,7 +230,7 @@ class Flyer:
         p = Pose()
         rise = env(f, [(0, 0.0), (s, 1.0), (s + 1, 1.0), (s + a, 0.0)])
         dive = env(f, [(s - 1, 0.0), (s + 3, 1.0), (s + a + 6, 1.0), (s + a + r, 0.0)])
-        p["loc"] = (0.0, 0.16 * rise - 0.14 * dive, 0.32 * dive)
+        p["loc"] = (0.0, 0.16 * rise - self.dive * dive, 0.32 * dive)
         p.turn("body", E(-28 * rise + 50 * dive, 0, 0))
         p.turn("head", E(-22 * rise + 12 * dive, 0, 0))
         p.turn("tail", E(15 * rise - 20 * dive, 0, 0))
@@ -929,9 +931,9 @@ class Jorogumo:
 
 FOES = {
     # The raven: quick, light beats.
-    "bat": Flyer(beat=24, amp=50, bob=0.03, stride=1.1),
+    "bat": Flyer(beat=24, amp=50, bob=0.03, stride=1.1, dive=0.24),
     # Its night kin: bigger, heavier beats, and a cape of wings folded about it between them.
-    "vampire": Flyer(beat=30, amp=55, bob=0.045, wrap=True, stride=1.3),
+    "vampire": Flyer(beat=30, amp=55, bob=0.045, wrap=True, stride=1.3, dive=0.24),
     # The large bat: slow beats, swerving banks.
     "large_bat": Flyer(beat=36, amp=44, bob=0.05, bank=16, stride=1.6),
     "werewolf": Wolf(trot=32, gallop=24, strides=(0.55, 1.3)),

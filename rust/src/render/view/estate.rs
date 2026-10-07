@@ -15,6 +15,8 @@ pub(super) mod pal {
     pub const NIGHT: u32 = 0x0b1416;
     pub const MOONLIGHT: u32 = 0xa8c8c4;
     pub const MIST_TEAL: u32 = 0x6e9a90;
+    /// The ground mist over the walks: the night's mist teal, greyed.
+    pub const MIST: u32 = 0x7a8c88;
 }
 use pal::*;
 
@@ -133,6 +135,21 @@ pub fn garden_atmosphere() -> Atmosphere {
     }
 }
 
+/// The Garden of Krampus at night, in the Cisterns' key: darker than the title's night, the
+/// moon a cool, weak rim, the ambient low, so the lanterns' amber pools carry the frame and the
+/// teal is left to the shadows and the mist.
+pub fn garden_night() -> Atmosphere {
+    Atmosphere {
+        hemi_sky: lin(MIST_TEAL) * 0.4,
+        hemi_ground: lin(0x141a16) * 0.8,
+        ambient: lin(0x26302e) * 0.42,
+        sun: lin(0x98bcc8) * 0.55,
+        exposure: 1.15,
+        bloom: 1.05,
+        ..garden_atmosphere()
+    }
+}
+
 impl WorldView {
     /// Grades the level's static scenery (the garden, its gate) into the board. Glowing pieces
     /// (lantern glass, candles) keep their colour; plain stone takes the dressed-stone material.
@@ -151,7 +168,17 @@ impl WorldView {
                 *w = true;
             }
         }
-        for (c, &wood) in self.static_cubes.iter_mut().zip(&wood) {
+        // (What was built in the board's palette already keeps its colours.)
+        let mut keep = vec![false; self.static_cubes.len()];
+        for &(start, len) in &self.authored {
+            for k in keep.iter_mut().skip(start).take(len) {
+                *k = true;
+            }
+        }
+        for ((c, &wood), &keep) in self.static_cubes.iter_mut().zip(&wood).zip(&keep) {
+            if keep {
+                continue;
+            }
             let lit = c.emissive[3] == SHADE_LIT;
             let glowing = c.emissive[0] + c.emissive[1] + c.emissive[2] > 0.0;
             if glowing {

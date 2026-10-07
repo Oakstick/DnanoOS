@@ -1043,7 +1043,7 @@ fn iron_arch(out: &mut Vec<Instance>) {
 
 /// One grave at `p`, its kind and weathering picked by `k` and `j`: a rounded headstone, a cross
 /// (sometimes ringed), an obelisk, a chest tomb, or an old slab sunk and broken.
-fn grave(out: &mut Vec<Instance>, p: Vec3, k: f32, j: f32) {
+pub(super) fn grave(out: &mut Vec<Instance>, p: Vec3, k: f32, j: f32) {
     let stone = if j > 0.5 {
         jit(PALE_STONE[(k * 7.0) as usize % 2], j as f64, 0.08) * (0.62 + 0.15 * j)
     } else {
@@ -1441,7 +1441,7 @@ fn chapel(out: &mut Vec<Instance>, c: Vec3) {
 }
 
 /// A leafless tree: a crooked trunk splitting into branches and twigs, its bark dark umber.
-fn dead_tree(out: &mut Vec<Instance>, base: Vec3, height: f32, seed: f64) {
+pub(super) fn dead_tree(out: &mut Vec<Instance>, base: Vec3, height: f32, seed: f64) {
     #[allow(clippy::too_many_arguments)]
     fn branch(out: &mut Vec<Instance>, from: Vec3, dir: Vec3, len: f32, thick: f32, depth: u32, seed: f64) {
         let segs = if depth >= 3 { 4 } else { 3 };

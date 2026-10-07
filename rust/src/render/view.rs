@@ -56,6 +56,8 @@ mod forge;
 mod fountain;
 mod frame;
 mod garden;
+mod garden_beds;
+mod garden_landmarks;
 mod gate;
 mod hell;
 mod juice;
@@ -281,6 +283,10 @@ pub struct WorldView {
     /// into it (each mouth, the way it pours, and the floor below).
     flood: Vec<Vec3>,
     spouts: Vec<(Vec3, Vec3, f32)>,
+    /// Rain standing in the garden's walks: each puddle's middle (at its surface) and size.
+    puddles: Vec<(Vec3, Vec2)>,
+    /// Static ranges built in the board's palette already, which the grade leaves alone.
+    authored: Vec<(usize, usize)>,
     /// The Vaults of Mammon, while he is in them.
     vault: Option<vault::VaultView>,
     /// One of the six realms after the vaults, while he is in it.
@@ -481,6 +487,8 @@ impl WorldView {
             cisterns: false,
             estate_art: false,
             flood: Vec::new(),
+            puddles: Vec::new(),
+            authored: Vec::new(),
             spouts: Vec::new(),
             tint: None,
             vault: None,
@@ -639,6 +647,8 @@ impl WorldView {
         self.rings.clear();
         self.water.clear();
         self.flood.clear();
+        self.puddles.clear();
+        self.authored.clear();
         self.spouts.clear();
         self.estate_art = false;
         self.rock_index.clear();
@@ -803,9 +813,27 @@ impl WorldView {
         let h = floor_at(grid, x as f32, y as f32);
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
-        let patch = if self.meadow { lin(0x62b437) } else { lin(0x3c6c32) };
+        let patch = if self.meadow {
+            lin(0x62b437)
+        } else if self.estate_art {
+            lin(garden_beds::pal::GRAVEL[0])
+        } else {
+            lin(0x3c6c32)
+        };
         // (Added cubes go up on their own; see `Gpu::sync_static`.)
-        self.static_cubes.push(Instance::new(m, patch, 1.0, Vec3::ZERO, if self.meadow { SHADE_LIT } else { SHADE_GRASS }));
+        self.static_cubes.push(Instance::new(
+            m,
+            patch,
+            1.0,
+            Vec3::ZERO,
+            if self.meadow {
+                SHADE_LIT
+            } else if self.estate_art {
+                crypt::SHADE_FLAG
+            } else {
+                SHADE_GRASS
+            },
+        ));
         self.push_rubble(x, y, h, &colors);
     }
 
@@ -919,6 +947,8 @@ impl WorldView {
         self.update_workshop(dtf);
         self.update_angel_fx(dtf);
         self.update_camera(dtf, s.grid, hero);
+        // (The foes the camera has just swung onto, posed by their clips too.)
+        self.pose_foes_in_view(s);
         if !self.showcase {
             self.update_tree_fade(dtf, hero);
         }

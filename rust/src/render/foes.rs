@@ -1,8 +1,8 @@
 //! The foes, sculpted as finely as the heroes they fight (voxels a quarter
 //! the size of their first models): the draugr, an undead viking in rusted
 //! mail with a cold light in his ribs; the raven and its night kin, feathered
-//! wing by wing; and the bog slime, glossy and bubbling, with a lily pad for
-//! a hat. Each faces +z and is sculpted in the parts its rig swings (see
+//! wing by wing; and the bog slime, a dome of see-through jelly round what it
+//! has swallowed, with a lily pad for a hat. Each faces +z and is sculpted in the parts its rig swings (see
 //! `Sculpt::part`). Far from the camera they are drawn from a coarser copy
 //! (`Rig::coarse`), so a dungeon full of them costs little more than before.
 
@@ -539,6 +539,9 @@ struct Plumage {
     gloss: u32,
     gloss_l: u32,
     edge: u32,
+    /// The wings' trailing edge and fingertips, pale as moonlight catches them (so they read against
+    /// a night sky).
+    rim: u32,
     under: u32,
     beak: u32,
     beak_l: u32,
@@ -552,6 +555,7 @@ const DAY: Plumage = Plumage {
     gloss: 0x2e3a58 | mat::FUR,
     gloss_l: 0x4a5c88 | mat::FUR,
     edge: 0x12131a | mat::FUR,
+    rim: 0x6c7c9e | mat::FUR,
     under: 0x0e0f14 | mat::FUR,
     beak: 0x4a4844 | mat::IVORY,
     beak_l: 0x6e6b64 | mat::IVORY,
@@ -565,6 +569,7 @@ const NIGHT: Plumage = Plumage {
     gloss: 0x4c2870 | mat::FUR,
     gloss_l: 0x7440a8 | mat::FUR,
     edge: 0x1a0f24 | mat::FUR,
+    rim: 0xa27ad2 | mat::FUR,
     under: 0x140b1c | mat::FUR,
     beak: 0xd8ccb0 | mat::IVORY,
     beak_l: 0xf0e6d0 | mat::IVORY,
@@ -644,7 +649,9 @@ fn wing(s: &mut Sculpt, p: &Plumage, side: f32, night: bool) {
                 continue;
             }
             let t = (le - zf) / (le - te);
-            let c = if t < 0.1 {
+            let c = if t > 0.86 {
+                p.rim
+            } else if t < 0.1 {
                 p.edge
             } else if t < 0.42 {
                 // Rows of small coverts, glossy, each row's edge in shadow.
@@ -681,7 +688,7 @@ fn wing(s: &mut Sculpt, p: &Plumage, side: f32, night: bool) {
         let base = (wrist - side * a * 2.0, 24.0 - a * 7.0);
         let short = if night && nz(k, 3, 3) < 0.45 { 0.78 } else { 1.0 };
         let tip = (base.0 + (tip_x - base.0) * short, base.1 + (tip_z - base.1) * short);
-        feather(s, base, tip, 1.9, 1.3, wy, p.black, p.edge, if a < 0.2 { p.gloss } else { p.edge });
+        feather(s, base, tip, 1.9, 1.3, wy, p.black, p.edge, if a < 0.2 { p.gloss } else { p.rim });
     }
     if night {
         // A hooked bone claw at the wrist.
@@ -830,57 +837,95 @@ pub fn raven(night: bool) -> Collected {
 
 mod goo {
     use super::mat;
-    pub const GREEN: u32 = 0x3fe05a | mat::SLIME;
-    pub const DEEP: u32 = 0x1f8a33;
-    pub const DEEPER: u32 = 0x166a28;
-    /// The lower flanks, matte: gloss there only catches every ledge of the voxels.
-    pub const FLANK: u32 = 0x38cc50;
-    pub const LIGHT: u32 = 0x86f59a | mat::SLIME;
-    pub const GLOSS: u32 = 0xeefff0 | mat::SLIME;
-    pub const BUBBLE: u32 = 0xa8ffb8 | mat::SLIME;
-    pub const SPECK: u32 = 0x9ad84a | mat::SLIME;
-    pub const WHITE: u32 = 0xf4f4f8 | mat::IVORY;
-    pub const MOUTH: u32 = 0x2c0e14;
-    pub const THROAT: u32 = 0x160609;
-    pub const TONGUE: u32 = 0xe0607a | mat::SKIN;
-    pub const TOOTH: u32 = 0xf6f2e0 | mat::IVORY;
-    pub const PAD: u32 = 0x3a8c2c | mat::LEATHER;
-    pub const PAD_L: u32 = 0x58ac3c | mat::LEATHER;
-    pub const PAD_D: u32 = 0x2a6a20 | mat::LEATHER;
-    pub const PETAL: u32 = 0xffb8d0 | mat::CLOTH;
-    pub const PETAL_L: u32 = 0xfff0f4 | mat::CLOTH;
-    pub const POLLEN: u32 = 0xffd23a;
-    pub const BONE: u32 = 0xd8ccb0 | mat::IVORY;
+    // The jelly (`mat::SLIME`): drawn see-through (`rig_look::GOO`), bog green at the crown to a
+    // murky teal at the foot.
+    pub const CROWN: u32 = 0x5c9a58 | mat::SLIME;
+    pub const BODY: u32 = 0x45804f | mat::SLIME;
+    pub const FOOT: u32 = 0x31624f | mat::SLIME;
+    pub const PUDDLE: u32 = 0x284f45 | mat::SLIME;
+    /// A bubble caught in it, and a drip running down it: paler.
+    pub const BUBBLE: u32 = 0x9cc6a0 | mat::SLIME;
+    pub const DRIP: u32 = 0x3c7452 | mat::SLIME;
+    // What it holds (drawn solid, `rig_look::INNARDS`): its dark heart, and what it has swallowed.
+    pub const CORE: u32 = 0x1a3226 | mat::SKIN;
+    pub const CORE_D: u32 = 0x10241c | mat::SKIN;
+    pub const BONE: u32 = 0xcabd98 | mat::IVORY;
+    pub const BONE_D: u32 = 0x9c8e6c | mat::IVORY;
+    pub const SOCKET: u32 = 0x2a2218;
+    pub const COIN: u32 = 0xd8a636 | mat::GOLD;
+    pub const KEY: u32 = 0xb08a4a | mat::GOLD;
+    pub const GLINT: u32 = 0xfff0b0 | mat::GOLD;
+    /// Two small dim eyes, deep in it.
+    pub const EYE: u32 = 0x4c5a16 | mat::GLOW;
+    // On it: duckweed, and the lily pad it wears.
+    pub const WEED: u32 = 0x5a8a2c | mat::LEATHER;
+    pub const PAD: u32 = 0x3a7a2c | mat::LEATHER;
+    pub const PAD_L: u32 = 0x4e9436 | mat::LEATHER;
+    pub const PAD_D: u32 = 0x2a5c22 | mat::LEATHER;
+    pub const PETAL: u32 = 0xe8b4c4 | mat::CLOTH;
+    pub const PETAL_L: u32 = 0xf6e4ea | mat::CLOTH;
+    pub const POLLEN: u32 = 0xe8c03a;
 }
 
 /// The bog slime's grid: 44 across, 32 tall.
 pub const SLIME_SIZE: (i32, i32, i32) = (44, 32, 44);
+/// The heart of its dome, in voxels over its foot: the jelly's soft normal bends away from it (the
+/// shader's `GOO_HEART`).
+pub const SLIME_HEART: f32 = 11.0;
+
+/// The dome's radius at height `y` (voxels), sagging wide at its foot; 0 above its crown.
+fn slime_radius(y: f32) -> f32 {
+    let k = y / 29.5;
+    if k > 1.0 {
+        return 0.0;
+    }
+    20.2 * (1.0 - k * k).max(0.0).sqrt() * (1.0 + (1.0 - k).powi(6) * 0.06)
+}
 
 /**
- * A bog slime: a glossy dome of green goo sagging into a puddle at its
- * foot, bubbles rising in it and a drowned bone showing through its side,
- * two big eyes (one bigger than the other), a gummy grin with a single
- * tooth, and a lily pad in flower on its head.
+ * A bog slime: a dome of jelly sagging into a puddle at its foot, its skin a shell two voxels
+ * thick (drawn see-through, `rig_look::GOO`) round what it holds (drawn solid): its dark heart,
+ * and what it has swallowed in the bog, a drowned man's skull and his bones, a coin and a rusty
+ * key; two small dim eyes deep in it, bubbles, drips running down it, duckweed on it and a lily
+ * pad in flower on its crown. No face: what looks out of it is the eyes, through the jelly.
  */
 pub fn bog_slime() -> Collected {
     use goo::*;
     let (w, h, d) = SLIME_SIZE;
     let mut s = Sculpt::new(w, h, d);
     let (cx, cz) = (21.5f32, 21.5f32);
-    // The dome, sagging wide at its foot.
-    for y in 0..h {
-        let k = y as f32 / 29.5;
-        if k > 1.0 {
-            break;
+    let inside = |x: i32, y: i32, z: i32| -> bool {
+        if y < 0 || y >= h {
+            return false;
         }
-        let r = 20.2 * (1.0 - k * k).max(0.0).sqrt() * (1.0 + (1.0 - k).powi(6) * 0.06);
+        let k = y as f32 / 29.5;
+        let (dx, dz) = (x as f32 - cx, z as f32 - cz);
+        let wobble = ((dz.atan2(dx) * 5.0).sin() * 0.5 + nz(x, 0, z) * 0.6) * (1.0 - k).max(0.0);
+        (dx * dx + dz * dz).sqrt() <= slime_radius(y as f32) + wobble
+    };
+    // The skin: the dome's voxels within two of its outside (the floor whole, under what it holds).
+    for y in 0..h {
         for z in 0..d {
             for x in 0..w {
-                let (dx, dz) = (x as f32 - cx, z as f32 - cz);
-                let wobble = ((dz.atan2(dx) * 5.0).sin() * 0.5 + nz(x, 0, z) * 0.6) * (1.0 - k);
-                if (dx * dx + dz * dz).sqrt() <= r + wobble {
-                    s.set(x, y, z, GREEN);
+                if !inside(x, y, z) {
+                    continue;
                 }
+                let deep = y >= 2 && (1..=2).all(|r| NEIGHBORS.iter().all(|(a, b, c)| inside(x + a * r, y + b * r, z + c * r)));
+                if deep {
+                    continue;
+                }
+                let k = y as f32 / 29.5;
+                let n = nz(x, y, z);
+                let c = if n < 0.03 {
+                    BUBBLE
+                } else if k > 0.62 {
+                    CROWN
+                } else if k > 0.22 {
+                    BODY
+                } else {
+                    FOOT
+                };
+                s.set(x, y, z, c);
             }
         }
     }
@@ -888,124 +933,86 @@ pub fn bog_slime() -> Collected {
     for z in 0..d {
         for x in 0..w {
             let r = ((x as f32 - cx).powi(2) + (z as f32 - cz).powi(2)).sqrt();
-            if r <= 21.0 + nz(x / 2, 1, z / 2) * 1.6 && s.get(x, 0, z).is_none() {
-                s.set(x, 0, z, DEEPER);
+            if r <= 21.2 + nz(x / 2, 1, z / 2) * 1.6 && s.get(x, 0, z).is_none() {
+                s.set(x, 0, z, PUDDLE);
             }
         }
     }
-    // Deep at the foot, lighter toward the crown and where the light falls, bubbles inside.
-    s.paint(|x, y, z, _| {
-        let n = nz(x, y, z);
-        Some(if y == 0 {
-            DEEPER
-        } else if y <= 3 {
-            DEEP
-        } else if n < 0.035 {
-            BUBBLE
-        } else if y >= 17 && (x as f32) < cx - 2.0 && (z as f32) > cz - 6.0 && n > 0.25 {
-            LIGHT
-        } else if y >= 25 && nz(x / 2, y, z / 2) < 0.12 {
-            SPECK
-        } else if y < 9 {
-            FLANK
-        } else {
-            GREEN
-        })
-    });
-    // Drips running down its sides.
-    for k in 0..7 {
-        let a = k as f32 / 7.0 * TAU + 0.4;
+    // Drips running down its sides, swelling where they hang.
+    for k in 0..9 {
+        let a = k as f32 / 9.0 * TAU + 0.3 + nz(k, 2, 2) * 0.4;
         let (dx, dz) = (a.cos(), a.sin());
-        if dz > 0.55 {
-            continue; // not over its face
-        }
-        let top = 14 + (nz(k, 1, 1) * 8.0) as i32;
+        let top = 13 + (nz(k, 1, 1) * 10.0) as i32;
         for y in 2..=top {
-            let k2 = y as f32 / 29.5;
-            let r = 20.2 * (1.0 - k2 * k2).sqrt() + 0.6;
-            s.set((cx + dx * r).round() as i32, y, (cz + dz * r).round() as i32, if y < 4 { GREEN } else { DEEP });
+            let r = slime_radius(y as f32) + 0.7;
+            s.set((cx + dx * r).round() as i32, y, (cz + dz * r).round() as i32, DRIP);
         }
-        s.set((cx + dx * 21.6).round() as i32, 1, (cz + dz * 21.6).round() as i32, GREEN);
+        let r = slime_radius(3.0) + 1.2;
+        ball(&mut s, v(cx + dx * r, 2.5, cz + dz * r), v(1.3, 1.6, 1.3), DRIP);
     }
-    // Bubbles on the surface, each with its glint.
-    for k in 0..11 {
-        let a = nz(k, 3, 7) * TAU;
-        let y = 5.0 + nz(k, 5, 2) * 21.0;
-        let kk = y / 29.5;
-        let r = 20.2 * (1.0 - kk * kk).sqrt();
-        let (bx, bz) = (cx + a.cos() * r, cz + a.sin() * r);
-        if bz > cz + 12.0 && y > 6.0 {
+
+    // ---- what it holds
+    // Its heart: a darker knot of goo low in it, set back.
+    ball(&mut s, v(cx + 0.5, 9.0, cz - 1.5), v(7.5, 6.0, 7.0), CORE);
+    ball(&mut s, v(cx - 1.0, 8.0, cz - 3.0), v(4.5, 4.0, 4.5), CORE_D);
+    // A drowned man's skull, tipped back, half out of the heart, looking out of its left flank.
+    let (sx, sy, sz) = (13.0f32, 9.5f32, 27.5f32);
+    ball(&mut s, v(sx, sy, sz), v(3.6, 3.3, 3.8), BONE);
+    ball(&mut s, v(sx + 0.6, sy - 2.6, sz + 1.6), v(2.4, 1.4, 2.2), BONE_D);
+    for ex in [sx - 1.4, sx + 1.6] {
+        ball(&mut s, v(ex, sy + 0.2, sz + 3.0), v(1.0, 1.0, 1.0), SOCKET);
+    }
+    s.set(sx.round() as i32, (sy - 1.0) as i32, (sz + 3.6) as i32, SOCKET);
+    // His thigh bone and a rib, across the heart.
+    s.capsule((24.0, 4.5, 13.5), (33.0, 8.5, 21.0), 0.9, 0.9, BONE);
+    ball(&mut s, v(23.6, 4.2, 13.0), v(1.5, 1.5, 1.5), BONE);
+    ball(&mut s, v(33.4, 8.9, 21.5), v(1.5, 1.4, 1.4), BONE);
+    s.capsule((26.0, 15.0, 27.5), (30.0, 18.5, 24.0), 0.7, 0.6, BONE_D);
+    s.capsule((30.0, 18.5, 24.0), (31.5, 17.0, 19.5), 0.6, 0.6, BONE_D);
+    // A coin turning in it, and another sunk at its foot.
+    for (x, y, z) in [(28, 12, 30), (12, 3, 16)] {
+        for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0), (0, -1), (2, 0), (0, 2), (2, 1), (1, 2), (-1, 1), (1, -1)] {
+            s.set(x + dx, y + dy, z - dx / 2, COIN);
+        }
+        s.set(x, y + 1, z, GLINT);
+    }
+    // A rusty key, its bow up.
+    s.capsule((9.5, 15.0, 21.0), (14.5, 17.5, 23.0), 0.6, 0.6, KEY);
+    for (dx, dy) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)] {
+        if (dx, dy) != (0, 0) {
+            s.set(8 + dx, 14 + dy, 20, KEY);
+        }
+    }
+    s.set(14, 16, 23, KEY);
+    s.set(15, 16, 23, KEY);
+    s.set(15, 17, 23, GLINT);
+    // Bubbles caught in it, rising.
+    for k in 0..8 {
+        let (x, y, z) = (14.0 + nz(k, 4, 1) * 16.0, 6.0 + nz(k, 5, 3) * 16.0, 14.0 + nz(k, 6, 7) * 16.0);
+        let r = 0.7 + nz(k, 9, 2) * 0.8;
+        if (x - sx).abs() < 5.0 && (z - sz).abs() < 5.0 {
             continue;
         }
-        let br = 1.0 + nz(k, 9, 9) * 1.3;
-        ball(&mut s, v(bx, y, bz), Vec3::splat(br), BUBBLE);
-        s.set((bx - a.cos() * 0.3).round() as i32, (y + br).round() as i32, bz.round() as i32, GLOSS);
+        ball(&mut s, v(x, y, z), Vec3::splat(r), BUBBLE);
     }
-    // The shine where the light strikes the crown.
-    for (x, y, z) in [(14, 25, 24), (13, 24, 25), (15, 26, 23), (12, 23, 27), (16, 26, 21), (14, 26, 22), (12, 24, 26)] {
-        if let Some(top) = (0..h).rev().find(|&yy| s.get(x, yy, z).is_some()) {
-            s.recolor(x, top.min(y + 3), z, GLOSS);
-        }
+    // Two small dim eyes, deep behind its front, a little apart.
+    for ex in [17.0f32, 26.0] {
+        ball(&mut s, v(ex, 18.5, 33.0), v(1.2, 0.9, 0.8), EYE);
     }
-    // A drowned bone, half out of its side.
-    s.capsule((33.0, 9.0, 15.0), (41.5, 11.0, 12.0), 1.1, 1.1, BONE);
-    ball(&mut s, v(41.8, 11.8, 12.6), Vec3::splat(1.5), BONE);
-    ball(&mut s, v(42.0, 10.2, 11.4), Vec3::splat(1.4), BONE);
 
-    // ---- the face: big eyes, a grin with one tooth
-    for (ex, r, look) in [(14.0f32, 4.8f32, 0.8f32), (29.0, 4.1, -0.4)] {
-        let fz = front(&s, ex.round() as i32, 19, d).unwrap_or(38) as f32;
-        ball(&mut s, v(ex, 19.5, fz - 0.4), v(r, r * 1.08, 3.4), WHITE);
-        let pz = front(&s, ex.round() as i32, 19, d).unwrap_or(40);
-        let (px, py) = (ex + look, 19.0);
-        for y in (py - 2.0) as i32..=(py + 2.0) as i32 {
-            for x in (px - 2.0) as i32..=(px + 2.0) as i32 {
-                let q = (x as f32 - px).powi(2) + (y as f32 - py).powi(2);
-                if q <= 4.6 {
-                    let z = front(&s, x, y, d).unwrap_or(pz);
-                    s.recolor(x, y, z, PUPIL);
+    // ---- on it: duckweed, and a lily pad in flower on its crown
+    for z in 0..d {
+        for x in 0..w {
+            if nz(x, 7, z) > 0.12 || nz(x / 3, 8, z / 3) > 0.55 {
+                continue;
+            }
+            if let Some(top) = (2..h).rev().find(|&y| s.get(x, y, z).is_some()) {
+                if top > 14 {
+                    s.recolor(x, top, z, WEED);
                 }
             }
         }
-        let gx = (px - 1.0).round() as i32;
-        let gz = front(&s, gx, 21, d).unwrap_or(pz);
-        s.recolor(gx, 21, gz, GLINT);
-        s.set(gx, 21, gz + 1, GLINT);
     }
-    // The grin: a curved slot pressed deep into the goo.
-    for x in 11..=32 {
-        let t = (x as f32 - 21.5) / 10.5;
-        let mid = 10.0 + t * t * 2.6;
-        let half = 2.6 * (1.0 - t * t).max(0.0).sqrt();
-        for y in (mid - half).round() as i32..=(mid + half).round() as i32 {
-            let Some(z) = front(&s, x, y, d) else { continue };
-            let deep = 2 + (half * 0.8) as i32;
-            for k in 0..deep {
-                s.clear(x, y, z - k);
-            }
-            s.recolor(
-                x,
-                y,
-                z - deep,
-                if (y as f32) < mid - half + 1.2 {
-                    TONGUE
-                } else if deep > 3 {
-                    THROAT
-                } else {
-                    MOUTH
-                },
-            );
-        }
-    }
-    if let Some(z) = front(&s, 24, 13, d) {
-        for y in [11, 12] {
-            s.set(24, y, z - 1, TOOTH);
-            s.set(25, y, z - 1, TOOTH);
-        }
-    }
-
-    // ---- a lily pad on its head, notched, veined, in flower
-    // It drapes over the crown, following the goo beneath.
     let (lx, lz) = (24.0f32, 18.0f32);
     let mut ly = 0;
     for z in 0..d {
@@ -1013,12 +1020,12 @@ pub fn bog_slime() -> Collected {
             let (dx, dz) = (x as f32 - lx, z as f32 - lz);
             let r = (dx * dx + dz * dz).sqrt();
             let ang = dz.atan2(dx);
-            if r > 7.4 || (ang > 2.2 && ang < 2.7) {
+            if r > 6.4 || (ang > 2.2 && ang < 2.7) {
                 continue;
             }
             let Some(top) = (0..h - 3).rev().find(|&y| s.get(x, y, z).is_some()) else { continue };
             let vein = r > 1.5 && ((ang * 9.0 / TAU).fract() < 0.12);
-            let c = if r > 6.6 {
+            let c = if r > 5.6 {
                 PAD_D
             } else if vein {
                 PAD_L
@@ -1033,13 +1040,12 @@ pub fn bog_slime() -> Collected {
     }
     for k in 0..8 {
         let a = k as f32 / 8.0 * TAU;
-        for t in 1..=3 {
+        for t in 1..=2 {
             let (x, z) = ((lx + 0.5 + a.cos() * t as f32).round() as i32, (lz + 0.5 + a.sin() * t as f32).round() as i32);
-            s.set(x, ly + 1 + i32::from(t == 3), z, if t == 3 { PETAL_L } else { PETAL });
+            s.set(x, ly + 1 + i32::from(t == 2), z, if t == 2 { PETAL_L } else { PETAL });
         }
     }
     s.set(lx.round() as i32, ly + 1, lz.round() as i32, POLLEN);
-    s.set(lx.round() as i32 + 1, ly + 1, lz.round() as i32, POLLEN);
     s.finish_grounded(0.04)
 }
 
@@ -1490,7 +1496,7 @@ mod tests {
             ("draugr", draugr(), DRAUGR_RIG, DRAUGR_SIZE, 9_000),
             ("raven", raven(false), RAVEN_RIG, RAVEN_SIZE, 6_000),
             ("night raven", raven(true), RAVEN_RIG, RAVEN_SIZE, 6_000),
-            ("bog slime", bog_slime(), &[] as &[PartDef], SLIME_SIZE, 6_000),
+            ("bog slime", bog_slime(), &[] as &[PartDef], SLIME_SIZE, 9_000),
         ] {
             let n = model.voxels.len();
             eprintln!("{name}: {n} voxels");
@@ -1504,6 +1510,20 @@ mod tests {
             let count = |r: &crate::render::voxels::Rig| r.parts.iter().map(|p| p.cubes.len()).sum::<usize>();
             assert!(count(&far) * 5 < count(&r) * 2, "{name}'s far copy has {} cubes against {}", count(&far), count(&r));
         }
+    }
+
+    /// The bog slime is a skin of jelly round what it has swallowed (RENDERING.md): its jelly
+    /// a shell, and inside it, clear of the skin, its heart, bones, a coin, a key and two eyes.
+    #[test]
+    fn the_bog_slime_is_a_skin_of_jelly_round_what_it_swallowed() {
+        let m = bog_slime();
+        let of = |mat: u32| m.voxels.iter().filter(|v| v.c >> 24 == mat >> 24).count();
+        let (jelly, bone, gold, glow) = (of(mat::SLIME), of(mat::IVORY), of(mat::GOLD), of(mat::GLOW));
+        eprintln!("bog slime: {jelly} jelly, {bone} bone, {gold} gold, {glow} eye voxels of {}", m.voxels.len());
+        assert!(jelly > 2_000 && bone > 60 && gold > 20 && glow >= 4);
+        // Hollow: the middle of it is empty but for what it holds (no jelly there).
+        let at = |x: i32, y: i32, z: i32| m.voxels.iter().find(|v| (v.x, v.y, v.z) == (x, y, z)).map(|v| v.c >> 24);
+        assert!((4..24).all(|y| at(21, y, 30) != Some(mat::SLIME >> 24)), "its middle is no jelly");
     }
 
     #[test]

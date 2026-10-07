@@ -41,13 +41,27 @@ AX = "melee-axe/standing "
 # His notched sword hangs point down from his bony fist at rest, leaning forward a little
 # (`foe_rigs::FoeRig::weapon_rest`).
 DRAUGR_SWORD = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, -0.975, 0.22))
-# The dead man's carriage: the zombie's own, a little hunched; his arms carried clear of his mail.
+# A dead man's carriage, hunched: his spine and chest bowed (the opposite of straightening them,
+# `retarget.Retarget.posture`), his skull raised again to glare at the living.
+DRAUGR_HUNCH = {"spine": -8.0, "chest": -12.0, "neck": 6.0, "head": 12.0}
+# His guard: the sword and shield pack's ready stance (its first two seconds, before it turns to look
+# behind it), his sword up and forward in his fist, his free hand out before him. Laid over the
+# zombie's legs and spine as he stalks, so he walks as the dead walk and holds his sword as a
+# swordsman holds it (`arms`: the bones it gives, `arms_over`).
+DRAUGR_GUARD = (SS + "idle.fbx", dict(DRAUGR_SWORD, loop=True, span=(0.0, 2.0), posture=DRAUGR_HUNCH, arms_out=5))
+# (The zombie stoops lower as it lurches than a swordsman can fight from: straightened a little,
+# his skull raised to look ahead.)
+DRAUGR_LURCH = {"spine": 8.0, "chest": 6.0, "neck": 8.0, "head": 16.0}
+DRAUGR_ARMS = ("upper_arm.L", "forearm.L", "hand.L", "offhand", "upper_arm.R", "forearm.R", "hand.R")
+# The undead viking: a swordsman's guard (not the zombie's reaching arms), the zombie's lurch in his
+# legs as he stalks, hunched; the overhead chop and the backhand sweep of a man who fought with a
+# sword; the zombie's scream to rally, its flinch and stumble.
 DRAUGR = {
-    "idle": (Z + "idle.fbx", dict(DRAUGR_SWORD, loop=True, arms_out=5)),
-    "walk": (Z + "walk.fbx", dict(DRAUGR_SWORD, loop=True, stride="feet", arms_out=5)),
-    "run": (Z + "run.fbx", dict(DRAUGR_SWORD, loop=True, stride="feet", arms_out=5)),
-    "slam": (AX + "melee attack downward.fbx", dict(DRAUGR_SWORD, kind="strike")),
-    "sweep": (SS + "attack (2).fbx", dict(DRAUGR_SWORD, kind="strike", yaw_keep=0.0, face=0.0, still=True)),
+    "idle": DRAUGR_GUARD,
+    "walk": (Z + "walk.fbx", dict(DRAUGR_SWORD, loop=True, stride="feet", posture=DRAUGR_LURCH, yaw_keep=0.4, arms=DRAUGR_GUARD)),
+    "run": (Z + "run.fbx", dict(DRAUGR_SWORD, loop=True, stride="feet", posture=DRAUGR_LURCH, yaw_keep=0.4, arms=DRAUGR_GUARD)),
+    "slam": (AX + "melee attack downward.fbx", dict(DRAUGR_SWORD, kind="strike", posture=DRAUGR_HUNCH)),
+    "sweep": (SS + "attack (2).fbx", dict(DRAUGR_SWORD, kind="strike", yaw_keep=0.0, face=0.0, still=True, posture=DRAUGR_HUNCH)),
     "rally": (Z + "scream.fbx", dict(DRAUGR_SWORD, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
     "hit": (FX + "zombie reaction hit flinch.fbx", dict(DRAUGR_SWORD, kind="flinch", cut=60)),
     "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(DRAUGR_SWORD, kind="flinch", cut=100)),
@@ -662,6 +676,36 @@ def lay(tgt, act, keyed, which, bones, n_k, loop, fd=None, stride_per_cycle=None
     print(f"mixamo_foe: {act.name}: {', '.join(bones)} laid in from {type(keyed).__name__}.{which}")
 
 
+def arms_over(tgt, act, guard, bones=DRAUGR_ARMS):
+    """Lays the arms of another clip over `act` (the draugr's guard over the zombie's walk): `guard`
+    is (file, options) as a slot's; its loop is baked, then each frame of `act` takes `bones` from it
+    (looped), their turns relative to the chest, so the arms ride the walk's sway."""
+    path, opts = guard
+    tmp = mh.make("_arms", os.path.join(ROOT[0], path), opts, tgt, prefix="mixamo_foe")
+    n_g = int(tmp.frame_range[1])
+    n = int(act.frame_range[1])
+    scene = bpy.context.scene
+    held = []
+    tgt.animation_data.action = tmp
+    for f in range(n + 1):
+        scene.frame_set(f % max(1, n_g))
+        held.append({b: tgt.pose.bones[b].rotation_quaternion.copy() for b in bones if b in tgt.pose.bones})
+    tgt.animation_data.action = act
+    for f in range(n + 1):
+        scene.frame_set(f)
+        for b, q in held[f].items():
+            pb = tgt.pose.bones[b]
+            pb.rotation_mode = "QUATERNION"
+            pb.rotation_quaternion = q
+            pb.keyframe_insert("rotation_quaternion", frame=f)
+    bpy.data.actions.remove(tmp)
+    print(f"mixamo_foe: {act.name}: {', '.join(bones)} laid in from {os.path.basename(path)}")
+
+
+# (The packs' folder, as the command line gives it.)
+ROOT = [""]
+
+
 def label_of(path):
     base = os.path.splitext(os.path.basename(path))[0]
     for long, short in (("sword and shield ", "ss "), ("great sword ", "gs "), ("zombie ", "z "), ("standing ", "")):
@@ -712,6 +756,7 @@ def main():
     if len(a) < 3:
         sys.exit(__doc__)
     foe, root, out, rest = a[0], a[1], a[2], a[3:]
+    ROOT[0] = root
     if foe not in FOES:
         sys.exit(f"mixamo_foe: no foe {foe} ({', '.join(FOES)})")
     tgt = vh.armature()
@@ -731,6 +776,8 @@ def main():
             shorten(slot, act)
             if opts.get("legs"):
                 lay_legs(tgt, act, opts["legs"])
+            if opts.get("arms"):
+                arms_over(tgt, act, opts["arms"])
             if opts.get("lay"):
                 # (Bones the source has none of, keyed by script: `(module, class, method, bones, frames, loop)`.)
                 mod, cls, which, bones, n_k, loop = opts["lay"]

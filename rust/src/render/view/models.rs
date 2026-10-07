@@ -253,7 +253,7 @@ impl Models {
         let skeleton = build_rig(&draugr(), DRAUGR_RIG, 0.0125);
         let bat = build_rig(&raven(false), RAVEN_RIG, 0.0105);
         let vampire = build_rig(&raven(true), RAVEN_RIG, 0.0125);
-        let slime = build_rig(&bog_slime(), &[], 0.01875);
+        let slime = build_rig(&bog_slime(), &[], 0.01875).fused_goo();
         use crate::render::foes2::{
             blemmyes, helmeted_skeleton, large_bat, loup_garou, minion, witch, BAT_RIG, BLEMMYES_RIG, HELMET_RIG, WITCH_RIG, WOLF_RIG,
         };

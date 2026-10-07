@@ -391,6 +391,13 @@ impl Game {
         scene_state!(self)
     }
 
+    /// Captures: the foes the camera was moved to see posed by their clips where they stand
+    /// (`WorldView::pose_foes_in_view`).
+    pub fn pose_foes_in_view(&mut self) {
+        let state = scene_state!(self);
+        self.view.pose_foes_in_view(&state);
+    }
+
     pub(super) fn handle_global_keys(&mut self) {
         // While the settings page waits for a control to bind (or asks about one), every press
         // is its own: even the testing keys do nothing (it tells the player they are kept).

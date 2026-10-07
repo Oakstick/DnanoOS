@@ -144,6 +144,10 @@ pub struct Rig {
     whole: OnceLock<Arc<RigMesh>>,
     /// The same rig at half and a quarter of the resolution, made the first time they are wanted.
     lods: [OnceLock<Box<Rig>>; 2],
+    /// Its jelly (`mat::SLIME`) is one body across its parts: a face between two of its voxels is
+    /// not drawn even where they lie in different parts (the bog slime, drawn see-through, would
+    /// show its cuts as panes inside it; `Rig::fused_goo`).
+    pub fuse_goo: bool,
 }
 
 /// Levels of detail a rig has: itself, then at half and a quarter of the resolution.
@@ -160,7 +164,14 @@ impl Rig {
             mesh: OnceLock::new(),
             whole: OnceLock::new(),
             lods: [OnceLock::new(), OnceLock::new()],
+            fuse_goo: false,
         }
+    }
+
+    /// The rig with its jelly one body across its parts (`fuse_goo`). Call before it is drawn.
+    pub fn fused_goo(mut self) -> Self {
+        self.fuse_goo = true;
+        self
     }
 
     /// Names the rig (for caches and the level-of-detail memory).
@@ -229,7 +240,7 @@ impl Rig {
                 RigPart { name: p.name, rest: p.rest, cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 }, parent: p.parent }
             })
             .collect();
-        Rig::new(size, parts)
+        Rig { fuse_goo: self.fuse_goo, ..Rig::new(size, parts) }
     }
 }
 
@@ -273,6 +284,9 @@ impl RigMesh {
     }
 }
 
+/// The shade mode of jelly (`mat::SLIME`: material 9, modes from 5).
+const GOO_SHADE: f32 = 14.0;
+
 /// The six faces of a unit cube by their outward axis (the shader's `FACE_CORNERS` walks each
 /// one's corners).
 const FACES: [[i32; 3]; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -288,6 +302,22 @@ impl RigMesh {
             (k.x as i32, k.y as i32, k.z as i32)
         };
         assert!(rig.parts.len() <= 256, "a rig's part must fit in a byte");
+        // (A fused rig's jelly, wherever it lies at rest, by part.)
+        let goo: std::collections::HashMap<(i32, i32, i32), usize> = if cull && rig.fuse_goo {
+            rig.parts
+                .iter()
+                .enumerate()
+                .flat_map(|(pi, p)| {
+                    p.cubes
+                        .iter()
+                        .zip(&p.shade)
+                        .filter(|(_, m)| (**m - GOO_SHADE).abs() < 0.5)
+                        .map(move |((o, _), _)| (key(p.rest + *o), pi))
+                })
+                .collect()
+        } else {
+            Default::default()
+        };
         for (pi, part) in rig.parts.iter().enumerate() {
             if pi < 32 && matches!(part.name, "blade" | "offhand") {
                 rust_mask |= 1 << pi;
@@ -298,8 +328,13 @@ impl RigMesh {
                 let shade = part.shade.get(j).copied().filter(|&m| m > 0.0).unwrap_or(0.0);
                 let color = [c.x, c.y, c.z, shade];
                 let k = key(*off);
+                let at = key(part.rest + *off);
+                let jelly = !goo.is_empty() && (shade - GOO_SHADE).abs() < 0.5;
                 for (fi, dir) in FACES.into_iter().enumerate() {
                     if cull && filled.contains(&(k.0 + dir[0] * 2, k.1 + dir[1] * 2, k.2 + dir[2] * 2)) {
+                        continue;
+                    }
+                    if jelly && goo.get(&(at.0 + dir[0] * 2, at.1 + dir[1] * 2, at.2 + dir[2] * 2)).is_some_and(|&q| q != pi) {
                         continue;
                     }
                     faces.push(RigFace { pos: off.to_array(), part_face: pi as u32 | (fi as u32) << 8, color });
