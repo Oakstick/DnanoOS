@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy  # noqa: E402
 import vh_blender as vh  # noqa: E402
+from thin_clips import thin_glb  # noqa: E402
 
 
 def markers(act, scene):
@@ -83,7 +84,8 @@ def main():
         with open(os.path.join(out, act.name + ".json"), "w") as f:
             json.dump(info, f, indent=1)
             f.write("\n")
-        print(f"export_clips: {act.name}: {f1 - f0} frames, {os.path.getsize(path) // 1024} KB, markers {info['markers']}")
+        sizes = thin_glb(path)
+        print(f"export_clips: {act.name}: {f1 - f0} frames, {sizes[1] // 1024} KB (thinned from {sizes[0] // 1024}), markers {info['markers']}")
 
 
 main()
