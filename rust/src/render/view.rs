@@ -72,6 +72,7 @@ mod select;
 mod showcase;
 mod spring;
 mod story;
+mod story_sets;
 mod vault;
 mod vault_decor;
 mod war_props;
@@ -90,8 +91,8 @@ pub use forge::jointed_hero;
 pub use fountain::krampus;
 use frame::mix_hex;
 pub use frame::{
-    glow_orb, rig_look, Atmosphere, Frame, Haze, Instance, InstanceSet, Light, LodPolicy, MeshKind, RigDraw, RigList, MESH_KINDS,
-    SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
+    glow_orb, rig_look, Atmosphere, Frame, Haze, Instance, InstanceSet, Light, LodPolicy, MeshKind, RigDraw, RigList, SetProbes,
+    MESH_KINDS, SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
 };
 pub use lookdev::LookLight;
 pub use meadow::meadow_atmosphere;
@@ -563,8 +564,8 @@ impl WorldView {
             preview_heroes: false,
             lookdev: None,
             story: None,
-            story_sets: [InstanceSet::new(story::graveyard_set()), InstanceSet::new(story::gateway_set())],
-            story_mist: [InstanceSet::new(story::graveyard_mist()), InstanceSet::new(story::gateway_mist())],
+            story_sets: [InstanceSet::new(story_sets::graveyard_set()), InstanceSet::new(story_sets::gateway_set())],
+            story_mist: [InstanceSet::new(story_sets::graveyard_mist()), InstanceSet::new(story_sets::gateway_mist())],
             story_rise: [0.0; 3],
             was_story: false,
             ascent_set: InstanceSet::new(ascent::pit_set()),

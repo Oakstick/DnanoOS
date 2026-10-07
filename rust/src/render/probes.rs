@@ -50,8 +50,8 @@ struct Occupancy {
 }
 
 impl Occupancy {
-    fn new(width: f32, depth: f32) -> Self {
-        let min = Vec3::new(-2.0, FLOOR, -2.0);
+    fn new(origin: Vec3, width: f32, depth: f32) -> Self {
+        let min = origin + Vec3::new(-2.0, FLOOR, -2.0);
         let size = Vec3::new(width + 4.0, CEILING - FLOOR, depth + 4.0);
         let dims = [(size.x / CELL).ceil() as usize, (size.y / CELL).ceil() as usize, (size.z / CELL).ceil() as usize];
         let n = dims[0] * dims[1] * dims[2];
@@ -214,8 +214,10 @@ impl ProbeBox {
 /// The level's probes, and the cells they were built from.
 #[derive(Clone)]
 pub struct ProbeVolume {
-    /// Probes along x (tiles), y (layers) and z (tiles).
+    /// Probes along x (tiles), y (layers) and z (tiles), from `origin` (a level's is at the
+    /// world's origin; a story set's where the set stands).
     pub dims: [u32; 3],
+    pub origin: Vec3,
     /// Per side (`SIDES` order), per probe (x fastest, then y, then z): the light coming back
     /// off what that side sees (linear radiance, before exposure), and the share of sky it sees.
     pub sides: [Vec<[f32; 4]>; 6],
@@ -242,14 +244,21 @@ fn fan(axis: Vec3) -> Vec<Vec3> {
 impl ProbeVolume {
     /// Builds the probes for a level `width` by `depth` tiles from its static cubes, under `atm`.
     pub fn build(cubes: &[Instance], width: f32, depth: f32, atm: &Atmosphere) -> Self {
-        let mut occ = Occupancy::new(width, depth);
+        Self::build_at(cubes, Vec3::ZERO, width, depth, atm)
+    }
+
+    /// Builds probes over `width` by `depth` units from `origin` (a set standing away from the
+    /// level), from its cubes.
+    pub fn build_at(cubes: &[Instance], origin: Vec3, width: f32, depth: f32, atm: &Atmosphere) -> Self {
+        let origin = Vec3::new(origin.x, 0.0, origin.z);
+        let mut occ = Occupancy::new(origin, width, depth);
         for c in cubes {
             occ.lay(c, None);
         }
         occ.light(atm.sun_dir.normalize_or(Vec3::Y), None);
         let dims = [width.max(1.0) as u32, LAYERS, depth.max(1.0) as u32];
         let n = (dims[0] * dims[1] * dims[2]) as usize;
-        let mut v = Self { dims, sides: std::array::from_fn(|_| vec![[0.0; 4]; n]), occ, atm: *atm };
+        let mut v = Self { dims, origin, sides: std::array::from_fn(|_| vec![[0.0; 4]; n]), occ, atm: *atm };
         v.trace(None);
         v
     }
@@ -259,7 +268,7 @@ impl ProbeVolume {
         let x = i % self.dims[0] as usize;
         let y = (i / self.dims[0] as usize) % self.dims[1] as usize;
         let z = i / (self.dims[0] * self.dims[1]) as usize;
-        Vec3::new(x as f32, Y0 + y as f32 * DY, z as f32)
+        self.origin + Vec3::new(x as f32, Y0 + y as f32 * DY, z as f32)
     }
 
     /// What one side of a probe at `p` sees.
@@ -367,6 +376,7 @@ impl ProbeVolume {
 
     /// The probes (x, layer, z: first and last, inclusive) standing within `lo`..`hi`, if any.
     pub fn probes_in(&self, lo: Vec3, hi: Vec3) -> Option<ProbeBox> {
+        let (lo, hi) = (lo - self.origin, hi - self.origin);
         let last = |k: usize| self.dims[k] as f32 - 1.0;
         let (x0, x1) = (lo.x.ceil().max(0.0), hi.x.floor().min(last(0)));
         let (z0, z1) = (lo.z.ceil().max(0.0), hi.z.floor().min(last(2)));
@@ -429,6 +439,23 @@ mod tests {
             open.sides[0][i],
             walled.sides[0][i]
         );
+    }
+
+    #[test]
+    fn a_volume_away_from_the_origin_sees_as_one_at_it() {
+        let floor = |o: Vec3| slab(o + Vec3::new(4.0, -0.5, 4.0), Vec3::new(12.0, 0.4, 12.0), Vec3::splat(0.5));
+        let wall = |o: Vec3| slab(o + Vec3::new(5.5, 0.5, 4.0), Vec3::new(0.5, 3.0, 12.0), Vec3::splat(0.5));
+        let here = ProbeVolume::build(&[floor(Vec3::ZERO), wall(Vec3::ZERO)], 8.0, 8.0, &atm());
+        let away = Vec3::new(-200.0, 0.0, -40.0);
+        let there = ProbeVolume::build_at(&[floor(away), wall(away)], away, 8.0, 8.0, &atm());
+        assert_eq!(there.position(0), away + here.position(0));
+        for s in 0..6 {
+            for (a, b) in here.sides[s].iter().zip(&there.sides[s]) {
+                for c in 0..4 {
+                    assert!((a[c] - b[c]).abs() < 1e-4, "side {s}: {a:?} against {b:?}");
+                }
+            }
+        }
     }
 
     #[test]

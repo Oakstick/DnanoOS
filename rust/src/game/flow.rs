@@ -8,7 +8,7 @@ use crate::logic::boss::BossState;
 use crate::logic::types::Dir;
 use crate::platform;
 use crate::render::hud;
-use crate::render::view::{CameraMode, GateView, HubView, SceneState, SelectView, StoryView};
+use crate::render::view::{CameraMode, GateView, HubView, SceneState, SelectView};
 
 /// How long "GO!" hangs on screen once play begins.
 const GO_SECONDS: f32 = 0.8;
@@ -130,14 +130,7 @@ impl Game {
             age: self.select_age as f32,
             denied: self.select_denied as f32,
         });
-        self.view.story = self.story.as_ref().filter(|_| self.screen == Screen::Story).map(|s| StoryView {
-            scene: s.scene,
-            beat: s.beat,
-            t: s.t as f32,
-            age: s.age as f32,
-            shown: s.shown as f32,
-            souls: s.souls,
-        });
+        self.view.story = self.story.as_ref().filter(|_| self.screen == Screen::Story).map(|s| s.view());
         self.view.forge = self.screen == Screen::Shop;
         self.view.workshop = self.view.forge.then(|| self.workshop_view());
         self.view.tour = self.tour.as_ref().filter(|_| self.screen == Screen::Tour).map(|t| (t.stop().target, t.t as f32, t.index));

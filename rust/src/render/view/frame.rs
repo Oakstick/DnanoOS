@@ -402,6 +402,17 @@ impl Default for Atmosphere {
     }
 }
 
+/// A set standing away from the level that is lit by its own probes (RP18), as a level is: the
+/// story's sets. The probes are worked out once from its cubes under `atm` (the set's settled
+/// light), over `size` units from `origin`, and kept.
+#[derive(Clone)]
+pub struct SetProbes {
+    pub set: InstanceSet,
+    pub origin: Vec3,
+    pub size: Vec2,
+    pub atm: Atmosphere,
+}
+
 /// Ground haze (RP19): fog thickest at `floor` and thinning above it, `falloff` units to fall
 /// to a third; `density` is how much of the light it takes, per unit, at the floor. It also
 /// scatters the nearest lamps' light toward the eye (a glow in the air round them).
@@ -441,6 +452,10 @@ pub struct Frame {
     pub lantern: bool,
     pub atmosphere: Atmosphere,
     pub haze: Haze,
+    /// With `skip_static`: the set on show lit by its own probes, and others to have ready (sent
+    /// up and their probes worked out) before they are shown.
+    pub probes: Option<SetProbes>,
+    pub probes_warm: Vec<SetProbes>,
 }
 
 impl Frame {
@@ -454,6 +469,8 @@ impl Frame {
         self.sets.clear();
         self.sets_blend.clear();
         self.haze = Haze::default();
+        self.probes = None;
+        self.probes_warm.clear();
         self.additive.clear();
         self.glow.clear();
         self.lights.clear();

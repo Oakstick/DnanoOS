@@ -801,6 +801,96 @@ builder is `view/crypt.rs`. Both are off the road on the map.
 - **Camera check:** both pass their walks with no clips or hidden poses. The chase survey hides the
   hero in 33 of 16,248 poses in the Cisterns and 24 of 15,720 in the Vaults.
 
+### Scene I's sets (2026-10-07)
+
+Both sets were rebuilt to Dungeon II's quality (`view/story_sets.rs`). The cast's animation, the
+boys' sculpts and the shots' framing and timing are unchanged.
+
+- **What the story bypassed:** its sets were plain-lit cubes (`SHADE_LIT`, no `voxel_surface`
+  material, RP14) and it drew no ground haze (RP19: `emit_story` returned before `level_haze`). The
+  probes (RP18) were built only for the level's static cubes at the world's origin, so the sets
+  took the shader's fallback light. AO on indirect (RP15), the clustered lights (RP17) and the
+  presets (RP16) already applied, but with flat indirect light AO had little to work on.
+- **Shared builders:** `crypt.rs`'s pieces are now free functions on a list of cubes. These are
+  `masonry` (one `Wall` face of any length and height, in courses, with arched or windowed
+  openings and fallen blocks), `arch_cubes` (round or flattened), `pillar_cubes`,
+  `brazier_cubes`, `lantern_cubes`, `bracket_cubes`, `statue_cubes`, `banner_cubes`,
+  `bone_cubes`, `moss_cap`, `moss_seam`, `flagstones`, `spout_cubes`, `emit_pool` and
+  `emit_fall`. The vaults call the same functions.
+  - The arch's wedge stones are now turned square to the curve. They were turned a quarter turn
+    wrong part of the way round (`rotation_z(a - PI/2)` for a ring laid from -x). This changes
+    the Vaults' and Cisterns' arches slightly; nothing else in the dungeons changed (536 and 168
+    pixels differ in the reference views).
+- **The gateway:**
+  - Walls of chunky dressed stone (11 courses, 4.8 high), each block at its own depth, askew and
+    chipped. The lowest course is dark and wet with verdigris, and fallen blocks lie at the feet.
+  - Wet flagstones in grout, with moss seams and five shallow puddles under the drips.
+  - Pillars carrying two flattened ribs, and blind arcades along the side walls with niches, a
+    banner and a hooded knight.
+  - The crypt gate: towers with a watcher on each, a round arch on pale piers, a skull keystone
+    with ember eyes, a fixed grille, a cornice with five lock lamps that kindle red as the door
+    opens, and an iron door of plates, bars and riveted straps.
+  - Copper braziers (deep bowls, their flames drawn live) and lanterns hung from the ribs and the
+    front pillars.
+  - The old man's corner: a stool, a crate with a mug and bread, a straw pallet with a blanket,
+    a pail, and his lantern. Quitmer's corner: straw, an iron bowl with a bone, and the chain's
+    ring on a plate.
+  - The way they came is a stone arch in the front wall, sealed deep, with the swirl fitted inside it.
+- **The graveyard at dusk:**
+  - The ground is uneven turf in half-unit cells, level where the cast moves, with a trodden
+    patch where the friends play. A path of sunk stones and gravel leads to a lane, and coarser
+    fields run out to the fog.
+  - The churchyard wall is dressed stone on both faces, with a pale coping and moss. It carries
+    rusted railings with spear heads and collars.
+  - The gate's piers are dressed stone in courses, with lichen, a moulded cap and a cut stone
+    ball. The iron arch is rusted.
+  - Graves: rounded headstones with worn inscriptions, crosses (some ringed), obelisks, chest
+    tombs and sunk broken slabs, with moss and lichen. There is a railed family plot.
+  - A mausoleum with columns, an arched iron door and a verdigris roof.
+  - The chapel has walls in courses, lit lancet windows, a slate roof and a bell tower with a
+    spire.
+  - The bare trees have umber bark, ridges and lichen, one level more of branches, and four more
+    beyond the wall.
+  - Outside the wall, which is beat 3's view: old graves at the yard's edge, a wayside cross, a
+    dry-stone field wall, a bench, and the lantern on its post.
+  - The dusk is the meadow's: amber, copper and mist teal instead of pink and violet. The mist
+    is teal grey, and a low haze (`dusk_haze`) thickens with the pursuit's fog.
+- **Light:**
+  - Each set carries `SetProbes` (its cubes, extent and settled light) in `Frame::probes`, and
+    the other set in `probes_warm`. `Gpu::sync_set_probes` works their probes out once, on a
+    worker thread (`ProbeVolume::build_at`, a volume with an origin), and sends the shown set's
+    up when the textures hold another's. The level's probes go back up whole when play resumes.
+  - Working the probes out takes 3.6 ms for the gateway (11×6×14 probes) and 6.8 ms for the
+    graveyard (32×6×30).
+  - `begin_story` holds Scene I behind the loading screen until both sets' probes are worked out
+    and both sets are on the GPU (`level_ready` via `WorldView::story_set_id`). Nothing is
+    built or sent mid-scene. Captures call `Gpu::settle` so a shot never depends on the timing.
+  - The gateway takes the vaults' light (mist-teal sky light from above, exposure 1.35) and
+    their haze (0.05). Its practicals are 2 braziers, 4 lanterns, the old man's lantern, the lock
+    lamps and three fills: 13 lights in all.
+- **Numbers (1080p, RTX 5070 Ti Laptop):** interleaved A/B over two rounds, 300 frames each
+  (`--bench`).
+
+  | Beat | Before | After |
+  |------|-------:|------:|
+  | 1 (graveyard) | 6.1 ms | 7.2 ms |
+  | 3 | 4.7–5.0 ms | 6.1 ms |
+  | 5 (gateway) | 4.3 ms | 5.4 ms |
+  | 18 | 5.6–5.7 ms | 6.9 ms |
+  | 21 | 4.4–4.5 ms | 5.7 ms |
+
+  - The GPU's share of beat 5 is 3.07 → 3.94 ms: the main pass +0.55 ms (materials, more
+    lights), the shadow pass +0.15 ms, and the haze and lamp glow in the composite +0.17 ms.
+  - The graveyard is 16,056 cubes and the gateway 1,761, built once at start-up. A test keeps
+    them under 30,000 and 12,000.
+  - Each set's probes go up once, in 0.2 ms.
+- **Still open:**
+  - The chapel and mausoleum read from far off only.
+  - Seen from the crane, the turf under the mist is a flat grey-beige.
+  - The gateway's walls are regular in plan (no ruined course, no deep recesses).
+  - The probes are worked out under each set's settled light, so the graveyard's dimming when
+    Krampus comes changes the direct light only.
+
 ## Findings
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept

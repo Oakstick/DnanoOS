@@ -822,6 +822,8 @@ pub fn run(args: &[String]) -> i32 {
             times[0]
         );
     }
+    // (A story set's probes worked out first, as the loading screen waits for them in play.)
+    gpu.settle(&frame);
     let mut rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
     if game.show_fps && !args.iter().any(|a| a == "--no-hud") {
         // The F3 readout reports the frame before: draw once more with this one's numbers.
