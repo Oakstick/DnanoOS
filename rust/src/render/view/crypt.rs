@@ -89,9 +89,9 @@ pub(super) struct Wall<'a> {
     pub ruined: bool,
     /// The floor before the face, where fallen blocks lie (none if `None`).
     pub foot: Option<f32>,
-    /// Openings left in it: (middle along the face, half width, height of the top of its sides,
-    /// the rise of a round head over that): stones are cut back to their edges.
-    pub openings: &'a [(f32, f32, f32, f32)],
+    /// Openings left in it: (middle along the face, half width, its sill, the top of its sides,
+    /// the rise of a round head over that), heights over `base`: stones are cut back to their edges.
+    pub openings: &'a [(f32, f32, f32, f32, f32)],
 }
 
 impl Wall<'_> {
@@ -129,9 +129,11 @@ pub(super) fn masonry(out: &mut Vec<Instance>, w: &Wall) {
         Vec3::new(x + dx as f32 * o + if dx != 0 { 0.0 } else { u }, h, y + dy as f32 * o + if dx != 0 { u } else { 0.0 })
     };
     // How far an opening at `u` leaves the stone open at height `h` (0 where it is closed).
-    let open_at = |o: &(f32, f32, f32, f32), h: f32| -> f32 {
-        let (_, half, side, rise) = *o;
-        if h < side {
+    let open_at = |o: &(f32, f32, f32, f32, f32), h: f32| -> f32 {
+        let (_, half, sill, side, rise) = *o;
+        if h < sill {
+            0.0
+        } else if h < side {
             half
         } else if rise > 0.0 && h < side + rise {
             half * (1.0 - ((h - side) / rise).powi(2)).max(0.0).sqrt()
@@ -142,7 +144,7 @@ pub(super) fn masonry(out: &mut Vec<Instance>, w: &Wall) {
     // Cuts a block's run a..b at height range h0..h1 back to the openings' edges.
     let cut = |mut a: f32, mut b: f32, h0: f32, h1: f32| -> Option<(f32, f32)> {
         for o in w.openings {
-            let open = open_at(o, h0).max(open_at(o, h1));
+            let open = open_at(o, h0 + 0.01).max(open_at(o, h1 - 0.01)).max(open_at(o, (h0 + h1) / 2.0));
             if open > 0.0 && b > o.0 - open && a < o.0 + open {
                 if (a + b) / 2.0 < o.0 {
                     b = o.0 - open;
@@ -163,7 +165,7 @@ pub(super) fn masonry(out: &mut Vec<Instance>, w: &Wall) {
         while u < w.half {
             let hk = hash(hx * 3.0 + k as f64 * 1.9, hy * 5.0 + dy as f64 + k as f64);
             let len = 0.8 + hk as f32 * 0.6;
-            if let Some((a, b)) = cut(u.max(-w.half), (u + len).min(w.half), base, base + 0.2) {
+            if let Some((a, b)) = cut(u.max(-w.half), (u + len).min(w.half), 0.0, 0.2) {
                 block(
                     out,
                     at((a + b) / 2.0, base + 0.11, w.face + 0.04),
@@ -190,7 +192,7 @@ pub(super) fn masonry(out: &mut Vec<Instance>, w: &Wall) {
             let gone = hash(hk * 17.0 + 3.0, hy * 1.3 + hx);
             let missing = if w.ruined && course == w.courses - 1 { gone < 0.5 } else { gone < 0.035 };
             let y0 = base + 0.2 + course as f32 * course_h;
-            let run = cut(a, b, y0, y0 + course_h);
+            let run = cut(a, b, y0 - base, y0 - base + course_h);
             if missing {
                 if w.openings.is_empty() || run.is_some() {
                     fallen += 1;

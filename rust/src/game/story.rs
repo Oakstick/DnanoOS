@@ -8,6 +8,7 @@ use super::{Game, Screen};
 use crate::audio::{Sfx, Speech};
 use crate::input::Action;
 use crate::logic::story::{first, pause_after, stage, Beat, Place, Scene, Shot, Speaker, SOULS_LINE};
+use crate::render::view::StoryView;
 
 /// Letters a second the typewriter shows.
 pub const TYPE_RATE: f64 = 42.0;
@@ -63,6 +64,18 @@ impl Story {
         self.shown as usize >= self.beat().line.len()
     }
 
+    /// What the view shows of it.
+    pub fn view(&self) -> StoryView {
+        StoryView {
+            scene: self.scene,
+            beat: self.beat,
+            t: self.t as f32,
+            age: self.age as f32,
+            shown: self.shown as f32,
+            souls: self.souls,
+        }
+    }
+
     /// 0..1 how far the picture has gone to black at the end.
     pub fn fade_out(&self) -> f32 {
         self.ending.map(|(left, all)| (1.0 - left / all).clamp(0.0, 1.0) as f32).unwrap_or(0.0)
@@ -72,10 +85,16 @@ impl Story {
 impl Game {
     /// Starts Scene I from its first beat.
     pub(super) fn begin_story(&mut self) {
-        self.story = Some(Story { ambience: 0.5, ..Default::default() });
+        let story = Story { ambience: 0.5, ..Default::default() };
+        // Its sets are lit by their own probes: the scene waits behind the loading screen until
+        // the renderer has worked them out (RP03), never in the middle of it.
+        self.view.story = Some(story.view());
+        self.view.showcase = false;
+        self.story = Some(story);
         self.enter(Screen::Story);
         self.audio.hush();
         self.audio.set_threat(0.12);
+        self.begin_loading("Scene I".into(), web_time::Instant::now());
     }
 
     /// Jumps Scene I to beat `beat`, `t` seconds in, its line showing in full (captures, tests).

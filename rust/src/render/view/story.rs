@@ -8,7 +8,7 @@
 //! door. The cast plays out each beat on them and the camera cuts from shot
 //! to shot.
 
-use super::story_sets::{self, CHAIN_RING};
+use super::story_sets::{self, dusk, CHAIN_RING};
 use super::*;
 use crate::logic::heroes::HeroKind;
 use crate::logic::story::{first, stage, Place, Scene, Shot, Speaker};
@@ -82,18 +82,6 @@ fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-fn mix(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-fn h(a: f64, b: f64) -> f32 {
-    hash(a, b) as f32
-}
-
-fn block(out: &mut Vec<Instance>, p: Vec3, s: Vec3, rot: Quat, c: Vec3, shade: f32) {
-    out.push(Instance::new(Mat4::from_scale_rotation_translation(s, rot, p), c, 1.0, Vec3::ZERO, shade));
-}
-
 fn glowing(out: &mut Vec<Instance>, p: Vec3, s: Vec3, rot: Quat, c: Vec3, glow: Vec3) {
     out.push(Instance::new(Mat4::from_scale_rotation_translation(s, rot, p), c, 1.0, glow, SHADE_LIT));
 }
@@ -125,422 +113,7 @@ fn emit_rig_ghost(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: V
 
 // ---------------------------------------------------------------- the sets
 
-/// The graveyard's stone, iron, graves, trees and chapel: everything that stays put.
-pub(super) fn graveyard_set() -> Vec<Instance> {
-    let mut out = Vec::new();
-    let at = |x: f32, y: f32, z: f32| GRAVEYARD + Vec3::new(x, y, z);
-    let flat = Quat::IDENTITY;
-    let iron = lin(0x1c1c20);
-
-    // ---- turf outside the wall and in the churchyard, a trodden path up to the gate
-    for gx in -15..=15 {
-        for gz in -19..=9 {
-            let k = h(gx as f64 * 1.3 + 0.5, gz as f64 * 2.1 + 3.0);
-            let (x, z) = (gx as f32, gz as f32);
-            let path = gx == 0 && gz >= -2;
-            if path {
-                block(&mut out, at(x, -0.16, z), Vec3::new(1.0, 0.3, 1.0), flat, lin(0x4a3c2c) * (0.85 + 0.25 * k), SHADE_LIT);
-                continue;
-            }
-            let inside = z < -2.0;
-            let c = if inside { lin(0x38422e) } else { lin(0x40502e) } * (0.78 + 0.4 * k);
-            block(&mut out, at(x, -0.15 + (k - 0.5) * 0.04, z), Vec3::new(1.0, 0.3, 1.0), flat, c, SHADE_GRASS);
-        }
-    }
-    // Flat stones along the path, sunk in the mud.
-    for i in 0..16 {
-        let (a, b) = (h(i as f64, 7.0), h(i as f64, 13.0));
-        let z = 8.0 - i as f32 * 0.62;
-        if z < -1.6 {
-            break;
-        }
-        block(
-            &mut out,
-            at((a - 0.5) * 0.7, 0.005, z + (b - 0.5) * 0.2),
-            Vec3::new(0.3 + a * 0.2, 0.04, 0.25 + b * 0.15),
-            Quat::from_rotation_y(a * 3.0),
-            lin(0x6a665e) * (0.8 + 0.3 * b),
-            SHADE_LIT,
-        );
-    }
-
-    // ---- the churchyard wall, stone in courses with a coping on top, the gate gap in the middle
-    for side in [-1.0f32, 1.0] {
-        let mut x = 1.62;
-        let mut n = 0;
-        while x < 12.0 {
-            for row in 0..4 {
-                let k = h(x as f64 * 3.1 + side as f64, row as f64 * 1.7);
-                let len = 0.42 + k * 0.22;
-                let off = if row % 2 == 0 { 0.0 } else { 0.21 };
-                let xc = side * (x + off + len / 2.0);
-                let moss = row == 0 && k > 0.55;
-                let c = if moss { lin(0x56603e) } else { lin(0x6e6a62) * (0.75 + 0.35 * k) };
-                block(
-                    &mut out,
-                    at(xc, 0.125 + row as f32 * 0.235, -2.0 + (k - 0.5) * 0.02),
-                    Vec3::new(len - 0.02, 0.22, 0.38),
-                    flat,
-                    c,
-                    SHADE_LIT,
-                );
-            }
-            let k = h(x as f64, 99.0 + side as f64);
-            block(
-                &mut out,
-                at(side * (x + 0.25), 1.0, -2.0),
-                Vec3::new(0.52, 0.1, 0.48),
-                Quat::from_rotation_y((k - 0.5) * 0.05),
-                lin(0x7a766c) * (0.8 + 0.25 * k),
-                SHADE_LIT,
-            );
-            x += 0.5;
-            n += 1;
-        }
-        let _ = n;
-        // Iron railings along the top: spear-headed bars and two rails.
-        let mut bx = 1.72;
-        while bx < 11.9 {
-            let bent = h(bx as f64 * 5.0, side as f64) > 0.93;
-            let tilt = if bent { Quat::from_rotation_z(side * 0.25) } else { flat };
-            block(&mut out, at(side * bx, 1.4, -2.0), Vec3::new(0.035, 0.7, 0.035), tilt, iron, SHADE_METAL);
-            block(
-                &mut out,
-                at(side * bx, 1.78, -2.0) + tilt * Vec3::new(0.0, 0.02, 0.0),
-                Vec3::new(0.07, 0.07, 0.035),
-                tilt * Quat::from_rotation_z(0.785),
-                iron,
-                SHADE_METAL,
-            );
-            bx += 0.16;
-        }
-        for y in [1.15f32, 1.62] {
-            block(&mut out, at(side * 6.8, y, -2.0), Vec3::new(10.2, 0.03, 0.04), flat, iron, SHADE_METAL);
-        }
-    }
-    // ---- the gate pillars: a plinth, a shaft of dressed stone, a cap and a stone ball
-    for side in [-1.0f32, 1.0] {
-        let x = side * 1.34;
-        block(&mut out, at(x, 0.15, -2.0), Vec3::new(0.7, 0.3, 0.7), flat, lin(0x625e56), SHADE_LIT);
-        for k in 0..6 {
-            let v = h(k as f64, side as f64 * 3.0);
-            block(
-                &mut out,
-                at(x, 0.47 + k as f32 * 0.34, -2.0),
-                Vec3::new(0.54, 0.33, 0.54),
-                Quat::from_rotation_y((v - 0.5) * 0.04),
-                lin(0x76726a) * (0.82 + 0.25 * v),
-                SHADE_LIT,
-            );
-        }
-        block(&mut out, at(x, 2.4, -2.0), Vec3::new(0.72, 0.12, 0.72), flat, lin(0x827e74), SHADE_LIT);
-        block(&mut out, at(x, 2.5, -2.0), Vec3::new(0.5, 0.08, 0.5), flat, lin(0x7a766c), SHADE_LIT);
-        out.push(Instance::new(
-            Mat4::from_scale_rotation_translation(Vec3::splat(0.19), flat, at(x, 2.73, -2.0)),
-            lin(0x7e7a70),
-            1.0,
-            Vec3::ZERO,
-            SHADE_LIT,
-        ));
-        // Ivy creeping up the left pillar.
-        if side < 0.0 {
-            for k in 0..40 {
-                let (a, b) = (h(k as f64, 31.0), h(k as f64, 37.0));
-                let y = 0.2 + a * 1.8;
-                let face = if b > 0.5 { 0.28 } else { -0.28 };
-                block(
-                    &mut out,
-                    at(x + (b - 0.5) * 0.5, y, -2.0 + face),
-                    Vec3::new(0.08, 0.07, 0.03),
-                    Quat::from_rotation_z(a * 4.0),
-                    lin(0x2e4a26) * (0.8 + 0.4 * b),
-                    SHADE_LIT,
-                );
-            }
-        }
-    }
-    // ---- the iron arch over the gate, scrolled, with a cross at its crown
-    for i in 0..=40 {
-        let t = i as f32 / 40.0;
-        let x = -1.08 + 2.16 * t;
-        let y = 2.28 + (t * PI).sin() * 0.5;
-        block(
-            &mut out,
-            at(x, y, -2.0),
-            Vec3::new(0.07, 0.04, 0.04),
-            Quat::from_rotation_z(((t - 0.5) * PI).cos() * 0.0 + (0.5 - t) * 1.2),
-            iron,
-            SHADE_METAL,
-        );
-        if i % 5 == 0 && i > 0 && i < 40 {
-            let top = 2.28 + (t * PI).sin() * 0.5;
-            block(&mut out, at(x, (2.24 + top) / 2.0, -2.0), Vec3::new(0.025, top - 2.24, 0.025), flat, iron, SHADE_METAL);
-        }
-    }
-    block(&mut out, at(-0.0, 2.2, -2.0), Vec3::new(2.2, 0.035, 0.04), flat, iron, SHADE_METAL);
-    for k in 0..8 {
-        let a = k as f32 / 8.0 * TAU;
-        for side in [-1.0f32, 1.0] {
-            block(
-                &mut out,
-                at(side * 0.45 + a.cos() * 0.09, 2.45 + a.sin() * 0.09, -2.0),
-                Vec3::new(0.03, 0.03, 0.03),
-                flat,
-                iron,
-                SHADE_METAL,
-            );
-        }
-    }
-    block(&mut out, at(0.0, 3.0, -2.0), Vec3::new(0.04, 0.38, 0.04), flat, iron, SHADE_METAL);
-    block(&mut out, at(0.0, 3.07, -2.0), Vec3::new(0.2, 0.04, 0.04), flat, iron, SHADE_METAL);
-    // The lantern's bracket, sticking out from the right pillar over the path.
-    block(&mut out, at(1.34, 1.95, -1.55), Vec3::new(0.04, 0.04, 0.5), flat, iron, SHADE_METAL);
-    block(&mut out, at(1.34, 1.83, -1.33), Vec3::new(0.02, 0.2, 0.02), Quat::from_rotation_x(0.6), iron, SHADE_METAL);
-
-    // ---- the graves: rows of headstones, crosses and obelisks, a clear walk up the middle
-    for row in 0..8 {
-        let z = -3.2 - row as f32 * 1.3;
-        let mut x = -9.6 + (row % 2) as f32 * 0.7;
-        while x < 9.6 {
-            let k = h(x as f64 * 2.3 + row as f64, row as f64 * 7.1);
-            let (px, pz) = (x + (k - 0.5) * 0.4, z + (h(x as f64, row as f64 + 50.0) - 0.5) * 0.35);
-            x += 1.35 + k * 0.4;
-            if px.abs() < 1.0 && row < 7 {
-                continue;
-            }
-            grave(&mut out, at(px, 0.0, pz), k, h(px as f64 * 9.0, pz as f64 * 3.0));
-        }
-    }
-    // ---- a mausoleum among them, its door a black mouth
-    let m = |x: f32, y: f32, z: f32| at(-4.4 + x, y, -8.2 + z);
-    block(&mut out, m(0.0, 0.1, 0.0), Vec3::new(2.4, 0.2, 2.6), flat, lin(0x5e5a52), SHADE_LIT);
-    block(&mut out, m(0.0, 0.95, -0.1), Vec3::new(2.0, 1.5, 2.2), flat, lin(0x6a665e), SHADE_LIT);
-    for side in [-1.0f32, 1.0] {
-        block(
-            &mut out,
-            m(side * 0.55, 2.02, -0.1),
-            Vec3::new(1.25, 0.1, 2.4),
-            Quat::from_rotation_z(side * -0.5),
-            lin(0x4e4a44),
-            SHADE_LIT,
-        );
-        block(&mut out, m(side * 0.72, 0.86, 1.1), Vec3::new(0.16, 1.32, 0.16), flat, lin(0x7a766e), SHADE_LIT);
-    }
-    for k in 0..5 {
-        let w = 2.0 - k as f32 * 0.4;
-        block(&mut out, m(0.0, 1.78 + k as f32 * 0.1, 1.02), Vec3::new(w, 0.1, 0.12), flat, lin(0x726e66), SHADE_LIT);
-    }
-    block(&mut out, m(0.0, 0.72, 1.0), Vec3::new(0.62, 1.05, 0.06), flat, lin(0x060506), SHADE_UNLIT);
-    block(&mut out, m(0.0, 1.35, 1.03), Vec3::new(0.8, 0.12, 0.06), flat, lin(0x6e6a62), SHADE_LIT);
-    // ---- bare trees in the churchyard, and a big crooked one outside the wall
-    for (i, &(x, z, height)) in
-        [(-5.4f32, -3.9f32, 3.4f32), (5.1, -5.7, 3.9), (-8.3, -10.6, 4.4), (7.8, -11.8, 4.1), (-3.9, 1.2, 4.6), (9.2, 0.4, 3.6)]
-            .iter()
-            .enumerate()
-    {
-        dead_tree(&mut out, at(x, 0.0, z), height, i as f64 * 7.3 + 1.0);
-    }
-    // ---- the chapel beyond, a bell tower, one window lit
-    let c = |x: f32, y: f32, z: f32| at(2.0 + x, y, -17.5 + z);
-    block(&mut out, c(0.0, 1.7, 0.0), Vec3::new(5.4, 3.4, 3.8), flat, lin(0x4a4640), SHADE_LIT);
-    for side in [-1.0f32, 1.0] {
-        block(&mut out, c(0.0, 3.95, side * 1.05), Vec3::new(5.8, 0.18, 2.5), Quat::from_rotation_x(side * 0.62), lin(0x2e2a28), SHADE_LIT);
-    }
-    block(&mut out, c(3.4, 3.2, 0.3), Vec3::new(1.5, 6.4, 1.5), flat, lin(0x504a44), SHADE_LIT);
-    for k in 0..6 {
-        let w = 1.6 - k as f32 * 0.27;
-        block(&mut out, c(3.4, 6.55 + k as f32 * 0.3, 0.3), Vec3::new(w, 0.3, w), Quat::from_rotation_y(0.785), lin(0x2a2624), SHADE_LIT);
-    }
-    block(&mut out, c(3.4, 5.4, 1.06), Vec3::new(0.5, 0.8, 0.05), flat, lin(0x0c0a0a), SHADE_UNLIT);
-    for (x, lit) in [(-1.6f32, true), (0.0, false), (1.6, true)] {
-        let glow = if lit { lin(0xffa050) * 1.4 } else { Vec3::ZERO };
-        glowing(&mut out, c(x, 1.9, 1.92), Vec3::new(0.45, 0.9, 0.05), flat, if lit { lin(0xffc070) } else { lin(0x14121a) }, glow);
-    }
-    // ---- outside: tussocks of long grass, stones, a scatter of dead leaves
-    for i in 0..90 {
-        let (a, b) = (h(i as f64, 3.3), h(i as f64, 5.9));
-        let (x, z) = ((a - 0.5) * 20.0, -1.4 + b * 9.0);
-        if x.abs() < 1.1 {
-            continue;
-        }
-        for k in 0..4 {
-            let lean =
-                Quat::from_rotation_z((h(i as f64, k as f64) - 0.5) * 0.7) * Quat::from_rotation_x((h(k as f64, i as f64) - 0.5) * 0.6);
-            let tall = 0.14 + h(i as f64 * 3.0, k as f64) * 0.2;
-            block(
-                &mut out,
-                at(x + k as f32 * 0.03, tall / 2.0, z),
-                Vec3::new(0.02, tall, 0.02),
-                lean,
-                lin(0x6a7040) * (0.6 + 0.5 * b),
-                SHADE_LIT,
-            );
-        }
-    }
-    for i in 0..60 {
-        let (a, b) = (h(i as f64, 71.0), h(i as f64, 73.0));
-        let (x, z) = ((a - 0.5) * 8.0, -1.6 + b * 6.0);
-        let c = [0x8a4a1e, 0x9a6a24, 0x6a3a1a][i % 3];
-        block(&mut out, at(x, 0.008, z), Vec3::new(0.07, 0.01, 0.05), Quat::from_rotation_y(a * 9.0), lin(c), SHADE_LIT);
-    }
-    out
-}
-
-/// One grave at `p`, its kind and weathering picked by `k` and `j`.
-fn grave(out: &mut Vec<Instance>, p: Vec3, k: f32, j: f32) {
-    let stone = lin(0x7a766c) * (0.62 + 0.35 * j);
-    let moss = lin(0x4e5a38) * (0.8 + 0.3 * j);
-    let lean = Quat::from_rotation_z((k - 0.5) * 0.25) * Quat::from_rotation_x((j - 0.5) * 0.22);
-    let put = |out: &mut Vec<Instance>, off: Vec3, s: Vec3, c: Vec3| block(out, p + lean * off, s, lean, c, SHADE_LIT);
-    // A low mound of earth in front of most.
-    if j > 0.25 {
-        block(
-            out,
-            p + Vec3::new(0.0, 0.02, 0.5),
-            Vec3::new(0.42, 0.07, 0.75),
-            Quat::from_rotation_y((k - 0.5) * 0.2),
-            lin(0x3a3226) * (0.8 + 0.3 * k),
-            SHADE_GRASS,
-        );
-    }
-    match (k * 5.0) as i32 {
-        0 | 1 => {
-            // A rounded headstone.
-            put(out, Vec3::new(0.0, 0.3, 0.0), Vec3::new(0.46, 0.6, 0.1), stone);
-            put(out, Vec3::new(0.0, 0.63, 0.0), Vec3::new(0.36, 0.07, 0.1), stone);
-            put(out, Vec3::new(0.0, 0.69, 0.0), Vec3::new(0.22, 0.05, 0.1), stone);
-            if j > 0.6 {
-                put(out, Vec3::new(-0.1, 0.1, 0.03), Vec3::new(0.28, 0.2, 0.06), moss);
-            }
-            // An inscription, worn: a few dark lines.
-            for r in 0..3 {
-                put(out, Vec3::new(0.0, 0.46 - r as f32 * 0.09, 0.052), Vec3::new(0.26 - r as f32 * 0.04, 0.02, 0.005), lin(0x3a3830));
-            }
-        }
-        2 => {
-            // A cross on a plinth.
-            put(out, Vec3::new(0.0, 0.07, 0.0), Vec3::new(0.32, 0.14, 0.24), stone * 0.9);
-            put(out, Vec3::new(0.0, 0.5, 0.0), Vec3::new(0.09, 0.75, 0.09), stone);
-            put(out, Vec3::new(0.0, 0.66, 0.0), Vec3::new(0.42, 0.09, 0.09), stone);
-            if j > 0.5 {
-                for a in 0..6 {
-                    let t = a as f32 / 6.0 * TAU;
-                    put(out, Vec3::new(t.cos() * 0.13, 0.66 + t.sin() * 0.13, 0.0), Vec3::new(0.05, 0.05, 0.06), stone);
-                }
-            }
-        }
-        3 => {
-            // An obelisk.
-            put(out, Vec3::new(0.0, 0.1, 0.0), Vec3::new(0.36, 0.2, 0.36), stone * 0.9);
-            for (i, (w, hgt)) in [(0.24f32, 0.4f32), (0.2, 0.4), (0.16, 0.34)].into_iter().enumerate() {
-                put(out, Vec3::new(0.0, 0.2 + i as f32 * 0.38 + hgt / 2.0, 0.0), Vec3::new(w, hgt, w), stone);
-            }
-            put(out, Vec3::new(0.0, 1.38, 0.0), Vec3::new(0.11, 0.11, 0.11), stone);
-        }
-        _ => {
-            // An old slab, sunk and tilted, half broken.
-            let tilt = Quat::from_rotation_x(-0.35 - j * 0.3) * lean;
-            block(out, p + Vec3::new(0.0, 0.18, 0.0), Vec3::new(0.44, 0.42, 0.1), tilt, stone * 0.85, SHADE_LIT);
-            block(out, p + Vec3::new(0.18, 0.03, 0.3), Vec3::new(0.16, 0.06, 0.12), Quat::from_rotation_y(k * 4.0), stone * 0.8, SHADE_LIT);
-        }
-    }
-}
-
-/// A leafless tree: a crooked trunk splitting into branches and twigs, black against the sky.
-fn dead_tree(out: &mut Vec<Instance>, base: Vec3, height: f32, seed: f64) {
-    let bark = lin(0x241f1a);
-    fn branch(out: &mut Vec<Instance>, from: Vec3, dir: Vec3, len: f32, thick: f32, depth: u32, seed: f64, bark: Vec3) {
-        let segs = 3;
-        let mut p = from;
-        let mut d = dir.normalize();
-        for i in 0..segs {
-            let k = hash(seed + i as f64 * 1.7, depth as f64) as f32;
-            d = (d + Vec3::new((k - 0.5) * 0.5, 0.05, (hash(seed, i as f64 + 9.0) as f32 - 0.5) * 0.5)).normalize();
-            let l = len / segs as f32;
-            let q = p + d * l;
-            let w = thick * (1.0 - i as f32 / segs as f32 * 0.4);
-            let rot = Quat::from_rotation_arc(Vec3::Y, d);
-            block(out, (p + q) * 0.5, Vec3::new(w, l + w * 0.5, w), rot, bark * (0.9 + 0.2 * k), SHADE_LIT);
-            p = q;
-        }
-        if depth == 0 || thick < 0.025 {
-            return;
-        }
-        let n = if depth >= 2 { 3 } else { 2 };
-        for b in 0..n {
-            let k = hash(seed * 1.3 + b as f64, depth as f64 * 3.1) as f32;
-            let a = k * TAU + b as f32 * 2.1;
-            let nd = (d * 0.9 + Vec3::new(a.cos(), 0.35 + k * 0.4, a.sin()) * 0.9).normalize();
-            branch(out, p, nd, len * (0.55 + k * 0.2), thick * 0.55, depth - 1, seed * 1.7 + b as f64 * 11.0, bark);
-        }
-    }
-    let lean = Vec3::new((hash(seed, 1.0) as f32 - 0.5) * 0.35, 1.0, (hash(seed, 2.0) as f32 - 0.5) * 0.35);
-    branch(out, base, lean, height * 0.5, 0.2, 3, seed, bark);
-    // Roots gripping the ground.
-    for r in 0..4 {
-        let a = r as f32 / 4.0 * TAU + seed as f32;
-        let d = Vec3::new(a.cos(), -0.25, a.sin());
-        block(
-            out,
-            base + d * 0.18 + Vec3::new(0.0, 0.05, 0.0),
-            Vec3::new(0.09, 0.4, 0.09),
-            Quat::from_rotation_arc(Vec3::Y, d),
-            bark,
-            SHADE_LIT,
-        );
-    }
-}
-
-/// Low mist over a set: sheets whose drifting noise the shader draws.
-fn mist_sheets(origin: Vec3, x: (i32, i32), z: (i32, i32), layers: &[(f32, f32)], thick: impl Fn(i32, i32) -> f32) -> Vec<Instance> {
-    let mut out = Vec::new();
-    for gx in x.0..=x.1 {
-        for gz in z.0..=z.1 {
-            let k = thick(gx, gz);
-            if k <= 0.0 {
-                continue;
-            }
-            for (i, &(lift, alpha)) in layers.iter().enumerate() {
-                let m =
-                    Mat4::from_translation(origin + Vec3::new(gx as f32, lift, gz as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
-                out.push(Instance::new(m, lin(0xb4b8c8), alpha * k, Vec3::new(20.0 + i as f32, lift, 0.0), SHADE_CLOUD));
-            }
-        }
-    }
-    out
-}
-
-pub(super) fn graveyard_mist() -> Vec<Instance> {
-    // Thick among the graves, thinning out past the wall.
-    mist_sheets(GRAVEYARD, (-13, 13), (-17, 6), &[(0.08, 0.6), (0.25, 0.52), (0.48, 0.4), (0.8, 0.28), (1.25, 0.16)], |_x, z| {
-        if z <= -2 {
-            1.0
-        } else {
-            (1.0 - (z as f32 + 2.0) / 7.0).max(0.25)
-        }
-    })
-}
-
 // ------------------------------------------------------------ atmospheres
-
-/// Dusk over the graveyard: a low sun off to the left behind the graves, violet haze.
-fn dusk(darken: f32, fog: f32) -> Atmosphere {
-    Atmosphere {
-        background: 0x4c3c58,
-        fog_near: mix(11.0, 1.5, fog),
-        fog_far: mix(34.0, 5.0, fog),
-        hemi_sky: lin(0x8a7ab8) * 0.55 * (1.0 - 0.35 * darken),
-        hemi_ground: lin(0x3a3024) * 0.45,
-        ambient: lin(0x5a4a64) * 0.22,
-        sun_dir: Vec3::new(-0.72, 0.3, -0.62).normalize(),
-        sun: lin(0xffa062) * 2.1 * (1.0 - 0.55 * darken),
-        exposure: 1.2,
-        night_sky: 2.0,
-        bloom: 0.95,
-        moon_view: Vec3::new(-0.62, 0.1, -0.78).normalize(),
-        cloud_tint: lin(0x4a3444),
-    }
-}
 
 // ------------------------------------------------------------ choreography
 
@@ -630,8 +203,39 @@ impl WorldView {
     }
 
     /// Scene I, each frame: whichever set the beat is on, its cast and its light.
+    /// Scene I's set on show (the one lit by its own probes), if it is on.
+    pub fn story_set_id(&self) -> Option<u64> {
+        match self.story?.shot().place() {
+            Place::Graveyard => Some(self.story_sets[0].id),
+            Place::Gateway => Some(self.story_sets[1].id),
+            Place::Pit => None,
+        }
+    }
+
+    /// Scene I's sets with their probes' extent and settled light (`SetProbes`).
+    fn story_probes(&self, i: usize) -> SetProbes {
+        let set = self.story_sets[i].clone();
+        if i == 0 {
+            SetProbes { set, origin: GRAVEYARD + Vec3::new(-16.0, 0.0, -20.0), size: Vec2::new(32.0, 30.0), atm: dusk(0.0, 0.0) }
+        } else {
+            SetProbes {
+                set,
+                origin: GATEWAY + Vec3::new(-5.5, 0.0, -9.0),
+                size: Vec2::new(11.0, 14.0),
+                atm: story_sets::gateway_atmosphere(),
+            }
+        }
+    }
+
     pub(super) fn emit_story(&self, sv: StoryView, s: &SceneState, f: &mut Frame) {
-        match sv.shot().place() {
+        let place = sv.shot().place();
+        if place != Place::Pit {
+            // Each set lit by its own probes, both worked out (and sent up) as the story loads.
+            let shown = usize::from(place == Place::Gateway);
+            f.probes = Some(self.story_probes(shown));
+            f.probes_warm.push(self.story_probes(1 - shown));
+        }
+        match place {
             Place::Graveyard => {
                 f.sets.push(self.story_sets[0].clone());
                 f.sets_blend.push(self.story_mist[0].clone());
@@ -662,6 +266,7 @@ impl WorldView {
         let darken = smooth(stage::EYES, stage::GRAB, taken).max(if taken > 100.0 { 1.0 } else { 0.0 });
         let fog = if pursuit >= 0.0 { smooth(0.6, stage::FLASH + 0.4, pursuit) } else { 0.0 };
         f.atmosphere = dusk(darken * 0.6, fog);
+        f.haze = story_sets::dusk_haze(fog);
 
         // ---- the ball
         let feet_of = |i: usize| KID_HOME[i] + Vec3::new(0.0, BALL_R, 0.0);
@@ -720,7 +325,7 @@ impl WorldView {
                 let local = Vec3::new(-side * off.x, off.y, off.z);
                 f.opaque[cube].push(Instance::new(
                     Mat4::from_scale_rotation_translation(size, q, hinge + q * local),
-                    lin(0x1c1c20),
+                    lin(0x2a2624).lerp(lin(0x5a3a26), 0.35),
                     1.0,
                     Vec3::ZERO,
                     SHADE_METAL,
@@ -751,7 +356,7 @@ impl WorldView {
             Mat4::from_scale_rotation_translation(Vec3::new(0.15, 0.2, 0.15), lq, lamp),
             lin(0xffd49a),
             1.0,
-            lin(0xffa040) * 2.2 * flick,
+            lin(0xffa040) * 1.3 * flick,
             SHADE_LIT,
         ));
         f.opaque[cube].push(Instance::new(
@@ -765,7 +370,14 @@ impl WorldView {
         f.lights.push(Light { pos: lamp + Vec3::new(0.0, -0.15, 0.35), color: lin(0xffb060) * 4.2 * flick, distance: 5.5 });
         // A soft warm fill on the friends from where the camera stands, so faces read against the sunset.
         f.lights.push(Light { pos: at(Vec3::new(0.4, 2.2, 4.2)), color: lin(0xffc8a8) * 3.2 * (1.0 - 0.4 * darken), distance: 7.5 });
-        f.lights.push(Light { pos: at(Vec3::new(3.6, 0.8, -17.0)), color: lin(0xffa050) * 3.0, distance: 4.0 });
+        // The chapel's windows, and the lantern on its post by the lane.
+        for w in story_sets::CHAPEL_WINDOWS {
+            f.lights.push(Light { pos: at(w + Vec3::new(0.0, -0.3, 0.9)), color: lin(0xffa050) * 2.4, distance: 4.0 });
+            glow_orb(f, at(w), 0.9, lin(0xffa050), 0.12);
+        }
+        let post = at(story_sets::LANE_LANTERN);
+        glow_orb(f, post, 0.6, lin(0xffb050), 0.22 * flick);
+        f.lights.push(Light { pos: post - Vec3::Y * 0.1, color: lin(0xffb868) * 2.6 * flick, distance: 5.0 });
 
         // ---- crows on the gate and the pillar, flying off when the eyes open in the fog
         for (i, perch) in [Vec3::new(0.34, 2.92, -2.0), Vec3::new(1.34, 2.93, -2.0), Vec3::new(-0.42, 2.8, -2.0)].into_iter().enumerate() {

@@ -18,7 +18,7 @@ use super::preset::{Preset, Shadows};
 use super::probes::{self, ProbeBox, ProbeVolume};
 use super::profile::{fx, FrameCounts, GpuTimer};
 use super::text::SDF_W;
-use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, WorldView, FAR, MESH_KINDS, NEAR};
+use super::view::{Frame, Instance, InstanceSet, Light, MeshKind, RigDraw, RigList, SetProbes, WorldView, FAR, MESH_KINDS, NEAR};
 use super::voxels::RigMesh;
 
 const SAMPLES: u32 = 4;
@@ -590,6 +590,15 @@ pub struct Gpu {
     probe_dirty: Vec<(Vec3, Vec3)>,
     /// The hash of the static cubes for the probe cache's key, and the upload it was worked out for.
     probe_key: Option<(u64, u64)>,
+    /// The story's sets' probes (RP18), by set, once worked out; those being worked out on a
+    /// worker thread; whose probes the textures hold (none: the level's); where they stand; and
+    /// the set last shown if it and every set to have ready were ready then.
+    set_probes: std::collections::HashMap<u64, ProbeVolume>,
+    #[cfg(not(target_arch = "wasm32"))]
+    set_jobs: std::collections::HashMap<u64, std::sync::mpsc::Receiver<ProbeVolume>>,
+    probe_owner: Option<u64>,
+    probe_origin: Vec3,
+    sets_ready: Option<u64>,
     static_bounds: Vec<(Vec3, Vec3)>,
     static_level: u64,
     /// Clustered lights: every light, each cluster's run, the runs (`clusters`).
@@ -1848,6 +1857,12 @@ impl Gpu {
             probe_level: 0,
             probe_dirty: Vec::new(),
             probe_key: None,
+            set_probes: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            set_jobs: Default::default(),
+            probe_owner: None,
+            probe_origin: Vec3::ZERO,
+            sets_ready: None,
             static_bounds: Vec::new(),
             static_level: 0,
             light_buf,
@@ -1877,6 +1892,13 @@ impl Gpu {
     /// The view's level is up and lit: its static scenery uploaded and its probes worked out
     /// (RP03: the loading screen waits for this).
     pub fn level_ready(&self, view: &WorldView) -> bool {
+        // The story's sets are lit by their own probes, worked out when it begins.
+        if let Some(set) = view.story_set_id() {
+            return self.sets_ready == Some(set);
+        }
+        if view.story.is_some() {
+            return true;
+        }
         !view.static_dirty
             && self.static_count > 0
             && self.probes_held()
@@ -2260,7 +2282,12 @@ impl Gpu {
             params: [atm.fog_far.min(FAR), atm.exposure, frame.coin_pulse, chosen.len() as f32],
             cluster: [self.config.width as f32, self.config.height as f32, NEAR, FAR],
             haze: [frame.haze.density, frame.haze.floor, frame.haze.falloff, 0.0],
-            probe_min: [-0.5, probes::Y0 - probes::DY * 0.5, -0.5, if use_probes { 1.0 } else { 0.0 }],
+            probe_min: [
+                self.probe_origin.x - 0.5,
+                probes::Y0 - probes::DY * 0.5,
+                self.probe_origin.z - 0.5,
+                if use_probes { 1.0 } else { 0.0 },
+            ],
             // (From the textures: the volume itself may be out being refreshed.)
             probe_size: self
                 .probe_tex
@@ -3024,9 +3051,14 @@ impl Gpu {
     }
 
     fn sync_probes(&mut self, view: &WorldView, frame: &Frame) -> bool {
-        if frame.skip_static || self.static_count == 0 {
+        if frame.skip_static {
+            return self.sync_set_probes(frame);
+        }
+        if self.static_count == 0 {
             return false;
         }
+        // A set's probes are in the textures: the level's go back up whole.
+        let reclaim = self.probe_owner.is_some();
         let t = std::time::Instant::now();
         // What to send up: the whole volume, or the probes a refresh changed.
         let mut send: Option<Option<ProbeBox>> = None;
@@ -3040,7 +3072,7 @@ impl Gpu {
                 self.probe_refresh = None;
                 send = Some(changed);
             } else {
-                return true;
+                return !reclaim;
             }
         }
         if self.probe_level != self.static_level || !self.probes_held() {
@@ -3082,8 +3114,31 @@ impl Gpu {
                 send = Some(changed);
             }
         }
+        if reclaim && send.is_none() && self.probes.is_some() {
+            send = Some(None);
+        }
         if let Some(changed) = send {
-            let p = self.probes.as_ref().unwrap();
+            let p = self.probes.take().unwrap();
+            self.send_probes(&p, if reclaim { None } else { changed });
+            self.probes = Some(p);
+            self.probe_owner = None;
+            self.probe_origin = Vec3::ZERO;
+            if std::env::var_os("VH_PROBE_STATS").is_some() {
+                eprintln!(
+                    "probes: {:?} sent in {:.1} ms at {}",
+                    self.probes.as_ref().map(|p| p.dims),
+                    t.elapsed().as_secs_f64() * 1e3,
+                    self.frame_no
+                );
+            }
+        }
+        true
+    }
+
+    /// Sends a volume's probes up: those in `changed`, or all of them (and new textures when
+    /// its size differs from theirs).
+    fn send_probes(&mut self, p: &ProbeVolume, changed: Option<ProbeBox>) {
+        {
             // Only the probes that changed go up (all of them for a new level, or new textures).
             let mut b = changed.unwrap_or(ProbeBox::all(p.dims));
             if self.probe_tex.first().is_none_or(|t| [t.width(), t.height(), t.depth_or_array_layers()] != p.dims) {
@@ -3116,11 +3171,90 @@ impl Gpu {
                 );
                 self.pending_upload += data.len() as u64 * 2;
             }
-            if std::env::var_os("VH_PROBE_STATS").is_some() {
-                eprintln!("probes: {:?} of {:?} sent in {:.1} ms at {}", b.size(), p.dims, t.elapsed().as_secs_f64() * 1e3, self.frame_no);
+        }
+    }
+
+    /// The story's frame: works out (once, natively on a worker thread) the probes of the set on
+    /// show and of those to have ready, and sends the shown set's up when they are not the ones
+    /// the textures hold. Whether the set on show is lit by them.
+    fn sync_set_probes(&mut self, frame: &Frame) -> bool {
+        let mut pending = 0;
+        for sp in frame.probes.iter().chain(&frame.probes_warm) {
+            if !self.set_ready(sp, false) {
+                pending += 1;
             }
         }
+        let Some(shown) = &frame.probes else {
+            self.sets_ready = None;
+            return false;
+        };
+        let id = shown.set.id;
+        self.sets_ready = (pending == 0).then_some(id);
+        let Some(p) = self.set_probes.remove(&id) else { return false };
+        if self.probe_owner != Some(id) {
+            let t = std::time::Instant::now();
+            self.send_probes(&p, None);
+            self.probe_owner = Some(id);
+            if std::env::var_os("VH_PROBE_STATS").is_some() {
+                eprintln!("probes: set {id} {:?} sent in {:.1} ms at {}", p.dims, t.elapsed().as_secs_f64() * 1e3, self.frame_no);
+            }
+        }
+        self.probe_origin = p.origin;
+        self.set_probes.insert(id, p);
         true
+    }
+
+    /// Whether a set's probes are worked out; if not, sets them going (or, with `wait`, works
+    /// them out before returning).
+    fn set_ready(&mut self, sp: &SetProbes, wait: bool) -> bool {
+        let id = sp.set.id;
+        if self.set_probes.contains_key(&id) {
+            return true;
+        }
+        let build = {
+            let (cubes, origin, size, atm) = (sp.set.instances.clone(), sp.origin, sp.size, sp.atm);
+            move || {
+                let t = std::time::Instant::now();
+                let p = ProbeVolume::build_at(&cubes, origin, size.x, size.y, &atm);
+                if std::env::var_os("VH_PROBE_STATS").is_some() {
+                    eprintln!("probes: set {id} {:?} worked out in {:.1} ms", p.dims, t.elapsed().as_secs_f64() * 1e3);
+                }
+                p
+            }
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let rx = self.set_jobs.entry(id).or_insert_with(|| {
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = tx.send(build());
+                });
+                rx
+            });
+            let got = if wait { rx.recv().ok() } else { rx.try_recv().ok() };
+            match got {
+                Some(p) => {
+                    self.set_jobs.remove(&id);
+                    self.set_probes.insert(id, p);
+                    true
+                }
+                None => false,
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = wait;
+            self.set_probes.insert(id, build());
+            true
+        }
+    }
+
+    /// Works out every probe the frame asks for before returning (captures: the picture never
+    /// depends on how long that takes).
+    pub fn settle(&mut self, frame: &Frame) {
+        for sp in frame.probes.iter().chain(&frame.probes_warm) {
+            self.set_ready(sp, true);
+        }
     }
 
     /// The environment's next `n` passes (of `ENV_PASSES`, in order: the first mip's faces, then
@@ -3182,7 +3316,9 @@ impl Gpu {
         if now % 60 == 30 {
             self.sets.retain(|_, b| now - b.used < RIG_IDLE_FRAMES);
         }
-        for set in frame.sets.iter().chain(&frame.sets_blend) {
+        // (And the sets to have ready, before they are shown.)
+        let warm = frame.probes_warm.iter().map(|p| &p.set);
+        for set in frame.sets.iter().chain(&frame.sets_blend).chain(warm) {
             if set.is_empty() {
                 continue;
             }
