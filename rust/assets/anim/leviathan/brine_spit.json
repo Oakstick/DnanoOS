@@ -1,0 +1,11 @@
+{
+ "clip": "brine_spit",
+ "fps": 60,
+ "frames": 69,
+ "loop": false,
+ "markers": {
+  "windup_end": 34,
+  "active_end": 35,
+  "recover_end": 69
+ }
+}

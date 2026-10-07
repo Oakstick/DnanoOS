@@ -1,0 +1,11 @@
+{
+ "clip": "coil_lash",
+ "fps": 60,
+ "frames": 86,
+ "loop": false,
+ "markers": {
+  "windup_end": 34,
+  "active_end": 42,
+  "recover_end": 86
+ }
+}

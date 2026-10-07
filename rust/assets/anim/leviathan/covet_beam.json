@@ -1,0 +1,11 @@
+{
+ "clip": "covet_beam",
+ "fps": 60,
+ "frames": 92,
+ "loop": false,
+ "markers": {
+  "windup_end": 44,
+  "active_end": 52,
+  "recover_end": 92
+ }
+}

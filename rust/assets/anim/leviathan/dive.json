@@ -1,0 +1,11 @@
+{
+ "clip": "dive",
+ "fps": 60,
+ "frames": 122,
+ "loop": false,
+ "markers": {
+  "windup_end": 60,
+  "active_end": 66,
+  "recover_end": 122
+ }
+}
