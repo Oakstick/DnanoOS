@@ -71,8 +71,8 @@ pub const DOF_FULL: f32 = 27.0;
 pub const DOF_PX: f32 = 3.5;
 /// Shots with no foes to keep sharp (the story, the title, the character screen, the forge, the
 /// tour) keep the softer depth of field they were composed with.
-const CINEMA_DOF_CLEAR: f32 = 5.0;
-const CINEMA_DOF_FULL: f32 = 20.0;
+pub const CINEMA_DOF_CLEAR: f32 = 5.0;
+pub const CINEMA_DOF_FULL: f32 = 20.0;
 /// The environment cube (RP14): its first mip's size, and how many mips (roughness 0 to 1).
 const ENV_SIZE: u32 = 128;
 const ENV_MIPS: u32 = 6;
@@ -305,6 +305,7 @@ struct PostUniform {
     moon: [f32; 4],
     haze: [f32; 4],
     vol: [f32; 4],
+    near: [f32; 4],
 }
 
 struct MeshBuf {
@@ -2315,17 +2316,18 @@ impl Gpu {
         self.queue.write_buffer(&self.cascade_bufs[1], 0, bytemuck::cast_slice(&light_vp.to_cols_array()));
         self.queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));
         let focus = view.focus_depth();
+        let dof = view.dof();
         let post = PostUniform {
             view_proj: view_proj.to_cols_array(),
             cam_pos: v4(cam, if ortho { 1.0 } else { 0.0 }),
             cam_fwd: v4(fwd, focus.unwrap_or(0.0)),
-            cam_r: v4(cam_r, if view.cinematic() { CINEMA_DOF_CLEAR } else { DOF_CLEAR }),
-            cam_u: v4(cam_u, if view.cinematic() { CINEMA_DOF_FULL } else { DOF_FULL }),
+            cam_r: v4(cam_r, dof.clear),
+            cam_u: v4(cam_u, dof.full),
             params: [
                 0.32,
                 if self.fx_off & fx::AO != 0 { 0.0 } else { 1.4 },
                 if self.fx_off & fx::BLOOM != 0 { 0.0 } else { 0.45 * atm.bloom },
-                if focus.is_some() && self.fx_off & fx::DOF == 0 { DOF_PX } else { 0.0 },
+                if focus.is_some() && self.fx_off & fx::DOF == 0 { dof.px } else { 0.0 },
             ],
             params2: [0.6, 0.28, frame.time, if self.fx_off & fx::GRADE != 0 { 0.0 } else { 1.0 }],
             moon: moon_on_screen(sky_fwd, sky_right, sky_up, atm.moon_view, atm.night_sky),
@@ -2343,6 +2345,8 @@ impl Gpu {
                 0.8,
                 if frame.lantern { 1.0 } else { 0.0 },
             ],
+            // Blur in front of the in-focus plane too, where a shot asks for it (a story shot's foreground).
+            near: [dof.near_clear, dof.near_full, if dof.near_clear > 0.0 { 1.0 } else { 0.0 }, 0.0],
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));

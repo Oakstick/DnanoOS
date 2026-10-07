@@ -44,6 +44,9 @@
 //! where `pause` skips it); `wheel:up` / `wheel:down` (a notch of the mouse wheel), `belt:prev` /
 //! `belt:next` (the belt's potion before or after) and `device:kbm|xbox|ps|pad` (the device used last,
 //! for the prompts' glyphs).
+//! `--shots N:T,N:T,...` writes one frame of Scene I per pair (beat N, T seconds in) and `--seq
+//! N:T:COUNT:EVERY` COUNT frames as it plays on from there, EVERY seconds apart, both numbered beside
+//! the capture's name (`out-00.png`...): the story's camera through its shots (RENDERING.md).
 //! `--specimen` draws the type specimen instead of the HUD (both faces at the HUD's sizes, and the
 //! overlay's textured quads: `render::hud::specimen`).
 //! `--iso` renders the whole level from an isometric map camera instead;
@@ -673,6 +676,9 @@ pub fn run(args: &[String]) -> i32 {
     game.view.lod_bias = arg(args, "--lod-bias").and_then(|b| b.parse().ok()).unwrap_or(gpu.preset().lod_bias);
     game.view.lod_debug = args.iter().any(|a| a == "--lod-debug");
     game.view.preview_heroes = args.iter().any(|a| a == "--all-heroes");
+    if let Some(code) = story_shots(args, &mut game, &mut driver, &mut gpu, (w, h), &path) {
+        return code;
+    }
     let iso = args.iter().any(|a| a == "--iso");
     if iso {
         game.view.set_map_view(&game.level.grid);
@@ -1030,6 +1036,76 @@ fn crc32(data: &[u8]) -> u32 {
 }
 
 /// RGBA8 to PNG with stored (uncompressed) deflate blocks: big, but no dependencies.
+/**
+ * Many story frames from one start (RENDERING.md, "Scene I's camera"): `--shots N:T,N:T,...`
+ * jumps to beat N of Scene I, T seconds in, for each; `--seq N:T:COUNT:EVERY` plays on from beat
+ * N at T and takes COUNT frames, one every EVERY seconds, as the scene runs (its motion). Each is
+ * written beside `path`, numbered (`out-00.png`, ...). None when neither is asked for.
+ */
+fn story_shots(
+    args: &[String],
+    game: &mut Game,
+    driver: &mut crate::driver::Driver,
+    gpu: &mut Gpu,
+    (w, h): (u32, u32),
+    path: &str,
+) -> Option<i32> {
+    let nums = |s: &str| s.split(':').map(|v| v.parse::<f64>().unwrap_or(0.0)).collect::<Vec<f64>>();
+    let mut shots: Vec<(usize, f64)> = Vec::new();
+    let mut seq: Option<(usize, f64, usize, f64)> = None;
+    if let Some(list) = arg(args, "--shots") {
+        shots = list.split(',').map(nums).filter(|n| n.len() >= 2).map(|n| (n[0] as usize, n[1])).collect();
+    } else if let Some(s) = arg(args, "--seq") {
+        let n = nums(s);
+        if n.len() >= 4 {
+            seq = Some((n[0] as usize, n[1], n[2] as usize, n[3]));
+        }
+    }
+    if shots.is_empty() && seq.is_none() {
+        return None;
+    }
+    let step = crate::app::STEP;
+    let count = seq.map(|s| s.2).unwrap_or(shots.len());
+    if let Some((n, t, ..)) = seq {
+        game.story_jump(n, (t - step).max(0.0));
+    }
+    let stem = path.rsplit_once('.').map(|(s, _)| s).unwrap_or(path);
+    for k in 0..count {
+        match seq {
+            Some((_, _, _, every)) if k > 0 => {
+                let until = driver.t + every;
+                driver.run(game, until - step * 0.5);
+            }
+            Some(_) => driver.step(game),
+            None => {
+                let (n, t) = shots[k];
+                game.story_jump(n, (t - step).max(0.0));
+                driver.step(game);
+            }
+        }
+        let (mut frame, mut overlay) = (Frame::default(), Overlay::new());
+        game.view.emit(&game.scene(), &mut frame);
+        overlay.begin(w as f32, h as f32);
+        if !args.iter().any(|a| a == "--no-hud") {
+            hud::draw(&mut overlay, game, 60);
+        }
+        gpu.sync_static(&mut game.view);
+        gpu.settle(&frame);
+        let _ = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+        let rgba = gpu.capture(&game.view, &frame, &overlay.verts, (w as f32, h as f32));
+        let out = format!("{stem}-{k:02}.png");
+        let at = game.story.as_ref().map(|s| format!("beat {} at {:.2} s", s.beat, s.t)).unwrap_or_default();
+        match std::fs::write(&out, encode_png(w, h, &rgba)) {
+            Ok(()) => eprintln!("wrote {out} ({w}x{h}), {at}"),
+            Err(e) => {
+                eprintln!("could not write {out}: {e}");
+                return Some(1);
+            }
+        }
+    }
+    Some(0)
+}
+
 pub fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Vec<u8> {
     let mut raw = Vec::with_capacity((w * h * 4 + h) as usize);
     for y in 0..h as usize {
