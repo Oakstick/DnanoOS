@@ -28,6 +28,10 @@ const PACE_SECONDS: f32 = 0.18;
 const WALK_TO_RUN: [f32; 2] = [2.2, 3.4];
 /// Metres a gait's cycle carries it when its markers do not say.
 const DEFAULT_STRIDE: f32 = 1.2;
+/// The fastest a gait plays against its own pace (its clip's length a cycle): the foes cover the
+/// ground faster than their legs' length would let them (a draugr's 1.8 tiles a second is ten of his
+/// strides), so past this their feet slide rather than their legs spin.
+const MAX_GAIT_RATE: f32 = 1.8;
 
 /// A move under way.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -153,8 +157,10 @@ impl FoeAnimator {
             let s_gait = gait.markers.stride.unwrap_or(DEFAULT_STRIDE).max(0.05);
             let s_run = run.and_then(|r| r.markers.stride).unwrap_or(s_gait).max(0.05);
             let stride = s_gait * (1.0 - running) + s_run * running;
+            let natural = gait.duration() * (1.0 - running) + run.map(|r| r.duration()).unwrap_or(gait.duration()) * running;
+            let rate = (d.speed.max(0.0) / stride).min(MAX_GAIT_RATE / natural.max(0.05));
             // (Standing, its gait idles on at the pace it last had: it never snaps to a new phase.)
-            self.cycle = (self.cycle + dt * d.speed.max(0.0) * smooth(self.pace) / stride).fract();
+            self.cycle = (self.cycle + dt * rate * smooth(self.pace)).fract();
             if self.pace > 0.0 {
                 gait.sample_into(self.cycle * gait.duration(), &mut self.scratch);
                 if let (Some(r), true) = (run, running > 0.0) {

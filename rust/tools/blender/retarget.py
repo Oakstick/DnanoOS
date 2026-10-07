@@ -175,7 +175,9 @@ class Retarget:
         # The way its weapon points out of its fist at rest (game axes): the heroes' lean up and
         # forward (`vh.WEAPON_REST`); the draugr's sword hangs point down. (A bone's own axes are the
         # game's: it rests unturned.)
-        self.weapon_rest = Vector(weapon_rest).normalized() if weapon_rest is not None else vh.WEAPON_REST.copy()
+        # (Or a way for each weapon: {"blade": ..., "offhand": ...}, a pair of blades.)
+        rests = weapon_rest if isinstance(weapon_rest, dict) else {b: weapon_rest for b in GRIPS}
+        self.weapon_rests = {b: Vector(rests[b]).normalized() if rests.get(b) is not None else vh.WEAPON_REST.copy() for b in GRIPS}
         # A turn of the whole of him (degrees, toward his left), and how much of the source's own
         # turning about the upright to keep (1 all, 0 none: a spinning blow becomes one struck where
         # he stands, his chest still twisting against his hips).
@@ -283,7 +285,7 @@ class Retarget:
                 # The weapon held as the source's fist holds it (`grip`).
                 grip, knuckles = self.grip(b)
                 r0 = tw @ rest
-                want = (basis(grip, knuckles) @ basis(r0 @ self.weapon_rest, r0 @ Vector((0, 0, 1))).transposed()).to_quaternion() @ r0
+                want = (basis(grip, knuckles) @ basis(r0 @ self.weapon_rests[b], r0 @ Vector((0, 0, 1))).transposed()).to_quaternion() @ r0
                 want = corr @ want
                 if b == self.sword_bone:
                     want = corr @ self.sword_q @ corr.inverted() @ want

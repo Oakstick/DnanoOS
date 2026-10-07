@@ -23,6 +23,11 @@ const INF: f32 = f32::INFINITY;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FoeRig {
     Draugr,
+    Helmeted,
+    Witch,
+    Blemmyes,
+    Tengu,
+    Rasetsu,
     Bat,
     Vampire,
     LargeBat,
@@ -35,10 +40,15 @@ pub enum FoeRig {
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 10;
+    pub const COUNT: usize = 15;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
+        FoeRig::Helmeted,
+        FoeRig::Witch,
+        FoeRig::Blemmyes,
+        FoeRig::Tengu,
+        FoeRig::Rasetsu,
         FoeRig::Bat,
         FoeRig::Vampire,
         FoeRig::LargeBat,
@@ -54,6 +64,11 @@ impl FoeRig {
     pub fn dir(self) -> &'static str {
         match self {
             FoeRig::Draugr => "draugr",
+            FoeRig::Helmeted => "helmeted",
+            FoeRig::Witch => "witch",
+            FoeRig::Blemmyes => "blemmyes",
+            FoeRig::Tengu => "tengu",
+            FoeRig::Rasetsu => "rasetsu",
             FoeRig::Bat => "bat",
             FoeRig::Vampire => "vampire",
             FoeRig::LargeBat => "large_bat",
@@ -71,6 +86,11 @@ impl FoeRig {
     pub fn of(kind: EnemyKind) -> Option<FoeRig> {
         Some(match kind {
             EnemyKind::Skeleton => FoeRig::Draugr,
+            EnemyKind::Helmeted => FoeRig::Helmeted,
+            EnemyKind::Witch => FoeRig::Witch,
+            EnemyKind::Blemmyes => FoeRig::Blemmyes,
+            EnemyKind::Tengu => FoeRig::Tengu,
+            EnemyKind::Rasetsu => FoeRig::Rasetsu,
             EnemyKind::Bat => FoeRig::Bat,
             EnemyKind::Vampire => FoeRig::Vampire,
             EnemyKind::LargeBat => FoeRig::LargeBat,
@@ -92,6 +112,11 @@ impl FoeRig {
         use super::foe_beasts as fb;
         match self {
             FoeRig::Draugr => &DRAUGR,
+            FoeRig::Helmeted => &HELMETED,
+            FoeRig::Witch => &WITCH,
+            FoeRig::Blemmyes => &BLEMMYES,
+            FoeRig::Tengu => &TENGU,
+            FoeRig::Rasetsu => &RASETSU,
             FoeRig::Bat | FoeRig::Vampire => &fb::RAVEN,
             FoeRig::LargeBat => &fb::LARGE_BAT,
             FoeRig::Minion => &fb::MINION_JOINTS,
@@ -108,6 +133,11 @@ impl FoeRig {
         use crate::render::{foes, foes2, foes3};
         match self {
             FoeRig::Draugr => (foes::DRAUGR_SIZE, 0.0125),
+            FoeRig::Helmeted => (foes2::HELMET_SIZE, 0.0125),
+            FoeRig::Witch => (foes2::WITCH_SIZE, 0.0125),
+            FoeRig::Blemmyes => (foes2::BLEMMYES_SIZE, 0.0145),
+            FoeRig::Tengu => (foes3::TENGU_SIZE, 0.0125),
+            FoeRig::Rasetsu => (foes3::RASETSU_SIZE, 0.0125),
             FoeRig::Bat => (foes::RAVEN_SIZE, 0.0105),
             FoeRig::Vampire => (foes::RAVEN_SIZE, 0.0125),
             FoeRig::LargeBat => (foes2::BAT_SIZE, 0.011),
@@ -127,6 +157,11 @@ impl FoeRig {
         let (_, size) = self.grid();
         solid(|| match self {
             FoeRig::Draugr => build_rig(&foes::draugr(), foes::DRAUGR_RIG, size),
+            FoeRig::Helmeted => build_rig(&foes2::helmeted_skeleton(), foes2::HELMET_RIG, size),
+            FoeRig::Witch => build_rig(&foes2::witch(), foes2::WITCH_RIG, size),
+            FoeRig::Blemmyes => build_rig(&foes2::blemmyes(), foes2::BLEMMYES_RIG, size),
+            FoeRig::Tengu => build_rig(&foes3::tengu(), foes3::TENGU_RIG, size),
+            FoeRig::Rasetsu => build_rig(&foes3::rasetsu(), foes3::RASETSU_RIG, size),
             FoeRig::Bat => build_rig(&foes::raven(false), foes::RAVEN_RIG, size),
             FoeRig::Vampire => build_rig(&foes::raven(true), foes::RAVEN_RIG, size),
             FoeRig::LargeBat => build_rig(&foes2::large_bat(), foes2::BAT_RIG, size),
@@ -244,6 +279,305 @@ pub const DRAUGR: Joints = {
     }
 };
 
+/// Skin (`characters::mat::SKIN`): a fist round a grip, kept by the hand when the weapon in it is
+/// cut out.
+const SKIN_MATS: &[u32] = &[crate::render::characters::mat::SKIN];
+
+/**
+ * The helmeted skeleton's joints (grid 40 × 80 × 22, `foes2::HELMET_SIZE`). His waist is above the
+ * pelvis (y 34), his chest from the middle of his ribs (45); his neck the vertebrae between his
+ * collarbones and his skull (y 55 to 58), the skull, the jaw and the helmet his head. The elbow is
+ * its bone ball (42.4), the wrist the top of the bony fist (33.3); the knee its ball (16), the ankle
+ * the top of the foot (4.3). The spiked mace in his fist at the sculpt's high x (his own left) is the
+ * `offhand`: its iron haft and head, not the bone round it.
+ */
+pub const HELMETED: Joints = {
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid) = (31.5, 7.5, 23.5, 15.5, 19.5);
+    Joints {
+        def: &HUMANOID,
+        from: HUMANOID_FOE_PARTS,
+        mirrored: false,
+        fists: false,
+        at: &[
+            [mid, 29.6, 10.5],
+            [mid, 34.0, 9.0],
+            [mid, 45.0, 9.0],
+            [mid, 55.0, 11.0],
+            [mid, 58.0, 11.0],
+            [l_arm, 54.0, 11.0],
+            [l_arm + 0.6, 42.4, 12.0],
+            [l_arm, 33.3, 13.6],
+            [r_arm, 54.0, 11.0],
+            [r_arm - 0.6, 42.4, 12.0],
+            [r_arm, 33.3, 13.6],
+            [l_leg, 28.0, 11.0],
+            [l_leg, 16.0, 11.2],
+            [l_leg, 4.3, 10.8],
+            [r_leg, 28.0, 11.0],
+            [r_leg, 16.0, 11.2],
+            [r_leg, 4.3, 10.8],
+            [r_arm, 31.8, 15.0],
+            [l_arm, 31.8, 15.0],
+            [r_arm, 38.0, 12.8],
+        ],
+        cuts: &[
+            Cut::up(b(Hips), b(Spine), 34.0),
+            Cut::up(b(Spine), b(Chest), 45.0),
+            Cut::cube(b(Chest), b(Neck), [mid - 2.5, 54.5, -INF], [mid + 2.5, INF, INF]),
+            Cut::cube(b(UpperArmL), b(Offhand), [l_arm - 6.0, -INF, -INF], [l_arm + 6.0, 36.0, INF]).except(BONE_MATS),
+            Cut::down(b(UpperArmL), b(ForearmL), 44.0),
+            Cut::down(b(ForearmL), b(HandL), 33.3),
+            Cut::down(b(UpperArmR), b(ForearmR), 44.0),
+            Cut::down(b(ForearmR), b(HandR), 33.3),
+            Cut::down(b(ThighL), b(ShinL), 17.0),
+            Cut::down(b(ShinL), b(FootL), 4.3),
+            Cut::down(b(ThighR), b(ShinR), 17.0),
+            Cut::down(b(ShinR), b(FootR), 4.3),
+        ],
+    }
+};
+
+/**
+ * The witch's joints (grid 40 × 96 × 26, `foes2::WITCH_SIZE`). Her waist is the belt (y 42.5), her
+ * chest from 50, her neck the column of skin under her chin (y 57.5 up), her head the face, the hair
+ * and the hat. Her legs are short under her long robe: their joints are set where a woman's hips are
+ * (y 34), not at the code's pivots (22), so her stride moves the robe from there; the robe below her
+ * belt is cut down the middle (y 36.5, x 19.5), each half riding its thigh as Mehmed's skirt does,
+ * and under it only her boots and stockings are sculpted, so the knee (13) is cut unsleeved. Her wide
+ * sleeves bend at the elbow (46); her hand is the green skin inside the cuff. Her staff, in her fist
+ * at the sculpt's high x (her own left), is the `offhand`: its wood and its stone.
+ */
+pub const WITCH: Joints = {
+    use crate::render::characters::mat;
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid) = (26.5, 12.5, 23.5, 15.5, 19.5);
+    Joints {
+        def: &HUMANOID,
+        from: HUMANOID_FOE_PARTS,
+        mirrored: false,
+        fists: false,
+        at: &[
+            [mid, 38.0, 13.0],
+            [mid, 42.5, 13.0],
+            [mid, 50.0, 13.0],
+            [mid, 57.5, 13.0],
+            [mid, 61.0, 13.0],
+            [l_arm, 56.0, 13.0],
+            [l_arm + 1.5, 46.0, 15.0],
+            [l_arm + 1.2, 40.5, 18.0],
+            [r_arm, 56.0, 13.0],
+            [r_arm - 1.5, 46.0, 15.0],
+            [r_arm - 1.2, 40.5, 18.0],
+            [l_leg, 34.0, 13.0],
+            [l_leg, 13.0, 13.0],
+            [l_leg, 5.0, 13.5],
+            [r_leg, 34.0, 13.0],
+            [r_leg, 13.0, 13.0],
+            [r_leg, 5.0, 13.5],
+            [r_arm - 1.2, 38.6, 19.5],
+            [l_arm + 1.8, 38.6, 21.0],
+            [r_arm - 1.5, 44.0, 16.0],
+        ],
+        cuts: &[
+            Cut::up(b(Hips), b(Spine), 42.5),
+            Cut::up(b(Spine), b(Chest), 50.0),
+            Cut::cube(b(Chest), b(Neck), [mid - 2.5, 57.5, -INF], [mid + 2.5, INF, INF]).only(&[mat::SKIN]),
+            Cut::cube(b(UpperArmL), b(Offhand), [l_arm - 2.0, -INF, 19.0], [l_arm + 6.0, INF, INF]).only(&[mat::WOOD, 0]),
+            Cut::down(b(UpperArmL), b(ForearmL), 46.0),
+            Cut::cube(b(ForearmL), b(HandL), [-INF, -INF, -INF], [INF, 40.5, INF]).only(&[mat::SKIN]),
+            Cut::down(b(UpperArmR), b(ForearmR), 46.0),
+            Cut::cube(b(ForearmR), b(HandR), [-INF, -INF, -INF], [INF, 40.5, INF]).only(&[mat::SKIN]),
+            Cut::down(b(ThighL), b(ShinL), 13.0).bare(),
+            Cut::down(b(ShinL), b(FootL), 5.0),
+            Cut::down(b(ThighR), b(ShinR), 13.0).bare(),
+            Cut::down(b(ShinR), b(FootR), 5.0),
+            // The robe's halves.
+            Cut::down(b(Hips), b(ThighR), 36.5).across([-INF, -INF, -INF], [mid, INF, INF]),
+            Cut::down(b(Hips), b(ThighL), 36.5).across([mid, -INF, -INF], [INF, INF, INF]),
+        ],
+    }
+};
+
+/**
+ * The blemmyes' joints (grid 48 × 70 × 28, `foes2::BLEMMYES_SIZE`). He has no head: his face is in
+ * his chest, so his neck and head bones are empty, set on his shoulders' line. His waist is above the
+ * loincloth's rope (y 30.5), his chest above his grin (42: the eyes and the brow ride it, the mouth his
+ * belly). His heavy arms bend at the elbow's ball (41.4), the fist below the wrist (30.5); the knee's
+ * ball (12), the bare foot below the ankle (4.5). His knotted club, in his fist at the sculpt's high x
+ * (his own left), is the `offhand`: its wood.
+ */
+pub const BLEMMYES: Joints = {
+    use crate::render::characters::mat;
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid) = (41.5, 5.5, 30.5, 16.5, 23.5);
+    Joints {
+        def: &HUMANOID,
+        from: HUMANOID_FOE_PARTS,
+        mirrored: false,
+        fists: false,
+        at: &[
+            [mid, 26.0, 13.0],
+            [mid, 30.5, 13.0],
+            [mid, 42.0, 13.0],
+            [mid, 58.0, 13.0],
+            [mid, 60.0, 13.0],
+            [l_arm, 54.0, 13.0],
+            [l_arm + 1.0, 41.4, 14.2],
+            [l_arm + 1.6, 30.5, 16.5],
+            [r_arm, 54.0, 13.0],
+            [r_arm - 1.0, 41.4, 14.2],
+            [r_arm - 1.6, 30.5, 16.5],
+            [l_leg, 24.0, 13.0],
+            [l_leg, 12.0, 13.4],
+            [l_leg, 4.5, 13.0],
+            [r_leg, 24.0, 13.0],
+            [r_leg, 12.0, 13.4],
+            [r_leg, 4.5, 13.0],
+            [r_arm - 1.6, 27.0, 18.0],
+            [l_arm + 1.6, 27.0, 18.0],
+            [r_arm - 1.3, 36.0, 15.3],
+        ],
+        cuts: &[
+            Cut::up(b(Hips), b(Spine), 30.5),
+            Cut::up(b(Spine), b(Chest), 42.0),
+            Cut::cube(b(UpperArmL), b(Offhand), [l_arm - 6.0, -INF, -INF], [l_arm + 12.0, 31.0, INF]).only(&[mat::WOOD]),
+            Cut::down(b(UpperArmL), b(ForearmL), 41.5),
+            Cut::down(b(ForearmL), b(HandL), 30.5),
+            Cut::down(b(UpperArmR), b(ForearmR), 41.5),
+            Cut::down(b(ForearmR), b(HandR), 30.5),
+            Cut::down(b(ThighL), b(ShinL), 13.0),
+            Cut::down(b(ShinL), b(FootL), 4.5),
+            Cut::down(b(ThighR), b(ShinR), 13.0),
+            Cut::down(b(ShinR), b(FootR), 4.5),
+        ],
+    }
+};
+
+/**
+ * The tengu's joints (grid 48 × 92 × 56, `foes3::TENGU_SIZE`; z 27.5 his middle). His waist is his
+ * sash (y 46), his chest from 54; his neck the red column under his head (y 62 up, its skin only),
+ * his head the face, the nose, the mane and the beard and the cap. His jacket's wide sleeves end at the
+ * elbow (51.5), the red fist below the wrist (43.5); the hakama's legs bend at the knee (19.5) over the
+ * leg wraps, the tabi and geta below the ankle (8). The katana in his fist at the sculpt's high x (his
+ * own left) is the `offhand`: its guard, blade and the grip below the fist (the grip above it, inside
+ * his sleeve's cuff, stays with his hand).
+ */
+pub const TENGU: Joints = {
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid, z) = (35.0, 12.0, 28.5, 18.5, 23.5, 27.5);
+    Joints {
+        def: &HUMANOID,
+        from: HUMANOID_FOE_PARTS,
+        mirrored: false,
+        fists: false,
+        at: &[
+            [mid, 40.0, z],
+            [mid, 46.0, z],
+            [mid, 54.0, z],
+            [mid, 62.0, z],
+            [mid, 67.0, z],
+            [l_arm, 62.0, z],
+            [l_arm + 1.1, 51.5, z + 2.2],
+            [l_arm + 0.7, 43.5, z + 5.0],
+            [r_arm, 62.0, z],
+            [r_arm - 1.1, 51.5, z + 2.2],
+            [r_arm - 0.7, 43.5, z + 5.0],
+            [l_leg, 34.0, z],
+            [l_leg, 19.5, z],
+            [l_leg + 0.4, 8.0, z + 1.0],
+            [r_leg, 34.0, z],
+            [r_leg, 19.5, z],
+            [r_leg - 0.4, 8.0, z + 1.0],
+            [r_arm - 0.7, 41.0, z + 6.0],
+            [l_arm + 0.7, 41.0, z + 6.0],
+            [r_arm - 0.9, 47.0, z + 3.6],
+        ],
+        cuts: &[
+            Cut::up(b(Hips), b(Spine), 46.0),
+            Cut::up(b(Spine), b(Chest), 54.0),
+            Cut::cube(b(Chest), b(Neck), [mid - 3.0, 62.0, -INF], [mid + 3.0, INF, INF]).only(SKIN_MATS),
+            Cut::cube(b(UpperArmL), b(Offhand), [l_arm - 6.0, -INF, -INF], [l_arm + 12.0, 40.5, INF]).except(SKIN_MATS),
+            Cut::down(b(UpperArmL), b(ForearmL), 51.5),
+            Cut::down(b(ForearmL), b(HandL), 43.5),
+            Cut::down(b(UpperArmR), b(ForearmR), 51.5),
+            Cut::down(b(ForearmR), b(HandR), 43.5),
+            Cut::down(b(ThighL), b(ShinL), 19.5),
+            Cut::down(b(ShinL), b(FootL), 8.0),
+            Cut::down(b(ThighR), b(ShinR), 19.5),
+            Cut::down(b(ShinR), b(FootR), 8.0),
+        ],
+    }
+};
+
+/**
+ * The rasetsu's joints (grid 64 × 116 × 40, `foes3::RASETSU_SIZE`; z 19.5 his middle). His waist is
+ * the top of his trousers' seat (y 52), his chest from 64; his neck the thick red column under his
+ * head (y 80.5 up), his head the scowl, the horns and the hair; his tail rides his hips. His arms bend
+ * at the elbow (65.5), the bracer to the wrist (52), the fist below; his trousers' legs bend at the
+ * knee (21) over the shin straps, the clawed foot below the ankle (6). A curved blade in each fist: the
+ * one at the sculpt's high x (his own left) the `offhand`, the other the `blade` (the grips and the
+ * steel, not the fists).
+ */
+pub const RASETSU: Joints = {
+    use Bone::*;
+    let (l_arm, r_arm, l_leg, r_leg, mid, z) = (47.0, 16.0, 38.0, 25.0, 31.5, 19.5);
+    Joints {
+        def: &HUMANOID,
+        from: RASETSU_PARTS,
+        mirrored: false,
+        fists: false,
+        at: &[
+            [mid, 44.0, z],
+            [mid, 52.0, z],
+            [mid, 64.0, z],
+            [mid, 80.5, z],
+            [mid, 84.0, z],
+            [l_arm, 78.0, z],
+            [l_arm + 1.6, 65.5, z + 1.0],
+            [l_arm + 2.4, 52.0, z + 3.0],
+            [r_arm, 78.0, z],
+            [r_arm - 1.6, 65.5, z + 1.0],
+            [r_arm - 2.4, 52.0, z + 3.0],
+            [l_leg, 40.0, z],
+            [l_leg, 21.0, z],
+            [l_leg, 6.0, z + 1.0],
+            [r_leg, 40.0, z],
+            [r_leg, 21.0, z],
+            [r_leg, 6.0, z + 1.0],
+            [r_arm - 2.4, 48.6, z + 3.6],
+            [l_arm + 2.4, 48.6, z + 3.6],
+            [r_arm - 2.0, 58.0, z + 2.0],
+        ],
+        cuts: &[
+            Cut::up(b(Hips), b(Spine), 52.0),
+            Cut::up(b(Spine), b(Chest), 64.0),
+            Cut::cube(b(Chest), b(Neck), [mid - 4.5, 80.5, -INF], [mid + 4.5, INF, INF]).only(SKIN_MATS),
+            Cut::cube(b(UpperArmL), b(Offhand), [l_arm - 4.0, -INF, -INF], [l_arm + 20.0, 51.0, INF]).except(SKIN_MATS),
+            Cut::cube(b(UpperArmR), b(Blade), [r_arm - 20.0, -INF, -INF], [r_arm + 4.0, 51.0, INF]).except(SKIN_MATS),
+            Cut::down(b(UpperArmL), b(ForearmL), 65.5),
+            Cut::down(b(ForearmL), b(HandL), 52.0),
+            Cut::down(b(UpperArmR), b(ForearmR), 65.5),
+            Cut::down(b(ForearmR), b(HandR), 52.0),
+            Cut::down(b(ThighL), b(ShinL), 21.0),
+            Cut::down(b(ShinL), b(FootL), 6.0),
+            Cut::down(b(ThighR), b(ShinR), 21.0),
+            Cut::down(b(ShinR), b(FootR), 6.0),
+        ],
+    }
+};
+
+/// The rasetsu's code rig: the humanoid foes' parts and his tail, which rides his hips.
+const RASETSU_PARTS: &[(&str, usize)] = &[
+    ("body", b(Bone::Hips)),
+    ("leftLeg", b(Bone::ThighR)),
+    ("rightLeg", b(Bone::ThighL)),
+    ("leftArm", b(Bone::UpperArmR)),
+    ("rightArm", b(Bone::UpperArmL)),
+    ("head", b(Bone::Head)),
+    ("tail", b(Bone::Hips)),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,7 +616,8 @@ mod tests {
     /// The moves' clips each foe rig must have, by its archetype's moves (and the pack leader's rally).
     fn moves_of(foe: FoeRig) -> &'static [&'static str] {
         match foe {
-            FoeRig::Draugr => &["slam", "sweep", "rally"],
+            FoeRig::Draugr | FoeRig::Helmeted | FoeRig::Blemmyes | FoeRig::Tengu | FoeRig::Rasetsu => &["slam", "sweep", "rally"],
+            FoeRig::Witch => &["hex", "rally"],
             FoeRig::Slime | FoeRig::Jorogumo => &["hex", "rally"],
             _ => &["bite", "rally"],
         }

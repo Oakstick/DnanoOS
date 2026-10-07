@@ -53,6 +53,92 @@ DRAUGR = {
     "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(DRAUGR_SWORD, kind="flinch", cut=100)),
 }
 
+MU = "mutant/"
+MG = "magic/"
+GS = "great-sword/great sword "
+
+# ------------------------------------------------------------------ the helmeted skeleton
+
+# His spiked mace hangs head down from his bony fist (his own left: mirrored).
+HELM = dict(mirror=True, weapon="offhand", weapon_rest=(0.04, -0.997, 0.06))
+# Mixamo's melee axe pack: a soldier of the dead, square and heavy.
+HELMETED = {
+    "idle": (AX + "idle.fbx", dict(HELM, loop=True)),
+    "walk": (AX + "walk forward.fbx", dict(HELM, loop=True, stride="feet")),
+    "run": (AX + "run forward.fbx", dict(HELM, loop=True, stride="feet")),
+    # The slam: the leap and the mace brought down on him with both hands, struck where he stands
+    # (its run-up cut away).
+    "slam": (AX + "melee run jump attack.fbx", dict(HELM, kind="strike", still=True, span=(0.37, 3.45))),
+    "sweep": (AX + "melee attack horizontal.fbx", dict(HELM, kind="strike")),
+    "rally": (AX + "taunt battlecry.fbx", dict(HELM, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (AX + "react large gut.fbx", dict(HELM, kind="flinch")),
+    "stagger": (AX + "react large from left.fbx", dict(HELM, kind="flinch")),
+}
+
+# ------------------------------------------------------------------ the blemmyes
+
+# His knotted club hangs down and forward from his fist (his own left: mirrored).
+BLEM = dict(mirror=True, weapon="offhand", weapon_rest=(0.06, -0.96, 0.26))
+# Mixamo's creature pack: a hunched brute, his face in his chest.
+BLEMMYES = {
+    "idle": (MU + "mutant breathing idle.fbx", dict(BLEM, loop=True)),
+    "walk": (MU + "mutant walking.fbx", dict(BLEM, loop=True, stride="feet")),
+    "run": (MU + "mutant run.fbx", dict(BLEM, loop=True, stride="feet")),
+    # The leap and the club brought down, its spins taken out.
+    "slam": (MU + "mutant jump attack.fbx", dict(BLEM, kind="strike", still=True, yaw_keep=0.0, face=0.0)),
+    "sweep": (MU + "mutant swiping.fbx", dict(BLEM, kind="strike")),
+    "rally": (MU + "mutant roaring.fbx", dict(BLEM, kind="strike", weapon="chest", tip_rest=(0.0, 1.0, 0.3))),
+    "hit": (AX + "react large from right.fbx", dict(BLEM, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Left.fbx", dict(BLEM, kind="flinch")),
+}
+
+# ------------------------------------------------------------------ the rasetsu
+
+# A curved blade in each fist, hanging down and out: neither mirrored, each held as the source's
+# own fist holds it.
+RAS = dict(weapon="offhand", weapon_rest={"offhand": (0.49, -0.86, 0.09), "blade": (-0.49, -0.86, 0.09)})
+RASETSU = {
+    "idle": (MU + "mutant idle.fbx", dict(RAS, loop=True)),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(RAS, loop=True, stride="feet")),
+    "run": ("melee-axe/unarmed run forward.fbx", dict(RAS, loop=True, stride="feet")),
+    # The twin blades: the first cuts of the dual weapon combo, its whirl mostly taken out.
+    "slam": (FX + "dual weapon combo.fbx", dict(RAS, kind="strike", yaw_keep=0.3, cut=110)),
+    "sweep": (AX + "melee attack 360 low.fbx", dict(RAS, kind="strike", yaw_keep=0.0, face=0.0)),
+    "rally": (MU + "mutant flexing muscles.fbx", dict(RAS, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (MG + "Standing React Small From Left.fbx", dict(RAS, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Back.fbx", dict(RAS, kind="flinch")),
+}
+
+# ------------------------------------------------------------------ the tengu
+
+# His katana, held low in his fist (his own left: mirrored), down and forward past his foot. The
+# great sword pack, picks none of the heroes uses: one-handed where it can, the other hand free.
+TENG = dict(mirror=True, weapon="offhand", weapon_rest=(0.14, -0.84, 0.52))
+TENGU = {
+    "idle": (GS + "idle (4).fbx", dict(TENG, loop=True)),
+    "walk": ("melee-axe/unarmed walk forward.fbx", dict(TENG, loop=True, stride="feet")),
+    "run": (GS + "run (2).fbx", dict(TENG, loop=True, stride="feet")),
+    "slam": (GS + "slash (4).fbx", dict(TENG, kind="strike")),
+    "sweep": (GS + "slash (5).fbx", dict(TENG, kind="strike", yaw_keep=0.0, face=0.0)),
+    "rally": (GS + "power up.fbx", dict(TENG, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (GS + "impact (3).fbx", dict(TENG, kind="flinch")),
+    "stagger": (GS + "impact (4).fbx", dict(TENG, kind="flinch")),
+}
+
+# ------------------------------------------------------------------ the witch
+
+# Her staff, upright in her fist (her own left: mirrored). Mixamo's magic pack; she creeps hunched.
+WITCH_W = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, 1.0, 0.0))
+WITCH = {
+    "idle": (MG + "standing idle 02.fbx", dict(WITCH_W, loop=True)),
+    "walk": (MG + "Crouch Walk Forward.fbx", dict(WITCH_W, loop=True, stride="feet")),
+    "run": (MG + "Standing Run Forward.fbx", dict(WITCH_W, loop=True, stride="feet")),
+    "hex": (MG + "Standing 2H Magic Attack 01.fbx", dict(WITCH_W, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "rally": (MG + "Standing 2H Magic Area Attack 01.fbx", dict(WITCH_W, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "hit": (MG + "Standing React Small From Right.fbx", dict(WITCH_W, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Right.fbx", dict(WITCH_W, kind="flinch")),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -72,10 +158,36 @@ JOROGUMO = {
     "stagger": (MG + "Standing React Large From Front.fbx", dict(JORO, kind="flinch", legs="stagger")),
 }
 
-FOES = {"draugr": DRAUGR, "jorogumo": JOROGUMO}
+FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")
+
+
+# The recovery each move has in the game at its base tempo (frames: logic/combat/frames.rs), and
+# the longest a clip's follow-through is kept against it: the rest of a long Mixamo settle is cut
+# off (the game would play it several times too fast), and the foe's feet take over in a crossfade.
+RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24}
+TAIL = 2.2
+# The longest a reel's clip runs past its impact (a reel lasts 14 to 50 frames in the game).
+REEL_TAIL = 40
+
+
+def shorten(slot, act):
+    """Cuts a long follow-through or settle off a move or a reel, its markers kept in order."""
+    marks = {m.name: m for m in act.pose_markers}
+    n = int(act.frame_range[1])
+    if slot in RECOVERY and "active_end" in marks:
+        end = int(marks["active_end"].frame + RECOVERY[slot] * TAIL)
+    elif "impact" in marks and slot in ("hit", "stagger"):
+        end = int(marks["impact"].frame + REEL_TAIL * (1.6 if slot == "stagger" else 1.0))
+    else:
+        return
+    if end >= n:
+        return
+    mh.trim(act, 0, end)
+    marks["recover_end"].frame = end
+    print(f"mixamo_foe: {slot}: cut to {end} frames (from {n})")
 
 
 def lay_legs(tgt, act, which):
@@ -189,6 +301,7 @@ def main():
             if only and slot not in only:
                 continue
             act = mh.make(slot, os.path.join(root, path), opts, tgt, prefix="mixamo_foe")
+            shorten(slot, act)
             if opts.get("legs"):
                 lay_legs(tgt, act, opts["legs"])
         if (not only or "deflected" in only) and "stagger" in bpy.data.actions and "deflected" not in FOES[foe]:

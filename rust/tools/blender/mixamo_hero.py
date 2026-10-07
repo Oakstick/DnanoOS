@@ -147,6 +147,12 @@ HEROES = {"ragnar": RAGNAR, "mehmed": MEHMED, "miyamoto": MIYAMOTO}
 # ------------------------------------------------------------------ markers
 
 
+def tip_rest(opts):
+    """The way the striking weapon points at rest, from a pick's options."""
+    r = opts.get("tip_rest", opts.get("weapon_rest"))
+    return r.get(opts.get("weapon", "blade")) if isinstance(r, dict) else r
+
+
 def tip_track(arm, act, weapon="blade", rest=None):
     """The blade's tip (game axes) every frame of `act`, the feet's and hips' heights, the shield's
     and the off hand's joints, and the chest's turn. `weapon` is the bone of the weapon that strikes
@@ -285,12 +291,13 @@ def make(slot, path, opts, tgt, prefix="mixamo_hero"):
     if opts.get("reverse"):
         reverse(act)
     if opts.get("stride") == "feet":
-        act["vh_stride"] = foot_stride(tgt, act)
+        # (Or, where its feet never plant, as a strafe's, the ground its hips cover.)
+        act["vh_stride"] = foot_stride(tgt, act) or 1.0
         print(f"{prefix}: {slot}: its feet carry it {act['vh_stride']:.2f} m a cycle")
     kind = opts.get("kind")
     marks = {}
     if kind:
-        t = tip_track(tgt, act, opts.get("weapon", "blade"), opts.get("tip_rest", opts.get("weapon_rest")))
+        t = tip_track(tgt, act, opts.get("weapon", "blade"), tip_rest(opts))
         if kind == "strike":
             marks = strike_marks(t["tips"])
             lead = marks.pop("lead")
@@ -306,7 +313,7 @@ def make(slot, path, opts, tgt, prefix="mixamo_hero"):
             if opts.get("cut"):
                 # (Only the reaction: the long settle after it is cut off.)
                 trim(act, 0, opts["cut"])
-                t = tip_track(tgt, act, opts.get("weapon", "blade"), opts.get("tip_rest", opts.get("weapon_rest")))
+                t = tip_track(tgt, act, opts.get("weapon", "blade"), tip_rest(opts))
             marks = flinch_marks(t["chest"])
             marks["recover_end"] = int(act.frame_range[1])
     for k, v in marks.items():

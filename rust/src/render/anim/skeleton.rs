@@ -273,7 +273,7 @@ impl Cut {
     }
 
     /// The same cut without its sleeve (a joint hidden under a skirt, whose band would be the skirt's).
-    const fn bare(self) -> Self {
+    pub const fn bare(self) -> Self {
         Self { sleeve: false, ..self }
     }
 
