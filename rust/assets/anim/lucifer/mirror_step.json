@@ -1,0 +1,12 @@
+{
+ "clip": "mirror_step",
+ "fps": 60,
+ "frames": 30,
+ "loop": false,
+ "markers": {
+  "windup_end": 12,
+  "hit": 14,
+  "active_end": 17,
+  "recover_end": 30
+ }
+}
