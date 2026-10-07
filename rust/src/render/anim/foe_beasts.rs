@@ -174,7 +174,7 @@ pub const QUADRUPED: SkeletonDef = SkeletonDef {
     legs: &[],
 };
 
-mod quad {
+pub(super) mod quad {
     pub const HIPS: usize = 0;
     pub const CHEST: usize = 1;
     pub const NECK: usize = 2;

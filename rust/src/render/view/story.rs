@@ -20,10 +20,10 @@ pub(super) const GRAVEYARD: Vec3 = Vec3::new(-160.0, 0.0, -40.0);
 pub(super) const GATEWAY: Vec3 = Vec3::new(-200.0, 0.0, -40.0);
 
 /// Voxel sizes of the cast, in world units.
-pub(super) const KID_VOXEL: f32 = 0.0115;
-pub(super) const OLD_MAN_VOXEL: f32 = 0.012;
-pub(super) const DOG_VOXEL: f32 = 0.013;
-pub(super) const KRAMPUS_VOXEL: f32 = 0.015;
+pub(super) const KID_VOXEL: f32 = cast::KID_VOXEL;
+pub(super) const OLD_MAN_VOXEL: f32 = cast::OLD_MAN_VOXEL;
+pub(super) const DOG_VOXEL: f32 = cast::DOG_VOXEL;
+pub(super) const KRAMPUS_VOXEL: f32 = cast::KRAMPUS_VOXEL;
 
 /// Material shade modes for plain blocks (5 + the material's number).
 const SHADE_METAL: f32 = 6.0;

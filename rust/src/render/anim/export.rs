@@ -162,6 +162,20 @@ pub fn export_rig(name: &str, path: &str) -> Result<String, String> {
             glb.len() / 1024
         ));
     }
+    if let Some(c) = super::cast_rigs::CastRig::named(&lower) {
+        // The story's cast (`kid0` .. `kid3`, `oldman`, `dog`, `krampus_shade`).
+        let rig = c.jointed();
+        let def = c.joints().def;
+        let glb = rig_glb_of(def, &rig, &lower);
+        std::fs::write(path, &glb).map_err(|e| format!("{path}: {e}"))?;
+        let voxels: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
+        return Ok(format!(
+            "wrote {path}: {} bones, {voxels} voxels, {} faces, {} KB",
+            def.len(),
+            rig.mesh().faces.len(),
+            glb.len() / 1024
+        ));
+    }
     let hero = match lower.as_str() {
         "ragnar" => HeroKind::Ragnar,
         "mehmed" => HeroKind::Mehmed,

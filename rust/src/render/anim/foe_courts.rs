@@ -9,26 +9,26 @@ use crate::render::characters::mat;
 
 const INF: f32 = f32::INFINITY;
 
-fn mirror(p: &[[f32; 3]], cx: f32) -> Vec<[f32; 3]> {
+pub(super) fn mirror(p: &[[f32; 3]], cx: f32) -> Vec<[f32; 3]> {
     p.iter().map(|q| [2.0 * cx - q[0], q[1], q[2]]).collect()
 }
 
 /// The hips, spine and chest at their joints, the neck and the head; cut level at the spine's and
 /// the chest's heights.
-fn torso(b: &mut Build, hips: [f32; 3], spine: [f32; 3], chest: [f32; 3], neck: [f32; 3], head: [f32; 3]) {
+pub(super) fn torso(b: &mut Build, hips: [f32; 3], spine: [f32; 3], chest: [f32; 3], neck: [f32; 3], head: [f32; 3]) {
     b.at(Bone::Hips, hips).at(Bone::Spine, spine).at(Bone::Chest, chest).at(Bone::Neck, neck).at(Bone::Head, head);
     b.cut(Cut::up(Bone::Hips.index(), Bone::Spine.index(), spine[1])).cut(Cut::up(Bone::Spine.index(), Bone::Chest.index(), chest[1]));
 }
 
 /// Both arms, cut at each bend; the empty weapon bones in the fists.
-fn arms(b: &mut Build, arm_l: &[[f32; 3]], arm_r: &[[f32; 3]]) {
+pub(super) fn arms(b: &mut Build, arm_l: &[[f32; 3]], arm_r: &[[f32; 3]]) {
     b.chain(&[Bone::UpperArmL, Bone::ForearmL, Bone::HandL].map(Bone::index), arm_l, None);
     b.chain(&[Bone::UpperArmR, Bone::ForearmR, Bone::HandR].map(Bone::index), arm_r, None);
     b.at(Bone::Offhand, arm_l[2]).at(Bone::Blade, arm_r[2]).at(Bone::Shield, arm_r[1]);
 }
 
 /// Both legs (the `.L` one given, the other mirrored about `cx`), cut at each bend.
-fn legs(b: &mut Build, cx: f32, leg_l: &[[f32; 3]; 4]) {
+pub(super) fn legs(b: &mut Build, cx: f32, leg_l: &[[f32; 3]; 4]) {
     b.chain(&[Bone::ThighL, Bone::ShinL, Bone::FootL].map(Bone::index), leg_l, None);
     b.chain(&[Bone::ThighR, Bone::ShinR, Bone::FootR].map(Bone::index), &mirror(leg_l, cx), None);
 }
