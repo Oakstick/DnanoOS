@@ -929,3 +929,37 @@ stages' foes, then the realms', the courts' and the lair's own, in `EnemyKind`'s
 `prince:M` makes the prince in the bout begin his move M (through his phases' tables); `--foe p`
 films the prince; a capture's line ends with the last foe's state and the prince's (or the first
 duelist's), its move, frame and phase. With `--anim-compare` each shot is code beside clips.
+
+### 11.13 Stage 1 revisited (2026-10-08, branch `stage1`)
+
+The four the player meets first, in the Garden at night, from the chase camera.
+
+- **The maze's foes play their clips.** The Garden's captures said "foes by clips 0 of 4": a
+  capture's artefact. `--foe` moves the camera after the last step, and a step poses only the foes
+  the camera saw as it began (`animate_foe_clips` skips those off screen). One real case was found
+  behind it: a foe the camera had just swung onto (it turns, or changes from following him to
+  looking down) showed the code's pose for a frame or a few. Now `pose_foes_in_view` runs after
+  the camera moves in every step and in captures: whatever is drawn is posed by its clips.
+  `game::tests::the_maze_foes_on_screen_play_their_clips` checks each foe drawn, hunting, frenzied
+  and scattered, from both gameplay cameras. A frenzied maze foe (the nugget's fright) flees with
+  its flinch held over it (`FRIGHT`, 0.3 into its `hit`), cringing; an eaten one and one in the
+  nest are hidden as before; the draugr's scattered bones burst and pull together by his clips.
+- **The draugr is a swordsman.** The zombie pack's idle held his sword across his face, and its arms
+  reach forward empty-handed: with a sword in his fist the arm looked flung out. His idle is now the
+  sword and shield pack's ready stance (its first two seconds: after them its soldier turns to look
+  behind him), hunched (`DRAUGR_HUNCH`: spine and chest bowed, skull raised). His walk and run keep
+  the zombie's lurch in his legs, straightened a little (`DRAUGR_LURCH`) with the hips' twist damped
+  (`yaw_keep` 0.4), and his arms are the guard's, laid over them frame by frame
+  (`mixamo_foe.arms_over`: the sword arm, its weapon bone and the free arm, turned relative to his
+  chest, so they ride the lurch): he stalks with his sword before him. The overhead chop and the
+  sweep are the same picks, hunched. The helmeted skeleton shares none of it (its own table, its own
+  clips, its own light).
+- **The ravens** (`bat`, `vampire`) are drawn 1.45 and 1.35 times their sculpt (`shown_scale`: on
+  screen only, their hit boxes untouched), fly over the hedges at 1.0 and 1.1 m (`rig_for`), 0.2
+  lower when they fight (`duel_hover`), and their bite dives 0.24 m (`Flyer.dive`; the large bat's
+  stays 0.14). Their clips are otherwise those of §11.3: the snapping downstroke and the folded
+  upstroke, the glide, the night raven's cape of wings.
+
+Mixamo clips that would help (not downloaded): a one-handed sword idle and walk without a shield (the
+draugr's guard has a shield arm's carriage), a crouched sneaking walk or an injured walk (a stalk
+with a lame leg, for the draugr), a one-handed overhead sword chop (the chop is the axe pack's).

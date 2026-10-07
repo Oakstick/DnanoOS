@@ -508,6 +508,48 @@ courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to r
   On this machine the GPU is the cost. RP06's gameplay rule holds: none of these settings touch the
   simulation, and the presets and level of detail are view-only.
 
+### The first stage's foes: the bog slime's jelly (2026-10-08)
+
+The bog slime was a cute, opaque voxel blob with a cartoon face. It is now a dome of jelly round
+what it has swallowed (`foes::bog_slime`):
+
+- **The sculpt**: a skin of jelly (`mat::SLIME`) two voxels thick, bog green at the crown to a murky
+  teal at the foot and a puddle round it, drips running down it; inside, clear of the skin, a darker
+  heart, a drowned man's skull and bones, two coins, a rusty key, bubbles, and two small dim eyes
+  (`mat::GLOW`, dark: they glimmer through); duckweed and a lily pad in flower on it; no face.
+- **Drawn twice**, from the same posed rig: what it holds solid (`rig_look::INNARDS`, with the
+  solid rigs: its jelly's faces dropped in the vertex shader), its jelly see-through
+  (`rig_look::GOO`, with the blended rigs at `GOO_ALPHA` 0.34: everything but the jelly dropped).
+  Only what it holds casts a shadow: the light goes through the jelly.
+- **The jelly's look** (`shaders.wgsl`, `jelly`, its own shade mode): its normal bent soft, leaning
+  away from its heart (`GOO_HEART` voxels over its root's joint) so the voxels' ledges do not each
+  catch the light; its inside's far wall seen through it, thinner; seen edge-on it thickens; the
+  light falls on it wrapped and shines through it from behind; the moon, the lamps and the sky glint
+  off it sharply, and the glints are not thinned by its clearness. Its tell gathers at its soft
+  silhouette.
+- **It moves**: its clips squash and stretch it (§11.3 of ANIMATION.md); its skin ripples in the
+  vertex shader, harder as it is stirred (`EnemyView::ripple`, the draw's `rust` slot: a hop, a spit,
+  a blow) and settling slowly. Its cuts are not drawn inside it (`Rig::fuse_goo`: a face between two
+  of its jelly voxels is dropped even across parts).
+- **Around it**: beads of its jelly gather on its flank, run down and spread at its foot
+  (`emit_slime_drips`, three spheres); its trail (the game's own puddles, unchanged) and its spit
+  (a gob round a darker knot, dripping) are the same jelly's colours; its own light is murky green,
+  over its crown and dimmer (inside the jelly it lit it like a lamp).
+
+The same pass on its stage: the draugr's own light is the cold blue of his ribs, before his chest
+(at his shins it lit them white); the ravens are drawn larger and fly higher (ANIMATION.md §11.13),
+their wings' trailing edges and fingertips pale as moonlight (`Plumage::rim`).
+
+Cost (1920×1080, `--bench 300`, quick build, interleaved runs; this laptop's GPU drifts between runs):
+
+| Scene | Before | After |
+|---|---|---|
+| Ten bog slimes in the Sparring Ring (`ringof:3:10`) | 3.81, 4.38 ms | 3.94, 3.91 ms |
+| 32 of the first stage's foes in the Garden at night, chase camera (`foeline:8`) | 11.00, 11.32 ms | 11.74, 11.43 ms |
+
+A slime is two rig draws (its triangles: 1.09 M to 1.34 M with ten), about 0.2 ms for 32 foes
+counting the ravens' finer level of detail now that they are larger.
+
 ### No stalls mid-fight (2026-10-05)
 
 A fight must never stutter. The gameplay benchmark of 4 October showed fight frames of 2 to 4 ms
