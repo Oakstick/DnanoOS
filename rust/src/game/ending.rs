@@ -7,7 +7,7 @@
 use super::story::{Story, SKIP_FADE};
 use super::{Game, Screen};
 use crate::audio::hymn;
-use crate::audio::Sfx;
+use crate::audio::{Sfx, Soundtrack};
 use crate::input::Action;
 use crate::logic::story::{ascent, Scene, Shot};
 use crate::platform;
@@ -28,6 +28,18 @@ pub fn finished_saved() -> bool {
 /// call this alone, under a save folder of their own.)
 fn remember_finished() {
     platform::save(FINISHED_KEY, "1");
+}
+
+/// Seconds into the credits at which their song comes in, and the hymn's fade under it.
+const CREDITS_SONG_IN: f32 = 0.05;
+const CREDITS_HANDOVER: f64 = 4.0;
+/// Seconds before the credits end at which their song begins to fade.
+const CREDITS_SONG_OUT: f32 = 4.0;
+
+/// How long the credits roll.
+fn credits_hold() -> f32 {
+    let beats = Scene::Two.beats();
+    crate::logic::story::first(Shot::Credits).map_or(44.0, |i| beats[i].hold as f32)
 }
 
 /// Seconds into Scene II at which the hymn's first bar sounds.
@@ -95,6 +107,13 @@ impl Game {
             // The cold of the bottom: one breath of wind; then quiet.
             Shot::Embrace if at(0.3) => self.audio.play(Sfx::Wind),
             Shot::Light if at(ascent::LIGHT_TOUCH) => self.audio.play(Sfx::Soul),
+            // The credits roll to their own song: the hymn is let go as it comes in, and it fades
+            // out with the last of them before the title.
+            Shot::Credits if at(CREDITS_SONG_IN) => {
+                self.audio.hymn_release(CREDITS_HANDOVER);
+                self.audio.set_soundtrack(Some(Soundtrack::Credits));
+            }
+            Shot::Credits if at(credits_hold() - CREDITS_SONG_OUT) => self.audio.hush(),
             _ => {}
         }
         if let Some(st) = &self.story {
@@ -112,6 +131,7 @@ impl Game {
             st.ending = Some((ENDING_SKIP_FADE.max(SKIP_FADE), ENDING_SKIP_FADE.max(SKIP_FADE)));
         }
         self.audio.hymn_release(ENDING_SKIP_FADE * 1.5);
+        self.audio.hush();
     }
 
     /// The end is over: back to the title, its music, and its mark.

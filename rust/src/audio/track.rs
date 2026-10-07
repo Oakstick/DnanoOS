@@ -24,6 +24,14 @@ pub enum Soundtrack {
     DesolationVesper,
     /// "Level 1 Boss": the other song a boss fight may draw.
     LevelOneBoss,
+    /// "Celestia Ardent" 2, 3 and 4 (the Desolation soundtrack) and "Scavenger Guild": more songs the
+    /// later levels draw from.
+    CelestiaArdent2,
+    CelestiaArdent3,
+    CelestiaArdent4,
+    ScavengerGuild,
+    /// "Credits": under the credits at the end, after the hymn.
+    Credits,
 }
 
 impl Soundtrack {
@@ -36,12 +44,25 @@ impl Soundtrack {
             Soundtrack::LastOne => include_bytes!("../../assets/music/last_one.ogg"),
             Soundtrack::DesolationVesper => include_bytes!("../../assets/music/desolation_vesper.ogg"),
             Soundtrack::LevelOneBoss => include_bytes!("../../assets/music/level1_boss.ogg"),
+            Soundtrack::CelestiaArdent2 => include_bytes!("../../assets/music/celestia_ardent_2.ogg"),
+            Soundtrack::CelestiaArdent3 => include_bytes!("../../assets/music/celestia_ardent_3.ogg"),
+            Soundtrack::CelestiaArdent4 => include_bytes!("../../assets/music/celestia_ardent_4.ogg"),
+            Soundtrack::ScavengerGuild => include_bytes!("../../assets/music/scavenger_guild.ogg"),
+            Soundtrack::Credits => include_bytes!("../../assets/music/credits.ogg"),
         }
     }
 
     /// The songs every level after dungeon I draws one of at random (the hub, the realms, the vaults,
     /// the later dungeons and the gym).
-    pub const LEVELS: [Soundtrack; 3] = [Soundtrack::BastionLux, Soundtrack::LastOne, Soundtrack::DesolationVesper];
+    pub const LEVELS: [Soundtrack; 7] = [
+        Soundtrack::BastionLux,
+        Soundtrack::LastOne,
+        Soundtrack::DesolationVesper,
+        Soundtrack::CelestiaArdent2,
+        Soundtrack::CelestiaArdent3,
+        Soundtrack::CelestiaArdent4,
+        Soundtrack::ScavengerGuild,
+    ];
     /// The songs a boss fight draws one of at random.
     pub const BOSSES: [Soundtrack; 2] = [Soundtrack::Boss, Soundtrack::LevelOneBoss];
 
@@ -55,6 +76,12 @@ impl Soundtrack {
             Soundtrack::LastOne => 0.84,
             Soundtrack::DesolationVesper => 1.4,
             Soundtrack::LevelOneBoss => 0.87,
+            // (Matched by gated loudness to the others' median as they play.)
+            Soundtrack::CelestiaArdent2 => 1.06,
+            Soundtrack::CelestiaArdent3 => 0.89,
+            Soundtrack::CelestiaArdent4 => 0.9,
+            Soundtrack::ScavengerGuild => 0.99,
+            Soundtrack::Credits => 1.08,
         }
     }
 
@@ -70,6 +97,12 @@ impl Soundtrack {
             Soundtrack::LastOne => 140.05,
             Soundtrack::DesolationVesper => 91.95,
             Soundtrack::LevelOneBoss => 82.95,
+            Soundtrack::CelestiaArdent2 => 100.0,
+            // (Measured at 160 and 80 by thirds: 80 is the pulse two of them hear.)
+            Soundtrack::CelestiaArdent3 => 80.0,
+            Soundtrack::CelestiaArdent4 => 120.0,
+            Soundtrack::ScavengerGuild => 150.0,
+            Soundtrack::Credits => 148.15,
         }
     }
 
@@ -83,6 +116,11 @@ impl Soundtrack {
             Soundtrack::LastOne => 0.064,
             Soundtrack::DesolationVesper => 1.271,
             Soundtrack::LevelOneBoss => 1.058,
+            Soundtrack::CelestiaArdent2 => 0.011,
+            Soundtrack::CelestiaArdent3 => 2.514,
+            Soundtrack::CelestiaArdent4 => 1.995,
+            Soundtrack::ScavengerGuild => 0.050,
+            Soundtrack::Credits => 1.367,
         }
     }
 }
@@ -192,7 +230,7 @@ mod tests {
 
     #[test]
     fn every_recording_decodes() {
-        for which in Soundtrack::LEVELS.into_iter().chain(Soundtrack::BOSSES) {
+        for which in Soundtrack::LEVELS.into_iter().chain(Soundtrack::BOSSES).chain([Soundtrack::Credits]) {
             let mut t = Track::new(which).unwrap_or_else(|| panic!("{which:?} decodes"));
             let energy: f64 = (0..48_000).map(|_| t.next(48_000.0)).map(|(l, r)| (l * l + r * r) as f64).sum();
             assert!(energy > 0.0, "{which:?} is silent");
