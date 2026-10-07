@@ -6,7 +6,7 @@
 //! fence with voxel bushes and little voxel trees, all of it plain-lit (no `voxel_surface`
 //! material: RP14) and graded after the fact. Here every piece is built in the board's palette
 //! with its material: dressed stone (the crypt's `masonry`) for the terraces' retaining walls,
-//! steps and kerbs, wet flagstone and gravel (`SHADE_FLAG`) underfoot, strand-shaded growth
+//! steps and kerbs, wet flagstone (`SHADE_FLAG`) and gravel (`SHADE_GRAVEL`) underfoot, strand-shaded growth
 //! (`SHADE_SOFT`) for yew, turf tufts and leaves, bark (`SHADE_WOOD`) and iron (`SHADE_IRON`).
 //!
 //! The layout is untouched: the same tiles are floor and wall, the hedges stand where the fences
@@ -15,7 +15,7 @@
 
 use super::crypt::pal::{CHARCOAL, MOSS, PALE_STONE, UMBER};
 use super::crypt::{
-    block, block_m, flagstones, jit, lantern_cubes, masonry, moss_seam, Wall, SHADE_FLAG, SHADE_IRON, SHADE_SOFT, SHADE_STONE, SHADE_WOOD,
+    block, block_m, flagstones, jit, lantern_cubes, masonry, moss_seam, Wall, SHADE_IRON, SHADE_SOFT, SHADE_STONE, SHADE_WOOD,
 };
 use super::garden::Feature;
 use super::*;
@@ -30,7 +30,7 @@ pub(super) mod pal {
     pub const TURF: [u32; 3] = [0x4a5434, 0x56603a, 0x3e4a30];
     pub const EARTH: [u32; 2] = [0x2e261e, 0x372c22];
     /// The walks' gravel: umber greys, wet.
-    pub const GRAVEL: [u32; 3] = [0x665d50, 0x5e564a, 0x6c6254];
+    pub const GRAVEL: [u32; 1] = [0x4b443a];
     /// Fallen leaves: copper and umber.
     pub const LEAVES: [u32; 3] = [0x8a4a22, 0x9a6a2a, 0x5e3a1e];
     pub const BARK: [u32; 2] = [0x3e3128, 0x30271f];
@@ -45,6 +45,8 @@ pub(super) mod pal {
 }
 use pal::*;
 
+/// Wet gravel (`voxel_surface` kind 11: `gravel` in the shader).
+pub(super) const SHADE_GRAVEL: f32 = 16.0;
 /// How tall the yew stands over its bed: the old fence's top (its mound, two courses and the
 /// cap), so what the cameras see past is unchanged.
 pub(super) const HEDGE_H: f32 = 0.58;
@@ -598,16 +600,9 @@ impl WorldView {
                 block(out, Vec3::new(xf, h - 0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(crypt::pal::GROUT), SHADE_LIT);
             }
             Floor::Walk => {
-                // The gravel in a third of a tile's cells (so the wet shading's grain is a walk's,
-                // not a paving slab's), all one tone so the walk reads whole.
-                for i in 0..3 {
-                    for j in 0..3 {
-                        let k = hash(hx * 3.0 + i as f64, hy * 3.0 + j as f64);
-                        let g = jit(GRAVEL[0], k, 0.012);
-                        let at = Vec3::new(xf + (i as f32 - 1.0) / 3.0, h - 0.05 + (k as f32 - 0.5) * 0.006, yf + (j as f32 - 1.0) / 3.0);
-                        block(out, at, Vec3::new(1.0 / 3.0, 0.1, 1.0 / 3.0), 0.0, g, SHADE_FLAG);
-                    }
-                }
+                // The gravel: one tone, its chips and puddles shaded in world space, so the walk
+                // reads as one bed and not as a tile's slab.
+                block(out, Vec3::new(xf, h - 0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(GRAVEL[0]), SHADE_GRAVEL);
                 let hedged = |dx: i32, dy: i32| {
                     let n = P::new(x + dx, y + dy);
                     grid.in_bounds(n.x, n.y)
@@ -715,8 +710,44 @@ impl WorldView {
         retaining_walls(out, grid, p, floor);
         let c = Vec3::new(xf, base, yf);
         let height = if lawn { 0.3 } else { HEDGE_H - BED + (hash(hx * 0.37, hy * 0.53) as f32 - 0.5) * 0.06 };
+        // A wayside shrine faces the first walk it stands on (the yew opened for it).
+        let shrine = (here == Some(Feature::Shrine)).then(|| {
+            CARDINALS
+                .iter()
+                .copied()
+                .find(|d| {
+                    let (dx, dy) = d.vec();
+                    let t = grid.get(x + dx, y + dy);
+                    t != Tile::Rock && t != Tile::Nest
+                })
+                .unwrap_or(Dir::Down)
+        });
         for &d in roads {
+            if Some(d) == shrine {
+                // A low kerb where the yew stands back from the shrine.
+                let at = side_at(c, d.vec());
+                block(
+                    out,
+                    at(0.0, 0.03, 0.44),
+                    Vec3::new(1.0, 0.06, 0.12),
+                    side_turn(d.vec()),
+                    jit(PALE_STONE[1], k, 0.05) * 0.65,
+                    SHADE_STONE,
+                );
+                continue;
+            }
             hedge(out, c, d.vec(), height, (hx, hy));
+        }
+        if let Some(face) = shrine {
+            let (dx, dy) = face.vec();
+            let yaw = (dx as f32).atan2(dy as f32);
+            let at = c + Vec3::new(dx as f32, 0.0, dy as f32) * 0.2;
+            if hash(hx * 2.9 + 1.0, hy * 3.7) < 0.3 {
+                garden_landmarks::urn_cubes(out, at, (hx, hy));
+            } else {
+                let flame = garden_landmarks::shrine_cubes(out, at, yaw, (hx, hy));
+                self.candles.push(flame);
+            }
         }
         if lawn {
             return;

@@ -9,8 +9,6 @@
 
 use super::*;
 use crate::logic::garden::GardenPlan;
-use crate::render::characters::Sculpt;
-use crate::render::props::mesh_from;
 
 mod pal {
     pub const MUD: u32 = 0x1e1a14;
@@ -24,12 +22,6 @@ mod pal {
     pub const LILY: [u32; 2] = [0xf0d8e0, 0xe890b0];
     pub const REED: u32 = 0x5a7a34;
     pub const CATTAIL: u32 = 0x4a3020;
-    pub const GRAVE_EARTH: u32 = 0x2a2a1c;
-    pub const GRAVE_GRASS: u32 = 0x33422a;
-    pub const HEADSTONE: [u32; 4] = [0x8a8a86, 0x76766f, 0x9c9a92, 0x686862];
-    pub const LICHEN: u32 = 0x6a7a3a;
-    pub const IRON: u32 = 0x24262a;
-    pub const DEAD_WOOD: u32 = 0x2e2622;
     pub const SOIL: u32 = 0x3a2a1c;
     pub const BOX: u32 = 0x24521f;
     pub const BOX_L: u32 = 0x2f6428;
@@ -100,123 +92,6 @@ pub fn features(plan: &GardenPlan) -> HashMap<P, Feature> {
 
 // ------------------------------------------------------------------ models
 
-/// A round classical temple (a monopteros): stepped plinth, eight columns, a green copper dome, a statue inside.
-pub fn temple() -> (Mesh, Mesh) {
-    const STONE: u32 = 0xd6d0be;
-    const STONE_D: u32 = 0xb4ae9c;
-    const MARBLE: u32 = 0xeae6dc;
-    const DOME: u32 = 0x5f8f7c;
-    const DOME_L: u32 = 0x7aa894;
-    const GILT: u32 = 0xe8c050;
-    const FLAME: u32 = 0xffd070;
-    let mut s = Sculpt::new(27, 32, 27);
-    let c = 13.0f32;
-    let disk = |s: &mut Sculpt, y: i32, r: f32, color: u32| {
-        for z in 0..27 {
-            for x in 0..27 {
-                let d = ((x as f32 - c).powi(2) + (z as f32 - c).powi(2)).sqrt();
-                if d <= r {
-                    s.set(x, y, z, color);
-                }
-            }
-        }
-    };
-    disk(&mut s, 0, 12.6, STONE_D);
-    disk(&mut s, 1, 11.4, STONE);
-    disk(&mut s, 2, 10.3, STONE_D);
-    disk(&mut s, 3, 9.6, MARBLE);
-    for k in 0..8 {
-        let a = k as f32 / 8.0 * TAU + 0.39;
-        let (cx, cz) = ((c + 7.6 * a.cos()).round() as i32, (c + 7.6 * a.sin()).round() as i32);
-        s.cuboid(cx - 1, 4, cz - 1, cx + 1, 4, cz + 1, STONE_D);
-        s.cuboid(cx, 5, cz, cx, 18, cz, STONE);
-        s.cuboid(cx - 1, 19, cz - 1, cx + 1, 19, cz + 1, STONE_D);
-    }
-    for y in 20..=21 {
-        for z in 0..27 {
-            for x in 0..27 {
-                let d = ((x as f32 - c).powi(2) + (z as f32 - c).powi(2)).sqrt();
-                if (6.6..=9.8).contains(&d) {
-                    s.set(x, y, z, if y == 20 && (x + z) % 2 == 0 { STONE_D } else { STONE });
-                }
-            }
-        }
-    }
-    s.ellipsoid((c, 21.0, c), (9.0, 7.6, 9.0), 22, DOME);
-    s.paint(|x, _y, z, col| {
-        let a = (z as f32 - c).atan2(x as f32 - c);
-        if col == DOME && ((a / TAU * 8.0).fract() < 0.12) {
-            Some(DOME_L)
-        } else {
-            None
-        }
-    });
-    s.cuboid(12, 29, 12, 14, 29, 14, GILT);
-    s.cuboid(13, 30, 13, 13, 31, 13, GILT);
-    // The statue on its pedestal, and a votive flame at its feet.
-    s.cuboid(12, 4, 12, 14, 7, 14, STONE_D);
-    s.cuboid(12, 8, 13, 14, 12, 13, MARBLE);
-    s.cuboid(13, 8, 12, 13, 12, 14, MARBLE);
-    s.ellipsoid((13.0, 14.0, 13.0), (1.3, 1.5, 1.3), 13, MARBLE);
-    s.set(11, 13, 13, MARBLE);
-    s.set(15, 13, 13, MARBLE);
-    s.set(13, 4, 16, FLAME);
-    s.set(13, 5, 16, FLAME);
-    split(mesh_from(&s.finish(0.03), 0.062), lin(FLAME))
-}
-
-/// A wayside shrine: a stone pillar with a candle in its niche, under a little slate roof and a cross.
-pub fn wayside_shrine() -> (Mesh, Mesh) {
-    const STONE: u32 = 0x9c988a;
-    const STONE_D: u32 = 0x7e7a6e;
-    const SLATE: u32 = 0x464a54;
-    const WAX: u32 = 0xeee6cc;
-    const FLAME: u32 = 0xffc860;
-    let mut s = Sculpt::new(11, 20, 11);
-    s.cuboid(2, 0, 2, 8, 1, 8, STONE_D);
-    s.cuboid(3, 2, 3, 7, 11, 7, STONE);
-    for y in 6..=9 {
-        for x in 4..=6 {
-            s.clear(x, y, 7);
-            s.clear(x, y, 6);
-        }
-    }
-    s.cuboid(4, 5, 6, 6, 5, 7, STONE_D);
-    s.set(5, 6, 6, WAX);
-    s.set(5, 7, 6, FLAME);
-    for y in 12..=15 {
-        let i = y - 12;
-        s.cuboid(1 + i, y, 1, 9 - i, y, 9, SLATE);
-    }
-    s.cuboid(5, 16, 5, 5, 18, 5, STONE_D);
-    s.cuboid(4, 17, 5, 6, 17, 5, STONE_D);
-    split(mesh_from(&s.finish(0.04), 0.05), lin(FLAME))
-}
-
-/// A stone urn on a plinth, spilling flowers.
-pub fn urn() -> Mesh {
-    const STONE: u32 = 0xb0aa98;
-    const STONE_D: u32 = 0x8e8878;
-    let mut s = Sculpt::new(9, 16, 9);
-    s.cuboid(1, 0, 1, 7, 1, 7, STONE_D);
-    s.cuboid(2, 2, 2, 6, 5, 6, STONE);
-    s.cuboid(1, 6, 1, 7, 6, 7, STONE_D);
-    s.ellipsoid((4.0, 9.5, 4.0), (3.0, 3.0, 3.0), 7, STONE);
-    s.cuboid(3, 12, 3, 5, 12, 5, STONE_D);
-    s.cuboid(2, 13, 2, 6, 13, 6, STONE);
-    for (x, z) in [(3, 3), (5, 4), (4, 5), (3, 5), (5, 3), (4, 3)] {
-        s.set(x, 14, z, BLOOMS[(x + z) as usize % 5]);
-        s.set(x, 13, z, LEAF);
-    }
-    mesh_from(&s.finish(0.04), 0.05)
-}
-
-/// Pulls the cubes of one color (a flame) out into their own mesh, so they can glow.
-fn split(m: Mesh, key: Vec3) -> (Mesh, Mesh) {
-    let (glow, rest): (Vec<_>, Vec<_>) = m.cubes.into_iter().partition(|(_, c)| (*c - key).length() < 0.02);
-    (Mesh { size: m.size, cubes: rest }, Mesh { size: m.size, cubes: glow })
-}
-
 // ------------------------------------------------------------------- build
 
 impl WorldView {
@@ -246,7 +121,7 @@ impl WorldView {
             let first_tree = !tree_done && grave_center.is_some_and(|c| (p.x - c.x).abs() + (p.y - c.y).abs() <= 2);
             let tomb = !tomb_done && !first_tree && p.y == plan.graveyard.iter().map(|q| q.y).max().unwrap_or(0) && p.x % 2 == 1;
             let candle = candles < 3 && !first_tree && !tomb && hash(p.x as f64 * 5.0, p.y as f64 * 3.0) < 0.35;
-            self.build_grave_tile(grid, p, first_tree, tomb, candle);
+            self.churchyard_tile(grid, p, first_tree, tomb, candle);
             tree_done |= first_tree;
             tomb_done |= tomb;
             candles += candle as usize;
@@ -254,60 +129,29 @@ impl WorldView {
         for p in &plan.flowers {
             self.build_flower_tile(grid, *p, feature);
         }
-        let (temple, temple_flame) = temple();
+        // The temples on their lawns, in dressed stone (the shrines are built with their beds).
         for block in &plan.temples {
             let n = block.len() as f32;
             let cx = block.iter().map(|p| p.x as f32).sum::<f32>() / n;
             let cz = block.iter().map(|p| p.y as f32).sum::<f32>() / n;
-            let base = block.iter().map(|p| floor_y(p.x, p.y)).fold(0.0, f32::max) + forest::MOUND_H;
-            let pos = Vec3::new(cx, base - 0.01, cz);
+            let base = block.iter().map(|p| floor_y(p.x, p.y)).fold(0.0, f32::max) + 0.05;
+            let pos = Vec3::new(cx, base - 0.005, cz);
             let start = self.static_cubes.len();
-            push_field(&mut self.static_cubes, &temple, pos, 0.0, 1.0, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
+            let flame = garden_landmarks::temple_cubes(&mut self.static_cubes, pos, (cx as f64, cz as f64));
+            let len = self.static_cubes.len() - start;
+            let shades = self.static_cubes[start..start + len].iter().map(|c| c.emissive[3]).collect();
             // It fades like a tree when it comes between the camera and Ragnar.
             self.trees.push(Tree {
-                range: (start, self.static_cubes.len() - start),
+                range: (start, len),
                 base: pos,
-                radius: 0.85,
+                radius: 0.9,
                 height: 2.0,
                 fade: 1.0,
                 alive: true,
-                shades: None,
+                shades: Some(shades),
             });
-            push_field(&mut self.static_cubes, &temple_flame, pos, 0.0, 1.0, Vec3::ONE, lin(0xffb050) * 2.5, SHADE_LIT);
-            self.candles.push(pos + Vec3::new(0.0, 0.35, 0.18));
-        }
-        let (shrine, shrine_flame) = wayside_shrine();
-        let urn = urn();
-        for (i, p) in plan.shrines.iter().enumerate() {
-            let top = floor_y(p.x, p.y) + forest::MOUND_H;
-            // Face the path.
-            let face = CARDINALS
-                .iter()
-                .copied()
-                .find(|d| {
-                    let (dx, dy) = d.vec();
-                    let t = grid.get(p.x + dx, p.y + dy);
-                    t != Tile::Rock && t != Tile::Nest
-                })
-                .unwrap_or(Dir::Down);
-            let (dx, dy) = face.vec();
-            let rot = (dx as f32).atan2(dy as f32);
-            let pos = Vec3::new(p.x as f32 + dx as f32 * 0.12, top - 0.01, p.y as f32 + dy as f32 * 0.12);
-            let start = self.static_cubes.len();
-            if i % 3 == 2 {
-                push_field(&mut self.static_cubes, &urn, pos, rot, 1.0, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
-            } else {
-                push_field(&mut self.static_cubes, &shrine, pos, rot, 1.0, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
-                push_field(&mut self.static_cubes, &shrine_flame, pos, rot, 1.0, Vec3::ONE, lin(0xffb050) * 2.5, SHADE_LIT);
-                self.candles.push(pos + Vec3::new(dx as f32 * 0.1, 0.4, dy as f32 * 0.1));
-            }
-            // A bomb takes the shrine with the wall.
-            let key = tile_key(p.x, p.y);
-            if let Some((s0, len)) = self.rock_index.get(&key).copied() {
-                if s0 + len == start {
-                    self.rock_index.insert(key, (s0, self.static_cubes.len() - s0));
-                }
-            }
+            self.authored.push((start, len));
+            self.candles.push(flame);
         }
     }
 
@@ -626,266 +470,6 @@ impl WorldView {
         }
     }
 
-    /// A churchyard tile: dark turf, leaning headstones and crosses, iron railings to the paths.
-    fn build_grave_tile(&mut self, grid: &Grid, p: P, dead_tree: bool, tomb: bool, candle: bool) {
-        let (x, y) = (p.x, p.y);
-        let (xf, yf) = (x as f32, y as f32);
-        let (hx, hy) = (x as f64, y as f64);
-        let base = grid.elevation(x, y) as f32 * STEP;
-        let top = base + 0.1;
-        let start = self.static_cubes.len();
-        cube(
-            &mut self.static_cubes,
-            Vec3::new(xf, (top - 0.1) / 2.0, yf),
-            Vec3::new(1.0, top + 0.1, 1.0),
-            0.0,
-            jit(GRAVE_EARTH, hash(hx, hy), 0.08),
-        );
-        cube(&mut self.static_cubes, Vec3::new(xf, top + 0.005, yf), Vec3::new(1.0, 0.01, 1.0), 0.0, jit(GRAVE_GRASS, hash(hy, hx), 0.1));
-        let roads: Vec<Dir> = CARDINALS
-            .iter()
-            .copied()
-            .filter(|d| {
-                let (dx, dy) = d.vec();
-                let t = grid.get(x + dx, y + dy);
-                grid.in_bounds(x + dx, y + dy) && t != Tile::Rock
-            })
-            .collect();
-        // Wrought-iron railings with spear tips along each path.
-        for &d in &roads {
-            let (dx, dy) = d.vec();
-            let turn = if dx != 0 { PI / 2.0 } else { 0.0 };
-            let at = |u: f32, hgt: f32| {
-                Vec3::new(xf + dx as f32 * 0.44 + if dx != 0 { 0.0 } else { u }, hgt, yf + dy as f32 * 0.44 + if dx != 0 { u } else { 0.0 })
-            };
-            let iron = lin(IRON);
-            for k in 0..10 {
-                let u = -0.45 + k as f32 * 0.1;
-                cube_shade(&mut self.static_cubes, at(u, top + 0.15), Vec3::new(0.018, 0.3, 0.018), Quat::IDENTITY, iron, Vec3::ZERO, 6.0);
-                cube_shade(
-                    &mut self.static_cubes,
-                    at(u, top + 0.315),
-                    Vec3::new(0.03, 0.035, 0.03),
-                    Quat::from_rotation_y(0.785),
-                    iron,
-                    Vec3::ZERO,
-                    6.0,
-                );
-            }
-            for hgt in [0.06, 0.26] {
-                cube_shade(
-                    &mut self.static_cubes,
-                    at(0.0, top + hgt),
-                    Vec3::new(1.0, 0.02, 0.02),
-                    Quat::from_rotation_y(turn),
-                    iron,
-                    Vec3::ZERO,
-                    6.0,
-                );
-            }
-        }
-        // Graves face the nearest path.
-        let face = roads.first().copied().unwrap_or(Dir::Down);
-        let (fx, fz) = {
-            let (a, b) = face.vec();
-            (a as f32, b as f32)
-        };
-        let rot = fx.atan2(fz);
-        let q = Quat::from_rotation_y(rot);
-        if dead_tree {
-            self.dead_tree(Vec3::new(xf, top, yf), hash(hx, hy) as f32);
-        } else if tomb {
-            // A little tomb: stone chest with a pediment roof and a dark door.
-            let o = Vec3::new(xf, top, yf);
-            cube_shade(
-                &mut self.static_cubes,
-                o + Vec3::new(0.0, 0.22, 0.0),
-                Vec3::new(0.62, 0.44, 0.52),
-                q,
-                lin(HEADSTONE[2]),
-                Vec3::ZERO,
-                SHADE_LIT,
-            );
-            cube_shade(
-                &mut self.static_cubes,
-                o + q * Vec3::new(0.0, 0.16, 0.265),
-                Vec3::new(0.2, 0.3, 0.02),
-                q,
-                lin(0x141414),
-                Vec3::ZERO,
-                SHADE_LIT,
-            );
-            for s in [-1.0f32, 1.0] {
-                let roof = q * Quat::from_rotation_z(s * 0.5);
-                cube_shade(
-                    &mut self.static_cubes,
-                    o + q * Vec3::new(s * 0.16, 0.52, 0.0),
-                    Vec3::new(0.4, 0.05, 0.6),
-                    roof,
-                    lin(HEADSTONE[3]),
-                    Vec3::ZERO,
-                    SHADE_LIT,
-                );
-            }
-            cube_shade(
-                &mut self.static_cubes,
-                o + Vec3::new(0.0, 0.66, 0.0),
-                Vec3::new(0.08, 0.1, 0.08),
-                q,
-                lin(HEADSTONE[0]),
-                Vec3::ZERO,
-                SHADE_LIT,
-            );
-        } else {
-            let count = 1 + (hash(hx * 3.0, hy * 5.0) * 1.99) as usize;
-            for k in 0..count {
-                let hk = hash(hx * 13.0 + k as f64, hy * 7.0) as f32;
-                let slot = if count == 1 { 0.0 } else { (k as f32 - 0.5) * 0.44 };
-                let o = Vec3::new(xf, top, yf) + q * Vec3::new(slot, 0.0, -0.1);
-                let lean = Quat::from_rotation_y(rot + (hk - 0.5) * 0.3)
-                    * Quat::from_rotation_x((hk - 0.5) * 0.25)
-                    * Quat::from_rotation_z((hk - 0.3) * 0.12);
-                let stone = jit(HEADSTONE[(hk * 4.0) as usize % 4], hk as f64, 0.06);
-                match (hk * 3.0) as usize {
-                    0 => {
-                        // Rounded headstone.
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + Vec3::new(0.0, 0.15, 0.0),
-                            Vec3::new(0.2, 0.3, 0.05),
-                            lean,
-                            stone,
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + lean * Vec3::new(0.0, 0.31, 0.0),
-                            Vec3::new(0.14, 0.04, 0.05),
-                            lean,
-                            stone,
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + lean * Vec3::new(0.05, 0.12, 0.028),
-                            Vec3::new(0.06, 0.05, 0.005),
-                            lean,
-                            lin(LICHEN),
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                    }
-                    1 => {
-                        // A cross.
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + lean * Vec3::new(0.0, 0.18, 0.0),
-                            Vec3::new(0.05, 0.36, 0.05),
-                            lean,
-                            stone,
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + lean * Vec3::new(0.0, 0.26, 0.0),
-                            Vec3::new(0.2, 0.05, 0.05),
-                            lean,
-                            stone,
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                    }
-                    _ => {
-                        // An obelisk.
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + Vec3::new(0.0, 0.04, 0.0),
-                            Vec3::new(0.14, 0.08, 0.14),
-                            q,
-                            stone,
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                        for (i, (w, hgt)) in [(0.09f32, 0.14f32), (0.075, 0.12), (0.06, 0.1)].iter().enumerate() {
-                            let yy = 0.08 + [0.07, 0.2, 0.31][i];
-                            cube_shade(
-                                &mut self.static_cubes,
-                                o + Vec3::new(0.0, yy, 0.0),
-                                Vec3::new(*w, *hgt, *w),
-                                q,
-                                stone,
-                                Vec3::ZERO,
-                                SHADE_LIT,
-                            );
-                        }
-                        cube_shade(
-                            &mut self.static_cubes,
-                            o + Vec3::new(0.0, 0.42, 0.0),
-                            Vec3::new(0.04, 0.04, 0.04),
-                            q * Quat::from_rotation_x(0.785),
-                            stone,
-                            Vec3::ZERO,
-                            SHADE_LIT,
-                        );
-                    }
-                }
-                // The grave itself, a low turf mound in front.
-                cube_shade(
-                    &mut self.static_cubes,
-                    o + q * Vec3::new(0.0, 0.02, 0.2),
-                    Vec3::new(0.18, 0.04, 0.3),
-                    q,
-                    lin(GRAVE_EARTH),
-                    Vec3::ZERO,
-                    SHADE_LIT,
-                );
-            }
-        }
-        if candle {
-            // A grave lantern with a candle glowing inside.
-            let o = Vec3::new(xf, top, yf) + q * Vec3::new(0.3, 0.0, 0.25);
-            cube(&mut self.static_cubes, o + Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.1, 0.1, 0.1), rot, lin(HEADSTONE[1]));
-            cube_shade(
-                &mut self.static_cubes,
-                o + Vec3::new(0.0, 0.13, 0.0),
-                Vec3::new(0.04, 0.06, 0.04),
-                Quat::IDENTITY,
-                lin(0xffd070),
-                lin(0xffb050) * 2.5,
-                SHADE_LIT,
-            );
-            cube(&mut self.static_cubes, o + Vec3::new(0.0, 0.2, 0.0), Vec3::new(0.12, 0.03, 0.12), rot, lin(HEADSTONE[1]));
-            self.candles.push(o + Vec3::new(0.0, 0.2, 0.0));
-        }
-        self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
-    }
-
-    /// A gnarled dead tree: a black trunk splitting into crooked bare branches.
-    fn dead_tree(&mut self, base: Vec3, seed: f32) {
-        let wood = lin(DEAD_WOOD);
-        cube(&mut self.static_cubes, base + Vec3::new(0.0, 0.35, 0.0), Vec3::new(0.12, 0.7, 0.12), seed * 3.0, wood);
-        let mut tips = vec![(base + Vec3::new(0.0, 0.68, 0.0), 0.0f32, 0.36f32, 0.08f32)];
-        for depth in 0..3 {
-            let mut next = vec![];
-            for (k, &(from, yaw, len, thick)) in tips.iter().enumerate() {
-                for b in 0..2 {
-                    let h = hash(seed as f64 * 50.0 + depth as f64 * 7.0 + k as f64, b as f64 * 3.0) as f32;
-                    let yaw = yaw + if b == 0 { 1.2 } else { -1.3 } + (h - 0.5) * 1.4 + seed * 2.0;
-                    let pitch = 0.5 + h * 0.5;
-                    let dir = Vec3::new(yaw.cos() * pitch.sin(), pitch.cos(), yaw.sin() * pitch.sin());
-                    let mid = from + dir * (len / 2.0);
-                    let rot = Quat::from_rotation_arc(Vec3::Y, dir);
-                    cube_shade(&mut self.static_cubes, mid, Vec3::new(thick, len, thick), rot, wood, Vec3::ZERO, SHADE_LIT);
-                    next.push((from + dir * len, yaw, len * 0.7, thick * 0.7));
-                }
-            }
-            tips = next;
-        }
-    }
-
     /// A flower bed inside a clipped box hedge: roses, lavender, white and yellow blooms, now and then a topiary or an urn.
     fn build_flower_tile(&mut self, grid: &Grid, p: P, feature: &HashMap<P, Feature>) {
         let (x, y) = (p.x, p.y);
@@ -966,7 +550,9 @@ impl WorldView {
                 );
             }
         } else if centre < 0.35 {
-            push_field(&mut self.static_cubes, &urn(), Vec3::new(xf, top, yf), 0.0, 0.9, Vec3::ONE, Vec3::ZERO, SHADE_LIT);
+            let at = self.static_cubes.len();
+            garden_landmarks::urn_cubes(&mut self.static_cubes, Vec3::new(xf, top, yf), (hx, hy));
+            self.authored.push((at, self.static_cubes.len() - at));
         }
         self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
     }
@@ -1081,15 +667,16 @@ impl WorldView {
                 };
                 let p = at(t);
                 let pulse = 0.8 + (time * 3.1 + fk * 1.9).sin() * 0.2;
-                glow_orb(f, p, 0.36 * pulse, lin(0x5cffd0), 0.32 * pulse);
-                glow_orb(f, p, 0.09, lin(0xe0fff6), 0.9);
+                // (Pale mist teal, the board's, not a neon green.)
+                glow_orb(f, p, 0.32 * pulse, lin(0x8fd0c0), 0.2 * pulse);
+                glow_orb(f, p, 0.08, lin(0xd8f0e8), 0.7);
                 for s in 1..6 {
                     let q = at(t - s as f32 * 0.035) + Vec3::new(0.0, (time * 7.0 + s as f32).sin() * 0.02, 0.0);
                     let m = Mat4::from_translation(q) * Mat4::from_scale(Vec3::splat(0.028 - s as f32 * 0.004));
-                    f.additive.push(Instance::new(m, lin(0x8affe0), 0.7 * (1.0 - s as f32 / 6.0), Vec3::ZERO, SHADE_UNLIT));
+                    f.additive.push(Instance::new(m, lin(0xa8e0d0), 0.5 * (1.0 - s as f32 / 6.0), Vec3::ZERO, SHADE_UNLIT));
                 }
                 if p.distance_squared(self.focus_point) < 18.0 * 18.0 {
-                    f.lights.push(Light { pos: p, color: lin(0x4cffc8) * 0.9 * pulse, distance: 2.6 });
+                    f.lights.push(Light { pos: p, color: lin(0x7ad0b8) * 0.6 * pulse, distance: 2.6 });
                 }
             }
         }

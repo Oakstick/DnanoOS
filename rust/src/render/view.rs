@@ -57,6 +57,7 @@ mod fountain;
 mod frame;
 mod garden;
 mod garden_beds;
+mod garden_landmarks;
 mod gate;
 mod hell;
 mod juice;

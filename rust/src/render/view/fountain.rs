@@ -712,7 +712,15 @@ impl WorldView {
                 Vec3::ZERO,
                 SHADE_WATER,
             ));
-            self.foam(Vec3::new(at.x + dir.x * 0.1, water + 0.02, at.z + dir.y * 0.1), time, 20.0 + i as f32, f);
+            // (Rings where it lands, not foam: under the bridge, foam would rise through its deck.)
+            for k in 0..2 {
+                let t = (time * 0.7 + k as f32 * 0.5 + i as f32 * 0.37).fract();
+                let r = 0.05 + t * 0.2;
+                let m = Mat4::from_translation(Vec3::new(at.x + dir.x * 0.08, water + 0.005, at.z + dir.y * 0.08))
+                    * flat
+                    * Mat4::from_scale(Vec3::new(r, r, 1.0));
+                f.transparent[annulus].push(Instance::new(m, lin(0x9fb8b4), 0.25 * (1.0 - t), Vec3::ZERO, SHADE_UNLIT));
+            }
         }
 
         // The plaza's lanterns: a soft amber pool each, and a halo in the damp air.

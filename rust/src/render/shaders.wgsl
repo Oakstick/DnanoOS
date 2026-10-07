@@ -536,6 +536,33 @@ fn voxel_uv(local: vec3<f32>) -> vec2<f32> {
     return local.xy + 0.5;
 }
 
+// Wet gravel (`voxel_surface` kind 11, the garden's walks), worked out in world space so the
+// walk reads as one bed across its tiles: small chips of stone, each its own shade with a dark
+// gap round it, and rain standing in the hollows, dark and glossy, holding the lamps.
+fn gravel(m_in: Surface, world: vec3<f32>, n: vec3<f32>, detail: f32) -> Surface {
+    var m = m_in;
+    m.rough = 0.82;
+    m.specular = 0.45;
+    if (n.y < 0.5) {
+        return m;
+    }
+    // Chips: a fine speckle, each a stone of its own shade, over a broader mottle of the
+    // stones' sizes and colours (no grid: the walk is raked, not laid).
+    let p = world.xz;
+    let speck = hash12(floor(p * 38.0 + vec2<f32>(floor(p.y * 38.0) * 0.5, 0.0)));
+    let grain = vnoise(p * 17.0) * 0.6 + vnoise(p * 6.3) * 0.4;
+    let chip = (0.62 + 0.42 * speck) * (0.8 + 0.4 * grain);
+    m.albedo *= mix(1.0, chip, detail);
+    let tilt = vec2<f32>(vnoise(p * 23.0 + vec2<f32>(7.0, 1.0)), vnoise(p * 23.0 + vec2<f32>(2.0, 9.0))) - vec2<f32>(0.5);
+    m.n = normalize(n + vec3<f32>(tilt.x, 0.0, tilt.y) * 0.5 * detail);
+    let wet = smoothstep(0.5, 0.62, vnoise(p * 0.8 + vec2<f32>(3.1, 1.7)) * 0.75 + vnoise(p * 2.3) * 0.25);
+    m.albedo *= mix(1.0, 0.55, wet);
+    m.rough = mix(m.rough, 0.07, wet);
+    m.specular = mix(m.specular, 0.9, wet);
+    m.n = normalize(mix(m.n, n, wet));
+    return m;
+}
+
 fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, base: vec3<f32>, n: vec3<f32>, seed: f32) -> Surface {
     var m: Surface;
     m.albedo = base;
@@ -547,7 +574,8 @@ fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, ba
     m.sheen = 0.0;
     let uv = voxel_uv(local);
     let e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-    if (kind != 9) {
+    // (Slime has no edges; nor has wet gravel, laid as one bed across the walks.)
+    if (kind != 9 && kind != 11) {
         m.albedo *= mix(1.0, mix(0.9, 1.0, smoothstep(0.0, 0.11, e)), bevel_detail);
     }
     let helper = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.y) > 0.9);
@@ -1266,6 +1294,9 @@ fn fs_scene(in: VOut) -> FOut {
         let bevel = (1.0 - smoothstep(0.2, 0.5, px)) * plain;
         let seed = fract(dot(in.color.rgb, vec3<f32>(17.13, 31.71, 11.37)));
         surf = voxel_surface(i32(round(mode - 5.0)), in.local, detail, bevel, albedo, n, seed);
+        if (mode > 15.5 && mode < 16.5) {
+            surf = gravel(surf, in.world, n, detail);
+        }
     }
     // A voxel only a few pixels across would glitter with a sharp highlight, so the smaller it
     // is on screen the rougher it is drawn (filtering the shading by the pixel's footprint).
