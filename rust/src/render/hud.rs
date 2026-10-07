@@ -860,6 +860,13 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
                 Offer::Angel(a) => g.angels_spent()[a.index()].then_some(a),
                 _ => None,
             };
+            // (A name that would sit under the HUD's panels fades out rather than being cut by them.)
+            let under = clear_of_hud(&layout::HudLayout::of(w, h), x, y, t * 3.2, t * 0.5);
+            if under <= 0.0 {
+                continue;
+            }
+            let keep = o.alpha;
+            o.alpha *= under;
             if let Some(a) = spent {
                 // One who has given this level (or Uriel resting): the name greyed; Uriel's rest counted down.
                 let text = if a == Archangel::Uriel && !g.angels_used[a.index()] {
@@ -875,6 +882,7 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
                 let st = style::name(t, 0.64, rgba(mix_rgb(c, 0xffffff, 0.25), 1.0)).centered().glow(t * 0.22, rgba(c, 0.45));
                 o.text_styled(&offer.name().to_uppercase(), x, y, &st);
             }
+            o.alpha = keep;
         }
     }
     for f in &g.floaters {
@@ -1503,5 +1511,36 @@ mod tests {
         }
         assert!(loading_words(LOADING_WORDS_AFTER + 0.1) > 0.0);
         assert_eq!(loading_words(LOADING_WORDS_AFTER + LOADING_WORDS_FADE), 1.0);
+    }
+}
+
+/// How far a label of half-size `hw` × `hh` centred at (`x`, `y`) is clear of play's HUD panels:
+/// 1 when it is a unit clear of them all, falling to 0 as it reaches one (and 0 under one).
+fn clear_of_hud(l: &layout::HudLayout, x: f32, y: f32, hw: f32, hh: f32) -> f32 {
+    let margin = l.t * 0.6;
+    [l.health, l.minimap, l.purse, l.top, l.loadout, l.angel, l.location]
+        .iter()
+        .filter(|r| r[2] > 0.0 && r[3] > 0.0)
+        .map(|r| {
+            // The gap between the label's box and the panel's (negative when they overlap).
+            let gx = (r[0] - (x + hw)).max(x - hw - (r[0] + r[2]));
+            let gy = (r[1] - (y + hh)).max(y - hh - (r[1] + r[3]));
+            (gx.max(gy) / margin).clamp(0.0, 1.0)
+        })
+        .fold(1.0, f32::min)
+}
+
+#[cfg(test)]
+mod hud_label_tests {
+    use super::*;
+
+    #[test]
+    fn a_world_label_fades_out_under_the_hud_panels() {
+        let l = layout::HudLayout::of(1920.0, 1080.0);
+        let (cx, cy) = (l.health[0] + l.health[2] / 2.0, l.health[1] + l.health[3] / 2.0);
+        assert_eq!(clear_of_hud(&l, cx, cy, 40.0, 10.0), 0.0, "under the health panel");
+        assert_eq!(clear_of_hud(&l, 960.0, 540.0, 40.0, 10.0), 1.0, "mid-screen");
+        let edge = clear_of_hud(&l, l.health[0] + l.health[2] + 40.0 + l.t * 0.3, cy, 40.0, 10.0);
+        assert!(edge > 0.0 && edge < 1.0, "fading near it: {edge}");
     }
 }

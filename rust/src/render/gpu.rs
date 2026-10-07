@@ -774,6 +774,7 @@ impl Gpu {
             })
             .await
             .map_err(|e| format!("device: {e}"))?;
+        device.on_uncaptured_error(Box::new(report_gpu_error));
 
         // The shader encodes sRGB itself (as Three.js does), so the target must not.
         let format = match &surface {
@@ -4015,6 +4016,27 @@ fn cylinder(r_top: f32, r_bottom: f32, h: f32, segments: u32) -> MeshData {
         i.extend_from_slice(&[t0, b0, b1, t0, b1, t1, 0, t0, t1, 1, b1, b0]);
     }
     (v, i)
+}
+
+/// A GPU error nothing was waiting for (a validation error, an allocation that failed). Told in
+/// full on the console and in `gpu-errors.log` beside the save; it ends the game only when asked
+/// to (`VH_GPU_STRICT`, as the checks and captures run): a player's session is not lost to one
+/// rare error, and the log says what it was.
+fn report_gpu_error(error: wgpu::Error) {
+    let text = format!("GPU error: {error}");
+    eprintln!("{text}");
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(dir) = crate::platform::save_dir() {
+        use std::io::Write;
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("gpu-errors.log")) {
+            let when = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let _ = writeln!(f, "[{when}] {} {text}", env!("CARGO_PKG_VERSION"));
+        }
+    }
+    if std::env::var_os("VH_GPU_STRICT").is_some() {
+        panic!("{text}");
+    }
 }
 
 #[cfg(test)]

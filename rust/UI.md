@@ -779,3 +779,18 @@ both sides, listening, a conflict, 150%, the loading card for each device, the s
 Left: icons on the rows (with U1c's 64 px set); the full screen and the quality rows are applied by
 the app (looked at by hand, not under test); a generic pad's legend uses Xbox's positions with plain
 letters, as the glyphs do.
+
+### U2, the integration (2026-10-07)
+
+- Merged in order: the map's data, U0, the heroes' clips (ANIMATION.md), U1c, U1a, U1b; each merge
+  checked (fmt, both clippy runs, the full suite: 831 then 841 tests) and the harness numbers kept.
+- A world label (a shrine's name, a hub gate's) fades out as it reaches one of play's HUD panels
+  (`hud::clear_of_hud`), rather than being cut by it ("UR" under the health panel, "RAP" under the
+  minimap).
+- A GPU error nothing waits for no longer ends the game: it is told in full on the console and in
+  `gpu-errors.log` beside the save, and ends the run only with `VH_GPU_STRICT` (as the checks and
+  captures should run). One capture hit a validation error in `Device::create_texture` once, under
+  heavy load while three builds ran; 48 runs since could not repeat it. The log will name it if it
+  comes again.
+- Left: the 64 px icons; a jaw and eyelids for the old man; Miyamoto's arms (ANIMATION.md); the
+  off-screen shrine arrow could be bigger.
