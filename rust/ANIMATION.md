@@ -782,8 +782,9 @@ move has them fitted to its markers.
   game cut it at.
 - `foe::tests`: a move snaps in and lands on its frames; the gait keeps pace with the feet and the
   flinch leaves the legs; a missing clip hands back to the code.
-- `ring_tests::the_foes_clips_leave_the_fight_untouched`: a bout against a pack of each foe kind with
-  clips, played by the clips and by the code, is the same step for step.
+- `ring_tests::the_foes_clips_leave_the_fight_untouched`: a bout against three of each foe kind with
+  clips (every stage's, the realms', the courts' with their princes, the lair's), played by the clips
+  and by the code with the same dice, is the same step for step.
 - The harness (`--court`, `--pit 2 8 1`, `--bout 1..16 2 1 1`): identical to the build before, but
   the wall-clock figures.
 
@@ -791,10 +792,12 @@ move has them fitted to its markers.
 
 | What | Before | After |
 |---|---|---|
-| A frame of a foe's animator (`--anim-bench`, quick build) | | 0.5 (minion, slime, bats) to 1.8 µs (loup-garou); the humanoids about 1.1 µs, the jorogumo's 38 bones 1.7 µs |
-| Reading a foe's clips (once, with the level) | | 0.5 to 2.8 ms |
-| Embedded clips | 36, 1,427 KB | 154, 5,649 KB (stages 1 to 3) |
-| `--perf battle30,warband,pit,descent,siege --perf-mode gameplay` | worst frames within 8 ms (5.9 battle30 @60) | within 8 ms (5.6), wall p50 and p95 within the runs' noise of the build before and of `VH_ANIM=code` |
+| A frame of a foe's animator (`--anim-bench`, quick build) | | 0.3 (the fly swarm, a serpentling) to 1.8 µs (the loup-garou); the humanoids and the princes 0.7 to 1.3 µs, the ejder's 31 bones and the jorogumo's 38 1.6 µs; every foe 1.0 µs on average |
+| Reading a foe's clips (once, with the level) | | 0.3 to 2.4 ms |
+| Embedded clips | 36, 1,427 KB | 468, 8,836 KB (every foe, thinned: §11.11) |
+| Release wasm (`--lib --target wasm32-unknown-unknown`) | 33,354,937 B | 41,059,934 B |
+| `--perf battle30,warband,pit,descent,siege --perf-mode gameplay` (release) | battle30 @60 wall p50 11.65, CPU p50 1.64 / p95 2.27 ms; siege @60 9.54, 1.58 / 2.27 | battle30 @60 11.62, 1.82 / 2.26; siege @60 9.47, 1.68 / 2.31: within the runs' noise |
+| The harness (`--court`, `--pit 2 8 1`, the sixteen bouts) | | identical to the build before, but the wall-clock figures |
 
 ### 11.6 What still reads wrong
 
@@ -807,6 +810,20 @@ move has them fitted to its markers.
   hand (the tengu's); it hides inside the sleeve's cuff.
 - The flyers' rally is a screech held on spread wings.
 - The witch's robe halves part when she strides wide.
+- Some picks are shared among the later foes (the creature pack's walk, the axe pack's chop, the
+  magic pack's casts): there are only so many in the packs on disk. The princes have the most of
+  their own; where a prince's move had none that fits it is keyed (Leviathan whole, the charges'
+  wind-ups, Beelzebub's roll).
+- A staff, sceptre or sword held "as sculpted" under a magic or creature clip swings with the arm
+  as a whole: the ganglöt's staff leans as the zombie's chest sways.
+- Krampus's goat legs take the human knee's bend at the hock; it reads, but the hoof lifts as a heel.
+- Lucifer turns a little to his right in the sword and shield picks (their stance), and the magic
+  pack's walk is lighter than his plate suggests.
+- The fly swarm and the serpentlings are keyed rather than the code's: the swarm's clouds turn whole
+  turns in their loop where the code's turn on at their own speeds.
+- Mixamo clips that would help: a sumo shove, a kneeling idle, a staff-held idle and walk (both hands
+  on a staff), a two-handed overhead lift, a lance thrust, a blown kiss, a waddle, a head butt, a
+  stretch and yawn, a charge's wind-up (head down, pawing), an unarmed overhead hammer-fist.
 
 ### 11.7 The later stages (4 to 7)
 
