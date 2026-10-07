@@ -933,6 +933,135 @@ boys' sculpts and the shots' framing and timing are unchanged.
   - The probes are worked out under each set's settled light, so the graveyard's dimming when
     Krampus comes changes the direct light only.
 
+### The Garden, at the Cisterns' bar (2026-10-07)
+
+Dungeon I, the first level every player plays, was rebuilt to Dungeon II's quality
+(`view/garden_beds.rs`, `view/garden_landmarks.rs`). The layout and gameplay are unchanged: the
+same tiles are floor and wall, the maze, keys, nuggets, breakable walls, shrines, gate and foes'
+paths are as they were.
+
+- **What the Garden bypassed or under-used:**
+  - **RP14 materials:** almost none. Every floor was one even lawn (`SHADE_GRASS`), every wall a
+    plain-lit mound behind a dry-stone fence with voxel bushes and little voxel trees, and the
+    grade only turned pale greys into dressed stone after the fact. The hedges, trees, paths,
+    iron and copper had no material.
+  - **RP17 lights:** the clustered lights could shade a thousand, but the garden lit only its
+    three lanterns nearest the hero (`LIGHT_POOL_TORCHES`), so most lanterns in view were
+    unlit glass.
+  - **RP19 haze:** the generic dungeon haze; the ground mist was laid over every tile, beds
+    included, veiling them grey.
+  - **RP18 probes, RP15 AO and RP16 presets** already applied, but with flat ground and no
+    occluding forms they had little to work on.
+  - **Cost:** 295,000 static cubes (the Cisterns: 57,000), most of them voxel bushes and trees.
+- **Built:**
+  - **Beds of clipped yew** (`hedge`): every wall tile's sides on a walk carry yew at the old
+    fence's height (0.58, so the cameras see past them as before): a dark core, the darkest band
+    at the foot, the face in three tiers of clumps each standing out its own depth and turned a
+    touch, an uneven clipped top with a rounded edge, sprigs the shears missed. Inside the yew,
+    dark earth with cushions of box and laurel, moss and fallen leaves. All `SHADE_SOFT`.
+  - **Trees** of trunks and tiered crowns, built of blocks (`garden_tree`): broadleaves on real
+    trunks with boughs and three tiers of clumps lit on top, clipped yew columns, and pines of
+    drooping boughs. Along the island's rim, taller, darker woods stand against the sky.
+  - **Walks of wet gravel:** a new surface (`voxel_surface` kind 11, `gravel` in the shader,
+    `SHADE_GRAVEL`), shaded in world space, so a walk reads as one raked bed across its tiles:
+    chips each their own shade, rain standing in the hollows, dark and glossy, holding the
+    lamps. Turf verges (with tufts) along the hedges' feet, edged by a line of setts; inner
+    corners in turf; pebbles, fallen leaves in copper and umber, and puddles (`puddles`,
+    drawn as the Cisterns' pools).
+  - **Avenues of wet flagstones** (the crypt's `flagstones`, moss in the seams) beside the
+    channels and round the fountain.
+  - **Stone where there is stone, in the shared builders:** the terraces' retaining walls and
+    the channels' banks are the crypt's `masonry` (wet and dark low down on the banks), steps
+    are pale dressed stone with moss on their noses, pits have a pale kerb.
+  - **The landmarks:**
+    - The **temples**: stepped rings of chunky dressed stone, eight columns of the crypt's
+      pillar drums, an entablature and cornice, a verdigris dome on copper ribs under a gilt
+      finial, the hooded figure (`statue_cubes`) and a flame in a copper dish.
+    - The **churchyard**: Scene I's graves (`story_sets::grave`) and dead tree at the garden's
+      scale, facing the paths, on uneven dark turf behind low dressed-stone kerbs under a pale
+      coping, with rusted railings and spear heads.
+    - The **wayside shrines** stand in their beds (the yew opened for them): a short pillar of
+      dressed stone with a candle in a niche under a gabled slate roof and an iron cross, or a
+      stone urn. A broken wall takes its shrine with it.
+    - The **gate**: towers of chunky courses on pale plinths, corbels and battlements under
+      slate spires, a round arch of wedge stones on pale piers, an oak tympanum, the lock lamps
+      in a fan over it, copper braziers before the towers.
+    - The **fountain plaza**: pale stone and charcoal pavers in rings, wet; its four lanterns are
+      the garden's iron posts, shorter.
+- **Light:**
+  - 56 lanterns on iron posts (75 before) (`lamp_post`: a stone foot, a collared post, an arm and its
+    brace, the crypt's copper lantern), one at the outer corner of a bed where two walks cross,
+    never within six tiles of another, each a pool of its own. The ten nearest the hero burn at
+    once (`GARDEN_LANTERNS_LIT`), softer and shorter (reach 5) than the old three.
+  - The fountain's water and jets are mist teal and its lamp under the water half as strong; a
+    jet's highlight from a lamp beside it is held (`water_jet`: the attenuation in its specular
+    capped at 2), so the jets no longer blaze white. The spouts under the bridges ring the water
+    instead of throwing foam up through the decks.
+  - The churchyard's wisps are pale mist teal, not neon green.
+  - The ground mist lies on the walks, water and graves only, in a greyed mist teal; the garden's
+    haze is a little thicker and lower (0.042, falloff 0.65), lying in the low walks under the
+    terraces.
+- **The grade** (`grade_scenery`) leaves alone the ranges built in the board's palette already
+  (`WorldView::authored`); the remaining old pieces (reeds, lilies, the fountain's sculpt) are
+  graded as before.
+- **Unchanged elsewhere:** the Cyclops' meadow (which shares the river, bridges and the old gate
+  builder) and the Cisterns capture pixel-identical before and after.
+- **Second pass (after review): the garden back, in the Cisterns' key.** The first pass lost the
+  garden (grey-teal gravel filled the frame, the yew read as dark slabs) and stayed brighter,
+  flatter and cooler than the Cisterns.
+  - **Lawns:** every walk keeps a lawn along each hedge, 0.55 of the tile (a two-tile walk has
+    0.9 of gravel down its middle), strand-shaded turf in the board's greens, a darker strip in
+    the hedge's shadow, tufts, an edge of setts. Inside the yew the beds are lawn heaped up 0.2
+    (`BED_RISE`, so from the chase camera they read full, not as pits), with cushions of box.
+  - **Planting:** about three beds in ten are planted with flowers (`planting`: leafy mounds and
+    blooms in rust rose, amber, dusk lavender and pale stone), and the plan's flower gardens are
+    rebuilt as parterres (`parterre_tile`: low clipped box, flowers in rows, a yew cone or urn).
+  - **Living yew:** a deeper, less blue green, with new growth in the face and sprigs catching
+    the lanterns (`YEW_TIP`).
+  - **The Cisterns' night** (`estate::garden_night`; the title keeps `garden_atmosphere`): ambient
+    0.42 of what it was, sky light 0.4, the moon a cooler, weaker rim (0.55 of a cooler tone),
+    exposure 1.15. The lanterns are warmer and stronger (0.95, reach 5.5), the plaza's lanterns
+    the brightest (2.3, reach 3.4) on wet pale paving, and rain stands in the walks by the
+    lanterns six times as often, holding their light.
+  - **Crowns:** broadleaves are 30 smaller, darker, greyer clumps (and a lit top of three small
+    ones) in place of 22 big ones.
+  - **The old pieces:** bridges are wet dressed stone (deck flagstone, the rest `SHADE_STONE`,
+    the old pieces' relative darkness kept); reeds and lily pads are strand-shaded and the lilies
+    quieter; the plaza's corner lanterns are the garden's iron posts.
+  - **Mist:** the walks keep two sheets instead of three (the haze does the rest): the third
+    cost about a millisecond of overdraw at 1080p, which pays for the lawns and planting.
+- **Numbers (1080p, RTX 5070 Ti Laptop, final build, interleaved A/B with the original):**
+
+  | | Before | After |
+  |---|---:|---:|
+  | Static cubes | 295,430 | 150,000 |
+  | `--bench` 300, the start | 10.5 / 10.5 ms (GPU 8.5 / 8.4) | 8.2 / 8.0 ms (GPU 6.1 / 5.3) |
+  | `--bench` 300, 30 foes at the start | 12.6 / 12.4 ms (GPU 10.9 / 9.3) | 11.6 / 10.5 ms (GPU 7.6 / 8.0) |
+  | `--perf garden`, wall p50 (GPU p50) | 8.5 ms (8.3) | 7.8 ms (7.6) |
+  | `--perf siege` (30 foes, walls breaking), wall p50 | 9.5 ms | 8.5 ms |
+
+  - The siege scene's 8 ms CPU budget fails now and then in both builds on this laptop (a few
+    frames of draw recording at 8 to 26 ms when its CPU clocks drop; the same run order
+    reversed fails the original as badly). Its GPU and CPU medians are within those of the
+    original.
+  - Building it costs about what it did (`--perf start`: first frame 35 to 45 ms either way);
+    the probes are baked behind the loading screen as before.
+- **Checks:** `--camera-check dungeon0`: 1 hidden pose of 16,992 in the chase survey (2
+  before), none in the walks or the top view. The harness is unchanged: `--run`, `--court`,
+  `--pit 2 8 1` and all 16 bouts print the same before and after. The Cyclops' meadow and the
+  Cisterns capture pixel-identical.
+- **Captures:** `C:/Users/ulask/Games/vh-garden-cap/`: `side-*.png` (the original rust-port
+  Garden beside this one), `final-*.png` at 1080p, `garden-vs-cisterns.png` and
+  `garden-vs-cisterns-1080.png`, and the first ten seconds of play at the plaza from the chase
+  camera at 1080p (`first10-t*.png`, `first10-first10-sheet.png`; `first10.sh` makes them).
+- **Still open:**
+  - Lit by the hero's own lantern, the yew and crowns right beside him turn a vivid green.
+  - The fountain's basin and the Krampus statue are the old sculpts (graded); they read, but
+    are not yet in chunky dressed stone.
+  - From the top camera the lawns in the hedges' moon shadow are dark; the gravel still reads
+    first.
+  - A temple stands on four wall tiles; a bomb breaking one would leave it standing (as before).
+
 ## Findings
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept

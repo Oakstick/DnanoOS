@@ -131,6 +131,10 @@ pub(super) fn lock_spot(i: u32, n: u32) -> Vec3 {
 impl WorldView {
     /// The gatehouse's stonework (the doors and lamps move, so they are drawn each frame).
     pub(super) fn build_gate(&mut self, grid: &Grid, gate: P, locks: u32) {
+        if self.estate_art {
+            let sockets: Vec<Vec3> = (0..locks).map(|i| lock_spot(i, locks)).collect();
+            return self.build_garden_gate(grid, gate, &sockets);
+        }
         if self.crypt {
             let sockets: Vec<Vec3> = (0..locks).map(|i| lock_spot(i, locks)).collect();
             return self.build_crypt_gate(grid, gate, &sockets);

@@ -4,6 +4,8 @@
 use super::*;
 
 const LIGHT_POOL_TORCHES: usize = 3;
+/// The garden's lanterns lit at once, the nearest the hero first.
+const GARDEN_LANTERNS_LIT: usize = 10;
 
 const LIGHT_POOL_REMEDIES: usize = 3;
 
@@ -238,7 +240,7 @@ impl WorldView {
         } else if self.crypt {
             crypt::crypt_atmosphere(self.cisterns)
         } else if self.estate_art {
-            estate::garden_atmosphere()
+            estate::garden_night()
         } else {
             Atmosphere::forest()
         };
@@ -311,6 +313,9 @@ impl WorldView {
         } else if self.crypt {
             // The vaults' cold mist, lying deep in the passages.
             haze(0.045, 1.1)
+        } else if self.estate_art {
+            // The garden's night mist, lying in the low walks under the terraces.
+            haze(0.042, 0.65)
         } else {
             haze(0.035, 0.8)
         }
@@ -931,11 +936,20 @@ impl WorldView {
         } else {
             lin(TORCH_LIGHT)
         };
-        for (i, p) in nearest(&torch_points, focus, LIGHT_POOL_TORCHES).into_iter().enumerate() {
+        // The garden's lanterns are its practicals (RP17 bins every one): each in sight a pool of
+        // its own, so more of them burn at once than the old three nearest, each reaching less far.
+        let count = if self.estate_art { GARDEN_LANTERNS_LIT } else { LIGHT_POOL_TORCHES };
+        for (i, p) in nearest(&torch_points, focus, count).into_iter().enumerate() {
             let fi = i as f32;
             let intensity = 4.5 + (time * 3.0 + fi * 2.3).sin() * 0.5 + (time * 7.0 + fi).sin() * 0.3;
             // (The braziers burn hotter and reach further: they are the vaults' light.)
-            let (k, reach) = if self.crypt { (1.5, 8.5) } else { (1.0, 7.0) };
+            let (k, reach) = if self.crypt {
+                (1.5, 8.5)
+            } else if self.estate_art {
+                (0.95, 5.5)
+            } else {
+                (1.0, 7.0)
+            };
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.5, 0.2), color: torch * intensity * k, distance: reach });
         }
         for (i, p) in nearest(&self.candles, focus, 5).into_iter().enumerate() {
