@@ -135,6 +135,21 @@ pub fn garden_atmosphere() -> Atmosphere {
     }
 }
 
+/// The Garden of Krampus at night, in the Cisterns' key: darker than the title's night, the
+/// moon a cool, weak rim, the ambient low, so the lanterns' amber pools carry the frame and the
+/// teal is left to the shadows and the mist.
+pub fn garden_night() -> Atmosphere {
+    Atmosphere {
+        hemi_sky: lin(MIST_TEAL) * 0.4,
+        hemi_ground: lin(0x141a16) * 0.8,
+        ambient: lin(0x26302e) * 0.42,
+        sun: lin(0x98bcc8) * 0.55,
+        exposure: 1.15,
+        bloom: 1.05,
+        ..garden_atmosphere()
+    }
+}
+
 impl WorldView {
     /// Grades the level's static scenery (the garden, its gate) into the board. Glowing pieces
     /// (lantern glass, candles) keep their colour; plain stone takes the dressed-stone material.

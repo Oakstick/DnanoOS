@@ -22,12 +22,6 @@ mod pal {
     pub const LILY: [u32; 2] = [0xf0d8e0, 0xe890b0];
     pub const REED: u32 = 0x5a7a34;
     pub const CATTAIL: u32 = 0x4a3020;
-    pub const SOIL: u32 = 0x3a2a1c;
-    pub const BOX: u32 = 0x24521f;
-    pub const BOX_L: u32 = 0x2f6428;
-    pub const LEAF: u32 = 0x2f5a2a;
-    pub const STEM: u32 = 0x3e6a2e;
-    pub const BLOOMS: [u32; 6] = [0xc8283a, 0xe86a8a, 0x8a6ad0, 0xece8dc, 0xe8c83a, 0x4a6ad8];
     pub const ROCK: [u32; 3] = [0x5e6258, 0x4e5249, 0x6e7066];
     pub const CAVE: u32 = 0x050606;
     pub const IVY: u32 = 0x2a5a24;
@@ -127,7 +121,7 @@ impl WorldView {
             candles += candle as usize;
         }
         for p in &plan.flowers {
-            self.build_flower_tile(grid, *p, feature);
+            self.parterre_tile(grid, *p, feature);
         }
         // The temples on their lawns, in dressed stone (the shrines are built with their beds).
         for block in &plan.temples {
@@ -174,8 +168,15 @@ impl WorldView {
             if self.estate_art && t == Tile::Rock && !thick {
                 continue;
             }
-            let layers: &[(f32, f32)] =
-                if thick { &[(0.1, 0.55), (0.28, 0.48), (0.5, 0.36), (0.8, 0.22)] } else { &[(0.12, 0.34), (0.34, 0.27), (0.62, 0.16)] };
+            // (In the garden the walks keep two sheets, the haze doing the rest: a third cost a
+            // millisecond of overdraw.)
+            let layers: &[(f32, f32)] = if thick {
+                &[(0.1, 0.55), (0.28, 0.48), (0.5, 0.36), (0.8, 0.22)]
+            } else if self.estate_art {
+                &[(0.12, 0.38), (0.4, 0.28)]
+            } else {
+                &[(0.12, 0.34), (0.34, 0.27), (0.62, 0.16)]
+            };
             for (k, &(lift, alpha)) in layers.iter().enumerate() {
                 let m = Mat4::from_translation(Vec3::new(x as f32, floor + lift, y as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
                 let tone = if self.estate_art { lin(estate::pal::MIST) } else { lin(MIST) };
@@ -186,6 +187,24 @@ impl WorldView {
 
     /// The channels: bed, stone banks, weirs, lily pads, reeds; a grotto where a stream rises from the ground, rocks where one pours off the edge.
     pub(super) fn build_river(&mut self, grid: &Grid, plan: &GardenPlan, water: &HashMap<P, i32>) {
+        let start = self.static_cubes.len();
+        self.build_river_cubes(grid, plan, water);
+        if self.estate_art {
+            // In the garden, reeds and pads are strand-shaded growth, and the lilies' pinks and
+            // whites come down to the board's quieter rose and pale stone.
+            for c in self.static_cubes[start..].iter_mut().filter(|c| c.emissive[3] == SHADE_LIT) {
+                let (r, g, b) = (c.color[0], c.color[1], c.color[2]);
+                if g > r && g > b {
+                    c.emissive[3] = crypt::SHADE_SOFT;
+                } else if r > g * 1.15 && b > g * 0.9 {
+                    c.color = [r * 0.5, g * 0.45, b * 0.42, c.color[3]];
+                    c.emissive[3] = crypt::SHADE_SOFT;
+                }
+            }
+        }
+    }
+
+    fn build_river_cubes(&mut self, grid: &Grid, plan: &GardenPlan, water: &HashMap<P, i32>) {
         let fountain = plan.fountain.map(|f| f.p);
         for channel in &plan.channels {
             let n = channel.len();
@@ -411,6 +430,25 @@ impl WorldView {
 
     /// A stone bridge with a balustrade on each side over an arch; up a ramp it climbs in steps.
     pub(super) fn build_stone_bridge(&mut self, grid: &Grid, b: P) {
+        let start = self.static_cubes.len();
+        self.build_stone_bridge_cubes(grid, b);
+        if self.estate_art {
+            // In the garden, the crypt's stone: pale dressed stone kept as dark as the old
+            // pieces were against the bridge's pale, the deck wet flagstone.
+            let pale = lin(BRIDGE);
+            let lum = |c: Vec3| c.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+            for (k, c) in self.static_cubes[start..].iter_mut().enumerate() {
+                let old = Vec3::new(c.color[0], c.color[1], c.color[2]);
+                let h = hash(b.x as f64 * 3.1 + k as f64, b.y as f64 * 1.7);
+                let new = crypt::jit(crypt::pal::PALE_STONE[k % 2], h, 0.06) * 0.74 * (lum(old) / lum(pale)).min(1.1);
+                c.color = [new.x, new.y, new.z, c.color[3]];
+                c.emissive[3] = if k < 3 { crypt::SHADE_FLAG } else { crypt::SHADE_STONE };
+            }
+            self.authored.push((start, self.static_cubes.len() - start));
+        }
+    }
+
+    fn build_stone_bridge_cubes(&mut self, grid: &Grid, b: P) {
         let (xf, yf) = (b.x as f32, b.y as f32);
         let (hx, hy) = (b.x as f64, b.y as f64);
         let low = grid.elevation(b.x, b.y) as f32 * STEP;
@@ -506,110 +544,6 @@ impl WorldView {
                 cube(&mut self.static_cubes, at(end, side, deck(end) + 0.37), Vec3::splat(0.07), 0.6, lin(BRIDGE));
             }
         }
-    }
-
-    /// A flower bed inside a clipped box hedge: roses, lavender, white and yellow blooms, now and then a topiary or an urn.
-    fn build_flower_tile(&mut self, grid: &Grid, p: P, feature: &HashMap<P, Feature>) {
-        let (x, y) = (p.x, p.y);
-        let (xf, yf) = (x as f32, y as f32);
-        let (hx, hy) = (x as f64, y as f64);
-        let base = grid.elevation(x, y) as f32 * STEP;
-        let top = base + 0.12;
-        let start = self.static_cubes.len();
-        cube(
-            &mut self.static_cubes,
-            Vec3::new(xf, (top - 0.1) / 2.0, yf),
-            Vec3::new(1.0, top + 0.1, 1.0),
-            0.0,
-            jit(0x2c4424, hash(hx, hy), 0.08),
-        );
-        cube(&mut self.static_cubes, Vec3::new(xf, top + 0.01, yf), Vec3::new(0.98, 0.02, 0.98), 0.0, jit(SOIL, hash(hy, hx), 0.1));
-        // Box hedges along the paths and along the edges of the bed.
-        for d in CARDINALS {
-            let (dx, dy) = d.vec();
-            let n = P::new(x + dx, y + dy);
-            let open = grid.in_bounds(n.x, n.y) && grid.get(n.x, n.y) != Tile::Rock;
-            let other = grid.get(n.x, n.y) == Tile::Rock && feature.get(&n) != Some(&Feature::Flowers);
-            if !(open || other) {
-                continue;
-            }
-            let at = Vec3::new(xf + dx as f32 * 0.42, top + 0.1, yf + dy as f32 * 0.42);
-            let s = if dx != 0 { Vec3::new(0.16, 0.2, 1.0) } else { Vec3::new(1.0, 0.2, 0.16) };
-            let soft = if self.estate_art { crypt::SHADE_SOFT } else { SHADE_LIT };
-            cube_shade(
-                &mut self.static_cubes,
-                at,
-                s,
-                Quat::IDENTITY,
-                jit(BOX, hash(hx + dx as f64, hy + dy as f64), 0.06),
-                Vec3::ZERO,
-                soft,
-            );
-            cube_shade(
-                &mut self.static_cubes,
-                at + Vec3::new(0.0, 0.1, 0.0),
-                s * Vec3::new(0.9, 0.05, 0.9),
-                Quat::IDENTITY,
-                lin(BOX_L),
-                Vec3::ZERO,
-                soft,
-            );
-        }
-        // What grows here.
-        let pick = hash(hx * 7.0 + 5.0, hy * 11.0);
-        let centre = hash(hx * 3.0, hy * 17.0);
-        let (c1, c2) = (BLOOMS[(pick * 6.0) as usize % 6], BLOOMS[(pick * 13.0) as usize % 6]);
-        for i in 0..4 {
-            for j in 0..4 {
-                let (u, v) = (-0.27 + i as f32 * 0.18, -0.27 + j as f32 * 0.18);
-                if centre < 0.35 && i > 0 && i < 3 && j > 0 && j < 3 {
-                    continue; // room for the centrepiece
-                }
-                let hk = hash(hx * 29.0 + i as f64, hy * 31.0 + j as f64) as f32;
-                let pos = Vec3::new(xf + u + (hk - 0.5) * 0.05, top + 0.02, yf + v + (0.5 - hk) * 0.05);
-                cube(&mut self.static_cubes, pos + Vec3::new(0.0, 0.03, 0.0), Vec3::new(0.09, 0.06, 0.09), hk * 3.0, lin(LEAF));
-                let bloom = if (i + j) % 2 == 0 { c1 } else { c2 };
-                let lavender = bloom == BLOOMS[2];
-                let tall = if lavender { 0.2 } else { 0.1 + hk * 0.06 };
-                cube(&mut self.static_cubes, pos + Vec3::new(0.0, tall / 2.0, 0.0), Vec3::new(0.014, tall, 0.014), 0.0, lin(STEM));
-                if lavender {
-                    for s in 0..3 {
-                        cube(
-                            &mut self.static_cubes,
-                            pos + Vec3::new(0.0, tall - 0.02 - s as f32 * 0.035, 0.0),
-                            Vec3::new(0.03, 0.03, 0.03),
-                            s as f32,
-                            lin(bloom),
-                        );
-                    }
-                } else {
-                    cube(
-                        &mut self.static_cubes,
-                        pos + Vec3::new(0.0, tall, 0.0),
-                        Vec3::new(0.06, 0.045, 0.06),
-                        hk * 2.0,
-                        jit(bloom, hk as f64, 0.08),
-                    );
-                }
-            }
-        }
-        if centre < 0.18 {
-            // A clipped topiary cone.
-            for (k, w) in [0.2f32, 0.16, 0.12, 0.08, 0.04].iter().enumerate() {
-                cube(
-                    &mut self.static_cubes,
-                    Vec3::new(xf, top + 0.06 + k as f32 * 0.09, yf),
-                    Vec3::new(*w, 0.1, *w),
-                    k as f32 * 0.3,
-                    jit(BOX, hash(hx, k as f64), 0.05),
-                );
-            }
-        } else if centre < 0.35 {
-            let at = self.static_cubes.len();
-            garden_landmarks::urn_cubes(&mut self.static_cubes, Vec3::new(xf, top, yf), (hx, hy));
-            self.authored.push((at, self.static_cubes.len() - at));
-        }
-        self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
     }
 
     // -------------------------------------------------------------- per frame

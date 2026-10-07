@@ -712,8 +712,9 @@ impl WorldView {
         // The plaza's lanterns: a soft amber pool each, and a halo in the damp air.
         for (i, &p) in fv.lanterns.iter().enumerate() {
             let flick = 1.0 + (time * 7.0 + i as f32 * 1.9).sin() * 0.06;
-            glow_orb(f, p, 0.3, lin(0xffb050), 0.16 * flick);
-            f.lights.push(Light { pos: p, color: lin(0xffb050) * 1.3 * flick, distance: 2.6 });
+            glow_orb(f, p, 0.32, lin(0xffb050), 0.18 * flick);
+            // (Warm pools on the wet paving and on the bronze: the plaza is the first thing seen.)
+            f.lights.push(Light { pos: p, color: lin(0xffb050) * 2.3 * flick, distance: 3.4 });
         }
         // A lamp under the water lights him from below, shimmering as the surface moves.
         let shimmer = (time * 2.7).sin() * 0.25 + (time * 5.3 + 1.0).sin() * 0.15;

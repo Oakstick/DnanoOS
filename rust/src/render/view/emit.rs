@@ -195,7 +195,7 @@ impl WorldView {
         } else if self.crypt {
             crypt::crypt_atmosphere(self.cisterns)
         } else if self.estate_art {
-            estate::garden_atmosphere()
+            estate::garden_night()
         } else {
             Atmosphere::forest()
         };
@@ -866,7 +866,7 @@ impl WorldView {
             let (k, reach) = if self.crypt {
                 (1.5, 8.5)
             } else if self.estate_art {
-                (0.62, 5.0)
+                (0.95, 5.5)
             } else {
                 (1.0, 7.0)
             };

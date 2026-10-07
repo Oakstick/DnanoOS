@@ -23,11 +23,13 @@ use super::*;
 pub(super) mod pal {
     /// Clipped yew: a deep blue-green, darkest at the base where the light never reaches, the
     /// clipped top a little paler where the moon lies on it.
-    pub const YEW: [u32; 3] = [0x24392b, 0x2b4130, 0x1f3327];
-    pub const YEW_TOP: [u32; 2] = [0x3b5236, 0x354b31];
-    pub const YEW_BASE: u32 = 0x121b15;
+    pub const YEW: [u32; 3] = [0x29472a, 0x31532f, 0x253f26];
+    pub const YEW_TOP: [u32; 2] = [0x48683a, 0x415f35];
+    /// The new growth at the tips, which catches the lanterns.
+    pub const YEW_TIP: u32 = 0x5e7e40;
+    pub const YEW_BASE: u32 = 0x15231a;
     /// Turf in the board's moss and olive, and the beds' dark earth.
-    pub const TURF: [u32; 3] = [0x4a5434, 0x56603a, 0x3e4a30];
+    pub const TURF: [u32; 3] = [0x4c7a2e, 0x588834, 0x446e2c];
     pub const EARTH: [u32; 2] = [0x2e261e, 0x372c22];
     /// The walks' gravel: umber greys, wet.
     pub const GRAVEL: [u32; 1] = [0x3e3830];
@@ -35,8 +37,10 @@ pub(super) mod pal {
     pub const LEAVES: [u32; 3] = [0x8a4a22, 0x9a6a2a, 0x5e3a1e];
     pub const BARK: [u32; 2] = [0x3e3128, 0x30271f];
     /// Broadleaf crowns: moss and olive, lit olive on top.
-    pub const LEAF: [u32; 3] = [0x2c3d25, 0x37482a, 0x435330];
-    pub const LEAF_LIT: u32 = 0x56623a;
+    pub const LEAF: [u32; 3] = [0x283326, 0x2e3a2a, 0x37432f];
+    pub const LEAF_LIT: u32 = 0x4c5838;
+    /// Blooms, quiet: rust rose, amber, dusk lavender, pale stone.
+    pub const BLOOMS: [u32; 4] = [0x8a3e34, 0xa8803e, 0x6e5a82, 0xb8ae94];
     pub const PINE: [u32; 2] = [0x1d2f23, 0x25382a];
     /// The woods beyond the walls: darker still, a silhouette against the sky.
     pub const WOODS: [u32; 2] = [0x16241b, 0x1b2b20];
@@ -54,8 +58,15 @@ pub(super) const HEDGE_H: f32 = 0.58;
 const HEDGE_T: f32 = 0.42;
 /// A bed's earth stands this far over its tile's floor.
 const BED: f32 = 0.05;
-/// The turf verge along a walk, from the hedge's foot.
-const VERGE: f32 = 0.22;
+/// The lawn along a walk, from the hedge's foot (a 2-tile walk keeps a little over half its
+/// width in gravel), and its darker strip in the hedge's shadow.
+const VERGE: f32 = 0.42;
+const FOOT: f32 = 0.13;
+
+/// Turf in one of its tones, picked by `k`.
+fn turf(k: f32) -> Vec3 {
+    jit(TURF[(k * 7.0) as usize % 3], k as f64, 0.1)
+}
 /// Lanterns stand at least this far apart (tiles, either axis), so each is a pool of its own.
 const LANTERN_GAP: i32 = 6;
 
@@ -103,8 +114,12 @@ pub(super) fn hedge(out: &mut Vec<Instance>, c: Vec3, d: (i32, i32), h: f32, see
             let front = 0.5 + r(k + 0.3) * 0.028 - back;
             let depth = 0.12 + r(k + 0.6) * 0.06;
             let lift = (r(k + 0.9) - 0.5) * 0.035;
-            let lit = r(k + 2.1) < 0.18;
-            let tone = if lit { lin(YEW_TOP[(r(k + 1.2) * 2.0) as usize % 2]) * 0.85 } else { lin(YEW[(r(k + 1.2) * 3.0) as usize % 3]) };
+            let lit = r(k + 2.1) < 0.26;
+            let tone = if lit {
+                lin(if r(k + 2.2) < 0.4 { YEW_TIP } else { YEW_TOP[(r(k + 1.2) * 2.0) as usize % 2] }) * 0.88
+            } else {
+                lin(YEW[(r(k + 1.2) * 3.0) as usize % 3])
+            };
             let c = tone * (1.0 - 0.14 + r(k + 1.5) * 0.28) * shade;
             let rot = Quat::from_rotation_y(turn + (r(k + 1.8) - 0.5) * 0.09) * Quat::from_rotation_x((r(k + 2.4) - 0.5) * 0.08);
             block_m(
@@ -147,7 +162,7 @@ pub(super) fn hedge(out: &mut Vec<Instance>, c: Vec3, d: (i32, i32), h: f32, see
         let uu = (r(41.0 + s as f64) - 0.5) * 0.8;
         let up = r(42.0 + s as f64) < 0.5;
         let p = if up { at(uu, h + 0.03, 0.5 - HEDGE_T * r(43.0) * 0.8) } else { at(uu, h * (0.4 + r(44.0) * 0.4), 0.53) };
-        block(out, p, Vec3::new(0.06, 0.08, 0.06), r(45.0) * 3.0, lin(YEW_TOP[0]) * 1.15, SHADE_SOFT);
+        block(out, p, Vec3::new(0.06, 0.08, 0.06), r(45.0) * 3.0, lin(YEW_TIP), SHADE_SOFT);
     }
 }
 
@@ -254,14 +269,14 @@ fn garden_tree(out: &mut Vec<Instance>, base: Vec3, kind: Kind, height: f32, rea
                 );
             }
             let crown = height - trunk_h;
-            let tiers: [(f32, f32, usize, u32); 3] = [(0.1, 1.0, 8, LEAF[0]), (0.4, 0.85, 8, LEAF[1]), (0.7, 0.55, 6, LEAF[2])];
+            let tiers: [(f32, f32, usize, u32); 3] = [(0.1, 1.0, 12, LEAF[0]), (0.4, 0.85, 11, LEAF[1]), (0.7, 0.55, 7, LEAF[2])];
             let mut k = 10.0;
             for (t, (y, spread, n, col)) in tiers.into_iter().enumerate() {
                 for j in 0..n {
                     k += 1.0;
                     let a = j as f32 / n as f32 * TAU + r(k) * 0.9 + t as f32;
                     let rr = reach * spread * (0.5 + r(k + 0.5) * 0.4);
-                    let s = reach * (0.38 + r(k + 0.2) * 0.22) * (1.1 - t as f32 * 0.15);
+                    let s = reach * (0.26 + r(k + 0.2) * 0.17) * (1.1 - t as f32 * 0.15);
                     let at = top + Vec3::new(a.cos() * rr, crown * y + (r(k + 0.7) - 0.5) * 0.12, a.sin() * rr);
                     let c = jit(col, r(k + 1.1) as f64, 0.12) * dim;
                     let rot = Quat::from_rotation_y(r(k + 1.3) * 3.0)
@@ -270,9 +285,20 @@ fn garden_tree(out: &mut Vec<Instance>, base: Vec3, kind: Kind, height: f32, rea
                     block_m(out, Mat4::from_scale_rotation_translation(Vec3::new(s, s * 0.7, s * 0.9), rot, at), c, SHADE_SOFT);
                 }
             }
-            // The crown's lit cap.
-            let cap = reach * 0.7;
-            block(out, top + Vec3::Y * crown * 0.98, Vec3::new(cap, cap * 0.5, cap * 0.85), r(30.0) * 3.0, lin(LEAF_LIT) * dim, SHADE_SOFT);
+            // The crown's lit top, in a few small clumps.
+            for j in 0..3 {
+                let a = j as f32 * 2.1 + r(30.0) * 3.0;
+                let cap = reach * (0.24 + r(31.0 + j as f64) * 0.1);
+                let at = top + Vec3::new(a.cos() * reach * 0.25, crown * 0.96, a.sin() * reach * 0.25);
+                block(
+                    out,
+                    at,
+                    Vec3::new(cap, cap * 0.6, cap * 0.85),
+                    r(32.0 + j as f64) * 3.0,
+                    jit(LEAF_LIT, r(33.0 + j as f64) as f64, 0.1) * dim * 0.9,
+                    SHADE_SOFT,
+                );
+            }
         }
         Kind::Yew => {
             // A column clipped to a blunt point, in drums that bulge a little.
@@ -376,84 +402,6 @@ impl WorldView {
         let (w, h) = (grid.width, grid.height);
         let border = |x: i32, y: i32| x == 0 || y == 0 || x == w - 1 || y == h - 1;
 
-        // ---- floors
-        let start = self.static_cubes.len();
-        for (x, y, t) in grid.cells() {
-            if t == Tile::Rock || t == Tile::Pit || grid.is_ramp(x, y) || grid.is_bridge(x, y) {
-                continue;
-            }
-            let p = P::new(x, y);
-            let plaza = fountain.is_some_and(|f| (f.x - x).abs() == 1 && (f.y - y).abs() == 1);
-            let avenue = CARDINALS.iter().any(|d| {
-                let (dx, dy) = d.vec();
-                water(P::new(x + dx, y + dy))
-            });
-            let kind = if plaza {
-                Floor::Plaza
-            } else if avenue {
-                Floor::Avenue
-            } else {
-                Floor::Walk
-            };
-            self.floor_tile(grid, p, t, kind, &feature);
-        }
-        // ---- ramps: pale stone steps, moss along each nose
-        for (x, y, _) in grid.cells() {
-            if !grid.is_ramp(x, y) || grid.is_bridge(x, y) {
-                continue;
-            }
-            let low = grid.elevation(x, y);
-            let up = CARDINALS
-                .iter()
-                .copied()
-                .find(|&d| {
-                    let n = grid.neighbor(P::new(x, y), d);
-                    !rock(n.x, n.y) && !grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low
-                })
-                .or_else(|| {
-                    CARDINALS.iter().copied().find(|&d| {
-                        let n = grid.neighbor(P::new(x, y), d);
-                        grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low
-                    })
-                })
-                .unwrap_or(Dir::Right);
-            let (vx, vy) = up.vec();
-            for i in 0..3 {
-                let top = low as f32 * STEP + ((i + 1) as f32 / 3.0) * STEP;
-                let o = (i as f32 - 1.0) / 3.0;
-                let hk = hash(x as f64 + i as f64, y as f64);
-                let size = Vec3::new(if vx != 0 { 1.0 / 3.0 } else { 1.0 }, top + 0.1, if vy != 0 { 1.0 / 3.0 } else { 1.0 });
-                block(
-                    &mut self.static_cubes,
-                    Vec3::new(x as f32 + vx as f32 * o, (top - 0.1) / 2.0, y as f32 + vy as f32 * o),
-                    size,
-                    0.0,
-                    jit(PALE_STONE[(hk * 2.0) as usize % 2], hk, 0.06) * 0.78,
-                    SHADE_STONE,
-                );
-                let lip =
-                    Vec3::new(x as f32 + vx as f32 * (o - 1.0 / 6.0 + 0.02), top + 0.008, y as f32 + vy as f32 * (o - 1.0 / 6.0 + 0.02));
-                let s = if vx != 0 { Vec3::new(0.04, 0.016, 0.7 + hk as f32 * 0.2) } else { Vec3::new(0.7 + hk as f32 * 0.2, 0.016, 0.04) };
-                block(&mut self.static_cubes, lip, s, 0.0, jit(MOSS[i % 3], hk, 0.1), SHADE_SOFT);
-            }
-        }
-        // ---- pits: a black drop with a pale stone kerb
-        for (x, y, t) in grid.cells() {
-            if t != Tile::Pit {
-                continue;
-            }
-            block(&mut self.static_cubes, Vec3::new(x as f32, -0.9, y as f32), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(PIT), SHADE_LIT);
-            block(
-                &mut self.static_cubes,
-                Vec3::new(x as f32, -0.03, y as f32),
-                Vec3::new(1.02, 0.06, 1.02),
-                0.0,
-                jit(PALE_STONE[1], hash(x as f64, y as f64), 0.05) * 0.6,
-                SHADE_STONE,
-            );
-        }
-        self.authored.push((start, self.static_cubes.len() - start));
-
         // ---- the beds: yew round every side on a walk, trees and lanterns after
         let mut trees: Vec<(P, Vec3, Kind, f32, f32, bool)> = Vec::new();
         let mut lanterns: Vec<(P, Vec3, Vec3)> = Vec::new();
@@ -479,12 +427,15 @@ impl WorldView {
                 })
                 .collect();
             let start = self.static_cubes.len();
-            self.bed_tile(grid, p, &roads, here);
+            // Some beds are planted (flowers in the board's quieter colours), the rest are lawn
+            // with cushions of box, or earth under the trees.
+            let planted = here.is_none() && !border(x, y) && hash(x as f64 * 2.17 + 3.0, y as f64 * 1.31 + 9.0) < 0.3;
+            self.bed_tile(grid, p, &roads, here, planted);
             let len = self.static_cubes.len() - start;
             self.rock_index.insert(tile_key(x, y), (start, len));
             self.authored.push((start, len));
-            if here.is_some() {
-                continue; // a temple or a shrine stands here instead of a tree
+            if here.is_some() || planted {
+                continue; // a temple, a shrine or a flower bed stands here instead of a tree
             }
             let (hx, hy) = (x as f64, y as f64);
             let base = floor_y(x, y) + BED;
@@ -571,6 +522,84 @@ impl WorldView {
             self.torches.insert(spot, (glass - Vec3::Y * 0.5, (start, len)));
             self.authored.push((start, len));
         }
+        // ---- floors (after the lanterns, so rain can stand where they light it)
+        let start = self.static_cubes.len();
+        for (x, y, t) in grid.cells() {
+            if t == Tile::Rock || t == Tile::Pit || grid.is_ramp(x, y) || grid.is_bridge(x, y) {
+                continue;
+            }
+            let p = P::new(x, y);
+            let plaza = fountain.is_some_and(|f| (f.x - x).abs() == 1 && (f.y - y).abs() == 1);
+            let avenue = CARDINALS.iter().any(|d| {
+                let (dx, dy) = d.vec();
+                water(P::new(x + dx, y + dy))
+            });
+            let kind = if plaza {
+                Floor::Plaza
+            } else if avenue {
+                Floor::Avenue
+            } else {
+                Floor::Walk
+            };
+            self.floor_tile(grid, p, t, kind, &feature);
+        }
+        // ---- ramps: pale stone steps, moss along each nose
+        for (x, y, _) in grid.cells() {
+            if !grid.is_ramp(x, y) || grid.is_bridge(x, y) {
+                continue;
+            }
+            let low = grid.elevation(x, y);
+            let up = CARDINALS
+                .iter()
+                .copied()
+                .find(|&d| {
+                    let n = grid.neighbor(P::new(x, y), d);
+                    !rock(n.x, n.y) && !grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low
+                })
+                .or_else(|| {
+                    CARDINALS.iter().copied().find(|&d| {
+                        let n = grid.neighbor(P::new(x, y), d);
+                        grid.is_ramp(n.x, n.y) && grid.elevation(n.x, n.y) > low
+                    })
+                })
+                .unwrap_or(Dir::Right);
+            let (vx, vy) = up.vec();
+            for i in 0..3 {
+                let top = low as f32 * STEP + ((i + 1) as f32 / 3.0) * STEP;
+                let o = (i as f32 - 1.0) / 3.0;
+                let hk = hash(x as f64 + i as f64, y as f64);
+                let size = Vec3::new(if vx != 0 { 1.0 / 3.0 } else { 1.0 }, top + 0.1, if vy != 0 { 1.0 / 3.0 } else { 1.0 });
+                block(
+                    &mut self.static_cubes,
+                    Vec3::new(x as f32 + vx as f32 * o, (top - 0.1) / 2.0, y as f32 + vy as f32 * o),
+                    size,
+                    0.0,
+                    jit(PALE_STONE[(hk * 2.0) as usize % 2], hk, 0.06) * 0.78,
+                    SHADE_STONE,
+                );
+                let lip =
+                    Vec3::new(x as f32 + vx as f32 * (o - 1.0 / 6.0 + 0.02), top + 0.008, y as f32 + vy as f32 * (o - 1.0 / 6.0 + 0.02));
+                let s = if vx != 0 { Vec3::new(0.04, 0.016, 0.7 + hk as f32 * 0.2) } else { Vec3::new(0.7 + hk as f32 * 0.2, 0.016, 0.04) };
+                block(&mut self.static_cubes, lip, s, 0.0, jit(MOSS[i % 3], hk, 0.1), SHADE_SOFT);
+            }
+        }
+        // ---- pits: a black drop with a pale stone kerb
+        for (x, y, t) in grid.cells() {
+            if t != Tile::Pit {
+                continue;
+            }
+            block(&mut self.static_cubes, Vec3::new(x as f32, -0.9, y as f32), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(PIT), SHADE_LIT);
+            block(
+                &mut self.static_cubes,
+                Vec3::new(x as f32, -0.03, y as f32),
+                Vec3::new(1.02, 0.06, 1.02),
+                0.0,
+                jit(PALE_STONE[1], hash(x as f64, y as f64), 0.05) * 0.6,
+                SHADE_STONE,
+            );
+        }
+        self.authored.push((start, self.static_cubes.len() - start));
+
         if let Some(plan) = self.garden.clone() {
             self.build_garden(grid, &plan, &feature);
         }
@@ -625,21 +654,32 @@ impl WorldView {
                         && !matches!(feature.get(&n), Some(Feature::Water | Feature::Fountain))
                 };
                 let c = Vec3::new(xf, h, yf);
+                // The walk's gravel, between the lawns: what is left of the tile.
+                let (mut lo, mut hi) = (Vec2::splat(-0.5), Vec2::splat(0.5));
                 for (i, d) in CARDINALS.iter().enumerate() {
                     let dv = d.vec();
                     if !hedged(dv.0, dv.1) {
                         continue;
                     }
+                    match dv {
+                        (1, _) => hi.x = 0.5 - VERGE,
+                        (-1, _) => lo.x = -0.5 + VERGE,
+                        (_, 1) => hi.y = 0.5 - VERGE,
+                        _ => lo.y = -0.5 + VERGE,
+                    }
                     let at = side_at(c, dv);
                     let turn = side_turn(dv);
                     let k = hash(hx * 2.7 + i as f64, hy * 1.9 - i as f64) as f32;
-                    // The verge, a touch proud of the gravel, and the line of setts that edges it.
+                    // The lawn along the hedge, a touch proud of the gravel: darker in the
+                    // hedge's shadow, in two or three tones along its length; the line of setts
+                    // that edges it.
+                    block(out, at(0.0, 0.0, 0.5 - FOOT / 2.0), Vec3::new(1.0, 0.05, FOOT), turn, turf(k + 0.3) * 0.62, SHADE_GRASS);
                     block(
                         out,
-                        at(0.0, 0.0, 0.5 - VERGE / 2.0),
-                        Vec3::new(1.0, 0.05, VERGE),
+                        at(0.0, 0.0, 0.5 - FOOT - (VERGE - FOOT) / 2.0),
+                        Vec3::new(1.0, 0.05, VERGE - FOOT),
                         turn,
-                        jit(TURF[(k * 3.0) as usize % 3], k as f64, 0.1),
+                        turf(k),
                         SHADE_GRASS,
                     );
                     block(
@@ -650,18 +690,21 @@ impl WorldView {
                         jit(PALE_STONE[1], k as f64, 0.08) * 0.55,
                         SHADE_STONE,
                     );
-                    if k < 0.65 {
-                        tuft(out, at((k - 0.5) * 0.8, 0.02, 0.5 - VERGE * 0.5), k * 13.0 + i as f32);
+                    for t in 0..3 {
+                        let kt = hash(hx * 4.1 + t as f64 + i as f64 * 5.0, hy * 3.9 + t as f64) as f32;
+                        if kt < 0.7 {
+                            tuft(out, at((kt - 0.5) * 0.9, 0.02, 0.5 - FOOT - kt * (VERGE - FOOT) * 0.8), kt * 13.0 + i as f32 + t as f32);
+                        }
                     }
-                    // Leaves blown against the hedge's foot.
+                    // Leaves blown onto the lawn's edge.
                     for j in 0..2 {
                         let kj = hash(hx * 5.3 + j as f64 + i as f64 * 3.0, hy * 4.1) as f32;
                         if kj < 0.5 {
-                            leaf(out, at((kj - 0.25) * 1.8, 0.03, 0.5 - VERGE - 0.05 - kj * 0.12), kj * 17.0);
+                            leaf(out, at((kj - 0.25) * 1.8, 0.03, 0.5 - VERGE + 0.04 + kj * 0.12), kj * 17.0);
                         }
                     }
                 }
-                // Turf at an inner corner, where the walks turn round a bed.
+                // Lawn at an inner corner, where the walks turn round a bed.
                 for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
                     if hedged(dx, dy) && !hedged(dx, 0) && !hedged(0, dy) {
                         let k = hash(hx + dx as f64 * 3.0, hy + dy as f64 * 5.0) as f32;
@@ -670,41 +713,97 @@ impl WorldView {
                             Vec3::new(xf + dx as f32 * (0.5 - VERGE / 2.0), h, yf + dy as f32 * (0.5 - VERGE / 2.0)),
                             Vec3::new(VERGE, 0.05, VERGE),
                             0.0,
-                            jit(TURF[(k * 3.0) as usize % 3], k as f64, 0.1),
+                            turf(k),
                             SHADE_GRASS,
                         );
                     }
                 }
+                let span = hi - lo;
                 // Pebbles kicked up out of the gravel.
-                for j in 0..6 {
+                for j in 0..5 {
                     let (a, b) = (hash(hx * 7.1 + j as f64, hy * 3.3) as f32, hash(hy * 5.7 + j as f64, hx * 2.9) as f32);
                     let c = if a < 0.5 { jit(PALE_STONE[j % 2], b as f64, 0.1) * 0.6 } else { jit(CHARCOAL[j % 3], b as f64, 0.1) };
                     block(
                         out,
-                        Vec3::new(xf + (a - 0.5) * 0.6, h + 0.008, yf + (b - 0.5) * 0.6),
+                        Vec3::new(xf + lo.x + span.x * (0.1 + a * 0.8), h + 0.008, yf + lo.y + span.y * (0.1 + b * 0.8)),
                         Vec3::new(0.035 + a * 0.035, 0.02, 0.03 + b * 0.03),
                         a * 6.0,
                         c,
                         SHADE_STONE,
                     );
                 }
-                // Now and then rain stands in a hollow of the walk.
+                // Now and then rain stands in a hollow of the walk, more often by a lantern, where
+                // it holds the light.
                 let hp = hash(hx * 2.3 + 17.0, hy * 3.1 + 5.0);
-                if hp < 0.07 {
+                let lit = self.torches.values().any(|(t, _)| (t.x - xf).abs() < 2.5 && (t.z - yf).abs() < 2.5);
+                if hp < if lit { 0.35 } else { 0.06 } && span.min_element() > 0.3 {
                     let (a, b) = (hash(hx, hy * 7.0) as f32, hash(hy, hx * 7.0) as f32);
-                    self.puddles.push((
-                        Vec3::new(xf + (a - 0.5) * 0.3, h + 0.006, yf + (b - 0.5) * 0.3),
-                        Vec2::new(0.4 + a * 0.3, 0.32 + b * 0.25),
-                    ));
+                    let at = Vec3::new(xf + lo.x + span.x * (0.3 + a * 0.4), h + 0.006, yf + lo.y + span.y * (0.3 + b * 0.4));
+                    self.puddles.push((at, Vec2::new(span.x * (0.45 + a * 0.3), span.y * (0.4 + b * 0.3))));
                 }
             }
         }
     }
 
+    /// A flower garden's tile (the plan's parterres): a lawn, low clipped box along its walks
+    /// and its edges, inside it flowers in rows, and now and then a yew cone or a stone urn.
+    pub(super) fn parterre_tile(&mut self, grid: &Grid, p: P, feature: &HashMap<P, Feature>) {
+        let (x, y) = (p.x, p.y);
+        let (xf, yf) = (x as f32, y as f32);
+        let (hx, hy) = (x as f64, y as f64);
+        let floor = grid.elevation(x, y) as f32 * STEP;
+        let base = floor + BED;
+        let start = self.static_cubes.len();
+        let out = &mut self.static_cubes;
+        let k = hash(hx * 1.3, hy * 2.7);
+        block(out, Vec3::new(xf, (base - 0.12) / 2.0, yf), Vec3::new(1.0, base + 0.12, 1.0), 0.0, turf(k as f32) * 0.8, SHADE_GRASS);
+        retaining_walls(out, grid, p, floor);
+        let c = Vec3::new(xf, base, yf);
+        let (mut lo, mut hi) = (Vec2::splat(-0.42), Vec2::splat(0.42));
+        for d in CARDINALS {
+            let (dx, dy) = d.vec();
+            let n = P::new(x + dx, y + dy);
+            let open = grid.in_bounds(n.x, n.y) && grid.get(n.x, n.y) != Tile::Rock;
+            let other = grid.get(n.x, n.y) == Tile::Rock && feature.get(&n) != Some(&Feature::Flowers);
+            if !(open || other) {
+                continue;
+            }
+            hedge(out, c, (dx, dy), 0.26, (hx * 1.7, hy * 2.3));
+            match (dx, dy) {
+                (1, _) => hi.x = 0.5 - HEDGE_T,
+                (-1, _) => lo.x = -0.5 + HEDGE_T,
+                (_, 1) => hi.y = 0.5 - HEDGE_T,
+                _ => lo.y = -0.5 + HEDGE_T,
+            }
+        }
+        let centre = hash(hx * 3.0, hy * 17.0);
+        if centre < 0.2 {
+            // A clipped yew cone on a little plinth.
+            block(out, c + Vec3::Y * 0.04, Vec3::new(0.2, 0.08, 0.2), 0.0, jit(PALE_STONE[0], k, 0.05) * 0.7, SHADE_STONE);
+            for (j, w) in [0.22f32, 0.18, 0.13, 0.08, 0.04].into_iter().enumerate() {
+                block(
+                    out,
+                    c + Vec3::Y * (0.12 + j as f32 * 0.09),
+                    Vec3::new(w, 0.1, w),
+                    j as f32 * 0.4,
+                    jit(YEW[j % 3], k, 0.08) * (1.0 + j as f32 * 0.06),
+                    SHADE_SOFT,
+                );
+            }
+            block(out, c + Vec3::Y * 0.52, Vec3::new(0.035, 0.05, 0.035), 0.0, lin(YEW_TIP), SHADE_SOFT);
+        } else if centre < 0.35 {
+            garden_landmarks::urn_cubes(out, c, (hx, hy));
+        }
+        planting(out, c, lo, hi - lo, (hx, hy));
+        let len = self.static_cubes.len() - start;
+        self.rock_index.insert(tile_key(x, y), (start, len));
+        self.authored.push((start, len));
+    }
+
     /// A wall tile as a bed: its earth (and terrace walls), clipped yew along every side on a
     /// walk, and on its earth moss, leaves and now and then a clipped topiary. A temple's lawn
     /// is kept low (box, not yew) so the temple reads.
-    fn bed_tile(&mut self, grid: &Grid, p: P, roads: &[Dir], here: Option<Feature>) {
+    fn bed_tile(&mut self, grid: &Grid, p: P, roads: &[Dir], here: Option<Feature>, planted: bool) {
         let (x, y) = (p.x, p.y);
         let (xf, yf) = (x as f32, y as f32);
         let (hx, hy) = (x as f64, y as f64);
@@ -713,14 +812,17 @@ impl WorldView {
         let lawn = here == Some(Feature::Temple);
         let out = &mut self.static_cubes;
         let k = hash(hx * 1.3, hy * 2.7);
-        let ground = if lawn { jit(TURF[(k * 3.0) as usize % 3], k, 0.08) * 0.85 } else { jit(EARTH[(k * 2.0) as usize % 2], k, 0.1) };
+        // A lawn inside the yew, darker than the walks' (the hedge shades it); earth where
+        // flowers are planted.
+        let grass = !planted;
+        let ground = if grass { turf(k as f32) * 0.9 } else { jit(EARTH[(k * 2.0) as usize % 2], k, 0.1) };
         block(
             out,
             Vec3::new(xf, (base - 0.12) / 2.0, yf),
             Vec3::new(1.0, base + 0.12, 1.0),
             0.0,
             ground,
-            if lawn { SHADE_GRASS } else { SHADE_LIT },
+            if grass { SHADE_GRASS } else { SHADE_LIT },
         );
         retaining_walls(out, grid, p, floor);
         let c = Vec3::new(xf, base, yf);
@@ -778,6 +880,10 @@ impl WorldView {
             }
         }
         let span = hi - lo;
+        if planted {
+            planting(out, c, lo, span, (hx, hy));
+            return;
+        }
         for j in 0..4 {
             let (a, b, e) = (
                 hash(hx * 4.3 + j as f64, hy * 1.9) as f32,
@@ -795,6 +901,33 @@ impl WorldView {
                 block(out, at + Vec3::Y * 0.012, Vec3::new(0.22, 0.025, 0.18), a * 4.0, jit(MOSS[j % 3], b as f64, 0.1), SHADE_SOFT);
             } else {
                 leaf(out, at + Vec3::Y * 0.01, a * 23.0 + b);
+            }
+        }
+    }
+}
+
+/// Flowers planted in rows over `lo..lo + span` round `c` (on the bed): low mounds of leaves,
+/// each with a bloom, in a pair of the board's quieter colours (rust rose, amber, dusk
+/// lavender, pale stone), a sprig of something taller now and then.
+pub(super) fn planting(out: &mut Vec<Instance>, c: Vec3, lo: Vec2, span: Vec2, (hx, hy): (f64, f64)) {
+    let pick = hash(hx * 3.3 + 1.0, hy * 2.9 + 7.0);
+    let pair = [BLOOMS[(pick * 4.0) as usize % 4], BLOOMS[(pick * 11.0) as usize % 4]];
+    let (nx, nz) = (((span.x / 0.17) as usize).clamp(1, 6), ((span.y / 0.17) as usize).clamp(1, 6));
+    for i in 0..nx {
+        for j in 0..nz {
+            let k = hash(hx * 5.1 + i as f64 * 1.7, hy * 4.3 + j as f64 * 2.3) as f32;
+            let at = c + Vec3::new(
+                lo.x + span.x * (i as f32 + 0.5) / nx as f32 + (k - 0.5) * 0.03,
+                0.0,
+                lo.y + span.y * (j as f32 + 0.5) / nz as f32,
+            );
+            let leafy = jit(LEAF[(i + j) % 3], k as f64, 0.12) * 0.95;
+            block(out, at + Vec3::Y * 0.04, Vec3::new(0.12, 0.08, 0.11), k * 3.0, leafy, SHADE_SOFT);
+            let bloom = jit(pair[(i + j) % 2], k as f64, 0.1);
+            let tall = if k < 0.15 { 0.16 } else { 0.1 };
+            block(out, at + Vec3::Y * tall, Vec3::new(0.06, 0.05, 0.06), k * 5.0, bloom, SHADE_SOFT);
+            if k > 0.7 {
+                block(out, at + Vec3::new(0.03, 0.09, -0.02), Vec3::new(0.045, 0.04, 0.045), k * 7.0, bloom * 1.1, SHADE_SOFT);
             }
         }
     }
