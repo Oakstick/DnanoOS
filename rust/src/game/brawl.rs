@@ -1703,7 +1703,7 @@ impl Game {
                 self.audio.play(Sfx::GabrielThunder);
                 self.view.shake(0.2);
             }
-            BoltLook::Spit => self.view.dust(&self.level.grid, at.x, at.y, 0x7aff5a, 10, 1.2),
+            BoltLook::Spit => self.view.dust(&self.level.grid, at.x, at.y, 0x5c9a62, 10, 1.2),
             BoltLook::Fire => self.view.sparkle(&self.level.grid, at.x, at.y, 0.6, 0xffa040, 14),
             _ => {}
         }
