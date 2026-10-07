@@ -655,14 +655,13 @@ impl WorldView {
         }
     }
 
-    /// The depth of field's reach: how far behind the in-focus plane the blur begins and where it
-    /// is full (world units), and the most it blurs (pixels at 1080p). A story shot sets its own
-    /// (story_camera.rs); other composed shots soften less than play, at greater depth.
-    pub fn dof(&self) -> (f32, f32, f32) {
+    /// The depth of field's reach (behind the in-focus plane, and in front of it). A story shot
+    /// sets its own (story_camera.rs); other composed shots soften less than play, at greater depth.
+    pub fn dof(&self) -> Dof {
         match self.lens {
-            Some(l) => (l.dof.clear, l.dof.full, l.dof.px),
-            None if self.cinematic() => (CINEMA_DOF_CLEAR, CINEMA_DOF_FULL, DOF_PX),
-            None => (DOF_CLEAR, DOF_FULL, DOF_PX),
+            Some(l) => l.dof,
+            None if self.cinematic() => Dof::behind(CINEMA_DOF_CLEAR, CINEMA_DOF_FULL, DOF_PX),
+            None => Dof::behind(DOF_CLEAR, DOF_FULL, DOF_PX),
         }
     }
 

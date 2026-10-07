@@ -104,6 +104,7 @@ pub use resident::Resident;
 pub use select::SelectView;
 use showcase::STAGE;
 pub use story::StoryView;
+pub use story_camera::Dof;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
 pub mod colors {

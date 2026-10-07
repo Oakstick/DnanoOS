@@ -13,13 +13,29 @@ use super::story::{StoryView, GATEWAY, GRAVEYARD};
 use super::*;
 use crate::logic::story::{stage, Scene, Shot, Speaker};
 
-/// How far behind the in-focus plane the blur begins and where it is full (world units), and the
-/// most it blurs (pixels at 1080p).
+/// The depth of field: how far behind the in-focus plane the blur begins and where it is full
+/// (world units), the most it blurs (pixels at 1080p), and the same in front of it (`near_clear`
+/// 0: nothing in front blurs).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Dof {
+pub struct Dof {
     pub clear: f32,
     pub full: f32,
     pub px: f32,
+    pub near_clear: f32,
+    pub near_full: f32,
+}
+
+impl Dof {
+    /// Blurring behind the in-focus plane only.
+    pub const fn behind(clear: f32, full: f32, px: f32) -> Self {
+        Self { clear, full, px, near_clear: 0.0, near_full: 1.0 }
+    }
+
+    /// The same, and whatever stands this close in front of the camera's subject softening too (a
+    /// shoulder in the foreground of a shot over it).
+    const fn and_front(self, clear: f32, full: f32) -> Self {
+        Self { near_clear: clear, near_full: full, ..self }
+    }
 }
 
 /// A shot's lens: its vertical field of view (degrees), how far it leans (radians, about the
@@ -41,11 +57,11 @@ pub(super) struct StoryCam {
 }
 
 /// The whole set sharp but the far distance (the wides, the crane, Scene II): as composed before.
-const DEEP: Dof = Dof { clear: 5.0, full: 20.0, px: 3.5 };
+const DEEP: Dof = Dof::behind(5.0, 20.0, 3.5);
 /// A medium shot: the action sharp, the set behind it softening a few metres back.
-const MEDIUM: Dof = Dof { clear: 1.4, full: 6.0, px: 4.5 };
+const MEDIUM: Dof = Dof::behind(1.4, 6.0, 4.5);
 /// Faces and close things: what is behind them a metre or two back goes soft.
-const SHALLOW: Dof = Dof { clear: 0.45, full: 2.4, px: 6.0 };
+const SHALLOW: Dof = Dof::behind(0.45, 2.4, 6.0);
 
 /// Lenses, as vertical fields of view: wide for the crane and the reveals, long for faces.
 const WIDE: f32 = 56.0;
@@ -54,7 +70,14 @@ const LONG: f32 = 34.0;
 const PORTRAIT: f32 = 27.0;
 
 fn lerp_dof(a: Dof, b: Dof, u: f32) -> Dof {
-    Dof { clear: a.clear + (b.clear - a.clear) * u, full: a.full + (b.full - a.full) * u, px: a.px + (b.px - a.px) * u }
+    let l = |x: f32, y: f32| x + (y - x) * u;
+    Dof {
+        clear: l(a.clear, b.clear),
+        full: l(a.full, b.full),
+        px: l(a.px, b.px),
+        near_clear: l(a.near_clear, b.near_clear),
+        near_full: l(a.near_full, b.near_full),
+    }
 }
 
 /// Smoothstep: a move easing in and out.
@@ -266,7 +289,7 @@ fn taken(t: f32) -> Take {
         let u = ease(0.0, stage::RUSH, t);
         let k = key(v(-0.06, 0.42, 3.6), v(0.22, 1.02, -4.5), 30.0).to(key(v(-0.06, 0.43, 3.3), v(0.24, 1.06, -4.5), 29.0), u);
         let focus = v(0.12, 0.6, -1.42).lerp(K_FOG + v(0.0, 1.7, 0.0), smooth(stage::EYES, stage::EYES + 0.45, t));
-        take(k, focus, Dof { clear: 1.0, full: 4.0, px: 5.0 })
+        take(k, focus, Dof::behind(1.0, 4.0, 5.0).and_front(0.8, 2.0))
     } else if t < stage::GRAB - 0.02 {
         // The rush: low at the boy's back as the gate bursts open toward us.
         let u = ease(stage::RUSH, stage::GRAB, t);
@@ -381,24 +404,24 @@ fn snarl(t: f32) -> Take {
 /// "Easy, Quitmer": the old man found by his lantern first, low, then up to his face.
 fn easy(t: f32) -> Take {
     let u = ease(0.4, 3.4, t);
-    let k = key(v(0.72, 0.28, -1.2), LANTERN, 40.0).to(key(v(0.4, 1.0, -1.5), old_face() + v(-0.04, -0.1, 0.0), LONG), u);
+    let k = key(v(0.72, 0.28, -1.2), LANTERN, 40.0).to(key(v(0.2, 1.0, -1.25), old_face() + v(-0.04, -0.17, 0.0), LONG), u);
     let focus = LANTERN.lerp(old_face(), smooth(1.0, 2.8, t));
-    take(k, focus, SHALLOW)
+    take(k, focus, SHALLOW.and_front(0.3, 0.9))
 }
 
 /// The old man speaking (his `n`th line): over the boys' shoulders, or a clean single, in turn.
 fn old_man(t: f32, n: usize) -> Take {
     let face = old_face();
-    let k = if n % 2 == 1 {
+    let (k, dof) = if n % 2 == 1 {
         // Clean, at about his height: him, the gate's dark behind.
-        key(v(0.9, 1.0, -0.32), face + v(0.0, -0.13, 0.0), 30.0)
+        (key(v(0.9, 1.0, -0.32), face + v(0.0, -0.13, 0.0), 30.0), SHALLOW)
     } else {
-        // Over the boys' shoulders, low, a long lens across the room.
-        key(v(0.86, 0.66, 2.3), face + v(-0.1, -0.16, 0.0), 26.0)
+        // Over the boys' shoulders, low, a long lens across the room, the nearest boy soft.
+        (key(v(0.86, 0.66, 2.3), face + v(-0.1, -0.16, 0.0), 26.0), SHALLOW.and_front(1.0, 2.5))
     };
     let push = ease(0.0, 7.0, t);
     let k = Key { eye: k.eye + (k.look - k.eye) * 0.07 * push, ..k };
-    take(k, face, SHALLOW)
+    take(k, face, dof)
 }
 
 /// Where the boy who speaks the `n`th of the boys' lines stands, and his face.
@@ -410,24 +433,24 @@ fn speaker_face(n: usize) -> Vec3 {
 /// the one who speaks, in turn.
 fn boys(t: f32, n: usize) -> Take {
     let face = speaker_face(n);
-    let k = if n.is_multiple_of(2) {
-        // Over his shoulder, looking down on them as he does.
-        key(v(1.08, 1.3, -2.72), BOYS_MID.lerp(face, 0.5) + v(0.25, 0.25, 0.0), 29.0)
+    let (k, dof) = if n.is_multiple_of(2) {
+        // Over his shoulder, looking down on them as he does, his shoulder soft.
+        (key(v(1.08, 1.3, -2.72), BOYS_MID.lerp(face, 0.5) + v(0.25, 0.25, 0.0), 29.0), SHALLOW.and_front(1.0, 2.5))
     } else {
         // Low, on the one who speaks, his friends beside him.
-        key(face + v(0.22, -0.08, -1.25), face + v(0.0, -0.08, 0.0), LONG)
+        (key(face + v(0.22, -0.08, -1.25), face + v(0.0, -0.08, 0.0), LONG), SHALLOW)
     };
     let push = ease(0.0, 6.0, t);
     let k = Key { eye: k.eye + (k.look - k.eye) * 0.06 * push, ..k };
-    take(k, face, SHALLOW)
+    take(k, face, dof)
 }
 
 /// The souls rising as he names them: low, looking up past the boys at them over the wet flags
 /// (from the side of the three, where none of them stands between us and a soul).
 fn souls(t: f32) -> Take {
     let u = ease(0.0, 10.0, t);
-    let k = key(v(-1.25, 0.3, 2.45), v(-0.05, 0.95, -2.7), 44.0).to(key(v(-1.15, 0.33, 2.2), v(-0.05, 1.02, -2.7), 41.0), u);
-    take(k, SOUL_AT[1] + v(0.0, 1.0, 0.0), MEDIUM)
+    let k = key(v(-1.4, 0.27, 2.6), v(-0.08, 0.98, -2.7), 44.0).to(key(v(-1.3, 0.29, 2.35), v(-0.08, 1.04, -2.7), 41.0), u);
+    take(k, SOUL_AT[1] + v(0.0, 1.0, 0.0), MEDIUM.and_front(0.8, 2.2))
 }
 
 /// His promise: closer and slower than anything before it.
