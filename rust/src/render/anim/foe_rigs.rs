@@ -141,8 +141,8 @@ impl FoeRig {
         }
     }
 
-    /// The rig a foe of `kind` is animated with by clips, if it has one. (The Peerless wears the
-    /// helmeted skeleton's rig as a stand-in only: left to the code.)
+    /// The rig a foe of `kind` is animated with by clips, if it has one. (The Peerless has none: the
+    /// Hall of Mirrors draws him in the hero's likeness, by the hero's own clips a moment late.)
     pub fn of(kind: EnemyKind) -> Option<FoeRig> {
         Some(match kind {
             EnemyKind::Skeleton => FoeRig::Draugr,

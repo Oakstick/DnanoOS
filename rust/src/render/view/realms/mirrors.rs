@@ -74,11 +74,12 @@ const ECHO_SECONDS: f32 = 0.4;
 /// Seconds a fallen ring takes to drop out of sight.
 const RING_FALL: f32 = 1.6;
 
-/// What the view keeps of the realm: his recent poses (for the Peerless's echo), the statues' rig
+/// What the view keeps of the realm: his recent poses (for the Peerless's echo: the code's, and his
+/// clips' matrices when his clips pose him, ANIMATION.md §11.8), the statues' rig
 /// and pose (him in triumph, coarse, in stone), the warps seen (the camera snaps on each), the
 /// windows' glow and the shards of the chandeliers, and the art.
 pub(in crate::render::view) struct MirrorsView {
-    poses: VecDeque<(f32, Pose)>,
+    poses: VecDeque<(f32, Pose, Option<Vec<Mat4>>)>,
     warps: u32,
     windows: Vec<(Vec3, usize)>,
     chandeliers: Vec<(Vec3, usize)>,
@@ -623,19 +624,27 @@ impl WorldView {
     /// to him when a mirror carries him off (the warp must not show).
     pub(super) fn update_mirrors_view(&mut self, v: &mut MirrorsView, r: &Mirrors, s: &SceneState, _dt: f32) {
         let now = s.time as f32;
-        v.poses.push_back((now, self.hero_pose.clone()));
-        while v.poses.front().is_some_and(|(t, _)| now - *t > ECHO_SECONDS * 2.5) {
-            v.poses.pop_front();
+        let mut spare = None;
+        while v.poses.front().is_some_and(|(t, _, _)| now - *t > ECHO_SECONDS * 2.5) {
+            spare = v.poses.pop_front().and_then(|(_, _, m)| m);
         }
+        // (His clips' matrices, in a buffer let go by the echo when there is one.)
+        let mats = self.clip_pose().map(|(_, m)| {
+            let mut out = spare.unwrap_or_default();
+            out.clear();
+            out.extend_from_slice(m);
+            out
+        });
+        v.poses.push_back((now, self.hero_pose.clone(), mats));
         if r.warps != v.warps {
             v.warps = r.warps;
             self.initialized = false;
         }
     }
 
-    /// His pose as it was `ECHO_SECONDS` ago.
-    fn echo_pose<'a>(&'a self, v: &'a MirrorsView, now: f32) -> Option<&'a Pose> {
-        v.poses.iter().rev().find(|(t, _)| *t <= now - ECHO_SECONDS).or(v.poses.front()).map(|(_, p)| p)
+    /// His pose as it was `ECHO_SECONDS` ago (and his clips' matrices then, if they posed him).
+    fn echo_pose<'a>(&'a self, v: &'a MirrorsView, now: f32) -> Option<(&'a Pose, Option<&'a [Mat4]>)> {
+        v.poses.iter().rev().find(|(t, _, _)| *t <= now - ECHO_SECONDS).or(v.poses.front()).map(|(_, p, m)| (p, m.as_deref()))
     }
 
     /// What moves, glows and lights in the realm.
@@ -837,14 +846,19 @@ impl WorldView {
         let cube_i = MeshKind::Cube as usize;
         let yaw = PI - self.hero_yaw;
         let scale = if vast { 1.25 } else { 1.0 } * size;
-        let root =
-            Mat4::from_translation(at) * Mat4::from_rotation_y(yaw) * Mat4::from_scale(Vec3::splat(scale)) * euler(self.hero_root_rot);
+        let clip = self.clip_pose();
+        // (By his clips his lean is in them, as when he is drawn.)
+        let lean = if clip.is_some() { Mat4::IDENTITY } else { euler(self.hero_root_rot) };
+        let root = Mat4::from_translation(at) * Mat4::from_rotation_y(yaw) * Mat4::from_scale(Vec3::splat(scale)) * lean;
         let (tint, emissive) = if true_face {
             (Vec3::splat(0.82).lerp(Vec3::new(0.55, 0.22, 0.24), (1.0 - health) * 0.8), Vec3::ZERO)
         } else {
             (Vec3::new(1.3, 1.08, 0.55), lin(GOLD) * 0.18)
         };
-        emit_rig(&mut f.rigs, &self.models.hero, &self.hero_pose, root, tint, 1.0, emissive);
+        match clip {
+            Some((jointed, mats)) => f.rigs.push_matrices(jointed, mats, root, tint, 1.0, emissive, rig_look::PLAIN, 0.0),
+            None => emit_rig(&mut f.rigs, &self.models.hero, &self.hero_pose, root, tint, 1.0, emissive),
+        }
         let head = at + Vec3::new(0.0, 1.18 * scale, 0.0);
         if !true_face {
             // A crown of gold.
@@ -1115,7 +1129,10 @@ impl WorldView {
     ) {
         let rest = Pose::rest(&self.models.hero);
         let reeling = matches!(du.f.state, Fight::Reel { .. });
-        let pose = if reeling { &rest } else { self.echo_pose(v, time).unwrap_or(&rest) };
+        let echo = self.echo_pose(v, time);
+        let pose = if reeling { &rest } else { echo.map(|(p, _)| p).unwrap_or(&rest) };
+        // By his clips, as he did it a moment ago (reeling too, the code's tilt laid over it).
+        let clip = self.clip_pose().and_then(|(jointed, _)| Some(jointed).zip(echo.and_then(|(_, m)| m)));
         let risen = r.echo.frame.saturating_sub(r.echo.rise.saturating_sub(crate::logic::realms::mirrors::RISE_FRAMES as u32)) as f32
             / crate::logic::realms::mirrors::RISE_FRAMES as f32;
         let rise = risen.clamp(0.0, 1.0);
@@ -1132,6 +1149,12 @@ impl WorldView {
         let emissive = lin(VIOLET) * (0.12 + 0.05 * (time * 3.0).sin()) + Vec3::splat(flash);
         let tint = Vec3::new(0.62, 0.52, 1.0);
         match (&self.models.raised, matches!(du.f.state, Fight::Guard { .. })) {
+            // (His guard is in his clips.)
+            _ if clip.is_some() => {
+                if let Some((jointed, mats)) = clip {
+                    f.rigs.push_matrices(jointed, mats, root, tint, 1.0, emissive, rig_look::PLAIN, 0.0);
+                }
+            }
             (Some((bare, shield)), true) => {
                 emit_rig(&mut f.rigs, bare, pose, root, tint, 1.0, emissive);
                 let side = pose.pos.get(3).map(|p| p.x * 0.55).unwrap_or(-0.12);
