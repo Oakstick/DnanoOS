@@ -94,6 +94,7 @@ impl Game {
         self.enter(Screen::Story);
         self.audio.hush();
         self.audio.set_threat(0.12);
+        self.view.prepare_cast(false);
         self.begin_loading("Scene I".into(), web_time::Instant::now());
     }
 

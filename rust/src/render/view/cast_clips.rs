@@ -63,6 +63,24 @@ pub(super) fn look(pose: &mut Delta, def: &SkeletonDef, yaw: f32, pitch: f32) {
 }
 
 impl WorldView {
+    /// Makes the cast's jointed rigs (and their meshes at every level of detail) and reads their
+    /// clips, as a scene begins: about 120 ms for Scene I's (behind its loading screen) that would
+    /// otherwise fall on its first frame; Scene II has only the freed boy.
+    pub fn prepare_cast(&self, scene_two: bool) {
+        if self.anim_mode == Mode::Code {
+            return;
+        }
+        let cast: &[CastRig] = if scene_two { &[CastRig::Kid(0)] } else { &CastRig::ALL };
+        for &c in cast {
+            library::cast_clips(c);
+            let rig = self.models.jointed_cast(c);
+            for level in 0..LOD_LEVELS {
+                rig.lod(level).mesh();
+            }
+        }
+        library::foe_clips(crate::render::anim::foe_rigs::FoeRig::Krampus);
+    }
+
     /**
      * Cast member `c`'s jointed rig and each part's matrix in the model for `play` at the scene's
      * clock `time`, `touch` laid on the pose first; none when the code animates the cast
