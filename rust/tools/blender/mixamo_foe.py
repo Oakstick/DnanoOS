@@ -238,6 +238,44 @@ GORYO = {
     "stagger": (MG + "Standing React Large From Back.fbx", dict(kind="flinch")),
 }
 
+# ------------------------------------------------------------------ the seventh stage
+
+# The frost giant: the creature pack slowed for a giant; his frost slam both fists brought down.
+FROST_GIANT = {
+    "idle": (MU + "mutant idle (2).fbx", dict(loop=True, slow=1.5)),
+    "walk": (MU + "mutant walking.fbx", dict(loop=True, stride="feet", slow=1.5)),
+    "frost_slam": (MU + "mutant jump attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0, slow=1.3)),
+    "slam": (MU + "jump attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0, slow=1.3)),
+    "sweep": (MU + "mutant swiping.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), slow=1.3)),
+    "rally": (MU + "mutant roaring.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), slow=1.3)),
+    "hit": (AX + "react large gut.fbx", dict(kind="flinch", slow=1.4)),
+    "stagger": (AX + "react large from left.fbx", dict(kind="flinch", slow=1.4)),
+}
+# Surtr: his flaming sword (his own left: mirrored) swung as the great sword pack swings, slowed,
+# picks none of the heroes uses.
+SUR = dict(mirror=True, weapon="offhand", weapon_rest=(0.1, -0.87, 0.48))
+SURTR = {
+    "idle": (GS + "idle (3).fbx", dict(SUR, loop=True, slow=1.5, span=(0.0, 3.0))),
+    "walk": (AX + "walk forward.fbx", dict(SUR, loop=True, stride="feet", slow=1.5)),
+    "slam": (GS + "attack.fbx", dict(SUR, kind="strike", slow=1.4)),
+    "sweep": (AX + "melee attack backhand.fbx", dict(SUR, kind="strike", slow=1.3)),
+    "rally": (GS + "casting.fbx", dict(SUR, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), slow=1.3)),
+    "hit": (GS + "impact (5).fbx", dict(SUR, kind="flinch", slow=1.4)),
+    "stagger": (MU + "mutant dying.fbx", dict(SUR, kind="flinch", cut=70, slow=1.3)),
+}
+# Hel: the queen of the dead; her staff (her own left: mirrored) raised to call them up, her bolt
+# flung from it.
+HEL_W = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, 1.0, 0.0))
+HEL = {
+    "idle": (MG + "Standing Idle 03.fbx", dict(HEL_W, loop=True, span=(8.0, 12.0))),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(HEL_W, loop=True, stride="feet")),
+    "raise": (MG + "Standing 2H Magic Area Attack 01.fbx", dict(HEL_W, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "hex": (MG + "Standing 1H Magic Attack 03.fbx", dict(HEL_W, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "rally": (MG + "Standing 2H Cast Spell 01.fbx", dict(HEL_W, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "hit": (MG + "Standing React Small From Right.fbx", dict(HEL_W, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Back.fbx", dict(HEL_W, kind="flinch")),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -259,7 +297,8 @@ JOROGUMO = {
 
 FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO, "oni": ONI,
         "albasti": ALBASTI, "cin": CIN, "arcura": ARCURA, "karakoncolos": KARAKONCOLOS,
-        "tepegoz": TEPEGOZ, "gashadokuro": GASHADOKURO, "goryo": GORYO}
+        "tepegoz": TEPEGOZ, "gashadokuro": GASHADOKURO, "goryo": GORYO,
+        "frost_giant": FROST_GIANT, "surtr": SURTR, "hel": HEL}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")

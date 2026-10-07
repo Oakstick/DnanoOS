@@ -15,6 +15,7 @@ pub mod foe_rigs;
 pub mod foe_stage4;
 pub mod foe_stage5;
 pub mod foe_stage6;
+pub mod foe_stage7;
 pub mod hero;
 pub mod hold;
 pub mod library;

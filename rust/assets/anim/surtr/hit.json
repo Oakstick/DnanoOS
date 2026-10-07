@@ -1,0 +1,10 @@
+{
+ "clip": "hit",
+ "fps": 60,
+ "frames": 50,
+ "loop": false,
+ "markers": {
+  "impact": 10,
+  "recover_end": 50
+ }
+}

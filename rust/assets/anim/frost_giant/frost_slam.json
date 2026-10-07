@@ -1,0 +1,12 @@
+{
+ "clip": "frost_slam",
+ "fps": 60,
+ "frames": 226,
+ "loop": false,
+ "markers": {
+  "windup_end": 119,
+  "hit": 125,
+  "active_end": 130,
+  "recover_end": 226
+ }
+}

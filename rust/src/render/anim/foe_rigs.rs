@@ -50,10 +50,14 @@ pub enum FoeRig {
     Gashadokuro,
     Ejder,
     Goryo,
+    FrostGiant,
+    Surtr,
+    Nidhogg,
+    Hel,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 28;
+    pub const COUNT: usize = 32;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
@@ -84,6 +88,10 @@ impl FoeRig {
         FoeRig::Gashadokuro,
         FoeRig::Ejder,
         FoeRig::Goryo,
+        FoeRig::FrostGiant,
+        FoeRig::Surtr,
+        FoeRig::Nidhogg,
+        FoeRig::Hel,
     ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
@@ -117,6 +125,10 @@ impl FoeRig {
             FoeRig::Gashadokuro => "gashadokuro",
             FoeRig::Ejder => "ejder",
             FoeRig::Goryo => "goryo",
+            FoeRig::FrostGiant => "frost_giant",
+            FoeRig::Surtr => "surtr",
+            FoeRig::Nidhogg => "nidhogg",
+            FoeRig::Hel => "hel",
         }
     }
 
@@ -152,6 +164,10 @@ impl FoeRig {
             EnemyKind::Gashadokuro => FoeRig::Gashadokuro,
             EnemyKind::Ejder => FoeRig::Ejder,
             EnemyKind::Goryo => FoeRig::Goryo,
+            EnemyKind::FrostGiant => FoeRig::FrostGiant,
+            EnemyKind::Surtr => FoeRig::Surtr,
+            EnemyKind::Nidhogg => FoeRig::Nidhogg,
+            EnemyKind::Hel => FoeRig::Hel,
             _ => return None,
         })
     }
@@ -195,6 +211,10 @@ impl FoeRig {
             FoeRig::Gashadokuro => super::foe_stage6::gashadokuro(),
             FoeRig::Ejder => super::foe_stage6::ejder(),
             FoeRig::Goryo => super::foe_stage6::goryo(),
+            FoeRig::FrostGiant => super::foe_stage7::frost_giant(),
+            FoeRig::Surtr => super::foe_stage7::surtr(),
+            FoeRig::Nidhogg => super::foe_stage7::nidhogg(),
+            FoeRig::Hel => super::foe_stage7::hel(),
         }
     }
 
@@ -230,6 +250,10 @@ impl FoeRig {
             FoeRig::Gashadokuro => (crate::render::foes6::GASHADOKURO_SIZE, 0.025),
             FoeRig::Ejder => (crate::render::foes6::EJDER_SIZE, 0.018),
             FoeRig::Goryo => (crate::render::foes6::GORYO_SIZE, 0.0125),
+            FoeRig::FrostGiant => (crate::render::foes7::FROST_GIANT_SIZE, 0.02),
+            FoeRig::Surtr => (crate::render::foes7::SURTR_SIZE, 0.02),
+            FoeRig::Nidhogg => (crate::render::foes7::NIDHOGG_SIZE, 0.0175),
+            FoeRig::Hel => (crate::render::foes7::HEL_SIZE, 0.0135),
         }
     }
 
@@ -267,6 +291,10 @@ impl FoeRig {
             FoeRig::Gashadokuro => build_rig(&crate::render::foes6::gashadokuro(), crate::render::foes6::GASHADOKURO_RIG, size),
             FoeRig::Ejder => build_rig(&crate::render::foes6::ejder(), crate::render::foes6::EJDER_RIG, size),
             FoeRig::Goryo => build_rig(&crate::render::foes6::goryo(), crate::render::foes6::GORYO_RIG, size),
+            FoeRig::FrostGiant => build_rig(&crate::render::foes7::frost_giant(), crate::render::foes7::FROST_GIANT_RIG, size),
+            FoeRig::Surtr => build_rig(&crate::render::foes7::surtr(), crate::render::foes7::SURTR_RIG, size),
+            FoeRig::Nidhogg => build_rig(&crate::render::foes7::nidhogg(), crate::render::foes7::NIDHOGG_RIG, size),
+            FoeRig::Hel => build_rig(&crate::render::foes7::hel(), crate::render::foes7::HEL_RIG, size),
         })
     }
 
@@ -728,6 +756,10 @@ mod tests {
             FoeRig::Gashadokuro => &["grab", "slam", "sweep"],
             FoeRig::Ejder => &["heads"],
             FoeRig::Goryo => &["thunder"],
+            FoeRig::FrostGiant => &["frost_slam", "slam", "sweep"],
+            FoeRig::Surtr => &["slam", "sweep"],
+            FoeRig::Nidhogg => &["burrow", "bite"],
+            FoeRig::Hel => &["raise", "hex"],
             _ => &["bite", "rally"],
         }
     }
