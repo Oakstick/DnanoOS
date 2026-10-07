@@ -10,6 +10,7 @@ pub mod cloth;
 pub mod export;
 pub mod foe;
 pub mod foe_beasts;
+pub mod foe_build;
 pub mod foe_rigs;
 pub mod hero;
 pub mod hold;

@@ -130,3 +130,47 @@ look at with `preview.py` before choosing. `--measure` reports a strike's blade 
 sees it on its active frames, by rays against his voxels in Blender; the game's own
 `--blade-view` does the same with the clips as the game holds them (Miyamoto's fists on the grip,
 his shield slung), and is the one to trust.
+
+## The foes (ANIMATION.md §11)
+
+The scripts above take any skeleton: a foe's rig (`--export-rig draugr`, `bat`, `cobra`, ... the
+names of `anim::foe_rigs::FoeRig::dir`) imports and exports as a hero's does (`import_rig.py` checks a
+humanoid's bones against the heroes' and any rig's binding; `export_clips.py` takes the actions of
+the armature's own root bone). `preview.py` wants `--at` and `--dist` for the foe's size (a raven:
+`--at 0.15 --dist 1.5 --rise 0.5`; the rasetsu: `--at 0.75 --dist 3.2`).
+
+### block_foe.py: the foes Mixamo cannot drive, keyed by script
+
+```
+AdventuresOfTheAncientBlades --export-rig cobra cobra_rig.glb
+blender -b -P tools/blender/block_foe.py -- cobra cobra_rig.glb cobra.blend
+blender -b cobra.blend -P tools/blender/export_clips.py -- assets/anim/cobra
+```
+
+FOE is `bat`, `vampire`, `large_bat`, `werewolf`, `dire_wolf`, `cobra`, `slime`, `minion` or
+`jorogumo`. Every clip is a function of the frame (a class per kind of body: `Flyer`, `Wolf`, `Cobra`,
+`Slime`, `Minion`, `Jorogumo`, their numbers per foe in `FOES`), baked on every frame at 60 fps:
+the stand and the gait (with their strides), the moves at their frame data's base tempo with their
+markers, the rally, and the reels. Angles in degrees about the game's axes, relative to the parent;
+`Pose.scale` keys a bone's scale (the slime's squash, the cobra's hood).
+
+### mixamo_foe.py: the humanoid foes from Mixamo
+
+```
+blender -b draugr.blend -P tools/blender/mixamo_foe.py -- draugr C:/Users/ulask/Games/mixamo draugr_m.blend [slot ...]
+blender -b draugr.blend -P tools/blender/mixamo_foe.py -- draugr C:/Users/ulask/Games/mixamo try.blend --try FILE[:OPTS] ...
+```
+
+As `mixamo_hero.py` (its retarget, markers and trimming), a table per foe (`DRAUGR`, `HELMETED`,
+`WITCH`, `BLEMMYES`, `TENGU`, `RASETSU`, `JOROGUMO`). A foe's weapon is in its own left fist (its
+sculpt is not mirrored), so its picks are mirrored (`mirror`), the weapon the `offhand`, held as the
+source's right fist holds its grip, the way it points at rest given (`weapon_rest`, or one per
+weapon for a pair). `weapon` and `tip_rest` name the bone whose tip gives a move's markers (the
+head for a roar). `shorten` cuts a long settle against the move's recovery, a reel's against its
+impact. The jorogumo's keyed legs (`block_foe.Jorogumo`) are laid under each of her clips
+(`lay_legs`). `deflected` is built from the stagger.
+
+The retarget (`retarget.py`) now also takes an armature with only some of the heroes' bones (her
+legs are her own: no hips' travel then), a weapon in each fist each its own way (`weapon_rest` as a
+dict), and mirrors a foe's grip and sword arm; `mixamo_hero.make` takes `stride="feet"` (the stride
+measured from the feet) and `extra_marks`.

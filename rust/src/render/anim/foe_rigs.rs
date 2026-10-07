@@ -109,6 +109,11 @@ impl FoeRig {
     }
 
     pub fn joints(self) -> &'static Joints {
+        static BUILT: [std::sync::OnceLock<&'static Joints>; FoeRig::COUNT] = [const { std::sync::OnceLock::new() }; FoeRig::COUNT];
+        BUILT[self as usize].get_or_init(|| self.table())
+    }
+
+    fn table(self) -> &'static Joints {
         use super::foe_beasts as fb;
         match self {
             FoeRig::Draugr => &DRAUGR,
