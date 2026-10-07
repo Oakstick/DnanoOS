@@ -22,6 +22,8 @@ pub(super) const FAR: f32 = 16.0;
 const FAR_EVERY: u8 = 3;
 /// A prince's roar as a phase begins, played at the rally's frames (startup, active, recovery).
 const ROAR: (u16, u16, u16) = (40, 1, 36);
+/// How far into its flinch a frightened maze foe cringes as it flees.
+const FRIGHT: f32 = 0.3;
 /// The moves that are a run at him: their active frames are run on the foe's feet (its run clip).
 const CHARGES: [MoveId; 3] = [MoveId::FieryCharge, MoveId::BullCharge, MoveId::HoofCharge];
 
@@ -147,8 +149,8 @@ impl WorldView {
             return;
         }
         // Off screen it is not drawn: nothing to pose (it picks up where its clock has run to).
-        let at = view_proj * (v.group_pos + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
-        let shown = at.w > 0.0 && at.x.abs() <= at.w * 1.25 + 1.0 && at.y.abs() <= at.w * 1.25 + 1.0;
+        v.clip_base = base;
+        let shown = in_view(view_proj, v.group_pos);
         let far = v.group_pos.distance(cam) > FAR;
         c.owed += dt;
         if !shown || (far && c.skipped + 1 < FAR_EVERY && !c.mats.is_empty()) {
@@ -237,6 +239,11 @@ impl WorldView {
             None => {
                 drive.moving = e.m.dir != Dir::None && e.mode() != EnemyMode::Nest;
                 drive.speed = if drive.moving { e.m.speed as f32 } else { 0.0 };
+                // Frenzied (the nugget's fright, or a blow's): it flees cringing, its flinch held
+                // over it as it goes (and its colour the code's stun).
+                if e.is_stunned() {
+                    drive.reel = Some((FoeReel::Hit, FRIGHT));
+                }
             }
         }
         if !c.anim.step(clips, c.foe.def(), &drive, &mut c.locals) {
@@ -301,25 +308,35 @@ impl WorldView {
         self.enemy_views.get(i).is_some_and(|v| v.clip.is_some())
     }
 
-    /// Captures: the foes the camera now sees that its last step did not pose (the camera moved
-    /// since: `--foe`, `--view`), posed by their clips where they stand; no time passes. (In play
-    /// the camera moves with the step that poses them: `tests::the_maze_foes_on_screen_play_their_clips`.)
+    /**
+     * The foes the camera sees as it now stands that its step did not pose by their clips, posed
+     * where they stand (no time passes; the time they missed is played). A step poses the foes the
+     * camera saw as the step began (`animate_foe_clips`: it moves after them), so a foe it has just
+     * swung onto, as it turns or changes from following him to looking down, or as a capture aims
+     * it (`--foe`), would show the code's pose for a frame. `the_maze_foes_on_screen_play_their_clips`.
+     */
     pub fn pose_foes_in_view(&mut self, s: &SceneState) {
-        let time = s.time as f32;
         for (i, e) in s.enemies.iter().enumerate().take(self.enemy_views.len()) {
             if self.foe_on_screen(i) && self.foe_has_clips(i) && !self.foe_posed_by_clips(i) {
-                self.update_enemy(i, e, s, 0.0, time);
+                let base = self.enemy_views[i].clip_base;
+                self.animate_foe_clips(i, e, base, 0.0);
             }
         }
     }
 
-    /// Whether foe `i` is drawn on the screen under the camera as it now stands (shown, and in the
-    /// view the emitter keeps): tests and captures, to ask if each one so drawn was posed by clips.
+    /// Whether foe `i` is drawn under the camera as it now stands (shown, and within the view the
+    /// emitter keeps, `emit_foes`): tests and captures ask if each one so drawn was posed by clips.
     pub fn foe_on_screen(&self, i: usize) -> bool {
         let Some(v) = self.enemy_views.get(i).filter(|v| v.visible) else { return false };
-        let at = self.view_proj() * (v.group_pos + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
-        at.w > 0.0 && at.x.abs() <= at.w && at.y.abs() <= at.w
+        in_view(self.view_proj(), v.group_pos)
     }
+}
+
+/// Whether a foe standing at `at` is in the view `view_proj` keeps (with a margin for its size and
+/// the light it casts), as the emitter and the clips judge it.
+pub(super) fn in_view(view_proj: Mat4, at: Vec3) -> bool {
+    let clip = view_proj * (at + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
+    clip.w > 0.0 && clip.x.abs() <= clip.w * 1.25 + 1.0 && clip.y.abs() <= clip.w * 1.25 + 1.0
 }
 
 /// The code's lean, sway, twist, squash and bob taken back: the clip carries its own. (The juice

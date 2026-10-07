@@ -745,7 +745,7 @@ is measured from its feet (`foot_stride`: the ground its planted foot slides bac
 
 | Foe | idle | walk / run | slam | sweep | hex | rally | hit / stagger |
 |---|---|---|---|---|---|---|---|
-| Draugr | zombie idle | zombie walk / run | axe pack: melee attack downward (the overhead chop) | sword and shield attack (2), struck where he stands | | zombie scream | zombie flinch / stumble back (foe-extra) |
+| Draugr | sword and shield idle, its first two seconds, hunched (§11.13) | zombie walk / run, straightened a little, the guard's arms laid over them | axe pack: melee attack downward (the overhead chop), hunched | sword and shield attack (2), struck where he stands, hunched | | zombie scream | zombie flinch / stumble back (foe-extra) |
 | Helmeted skeleton | axe: standing idle | axe: walk / run forward | axe: run jump attack, its run-up cut, struck where he stands (the leap and the two-handed smash) | axe: attack horizontal | | axe: taunt battlecry | axe: react large gut / from left |
 | Witch | magic: idle 02 | magic: crouch walk (she creeps hunched) / run | | | magic: 2H attack 01 (the staff thrust) | magic: 2H area attack 01 | magic: react small / large from right |
 | Blemmyes | creature: breathing idle | creature: walking / run | creature: jump attack, spins out, struck where he stands | creature: swiping | | creature: roaring | axe: react large from right / magic: large from left |
@@ -760,7 +760,7 @@ every frame.
 
 | Foe | The clips |
 |---|---|
-| Raven (`bat`) | `hover`: a snapping downstroke in a third of the beat, the upstroke slower with the hand folded back, the body rocking and the head held level; `fly`: leaning in 18 degrees, two quick beats and a glide; `bite`: up high on its wings, nose up and head drawn back, wings fluttering (the wind-up), then the dive at him, jaws wide and snapping shut on the last active frame, then beating back up |
+| Raven (`bat`) | `hover`: a snapping downstroke in a third of the beat, the upstroke slower with the hand folded back, the body rocking and the head held level; `fly`: leaning in 18 degrees, two quick beats and a glide; `bite`: up high on its wings, nose up and head drawn back, wings fluttering (the wind-up), then the dive at him (0.24 m down since §11.13, where it flies higher), jaws wide and snapping shut on the last active frame, then beating back up |
 | Night raven (`vampire`) | the same, heavier and slower (30 frames a beat), and between two beats its wings fold about it like a cape and it sinks a little |
 | Large bat | slow beats (36 frames), swerving banks of 16 degrees as it flies |
 | Loup-garou, dire wolf | `idle`: breathing, the head looking round, the tail swaying; `walk`: the trot, the legs in diagonal pairs; `run`: the rotary gallop (hind left, hind right, fore right, fore left), the spine gathering as the hind legs come under and stretching as they drive, the body rising in the suspension, the head held steady; `bite`: the hackles-up crouch on the haunches, head drawn back low and lips back, then the lunge, forelegs reaching, jaws flung wide and snapping; `rally`: the howl on its haunches. The dire wolf heavier. |

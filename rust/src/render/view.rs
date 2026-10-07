@@ -914,6 +914,8 @@ impl WorldView {
         self.update_workshop(dtf);
         self.update_angel_fx(dtf);
         self.update_camera(dtf, s.grid, hero);
+        // (The foes the camera has just swung onto, posed by their clips too.)
+        self.pose_foes_in_view(s);
         if !self.showcase {
             self.update_tree_fade(dtf, hero);
         }

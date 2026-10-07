@@ -164,6 +164,7 @@ impl WorldView {
         let ground = floor_at(s.grid, x, z) - self.pit_sunk_at(d.pos);
         {
             let v = &mut self.enemy_views[i];
+            v.hover = super::animation::duel_hover(v.kind);
             v.group_pos = Vec3::new(x, ground + v.hover, z);
             let goal = (d.facing.x as f32).atan2(d.facing.y as f32);
             v.yaw = lerp_angle(v.yaw, goal, 1.0 - (-24.0 * dt).exp());
@@ -926,8 +927,10 @@ impl WorldView {
             // By its clips: the far end of what it strikes with (its weapon, or its jaws).
             let part = ["offhand", "blade", "jaw", "head"].iter().filter_map(|n| rig.index(n)).find(|&k| !rig.parts[k].cubes.is_empty())?;
             let local = rig.parts[part].cubes.iter().map(|c| c.0).max_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))?;
-            let root =
-                Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw) * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+            let root = Mat4::from_translation(v.group_pos)
+                * Mat4::from_rotation_y(v.yaw)
+                * euler(v.root_rot)
+                * Mat4::from_scale(v.root_scale * super::animation::shown_scale(v.kind));
             return Some((root * mats[part]).transform_point3(local));
         }
         let rig = self.models.rig(v.rig);
@@ -938,7 +941,10 @@ impl WorldView {
         } else {
             (0, rig.parts.first()?.cubes.iter().map(|c| c.0).max_by(|a, b| (a.z + a.y * 0.5).total_cmp(&(b.z + b.y * 0.5)))?)
         };
-        let root = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw) * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+        let root = Mat4::from_translation(v.group_pos)
+            * Mat4::from_rotation_y(v.yaw)
+            * euler(v.root_rot)
+            * Mat4::from_scale(v.root_scale * super::animation::shown_scale(v.kind));
         Some((root * Mat4::from_translation(v.pose.pos[part]) * euler(v.pose.rot[part])).transform_point3(local))
     }
 

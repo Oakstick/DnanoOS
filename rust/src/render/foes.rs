@@ -539,6 +539,9 @@ struct Plumage {
     gloss: u32,
     gloss_l: u32,
     edge: u32,
+    /// The wings' trailing edge and fingertips, pale as moonlight catches them (so they read against
+    /// a night sky).
+    rim: u32,
     under: u32,
     beak: u32,
     beak_l: u32,
@@ -552,6 +555,7 @@ const DAY: Plumage = Plumage {
     gloss: 0x2e3a58 | mat::FUR,
     gloss_l: 0x4a5c88 | mat::FUR,
     edge: 0x12131a | mat::FUR,
+    rim: 0x6c7c9e | mat::FUR,
     under: 0x0e0f14 | mat::FUR,
     beak: 0x4a4844 | mat::IVORY,
     beak_l: 0x6e6b64 | mat::IVORY,
@@ -565,6 +569,7 @@ const NIGHT: Plumage = Plumage {
     gloss: 0x4c2870 | mat::FUR,
     gloss_l: 0x7440a8 | mat::FUR,
     edge: 0x1a0f24 | mat::FUR,
+    rim: 0xa27ad2 | mat::FUR,
     under: 0x140b1c | mat::FUR,
     beak: 0xd8ccb0 | mat::IVORY,
     beak_l: 0xf0e6d0 | mat::IVORY,
@@ -644,7 +649,9 @@ fn wing(s: &mut Sculpt, p: &Plumage, side: f32, night: bool) {
                 continue;
             }
             let t = (le - zf) / (le - te);
-            let c = if t < 0.1 {
+            let c = if t > 0.86 {
+                p.rim
+            } else if t < 0.1 {
                 p.edge
             } else if t < 0.42 {
                 // Rows of small coverts, glossy, each row's edge in shadow.
@@ -681,7 +688,7 @@ fn wing(s: &mut Sculpt, p: &Plumage, side: f32, night: bool) {
         let base = (wrist - side * a * 2.0, 24.0 - a * 7.0);
         let short = if night && nz(k, 3, 3) < 0.45 { 0.78 } else { 1.0 };
         let tip = (base.0 + (tip_x - base.0) * short, base.1 + (tip_z - base.1) * short);
-        feather(s, base, tip, 1.9, 1.3, wy, p.black, p.edge, if a < 0.2 { p.gloss } else { p.edge });
+        feather(s, base, tip, 1.9, 1.3, wy, p.black, p.edge, if a < 0.2 { p.gloss } else { p.rim });
     }
     if night {
         // A hooked bone claw at the wrist.

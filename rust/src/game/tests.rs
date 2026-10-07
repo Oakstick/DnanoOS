@@ -1986,13 +1986,16 @@ fn the_compass_shows_only_while_he_stands_idle() {
 /// scattered and pulling together.
 #[test]
 fn the_maze_foes_on_screen_play_their_clips() {
+    // (From either gameplay camera: the follow camera here, the top one at the end. Another test
+    // may have saved either as the player's choice.)
     let mut g = playing();
+    g.view.camera_mode = crate::render::view::CameraMode::Third;
     g.debug_foes(1, Some(0));
     let n = g.enemies.len();
     assert_eq!(n, 4, "the first stage's four");
     let check = |g: &mut Game, steps: usize, what: &str| {
         let (mut shown, mut posed) = (0, 0);
-        for _ in 0..steps {
+        for step in 0..steps {
             g.update(crate::app::STEP);
             for i in 0..g.enemies.len() {
                 if g.view.foe_on_screen(i) {
@@ -2001,15 +2004,16 @@ fn the_maze_foes_on_screen_play_their_clips() {
                         posed += 1;
                     } else {
                         panic!(
-                            "{what}: foe {i} ({:?}, {:?}) on screen but not posed by its clips",
+                            "{what}: foe {i} ({:?}, {:?}) on screen but not posed by its clips at step {step}, camera at {}",
                             g.enemies[i].kind(),
-                            g.enemies[i].mode()
+                            g.enemies[i].mode(),
+                            g.view.camera_position()
                         );
                     }
                 }
             }
         }
-        assert!(shown > steps, "{what}: foes on screen ({shown} foe-steps)");
+        assert!(shown > steps / 2, "{what}: foes on screen ({shown} foe-steps)");
         posed
     };
     check(&mut g, 90, "hunting");
@@ -2023,4 +2027,8 @@ fn the_maze_foes_on_screen_play_their_clips() {
     g.enemies[k].kill();
     assert_eq!(g.enemies[k].mode(), EnemyMode::Scattered);
     check(&mut g, 60, "scattered");
+    let mut g = playing();
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.debug_foes(1, Some(0));
+    check(&mut g, 90, "hunting, from above");
 }

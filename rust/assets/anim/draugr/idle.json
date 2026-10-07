@@ -1,7 +1,7 @@
 {
  "clip": "idle",
  "fps": 60,
- "frames": 256,
+ "frames": 120,
  "loop": true,
  "markers": {}
 }

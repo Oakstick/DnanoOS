@@ -506,13 +506,12 @@ impl WorldView {
                 continue;
             }
             // Nor those out of the camera's view (with a margin for their size and the light they cast).
-            let clip = view_proj * (v.group_pos + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
-            if clip.w <= 0.0 || clip.x.abs() > clip.w * 1.25 + 1.0 || clip.y.abs() > clip.w * 1.25 + 1.0 {
+            if !super::foe_clips::in_view(view_proj, v.group_pos) {
                 continue;
             }
             let group = Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw);
             if v.visible {
-                let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+                let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale * super::animation::shown_scale(v.kind));
                 let rig = self.models.rig(v.rig);
                 let look = if v.rim { rig_look::RIM } else { rig_look::PLAIN };
                 match self.foe_clip_pose(i) {
@@ -570,7 +569,10 @@ impl WorldView {
                 // Inside the body, so it lights the ground round the foe and not the foe; a draugr's is low,
                 // under his open ribs.
                 let lift = match v.kind {
-                    EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Minion => 0.2,
+                    // (The draugr's is the cold light in his ribs, a little before them: low, it
+                    // lit his bare shins white.)
+                    EnemyKind::Skeleton => 0.58,
+                    EnemyKind::Helmeted | EnemyKind::Minion => 0.2,
                     EnemyKind::Bat | EnemyKind::LargeBat => 0.13,
                     EnemyKind::Vampire => 0.16,
                     // (A slime's over its crown: inside its jelly it would light it up like a lamp.)
@@ -603,9 +605,13 @@ impl WorldView {
                     EnemyKind::Reflection | EnemyKind::Serpentling | EnemyKind::Raven | EnemyKind::Nightmare | EnemyKind::FlySwarm => 0.45,
                     EnemyKind::Peerless | EnemyKind::Ganglot | EnemyKind::Gaki | EnemyKind::Ellepige | EnemyKind::Percht => 0.45,
                 };
-                let dim = if v.kind == EnemyKind::Slime { 0.35 } else { 1.0 };
+                let (dim, ahead) = match v.kind {
+                    EnemyKind::Slime => (0.35, 0.0),
+                    EnemyKind::Skeleton => (0.25, 0.5),
+                    _ => (1.0, 0.0),
+                };
                 f.lights.push(Light {
-                    pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
+                    pos: v.group_pos + Vec3::new(v.yaw.sin() * ahead, lift, v.yaw.cos() * ahead),
                     color: v.light_color * v.light_intensity * dim,
                     distance: 4.0,
                 });

@@ -11,6 +11,8 @@ const REASSEMBLE_START: f64 = 0.7;
 
 /// The light a bog slime casts round it: murky green, as its jelly is.
 pub(super) const SLIME_LIGHT: u32 = 0x5aa070;
+/// The light a draugr casts: the cold blue-green of the light in his ribs (`foes::dead::GLOW`).
+pub(super) const DRAUGR_LIGHT: u32 = 0x7ad8e8;
 
 /// How long the sword's wind-up, strike and follow-through take on screen.
 pub const SLASH_SECONDS: f32 = 0.3;
@@ -83,14 +85,18 @@ pub(super) struct EnemyView {
     /// A slime's jelly rippling (0 still to 1 struck): stirred by its hops and the blows it takes,
     /// settling after (`rig_look::GOO`).
     pub(super) ripple: f32,
+    /// Where it stood this step before the code's bob and sway (its clips' root, `foe_clips`).
+    pub(super) clip_base: Vec3,
 }
 
 /// The rig a foe of `kind` is drawn with, and how high it hovers.
 pub(super) fn rig_for(kind: EnemyKind) -> (RigId, f32) {
     match kind {
         EnemyKind::Skeleton => (RigId::Skeleton, 0.0),
-        EnemyKind::Bat => (RigId::Bat, 0.55),
-        EnemyKind::Vampire => (RigId::Vampire, 0.65),
+        // (The ravens fly over the Garden's hedges, under the chase camera's eye: `duel_hover`
+        // brings them down a little to fight.)
+        EnemyKind::Bat => (RigId::Bat, 1.0),
+        EnemyKind::Vampire => (RigId::Vampire, 1.1),
         EnemyKind::Slime => (RigId::Slime, 0.0),
         EnemyKind::Witch => (RigId::Witch, 0.0),
         EnemyKind::Minion => (RigId::Minion, 0.0),
@@ -153,6 +159,26 @@ pub(super) fn rig_for(kind: EnemyKind) -> (RigId, f32) {
     }
 }
 
+/// How high a foe of `kind` hovers in a fight (on foot, its feet on the floor): the ravens lower
+/// than over the maze's hedges, their dive's reach his chest.
+pub(super) fn duel_hover(kind: EnemyKind) -> f32 {
+    let maze = rig_for(kind).1;
+    match kind {
+        EnemyKind::Bat | EnemyKind::Vampire => maze - 0.2,
+        _ => maze,
+    }
+}
+
+/// How much larger than its sculpt a foe is drawn (its hit box untouched: on screen only). The
+/// ravens are small and dark, far under the chase camera: drawn larger, they read.
+pub(super) fn shown_scale(kind: EnemyKind) -> f32 {
+    match kind {
+        EnemyKind::Bat => 1.45,
+        EnemyKind::Vampire => 1.35,
+        _ => 1.0,
+    }
+}
+
 impl WorldView {
     /// Drops every enemy's view (the capture's line-up of foes replaces them).
     pub fn clear_enemies(&mut self) {
@@ -170,7 +196,12 @@ impl WorldView {
             model.lod(level).mesh();
         }
         // (A bog slime's own light is murky bog green, not its candy-green name card.)
-        let base = if e.kind() == EnemyKind::Slime { lin(SLIME_LIGHT) } else { lin(e.b.color) };
+        // (Nor is a draugr's white: it is the cold light burning in his ribs.)
+        let base = match e.kind() {
+            EnemyKind::Slime => lin(SLIME_LIGHT),
+            EnemyKind::Skeleton => lin(DRAUGR_LIGHT),
+            _ => lin(e.b.color),
+        };
         let phase = self.rng.nextf() * 6.0;
         // Its jointed rig too, if its clips have one (made once per kind, now rather than mid-fight).
         let clip = super::foe_clips::FoeClips::of(e.kind(), phase);
@@ -201,6 +232,7 @@ impl WorldView {
             rim: false,
             clip,
             ripple: 0.0,
+            clip_base: Vec3::ZERO,
         });
     }
 
