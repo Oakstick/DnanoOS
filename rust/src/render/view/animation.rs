@@ -73,6 +73,8 @@ pub(super) struct EnemyView {
     pub(super) scatter: Option<Vec<(Vec3, Vec3)>>,
     /// Tepegöz's eye, lit (0 to 1) while it is within reach.
     pub(super) eye: f32,
+    /// Its tell drawn on its silhouette (`rig_look::RIM`): set while a duelist's move winds up and strikes.
+    pub(super) rim: bool,
     /// Its clips, if its rig has them (`anim::foe_rigs`): the code's pose is the fallback.
     pub(super) clip: Option<super::foe_clips::FoeClips>,
 }
@@ -189,6 +191,7 @@ impl WorldView {
             light_intensity: 0.0,
             scatter: None,
             eye: 0.0,
+            rim: false,
             clip,
         });
     }

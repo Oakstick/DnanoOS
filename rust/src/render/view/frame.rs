@@ -102,6 +102,9 @@ pub mod rig_look {
     pub const GHOST: u32 = 4;
     /// The tint falls on glowing voxels too (the hero's own rig).
     pub const TINT_ALL: u32 = 8;
+    /// The emitted light gathered at the silhouette (a foe's tell): a breath of it over the body,
+    /// all of it on the faces the eye sees edge-on, so the move stays readable under it.
+    pub const RIM: u32 = 16;
 }
 
 /// One rig drawn from the mesh the GPU keeps of it, as the shader reads it.

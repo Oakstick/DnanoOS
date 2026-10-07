@@ -187,6 +187,14 @@ impl WorldView {
         v.emissive = Vec3::ZERO;
         v.light_color = v.base_color;
         v.light_intensity = if v.visible { 2.5 } else { 0.0 };
+        // The tell's light gathers at its silhouette while it winds up and strikes (and while it
+        // reels, stunned), so its move shows through it; a blow landing on it floods it as before.
+        v.rim = d.flash == 0
+            && match d.f.state {
+                State::Attack { mv, frame } => mv.data().phase(frame) != Phase::Recovery,
+                State::Reel { kind: Reel::Staggered | Reel::GuardBroken, .. } => true,
+                _ => false,
+            };
         match d.f.state {
             State::Attack { mv, frame } => {
                 let data = mv.data();
@@ -198,7 +206,7 @@ impl WorldView {
                         v.light_color = glow;
                         v.light_intensity = 2.5 + pulse * 2.5;
                     }
-                    Phase::Active => v.emissive = glow + Vec3::splat(0.5),
+                    Phase::Active => v.emissive = glow * 1.2 + Vec3::splat(0.25),
                     // Open: it hangs, dimmed.
                     Phase::Recovery => v.mat_color = Vec3::splat(0.55),
                 }

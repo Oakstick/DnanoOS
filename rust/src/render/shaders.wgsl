@@ -197,6 +197,10 @@ const LOOK_GREY: u32 = 1u;
 const LOOK_FADED: u32 = 2u;
 const LOOK_GHOST: u32 = 4u;
 const LOOK_TINT_ALL: u32 = 8u;
+const LOOK_RIM: u32 = 16u;
+// A rim-lit tell (`rig_look::RIM`): the share of its light over the body, and on an edge-on face.
+const RIM_BODY: f32 = 0.1;
+const RIM_EDGE: f32 = 1.5;
 
 // One voxel face of a rig (`voxels::RigFace`).
 struct RigFace {
@@ -252,6 +256,16 @@ fn vs_rig(v: RIn) -> VOut {
         shade = 1.0;
         emissive = vec3<f32>(0.0);
     }
+    let outward = (pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz;
+    let center = (pm * vec4<f32>(f.pos + FACE_NORMALS[face] * 0.5 * d.size, 1.0)).xyz;
+    let to_eye = select(-g.cam_fwd.xyz, g.cam_pos.xyz - center, g.cam_pos.w > 0.5);
+    if ((d.look & LOOK_RIM) != 0u) {
+        // The tell's light on the silhouette: faces seen edge-on take it all, those facing the eye
+        // a breath of it, so the body and its move show through.
+        let facing = clamp(dot(normalize(outward), normalize(to_eye)), 0.0, 1.0);
+        let edge = (1.0 - facing) * (1.0 - facing);
+        emissive *= RIM_BODY + RIM_EDGE * edge;
+    }
     var out: VOut;
     out.clip = g.view_proj * w;
     out.world = w.xyz;
@@ -261,9 +275,6 @@ fn vs_rig(v: RIn) -> VOut {
     out.local = local;
     // As for static faces: a solid rig's faces turned from the eye never show. (The face's centre
     // comes from the same numbers at all four corners, so they all decide alike.)
-    let outward = (pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz;
-    let center = (pm * vec4<f32>(f.pos + FACE_NORMALS[face] * 0.5 * d.size, 1.0)).xyz;
-    let to_eye = select(-g.cam_fwd.xyz, g.cam_pos.xyz - center, g.cam_pos.w > 0.5);
     if (dot(outward, to_eye) <= 0.0 && d.tint.a > 0.999 && (d.look & LOOK_FADED) == 0u && !fx_off(FX_BACKFACE)) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
     }

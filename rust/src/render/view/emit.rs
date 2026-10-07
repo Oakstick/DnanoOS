@@ -469,10 +469,11 @@ impl WorldView {
             if v.visible {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
                 let rig = self.models.rig(v.rig);
+                let look = if v.rim { rig_look::RIM } else { rig_look::PLAIN };
                 match self.foe_clip_pose(i) {
                     // By its clips (`foe_clips`): its jointed rig, each bone's matrix in the model.
-                    Some((jointed, mats)) => f.rigs.push_matrices(jointed, mats, root, v.mat_color, 1.0, v.emissive, rig_look::PLAIN, 0.0),
-                    None => emit_rig(&mut f.rigs, rig, &v.pose, root, v.mat_color, 1.0, v.emissive),
+                    Some((jointed, mats)) => f.rigs.push_matrices(jointed, mats, root, v.mat_color, 1.0, v.emissive, look, 0.0),
+                    None => f.rigs.push(rig, &v.pose, root, v.mat_color, 1.0, v.emissive, look, 0.0),
                 }
                 if v.eye > 0.0 {
                     if let Some(h) = rig.index("head") {
