@@ -116,7 +116,7 @@ impl WorldView {
             let cycle = (time * 0.25 + i as f32 * 0.37).fract();
             let act = if cycle < 0.18 { story::Act::Talk(cycle * 4.0 / 0.18) } else { story::Act::Stand };
             let look = (time * 0.6 + i as f32 * 2.1).sin() * 0.35;
-            self.emit_kid(f, i + 1, story::kid_root(boy, -x * 0.1), act, time, look, Vec3::ZERO);
+            self.emit_kid(f, i + 1, story::kid_root(boy, -x * 0.1), act, time, look, Vec3::ZERO, None);
         }
 
         // Fireflies, amber, kept off the camera's side of the stage (close by, they only blur).

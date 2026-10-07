@@ -119,6 +119,30 @@ pub fn foe_clips(foe: super::foe_rigs::FoeRig) -> Option<&'static ClipSet> {
         .as_ref()
 }
 
+/// One of the story's cast's clips (`anim::cast_rigs`: the four boys share theirs), read the first
+/// time they are asked for; none if it has none.
+pub fn cast_clips(c: super::cast_rigs::CastRig) -> Option<&'static ClipSet> {
+    use super::cast_rigs::CastRig;
+    static CAST: [OnceLock<Option<ClipSet>>; 4] = [const { OnceLock::new() }; 4];
+    let slot = match c {
+        CastRig::Kid(_) => 0,
+        CastRig::OldMan => 1,
+        CastRig::Dog => 2,
+        CastRig::Krampus => 3,
+    };
+    CAST[slot]
+        .get_or_init(|| {
+            let read = ClipSet::read_of(c.joints().def, c.dir(), EMBEDDED);
+            if let Some(c) = &read {
+                for e in &c.errors {
+                    crate::platform::warn(&format!("animation: {e}"));
+                }
+            }
+            read
+        })
+        .as_ref()
+}
+
 /// The names of the clips embedded for body `dir`.
 pub fn embedded_in(dir: &str) -> Vec<&'static str> {
     EMBEDDED.iter().filter(|f| f.0 == dir).map(|f| f.1).collect()

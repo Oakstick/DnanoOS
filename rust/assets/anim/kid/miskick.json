@@ -1,0 +1,12 @@
+{
+ "clip": "miskick",
+ "fps": 60,
+ "frames": 77,
+ "loop": false,
+ "markers": {
+  "windup_end": 19,
+  "hit": 22,
+  "active_end": 29,
+  "recover_end": 77
+ }
+}

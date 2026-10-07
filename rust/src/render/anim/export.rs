@@ -205,6 +205,7 @@ pub fn bench() -> String {
     for foe in super::foe_rigs::FoeRig::ALL {
         out += &bench_foe(foe);
     }
+    out += &bench_cast();
     let bytes: usize = super::library::EMBEDDED.iter().map(|e| e.2.len() + e.3.len()).sum();
     out += &format!("embedded: {} clips, {} KB of GLB and JSON\n", super::library::EMBEDDED.len(), bytes / 1024);
     out
@@ -316,6 +317,65 @@ fn bench_foe(foe: super::foe_rigs::FoeRig) -> String {
 ",
         foe.def().len()
     );
+    out
+}
+
+/// What the story's cast's clips cost: reading each set (once), and a frame of a member's animator
+/// (a base clip and one laid over it, a crossfade now and then) and its matrices.
+fn bench_cast() -> String {
+    use super::cast::{matrices, CastAnimator, Layer, Mask, Play};
+    use super::cast_rigs::CastRig;
+    let mut out = String::new();
+    let plays: [(CastRig, [&str; 2]); 4] = [
+        (CastRig::Kid(0), ["run", "terrified"]),
+        (CastRig::OldMan, ["sit_talk", "sit_point"]),
+        (CastRig::Dog, ["idle", "snarl"]),
+        (CastRig::Krampus, ["run", "hold_up"]),
+    ];
+    for (c, [base, over]) in plays {
+        let t = std::time::Instant::now();
+        let Some(set) = super::library::cast_clips(c) else {
+            out += &format!(
+                "{c:?}: no clips
+"
+            );
+            continue;
+        };
+        let first = t.elapsed().as_secs_f64() * 1e3;
+        let lair = (c == CastRig::Krampus).then(|| super::library::foe_clips(super::foe_rigs::FoeRig::Krampus)).flatten();
+        let mut sources = vec![(set, 1.0)];
+        if let Some(l) = lair {
+            sources.push((l, crate::render::cast::KRAMPUS_VOXEL / crate::render::foes_lair::KRAMPUS_VOXEL));
+        }
+        out += &format!(
+            "{c:?}: {} clips read in {:.2} ms (first call {first:.2} ms, {} errors)
+",
+            set.clips.len(),
+            set.load_ms,
+            set.errors.len()
+        );
+        let def = c.joints().def;
+        let rig = c.jointed();
+        let joints: Vec<Vec3> = rig.parts.iter().map(|p| p.rest).collect();
+        let (mut a, mut mats) = (CastAnimator::default(), Vec::new());
+        let frames = 20_000;
+        let t = std::time::Instant::now();
+        let mut sink = 0.0f32;
+        for f in 0..frames {
+            let s = f as f32 / 60.0;
+            let play = Play::base(Layer::cycle(base, s * 0.7), (f / 120) as u32 % 2).with(Layer::of(over, s).on(Mask::Upper).weight(0.6));
+            if let Some(p) = a.step(&sources, def, &play, Some(1.0 / 60.0)) {
+                matrices(def, &joints, p, &mut mats);
+                sink += mats[1].w_axis.x;
+            }
+        }
+        let us = t.elapsed().as_secs_f64() * 1e6 / frames as f64;
+        out += &format!(
+            "  a frame: {us:.2} µs to sample two clips, blend and pose its {} bones (checksum {sink:.1})
+",
+            def.len()
+        );
+    }
     out
 }
 

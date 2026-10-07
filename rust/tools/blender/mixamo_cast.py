@@ -47,7 +47,7 @@ KID = {
     # The fog, the eyes: looking about, frightened.
     "look": (C + "Look Around.fbx", dict(B, loop=True)),
     "look_nervous": (C + "Nervously Look Around.fbx", dict(B, loop=True)),
-    "terrified": (C + "Terrified.fbx", dict(B, loop=True)),
+    "terrified": (C + "Terrified.fbx", dict(B, loop=True, span=(0.0, 10.0))),
     # "He took him!"
     "yell": (C + "Yelling Out.fbx", dict(B, still=True)),
     "yell_short": (C + "Standing Yell.fbx", dict(B)),
@@ -74,10 +74,10 @@ KID = {
 
 # The old gatekeeper: stooped and slow; his staff is the `blade` (upright in his right fist, the game
 # keeps it so); his free arm the left.
-STAFF = dict(weapon_rest=(0.0, 1.0, 0.0), arms_out=6)
+STAFF = dict(weapon_rest=(0.0, 1.0, 0.0), arms_out=6, face=0.0)
 OLDMAN = {
     "sit_idle": (C + "Sitting Idle.fbx", dict(STAFF, loop=True)),
-    "sit_talk": (C + "Sitting Talking.fbx", dict(STAFF, loop=True)),
+    "sit_talk": (C + "Sitting Talking.fbx", dict(STAFF, loop=True, span=(0.0, 12.0))),
     "sit_talk_2": (C + "talking seated (old man).fbx", dict(STAFF, loop=True)),
     # His free hand out (to the dog, to the door): Mixamo's points with the right, his is the left.
     "sit_point": (C + "Pointing.fbx", dict(STAFF, mirror=True)),

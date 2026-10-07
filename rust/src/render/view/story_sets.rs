@@ -428,12 +428,17 @@ fn gate(out: &mut Vec<Instance>) {
     }
 }
 
+/// The old man's stool (gateway coordinates), where he dozes, and the top of its cushion: he sits
+/// on it through the scene (`story`), just behind where he would stand.
+pub(super) const STOOL: Vec3 = Vec3::new(1.52, 0.0, -2.46);
+pub(super) const STOOL_SEAT: f32 = 0.49;
+
 /// The old man's corner, right of the gate: a three-legged stool, a crate he uses for a table
 /// with a mug and a heel of bread, his pallet of straw under a folded blanket, a pail.
 fn old_mans_corner(out: &mut Vec<Instance>) {
     let o = GATEWAY;
     let wood = lin(0x5e4430);
-    let st = o + Vec3::new(2.05, 0.0, -2.75);
+    let st = o + STOOL;
     let q = Quat::from_rotation_y(0.3);
     block_m(out, Mat4::from_scale_rotation_translation(Vec3::new(0.4, 0.06, 0.4), q, st + Vec3::Y * 0.42), wood, SHADE_WOOD);
     for k in 0..3 {

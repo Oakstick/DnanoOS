@@ -237,6 +237,8 @@ pub(super) struct Models {
     /// The foes cut into their skeletons' bones for their clips (`anim::foe_rigs`), made the first
     /// time a level wants them (behind its loading screen).
     pub(super) jointed_foes: [std::sync::OnceLock<Rig>; FoeRig::COUNT],
+    /// The story's cast cut into their bones for their clips (`anim::cast_rigs`), made when first drawn.
+    pub(super) jointed_cast: [std::sync::OnceLock<Rig>; 7],
 }
 
 impl Models {
@@ -441,10 +443,15 @@ impl Models {
             dog: build_rig(&crate::render::cast::dog(), crate::render::cast::DOG_RIG, story::DOG_VOXEL),
             krampus: build_rig(&crate::render::cast::krampus_shade(), crate::render::cast::KRAMPUS_RIG, story::KRAMPUS_VOXEL),
             jointed_foes: [const { std::sync::OnceLock::new() }; FoeRig::COUNT],
+            jointed_cast: [const { std::sync::OnceLock::new() }; 7],
         }
     }
 
     /// Foe rig `foe` cut into its skeleton's bones (made once, the first time).
+    pub(super) fn jointed_cast(&self, c: crate::render::anim::cast_rigs::CastRig) -> &Rig {
+        self.jointed_cast[c.slot()].get_or_init(|| c.jointed())
+    }
+
     pub(super) fn jointed_foe(&self, foe: FoeRig) -> &Rig {
         self.jointed_foes[foe as usize].get_or_init(|| foe.jointed())
     }

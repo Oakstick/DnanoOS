@@ -1546,7 +1546,7 @@ impl WorldView {
         };
         let mut dog_feet = at(st.dog.pos);
         dog_feet.y += (st.dog.phase * 2.0).sin().abs() * 0.025 * st.dog.moving;
-        self.emit_dog(f, dog_feet, st.dog.yaw, strain, 0.0, calm, snap, 0.0, wag, time);
+        self.emit_dog(f, dog_feet, st.dog.yaw, strain, 0.0, calm, snap, 0.0, wag, time, None);
         if w.mood == QuitmerMood::Growl {
             // Growling at the thing, his hackles up and his eyes hot.
             glow_orb(f, dog_feet + Vec3::new(0.0, 0.7, 0.0), 0.5, lin(0xff5a20), 0.08);

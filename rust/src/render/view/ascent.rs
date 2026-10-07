@@ -476,7 +476,7 @@ impl WorldView {
         };
         let act = if lit >= 0.0 && hand <= 0.0 && hug < 0.05 { Act::Gaze(gaze) } else { act };
         let glow = Vec3::ZERO;
-        self.emit_kid(f, 0, kid_root(feet, yaw), act, time, 0.0, glow);
+        self.emit_kid(f, 0, kid_root(feet, yaw), act, time, 0.0, glow, None);
 
         // ---- the light falling down the shaft
         self.emit_shaft_light(f, sv, top, light, time);

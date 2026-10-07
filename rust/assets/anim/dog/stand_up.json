@@ -1,0 +1,9 @@
+{
+ "clip": "stand_up",
+ "fps": 60,
+ "frames": 50,
+ "loop": false,
+ "markers": {
+  "recover_end": 50
+ }
+}

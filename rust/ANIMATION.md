@@ -636,8 +636,7 @@ it back at rest.
 - **A lighter reader for the web**: the `gltf` crate and `serde_json` are about 400 KB of the wasm; a
   reader of only what the clips use (nodes, one animation, float accessors) would be a tenth of
   that, if the web build's size comes to matter.
-- **The story's cast**: the same pipeline; each needs its joint table and clips (their rigs keep no
-  parents until then). The foes: §11.
+- **The story's cast**: done (§12). The foes: §11.
 
 ---
 
@@ -929,3 +928,146 @@ stages' foes, then the realms', the courts' and the lair's own, in `EnemyKind`'s
 `prince:M` makes the prince in the bout begin his move M (through his phases' tables); `--foe p`
 films the prince; a capture's line ends with the last foe's state and the prince's (or the first
 duelist's), its move, frame and phase. With `--anim-compare` each shot is code beside clips.
+
+---
+
+## 12. The story's cast (`cast`, 2026-10-08)
+
+Scene I's cast (the four boys, the old gatekeeper, Quitmer his dog, Krampus out of the fog) and
+Scene II's freed boy play by clips: the boys and the old man by Mixamo's motion, the dog keyed by
+script, Krampus by the lair's Krampus's own clips with a grab and a raised arm keyed for him. The
+same pipeline as the heroes' and the foes' (§2, §11), the same decisions (§0): each voxel on one
+bone, rigidly; the story's timings are the truth (a clip is placed on them, never the reverse: the
+beats, their holds and the skip are untouched); the code's poses stay the fallback (`VH_ANIM=code`,
+a clip missing) and the comparison (`--anim-compare`). The cameras are the shots' own, but for the
+old man's two close shots, which follow him down onto his stool (below).
+
+### 12.1 Skeletons (`anim/cast_rigs.rs`)
+
+`CastRig` names them (`Kid(0..3)`, `OldMan`, `Dog`, `Krampus`); `--export-rig kid0` .. `kid3`,
+`oldman`, `dog`, `krampus_shade` writes each. The cast is not mirrored: bones are named by the side
+they lie on (`.L` at +x, the figure's own left as it faces +z), the code rig's `A` parts (low x)
+their right. The sculpts are finished solid for the jointed rigs (`characters::solid`).
+
+| Who | Skeleton | The cut |
+|---|---|---|
+| The boys (one body, four outfits) | the heroes' twenty and `scarf` (on the chest) | the hips the coat's skirt (to y 25), the spine its belt, the chest the rest with the shoulders and the scarf round the neck; the neck the column of skin under the head (34 to 37), the head and cap; the elbow at 27 (the cuffs on the forearm), the wrist at 19.5; the breeches the thigh to the knee (12.5), the socks and boot's shaft the shin, the boot below the ankle (4.5) and its toe the foot. The scarf's striped end is tagged a part of its own in the sculpt (`s.part(6)`, past the code rig's five: drawn whole it stays the body's) and hangs from the knot on its own bone |
+| The old man | the heroes' twenty, `beard.1` and `beard.2` | the hips the rope belt (34), the chest from mid-back (52) with the cape; the neck only the skin under the hood; the beard below the chin (y 63.5) and again below 49.5, so it can sway; the robe below the belt cut down the middle, each half riding its thigh to the knee (17) and its shin below, the sandals and toes the feet; the staff arm (his right) bent, cut square to the bend (`Build::chain`), the staff (its wood and leather wraps) the `blade` in his fist; the free arm hanging |
+| Quitmer | the wolves' (`QUADRUPED`) | the hips the rump and hams, the chest from z 62, the neck and its spiked collar from z 86 (above the chest's underside), the head the code's, the lower jaw its own; the tail cut at z 11 and y 50; the forelegs at the elbow (14) and pastern (5.5), the hind legs at the hock (12) and pastern (4.6) |
+| Krampus (Scene I) | the lair's Krampus's bones (the heroes' twenty and `sack`) | as the lair's (`foe_courts::krampus`): the same beast, sculpted three fifths of the size, so the lair's clips load for him. His fists and sack bone are empty; the basket and birches ride his chest |
+
+Tests (`cast_rigs::tests`): every rig cut whole and in place (every voxel of the code rig where it
+was, the bones adding only sleeves), each bone on its skeleton's parent, the limbs on their own
+sides, the scarf, beard, staff, jaw and tail on their bones, Krampus on the lair's bones.
+
+### 12.2 The animator (`anim/cast.rs`) and the story's wiring (`view/cast_clips.rs`)
+
+The story's staging (`view/story.rs`, `view/ascent.rs`) sets out each moment as before (a boy's
+`Act`, the dog's and the old man's moments, Krampus's time in the beat); `cast_clips` turns it into a
+`Play`: a base clip and up to three laid over it, each at its time (seconds; a share of a cycle; or
+seconds from a marker: a kick from its contact `hit`, the grab from `grab`, a landing from `land`),
+its weight and its mask (all, the upper body, or a bone and those below it). The animator samples
+and blends them; a change of state (`Play::key`) crossfades over 8 frames or the play's own fade; a
+jump in the scene's clock (a capture, a skip) starts afresh.
+
+It works on each bone's **turn in the model away from its rest** (`Delta`), not on its turn relative
+to its parent, and puts the pose together down the skeleton from this body's own joints
+(`cast::matrices`). So:
+
+- **Krampus plays the lair's clips** on a body three fifths of that one's, whose arms differ a
+  little: the turns are the clips', the bones' lengths his own, the root's move scaled by the size
+  (`cast_mats`: his own `krampus_shade` clips first, then the lair's).
+- Clips blend whatever rests their files give their bones.
+- The view's touches are simple turns: a **head turned where the story looks** (`look`: the neck
+  two fifths, the head the rest; the boys at the ball, at Krampus, at the way he went, at the dog,
+  at the old man, at the souls; the old man's head dropped in his doze), the **old man's staff held
+  upright** in his fist whatever his hand does, and what **hangs and swings after the body** (a
+  boy's scarf's end, the old man's beard in two): it hangs down whichever way the chest turns, and
+  lags after it (`CastAnims::swing`, eased at 9 a second).
+
+Its memory between frames lives in `WorldView::cast_anim` (a `RefCell`: drawing is `&self`), a slot
+for each of the cast. Each emit of the cast (`emit_kid`, `emit_dog`, `emit_krampus`, the old man's)
+tries the clips first and draws the code's pose only when they give none. The lair's caged friend
+and the title's boys go through `emit_kid` too, so they play the boys' clips as well.
+
+### 12.3 What plays, moment by moment
+
+**The boys** (Mixamo's cast set, `tools/blender/mixamo_cast.py`; every pick retargeted by leg length,
+their arms carried 4 degrees clear of their round coats):
+
+| Moment | Clip (source) | How it is placed |
+|---|---|---|
+| Standing about | `idle_happy`, `idle`, `idle_happy_2`, `look` (Happy Idle 1, Idle, Happy Idle 2 mirrored, Look Around), one a boy | each at his own offset, so the four never breathe in step |
+| The passes | `pass`, `pass_left` (Soccer Pass, and mirrored), `kick` (Kick Soccerball) | the contact (`hit`, from the kicking foot's speed) on the ball's moment (`stage::KICKS`) |
+| The miskick | `miskick` (Strike Foward Jog, its run-up kept in place) | its contact on `stage::MISKICK` |
+| Running after the ball, the chase | `run`, `sprint` (Fast Run, Sprint) | the stride's phase as the staging gives it; two boys run, two sprint |
+| Peering through the gate | `look_nervous` (Nervously Look Around) | his head a little down |
+| The eyes, Krampus | `terrified` (Terrified, its second to fourth seconds swung back and forth: fists up before his face, trembling) | over the idle by the fright's weight |
+| "He took him!" | `yell` (Yelling Out), the boy on the right, his head up; the others in terror | |
+| The fall through | `fall` (Falling), under the tumble the staging spins | |
+| The landing | `land` (Hard Landing: down, rolled onto his front, up again) | its touchdown (`land`) when the tumble ends, each boy a little after the last |
+| Backing from the dog | `walk_back` (Walking Backwards) with `terrified` over the upper body, then the terror | |
+| Talking to the old man | `talk`, `talk_m` (talking two hands, and mirrored) | the speaker; the others turn their heads to the old man |
+| "We will. For our friend." | `nod` (Head Nod Yes), the speaker's arms in `talk` | the three as one |
+| Down the stair | `walk` (the axe pack's unarmed walk) | |
+| Scene II: the run, the embrace | `sprint`; `hug` (keyed, `block_cast.py`: Mixamo has none. Up on his toes, arms round the kneeling hero's neck, his cheek on a shoulder, a sob now and then) | the hug over the idle by the staging's weight |
+| Looking up into the light; the hand | `idle` with the head turned up; `reach` (Reaching Out) over the upper body | |
+
+Also retargeted and embedded for later: `agree`, `point`, `wave`, `kneel`, `yell_short`, `fall_land`,
+`get_up`.
+
+**The old man** keeps his stool (`story_sets::STOOL`, moved to just behind where he stood): seated by
+his clips through the whole of the gateway, his hips on its cushion whichever way he turns on it (the
+seat measured from `sit_idle`'s first frame), until he rises to see the boys off. Mixamo's seated
+clips are retargeted facing forward (`face=0`); his staff stands upright in his fist; he stays warm
+and slow, never a sharp move. His two close shots (`Shot::OldMan`, `Shot::Promise`) follow him onto
+the stool (their eye and aim lowered 0.17 and moved 0.25 back with him) when his clips play; under
+`VH_ANIM=code` he stands where he stood and they are as they were.
+
+| Moment | Clip (source) |
+|---|---|
+| Dozing, waking | `sit_idle` (Sitting Idle) slowed as he dozes, his head dropped on his chest |
+| Calming the dog; naming the souls | `sit_talk_2` with `sit_point` (Pointing, mirrored: his free left hand) over his upper body |
+| Talking | `sit_talk_2` and `sit_talk` (talking seated; Sitting Talking, its first 12 s), line by line |
+| "we slept" (looking away) | `nod` (Thoughtful Head Nod) |
+| Rising as the door opens | `sit_to_stand` (Sit To Stand) |
+| Stepping aside, seeing them off | `idle` (the boys' Idle), `walk` (the axe pack's walk, slowed), `wave` (Waving, mirrored, his left arm only) |
+
+**Quitmer** (keyed, `block_cast.Dog` on the wolves' `Wolf`): `sleep` (a sphinx on his straw, his head
+on his paws, slow breaths), `lie` and `lie_wag` (head up, watching; his tail thumping), `stand_up`
+(forelegs first, then the hind end heaving up), `snarl` (braced at his chain's end, a lunge each
+cycle, the jaws snapping twice, hackles and head low), `lie_down` (hind end first), `idle`, `walk`.
+The staging's moments map onto them as they come (`DogAct`); his eyes glow from the head bone, his
+chain fastens to the collar on the neck bone.
+
+**Krampus**: the lair's `idle` in the fog, its `run` for the rush, `grab` (keyed on his own rig: the
+reach through the burst gate, the claws closing on `grab`, 0.2 s after the gate bursts as the story's
+grab follows it, the boy heaved up high, rearing back to bellow) and back into the graves on the
+lair's `run` with `hold_up` (keyed: his right arm up with his catch) over the arm. The boy hangs from
+the clip's right hand; his eyes glow from its head.
+
+### 12.4 The Blender side
+
+```
+AdventuresOfTheAncientBlades --export-rig kid0 kid0_rig.glb      (and oldman, dog, krampus_shade)
+blender -b -P tools/blender/import_rig.py -- kid0_rig.glb OUT kid0.blend
+blender -b kid0.blend -P tools/blender/mixamo_cast.py -- kid C:/Users/ulask/Games/mixamo kid.blend
+blender -b -P tools/blender/block_cast.py -- kid kid0_rig.glb kid.blend --onto kid.blend
+blender -b kid.blend -P tools/blender/export_clips.py -- assets/anim/kid
+blender -b oldman.blend -P tools/blender/mixamo_cast.py -- oldman C:/Users/ulask/Games/mixamo om.blend
+blender -b om.blend -P tools/blender/export_clips.py -- assets/anim/oldman
+blender -b -P tools/blender/block_cast.py -- dog dog_rig.glb dog.blend                     (assets/anim/dog)
+blender -b -P tools/blender/block_cast.py -- krampus_shade krampus_shade_rig.glb kr.blend  (assets/anim/krampus_shade)
+```
+
+The cast set's FBX files stay in `C:/Users/ulask/Games/mixamo/cast/`, outside the repository.
+
+### 12.5 Checks and captures
+
+- `anim::cast::tests`: every set reads, its clips rest on the joints the game cut each body at, the
+  kicks carry their contact, the gaits loop, the grab closes 0.2 s in; a pose at rest puts every
+  part on its joint and a turn carries what hangs from it; Scene I's Krampus plays the lair's run at
+  his own size, his arm up with his catch.
+- `python tools/cast_captures.py OUT` renders thirty moments of both scenes, code beside clips
+  (`--anim-compare`), and a contact sheet of them all.
+- Nothing of the story's logic changed: its tests, beats and timings are as they were.

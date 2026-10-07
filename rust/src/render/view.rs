@@ -35,6 +35,7 @@ mod angels;
 mod animation;
 mod ascent;
 mod camera;
+mod cast_clips;
 mod court_envy;
 mod court_gluttony;
 mod court_greed;
@@ -418,6 +419,8 @@ pub struct WorldView {
     story_mist: [InstanceSet; 2],
     story_rise: [f32; 3],
     was_story: bool,
+    /// The story's cast by their clips: their animators, kept for their crossfades (`cast_clips`).
+    cast_anim: std::cell::RefCell<cast_clips::CastAnims>,
     /// Scene II's set: the shaft of the Pit, its seven levels and its bottom (built once).
     ascent_set: InstanceSet,
     /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
@@ -568,6 +571,7 @@ impl WorldView {
             story_mist: [InstanceSet::new(story_sets::graveyard_mist()), InstanceSet::new(story_sets::gateway_mist())],
             story_rise: [0.0; 3],
             was_story: false,
+            cast_anim: Default::default(),
             ascent_set: InstanceSet::new(ascent::pit_set()),
             tour: None,
             tour_index: None,

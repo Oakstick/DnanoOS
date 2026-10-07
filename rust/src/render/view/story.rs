@@ -8,10 +8,12 @@
 //! door. The cast plays out each beat on them and the camera cuts from shot
 //! to shot.
 
+use super::cast_clips::{self, DogAct, OldAct};
 use super::story_sets::{self, dusk, CHAIN_RING};
 use super::*;
 use crate::logic::heroes::HeroKind;
 use crate::logic::story::{first, stage, Place, Scene, Shot, Speaker};
+use crate::render::anim::cast_rigs::CastRig;
 use crate::render::cast;
 use crate::render::voxels::PartDef;
 
@@ -137,6 +139,10 @@ const OLD_MAN_AT: Vec3 = Vec3::new(1.45, 0.0, -2.2);
 const DOG_BED: Vec3 = Vec3::new(-1.95, 0.0, -2.35);
 const DOG_LUNGE: Vec3 = Vec3::new(-1.72, 0.0, -1.55);
 const CHAIN_LEN: f32 = 2.35;
+/// Seconds the old man takes to get up off his stool (`sit_to_stand`), and how high his hips' joint
+/// sits above the stool's cushion.
+const OLD_MAN_RISE: f32 = 136.0 / 60.0;
+const OLD_MAN_SITS: f32 = 0.06;
 /// The souls rise before the iron door: Mehmed, Ragnar and Miyamoto, as on the character screen.
 const SOUL_AT: [Vec3; 3] = [Vec3::new(-0.82, 0.0, -2.62), Vec3::new(0.0, 0.0, -2.82), Vec3::new(0.82, 0.0, -2.62)];
 /// Each soul's tint: steel blue for the viking, jade for the janissary, rose for the samurai.
@@ -168,6 +174,17 @@ pub(super) enum Act {
     Gaze(f32),
     /// Holding a hand up to someone beside him (0..1), and looking up as `Gaze`.
     HandUp(f32, f32),
+    // ---- moments the clips play their own way (the code poses each as the act it stood for)
+    /// The kick that goes wide (the code: `Kick`).
+    Miskick(f32),
+    /// Landing hard and picking himself up: seconds since his feet touched (the code: `Up`).
+    Land(f32),
+    /// Screaming after Krampus, seconds into it (the code: `Scared(1)`).
+    Yell(f32),
+    /// Nodding, seconds into the line, and whether he is the one saying it (the code: `Talk` or `Stand`).
+    Nod(f32, bool),
+    /// Backing away in fright, seconds since it began, and how frightened (the code: `Scared`).
+    Back(f32, f32),
 }
 
 fn ease_out(t: f32) -> f32 {
@@ -176,6 +193,17 @@ fn ease_out(t: f32) -> f32 {
 
 fn ease_in(t: f32) -> f32 {
     t.clamp(0.0, 1.0).powi(2)
+}
+
+/// About where Krampus is, `taken` seconds into the beat he takes the boy (for the boys to look at).
+fn krampus_at(taken: f32) -> Vec3 {
+    if taken < stage::GATE_BURST {
+        K_FOG.lerp(K_GATE, smooth(stage::RUSH, stage::GATE_BURST, taken))
+    } else if taken < stage::TURN {
+        K_GATE.lerp(K_GRAB, smooth(stage::GATE_BURST, stage::GRAB, taken))
+    } else {
+        K_GRAB.lerp(K_GONE, smooth(stage::TURN, stage::GONE, taken))
+    }
 }
 
 /// A boy's feet on the ground, facing `yaw`.
@@ -423,7 +451,7 @@ impl WorldView {
                     }
                 }
                 if i == 2 && (-0.25..0.45).contains(&(establish - stage::MISKICK)) {
-                    act = Act::Kick(establish - stage::MISKICK);
+                    act = Act::Miskick(establish - stage::MISKICK);
                 }
                 if i == 0 && establish >= stage::FETCH {
                     let u = ((establish - stage::FETCH) / (stage::AT_GATE - stage::FETCH)).min(1.0);
@@ -470,7 +498,23 @@ impl WorldView {
             if hidden || (i == 0 && pursuit >= 0.0) {
                 continue;
             }
-            self.emit_kid(f, i, kid_root(at(feet), yaw), act, time, look, Vec3::ZERO);
+            // "He took him!": the boy on the right screams it after him (the others frozen in terror).
+            if shot == Shot::Scream && i == 3 {
+                act = Act::Yell(t);
+            }
+            // Where the story looks (by the clips: the code turns heads its own way): the ball, the
+            // gate, Krampus, the way he went.
+            let aim = match shot {
+                Shot::Establish if i != 0 || establish < stage::FETCH => Some(if establish < stage::BALL_AT_GATE + 0.4 {
+                    ball_now + Vec3::new(0.0, 0.3, 0.0)
+                } else {
+                    GATE_SPOT + Vec3::new(0.0, 0.6, -1.0)
+                }),
+                Shot::Taken if i != 0 => Some(krampus_at(taken) + Vec3::new(0.0, 1.2, 0.0)),
+                Shot::Scream => Some(K_GONE + Vec3::new(0.0, 0.8, 0.0)),
+                _ => None,
+            };
+            self.emit_kid(f, i, kid_root(at(feet), yaw), act, time, look, Vec3::ZERO, aim.map(at));
         }
 
         // ---- Krampus: eyes in the fog, the rush, the grab, and back into the graves with the boy
@@ -506,7 +550,19 @@ impl WorldView {
                 alpha = 1.0 - smooth(stage::TURN + 0.45, stage::GONE, k);
             }
             let hop = if run > 0.0 { (k * 9.0).sin().abs() * 0.12 * run } else { 0.0 };
-            let hand = self.emit_krampus(f, at(pos + Vec3::new(0.0, hop, 0.0)), yaw, run, k * 11.0, reach, lift, rear, alpha, time);
+            let hand = self.emit_krampus(
+                f,
+                at(pos + Vec3::new(0.0, hop, 0.0)),
+                yaw,
+                run,
+                k * 11.0,
+                reach,
+                lift,
+                rear,
+                alpha,
+                time,
+                Some((k, hop)),
+            );
             if k >= stage::GRAB {
                 // The lantern's glow still catches the boy.
                 f.lights.push(Light { pos: hand + Vec3::new(0.35, 0.1, 0.7), color: lin(0xffc080) * 1.0 * alpha, distance: 1.3 });
@@ -518,8 +574,8 @@ impl WorldView {
                     * Mat4::from_rotation_z(-1.1 + (time * 9.0).sin() * 0.12)
                     * Mat4::from_translation(-waist);
                 if alpha > 0.5 {
-                    self.emit_kid(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO);
-                } else {
+                    self.emit_kid(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO, None);
+                } else if !self.emit_kid_clips(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO, alpha * 2.0) {
                     let (pose, _) = self.kid_pose(0, Act::Flail(time), time, 0.0);
                     emit_rig_faded(&mut f.rigs, &self.models.kids[0], &pose, root, alpha * 2.0);
                 }
@@ -709,7 +765,21 @@ impl WorldView {
             snap = ((time * 7.0).sin() * 0.5 + 0.5) * strain;
             wag = 0.6 * down;
         }
-        let collar = self.emit_dog(f, at(feet), yaw, strain, lunge, calm, snap, sleep, wag, time);
+        // (By his clips: asleep and rising as the boys come; straining; backing down and lying again.)
+        let dog_act = if arrive < stage::GROWL - 0.4 {
+            if calm >= 0.999 {
+                DogAct::Lie { sleep, wag: 0.0 }
+            } else {
+                DogAct::Rise(1.0 - calm)
+            }
+        } else if easy < 0.5 || calm <= 0.001 {
+            DogAct::Strain(strain)
+        } else if calm < 0.999 {
+            DogAct::Down(calm)
+        } else {
+            DogAct::Lie { sleep: 0.0, wag }
+        };
+        let collar = self.emit_dog(f, at(feet), yaw, strain, lunge, calm, snap, sleep, wag, time, Some(dog_act));
         if strain > 0.1 {
             f.lights.push(Light { pos: at(feet + Vec3::new(1.1, 1.1, -0.4)), color: lin(0xffc89a) * 2.4 * strain, distance: 3.0 });
         }
@@ -774,7 +844,33 @@ impl WorldView {
             om_yaw = yaw_to(om_feet, BOYS_MID.lerp(Vec3::new(0.0, 0.0, -3.4), smooth(stage::WALK, stage::WALK + 5.0, descent)));
             raise = smooth(stage::WALK, stage::WALK + 0.6, descent) * 0.9;
         }
-        self.emit_old_man(f, at(om_feet), om_yaw, head, doze, raise, talk, time);
+        // By his clips he keeps his stool: dozing, woken, talking, his hand out to the dog and to the
+        // door; he rises only to see them off.
+        let rise_at = stage::DOOR - 1.0;
+        let line = sv.said_before(Speaker::OldMan);
+        let om_act = if (0.0..100.0).contains(&descent) {
+            if descent < rise_at {
+                OldAct::Sit { doze: 0.0 }
+            } else if descent < rise_at + OLD_MAN_RISE {
+                OldAct::Rise { t: descent - rise_at }
+            } else {
+                let walk = (descent - rise_at - OLD_MAN_RISE) / 0.8;
+                OldAct::Stand { pace: if (0.0..1.0).contains(&walk) { (walk * PI).sin().max(0.0) } else { 0.0 }, wave: raise }
+            }
+        } else if shot == Shot::Easy || shot == Shot::Souls {
+            OldAct::Hand { t, raise: (raise * 1.25).min(1.0) }
+        } else if let Some(t) = talk {
+            if sv.scene.beats()[sv.beat].cue == "looking away" {
+                OldAct::Nod { t }
+            } else {
+                OldAct::Talk { t, line }
+            }
+        } else {
+            OldAct::Sit { doze }
+        };
+        if !self.emit_old_man_clips(f, om_act, om_yaw, head, doze, descent, time) {
+            self.emit_old_man(f, at(om_feet), om_yaw, head, doze, raise, talk, time);
+        }
 
         // ---- the three boys
         let speaker_boy = (sv.boys_lines() % 3) + 1;
@@ -803,23 +899,32 @@ impl WorldView {
                 );
                 act = Act::Flail(time);
             } else if tumble < 1.9 {
-                let up = smooth(1.3, 1.9, tumble);
                 yaw = PI + (b as f32 - 1.0) * 0.3;
-                act = Act::Up(up);
+                act = Act::Land(tumble - 0.5);
             } else if arrive < stage::REVEAL + 0.4 {
                 // Up, and looking round at where they are.
                 look = (time * 1.1 + b as f32 * 2.0).sin() * 0.6;
+                if tumble < 2.6 {
+                    // (By the clips still getting up off the flags.)
+                    act = Act::Land(tumble - 0.5);
+                }
                 let face = yaw_to(feet, OLD_MAN_AT.lerp(DOG_BED, 0.5));
                 yaw = lerp_angle(PI + (b as f32 - 1.0) * 0.3, face, smooth(stage::REVEAL - 0.6, stage::REVEAL + 0.2, arrive));
             }
             if shot == Shot::Snarl || (shot == Shot::Arrive && arrive > stage::GROWL) {
                 let fright = if shot == Shot::Snarl { 1.0 } else { smooth(stage::GROWL, stage::GROWL + 0.4, arrive) };
                 feet += Vec3::new(0.0, 0.0, 0.22 * fright);
-                act = Act::Scared(fright * if b == 0 { 1.0 } else { 0.55 });
+                let a = fright * if b == 0 { 1.0 } else { 0.55 };
+                let backing = if shot == Shot::Arrive { arrive - stage::GROWL } else { 100.0 };
+                act = if backing < 0.9 { Act::Back(backing, a) } else { Act::Scared(a) };
                 yaw = yaw_to(feet, DOG_LUNGE);
             }
             if sv.speaker() == Speaker::Boys && i == speaker_boy && shot != Shot::Descent {
                 act = Act::Talk(t);
+            }
+            if shot == Shot::Boys && sv.souls != 0 {
+                // "We will. For our friend.": the three as one.
+                act = Act::Nod(t + b as f32 * 0.15, i == speaker_boy);
             }
             if shot == Shot::Souls || (shot == Shot::Boys && sv.souls != 0) {
                 yaw = yaw_to(feet, SOUL_AT[1]);
@@ -840,7 +945,17 @@ impl WorldView {
                 }
             }
             let root = root.unwrap_or_else(|| kid_root(at(feet), yaw));
-            self.emit_kid(f, i, root, act, time, look, glow);
+            // Where the story looks (by the clips): the dog, the old man, the souls.
+            let old_head = story_sets::STOOL + Vec3::new(0.0, 0.85, 0.0);
+            let aim = match shot {
+                Shot::Arrive if arrive > stage::GROWL => Some(DOG_LUNGE + Vec3::new(0.0, 0.5, 0.0)),
+                Shot::Snarl => Some(DOG_LUNGE + Vec3::new(0.0, 0.5, 0.0)),
+                Shot::Easy | Shot::OldMan | Shot::Promise => Some(old_head),
+                Shot::Boys if sv.souls == 0 => Some(old_head),
+                Shot::Souls | Shot::Boys => Some(SOUL_AT[b] + Vec3::new(0.0, 0.9, 0.0)),
+                _ => None,
+            };
+            self.emit_kid(f, i, root, act, time, look, glow, aim.map(at));
         }
 
         // ---- puddles on the flags, holding the lamps; drips from the vault, rings spreading where
@@ -904,6 +1019,17 @@ impl WorldView {
 
     /// A boy's limbs for what he is doing, and how far he leans and bobs.
     fn kid_pose(&self, which: usize, act: Act, time: f32, look: f32) -> (Pose, (f32, f32)) {
+        // (The clips' own moments, posed by the code as the acts they stood for.)
+        let act = match act {
+            Act::Miskick(k) => Act::Kick(k),
+            Act::Land(t) if t >= 1.4 => Act::Stand,
+            Act::Land(t) => Act::Up(smooth(0.8, 1.4, t)),
+            Act::Yell(_) => Act::Scared(1.0),
+            Act::Nod(t, true) => Act::Talk(t),
+            Act::Nod(_, false) => Act::Stand,
+            Act::Back(_, a) => Act::Scared(a),
+            a => a,
+        };
         let rig = &self.models.kids[which.min(3)];
         let mut pose = Pose::rest(rig);
         let idx = |n: &str| rig.index(n).unwrap_or(0);
@@ -1003,18 +1129,29 @@ impl WorldView {
                 pose.rot[hd].y = -0.25 * k * (1.0 - gaze);
                 lean = -0.05 * gaze;
             }
+            Act::Miskick(_) | Act::Land(_) | Act::Yell(_) | Act::Nod(..) | Act::Back(..) => {}
         }
         (pose, (lean, bob))
     }
 
-    pub(super) fn emit_kid(&self, f: &mut Frame, which: usize, root: Mat4, act: Act, time: f32, look: f32, glow: Vec3) {
-        let (pose, (lean, bob)) = self.kid_pose(which, act, time, look);
-        let root = root * Mat4::from_translation(Vec3::new(0.0, bob, 0.0)) * Mat4::from_rotation_x(lean);
-        emit_rig(&mut f.rigs, &self.models.kids[which.min(3)], &pose, root, Vec3::ONE, 1.0, glow);
+    /// A boy doing `act`, his head turned `look` (the code's) or, by his clips, toward `aim` (a
+    /// point in the world) where there is one.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_kid(&self, f: &mut Frame, which: usize, root: Mat4, act: Act, time: f32, look: f32, glow: Vec3, aim: Option<Vec3>) {
+        let toward = aim.map(|p| {
+            let local = root.inverse().transform_point3(p);
+            local.x.atan2(local.z).clamp(-1.1, 1.1)
+        });
+        let mut orb = root;
+        if !self.emit_kid_clips(f, which, root, act, time, toward.unwrap_or(look), glow, 1.0) {
+            let (pose, (lean, bob)) = self.kid_pose(which, act, time, look);
+            orb = root * Mat4::from_translation(Vec3::new(0.0, bob, 0.0)) * Mat4::from_rotation_x(lean);
+            emit_rig(&mut f.rigs, &self.models.kids[which.min(3)], &pose, orb, Vec3::ONE, 1.0, glow);
+        }
         if glow.length_squared() > 0.0001 {
             glow_orb(
                 f,
-                root.transform_point3(Vec3::new(0.0, 0.35, 0.0)),
+                orb.transform_point3(Vec3::new(0.0, 0.35, 0.0)),
                 0.75,
                 glow.normalize_or_zero(),
                 (glow.length() * 2.5).min(1.0) * 0.45,
@@ -1040,7 +1177,22 @@ impl WorldView {
         sleep: f32,
         wag: f32,
         time: f32,
+        act: Option<DogAct>,
     ) -> Vec3 {
+        if let Some(act) = act {
+            let c = CastRig::Dog;
+            if let Some((jr, mats)) = self.cast_mats(c, &cast_clips::dog_play(act, time), time, |_, _| {}) {
+                let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw);
+                f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+                for e in cast::DOG_EYES {
+                    if let Some(p) = cast_clips::bone_point(c, jr, &mats, "head", [e[0], e[1], e[2] + 1.0]) {
+                        glow_orb(f, root.transform_point3(p), 0.07, lin(0xffa030), (0.9 - 0.8 * sleep) * (1.0 + 0.3 * strain));
+                    }
+                }
+                let ring = cast_clips::bone_point(c, jr, &mats, "neck", cast::DOG_COLLAR_RING).unwrap_or(Vec3::ZERO);
+                return root.transform_point3(ring);
+            }
+        }
         let rig = &self.models.dog;
         let mut pose = Pose::rest(rig);
         let idx = |n: &str| rig.index(n).unwrap_or(0);
@@ -1071,6 +1223,49 @@ impl WorldView {
         let (w, _, d) = cast::DOG_SIZE;
         let body_pivot = [(w - 1) as f32 / 2.0, 0.0, (d - 1) as f32 / 2.0];
         rig_point(rig, &pose, root, 0, body_pivot, cast::DOG_COLLAR_RING)
+    }
+
+    /// Where the old man's hips are as he sits (in his model, `sit_idle`'s first frame), and how far
+    /// he is lifted to sit on his stool's cushion.
+    fn old_man_seat(&self) -> Option<(Vec3, f32)> {
+        use crate::render::anim::cast as ca;
+        let clip = crate::render::anim::library::cast_clips(CastRig::OldMan)?.get("sit_idle")?;
+        let (mut locals, mut world, mut d) = (Vec::new(), Vec::new(), ca::Delta::default());
+        ca::sample_delta(clip, 0.0, 1.0, &mut locals, &mut world, &mut d);
+        let hips = self.models.jointed_cast(CastRig::OldMan).parts.first()?.rest + d.root;
+        Some((hips, story_sets::STOOL_SEAT + OLD_MAN_SITS - hips.y))
+    }
+
+    /// The old man by his clips: `act`, facing `yaw`, his head turned `head` and dropped in his doze.
+    /// Seated, his hips are on his stool's cushion whichever way he turns on it; risen, he steps
+    /// aside for the boys. False when the code must draw him.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_old_man_clips(&self, f: &mut Frame, act: OldAct, yaw: f32, head: f32, doze: f32, descent: f32, time: f32) -> bool {
+        let c = CastRig::OldMan;
+        let Some((seat, lift)) = self.old_man_seat() else { return false };
+        let breathe = (time * 1.6).sin();
+        let play = cast_clips::old_man_play(act, time);
+        let Some((jr, mats)) = self.cast_mats(c, &play, time, |pose, def| {
+            cast_clips::look(pose, def, head, 0.55 * doze + breathe * 0.02 * doze);
+            // His staff stands upright in his fist, leaning a little out from him.
+            if let (Some(b), Some(ch)) = (def.index("blade"), def.index("chest")) {
+                pose.rot[b] = cast_clips::heading(pose.rot[ch]) * Quat::from_rotation_z(-0.07);
+            }
+        }) else {
+            return false;
+        };
+        let turn = Quat::from_rotation_y(yaw);
+        let sat = story_sets::STOOL - turn * Vec3::new(seat.x, 0.0, seat.z);
+        let risen = match act {
+            OldAct::Rise { t } => smooth(0.3, 1.5, t),
+            OldAct::Stand { .. } => 1.0,
+            _ => 0.0,
+        };
+        let aside = smooth(stage::DOOR - 1.0 + OLD_MAN_RISE, stage::DOOR - 0.2 + OLD_MAN_RISE, descent.min(60.0));
+        let feet = sat + Vec3::new(0.45, 0.0, 0.25) * aside + Vec3::new(0.0, lift * (1.0 - risen), 0.0);
+        let root = Mat4::from_translation(GATEWAY + feet) * Mat4::from_quat(turn);
+        f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+        true
     }
 
     /// The old man: facing `yaw`, his head turned `head` and drooping with sleep (`doze`),
@@ -1114,7 +1309,28 @@ impl WorldView {
         rear: f32,
         alpha: f32,
         time: f32,
+        moment: Option<(f32, f32)>,
     ) -> Vec3 {
+        // By his clips (`moment`: seconds into the beat, and his hop the code adds, which they carry).
+        if let Some((k, hop)) = moment {
+            let c = CastRig::Krampus;
+            let play = cast_clips::krampus_play(k, phase);
+            if let Some((jr, mats)) = self.cast_mats(c, &play, time, |_, _| {}) {
+                let root = Mat4::from_translation(feet - Vec3::new(0.0, hop, 0.0)) * Mat4::from_rotation_y(yaw);
+                if alpha >= 0.99 {
+                    f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+                } else if alpha > 0.01 {
+                    f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, alpha, Vec3::ZERO, rig_look::FADED, 0.0);
+                }
+                let eyes: Vec<Vec3> = cast::KRAMPUS_EYES
+                    .iter()
+                    .filter_map(|&e| cast_clips::bone_point(c, jr, &mats, "head", e).map(|p| root.transform_point3(p)))
+                    .collect();
+                self.krampus_eyes(f, &eyes, root, alpha);
+                let hand = cast_clips::bone_point(c, jr, &mats, "hand.R", cast::KRAMPUS_HAND).unwrap_or(Vec3::ZERO);
+                return root.transform_point3(hand);
+            }
+        }
         let rig = &self.models.krampus;
         let mut pose = Pose::rest(rig);
         let idx = |n: &str| rig.index(n).unwrap_or(0);
@@ -1135,11 +1351,18 @@ impl WorldView {
         } else if alpha > 0.01 {
             emit_rig_faded(&mut f.rigs, rig, &pose, root, alpha);
         }
-        // Ember eyes, bright even when the rest of him is only a shape in the fog.
+        let eyes: Vec<Vec3> =
+            cast::KRAMPUS_EYES.iter().map(|&e| rig_point(rig, &pose, root, hd, pivot_of(cast::KRAMPUS_RIG, "head"), e)).collect();
+        self.krampus_eyes(f, &eyes, root, alpha);
+        rig_point(rig, &pose, root, ar, pivot_of(cast::KRAMPUS_RIG, "armR"), cast::KRAMPUS_HAND)
+    }
+
+    /// Krampus's ember eyes at `at`, bright even when the rest of him is only a shape in the fog,
+    /// and their light falling ahead of him.
+    fn krampus_eyes(&self, f: &mut Frame, at: &[Vec3], root: Mat4, alpha: f32) {
         let eyes = alpha.max(0.0).powf(0.3).min(1.0);
         let mut mid = Vec3::ZERO;
-        for e in cast::KRAMPUS_EYES {
-            let p = rig_point(rig, &pose, root, hd, pivot_of(cast::KRAMPUS_RIG, "head"), e);
+        for &p in at {
             mid += p * 0.5;
             glow_orb(f, p, 0.12, lin(0xff3010), 1.4 * eyes);
             f.additive.push(Instance::new(
@@ -1153,7 +1376,6 @@ impl WorldView {
         let ahead = (root.transform_vector3(Vec3::Z)).normalize_or(Vec3::Z);
         // Their light falls ahead of him, on what he comes for more than on his own face.
         f.lights.push(Light { pos: mid + ahead * 1.2 - Vec3::new(0.0, 0.35, 0.0), color: lin(0xff2a10) * 0.6 * eyes, distance: 1.8 });
-        rig_point(rig, &pose, root, ar, pivot_of(cast::KRAMPUS_RIG, "armR"), cast::KRAMPUS_HAND)
     }
 
     /// A warrior's soul: rising out of the floor in a column of light, hovering, glowing.
@@ -1246,13 +1468,19 @@ impl WorldView {
             Shot::Snarl => (d + v(0.62, 0.78, -2.3) + v(0.0, 0.0, t.min(4.0) * 0.03), d + v(-1.5, 0.5, -0.95), d + v(-1.45, 0.62, -1.0)),
             Shot::Easy => (d + v(0.55, 0.95, 0.95), d + v(-0.2, 0.62, -2.15), d + OLD_MAN_AT + v(0.0, 0.9, 0.0)),
             Shot::OldMan | Shot::Promise => {
-                let (eye, look) = if sv.shot() == Shot::OldMan && sv.said_before(Speaker::OldMan) % 2 == 1 {
-                    (d + v(0.55, 1.12, -0.45), d + OLD_MAN_AT + v(0.0, 0.98, 0.0))
+                // (Seated on his stool by his clips, he is lower and a little back: the shot follows.)
+                let om = if self.anim_mode == crate::render::anim::library::Mode::Code {
+                    OLD_MAN_AT
                 } else {
-                    (d + v(2.4, 1.05, -0.55), d + OLD_MAN_AT + v(-0.05, 0.95, 0.0))
+                    story_sets::STOOL + v(-0.04, -0.17, 0.12)
+                };
+                let (eye, look) = if sv.shot() == Shot::OldMan && sv.said_before(Speaker::OldMan) % 2 == 1 {
+                    (d + v(0.55, 1.12, -0.45) + (om - OLD_MAN_AT), d + om + v(0.0, 0.98, 0.0))
+                } else {
+                    (d + v(2.4, 1.05, -0.55) + (om - OLD_MAN_AT), d + om + v(-0.05, 0.95, 0.0))
                 };
                 let push = 1.0 - 0.08 * smooth(0.0, 6.0, t);
-                (look + (eye - look) * push, look, d + OLD_MAN_AT + v(0.0, 0.95, 0.0))
+                (look + (eye - look) * push, look, d + om + v(0.0, 0.95, 0.0))
             }
             Shot::Boys => {
                 let (eye, look) = if sv.said_before(Speaker::Boys).is_multiple_of(2) {

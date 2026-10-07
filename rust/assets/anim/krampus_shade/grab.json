@@ -1,0 +1,10 @@
+{
+ "clip": "grab",
+ "fps": 60,
+ "frames": 45,
+ "loop": false,
+ "markers": {
+  "grab": 12,
+  "recover_end": 45
+ }
+}

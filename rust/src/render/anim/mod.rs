@@ -4,6 +4,7 @@
 //! rig's export for Blender. The code's animation (`view::animation`) stays as the fallback and the
 //! comparison.
 
+pub mod cast;
 pub mod cast_rigs;
 pub mod clip;
 pub mod cloth;
