@@ -1,0 +1,12 @@
+{
+ "clip": "hex",
+ "fps": 60,
+ "frames": 110,
+ "loop": false,
+ "markers": {
+  "windup_end": 27,
+  "hit": 30,
+  "active_end": 44,
+  "recover_end": 110
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "clip": "clock_hands",
+ "fps": 60,
+ "frames": 168,
+ "loop": false,
+ "markers": {
+  "windup_end": 50,
+  "hit": 52,
+  "active_end": 58,
+  "recover_end": 168
+ }
+}
