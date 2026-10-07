@@ -1,0 +1,12 @@
+{
+ "clip": "coal_fire",
+ "fps": 60,
+ "frames": 131,
+ "loop": false,
+ "markers": {
+  "windup_end": 38,
+  "hit": 40,
+  "active_end": 44,
+  "recover_end": 131
+ }
+}

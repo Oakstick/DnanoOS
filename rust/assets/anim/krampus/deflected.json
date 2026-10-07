@@ -1,0 +1,9 @@
+{
+ "clip": "deflected",
+ "fps": 60,
+ "frames": 24,
+ "loop": false,
+ "markers": {
+  "recover_end": 24
+ }
+}

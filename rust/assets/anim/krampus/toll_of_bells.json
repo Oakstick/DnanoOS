@@ -1,0 +1,12 @@
+{
+ "clip": "toll_of_bells",
+ "fps": 60,
+ "frames": 176,
+ "loop": false,
+ "markers": {
+  "windup_end": 67,
+  "hit": 73,
+  "active_end": 78,
+  "recover_end": 176
+ }
+}

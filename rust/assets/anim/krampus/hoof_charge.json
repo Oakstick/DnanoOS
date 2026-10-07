@@ -1,0 +1,11 @@
+{
+ "clip": "hoof_charge",
+ "fps": 60,
+ "frames": 134,
+ "loop": false,
+ "markers": {
+  "windup_end": 42,
+  "active_end": 88,
+  "recover_end": 134
+ }
+}

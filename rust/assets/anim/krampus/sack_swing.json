@@ -1,0 +1,12 @@
+{
+ "clip": "sack_swing",
+ "fps": 60,
+ "frames": 86,
+ "loop": false,
+ "markers": {
+  "windup_end": 26,
+  "hit": 32,
+  "active_end": 36,
+  "recover_end": 86
+ }
+}
