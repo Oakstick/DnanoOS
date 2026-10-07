@@ -284,7 +284,7 @@ fn bench_foe(foe: super::foe_rigs::FoeRig) -> String {
     for f in 0..frames {
         let k = f % 240;
         let strike = (60..150).contains(&k).then(|| FoeStrike {
-            clip: moves.get((f / 240) % moves.len().max(1)).copied().unwrap_or("-"),
+            clips: [moves.get((f / 240) % moves.len().max(1)).copied().unwrap_or("-"); 2],
             t: (k - 60) as f32 / 60.0,
             bounds: [0.0, 0.5, 0.6, 1.5],
             serial: (f / 240) as u32,

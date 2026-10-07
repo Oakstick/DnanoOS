@@ -85,6 +85,12 @@ impl Build {
         self
     }
 
+    /// Cuts applied before every other (a weapon out of an arm before its elbow is cut).
+    pub fn cuts_first(&mut self, cuts: &[Cut]) -> &mut Self {
+        self.cuts.splice(0..0, cuts.iter().copied());
+        self
+    }
+
     pub fn cut(&mut self, c: Cut) -> &mut Self {
         self.cuts.push(c);
         self

@@ -436,7 +436,9 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Ring(n) => game.debug_ring(n),
         Cmd::RingOf(k, n) => {
             use crate::logic::enemy::EnemyKind as K;
-            let kinds: Vec<K> = [&K::STAGE_ONE[..], &K::STAGE_TWO, &K::STAGE_THREE].concat();
+            let kinds: Vec<K> =
+                [&K::STAGE_ONE[..], &K::STAGE_TWO, &K::STAGE_THREE, &K::STAGE_FOUR, &K::STAGE_FIVE, &K::STAGE_SIX, &K::STAGE_SEVEN]
+                    .concat();
             game.debug_ring_of(&vec![kinds[k.min(kinds.len() - 1)]; n.clamp(1, 10)]);
         }
         Cmd::Bot(k) => {

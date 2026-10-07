@@ -63,17 +63,41 @@ impl FoeClips {
     }
 }
 
-/// The clip of a move, by the move (the same clip for its kin among the later stages' moves).
-fn move_clip(mv: MoveId) -> &'static str {
-    match mv {
-        MoveId::Slam | MoveId::Kanabo | MoveId::FrostSlam => "slam",
+/// The clips of a move: its own, by the move's name in snake case (`neck_bite` for NeckBite, `coin_toss`
+/// for CoinToss), and its kind's where a foe has none of its own (a slam for the kanabo's blow and
+/// the frost slam, a hex for a bolt, a bite for the neck's).
+pub(super) fn move_clips(mv: MoveId) -> [&'static str; 2] {
+    let kind = match mv {
+        MoveId::Slam | MoveId::Kanabo | MoveId::FrostSlam | MoveId::HoardSlam | MoveId::HourglassSlam | MoveId::BellySlam => "slam",
         MoveId::Sweep => "sweep",
-        MoveId::Hex | MoveId::Smokeless => "hex",
+        MoveId::Hex | MoveId::Smokeless | MoveId::Thunder | MoveId::Foxfire => "hex",
         MoveId::Bite | MoveId::NeckBite => "bite",
         MoveId::Rally => "rally",
-        // (Any other is the code's: no foe of these stages has a clip for it.)
         _ => "-",
+    };
+    [snake(mv), kind]
+}
+
+/// A move's name in snake case, made once per move.
+fn snake(mv: MoveId) -> &'static str {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+    let debug = format!("{mv:?}");
+    let mut names = NAMES.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(n) = names.get(&debug) {
+        return n;
     }
+    let mut out = String::new();
+    for (k, ch) in debug.chars().enumerate() {
+        if ch.is_ascii_uppercase() && k > 0 {
+            out.push('_');
+        }
+        out.push(ch.to_ascii_lowercase());
+    }
+    let leaked: &'static str = Box::leak(out.into_boxed_str());
+    names.insert(debug, leaked);
+    leaked
 }
 
 impl WorldView {
@@ -107,7 +131,8 @@ impl WorldView {
         c.scatter = None;
         let Some(clips) = library::foe_clips(c.foe) else { return };
         let duel = e.duel.as_deref();
-        if duel.is_some_and(|d| matches!(d.f.state, State::Evade { .. })) {
+        // (A rival swaying back, and the dragon felled and begging: the code's.)
+        if duel.is_some_and(|d| matches!(d.f.state, State::Evade { .. }) || d.begging()) {
             // (A rival swaying back out of the hero's finisher: the code's.)
             c.anim.reset();
             return;
@@ -122,7 +147,7 @@ impl WorldView {
             // (Far, its last pose is drawn again.)
             c.posed = shown && !c.mats.is_empty();
             if c.posed {
-                settle_root(v, base);
+                settle_root(v, base, duel.and_then(|d| d.f.attack()).map(|a| a.0));
             }
             return;
         }
@@ -142,7 +167,7 @@ impl WorldView {
                         let data = d.data(mv);
                         let secs = |f: u16| f as f32 / 60.0;
                         drive.strike = Some(FoeStrike {
-                            clip: move_clip(mv),
+                            clips: move_clips(mv),
                             t: secs(frame),
                             bounds: move_bounds(secs(data.startup), secs(data.active), secs(data.recovery)),
                             serial: c.serial,
@@ -174,8 +199,14 @@ impl WorldView {
         }
         let joints: Vec<Vec3> = rig.parts.iter().map(|p| p.rest).collect();
         clips.skeleton.matrices_into(&c.locals, &joints, &[], &mut c.mats);
+        // The kappa's dish spilled: no water in it until it fills again (as the code sinks it).
+        if let (Some(w), Some(d)) = (rig.index("water"), duel) {
+            if d.lore.spilled > 0 {
+                c.mats[w] = Mat4::from_translation(Vec3::new(0.0, -0.3, 0.0)) * c.mats[w];
+            }
+        }
         c.posed = true;
-        settle_root(v, base);
+        settle_root(v, base, duel.and_then(|d| d.f.attack()).map(|a| a.0));
     }
 
     /// Foe `i` as its clips pose it this frame (its jointed rig and its parts' matrices in the
@@ -200,9 +231,24 @@ impl WorldView {
 }
 
 /// The code's lean, sway, twist, squash and bob taken back: the clip carries its own. (The juice
-/// is laid on after, `overshoot_duel`.)
-fn settle_root(v: &mut EnemyView, base: Vec3) {
-    v.root_rot = Vec3::ZERO;
-    v.root_scale = Vec3::ONE;
-    v.group_pos = base;
+/// is laid on after, `overshoot_duel`.) What the code does to the whole body for a folklore move
+/// stays the code's: the arçura grown tall as a tree for her roots, the tülükuş up on its wings and
+/// down on its talons, Níðhöggr sunk under the floor, Leviathan under the water.
+fn settle_root(v: &mut EnemyView, base: Vec3, mv: Option<MoveId>) {
+    match mv {
+        Some(MoveId::Burrow) => {}
+        Some(MoveId::Roots) => {
+            v.root_rot = Vec3::ZERO;
+            v.group_pos = base;
+        }
+        Some(MoveId::Talons | MoveId::Dive) => {
+            v.root_rot = Vec3::ZERO;
+            v.root_scale = Vec3::ONE;
+        }
+        _ => {
+            v.root_rot = Vec3::ZERO;
+            v.root_scale = Vec3::ONE;
+            v.group_pos = base;
+        }
+    }
 }

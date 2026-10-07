@@ -1,0 +1,11 @@
+{
+ "clip": "neck_bite",
+ "fps": 60,
+ "frames": 62,
+ "loop": false,
+ "markers": {
+  "windup_end": 26,
+  "active_end": 32,
+  "recover_end": 62
+ }
+}

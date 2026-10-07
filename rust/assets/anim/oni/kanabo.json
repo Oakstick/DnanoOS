@@ -1,0 +1,12 @@
+{
+ "clip": "kanabo",
+ "fps": 60,
+ "frames": 112,
+ "loop": false,
+ "markers": {
+  "windup_end": 50,
+  "hit": 61,
+  "active_end": 70,
+  "recover_end": 112
+ }
+}

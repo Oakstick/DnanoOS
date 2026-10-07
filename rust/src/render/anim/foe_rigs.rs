@@ -37,10 +37,14 @@ pub enum FoeRig {
     Cobra,
     Slime,
     Jorogumo,
+    Kappa,
+    Rokurokubi,
+    Oni,
+    Kitsune,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 19;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
@@ -58,6 +62,10 @@ impl FoeRig {
         FoeRig::Cobra,
         FoeRig::Slime,
         FoeRig::Jorogumo,
+        FoeRig::Kappa,
+        FoeRig::Rokurokubi,
+        FoeRig::Oni,
+        FoeRig::Kitsune,
     ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
@@ -78,6 +86,10 @@ impl FoeRig {
             FoeRig::Cobra => "cobra",
             FoeRig::Slime => "slime",
             FoeRig::Jorogumo => "jorogumo",
+            FoeRig::Kappa => "kappa",
+            FoeRig::Rokurokubi => "rokurokubi",
+            FoeRig::Oni => "oni",
+            FoeRig::Kitsune => "kitsune",
         }
     }
 
@@ -100,6 +112,10 @@ impl FoeRig {
             EnemyKind::Cobra => FoeRig::Cobra,
             EnemyKind::Slime => FoeRig::Slime,
             EnemyKind::Jorogumo => FoeRig::Jorogumo,
+            EnemyKind::Kappa => FoeRig::Kappa,
+            EnemyKind::Rokurokubi => FoeRig::Rokurokubi,
+            EnemyKind::Oni => FoeRig::Oni,
+            EnemyKind::Kitsune => FoeRig::Kitsune,
             _ => return None,
         })
     }
@@ -130,6 +146,10 @@ impl FoeRig {
             FoeRig::Cobra => &fb::COBRA,
             FoeRig::Slime => &fb::BOG_SLIME,
             FoeRig::Jorogumo => &fb::JOROGUMO,
+            FoeRig::Kappa => super::foe_stage4::kappa(),
+            FoeRig::Rokurokubi => super::foe_stage4::rokurokubi(),
+            FoeRig::Oni => super::foe_stage4::oni(),
+            FoeRig::Kitsune => super::foe_stage4::kitsune(),
         }
     }
 
@@ -152,6 +172,10 @@ impl FoeRig {
             FoeRig::Cobra => (foes3::COBRA_SIZE, 0.0125),
             FoeRig::Slime => (foes::SLIME_SIZE, 0.01875),
             FoeRig::Jorogumo => (foes3::JORO_SIZE, 0.0125),
+            FoeRig::Kappa => (crate::render::foes4::KAPPA_SIZE, 0.0125),
+            FoeRig::Rokurokubi => (crate::render::foes4::ROKURO_SIZE, 0.0125),
+            FoeRig::Oni => (crate::render::foes4::ONI_SIZE, 0.0135),
+            FoeRig::Kitsune => (crate::render::foes4::KITSUNE_SIZE, 0.0125),
         }
     }
 
@@ -176,6 +200,10 @@ impl FoeRig {
             FoeRig::Cobra => build_rig(&foes3::cobra(), foes3::COBRA_RIG, size),
             FoeRig::Slime => build_rig(&foes::bog_slime(), &[], size),
             FoeRig::Jorogumo => build_rig(&foes3::jorogumo(), foes3::JORO_RIG, size),
+            FoeRig::Kappa => build_rig(&crate::render::foes4::kappa(), crate::render::foes4::KAPPA_RIG, size),
+            FoeRig::Rokurokubi => build_rig(&crate::render::foes4::rokurokubi(), crate::render::foes4::ROKURO_RIG, size),
+            FoeRig::Oni => build_rig(&crate::render::foes4::oni(), crate::render::foes4::ONI_RIG, size),
+            FoeRig::Kitsune => build_rig(&crate::render::foes4::kitsune(), crate::render::foes4::KITSUNE_RIG, size),
         })
     }
 
@@ -624,6 +652,10 @@ mod tests {
             FoeRig::Draugr | FoeRig::Helmeted | FoeRig::Blemmyes | FoeRig::Tengu | FoeRig::Rasetsu => &["slam", "sweep", "rally"],
             FoeRig::Witch => &["hex", "rally"],
             FoeRig::Slime | FoeRig::Jorogumo => &["hex", "rally"],
+            FoeRig::Kappa => &["shove"],
+            FoeRig::Rokurokubi => &["neck_bite"],
+            FoeRig::Oni => &["kanabo", "sweep", "rally"],
+            FoeRig::Kitsune => &["foxfire"],
             _ => &["bite", "rally"],
         }
     }

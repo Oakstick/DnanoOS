@@ -943,15 +943,35 @@ FOES = {
 }
 
 
+def all_foes():
+    """Every keyed foe: these and the later stages' (`block_stage4.py` and on)."""
+    import importlib
+
+    out = dict(FOES)
+    for name in ("block_stage4", "block_stage5", "block_stage6", "block_stage7", "block_courts"):
+        try:
+            out.update(importlib.import_module(name).FOES)
+        except ModuleNotFoundError:
+            pass
+    return out
+
+
 def main():
     a = vh.args()
-    if len(a) < 3 or a[0] not in FOES:
+    foes = all_foes()
+    if len(a) < 3 or a[0] not in foes:
         sys.exit(__doc__)
     foe, rig, out = a[0], a[1], a[2]
     vh.fresh_scene()
     arm = vh.import_rig(rig)
     arm.animation_data_create()
-    FOES[foe].make(arm)
+    if len(a) > 3 and a[3] == "--onto":
+        # (Into a .blend that has its Mixamo clips already: the keyed moves are added to them.)
+        bpy.ops.wm.open_mainfile(filepath=os.path.abspath(a[4]))
+        arm = vh.armature()
+        if arm.animation_data is None:
+            arm.animation_data_create()
+    foes[foe].make(arm)
     bpy.context.scene.render.fps = vh.FPS
     first = next((n for n in ("idle", "hover") if n in bpy.data.actions), None)
     arm.animation_data.action = bpy.data.actions.get(first)

@@ -139,6 +139,23 @@ WITCH = {
     "stagger": (MG + "Standing React Large From Right.fbx", dict(WITCH_W, kind="flinch")),
 }
 
+# ------------------------------------------------------------------ the oni
+
+# His kanabo hangs head down from his fist (his own left: mirrored). A brute twice a man's height:
+# the creature pack's lumber, the great sword's spinning smash brought down where he stands.
+ONI_W = dict(mirror=True, weapon="offhand", weapon_rest=(0.06, -1.0, 0.18))
+ONI = {
+    "idle": (MU + "mutant idle (2).fbx", dict(ONI_W, loop=True)),
+    "walk": (MU + "mutant walking.fbx", dict(ONI_W, loop=True, stride="feet")),
+    "run": (MU + "mutant run.fbx", dict(ONI_W, loop=True, stride="feet")),
+    # The kanabo: whirled up over his head and brought down (its spin taken out).
+    "kanabo": (GS + "high spin attack.fbx", dict(ONI_W, kind="strike", yaw_keep=0.0, face=0.0)),
+    "sweep": (AX + "melee attack 360 high.fbx", dict(ONI_W, kind="strike", yaw_keep=0.0, face=0.0)),
+    "rally": (AX + "taunt chest thump.fbx", dict(ONI_W, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (AX + "react large from right.fbx", dict(ONI_W, kind="flinch")),
+    "stagger": (MU + "mutant dying.fbx", dict(ONI_W, kind="flinch", cut=70)),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -158,7 +175,7 @@ JOROGUMO = {
     "stagger": (MG + "Standing React Large From Front.fbx", dict(JORO, kind="flinch", legs="stagger")),
 }
 
-FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO}
+FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO, "oni": ONI}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")
@@ -167,7 +184,7 @@ SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k i
 # The recovery each move has in the game at its base tempo (frames: logic/combat/frames.rs), and
 # the longest a clip's follow-through is kept against it: the rest of a long Mixamo settle is cut
 # off (the game would play it several times too fast), and the foe's feet take over in a crossfade.
-RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24}
+RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24, "kanabo": 52}
 TAIL = 2.2
 # The longest a reel's clip runs past its impact (a reel lasts 14 to 50 frames in the game).
 REEL_TAIL = 40

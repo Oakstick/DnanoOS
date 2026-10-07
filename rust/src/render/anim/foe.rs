@@ -36,8 +36,8 @@ const MAX_GAIT_RATE: f32 = 1.8;
 /// A move under way.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoeStrike {
-    /// Its clip.
-    pub clip: &'static str,
+    /// Its clip: its own (by the move's name), or failing that its kind's (a slam, a bite).
+    pub clips: [&'static str; 2],
     /// Seconds into the move (its fighter's frame).
     pub t: f32,
     /// Its phases' ends in seconds: 0, the startup's end, the active frames' end, the recovery's end.
@@ -192,7 +192,7 @@ impl FoeAnimator {
 
         // The state: a strike, a reel played whole, or its feet.
         let body = if let Some(s) = d.strike {
-            let Some(clip) = clips.get(s.clip) else { return false };
+            let Some(clip) = s.clips.iter().find_map(|n| clips.get(n)) else { return false };
             let m: Vec<f32> = ["windup_end", "active_end", "recover_end"]
                 .iter()
                 .zip([0.3, 0.45, 1.0])
@@ -296,7 +296,7 @@ mod tests {
         }
         // A slam of 24, 6 and 30 frames: its first frame is the clip's first, no blend from the idle.
         let bounds = [0.0, 24.0 / 60.0, 30.0 / 60.0, 60.0 / 60.0];
-        let strike = |t: f32| FoeDrive { strike: Some(FoeStrike { clip: "slam", t, bounds, serial: 1 }), ..d };
+        let strike = |t: f32| FoeDrive { strike: Some(FoeStrike { clips: ["slam", "slam"], t, bounds, serial: 1 }), ..d };
         a.step(&c, &HUMANOID, &strike(0.0), &mut out);
         assert!(spine(&out).abs() < 1e-4, "{}", spine(&out));
         // The startup's last frame shows the clip's wind-up end (frame 12 of 40: 0.3 of the turn).
@@ -344,7 +344,8 @@ mod tests {
         let mut out = Vec::new();
         let d = FoeDrive { dt: DT, ..Default::default() };
         assert!(a.step(&c, &HUMANOID, &d, &mut out));
-        let sweep = FoeDrive { strike: Some(FoeStrike { clip: "sweep", t: 0.0, bounds: [0.0, 0.3, 0.4, 0.8], serial: 2 }), ..d };
+        let sweep =
+            FoeDrive { strike: Some(FoeStrike { clips: ["sweep", "sweep"], t: 0.0, bounds: [0.0, 0.3, 0.4, 0.8], serial: 2 }), ..d };
         assert!(!a.step(&c, &HUMANOID, &sweep, &mut out));
         // A stagger without its own clip plays the flinch whole; with one, its own.
         assert!(a.step(&c, &HUMANOID, &FoeDrive { reel: Some((FoeReel::Stagger, 1.0)), ..d }, &mut out));
