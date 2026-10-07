@@ -201,6 +201,43 @@ KARAKONCOLOS = {
     "stagger": (AX + "react large from left.fbx", dict(kind="flinch")),
 }
 
+# ------------------------------------------------------------------ the sixth stage
+
+# Tepegoz: the creature pack slowed for a giant (half again as long), his feet planted.
+TEPEGOZ = {
+    "idle": (MU + "mutant breathing idle.fbx", dict(loop=True, slow=1.5)),
+    "walk": (MU + "mutant walking.fbx", dict(loop=True, stride="feet", slow=1.5)),
+    "slam": (MU + "mutant jump attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0, slow=1.3)),
+    "sweep": (MU + "mutant swiping.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), slow=1.3)),
+    "rally": (MU + "mutant roaring.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), slow=1.3)),
+    "hit": (AX + "react large gut.fbx", dict(kind="flinch", slow=1.4)),
+    "stagger": (AX + "react large from right.fbx", dict(kind="flinch", slow=1.4)),
+}
+# The gashadokuro: the zombie's two-handed seizing for its grab, its jaw keyed (`block_stage6`).
+GJAW = ("block_stage6", "GashaJaw")
+GASHADOKURO = {
+    "idle": (Z + "idle.fbx", dict(loop=True, slow=1.5, lay=GJAW + ("idle", ["jaw"], 120, True))),
+    "walk": (Z + "walk.fbx", dict(loop=True, stride="feet", slow=1.5, lay=GJAW + ("idle", ["jaw"], 120, True))),
+    "grab": (Z + "attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), slow=1.2, lay=GJAW + ("grab", ["jaw"], 92, False))),
+    "slam": (MU + "jump attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), still=True, yaw_keep=0.0, face=0.0, slow=1.3,
+                                          lay=GJAW + ("slam", ["jaw"], 96, False))),
+    "sweep": (AX + "melee attack 360 low.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), yaw_keep=0.0, face=0.0, slow=1.3,
+                                                    lay=GJAW + ("slam", ["jaw"], 96, False))),
+    "rally": (Z + "scream.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 0.0, 1.0), slow=1.3, lay=GJAW + ("rally", ["jaw"], 77, False))),
+    "hit": (FX + "zombie reaction hit flinch.fbx", dict(kind="flinch", cut=60, slow=1.3)),
+    "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(kind="flinch", cut=100, slow=1.3)),
+}
+# The goryo: a ghost, its arms held out before it (the magic pack's guard), the storm called down
+# with both hands.
+GORYO = {
+    "idle": (MG + "Standing Block Idle.fbx", dict(loop=True)),
+    "walk": (MG + "Standing Block Idle.fbx", dict(loop=True, stride=1.0)),
+    "thunder": (MG + "Standing 2H Magic Attack 03.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "rally": (MG + "Standing 2H Magic Area Attack 02.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "hit": (MG + "Standing React Small From Front.fbx", dict(kind="flinch")),
+    "stagger": (MG + "Standing React Large From Back.fbx", dict(kind="flinch")),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -221,7 +258,8 @@ JOROGUMO = {
 }
 
 FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO, "oni": ONI,
-        "albasti": ALBASTI, "cin": CIN, "arcura": ARCURA, "karakoncolos": KARAKONCOLOS}
+        "albasti": ALBASTI, "cin": CIN, "arcura": ARCURA, "karakoncolos": KARAKONCOLOS,
+        "tepegoz": TEPEGOZ, "gashadokuro": GASHADOKURO, "goryo": GORYO}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")
@@ -230,8 +268,12 @@ SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k i
 # The recovery each move has in the game at its base tempo (frames: logic/combat/frames.rs), and
 # the longest a clip's follow-through is kept against it: the rest of a long Mixamo settle is cut
 # off (the game would play it several times too fast), and the foe's feet take over in a crossfade.
-RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24, "kanabo": 52, "smokeless": 30, "roots": 30, "call": 12}
+RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24, "kanabo": 52, "smokeless": 30, "roots": 30, "call": 12,
+            "grab": 44, "thunder": 32, "frost_slam": 44, "raise": 40}
 TAIL = 2.2
+# The moves' frame data at the base tempo (startup, active, recovery), for fitting keyed bones to a
+# clip's markers.
+RECOVERY_FD = {"slam": (42, 6, 48), "sweep": (30, 8, 36), "grab": (40, 8, 44), "thunder": (40, 1, 32), "rally": (40, 1, 36)}
 # The longest a reel's clip runs past its impact (a reel lasts 14 to 50 frames in the game).
 REEL_TAIL = 40
 
@@ -254,23 +296,30 @@ def shorten(slot, act):
 
 
 def lay_legs(tgt, act, which):
-    """Lays the jorogumo's keyed legs (`block_foe.Jorogumo.<which>`) under `act`: a loop as many whole
-    cycles of them as fit its length (its stride theirs times as many), a move or a reel fitted
-    piecewise to its markers (the wind-up's end to the wind-up's end, and so on)."""
+    """The jorogumo's keyed legs (`block_foe.Jorogumo.<which>`) laid under `act` (`lay`)."""
     import block_foe as bf
 
-    j = bf.Jorogumo()
     keyed = {"idle": (120, True), "walk": (40, True), "hex": (sum(bf.HEX), False), "rally": (sum(bf.RALLY), False),
              "hit": (24, False), "stagger": (48, False)}
     n_k, loop = keyed[which]
-    fd = {"hex": bf.HEX, "rally": bf.RALLY}.get(which)
+    lay(tgt, act, bf.Jorogumo(), which, SPIDER, n_k, loop, {"hex": bf.HEX, "rally": bf.RALLY}.get(which), stride_per_cycle=1.0 if which == "walk" else None)
+
+
+def lay(tgt, act, keyed, which, bones, n_k, loop, fd=None, stride_per_cycle=None):
+    """Lays bones keyed by script (`getattr(keyed, which)(frame)`, a pose of `n_k` frames) under
+    Mixamo's clip `act`: a loop as many whole cycles of them as fit its length (its stride theirs
+    times as many), a move or a reel fitted piecewise to its markers (the wind-up's end to the wind-up's
+    end, and so on, where `fd` gives the move's frames), else stretched to its length. Only `bones`
+    are keyed (their root's place too, if it is among them)."""
+    import block_foe as bf
+
     n = int(act.frame_range[1])
     marks = {m.name: m.frame for m in act.pose_markers}
     if loop:
         cycles = max(1, round(n / n_k))
         at = lambda f: (f * n_k * cycles / n) % n_k  # noqa: E731
-        if which == "walk":
-            act["vh_stride"] = 1.0 * cycles
+        if stride_per_cycle:
+            act["vh_stride"] = stride_per_cycle * cycles
     elif fd and "windup_end" in marks:
         src = [0, marks["windup_end"], marks["active_end"], n]
         dst = [0, fd[0], fd[0] + fd[1], n_k]
@@ -283,19 +332,20 @@ def lay_legs(tgt, act, which):
             return n_k
     else:
         at = lambda f: f * n_k / n  # noqa: E731
+    root = vh.root_of(tgt)
     tgt.animation_data.action = act
     for f in range(n + 1):
-        pose = getattr(j, which)(at(f))
-        for b in SPIDER:
-            vh.set_local(tgt, b, pose.get(b, bf.Quaternion()), pose.get("loc", (0, 0, 0)) if b == "carapace" else None)
+        pose = getattr(keyed, which)(at(f))
+        for b in bones:
+            vh.set_local(tgt, b, pose.get(b, bf.Quaternion()), pose.get("loc", (0, 0, 0)) if b == root else None)
             pb = tgt.pose.bones[b]
             pb.keyframe_insert("rotation_quaternion", frame=f)
-            if b == "carapace":
+            if b == root:
                 pb.keyframe_insert("location", frame=f)
     for fc in vh.fcurves(act):
         for kp in fc.keyframe_points:
             kp.interpolation = "LINEAR"
-    print(f"mixamo_foe: {act.name}: her legs' {which} laid under it")
+    print(f"mixamo_foe: {act.name}: {', '.join(bones)} laid in from {type(keyed).__name__}.{which}")
 
 
 def label_of(path):
@@ -367,6 +417,11 @@ def main():
             shorten(slot, act)
             if opts.get("legs"):
                 lay_legs(tgt, act, opts["legs"])
+            if opts.get("lay"):
+                # (Bones the source has none of, keyed by script: `(module, class, method, bones, frames, loop)`.)
+                mod, cls, which, bones, n_k, loop = opts["lay"]
+                keyed = getattr(__import__(mod), cls)()
+                lay(tgt, act, keyed, which, bones, n_k, loop, RECOVERY_FD.get(slot))
         if (not only or "deflected" in only) and "stagger" in bpy.data.actions and "deflected" not in FOES[foe]:
             deflected(tgt)
     bpy.context.scene.render.fps = vh.FPS

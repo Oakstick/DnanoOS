@@ -282,7 +282,7 @@ def make(slot, path, opts, tgt, prefix="mixamo_hero"):
     if "span" in opts:
         f0 = int(src.animation_data.action.frame_range[0])
         frames = (f0 + round(opts["span"][0] * fps), f0 + round(opts["span"][1] * fps))
-    act = rt.bake(r, slot, loop=opts.get("loop", False), stride=None if opts.get("stride") == "feet" else opts.get("stride"), fps_src=fps, frames=frames, still=opts.get("still", False))
+    act = rt.bake(r, slot, loop=opts.get("loop", False), stride=None if opts.get("stride") == "feet" else opts.get("stride"), fps_src=fps / opts.get("slow", 1.0), frames=frames, still=opts.get("still", False))
     # (The source and its own action go: only his is kept.)
     for o in [o for o in bpy.data.objects if o.parent == src] + [src]:
         bpy.data.objects.remove(o)

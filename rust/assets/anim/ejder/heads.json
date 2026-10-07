@@ -1,0 +1,11 @@
+{
+ "clip": "heads",
+ "fps": 60,
+ "frames": 88,
+ "loop": false,
+ "markers": {
+  "windup_end": 30,
+  "active_end": 54,
+  "recover_end": 88
+ }
+}

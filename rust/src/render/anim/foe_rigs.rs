@@ -46,10 +46,14 @@ pub enum FoeRig {
     Cin,
     Arcura,
     Karakoncolos,
+    Tepegoz,
+    Gashadokuro,
+    Ejder,
+    Goryo,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 24;
+    pub const COUNT: usize = 28;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
@@ -76,6 +80,10 @@ impl FoeRig {
         FoeRig::Cin,
         FoeRig::Arcura,
         FoeRig::Karakoncolos,
+        FoeRig::Tepegoz,
+        FoeRig::Gashadokuro,
+        FoeRig::Ejder,
+        FoeRig::Goryo,
     ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
@@ -105,6 +113,10 @@ impl FoeRig {
             FoeRig::Cin => "cin",
             FoeRig::Arcura => "arcura",
             FoeRig::Karakoncolos => "karakoncolos",
+            FoeRig::Tepegoz => "tepegoz",
+            FoeRig::Gashadokuro => "gashadokuro",
+            FoeRig::Ejder => "ejder",
+            FoeRig::Goryo => "goryo",
         }
     }
 
@@ -136,6 +148,10 @@ impl FoeRig {
             EnemyKind::Cin => FoeRig::Cin,
             EnemyKind::Arcura => FoeRig::Arcura,
             EnemyKind::Karakoncolos => FoeRig::Karakoncolos,
+            EnemyKind::Tepegoz => FoeRig::Tepegoz,
+            EnemyKind::Gashadokuro => FoeRig::Gashadokuro,
+            EnemyKind::Ejder => FoeRig::Ejder,
+            EnemyKind::Goryo => FoeRig::Goryo,
             _ => return None,
         })
     }
@@ -175,6 +191,10 @@ impl FoeRig {
             FoeRig::Cin => super::foe_stage5::cin(),
             FoeRig::Arcura => super::foe_stage5::arcura(),
             FoeRig::Karakoncolos => super::foe_stage5::karakoncolos(),
+            FoeRig::Tepegoz => super::foe_stage6::tepegoz(),
+            FoeRig::Gashadokuro => super::foe_stage6::gashadokuro(),
+            FoeRig::Ejder => super::foe_stage6::ejder(),
+            FoeRig::Goryo => super::foe_stage6::goryo(),
         }
     }
 
@@ -206,6 +226,10 @@ impl FoeRig {
             FoeRig::Cin => (crate::render::foes5::CIN_SIZE, 0.0125),
             FoeRig::Arcura => (crate::render::foes5::ARCURA_SIZE, 0.0125),
             FoeRig::Karakoncolos => (crate::render::foes5::KARAKONCOLOS_SIZE, 0.013),
+            FoeRig::Tepegoz => (crate::render::foes6::TEPEGOZ_SIZE, 0.02),
+            FoeRig::Gashadokuro => (crate::render::foes6::GASHADOKURO_SIZE, 0.025),
+            FoeRig::Ejder => (crate::render::foes6::EJDER_SIZE, 0.018),
+            FoeRig::Goryo => (crate::render::foes6::GORYO_SIZE, 0.0125),
         }
     }
 
@@ -239,6 +263,10 @@ impl FoeRig {
             FoeRig::Cin => build_rig(&crate::render::foes5::cin(), crate::render::foes5::CIN_RIG, size),
             FoeRig::Arcura => build_rig(&crate::render::foes5::arcura(), crate::render::foes5::ARCURA_RIG, size),
             FoeRig::Karakoncolos => build_rig(&crate::render::foes5::karakoncolos(), crate::render::foes5::KARAKONCOLOS_RIG, size),
+            FoeRig::Tepegoz => build_rig(&crate::render::foes6::tepegoz(), crate::render::foes6::TEPEGOZ_RIG, size),
+            FoeRig::Gashadokuro => build_rig(&crate::render::foes6::gashadokuro(), crate::render::foes6::GASHADOKURO_RIG, size),
+            FoeRig::Ejder => build_rig(&crate::render::foes6::ejder(), crate::render::foes6::EJDER_RIG, size),
+            FoeRig::Goryo => build_rig(&crate::render::foes6::goryo(), crate::render::foes6::GORYO_RIG, size),
         })
     }
 
@@ -696,6 +724,10 @@ mod tests {
             FoeRig::Cin => &["smokeless"],
             FoeRig::Arcura => &["roots"],
             FoeRig::Karakoncolos => &["call", "slam", "sweep"],
+            FoeRig::Tepegoz => &["slam", "sweep"],
+            FoeRig::Gashadokuro => &["grab", "slam", "sweep"],
+            FoeRig::Ejder => &["heads"],
+            FoeRig::Goryo => &["thunder"],
             _ => &["bite", "rally"],
         }
     }
