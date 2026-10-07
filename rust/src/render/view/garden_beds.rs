@@ -60,10 +60,10 @@ const HEDGE_T: f32 = 0.42;
 const BED: f32 = 0.05;
 /// How far a bed's soil is heaped inside its yew.
 const BED_RISE: f32 = 0.2;
-/// The lawn along a walk, from the hedge's foot (a 2-tile walk keeps a little over half its
+/// The lawn along a walk, from the hedge's foot (a 2-tile walk keeps under half its
 /// width in gravel), and its darker strip in the hedge's shadow.
-const VERGE: f32 = 0.42;
-const FOOT: f32 = 0.13;
+const VERGE: f32 = 0.55;
+const FOOT: f32 = 0.12;
 
 /// Turf in one of its tones, picked by `k`.
 fn turf(k: f32) -> Vec3 {
@@ -681,7 +681,7 @@ impl WorldView {
                         at(0.0, 0.0, 0.5 - FOOT - (VERGE - FOOT) / 2.0),
                         Vec3::new(1.0, 0.05, VERGE - FOOT),
                         turn,
-                        turf(k),
+                        turf(k) * 1.15,
                         SHADE_GRASS,
                     );
                     block(
