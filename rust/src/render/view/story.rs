@@ -1190,94 +1190,7 @@ impl WorldView {
     }
 
     // --------------------------------------------------------- the camera
-
-    /// The story's camera for this moment: where it is, what it looks at, and what is in focus.
-    pub(super) fn story_camera(&self, sv: StoryView) -> (Vec3, Vec3, Vec3) {
-        let t = sv.t;
-        let (g, d) = (GRAVEYARD, GATEWAY);
-        let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
-        let lerp3 = |a: Vec3, b: Vec3, u: f32| a.lerp(b, u);
-        // Held by hand: a slow drift that never quite settles.
-        let sway = v((sv.age * 0.53).sin() * 0.018, (sv.age * 0.71).sin() * 0.012, (sv.age * 0.37).cos() * 0.01);
-        let crane_from = (g + v(4.8, 6.4, 9.6), g + v(0.0, 1.3, -6.0));
-        let (eye, look, focus) = match sv.shot() {
-            Shot::Embrace | Shot::Light | Shot::Rise | Shot::White | Shot::Words | Shot::Credits => self.ascent_camera(sv),
-            Shot::Title => (crane_from.0, crane_from.1, g + v(0.0, 0.5, 0.0)),
-            Shot::Establish => {
-                if t < stage::MISKICK + 0.35 {
-                    // Down from over the graves to the friends at their game, faces lit by the lantern.
-                    let u = smooth(0.0, 4.2, t);
-                    let eye = lerp3(crane_from.0, g + v(2.35, 0.95, 3.7), u);
-                    let look = lerp3(crane_from.1, g + v(-0.2, 0.5, 1.35), u);
-                    (eye, look, g + v(-0.1, 0.4, 1.5))
-                } else {
-                    // The ball rolls away through the gate; one of them runs after it.
-                    let w = smooth(stage::MISKICK + 0.35, stage::AT_GATE + 0.3, t);
-                    (lerp3(g + v(2.9, 1.2, 2.05), g + v(2.45, 1.1, 1.3), w), g + v(-0.05, 0.72, -1.7), g + GATE_SPOT + v(0.0, 0.5, 0.0))
-                }
-            }
-            Shot::Taken => {
-                if t < stage::GRAB {
-                    let u = smooth(0.0, stage::GRAB, t);
-                    (lerp3(g + v(1.6, 1.15, 2.4), g + v(1.3, 1.05, 1.7), u), g + v(0.12, 0.95, -2.9), g + v(0.12, 1.0, -2.6))
-                } else if t < stage::TURN + 0.25 {
-                    // Low, looking up at him with the boy in his claws.
-                    let u = smooth(stage::GRAB, stage::TURN + 0.25, t);
-                    (g + v(0.62, 0.62, 0.55) + v(-u * 0.08, 0.02 * u, -u * 0.2), g + v(0.05, 1.05, -2.0), g + v(0.1, 1.3, -2.1))
-                } else {
-                    let u = smooth(stage::TURN + 0.25, 4.6, t);
-                    (lerp3(g + v(0.9, 1.0, 2.6), g + v(0.75, 1.1, 2.2), u), g + v(0.25, 0.9, -3.8), g + v(0.3, 0.8, -4.5))
-                }
-            }
-            Shot::Scream => (g + v(0.28, 0.62, -0.72), g + v(-0.05, 0.52, 1.55), g + v(0.0, 0.5, 1.5)),
-            Shot::Pursuit => {
-                let u = smooth(0.0, stage::FLASH + 0.4, t);
-                (lerp3(g + v(0.3, 1.05, 3.9), g + v(0.1, 1.1, -0.2), u), g + v(0.0, 0.85, -4.8), g + v(0.0, 0.6, -2.5 - u * 2.0))
-            }
-            Shot::Arrive => {
-                if t < stage::REVEAL {
-                    (d + v(1.1, 1.05, -0.7), d + v(0.0, 0.75, 3.2), d + v(0.0, 0.5, 2.4))
-                } else {
-                    let u = smooth(stage::REVEAL, 5.6, t);
-                    (lerp3(d + v(-0.1, 1.28, 3.55), d + v(-0.05, 1.22, 3.15), u), d + v(0.05, 0.8, -2.5), d + v(0.0, 0.8, -2.2))
-                }
-            }
-            // Side on: straining at the end of his chain, lunging at the boys off to the left.
-            Shot::Snarl => (d + v(0.62, 0.78, -2.3) + v(0.0, 0.0, t.min(4.0) * 0.03), d + v(-1.5, 0.5, -0.95), d + v(-1.45, 0.62, -1.0)),
-            Shot::Easy => (d + v(0.55, 0.95, 0.95), d + v(-0.2, 0.62, -2.15), d + OLD_MAN_AT + v(0.0, 0.9, 0.0)),
-            Shot::OldMan | Shot::Promise => {
-                let (eye, look) = if sv.shot() == Shot::OldMan && sv.said_before(Speaker::OldMan) % 2 == 1 {
-                    (d + v(0.55, 1.12, -0.45), d + OLD_MAN_AT + v(0.0, 0.98, 0.0))
-                } else {
-                    (d + v(2.4, 1.05, -0.55), d + OLD_MAN_AT + v(-0.05, 0.95, 0.0))
-                };
-                let push = 1.0 - 0.08 * smooth(0.0, 6.0, t);
-                (look + (eye - look) * push, look, d + OLD_MAN_AT + v(0.0, 0.95, 0.0))
-            }
-            Shot::Boys => {
-                let (eye, look) = if sv.said_before(Speaker::Boys).is_multiple_of(2) {
-                    (d + v(0.72, 0.82, -0.4), d + v(0.05, 0.48, 1.7))
-                } else {
-                    (d + v(-0.6, 0.78, -0.25), d + v(0.1, 0.5, 1.75))
-                };
-                let push = 1.0 - 0.06 * smooth(0.0, 5.0, t);
-                (look + (eye - look) * push, look, d + BOYS_MID + v(0.0, 0.5, 0.0))
-            }
-            Shot::Souls => {
-                let u = smooth(0.0, 8.0, t);
-                (lerp3(d + v(0.1, 1.3, 3.75), d + v(0.05, 1.25, 3.2), u), d + v(0.0, 1.0, -2.3), d + v(0.0, 0.9, -2.6))
-            }
-            Shot::Descent => {
-                let u = smooth(stage::WALK, stage::WALK + 9.0, t);
-                (
-                    lerp3(d + v(0.0, 1.3, 3.85), d + v(0.0, 1.25, 1.2), u),
-                    lerp3(d + v(0.0, 0.6, -2.2), d + v(0.0, 0.2, -5.0), u),
-                    d + v(0.0, 0.7, 0.4).lerp(d + v(0.0, 0.8, -3.2), u),
-                )
-            }
-        };
-        (eye + sway, look + sway * 0.5, focus)
-    }
+    // (Scene I's camera is in story_camera.rs, framing the cast by `marks`.)
 
     /// The part of the world the shadow map covers during the story.
     pub(super) fn story_shadow_box(&self, sv: StoryView) -> (Vec3, f32) {
@@ -1287,6 +1200,26 @@ impl WorldView {
             Place::Pit => self.ascent_shadow_box(sv),
         }
     }
+}
+
+/// Where the cast stands and moves, for the camera (story_camera.rs) to frame them by.
+pub(super) mod marks {
+    use super::Vec3;
+    pub(in crate::render::view) const KID_HOME: [Vec3; 4] = super::KID_HOME;
+    pub(in crate::render::view) const GATE_SPOT: Vec3 = super::GATE_SPOT;
+    pub(in crate::render::view) const PASSES: [(usize, usize); 5] = super::PASSES;
+    pub(in crate::render::view) const BALL_REST: Vec3 = super::BALL_REST;
+    pub(in crate::render::view) const BALL_R: f32 = super::BALL_R;
+    pub(in crate::render::view) const K_FOG: Vec3 = super::K_FOG;
+    pub(in crate::render::view) const K_GATE: Vec3 = super::K_GATE;
+    pub(in crate::render::view) const K_GRAB: Vec3 = super::K_GRAB;
+    pub(in crate::render::view) const K_GONE: Vec3 = super::K_GONE;
+    pub(in crate::render::view) const LAND: [Vec3; 3] = super::LAND;
+    pub(in crate::render::view) const OLD_MAN_AT: Vec3 = super::OLD_MAN_AT;
+    pub(in crate::render::view) const DOG_BED: Vec3 = super::DOG_BED;
+    pub(in crate::render::view) const DOG_LUNGE: Vec3 = super::DOG_LUNGE;
+    pub(in crate::render::view) const SOUL_AT: [Vec3; 3] = super::SOUL_AT;
+    pub(in crate::render::view) const BOYS_MID: Vec3 = super::BOYS_MID;
 }
 
 /// One leaf of the graveyard gate, from its hinge (at x = 0) out to the latch: bars with spear
