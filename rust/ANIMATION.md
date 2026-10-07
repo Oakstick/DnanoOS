@@ -1021,7 +1021,7 @@ his clips through the whole of the gateway, his hips on its cushion whichever wa
 seat measured from `sit_idle`'s first frame), until he rises to see the boys off. Mixamo's seated
 clips are retargeted facing forward (`face=0`); his staff stands upright in his fist; he stays warm
 and slow, never a sharp move. His two close shots (`Shot::OldMan`, `Shot::Promise`) follow him onto
-the stool (their eye and aim lowered 0.17 and moved 0.25 back with him) when his clips play; under
+the stool (their aim turned onto the stool and lowered 0.17, the eye dipped 0.1; the eye stays where it was, clear of the set) when his clips play; under
 `VH_ANIM=code` he stands where he stood and they are as they were.
 
 | Moment | Clip (source) |

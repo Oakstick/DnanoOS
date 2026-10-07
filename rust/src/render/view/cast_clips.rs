@@ -6,7 +6,7 @@
 //! staff held upright, a scarf and a beard hanging and swinging after the body). The code's poses stay
 //! the fallback (`VH_ANIM=code`, a clip missing) and the comparison (`--anim-compare`).
 
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
 use super::story::Act;
 use super::*;
@@ -33,6 +33,22 @@ pub(super) struct CastAnims {
 pub(super) fn heading(q: Quat) -> Quat {
     let f = q * Vec3::Z;
     Quat::from_rotation_y(f.x.atan2(f.z))
+}
+
+/// The head's turn about the upright away from the chest's, in radians (toward its left).
+fn head_yaw(pose: &Delta, def: &SkeletonDef) -> f32 {
+    let (Some(chest), Some(head)) = (def.index("chest"), def.index("head")) else { return 0.0 };
+    let (c, h) = (pose.rot[chest] * Vec3::Z, pose.rot[head] * Vec3::Z);
+    let d = h.x.atan2(h.z) - c.x.atan2(c.z);
+    (d + PI).rem_euclid(TAU) - PI
+}
+
+/// Turns the head to look `yaw` radians from the chest's heading (toward its left) and `pitch`
+/// down, taking back `steady` of the clip's own turn of it first (a speaker who in his clip talks
+/// to someone at his side looks where the story looks).
+pub(super) fn look_steady(pose: &mut Delta, def: &SkeletonDef, yaw: f32, pitch: f32, steady: f32) {
+    let own = head_yaw(pose, def);
+    look(pose, def, yaw - own * steady, pitch);
 }
 
 /// Turns the head `yaw` (toward its left) and `pitch` (down) radians in the body, the neck taking
@@ -128,7 +144,9 @@ impl WorldView {
             Act::Yell(_) => -0.2,
             _ => 0.0,
         };
-        let Some((rig, mats)) = self.cast_mats(CastRig::Kid(which.min(3) as u8), &play, time, |pose, def| look(pose, def, look_yaw, pitch))
+        let steady = if matches!(act, Act::Talk(_) | Act::Stand | Act::Scared(_) | Act::Nod(..)) { 0.6 } else { 0.0 };
+        let Some((rig, mats)) =
+            self.cast_mats(CastRig::Kid(which.min(3) as u8), &play, time, |pose, def| look_steady(pose, def, look_yaw, pitch, steady))
         else {
             return false;
         };

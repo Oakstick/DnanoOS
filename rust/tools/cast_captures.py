@@ -29,7 +29,7 @@ MOMENTS = [
     ("12_fall", "beat:5:0.55", "the fall through, tumbling out"),
     ("13_landing", "beat:5:1.2", "the hard landing"),
     ("14_getting_up", "beat:5:2.3", "picking themselves up"),
-    ("15_dog_wakes", "beat:5:2.5", "the old man dozing; the dog rising"),
+    ("15_dog_wakes", "beat:5:3.05", "the old man dozing; the dog rising"),
     ("16_dog_lunge", "beat:6:1.0", "the dog's lunge, the boys backing away"),
     ("17_calming", "beat:7:0.9", "\"Easy, Quitmer\": his hand out to the dog"),
     ("18_dog_down", "beat:7:2.6", "the dog lying down again"),

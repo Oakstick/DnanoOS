@@ -1246,7 +1246,7 @@ impl WorldView {
         let breathe = (time * 1.6).sin();
         let play = cast_clips::old_man_play(act, time);
         let Some((jr, mats)) = self.cast_mats(c, &play, time, |pose, def| {
-            cast_clips::look(pose, def, head, 0.55 * doze + breathe * 0.02 * doze);
+            cast_clips::look_steady(pose, def, head, 0.55 * doze + breathe * 0.02 * doze, 0.75);
             // His staff stands upright in his fist, leaning a little out from him.
             if let (Some(b), Some(ch)) = (def.index("blade"), def.index("chest")) {
                 pose.rot[b] = cast_clips::heading(pose.rot[ch]) * Quat::from_rotation_z(-0.07);
@@ -1468,16 +1468,16 @@ impl WorldView {
             Shot::Snarl => (d + v(0.62, 0.78, -2.3) + v(0.0, 0.0, t.min(4.0) * 0.03), d + v(-1.5, 0.5, -0.95), d + v(-1.45, 0.62, -1.0)),
             Shot::Easy => (d + v(0.55, 0.95, 0.95), d + v(-0.2, 0.62, -2.15), d + OLD_MAN_AT + v(0.0, 0.9, 0.0)),
             Shot::OldMan | Shot::Promise => {
-                // (Seated on his stool by his clips, he is lower and a little back: the shot follows.)
+                // (Seated on his stool by his clips, he is lower and a little back: the shot turns and dips to him.)
                 let om = if self.anim_mode == crate::render::anim::library::Mode::Code {
                     OLD_MAN_AT
                 } else {
-                    story_sets::STOOL + v(-0.04, -0.17, 0.12)
+                    story_sets::STOOL + v(0.0, -0.17, 0.0)
                 };
                 let (eye, look) = if sv.shot() == Shot::OldMan && sv.said_before(Speaker::OldMan) % 2 == 1 {
-                    (d + v(0.55, 1.12, -0.45) + (om - OLD_MAN_AT), d + om + v(0.0, 0.98, 0.0))
+                    (d + v(0.55, 1.12 + (om.y - OLD_MAN_AT.y) * 0.6, -0.45), d + om + v(0.0, 0.98, 0.0))
                 } else {
-                    (d + v(2.4, 1.05, -0.55) + (om - OLD_MAN_AT), d + om + v(-0.05, 0.95, 0.0))
+                    (d + v(2.4, 1.05 + (om.y - OLD_MAN_AT.y) * 0.6, -0.55), d + om + v(-0.05, 0.95, 0.0))
                 };
                 let push = 1.0 - 0.08 * smooth(0.0, 6.0, t);
                 (look + (eye - look) * push, look, d + om + v(0.0, 0.95, 0.0))
