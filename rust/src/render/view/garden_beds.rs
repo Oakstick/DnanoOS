@@ -23,10 +23,10 @@ use super::*;
 pub(super) mod pal {
     /// Clipped yew: a deep blue-green, darkest at the base where the light never reaches, the
     /// clipped top a little paler where the moon lies on it.
-    pub const YEW: [u32; 3] = [0x29472a, 0x31532f, 0x253f26];
-    pub const YEW_TOP: [u32; 2] = [0x48683a, 0x415f35];
+    pub const YEW: [u32; 3] = [0x26402b, 0x2c4930, 0x223a28];
+    pub const YEW_TOP: [u32; 2] = [0x415c38, 0x3b5534];
     /// The new growth at the tips, which catches the lanterns.
-    pub const YEW_TIP: u32 = 0x5e7e40;
+    pub const YEW_TIP: u32 = 0x53703e;
     pub const YEW_BASE: u32 = 0x15231a;
     /// Turf in the board's moss and olive, and the beds' dark earth.
     pub const TURF: [u32; 3] = [0x4c7a2e, 0x588834, 0x446e2c];
@@ -58,6 +58,8 @@ pub(super) const HEDGE_H: f32 = 0.58;
 const HEDGE_T: f32 = 0.42;
 /// A bed's earth stands this far over its tile's floor.
 const BED: f32 = 0.05;
+/// How far a bed's soil is heaped inside its yew.
+const BED_RISE: f32 = 0.2;
 /// The lawn along a walk, from the hedge's foot (a 2-tile walk keeps a little over half its
 /// width in gravel), and its darker strip in the hedge's shadow.
 const VERGE: f32 = 0.42;
@@ -880,6 +882,22 @@ impl WorldView {
             }
         }
         let span = hi - lo;
+        // The bed inside the yew is raised, its soil heaped up toward the hedge's shoulders, so
+        // from the chase camera it reads full, not as a pit in the yew.
+        let c = if shrine.is_none() {
+            let mid = (lo + hi) / 2.0;
+            block(
+                out,
+                c + Vec3::new(mid.x, BED_RISE / 2.0, mid.y),
+                Vec3::new(span.x, BED_RISE, span.y),
+                0.0,
+                ground * 1.05,
+                if grass { SHADE_GRASS } else { SHADE_LIT },
+            );
+            c + Vec3::Y * BED_RISE
+        } else {
+            c
+        };
         if planted {
             planting(out, c, lo, span, (hx, hy));
             return;
