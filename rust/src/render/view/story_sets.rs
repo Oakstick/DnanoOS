@@ -1601,3 +1601,16 @@ pub(super) fn graveyard_mist() -> Vec<Instance> {
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_sets_stay_within_their_cube_budget() {
+        // Each set is drawn whole every frame (and into the shadow maps): keep it in bounds.
+        let (graveyard, gateway) = (graveyard_set().len(), gateway_set().len());
+        eprintln!("story sets: graveyard {graveyard} cubes, gateway {gateway}");
+        assert!(graveyard < 30_000 && gateway < 12_000, "graveyard {graveyard}, gateway {gateway}");
+    }
+}
