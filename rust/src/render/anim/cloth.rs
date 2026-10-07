@@ -7,7 +7,7 @@
 
 use glam::{Mat4, Vec3};
 
-use super::skeleton::{Bone, BONE_COUNT};
+use super::skeleton::Bone;
 use crate::logic::heroes::HeroKind;
 use crate::render::voxels::{lin, Rig, RigPart};
 
@@ -444,7 +444,7 @@ impl Cloth {
 }
 
 /// The matrices of the whole jointed rig: the skeleton's, then the cloak's patches.
-pub fn with_cloak(bones: &[Mat4; BONE_COUNT], cloak: Option<(&Cloth, &Cape)>, root: Mat4) -> Vec<Mat4> {
+pub fn with_cloak(bones: &[Mat4], cloak: Option<(&Cloth, &Cape)>, root: Mat4) -> Vec<Mat4> {
     let mut all = bones.to_vec();
     if let Some((cloth, cape)) = cloak {
         all.resize(cape.first(), Mat4::IDENTITY);
@@ -456,6 +456,7 @@ pub fn with_cloak(bones: &[Mat4; BONE_COUNT], cloak: Option<(&Cloth, &Cape)>, ro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::render::anim::skeleton::BONE_COUNT;
 
     /// The tests' cloak: a red sheet two voxels thick hanging down Ragnar's back from his
     /// shoulders to his knees, flaring toward the hem.

@@ -8,7 +8,7 @@
 
 use glam::{Mat4, Vec3};
 
-use super::skeleton::{BONES, BONE_COUNT, PARENTS};
+use super::skeleton::{SkeletonDef, BONE_COUNT, HUMANOID};
 use crate::render::voxels::Rig;
 
 /// The six faces' outward axes, as `voxels::RigMesh` numbers them, and two axes across each
@@ -53,9 +53,15 @@ fn floats(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
-/// The jointed rig `rig` (its parts in the order of `BONES`) as a GLB file.
+/// The jointed hero `rig` (its parts in the order of `BONES`) as a GLB file.
 pub fn rig_glb(rig: &Rig, name: &str) -> Vec<u8> {
-    assert_eq!(rig.parts.len(), BONE_COUNT, "a jointed rig has a part for every bone");
+    rig_glb_of(&HUMANOID, rig, name)
+}
+
+/// A jointed rig of skeleton `def` (its parts in the order of its bones) as a GLB file.
+pub fn rig_glb_of(def: &SkeletonDef, rig: &Rig, name: &str) -> Vec<u8> {
+    let (bone_n, names, parents) = (def.len(), def.bones, def.parents);
+    assert_eq!(rig.parts.len(), bone_n, "a jointed rig has a part for every bone");
     let mesh = rig.mesh();
     let h = rig.size / 2.0;
     let mut bin = Bin::default();
@@ -94,28 +100,28 @@ pub fn rig_glb(rig: &Rig, name: &str) -> Vec<u8> {
         let a_idx = bin.add(&ib, 34963, 5125, "SCALAR", idx.len(), None);
         meshes.push(format!(
             "{{\"name\":\"{}\",\"primitives\":[{{\"attributes\":{{\"POSITION\":{a_pos},\"NORMAL\":{a_nrm},\"COLOR_0\":{a_col},\"JOINTS_0\":{a_jnt},\"WEIGHTS_0\":{a_wgt}}},\"indices\":{a_idx},\"material\":0}}]}}",
-            BONES[b]
+            names[b]
         ));
         mesh_nodes.push((b, meshes.len() - 1));
     }
     // The bind: each joint's rest in the model, inverted (the bones are not turned at rest).
     let ibm: Vec<f32> = rig.parts.iter().flat_map(|p| Mat4::from_translation(-p.rest).to_cols_array()).collect();
-    let a_ibm = bin.add(&floats(&ibm), 0, 5126, "MAT4", BONE_COUNT, None);
+    let a_ibm = bin.add(&floats(&ibm), 0, 5126, "MAT4", bone_n, None);
 
     // Nodes: the bones first (each placed relative to its parent), then a node for each mesh.
     let mut nodes = Vec::new();
     for (b, part) in rig.parts.iter().enumerate() {
-        let t = part.rest - PARENTS[b].map(|p| rig.parts[p].rest).unwrap_or(Vec3::ZERO);
-        let children: Vec<String> = (0..BONE_COUNT).filter(|&c| PARENTS[c] == Some(b)).map(|c| c.to_string()).collect();
+        let t = part.rest - parents[b].map(|p| rig.parts[p].rest).unwrap_or(Vec3::ZERO);
+        let children: Vec<String> = (0..bone_n).filter(|&c| parents[c] == Some(b)).map(|c| c.to_string()).collect();
         let children = if children.is_empty() { String::new() } else { format!(",\"children\":[{}]", children.join(",")) };
-        nodes.push(format!("{{\"name\":\"{}\",\"translation\":[{},{},{}]{children}}}", BONES[b], t.x, t.y, t.z));
+        nodes.push(format!("{{\"name\":\"{}\",\"translation\":[{},{},{}]{children}}}", names[b], t.x, t.y, t.z));
     }
     let mut roots = vec!["0".to_string()];
     for (b, m) in &mesh_nodes {
         roots.push(nodes.len().to_string());
-        nodes.push(format!("{{\"name\":\"{}_voxels\",\"mesh\":{m},\"skin\":0}}", BONES[*b]));
+        nodes.push(format!("{{\"name\":\"{}_voxels\",\"mesh\":{m},\"skin\":0}}", names[*b]));
     }
-    let joints: Vec<String> = (0..BONE_COUNT).map(|b| b.to_string()).collect();
+    let joints: Vec<String> = (0..bone_n).map(|b| b.to_string()).collect();
     let json = format!(
         concat!(
             "{{\"asset\":{{\"version\":\"2.0\",\"generator\":\"Adventures of the Ancient Blades --export-rig\"}},",
@@ -139,14 +145,31 @@ pub fn rig_glb(rig: &Rig, name: &str) -> Vec<u8> {
     glb(json.into_bytes(), bin.data)
 }
 
-/// Writes hero `name`'s jointed rig (his first blade, his first shield on his arm) to `path`.
+/// Writes hero `name`'s jointed rig (his first blade, his first shield on his arm), or a foe's
+/// (`anim::foe_rigs`: `draugr`, `bat`, ... as their clips' folders are named), to `path`.
 pub fn export_rig(name: &str, path: &str) -> Result<String, String> {
     use crate::logic::heroes::HeroKind;
-    let hero = match name.to_ascii_lowercase().as_str() {
+    let lower = name.to_ascii_lowercase();
+    if let Some(foe) = super::foe_rigs::FoeRig::ALL.iter().find(|f| f.dir() == lower) {
+        let rig = foe.jointed();
+        let glb = rig_glb_of(foe.def(), &rig, &lower);
+        std::fs::write(path, &glb).map_err(|e| format!("{path}: {e}"))?;
+        let voxels: usize = rig.parts.iter().map(|p| p.cubes.len()).sum();
+        return Ok(format!(
+            "wrote {path}: {} bones, {voxels} voxels, {} faces, {} KB",
+            foe.def().len(),
+            rig.mesh().faces.len(),
+            glb.len() / 1024
+        ));
+    }
+    let hero = match lower.as_str() {
         "ragnar" => HeroKind::Ragnar,
         "mehmed" => HeroKind::Mehmed,
         "miyamoto" => HeroKind::Miyamoto,
-        other => return Err(format!("no hero {other}: ragnar, mehmed or miyamoto")),
+        other => {
+            let foes: Vec<&str> = super::foe_rigs::FoeRig::ALL.iter().map(|f| f.dir()).collect();
+            return Err(format!("no hero or foe {other}: ragnar, mehmed, miyamoto, {}", foes.join(", ")));
+        }
     };
     let rig =
         crate::render::view::jointed_hero(hero, 1, Some(1)).ok_or_else(|| format!("{name} has no joint table yet (anim::skeleton)"))?;
@@ -164,6 +187,9 @@ pub fn bench() -> String {
     let mut out = String::new();
     for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
         out += &bench_hero(hero);
+    }
+    for foe in super::foe_rigs::FoeRig::ALL {
+        out += &bench_foe(foe);
     }
     let bytes: usize = super::library::EMBEDDED.iter().map(|e| e.2.len() + e.3.len()).sum();
     out += &format!("embedded: {} clips, {} KB of GLB and JSON\n", super::library::EMBEDDED.len(), bytes / 1024);
@@ -227,6 +253,53 @@ fn bench_hero(hero: crate::logic::heroes::HeroKind) -> String {
     out
 }
 
+/// What a foe's clips cost: reading them (once), and a frame of its animator and its bones, timed
+/// over many frames of its gait, its moves and its reels.
+fn bench_foe(foe: super::foe_rigs::FoeRig) -> String {
+    use super::foe::{FoeAnimator, FoeDrive, FoeReel, FoeStrike};
+    let t = std::time::Instant::now();
+    let Some(clips) = super::library::foe_clips(foe) else {
+        return format!("{foe:?}: no clips
+");
+    };
+    let first = t.elapsed().as_secs_f64() * 1e3;
+    let mut out = format!(
+        "{foe:?}: {} clips read in {:.2} ms (first call {first:.2} ms, {} errors): {}
+",
+        clips.clips.len(),
+        clips.load_ms,
+        clips.errors.len(),
+        super::library::embedded_in(foe.dir()).join(", ")
+    );
+    let rig = foe.jointed();
+    let joints: Vec<Vec3> = rig.parts.iter().map(|p| p.rest).collect();
+    let moves: Vec<&'static str> = ["slam", "sweep", "hex", "bite", "rally"].into_iter().filter(|m| clips.get(m).is_some()).collect();
+    let mut a = FoeAnimator::new(0.3);
+    let (mut locals, mut mats) = (Vec::new(), Vec::new());
+    let frames = 20_000;
+    let t = std::time::Instant::now();
+    let mut sink = 0.0f32;
+    for f in 0..frames {
+        let k = f % 240;
+        let strike = (60..150).contains(&k).then(|| FoeStrike {
+            clip: moves.get((f / 240) % moves.len().max(1)).copied().unwrap_or("-"),
+            t: (k - 60) as f32 / 60.0,
+            bounds: [0.0, 0.5, 0.6, 1.5],
+            serial: (f / 240) as u32,
+        });
+        let reel = (180..200).contains(&k).then(|| (if f % 480 < 240 { FoeReel::Hit } else { FoeReel::Stagger }, (k - 180) as f32 / 20.0));
+        let d = FoeDrive { dt: 1.0 / 60.0, speed: if k < 60 { 2.5 } else { 0.0 }, moving: k < 60, strike, reel };
+        if a.step(clips, foe.def(), &d, &mut locals) {
+            clips.skeleton.matrices_into(&locals, &joints, &[], &mut mats);
+            sink += mats[1].w_axis.x;
+        }
+    }
+    let us = t.elapsed().as_secs_f64() * 1e6 / frames as f64;
+    out += &format!("  a frame: {us:.2} µs to sample, blend and pose its {} bones (checksum {sink:.1})
+", foe.def().len());
+    out
+}
+
 /// The chase camera at rest, from the hero (the model's axes, metres): behind him, above, over his
 /// right shoulder (`camera::chase`: its pivot 1.7 up and 0.3 to his right, 3.4 back along a pitch of
 /// -0.44).
@@ -272,7 +345,7 @@ pub fn blade_view() -> String {
 
 /// Whether a quarter of the points along part `blade` of `rig` posed by `m` are in plain sight of
 /// `CHASE_EYE`.
-fn blade_seen(rig: &Rig, m: &[Mat4; BONE_COUNT], blade: usize) -> bool {
+fn blade_seen(rig: &Rig, m: &[Mat4], blade: usize) -> bool {
     let cubes = &rig.parts[blade].cubes;
     let step = (cubes.len() / 48).max(1);
     let points: Vec<Vec3> = cubes.iter().step_by(step).map(|(o, _)| m[blade].transform_point3(*o)).collect();
@@ -354,12 +427,12 @@ mod tests {
         let joints: Vec<_> = skin.joints().collect();
         assert_eq!(joints.len(), BONE_COUNT);
         for (b, j) in joints.iter().enumerate() {
-            assert_eq!(j.name(), Some(BONES[b]));
+            assert_eq!(j.name(), Some(HUMANOID.bones[b]));
         }
         // Each mesh is bound wholly to its own bone, and the faces are the resident rig's.
         let mut faces = 0;
         for node in doc.nodes().filter(|n| n.mesh().is_some()) {
-            let bone = BONES.iter().position(|b| node.name() == Some(&format!("{b}_voxels"))).unwrap();
+            let bone = HUMANOID.bones.iter().position(|b| node.name() == Some(&format!("{b}_voxels"))).unwrap();
             for prim in node.mesh().unwrap().primitives() {
                 let r = prim.reader(|_| Some(blob));
                 assert!(r.read_joints(0).unwrap().into_u16().all(|j| j[0] as usize == bone));

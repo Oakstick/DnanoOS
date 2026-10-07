@@ -147,23 +147,49 @@ HEROES = {"ragnar": RAGNAR, "mehmed": MEHMED, "miyamoto": MIYAMOTO}
 # ------------------------------------------------------------------ markers
 
 
-def tip_track(arm, act):
+def tip_track(arm, act, weapon="blade", rest=None):
     """The blade's tip (game axes) every frame of `act`, the feet's and hips' heights, the shield's
-    and the off hand's joints, and the chest's turn."""
+    and the off hand's joints, and the chest's turn. `weapon` is the bone of the weapon that strikes
+    and `rest` the way it points at rest (game axes; the bone's own +Y where not given)."""
     scene = bpy.context.scene
     arm.animation_data.action = act
     f0, f1 = int(act.frame_range[0]), int(act.frame_range[1])
     out = {k: [] for k in ("tips", "feet", "hips", "shield", "hand", "chest")}
+    pb = arm.pose.bones[weapon]
+    tip_rest = None if rest is None else pb.bone.head_local + vh.g2b(Vector(rest).normalized() * 0.35)
     for f in range(f0, f1 + 1):
         scene.frame_set(f)
-        m = arm.matrix_world @ arm.pose.bones["blade"].matrix
-        out["tips"].append(vh.b2g(m @ Vector((0, 0.3, 0))))
+        m = arm.matrix_world @ pb.matrix
+        if tip_rest is None:
+            out["tips"].append(vh.b2g(m @ Vector((0, 0.3, 0))))
+        else:
+            out["tips"].append(vh.b2g(m @ pb.bone.matrix_local.inverted() @ tip_rest))
         out["feet"].append(min(vh.b2g(arm.matrix_world @ arm.pose.bones[b].head).y for b in ("foot.L", "foot.R")))
         out["hips"].append(vh.b2g(arm.matrix_world @ arm.pose.bones["hips"].head).y)
         out["shield"].append(vh.b2g(arm.matrix_world @ arm.pose.bones["shield"].head))
         out["hand"].append(vh.b2g(arm.matrix_world @ arm.pose.bones["hand.L"].head))
         out["chest"].append((arm.matrix_world @ arm.pose.bones["chest"].matrix).to_quaternion())
     return out
+
+
+def foot_stride(arm, act):
+    """The ground a gait's cycle covers, from its feet: each frame the lower foot is planted, and
+    how far it slides back under the hips is how far the body goes forward over it (metres)."""
+    scene = bpy.context.scene
+    arm.animation_data.action = act
+    f0, f1 = int(act.frame_range[0]), int(act.frame_range[1])
+    feet = []
+    for f in range(f0, f1 + 1):
+        scene.frame_set(f)
+        feet.append([vh.b2g(arm.matrix_world @ arm.pose.bones[b].head) for b in ("foot.L", "foot.R")])
+    ground = min(min(p.y for p in pair) for pair in feet)
+    total = 0.0
+    for a, b in zip(feet, feet[1:]):
+        k = 0 if a[0].y <= a[1].y else 1
+        # (Only while that foot is on the floor: a foot in the air swings forward.)
+        if a[k].y < ground + 0.03:
+            total += max(0.0, a[k].z - b[k].z)
+    return total
 
 
 def strike_marks(tips):
@@ -209,9 +235,11 @@ def trim(act, start, end=None):
     """Cuts the first `start` frames off `act` (keys and markers move down with it), and with `end`
     everything after that frame (counted before the cut)."""
     for fc in vh.fcurves(act):
-        for kp in list(fc.keyframe_points):
-            if kp.co.x < start - 1e-3 or (end is not None and kp.co.x > end + 1e-3):
-                fc.keyframe_points.remove(kp)
+        # (Removed from the last back, so the points not yet looked at keep their places.)
+        for i in reversed(range(len(fc.keyframe_points))):
+            x = fc.keyframe_points[i].co.x
+            if x < start - 1e-3 or (end is not None and x > end + 1e-3):
+                fc.keyframe_points.remove(fc.keyframe_points[i])
         for kp in fc.keyframe_points:
             kp.co.x -= start
             kp.handle_left.x -= start
@@ -240,13 +268,13 @@ def make(slot, path, opts, tgt, prefix="mixamo_hero"):
         bpy.data.actions.remove(old)
     src, fps = rt.load_source(path)
     r = rt.Retarget(src, tgt, arms_out=opts.get("arms_out", 0.0), turn=opts.get("turn", 0.0), yaw_keep=opts.get("yaw_keep", 1.0),
-                    hold={"blade": opts.get("hold", HOLD)}, sword_turn=opts.get("sword_turn", (0.0, 0.0)), face=opts.get("face"),
-                    posture=opts.get("posture"))
+                    hold={"blade": opts.get("hold", HOLD), "offhand": opts.get("hold", HOLD)}, sword_turn=opts.get("sword_turn", (0.0, 0.0)),
+                    face=opts.get("face"), posture=opts.get("posture"), mirror=opts.get("mirror", False), weapon_rest=opts.get("weapon_rest"))
     frames = None
     if "span" in opts:
         f0 = int(src.animation_data.action.frame_range[0])
         frames = (f0 + round(opts["span"][0] * fps), f0 + round(opts["span"][1] * fps))
-    act = rt.bake(r, slot, loop=opts.get("loop", False), stride=opts.get("stride"), fps_src=fps, frames=frames, still=opts.get("still", False))
+    act = rt.bake(r, slot, loop=opts.get("loop", False), stride=None if opts.get("stride") == "feet" else opts.get("stride"), fps_src=fps, frames=frames, still=opts.get("still", False))
     # (The source and its own action go: only his is kept.)
     for o in [o for o in bpy.data.objects if o.parent == src] + [src]:
         bpy.data.objects.remove(o)
@@ -254,10 +282,13 @@ def make(slot, path, opts, tgt, prefix="mixamo_hero"):
         bpy.data.actions.remove(bpy.data.actions[leftover])
     if opts.get("reverse"):
         reverse(act)
+    if opts.get("stride") == "feet":
+        act["vh_stride"] = foot_stride(tgt, act)
+        print(f"{prefix}: {slot}: its feet carry it {act['vh_stride']:.2f} m a cycle")
     kind = opts.get("kind")
     marks = {}
     if kind:
-        t = tip_track(tgt, act)
+        t = tip_track(tgt, act, opts.get("weapon", "blade"), opts.get("tip_rest", opts.get("weapon_rest")))
         if kind == "strike":
             marks = strike_marks(t["tips"])
             lead = marks.pop("lead")
@@ -270,11 +301,17 @@ def make(slot, path, opts, tgt, prefix="mixamo_hero"):
         elif kind == "raise":
             marks = raise_marks(t["hand" if opts.get("slung") else "shield"])
         elif kind == "flinch":
+            if opts.get("cut"):
+                # (Only the reaction: the long settle after it is cut off.)
+                trim(act, 0, opts["cut"])
+                t = tip_track(tgt, act, opts.get("weapon", "blade"), opts.get("tip_rest", opts.get("weapon_rest")))
             marks = flinch_marks(t["chest"])
             marks["recover_end"] = int(act.frame_range[1])
     for k, v in marks.items():
         act.pose_markers.new(k).frame = int(v)
     act["vh_source"] = os.path.basename(path)
+    for k, v in opts.get("extra_marks", {}).items():
+        act.pose_markers.new(k).frame = int(v)
     print(f"{prefix}: {slot:12} from {os.path.basename(path):40} {int(act.frame_range[1]):4} frames, markers {marks}")
     return act
 
@@ -397,4 +434,5 @@ def main():
     print("mixamo_hero: saved", out)
 
 
-main()
+if __name__ == "__main__":
+    main()

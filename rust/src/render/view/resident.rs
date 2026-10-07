@@ -63,6 +63,17 @@ impl WorldView {
         ids.dedup();
         let m = &self.models;
         let mut wants: Vec<Want> = ids.iter().map(|&id| Want { rig: m.rig(id), whole: false }).collect();
+        // The foes' jointed rigs for their clips, and the clips themselves (read once, now).
+        if self.anim_mode != crate::render::anim::library::Mode::Code {
+            let mut foes: Vec<_> = kinds.iter().filter_map(|&k| crate::render::anim::foe_rigs::FoeRig::of(k)).collect();
+            foes.sort_by_key(|f| *f as u8);
+            foes.dedup();
+            for foe in foes {
+                if crate::render::anim::library::foe_clips(foe).is_some() {
+                    wants.push(Want { rig: m.jointed_foe(foe), whole: false });
+                }
+            }
+        }
         wants.push(Want { rig: &m.hero, whole: true });
         if let Some((bare, shield)) = &m.raised {
             wants.push(Want { rig: bare, whole: true });

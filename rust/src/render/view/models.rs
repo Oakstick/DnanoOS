@@ -2,6 +2,7 @@
 //! and the story's cast. (Coarser copies for far away come from `Rig::lod`, as the camera calls for them.)
 
 use super::*;
+use crate::render::anim::foe_rigs::FoeRig;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RigId {
@@ -233,6 +234,9 @@ pub(super) struct Models {
     pub(super) old_man: Rig,
     pub(super) dog: Rig,
     pub(super) krampus: Rig,
+    /// The foes cut into their skeletons' bones for their clips (`anim::foe_rigs`), made the first
+    /// time a level wants them (behind its loading screen).
+    pub(super) jointed_foes: [std::sync::OnceLock<Rig>; FoeRig::COUNT],
 }
 
 impl Models {
@@ -436,7 +440,13 @@ impl Models {
             old_man: build_rig(&crate::render::cast::old_man(), crate::render::cast::OLD_MAN_RIG, story::OLD_MAN_VOXEL),
             dog: build_rig(&crate::render::cast::dog(), crate::render::cast::DOG_RIG, story::DOG_VOXEL),
             krampus: build_rig(&crate::render::cast::krampus_shade(), crate::render::cast::KRAMPUS_RIG, story::KRAMPUS_VOXEL),
+            jointed_foes: [const { std::sync::OnceLock::new() }; FoeRig::COUNT],
         }
+    }
+
+    /// Foe rig `foe` cut into its skeleton's bones (made once, the first time).
+    pub(super) fn jointed_foe(&self, foe: FoeRig) -> &Rig {
+        self.jointed_foes[foe as usize].get_or_init(|| foe.jointed())
     }
 
     pub(super) fn rig(&self, id: RigId) -> &Rig {

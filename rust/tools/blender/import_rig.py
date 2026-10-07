@@ -18,7 +18,9 @@ import vh_blender as vh  # noqa: E402
 def check(arm):
     errors = []
     names = [b.name for b in arm.data.bones]
-    for b in vh.BONES:
+    # (A humanoid, hero or foe, against the heroes' skeleton; another skeleton is checked by the game's
+    # own export test, here only for its binding.)
+    for b in (vh.BONES if "hips" in names else []):
         if b not in names:
             errors.append(f"no bone {b}")
             continue
@@ -61,15 +63,18 @@ def main():
     for e in errors:
         print("import_rig: FAIL", e)
     vh.setup_render(scene)
-    vh.camera(scene, yaw=25.0)
+    # (Framed on the rig's own height: a raven is a hand high, the rasetsu twice a man.)
+    top = max((o.matrix_world @ v.co).z for o in bpy.data.objects if o.name.endswith("_voxels") for v in o.data.vertices)
+    at, dist = (0.0, top * 0.5, 0.0), max(1.2, top * 2.3)
+    vh.camera(scene, at=at, dist=dist, yaw=25.0)
     vh.render(scene, os.path.join(out, "rig_colours.png"))
-    colors = vh.bone_colors()
+    colors = vh.bone_colors(vh.bones_of(arm))
     for o in bpy.data.objects:
         if o.name.endswith("_voxels"):
             o.color = colors.get(o.name[: -len("_voxels")], (1, 1, 1, 1))
     vh.setup_render(scene, color="OBJECT")
     vh.render(scene, os.path.join(out, "rig_bones.png"))
-    vh.camera(scene, yaw=180.0 + 25.0)
+    vh.camera(scene, at=at, dist=dist, yaw=180.0 + 25.0)
     vh.render(scene, os.path.join(out, "rig_bones_back.png"))
     if len(a) > 2:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(a[2]))

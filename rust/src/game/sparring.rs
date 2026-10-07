@@ -10,7 +10,7 @@ use super::brawl::Field;
 use super::Game;
 use crate::audio::Sfx;
 use crate::logic::combat::{Breed, Duelist, Reel, State};
-use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
+use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::gym;
 use crate::logic::types::{P, V};
 use crate::render::view::CameraMode;
@@ -91,12 +91,17 @@ impl Game {
 
     /// The bout's foes take their places along the ring's west side, and the countdown starts.
     pub(super) fn start_bout(&mut self) {
+        let Some(spar) = self.spar.as_ref() else { return };
+        self.start_bout_of(gym::BOUTS[spar.bout].foes);
+    }
+
+    /// A bout of the ring against `foes` (the bout's own, or a capture's line-up).
+    fn start_bout_of(&mut self, foes: &[EnemyKind]) {
         self.clear_duelists();
         let kit = self.hero_kit();
         let (Some(spar), Some(b)) = (self.spar.as_mut(), self.brawl.as_mut()) else { return };
-        let bout = gym::BOUTS[spar.bout];
         let mut fresh = Vec::new();
-        for (&kind, at) in bout.foes.iter().zip(gym::bout_spawns(bout.foes.len())) {
+        for (&kind, at) in foes.iter().zip(gym::bout_spawns(foes.len())) {
             let breed = Breed::of(kind);
             let spec = spec_of(&self.level.grid, kind);
             let mut e = Enemy::new(&spec, P::new(at.x.round() as i32, at.y.round() as i32), self.level.data.enemy_speed);
@@ -275,5 +280,11 @@ impl Game {
             }
         }
         self.start_bout();
+    }
+
+    /// The ring against `foes` (captures: a pack of one kind, for its animation).
+    pub fn debug_ring_of(&mut self, foes: &[EnemyKind]) {
+        self.debug_ring(0);
+        self.start_bout_of(foes);
     }
 }
