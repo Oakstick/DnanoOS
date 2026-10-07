@@ -53,7 +53,74 @@ DRAUGR = {
     "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(DRAUGR_SWORD, kind="flinch", cut=100)),
 }
 
-FOES = {"draugr": DRAUGR}
+# ------------------------------------------------------------------ the jorogumo
+
+MG = "magic/"
+# Her upper body from Mixamo's magic pack, faced to the foe whatever the source's turning (her
+# spider's body steers her); the sickle in her right fist held as the source's fist holds its grip
+# (it rises from her fist, leaning forward). Her legs are keyed (`block_foe.Jorogumo`, `legs`) and
+# laid in under each clip, fitted to its markers.
+JORO = dict(yaw_keep=0.0, face=0.0, weapon_rest=(0.0, 0.975, 0.22))
+JOROGUMO = {
+    "idle": (MG + "standing idle.fbx", dict(JORO, loop=True, legs="idle")),
+    # (Her walk is her legs': above them she stands as she does, poised.)
+    "walk": (MG + "standing idle.fbx", dict(JORO, loop=True, legs="walk")),
+    # The fire flung from her sickle hand: the sickle thrust out at him as it leaves.
+    "hex": (MG + "Standing 1H Magic Attack 01.fbx", dict(JORO, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1), legs="hex")),
+    "rally": (MG + "Standing 2H Cast Spell 01.fbx", dict(JORO, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), legs="rally")),
+    "hit": (MG + "Standing React Small From Front.fbx", dict(JORO, kind="flinch", legs="hit")),
+    "stagger": (MG + "Standing React Large From Front.fbx", dict(JORO, kind="flinch", legs="stagger")),
+}
+
+FOES = {"draugr": DRAUGR, "jorogumo": JOROGUMO}
+
+# The bones her legs' clips key (her spider's body); the rest are Mixamo's.
+SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")
+
+
+def lay_legs(tgt, act, which):
+    """Lays the jorogumo's keyed legs (`block_foe.Jorogumo.<which>`) under `act`: a loop as many whole
+    cycles of them as fit its length (its stride theirs times as many), a move or a reel fitted
+    piecewise to its markers (the wind-up's end to the wind-up's end, and so on)."""
+    import block_foe as bf
+
+    j = bf.Jorogumo()
+    keyed = {"idle": (120, True), "walk": (40, True), "hex": (sum(bf.HEX), False), "rally": (sum(bf.RALLY), False),
+             "hit": (24, False), "stagger": (48, False)}
+    n_k, loop = keyed[which]
+    fd = {"hex": bf.HEX, "rally": bf.RALLY}.get(which)
+    n = int(act.frame_range[1])
+    marks = {m.name: m.frame for m in act.pose_markers}
+    if loop:
+        cycles = max(1, round(n / n_k))
+        at = lambda f: (f * n_k * cycles / n) % n_k  # noqa: E731
+        if which == "walk":
+            act["vh_stride"] = 1.0 * cycles
+    elif fd and "windup_end" in marks:
+        src = [0, marks["windup_end"], marks["active_end"], n]
+        dst = [0, fd[0], fd[0] + fd[1], n_k]
+
+        def at(f):
+            for k in range(3):
+                if f <= src[k + 1]:
+                    u = (f - src[k]) / max(1e-6, src[k + 1] - src[k])
+                    return dst[k] + (dst[k + 1] - dst[k]) * u
+            return n_k
+    else:
+        at = lambda f: f * n_k / n  # noqa: E731
+    tgt.animation_data.action = act
+    for f in range(n + 1):
+        pose = getattr(j, which)(at(f))
+        for b in SPIDER:
+            vh.set_local(tgt, b, pose.get(b, bf.Quaternion()), pose.get("loc", (0, 0, 0)) if b == "carapace" else None)
+            pb = tgt.pose.bones[b]
+            pb.keyframe_insert("rotation_quaternion", frame=f)
+            if b == "carapace":
+                pb.keyframe_insert("location", frame=f)
+    for fc in vh.fcurves(act):
+        for kp in fc.keyframe_points:
+            kp.interpolation = "LINEAR"
+    print(f"mixamo_foe: {act.name}: her legs' {which} laid under it")
 
 
 def label_of(path):
@@ -121,7 +188,9 @@ def main():
         for slot, (path, opts) in FOES[foe].items():
             if only and slot not in only:
                 continue
-            mh.make(slot, os.path.join(root, path), opts, tgt, prefix="mixamo_foe")
+            act = mh.make(slot, os.path.join(root, path), opts, tgt, prefix="mixamo_foe")
+            if opts.get("legs"):
+                lay_legs(tgt, act, opts["legs"])
         if (not only or "deflected" in only) and "stagger" in bpy.data.actions and "deflected" not in FOES[foe]:
             deflected(tgt)
     bpy.context.scene.render.fps = vh.FPS

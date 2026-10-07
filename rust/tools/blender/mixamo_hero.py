@@ -164,9 +164,11 @@ def tip_track(arm, act, weapon="blade", rest=None):
             out["tips"].append(vh.b2g(m @ Vector((0, 0.3, 0))))
         else:
             out["tips"].append(vh.b2g(m @ pb.bone.matrix_local.inverted() @ tip_rest))
-        out["feet"].append(min(vh.b2g(arm.matrix_world @ arm.pose.bones[b].head).y for b in ("foot.L", "foot.R")))
+        feet = [b for b in ("foot.L", "foot.R") if b in arm.pose.bones]
+        out["feet"].append(min((vh.b2g(arm.matrix_world @ arm.pose.bones[b].head).y for b in feet), default=0.0))
         out["hips"].append(vh.b2g(arm.matrix_world @ arm.pose.bones["hips"].head).y)
-        out["shield"].append(vh.b2g(arm.matrix_world @ arm.pose.bones["shield"].head))
+        shield = arm.pose.bones.get("shield") or arm.pose.bones["hand.L"]
+        out["shield"].append(vh.b2g(arm.matrix_world @ shield.head))
         out["hand"].append(vh.b2g(arm.matrix_world @ arm.pose.bones["hand.L"].head))
         out["chest"].append((arm.matrix_world @ arm.pose.bones["chest"].matrix).to_quaternion())
     return out

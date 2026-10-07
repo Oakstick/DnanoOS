@@ -189,6 +189,11 @@ class Retarget:
         self.yaw0 = self.yaw_last = None
         self.hold = dict(HOLD, **(hold or {}))
         self.label, self.map = pick_map(src)
+        # The heroes' bones this armature has (the jorogumo has a woman's upper body only, on her
+        # spider's carapace: her legs are her own, `block_foe.py`).
+        self.bones = [b for b in vh.BONES if b in tgt.data.bones]
+        self.map = {t: s for t, s in self.map.items() if t in self.bones}
+        self.legged = all(b in self.bones for b in ("thigh.L", "shin.L", "foot.L"))
         self.facing = facing
         # The source's chain: the source bone of each of his bones' next joint down.
         self.src_child = {}
@@ -204,8 +209,8 @@ class Retarget:
         self.g = rise.rotation_difference(up) if rise.dot(up) < 0.9 else Quaternion()
         hs = {k: self.g @ h for k, h in hs.items()}
         self.rest_src = {s: self.g @ world_rot(src, src.data.bones[s].matrix_local) for s in self.map.values()}
-        self.rest_tgt = {b: world_rot(tgt, tgt.data.bones[b].matrix_local) for b in vh.BONES}
-        self.rest_arm = {b: tgt.data.bones[b].matrix_local.to_quaternion() for b in vh.BONES}
+        self.rest_tgt = {b: world_rot(tgt, tgt.data.bones[b].matrix_local) for b in self.bones}
+        self.rest_arm = {b: tgt.data.bones[b].matrix_local.to_quaternion() for b in self.bones}
         self.k = {}
         for t, s in self.map.items():
             if t.startswith("foot"):
@@ -225,9 +230,13 @@ class Retarget:
                 ds = direction(hs, s, self.src_child, fallback=up)
             ref = self.facing if abs(dt.dot(self.facing)) < 0.95 else up
             self.k[t] = align(dt, ds, ref)
-        self.leg_src = sum((hs[self.map[a]] - hs[self.map[b]]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
-        self.leg_tgt = sum((ht[a] - ht[b]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
-        self.scale = self.leg_tgt / self.leg_src
+        if self.legged:
+            self.leg_src = sum((hs[self.map[a]] - hs[self.map[b]]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
+            self.leg_tgt = sum((ht[a] - ht[b]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
+            self.scale = self.leg_tgt / self.leg_src
+        else:
+            # (No legs: its waist stays where its body carries it.)
+            self.scale = 0.0
         self.hips_rest = hs[self.map["hips"]]
         if self.g != Quaternion():
             print("retarget: the source lies; stood up by", [round(math.degrees(x)) for x in self.g.to_euler()])
@@ -241,7 +250,7 @@ class Retarget:
         posed, out = {}, {}
         corr = Quaternion()
         upright = {}
-        for b in vh.BONES:
+        for b in self.bones:
             rest = self.rest_arm[b]
             parent = vh.PARENTS.get(b)
             # Where the bone would turn to with no turn of its own: carried by its parent.
@@ -381,7 +390,7 @@ def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, fra
             drift = first.lerp(last, u)
             off.x -= drift.x
             off.y -= drift.y
-        for b in vh.BONES:
+        for b in rt.bones:
             pb = tgt.pose.bones[b]
             pb.rotation_mode = "QUATERNION"
             pb.rotation_quaternion = rots[b]

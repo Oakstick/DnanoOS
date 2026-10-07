@@ -1,8 +1,8 @@
 {
  "clip": "walk",
  "fps": 60,
- "frames": 40,
+ "frames": 108,
  "loop": true,
  "markers": {},
- "stride": 1.0
+ "stride": 3.0
 }
