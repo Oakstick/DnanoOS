@@ -259,8 +259,10 @@ fn bench_foe(foe: super::foe_rigs::FoeRig) -> String {
     use super::foe::{FoeAnimator, FoeDrive, FoeReel, FoeStrike};
     let t = std::time::Instant::now();
     let Some(clips) = super::library::foe_clips(foe) else {
-        return format!("{foe:?}: no clips
-");
+        return format!(
+            "{foe:?}: no clips
+"
+        );
     };
     let first = t.elapsed().as_secs_f64() * 1e3;
     let mut out = format!(
@@ -295,8 +297,11 @@ fn bench_foe(foe: super::foe_rigs::FoeRig) -> String {
         }
     }
     let us = t.elapsed().as_secs_f64() * 1e6 / frames as f64;
-    out += &format!("  a frame: {us:.2} µs to sample, blend and pose its {} bones (checksum {sink:.1})
-", foe.def().len());
+    out += &format!(
+        "  a frame: {us:.2} µs to sample, blend and pose its {} bones (checksum {sink:.1})
+",
+        foe.def().len()
+    );
     out
 }
 

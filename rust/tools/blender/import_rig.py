@@ -20,7 +20,7 @@ def check(arm):
     names = [b.name for b in arm.data.bones]
     # (A humanoid, hero or foe, against the heroes' skeleton; another skeleton is checked by the game's
     # own export test, here only for its binding.)
-    for b in (vh.BONES if "hips" in names else []):
+    for b in (vh.BONES if "thigh.L" in names else []):
         if b not in names:
             errors.append(f"no bone {b}")
             continue

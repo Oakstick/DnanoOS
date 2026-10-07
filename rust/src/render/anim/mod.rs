@@ -9,6 +9,7 @@ pub mod cloth;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod export;
 pub mod foe;
+pub mod foe_beasts;
 pub mod foe_rigs;
 pub mod hero;
 pub mod hold;

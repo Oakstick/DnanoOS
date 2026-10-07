@@ -23,55 +23,120 @@ const INF: f32 = f32::INFINITY;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum FoeRig {
     Draugr,
+    Bat,
+    Vampire,
+    LargeBat,
+    Minion,
+    Werewolf,
+    DireWolf,
+    Cobra,
+    Slime,
+    Jorogumo,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 1;
+    pub const COUNT: usize = 10;
     /// Every foe rig with a joint table.
-    pub const ALL: [FoeRig; Self::COUNT] = [FoeRig::Draugr];
+    pub const ALL: [FoeRig; Self::COUNT] = [
+        FoeRig::Draugr,
+        FoeRig::Bat,
+        FoeRig::Vampire,
+        FoeRig::LargeBat,
+        FoeRig::Minion,
+        FoeRig::Werewolf,
+        FoeRig::DireWolf,
+        FoeRig::Cobra,
+        FoeRig::Slime,
+        FoeRig::Jorogumo,
+    ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
     pub fn dir(self) -> &'static str {
         match self {
             FoeRig::Draugr => "draugr",
+            FoeRig::Bat => "bat",
+            FoeRig::Vampire => "vampire",
+            FoeRig::LargeBat => "large_bat",
+            FoeRig::Minion => "minion",
+            FoeRig::Werewolf => "werewolf",
+            FoeRig::DireWolf => "dire_wolf",
+            FoeRig::Cobra => "cobra",
+            FoeRig::Slime => "slime",
+            FoeRig::Jorogumo => "jorogumo",
         }
     }
 
     /// The rig a foe of `kind` is animated with by clips, if it has one. (The Peerless wears the
     /// helmeted skeleton's rig as a stand-in only: left to the code.)
     pub fn of(kind: EnemyKind) -> Option<FoeRig> {
-        match kind {
-            EnemyKind::Skeleton => Some(FoeRig::Draugr),
-            _ => None,
-        }
+        Some(match kind {
+            EnemyKind::Skeleton => FoeRig::Draugr,
+            EnemyKind::Bat => FoeRig::Bat,
+            EnemyKind::Vampire => FoeRig::Vampire,
+            EnemyKind::LargeBat => FoeRig::LargeBat,
+            EnemyKind::Minion => FoeRig::Minion,
+            EnemyKind::Werewolf => FoeRig::Werewolf,
+            EnemyKind::DireWolf => FoeRig::DireWolf,
+            EnemyKind::Cobra => FoeRig::Cobra,
+            EnemyKind::Slime => FoeRig::Slime,
+            EnemyKind::Jorogumo => FoeRig::Jorogumo,
+            _ => return None,
+        })
     }
 
     pub fn def(self) -> &'static SkeletonDef {
-        match self {
-            FoeRig::Draugr => &HUMANOID,
-        }
+        self.joints().def
     }
 
     pub fn joints(self) -> &'static Joints {
+        use super::foe_beasts as fb;
         match self {
             FoeRig::Draugr => &DRAUGR,
+            FoeRig::Bat | FoeRig::Vampire => &fb::RAVEN,
+            FoeRig::LargeBat => &fb::LARGE_BAT,
+            FoeRig::Minion => &fb::MINION_JOINTS,
+            FoeRig::Werewolf => &fb::WOLF,
+            FoeRig::DireWolf => &fb::DIRE_WOLF,
+            FoeRig::Cobra => &fb::COBRA,
+            FoeRig::Slime => &fb::BOG_SLIME,
+            FoeRig::Jorogumo => &fb::JOROGUMO,
         }
     }
 
-    /// Its sculpt's grid (width, height, depth) and voxel.
+    /// Its sculpt's grid (width, height, depth) and voxel (as `view::models` builds its rig).
     pub fn grid(self) -> ((i32, i32, i32), f32) {
+        use crate::render::{foes, foes2, foes3};
         match self {
-            FoeRig::Draugr => (crate::render::foes::DRAUGR_SIZE, 0.0125),
+            FoeRig::Draugr => (foes::DRAUGR_SIZE, 0.0125),
+            FoeRig::Bat => (foes::RAVEN_SIZE, 0.0105),
+            FoeRig::Vampire => (foes::RAVEN_SIZE, 0.0125),
+            FoeRig::LargeBat => (foes2::BAT_SIZE, 0.011),
+            FoeRig::Minion => (foes2::MINION_SIZE, 0.014),
+            FoeRig::Werewolf => (foes2::WOLF_SIZE, 0.0135),
+            FoeRig::DireWolf => (foes3::DIRE_SIZE, 0.0125),
+            FoeRig::Cobra => (foes3::COBRA_SIZE, 0.0125),
+            FoeRig::Slime => (foes::SLIME_SIZE, 0.01875),
+            FoeRig::Jorogumo => (foes3::JORO_SIZE, 0.0125),
         }
     }
 
     /// The code's rig, from the sculpt finished solid.
     pub fn code_rig(self) -> Rig {
         use crate::render::characters::solid;
+        use crate::render::{foes, foes2, foes3};
         let (_, size) = self.grid();
-        match self {
-            FoeRig::Draugr => solid(|| build_rig(&crate::render::foes::draugr(), crate::render::foes::DRAUGR_RIG, size)),
-        }
+        solid(|| match self {
+            FoeRig::Draugr => build_rig(&foes::draugr(), foes::DRAUGR_RIG, size),
+            FoeRig::Bat => build_rig(&foes::raven(false), foes::RAVEN_RIG, size),
+            FoeRig::Vampire => build_rig(&foes::raven(true), foes::RAVEN_RIG, size),
+            FoeRig::LargeBat => build_rig(&foes2::large_bat(), foes2::BAT_RIG, size),
+            FoeRig::Minion => build_rig(&foes2::minion(), &[], size),
+            FoeRig::Werewolf => build_rig(&foes2::loup_garou(), foes2::WOLF_RIG, size),
+            FoeRig::DireWolf => build_rig(&foes3::dire_wolf(), foes3::DIRE_RIG, size),
+            FoeRig::Cobra => build_rig(&foes3::cobra(), foes3::COBRA_RIG, size),
+            FoeRig::Slime => build_rig(&foes::bog_slime(), &[], size),
+            FoeRig::Jorogumo => build_rig(&foes3::jorogumo(), foes3::JORO_RIG, size),
+        })
     }
 
     /// The foe cut into its skeleton's bones. With `VH_ANIM=bones` every voxel is painted its
@@ -90,15 +155,6 @@ impl FoeRig {
             }
         }
         cut
-    }
-
-    /// The way the weapon in its fist points at rest (the model's axes), for the retarget's grip
-    /// (`tools/blender/mixamo_foe.py` reads the same from the rig).
-    pub fn weapon_rest(self) -> Option<glam::Vec3> {
-        match self {
-            // The notched sword hangs point down from the bony fist, leaning forward a little.
-            FoeRig::Draugr => Some(glam::Vec3::new(0.0, -0.975, 0.22).normalize()),
-        }
     }
 }
 
@@ -227,13 +283,15 @@ mod tests {
     fn moves_of(foe: FoeRig) -> &'static [&'static str] {
         match foe {
             FoeRig::Draugr => &["slam", "sweep", "rally"],
+            FoeRig::Slime | FoeRig::Jorogumo => &["hex", "rally"],
+            _ => &["bite", "rally"],
         }
     }
 
     #[test]
     fn every_foes_clips_read_carry_their_markers_and_rest_on_its_joints() {
-        for foe in FoeRig::ALL {
-            let c = crate::render::anim::library::foe_clips(foe).unwrap_or_else(|| panic!("{foe:?}'s clips are embedded"));
+        for foe in FoeRig::ALL.into_iter().filter(|f| !crate::render::anim::library::embedded_in(f.dir()).is_empty()) {
+            let c = crate::render::anim::library::foe_clips(foe).unwrap_or_else(|| panic!("{foe:?}'s clips read"));
             assert!(c.errors.is_empty(), "{foe:?}: {:?}", c.errors);
             assert!(c.clips.iter().any(|k| super::super::foe::IDLE.contains(&k.name.as_str())), "{foe:?} has no idle");
             assert!(c.clips.iter().any(|k| super::super::foe::GAIT.contains(&k.name.as_str())), "{foe:?} has no gait");
