@@ -54,10 +54,13 @@ pub enum FoeRig {
     Surtr,
     Nidhogg,
     Hel,
+    Ganglot,
+    Gaki,
+    Ellepige,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 32;
+    pub const COUNT: usize = 35;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
@@ -92,6 +95,9 @@ impl FoeRig {
         FoeRig::Surtr,
         FoeRig::Nidhogg,
         FoeRig::Hel,
+        FoeRig::Ganglot,
+        FoeRig::Gaki,
+        FoeRig::Ellepige,
     ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
@@ -129,6 +135,9 @@ impl FoeRig {
             FoeRig::Surtr => "surtr",
             FoeRig::Nidhogg => "nidhogg",
             FoeRig::Hel => "hel",
+            FoeRig::Ganglot => "ganglot",
+            FoeRig::Gaki => "gaki",
+            FoeRig::Ellepige => "ellepige",
         }
     }
 
@@ -168,6 +177,9 @@ impl FoeRig {
             EnemyKind::Surtr => FoeRig::Surtr,
             EnemyKind::Nidhogg => FoeRig::Nidhogg,
             EnemyKind::Hel => FoeRig::Hel,
+            EnemyKind::Ganglot => FoeRig::Ganglot,
+            EnemyKind::Gaki => FoeRig::Gaki,
+            EnemyKind::Ellepige => FoeRig::Ellepige,
             _ => return None,
         })
     }
@@ -215,6 +227,9 @@ impl FoeRig {
             FoeRig::Surtr => super::foe_stage7::surtr(),
             FoeRig::Nidhogg => super::foe_stage7::nidhogg(),
             FoeRig::Hel => super::foe_stage7::hel(),
+            FoeRig::Ganglot => super::foe_realms::ganglot(),
+            FoeRig::Gaki => super::foe_realms::gaki(),
+            FoeRig::Ellepige => super::foe_realms::ellepige(),
         }
     }
 
@@ -254,6 +269,9 @@ impl FoeRig {
             FoeRig::Surtr => (crate::render::foes7::SURTR_SIZE, 0.02),
             FoeRig::Nidhogg => (crate::render::foes7::NIDHOGG_SIZE, 0.0175),
             FoeRig::Hel => (crate::render::foes7::HEL_SIZE, 0.0135),
+            FoeRig::Ganglot => (crate::render::foes_mire::GANGLOT_SIZE, crate::render::foes_mire::GANGLOT_VOXEL),
+            FoeRig::Gaki => (crate::render::foes_feast::GAKI_SIZE, crate::render::foes_feast::GAKI_VOXEL),
+            FoeRig::Ellepige => (crate::render::foes_thorns::ELLEPIGE_SIZE, crate::render::foes_thorns::ELLEPIGE_VOXEL),
         }
     }
 
@@ -295,6 +313,9 @@ impl FoeRig {
             FoeRig::Surtr => build_rig(&crate::render::foes7::surtr(), crate::render::foes7::SURTR_RIG, size),
             FoeRig::Nidhogg => build_rig(&crate::render::foes7::nidhogg(), crate::render::foes7::NIDHOGG_RIG, size),
             FoeRig::Hel => build_rig(&crate::render::foes7::hel(), crate::render::foes7::HEL_RIG, size),
+            FoeRig::Ganglot => build_rig(&crate::render::foes_mire::ganglot(), crate::render::foes_mire::GANGLOT_RIG, size),
+            FoeRig::Gaki => build_rig(&crate::render::foes_feast::gaki(), crate::render::foes_feast::GAKI_RIG, size),
+            FoeRig::Ellepige => build_rig(&crate::render::foes_thorns::ellepige(), crate::render::foes_thorns::ELLEPIGE_RIG, size),
         })
     }
 
@@ -740,7 +761,9 @@ mod tests {
     /// The moves' clips each foe rig must have, by its archetype's moves (and the pack leader's rally).
     fn moves_of(foe: FoeRig) -> &'static [&'static str] {
         match foe {
-            FoeRig::Draugr | FoeRig::Helmeted | FoeRig::Blemmyes | FoeRig::Tengu | FoeRig::Rasetsu => &["slam", "sweep", "rally"],
+            FoeRig::Draugr | FoeRig::Helmeted | FoeRig::Blemmyes | FoeRig::Tengu | FoeRig::Rasetsu | FoeRig::Ganglot => {
+                &["slam", "sweep", "rally"]
+            }
             FoeRig::Witch => &["hex", "rally"],
             FoeRig::Slime | FoeRig::Jorogumo => &["hex", "rally"],
             FoeRig::Kappa => &["shove"],

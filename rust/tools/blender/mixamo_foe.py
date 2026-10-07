@@ -276,6 +276,46 @@ HEL = {
     "stagger": (MG + "Standing React Large From Back.fbx", dict(HEL_W, kind="flinch")),
 }
 
+# ------------------------------------------------------------------ the realms' own
+
+# The ganglot: Hel's slow servant, the zombie's shuffle slowed; its staff (its own left: mirrored),
+# upright in its fist with the lantern on its crook, held as sculpted while it stands, shuffles and
+# reels (`block_realms.GanglotStaff` laid over the zombie's arm), swung as the axe pack swings for
+# its blows.
+GANG = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, 1.0, 0.0))
+GSTAFF = ("block_realms", "GanglotStaff")
+GSTAFF_BONES = ["upper_arm.L", "forearm.L", "hand.L", "offhand"]
+GANGLOT = {
+    "idle": (Z + "idle.fbx", dict(GANG, loop=True, slow=1.3, lay=GSTAFF + ("idle", GSTAFF_BONES, 240, True))),
+    "walk": (Z + "walk.fbx", dict(GANG, loop=True, stride="feet", slow=1.4, lay=GSTAFF + ("walk", GSTAFF_BONES, 1000, True))),
+    "slam": (AX + "melee attack downward.fbx", dict(GANG, kind="strike", slow=1.2)),
+    "sweep": (AX + "melee attack horizontal.fbx", dict(GANG, kind="strike", slow=1.2)),
+    "rally": (Z + "scream.fbx", dict(GANG, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=GSTAFF + ("idle", GSTAFF_BONES, 240, False))),
+    "hit": (FX + "zombie reaction hit flinch.fbx", dict(GANG, kind="flinch", cut=60, lay=GSTAFF + ("idle", GSTAFF_BONES, 240, False))),
+    "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(GANG, kind="flinch", cut=100, lay=GSTAFF + ("idle", GSTAFF_BONES, 240, False))),
+}
+# The gaki: hungry ghosts, the zombie's shamble and its lunge to bite, their arms reaching.
+GAKI = {
+    "idle": (Z + "idle.fbx", dict(loop=True)),
+    "walk": (Z + "walk.fbx", dict(loop=True, stride="feet")),
+    "run": (Z + "run.fbx", dict(loop=True, stride="feet")),
+    "bite": (Z + "attack.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 0.0, 1.0))),
+    "rally": (MU + "mutant roaring.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (FX + "zombie reaction hit flinch.fbx", dict(kind="flinch", cut=60)),
+    "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(kind="flinch", cut=100)),
+}
+# The ellepige: an elf-maid, light on her feet; her blow a quick spell thrown from her hand.
+ELLE = dict(face=0.0)
+ELLEPIGE = {
+    "idle": (MG + "standing idle.fbx", dict(ELLE, loop=True)),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(ELLE, loop=True, stride="feet")),
+    "run": (MG + "Standing Run Forward.fbx", dict(ELLE, loop=True, stride="feet")),
+    "bite": (MG + "Standing 1H Magic Attack 01.fbx", dict(ELLE, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "rally": (MG + "standing 1H cast spell 01.fbx", dict(ELLE, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1))),
+    "hit": (MG + "Standing React Small From Front.fbx", dict(ELLE, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Right.fbx", dict(ELLE, kind="flinch")),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -298,7 +338,8 @@ JOROGUMO = {
 FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO, "oni": ONI,
         "albasti": ALBASTI, "cin": CIN, "arcura": ARCURA, "karakoncolos": KARAKONCOLOS,
         "tepegoz": TEPEGOZ, "gashadokuro": GASHADOKURO, "goryo": GORYO,
-        "frost_giant": FROST_GIANT, "surtr": SURTR, "hel": HEL}
+        "frost_giant": FROST_GIANT, "surtr": SURTR, "hel": HEL,
+        "ganglot": GANGLOT, "gaki": GAKI, "ellepige": ELLEPIGE}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")

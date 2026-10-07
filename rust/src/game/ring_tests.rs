@@ -916,11 +916,22 @@ fn clips_leave_the_fight_untouched(hero: usize) {
 fn the_foes_clips_leave_the_fight_untouched() {
     use crate::logic::enemy::EnemyKind as K;
     use crate::render::anim::foe_rigs::FoeRig;
-    let kinds: Vec<K> = [&K::STAGE_ONE[..], &K::STAGE_TWO, &K::STAGE_THREE, &K::STAGE_FOUR, &K::STAGE_FIVE, &K::STAGE_SIX, &K::STAGE_SEVEN]
-        .concat()
-        .into_iter()
-        .filter(|&k| FoeRig::of(k).is_some())
-        .collect();
+    let kinds: Vec<K> = [
+        &K::STAGE_ONE[..],
+        &K::STAGE_TWO,
+        &K::STAGE_THREE,
+        &K::STAGE_FOUR,
+        &K::STAGE_FIVE,
+        &K::STAGE_SIX,
+        &K::STAGE_SEVEN,
+        &K::REALMS_OWN,
+        K::COURTS_OWN,
+        &K::LAIR_OWN,
+    ]
+    .concat()
+    .into_iter()
+    .filter(|&k| FoeRig::of(k).is_some())
+    .collect();
     assert!(!kinds.is_empty());
     for kind in kinds {
         let play = |code: bool| {
