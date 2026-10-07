@@ -30,7 +30,7 @@ pub(super) mod pal {
     pub const TURF: [u32; 3] = [0x4a5434, 0x56603a, 0x3e4a30];
     pub const EARTH: [u32; 2] = [0x2e261e, 0x372c22];
     /// The walks' gravel: umber greys, wet.
-    pub const GRAVEL: [u32; 1] = [0x4b443a];
+    pub const GRAVEL: [u32; 1] = [0x3e3830];
     /// Fallen leaves: copper and umber.
     pub const LEAVES: [u32; 3] = [0x8a4a22, 0x9a6a2a, 0x5e3a1e];
     pub const BARK: [u32; 2] = [0x3e3128, 0x30271f];
