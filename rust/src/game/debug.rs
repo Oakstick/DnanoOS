@@ -137,6 +137,21 @@ impl Game {
         d.begin(mv, hp);
     }
 
+    /// Capture hook: the last duelist standing begins its move `m` (of its breed's moves), at the
+    /// hero if he is in its reach, else where it stands (`foemove:M`, the foes' clips filmed).
+    pub fn debug_foe_move(&mut self, m: usize) {
+        use crate::logic::combat::math;
+        let hp = self.hero.pos();
+        let Some(d) = self.enemies.iter_mut().rev().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.alive()) else { return };
+        let moves = d.breed.moves();
+        let Some(&mv) = moves.get(m.min(moves.len().saturating_sub(1))) else { return };
+        d.facing = math::norm(math::sub(hp, d.pos));
+        d.f.state = crate::logic::combat::State::Neutral;
+        d.rest = u16::MAX;
+        d.token = true;
+        d.begin(mv, hp);
+    }
+
     /// Capture hook: three quick kills, for a BRUTAL streak.
     pub fn debug_streak(&mut self) {
         for i in 0..self.enemies.len().min(3) {
@@ -200,6 +215,38 @@ impl Game {
             self.enemies.push(e);
         }
         // Made ready as a level's foes are (and what they bring: the witches' minions).
+        self.prepare_level();
+    }
+
+    /// Capture hook (`foeline[:N]`): the first stage's four (N times over) on open ground ahead of
+    /// the hero, staggered so the chase camera sees each, on the hunt (the Garden at night as it is
+    /// played: RENDERING.md, the stage 1 set).
+    pub fn debug_foe_line(&mut self, packs: usize) {
+        let specs = enemy_specs(&self.level.grid, 0);
+        let p = self.hero.occupied();
+        self.enemies.clear();
+        self.view.clear_enemies();
+        // (Ahead of him as he first stands, facing down the grid: the camera looks over his back.)
+        let spots = [(-2, 3), (2, 4), (-1, 6), (2, 7), (-3, 9), (1, 10), (-2, 12), (3, 12)];
+        let mut taken: Vec<P> = Vec::new();
+        for (i, kind) in EnemyKind::STAGE_ONE.repeat(packs.max(1)).into_iter().enumerate() {
+            let Some(spec) = specs.iter().find(|s| s.kind == kind) else { continue };
+            let (dx, dy) = spots[i % spots.len()];
+            let back = (i / spots.len()) as i32 * 13;
+            let want = P::new(p.x + dx, p.y + dy + back);
+            // The nearest open tile to the spot, not taken.
+            let g = &self.level.grid;
+            let at = (0..6)
+                .flat_map(|r: i32| (-r..=r).flat_map(move |x| (-r..=r).map(move |y| P::new(want.x + x, want.y + y))))
+                .find(|t| g.is_walkable(t.x, t.y, false) && !taken.contains(t) && *t != p)
+                .unwrap_or(want);
+            taken.push(at);
+            let mut e = Enemy::new(spec, at, self.level.data.enemy_speed);
+            e.b.mode = EnemyMode::Chase;
+            e.m.dir = Dir::Up;
+            self.view.add_enemy(&e);
+            self.enemies.push(e);
+        }
         self.prepare_level();
     }
 

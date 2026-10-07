@@ -1980,3 +1980,47 @@ fn the_compass_shows_only_while_he_stands_idle() {
     }
     assert_eq!(g.compass_shown(), 0.0, "moving: hidden");
 }
+
+/// In the maze, as in a fight, every foe drawn on the screen is posed by its clips (ANIMATION.md
+/// §11): the first stage's four hunting him, fleeing in a frenzy, and a slain draugr's bones
+/// scattered and pulling together.
+#[test]
+fn the_maze_foes_on_screen_play_their_clips() {
+    let mut g = playing();
+    g.debug_foes(1, Some(0));
+    let n = g.enemies.len();
+    assert_eq!(n, 4, "the first stage's four");
+    let check = |g: &mut Game, steps: usize, what: &str| {
+        let (mut shown, mut posed) = (0, 0);
+        for _ in 0..steps {
+            g.update(crate::app::STEP);
+            for i in 0..g.enemies.len() {
+                if g.view.foe_on_screen(i) {
+                    shown += 1;
+                    if g.view.foe_posed_by_clips(i) {
+                        posed += 1;
+                    } else {
+                        panic!(
+                            "{what}: foe {i} ({:?}, {:?}) on screen but not posed by its clips",
+                            g.enemies[i].kind(),
+                            g.enemies[i].mode()
+                        );
+                    }
+                }
+            }
+        }
+        assert!(shown > steps, "{what}: foes on screen ({shown} foe-steps)");
+        posed
+    };
+    check(&mut g, 90, "hunting");
+    g.frenzy.start(10.0);
+    for e in g.enemies.iter_mut() {
+        e.enter_frenzy(&g.level.grid);
+    }
+    assert!(g.enemies.iter().any(|e| e.mode() == EnemyMode::Frenzied));
+    check(&mut g, 60, "frenzied");
+    let k = g.enemies.iter().position(|e| e.kind() == EnemyKind::Skeleton).unwrap();
+    g.enemies[k].kill();
+    assert_eq!(g.enemies[k].mode(), EnemyMode::Scattered);
+    check(&mut g, 60, "scattered");
+}

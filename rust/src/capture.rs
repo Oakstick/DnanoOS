@@ -34,7 +34,9 @@
 //! `general:S` (sin S's realm, before its general's command post: 4 is
 //! the Assessor's) and `order:K` (the realm's general gives his order K now, 0..2),
 //! (`wound:N` and `slay` reach a prince in his court too; `prince:M` has him begin move M of his:
-//! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam)
+//! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam; `foemove:M` has the
+//! ring's last duelist begin its move M of its breed's; `foeline[:N]` the first stage's four, N times
+//! over, on open ground ahead of the hero),
 //! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
 //! 0 Michael .. 3 Uriel) and `angel` (use it),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
@@ -119,6 +121,8 @@ pub(crate) enum Cmd {
     Court(usize),
     /// A prince begins move M of his (see `Game::debug_prince_move`).
     Prince(usize),
+    FoeMove(usize),
+    FoeLine(usize),
     /// The Cyclops falls at once.
     Slay,
     /// `god`: god mode on (F5).
@@ -282,6 +286,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "fell" => Cmd::Fell,
             "court" => Cmd::Court(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "prince" => Cmd::Prince(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "foeline" => Cmd::FoeLine(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "foemove" => Cmd::FoeMove(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
             "god" => Cmd::God,
@@ -469,6 +475,8 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Fell => game.debug_fell(),
         Cmd::Court(n) => game.map_jump(Stage::Court(SINS[n.min(6)])),
         Cmd::Prince(m) => game.debug_prince_move(m),
+        Cmd::FoeMove(m) => game.debug_foe_move(m),
+        Cmd::FoeLine(n) => game.debug_foe_line(n),
         Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
         // (Past any prince's health at any tier: from W9 even the first court's pass a thousand.)
         Cmd::Slay => game.debug_wound_boss(100_000),
@@ -734,6 +742,8 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
+    // (The foes the camera was moved to see, posed by their clips as play would have posed them.)
+    game.pose_foes_in_view();
     game.view.emit(&game.scene(), &mut frame);
     if args.iter().any(|a| a == "--frame-stats") {
         // What the view emitted this frame, by list and shade mode: where the per-frame upload goes.

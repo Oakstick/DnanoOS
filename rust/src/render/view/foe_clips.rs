@@ -300,6 +300,26 @@ impl WorldView {
     pub fn foe_has_clips(&self, i: usize) -> bool {
         self.enemy_views.get(i).is_some_and(|v| v.clip.is_some())
     }
+
+    /// Captures: the foes the camera now sees that its last step did not pose (the camera moved
+    /// since: `--foe`, `--view`), posed by their clips where they stand; no time passes. (In play
+    /// the camera moves with the step that poses them: `tests::the_maze_foes_on_screen_play_their_clips`.)
+    pub fn pose_foes_in_view(&mut self, s: &SceneState) {
+        let time = s.time as f32;
+        for (i, e) in s.enemies.iter().enumerate().take(self.enemy_views.len()) {
+            if self.foe_on_screen(i) && self.foe_has_clips(i) && !self.foe_posed_by_clips(i) {
+                self.update_enemy(i, e, s, 0.0, time);
+            }
+        }
+    }
+
+    /// Whether foe `i` is drawn on the screen under the camera as it now stands (shown, and in the
+    /// view the emitter keeps): tests and captures, to ask if each one so drawn was posed by clips.
+    pub fn foe_on_screen(&self, i: usize) -> bool {
+        let Some(v) = self.enemy_views.get(i).filter(|v| v.visible) else { return false };
+        let at = self.view_proj() * (v.group_pos + Vec3::new(0.0, 0.5, 0.0)).extend(1.0);
+        at.w > 0.0 && at.x.abs() <= at.w && at.y.abs() <= at.w
+    }
 }
 
 /// The code's lean, sway, twist, squash and bob taken back: the clip carries its own. (The juice
