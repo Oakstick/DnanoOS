@@ -255,23 +255,61 @@ impl WorldView {
                             yf + dy as f32 * 0.45 + if dx != 0 { u } else { 0.0 },
                         )
                     };
-                    // Squared stones in courses, and a coping along the top.
-                    let mut u = -0.5;
-                    let mut k = 0;
-                    while u < 0.5 {
-                        let hk = hash(hx * 3.0 + k as f64 + dx as f64 * 5.0, hy * 7.0 + dy as f64 * 3.0) as f32;
-                        let len = (0.2 + hk * 0.12).min(0.5 - u);
-                        cube(
+                    if self.estate_art {
+                        // The garden's banks: the crypt's dressed stone, chunky and chipped,
+                        // dark and wet low down, under a coping of pale slabs.
+                        let start = self.static_cubes.len();
+                        crypt::masonry(
                             &mut self.static_cubes,
-                            at(u + len / 2.0, (bed + top) / 2.0),
-                            Vec3::new(len - 0.01, top - bed, 0.1),
-                            turn,
-                            jit(BANK[k % 3], hk as f64, 0.06),
+                            &crypt::Wall {
+                                centre: Vec3::new(np.x as f32, 0.0, np.y as f32),
+                                dir: (-dx, -dy),
+                                half: 0.5,
+                                base: bed,
+                                height: top - bed,
+                                courses: 2,
+                                seed: (hx * 2.3 + dx as f64, hy * 1.7 + dy as f64),
+                                len: (0.24, 0.2),
+                                depth: (0.04, 0.05),
+                                face: 0.43,
+                                wet: true,
+                                ruined: false,
+                                foot: None,
+                                openings: &[],
+                            },
                         );
-                        u += len;
-                        k += 1;
+                        for k in 0..2 {
+                            let hk = hash(hx * 3.1 + k as f64 + dx as f64, hy * 1.9 + dy as f64);
+                            let u = -0.25 + k as f32 * 0.5;
+                            crypt::block(
+                                &mut self.static_cubes,
+                                at(u, top + 0.03),
+                                Vec3::new(0.49, 0.06, 0.2),
+                                turn + (hk as f32 - 0.5) * 0.04,
+                                crypt::jit(crypt::pal::PALE_STONE[k], hk, 0.05) * 0.72,
+                                crypt::SHADE_STONE,
+                            );
+                        }
+                        self.authored.push((start, self.static_cubes.len() - start));
+                    } else {
+                        // Squared stones in courses, and a coping along the top.
+                        let mut u = -0.5;
+                        let mut k = 0;
+                        while u < 0.5 {
+                            let hk = hash(hx * 3.0 + k as f64 + dx as f64 * 5.0, hy * 7.0 + dy as f64 * 3.0) as f32;
+                            let len = (0.2 + hk * 0.12).min(0.5 - u);
+                            cube(
+                                &mut self.static_cubes,
+                                at(u + len / 2.0, (bed + top) / 2.0),
+                                Vec3::new(len - 0.01, top - bed, 0.1),
+                                turn,
+                                jit(BANK[k % 3], hk as f64, 0.06),
+                            );
+                            u += len;
+                            k += 1;
+                        }
+                        cube(&mut self.static_cubes, at(0.0, top + 0.025), Vec3::new(1.0, 0.05, 0.16), turn, lin(COPING));
                     }
-                    cube(&mut self.static_cubes, at(0.0, top + 0.025), Vec3::new(1.0, 0.05, 0.16), turn, lin(COPING));
                     // Reeds along some banks.
                     if !bridge && hash(hx * 11.0 + dx as f64, hy * 13.0 + dy as f64) < 0.45 {
                         for b in 0..5 {
@@ -497,8 +535,25 @@ impl WorldView {
             }
             let at = Vec3::new(xf + dx as f32 * 0.42, top + 0.1, yf + dy as f32 * 0.42);
             let s = if dx != 0 { Vec3::new(0.16, 0.2, 1.0) } else { Vec3::new(1.0, 0.2, 0.16) };
-            cube(&mut self.static_cubes, at, s, 0.0, jit(BOX, hash(hx + dx as f64, hy + dy as f64), 0.06));
-            cube(&mut self.static_cubes, at + Vec3::new(0.0, 0.1, 0.0), s * Vec3::new(0.9, 0.05, 0.9), 0.0, lin(BOX_L));
+            let soft = if self.estate_art { crypt::SHADE_SOFT } else { SHADE_LIT };
+            cube_shade(
+                &mut self.static_cubes,
+                at,
+                s,
+                Quat::IDENTITY,
+                jit(BOX, hash(hx + dx as f64, hy + dy as f64), 0.06),
+                Vec3::ZERO,
+                soft,
+            );
+            cube_shade(
+                &mut self.static_cubes,
+                at + Vec3::new(0.0, 0.1, 0.0),
+                s * Vec3::new(0.9, 0.05, 0.9),
+                Quat::IDENTITY,
+                lin(BOX_L),
+                Vec3::ZERO,
+                soft,
+            );
         }
         // What grows here.
         let pick = hash(hx * 7.0 + 5.0, hy * 11.0);

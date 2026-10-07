@@ -37,10 +37,11 @@ fn ring(out: &mut Vec<Instance>, c: Vec3, r: f32, n: usize, size: Vec3, phase: f
     }
 }
 
-/// A disc of `r` at `c` (its middle), `h` thick: an octagon of two squares.
+/// A disc of at most `r` at `c` (its middle), `h` thick: two squares, the second turned an
+/// eighth, their corners within `r`.
 fn disc(out: &mut Vec<Instance>, c: Vec3, r: f32, h: f32, col: Vec3, shade: f32) {
     for turn in [0.0, PI / 4.0] {
-        block(out, c, Vec3::new(r * 1.85, h, r * 1.85), turn, col, shade);
+        block(out, c, Vec3::new(r * 1.41, h, r * 1.41), turn, col, shade);
     }
 }
 
@@ -109,9 +110,21 @@ pub(super) fn temple_cubes(out: &mut Vec<Instance>, o: Vec3, seed: (f64, f64)) -
     for i in 0..4 {
         let phi = i as f32 * PI / 8.0;
         let r = dr * phi.cos();
-        let c = jit(VERDIGRIS, hash(hx + i as f64, hy) * 0.8 + 0.1, 0.1) * (0.85 + 0.08 * i as f32);
-        disc(out, o + Vec3::Y * (base + dh * phi.sin() + 0.06), r, 0.14, c, SHADE_STONE);
+        let tone = hash(hx + i as f64, hy) * 0.8 + 0.1;
+        let n = 8 + (r * 14.0) as usize;
+        ring(
+            out,
+            o + Vec3::Y * (base + dh * phi.sin() + 0.06),
+            r - 0.08,
+            n,
+            Vec3::new(0.0, 0.15, 0.22),
+            i as f32 * 0.2,
+            SHADE_STONE,
+            |k| jit(VERDIGRIS, tone + k as f64 * 0.01, 0.12) * (0.85 + 0.08 * i as f32),
+            0.01,
+        );
     }
+    disc(out, o + Vec3::Y * (base + dh + 0.02), 0.2, 0.08, jit(VERDIGRIS, hx, 0.1) * 1.1, SHADE_STONE);
     let at = |a: f32, phi: f32| {
         o + Vec3::new(a.cos() * (dr + 0.02) * phi.cos(), base + (dh + 0.02) * phi.sin() + 0.04, a.sin() * (dr + 0.02) * phi.cos())
     };

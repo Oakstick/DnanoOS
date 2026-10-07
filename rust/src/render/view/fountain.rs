@@ -26,7 +26,6 @@ mod pal {
     pub const COPPER_D: u32 = 0x6e4026;
     pub const VERDIGRIS: u32 = 0x4a7a68;
     pub const GLASS: u32 = 0xffd48a;
-    pub const PAVER: [u32; 3] = [0xa8a290, 0x9a9482, 0xb4ae9c];
     pub const PAVER_D: u32 = 0x7c7666;
     // The statue.
     pub const ROCK: u32 = 0x6a6c64;
@@ -518,25 +517,28 @@ impl WorldView {
             }
             let top = grid.elevation(x, y) as f32 * STEP;
             let post = Vec3::new(x as f32 + dx as f32 * 0.38, top, y as f32 + dz as f32 * 0.38);
-            lanterns.push(self.plaza_lantern(post));
+            let start = self.static_cubes.len();
+            lanterns.push(garden_beds::lamp_post(&mut self.static_cubes, post, Vec3::new(dx as f32, 0.0, dz as f32), 0.95));
             for i in 0..3 {
                 for j in 0..3 {
                     let (u, w) = (x as f32 + (i as f32 - 1.0) / 3.0, y as f32 + (j as f32 - 1.0) / 3.0);
                     let ring = ((u - xf).powi(2) + (w - zf).powi(2)).sqrt();
                     let h = hash(u as f64 * 7.0, w as f64 * 5.0);
+                    // Pale dressed stone in rings round the basin, a charcoal course between.
                     let color = if (ring * 3.0) as i32 % 3 == 0 {
-                        lin(PAVER_D)
+                        crypt::jit(crypt::pal::CHARCOAL[(h * 3.0) as usize % 3], h, 0.08)
                     } else {
-                        lin(PAVER[(h * 3.0) as usize % 3]) * (0.95 + h as f32 * 0.1)
+                        crypt::jit(crypt::pal::PALE_STONE[(h * 2.0) as usize % 2], h, 0.06) * 0.8
                     };
                     let m = Mat4::from_scale_rotation_translation(
                         Vec3::new(0.31, 0.03, 0.31),
                         Quat::from_rotation_y((h as f32 - 0.5) * 0.06),
                         Vec3::new(u, top + 0.012, w),
                     );
-                    self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
+                    self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, crypt::SHADE_FLAG));
                 }
             }
+            self.authored.push((start, self.static_cubes.len() - start));
         }
 
         // The spouts: one at the foot of the basin on each side a channel leaves from.
@@ -563,22 +565,6 @@ impl WorldView {
             outlets.push((lip, water, dir));
         }
         self.fountain = Some(FountainView { base, outlets, lanterns });
-    }
-
-    /// A lantern on an iron post: a stone foot, the post, a copper cap over amber glass. Returns
-    /// where its glass is (it is lit each frame, more softly than the garden's lanterns).
-    fn plaza_lantern(&mut self, at: Vec3) -> Vec3 {
-        let out = &mut self.static_cubes;
-        let mut put = |pos: Vec3, size: Vec3, color: Vec3, glow: Vec3| {
-            out.push(Instance::new(Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at + pos), color, 1.0, glow, SHADE_LIT));
-        };
-        put(Vec3::new(0.0, 0.04, 0.0), Vec3::new(0.14, 0.08, 0.14), lin(STONE_D), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.32, 0.0), Vec3::new(0.05, 0.5, 0.05), lin(IRON), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.6, 0.0), Vec3::new(0.13, 0.03, 0.13), lin(IRON), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.68, 0.0), Vec3::new(0.08, 0.12, 0.08), lin(GLASS), lin(0xffb050) * 2.2);
-        put(Vec3::new(0.0, 0.76, 0.0), Vec3::new(0.15, 0.03, 0.15), lin(COPPER), Vec3::ZERO);
-        put(Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.06, 0.04, 0.06), lin(COPPER_D), Vec3::ZERO);
-        at + Vec3::new(0.0, 0.68, 0.0)
     }
 
     /// The fountain's water: basin and bowl, the veil over the bowl's rim, the jets, the tongue's stream, splashes, spray and glints.

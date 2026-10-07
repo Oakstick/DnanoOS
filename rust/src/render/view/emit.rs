@@ -268,6 +268,9 @@ impl WorldView {
         } else if self.crypt {
             // The vaults' cold mist, lying deep in the passages.
             haze(0.045, 1.1)
+        } else if self.estate_art {
+            // The garden's night mist, lying in the low walks under the terraces.
+            haze(0.042, 0.65)
         } else {
             haze(0.035, 0.8)
         }

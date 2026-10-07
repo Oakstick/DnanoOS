@@ -264,7 +264,9 @@ fn garden_tree(out: &mut Vec<Instance>, base: Vec3, kind: Kind, height: f32, rea
                     let s = reach * (0.38 + r(k + 0.2) * 0.22) * (1.1 - t as f32 * 0.15);
                     let at = top + Vec3::new(a.cos() * rr, crown * y + (r(k + 0.7) - 0.5) * 0.12, a.sin() * rr);
                     let c = jit(col, r(k + 1.1) as f64, 0.12) * dim;
-                    let rot = Quat::from_rotation_y(r(k + 1.3) * 3.0) * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.4);
+                    let rot = Quat::from_rotation_y(r(k + 1.3) * 3.0)
+                        * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.7)
+                        * Quat::from_rotation_z((r(k + 1.6) - 0.5) * 0.5);
                     block_m(out, Mat4::from_scale_rotation_translation(Vec3::new(s, s * 0.7, s * 0.9), rot, at), c, SHADE_SOFT);
                 }
             }
@@ -293,18 +295,32 @@ fn garden_tree(out: &mut Vec<Instance>, base: Vec3, kind: Kind, height: f32, rea
             block(out, top + Vec3::Y * (col_h + 0.04), Vec3::new(reach * 0.4, 0.12, reach * 0.4), 0.7, lin(YEW_TOP[0]) * dim, SHADE_SOFT);
         }
         Kind::Pine => {
-            // Flat tiers, each two crossed boughs over a dark underside, narrowing upward.
-            let tiers = 4;
+            // Tiers of boughs reaching out from the trunk and drooping at their tips, each tier
+            // turned from the last and narrower, over a dark heart.
+            let tiers = 5;
             let crown = height - trunk_h;
             for i in 0..tiers {
                 let t = i as f32 / tiers as f32;
-                let w = reach * 2.0 * (1.0 - t * 0.7);
-                let y = crown * (t * 0.92);
-                let c = jit(if woods { WOODS[i % 2] } else { PINE[i % 2] }, r(25.0 + i as f64) as f64, 0.1) * (0.85 + t * 0.3);
-                let turn = r(26.0) * 1.5 + i as f32 * 0.4;
-                block(out, top + Vec3::Y * (y + 0.06), Vec3::new(w, 0.14, w * 0.55), turn, c, SHADE_SOFT);
-                block(out, top + Vec3::Y * (y + 0.1), Vec3::new(w * 0.55, 0.14, w), turn, c * 1.08, SHADE_SOFT);
-                block(out, top + Vec3::Y * (y - 0.02), Vec3::new(w * 0.7, 0.06, w * 0.7), turn + 0.4, c * 0.6, SHADE_SOFT);
+                let w = reach * (1.0 - t * 0.75);
+                let y = crown * (t * 0.9);
+                let c = jit(if woods { WOODS[i % 2] } else { PINE[i % 2] }, r(25.0 + i as f64) as f64, 0.1) * (0.82 + t * 0.35);
+                block(out, top + Vec3::Y * (y + 0.04), Vec3::new(w * 0.9, 0.12, w * 0.9), r(27.0 + i as f64) * 3.0, c * 0.62, SHADE_SOFT);
+                let boughs = if i + 2 >= tiers { 3 } else { 4 };
+                for b in 0..boughs {
+                    let a = b as f32 / boughs as f32 * TAU + i as f32 * 0.7 + r(26.0 + b as f64) * 0.6;
+                    let len = w * (0.85 + r(28.0 + (i * 5 + b) as f64) * 0.3);
+                    let dir = Vec3::new(a.cos(), 0.0, a.sin());
+                    let rot = Quat::from_rotation_y(-a) * Quat::from_rotation_z(-0.22);
+                    let at = top + Vec3::Y * (y + 0.06) + dir * len * 0.5;
+                    block_m(
+                        out,
+                        Mat4::from_scale_rotation_translation(Vec3::new(len, 0.08, 0.2 * (1.0 - t * 0.4) + 0.06), rot, at),
+                        c * (0.95 + 0.1 * (b % 2) as f32),
+                        SHADE_SOFT,
+                    );
+                    // The tip, drooping.
+                    block(out, top + Vec3::Y * (y - 0.02) + dir * len * 0.95, Vec3::new(0.08, 0.07, 0.1), -a, c * 1.12, SHADE_SOFT);
+                }
             }
             block(out, top + Vec3::Y * (crown + 0.04), Vec3::new(0.08, 0.22, 0.08), 0.0, lin(PINE[1]) * dim, SHADE_SOFT);
             // The trunk on up through the tiers.
@@ -316,10 +332,9 @@ fn garden_tree(out: &mut Vec<Instance>, base: Vec3, kind: Kind, height: f32, rea
 /// A lantern on an iron post at `p` (its foot), its arm reaching toward `arm`: a pale stone
 /// foot, the post with a collar, the arm and its brace, and the lantern of copper and amber glass
 /// hung from it. Returns the middle of the glass.
-pub(super) fn lamp_post(out: &mut Vec<Instance>, p: Vec3, arm: Vec3) -> Vec3 {
+pub(super) fn lamp_post(out: &mut Vec<Instance>, p: Vec3, arm: Vec3, post: f32) -> Vec3 {
     let iron = lin(IRON).lerp(lin(RUST), 0.3);
     block(out, p + Vec3::Y * 0.07, Vec3::new(0.2, 0.14, 0.2), 0.3, jit(PALE_STONE[1], 0.3, 0.04) * 0.7, SHADE_STONE);
-    let post = 1.42;
     block(out, p + Vec3::Y * (0.14 + post / 2.0), Vec3::new(0.05, post, 0.05), 0.0, iron, SHADE_IRON);
     block(out, p + Vec3::Y * 0.26, Vec3::new(0.085, 0.08, 0.085), 0.0, iron, SHADE_IRON);
     block(out, p + Vec3::Y * (0.14 + post), Vec3::new(0.075, 0.05, 0.075), 0.0, iron, SHADE_IRON);
@@ -550,7 +565,7 @@ impl WorldView {
         }
         for (spot, foot, out) in lanterns {
             let start = self.static_cubes.len();
-            let glass = lamp_post(&mut self.static_cubes, foot, out);
+            let glass = lamp_post(&mut self.static_cubes, foot, out, 1.42);
             let len = self.static_cubes.len() - start;
             // (The light is lit half a unit above a torch's point.)
             self.torches.insert(spot, (glass - Vec3::Y * 0.5, (start, len)));
