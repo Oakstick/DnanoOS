@@ -1,0 +1,12 @@
+{
+ "clip": "thorn_line",
+ "fps": 60,
+ "frames": 132,
+ "loop": false,
+ "markers": {
+  "windup_end": 42,
+  "hit": 46,
+  "active_end": 50,
+  "recover_end": 132
+ }
+}

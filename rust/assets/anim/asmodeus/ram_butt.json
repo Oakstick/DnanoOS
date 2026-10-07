@@ -1,0 +1,12 @@
+{
+ "clip": "ram_butt",
+ "fps": 60,
+ "frames": 244,
+ "loop": false,
+ "markers": {
+  "windup_end": 166,
+  "hit": 171,
+  "active_end": 180,
+  "recover_end": 244
+ }
+}

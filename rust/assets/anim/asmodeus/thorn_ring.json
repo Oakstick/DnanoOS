@@ -1,0 +1,12 @@
+{
+ "clip": "thorn_ring",
+ "fps": 60,
+ "frames": 145,
+ "loop": false,
+ "markers": {
+  "windup_end": 45,
+  "hit": 49,
+  "active_end": 59,
+  "recover_end": 145
+ }
+}
