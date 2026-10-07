@@ -72,6 +72,7 @@ mod select;
 mod showcase;
 mod spring;
 mod story;
+mod story_sets;
 mod vault;
 mod vault_decor;
 mod war_props;
@@ -563,8 +564,8 @@ impl WorldView {
             preview_heroes: false,
             lookdev: None,
             story: None,
-            story_sets: [InstanceSet::new(story::graveyard_set()), InstanceSet::new(story::gateway_set())],
-            story_mist: [InstanceSet::new(story::graveyard_mist()), InstanceSet::new(story::gateway_mist())],
+            story_sets: [InstanceSet::new(story::graveyard_set()), InstanceSet::new(story_sets::gateway_set())],
+            story_mist: [InstanceSet::new(story::graveyard_mist()), InstanceSet::new(story_sets::gateway_mist())],
             story_rise: [0.0; 3],
             was_story: false,
             ascent_set: InstanceSet::new(ascent::pit_set()),
