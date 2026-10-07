@@ -1,0 +1,10 @@
+{
+ "clip": "stagger",
+ "fps": 60,
+ "frames": 78,
+ "loop": false,
+ "markers": {
+  "impact": 14,
+  "recover_end": 78
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "clip": "roar",
+ "fps": 60,
+ "frames": 247,
+ "loop": false,
+ "markers": {
+  "windup_end": 161,
+  "hit": 180,
+  "active_end": 185,
+  "recover_end": 247
+ }
+}

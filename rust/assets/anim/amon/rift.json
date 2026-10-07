@@ -1,0 +1,12 @@
+{
+ "clip": "rift",
+ "fps": 60,
+ "frames": 143,
+ "loop": false,
+ "markers": {
+  "windup_end": 47,
+  "hit": 51,
+  "active_end": 55,
+  "recover_end": 143
+ }
+}

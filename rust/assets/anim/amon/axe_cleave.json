@@ -1,0 +1,12 @@
+{
+ "clip": "axe_cleave",
+ "fps": 60,
+ "frames": 79,
+ "loop": false,
+ "markers": {
+  "windup_end": 24,
+  "hit": 29,
+  "active_end": 33,
+  "recover_end": 79
+ }
+}
