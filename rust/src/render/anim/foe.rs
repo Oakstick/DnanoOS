@@ -25,7 +25,7 @@ const LAYER_OUT_FRAMES: f32 = 8.0;
 const PACE_SECONDS: f32 = 0.18;
 /// Speed over the ground (tiles a second) where a walk gives way to a run: all walk below the
 /// first, all run above the second.
-const WALK_TO_RUN: [f32; 2] = [2.2, 3.4];
+pub const WALK_TO_RUN: [f32; 2] = [2.2, 3.4];
 /// Metres a gait's cycle carries it when its markers do not say.
 const DEFAULT_STRIDE: f32 = 1.2;
 /// The fastest a gait plays against its own pace (its clip's length a cycle): the foes cover the
@@ -210,10 +210,11 @@ impl FoeAnimator {
             Body::Feet
         };
 
-        // A change of state crossfades from where it was, except into a strike.
+        // A change of state crossfades from where it was, except into a strike from its start (a
+        // strike taken up past its wind-up, as a charge's recovery after its run, fades in).
         if body != self.body {
             self.fade = match body {
-                Body::Strike(_) => None,
+                Body::Strike(_) if !d.strike.is_some_and(|s| s.t > s.bounds[1]) => None,
                 _ if self.last.len() == n => Some((self.last.clone(), 0.0, BLEND_FRAMES)),
                 _ => None,
             };

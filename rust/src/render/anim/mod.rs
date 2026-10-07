@@ -11,6 +11,7 @@ pub mod export;
 pub mod foe;
 pub mod foe_beasts;
 pub mod foe_build;
+pub mod foe_courts;
 pub mod foe_realms;
 pub mod foe_rigs;
 pub mod foe_stage4;

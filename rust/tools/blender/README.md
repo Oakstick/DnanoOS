@@ -174,3 +174,33 @@ The retarget (`retarget.py`) now also takes an armature with only some of the he
 legs are her own: no hips' travel then), a weapon in each fist each its own way (`weapon_rest` as a
 dict), and mirrors a foe's grip and sword arm; `mixamo_hero.make` takes `stride="feet"` (the stride
 measured from the feet) and `extra_marks`.
+
+### The later stages, the realms, the courts and the lair
+
+The same two scripts take every foe since (`FoeRig::dir` names them all: `kappa` ... `hel`, `ganglot`,
+`gaki`, `ellepige`, `mammon`, `gold_golem`, `lucifer`, `reflection`, `leviathan`, `serpentling`,
+`amon`, `raven`, `belphegor`, `nightmare`, `beelzebub`, `fly_swarm`, `asmodeus`, `krampus`, `percht`).
+`block_foe.py` finds the keyed ones in its own `FOES` and in the modules after it: `block_stage4.py`
+to `block_stage7.py`, `block_courts.py` (the ravens; and the keyed bones laid under princes' clips),
+`block_envy.py` (Leviathan, the serpentlings), `block_feast.py` (the fly swarm; the charges and
+Beelzebub's belly roll, baked onto a prince's Mixamo .blend), `block_realms.py` (the ganglöt's staff
+arm).
+
+```
+blender -b mammon.blend -P tools/blender/mixamo_foe.py -- mammon C:/Users/ulask/Games/mixamo mammon_m.blend
+blender -b -P tools/blender/block_foe.py -- amon amon_rig.glb amon_m.blend --onto amon_m.blend
+blender -b mammon_m.blend -P tools/blender/mixamo_foe.py -- mammon C:/Users/ulask/Games/mixamo mammon_m.blend coin_rain
+```
+
+The second bakes a foe's keyed clips onto its Mixamo .blend (Amon's fiery charge over his Mixamo
+moves); the third retargets only the slots named, into the .blend it opens (the others kept).
+
+A table's options beyond the heroes': `slow` (the source played that much longer: a giant's
+weight), `lay=(module, class, method, bones, frames, loop)` (bones keyed by script laid under the
+clip: a staff or a sceptre held upright as sculpted where the source's arm swings empty, a tail, a
+jaw, wings; a loop gets whole cycles, a move fitted to its markers by `RECOVERY_FD`), `face` and
+`yaw_keep` (the source's turning taken out), `mirror=False` per slot (a throw from the prince's own
+right). A prince's `roar` plays as each of his phases begins.
+
+`export_clips.py` thins each clip as it writes it (`thin_clips.py`, also standalone over written
+clips): a track keeps only the keys a straight line between its neighbours does not give back.

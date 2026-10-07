@@ -909,6 +909,22 @@ impl WorldView {
         let Some(v) = self.enemy_views.get(i) else { return };
         let rig = self.models.rig(v.rig);
         let root = enemy_root(v);
+        let clips = self.foe_clip_pose(i);
+        // A point of his grid in code part `part` (or, by his clips, on `bone`), posed.
+        let posed = |rig: &Rig, pose: &Pose, root: Mat4, part: usize, pivot: [f32; 3], p: [f32; 3]| match clips {
+            Some((jointed, mats)) => {
+                let bone = match rig.parts[part].name {
+                    "armL" => "hand.L",
+                    "armR" => "hand.R",
+                    "body" => "chest",
+                    other => other,
+                };
+                let b = jointed.index(bone).unwrap_or(0);
+                let at = rig.parts[part].rest + (Vec3::from(p) - Vec3::from(pivot)) * rig.size;
+                root.transform_point3(mats.get(b).copied().unwrap_or(Mat4::IDENTITY).transform_point3(at))
+            }
+            None => posed(rig, pose, root, part, pivot, p),
+        };
         let p = Vec3::new(d.pos.x as f32, 0.0, d.pos.y as f32);
         let ahead = Vec3::new(d.facing.x as f32, 0.0, d.facing.y as f32).normalize_or_zero();
         // His key light (cold, before him) and the coal's red glow at his hip.
@@ -1172,6 +1188,19 @@ impl WorldView {
      * brought down, the bars of the cage gripped and shaken, and dazed, his head lolling.
      */
     pub(super) fn pose_krampus(&mut self, i: usize, d: &Duelist, time: f32) {
+        // (By his clips all of it is in them, his sack swung from his fist too, `view::foe_clips`: the
+        // code poses its own rig still, but its turns and leans of his whole body are taken back.)
+        let clips = self.foe_posed_by_clips(i);
+        let (rot, scale) = (self.enemy_views[i].root_rot, self.enemy_views[i].root_scale);
+        self.pose_krampus_code(i, d, time);
+        if clips {
+            let v = &mut self.enemy_views[i];
+            v.root_rot = rot;
+            v.root_scale = scale;
+        }
+    }
+
+    fn pose_krampus_code(&mut self, i: usize, d: &Duelist, time: f32) {
         let rig = self.models.rig(self.enemy_views[i].rig);
         let v = &mut self.enemy_views[i];
         let ease = |u: f32| {

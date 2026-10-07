@@ -1,0 +1,12 @@
+{
+ "clip": "sceptre",
+ "fps": 60,
+ "frames": 158,
+ "loop": false,
+ "markers": {
+  "windup_end": 50,
+  "hit": 64,
+  "active_end": 66,
+  "recover_end": 158
+ }
+}

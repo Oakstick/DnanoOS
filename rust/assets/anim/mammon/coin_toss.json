@@ -1,0 +1,12 @@
+{
+ "clip": "coin_toss",
+ "fps": 60,
+ "frames": 122,
+ "loop": false,
+ "markers": {
+  "windup_end": 38,
+  "hit": 40,
+  "active_end": 43,
+  "recover_end": 122
+ }
+}

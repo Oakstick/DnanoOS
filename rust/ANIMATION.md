@@ -807,3 +807,108 @@ move has them fitted to its markers.
   hand (the tengu's); it hides inside the sleeve's cuff.
 - The flyers' rally is a screech held on spread wings.
 - The witch's robe halves part when she strides wide.
+
+### 11.7 The later stages (4 to 7)
+
+The same pipeline for the yōkai, the Anatolian nights, the legends and Ragnarök. Their tables are
+built in code rather than written out (`anim::foe_build::Build`): a skeleton's bones and joints, the
+code parts each starts in, and each limb as a **chain** (`Build::chain`: bones down a run of points,
+cut square to each bend by a slanted plane on the bend's bisector, so a limb sculpted bent, a giant's
+arm or a goat's leg, is cut where it bends and not across). `foe_stage4.rs` to `foe_stage7.rs` hold
+them, a function a foe, measured on its sculpt as the first stages' were.
+
+| Foe | Skeleton, and the cut | Clips |
+|---|---|---|
+| Kappa | the heroes' bones; the water in its dish its own bone on its head | keyed (`block_stage4.Kappa`): its squat and its arms held forward are its own (Mixamo's would hang them at its sides); its shove the sumo's: down in the crouch, palms back, then both thrust out as it lunges. Its dish spilled sinks the water (as the code's) |
+| Rokurokubi | her body, chest, the neck in six, her head and jaw, her arms | keyed (`block_stage4.Rokurokubi`): kneeling still, her neck weaving each bone a little later than the one below; her neck bite drawn back then flung out its own length |
+| Oni | the heroes' bones; the kanabo (iron) the `offhand`, cut out before his elbow | creature pack (idle 2, walking, run), the kanabo whirled up and brought down (great sword high spin, its spin taken out), the sweep (axe 360 high), the chest thump |
+| Kitsune | the wolves' bones, its tail in three | keyed on the wolves' (`block_stage4.Kitsune`), lighter; its tail raised in its S; the foxfire cast from its raised head |
+| Tülükuş | an owl's: body, head, each folded wing in two, legs and talons | keyed (`block_stage5.Tulukus`): its head swivelling as an owl's, a stalk on its talons; its talons up on spread beating wings (the code lifts it) and down talons first |
+| Albastı | the heroes' bones | magic pack stand, crouched creep and sprint; her smother keyed onto them (`block_stage5.Albasti`): reared up tall on her toes, arms spread over him, then fallen forward on him |
+| Cin | the heroes' bones; his staff and its smokeless fire in his right fist the `blade` | magic pack; the fire flung from the staff hand |
+| Arçura | the heroes' bones, a goat's legs (thigh to the knee, shin to the hock, the cannon and hoof the foot), its tail on its hips | magic pack stand, creature pack walk; its roots called up with both arms raised (the growth is the code's: `settle_root` keeps its scale) |
+| Karakoncolos | the heroes' bones, an ape's long arms | creature pack: idle, walking, run, its call the roar, its slam the jump attack, its sweep the punch |
+| Tepegöz | the heroes' bones, a giant's | creature pack slowed half again; the view lights his eye where the clip carries his head |
+| Gashadokuro | the heroes' bones and its hanging jaw | zombie pack slowed (its grab the zombie's two-handed lunge), its jaw keyed under every clip (`block_stage6.GashaJaw`: rattling, gaping as it seizes, wide as it cries) |
+| Ejder | its body the root, each of the seven necks in two with its head, the tail, four short legs in two | keyed (`block_stage6.Ejder`): seven necks weaving out of time; its heads drawn back and struck in turn, two by two, the middle last; the legs plod. Felled and begging stays the code's |
+| Goryō | the heroes' bones, its legs empty (it floats) | magic pack: its arms held out before it (the block idle), the storm called down with both hands |
+| Frost giant | the heroes' bones | creature pack slowed (his frost slam both fists brought down) |
+| Surtr | the heroes' bones; the flaming sword the `offhand` | great sword and axe packs slowed (picks none of the heroes uses) |
+| Níðhöggr | a serpent's: its coils the root, its tail, the neck rearing in five, the head | keyed (`block_stage7.Nidhogg`): down into the floor head first and up beneath him (the code sinks it, `settle_root` keeps that), its bite a strike off its coils |
+| Hel | the heroes' bones; her gown on her hips; her staff the `offhand` | magic pack: her staff raised to call the dead up, her bolt flung from it |
+
+Giants are slowed (`slow`: the source played half again as long) and keep their feet planted; their
+moves are warped onto their own frame data as everyone's are.
+
+### 11.8 The realms' own, and the Peerless
+
+| Foe | Skeleton, and the cut | Clips |
+|---|---|---|
+| Ganglöt | the heroes' bones: its shroud on its hips, bowed forward as it rises; its shins under the hem its legs (their joint at the knee, where the code swings them); its staff of bog-oak with the lantern on its crook the `offhand` (wood, iron, glass and the blue flame) | the zombie's shuffle slowed; its staff held upright as sculpted while it stands, shuffles and reels (`block_realms.GanglotStaff` laid over the zombie's arm, swinging a little with each step as an old man's stick); its blows the axe pack's, slowed: the staff and its lantern brought down, and swept |
+| Gaki | the heroes' bones: the belly a drum on its hips, cut above it where the ribs begin | the zombie's shamble, run and lunge (its bite the zombie attack), the creature's roar |
+| Ellepige | the heroes' bones: her gown on her hips; her open back, the rotten trough, rides it as sculpted (the hollow stays where it is) | the magic pack: light on her feet, her blow a quick spell from her hand |
+
+**The Peerless** is drawn by the Hall of Mirrors in the hero's own likeness, a moment late
+(`view/realms/mirrors.rs`): the Hall now keeps the hero's clips' matrices with each pose it keeps
+for the echo, and draws the Peerless by them (his guard is in them), the code's tilt as it reels and
+its rise out of the floor laid on as before. The mirrors' reflections of him are drawn by his clips
+as he is now. Under `VH_ANIM=code` (and the code half of `--anim-compare`) both are the code's.
+
+### 11.9 The courts
+
+The princes and what they raise, court by court (`foe_courts.rs`; the clips in
+`tools/blender/mixamo_foe.py`, the keyed bones in `block_courts.py`, `block_envy.py` and
+`block_feast.py`). Every prince move's clip shows what its code pose shows, warped by its frame data
+(the phase's tempo included); captured
+move by move, code beside clips (§11.12). Three things are new in the animator for them:
+
+- **A roar as each phase begins** (`foe_clips`: a prince's `roar`, or `rally`, played over the
+  breather the game gives him at the rally's frames; the code has no pose for it, only the roar's
+  sound and the hall shaking).
+- **A charge's run is his run** (Amon's fiery charge, Asmodeus's bull charge, Krampus's hoof charge):
+  its wind-up and its pulling up are the move's clip (keyed whole, `block_feast.Charge`: down low, head
+  down, a hoof pawing; then up out of the lean), its active frames his run clip at full tilt.
+- **A strike taken up late fades in** (the charge's recovery after the run): only a strike from its
+  first frame snaps in.
+
+| Court | Prince and adds | The cut | Clips |
+|---|---|---|---|
+| Greed | Mammon | his sceptre the `offhand`, cut by its gold below his fist, above his wrist (clear of the coins on his forearm and his sleeve's trim) and over his shoulder | axe pack idle and walk slowed to a heavy waddle; the sceptre swung (axe horizontal), brought down (the creature's two-fisted jump attack); his coins thrown, his grasp thrust out, from his own right (magic pack, unmirrored) with the sceptre held upright meanwhile (`GanglotStaff` laid on his left); the coins rained with both hands raised (the 2H cast); his roar the chest thump. His grasp holds while it holds the hero (the fighter's frame stands still) |
+| | Gold golems | the heroes' bones | the creature pack slowed |
+| Pride | Lucifer | his sword of light the `offhand`; his white six wings each side a bone on his chest, the burnt six too (`wings.L`, `wings.R`, `burnt.L`, `burnt.R`); the set not shown sunk far under the floor as the code does (white while he stands, burnt when he falls) | regal: the magic pack's carriage, his sword point-down before him as sculpted; the radiant cut (sword and shield slash (4), wound round and swept), the lance of dawn (attack (4), raised to the sky and levelled), the mirror step (the block start, arms crossed), the starfall (2H area attack, both hands up), Pride's fall (the axe pack's leap and smash, the code lifting him over his mark); every clip with his wings keyed under it (`LuciferWings`: lifted, folded, beating as `dress_lucifer` poses them). `dress_lucifer` by his clips keeps only his flight, his light, his glow |
+| | Reflections | his mirror image: the sword in their own right, the `blade` | his picks unmirrored (so mirrored from his) |
+| Envy | Leviathan | his coil the root; his neck in three, cut square to each bend of its S; his head, jaw, tail in two, fins | keyed whole (`block_envy.Leviathan`): every move as `levi_neck` bends him, the neck's bend shared down its three bones; his lash's twist, his wave's rearing and fall, his toll's and his burning coil's swell keyed on his root; under the water he is the code's |
+| | Serpentlings | their coil, neck in three, head, tail | keyed (`block_envy.Serpentling`), the cobra's bite |
+| Wrath | Amon | his axe the `offhand` (its wood at the fist, all but his hide below the fist and above the elbow's band, its iron at the spike); his serpent's tail in two | the creature pack (a beast under his pelt), his axe held upright where its arms swing empty; the cleave the great sword's overhead blow, the rift the axe's chop, the flame breath the roar, the eruption both fists slammed down; his tail keyed (`AmonTail`), streaming as he runs |
+| | Ravens | the night raven's bones (`FLYER`) | the flyers' keyed clips, slow heavy beats |
+| Sloth | Belphegor | his hourglass hanging from his right fist the `blade` | the zombie's slack shamble slowed, the creature's blows; his swat the swipe, his yawn the stretch (flexing, arms up), his sand the hourglass raised (1H cast), his slam both fists, his clock hands arms wide (the whole turn is the code's root still); the hourglass held as sculpted under every clip (`Still`). Asleep, in his chair or on the floor, he is the code's (a set piece) |
+| | Nightmares | the heroes' bones, the wisps on the legs' | the magic pack's upper body, hunched; the wisps keyed (`NightmareWisps`) trailing and streaming |
+| Gluttony | Beelzebub | his cleaver the `offhand` (its wood, gold and steel at his claws, all of its blade beyond them); his wings each a bone on his chest | the creature's belly slowed; the cleaver chopped (axe downward), flies flung from both arms, bent over his food (the zombie feeding), his bile the scream, his belly slam both fists; his belly roll keyed whole (`BellyRoll`: tucked; the code rolls his body, `settle_root` keeps it); his wings buzzing under every clip |
+| | Fly swarms | its heart the root, its four clouds bones on it | keyed whole (`block_feast.Swarm`): the clouds turning two one way and two the other, drawn in and thrown at him for the bite |
+| Lust | Asmodeus | his lance the `offhand` (its gold and steel along it past his fist, its banded butt behind, its bands and pennon out before him); his tail in two | the magic pack, courtly; the lance thrust (great sword slash (2), the lunge), the thorns (axe downward, the 360 low with the other arm wide), the kiss blown off his own right (1H cast, unmirrored), his ram's butt (the zombie's lunging bite), his bull charge keyed about his run |
+
+### 11.10 Krampus's lair
+
+| Foe | The cut | Clips |
+|---|---|---|
+| Krampus | hunched forward; his goat's legs on the leg bones (the thigh forward to the hock, the shank back to the hoof); his birch and its ribbon the `blade`, his chain and its great bell the `offhand`; his sack of coals its own bone on his hips | the creature pack's lumber, birch and chain held as sculpted where its hands open (`Still`); the birch lashed (axe downward), the chain swept and cracked (axe horizontal and backhand, mirrored for his left), the bells shaken up and a hoof stamped (2H area attack), coal flung from his sack (1H attack), the sack swung over his head two-handed (great sword's overhead blow) with its neck carried to his fist and back (`foe_clips`, as the code hangs it there), the cage's bars shaken (the zombie's grab); his hoof charge keyed about his run. `pose_krampus` by his clips keeps none of its root; the lair's lights and the chain's line are placed by his clips' bones |
+| Perchten | the heroes' bones (their parts named as they face the hero); the switch the `blade` | the creature pack, the axe pack's blows |
+
+His fall, the cage, the Pit, the angelic rise and the ending are the code's (they draw his own rig
+or no foe at all): nothing of them changes.
+
+### 11.11 Clips thinned
+
+`export_clips.py` thins each clip as it writes it (`tools/blender/thin_clips.py`, also standalone:
+`python tools/blender/thin_clips.py assets/anim/*/*.glb`): each bone's track keeps only the keys a
+straight line between its neighbours does not give back within 0.003 (rotation), 0.0005 m
+(translation) or 0.002 (scale), by Ramer-Douglas-Peucker, and a track that holds its rest is dropped.
+The game samples clips at 60 Hz as before; the first stages' clips went from 6,608 KB to 3,181 KB.
+
+### 11.12 Capture hooks
+
+`--script "0:ringof:K:N"` puts N foes of one kind alone in the Sparring Ring (K counts through the
+stages' foes, then the realms', the courts' and the lair's own, in `EnemyKind`'s lists' order);
+`prince:M` makes the prince in the bout begin his move M (through his phases' tables); `--foe p`
+films the prince; a capture's line ends with the last foe's state and the prince's (or the first
+duelist's), its move, frame and phase. With `--anim-compare` each shot is code beside clips.

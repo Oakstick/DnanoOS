@@ -316,6 +316,227 @@ ELLEPIGE = {
     "stagger": (MG + "Standing React Large From Right.fbx", dict(ELLE, kind="flinch")),
 }
 
+# ------------------------------------------------------------------ the courts: Greed
+
+# A prince's roar as each phase begins (`view::foe_clips`: played over his breather), in every
+# prince's table as `roar`. Mammon: the sceptre (his own left: mirrored) swung as the axe pack
+# swings, brought down two-handed as the great sword pack's overhead blow; his coins thrown with
+# his own right from the magic pack (not mirrored: his right is the source's), the sceptre held
+# upright meanwhile as sculpted (`block_realms.GanglotStaff` laid over his left arm); his walk the
+# axe pack's, slowed to a heavy waddle.
+MAM = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, 0.998, -0.068))
+HELD = ("block_realms", "GanglotStaff")
+HELD_BONES = ["upper_arm.L", "forearm.L", "hand.L", "offhand"]
+MAM_THROW = dict(MAM, mirror=False, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1), yaw_keep=0.0, face=0.0)
+MAMMON = {
+    "idle": (AX + "idle.fbx", dict(MAM, loop=True, slow=1.3)),
+    "walk": (AX + "walk forward.fbx", dict(MAM, loop=True, stride="feet", slow=1.6)),
+    "sceptre": (AX + "melee attack horizontal.fbx", dict(MAM, kind="strike", slow=1.15)),
+    "coin_toss": (MG + "Standing 1H Magic Attack 01.fbx", dict(MAM_THROW, lay=HELD + ("idle", HELD_BONES, 240, False))),
+    "coin_volley": (MG + "Standing 1H Magic Attack 02.fbx", dict(MAM_THROW, lay=HELD + ("idle", HELD_BONES, 240, False))),
+    "grasp": (MG + "Standing 1H Magic Attack 03.fbx", dict(MAM_THROW, lay=HELD + ("idle", HELD_BONES, 240, False))),
+    "coin_rain": (MG + "Standing 2H Cast Spell 01.fbx", dict(MAM, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1))),
+    "hoard_slam": (MU + "mutant jump attack.fbx", dict(MAM, kind="strike", weapon="hand.R", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0, slow=1.2)),
+    "roar": (AX + "taunt chest thump.fbx", dict(MAM, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (AX + "react large gut.fbx", dict(MAM, kind="flinch", slow=1.2)),
+    "stagger": (AX + "react large from right.fbx", dict(MAM, kind="flinch", slow=1.2)),
+}
+# The gold golems: the creature pack, slowed for their weight of gold.
+GOLD_GOLEM = {
+    "idle": (MU + "mutant breathing idle.fbx", dict(loop=True, slow=1.3)),
+    "walk": (MU + "mutant walking.fbx", dict(loop=True, stride="feet", slow=1.4)),
+    "slam": (MU + "mutant jump attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0, slow=1.2)),
+    "sweep": (MU + "mutant swiping.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), slow=1.2)),
+    "rally": (MU + "mutant flexing muscles.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (AX + "react large gut.fbx", dict(kind="flinch", slow=1.2)),
+    "stagger": (AX + "react large from left.fbx", dict(kind="flinch", slow=1.2)),
+}
+
+# ------------------------------------------------------------------ the courts: Pride
+
+# Lucifer: regal, upright; his sword of light (his own left: mirrored) held point-down before him as
+# sculpted while he stands and walks (the magic pack's carriage, his sword arm laid over it), swung
+# as the sword-and-shield pack swings in picks none of the heroes uses; his six wings keyed
+# (`block_courts.LuciferWings`) and laid under every clip, as the code lifts and folds them.
+LUC = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, -0.91, 0.41), face=0.0)
+LW = ("block_courts", "LuciferWings")
+WINGS = ["wings.L", "wings.R", "burnt.L", "burnt.R"]
+LHELD = WINGS + ["upper_arm.L", "forearm.L", "hand.L", "offhand"]
+LUCIFER = {
+    "idle": (MG + "Standing Idle 04.fbx", dict(LUC, loop=True, lay=LW + ("idle", LHELD, 240, True))),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(LUC, loop=True, stride="feet", lay=LW + ("walk", LHELD, 1000, True))),
+    "radiant_cut": (SS + "slash (4).fbx", dict(LUC, kind="strike", yaw_keep=0.0, face=0.0, lay=LW + ("radiant_cut", WINGS, 82, False))),
+    "lance_of_dawn": (SS + "attack (4).fbx", dict(LUC, kind="strike", lay=LW + ("lance_of_dawn", WINGS, 102, False))),
+    "mirror_step": (MG + "Standing Block Start.fbx", dict(LUC, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), lay=LW + ("mirror_step", WINGS, 109, False))),
+    "starfall": (MG + "Standing 2H Magic Area Attack 02.fbx", dict(LUC, kind="strike", weapon="hand.R", tip_rest=(0, 1, 0), lay=LW + ("starfall", WINGS, 77, False))),
+    "prides_fall": (AX + "melee run jump attack.fbx", dict(LUC, kind="strike", still=True, span=(0.37, 3.45), lay=LW + ("prides_fall", WINGS, 116, False))),
+    "roar": (SS + "power up.fbx", dict(LUC, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=LW + ("roar", WINGS, 77, False))),
+    "hit": (SS + "impact (3).fbx", dict(LUC, kind="flinch", lay=LW + ("reel", WINGS, 60, False))),
+    "stagger": (GS + "impact.fbx", dict(LUC, kind="flinch", lay=LW + ("reel", WINGS, 60, False))),
+}
+# His Reflections: his mirror image, the sword in their own right, so the same picks unmirrored.
+REF = dict(weapon="blade", weapon_rest=(0.0, -0.91, 0.41), face=0.0)
+RW = ("block_courts", "ReflectionWings")
+RWINGS = ["wings.L", "wings.R"]
+RHELD = RWINGS + ["upper_arm.R", "forearm.R", "hand.R", "blade"]
+REFLECTION = {
+    "idle": (MG + "Standing Idle 04.fbx", dict(REF, loop=True, lay=RW + ("idle", RHELD, 240, True))),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(REF, loop=True, stride="feet", lay=RW + ("walk", RHELD, 1000, True))),
+    "radiant_cut": (SS + "slash (4).fbx", dict(REF, kind="strike", yaw_keep=0.0, face=0.0, lay=RW + ("radiant_cut", RWINGS, 82, False))),
+    "hit": (SS + "impact (3).fbx", dict(REF, kind="flinch", lay=RW + ("reel", RWINGS, 60, False))),
+    "stagger": (GS + "impact.fbx", dict(REF, kind="flinch", lay=RW + ("reel", RWINGS, 60, False))),
+}
+
+# ------------------------------------------------------------------ the courts: Wrath
+
+# Amon: the creature pack (a beast under his pelt), his great axe (his own left: mirrored) held
+# upright as sculpted where its arms swing empty, swung as the axe and great sword packs swing; his
+# serpent's tail keyed (`block_courts.AmonTail`). His charge: the creature's crouch and leap, its
+# leap given over to his run while he charges (`view::foe_clips`).
+AMO = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, 0.999, -0.034))
+AT = ("block_courts", "AmonTail")
+TAILS = ["tail.1", "tail.2"]
+AHELD = TAILS + ["upper_arm.L", "forearm.L", "hand.L", "offhand"]
+AMON = {
+    "idle": (MU + "mutant breathing idle.fbx", dict(AMO, loop=True, lay=AT + ("idle", AHELD, 240, True))),
+    "walk": (MU + "mutant walking.fbx", dict(AMO, loop=True, stride="feet", lay=AT + ("walk", AHELD, 1000, True))),
+    "run": (MU + "mutant run.fbx", dict(AMO, loop=True, stride="feet", lay=AT + ("run", AHELD, 1000, True))),
+    "axe_cleave": (GS + "attack.fbx", dict(AMO, kind="strike", slow=1.1, lay=AT + ("sway", TAILS, 140, False))),
+    "rift": (AX + "melee attack downward.fbx", dict(AMO, kind="strike", slow=1.1, lay=AT + ("sway", TAILS, 140, False))),
+    "fiery_charge": (MU + "mutant jump attack.fbx", dict(AMO, kind="strike", still=True, yaw_keep=0.0, face=0.0, lay=AT + ("run", TAILS, 1000, False))),
+    "flame_breath": (MU + "mutant roaring.fbx", dict(AMO, kind="strike", weapon="head", tip_rest=(0.0, 0.0, 1.0), lay=AT + ("sway", TAILS, 140, False))),
+    "eruption": (MU + "jump attack.fbx", dict(AMO, kind="strike", weapon="hand.R", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0,
+                                              lay=AT + ("sway", TAILS, 140, False))),
+    "roar": (MU + "mutant flexing muscles.fbx", dict(AMO, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=AT + ("sway", TAILS, 140, False))),
+    "hit": (AX + "react large gut.fbx", dict(AMO, kind="flinch", lay=AT + ("sway", TAILS, 140, False))),
+    "stagger": (AX + "react large from right.fbx", dict(AMO, kind="flinch", lay=AT + ("sway", TAILS, 140, False))),
+}
+
+# ------------------------------------------------------------------ the courts: Sloth
+
+# Belphegor: the zombie's slack shamble and the creature's blows, slowed; his hourglass hanging from
+# his own right fist as sculpted (`block_courts.Still` keyed on it under every clip); his great
+# left hand (the sculpt's right: mirrored) the one that swats. His yawn the creature's roar, his
+# sand shaken out of the hourglass raised in his right (the magic pack's cast, unmirrored).
+BEL = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, -1.0, 0.0))
+GLASS = ("block_courts", "Still", "still", ["blade"], 60)
+BELPHEGOR = {
+    "idle": (Z + "idle.fbx", dict(BEL, loop=True, slow=1.5, lay=GLASS + (True,))),
+    "walk": (Z + "walk.fbx", dict(BEL, loop=True, stride="feet", slow=1.6, lay=GLASS + (True,))),
+    "swat": (MU + "mutant swiping.fbx", dict(BEL, kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), slow=1.1, lay=GLASS + (False,))),
+    "yawn": (MU + "mutant flexing muscles.fbx", dict(BEL, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=GLASS + (False,))),
+    "sand_of_hours": (MG + "standing 1H cast spell 01.fbx", dict(BEL, mirror=False, kind="strike", weapon="hand.R", tip_rest=(0, 1, 0), face=0.0,
+                                                               lay=GLASS + (False,))),
+    "hourglass_slam": (MU + "mutant jump attack.fbx", dict(BEL, kind="strike", weapon="hand.R", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0,
+                                                           slow=1.2, lay=GLASS + (False,))),
+    "clock_hands": (AX + "melee attack 360 high.fbx", dict(BEL, kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), yaw_keep=0.0, face=0.0,
+                                                           lay=GLASS + (False,))),
+    "roar": (Z + "scream.fbx", dict(BEL, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), slow=1.2, lay=GLASS + (False,))),
+    "hit": (FX + "zombie reaction hit flinch.fbx", dict(BEL, kind="flinch", cut=60, lay=GLASS + (False,))),
+    "stagger": (FX + "zombie reaction hit stumble back.fbx", dict(BEL, kind="flinch", cut=100, lay=GLASS + (False,))),
+}
+# The nightmares: the magic pack's upper body, hunched; their wisps keyed (`block_courts.NightmareWisps`)
+# where its legs would step.
+NW = ("block_courts", "NightmareWisps")
+WISPS = ["thigh.L", "shin.L", "foot.L", "thigh.R", "shin.R", "foot.R"]
+NIGHT = dict(mirror=True, face=0.0)
+NIGHTMARE = {
+    "idle": (MG + "standing idle 02.fbx", dict(NIGHT, loop=True, lay=NW + ("idle", WISPS, 300, True))),
+    "walk": (MG + "Crouch Walk Forward.fbx", dict(NIGHT, loop=True, stride="feet", lay=NW + ("walk", WISPS, 1000, True))),
+    "hex": (MG + "Standing 1H Magic Attack 02.fbx", dict(NIGHT, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), lay=NW + ("move", WISPS, 300, False))),
+    "rally": (MG + "Standing 2H Cast Spell 01.fbx", dict(NIGHT, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), lay=NW + ("move", WISPS, 300, False))),
+    "hit": (MG + "Standing React Small From Front.fbx", dict(NIGHT, kind="flinch", lay=NW + ("move", WISPS, 300, False))),
+    "stagger": (MG + "Standing React Large From Front.fbx", dict(NIGHT, kind="flinch", lay=NW + ("move", WISPS, 300, False))),
+}
+
+# ------------------------------------------------------------------ the courts: Gluttony
+
+# Beelzebub: the creature pack's heavy belly, slowed; his cleaver (his own left: mirrored) swung as the
+# axe pack chops; his flies flung from both arms (the magic pack); bent over his food as the zombie
+# feeds; his bile the zombie's scream; his wings buzzing (`block_feast.BeelzebubWings`) under every
+# clip. His belly roll is keyed whole (`block_feast.BellyRoll`, baked onto his .blend).
+BZB = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, -0.3, 0.95))
+BW = ("block_feast", "BeelzebubWings")
+BWINGS = ["wing.L", "wing.R"]
+BEELZEBUB = {
+    "idle": (MU + "mutant breathing idle.fbx", dict(BZB, loop=True, slow=1.3, lay=BW + ("idle", BWINGS, 240, True))),
+    "walk": (MU + "mutant walking.fbx", dict(BZB, loop=True, stride="feet", slow=1.5, lay=BW + ("walk", BWINGS, 240, True))),
+    "cleaver": (AX + "melee attack downward.fbx", dict(BZB, kind="strike", lay=BW + ("idle", BWINGS, 240, False))),
+    "swarm": (MG + "Standing 2H Magic Area Attack 01.fbx", dict(BZB, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1), lay=BW + ("walk", BWINGS, 240, False))),
+    "gorge": (Z + "biting.fbx", dict(BZB, kind="strike", weapon="head", tip_rest=(0.0, 0.0, 1.0), lay=BW + ("idle", BWINGS, 240, False))),
+    "scatter": (MU + "jump attack.fbx", dict(BZB, kind="strike", weapon="hand.R", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0,
+                                             lay=BW + ("walk", BWINGS, 240, False))),
+    "bile_spew": (Z + "scream.fbx", dict(BZB, kind="strike", weapon="head", tip_rest=(0.0, 0.0, 1.0), lay=BW + ("idle", BWINGS, 240, False))),
+    "belly_slam": (MU + "mutant jump attack.fbx", dict(BZB, kind="strike", weapon="hand.R", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0,
+                                                       slow=1.2, lay=BW + ("walk", BWINGS, 240, False))),
+    "roar": (MU + "mutant roaring.fbx", dict(BZB, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=BW + ("walk", BWINGS, 240, False))),
+    "hit": (AX + "react large gut.fbx", dict(BZB, kind="flinch", lay=BW + ("idle", BWINGS, 240, False))),
+    "stagger": (MU + "mutant dying.fbx", dict(BZB, kind="flinch", cut=70, lay=BW + ("idle", BWINGS, 240, False))),
+}
+
+# ------------------------------------------------------------------ the courts: Lust
+
+# Asmodeus: light and courtly on his goose's feet (the magic pack's carriage), his lance (his own
+# left: mirrored) held as sculpted while he stands and walks; thrust as the great sword pack lunges,
+# its butt struck down as the axe chops; his kiss blown off his own right hand (unmirrored); his
+# ram's butt the zombie's lunging bite; his bull charge keyed whole (`block_feast.Charge`) about his
+# run; his tail swaying (`block_courts.AmonTail`: his tail's bones are named as Amon's).
+ASM = dict(mirror=True, weapon="offhand", weapon_rest=(0.0, 0.819, 0.574), face=0.0)
+ASM_HELD = TAILS + ["upper_arm.L", "forearm.L", "hand.L", "offhand"]
+ASMODEUS = {
+    "idle": (MG + "standing idle.fbx", dict(ASM, loop=True, lay=AT + ("idle", ASM_HELD, 240, True))),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(ASM, loop=True, stride="feet", lay=AT + ("walk", ASM_HELD, 1000, True))),
+    "run": (MG + "Standing Run Forward.fbx", dict(ASM, loop=True, stride="feet", lay=AT + ("run", ASM_HELD, 1000, True))),
+    "lance_thrust": (GS + "slash (2).fbx", dict(ASM, kind="strike", still=True, lay=AT + ("sway", TAILS, 140, False))),
+    "blown_kiss": (MG + "standing 1H cast spell 01.fbx", dict(ASM, mirror=False, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1),
+                                                              lay=AT + ("idle", ASM_HELD, 240, False))),
+    "thorn_line": (AX + "melee attack downward.fbx", dict(ASM, kind="strike", lay=AT + ("sway", TAILS, 140, False))),
+    "thorn_ring": (AX + "melee attack 360 low.fbx", dict(ASM, kind="strike", yaw_keep=0.0, lay=AT + ("sway", TAILS, 140, False))),
+    "ram_butt": (Z + "neck bite.fbx", dict(ASM, kind="strike", weapon="head", tip_rest=(0.0, 0.0, 1.0), lay=AT + ("idle", ASM_HELD, 240, False))),
+    "roar": (AX + "taunt battlecry.fbx", dict(ASM, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=AT + ("sway", TAILS, 140, False))),
+    "hit": (MG + "Standing React Small From Right.fbx", dict(ASM, kind="flinch", lay=AT + ("sway", TAILS, 140, False))),
+    "stagger": (MG + "Standing React Large From Left.fbx", dict(ASM, kind="flinch", lay=AT + ("sway", TAILS, 140, False))),
+}
+
+# ------------------------------------------------------------------ the lair (FINALE.md)
+
+# Krampus: hunched, the creature pack's lumber; the birch in his right fist (unmirrored) lashed as the
+# axe pack chops, the chain in his left swung and cracked (the axe pack's blows mirrored for it); his
+# bells shaken up and a hoof stamped (the magic pack's area blow); coal flung from his sack; the sack
+# swung over his head two-handed (the great sword's overhead blow; `view::foe_clips` hangs the sack
+# from his fist). His fists hold birch and chain as sculpted where the creature pack's hands open
+# (`block_courts.Still`). His hoof charge keyed whole (`block_feast.Charge`) about his run.
+KRA = dict(weapon="blade", weapon_rest={"blade": (0.0, -0.41, 0.91), "offhand": (0.04, -0.96, 0.29)})
+KHELD = ("block_courts", "Still", "still", ["hand.L", "hand.R", "offhand", "blade"], 60)
+KRAMPUS = {
+    "idle": (MU + "mutant idle.fbx", dict(KRA, loop=True, slow=1.2, lay=KHELD + (True,))),
+    "walk": (MU + "mutant walking.fbx", dict(KRA, loop=True, stride="feet", lay=KHELD + (True,))),
+    "run": (MU + "mutant run.fbx", dict(KRA, loop=True, stride="feet", lay=KHELD + (True,))),
+    "birch_lash": (AX + "melee attack downward.fbx", dict(KRA, kind="strike")),
+    "chain_sweep": (AX + "melee attack horizontal.fbx", dict(KRA, mirror=True, weapon="offhand", kind="strike")),
+    "chain_lash": (AX + "melee attack backhand.fbx", dict(KRA, mirror=True, weapon="offhand", kind="strike", slow=1.1)),
+    "toll_of_bells": (MG + "Standing 2H Magic Area Attack 01.fbx", dict(KRA, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), lay=KHELD + (False,))),
+    "coal_fire": (MG + "Standing 1H Magic Attack 01.fbx", dict(KRA, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1), face=0.0, yaw_keep=0.0,
+                                                               lay=KHELD + (False,))),
+    "sack_swing": (GS + "attack.fbx", dict(KRA, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1), slow=1.2)),
+    "cage_rattle": (Z + "attack.fbx", dict(KRA, kind="strike", weapon="hand.L", tip_rest=(0, 0, 1), lay=KHELD + (False,))),
+    "roar": (MU + "mutant roaring.fbx", dict(KRA, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4), lay=KHELD + (False,))),
+    "hit": (AX + "react large gut.fbx", dict(KRA, kind="flinch", lay=KHELD + (False,))),
+    "stagger": (MU + "mutant dying.fbx", dict(KRA, kind="flinch", cut=70, lay=KHELD + (False,))),
+}
+# His Perchten: masked brutes with switches (in their right fists: unmirrored), the creature pack.
+PER = dict(weapon="blade", weapon_rest=(0.0, -0.5, 0.87))
+PERCHT = {
+    "idle": (MU + "mutant idle.fbx", dict(PER, loop=True)),
+    "walk": (MU + "mutant walking.fbx", dict(PER, loop=True, stride="feet")),
+    "run": (MU + "mutant run.fbx", dict(PER, loop=True, stride="feet")),
+    "slam": (AX + "melee attack downward.fbx", dict(PER, kind="strike")),
+    "sweep": (AX + "melee attack horizontal.fbx", dict(PER, kind="strike")),
+    "rally": (MU + "mutant roaring.fbx", dict(PER, kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (FX + "zombie reaction hit flinch.fbx", dict(PER, kind="flinch", cut=60)),
+    "stagger": (AX + "react large from left.fbx", dict(PER, kind="flinch")),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -339,7 +560,10 @@ FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu":
         "albasti": ALBASTI, "cin": CIN, "arcura": ARCURA, "karakoncolos": KARAKONCOLOS,
         "tepegoz": TEPEGOZ, "gashadokuro": GASHADOKURO, "goryo": GORYO,
         "frost_giant": FROST_GIANT, "surtr": SURTR, "hel": HEL,
-        "ganglot": GANGLOT, "gaki": GAKI, "ellepige": ELLEPIGE}
+        "ganglot": GANGLOT, "gaki": GAKI, "ellepige": ELLEPIGE,
+        "mammon": MAMMON, "gold_golem": GOLD_GOLEM, "lucifer": LUCIFER, "reflection": REFLECTION,
+        "amon": AMON, "belphegor": BELPHEGOR, "nightmare": NIGHTMARE, "beelzebub": BEELZEBUB, "asmodeus": ASMODEUS,
+        "krampus": KRAMPUS, "percht": PERCHT}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")
@@ -349,11 +573,21 @@ SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k i
 # the longest a clip's follow-through is kept against it: the rest of a long Mixamo settle is cut
 # off (the game would play it several times too fast), and the foe's feet take over in a crossfade.
 RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24, "kanabo": 52, "smokeless": 30, "roots": 30, "call": 12,
-            "grab": 44, "thunder": 32, "frost_slam": 44, "raise": 40}
+            "grab": 44, "thunder": 32, "frost_slam": 44, "raise": 40,
+            "sceptre": 42, "coin_toss": 36, "coin_volley": 32, "grasp": 46, "coin_rain": 34, "hoard_slam": 50, "roar": 36,
+            "radiant_cut": 42, "lance_of_dawn": 40, "mirror_step": 72, "starfall": 36, "prides_fall": 54,
+            "axe_cleave": 46, "rift": 40, "fiery_charge": 44, "flame_breath": 40, "eruption": 50,
+            "swat": 46, "yawn": 40, "sand_of_hours": 40, "hourglass_slam": 54, "clock_hands": 50,
+            "cleaver": 44, "swarm": 36, "gorge": 44, "scatter": 48, "bile_spew": 38, "belly_slam": 50,
+            "lance_thrust": 40, "blown_kiss": 36, "thorn_line": 38, "thorn_ring": 40, "ram_butt": 38,
+            "birch_lash": 44, "chain_sweep": 48, "chain_lash": 46, "toll_of_bells": 52, "coal_fire": 42, "sack_swing": 54,
+            "cage_rattle": 180}
 TAIL = 2.2
 # The moves' frame data at the base tempo (startup, active, recovery), for fitting keyed bones to a
 # clip's markers.
-RECOVERY_FD = {"slam": (42, 6, 48), "sweep": (30, 8, 36), "grab": (40, 8, 44), "thunder": (40, 1, 32), "rally": (40, 1, 36)}
+RECOVERY_FD = {"slam": (42, 6, 48), "sweep": (30, 8, 36), "grab": (40, 8, 44), "thunder": (40, 1, 32), "rally": (40, 1, 36),
+               "radiant_cut": (32, 8, 42), "lance_of_dawn": (52, 10, 40), "mirror_step": (36, 1, 72), "starfall": (40, 1, 36),
+               "prides_fall": (56, 6, 54), "roar": (40, 1, 36)}
 # The longest a reel's clip runs past its impact (a reel lasts 14 to 50 frames in the game).
 REEL_TAIL = 40
 

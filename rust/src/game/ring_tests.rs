@@ -930,13 +930,15 @@ fn the_foes_clips_leave_the_fight_untouched() {
     ]
     .concat()
     .into_iter()
-    .filter(|&k| FoeRig::of(k).is_some())
+    .filter(|&k| FoeRig::of(k).is_some_and(|f| !crate::render::anim::library::embedded_in(f.dir()).is_empty()))
     .collect();
     assert!(!kinds.is_empty());
     for kind in kinds {
         let play = |code: bool| {
             let mut g = gym();
             g.view.set_anim_mode(code);
+            // (The same dice for both: a prince's coins fall where they fall by them.)
+            g.rng = crate::logic::rng::Rng::new(7);
             g.debug_ring_of(&[kind, kind, kind]);
             let (mut trace, mut posed) = (Vec::new(), 0);
             for step in 0..1200 {

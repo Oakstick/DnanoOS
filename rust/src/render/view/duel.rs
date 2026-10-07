@@ -260,7 +260,8 @@ impl WorldView {
         if matches!(e.kind(), EnemyKind::Lucifer | EnemyKind::Reflection) {
             // Lucifer's wings and his moves, and his Reflections' (`court_pride`).
             let rig = self.models.rig(self.enemy_views[i].rig);
-            super::court_pride::dress_lucifer(rig, &mut self.enemy_views[i], d, time);
+            let clips = self.foe_posed_by_clips(i);
+            super::court_pride::dress_lucifer(rig, &mut self.enemy_views[i], d, time, clips);
         }
     }
 

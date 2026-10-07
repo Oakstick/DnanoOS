@@ -1,0 +1,12 @@
+{
+ "clip": "grasp",
+ "fps": 60,
+ "frames": 137,
+ "loop": false,
+ "markers": {
+  "windup_end": 47,
+  "hit": 55,
+  "active_end": 61,
+  "recover_end": 137
+ }
+}

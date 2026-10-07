@@ -1,0 +1,12 @@
+{
+ "clip": "coin_volley",
+ "fps": 60,
+ "frames": 112,
+ "loop": false,
+ "markers": {
+  "windup_end": 27,
+  "hit": 32,
+  "active_end": 42,
+  "recover_end": 112
+ }
+}

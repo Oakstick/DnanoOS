@@ -948,7 +948,8 @@ def all_foes():
     import importlib
 
     out = dict(FOES)
-    for name in ("block_stage4", "block_stage5", "block_stage6", "block_stage7", "block_courts"):
+    for name in ("block_stage4", "block_stage5", "block_stage6", "block_stage7", "block_courts", "block_envy", "block_wrath", "block_sloth",
+                 "block_feast", "block_lust", "block_lair"):
         try:
             out.update(importlib.import_module(name).FOES)
         except ModuleNotFoundError:

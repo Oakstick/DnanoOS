@@ -693,12 +693,19 @@ pub fn run(args: &[String]) -> i32 {
         );
     }
     if let Some(i) = args.iter().position(|a| a == "--foe") {
-        // `--foe K [DEG DIST HEIGHT]`: a close view of foe K (in the game's list), DEG round from its
+        // `--foe K [DEG DIST HEIGHT]`: a close view of foe K (in the game's list, or `p` the prince), DEG round from its
         // front, DIST away, looking at HEIGHT over its feet (its animation, ANIMATION.md §11).
         let num = |k: usize, d: f32| args.get(i + k).and_then(|a| a.parse::<f32>().ok()).unwrap_or(d);
         // (K below 0 counts from the end: -1 the last, the ring's latest bout's last foe.)
         let k = num(1, 0.0) as i64;
         let k = if k < 0 { game.enemies.len() as i64 + k } else { k };
+        // (`p` for K: the prince.)
+        let prince =
+            game.prince().map(|d| d.id).and_then(|id| game.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| d.id == id)));
+        let k = match (args.get(i + 1).map(String::as_str), prince) {
+            (Some("p"), Some(p)) => p as i64,
+            _ => k,
+        };
         if let Some(e) = game.enemies.get(k.max(0) as usize) {
             let (p, face) = match e.duel.as_deref() {
                 Some(d) => (d.pos, (d.facing.x as f32).atan2(d.facing.y as f32)),
@@ -881,7 +888,16 @@ pub fn run(args: &[String]) -> i32 {
             let posed = (0..game.enemies.len()).filter(|&i| game.view.foe_posed_by_clips(i)).count();
             let last =
                 game.enemies.last().and_then(|e| e.duel.as_deref()).map(|d| format!(", the last foe {:?}", d.f.state)).unwrap_or_default();
-            let shrines = if clipped > 0 { shrines + &format!(", foes by clips {posed} of {clipped}{last}") } else { shrines };
+            // (The prince if one fights, else the first duelist.)
+            let first = game
+                .prince()
+                .or_else(|| {
+                    game.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.arch == crate::logic::combat::Archetype::Prince)
+                })
+                .or_else(|| game.enemies.iter().find_map(|e| e.duel.as_deref()))
+                .map(|d| format!(", the first foe {:?} {:?} in phase {}", d.breed.kind, d.f.state, d.breed.phase))
+                .unwrap_or_default();
+            let shrines = if clipped > 0 { shrines + &format!(", foes by clips {posed} of {clipped}{last}{first}") } else { shrines };
             eprintln!(
                 "wrote {path} ({w}x{h}) at t={until:.2}s, screen {:?}, {} static instances, {dynamic} drawn this frame, hero at {:.1},{:.1}{boss}{shrines}",
                 game.screen,

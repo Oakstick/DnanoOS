@@ -912,6 +912,8 @@ impl WorldView {
     /// Belphegor's pose over his gait: asleep (slumped in his chair, or down on the floor in his
     /// dream), breathing slow, his head lolling; or his moves as they wind up, strike and hang open.
     pub(super) fn pose_belphegor(&mut self, i: usize, d: &Duelist, time: f32) {
+        // (By his clips his moves are in them; his sleep stays the code's: `view::foe_clips`.)
+        let clips = self.foe_posed_by_clips(i);
         let rig = self.models.rig(self.enemy_views[i].rig);
         let v = &mut self.enemy_views[i];
         let set = |v: &mut super::animation::EnemyView, name: &str, rot: Vec3| {
@@ -958,6 +960,9 @@ impl WorldView {
         };
         let snap = 1.0 - (1.0 - strike).powi(3);
         let out = 1.0 - rec;
+        // (By his clips his leans and swells are in them: the code's are taken back after it poses
+        // its rig, but for his clock hands' sweep all the way round, his whole body's turn.)
+        let (rot, scale) = (v.root_rot, v.root_scale);
         match mv {
             MoveId::Swat => {
                 // His great right hand drawn back and out, then swept across before him.
@@ -1006,6 +1011,14 @@ impl WorldView {
                 v.root_rot.y = if strike == 0.0 { -1.1 * wind } else { -1.1 + (TAU + 1.1) * snap };
             }
             _ => {}
+        }
+        if clips {
+            let spin = v.root_rot.y;
+            v.root_rot = rot;
+            v.root_scale = scale;
+            if mv == MoveId::ClockHands {
+                v.root_rot.y = spin;
+            }
         }
     }
 }

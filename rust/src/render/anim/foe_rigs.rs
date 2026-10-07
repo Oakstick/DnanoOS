@@ -57,10 +57,25 @@ pub enum FoeRig {
     Ganglot,
     Gaki,
     Ellepige,
+    Mammon,
+    GoldGolem,
+    Lucifer,
+    Reflection,
+    Leviathan,
+    Serpentling,
+    Amon,
+    Raven,
+    Belphegor,
+    Nightmare,
+    Beelzebub,
+    FlySwarm,
+    Asmodeus,
+    Krampus,
+    Percht,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 35;
+    pub const COUNT: usize = 50;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
@@ -98,6 +113,21 @@ impl FoeRig {
         FoeRig::Ganglot,
         FoeRig::Gaki,
         FoeRig::Ellepige,
+        FoeRig::Mammon,
+        FoeRig::GoldGolem,
+        FoeRig::Lucifer,
+        FoeRig::Reflection,
+        FoeRig::Leviathan,
+        FoeRig::Serpentling,
+        FoeRig::Amon,
+        FoeRig::Raven,
+        FoeRig::Belphegor,
+        FoeRig::Nightmare,
+        FoeRig::Beelzebub,
+        FoeRig::FlySwarm,
+        FoeRig::Asmodeus,
+        FoeRig::Krampus,
+        FoeRig::Percht,
     ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
@@ -138,6 +168,21 @@ impl FoeRig {
             FoeRig::Ganglot => "ganglot",
             FoeRig::Gaki => "gaki",
             FoeRig::Ellepige => "ellepige",
+            FoeRig::Mammon => "mammon",
+            FoeRig::GoldGolem => "gold_golem",
+            FoeRig::Lucifer => "lucifer",
+            FoeRig::Reflection => "reflection",
+            FoeRig::Leviathan => "leviathan",
+            FoeRig::Serpentling => "serpentling",
+            FoeRig::Amon => "amon",
+            FoeRig::Raven => "raven",
+            FoeRig::Belphegor => "belphegor",
+            FoeRig::Nightmare => "nightmare",
+            FoeRig::Beelzebub => "beelzebub",
+            FoeRig::FlySwarm => "fly_swarm",
+            FoeRig::Asmodeus => "asmodeus",
+            FoeRig::Krampus => "krampus",
+            FoeRig::Percht => "percht",
         }
     }
 
@@ -180,6 +225,21 @@ impl FoeRig {
             EnemyKind::Ganglot => FoeRig::Ganglot,
             EnemyKind::Gaki => FoeRig::Gaki,
             EnemyKind::Ellepige => FoeRig::Ellepige,
+            EnemyKind::Mammon => FoeRig::Mammon,
+            EnemyKind::GoldGolem => FoeRig::GoldGolem,
+            EnemyKind::Lucifer => FoeRig::Lucifer,
+            EnemyKind::Reflection => FoeRig::Reflection,
+            EnemyKind::Leviathan => FoeRig::Leviathan,
+            EnemyKind::Serpentling => FoeRig::Serpentling,
+            EnemyKind::Amon => FoeRig::Amon,
+            EnemyKind::Raven => FoeRig::Raven,
+            EnemyKind::Belphegor => FoeRig::Belphegor,
+            EnemyKind::Nightmare => FoeRig::Nightmare,
+            EnemyKind::Beelzebub => FoeRig::Beelzebub,
+            EnemyKind::FlySwarm => FoeRig::FlySwarm,
+            EnemyKind::Asmodeus => FoeRig::Asmodeus,
+            EnemyKind::Krampus => FoeRig::Krampus,
+            EnemyKind::Percht => FoeRig::Percht,
             _ => return None,
         })
     }
@@ -230,6 +290,21 @@ impl FoeRig {
             FoeRig::Ganglot => super::foe_realms::ganglot(),
             FoeRig::Gaki => super::foe_realms::gaki(),
             FoeRig::Ellepige => super::foe_realms::ellepige(),
+            FoeRig::Mammon => super::foe_courts::mammon(),
+            FoeRig::GoldGolem => super::foe_courts::gold_golem(),
+            FoeRig::Lucifer => super::foe_courts::lucifer(),
+            FoeRig::Reflection => super::foe_courts::reflection(),
+            FoeRig::Leviathan => super::foe_courts::leviathan(),
+            FoeRig::Serpentling => super::foe_courts::serpentling(),
+            FoeRig::Amon => super::foe_courts::amon(),
+            FoeRig::Raven => super::foe_courts::raven(),
+            FoeRig::Belphegor => super::foe_courts::belphegor(),
+            FoeRig::Nightmare => super::foe_courts::nightmare(),
+            FoeRig::Beelzebub => super::foe_courts::beelzebub(),
+            FoeRig::FlySwarm => super::foe_courts::fly_swarm(),
+            FoeRig::Asmodeus => super::foe_courts::asmodeus(),
+            FoeRig::Krampus => super::foe_courts::krampus(),
+            FoeRig::Percht => super::foe_courts::percht(),
         }
     }
 
@@ -272,6 +347,23 @@ impl FoeRig {
             FoeRig::Ganglot => (crate::render::foes_mire::GANGLOT_SIZE, crate::render::foes_mire::GANGLOT_VOXEL),
             FoeRig::Gaki => (crate::render::foes_feast::GAKI_SIZE, crate::render::foes_feast::GAKI_VOXEL),
             FoeRig::Ellepige => (crate::render::foes_thorns::ELLEPIGE_SIZE, crate::render::foes_thorns::ELLEPIGE_VOXEL),
+            FoeRig::Mammon => (crate::render::foes_court::MAMMON_SIZE, crate::render::foes_court::MAMMON_VOXEL),
+            FoeRig::GoldGolem => (crate::render::foes_court::GOLEM_SIZE, crate::render::foes_court::GOLEM_VOXEL),
+            FoeRig::Lucifer => (crate::render::foes_court::pride::LUCIFER_SIZE, crate::render::foes_court::pride::LUCIFER_VOXEL),
+            FoeRig::Reflection => (crate::render::foes_court::pride::REFLECTION_SIZE, crate::render::foes_court::pride::REFLECTION_VOXEL),
+            FoeRig::Leviathan => (crate::render::foes_court::envy::LEVIATHAN_SIZE, crate::render::foes_court::envy::LEVIATHAN_VOXEL),
+            FoeRig::Serpentling => (crate::render::foes_court::envy::SERPENTLING_SIZE, crate::render::foes_court::envy::SERPENTLING_VOXEL),
+            FoeRig::Amon => (crate::render::foes_court::wrath::AMON_SIZE, crate::render::foes_court::wrath::AMON_VOXEL),
+            FoeRig::Raven => (crate::render::foes_court::wrath::RAVEN_SIZE, crate::render::foes_court::wrath::RAVEN_VOXEL),
+            FoeRig::Belphegor => (crate::render::foes_court::sloth::BELPHEGOR_SIZE, crate::render::foes_court::sloth::BELPHEGOR_VOXEL),
+            FoeRig::Nightmare => (crate::render::foes_court::sloth::NIGHTMARE_SIZE, crate::render::foes_court::sloth::NIGHTMARE_VOXEL),
+            FoeRig::Beelzebub => {
+                (crate::render::foes_court::gluttony::BEELZEBUB_SIZE, crate::render::foes_court::gluttony::BEELZEBUB_VOXEL)
+            }
+            FoeRig::FlySwarm => (crate::render::foes_court::gluttony::FLY_SWARM_SIZE, crate::render::foes_court::gluttony::FLY_SWARM_VOXEL),
+            FoeRig::Asmodeus => (crate::render::foes_court::lust::ASMODEUS_SIZE, crate::render::foes_court::lust::ASMODEUS_VOXEL),
+            FoeRig::Krampus => (crate::render::foes_lair::KRAMPUS_SIZE, crate::render::foes_lair::KRAMPUS_VOXEL),
+            FoeRig::Percht => (crate::render::foes_lair::PERCHT_SIZE, crate::render::foes_lair::PERCHT_VOXEL),
         }
     }
 
@@ -316,6 +408,37 @@ impl FoeRig {
             FoeRig::Ganglot => build_rig(&crate::render::foes_mire::ganglot(), crate::render::foes_mire::GANGLOT_RIG, size),
             FoeRig::Gaki => build_rig(&crate::render::foes_feast::gaki(), crate::render::foes_feast::GAKI_RIG, size),
             FoeRig::Ellepige => build_rig(&crate::render::foes_thorns::ellepige(), crate::render::foes_thorns::ELLEPIGE_RIG, size),
+            FoeRig::Mammon => build_rig(&crate::render::foes_court::mammon(), crate::render::foes_court::MAMMON_RIG, size),
+            FoeRig::GoldGolem => build_rig(&crate::render::foes_court::gold_golem(), crate::render::foes_court::GOLEM_RIG, size),
+            FoeRig::Lucifer => build_rig(&crate::render::foes_court::pride::lucifer(), crate::render::foes_court::pride::LUCIFER_RIG, size),
+            FoeRig::Reflection => {
+                build_rig(&crate::render::foes_court::pride::reflection(), crate::render::foes_court::pride::REFLECTION_RIG, size)
+            }
+            FoeRig::Leviathan => {
+                build_rig(&crate::render::foes_court::envy::leviathan(), crate::render::foes_court::envy::LEVIATHAN_RIG, size)
+            }
+            FoeRig::Serpentling => {
+                build_rig(&crate::render::foes_court::envy::serpentling(), crate::render::foes_court::envy::SERPENTLING_RIG, size)
+            }
+            FoeRig::Amon => build_rig(&crate::render::foes_court::wrath::amon(), crate::render::foes_court::wrath::AMON_RIG, size),
+            FoeRig::Raven => build_rig(&crate::render::foes_court::wrath::raven(), crate::render::foes_court::wrath::RAVEN_RIG, size),
+            FoeRig::Belphegor => {
+                build_rig(&crate::render::foes_court::sloth::belphegor(), crate::render::foes_court::sloth::BELPHEGOR_RIG, size)
+            }
+            FoeRig::Nightmare => {
+                build_rig(&crate::render::foes_court::sloth::nightmare(), crate::render::foes_court::sloth::NIGHTMARE_RIG, size)
+            }
+            FoeRig::Beelzebub => {
+                build_rig(&crate::render::foes_court::gluttony::beelzebub(), crate::render::foes_court::gluttony::BEELZEBUB_RIG, size)
+            }
+            FoeRig::FlySwarm => {
+                build_rig(&crate::render::foes_court::gluttony::fly_swarm(), crate::render::foes_court::gluttony::FLY_SWARM_RIG, size)
+            }
+            FoeRig::Asmodeus => {
+                build_rig(&crate::render::foes_court::lust::asmodeus(), crate::render::foes_court::lust::ASMODEUS_RIG, size)
+            }
+            FoeRig::Krampus => build_rig(&crate::render::foes_lair::krampus(), crate::render::foes_lair::KRAMPUS_RIG, size),
+            FoeRig::Percht => build_rig(&crate::render::foes_lair::percht(), crate::render::foes_lair::PERCHT_RIG, size),
         })
     }
 
@@ -761,7 +884,7 @@ mod tests {
     /// The moves' clips each foe rig must have, by its archetype's moves (and the pack leader's rally).
     fn moves_of(foe: FoeRig) -> &'static [&'static str] {
         match foe {
-            FoeRig::Draugr | FoeRig::Helmeted | FoeRig::Blemmyes | FoeRig::Tengu | FoeRig::Rasetsu | FoeRig::Ganglot => {
+            FoeRig::Draugr | FoeRig::Helmeted | FoeRig::Blemmyes | FoeRig::Tengu | FoeRig::Rasetsu | FoeRig::Ganglot | FoeRig::Percht => {
                 &["slam", "sweep", "rally"]
             }
             FoeRig::Witch => &["hex", "rally"],
@@ -783,6 +906,27 @@ mod tests {
             FoeRig::Surtr => &["slam", "sweep"],
             FoeRig::Nidhogg => &["burrow", "bite"],
             FoeRig::Hel => &["raise", "hex"],
+            FoeRig::Mammon => &["coin_toss", "sceptre", "grasp", "coin_rain", "hoard_slam", "coin_volley", "roar"],
+            FoeRig::GoldGolem => &["slam", "sweep", "rally"],
+            FoeRig::Lucifer => &["lance_of_dawn", "radiant_cut", "mirror_step", "starfall", "prides_fall", "roar"],
+            FoeRig::Reflection => &["radiant_cut"],
+            FoeRig::Leviathan => &["brine_spit", "coil_lash", "dive", "covet", "bell_toll", "burning_coil", "roar"],
+            FoeRig::Amon => &["fiery_charge", "axe_cleave", "flame_breath", "rift", "eruption", "roar"],
+            FoeRig::Belphegor => &["yawn", "swat", "sand_of_hours", "hourglass_slam", "clock_hands", "roar"],
+            FoeRig::Nightmare => &["hex", "rally"],
+            FoeRig::Beelzebub => &["swarm", "cleaver", "gorge", "scatter", "belly_roll", "bile_spew", "belly_slam", "roar"],
+            FoeRig::Asmodeus => &["blown_kiss", "thorn_line", "lance_thrust", "bull_charge", "ram_butt", "thorn_ring", "roar"],
+            FoeRig::Krampus => &[
+                "toll_of_bells",
+                "chain_sweep",
+                "birch_lash",
+                "chain_lash",
+                "hoof_charge",
+                "coal_fire",
+                "sack_swing",
+                "cage_rattle",
+                "roar",
+            ],
             _ => &["bite", "rally"],
         }
     }
