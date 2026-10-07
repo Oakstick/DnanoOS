@@ -1,0 +1,11 @@
+{
+ "clip": "belly_roll",
+ "fps": 60,
+ "frames": 132,
+ "loop": false,
+ "markers": {
+  "windup_end": 40,
+  "active_end": 86,
+  "recover_end": 132
+ }
+}

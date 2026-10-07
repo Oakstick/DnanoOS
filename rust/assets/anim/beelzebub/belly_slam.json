@@ -1,0 +1,12 @@
+{
+ "clip": "belly_slam",
+ "fps": 60,
+ "frames": 230,
+ "loop": false,
+ "markers": {
+  "windup_end": 110,
+  "hit": 116,
+  "active_end": 120,
+  "recover_end": 230
+ }
+}

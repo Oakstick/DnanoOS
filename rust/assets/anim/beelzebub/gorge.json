@@ -1,0 +1,12 @@
+{
+ "clip": "gorge",
+ "fps": 60,
+ "frames": 144,
+ "loop": false,
+ "markers": {
+  "windup_end": 33,
+  "hit": 43,
+  "active_end": 48,
+  "recover_end": 144
+ }
+}
