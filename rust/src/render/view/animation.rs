@@ -9,6 +9,9 @@ const TURN_RATE_ENEMY: f32 = 10.0;
 
 const REASSEMBLE_START: f64 = 0.7;
 
+/// The light a bog slime casts round it: murky green, as its jelly is.
+pub(super) const SLIME_LIGHT: u32 = 0x5aa070;
+
 /// How long the sword's wind-up, strike and follow-through take on screen.
 pub const SLASH_SECONDS: f32 = 0.3;
 
@@ -77,6 +80,9 @@ pub(super) struct EnemyView {
     pub(super) rim: bool,
     /// Its clips, if its rig has them (`anim::foe_rigs`): the code's pose is the fallback.
     pub(super) clip: Option<super::foe_clips::FoeClips>,
+    /// A slime's jelly rippling (0 still to 1 struck): stirred by its hops and the blows it takes,
+    /// settling after (`rig_look::GOO`).
+    pub(super) ripple: f32,
 }
 
 /// The rig a foe of `kind` is drawn with, and how high it hovers.
@@ -163,7 +169,8 @@ impl WorldView {
         for level in 0..LOD_LEVELS {
             model.lod(level).mesh();
         }
-        let base = lin(e.b.color);
+        // (A bog slime's own light is murky bog green, not its candy-green name card.)
+        let base = if e.kind() == EnemyKind::Slime { lin(SLIME_LIGHT) } else { lin(e.b.color) };
         let phase = self.rng.nextf() * 6.0;
         // Its jointed rig too, if its clips have one (made once per kind, now rather than mid-fight).
         let clip = super::foe_clips::FoeClips::of(e.kind(), phase);
@@ -193,6 +200,7 @@ impl WorldView {
             eye: 0.0,
             rim: false,
             clip,
+            ripple: 0.0,
         });
     }
 
@@ -491,6 +499,9 @@ impl WorldView {
         if e.mode() == EnemyMode::Scattered {
             self.animate_scatter(i, e, dt);
             return;
+        }
+        if e.kind() == EnemyKind::Slime {
+            self.stir_goo(i, e, dt);
         }
         let models = &self.models;
         let v = &mut self.enemy_views[i];
@@ -858,6 +869,26 @@ impl WorldView {
                 v.root_rot.x = if moving { 0.12 } else { 0.0 };
             }
         }
+    }
+
+    /// A slime's jelly stirred (`EnemyView::ripple`): a blow sets it shaking, a hop or a spit
+    /// sets it rippling, a fright sets it quivering; it settles slowly.
+    fn stir_goo(&mut self, i: usize, e: &Enemy, dt: f32) {
+        use crate::logic::combat::State;
+        let goal = match e.duel.as_deref() {
+            Some(d) => match d.f.state {
+                State::Reel { .. } => 1.0,
+                State::Attack { .. } => 0.6,
+                _ if d.vel.x * d.vel.x + d.vel.y * d.vel.y > 0.09 => 0.45,
+                _ => 0.12,
+            },
+            None if e.is_stunned() => 0.7,
+            None if e.m.dir != Dir::None => 0.45,
+            None => 0.12,
+        };
+        let v = &mut self.enemy_views[i];
+        let rate = if goal > v.ripple { 12.0 } else { 1.5 };
+        v.ripple += (goal - v.ripple) * (1.0 - (-rate * dt).exp());
     }
 
     /// Bones burst outward and tumble to the floor, lie still, then glide back to their rest pose.

@@ -79,7 +79,14 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame, eye: Vec3) {
 }
 
 /// Slime's wet material: glossy, a sharp highlight (voxel material 9).
-const SHADE_GOO: f32 = 14.0;
+pub(super) const SHADE_GOO: f32 = 14.0;
+/// The bog slime's trail and spit: its jelly's colours (`foes::goo`), a little darker where it lies thin.
+pub(super) const GOO_TRAIL: u32 = 0x356a4a;
+pub(super) const GOO_TRAIL_L: u32 = 0x5c9a62;
+
+/// How much of what lies behind a bog slime's jelly it hides, head-on (edge-on it hides more:
+/// the shader's `jelly`).
+const GOO_ALPHA: f32 = 0.34;
 
 /**
  * One tile of slime trail: a lumpy splat of glossy goo with droplets flung
@@ -94,9 +101,10 @@ fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &st
     }
     let (tx, tz) = (tile.x as f32, tile.y as f32);
     let (hx, hy) = (tile.x as f64, tile.y as f64);
-    let goo = lin(0x46d23c);
-    let goo_l = lin(0x9cf06a);
-    let glow = lin(0x5cff6a) * 0.14;
+    // (The bog slime's own jelly: murky bog green, a paler sheen where it pools thick.)
+    let goo = lin(GOO_TRAIL);
+    let goo_l = lin(GOO_TRAIL_L);
+    let glow = lin(super::animation::SLIME_LIGHT) * 0.03;
     let mut lift = 0.012;
     let mut blob = |f: &mut Frame, x: f32, z: f32, rx: f32, rz: f32, rot: f32, color: Vec3| {
         let m = Mat4::from_translation(Vec3::new(x, floor + lift, z))
@@ -138,6 +146,43 @@ fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &st
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r));
             f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, goo_l, 1.0, glow, SHADE_GOO));
         }
+    }
+}
+
+/**
+ * A bog slime's drips (presentation only): three beads of its jelly gathering on its flank, running
+ * down it, and spreading into the puddle at its foot, each in its own time; more of them, and
+ * quicker, while it is stirred (`ripple`). `root` is the slime's model (its feet at the origin).
+ */
+fn emit_slime_drips(f: &mut Frame, root: Mat4, ripple: f32, time: f32) {
+    let sphere = MeshKind::Sphere as usize;
+    let goo = lin(GOO_TRAIL_L);
+    // (The dome's height and its radius at its foot, in its model's metres: `foes::SLIME_SIZE` at its voxels.)
+    let (tall, wide) = (0.55, 0.39);
+    for k in 0..3 {
+        let a = k as f32 * 2.3 + 0.6;
+        let speed = 0.35 + 0.25 * ripple + k as f32 * 0.07;
+        let u = (time * speed + k as f32 * 0.37).fract();
+        // It gathers (a third), runs (a half), then lies spreading at the foot.
+        let (y, grow) = if u < 0.33 {
+            (0.62, u / 0.33)
+        } else if u < 0.83 {
+            (0.62 * (1.0 - ((u - 0.33) / 0.5).powf(1.6)), 1.0)
+        } else {
+            (0.0, 1.0)
+        };
+        let h = y * tall * 0.75;
+        let r = wide * (1.0 - (h / tall).powi(2)).max(0.0).sqrt() + 0.012;
+        let at = root.transform_point3(Vec3::new(a.cos() * r, h + 0.01, a.sin() * r));
+        let running = (0.33..0.83).contains(&u);
+        let size = if u >= 0.83 {
+            let s = (u - 0.83) / 0.17;
+            Vec3::new(0.035 + s * 0.03, 0.012 * (1.0 - s) + 0.003, 0.035 + s * 0.03)
+        } else {
+            Vec3::new(0.026, if running { 0.05 } else { 0.03 }, 0.026) * grow.max(0.2)
+        };
+        let m = Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, at);
+        f.transparent[sphere].push(Instance::new(m, goo, 0.75, Vec3::ZERO, SHADE_GOO));
     }
 }
 
@@ -472,8 +517,34 @@ impl WorldView {
                 let look = if v.rim { rig_look::RIM } else { rig_look::PLAIN };
                 match self.foe_clip_pose(i) {
                     // By its clips (`foe_clips`): its jointed rig, each bone's matrix in the model.
-                    Some((jointed, mats)) => f.rigs.push_matrices(jointed, mats, root, v.mat_color, 1.0, v.emissive, look, 0.0),
-                    None => f.rigs.push(rig, &v.pose, root, v.mat_color, 1.0, v.emissive, look, 0.0),
+                    Some((jointed, mats)) => {
+                        if v.kind == EnemyKind::Slime {
+                            emit_slime_drips(f, root, v.ripple, time + i as f32 * 1.37);
+                            // A slime twice: what it holds solid, its jelly see-through over it.
+                            f.rigs.push_matrices(jointed, mats, root, v.mat_color, 1.0, v.emissive, look | rig_look::INNARDS, 0.0);
+                            f.rigs_blend.push_matrices(
+                                jointed,
+                                mats,
+                                root,
+                                v.mat_color,
+                                GOO_ALPHA,
+                                v.emissive,
+                                look | rig_look::GOO,
+                                v.ripple,
+                            );
+                        } else {
+                            f.rigs.push_matrices(jointed, mats, root, v.mat_color, 1.0, v.emissive, look, 0.0);
+                        }
+                    }
+                    None => {
+                        if v.kind == EnemyKind::Slime {
+                            emit_slime_drips(f, root, v.ripple, time + i as f32 * 1.37);
+                            f.rigs.push(rig, &v.pose, root, v.mat_color, 1.0, v.emissive, look | rig_look::INNARDS, 0.0);
+                            f.rigs_blend.push(rig, &v.pose, root, v.mat_color, GOO_ALPHA, v.emissive, look | rig_look::GOO, v.ripple);
+                        } else {
+                            f.rigs.push(rig, &v.pose, root, v.mat_color, 1.0, v.emissive, look, 0.0);
+                        }
+                    }
                 }
                 if v.eye > 0.0 {
                     if let Some(h) = rig.index("head") {
@@ -502,7 +573,9 @@ impl WorldView {
                     EnemyKind::Skeleton | EnemyKind::Helmeted | EnemyKind::Minion => 0.2,
                     EnemyKind::Bat | EnemyKind::LargeBat => 0.13,
                     EnemyKind::Vampire => 0.16,
-                    EnemyKind::Slime | EnemyKind::Werewolf => 0.3,
+                    // (A slime's over its crown: inside its jelly it would light it up like a lamp.)
+                    EnemyKind::Slime => 1.5,
+                    EnemyKind::Werewolf => 0.3,
                     EnemyKind::Witch => 0.4,
                     EnemyKind::Blemmyes => 0.5,
                     EnemyKind::Tengu => 0.45,
@@ -530,9 +603,10 @@ impl WorldView {
                     EnemyKind::Reflection | EnemyKind::Serpentling | EnemyKind::Raven | EnemyKind::Nightmare | EnemyKind::FlySwarm => 0.45,
                     EnemyKind::Peerless | EnemyKind::Ganglot | EnemyKind::Gaki | EnemyKind::Ellepige | EnemyKind::Percht => 0.45,
                 };
+                let dim = if v.kind == EnemyKind::Slime { 0.35 } else { 1.0 };
                 f.lights.push(Light {
                     pos: v.group_pos + Vec3::new(0.0, lift, 0.0),
-                    color: v.light_color * v.light_intensity,
+                    color: v.light_color * v.light_intensity * dim,
                     distance: 4.0,
                 });
             }

@@ -1359,21 +1359,26 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
     };
     let (light, reach) = match b.look {
         BoltLook::Spit => {
-            // A glob of green bog spit, wobbling as it flies, dripping onto the floor behind it.
+            // A gob of the bog slime's own jelly (`emit::GOO_TRAIL`: gold once it flies at the foes),
+            // glossy and see-through round a darker knot, wobbling as it flies, stretched along its
+            // flight, dripping onto the floor behind it.
+            let gold = b.tint != BoltLook::Spit.tint();
+            let (goo, knot) = if gold { (color, color * 0.4) } else { (lin(super::emit::GOO_TRAIL_L), lin(0x1a3226)) };
             let wob = (time * 18.0).sin() * 0.04;
-            let m = Mat4::from_scale_rotation_translation(
-                Vec3::new(0.2 + wob, 0.16 - wob, 0.24),
-                Quat::from_rotation_y(yaw),
-                p - Vec3::new(0.0, 0.1, 0.0),
-            );
-            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, color * 0.9, 0.85, color * 0.35, SHADE_UNLIT));
+            let at = p - Vec3::new(0.0, 0.1, 0.0);
+            let rot = Quat::from_rotation_y(yaw);
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.17 + wob, 0.14 - wob, 0.23), rot, at);
+            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, goo, 0.6, goo * 0.05, super::emit::SHADE_GOO));
+            let m = Mat4::from_scale_rotation_translation(Vec3::new(0.08, 0.07, 0.1), rot, at - v * 0.02);
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, knot, 1.0, Vec3::ZERO, super::emit::SHADE_GOO));
             for k in 1..4 {
                 let t = ((time * 2.5 + k as f32 * 0.33).fract()) * 0.5;
                 let at = p - v * (0.18 + 0.12 * k as f32) - Vec3::new(0.0, 0.1 + t * 1.6, 0.0);
-                let m = Mat4::from_scale_rotation_translation(Vec3::splat(0.05 - k as f32 * 0.008), Quat::IDENTITY, at);
-                f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, color, 0.8, color * 0.3, SHADE_UNLIT));
+                let r = 0.05 - k as f32 * 0.008;
+                let m = Mat4::from_scale_rotation_translation(Vec3::new(r, r * 1.5, r), Quat::IDENTITY, at);
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, goo, 0.7, Vec3::ZERO, super::emit::SHADE_GOO));
             }
-            (color * 1.2, 2.2)
+            (if gold { color * 1.2 } else { goo * 0.6 }, 2.2)
         }
         BoltLook::Hex => {
             // A violet star (two cubes crossed) turning in a ring of the same light, sparks behind.
