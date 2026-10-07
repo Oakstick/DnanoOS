@@ -52,6 +52,10 @@ fn tree_extent(m: &Mesh) -> (f32, f32) {
 
 impl WorldView {
     pub(super) fn build_forest(&mut self, grid: &Grid) {
+        // Dungeon I's garden is built bed by bed in the board's stone and yew (`garden_beds`).
+        if self.garden.is_some() {
+            return self.build_garden_board(grid);
+        }
         let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
         let rock = |x: i32, y: i32| grid.get(x, y) == Tile::Rock;
         let white = Vec3::ONE;

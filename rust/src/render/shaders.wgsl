@@ -1167,7 +1167,9 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
         }
         light += l.color.rgb * att * 0.5;
         let hv = normalize(to_light / max(d, 1e-4) + view_dir);
-        spec += pow(max(dot(n, hv), 0.0), 60.0) * l.color.rgb * att;
+        // (A lamp right beside a jet would blaze it white: its highlight is held to a lamp's at
+        // about two thirds of a unit.)
+        spec += pow(max(dot(n, hv), 0.0), 60.0) * l.color.rgb * min(att, 2.0);
     }
     spec += pow(max(dot(n, normalize(g.moon_dir.xyz + view_dir)), 0.0), 60.0) * g.moon_color.rgb;
     let col = in.color.rgb * light * (0.55 + 0.5 * rush + 0.6 * edge) + spec * 0.8;

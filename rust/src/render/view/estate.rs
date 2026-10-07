@@ -15,6 +15,8 @@ pub(super) mod pal {
     pub const NIGHT: u32 = 0x0b1416;
     pub const MOONLIGHT: u32 = 0xa8c8c4;
     pub const MIST_TEAL: u32 = 0x6e9a90;
+    /// The ground mist over the walks: the night's mist teal, greyed.
+    pub const MIST: u32 = 0x7a8c88;
 }
 use pal::*;
 
@@ -151,7 +153,17 @@ impl WorldView {
                 *w = true;
             }
         }
-        for (c, &wood) in self.static_cubes.iter_mut().zip(&wood) {
+        // (What was built in the board's palette already keeps its colours.)
+        let mut keep = vec![false; self.static_cubes.len()];
+        for &(start, len) in &self.authored {
+            for k in keep.iter_mut().skip(start).take(len) {
+                *k = true;
+            }
+        }
+        for ((c, &wood), &keep) in self.static_cubes.iter_mut().zip(&wood).zip(&keep) {
+            if keep {
+                continue;
+            }
             let lit = c.emissive[3] == SHADE_LIT;
             let glowing = c.emissive[0] + c.emissive[1] + c.emissive[2] > 0.0;
             if glowing {

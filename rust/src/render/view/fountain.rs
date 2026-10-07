@@ -594,8 +594,8 @@ impl WorldView {
         );
         let flat = Mat4::from_rotation_x(-PI / 2.0);
         // The board's mist teal: the still water, and the jets paler.
-        let water_tint = lin(0x2a5450);
-        let jet_tint = lin(0xc4dcd6);
+        let water_tint = lin(0x24453f);
+        let jet_tint = lin(0x8fb2aa);
         let basin_y = o.y + BASIN_WATER;
         let bowl_y = o.y + BOWL_WATER;
 
@@ -610,7 +610,7 @@ impl WorldView {
         let fall = top - basin_y;
         let m = Mat4::from_translation(Vec3::new(o.x, (top + basin_y) / 2.0, o.z))
             * Mat4::from_scale(Vec3::new(BOWL_R + 0.004, fall, BOWL_R + 0.004));
-        f.transparent[tube].push(Instance::new(m, lin(0xc8dcd8), 0.5, Vec3::ZERO, SHADE_WATER));
+        f.transparent[tube].push(Instance::new(m, lin(0x9cbcb4), 0.38, Vec3::ZERO, SHADE_WATER));
 
         // Four jets arc in from the basin's sides and land in the bowl at his hooves.
         let mut splashes: Vec<(Vec3, f32)> = vec![];
@@ -629,7 +629,7 @@ impl WorldView {
                 0.011,
                 0.014,
                 jet_tint,
-                0.62,
+                0.5,
                 seed,
             );
             splashes.push((land, 0.7));
@@ -639,8 +639,8 @@ impl WorldView {
                 let p = start.lerp(land, t) + Vec3::new(0.0, 4.0 * lift * t * (1.0 - t), 0.0);
                 f.additive.push(Instance::new(
                     Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.012)),
-                    lin(0xe8fbff),
-                    0.7,
+                    lin(0xc8e4dc),
+                    0.35,
                     Vec3::ZERO,
                     SHADE_UNLIT,
                 ));
@@ -697,7 +697,7 @@ impl WorldView {
             let r = 0.3 + ph * 0.25;
             let p = Vec3::new(o.x + a.cos() * r, basin_y + 0.05 + ph * 0.5, o.z + a.sin() * r);
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.07 + ph * 0.12));
-            f.transparent[sphere].push(Instance::new(m, lin(0xbcd4dc), 0.07 * (PI * ph).sin(), Vec3::ZERO, SHADE_LIT));
+            f.transparent[sphere].push(Instance::new(m, lin(0x9ab8b0), 0.035 * (PI * ph).sin(), Vec3::ZERO, SHADE_LIT));
         }
 
         // The spouts under the bridges pour into the channels.
@@ -726,7 +726,7 @@ impl WorldView {
         if o.distance_squared(self.focus_point) > 20.0 * 20.0 {
             return;
         }
-        f.lights.push(Light { pos: Vec3::new(o.x, o.y + 0.36, o.z), color: lin(0x6ec0b0) * (0.8 + shimmer * 0.5), distance: 3.0 });
+        f.lights.push(Light { pos: Vec3::new(o.x, o.y + 0.36, o.z), color: lin(0x6ea89c) * (0.45 + shimmer * 0.25), distance: 2.6 });
     }
 }
 

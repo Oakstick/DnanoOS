@@ -325,11 +325,17 @@ impl WorldView {
                 floor = -0.3;
             }
             let thick = matches!(feature.get(&p), Some(Feature::Water) | Some(Feature::Grave));
+            // In the garden the mist lies on the walks, the water and the graves, not over the
+            // beds (it would veil them grey; the hedges hold it out).
+            if self.estate_art && t == Tile::Rock && !thick {
+                continue;
+            }
             let layers: &[(f32, f32)] =
                 if thick { &[(0.1, 0.55), (0.28, 0.48), (0.5, 0.36), (0.8, 0.22)] } else { &[(0.12, 0.34), (0.34, 0.27), (0.62, 0.16)] };
             for (k, &(lift, alpha)) in layers.iter().enumerate() {
                 let m = Mat4::from_translation(Vec3::new(x as f32, floor + lift, y as f32)) * Mat4::from_scale(Vec3::new(1.0, 0.002, 1.0));
-                self.mist.push(Instance::new(m, lin(MIST), alpha, Vec3::new(20.0 + k as f32, lift, 0.0), SHADE_CLOUD));
+                let tone = if self.estate_art { lin(estate::pal::MIST) } else { lin(MIST) };
+                self.mist.push(Instance::new(m, tone, alpha, Vec3::new(20.0 + k as f32, lift, 0.0), SHADE_CLOUD));
             }
         }
     }
@@ -975,6 +981,12 @@ impl WorldView {
             f.sets_blend.push(self.mist_set.clone());
             return;
         };
+        // Rain standing in the walks, holding the lanterns.
+        for (i, &(p, size)) in self.puddles.iter().enumerate() {
+            if p.distance_squared(self.focus_point) < 24.0 * 24.0 {
+                crypt::emit_pool(f, p, size, i as f32 * 0.7);
+            }
+        }
         let (w, h) = (self.level_dims.x as i32, self.level_dims.y as i32);
         for (ci, channel) in plan.channels.iter().enumerate() {
             let n = channel.len();
