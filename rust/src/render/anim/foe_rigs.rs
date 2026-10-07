@@ -41,10 +41,15 @@ pub enum FoeRig {
     Rokurokubi,
     Oni,
     Kitsune,
+    Tulukus,
+    Albasti,
+    Cin,
+    Arcura,
+    Karakoncolos,
 }
 
 impl FoeRig {
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 24;
     /// Every foe rig with a joint table.
     pub const ALL: [FoeRig; Self::COUNT] = [
         FoeRig::Draugr,
@@ -66,6 +71,11 @@ impl FoeRig {
         FoeRig::Rokurokubi,
         FoeRig::Oni,
         FoeRig::Kitsune,
+        FoeRig::Tulukus,
+        FoeRig::Albasti,
+        FoeRig::Cin,
+        FoeRig::Arcura,
+        FoeRig::Karakoncolos,
     ];
 
     /// The folder of its clips (`assets/anim/<dir>/`) and its name for `--export-rig`.
@@ -90,6 +100,11 @@ impl FoeRig {
             FoeRig::Rokurokubi => "rokurokubi",
             FoeRig::Oni => "oni",
             FoeRig::Kitsune => "kitsune",
+            FoeRig::Tulukus => "tulukus",
+            FoeRig::Albasti => "albasti",
+            FoeRig::Cin => "cin",
+            FoeRig::Arcura => "arcura",
+            FoeRig::Karakoncolos => "karakoncolos",
         }
     }
 
@@ -116,6 +131,11 @@ impl FoeRig {
             EnemyKind::Rokurokubi => FoeRig::Rokurokubi,
             EnemyKind::Oni => FoeRig::Oni,
             EnemyKind::Kitsune => FoeRig::Kitsune,
+            EnemyKind::Tulukus => FoeRig::Tulukus,
+            EnemyKind::Albasti => FoeRig::Albasti,
+            EnemyKind::Cin => FoeRig::Cin,
+            EnemyKind::Arcura => FoeRig::Arcura,
+            EnemyKind::Karakoncolos => FoeRig::Karakoncolos,
             _ => return None,
         })
     }
@@ -150,6 +170,11 @@ impl FoeRig {
             FoeRig::Rokurokubi => super::foe_stage4::rokurokubi(),
             FoeRig::Oni => super::foe_stage4::oni(),
             FoeRig::Kitsune => super::foe_stage4::kitsune(),
+            FoeRig::Tulukus => super::foe_stage5::tulukus(),
+            FoeRig::Albasti => super::foe_stage5::albasti(),
+            FoeRig::Cin => super::foe_stage5::cin(),
+            FoeRig::Arcura => super::foe_stage5::arcura(),
+            FoeRig::Karakoncolos => super::foe_stage5::karakoncolos(),
         }
     }
 
@@ -176,6 +201,11 @@ impl FoeRig {
             FoeRig::Rokurokubi => (crate::render::foes4::ROKURO_SIZE, 0.0125),
             FoeRig::Oni => (crate::render::foes4::ONI_SIZE, 0.0135),
             FoeRig::Kitsune => (crate::render::foes4::KITSUNE_SIZE, 0.0125),
+            FoeRig::Tulukus => (crate::render::foes5::TULUKUS_SIZE, 0.0125),
+            FoeRig::Albasti => (crate::render::foes5::ALBASTI_SIZE, 0.0125),
+            FoeRig::Cin => (crate::render::foes5::CIN_SIZE, 0.0125),
+            FoeRig::Arcura => (crate::render::foes5::ARCURA_SIZE, 0.0125),
+            FoeRig::Karakoncolos => (crate::render::foes5::KARAKONCOLOS_SIZE, 0.013),
         }
     }
 
@@ -204,6 +234,11 @@ impl FoeRig {
             FoeRig::Rokurokubi => build_rig(&crate::render::foes4::rokurokubi(), crate::render::foes4::ROKURO_RIG, size),
             FoeRig::Oni => build_rig(&crate::render::foes4::oni(), crate::render::foes4::ONI_RIG, size),
             FoeRig::Kitsune => build_rig(&crate::render::foes4::kitsune(), crate::render::foes4::KITSUNE_RIG, size),
+            FoeRig::Tulukus => build_rig(&crate::render::foes5::tulukus(), crate::render::foes5::TULUKUS_RIG, size),
+            FoeRig::Albasti => build_rig(&crate::render::foes5::albasti(), crate::render::foes5::ALBASTI_RIG, size),
+            FoeRig::Cin => build_rig(&crate::render::foes5::cin(), crate::render::foes5::CIN_RIG, size),
+            FoeRig::Arcura => build_rig(&crate::render::foes5::arcura(), crate::render::foes5::ARCURA_RIG, size),
+            FoeRig::Karakoncolos => build_rig(&crate::render::foes5::karakoncolos(), crate::render::foes5::KARAKONCOLOS_RIG, size),
         })
     }
 
@@ -656,6 +691,11 @@ mod tests {
             FoeRig::Rokurokubi => &["neck_bite"],
             FoeRig::Oni => &["kanabo", "sweep", "rally"],
             FoeRig::Kitsune => &["foxfire"],
+            FoeRig::Tulukus => &["talons"],
+            FoeRig::Albasti => &["smother"],
+            FoeRig::Cin => &["smokeless"],
+            FoeRig::Arcura => &["roots"],
+            FoeRig::Karakoncolos => &["call", "slam", "sweep"],
             _ => &["bite", "rally"],
         }
     }

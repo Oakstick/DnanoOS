@@ -1,0 +1,12 @@
+{
+ "clip": "roots",
+ "fps": 60,
+ "frames": 176,
+ "loop": false,
+ "markers": {
+  "windup_end": 103,
+  "hit": 105,
+  "active_end": 110,
+  "recover_end": 176
+ }
+}

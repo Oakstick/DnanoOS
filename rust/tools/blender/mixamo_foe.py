@@ -156,6 +156,51 @@ ONI = {
     "stagger": (MU + "mutant dying.fbx", dict(ONI_W, kind="flinch", cut=70)),
 }
 
+# ------------------------------------------------------------------ the fifth stage
+
+# The albasti: her own moves are keyed (`block_stage5.Albasti`: the smother); her stand, creep and
+# reels from the magic pack. Her arms hang empty.
+ALB = dict(face=0.0)
+ALBASTI = {
+    "idle": (MG + "Standing Idle 04.fbx", dict(ALB, loop=True)),
+    "walk": (MG + "Crouch Walk Forward.fbx", dict(ALB, loop=True, stride="feet")),
+    "run": (MG + "Standing Sprint Forward.fbx", dict(ALB, loop=True, stride="feet")),
+    "hit": (MG + "Standing React Small From Back.fbx", dict(ALB, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Front.fbx", dict(ALB, kind="flinch")),
+}
+# The cin: his crooked staff in his right fist (not mirrored), its fire flung from it.
+CIN_W = dict(weapon="blade", weapon_rest=(0.0, 1.0, 0.0))
+CIN = {
+    "idle": (MG + "Standing Idle 03.fbx", dict(CIN_W, loop=True, span=(0.0, 4.0))),
+    "walk": (MG + "Standing Walk Forward.fbx", dict(CIN_W, loop=True, stride="feet")),
+    "run": (MG + "Standing Run Forward.fbx", dict(CIN_W, loop=True, stride="feet")),
+    "smokeless": (MG + "Standing 1H Magic Attack 02.fbx", dict(CIN_W, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1))),
+    "rally": (MG + "Standing 2H Cast Spell 01.fbx", dict(CIN_W, kind="strike", weapon="hand.R", tip_rest=(0, 0, 1))),
+    "hit": (MG + "Standing React Small From Left.fbx", dict(CIN_W, kind="flinch")),
+    "stagger": (MG + "Standing React Large From Left.fbx", dict(CIN_W, kind="flinch")),
+}
+# The arcura: its roots called up with both arms raised (the growth is the code's), on goat's legs.
+ARCURA = {
+    "idle": (MG + "Standing Idle 03.fbx", dict(loop=True, span=(4.0, 8.0))),
+    "walk": (MU + "mutant walking.fbx", dict(loop=True, stride="feet")),
+    "run": (MU + "mutant run.fbx", dict(loop=True, stride="feet")),
+    "roots": (MG + "Standing 2H Magic Area Attack 02.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, 1, 0))),
+    "rally": (MU + "mutant roaring.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "hit": (MG + "Standing React Large From Front.fbx", dict(kind="flinch")),
+    "stagger": (MG + "Standing React Large From Back.fbx", dict(kind="flinch")),
+}
+# The karakoncolos: an ape's lumber and its blows, its call the creature's roar, head thrown back.
+KARAKONCOLOS = {
+    "idle": (MU + "mutant idle.fbx", dict(loop=True, span=(0.0, 5.0))),
+    "walk": (MU + "mutant walking.fbx", dict(loop=True, stride="feet")),
+    "run": (MU + "mutant run.fbx", dict(loop=True, stride="feet")),
+    "call": (MU + "mutant roaring.fbx", dict(kind="strike", weapon="head", tip_rest=(0.0, 1.0, 0.4))),
+    "slam": (MU + "jump attack.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0), still=True, yaw_keep=0.0, face=0.0)),
+    "sweep": (MU + "mutant punch.fbx", dict(kind="strike", weapon="hand.L", tip_rest=(0, -1, 0))),
+    "hit": (MU + "mutant dying.fbx", dict(kind="flinch", cut=40)),
+    "stagger": (AX + "react large from left.fbx", dict(kind="flinch")),
+}
+
 # ------------------------------------------------------------------ the jorogumo
 
 MG = "magic/"
@@ -175,7 +220,8 @@ JOROGUMO = {
     "stagger": (MG + "Standing React Large From Front.fbx", dict(JORO, kind="flinch", legs="stagger")),
 }
 
-FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO, "oni": ONI}
+FOES = {"draugr": DRAUGR, "helmeted": HELMETED, "blemmyes": BLEMMYES, "rasetsu": RASETSU, "tengu": TENGU, "witch": WITCH, "jorogumo": JOROGUMO, "oni": ONI,
+        "albasti": ALBASTI, "cin": CIN, "arcura": ARCURA, "karakoncolos": KARAKONCOLOS}
 
 # The bones her legs' clips key (her spider's body); the rest are Mixamo's.
 SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k in "abc")
@@ -184,7 +230,7 @@ SPIDER = ("carapace", "abdomen") + tuple(f"leg{i}.{k}" for i in range(8) for k i
 # The recovery each move has in the game at its base tempo (frames: logic/combat/frames.rs), and
 # the longest a clip's follow-through is kept against it: the rest of a long Mixamo settle is cut
 # off (the game would play it several times too fast), and the foe's feet take over in a crossfade.
-RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24, "kanabo": 52}
+RECOVERY = {"slam": 48, "sweep": 36, "hex": 30, "rally": 36, "bite": 24, "kanabo": 52, "smokeless": 30, "roots": 30, "call": 12}
 TAIL = 2.2
 # The longest a reel's clip runs past its impact (a reel lasts 14 to 50 frames in the game).
 REEL_TAIL = 40

@@ -1,0 +1,11 @@
+{
+ "clip": "talons",
+ "fps": 60,
+ "frames": 70,
+ "loop": false,
+ "markers": {
+  "windup_end": 30,
+  "active_end": 36,
+  "recover_end": 70
+ }
+}

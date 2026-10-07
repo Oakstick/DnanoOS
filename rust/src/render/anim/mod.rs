@@ -13,6 +13,7 @@ pub mod foe_beasts;
 pub mod foe_build;
 pub mod foe_rigs;
 pub mod foe_stage4;
+pub mod foe_stage5;
 pub mod hero;
 pub mod hold;
 pub mod library;
