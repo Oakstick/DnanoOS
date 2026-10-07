@@ -448,6 +448,10 @@ impl FoeRig {
         use super::{library::Mode, skeleton};
         let ((w, _, d), _) = self.grid();
         let mut cut = skeleton::jointed(&self.code_rig(), self.joints(), w, d);
+        if self == FoeRig::Slime {
+            // (Its jelly is drawn see-through: one body, its cuts not drawn inside it.)
+            cut = cut.fused_goo();
+        }
         if Mode::from_env() == Mode::Bones {
             for (i, part) in cut.parts.iter_mut().enumerate() {
                 let c = skeleton::bone_color(i);

@@ -198,6 +198,14 @@ const LOOK_FADED: u32 = 2u;
 const LOOK_GHOST: u32 = 4u;
 const LOOK_TINT_ALL: u32 = 8u;
 const LOOK_RIM: u32 = 16u;
+const LOOK_INNARDS: u32 = 32u;
+const LOOK_GOO: u32 = 64u;
+// Jelly (`rig_look::GOO`, the bog slime): its material's shade mode, the mode it is drawn in
+// (`jelly`), and its heart, in voxels over its root's joint (`foes::SLIME_HEART`): its skin's
+// soft normal leans away from there.
+const GOO_SHADE: f32 = 14.0;
+const JELLY_MODE: f32 = 23.0;
+const GOO_HEART: f32 = 11.0;
 // A rim-lit tell (`rig_look::RIM`): the share of its light over the body, and on an edge-on face.
 const RIM_BODY: f32 = 0.1;
 const RIM_EDGE: f32 = 1.5;
@@ -227,11 +235,36 @@ fn vs_rig(v: RIn) -> VOut {
     let face = (f.part_face >> 8u) & 7u;
     let local = FACE_CORNERS[face * 4u + QUAD_CORNERS[v.vertex % 6u]];
     let pm = rig_parts[d.part_base + part];
-    let w = pm * vec4<f32>(f.pos + local * d.size, 1.0);
+    var w = pm * vec4<f32>(f.pos + local * d.size, 1.0);
     var c = f.color.rgb;
     var shade = f.color.a;
+    // A slime is drawn twice: what it holds solid, its jelly see-through (each draw drops the other's faces).
+    let goo = abs(shade - GOO_SHADE) < 0.5;
+    let jelly = (d.look & LOOK_GOO) != 0u;
+    if (((d.look & LOOK_INNARDS) != 0u && goo) || (jelly && !goo)) {
+        var gone: VOut;
+        gone.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return gone;
+    }
+    var soft = vec3<f32>(0.0, 1.0, 0.0);
+    var inner = false;
+    if (jelly) {
+        // Its skin bent soft (leaning away from its heart; its inside looks in), and rippling
+        // (`rust` is how hard: a hop, a blow).
+        let heart = (rig_parts[d.part_base] * vec4<f32>(0.0, GOO_HEART * d.size, 0.0, 1.0)).xyz;
+        let face_n = normalize((pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz);
+        var out_n = normalize(w.xyz - heart + vec3<f32>(0.0, 1e-4, 0.0));
+        let time = g.sky_right.w;
+        let wave = sin(dot(w.xyz, vec3<f32>(9.0, 13.0, 7.0)) + time * 4.2) * 0.6 + sin(dot(w.xyz, vec3<f32>(-6.0, 8.0, 11.0)) * 1.3 - time * 6.1) * 0.4;
+        w = vec4<f32>(w.xyz + out_n * wave * (0.3 + 1.6 * d.emissive.a) * d.size, 1.0);
+        if (dot(out_n, face_n) < 0.0) {
+            out_n = -out_n;
+            inner = true;
+        }
+        soft = normalize(mix(face_n, out_n, 0.8));
+    }
     // A dull blade: its metal (material 1, mode 6) turns to rust on the parts that rust.
-    if (d.emissive.a > 0.0 && abs(shade - 6.0) < 0.5 && ((d.rust_mask >> part) & 1u) != 0u) {
+    if (!jelly && d.emissive.a > 0.0 && abs(shade - 6.0) < 0.5 && ((d.rust_mask >> part) & 1u) != 0u) {
         c = mix(c, vec3<f32>(0.32, 0.12, 0.05), d.emissive.a);
     }
     var tint = d.tint.rgb;
@@ -262,7 +295,8 @@ fn vs_rig(v: RIn) -> VOut {
     if ((d.look & LOOK_RIM) != 0u) {
         // The tell's light on the silhouette: faces seen edge-on take it all, those facing the eye
         // a breath of it, so the body and its move show through.
-        let facing = clamp(dot(normalize(outward), normalize(to_eye)), 0.0, 1.0);
+        // (Jelly by its soft normal: its voxels' ledges are not its silhouette.)
+        let facing = clamp(dot(normalize(select(outward, soft, jelly)), normalize(to_eye)), 0.0, 1.0);
         let edge = (1.0 - facing) * (1.0 - facing);
         emissive *= RIM_BODY + RIM_EDGE * edge;
     }
@@ -273,9 +307,17 @@ fn vs_rig(v: RIn) -> VOut {
     out.emissive = vec4<f32>(emissive, shade);
     out.depth = out.clip.w;
     out.local = local;
-    // As for static faces: a solid rig's faces turned from the eye never show. (The face's centre
-    // comes from the same numbers at all four corners, so they all decide alike.)
-    if (dot(outward, to_eye) <= 0.0 && d.tint.a > 0.999 && (d.look & LOOK_FADED) == 0u && !fx_off(FX_BACKFACE)) {
+    if (jelly) {
+        // (Its soft normal rides where the voxel's place inside its cube would.)
+        out.emissive.w = JELLY_MODE;
+        out.local = soft;
+        // (Its far wall, seen through it from inside, thinner: what it holds shows between.)
+        out.color.a *= select(1.0, 0.55, inner);
+    }
+    // As for static faces: a solid rig's faces turned from the eye never show (nor jelly's: its
+    // outside, and its inside's far wall, show). (The face's centre comes from the same numbers
+    // at all four corners, so they all decide alike.)
+    if (dot(outward, to_eye) <= 0.0 && (d.tint.a > 0.999 || jelly) && (d.look & LOOK_FADED) == 0u && !fx_off(FX_BACKFACE)) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
     }
     return out;
@@ -322,7 +364,9 @@ fn vs_rig_shadow(v: RIn) -> @builtin(position) vec4<f32> {
     let pm = rig_parts[d.part_base + (f.part_face & 0xffu)];
     let face = (f.part_face >> 8u) & 7u;
     let away = vec3<f32>(cascade_vp[0].z, cascade_vp[1].z, cascade_vp[2].z);
-    if (dot((pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz, away) > 0.0) {
+    // (A slime's jelly lets the light through: only what it holds casts a shadow.)
+    let clear = (d.look & LOOK_INNARDS) != 0u && abs(f.color.a - GOO_SHADE) < 0.5;
+    if (clear || dot((pm * vec4<f32>(FACE_NORMALS[face], 0.0)).xyz, away) > 0.0) {
         return vec4<f32>(2.0, 2.0, 2.0, 1.0);
     }
     return cascade_vp * (pm * vec4<f32>(f.pos + FACE_CORNERS[face * 4u + QUAD_CORNERS[v.vertex % 6u]] * d.size, 1.0));
@@ -1179,6 +1223,66 @@ fn water_jet(in: VOut, n: vec3<f32>) -> FOut {
     return out;
 }
 
+// Jelly (`rig_look::GOO`, the bog slime's skin): see-through, glossy and wet. Its soft normal
+// comes in `local`. The light falls on it wrapped and shines through it from behind; the moon,
+// the lamps and the sky glint off it sharply; seen edge-on it thickens (less of what is behind
+// shows through), and its highlights are not thinned by its clearness.
+fn jelly(in: VOut) -> FOut {
+    let n = normalize(in.local);
+    let view_dir = normalize(g.cam_pos.xyz - in.world);
+    let nv = max(dot(n, view_dir), 0.0);
+    let edge = pow(1.0 - nv, 3.0);
+    let hemi = mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * n.y + 0.5);
+    var diffuse = g.ambient.rgb + hemi;
+    var through = vec3<f32>(0.0);
+    var spec = vec3<f32>(0.0);
+    let f0 = vec3<f32>(0.04);
+    let ml = dot(n, g.moon_dir.xyz);
+    diffuse += max((ml + 0.5) / 1.5, 0.0) * g.moon_color.rgb;
+    through += max(-ml, 0.0) * g.moon_color.rgb;
+    if (ml > 0.0) {
+        spec += ggx(n, view_dir, g.moon_dir.xyz, 0.16, f0) * ml * g.moon_color.rgb;
+    }
+    let cl = cluster_at(in.clip.xy, in.world);
+    let count = select(cl.count, 0u, fx_off(FX_LIGHTS));
+    for (var i = 0u; i < count; i++) {
+        let l = lights[light_index[cl.start + i]];
+        let to_light = l.pos.xyz - in.world;
+        let d = length(to_light);
+        if (d >= l.pos.w && l.pos.w > 0.0) {
+            continue;
+        }
+        let ld = to_light / max(d, 1e-4);
+        var att = 1.0 / max(d * d, 0.01);
+        if (l.pos.w > 0.0) {
+            let r = d / l.pos.w;
+            att *= pow2(clamp(1.0 - r * r * r * r, 0.0, 1.0));
+        }
+        let nl = dot(n, ld);
+        diffuse += max((nl + 0.5) / 1.5, 0.0) * l.color.rgb * att;
+        through += max(-nl, 0.0) * l.color.rgb * att;
+        if (nl > 0.0) {
+            spec += ggx(n, view_dir, ld, 0.16, f0) * nl * l.color.rgb * att;
+        }
+    }
+    let refl = reflect(-view_dir, n);
+    let env = textureSampleLevel(env_map, env_samp, refl, 0.16 * ENV_MIPS).rgb;
+    let shine = spec + env * (0.04 + 0.96 * pow(1.0 - nv, 5.0));
+    let albedo = in.color.rgb;
+    var rgb = albedo * (diffuse / PI + through * 0.3) + in.emissive.rgb;
+    let fog_f = fog_at(in.world, in.depth);
+    // (Its shine is added over what shows through, not thinned with it: its share of the cover
+    // is raised to carry it.)
+    let a = clamp(in.color.a + (1.0 - in.color.a) * edge * 0.55, 0.0, 1.0);
+    let glint = min(dot(shine, vec3<f32>(0.2126, 0.7152, 0.0722)), 1.0);
+    let cover = max(a, glint);
+    rgb = (rgb * a + shine) / max(cover, 1e-3);
+    var out: FOut;
+    out.color = vec4<f32>(fogged(finish(rgb), fog_f), cover);
+    out.gbuf = vec4<f32>(0.0, 1.0, 0.0, 10000.0);
+    return out;
+}
+
 // A soft glowing orb: a disc turned to face the camera, drawn additively,
 // brightest in the middle and fading to nothing at its rim (as a lit sphere
 // of haze would look).
@@ -1229,6 +1333,9 @@ fn fs_scene(in: VOut) -> FOut {
     }
     if (mode > 21.5 && mode < 22.5) {
         return glow_orb(in);
+    }
+    if (mode > 22.5 && mode < 23.5) {
+        return jelly(in);
     }
     if (mode > 20.5 && mode < 21.5) {
         return water_jet(in, n);

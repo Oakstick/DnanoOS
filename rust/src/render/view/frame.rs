@@ -105,6 +105,11 @@ pub mod rig_look {
     /// The emitted light gathered at the silhouette (a foe's tell): a breath of it over the body,
     /// all of it on the faces the eye sees edge-on, so the move stays readable under it.
     pub const RIM: u32 = 16;
+    /// Only what is not jelly (`mat::SLIME`), solid: what a slime holds (drawn with the solid rigs).
+    pub const INNARDS: u32 = 32;
+    /// Only the jelly, see-through and glossy, its skin bent soft and rippling (drawn with the
+    /// see-through rigs, its `rust` the ripple's strength): the bog slime's (RENDERING.md).
+    pub const GOO: u32 = 64;
 }
 
 /// One rig drawn from the mesh the GPU keeps of it, as the shader reads it.
@@ -276,7 +281,8 @@ impl RigList {
         let tint =
             if self.lod.debug { tint * [Vec3::ONE, Vec3::new(0.5, 1.4, 0.5), Vec3::new(1.5, 0.45, 0.45)][level as usize] } else { tint };
         let shown = rig.lod(level);
-        let mesh = if alpha < 1.0 { shown.mesh_whole() } else { shown.mesh() };
+        // (See-through, every face shows; but jelly is a skin: only its outside and its inside.)
+        let mesh = if alpha < 1.0 && look & rig_look::GOO == 0 { shown.mesh_whole() } else { shown.mesh() };
         let part_base = self.parts.len() as u32;
         parts(&mut self.parts);
         let draw = RigDraw {
