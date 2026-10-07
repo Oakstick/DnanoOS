@@ -1,0 +1,12 @@
+{
+ "clip": "thunder",
+ "fps": 60,
+ "frames": 121,
+ "loop": false,
+ "markers": {
+  "windup_end": 45,
+  "hit": 48,
+  "active_end": 51,
+  "recover_end": 121
+ }
+}

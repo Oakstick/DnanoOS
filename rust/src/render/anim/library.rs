@@ -1,10 +1,12 @@
-//! The clips the game carries: every `assets/anim/<hero>/<clip>.glb` with its `<clip>.json`
+//! The clips the game carries: every `assets/anim/<body>/<clip>.glb` with its `<clip>.json`
 //! beside it, embedded in the build (the web build has no file system; `build.rs` lists them), and
-//! read once per hero, the first time his clips are wanted (with his level, never mid-fight).
+//! read once per body (a hero, or a foe's rig), the first time its clips are wanted (with the
+//! level, never mid-fight).
 
 use std::sync::OnceLock;
 
 use super::clip::{Clip, Skeleton};
+use super::skeleton::{SkeletonDef, HUMANOID};
 use crate::logic::heroes::HeroKind;
 
 // `EMBEDDED: &[(hero, clip, glb bytes, markers json)]`, written by build.rs.
@@ -32,8 +34,11 @@ impl Mode {
     }
 }
 
-/// A hero's clips, read and resampled, and the skeleton they share.
-pub struct HeroClips {
+/// A hero's clips (the heroes' skeleton).
+pub type HeroClips = ClipSet;
+
+/// A body's clips, read and resampled, and the skeleton they share.
+pub struct ClipSet {
     pub skeleton: Skeleton,
     pub clips: Vec<Clip>,
     /// How long reading them took, in milliseconds.
@@ -42,24 +47,29 @@ pub struct HeroClips {
     pub errors: Vec<String>,
 }
 
-impl HeroClips {
+impl ClipSet {
     pub fn get(&self, name: &str) -> Option<&Clip> {
         self.clips.iter().find(|c| c.name == name)
     }
 
-    /// Reads every clip of `hero` in `files` (hero, clip, GLB, markers), or none if none reads.
-    pub fn read(hero: &str, files: &[(&str, &str, &[u8], &str)]) -> Option<HeroClips> {
+    /// Reads every clip of hero `hero` in `files` (body, clip, GLB, markers), or none if none reads.
+    pub fn read(hero: &str, files: &[(&str, &str, &[u8], &str)]) -> Option<ClipSet> {
+        Self::read_of(&HUMANOID, hero, files)
+    }
+
+    /// Reads every clip of body `dir` (on skeleton `def`) in `files`, or none if none reads.
+    pub fn read_of(def: &SkeletonDef, dir: &str, files: &[(&str, &str, &[u8], &str)]) -> Option<ClipSet> {
         let t = web_time::Instant::now();
         let mut clips = Vec::new();
         let mut errors = Vec::new();
-        for (h, name, glb, json) in files.iter().filter(|f| f.0 == hero) {
-            match Clip::from_glb(name, glb, json) {
+        for (h, name, glb, json) in files.iter().filter(|f| f.0 == dir) {
+            match Clip::from_glb_of(def, name, glb, json) {
                 Ok(c) => clips.push(c),
                 Err(e) => errors.push(format!("{h}/{e}")),
             }
         }
         let skeleton = clips.first()?.skeleton.clone();
-        Some(HeroClips { skeleton, clips, load_ms: t.elapsed().as_secs_f64() * 1e3, errors })
+        Some(ClipSet { skeleton, clips, load_ms: t.elapsed().as_secs_f64() * 1e3, errors })
     }
 }
 
@@ -90,6 +100,28 @@ pub fn clips(hero: HeroKind) -> Option<&'static HeroClips> {
             read
         })
         .as_ref()
+}
+
+/// A foe rig's clips (`anim::foe_rigs`), read the first time they are asked for; none if it has none.
+pub fn foe_clips(foe: super::foe_rigs::FoeRig) -> Option<&'static ClipSet> {
+    use super::foe_rigs::FoeRig;
+    static FOES: [OnceLock<Option<ClipSet>>; FoeRig::COUNT] = [const { OnceLock::new() }; FoeRig::COUNT];
+    FOES[foe as usize]
+        .get_or_init(|| {
+            let read = ClipSet::read_of(foe.def(), foe.dir(), EMBEDDED);
+            if let Some(c) = &read {
+                for e in &c.errors {
+                    crate::platform::warn(&format!("animation: {e}"));
+                }
+            }
+            read
+        })
+        .as_ref()
+}
+
+/// The names of the clips embedded for body `dir`.
+pub fn embedded_in(dir: &str) -> Vec<&'static str> {
+    EMBEDDED.iter().filter(|f| f.0 == dir).map(|f| f.1).collect()
 }
 
 /// The names of the clips embedded for `hero`.

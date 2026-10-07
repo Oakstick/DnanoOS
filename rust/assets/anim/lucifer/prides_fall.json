@@ -1,0 +1,12 @@
+{
+ "clip": "prides_fall",
+ "fps": 60,
+ "frames": 186,
+ "loop": false,
+ "markers": {
+  "windup_end": 74,
+  "hit": 81,
+  "active_end": 84,
+  "recover_end": 186
+ }
+}

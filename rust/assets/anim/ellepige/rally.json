@@ -1,0 +1,12 @@
+{
+ "clip": "rally",
+ "fps": 60,
+ "frames": 113,
+ "loop": false,
+ "markers": {
+  "windup_end": 18,
+  "hit": 30,
+  "active_end": 34,
+  "recover_end": 113
+ }
+}

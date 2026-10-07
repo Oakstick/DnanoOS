@@ -73,6 +73,8 @@ pub(super) struct EnemyView {
     pub(super) scatter: Option<Vec<(Vec3, Vec3)>>,
     /// Tepegöz's eye, lit (0 to 1) while it is within reach.
     pub(super) eye: f32,
+    /// Its clips, if its rig has them (`anim::foe_rigs`): the code's pose is the fallback.
+    pub(super) clip: Option<super::foe_clips::FoeClips>,
 }
 
 /// The rig a foe of `kind` is drawn with, and how high it hovers.
@@ -160,12 +162,21 @@ impl WorldView {
             model.lod(level).mesh();
         }
         let base = lin(e.b.color);
+        let phase = self.rng.nextf() * 6.0;
+        // Its jointed rig too, if its clips have one (made once per kind, now rather than mid-fight).
+        let clip = super::foe_clips::FoeClips::of(e.kind(), phase);
+        if let Some(c) = &clip {
+            let jointed = self.models.jointed_foe(c.foe);
+            for level in 0..LOD_LEVELS {
+                jointed.lod(level).mesh();
+            }
+        }
         self.enemy_views.push(EnemyView {
             rig,
             pose,
             kind: e.kind(),
             hover,
-            phase: self.rng.nextf() * 6.0,
+            phase,
             yaw: 0.0,
             group_pos: Vec3::ZERO,
             root_rot: Vec3::ZERO,
@@ -178,6 +189,7 @@ impl WorldView {
             light_intensity: 0.0,
             scatter: None,
             eye: 0.0,
+            clip,
         });
     }
 
@@ -243,14 +255,17 @@ impl WorldView {
             let mut m = e.m.clone();
             m.elevation_on(grid) as f32 * STEP
         };
-        {
+        let base = {
             let v = &mut self.enemy_views[i];
             v.group_pos = Vec3::new(ep.x as f32, ground + v.hover + (time * 5.0 + i as f32 * 1.7).sin() * 0.05, ep.y as f32);
             if e.m.dir != Dir::None {
                 v.yaw = lerp_angle(v.yaw, dir_to_rotation(e.m.dir), 1.0 - (-TURN_RATE_ENEMY * dt).exp());
             }
-        }
+            // (Where it stands, with the hover's own bob but not the code's gait.)
+            Vec3::new(v.group_pos.x, ground + v.hover, v.group_pos.z)
+        };
         self.animate_enemy(i, e, dt, time);
+        self.animate_foe_clips(i, e, base, dt);
         let v = &mut self.enemy_views[i];
         // Waiting in the hollow they are out of sight, except when the tour shows them off.
         let hidden = e.mode() == EnemyMode::Eaten || (e.mode() == EnemyMode::Nest && self.tour.is_none());
@@ -850,47 +865,65 @@ impl WorldView {
         let rig = models.rig(v.rig);
         v.root_rot = Vec3::ZERO;
         v.root_scale = Vec3::ONE;
-        if v.scatter.is_none() {
-            v.scatter = Some(
-                rig.parts
-                    .iter()
-                    .map(|p| {
-                        let a = rng.nextf() * TAU;
-                        let sp = if p.name == "body" { 0.3 } else { 0.8 + rng.nextf() * 1.1 };
-                        (
-                            Vec3::new(a.cos() * sp, 2.5 + rng.nextf() * 2.5, a.sin() * sp),
-                            Vec3::new((rng.nextf() - 0.5) * 16.0, (rng.nextf() - 0.5) * 16.0, (rng.nextf() - 0.5) * 16.0),
-                        )
-                    })
-                    .collect(),
-            );
-        }
-        let progress = e.scatter_progress();
-        let scatter = v.scatter.as_mut().unwrap();
-        if progress < REASSEMBLE_START {
-            for (pi, part) in rig.parts.iter().enumerate() {
-                let (vel, spin) = &mut scatter[pi];
-                let floor_y = -part.min_y + 0.02;
-                vel.y -= GRAVITY * dt;
-                v.pose.pos[pi] += *vel * dt;
-                if v.pose.pos[pi].y < floor_y {
-                    v.pose.pos[pi].y = floor_y;
-                    vel.y *= -0.3;
-                    vel.x *= 0.5;
-                    vel.z *= 0.5;
-                    *spin *= 0.4;
-                }
-                v.pose.rot[pi] += *spin * dt;
+        v.root_rot.z = scatter_step(rig, &mut v.pose, &mut v.scatter, e.scatter_progress(), dt, rng);
+    }
+}
+
+/**
+ * A step of a body's bones bursting apart (`pose`'s parts, each on its own, whatever their
+ * parents), tumbling to the floor and lying still until `progress` reaches `REASSEMBLE_START`, then
+ * gliding back to their rest. `burst` is each part's flight, made at the first step. Returns the
+ * shiver of the body as it pulls itself together (its root's tip).
+ */
+pub(super) fn scatter_step(
+    rig: &Rig,
+    pose: &mut Pose,
+    burst: &mut Option<Vec<(Vec3, Vec3)>>,
+    progress: f64,
+    dt: f32,
+    rng: &mut Rng,
+) -> f32 {
+    if burst.is_none() {
+        *burst = Some(
+            rig.parts
+                .iter()
+                .enumerate()
+                .map(|(pi, _)| {
+                    let a = rng.nextf() * TAU;
+                    let sp = if pi == 0 { 0.3 } else { 0.8 + rng.nextf() * 1.1 };
+                    (
+                        Vec3::new(a.cos() * sp, 2.5 + rng.nextf() * 2.5, a.sin() * sp),
+                        Vec3::new((rng.nextf() - 0.5) * 16.0, (rng.nextf() - 0.5) * 16.0, (rng.nextf() - 0.5) * 16.0),
+                    )
+                })
+                .collect(),
+        );
+    }
+    let scatter = burst.as_mut().unwrap();
+    if progress < REASSEMBLE_START {
+        for (pi, part) in rig.parts.iter().enumerate() {
+            let (vel, spin) = &mut scatter[pi];
+            let floor_y = -part.min_y + 0.02;
+            vel.y -= GRAVITY * dt;
+            pose.pos[pi] += *vel * dt;
+            if pose.pos[pi].y < floor_y {
+                pose.pos[pi].y = floor_y;
+                vel.y *= -0.3;
+                vel.x *= 0.5;
+                vel.z *= 0.5;
+                *spin *= 0.4;
             }
-        } else {
-            let t = ((progress - REASSEMBLE_START) / (1.0 - REASSEMBLE_START)) as f32;
-            let k = 1.0 - (-dt * (6.0 + t * 30.0)).exp();
-            for (pi, part) in rig.parts.iter().enumerate() {
-                v.pose.pos[pi] = v.pose.pos[pi].lerp(part.rest, k);
-                v.pose.rot[pi] *= 1.0 - k;
-            }
-            v.root_rot.z = (t * 60.0).sin() * 0.04 * (1.0 - t);
+            pose.rot[pi] += *spin * dt;
         }
+        0.0
+    } else {
+        let t = ((progress - REASSEMBLE_START) / (1.0 - REASSEMBLE_START)) as f32;
+        let k = 1.0 - (-dt * (6.0 + t * 30.0)).exp();
+        for (pi, part) in rig.parts.iter().enumerate() {
+            pose.pos[pi] = pose.pos[pi].lerp(part.rest, k);
+            pose.rot[pi] *= 1.0 - k;
+        }
+        (t * 60.0).sin() * 0.04 * (1.0 - t)
     }
 }
 

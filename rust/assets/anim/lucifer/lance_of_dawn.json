@@ -1,0 +1,12 @@
+{
+ "clip": "lance_of_dawn",
+ "fps": 60,
+ "frames": 60,
+ "loop": false,
+ "markers": {
+  "windup_end": 22,
+  "hit": 25,
+  "active_end": 28,
+  "recover_end": 60
+ }
+}

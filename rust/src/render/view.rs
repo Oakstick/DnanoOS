@@ -50,6 +50,7 @@ pub mod effects;
 mod emit;
 mod estate;
 mod fade;
+mod foe_clips;
 mod forest;
 mod forge;
 mod fountain;

@@ -850,7 +850,18 @@ fn ease(u: f32) -> f32 {
  * folded in his wings as he goes into the light (and the light leaving him as he comes out), the
  * stars called down, the fall up on his wings and down on his mark.
  */
-pub(super) fn dress_lucifer(rig: &Rig, v: &mut EnemyView, d: &Duelist, time: f32) {
+pub(super) fn dress_lucifer(rig: &Rig, v: &mut EnemyView, d: &Duelist, time: f32, clips: bool) {
+    // By his clips (`view::foe_clips`) his turns, leans and crouches are in them, and his wings too:
+    // only his flight over his mark (and his light, his glow, his Reflections' cold) stay the code's.
+    let (rot, scale) = (v.root_rot, v.root_scale);
+    dress(rig, v, d, time);
+    if clips {
+        v.root_rot = rot;
+        v.root_scale = scale;
+    }
+}
+
+fn dress(rig: &Rig, v: &mut EnemyView, d: &Duelist, time: f32) {
     let m = if v.kind == EnemyKind::Reflection { -1.0f32 } else { 1.0 };
     let (sword, other) = if m > 0.0 { ("rightArm", "leftArm") } else { ("leftArm", "rightArm") };
     let burnt = d.breed.phase >= 3 && v.kind == EnemyKind::Lucifer;

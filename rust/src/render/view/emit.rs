@@ -469,12 +469,25 @@ impl WorldView {
             if v.visible {
                 let root = group * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
                 let rig = self.models.rig(v.rig);
-                emit_rig(&mut f.rigs, rig, &v.pose, root, v.mat_color, 1.0, v.emissive);
+                match self.foe_clip_pose(i) {
+                    // By its clips (`foe_clips`): its jointed rig, each bone's matrix in the model.
+                    Some((jointed, mats)) => f.rigs.push_matrices(jointed, mats, root, v.mat_color, 1.0, v.emissive, rig_look::PLAIN, 0.0),
+                    None => emit_rig(&mut f.rigs, rig, &v.pose, root, v.mat_color, 1.0, v.emissive),
+                }
                 if v.eye > 0.0 {
                     if let Some(h) = rig.index("head") {
                         let pivot = Vec3::from(crate::render::foes6::TEPEGOZ_RIG[4].pivot);
                         let eye = (Vec3::from(crate::render::foes6::TEPEGOZ_EYE) - pivot) * 0.02;
-                        let p = (root * Mat4::from_translation(v.pose.pos[h]) * euler(v.pose.rot[h])).transform_point3(eye);
+                        // (By its clips, the eye rides the clip's head: from the code's head joint
+                        // to the jointed one's.)
+                        let head = match self.foe_clip_pose(i) {
+                            Some((jr, mats)) => {
+                                jr.index("head").map(|k| root * mats[k] * Mat4::from_translation(rig.parts[h].rest - jr.parts[k].rest))
+                            }
+                            None => None,
+                        };
+                        let head = head.unwrap_or_else(|| root * Mat4::from_translation(v.pose.pos[h]) * euler(v.pose.rot[h]));
+                        let p = head.transform_point3(eye);
                         let pulse = 0.8 + (time * 10.0).sin().abs() * 0.4;
                         glow_orb(f, p, 0.35, lin(0xfff0a0), 0.9 * pulse * v.eye);
                         f.lights.push(Light { pos: p, color: lin(0xffe080) * 3.0 * v.eye, distance: 2.5 });

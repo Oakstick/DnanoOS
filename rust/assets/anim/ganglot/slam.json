@@ -1,0 +1,12 @@
+{
+ "clip": "slam",
+ "fps": 60,
+ "frames": 144,
+ "loop": false,
+ "markers": {
+  "windup_end": 38,
+  "hit": 41,
+  "active_end": 45,
+  "recover_end": 144
+ }
+}

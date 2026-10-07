@@ -19,6 +19,8 @@ use crate::render::profile::fx;
 pub(super) struct Topple {
     rig: RigId,
     pose: Pose,
+    /// Its body as its clips last posed it, where they did: its jointed rig and its bones' matrices.
+    clip: Option<(crate::render::anim::foe_rigs::FoeRig, Vec<Mat4>)>,
     pos: Vec3,
     floor: f32,
     yaw: f32,
@@ -320,9 +322,11 @@ impl WorldView {
         if !v.visible {
             return;
         }
+        let clip = v.clip.as_ref().filter(|c| c.posed).map(|c| (c.foe, c.mats.clone()));
         let topple = Topple {
             rig: v.rig,
             pose: v.pose.clone(),
+            clip,
             pos: v.group_pos,
             floor: v.group_pos.y - v.hover,
             yaw: v.yaw,
@@ -371,11 +375,17 @@ impl WorldView {
     /// A toppled body breaks into its coarse voxels.
     fn break_up(&mut self, t: &Topple) {
         let root = Self::topple_root(t);
-        let rig = self.models.rig(t.rig).lod(2);
+        let rig = match &t.clip {
+            Some((foe, _)) => self.models.jointed_foe(*foe).lod(2),
+            None => self.models.rig(t.rig).lod(2),
+        };
         let voxel = rig.size * t.root_scale.max_element();
         let mut cubes: Vec<(Vec3, Vec3)> = Vec::new();
         for (p, part) in rig.parts.iter().enumerate() {
-            let pm = root * Mat4::from_translation(t.pose.pos[p]) * euler(t.pose.rot[p]);
+            let pm = match &t.clip {
+                Some((_, mats)) => root * mats[p],
+                None => root * Mat4::from_translation(t.pose.pos[p]) * euler(t.pose.rot[p]),
+            };
             cubes.extend(part.cubes.iter().map(|(off, c)| (pm.transform_point3(*off), *c * t.tint)));
         }
         if cubes.is_empty() {
@@ -480,8 +490,13 @@ impl WorldView {
     /// The bodies still tipping over, and a glow on the floor under fallen embers.
     pub(super) fn emit_juice(&self, f: &mut Frame) {
         for t in &self.juice.topples {
-            let rig = self.models.rig(t.rig);
-            emit_rig(&mut f.rigs, rig, &t.pose, Self::topple_root(t), t.tint, 1.0, Vec3::ZERO);
+            match &t.clip {
+                Some((foe, mats)) => {
+                    let rig = self.models.jointed_foe(*foe);
+                    f.rigs.push_matrices(rig, mats, Self::topple_root(t), t.tint, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+                }
+                None => emit_rig(&mut f.rigs, self.models.rig(t.rig), &t.pose, Self::topple_root(t), t.tint, 1.0, Vec3::ZERO),
+            }
         }
         let (mut sum, mut n) = (Vec3::ZERO, 0);
         for d in self.debris.iter().filter(|d| d.glow > 1.0) {

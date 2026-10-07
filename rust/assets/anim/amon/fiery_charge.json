@@ -1,0 +1,11 @@
+{
+ "clip": "fiery_charge",
+ "fps": 60,
+ "frames": 124,
+ "loop": false,
+ "markers": {
+  "windup_end": 40,
+  "active_end": 80,
+  "recover_end": 124
+ }
+}

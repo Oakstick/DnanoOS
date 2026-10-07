@@ -1,0 +1,12 @@
+{
+ "clip": "blown_kiss",
+ "fps": 60,
+ "frames": 118,
+ "loop": false,
+ "markers": {
+  "windup_end": 29,
+  "hit": 34,
+  "active_end": 39,
+  "recover_end": 118
+ }
+}

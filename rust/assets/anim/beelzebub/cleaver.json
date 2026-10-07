@@ -1,0 +1,12 @@
+{
+ "clip": "cleaver",
+ "fps": 60,
+ "frames": 134,
+ "loop": false,
+ "markers": {
+  "windup_end": 44,
+  "hit": 48,
+  "active_end": 52,
+  "recover_end": 134
+ }
+}

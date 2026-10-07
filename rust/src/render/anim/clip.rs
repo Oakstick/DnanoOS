@@ -1,10 +1,10 @@
-//! Clips: glTF skeletal animation on the heroes' skeleton, read once from the GLB files embedded
+//! Clips: glTF skeletal animation on a skeleton (the heroes' twenty bones, or a foe's own), read once from the GLB files embedded
 //! in the game, resampled at 60 Hz (the combat frame), and sampled between two frames with a
 //! quaternion slerp. Each clip has a sidecar of markers (`Markers`) that Blender's export writes.
 
 use glam::{Mat4, Quat, Vec3};
 
-use super::skeleton::{BONES, BONE_COUNT, PARENTS};
+use super::skeleton::{SkeletonDef, BONE_COUNT, HUMANOID};
 
 /// The rate clips are kept at: one key a combat frame.
 pub const FPS: f32 = 60.0;
@@ -33,6 +33,20 @@ impl Trs {
 
 /// A pose of the skeleton: every bone's transform relative to its parent.
 pub type Locals = [Trs; BONE_COUNT];
+
+/// `u` of the way from pose `a` to pose `b`, bone by bone, into `a` (any skeleton's poses).
+pub fn blend_into(a: &mut [Trs], b: &[Trs], u: f32) {
+    if u <= 0.0 {
+        return;
+    }
+    if u >= 1.0 {
+        a.copy_from_slice(b);
+        return;
+    }
+    for (x, y) in a.iter_mut().zip(b) {
+        *x = x.lerp(y, u);
+    }
+}
 
 /// `u` of the way from pose `a` to pose `b`, bone by bone.
 pub fn blend(a: &Locals, b: &Locals, u: f32) -> Locals {
@@ -81,21 +95,43 @@ impl Markers {
     }
 }
 
-/// The skeleton's rest as the clips have it: each bone's rest transform, what lies above the root
-/// (the armature's own node), and each bone's rest matrix in the model inverted (to bind a voxel to
-/// it). Every clip of a hero shares it.
+/// The skeleton's rest as the clips have it: each bone's rest transform and parent, what lies above
+/// the root (the armature's own node), and each bone's rest matrix in the model inverted (to bind a
+/// voxel to it). Every clip of a body shares it.
 #[derive(Clone, Debug)]
 pub struct Skeleton {
-    pub rest: Locals,
+    pub rest: Vec<Trs>,
+    pub parents: Vec<Option<usize>>,
     pub pre: Mat4,
-    pub rest_inv: [Mat4; BONE_COUNT],
+    pub rest_inv: Vec<Mat4>,
 }
 
 impl Skeleton {
-    /// The skeleton with `rest`, under `pre`.
+    /// The heroes' skeleton with `rest`, under `pre`.
     pub fn new(rest: Locals, pre: Mat4) -> Self {
-        let world = world_of(&rest, pre, &[Quat::IDENTITY; BONE_COUNT]);
-        Self { rest, pre, rest_inv: world.map(|m| m.inverse()) }
+        Self::of(&HUMANOID, rest.to_vec(), pre)
+    }
+
+    /// Skeleton `def` with `rest`, under `pre`.
+    pub fn of(def: &SkeletonDef, rest: Vec<Trs>, pre: Mat4) -> Self {
+        let parents = def.parents.to_vec();
+        let n = parents.len();
+        let world = world_of(&rest, &parents, pre, &vec![Quat::IDENTITY; n]);
+        Self { rest, parents, pre, rest_inv: world.iter().map(|m| m.inverse()).collect() }
+    }
+
+    /// The rest as a pose of the heroes' skeleton.
+    pub fn rest_locals(&self) -> Locals {
+        std::array::from_fn(|i| self.rest.get(i).copied().unwrap_or(Trs::IDENTITY))
+    }
+
+    /// How many bones.
+    pub fn len(&self) -> usize {
+        self.parents.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.parents.is_empty()
     }
 
     /**
@@ -105,31 +141,45 @@ impl Skeleton {
      * its joint, as the code's pose draws it. `extra` turns a bone (and so everything below it) about
      * its joint in the model's axes (the juice: a blade's overshoot, a shield's jolt).
      */
-    pub fn matrices(&self, locals: &Locals, joints: &[Vec3], extra: &[Quat; BONE_COUNT]) -> [Mat4; BONE_COUNT] {
-        let world = world_of(locals, self.pre, extra);
-        std::array::from_fn(|i| world[i] * self.rest_inv[i] * Mat4::from_translation(joints.get(i).copied().unwrap_or(Vec3::ZERO)))
+    pub fn matrices(&self, locals: &[Trs], joints: &[Vec3], extra: &[Quat]) -> Vec<Mat4> {
+        let mut out = Vec::with_capacity(self.len());
+        self.matrices_into(locals, joints, extra, &mut out);
+        out
+    }
+
+    /// As `matrices`, into `out` (its buffer kept from frame to frame).
+    pub fn matrices_into(&self, locals: &[Trs], joints: &[Vec3], extra: &[Quat], out: &mut Vec<Mat4>) {
+        world_into(locals, &self.parents, self.pre, extra, out);
+        for (i, m) in out.iter_mut().enumerate() {
+            *m = *m * self.rest_inv[i] * Mat4::from_translation(joints.get(i).copied().unwrap_or(Vec3::ZERO));
+        }
     }
 
     /// Every bone's matrix in the model for pose `locals` (no juice).
-    pub fn world(&self, locals: &Locals) -> [Mat4; BONE_COUNT] {
-        world_of(locals, self.pre, &[Quat::IDENTITY; BONE_COUNT])
+    pub fn world(&self, locals: &[Trs]) -> Vec<Mat4> {
+        world_of(locals, &self.parents, self.pre, &[])
     }
 }
 
 /// Every bone's matrix in the model for `locals`, parents first; `extra` turns a bone about its
 /// joint in the model's axes before its children follow.
-fn world_of(locals: &Locals, pre: Mat4, extra: &[Quat; BONE_COUNT]) -> [Mat4; BONE_COUNT] {
-    let mut world = [Mat4::IDENTITY; BONE_COUNT];
-    for i in 0..BONE_COUNT {
-        let parent = PARENTS[i].map(|p| world[p]).unwrap_or(pre);
+fn world_of(locals: &[Trs], parents: &[Option<usize>], pre: Mat4, extra: &[Quat]) -> Vec<Mat4> {
+    let mut out = Vec::with_capacity(parents.len());
+    world_into(locals, parents, pre, extra, &mut out);
+    out
+}
+
+fn world_into(locals: &[Trs], parents: &[Option<usize>], pre: Mat4, extra: &[Quat], out: &mut Vec<Mat4>) {
+    out.clear();
+    for i in 0..parents.len() {
+        let parent = parents[i].map(|p| out[p]).unwrap_or(pre);
         let mut m = parent * locals[i].mat();
-        if extra[i] != Quat::IDENTITY {
+        if let Some(&q) = extra.get(i).filter(|q| **q != Quat::IDENTITY) {
             let at = m.w_axis.truncate();
-            m = Mat4::from_translation(at) * Mat4::from_quat(extra[i]) * Mat4::from_translation(-at) * m;
+            m = Mat4::from_translation(at) * Mat4::from_quat(q) * Mat4::from_translation(-at) * m;
         }
-        world[i] = m;
+        out.push(m);
     }
-    world
 }
 
 /// A clip, resampled to one pose every 60th of a second.
@@ -139,14 +189,21 @@ pub struct Clip {
     pub markers: Markers,
     /// The skeleton's rest as this clip's file has it.
     pub skeleton: Skeleton,
-    /// `frames.len() / BONE_COUNT` poses, bone by bone.
+    /// How many bones a pose has.
+    bones: usize,
+    /// `frames.len() / bones` poses, bone by bone.
     frames: Vec<Trs>,
 }
 
 impl Clip {
     /// How many 60 Hz frames it has (at least one).
     pub fn frame_count(&self) -> usize {
-        self.frames.len() / BONE_COUNT
+        self.frames.len() / self.bones
+    }
+
+    /// How many bones its poses have.
+    pub fn bones(&self) -> usize {
+        self.bones
     }
 
     /// Its length in seconds: from its first frame to its last (a loop's last frame is its first again).
@@ -162,6 +219,13 @@ impl Clip {
     /// The pose `t` seconds in: between the two frames about it, the rotations slerped. A looping
     /// clip wraps round; another holds its ends.
     pub fn sample(&self, t: f32) -> Locals {
+        let mut out = [Trs::IDENTITY; BONE_COUNT];
+        self.sample_into(t, &mut out);
+        out
+    }
+
+    /// The pose `t` seconds in, into `out` (as many bones as the clip has).
+    pub fn sample_into(&self, t: f32, out: &mut [Trs]) {
         let n = self.frame_count();
         let last = (n - 1) as f32;
         let mut f = t * FPS;
@@ -172,14 +236,25 @@ impl Clip {
         let i = (f.floor() as usize).min(n - 1);
         let j = (i + 1).min(n - 1);
         let u = f - i as f32;
-        let (a, b) = (&self.frames[i * BONE_COUNT..(i + 1) * BONE_COUNT], &self.frames[j * BONE_COUNT..(j + 1) * BONE_COUNT]);
-        std::array::from_fn(|k| a[k].lerp(&b[k], u))
+        let k = self.bones;
+        let (a, b) = (&self.frames[i * k..(i + 1) * k], &self.frames[j * k..(j + 1) * k]);
+        for (o, (x, y)) in out.iter_mut().zip(a.iter().zip(b)) {
+            *o = x.lerp(y, u);
+        }
     }
 
-    /// A clip made of poses keyed at 60 Hz (tests, and clips made in code).
+    /// A clip of the heroes' skeleton made of poses keyed at 60 Hz (tests, and clips made in code).
     pub fn from_frames(name: &str, skeleton: Skeleton, poses: &[Locals], markers: Markers) -> Clip {
         let frames = poses.iter().flat_map(|p| p.iter().copied()).collect();
-        Clip { name: name.to_string(), markers, skeleton, frames }
+        Clip { name: name.to_string(), markers, skeleton, bones: BONE_COUNT, frames }
+    }
+
+    /// A clip of any skeleton made of poses keyed at 60 Hz (each pose a bone each).
+    pub fn from_poses(name: &str, skeleton: Skeleton, poses: &[Vec<Trs>], markers: Markers) -> Clip {
+        let bones = skeleton.len();
+        assert!(poses.iter().all(|p| p.len() == bones));
+        let frames = poses.iter().flat_map(|p| p.iter().copied()).collect();
+        Clip { name: name.to_string(), markers, skeleton, bones, frames }
     }
 
     /**
@@ -191,6 +266,12 @@ impl Clip {
      * every frame).
      */
     pub fn from_glb(name: &str, glb: &[u8], json: &str) -> Result<Clip, String> {
+        Self::from_glb_of(&HUMANOID, name, glb, json)
+    }
+
+    /// As `from_glb`, on skeleton `def`.
+    pub fn from_glb_of(def: &SkeletonDef, name: &str, glb: &[u8], json: &str) -> Result<Clip, String> {
+        let (bones_n, names, parents) = (def.len(), def.bones, def.parents);
         let markers = Markers::parse(json)?;
         let gltf = gltf::Gltf::from_slice(glb).map_err(|e| format!("{name}: {e}"))?;
         let blob = gltf.blob.as_deref();
@@ -206,16 +287,16 @@ impl Clip {
             Trs { t: Vec3::from(t), r: Quat::from_array(r).normalize(), s: Vec3::from(s) }
         };
         // The bones' nodes, by name; each bone's parent must be the skeleton's.
-        let mut node_of = [usize::MAX; BONE_COUNT];
-        for (b, bone) in BONES.iter().enumerate() {
+        let mut node_of = vec![usize::MAX; bones_n];
+        for (b, bone) in names.iter().enumerate() {
             let n = nodes.iter().find(|n| n.name() == Some(*bone)).ok_or_else(|| format!("{name}: no bone {bone}"))?;
             node_of[b] = n.index();
         }
-        for b in 0..BONE_COUNT {
-            let want = PARENTS[b].map(|p| node_of[p]);
+        for b in 0..bones_n {
+            let want = parents[b].map(|p| node_of[p]);
             let has = parent[node_of[b]];
-            if PARENTS[b].is_some() && has != want {
-                return Err(format!("{name}: {} hangs from the wrong bone", BONES[b]));
+            if parents[b].is_some() && has != want {
+                return Err(format!("{name}: {} hangs from the wrong bone", names[b]));
             }
         }
         // What lies above the root.
@@ -225,8 +306,8 @@ impl Clip {
             pre = trs(&nodes[p]).mat() * pre;
             up = parent[p];
         }
-        let rest: Locals = std::array::from_fn(|b| trs(&nodes[node_of[b]]));
-        let skeleton = Skeleton::new(rest, pre);
+        let rest: Vec<Trs> = (0..bones_n).map(|b| trs(&nodes[node_of[b]])).collect();
+        let skeleton = Skeleton::of(def, rest.clone(), pre);
 
         // The tracks: (bone, which, times, values).
         enum Values {
@@ -276,10 +357,10 @@ impl Clip {
         let start = tracks.iter().filter_map(|t| t.2.first().copied()).fold(f32::INFINITY, f32::min);
         let start = if start.is_finite() { start } else { 0.0 };
         let frames_n = ((end - start) * FPS).round().max(0.0) as usize + 1;
-        let mut frames = Vec::with_capacity(frames_n * BONE_COUNT);
+        let mut frames = Vec::with_capacity(frames_n * bones_n);
         for f in 0..frames_n {
             let t = start + f as f32 / FPS;
-            let mut pose = rest;
+            let mut pose = rest.clone();
             for (bone, values, times, step) in &tracks {
                 // The key at or before t, and how far on to the next.
                 let k = times.partition_point(|&x| x <= t).saturating_sub(1);
@@ -297,13 +378,14 @@ impl Clip {
             }
             frames.extend_from_slice(&pose);
         }
-        Ok(Clip { name: name.to_string(), markers, skeleton, frames })
+        Ok(Clip { name: name.to_string(), markers, skeleton, bones: bones_n, frames })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::render::anim::skeleton::BONES;
 
     fn skeleton() -> Skeleton {
         let rest: Locals = std::array::from_fn(|i| Trs { t: Vec3::new(0.0, 0.1 * i as f32, 0.0), ..Trs::IDENTITY });
@@ -313,8 +395,8 @@ mod tests {
     #[test]
     fn sampling_slerps_between_frames_and_loops() {
         let sk = skeleton();
-        let mut a = sk.rest;
-        let mut b = sk.rest;
+        let mut a = sk.rest_locals();
+        let mut b = sk.rest_locals();
         a[3].r = Quat::IDENTITY;
         b[3].r = Quat::from_rotation_x(1.0);
         let clip = Clip::from_frames("t", sk.clone(), &[a, b, a], Markers { looping: true, ..Default::default() });
@@ -339,7 +421,7 @@ mod tests {
     #[test]
     fn a_turn_of_a_bone_carries_its_children_round_its_joint() {
         let sk = skeleton();
-        let mut pose = sk.rest;
+        let mut pose = sk.rest_locals();
         // The chest turned a quarter about y: the shoulders and arms swing round it.
         pose[2].r = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
         let joints: Vec<Vec3> = (0..BONE_COUNT).map(|_| Vec3::ZERO).collect();

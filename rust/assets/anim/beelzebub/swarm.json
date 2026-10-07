@@ -1,0 +1,12 @@
+{
+ "clip": "swarm",
+ "fps": 60,
+ "frames": 159,
+ "loop": false,
+ "markers": {
+  "windup_end": 69,
+  "hit": 75,
+  "active_end": 80,
+  "recover_end": 159
+ }
+}

@@ -109,14 +109,29 @@ def set_local(arm, bone, q_game, loc_game=None):
         pb.location = rest.inverted() @ (G2B @ Vector(loc_game))
 
 
+def bones_of(arm):
+    """The armature's bones, parents first (as the game lists them: the import keeps its order)."""
+    return [b.name for b in arm.data.bones]
+
+
+def root_of(arm):
+    """The armature's root bone (the hips for a humanoid, the body or the carapace for the others)."""
+    return next(b.name for b in arm.data.bones if b.parent is None)
+
+
+def parents_of(arm):
+    return {b.name: (b.parent.name if b.parent else None) for b in arm.data.bones}
+
+
 def key_pose(arm, frame, pose, interp="BEZIER", easing="AUTO"):
     """Keys every bone at `frame` from `pose` (a dict of bone to game quaternion, and "loc" for the
-    hips' offset); bones it leaves out rest. Returns the frame."""
-    for b in BONES:
-        set_local(arm, b, pose.get(b, Quaternion()), pose.get("loc", (0, 0, 0)) if b == "hips" else None)
+    root's offset); bones it leaves out rest. Returns the frame."""
+    root = root_of(arm)
+    for b in bones_of(arm):
+        set_local(arm, b, pose.get(b, Quaternion()), pose.get("loc", (0, 0, 0)) if b == root else None)
         pb = arm.pose.bones[b]
         pb.keyframe_insert("rotation_quaternion", frame=frame)
-        if b == "hips":
+        if b == root:
             pb.keyframe_insert("location", frame=frame)
     act = arm.animation_data.action
     for fc in fcurves(act):
@@ -191,8 +206,13 @@ def render(scene, path):
     bpy.ops.render.render(write_still=True)
 
 
-def bone_colors():
-    """A colour for each bone (as `anim::skeleton::bone_color`), sRGB 0..1."""
+def bone_colors(names=None):
+    """A colour for each bone (as `anim::skeleton::bone_color`), sRGB 0..1: the heroes' bones, or
+    `names` in their order (past twenty, the colours again, darker)."""
     hexes = [0xffffff, 0xffd400, 0xff7a00, 0x8a5a2a, 0xff2a8a, 0x2a6aff, 0x2affd4, 0x9a2aff, 0xff2a2a, 0xffb0b0,
              0x7a0000, 0x2aff2a, 0x007a2a, 0xd4ff8a, 0x00d4ff, 0x005a8a, 0xb0e8ff, 0x404040, 0xa0a0a0, 0x5a2a00]
-    return {b: (((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255, 1.0) for b, h in zip(BONES, hexes)}
+    out = {}
+    for i, b in enumerate(names or BONES):
+        h, k = hexes[i % 20], (1.0 if (i // 20) % 2 == 0 else 0.55)
+        out[b] = (((h >> 16) & 255) / 255 * k, ((h >> 8) & 255) / 255 * k, (h & 255) / 255 * k, 1.0)
+    return out

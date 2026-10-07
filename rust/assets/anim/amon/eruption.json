@@ -1,0 +1,12 @@
+{
+ "clip": "eruption",
+ "fps": 60,
+ "frames": 210,
+ "loop": false,
+ "markers": {
+  "windup_end": 92,
+  "hit": 96,
+  "active_end": 100,
+  "recover_end": 210
+ }
+}

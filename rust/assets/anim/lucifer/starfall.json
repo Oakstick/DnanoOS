@@ -1,0 +1,12 @@
+{
+ "clip": "starfall",
+ "fps": 60,
+ "frames": 188,
+ "loop": false,
+ "markers": {
+  "windup_end": 102,
+  "hit": 105,
+  "active_end": 109,
+  "recover_end": 188
+ }
+}

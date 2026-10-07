@@ -1,0 +1,11 @@
+{
+ "clip": "smother",
+ "fps": 60,
+ "frames": 66,
+ "loop": false,
+ "markers": {
+  "windup_end": 26,
+  "active_end": 32,
+  "recover_end": 66
+ }
+}

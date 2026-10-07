@@ -7,6 +7,10 @@
 //! The cut is data: each hero has a table of joints, measured on his sculpt as it stands, and a
 //! list of cuts, each moving the voxels of one bone that lie in a box to the next bone down the
 //! limb (`Joints`). The three heroes' tables are here.
+//!
+//! A skeleton is data too (`SkeletonDef`: its bones' names and parents): the heroes' twenty bones
+//! (`HUMANOID`) serve the humanoid foes as well, and the others have their own (`anim::foe_rigs`:
+//! bats, wolves, the cobra, the slime, the minion, the jorogumo). A joint table names its skeleton.
 
 use glam::Vec3;
 
@@ -106,17 +110,61 @@ pub const PARENTS: [Option<usize>; BONE_COUNT] = {
 
 /// The bone each part of the code's rig starts in, before the cuts send voxels further down
 /// the limb.
-const FROM_PART: [(&str, Bone); 9] = [
-    ("body", Bone::Hips),
-    ("leftLeg", Bone::ThighL),
-    ("rightLeg", Bone::ThighR),
-    ("shieldArm", Bone::UpperArmL),
-    ("swordArm", Bone::UpperArmR),
-    ("head", Bone::Head),
-    ("blade", Bone::Blade),
-    ("offhand", Bone::Offhand),
-    ("shield", Bone::Shield),
+const HERO_PARTS: &[(&str, usize)] = &[
+    ("body", Bone::Hips as usize),
+    ("leftLeg", Bone::ThighL as usize),
+    ("rightLeg", Bone::ThighR as usize),
+    ("shieldArm", Bone::UpperArmL as usize),
+    ("swordArm", Bone::UpperArmR as usize),
+    ("head", Bone::Head as usize),
+    ("blade", Bone::Blade as usize),
+    ("offhand", Bone::Offhand as usize),
+    ("shield", Bone::Shield as usize),
 ];
+
+/// A skeleton: its bones' names (parents before children: the order of a jointed rig's parts and
+/// of a clip's tracks) and each one's parent (the first bone is the root).
+#[derive(Debug)]
+pub struct SkeletonDef {
+    pub name: &'static str,
+    pub bones: &'static [&'static str],
+    pub parents: &'static [Option<usize>],
+    /// The bones a flinch laid over the body leaves to the gait beneath (the hips and legs); none
+    /// for a small body the flinch takes whole.
+    pub legs: &'static [usize],
+}
+
+impl SkeletonDef {
+    pub fn len(&self) -> usize {
+        self.bones.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bones.is_empty()
+    }
+
+    /// A bone by its name.
+    pub fn index(&self, name: &str) -> Option<usize> {
+        self.bones.iter().position(|b| *b == name)
+    }
+}
+
+/// The heroes' twenty bones, which the humanoid foes share (their clips retargeted from Mixamo as
+/// the heroes' are).
+pub const HUMANOID: SkeletonDef = SkeletonDef {
+    name: "humanoid",
+    bones: &BONES,
+    parents: &PARENTS,
+    legs: &[
+        Bone::Hips as usize,
+        Bone::ThighL as usize,
+        Bone::ShinL as usize,
+        Bone::FootL as usize,
+        Bone::ThighR as usize,
+        Bone::ShinR as usize,
+        Bone::FootR as usize,
+    ],
+};
 
 /// A cut: every voxel of `from` whose place in the sculpt's grid lies in the box `lo..=hi`
 /// (voxel centres; unbounded sides are infinite) goes to `to`. A cut across a limb at a height
@@ -124,11 +172,22 @@ const FROM_PART: [(&str, Bone); 9] = [
 /// below as well (`SLEEVE`), within the cut's box across the limb.
 #[derive(Clone, Copy, Debug)]
 pub struct Cut {
-    pub from: Bone,
-    pub to: Bone,
+    pub from: usize,
+    pub to: usize,
     pub lo: [f32; 3],
     pub hi: [f32; 3],
     pub sleeve: bool,
+    /// The axis the cut's plane lies across (1, y, for a limb hanging down; 0 for a wing, 2 for a
+    /// tail or a neck reaching back or forward).
+    pub axis: usize,
+    /// Materials (`characters::mat`, 0 for plain) the cut takes only (`keep`), or leaves (not
+    /// `keep`); empty: any. (A weapon in a bony fist: its leather and iron, not the bone round it.)
+    pub mats: &'static [u32],
+    pub keep: bool,
+    /// A plane at a slant (a spider's leg reaching out at an angle): the coordinate along the cut's
+    /// axis is the voxel's distance from this point along this unit direction, not its grid
+    /// coordinate.
+    pub slant: Option<([f32; 3], [f32; 3])>,
 }
 
 const INF: f32 = f32::INFINITY;
@@ -142,54 +201,137 @@ const SKIN_SHADE: f32 = 5.0 + (crate::render::characters::mat::SKIN >> 24) as f3
 impl Cut {
     /// Below the plane `y` (a joint across the limb).
     const fn below(from: Bone, to: Bone, y: f32) -> Self {
-        Self { from, to, lo: [-INF, -INF, -INF], hi: [INF, y, INF], sleeve: true }
+        Self::down(from as usize, to as usize, y)
     }
 
     /// Above the plane `y`.
     const fn above(from: Bone, to: Bone, y: f32) -> Self {
-        Self { from, to, lo: [-INF, y, -INF], hi: [INF, INF, INF], sleeve: true }
+        Self::up(from as usize, to as usize, y)
     }
 
     /// Below the plane `y` within the box `lo..=hi` across it (x and z): a joint of one limb where
     /// the plane would also cross another part (a skirt's halves, a leg inside a skirt).
     const fn below_within(from: Bone, to: Bone, y: f32, lo: [f32; 2], hi: [f32; 2]) -> Self {
-        Self { from, to, lo: [lo[0], -INF, lo[1]], hi: [hi[0], y, hi[1]], sleeve: true }
+        Self::down(from as usize, to as usize, y).across([lo[0], -INF, lo[1]], [hi[0], INF, hi[1]])
     }
 
     /// A box, unsleeved.
     const fn boxed(from: Bone, to: Bone, lo: [f32; 3], hi: [f32; 3]) -> Self {
-        Self { from, to, lo, hi, sleeve: false }
+        Self::cube(from as usize, to as usize, lo, hi)
+    }
+
+    /// Bone `from`'s voxels below the plane `y` go to bone `to` (sleeved).
+    pub const fn down(from: usize, to: usize, y: f32) -> Self {
+        Self::plane(from, to, 1, y, true)
+    }
+
+    /// Above the plane `y` (sleeved).
+    pub const fn up(from: usize, to: usize, y: f32) -> Self {
+        Self::plane(from, to, 1, y, false)
+    }
+
+    /// Across axis `axis` at `at`: the voxels on its low side (`low`) or its high side go to `to`
+    /// (sleeved: the band of `from` by the plane is laid on `to` as well).
+    pub const fn plane(from: usize, to: usize, axis: usize, at: f32, low: bool) -> Self {
+        let (mut lo, mut hi) = ([-INF; 3], [INF; 3]);
+        if low {
+            hi[axis] = at;
+        } else {
+            lo[axis] = at;
+        }
+        Self { from, to, lo, hi, sleeve: true, axis, mats: &[], keep: true, slant: None }
+    }
+
+    /// Across a slanted plane: the voxels whose distance from `origin` along `dir` (a unit vector,
+    /// in the grid) is below `at` (`low`) or above it go to `to` (sleeved).
+    pub const fn slanted(from: usize, to: usize, origin: [f32; 3], dir: [f32; 3], at: f32, low: bool) -> Self {
+        Self { slant: Some((origin, dir)), ..Self::plane(from, to, 1, at, low) }
+    }
+
+    /// A box, unsleeved.
+    pub const fn cube(from: usize, to: usize, lo: [f32; 3], hi: [f32; 3]) -> Self {
+        Self { from, to, lo, hi, sleeve: false, axis: 1, mats: &[], keep: true, slant: None }
+    }
+
+    /// A plane's cut kept to the box `lo..=hi` on the other two axes (its own axis's bounds are
+    /// the plane's).
+    pub const fn across(self, lo: [f32; 3], hi: [f32; 3]) -> Self {
+        let (mut l, mut h) = (lo, hi);
+        l[self.axis] = self.lo[self.axis];
+        h[self.axis] = self.hi[self.axis];
+        Self { lo: l, hi: h, ..self }
+    }
+
+    /// Only the voxels of these materials.
+    pub const fn only(self, mats: &'static [u32]) -> Self {
+        Self { mats, keep: true, ..self }
+    }
+
+    /// All but the voxels of these materials.
+    pub const fn except(self, mats: &'static [u32]) -> Self {
+        Self { mats, keep: false, ..self }
     }
 
     /// The same cut without its sleeve (a joint hidden under a skirt, whose band would be the skirt's).
-    const fn bare(self) -> Self {
+    pub const fn bare(self) -> Self {
         Self { sleeve: false, ..self }
     }
 
     /// A cut across the limb at a height (`below` or `above`): its plane, and whether the bone it
     /// sends voxels to lies below it.
-    fn plane(&self) -> Option<(f32, bool)> {
+    fn crease(&self) -> Option<(f32, bool)> {
         if !self.sleeve {
             return None;
         }
-        match (self.lo[1] == -INF, self.hi[1] == INF) {
-            (true, false) => Some((self.hi[1], true)),
-            (false, true) => Some((self.lo[1], false)),
+        let a = self.axis;
+        match (self.lo[a] == -INF, self.hi[a] == INF) {
+            (true, false) => Some((self.hi[a], true)),
+            (false, true) => Some((self.lo[a], false)),
             _ => None,
         }
     }
 
-    fn holds(&self, g: [f32; 3]) -> bool {
-        (0..3).all(|k| g[k] >= self.lo[k] && g[k] <= self.hi[k])
+    fn holds(&self, g: [f32; 3], shade: f32) -> bool {
+        let g = self.measure(g);
+        (0..3).all(|k| g[k] >= self.lo[k] && g[k] <= self.hi[k]) && self.takes(shade)
+    }
+
+    /// A voxel's place as the cut measures it: its grid coordinates, with the slanted plane's
+    /// distance in place of the axis's.
+    fn measure(&self, mut g: [f32; 3]) -> [f32; 3] {
+        if let Some((o, d)) = self.slant {
+            g[self.axis] = (0..3).map(|k| (g[k] - o[k]) * d[k]).sum();
+        }
+        g
+    }
+
+    /// Whether a voxel of shade mode `shade` (`voxels::make_part`: 0 plain, 5 and its material) is
+    /// one this cut moves.
+    fn takes(&self, shade: f32) -> bool {
+        if self.mats.is_empty() {
+            return true;
+        }
+        let m = if shade >= 5.0 { (shade - 5.0).round() as u32 } else { 0 };
+        self.mats.iter().any(|&k| k >> 24 == m) == self.keep
     }
 }
 
-/// A hero's joints, measured on his sculpt: where each bone turns, in voxels of his own grid as
-/// he is sculpted (x as in the sculpt, before his rig turns him left for right), and the cuts
-/// that share his voxels out among the bones, applied in order.
+/// A body's joints, measured on its sculpt: where each bone turns, in voxels of its own grid as
+/// it is sculpted (x as in the sculpt, before a hero's rig turns him left for right), and the cuts
+/// that share its voxels out among the bones, applied in order.
 pub struct Joints {
-    pub at: [[f32; 3]; BONE_COUNT],
+    /// Its skeleton.
+    pub def: &'static SkeletonDef,
+    pub at: &'static [[f32; 3]],
     pub cuts: &'static [Cut],
+    /// The bone each part of the code's rig starts in, by the part's name (a part not named starts
+    /// in the root).
+    pub from: &'static [(&'static str, usize)],
+    /// Its rig is mirrored, left for right, from its sculpt (the heroes': `forge::hero_rigs`); the
+    /// foes' are not.
+    pub mirrored: bool,
+    /// The fists modelled round a held weapon's grip go to the hands (the heroes' armory).
+    pub fists: bool,
 }
 
 /// Ragnar's joints (his grid is 60 × 92 × 36, `heroes::RAGNAR_SIZE`). His waist is the top of
@@ -202,7 +344,11 @@ pub const RAGNAR: Joints = {
     use Bone::*;
     let (l_arm, r_arm, l_leg, r_leg) = (7.5, 51.5, 21.5, 37.5);
     Joints {
-        at: [
+        def: &HUMANOID,
+        from: HERO_PARTS,
+        mirrored: true,
+        fists: true,
+        at: &[
             [29.5, 30.0, 17.5],
             [29.5, 35.5, 17.0],
             [29.5, 45.5, 16.5],
@@ -260,7 +406,11 @@ pub const MEHMED: Joints = {
     use Bone::*;
     let (l_arm, r_arm, l_leg, r_leg, mid) = (21.5, 73.5, 39.5, 55.5, 47.5);
     Joints {
-        at: [
+        def: &HUMANOID,
+        from: HERO_PARTS,
+        mirrored: true,
+        fists: true,
+        at: &[
             [mid, 30.0, 19.5],
             [mid, 35.5, 19.5],
             [mid, 46.0, 19.5],
@@ -326,7 +476,11 @@ pub const MIYAMOTO: Joints = {
     use Bone::*;
     let (l_arm, r_arm, l_leg, r_leg, mid) = (21.5, 73.5, 39.5, 55.5, 47.5);
     Joints {
-        at: [
+        def: &HUMANOID,
+        from: HERO_PARTS,
+        mirrored: true,
+        fists: true,
+        at: &[
             [mid, 30.0, 21.5],
             [mid, 37.5, 21.5],
             [mid, 48.0, 21.5],
@@ -381,41 +535,53 @@ pub fn joints(hero: HeroKind) -> Option<&'static Joints> {
 /// Where a joint of the sculpt's grid lies in the model (as `voxels::make_part` places a pivot,
 /// the rig turned left for right as `forge::hero_rigs` turns it).
 pub fn joint_in_model(g: [f32; 3], width: i32, depth: i32, size: f32) -> Vec3 {
+    joint_at(g, width, depth, size, true)
+}
+
+/// Where a joint of the sculpt's grid lies in the model, the rig mirrored from the sculpt or not.
+pub fn joint_at(g: [f32; 3], width: i32, depth: i32, size: f32, mirrored: bool) -> Vec3 {
     let (ox, oz) = ((width - 1) as f32 / 2.0, (depth - 1) as f32 / 2.0);
-    Vec3::new((ox - g[0]) * size, g[1] * size, (g[2] - oz) * size)
+    let x = if mirrored { ox - g[0] } else { g[0] - ox };
+    Vec3::new(x * size, g[1] * size, (g[2] - oz) * size)
+}
+
+/// A point of the model (a voxel's centre) in the sculpt's grid.
+fn grid_of(at: Vec3, width: i32, depth: i32, size: f32, mirrored: bool) -> [f32; 3] {
+    let (ox, oz) = ((width - 1) as f32 / 2.0, (depth - 1) as f32 / 2.0);
+    let gx = if mirrored { ox - at.x / size } else { ox + at.x / size };
+    [gx, at.y / size - 0.5, at.z / size + oz]
 }
 
 /// Which bone each voxel of `rig` goes to, part by part (the cut, without building anything).
 pub fn assign(rig: &Rig, joints: &Joints, width: i32, depth: i32) -> Vec<Vec<usize>> {
     let size = rig.size;
-    let (ox, oz) = ((width - 1) as f32 / 2.0, (depth - 1) as f32 / 2.0);
     rig.parts
         .iter()
         .map(|part| {
-            let start = FROM_PART.iter().find(|(n, _)| *n == part.name).map(|(_, b)| *b).unwrap_or(Bone::Hips);
+            let start = joints.from.iter().find(|(n, _)| *n == part.name).map(|(_, b)| *b).unwrap_or(0);
             // A held weapon is modelled with the fist round its grip: the fist stays with the hand,
             // so a turn of the weapon in it turns the weapon alone.
             let fist = match start {
-                Bone::Blade => Some(Bone::HandR),
-                Bone::Offhand => Some(Bone::HandL),
+                b if joints.fists && b == Bone::Blade.index() => Some(Bone::HandR.index()),
+                b if joints.fists && b == Bone::Offhand.index() => Some(Bone::HandL.index()),
                 _ => None,
             };
             part.cubes
                 .iter()
                 .enumerate()
                 .map(|(j, (off, _))| {
-                    if let (Some(hand), true) = (fist, part.shade.get(j).copied() == Some(SKIN_SHADE)) {
-                        return hand.index();
+                    let shade = part.shade.get(j).copied().unwrap_or(0.0);
+                    if let (Some(hand), true) = (fist, shade == SKIN_SHADE) {
+                        return hand;
                     }
-                    let at = part.rest + *off;
-                    let g = [ox - at.x / size, at.y / size - 0.5, at.z / size + oz];
+                    let g = grid_of(part.rest + *off, width, depth, size, joints.mirrored);
                     let mut bone = start;
                     for cut in joints.cuts {
-                        if cut.from == bone && cut.holds(g) {
+                        if cut.from == bone && cut.holds(g, shade) {
                             bone = cut.to;
                         }
                     }
-                    bone.index()
+                    bone
                 })
                 .collect()
         })
@@ -423,18 +589,20 @@ pub fn assign(rig: &Rig, joints: &Joints, width: i32, depth: i32) -> Vec<Vec<usi
 }
 
 /**
- * The hero's rig cut into the skeleton's bones: each voxel of `rig` (the code's rig, its six parts
- * and its layered weapons and shield) goes to its bone by `joints`, keeping its place, colour and
- * material; each bone's joint is where the table puts it, and its parent is the skeleton's. The
- * parts come in the order of `BONES`. `width` and `depth` are the sculpt's grid, `rig.size` its
+ * The rig cut into its skeleton's bones: each voxel of `rig` (the code's rig, its parts and any
+ * layered weapons and shield) goes to its bone by `joints`, keeping its place, colour and material;
+ * each bone's joint is where the table puts it, and its parent is the skeleton's. The parts come in
+ * the order of the skeleton's bones. `width` and `depth` are the sculpt's grid, `rig.size` its
  * voxel.
  */
 pub fn jointed(rig: &Rig, joints: &Joints, width: i32, depth: i32) -> Rig {
+    let def = joints.def;
+    let n = def.len();
+    assert_eq!(joints.at.len(), n, "{}: a joint for every bone", def.name);
     let size = rig.size;
-    let rest: Vec<Vec3> = joints.at.iter().map(|&g| joint_in_model(g, width, depth, size)).collect();
-    let mut cubes: Vec<Vec<(Vec3, Vec3)>> = vec![Vec::new(); BONE_COUNT];
-    let mut shade: Vec<Vec<f32>> = vec![Vec::new(); BONE_COUNT];
-    let (ox, oz) = ((width - 1) as f32 / 2.0, (depth - 1) as f32 / 2.0);
+    let rest: Vec<Vec3> = joints.at.iter().map(|&g| joint_at(g, width, depth, size, joints.mirrored)).collect();
+    let mut cubes: Vec<Vec<(Vec3, Vec3)>> = vec![Vec::new(); n];
+    let mut shade: Vec<Vec<f32>> = vec![Vec::new(); n];
     for (part, bones) in rig.parts.iter().zip(assign(rig, joints, width, depth)) {
         for (j, ((off, c), bone)) in part.cubes.iter().zip(bones).enumerate() {
             let at = part.rest + *off;
@@ -443,28 +611,29 @@ pub fn jointed(rig: &Rig, joints: &Joints, width: i32, depth: i32) -> Rig {
             shade[bone].push(m);
             // The sleeve: a band of the bone above a joint across its limb is laid on the bone below
             // as well, so a bend overlaps itself rather than opening a gap at the crease.
-            let gy = at.y / size - 0.5;
-            let gx = ox - at.x / size;
-            let gz = at.z / size + oz;
+            let g0 = grid_of(at, width, depth, size, joints.mirrored);
             for cut in joints.cuts {
-                let Some((plane, down)) = cut.plane() else { continue };
-                let inside = (0..3).filter(|&k| k != 1).all(|k| [gx, gy, gz][k] >= cut.lo[k] && [gx, gy, gz][k] <= cut.hi[k]);
-                let near = if down { (plane..=plane + SLEEVE).contains(&gy) } else { (plane - SLEEVE..=plane).contains(&gy) };
-                if cut.from.index() == bone && inside && near {
-                    let to = cut.to.index();
+                let Some((plane, down)) = cut.crease() else { continue };
+                let a = cut.axis;
+                let g = cut.measure(g0);
+                let inside = (0..3).filter(|&k| k != a).all(|k| g[k] >= cut.lo[k] && g[k] <= cut.hi[k]);
+                let near = if down { (plane..=plane + SLEEVE).contains(&g[a]) } else { (plane - SLEEVE..=plane).contains(&g[a]) };
+                if cut.from == bone && inside && near && cut.takes(m) {
+                    let to = cut.to;
                     cubes[to].push((at - rest[to], *c));
                     shade[to].push(m);
                 }
             }
         }
     }
-    let parts = BONES
+    let parts = def
+        .bones
         .iter()
         .enumerate()
         .zip(cubes.into_iter().zip(shade))
         .map(|((i, &name), (cubes, shade))| {
             let min_y = cubes.iter().map(|(p, _)| p.y - size / 2.0).fold(f32::INFINITY, f32::min);
-            RigPart { name, rest: rest[i], cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 }, parent: PARENTS[i] }
+            RigPart { name, rest: rest[i], cubes, shade, min_y: if min_y.is_finite() { min_y } else { 0.0 }, parent: def.parents[i] }
         })
         .collect();
     Rig::new(size, parts)
@@ -477,7 +646,8 @@ pub fn bone_color(i: usize) -> Vec3 {
         0xffffff, 0xffd400, 0xff7a00, 0x8a5a2a, 0xff2a8a, 0x2a6aff, 0x2affd4, 0x9a2aff, 0xff2a2a, 0xffb0b0, 0x7a0000, 0x2aff2a, 0x007a2a,
         0xd4ff8a, 0x00d4ff, 0x005a8a, 0xb0e8ff, 0x404040, 0xa0a0a0, 0x5a2a00,
     ];
-    crate::render::voxels::lin(COLORS[i % BONE_COUNT])
+    // (Past twenty, each colour again a little darker, so a long chain's neighbours still differ.)
+    crate::render::voxels::lin(COLORS[i % BONE_COUNT]) * if (i / BONE_COUNT).is_multiple_of(2) { 1.0 } else { 0.55 }
 }
 
 #[cfg(test)]

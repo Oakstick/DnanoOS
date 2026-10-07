@@ -130,3 +130,77 @@ look at with `preview.py` before choosing. `--measure` reports a strike's blade 
 sees it on its active frames, by rays against his voxels in Blender; the game's own
 `--blade-view` does the same with the clips as the game holds them (Miyamoto's fists on the grip,
 his shield slung), and is the one to trust.
+
+## The foes (ANIMATION.md §11)
+
+The scripts above take any skeleton: a foe's rig (`--export-rig draugr`, `bat`, `cobra`, ... the
+names of `anim::foe_rigs::FoeRig::dir`) imports and exports as a hero's does (`import_rig.py` checks a
+humanoid's bones against the heroes' and any rig's binding; `export_clips.py` takes the actions of
+the armature's own root bone). `preview.py` wants `--at` and `--dist` for the foe's size (a raven:
+`--at 0.15 --dist 1.5 --rise 0.5`; the rasetsu: `--at 0.75 --dist 3.2`).
+
+### block_foe.py: the foes Mixamo cannot drive, keyed by script
+
+```
+AdventuresOfTheAncientBlades --export-rig cobra cobra_rig.glb
+blender -b -P tools/blender/block_foe.py -- cobra cobra_rig.glb cobra.blend
+blender -b cobra.blend -P tools/blender/export_clips.py -- assets/anim/cobra
+```
+
+FOE is `bat`, `vampire`, `large_bat`, `werewolf`, `dire_wolf`, `cobra`, `slime`, `minion` or
+`jorogumo`. Every clip is a function of the frame (a class per kind of body: `Flyer`, `Wolf`, `Cobra`,
+`Slime`, `Minion`, `Jorogumo`, their numbers per foe in `FOES`), baked on every frame at 60 fps:
+the stand and the gait (with their strides), the moves at their frame data's base tempo with their
+markers, the rally, and the reels. Angles in degrees about the game's axes, relative to the parent;
+`Pose.scale` keys a bone's scale (the slime's squash, the cobra's hood).
+
+### mixamo_foe.py: the humanoid foes from Mixamo
+
+```
+blender -b draugr.blend -P tools/blender/mixamo_foe.py -- draugr C:/Users/ulask/Games/mixamo draugr_m.blend [slot ...]
+blender -b draugr.blend -P tools/blender/mixamo_foe.py -- draugr C:/Users/ulask/Games/mixamo try.blend --try FILE[:OPTS] ...
+```
+
+As `mixamo_hero.py` (its retarget, markers and trimming), a table per foe (`DRAUGR`, `HELMETED`,
+`WITCH`, `BLEMMYES`, `TENGU`, `RASETSU`, `JOROGUMO`). A foe's weapon is in its own left fist (its
+sculpt is not mirrored), so its picks are mirrored (`mirror`), the weapon the `offhand`, held as the
+source's right fist holds its grip, the way it points at rest given (`weapon_rest`, or one per
+weapon for a pair). `weapon` and `tip_rest` name the bone whose tip gives a move's markers (the
+head for a roar). `shorten` cuts a long settle against the move's recovery, a reel's against its
+impact. The jorogumo's keyed legs (`block_foe.Jorogumo`) are laid under each of her clips
+(`lay_legs`). `deflected` is built from the stagger.
+
+The retarget (`retarget.py`) now also takes an armature with only some of the heroes' bones (her
+legs are her own: no hips' travel then), a weapon in each fist each its own way (`weapon_rest` as a
+dict), and mirrors a foe's grip and sword arm; `mixamo_hero.make` takes `stride="feet"` (the stride
+measured from the feet) and `extra_marks`.
+
+### The later stages, the realms, the courts and the lair
+
+The same two scripts take every foe since (`FoeRig::dir` names them all: `kappa` ... `hel`, `ganglot`,
+`gaki`, `ellepige`, `mammon`, `gold_golem`, `lucifer`, `reflection`, `leviathan`, `serpentling`,
+`amon`, `raven`, `belphegor`, `nightmare`, `beelzebub`, `fly_swarm`, `asmodeus`, `krampus`, `percht`).
+`block_foe.py` finds the keyed ones in its own `FOES` and in the modules after it: `block_stage4.py`
+to `block_stage7.py`, `block_courts.py` (the ravens; and the keyed bones laid under princes' clips),
+`block_envy.py` (Leviathan, the serpentlings), `block_feast.py` (the fly swarm; the charges and
+Beelzebub's belly roll, baked onto a prince's Mixamo .blend), `block_realms.py` (the ganglöt's staff
+arm).
+
+```
+blender -b mammon.blend -P tools/blender/mixamo_foe.py -- mammon C:/Users/ulask/Games/mixamo mammon_m.blend
+blender -b -P tools/blender/block_foe.py -- amon amon_rig.glb amon_m.blend --onto amon_m.blend
+blender -b mammon_m.blend -P tools/blender/mixamo_foe.py -- mammon C:/Users/ulask/Games/mixamo mammon_m.blend coin_rain
+```
+
+The second bakes a foe's keyed clips onto its Mixamo .blend (Amon's fiery charge over his Mixamo
+moves); the third retargets only the slots named, into the .blend it opens (the others kept).
+
+A table's options beyond the heroes': `slow` (the source played that much longer: a giant's
+weight), `lay=(module, class, method, bones, frames, loop)` (bones keyed by script laid under the
+clip: a staff or a sceptre held upright as sculpted where the source's arm swings empty, a tail, a
+jaw, wings; a loop gets whole cycles, a move fitted to its markers by `RECOVERY_FD`), `face` and
+`yaw_keep` (the source's turning taken out), `mirror=False` per slot (a throw from the prince's own
+right). A prince's `roar` plays as each of his phases begins.
+
+`export_clips.py` thins each clip as it writes it (`thin_clips.py`, also standalone over written
+clips): a track keeps only the keys a straight line between its neighbours does not give back.

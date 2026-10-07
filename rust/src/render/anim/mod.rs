@@ -8,6 +8,16 @@ pub mod clip;
 pub mod cloth;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod export;
+pub mod foe;
+pub mod foe_beasts;
+pub mod foe_build;
+pub mod foe_courts;
+pub mod foe_realms;
+pub mod foe_rigs;
+pub mod foe_stage4;
+pub mod foe_stage5;
+pub mod foe_stage6;
+pub mod foe_stage7;
 pub mod hero;
 pub mod hold;
 pub mod library;

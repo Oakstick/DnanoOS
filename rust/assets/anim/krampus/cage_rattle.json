@@ -1,0 +1,12 @@
+{
+ "clip": "cage_rattle",
+ "fps": 60,
+ "frames": 149,
+ "loop": false,
+ "markers": {
+  "windup_end": 41,
+  "hit": 47,
+  "active_end": 53,
+  "recover_end": 149
+ }
+}

@@ -165,7 +165,8 @@ impl Sculpt {
     }
 
     fn finish_on(self, jitter: f32, grounded: bool) -> Collected {
-        self.finish_with(jitter, grounded, false)
+        let solid = SOLID.with(|s| s.get());
+        self.finish_with(jitter, grounded, solid)
     }
 
     fn finish_with(self, jitter: f32, grounded: bool, solid: bool) -> Collected {
@@ -189,6 +190,23 @@ impl Sculpt {
         }
         Collected { voxels, width: self.w, depth: self.d, height: self.h }
     }
+}
+
+thread_local! {
+    /// Every `finish` keeps the enclosed voxels too, while set (`solid`).
+    static SOLID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/**
+ * Runs `f` with every sculpt it finishes kept solid (as `Sculpt::finish_solid`): a foe's sculpt
+ * made for its jointed rig (`anim::foe_rigs`), whose joints open inside it, without a second copy
+ * of the sculpt's code. The model drawn whole is the same: an enclosed voxel shows no face.
+ */
+pub fn solid<T>(f: impl FnOnce() -> T) -> T {
+    let was = SOLID.with(|s| s.replace(true));
+    let out = f();
+    SOLID.with(|s| s.set(was));
+    out
 }
 
 fn noise(x: i32, y: i32, z: i32) -> f32 {

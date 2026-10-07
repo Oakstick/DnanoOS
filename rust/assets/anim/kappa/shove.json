@@ -1,0 +1,11 @@
+{
+ "clip": "shove",
+ "fps": 60,
+ "frames": 56,
+ "loop": false,
+ "markers": {
+  "windup_end": 22,
+  "active_end": 28,
+  "recover_end": 56
+ }
+}

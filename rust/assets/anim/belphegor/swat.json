@@ -1,0 +1,12 @@
+{
+ "clip": "swat",
+ "fps": 60,
+ "frames": 141,
+ "loop": false,
+ "markers": {
+  "windup_end": 62,
+  "hit": 63,
+  "active_end": 71,
+  "recover_end": 141
+ }
+}

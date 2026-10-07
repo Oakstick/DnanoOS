@@ -1,0 +1,12 @@
+{
+ "clip": "radiant_cut",
+ "fps": 60,
+ "frames": 133,
+ "loop": false,
+ "markers": {
+  "windup_end": 71,
+  "hit": 76,
+  "active_end": 81,
+  "recover_end": 133
+ }
+}

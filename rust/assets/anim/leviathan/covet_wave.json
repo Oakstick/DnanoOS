@@ -1,0 +1,11 @@
+{
+ "clip": "covet_wave",
+ "fps": 60,
+ "frames": 96,
+ "loop": false,
+ "markers": {
+  "windup_end": 44,
+  "active_end": 50,
+  "recover_end": 96
+ }
+}

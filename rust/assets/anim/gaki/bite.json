@@ -1,0 +1,12 @@
+{
+ "clip": "bite",
+ "fps": 60,
+ "frames": 103,
+ "loop": false,
+ "markers": {
+  "windup_end": 39,
+  "hit": 44,
+  "active_end": 51,
+  "recover_end": 103
+ }
+}

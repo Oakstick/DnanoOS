@@ -156,13 +156,28 @@ def direction(h, bone, child_of, parent_dir=None, fallback=None):
 
 
 class Retarget:
-    def __init__(self, src, tgt, facing=Vector((0, -1, 0)), mirror=False, arms_out=0.0, hold=None, turn=0.0, yaw_keep=1.0, sword_turn=(0.0, 0.0), face=None, posture=None):
+    def __init__(self, src, tgt, facing=Vector((0, -1, 0)), mirror=False, arms_out=0.0, hold=None, turn=0.0, yaw_keep=1.0, sword_turn=(0.0, 0.0), face=None, posture=None,
+                 weapon_rest=None):
         self.src, self.tgt = src, tgt
-        # The sword arm swung round his shoulder as one, `sword_turn` (degrees toward his right
-        # about the upright, then up), so its cuts pass out where they are seen past his body.
+        # Mirrored (a foe holding its weapon in its left fist: `mixamo_foe.py`), its left takes the
+        # source's right: the sword arm is its left, and its weapon the `offhand`.
+        self.mirror, self.arms_out = mirror, arms_out
+        side = "L" if mirror else "R"
+        self.sword_arm = (f"upper_arm.{side}", f"forearm.{side}", f"hand.{side}")
+        self.sword_bone = "offhand" if mirror else "blade"
+        # The sword arm swung round its shoulder as one, `sword_turn` (degrees toward the sword
+        # side about the upright, then up), so its cuts pass out where they are seen past the body.
         yaw, pitch = sword_turn
         self.sword_q = Quaternion(Vector((0, 0, 1)), math.radians(-yaw)) @ Quaternion(Vector((1, 0, 0)), math.radians(-pitch))
-        self.mirror, self.arms_out = mirror, arms_out
+        if mirror:
+            q = self.sword_q
+            self.sword_q = Quaternion((q.w, q.x, -q.y, -q.z))
+        # The way its weapon points out of its fist at rest (game axes): the heroes' lean up and
+        # forward (`vh.WEAPON_REST`); the draugr's sword hangs point down. (A bone's own axes are the
+        # game's: it rests unturned.)
+        # (Or a way for each weapon: {"blade": ..., "offhand": ...}, a pair of blades.)
+        rests = weapon_rest if isinstance(weapon_rest, dict) else {b: weapon_rest for b in GRIPS}
+        self.weapon_rests = {b: Vector(rests[b]).normalized() if rests.get(b) is not None else vh.WEAPON_REST.copy() for b in GRIPS}
         # A turn of the whole of him (degrees, toward his left), and how much of the source's own
         # turning about the upright to keep (1 all, 0 none: a spinning blow becomes one struck where
         # he stands, his chest still twisting against his hips).
@@ -176,6 +191,11 @@ class Retarget:
         self.yaw0 = self.yaw_last = None
         self.hold = dict(HOLD, **(hold or {}))
         self.label, self.map = pick_map(src)
+        # The heroes' bones this armature has (the jorogumo has a woman's upper body only, on her
+        # spider's carapace: her legs are her own, `block_foe.py`).
+        self.bones = [b for b in vh.BONES if b in tgt.data.bones]
+        self.map = {t: s for t, s in self.map.items() if t in self.bones}
+        self.legged = all(b in self.bones for b in ("thigh.L", "shin.L", "foot.L"))
         self.facing = facing
         # The source's chain: the source bone of each of his bones' next joint down.
         self.src_child = {}
@@ -191,8 +211,8 @@ class Retarget:
         self.g = rise.rotation_difference(up) if rise.dot(up) < 0.9 else Quaternion()
         hs = {k: self.g @ h for k, h in hs.items()}
         self.rest_src = {s: self.g @ world_rot(src, src.data.bones[s].matrix_local) for s in self.map.values()}
-        self.rest_tgt = {b: world_rot(tgt, tgt.data.bones[b].matrix_local) for b in vh.BONES}
-        self.rest_arm = {b: tgt.data.bones[b].matrix_local.to_quaternion() for b in vh.BONES}
+        self.rest_tgt = {b: world_rot(tgt, tgt.data.bones[b].matrix_local) for b in self.bones}
+        self.rest_arm = {b: tgt.data.bones[b].matrix_local.to_quaternion() for b in self.bones}
         self.k = {}
         for t, s in self.map.items():
             if t.startswith("foot"):
@@ -212,9 +232,13 @@ class Retarget:
                 ds = direction(hs, s, self.src_child, fallback=up)
             ref = self.facing if abs(dt.dot(self.facing)) < 0.95 else up
             self.k[t] = align(dt, ds, ref)
-        self.leg_src = sum((hs[self.map[a]] - hs[self.map[b]]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
-        self.leg_tgt = sum((ht[a] - ht[b]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
-        self.scale = self.leg_tgt / self.leg_src
+        if self.legged:
+            self.leg_src = sum((hs[self.map[a]] - hs[self.map[b]]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
+            self.leg_tgt = sum((ht[a] - ht[b]).length for a, b in (("thigh.L", "shin.L"), ("shin.L", "foot.L")))
+            self.scale = self.leg_tgt / self.leg_src
+        else:
+            # (No legs: its waist stays where its body carries it.)
+            self.scale = 0.0
         self.hips_rest = hs[self.map["hips"]]
         if self.g != Quaternion():
             print("retarget: the source lies; stood up by", [round(math.degrees(x)) for x in self.g.to_euler()])
@@ -228,7 +252,7 @@ class Retarget:
         posed, out = {}, {}
         corr = Quaternion()
         upright = {}
-        for b in vh.BONES:
+        for b in self.bones:
             rest = self.rest_arm[b]
             parent = vh.PARENTS.get(b)
             # Where the bone would turn to with no turn of its own: carried by its parent.
@@ -249,7 +273,7 @@ class Retarget:
                 if b in TORSO:
                     upright[b] = upright.get(vh.PARENTS.get(b), Quaternion()) @ Quaternion(side, math.radians(-self.posture.get(b, 0.0)))
                     want = upright[b] @ want
-                if b in ("upper_arm.R", "forearm.R", "hand.R"):
+                if b in self.sword_arm:
                     want = corr @ self.sword_q @ corr.inverted() @ want
                 if b.startswith("upper_arm") and self.arms_out:
                     # His short arms carried out from his wide body (about his forward axis).
@@ -257,13 +281,13 @@ class Retarget:
                     want = Quaternion(self.facing, sign * math.radians(self.arms_out)) @ want
                 want = tw.inverted() @ want
                 basis_q = carried.inverted() @ want
-            elif b in GRIPS and not self.mirror and self.grip(b) is not None:
+            elif b in GRIPS and self.grip(b) is not None:
                 # The weapon held as the source's fist holds it (`grip`).
                 grip, knuckles = self.grip(b)
                 r0 = tw @ rest
-                want = (basis(grip, knuckles) @ basis(r0 @ vh.WEAPON_REST, r0 @ Vector((0, 0, 1))).transposed()).to_quaternion() @ r0
+                want = (basis(grip, knuckles) @ basis(r0 @ self.weapon_rests[b], r0 @ Vector((0, 0, 1))).transposed()).to_quaternion() @ r0
                 want = corr @ want
-                if b == "blade":
+                if b == self.sword_bone:
                     want = corr @ self.sword_q @ corr.inverted() @ want
                 want = tw.inverted() @ want
                 basis_q = carried.inverted() @ want
@@ -283,6 +307,8 @@ class Retarget:
         little finger's knuckle to the forefinger's (the blade leaves the fist on the thumb's side),
         its flat toward the knuckles (as his sculpted fist holds it). None without finger bones."""
         side = GRIPS[bone]
+        if self.mirror:
+            side = "Left" if side == "Right" else "Right"
         names = {short(b.name): b.name for b in self.src.data.bones}
         need = [side + "HandIndex1", side + "HandPinky1", side + "HandMiddle1", side + "Hand"]
         if not all(n in names for n in need):
@@ -290,6 +316,9 @@ class Retarget:
         at = {n: self.g @ (self.src.matrix_world @ self.src.pose.bones[names[n]].head) for n in need}
         grip = at[side + "HandIndex1"] - at[side + "HandPinky1"]
         knuckles = at[side + "HandMiddle1"] - at[side + "Hand"]
+        if self.mirror:
+            # (The other fist, seen in the mirror.)
+            grip, knuckles = Vector((-grip.x, grip.y, grip.z)), Vector((-knuckles.x, knuckles.y, knuckles.z))
         if grip.length < 1e-6 or knuckles.length < 1e-6:
             return None
         return grip.normalized(), knuckles.normalized()
@@ -330,6 +359,12 @@ def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, fra
         samples.append(rt.pose())
     # In place: the drift over the ground from first frame to last taken out (the sway stays).
     first, last = samples[0][1], samples[-1][1]
+    if stride == "auto":
+        # (A gait's stride is the ground its cycle covers in the source, scaled to him: none if the
+        # source walks in place.)
+        drift = last - first
+        stride = math.hypot(drift.x, drift.y) or None
+        print(f"retarget: {name}: its cycle covers {stride or 0.0:.2f} m")
     if loop and close and n > 2 * close:
         rots0, off0 = samples[0]
         for k in range(1, close + 1):
@@ -357,7 +392,7 @@ def bake(rt, name, keep_travel=False, loop=False, stride=None, markers=None, fra
             drift = first.lerp(last, u)
             off.x -= drift.x
             off.y -= drift.y
-        for b in vh.BONES:
+        for b in rt.bones:
             pb = tgt.pose.bones[b]
             pb.rotation_mode = "QUATERNION"
             pb.rotation_quaternion = rots[b]

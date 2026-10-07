@@ -14,7 +14,7 @@
 use glam::{Mat4, Quat, Vec3};
 
 use super::clip::{Locals, Skeleton, Trs};
-use super::skeleton::{Bone, BONE_COUNT, PARENTS};
+use super::skeleton::{Bone, PARENTS};
 
 /// The way a held weapon points out of the fist at rest, in the model's axes: up, leaning forward
 /// 0.42 voxels a voxel (`armory::LEAN`).
@@ -52,7 +52,7 @@ fn about(p: Vec3, q: Quat) -> Mat4 {
 
 /// Writes back the bones `bones` (parents first) from their matrices in the model `world`: each
 /// one's transform relative to its parent.
-fn write(sk: &Skeleton, pose: &mut Locals, world: &[Mat4; BONE_COUNT], bones: &[Bone]) {
+fn write(sk: &Skeleton, pose: &mut Locals, world: &[Mat4], bones: &[Bone]) {
     for &b in bones {
         let i = b.index();
         let parent = PARENTS[i].map(|p| world[p]).unwrap_or(sk.pre);
@@ -65,7 +65,7 @@ fn write(sk: &Skeleton, pose: &mut Locals, world: &[Mat4; BONE_COUNT], bones: &[
 /// the upper arm turned about the shoulder and the forearm about the elbow, the elbow staying on the
 /// side the pose bends it to. Returns how far short of `wrist` the arm's end stays (zero when it
 /// reaches).
-fn reach(sk: &Skeleton, world: &mut [Mat4; BONE_COUNT], arm: [Bone; 3], shift: Vec3, wrist: Vec3) -> Vec3 {
+fn reach(sk: &Skeleton, world: &mut [Mat4], arm: [Bone; 3], shift: Vec3, wrist: Vec3) -> Vec3 {
     let [ua, fa, hand] = arm.map(Bone::index);
     let rest = |i: usize| at(&sk.rest_inv[i].inverse());
     let (a, b) = ((rest(fa) - rest(ua)).length(), (rest(hand) - rest(fa)).length());
@@ -170,7 +170,7 @@ pub fn two_hands(sk: &Skeleton, pose: &mut Locals) {
 /// Where the shield stands before him to guard: its middle a little before the middle of his shield
 /// forearm, wherever his guard holds that, and square to the foe (the face that looked out from his
 /// back turned to the front), whatever way his chest is turned in the stance.
-fn guard_place(sk: &Skeleton, w: &[Mat4; BONE_COUNT]) -> Mat4 {
+fn guard_place(sk: &Skeleton, w: &[Mat4]) -> Mat4 {
     let (fore, hand) = (at(&w[Bone::ForearmL.index()]), at(&w[Bone::HandL.index()]));
     let rest = sk.rest_inv[Bone::Shield.index()].inverse();
     let middle = (fore + hand) * 0.5 + GUARD_OUT;
@@ -211,6 +211,7 @@ mod tests {
     use super::*;
     use crate::logic::heroes::HeroKind;
     use crate::render::anim::skeleton::joints;
+    use crate::render::anim::skeleton::BONE_COUNT;
 
     /// A skeleton at Miyamoto's joints (bones unturned at rest, as the clips have them).
     fn miyamoto() -> (Skeleton, [Vec3; BONE_COUNT]) {
@@ -228,7 +229,7 @@ mod tests {
     #[test]
     fn both_fists_close_on_the_grip() {
         let (sk, _) = miyamoto();
-        let mut pose = sk.rest;
+        let mut pose = sk.rest_locals();
         // A guard before him: both arms forward and in, the weapon pointing up and forward.
         turn(&mut pose, Bone::UpperArmR, Quat::from_rotation_x(-1.0) * Quat::from_rotation_z(0.5));
         turn(&mut pose, Bone::ForearmR, Quat::from_rotation_x(-0.6));
@@ -262,7 +263,7 @@ mod tests {
     fn the_shield_rides_his_back_and_comes_before_him_to_guard() {
         let (sk, at0) = miyamoto();
         // Slung, it rides his chest (lower than it was carved), however his arm swings.
-        let mut pose = sk.rest;
+        let mut pose = sk.rest_locals();
         turn(&mut pose, Bone::UpperArmL, Quat::from_rotation_x(0.9));
         turn(&mut pose, Bone::Spine, Quat::from_rotation_y(0.4));
         sling(&sk, &mut pose, 0.0);
@@ -273,7 +274,7 @@ mod tests {
         assert!((chest.inverse() * shield).abs_diff_eq(Mat4::from_translation(slung), 1e-4));
         assert!(m[Bone::Shield.index()].w_axis.z < 0.0, "on his back");
         // Guarding, it stands before him, its face to the foe, however his chest is turned.
-        let mut raised = sk.rest;
+        let mut raised = sk.rest_locals();
         turn(&mut raised, Bone::Spine, Quat::from_rotation_y(-0.6));
         turn(&mut raised, Bone::UpperArmL, Quat::from_rotation_x(-1.2));
         turn(&mut raised, Bone::ForearmL, Quat::from_rotation_y(-1.2));
@@ -283,7 +284,7 @@ mod tests {
         assert!(shield.w_axis.z > 0.1, "before him: {}", shield.w_axis);
         assert!(shield.transform_vector3(Vec3::Z).z < -0.99, "turned round");
         // Half way, it is out at his side.
-        let mut half = sk.rest;
+        let mut half = sk.rest_locals();
         sling(&sk, &mut half, 0.5);
         let m = sk.matrices(&half, &at0, &[Quat::IDENTITY; BONE_COUNT]);
         assert!(m[Bone::Shield.index()].w_axis.x > 0.1, "round his shield side: {}", m[Bone::Shield.index()].w_axis);

@@ -1,0 +1,12 @@
+{
+ "clip": "flame_breath",
+ "fps": 60,
+ "frames": 193,
+ "loop": false,
+ "markers": {
+  "windup_end": 55,
+  "hit": 68,
+  "active_end": 105,
+  "recover_end": 193
+ }
+}

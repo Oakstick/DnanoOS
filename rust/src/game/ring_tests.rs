@@ -908,3 +908,58 @@ fn clips_leave_the_fight_untouched(hero: usize) {
         assert_eq!(a, b, "hero {hero}: line {k} differs");
     }
 }
+
+/// The foes' clips leave the fight untouched too (ANIMATION.md §11): a bout against a pack of each
+/// foe of the first three stages that has clips, played with the foes posed by their clips and by
+/// the code, comes out the same, step for step.
+#[test]
+fn the_foes_clips_leave_the_fight_untouched() {
+    use crate::logic::enemy::EnemyKind as K;
+    use crate::render::anim::foe_rigs::FoeRig;
+    let kinds: Vec<K> = [
+        &K::STAGE_ONE[..],
+        &K::STAGE_TWO,
+        &K::STAGE_THREE,
+        &K::STAGE_FOUR,
+        &K::STAGE_FIVE,
+        &K::STAGE_SIX,
+        &K::STAGE_SEVEN,
+        &K::REALMS_OWN,
+        K::COURTS_OWN,
+        &K::LAIR_OWN,
+    ]
+    .concat()
+    .into_iter()
+    .filter(|&k| FoeRig::of(k).is_some_and(|f| !crate::render::anim::library::embedded_in(f.dir()).is_empty()))
+    .collect();
+    assert!(!kinds.is_empty());
+    for kind in kinds {
+        let play = |code: bool| {
+            let mut g = gym();
+            g.view.set_anim_mode(code);
+            // (The same dice for both: a prince's coins fall where they fall by them.)
+            g.rng = crate::logic::rng::Rng::new(7);
+            g.debug_ring_of(&[kind, kind, kind]);
+            let (mut trace, mut posed) = (Vec::new(), 0);
+            for step in 0..1200 {
+                let k = step % 150;
+                g.brawl_input(k == 10 || k == 34 || k == 58, k == 100, (120..140).contains(&k));
+                g.update(crate::app::STEP);
+                posed += (0..g.enemies.len()).filter(|&i| g.view.foe_posed_by_clips(i)).count();
+                let p = g.hero.pos();
+                trace.push(format!("{:.9} {:.9} {} {:.6}", p.x, p.y, g.hero.hp, g.hero.stamina));
+                for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()) {
+                    trace.push(format!("{:.9} {:.9} {:.6} {:?}", d.pos.x, d.pos.y, d.hp, d.f.state));
+                }
+            }
+            (trace, posed)
+        };
+        let ((code, by_code), (clips, by_clips)) = (play(true), play(false));
+        assert_eq!(by_code, 0, "{kind:?}: the code animated them");
+        assert!(by_clips > 1000, "{kind:?}: their clips posed them ({by_clips} foe-steps)");
+        assert_eq!(code.len(), clips.len());
+        for (k, (a, b)) in code.iter().zip(&clips).enumerate() {
+            assert_eq!(a, b, "{kind:?}: line {k} differs");
+        }
+    }
+}

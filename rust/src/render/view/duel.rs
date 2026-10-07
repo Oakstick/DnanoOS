@@ -168,8 +168,11 @@ impl WorldView {
             let goal = (d.facing.x as f32).atan2(d.facing.y as f32);
             v.yaw = lerp_angle(v.yaw, goal, 1.0 - (-24.0 * dt).exp());
         }
+        let base = self.enemy_views[i].group_pos;
         self.animate_enemy(i, e, dt, time);
         self.pose_duel(i, d, time);
+        // By its clips, where it has them (the code's pose stays the fallback); the juice on top.
+        self.animate_foe_clips(i, e, base, dt);
         self.overshoot_duel(i, d);
         if d.breed.kind == EnemyKind::Belphegor {
             self.pose_belphegor(i, d, time);
@@ -257,7 +260,8 @@ impl WorldView {
         if matches!(e.kind(), EnemyKind::Lucifer | EnemyKind::Reflection) {
             // Lucifer's wings and his moves, and his Reflections' (`court_pride`).
             let rig = self.models.rig(self.enemy_views[i].rig);
-            super::court_pride::dress_lucifer(rig, &mut self.enemy_views[i], d, time);
+            let clips = self.foe_posed_by_clips(i);
+            super::court_pride::dress_lucifer(rig, &mut self.enemy_views[i], d, time, clips);
         }
     }
 
@@ -910,6 +914,14 @@ impl WorldView {
     /// holds, or, armless, the front of its head (the jaws), or the front of its body.
     fn weapon_tip(&self, i: usize) -> Option<Vec3> {
         let v = self.enemy_views.get(i)?;
+        if let Some((rig, mats)) = self.foe_clip_pose(i) {
+            // By its clips: the far end of what it strikes with (its weapon, or its jaws).
+            let part = ["offhand", "blade", "jaw", "head"].iter().filter_map(|n| rig.index(n)).find(|&k| !rig.parts[k].cubes.is_empty())?;
+            let local = rig.parts[part].cubes.iter().map(|c| c.0).max_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))?;
+            let root =
+                Mat4::from_translation(v.group_pos) * Mat4::from_rotation_y(v.yaw) * euler(v.root_rot) * Mat4::from_scale(v.root_scale);
+            return Some((root * mats[part]).transform_point3(local));
+        }
         let rig = self.models.rig(v.rig);
         let (part, local) = if let Some(a) = rig.index("rightArm") {
             (a, rig.parts[a].cubes.iter().map(|c| c.0).max_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))?)

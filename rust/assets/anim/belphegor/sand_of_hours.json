@@ -1,0 +1,12 @@
+{
+ "clip": "sand_of_hours",
+ "fps": 60,
+ "frames": 124,
+ "loop": false,
+ "markers": {
+  "windup_end": 23,
+  "hit": 31,
+  "active_end": 36,
+  "recover_end": 124
+ }
+}

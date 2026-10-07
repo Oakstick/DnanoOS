@@ -1,0 +1,11 @@
+{
+ "clip": "burrow",
+ "fps": 60,
+ "frames": 106,
+ "loop": false,
+ "markers": {
+  "windup_end": 60,
+  "active_end": 66,
+  "recover_end": 106
+ }
+}

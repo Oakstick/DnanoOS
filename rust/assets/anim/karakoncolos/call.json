@@ -1,0 +1,12 @@
+{
+ "clip": "call",
+ "fps": 60,
+ "frames": 105,
+ "loop": false,
+ "markers": {
+  "windup_end": 55,
+  "hit": 62,
+  "active_end": 79,
+  "recover_end": 105
+ }
+}

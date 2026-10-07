@@ -1,0 +1,12 @@
+{
+ "clip": "smokeless",
+ "fps": 60,
+ "frames": 108,
+ "loop": false,
+ "markers": {
+  "windup_end": 26,
+  "hit": 30,
+  "active_end": 42,
+  "recover_end": 108
+ }
+}

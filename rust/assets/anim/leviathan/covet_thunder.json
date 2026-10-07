@@ -1,0 +1,11 @@
+{
+ "clip": "covet_thunder",
+ "fps": 60,
+ "frames": 90,
+ "loop": false,
+ "markers": {
+  "windup_end": 44,
+  "active_end": 50,
+  "recover_end": 90
+ }
+}

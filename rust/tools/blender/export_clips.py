@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy  # noqa: E402
 import vh_blender as vh  # noqa: E402
+from thin_clips import thin_glb  # noqa: E402
 
 
 def markers(act, scene):
@@ -41,8 +42,9 @@ def main():
     for act in list(bpy.data.actions):
         if only and act.name not in only:
             continue
-        # (Only actions of his bones: an imported source's own action, left in the file, is not his.)
-        if not any('pose.bones["hips"]' in fc.data_path for fc in vh.fcurves(act)):
+        # (Only actions of its bones: an imported source's own action, left in the file, is not its.)
+        root = vh.root_of(arm)
+        if not any(f'pose.bones["{root}"]' in fc.data_path for fc in vh.fcurves(act)):
             continue
         arm.animation_data.action = act
         f0, f1 = int(act.frame_range[0]), int(act.frame_range[1])
@@ -82,7 +84,8 @@ def main():
         with open(os.path.join(out, act.name + ".json"), "w") as f:
             json.dump(info, f, indent=1)
             f.write("\n")
-        print(f"export_clips: {act.name}: {f1 - f0} frames, {os.path.getsize(path) // 1024} KB, markers {info['markers']}")
+        sizes = thin_glb(path)
+        print(f"export_clips: {act.name}: {f1 - f0} frames, {sizes[1] // 1024} KB (thinned from {sizes[0] // 1024}), markers {info['markers']}")
 
 
 main()

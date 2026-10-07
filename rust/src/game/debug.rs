@@ -108,7 +108,11 @@ impl Game {
         const MAMMON: [MoveId; 6] =
             [MoveId::Sceptre, MoveId::CoinToss, MoveId::Grasp, MoveId::CoinVolley, MoveId::CoinRain, MoveId::HoardSlam];
         let hp = self.hero.pos();
-        let Some((id, kind)) = self.prince().map(|d| (d.id, d.breed.kind)) else { return };
+        // (Or, in the Sparring Ring, the prince in the bout.)
+        let prince = self.prince().or_else(|| {
+            self.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.alive() && d.arch == crate::logic::combat::Archetype::Prince)
+        });
+        let Some((id, kind)) = prince.map(|d| (d.id, d.breed.kind)) else { return };
         let moves: Vec<MoveId> = if kind == EnemyKind::Mammon {
             MAMMON.to_vec()
         } else {

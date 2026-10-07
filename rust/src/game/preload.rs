@@ -195,6 +195,9 @@ mod tests {
         g.load_level(0);
         assert!(g.view.resident().gen > gen);
         assert!(!g.view.prepared(EnemyKind::Surtr), "the Pit's giants are not the Garden's");
-        assert!(g.view.resident().meshes.len() < pit);
+        assert!(!g.view.prepared(EnemyKind::FrostGiant), "the Pit's giants are not the Garden's");
+        // (The Garden's own foes, now with their jointed rigs for their clips too, may well need as
+        // many meshes as the Pit's giants: what matters is that the giants' are gone.)
+        assert!(pit > 0 && !g.view.resident().meshes.is_empty());
     }
 }

@@ -1,0 +1,12 @@
+{
+ "clip": "sweep",
+ "fps": 60,
+ "frames": 140,
+ "loop": false,
+ "markers": {
+  "windup_end": 50,
+  "hit": 55,
+  "active_end": 61,
+  "recover_end": 140
+ }
+}

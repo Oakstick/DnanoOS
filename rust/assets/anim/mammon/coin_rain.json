@@ -1,0 +1,12 @@
+{
+ "clip": "coin_rain",
+ "fps": 60,
+ "frames": 130,
+ "loop": false,
+ "markers": {
+  "windup_end": 66,
+  "hit": 70,
+  "active_end": 78,
+  "recover_end": 130
+ }
+}
