@@ -233,6 +233,8 @@ impl WorldView {
             a
         } else if let Some(a) = self.pit_atmosphere() {
             a
+        } else if self.gym {
+            hell::gym_atmosphere()
         } else if self.hell {
             hell::hell_atmosphere()
         } else if self.meadow {
@@ -933,6 +935,8 @@ impl WorldView {
             lin(crypt::pal::EMBER)
         } else if self.estate_art || self.meadow {
             meadow_field::lamp_colour()
+        } else if self.hell {
+            lin(hell_art::art::AMBER)
         } else {
             lin(TORCH_LIGHT)
         };
@@ -942,6 +946,8 @@ impl WorldView {
             GARDEN_LANTERNS_LIT
         } else if self.meadow {
             meadow_field::MEADOW_LAMPS_LIT
+        } else if self.hell {
+            hell_art::HUB_LAMPS_LIT
         } else {
             LIGHT_POOL_TORCHES
         };
@@ -953,6 +959,10 @@ impl WorldView {
                 (1.5, 8.5)
             } else if self.estate_art {
                 (0.95, 5.5)
+            } else if self.hell {
+                // The hub's fire bowls, lanterns and the House's braziers: amber pools on the
+                // polished basalt.
+                (1.0, 6.0)
             } else if self.meadow {
                 // The meadow's braziers and lanterns at dusk: pools of their own on the turf and
                 // the wet stone, against the low sun.

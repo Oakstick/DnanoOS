@@ -112,7 +112,8 @@ impl Occupancy {
         let packed = 0xff00_0000 | ((col.x as u32) << 16) | ((col.y as u32) << 8) | col.z as u32;
         let shade = c.emissive[3];
         let glow = Vec3::new(c.emissive[0], c.emissive[1], c.emissive[2]);
-        let glows = glow.max_element() > 0.01 && shade < 4.5;
+        // (Plain-lit cubes glow as drawn; lava (shade 17) by its flow's mean glow.)
+        let glows = glow.max_element() > 0.01 && (shade < 4.5 || (shade - 17.0).abs() < 0.5);
         for z in z0..z1 {
             for y in y0..y1 {
                 for x in x0..x1 {

@@ -607,6 +607,59 @@ fn gravel(m_in: Surface, world: vec3<f32>, n: vec3<f32>, detail: f32) -> Surface
     return m;
 }
 
+// How far `p` lies from the nearest border between the cells of a jittered grid (0 on a border):
+// the cracks between plates of cooling crust.
+fn cell_border(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    var d1 = 8.0;
+    var d2 = 8.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let o = vec2<f32>(f32(x), f32(y));
+            let r = o + vec2<f32>(0.15) + hash22(i + o) * 0.7 - f;
+            let d = dot(r, r);
+            if (d < d1) {
+                d2 = d1;
+                d1 = d;
+            } else if (d < d2) {
+                d2 = d;
+            }
+        }
+    }
+    return sqrt(d2) - sqrt(d1);
+}
+
+// Lava (`voxel_surface` kind 12, the Portals of Hell), worked out in world space so a sea or a
+// river reads as one flow across its blocks: plates of dark crust drifting slowly, cracked, the
+// heat glowing in their cracks; where it runs hot the plates melt away into open flow, ember
+// going to amber. Upright faces run downhill (the volcano's rivers, the falls off the platforms).
+// Returns the crust's shade, the glow (about 1 on the average) and how hot it runs (0 to 1).
+fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32) -> vec3<f32> {
+    var p = world.xz;
+    var flow = vec2<f32>(0.05, 0.03) * time;
+    if (abs(n.y) < 0.5) {
+        p = vec2<f32>((world.x + world.z) * 1.3, world.y * 1.6);
+        flow = vec2<f32>(0.0, 0.55) * time;
+    }
+    let heat = vnoise(p * 0.22 + flow * 0.25) * 0.5 + vnoise(p * 0.6 + vec2<f32>(7.0, 3.0) - flow * 0.5) * 0.32
+        + vnoise(p * 1.7 + flow) * 0.18;
+    let hot = clamp((heat - 0.46) / 0.3, 0.0, 1.0);
+    // Plates of uneven size (the grid warped), their cracks healed over here and there.
+    let warp = vec2<f32>(vnoise(p * 0.7 + vec2<f32>(3.0, 1.0)), vnoise(p * 0.7 + vec2<f32>(8.0, 5.0))) - vec2<f32>(0.5);
+    let c = p * 1.15 + warp * 1.4 + flow * 1.4;
+    let e = cell_border(c);
+    let healed = smoothstep(0.35, 0.7, vnoise(c * 0.9 + vec2<f32>(11.0, 4.0)));
+    let crack = (1.0 - smoothstep(0.01, 0.035 + 0.16 * hot, e)) * (1.0 - healed * (1.0 - hot));
+    let melt = smoothstep(0.42, 0.8, hot + 0.25 * (vnoise(c * 1.9 + vec2<f32>(time * 0.15, 0.0)) - 0.5));
+    let open = max(crack * (0.12 + 0.88 * hot), melt);
+    // The crust: darker plates, paler and greyer where it has cooled longest.
+    let shade = (0.65 + 0.6 * vnoise(c * 3.3)) * (1.0 - 0.6 * open);
+    // A slow pulse where the flow is open.
+    let pulse = 0.85 + 0.15 * sin(time * 1.3 + heat * 9.0);
+    return vec3<f32>(shade, open * (0.6 + 0.9 * hot * hot) * pulse + 0.03, hot);
+}
+
 fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, base: vec3<f32>, n: vec3<f32>, seed: f32) -> Surface {
     var m: Surface;
     m.albedo = base;
@@ -1412,6 +1465,16 @@ fn fs_scene(in: VOut) -> FOut {
             surf = gravel(surf, in.world, n, detail);
         }
     }
+    // Lava (kind 12): its crust and its glow from the flow's pattern; the instance's own glow is
+    // the flow's mean (so the probes see the light it gives).
+    var lava = vec3<f32>(1.0, 1.0, 0.0);
+    let is_lava = mode > 16.5 && mode < 17.5;
+    if (is_lava) {
+        lava = lava_at(in.world, n, g.sky_right.w);
+        surf.albedo = albedo * lava.x;
+        surf.rough = mix(0.7, 0.35, lava.z);
+        surf.specular = 0.4;
+    }
     // A voxel only a few pixels across would glitter with a sharp highlight, so the smaller it
     // is on screen the rougher it is drawn (filtering the shading by the pixel's footprint).
     surf.rough = max(surf.rough, 0.6 * smoothstep(0.2, 0.6, px));
@@ -1473,6 +1536,12 @@ fn fs_scene(in: VOut) -> FOut {
             }
         }
         var emissive = in.emissive.rgb;
+        if (is_lava) {
+            // Ember in the cracks, going to amber and a pale gold where it runs hot.
+            let k = max(max(emissive.r, emissive.g), emissive.b);
+            let hot_col = vec3<f32>(1.0, 0.42, 0.09) * k;
+            emissive = mix(emissive, hot_col, lava.z * lava.z) * lava.y;
+        }
         if (mode > 1.5 && mode < 2.5) {
             emissive *= g.params.z;
         }

@@ -15,7 +15,7 @@ use crate::logic::hub::{self, Gate, Platform, Rect};
 use crate::logic::sins::{Sin, SINS};
 use crate::render::voxels::Mesh;
 
-mod pal {
+pub(super) mod pal {
     // The art direction's palette: charcoal basalt, dressed slabs of umber and pale stone, and
     // lava burning amber and ember rather than blood red.
     pub const BASALT: [u32; 4] = [0x383e3c, 0x434947, 0x4f5552, 0x313735];
@@ -42,28 +42,51 @@ mod pal {
     pub const HORN_D: u32 = 0x3a3028;
     pub const GOLD: u32 = 0xe8b84a;
     pub const EMBER: u32 = 0xff7a20;
-    pub const WINDOW: u32 = 0xff3010;
 }
+use super::crypt::{jit, SHADE_STONE};
+use super::hell_art::art::{BASALT as BASALT_ART, PALE};
 use crate::logic;
 use crate::logic::sins::ALL_SINS;
 use crate::logic::types::Dir;
 use pal::*;
 
 /// The lava's surface, far below the platforms.
-const LAVA_Y: f32 = -2.45;
+pub(super) const LAVA_Y: f32 = -2.45;
 /// The portal doors: a voxel of their relief, and the canvas they are drawn on (both leaves).
 const DOOR_VOXEL: f32 = 0.03;
 const DOOR_W: i32 = 40;
 const DOOR_H: i32 = 80;
 /// A voxel of the gold letters over each portal.
-const LETTER_VOXEL: f32 = 0.035;
+pub(super) const LETTER_VOXEL: f32 = 0.035;
 /// How far from the seal stone its seven sockets stand.
-const SEAL_RING: f32 = 0.5;
+pub(super) const SEAL_RING: f32 = 0.5;
 
 /// Dusk in hell: a dark red sky, the lava lighting everything from below, embers in the air.
 pub fn hell_atmosphere() -> Atmosphere {
     Atmosphere {
-        // A charcoal smoke over the lava, its light amber from below (it was a red murk).
+        // A charcoal smoke over the lava, its light amber from below (it was a red murk). The
+        // light from above is only a dim glow through the smoke: the lava below, the braziers
+        // and the lanterns carry the place, in pools.
+        background: 0x18120f,
+        fog_near: 18.0,
+        fog_far: 52.0,
+        hemi_sky: lin(0x6a5a50) * 0.38,
+        hemi_ground: lin(0xf07a2a) * 0.62,
+        ambient: lin(0x4a3c34) * 0.42,
+        sun_dir: Vec3::new(0.35, 0.8, 0.45).normalize(),
+        sun: lin(0xffb070) * 0.75,
+        exposure: 1.35,
+        night_sky: 0.0,
+        bloom: 1.1,
+        moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
+        cloud_tint: lin(0x2a1a14),
+    }
+}
+
+/// The gym's light (the hub's before it came to the Cisterns' bar): a strong warm light from
+/// above over the same lava.
+pub fn gym_atmosphere() -> Atmosphere {
+    Atmosphere {
         background: 0x1c1614,
         fog_near: 18.0,
         fog_far: 52.0,
@@ -80,7 +103,7 @@ pub fn hell_atmosphere() -> Atmosphere {
     }
 }
 
-fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3) {
+pub(super) fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3) {
     out.push(Instance::new(
         Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos),
         color,
@@ -90,7 +113,7 @@ fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3
     ));
 }
 
-fn glowing(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3, emissive: Vec3) {
+pub(super) fn glowing(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3, emissive: Vec3) {
     out.push(Instance::new(
         Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos),
         color,
@@ -101,7 +124,7 @@ fn glowing(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: V
 }
 
 /// Smooth value noise, 0 to 1.
-fn vnoise(x: f32, z: f32) -> f32 {
+pub(super) fn vnoise(x: f32, z: f32) -> f32 {
     let (xi, zi) = (x.floor(), z.floor());
     let (fx, fz) = (x - xi, z - zi);
     let s = |t: f32| t * t * (3.0 - 2.0 * t);
@@ -117,30 +140,30 @@ fn lava_heat(x: f32, z: f32) -> f32 {
 }
 
 /// The lava's colour and glow at a point.
-fn lava_look(x: f32, z: f32) -> (Vec3, Vec3) {
+pub(super) fn lava_look(x: f32, z: f32) -> (Vec3, Vec3) {
     let hot = ((lava_heat(x, z) - 0.47) / 0.33).clamp(0.0, 1.0);
     let color = lin(CRUST).lerp(lin(LAVA_DEEP), hot);
     let glow = lin(LAVA).lerp(lin(LAVA_HOT), ((hot - 0.7) / 0.3).max(0.0)) * (hot * hot * 1.5 + 0.035);
     (color, glow)
 }
 
-fn stone(h: f64, set: &[u32]) -> Vec3 {
+pub(super) fn stone(h: f64, set: &[u32]) -> Vec3 {
     lin(set[(h * set.len() as f64) as usize % set.len()]) * (0.92 + h as f32 * 0.14)
 }
 
 /// The yaw that turns a model built facing +z to face `d`.
-fn yaw_of(d: Dir) -> f32 {
+pub(super) fn yaw_of(d: Dir) -> f32 {
     let (dx, dz) = d.vec();
     (dx as f32).atan2(dz as f32)
 }
 
 /// A root for a portal gate: at its tile, turned to face into its platform.
-fn gate_root(g: &Gate) -> Mat4 {
+pub(super) fn gate_root(g: &Gate) -> Mat4 {
     Mat4::from_translation(Vec3::new(g.tile.x as f32, 0.0, g.tile.y as f32)) * Mat4::from_rotation_y(yaw_of(g.facing))
 }
 
 /// Puts a box at `local` (centre) under `root`.
-fn put(out: &mut Vec<Instance>, root: Mat4, local: Vec3, scale: Vec3, color: Vec3, emissive: Vec3) {
+pub(super) fn put(out: &mut Vec<Instance>, root: Mat4, local: Vec3, scale: Vec3, color: Vec3, emissive: Vec3) {
     out.push(Instance::new(root * Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, local), color, 1.0, emissive, SHADE_LIT));
 }
 
@@ -148,8 +171,13 @@ impl WorldView {
     /// The hub's static geometry.
     pub(super) fn build_hell(&mut self, grid: &Grid) {
         self.water.clear();
+        if !self.gym {
+            // The hub itself, at the Cisterns' bar (`hell_art`, `hell_portals`).
+            self.build_hub_art(grid);
+            return;
+        }
         self.build_lava_sea(grid);
-        if self.gym {
+        {
             // The gym: its platforms and bridges over the same lava, nothing else.
             use logic::gym;
             for k in 0..gym::STAGES {
@@ -160,21 +188,7 @@ impl WorldView {
             for b in gym::bridges() {
                 self.build_wood_bridge(b);
             }
-            return;
         }
-        for pl in hub::platforms() {
-            self.build_platform(grid, pl);
-        }
-        for b in hub::bridges() {
-            self.build_wood_bridge(b);
-        }
-        self.build_ledge_and_cliffs();
-        self.build_volcano();
-        for g in hub::gates() {
-            self.build_portal_arch(&g);
-        }
-        self.build_altar();
-        self.build_far_rocks();
     }
 
     /// The Sparring Ring's floor markings: a circle of glowing inlay round its middle, and a smaller one at its heart.
@@ -192,7 +206,7 @@ impl WorldView {
     }
 
     /// Far off across the lava: spires and stacks of black rock standing out of the sea, dim in the fog.
-    fn build_far_rocks(&mut self) {
+    pub(super) fn build_far_rocks(&mut self) {
         let out = &mut self.static_cubes;
         let c = (hub::HUB_SIZE - 1) as f32 / 2.0;
         for k in 0..44 {
@@ -621,7 +635,7 @@ impl WorldView {
     }
 
     /// The ledge he came in along, and the cliffs of the world above with the cave he came out of.
-    fn build_ledge_and_cliffs(&mut self) {
+    pub(super) fn build_ledge_and_cliffs(&mut self) {
         let l = hub::ledge();
         let out = &mut self.static_cubes;
         for p in l.tiles() {
@@ -720,174 +734,6 @@ impl WorldView {
         }
     }
 
-    /// The volcano in the middle, and the House of the Devil in its south face.
-    fn build_volcano(&mut self) {
-        let v = hub::volcano();
-        let (cx, cz) = v.center();
-        let (radius, crater, peak) = (8.2f32, 1.7f32, 10.5f32);
-        let house = |x: f32, z: f32| (x - cx).abs() < 2.9 && z > cz + 2.3;
-        let rivers = [-2.2f32, -0.9, 0.35, 2.75];
-        let out = &mut self.static_cubes;
-        let step = 0.5;
-        let mut dz = -radius;
-        while dz <= radius {
-            let mut dx = -radius;
-            while dx <= radius {
-                let r = (dx * dx + dz * dz).sqrt();
-                let wobble = (vnoise(dx * 0.7 + 3.0, dz * 0.7 + 9.0) - 0.5) * 0.9;
-                let (x, z) = (cx + dx, cz + dz);
-                if r <= radius + wobble && !house(x, z) {
-                    let hk = hash(dx as f64 * 7.3, dz as f64 * 5.9) as f32;
-                    let top = if r < crater {
-                        peak - 1.2
-                    } else {
-                        let t = ((r - crater) / (radius - crater)).clamp(0.0, 1.0);
-                        peak + (LAVA_Y - peak) * t.powf(0.8) + (hk - 0.5) * 0.35 + wobble * 0.3
-                    };
-                    let tall = top - LAVA_Y + 0.2;
-                    let ashen = ((top - 3.5) / 3.5).clamp(0.0, 1.0);
-                    let color = stone(hk as f64, &BASALT).lerp(lin(ASH), ashen * 0.6);
-                    cube(out, Vec3::new(x, LAVA_Y - 0.2 + tall / 2.0, z), Vec3::new(0.52, tall, 0.52), 0.0, color);
-                    // Lava rivers running down its flanks, and the crater's pool.
-                    let a = dz.atan2(dx);
-                    let on_river = r > crater + 0.3
-                        && rivers.iter().any(|&ra| {
-                            let da = (a - ra - 0.22 * (r * 0.9).sin()).rem_euclid(TAU);
-                            da.min(TAU - da) < 0.11 + 0.1 * (r / radius)
-                        });
-                    if r < crater {
-                        glowing(out, Vec3::new(x, top + 0.03, z), Vec3::new(0.5, 0.06, 0.5), 0.0, lin(LAVA_DEEP), lin(LAVA_HOT) * 2.2);
-                    } else if on_river {
-                        // Tall enough to bridge the step down to the next block, so the river runs unbroken.
-                        glowing(
-                            out,
-                            Vec3::new(x, top - 0.14, z),
-                            Vec3::new(0.52, 0.44, 0.52),
-                            0.0,
-                            lin(LAVA_DEEP),
-                            lin(LAVA) * (1.4 + hk * 0.6),
-                        );
-                    }
-                }
-                dx += step;
-            }
-            dz += step;
-        }
-        self.smoke.push((Vec3::new(cx, peak + 0.2, cz), 2.6));
-        self.smoke.push((Vec3::new(cx + 0.6, peak + 0.4, cz - 0.5), 1.8));
-        self.smoke.push((Vec3::new(cx - 0.5, peak + 0.3, cz + 0.4), 1.4));
-        self.build_house(cx, v.y1 as f32 + 0.45);
-    }
-
-    /// The House of the Devil: a black keep in the volcano's face, horned spires, red windows, an iron door under a skull.
-    fn build_house(&mut self, cx: f32, face: f32) {
-        let out = &mut self.static_cubes;
-        let hall = |out: &mut Vec<Instance>, x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32, c: u32| {
-            cube(out, Vec3::new(x, y, z), Vec3::new(sx, sy, sz), 0.0, lin(c))
-        };
-        // Plinth and steps down to where the causeway will arrive.
-        hall(out, cx, -0.2, face - 1.6, 6.2, 0.5, 3.8, BASALT[3]);
-        for k in 0..3 {
-            hall(out, cx, -0.04 - k as f32 * 0.12, face + 0.12 + k as f32 * 0.18, 2.6 - k as f32 * 0.2, 0.1, 0.2, BASALT[1]);
-        }
-        // The hall: black walls with pilasters, a stepped roof with spikes.
-        hall(out, cx, 1.6, face - 1.6, 3.8, 3.2, 3.0, OBSIDIAN);
-        for k in 0..5 {
-            let x = cx - 1.8 + k as f32 * 0.9;
-            hall(out, x, 1.6, face - 0.08, 0.22, 3.2, 0.18, OBSIDIAN_L);
-        }
-        for k in 0..4 {
-            let w = 3.9 - k as f32 * 0.8;
-            hall(out, cx, 3.35 + k as f32 * 0.3, face - 1.6, w, 0.3, 3.1 - k as f32 * 0.5, if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN });
-        }
-        for k in 0..7 {
-            let x = cx - 1.8 + k as f32 * 0.6;
-            out.push(Instance::new(
-                forge::segment(Vec3::new(x, 3.2, face - 0.1), Vec3::new(x, 3.75, face - 0.1), 0.07),
-                lin(IRON),
-                1.0,
-                Vec3::ZERO,
-                SHADE_LIT,
-            ));
-        }
-        // Red windows.
-        for (x, y) in [(cx - 1.35, 2.3), (cx + 1.35, 2.3), (cx - 1.35, 1.1), (cx + 1.35, 1.1)] {
-            glowing(out, Vec3::new(x, y, face - 0.05), Vec3::new(0.16, 0.5, 0.06), 0.0, lin(0x3a0804), lin(WINDOW) * 2.0);
-        }
-        // Towers either side, with spires and great curved horns.
-        for side in [-1.0f32, 1.0] {
-            let tx = cx + side * 2.35;
-            hall(out, tx, 2.5, face - 0.9, 1.15, 5.0, 1.15, OBSIDIAN);
-            hall(out, tx, 5.05, face - 0.9, 1.35, 0.14, 1.35, OBSIDIAN_L);
-            for k in 0..6 {
-                let s = 1.0 - k as f32 * 0.16;
-                cube(
-                    out,
-                    Vec3::new(tx, 5.3 + k as f32 * 0.26, face - 0.9),
-                    Vec3::new(0.9 * s, 0.27, 0.9 * s),
-                    PI / 4.0,
-                    lin(if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN }),
-                );
-            }
-            glowing(out, Vec3::new(tx, 3.6, face - 0.3), Vec3::new(0.14, 0.6, 0.06), 0.0, lin(0x3a0804), lin(WINDOW) * 2.0);
-            horn(out, Vec3::new(tx + side * 0.4, 4.9, face - 0.9), side, 1.0);
-        }
-        // The central spire behind, horned like its master.
-        let (sx, sz) = (cx, face - 2.4);
-        hall(out, sx, 4.9, sz, 1.4, 3.4, 1.4, OBSIDIAN);
-        for k in 0..7 {
-            let s = 1.0 - k as f32 * 0.13;
-            cube(
-                out,
-                Vec3::new(sx, 6.7 + k as f32 * 0.3, sz),
-                Vec3::new(1.1 * s, 0.31, 1.1 * s),
-                PI / 4.0,
-                lin(if k % 2 == 0 { OBSIDIAN_L } else { OBSIDIAN }),
-            );
-        }
-        for side in [-1.0f32, 1.0] {
-            horn(out, Vec3::new(sx + side * 0.55, 6.2, sz), side, 1.6);
-        }
-        glowing(out, Vec3::new(sx, 5.4, sz + 0.72), Vec3::new(0.5, 0.5, 0.04), PI / 4.0, lin(0x3a0804), lin(WINDOW) * 2.2);
-        // The door: a pointed arch of red-glowing stone, iron leaves studded with spikes, a skull above.
-        let door_c = Vec3::new(cx, 0.0, face);
-        for side in [-1.0f32, 1.0] {
-            glowing(out, door_c + Vec3::new(side * 0.72, 1.1, 0.02), Vec3::new(0.16, 2.2, 0.1), 0.0, lin(0x4a0c08), lin(WINDOW) * 0.6);
-            for k in 0..5 {
-                let t = k as f32 / 4.0;
-                let a = t * 0.95;
-                let p = Vec3::new(side * (0.95 * a.cos() - 0.23), 2.2 + 0.7 * a.sin(), 0.02);
-                out.push(Instance::new(
-                    Mat4::from_translation(door_c + p) * Mat4::from_rotation_z(-side * a) * Mat4::from_scale(Vec3::new(0.14, 0.12, 0.12)),
-                    lin(0x4a0c08),
-                    1.0,
-                    lin(WINDOW) * 0.6,
-                    SHADE_LIT,
-                ));
-            }
-            cube(out, door_c + Vec3::new(side * 0.33, 1.1, -0.04), Vec3::new(0.64, 2.2, 0.08), 0.0, lin(IRON));
-            for k in 0..4 {
-                for j in 0..2 {
-                    cube(
-                        out,
-                        door_c + Vec3::new(side * (0.18 + j as f32 * 0.28), 0.35 + k as f32 * 0.5, 0.02),
-                        Vec3::splat(0.06),
-                        PI / 4.0,
-                        lin(IRON_L),
-                    );
-                }
-            }
-        }
-        skull(out, door_c + Vec3::new(0.0, 2.75, 0.05), 1.4);
-        for side in [-1.0f32, 1.0] {
-            let b = door_c + Vec3::new(side * 1.25, 0.0, 0.4);
-            cube(out, b + Vec3::new(0.0, 0.35, 0.0), Vec3::new(0.12, 0.7, 0.12), 0.0, lin(IRON));
-            cube(out, b + Vec3::new(0.0, 0.72, 0.0), Vec3::new(0.34, 0.1, 0.34), PI / 4.0, lin(IRON));
-            self.candles.push(b + Vec3::new(0.0, 0.95, 0.0));
-            self.smoke.push((b + Vec3::new(0.0, 1.0, 0.0), 0.9));
-        }
-    }
-
     /// A portal gate's stonework: a black arch with bands of its sin's colour, its name in gold letters, a gem and horns over it, braziers before it.
     pub(super) fn build_portal_arch(&mut self, g: &Gate) {
         let root = gate_root(g);
@@ -965,79 +811,6 @@ impl WorldView {
         }
     }
 
-    /// The Seal of the Seven: a round dais of black steps, seven socket stones in a ring round a horned seal
-    /// stone with red runes, and a sin's gem lighting each socket once he has earned its key.
-    fn build_altar(&mut self) {
-        let p = hub::altar();
-        let c = Vec3::new(p.x as f32, 0.0, p.y as f32);
-        let out = &mut self.static_cubes;
-        // Three round steps, each four bars turned through the eighth of a circle.
-        for (k, (r, top, h)) in [(1.35f32, 0.04f32, 0.04f32), (0.95, 0.09, 0.05), (0.62, 0.17, 0.08)].iter().enumerate() {
-            for s in 0..4 {
-                let turn = s as f32 * PI / 4.0;
-                cube(
-                    out,
-                    c + Vec3::new(0.0, top - h / 2.0, 0.0),
-                    Vec3::new(r * 2.0, *h, r * 0.83),
-                    turn,
-                    lin(BASALT[1 + k % 2]) * (1.0 - k as f32 * 0.06),
-                );
-            }
-        }
-        // A ring of red runes inlaid in the second step, running socket to socket.
-        for k in 0..16 {
-            let a = k as f32 / 16.0 * TAU;
-            let m = Mat4::from_scale_rotation_translation(
-                Vec3::new(0.24, 0.012, 0.03),
-                Quat::from_rotation_y(-a - PI / 2.0),
-                c + Vec3::new(a.cos() * 0.8, 0.095, a.sin() * 0.8),
-            );
-            out.push(Instance::new(m, lin(0x2a0606), 1.0, lin(0xff2a0a) * 0.35, SHADE_LIT));
-        }
-        // The seven sockets: an obsidian block, an iron collar, and a dark hole where the gem will sit.
-        for i in 0..SINS.len() {
-            let a = i as f32 / 7.0 * TAU - PI / 2.0;
-            let s = c + Vec3::new(a.cos() * SEAL_RING, 0.17, a.sin() * SEAL_RING);
-            cube(out, s + Vec3::new(0.0, 0.07, 0.0), Vec3::new(0.15, 0.14, 0.15), a, lin(OBSIDIAN));
-            cube(out, s + Vec3::new(0.0, 0.15, 0.0), Vec3::new(0.13, 0.02, 0.13), PI / 4.0, lin(IRON_L));
-            cube(out, s + Vec3::new(0.0, 0.14, 0.0), Vec3::new(0.06, 0.03, 0.06), PI / 4.0, lin(0x0a0608));
-        }
-        // The seal stone: a black monolith with rune bands, a cap, and two horns.
-        cube(out, c + Vec3::new(0.0, 0.72, 0.0), Vec3::new(0.5, 1.1, 0.5), 0.0, lin(OBSIDIAN));
-        for y in [0.55f32, 0.95] {
-            for f in 0..4 {
-                let a = f as f32 * PI / 2.0;
-                let n = Vec3::new(a.cos(), 0.0, a.sin());
-                glowing(
-                    out,
-                    c + Vec3::new(0.0, y, 0.0) + n * 0.255,
-                    Vec3::new(0.3, 0.05, 0.02),
-                    a + PI / 2.0,
-                    lin(0x5a0a06),
-                    lin(0xff2a0a) * 0.9,
-                );
-            }
-        }
-        // The seal itself on the south face: seven dim gems round a red eye.
-        for (i, sin) in SINS.iter().enumerate() {
-            let a = i as f32 / 7.0 * TAU - PI / 2.0;
-            let g = c + Vec3::new(a.cos() * 0.14, 0.75 + a.sin() * 0.14, 0.26);
-            out.push(Instance::new(
-                Mat4::from_scale_rotation_translation(Vec3::splat(0.035), Quat::from_rotation_z(PI / 4.0), g),
-                lin(sin.color()) * 0.6,
-                1.0,
-                lin(sin.color()) * 0.35,
-                SHADE_LIT,
-            ));
-        }
-        glowing(out, c + Vec3::new(0.0, 0.75, 0.26), Vec3::new(0.06, 0.06, 0.02), PI / 4.0, lin(0x3a0604), lin(0xff2a0a) * 1.4);
-        cube(out, c + Vec3::new(0.0, 1.32, 0.0), Vec3::new(0.64, 0.1, 0.64), 0.0, lin(OBSIDIAN_L));
-        cube(out, c + Vec3::new(0.0, 1.5, 0.0), Vec3::new(0.4, 0.28, 0.4), 0.0, lin(OBSIDIAN));
-        for side in [-1.0f32, 1.0] {
-            horn(out, c + Vec3::new(side * 0.16, 1.6, 0.0), side, 0.55);
-        }
-    }
-
     // ------------------------------------------------------------------ each frame
 
     /// The hub's moving parts: the doors and their portals, the braziers, the seal's gems, the causeways and the fire wall,
@@ -1048,6 +821,7 @@ impl WorldView {
             return;
         }
         let hv = s.hub.unwrap_or_default();
+        self.emit_hub_glow(time, hero, f);
         self.emit_portals(&hv, time, hero, f);
         self.emit_seal(&hv, time, f);
         self.emit_causeways(&hv, time, f);
@@ -1058,7 +832,17 @@ impl WorldView {
         let flick = 1.0 + (time * 3.1).sin() * 0.15 + (time * 7.3).sin() * 0.08;
         f.lights.push(Light { pos: Vec3::new(cx, 11.5, cz), color: lin(LAVA) * 9.0 * flick, distance: 16.0 });
         glow_orb(f, Vec3::new(cx, 9.6, cz), 2.6, lin(LAVA), 0.35 * flick);
-        f.lights.push(Light { pos: Vec3::new(cx, 2.5, hub::volcano().y1 as f32 + 1.4), color: lin(WINDOW) * 4.0, distance: 6.0 });
+        f.lights.push(Light { pos: Vec3::new(cx, 2.5, hub::volcano().y1 as f32 + 1.4), color: lin(0xff5a1c) * 3.0, distance: 6.0 });
+    }
+
+    /// The lava's light rising past the platforms' edges and under the bridges: the nearest to
+    /// him, each a slow pulse of its own.
+    fn emit_hub_glow(&self, time: f32, hero: Vec3, f: &mut Frame) {
+        for (i, p) in nearest(&self.hub_glow, hero, super::hell_art::HUB_GLOW_LIT).into_iter().enumerate() {
+            let fi = (p.x * 0.37 + p.z * 0.61).fract() * 9.0 + i as f32 * 0.0;
+            let pulse = 1.0 + (time * 0.9 + fi).sin() * 0.12 + (time * 2.3 + fi * 1.7).sin() * 0.05;
+            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 2.0 * pulse, distance: 4.6 });
+        }
     }
 
     fn emit_portals(&self, hv: &HubView, time: f32, hero: Vec3, f: &mut Frame) {
@@ -1072,6 +856,9 @@ impl WorldView {
     /// braziers, and the realm swirling beyond the open doors.
     pub(super) fn emit_portal(&self, g: &Gate, door: f32, cleared: bool, time: f32, hero: Vec3, f: &mut Frame) {
         let cube_i = MeshKind::Cube as usize;
+        // The hub's portals stand at the Cisterns' bar (`hell_portals`): iron leaves, braziers on
+        // pedestals, and their light always burning; the realms' and courts' keep the old look.
+        let hub = self.hell && !self.gym;
         {
             let i = g.sin.index();
             let root = gate_root(g);
@@ -1089,7 +876,13 @@ impl WorldView {
                 let pm = root * Mat4::from_translation(hinge) * Mat4::from_rotation_y(turn);
                 let plate = pm
                     * Mat4::from_scale_rotation_translation(Vec3::new(0.6, 2.4, 0.06), Quat::IDENTITY, Vec3::new(-side * 0.3, 1.2, -0.03));
-                f.opaque[cube_i].push(Instance::new(plate, lin(IRON), 1.0, Vec3::ZERO, SHADE_LIT));
+                f.opaque[cube_i].push(Instance::new(
+                    plate,
+                    lin(IRON),
+                    1.0,
+                    Vec3::ZERO,
+                    if hub { super::crypt::SHADE_IRON } else { SHADE_LIT },
+                ));
                 if near {
                     let m = &leaves[k];
                     let shine = color * (0.05 + 0.25 * door);
@@ -1139,7 +932,12 @@ impl WorldView {
             // Braziers burning in the sin's colour (calm gold once the realm is cleared).
             let fire = if cleared { lin(0xffc860) } else { color };
             for side in [-1.0f32, 1.0] {
-                let b = root.transform_point3(Vec3::new(side * 1.2, 0.84, 0.8));
+                let b = if hub {
+                    use super::hell_portals::{PORTAL_BRAZIER, PORTAL_COALS};
+                    root.transform_point3(Vec3::new(side * PORTAL_BRAZIER.0, PORTAL_COALS + 0.03, PORTAL_BRAZIER.1))
+                } else {
+                    root.transform_point3(Vec3::new(side * 1.2, 0.84, 0.8))
+                };
                 for k in 0..7 {
                     let fk = k as f32 + side * 7.0 + i as f32 * 3.0;
                     let t = (time * 2.3 + fk * 0.37).fract();
@@ -1155,8 +953,18 @@ impl WorldView {
                     ));
                 }
                 glow_orb(f, b + Vec3::new(0.0, 0.15, 0.0), 0.35, fire, 0.18);
+                if hub {
+                    // Each brazier a pool of its sin's colour on the platform.
+                    let flick = 1.0 + (time * 8.0 + i as f32 + side).sin() * 0.08 + (time * 13.0 + side * 3.0).sin() * 0.05;
+                    f.lights.push(Light { pos: b + Vec3::new(0.0, 0.35, 0.0), color: fire * 2.2 * flick, distance: 4.6 });
+                }
             }
-            if near {
+            if hub {
+                if door > 0.0 {
+                    // The realm's light pouring out through the open doors.
+                    f.lights.push(Light { pos: root.transform_point3(Vec3::new(0.0, 1.3, 0.7)), color: color * 4.5 * door, distance: 5.5 });
+                }
+            } else if near {
                 let flick = 3.0 + (time * 9.0 + i as f32).sin() * 0.4;
                 f.lights.push(Light {
                     pos: root.transform_point3(Vec3::new(0.0, 1.6, 1.0)),
@@ -1219,13 +1027,25 @@ impl WorldView {
                     let size = if along { Vec3::new(0.98, 0.4, wide) } else { Vec3::new(wide, 0.4, 0.98) };
                     let hk = hash(at.x as f64 * 3.0, at.z as f64 * 5.0);
                     let hot = (1.0 - u) * 2.0;
-                    f.opaque[cube_i].push(Instance::new(
-                        Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, Vec3::new(at.x, top - 0.2, at.z)),
-                        stone(hk, &SLAB),
-                        1.0,
-                        lin(LAVA) * hot,
-                        SHADE_LIT,
-                    ));
+                    // Three dressed blocks across: basalt kerbs either side of a pale way.
+                    let across = if along { Vec3::Z } else { Vec3::X };
+                    let piece = size - across * (wide - 0.98);
+                    for j in 0..3 {
+                        let hj = hash(hk * 17.0 + j as f64, 3.0);
+                        let c = if j == 1 { jit(PALE[(hj * 2.0) as usize % 2], hj, 0.06) * 0.8 } else { jit(BASALT_ART[j % 3], hj, 0.1) };
+                        let lift = (hj as f32 - 0.5) * 0.02;
+                        f.opaque[cube_i].push(Instance::new(
+                            Mat4::from_scale_rotation_translation(
+                                piece,
+                                Quat::IDENTITY,
+                                Vec3::new(at.x, top - 0.2 + lift, at.z) + across * (j as f32 - 1.0),
+                            ),
+                            c,
+                            1.0,
+                            lin(LAVA) * hot,
+                            SHADE_STONE,
+                        ));
+                    }
                     let below = top - 0.4 - LAVA_Y + 0.2;
                     if below > 0.05 {
                         let pillar = if along { Vec3::new(0.9, below, wide * 0.7) } else { Vec3::new(wide * 0.7, below, 0.9) };
@@ -1235,10 +1055,10 @@ impl WorldView {
                                 Quat::IDENTITY,
                                 Vec3::new(at.x, LAVA_Y - 0.2 + below / 2.0, at.z),
                             ),
-                            stone(hk, &BASALT) * 0.8,
+                            jit(BASALT_ART[1], hk, 0.1) * 0.7,
                             1.0,
                             lin(LAVA) * hot * 0.5,
-                            SHADE_LIT,
+                            SHADE_STONE,
                         ));
                     }
                     if u < 1.0 {
@@ -1280,42 +1100,34 @@ impl WorldView {
         }
         for (k, p) in spots.iter().enumerate() {
             let fk = k as f32 * 1.37;
-            // A bed of fire at the foot, and tongues of flame licking up out of it, each on its own clock.
+            // (Each a little off the line, and its own size, so the wall is not a row.)
+            let p = &(*p + Vec3::new((hash(k as f64, 3.0) as f32 - 0.5) * 0.5, 0.0, (hash(5.0, k as f64) as f32 - 0.5) * 0.5));
+            let big = 0.7 + hash(k as f64 * 1.7, 9.0) as f32 * 0.6;
+            // A bed of fire at the foot, and tongues of flame licking up out of it, each on its own
+            // clock: soft, amber at the root, ember above, going to smoke at the tips.
             let base = *p + Vec3::new(0.0, 0.3, 0.0);
             let breathe = 0.8 + (time * 4.0 + fk).sin() * 0.2;
-            f.additive.push(Instance::new(
-                Mat4::from_translation(base) * Mat4::from_scale(Vec3::new(0.45, 0.35 * breathe, 0.45)),
-                lin(LAVA_HOT).lerp(lin(0xff5a10), 0.5),
-                0.14 * fade,
-                Vec3::ZERO,
-                SHADE_UNLIT,
-            ));
+            glow_orb(f, base, 0.45 * breathe, lin(0xffa040), 0.35 * fade);
             if k % 3 == 0 {
-                glow_orb(f, base, 1.2, lin(LAVA), 0.12 * fade);
+                glow_orb(f, base + Vec3::Y * 0.4, 1.5, lin(0xff6a18), 0.12 * fade);
             }
-            for j in 0..3 {
+            for j in 0..4 {
                 let fj = j as f32;
                 let speed = 1.3 + (fk * 0.9 + fj).sin().abs() * 0.9;
                 let tt = (time * speed + fk * 0.21 + fj * 0.33).fract();
-                let height = 1.2 + ((fk * 0.7 + fj * 1.7).sin() * 0.5 + 0.5) * 1.8;
+                let height = (1.2 + ((fk * 0.7 + fj * 1.7).sin() * 0.5 + 0.5) * 1.8) * big;
                 let rise = tt * height * fade;
                 let flare = 1.0 + (time * 11.0 + fk + fj * 3.0).sin() * 0.25;
-                let w = (0.28 * (1.0 - tt).powf(0.7) + 0.04) * fade.sqrt() * flare;
-                let c = lin(LAVA_HOT).lerp(lin(0xc01808), tt * tt);
+                let w = (0.3 * (1.0 - tt).powf(0.7) + 0.05) * fade.sqrt() * flare * big;
+                let c = lin(0xffb050).lerp(lin(0xff5a14), tt).lerp(lin(0x6a2a10), (tt * tt).max(0.0) * 0.8);
                 let sway = Vec3::new((fk + fj * 2.0 + time * 2.5).sin() * 0.25 * tt, 0.0, (fk * 1.3 + time * 2.0 + fj).cos() * 0.25 * tt);
                 let q = base + Vec3::new(0.0, rise, 0.0) + sway;
-                f.additive.push(Instance::new(
-                    Mat4::from_translation(q) * Mat4::from_scale(Vec3::new(w, w * 1.8, w)),
-                    c,
-                    0.3 * (1.0 - tt * tt) * fade,
-                    Vec3::ZERO,
-                    SHADE_UNLIT,
-                ));
+                flame(f, q, w * 1.1, c, 0.75 * (1.0 - tt * tt) * fade);
             }
         }
         let (cx, cz) = v.center();
         for (dx, dz) in [(0.0f32, -1.0f32), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)] {
-            f.lights.push(Light { pos: Vec3::new(cx + dx * 8.5, 0.5, cz + dz * 8.5), color: lin(LAVA) * 5.0 * fade, distance: 9.0 });
+            f.lights.push(Light { pos: Vec3::new(cx + dx * 8.5, 0.5, cz + dz * 8.5), color: lin(0xff7a20) * 4.0 * fade, distance: 9.0 });
         }
     }
 
@@ -1377,13 +1189,13 @@ impl WorldView {
                 let q = p + o * (0.1 + 0.45 * t * t) + Vec3::new(0.0, y + 0.3, 0.0);
                 let m = Mat4::from_translation(q)
                     * Mat4::from_scale(Vec3::new(0.34 - t * 0.08, (LAVA_Y.abs() / n as f32) + 0.06, 0.34 - t * 0.08));
-                f.opaque[MeshKind::Cube as usize].push(Instance::new(
-                    m,
-                    lin(LAVA_DEEP),
-                    1.0,
-                    lin(LAVA).lerp(lin(LAVA_HOT), flow - 0.6) * flow * 1.6,
-                    SHADE_LIT,
-                ));
+                // (The hub's falls run in the lava's own material, pouring downhill.)
+                let (glow, shade) = if self.gym {
+                    (lin(LAVA).lerp(lin(LAVA_HOT), flow - 0.6) * flow * 1.6, SHADE_LIT)
+                } else {
+                    (super::hell_art::lava_glow(1.2), super::hell_art::SHADE_LAVA)
+                };
+                f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(LAVA_DEEP), 1.0, glow, shade));
             }
             let foot = p + o * 0.6 + Vec3::new(0.0, LAVA_Y + 0.3, 0.0);
             glow_orb(f, foot, 0.8, lin(LAVA_HOT), 0.35);
@@ -1455,6 +1267,12 @@ impl WorldView {
     }
 }
 
+/// A tongue of flame: a soft glow drawn tall (a glow orb stretched upward on the screen).
+fn flame(f: &mut Frame, at: Vec3, width: f32, color: Vec3, strength: f32) {
+    let m = Mat4::from_scale_rotation_translation(Vec3::new(width, width * 2.4, width), f.facing, at);
+    f.glow.push(Instance::new(m, color, strength, Vec3::ZERO, SHADE_GLOW));
+}
+
 /// Where lava pours off the platforms: a point on an outer edge, and the way out from it.
 const LAVA_FALLS: [((f32, f32), (f32, f32)); 10] = [
     ((8.0, 5.45), (0.0, -1.0)),
@@ -1470,7 +1288,7 @@ const LAVA_FALLS: [((f32, f32), (f32, f32)); 10] = [
 ];
 
 /// Bones lying about: a skull, a pair of long bones, or a ribcage.
-fn bones(out: &mut Vec<Instance>, at: Vec3, h: f64) {
+pub(super) fn bones(out: &mut Vec<Instance>, at: Vec3, h: f64) {
     let a = h as f32 * TAU;
     let q = Quat::from_rotation_y(a);
     let kind = (h * 7.0) as i32 % 3;
@@ -1525,7 +1343,7 @@ fn bones(out: &mut Vec<Instance>, at: Vec3, h: f64) {
 }
 
 /// A skull, `size` times the ordinary.
-fn skull(out: &mut Vec<Instance>, at: Vec3, size: f32) {
+pub(super) fn skull(out: &mut Vec<Instance>, at: Vec3, size: f32) {
     let s = size;
     out.push(Instance::new(
         Mat4::from_scale_rotation_translation(Vec3::new(0.16, 0.14, 0.18) * s, Quat::IDENTITY, at + Vec3::new(0.0, 0.03, 0.0) * s),
@@ -1553,18 +1371,6 @@ fn skull(out: &mut Vec<Instance>, at: Vec3, size: f32) {
             Vec3::ZERO,
             SHADE_LIT,
         ));
-    }
-}
-
-/// A great curved horn rising from `base`, sweeping out to `side` (-1 or 1).
-fn horn(out: &mut Vec<Instance>, base: Vec3, side: f32, size: f32) {
-    let mut p = base;
-    for k in 0..8 {
-        let t = (k + 1) as f32 / 8.0;
-        let q = base + Vec3::new(side * (0.55 * t + 0.25 * t * t) * size, (0.9 * t - 0.2 * t * t * t) * size, -0.1 * t * size);
-        let thick = 0.26 * size * (1.0 - t * 0.8);
-        out.push(Instance::new(forge::segment(p, q, thick), if k >= 6 { lin(HORN_D) } else { lin(HORN) }, 1.0, Vec3::ZERO, SHADE_LIT));
-        p = q;
     }
 }
 
