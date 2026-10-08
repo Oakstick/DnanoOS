@@ -498,3 +498,200 @@ fn the_gate_cheat_sets_him_on_floor_before_every_gate() {
         assert!(g.level.grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false), "{stage:?}: at ({:.1}, {:.1})", p.x, p.y);
     }
 }
+
+/// Every page that opens over the pause menu, opened and shut in turn (each as a player opens it,
+/// and put away with Esc), then play resumed.
+fn every_page_over_the_pause(g: &mut Game, guide: bool) {
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Paused, "Esc pauses");
+    type Opens = fn(&mut Game);
+    let pages: [(&str, Opens); 5] = [
+        ("settings", Game::open_settings),
+        ("controls", Game::open_controls),
+        ("full map", Game::open_full_map),
+        ("ledger", Game::open_ledger),
+        ("levels", Game::open_map),
+    ];
+    for (name, open) in pages {
+        open(g);
+        for _ in 0..3 {
+            g.update(STEP);
+        }
+        draw_hud(g);
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Paused, "Esc puts the {name} away, the game still paused");
+    }
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing, "Esc resumes");
+    // The old man's guide (B, from play): up, and away again, play going on. (Not while the
+    // Pit's platform goes down: nothing in play answers then.)
+    if !guide {
+        return;
+    }
+    g.input.inject(Action::Guide);
+    g.update(STEP);
+    assert!(g.guide_open && g.screen == Screen::Paused, "B: the guide");
+    draw_hud(g);
+    g.input.inject(Action::Guide);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing, "B again: play goes on");
+}
+
+/// Plays until `done` holds (Enter pressed now and then, as a player goes on), at most `secs`.
+fn play_until(g: &mut Game, secs: f64, done: &dyn Fn(&Game) -> bool) -> bool {
+    let mut t = 0.0;
+    while t < secs {
+        if done(g) {
+            return true;
+        }
+        if g.screen == Screen::Ready || g.screen == Screen::View {
+            g.enter(Screen::Playing);
+        }
+        if ((t / STEP) as u64).is_multiple_of(30) && matches!(g.screen, Screen::Won) {
+            g.input.inject(Action::Confirm);
+        }
+        g.update(STEP);
+        t += STEP;
+    }
+    done(g)
+}
+
+/**
+ * The pause, every page over it, and the old man called, in the middle of the game's special
+ * moments: the Pit's platform going down, a prince's change of phase, Krampus at the cage and
+ * his fall, a banner up, the old man's counsel speaking. Each moment goes on as it should when
+ * play resumes (the platform reaches the next level, the prince fights on, the end begins).
+ */
+#[test]
+fn every_special_moment_survives_the_pause_and_the_old_man() {
+    let _dir = own_folder("moments");
+    // The Pit's descent: paused and the old man called as the platform goes down.
+    let mut g = Game::new();
+    g.map_jump(Stage::Pit(2));
+    g.enter(Screen::Playing);
+    g.update(STEP);
+    g.debug_pit_clock(crate::logic::pit::LEVEL_SECONDS - 0.05);
+    for _ in 0..30 {
+        g.update(STEP);
+    }
+    assert!(g.pit_view().is_some_and(|p| p.descent.is_some()), "the platform goes down");
+    every_page_over_the_pause(&mut g, false);
+    g.call_old_man();
+    assert_eq!(g.screen, Screen::Shop);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert!(play_until(&mut g, 30.0, &|g| g.pit.as_ref().is_some_and(|p| p.level == 3)), "the platform reaches level 3");
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(Stage::Pit(3)));
+
+    // A prince's change of phase, in every court: paused at it, and he fights on to his fall.
+    for sin in SINS {
+        let mut g = Game::new();
+        g.map_jump(Stage::Court(sin));
+        g.enter(Screen::Playing);
+        for _ in 0..30 {
+            g.update(STEP);
+        }
+        let max = g.prince().map(|d| d.max_hp).expect("the prince");
+        g.debug_wound_boss((max * 0.35) as i32);
+        for _ in 0..3 {
+            g.update(STEP);
+        }
+        every_page_over_the_pause(&mut g, true);
+        g.call_old_man();
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        assert!(play_until(&mut g, 10.0, &|g| g.screen == Screen::Playing), "{sin:?}: back to the fight");
+        g.debug_wound_boss(100_000);
+        assert!(play_until(&mut g, 20.0, &|g| g.court.as_ref().is_some_and(|c| c.slain)), "{sin:?}: he falls");
+        draw_hud(&g);
+    }
+
+    // Krampus at the cage, then his fall: paused at each, and the end begins.
+    let mut g = Game::new();
+    g.map_jump(Stage::Lair);
+    g.enter(Screen::Playing);
+    for _ in 0..30 {
+        g.update(STEP);
+    }
+    g.debug_taunt();
+    for _ in 0..60 {
+        g.update(STEP);
+    }
+    every_page_over_the_pause(&mut g, true);
+    g.debug_fell();
+    for _ in 0..20 {
+        g.update(STEP);
+    }
+    every_page_over_the_pause(&mut g, true);
+    g.call_old_man();
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert!(play_until(&mut g, 60.0, &|g| g.story.as_ref().is_some_and(|s| s.scene == Scene::Two)), "the end begins (on {:?})", g.screen);
+}
+
+/**
+ * Dying anywhere (on his feet or mid-leap; in the garden, a meadow, the hub, every realm and court,
+ * the Pit and the lair): he rises at the place's start on floor he can stand on (not in rock, a pit
+ * or the Burning Field's lava), and the last life lost goes to GAME OVER, then the title, where
+ * Continue comes back to the same place.
+ */
+#[test]
+fn dying_anywhere_brings_him_back_on_floor_and_the_last_life_to_the_title() {
+    let _dir = own_folder("dying");
+    let mut stages = vec![Stage::Dungeon(0), Stage::Arena(0), Stage::Hub, Stage::Pit(1), Stage::Pit(6), Stage::Lair];
+    for sin in SINS {
+        stages.extend([Stage::Realm(sin), Stage::Court(sin)]);
+    }
+    for stage in stages {
+        let mut g = Game::new();
+        g.map_jump(stage);
+        g.enter(Screen::Playing);
+        for _ in 0..30 {
+            g.update(STEP);
+        }
+        let mut deaths = 0;
+        loop {
+            assert!(deaths < 8, "{stage:?}: the lives never run out");
+            if deaths % 2 == 0 {
+                g.input.inject(Action::Jump);
+                g.update(STEP);
+            }
+            if g.brawling() {
+                g.wound_hero(1.0e6, 0xffffff);
+            } else {
+                g.hero.invuln = 0.0;
+                g.hero.shield = None;
+                g.hero.hp = 1;
+                g.debug_hurt();
+            }
+            deaths += 1;
+            let mut t = 0.0;
+            while !matches!(g.screen, Screen::Ready | Screen::GameOver) && t < 10.0 {
+                g.update(STEP);
+                t += STEP;
+            }
+            if g.screen == Screen::GameOver {
+                break;
+            }
+            assert_eq!(g.screen, Screen::Ready, "{stage:?}: he rises again (death {deaths})");
+            assert!(until(&mut g, Screen::Playing, 5.0), "{stage:?}");
+            let p = g.hero.pos();
+            let t = crate::logic::types::P::new(p.x.round() as i32, p.y.round() as i32);
+            assert!(p.x.is_finite() && super::bot::Bot::floor(&g, t), "{stage:?}: he rises on floor, at ({:.1}, {:.1})", p.x, p.y);
+        }
+        g.input.inject(Action::Confirm);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Title, "{stage:?}: GAME OVER, then the title");
+        assert!(g.can_continue() && g.saved_run.as_ref().is_some_and(|r| r.stage == stage), "{stage:?}: Continue comes back here");
+    }
+}
