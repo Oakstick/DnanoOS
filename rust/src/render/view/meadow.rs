@@ -1,60 +1,46 @@
-//! The boss arena's look, and the boss. A bright meadow under a daylight sky:
-//! grass with tufts and flowers, bare dirt patches, weathered stone pillars,
-//! low brick walls, and a stream under wooden bridges. Then the Cyclops, its
-//! bolts and boulders, and the shockwaves of its slams.
+//! The boss arena's look, and the boss. The Cyclops' meadow at dusk round the ruins of an old
+//! estate (`meadow_field` builds it): turf and wildflowers, trodden earth, a stream under old
+//! timber bridges, dressed-stone pillars and low walls, a ruined boundary wall and the treeline.
+//! Then the Cyclops, its bolts and boulders, and the shockwaves of its slams.
 
 use super::*;
 use crate::logic::boss::{BossShot, BossState, Cyclops, ShotKind};
-use crate::logic::levels::ARENA;
-use crate::render::foliage::HEDGE_VOXEL;
+use crate::logic::levels::{ARENA, STREAM_ROW};
 
 mod pal {
-    pub const GRASS_A: u32 = 0x6cbf3e;
-    pub const GRASS_B: u32 = 0x62b437;
-    pub const GRASS_DEEP: u32 = 0x3f8a26;
-    pub const GRASS_TIP: u32 = 0x9ee05a;
-    pub const DIRT_B: u32 = 0x7d5b34;
-    pub const PEBBLE: u32 = 0xa8a294;
-    pub const STONE: u32 = 0xb3ada0;
-    pub const STONE_D: u32 = 0x8f8a80;
-    pub const MOSS: u32 = 0x5f9a38;
-    pub const BRICKS: [u32; 4] = [0xb05c3c, 0x9a4e33, 0xc26c48, 0x8a442e];
-    pub const MORTAR: u32 = 0xcbbfa4;
-    pub const WOOD: [u32; 3] = [0xa06a38, 0x8a5a2e, 0xb27a44];
-    pub const WOOD_D: u32 = 0x6e4422;
-    pub const WATER: u32 = 0x3f9fdc;
-    pub const BED: u32 = 0x6a6448;
-    pub const FLOWERS: [u32; 5] = [0xf8f8f0, 0xffe066, 0xff8ad8, 0x8fb4ff, 0xff6a5a];
-    pub const BUTTERFLIES: [u32; 4] = [0xf8f8f0, 0xffe066, 0xff9a3a, 0x7ab8ff];
+    /// Moths and the last butterflies at dusk: pale stone, amber, rust.
+    pub const BUTTERFLIES: [u32; 3] = [0xd8d0b8, 0xc89a3a, 0x9a5a3a];
+    /// Fireflies over the water: the board's amber.
+    pub const FIREFLY: u32 = 0xf0c070;
     pub const BOLT: u32 = 0xff7a2a;
     pub const BOLT_CORE: u32 = 0xfff1c0;
-    pub const DUST: u32 = 0xe8d8b0;
+    /// The slams' dust: trodden earth thrown up.
+    pub const DUST: u32 = 0xb8a888;
 }
 use crate::render::characters::Sculpt;
 use crate::render::foes::CYCLOPS_EYE;
 use crate::render::foes::CYCLOPS_VOXEL;
-use crate::render::props;
 use crate::render::voxels::Collected;
 use pal::*;
 
-/// Dusk over the meadow: a low golden sun in the west under a sky going from
-/// flame to violet, the first stars out overhead, mauve clouds below.
+/// Dusk over the meadow, in the Cisterns' key: the sun low in the west-north-west and amber, its
+/// long shadows across the field; the sky's light a weak mist teal, the ambient low, so the
+/// braziers' and lanterns' pools carry the shade and the teal is left to the shadows and the mist.
 pub fn meadow_atmosphere() -> Atmosphere {
     Atmosphere {
-        // An amber dusk in the art direction's palette (it was a magenta twilight).
-        background: 0x4e5450,
-        fog_near: 18.0,
-        fog_far: 52.0,
-        hemi_sky: lin(0x8aa6a0) * 0.55,
-        hemi_ground: lin(0x4a5230) * 0.5,
-        ambient: lin(0x7e8480) * 0.24,
-        sun_dir: Vec3::new(-0.7, 0.6, -0.25).normalize(),
-        sun: lin(0xffb070) * 2.2,
-        exposure: 1.25,
+        background: 0x3a4442,
+        fog_near: 16.0,
+        fog_far: 46.0,
+        hemi_sky: lin(0x6e8a86) * 0.32,
+        hemi_ground: lin(0x3a3424) * 0.3,
+        ambient: lin(0x2e3634) * 0.5,
+        sun_dir: Vec3::new(-0.78, 0.36, -0.5).normalize(),
+        sun: lin(0xffa860) * 1.55,
+        exposure: 1.2,
         night_sky: 2.0,
-        bloom: 0.7,
+        bloom: 0.95,
         moon_view: Vec3::new(-0.42, 0.2, -0.9).normalize(),
-        cloud_tint: lin(0x3e3a36),
+        cloud_tint: lin(0x2e2a26),
     }
 }
 
@@ -64,376 +50,12 @@ fn sin_skin(hex: u32) -> Vec3 {
     Vec3::ONE.lerp(c / c.max_element().max(1e-3), 0.75)
 }
 
-fn cube(out: &mut Vec<Instance>, pos: Vec3, scale: Vec3, rot_y: f32, color: Vec3) {
-    let m = Mat4::from_scale_rotation_translation(scale, Quat::from_rotation_y(rot_y), pos);
-    out.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
-}
-
-fn in_arena(x: i32, y: i32) -> bool {
-    let (x0, y0, x1, y1) = ARENA;
-    x >= x0 && x <= x1 && y >= y0 && y <= y1
-}
-
 impl WorldView {
-    /// The meadow's static geometry. Rock inside the arena is stone pillars
-    /// (standing alone) or low brick walls (in runs); rock in the ring is hedge.
+    /// The meadow's static geometry: the field, the ruins, the stream and the treeline
+    /// (`meadow_field`). The stream's water and its plan come from `logic::garden::stream_plan`.
     pub(super) fn build_meadow(&mut self, grid: &Grid) {
-        let rock = |x: i32, y: i32| grid.get(x, y) == Tile::Rock;
-        let pit = |x: i32, y: i32| grid.get(x, y) == Tile::Pit;
-        let bridge = |x: i32, y: i32| !pit(x, y) && !rock(x, y) && ((pit(x - 1, y) && pit(x + 1, y)) || (pit(x, y - 1) && pit(x, y + 1)));
         self.water.clear();
-
-        for (x, y, t) in grid.cells() {
-            let (xf, yf) = (x as f32, y as f32);
-            let (hx, hy) = (x as f64, y as f64);
-            if t == Tile::Rock {
-                if in_arena(x, y) {
-                    cube(&mut self.static_cubes, Vec3::new(xf, -0.05, yf), Vec3::new(1.0, 0.1, 1.0), 0.0, lin(GRASS_B) * 0.9);
-                }
-                continue;
-            }
-            if (t == Tile::Pit || bridge(x, y)) && self.garden.is_some() {
-                continue; // the garden river builds the stream
-            }
-            if t == Tile::Pit || bridge(x, y) {
-                // Stream bed, banks, and (on a bridge) the deck.
-                let along_x = pit(x - 1, y) || pit(x + 1, y);
-                self.water.push((P::new(x, y), along_x));
-                cube(
-                    &mut self.static_cubes,
-                    Vec3::new(xf, -0.37, yf),
-                    Vec3::new(1.0, 0.1, 1.0),
-                    0.0,
-                    lin(BED) * (0.9 + hash(hx, hy) as f32 * 0.2),
-                );
-                for d in CARDINALS {
-                    let (dx, dy) = d.vec();
-                    let (nx, ny) = (x + dx, y + dy);
-                    if pit(nx, ny) || bridge(nx, ny) {
-                        continue;
-                    }
-                    let c = Vec3::new(xf + dx as f32 * 0.5, -0.17, yf + dy as f32 * 0.5);
-                    let s = if dx != 0 { Vec3::new(0.06, 0.36, 1.0) } else { Vec3::new(1.0, 0.36, 0.06) };
-                    cube(&mut self.static_cubes, c, s, 0.0, lin(DIRT_B));
-                    // Stones along the bank.
-                    for k in 0..3 {
-                        let hk = hash(hx * 3.0 + k as f64, hy * 5.0 + dx as f64 * 2.0 + dy as f64) as f32;
-                        if hk < 0.45 {
-                            continue;
-                        }
-                        let off = (k as f32 - 1.0) * 0.32 + (hk - 0.7) * 0.2;
-                        let p = if dx != 0 {
-                            Vec3::new(c.x - dx as f32 * 0.04, 0.0, c.z + off)
-                        } else {
-                            Vec3::new(c.x + off, 0.0, c.z - dy as f32 * 0.04)
-                        };
-                        let sz = 0.1 + hk * 0.08;
-                        cube(
-                            &mut self.static_cubes,
-                            p,
-                            Vec3::new(sz, sz * 0.6, sz * 0.9),
-                            hk * 3.0,
-                            lin(if hk > 0.8 { STONE } else { PEBBLE }),
-                        );
-                    }
-                }
-                if bridge(x, y) {
-                    self.build_bridge(xf, yf, along_x);
-                }
-                continue;
-            }
-            // Grass everywhere: one lawn, its top a field of blades.
-            let jitter = 0.97 + hash(hx, hy) as f32 * 0.06;
-            let grass = lin(GRASS_A) * jitter;
-            let m = Mat4::from_scale_rotation_translation(Vec3::new(1.0, 0.1, 1.0), Quat::IDENTITY, Vec3::new(xf, -0.05, yf));
-            self.static_cubes.push(Instance::new(m, grass, 1.0, Vec3::ZERO, SHADE_GRASS));
-            // Tufts of grass...
-            let tufts = 2 + (hash(hx + 1.0, hy + 2.0) * 3.0) as usize;
-            for k in 0..tufts {
-                let hk = hash(hx * 5.0 + k as f64 * 1.7, hy * 3.0 + 1.0) as f32;
-                let hj = hash(hy * 5.0 + k as f64 * 2.3, hx * 7.0 + 2.0) as f32;
-                let base = Vec3::new(xf + (hk - 0.5) * 0.85, 0.0, yf + (hj - 0.5) * 0.85);
-                for b in 0..3 {
-                    let hb = hash(hk as f64 * 91.0 + b as f64, hj as f64 * 37.0) as f32;
-                    let tall = 0.1 + hb * 0.1;
-                    let lean = (hb - 0.5) * 0.5;
-                    let m = Mat4::from_translation(base + Vec3::new((b as f32 - 1.0) * 0.035, 0.0, (hb - 0.5) * 0.04))
-                        * Mat4::from_rotation_y(hk * 6.0 + b as f32 * 2.1)
-                        * Mat4::from_rotation_z(lean)
-                        * Mat4::from_translation(Vec3::new(0.0, tall / 2.0, 0.0))
-                        * Mat4::from_scale(Vec3::new(0.03, tall, 0.03));
-                    let c = lin(if b == 1 { GRASS_TIP } else { GRASS_DEEP }).lerp(lin(GRASS_A), hb * 0.5);
-                    self.static_cubes.push(Instance::new(m, c, 1.0, Vec3::ZERO, SHADE_LIT));
-                }
-            }
-            // ...and here and there a flower.
-            if hash(hx * 2.0 + 7.0, hy * 3.0 + 1.0) < 0.22 {
-                let hk = hash(hx + 0.3, hy * 1.7) as f32;
-                let hj = hash(hy + 0.7, hx * 1.3) as f32;
-                let p = Vec3::new(xf + (hk - 0.5) * 0.7, 0.0, yf + (hj - 0.5) * 0.7);
-                cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.08, 0.0), Vec3::new(0.02, 0.16, 0.02), 0.0, lin(GRASS_DEEP));
-                let petal = lin(FLOWERS[(hash(hx, hy + 5.0) * FLOWERS.len() as f64) as usize % FLOWERS.len()]);
-                cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.17, 0.0), Vec3::new(0.09, 0.03, 0.09), hk * 3.0, petal);
-                cube(&mut self.static_cubes, p + Vec3::new(0.0, 0.185, 0.0), Vec3::new(0.035, 0.02, 0.035), 0.0, lin(0xffc830));
-            }
-        }
-
-        // Rock: pillars, low walls, and the hedge ring with its trees.
-        let tree = props::pine();
-        let tree_tint = Vec3::new(1.15, 1.35, 1.05);
-        let mut trees: Vec<(P, Vec3, f32, f32)> = Vec::new();
-        for (x, y, t) in grid.cells() {
-            if t != Tile::Rock {
-                continue;
-            }
-            let (xf, yf) = (x as f32, y as f32);
-            let (hx, hy) = (x as f64, y as f64);
-            if in_arena(x, y) {
-                let horizontal = rock(x - 1, y) || rock(x + 1, y);
-                let vertical = rock(x, y - 1) || rock(x, y + 1);
-                if !horizontal && !vertical {
-                    self.build_pillar(x, y);
-                } else {
-                    let start = self.static_cubes.len();
-                    self.build_low_wall(xf, yf, horizontal);
-                    self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
-                }
-                continue;
-            }
-            // The gatehouse stands here (its towers either side): no hedge through it.
-            if self.gate_tile.is_some_and(|g| g.y == y && (g.x - x).abs() <= 1) {
-                continue;
-            }
-            let edge = grid.get(x - 1, y) != Tile::Rock
-                || grid.get(x + 1, y) != Tile::Rock
-                || grid.get(x, y - 1) != Tile::Rock
-                || grid.get(x, y + 1) != Tile::Rock;
-            // A leafy hedge block, a little over a tile across so neighbours grow into one hedge. Deep in the
-            // ring only its crown can be seen, so only the crown is kept.
-            let variant = (hash(hx * 3.7, hy * 2.9) * 4.0) as usize % 4;
-            let turn = (hash(hx + 11.0, hy + 5.0) * 4.0).floor() as f32 * PI / 2.0;
-            let mesh = &self.models.hedges[variant];
-            let top = mesh.cubes.iter().map(|(p, _)| p.y).fold(0.0f32, f32::max);
-            let tall = top + HEDGE_VOXEL * 0.5;
-            let keep_above = if edge { -1.0 } else { top * 0.6 };
-            let shade = 0.95 + hash(hx + 3.0, hy + 7.0) as f32 * 0.1;
-            let start = self.static_cubes.len();
-            let q = Quat::from_rotation_y(turn);
-            for (off, c) in mesh.cubes.iter().filter(|(p, _)| p.y > keep_above) {
-                let m = Mat4::from_scale_rotation_translation(Vec3::splat(mesh.size), q, Vec3::new(xf, 0.0, yf) + q * *off);
-                self.static_cubes.push(Instance::new(m, *c * shade, 1.0, Vec3::ZERO, SHADE_LIT));
-            }
-            self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
-            if edge && hash(hx * 5.0 + 1.0, hy * 3.0 + 2.0) < 0.55 {
-                trees.push((P::new(x, y), Vec3::new(xf, tall - 0.05, yf), hash(hx, hy) as f32 * TAU, 0.9 + hash(hy, hx) as f32 * 0.6));
-            }
-        }
-        for (key, pos, rot, scale) in trees {
-            let start = self.static_cubes.len();
-            push_field(&mut self.static_cubes, &tree, pos, rot, scale, tree_tint, Vec3::ZERO, SHADE_LIT);
-            self.tree_index.insert(key, self.trees.len());
-            self.trees.push(Tree {
-                range: (start, self.static_cubes.len() - start),
-                base: pos,
-                radius: 0.26 * scale + 0.05,
-                height: 1.02 * scale,
-                fade: 1.0,
-                alive: true,
-                shades: None,
-            });
-        }
-
-        // The stream in its stone channel, under stone bridges; and mist over it all.
-        if let Some(plan) = self.garden.clone() {
-            let water: HashMap<P, i32> = plan.water().map(|r| (r.p, r.level)).collect();
-            self.build_river(grid, &plan, &water);
-            for b in &plan.bridges {
-                self.build_stone_bridge(grid, *b);
-            }
-            self.build_mist(grid, &HashMap::new());
-        }
-
-        // Bushes tucked against the hedges, pillars and walls, off the walking lines.
-        for (x, y, t) in grid.cells() {
-            if !in_arena(x, y) || !matches!(t, Tile::Open | Tile::Charge) || bridge(x, y) {
-                continue;
-            }
-            for d in CARDINALS {
-                let (dx, dy) = d.vec();
-                if !rock(x + dx, y + dy) {
-                    continue;
-                }
-                // Nothing grows in front of the gatehouse.
-                if self.gate_tile.is_some_and(|g| (g.x - x).abs() <= 1 && y - g.y <= 1) {
-                    continue;
-                }
-                let arena_rock = in_arena(x + dx, y + dy);
-                let chance = if arena_rock { 0.65 } else { 0.5 };
-                let h = hash(x as f64 * 3.1 + dx as f64 * 7.0, y as f64 * 2.3 + dy as f64 * 5.0);
-                if h > chance {
-                    continue;
-                }
-                // Slide along the edge a little so rows of bushes do not line up.
-                let slide = (hash(y as f64 + dx as f64, x as f64 + dy as f64) as f32 - 0.5) * 0.5;
-                let pos = Vec3::new(x as f32 + dx as f32 * 0.3 + dy as f32 * slide, 0.0, y as f32 + dy as f32 * 0.3 + dx as f32 * slide);
-                self.build_bush(pos, 0.95 + h as f32 * 0.5, false);
-            }
-        }
-    }
-
-    /// A round leafy bush (a voxel sculpt: clumps of leaves, a ragged fringe, sunlit crown, some with
-    /// berries or blossoms), in one of four shapes, turned and sized where it grows.
-    pub(super) fn build_bush(&mut self, at: Vec3, size: f32, forest: bool) {
-        let (hx, hy) = (at.x as f64 * 13.0, at.z as f64 * 17.0);
-        let variant = (hash(hx * 0.5, hy * 0.5) * 4.0) as usize % 4;
-        let turn = hash(hy, hx) as f32 * TAU;
-        let shade = 0.94 + hash(hx + 1.0, hy - 1.0) as f32 * 0.12;
-        let mesh = if forest { &self.models.forest_bushes[variant] } else { &self.models.bushes[variant] };
-        push_field(&mut self.static_cubes, mesh, at, turn, size, Vec3::splat(shade), Vec3::ZERO, SHADE_LIT);
-    }
-
-    /// A plank bridge over the stream, crossing it the short way.
-    fn build_bridge(&mut self, x: f32, y: f32, stream_along_x: bool) {
-        // Built as if the stream ran along x (the deck crosses along z), then turned.
-        let turn = if stream_along_x { 0.0 } else { PI / 2.0 };
-        let q = Quat::from_rotation_y(turn);
-        let at = |p: Vec3| Vec3::new(x, 0.0, y) + q * p;
-        let (hx, hy) = (x as f64, y as f64);
-        for i in 0..8 {
-            let z = -0.62 + i as f32 * 0.177;
-            let arch = (1.0 - (z / 0.66).powi(2)).max(0.0) * 0.05;
-            let c = lin(WOOD[(hash(hx + i as f64, hy) * 3.0) as usize % 3]);
-            let tilt = (hash(hx, hy + i as f64) as f32 - 0.5) * 0.06;
-            cube(&mut self.static_cubes, at(Vec3::new(tilt, -0.015 + arch, z)), Vec3::new(0.96, 0.05, 0.15), turn + tilt, c);
-        }
-        // Beams under the deck, posts and rails on either side.
-        for sx in [-0.38f32, 0.38] {
-            cube(&mut self.static_cubes, at(Vec3::new(sx, -0.08, 0.0)), Vec3::new(0.08, 0.08, 1.35), turn, lin(WOOD_D));
-        }
-        for sx in [-0.5f32, 0.5] {
-            for sz in [-0.5f32, 0.5] {
-                cube(&mut self.static_cubes, at(Vec3::new(sx, 0.18, sz)), Vec3::new(0.08, 0.42, 0.08), turn, lin(WOOD_D));
-            }
-            cube(&mut self.static_cubes, at(Vec3::new(sx, 0.37, 0.0)), Vec3::new(0.06, 0.06, 1.12), turn, lin(WOOD[0]));
-            cube(&mut self.static_cubes, at(Vec3::new(sx, 0.2, 0.0)), Vec3::new(0.04, 0.04, 1.02), turn, lin(WOOD[1]));
-        }
-    }
-
-    /// A weathered column of stone drums on a plinth; some have lost their tops.
-    fn build_pillar(&mut self, x: i32, y: i32) {
-        let (xf, yf) = (x as f32, y as f32);
-        let (hx, hy) = (x as f64, y as f64);
-        let start = self.static_cubes.len();
-        let broken = hash(hx * 3.0, hy * 7.0) < 0.34;
-        cube(&mut self.static_cubes, Vec3::new(xf, 0.08, yf), Vec3::new(0.82, 0.16, 0.82), 0.0, lin(STONE_D));
-        cube(&mut self.static_cubes, Vec3::new(xf, 0.19, yf), Vec3::new(0.68, 0.06, 0.68), 0.0, lin(STONE));
-        let drums = if broken { 3 } else { 5 };
-        let mut top = 0.22;
-        for i in 0..drums {
-            let hk = hash(hx + i as f64 * 1.3, hy - i as f64) as f32;
-            let c = lin(if i % 2 == 0 { STONE } else { STONE_D }) * (0.92 + hk * 0.14);
-            let hgt = 0.3;
-            cube(&mut self.static_cubes, Vec3::new(xf, top + hgt / 2.0, yf), Vec3::new(0.5, hgt - 0.015, 0.5), (hk - 0.5) * 0.2, c);
-            // Fluting: shallow ribs on each face.
-            for f in 0..4 {
-                let a = f as f32 * PI / 2.0 + (hk - 0.5) * 0.2;
-                let n = Vec3::new(a.cos(), 0.0, a.sin());
-                cube(&mut self.static_cubes, Vec3::new(xf, top + hgt / 2.0, yf) + n * 0.25, Vec3::new(0.06, hgt - 0.05, 0.06), a, c * 0.9);
-            }
-            top += hgt;
-        }
-        if broken {
-            // A jagged break, with the fallen pieces in the grass.
-            for k in 0..3 {
-                let hk = hash(hx * 9.0 + k as f64, hy * 4.0) as f32;
-                let off = Vec3::new((hk - 0.5) * 0.3, 0.0, (hash(hy, hx + k as f64) as f32 - 0.5) * 0.3);
-                cube(
-                    &mut self.static_cubes,
-                    Vec3::new(xf, top + 0.05 + hk * 0.08, yf) + off,
-                    Vec3::new(0.2, 0.12 + hk * 0.1, 0.2),
-                    hk * 4.0,
-                    lin(STONE),
-                );
-            }
-            let a = hash(hx, hy) as f32 * TAU;
-            let fallen = Vec3::new(xf + a.cos() * 0.62, 0.13, yf + a.sin() * 0.62);
-            cube(&mut self.static_cubes, fallen, Vec3::new(0.5, 0.26, 0.28), a, lin(STONE_D));
-            cube(
-                &mut self.static_cubes,
-                fallen + Vec3::new(a.sin() * 0.2, -0.05, -a.cos() * 0.2),
-                Vec3::new(0.22, 0.16, 0.2),
-                a + 0.7,
-                lin(STONE),
-            );
-        } else {
-            cube(&mut self.static_cubes, Vec3::new(xf, top + 0.07, yf), Vec3::new(0.74, 0.14, 0.74), 0.0, lin(STONE));
-            cube(&mut self.static_cubes, Vec3::new(xf, top + 0.17, yf), Vec3::new(0.62, 0.06, 0.62), 0.0, lin(STONE_D));
-            top += 0.2;
-            // A fire bowl on top, smoking into the dusk.
-            cube(&mut self.static_cubes, Vec3::new(xf, top + 0.06, yf), Vec3::new(0.36, 0.12, 0.36), 0.0, lin(0x2a2a2e));
-            let m = Mat4::from_translation(Vec3::new(xf, top + 0.13, yf)) * Mat4::from_scale(Vec3::new(0.26, 0.04, 0.26));
-            self.static_cubes.push(Instance::new(m, lin(0xff8a30), 1.0, lin(0xff7020) * 2.0, SHADE_LIT));
-            self.candles.push(Vec3::new(xf, top + 0.45, yf));
-            self.smoke.push((Vec3::new(xf, top + 0.3, yf), 0.9));
-        }
-        // Moss creeping up from the base.
-        for k in 0..7 {
-            let hk = hash(hx * 13.0 + k as f64, hy * 17.0) as f32;
-            let a = hk * TAU;
-            let n = Vec3::new(a.cos(), 0.0, a.sin());
-            let h = 0.25 + hash(hy * 3.0, hx + k as f64) as f32 * 0.5;
-            cube(
-                &mut self.static_cubes,
-                Vec3::new(xf, h, yf) + n * 0.27,
-                Vec3::new(0.14, 0.1 + hk * 0.1, 0.05),
-                a + PI / 2.0,
-                lin(MOSS) * (0.9 + hk * 0.2),
-            );
-        }
-        let len = self.static_cubes.len() - start;
-        self.tree_index.insert(tile_key(x, y), self.trees.len());
-        self.trees.push(Tree {
-            range: (start, len),
-            base: Vec3::new(xf, 0.0, yf),
-            radius: 0.42,
-            height: top,
-            fade: 1.0,
-            alive: true,
-            shades: None,
-        });
-    }
-
-    /// One tile of low brick wall: a mortar core, three staggered courses of bricks, coping on top.
-    fn build_low_wall(&mut self, x: f32, y: f32, horizontal: bool) {
-        let turn = if horizontal { 0.0 } else { PI / 2.0 };
-        let q = Quat::from_rotation_y(turn);
-        let at = |p: Vec3| Vec3::new(x, 0.0, y) + q * p;
-        let (hx, hy) = (x as f64, y as f64);
-        cube(&mut self.static_cubes, at(Vec3::new(0.0, 0.2, 0.0)), Vec3::new(1.0, 0.4, 0.3), turn, lin(MORTAR));
-        for course in 0..3 {
-            let yc = 0.07 + course as f32 * 0.132;
-            let shift = if course % 2 == 0 { 0.0 } else { 0.125 };
-            for b in 0..5 {
-                let cx = -0.5 + shift + b as f32 * 0.25;
-                let (a, z) = ((cx - 0.115).max(-0.5), (cx + 0.115).min(0.5));
-                if z - a < 0.05 {
-                    continue;
-                }
-                let hk = hash(hx * 7.0 + b as f64 + course as f64 * 3.1, hy * 5.0 + course as f64) as f32;
-                let c = lin(BRICKS[(hk * 4.0) as usize % 4]) * (0.92 + hk * 0.12);
-                cube(&mut self.static_cubes, at(Vec3::new((a + z) / 2.0, yc, 0.0)), Vec3::new(z - a, 0.115, 0.34), turn, c);
-            }
-        }
-        for k in 0..2 {
-            let hk = hash(hx * 3.0 + k as f64, hy * 11.0) as f32;
-            cube(
-                &mut self.static_cubes,
-                at(Vec3::new(-0.25 + k as f32 * 0.5, 0.435, 0.0)),
-                Vec3::new(0.49, 0.07, 0.4),
-                turn,
-                lin(STONE) * (0.9 + hk * 0.15),
-            );
-        }
+        self.build_meadow_field(grid);
     }
 
     /// A green cross that appears mid-fight.
@@ -454,35 +76,21 @@ impl WorldView {
         });
     }
 
-    /// Water, butterflies and pollen: the meadow's moving parts.
+    /// The meadow's moving parts: the spring's fall, moths and the last butterflies, fireflies
+    /// over the stream, dust in the low sun, and the slams' rings.
     pub(super) fn emit_meadow(&self, time: f32, f: &mut Frame) {
         let cube_k = MeshKind::Cube as usize;
-        let water = lin(WATER);
-        for &(p, along_x) in &self.water {
-            let (x, z) = (p.x as f32, p.y as f32);
-            let shimmer = 0.94 + (time * 1.7 + x * 0.9 + z * 0.4).sin() * 0.06;
-            let m = Mat4::from_translation(Vec3::new(x, -0.1, z)) * Mat4::from_scale(Vec3::new(1.0, 0.02, 1.0));
-            f.transparent[cube_k].push(Instance::new(m, water * shimmer, 0.8, Vec3::ZERO, SHADE_LIT));
-            // Glints drifting downstream.
-            for k in 0..3 {
-                let hk = hash(x as f64 * 3.0 + k as f64, z as f64 * 7.0) as f32;
-                let u = (time * (0.35 + hk * 0.2) + hk * 7.0).fract();
-                let along = u - 0.5;
-                let across = (hash(z as f64 + k as f64, x as f64) as f32 - 0.5) * 0.7;
-                let pos = if along_x { Vec3::new(x + along, -0.085, z + across) } else { Vec3::new(x + across, -0.085, z + along) };
-                let s = if along_x { Vec3::new(0.2, 0.004, 0.035) } else { Vec3::new(0.035, 0.004, 0.2) };
-                let m = Mat4::from_translation(pos) * Mat4::from_scale(s);
-                f.additive.push(Instance::new(m, Vec3::splat(0.9), 0.35 * (u * PI).sin(), Vec3::ZERO, SHADE_UNLIT));
-            }
+        for (i, &(mouth, out, foot)) in self.spouts.iter().enumerate() {
+            super::crypt::emit_fall(f, mouth, out, foot, time, i as f32);
         }
-        // Butterflies wandering over the grass.
+        // Butterflies and moths wandering over the grass, fewer at dusk.
         let (x0, y0, x1, y1) = ARENA;
-        for i in 0..18 {
+        for i in 0..10 {
             let fi = i as f32;
             let bx = x0 as f32 + hash(fi as f64, 3.0) as f32 * (x1 - x0) as f32;
             let bz = y0 as f32 + hash(fi as f64, 7.0) as f32 * (y1 - y0) as f32;
             let path = |t: f32| {
-                Vec3::new(bx + (t * 0.3 + fi).sin() * 2.2, 0.55 + (t * 1.3 + fi).sin() * 0.25, bz + (t * 0.23 + fi * 1.7).cos() * 2.2)
+                Vec3::new(bx + (t * 0.3 + fi).sin() * 2.2, 0.45 + (t * 1.3 + fi).sin() * 0.2, bz + (t * 0.23 + fi * 1.7).cos() * 2.2)
             };
             let p = path(time);
             let ahead = path(time + 0.05) - p;
@@ -493,15 +101,44 @@ impl WorldView {
                 let m = Mat4::from_translation(p)
                     * Mat4::from_rotation_y(heading)
                     * Mat4::from_rotation_z(side * flap)
-                    * Mat4::from_translation(Vec3::new(side * 0.045, 0.0, 0.0))
-                    * Mat4::from_scale(Vec3::new(0.08, 0.006, 0.07));
-                f.opaque[cube_k].push(Instance::new(m, color, 1.0, color * 0.15, SHADE_LIT));
+                    * Mat4::from_translation(Vec3::new(side * 0.04, 0.0, 0.0))
+                    * Mat4::from_scale(Vec3::new(0.07, 0.006, 0.06));
+                f.opaque[cube_k].push(Instance::new(m, color, 1.0, Vec3::ZERO, crypt::SHADE_CLOTH));
             }
             let body = Mat4::from_translation(p) * Mat4::from_rotation_y(heading) * Mat4::from_scale(Vec3::new(0.015, 0.015, 0.06));
             f.opaque[cube_k].push(Instance::new(body, lin(0x2a2018), 1.0, Vec3::ZERO, SHADE_LIT));
         }
-        // Pollen in the sunlight.
-        for (i, b) in self.mote_base.iter().enumerate().take(70) {
+        // Fireflies coming out over the stream and along the treeline.
+        let (w, h) = (self.level_dims.x, self.level_dims.y);
+        for i in 0..28 {
+            let fi = i as f32;
+            let k = hash(fi as f64 * 1.3, 5.0) as f32;
+            let home = if i < 16 {
+                Vec3::new(x0 as f32 + k * (x1 - x0) as f32, 0.35, STREAM_ROW as f32 + (hash(fi as f64, 9.0) as f32 - 0.5) * 1.6)
+            } else {
+                let t = k * 2.0 * (w + h);
+                let (x, z) = if t < w {
+                    (t, 1.0)
+                } else if t < 2.0 * w {
+                    (t - w, h - 2.0)
+                } else if t < 2.0 * w + h {
+                    (1.0, t - 2.0 * w)
+                } else {
+                    (w - 2.0, t - 2.0 * w - h)
+                };
+                Vec3::new(x, 0.6, z)
+            };
+            let p =
+                home + Vec3::new((time * 0.5 + fi).sin() * 0.5, (time * 0.9 + fi * 0.7).sin() * 0.18, (time * 0.4 + fi * 1.3).cos() * 0.5);
+            let phase = (time * (0.35 + (fi * 0.618).fract() * 0.3) + fi * 0.37).fract();
+            let flash = (1.0 - (phase * 3.0 - 0.5).abs() * 2.0).max(0.0);
+            glow_orb(f, p, 0.035 + 0.015 * flash, lin(FIREFLY) * 0.8, 0.3 + 0.7 * flash * flash);
+            if flash > 0.3 {
+                glow_orb(f, p, 0.14 + 0.08 * flash, lin(FIREFLY) * 0.8, 0.25 * flash);
+            }
+        }
+        // Dust in the low sun.
+        for (i, b) in self.mote_base.iter().enumerate().take(50) {
             let fi = i as f32;
             let p = Vec3::new(
                 b.x + (time * 0.3 + fi).sin() * 0.5,
@@ -509,7 +146,7 @@ impl WorldView {
                 b.z + (time * 0.25 + fi * 1.3).cos() * 0.5,
             );
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.03));
-            f.additive.push(Instance::new(m, lin(0xfff6c8), 0.3 + (time * 1.5 + fi).sin() * 0.15, Vec3::ZERO, SHADE_UNLIT));
+            f.additive.push(Instance::new(m, lin(0xffd8a0), 0.18 + (time * 1.5 + fi).sin() * 0.1, Vec3::ZERO, SHADE_UNLIT));
         }
         for &(p, t) in &self.rings {
             let k = t / RING_SECONDS;

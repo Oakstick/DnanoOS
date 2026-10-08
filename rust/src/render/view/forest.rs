@@ -214,7 +214,7 @@ impl WorldView {
                     let (dx, dy) = d.vec();
                     let slide = (hk - 0.5) * 0.6;
                     let p = Vec3::new(xf + dx as f32 * 0.12 + dy as f32 * slide, top, yf + dy as f32 * 0.12 + dx as f32 * slide);
-                    self.build_bush(p, 0.8 + hk * 0.45, true);
+                    self.build_bush(p, 0.8 + hk * 0.45);
                 }
             }
             self.rock_index.insert(tile_key(x, y), (start, self.static_cubes.len() - start));
@@ -337,5 +337,17 @@ impl WorldView {
                 * Mat4::from_scale(Vec3::new(0.05, len, 0.015));
             self.static_cubes.push(Instance::new(m, lin(if k % 2 == 0 { FERN } else { FERN_L }), 1.0, Vec3::ZERO, SHADE_LIT));
         }
+    }
+}
+
+impl WorldView {
+    /// A round leafy bush (a voxel sculpt: clumps of leaves, a ragged fringe, a lit crown, some
+    /// with berries), in one of four shapes, turned and sized where it grows.
+    pub(super) fn build_bush(&mut self, at: Vec3, size: f32) {
+        let (hx, hy) = (at.x as f64 * 13.0, at.z as f64 * 17.0);
+        let variant = (hash(hx * 0.5, hy * 0.5) * 4.0) as usize % 4;
+        let turn = hash(hy, hx) as f32 * TAU;
+        let shade = 0.94 + hash(hx + 1.0, hy - 1.0) as f32 * 0.12;
+        push_field(&mut self.static_cubes, &self.models.forest_bushes[variant], at, turn, size, Vec3::splat(shade), Vec3::ZERO, SHADE_LIT);
     }
 }

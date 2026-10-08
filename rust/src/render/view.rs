@@ -29,7 +29,7 @@ use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P, V};
 use crate::logic::vault::{Loot, Vault};
 use crate::logic::{gear, progression, systems};
 use crate::render::foliage;
-use crate::render::foliage::{FOREST, MEADOW};
+use crate::render::foliage::FOREST;
 
 mod angels;
 mod animation;
@@ -65,6 +65,7 @@ mod juice;
 mod lair;
 mod lookdev;
 mod meadow;
+mod meadow_field;
 mod models;
 mod pit;
 mod portrait;
@@ -818,7 +819,7 @@ impl WorldView {
         let thick = 0.1 + h;
         let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
         let patch = if self.meadow {
-            lin(0x62b437)
+            lin(meadow_field::pal::TURF) * 0.8
         } else if self.estate_art {
             lin(garden_beds::pal::GRAVEL[0])
         } else {
@@ -831,7 +832,7 @@ impl WorldView {
             1.0,
             Vec3::ZERO,
             if self.meadow {
-                SHADE_LIT
+                SHADE_GRASS
             } else if self.estate_art {
                 crypt::SHADE_FLAG
             } else {

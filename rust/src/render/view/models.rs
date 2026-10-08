@@ -196,9 +196,7 @@ pub(super) struct Models {
     /// The Cyclops' red diamond key.
     /// The diamond keys the bosses drop: the Cyclops' red one, then one in each sin's colour.
     pub(super) keys: Vec<Mesh>,
-    /// The meadow's hedge ring, its bushes, and the forest's darker bushes: four shapes of each.
-    pub(super) hedges: Vec<Mesh>,
-    pub(super) bushes: Vec<Mesh>,
+    /// The forest's dark bushes: four shapes.
     pub(super) forest_bushes: Vec<Mesh>,
     /// The seven portal doors of the Portals of Hell, each a pair of leaves carrying its sin in relief,
     /// and the sin's name in letters for the lintel.
@@ -417,8 +415,6 @@ impl Models {
             tree: crate::render::props::pine(),
             key: gate::golden_key(),
             keys: std::iter::once(gate::RED_GEM).chain(SINS.iter().map(|s| s.color())).map(gate::diamond_key).collect(),
-            hedges: (0..4).map(foliage::hedge_block).collect(),
-            bushes: (0..4).map(|v| foliage::bush(v, MEADOW)).collect(),
             forest_bushes: (0..4).map(|v| foliage::small_bush(v, FOREST)).collect(),
             portal_doors: SINS.iter().map(|&s| hell::portal_doors(s)).collect(),
             portal_names: SINS.iter().map(|&s| hell::carved_name(s.title())).collect(),

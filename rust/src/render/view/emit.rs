@@ -417,7 +417,7 @@ impl WorldView {
             hero_light = 3.0;
         }
         if self.meadow {
-            hero_light *= 0.25; // broad daylight; the lantern barely shows
+            hero_light *= 0.4; // dusk: the lantern keeps him seen, the low sun and the braziers light the field
         }
         if self.hell {
             hero_light *= 0.45; // the lava lights him from below
@@ -931,14 +931,20 @@ impl WorldView {
         // The vaults' braziers and the garden's lanterns burn amber; other forests a greenish gold.
         let torch = if self.crypt {
             lin(crypt::pal::EMBER)
-        } else if self.estate_art {
-            lin(estate::pal::LANTERN)
+        } else if self.estate_art || self.meadow {
+            meadow_field::lamp_colour()
         } else {
             lin(TORCH_LIGHT)
         };
         // The garden's lanterns are its practicals (RP17 bins every one): each in sight a pool of
         // its own, so more of them burn at once than the old three nearest, each reaching less far.
-        let count = if self.estate_art { GARDEN_LANTERNS_LIT } else { LIGHT_POOL_TORCHES };
+        let count = if self.estate_art {
+            GARDEN_LANTERNS_LIT
+        } else if self.meadow {
+            meadow_field::MEADOW_LAMPS_LIT
+        } else {
+            LIGHT_POOL_TORCHES
+        };
         for (i, p) in nearest(&torch_points, focus, count).into_iter().enumerate() {
             let fi = i as f32;
             let intensity = 4.5 + (time * 3.0 + fi * 2.3).sin() * 0.5 + (time * 7.0 + fi).sin() * 0.3;
@@ -947,6 +953,10 @@ impl WorldView {
                 (1.5, 8.5)
             } else if self.estate_art {
                 (0.95, 5.5)
+            } else if self.meadow {
+                // The meadow's braziers and lanterns at dusk: pools of their own on the turf and
+                // the wet stone, against the low sun.
+                (1.1, 5.5)
             } else {
                 (1.0, 7.0)
             };

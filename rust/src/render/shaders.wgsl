@@ -1178,6 +1178,12 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
     var sky = mix(g.fog.rgb, g.fog.rgb * 1.4 + vec3<f32>(0.05), clamp(r.y, 0.0, 1.0));
     if (g.sky_fwd.w > 0.0) {
         sky = sky_color(normalize(vec3<f32>(r.x, abs(r.y), r.z)), 0.004, time);
+        // At dusk (the Cyclops' meadow) the stream lies low between its banks, ringed by the
+        // treeline: low down it mirrors the dark woods, not the bright west, and higher up the sky
+        // at half strength, so it reads dark and holds the lamps.
+        if (g.sky_fwd.w > 1.5) {
+            sky *= mix(0.12, 0.5, smoothstep(0.08, 0.5, r.y));
+        }
     }
     let fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, view_dir), 0.0), 5.0);
     // The body of the water: dark, lit faintly from above and by lights nearby.
@@ -1202,10 +1208,11 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
         let hv = normalize(ld + view_dir);
         spec += pow(max(dot(n, hv), 0.0), 220.0) * l.color.rgb * att * 3.0;
     }
-    // A broad moonlit sheen around the moon's reflection, broken up by the ripples.
+    // A broad moonlit sheen around the moon's reflection, broken up by the ripples (at dusk the
+    // low sun's, kept to a glitter so the stream stays dark).
     let md = normalize(g.sky_moon.xyz);
     let sheen = pow(max(dot(r, md), 0.0), 40.0) * 0.5 + pow(max(dot(r, md), 0.0), 6.0) * 0.08;
-    let ripple_light = g.hemi_sky.rgb * (0.05 + 0.25 * clamp(h0 - 0.35, 0.0, 1.0)) + g.moon_color.rgb * sheen * g.sky_fwd.w;
+    let ripple_light = g.hemi_sky.rgb * (0.05 + 0.25 * clamp(h0 - 0.35, 0.0, 1.0)) + g.moon_color.rgb * sheen * select(g.sky_fwd.w, 0.35, g.sky_fwd.w > 1.5);
     let body_out = finish(body + spec + ripple_light);
     let mirror = clamp(fres * 1.5 + 0.3, 0.0, 1.0);
     let sky_out = from_display(sky);
