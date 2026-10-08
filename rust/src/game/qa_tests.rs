@@ -448,3 +448,22 @@ fn a_foe_whose_den_turned_to_rock_goes_home_where_it_stood() {
     assert!(d.den.is_some_and(|den| den.contains(d.pos)), "its den goes with it");
 }
 
+/// F2 (the testing cheat) sets him before the gate on its inner side, in a court's south wall as in
+/// the garden's north hedge, never inside the wall (QA.md Q4).
+#[test]
+fn the_gate_cheat_sets_him_on_floor_before_every_gate() {
+    let _dir = own_folder("gate-cheat");
+    let mut stages = vec![Stage::Dungeon(0), Stage::Arena(0)];
+    stages.extend(SINS.iter().map(|&s| Stage::Court(s)));
+    for stage in stages {
+        let mut g = Game::new();
+        g.map_jump(stage);
+        g.enter(Screen::Playing);
+        if matches!(stage, Stage::Arena(_)) {
+            g.debug_wound_boss(100_000);
+        }
+        g.cheat_to_gate();
+        let p = g.hero.pos();
+        assert!(g.level.grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false), "{stage:?}: at ({:.1}, {:.1})", p.x, p.y);
+    }
+}
