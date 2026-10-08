@@ -45,9 +45,9 @@ pub(super) mod pal {
     /// Old timber, silvered and umber.
     pub const TIMBER: [u32; 3] = [0x5e5446, 0x52483c, 0x6a5e4c];
     /// Leaves and needles of the treeline: dark, a silhouette against the dusk.
-    pub const LEAF: [u32; 3] = [0x2c3a28, 0x34442c, 0x3c4c32];
+    pub const LEAF: [u32; 3] = [0x30402a, 0x384a2e, 0x425434];
     pub const LEAF_LIT: u32 = 0x56603a;
-    pub const PINE: [u32; 2] = [0x1d2f23, 0x25382a];
+    pub const PINE: [u32; 2] = [0x22372a, 0x2b4130];
     pub const BARK: [u32; 2] = [0x3e3128, 0x30271f];
     /// Bramble and ivy on the ruins.
     pub const BRAMBLE: [u32; 2] = [0x2c3a24, 0x344428];
@@ -227,20 +227,20 @@ fn field_tree(out: &mut Vec<Instance>, base: Vec3, fir: bool, height: f32, reach
             block(
                 out,
                 top + Vec3::Y * (y + crown * 0.08),
-                Vec3::new(wd * 1.3, crown * 0.2, wd * 1.3),
+                Vec3::new(wd * 0.85, crown * 0.18, wd * 0.85),
                 i as f32 * 0.785 + r(27.0),
                 c * 0.8,
                 SHADE_SOFT,
             );
-            for b in 0..4 {
-                let a = b as f32 / 4.0 * TAU + i as f32 * 0.785 + r(26.0 + b as f64) * 0.4;
+            for b in 0..6 {
+                let a = b as f32 / 6.0 * TAU + i as f32 * 0.52 + r(26.0 + b as f64) * 0.4;
                 let len = wd * (0.9 + r(28.0 + (i * 5 + b) as f64) * 0.3);
                 let dir = Vec3::new(a.cos(), 0.0, a.sin());
-                let rot = Quat::from_rotation_y(-a) * Quat::from_rotation_z(-0.3);
+                let rot = Quat::from_rotation_y(-a) * Quat::from_rotation_z(-0.38);
                 block_m(
                     out,
                     Mat4::from_scale_rotation_translation(
-                        Vec3::new(len, 0.1, wd * 0.7),
+                        Vec3::new(len, 0.09, wd * 0.45),
                         rot,
                         top + Vec3::Y * (y + 0.04) + dir * len * 0.45,
                     ),
@@ -282,21 +282,35 @@ fn field_tree(out: &mut Vec<Instance>, base: Vec3, fir: bool, height: f32, reach
         }
     }
     let mut k = 10.0;
-    for j in 0..10 {
+    for j in 0..16 {
         k += 1.0;
-        let a = j as f32 / 10.0 * TAU + r(k) * 0.6;
+        let a = j as f32 / 16.0 * TAU * 3.0 + r(k) * 0.6;
         let y = 0.2 + (j % 3) as f32 * 0.25 + (r(k + 0.4) - 0.5) * 0.12;
         let rr = reach * (0.8 - (y - 0.2) * 0.45) * (0.85 + r(k + 0.5) * 0.25);
-        let s = reach * (0.36 + r(k + 0.2) * 0.18);
+        let s = reach * (0.28 + r(k + 0.2) * 0.16);
         let at = top + Vec3::new(a.cos() * rr, crown * y, a.sin() * rr);
-        let rot = Quat::from_rotation_y(a + r(k + 1.3)) * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.6) * Quat::from_rotation_z((r(k + 1.6) - 0.5) * 0.6);
-        block_m(out, Mat4::from_scale_rotation_translation(Vec3::new(s, s * 0.7, s * 0.85), rot, at), jit(LEAF[j % 3], r(k + 1.1) as f64, 0.12), SHADE_SOFT);
+        let rot = Quat::from_rotation_y(a + r(k + 1.3))
+            * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.6)
+            * Quat::from_rotation_z((r(k + 1.6) - 0.5) * 0.6);
+        block_m(
+            out,
+            Mat4::from_scale_rotation_translation(Vec3::new(s, s * 0.7, s * 0.85), rot, at),
+            jit(LEAF[j % 3], r(k + 1.1) as f64, 0.12),
+            SHADE_SOFT,
+        );
     }
     for j in 0..2 {
         let a = j as f32 * 2.6 + r(30.0) * 3.0;
         let cap = reach * (0.42 + r(31.0 + j as f64) * 0.12);
         let at = top + Vec3::new(a.cos() * reach * 0.22, crown * 0.97, a.sin() * reach * 0.22);
-        block(out, at, Vec3::new(cap, cap * 0.45, cap * 0.85), r(32.0 + j as f64) * 3.0, jit(LEAF_LIT, r(33.0 + j as f64) as f64, 0.1) * 0.85, SHADE_SOFT);
+        block(
+            out,
+            at,
+            Vec3::new(cap, cap * 0.45, cap * 0.85),
+            r(32.0 + j as f64) * 3.0,
+            jit(LEAF_LIT, r(33.0 + j as f64) as f64, 0.1) * 0.85,
+            SHADE_SOFT,
+        );
     }
 }
 
@@ -829,7 +843,11 @@ impl WorldView {
             bramble(out, c + off, 0.3, 0.3, (hx * 2.0, hy * 3.0));
         }
         // A lantern on a short iron crook at the end of the run nearer the arena's middle.
-        let toward = |d: (i32, i32)| (d.0 != 0 && (d.0 > 0) == (x < ARENA_GATE.0)) || (d.1 != 0 && (d.1 > 0) == (y < STREAM_ROW));
+        // (Close by the track up the middle, the end away from it, so the way in from the south
+        // is not walked between two lamps.)
+        let near_track = (x - ARENA_GATE.0).abs() <= 2 && y > STREAM_ROW;
+        let toward =
+            |d: (i32, i32)| ((d.0 != 0 && (d.0 > 0) == (x < ARENA_GATE.0)) != near_track) || (d.1 != 0 && (d.1 > 0) == (y < STREAM_ROW));
         if let Some((dx, dy)) = end_of_run.filter(|&d| toward(d)) {
             let foot = c + Vec3::new(dx as f32 * 0.3, LOW_WALL_H + 0.05, dy as f32 * 0.3);
             let iron = lin(IRON).lerp(lin(0x5a3a26), 0.3);
@@ -957,17 +975,20 @@ impl WorldView {
                     }
                 }
             }
-            for j in 0..5 {
+            // Its top: clumps in a loose three by three, each its own height and tone, spilling a
+            // little past the wall's line, so from above it reads as a mound of growth, not a box.
+            for j in 0..9 {
                 let (a, b) = (r(40.0 + j as f64), r(50.0 + j as f64));
-                let s = 0.24 + a * 0.16;
-                let h = 0.1 + b * 0.12;
-                let tone = if j % 2 == 0 { lin(HEDGE_LIT) * 0.9 } else { lin(HEDGE[j % 3]) };
+                let (gx, gz) = ((j % 3) as f32 - 1.0, (j / 3) as f32 - 1.0);
+                let s = 0.3 + a * 0.16;
+                let h = 0.08 + b * 0.16;
+                let tone = if (a * 7.0).fract() < 0.35 { lin(HEDGE_LIT) } else { lin(HEDGE[j % 3]) * 1.15 };
                 block(
                     out,
-                    c + Vec3::new((a - 0.5) * 0.55, top - 0.04 + h / 2.0, (b - 0.5) * 0.55),
+                    c + Vec3::new(gx * 0.31 + (a - 0.5) * 0.14, top - 0.06 + h / 2.0, gz * 0.31 + (b - 0.5) * 0.14),
                     Vec3::new(s, h, s * 0.9),
                     a * 3.0,
-                    tone * (0.9 + b * 0.2),
+                    tone * (0.85 + b * 0.3),
                     SHADE_SOFT,
                 );
             }
