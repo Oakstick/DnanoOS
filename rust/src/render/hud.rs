@@ -274,7 +274,11 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         draw_hud(o, g, if g.show_fps { Some(fps) } else { None });
         minimap::draw(o, g, t);
         draw_feedback(o, g, t);
-        dialogue::draw(o, g);
+        // (The pause covers the line being spoken: its menu and the road down sit where the panel
+        // does, and its keys are the menu's. QA.md Q15.)
+        if g.screen != Screen::Paused {
+            dialogue::draw(o, g);
+        }
     }
     match g.screen {
         Screen::Title => {

@@ -695,3 +695,29 @@ fn dying_anywhere_brings_him_back_on_floor_and_the_last_life_to_the_title() {
         assert!(g.can_continue() && g.saved_run.as_ref().is_some_and(|r| r.stage == stage), "{stage:?}: Continue comes back here");
     }
 }
+
+/// The old man speaking as the game is paused: his panel is not drawn under the pause menu, where
+/// the road down and the score sat over its words and its "Enter skip" read as the menu's (QA.md Q15).
+#[test]
+fn the_pause_hides_the_line_being_spoken() {
+    let _dir = own_folder("pause-line");
+    let mut g = Game::new();
+    g.map_jump(Stage::Realm(Sin::Greed));
+    g.enter(Screen::Playing);
+    for _ in 0..30 {
+        g.update(STEP);
+    }
+    g.debug_counsel();
+    g.update(STEP);
+    assert!(g.voices_line().is_some(), "he speaks");
+    g.enter(Screen::Paused);
+    let verts = |g: &Game| {
+        let mut o = Overlay::new();
+        o.begin(1920.0, 1080.0);
+        crate::render::hud::draw(&mut o, g, 60);
+        o.verts.len()
+    };
+    let speaking = verts(&g);
+    g.voices.spoken = None;
+    assert_eq!(speaking, verts(&g), "nothing of his panel under the pause");
+}
