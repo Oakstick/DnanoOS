@@ -351,7 +351,7 @@ mod tests {
         g.input.inject(Action::Pause);
         step(&mut g);
         assert!(!g.show_map);
-        // Once opened, DEV MAP stands on the title and in the pause menu.
+        // Once opened, LEVELS stands on the title and in the pause menu.
         assert!(g.menu_items().contains(&MenuItem::DevMap));
         let mut g = playing();
         g.input.inject(Action::DevMap);

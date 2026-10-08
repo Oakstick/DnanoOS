@@ -621,8 +621,8 @@ it is bound), `wheel_turned()` and `sticks()`.
 **The developer's map** (`game/map.rs`, `render/hud/map.rs`, unchanged in look). The pause menu's
 MAP is the player's map now. The list of stops is the developer's map: **F12 opens it in every
 build** (from the title, play, the pause menu, or over the full map; a fixed key like the other
-testing keys, taken out of the keys the player may bind), and **DEV MAP** stands on the title and
-in the pause menu in developer builds, with `--dev` on the command line, or for the rest of the
+testing keys, taken out of the keys the player may bind), and **LEVELS** (it was DEV MAP) stands on the title and
+in the pause menu in developer builds and the Desktop release builds (`VH_DEV_MENU`, 2026-10-08), with `--dev` on the command line, or for the rest of the
 session once F12 has opened it (`Game::dev`). Decided so because the user tests with the release
 build: one key from anywhere, and its buttons back after the first press. It gained two stops, the
 full map of the garden and of the vaults (every new screen on the Map). On the web, F12 reaches the

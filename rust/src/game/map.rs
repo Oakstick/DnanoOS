@@ -1,5 +1,6 @@
-//! The developer's map, from F12 (in any build) or DEV MAP on the title and the pause menu (in
-//! developer builds, with `--dev`, or once F12 has opened it): every stop on the road down (the
+//! The developer's map, from F12 (in any build) or LEVELS on the title and the pause menu (in
+//! developer builds and the Desktop builds `tools/release.sh` makes, with `--dev`, or once F12 has
+//! opened it): every stop on the road down (the
 //! Garden and its Cyclops, the Portals of Hell, then each sin's realm and its prince's court, the
 //! Pit, the scenes, the full map), and a jump straight to any of them, for testing. It lies over
 //! the screen (drawn by `render::hud::map`) until B, Esc, Start or the map action puts it away.
@@ -166,7 +167,7 @@ impl Game {
     fn close_map(&mut self) {
         self.show_map = false;
         self.audio.play(Sfx::Nodule);
-        // Back on the menu, DEV MAP stays highlighted.
+        // Back on the menu, LEVELS stays highlighted.
         if let Some(i) = self.menu_items().iter().position(|&m| m == MenuItem::DevMap) {
             self.menu_index = i;
         }
