@@ -1,0 +1,12 @@
+{
+ "clip": "pass",
+ "fps": 60,
+ "frames": 87,
+ "loop": false,
+ "markers": {
+  "windup_end": 7,
+  "hit": 10,
+  "active_end": 11,
+  "recover_end": 87
+ }
+}

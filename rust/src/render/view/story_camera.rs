@@ -366,9 +366,10 @@ fn pursuit(t: f32) -> Take {
 
 /// The old man's lantern, by his stool (`gateway_lights`).
 const LANTERN: Vec3 = Vec3::new(2.4, 0.18, -2.25);
-/// His face, where he stands.
+/// His face, as he sits on his stool (by his clips: `marks::OLD_MAN_FACE`; standing by the code he
+/// is 0.1 higher and 0.25 nearer).
 fn old_face() -> Vec3 {
-    OLD_MAN_AT + v(0.0, 1.1, 0.0)
+    super::story::marks::OLD_MAN_FACE
 }
 
 fn arrive(t: f32) -> Take {
@@ -589,7 +590,7 @@ mod tests {
             let eye = game.view.story_camera(sv).eye;
             if (beat, t) == (first(Shot::OldMan).unwrap(), 0.0) {
                 // (The test sees what it looks for: the old man's middle, and the back wall.)
-                let him = GATEWAY + OLD_MAN_AT + v(0.0, 0.6, 0.0);
+                let him = GATEWAY + super::story_sets::STOOL + v(0.0, 0.75, 0.0);
                 assert!((0..f.rigs.draws.len()).any(|d| in_rig(&f.rigs, d, him, 0.0)));
                 let wall = GATEWAY + v(-3.0, 2.0, -3.6);
                 assert!(f.sets.iter().flat_map(|s| s.instances.iter()).any(|i| box_distance(Mat4::from_cols_array(&i.m), wall) == 0.0));

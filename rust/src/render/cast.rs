@@ -114,6 +114,12 @@ const KIDS: [Kid; 4] = [
     },
 ];
 
+/// Voxel sizes of the cast, in world units (tiles).
+pub const KID_VOXEL: f32 = 0.0115;
+pub const OLD_MAN_VOXEL: f32 = 0.012;
+pub const DOG_VOXEL: f32 = 0.013;
+pub const KRAMPUS_VOXEL: f32 = 0.015;
+
 /// The friends' grid: 36 wide, 64 tall, 26 deep.
 pub const KID_SIZE: (i32, i32, i32) = (36, 64, 26);
 /// Where each leg stands across the grid.
@@ -312,6 +318,9 @@ pub fn kid(which: usize) -> Collected {
             None
         }
     });
+    // (Tagged a part of its own, past the code rig's: drawn whole it is the body's; the jointed rig
+    // hangs it from the chest, to swing, `anim::cast_rigs`.)
+    s.part(6);
     for y in 20..=31 {
         let xo = 11 + ((31 - y) as f32 * 0.09) as i32;
         for x in xo..xo + 4 {

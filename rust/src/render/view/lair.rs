@@ -869,7 +869,16 @@ impl WorldView {
         }
         // The boy.
         let Some(l) = lair else {
-            self.emit_kid(f, 0, kid_root(root.transform_point3(Vec3::new(0.0, 0.05, 0.0)), 0.0), Act::Scared(0.4), time, 0.0, Vec3::ZERO);
+            self.emit_kid(
+                f,
+                0,
+                kid_root(root.transform_point3(Vec3::new(0.0, 0.05, 0.0)), 0.0),
+                Act::Scared(0.4),
+                time,
+                0.0,
+                Vec3::ZERO,
+                None,
+            );
             return;
         };
         let c = l.child;
@@ -883,21 +892,21 @@ impl WorldView {
                 let near_bars = Vec3::new(yaw.sin(), 0.0, yaw.cos()) * (0.45 - 0.35 * fear);
                 let act = if c.cry > 0.0 || rattled { Act::Scared(1.0) } else { Act::Scared(0.25 + 0.35 * fear) };
                 let feet = root.transform_point3(Vec3::new(near_bars.x, 0.05, near_bars.z));
-                self.emit_kid(f, 0, kid_root(feet, yaw), act, time, 0.0, Vec3::ZERO);
+                self.emit_kid(f, 0, kid_root(feet, yaw), act, time, 0.0, Vec3::ZERO, None);
             }
             ChildState::Climbing => {
                 let hop = (c.age as f32 / crate::game::lair::CLIMB as f32 * PI).sin() * 0.3;
                 let feet = Vec3::new(c.pos.x as f32, hop, c.pos.y as f32);
-                self.emit_kid(f, 0, kid_root(feet, yaw), Act::Run { phase: time * 6.0, pace: 0.5 }, time, 0.0, Vec3::ZERO);
+                self.emit_kid(f, 0, kid_root(feet, yaw), Act::Run { phase: time * 6.0, pace: 0.5 }, time, 0.0, Vec3::ZERO, None);
             }
             ChildState::Running => {
                 let feet = Vec3::new(c.pos.x as f32, 0.0, c.pos.y as f32);
-                self.emit_kid(f, 0, kid_root(feet, yaw), Act::Run { phase: time * 9.0, pace: 1.0 }, time, 0.0, Vec3::ZERO);
+                self.emit_kid(f, 0, kid_root(feet, yaw), Act::Run { phase: time * 9.0, pace: 1.0 }, time, 0.0, Vec3::ZERO, None);
             }
             ChildState::Held => {
                 let feet = Vec3::new(c.pos.x as f32, 0.0, c.pos.y as f32);
                 let glow = lin(0xfff4d8) * (0.15 * (c.age as f32).min(1.0));
-                self.emit_kid(f, 0, kid_root(feet, yaw), Act::Scared(0.55), time, 0.0, glow);
+                self.emit_kid(f, 0, kid_root(feet, yaw), Act::Scared(0.55), time, 0.0, glow, None);
             }
         }
     }

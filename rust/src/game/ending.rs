@@ -79,6 +79,7 @@ impl Game {
         self.floaters.clear();
         self.juice.banner = None;
         self.story = Some(Story::of(Scene::Two));
+        self.view.prepare_cast(true);
         self.enter(Screen::Story);
         self.audio.unlock();
         self.audio.hush();

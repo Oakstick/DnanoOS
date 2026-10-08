@@ -1,0 +1,9 @@
+{
+ "clip": "lie_down",
+ "fps": 60,
+ "frames": 70,
+ "loop": false,
+ "markers": {
+  "recover_end": 70
+ }
+}

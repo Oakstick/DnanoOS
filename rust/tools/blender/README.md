@@ -204,3 +204,33 @@ right). A prince's `roar` plays as each of his phases begins.
 
 `export_clips.py` thins each clip as it writes it (`thin_clips.py`, also standalone over written
 clips): a track keeps only the keys a straight line between its neighbours does not give back.
+
+## The story's cast (ANIMATION.md §12)
+
+`--export-rig kid0` (to `kid3`), `oldman`, `dog`, `krampus_shade` writes the cast's rigs; `import_rig.py`
+takes them into Blender as any rig.
+
+### mixamo_cast.py: the boys' and the old man's clips from Mixamo
+
+```
+blender -b kid0.blend -P tools/blender/mixamo_cast.py -- kid C:/Users/ulask/Games/mixamo kid.blend [slot ...]
+blender -b oldman.blend -P tools/blender/mixamo_cast.py -- oldman C:/Users/ulask/Games/mixamo om.blend [slot ...]
+```
+
+As `mixamo_hero.py` (its retarget, markers and trimming), a table for the boys (one set for the four:
+their bodies are one sculpt) and one for the old man, from the cast set in `cast/` (and the axe pack's
+plain walk). A kick's contact (`hit`) is found from the kicking foot (`kind="strike"`,
+`weapon="foot.R"`), a landing's from the feet (`kind="leap"`). `--try` as the others.
+
+### block_cast.py: what Mixamo has none of, keyed by script
+
+```
+blender -b -P tools/blender/block_cast.py -- dog dog_rig.glb dog.blend
+blender -b -P tools/blender/block_cast.py -- kid kid0_rig.glb kid.blend --onto kid.blend
+blender -b -P tools/blender/block_cast.py -- krampus_shade krampus_shade_rig.glb kr.blend
+```
+
+Quitmer's clips (on the wolves' `Wolf`: asleep, lying and watching, his tail going, rising, straining
+and snapping at his chain, lying down), Scene II's hug, and Scene I's Krampus's grab and his arm held
+up with his catch (the rest of his are the lair's). `--onto` adds them to a .blend that has the Mixamo
+clips already.
