@@ -1,7 +1,7 @@
 {
- "clip": "sit_idle",
+ "clip": "talk",
  "fps": 60,
- "frames": 384,
+ "frames": 236,
  "loop": true,
  "markers": {}
 }

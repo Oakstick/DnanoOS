@@ -51,10 +51,15 @@ KID = {
     # "He took him!"
     "yell": (C + "Yelling Out.fbx", dict(B, still=True)),
     "yell_short": (C + "Standing Yell.fbx", dict(B)),
+    "yell_long": (C + "standing long yell.fbx", dict(B, still=True, face=0.0, yaw_keep=0.0)),
+    "yell_back": (C + "long yell leaning back.fbx", dict(B, still=True, face=0.0, yaw_keep=0.0)),
     # After him, and down.
-    "run": (C + "Fast Run.fbx", dict(B, loop=True, stride="feet")),
-    "sprint": (C + "Sprint.fbx", dict(B, loop=True, stride="feet")),
-    "walk": ("melee-axe/unarmed walk forward.fbx", dict(B, loop=True, stride="feet")),
+    # (Their strides the ground the source's hips cover a cycle, at their scale; the game plays a gait
+    # by the ground a boy covers, calibrated so his planted foot stays put, lengthening his stride
+    # where it must, `view::cast_clips::GAITS`. Mixamo's Jogging was tried: its planted foot slips.)
+    "run": (C + "Fast Run.fbx", dict(B, loop=True, stride="auto")),
+    "sprint": (C + "Sprint.fbx", dict(B, loop=True, stride="auto")),
+    "walk": ("melee-axe/unarmed walk forward.fbx", dict(B, loop=True, stride="auto")),
     "walk_back": (C + "Walking Backwards.fbx", dict(B, loop=True, stride="feet")),
     "fall": (C + "Falling.fbx", dict(B, loop=True)),
     "land": (C + "Hard Landing.fbx", dict(B, kind="leap")),
@@ -72,20 +77,21 @@ KID = {
     "kneel": (C + "Kneeling.fbx", dict(B, loop=True)),
 }
 
-# The old gatekeeper: stooped and slow; his staff is the `blade` (upright in his right fist, the game
-# keeps it so); his free arm the left.
-STAFF = dict(weapon_rest=(0.0, 1.0, 0.0), arms_out=6, face=0.0)
+# The old gatekeeper, on his feet by his corner the whole scene, leaning on his staff: Mixamo's
+# Old Man Standing Idle and Slow Old Man Shuffle Walk; his talking, pointing (his free left hand:
+# mirrored), nodding and waving are laid over the idle's legs by the game (`view::cast_clips`). His
+# staff is the `blade`, held beside him by the game whatever his right hand does, so its clip is
+# not his.
+OLD = dict(weapon_rest=(0.0, 1.0, 0.0), arms_out=6, face=0.0)
 OLDMAN = {
-    "sit_idle": (C + "Sitting Idle.fbx", dict(STAFF, loop=True)),
-    "sit_talk": (C + "Sitting Talking.fbx", dict(STAFF, loop=True, span=(0.0, 12.0))),
-    "sit_talk_2": (C + "talking seated (old man).fbx", dict(STAFF, loop=True)),
-    # His free hand out (to the dog, to the door): Mixamo's points with the right, his is the left.
-    "sit_point": (C + "Pointing.fbx", dict(STAFF, mirror=True)),
-    "sit_to_stand": (C + "Sit To Stand.fbx", dict(STAFF, still=True)),
-    "nod": (C + "Thoughtful Head Nod.fbx", dict(STAFF)),
-    "idle": (C + "Idle.fbx", dict(STAFF, loop=True)),
-    "walk": ("melee-axe/unarmed walk forward.fbx", dict(STAFF, loop=True, stride="feet", slow=1.4)),
-    "wave": (C + "Waving.fbx", dict(STAFF, loop=True, mirror=True)),
+    "idle": (C + "old man idle.fbx", dict(OLD, loop=True, span=(0.0, 12.0))),
+    "walk": (C + "old man walk.fbx", dict(OLD, loop=True, stride="auto")),
+    "talk": (C + "talking two hands (boys).fbx", dict(OLD, loop=True)),
+    "talk_m": (C + "talking two hands (boys).fbx", dict(OLD, loop=True, mirror=True)),
+    "point": (C + "Pointing Gesture.fbx", dict(OLD, mirror=True)),
+    "nod": (C + "Thoughtful Head Nod.fbx", dict(OLD)),
+    "look": (C + "Look Around.fbx", dict(OLD, loop=True)),
+    "wave": (C + "Waving.fbx", dict(OLD, loop=True, mirror=True)),
 }
 
 CAST = {"kid": KID, "oldman": OLDMAN}
@@ -117,7 +123,7 @@ def main():
                 continue
             mh.make(slot, os.path.join(root, path), opts, tgt, prefix="mixamo_cast")
     bpy.context.scene.render.fps = vh.FPS
-    tgt.animation_data.action = bpy.data.actions.get("idle") or bpy.data.actions.get("sit_idle")
+    tgt.animation_data.action = bpy.data.actions.get("idle")
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out))
     print("mixamo_cast: saved", out)
 

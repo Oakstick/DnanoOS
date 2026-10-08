@@ -590,7 +590,7 @@ mod tests {
             let eye = game.view.story_camera(sv).eye;
             if (beat, t) == (first(Shot::OldMan).unwrap(), 0.0) {
                 // (The test sees what it looks for: the old man's middle, and the back wall.)
-                let him = GATEWAY + super::story_sets::STOOL + v(0.0, 0.75, 0.0);
+                let him = GATEWAY + OLD_MAN_AT + v(0.0, 0.6, 0.0);
                 assert!((0..f.rigs.draws.len()).any(|d| in_rig(&f.rigs, d, him, 0.0)));
                 let wall = GATEWAY + v(-3.0, 2.0, -3.6);
                 assert!(f.sets.iter().flat_map(|s| s.instances.iter()).any(|i| box_distance(Mat4::from_cols_array(&i.m), wall) == 0.0));

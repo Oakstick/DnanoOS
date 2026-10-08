@@ -989,7 +989,7 @@ their right. The sculpts are finished solid for the jointed rigs (`characters::s
 | Who | Skeleton | The cut |
 |---|---|---|
 | The boys (one body, four outfits) | the heroes' twenty and `scarf` (on the chest) | the hips the coat's skirt (to y 25), the spine its belt, the chest the rest with the shoulders and the scarf round the neck; the neck the column of skin under the head (34 to 37), the head and cap; the elbow at 27 (the cuffs on the forearm), the wrist at 19.5; the breeches the thigh to the knee (12.5), the socks and boot's shaft the shin, the boot below the ankle (4.5) and its toe the foot. The scarf's striped end is tagged a part of its own in the sculpt (`s.part(6)`, past the code rig's five: drawn whole it stays the body's) and hangs from the knot on its own bone |
-| The old man | the heroes' twenty, `beard.1` and `beard.2` | the hips the rope belt (34), the chest from mid-back (52) with the cape; the neck only the skin under the hood; the beard below the chin (y 63.5) and again below 49.5, so it can sway; the robe below the belt cut down the middle, each half riding its thigh to the knee (17) and its shin below, the sandals and toes the feet; the staff arm (his right) bent, cut square to the bend (`Build::chain`), the staff (its wood and leather wraps) the `blade` in his fist; the free arm hanging |
+| The old man | the heroes' twenty, `beard.1` and `beard.2` | the hips the rope belt (34), the chest from mid-back (52) with the cape; the neck only the skin under the hood; the beard below the chin (y 63.5) and again below 49.5, so it can sway; the robe below the belt one garment on bones of its own (`robe` hanging from the hips, `robe.hem` below the knee at 16), his legs under it empty but for the sandals and toes, the feet; the staff arm (his right) bent, cut square to the bend (`Build::chain`), the staff (its wood and leather wraps) the `blade` in his fist; the free arm hanging |
 | Quitmer | the wolves' (`QUADRUPED`) | the hips the rump and hams, the chest from z 62, the neck and its spiked collar from z 86 (above the chest's underside), the head the code's, the lower jaw its own; the tail cut at z 11 and y 50; the forelegs at the elbow (14) and pastern (5.5), the hind legs at the hock (12) and pastern (4.6) |
 | Krampus (Scene I) | the lair's Krampus's bones (the heroes' twenty and `sack`) | as the lair's (`foe_courts::krampus`): the same beast, sculpted three fifths of the size, so the lair's clips load for him. His fists and sack bone are empty; the basket and birches ride his chest |
 
@@ -1037,38 +1037,60 @@ their arms carried 4 degrees clear of their round coats):
 | Standing about | `idle_happy`, `idle`, `idle_happy_2`, `look` (Happy Idle 1, Idle, Happy Idle 2 mirrored, Look Around), one a boy | each at his own offset, so the four never breathe in step |
 | The passes | `pass`, `pass_left` (Soccer Pass, and mirrored), `kick` (Kick Soccerball) | the contact (`hit`, from the kicking foot's speed) on the ball's moment (`stage::KICKS`) |
 | The miskick | `miskick` (Strike Foward Jog, its run-up kept in place) | its contact on `stage::MISKICK` |
-| Running after the ball, the chase | `run`, `sprint` (Fast Run, Sprint) | the stride's phase as the staging gives it; two boys run, two sprint |
+| Running after the ball, the chase, down the stair, Scene II's run | `walk`, `run`, `sprint` (the axe pack's walk, Fast Run, Sprint) by his speed; two boys run, two sprint | by the ground he covers (`Act::Dash`), so the planted foot stays put; the stride lengthened up to 1.6 times where he is faster than the clip (`cast::lengthen`, below) |
 | Peering through the gate | `look_nervous` (Nervously Look Around) | his head a little down |
 | The eyes, Krampus | `terrified` (Terrified, its second to fourth seconds swung back and forth: fists up before his face, trembling) | over the idle by the fright's weight |
-| "He took him!" | `yell` (Yelling Out), the middle boy, his head up, the one the close-up ends on; the others in terror | |
+| "He took him!" | the middle boy (the close-up ends on him): `yell_back` (Long Yell While Standing Leaning Back) squared to the camera, both arms flung straight up over his head (`arms_up`, keyed); the left boy recoils (`alarm`, keyed: weight thrown back on a bent leg, arms up before his face, palms out, trembling), the Standing Long Yell on his head and neck; the right one yells after him (`yell_long`, Standing Long Yell) an arm flung out at the gate, the other up (`reach_out`, keyed) | each his own way, all three |
 | The fall through | `fall` (Falling), under the tumble the staging spins | |
 | The landing | `land` (Hard Landing: down, rolled onto his front, up again) | its touchdown (`land`) when the tumble ends, each boy a little after the last |
 | Backing from the dog | `walk_back` (Walking Backwards) with `terrified` over the upper body, then the terror | |
 | Talking to the old man | `talk`, `talk_m` (talking two hands, and mirrored) | the speaker; the others turn their heads to the old man |
 | "We will. For our friend." | `nod` (Head Nod Yes), the speaker's arms in `talk` | the three as one |
-| Down the stair | `walk` (the axe pack's unarmed walk) | |
 | Scene II: the run, the embrace | `sprint`; `hug` (keyed, `block_cast.py`: Mixamo has none. Up on his toes, arms round the kneeling hero's neck, his cheek on a shoulder, a sob now and then) | the hug over the idle by the staging's weight |
 | Looking up into the light; the hand | `idle` with the head turned up; `reach` (Reaching Out) over the upper body | |
 
 Also retargeted and embedded for later: `agree`, `point`, `wave`, `kneel`, `yell_short`, `fall_land`,
 `get_up`.
 
-**The old man** keeps his stool (`story_sets::STOOL`, moved to just behind where he stood): seated by
-his clips through the whole of the gateway, his hips on its cushion whichever way he turns on it (the
-seat measured from `sit_idle`'s first frame), until he rises to see the boys off. Mixamo's seated
-clips are retargeted facing forward (`face=0`); his staff stands upright in his fist; he stays warm
-and slow, never a sharp move. The camera (`view/story_camera.rs`) frames his face where he sits (`story::marks::OLD_MAN_FACE`,
-measured on his seated talking clips); under `VH_ANIM=code` he stands where he stood, his face 0.1
-higher and 0.25 nearer.
+**The boys' runs, their feet planted** (`cast_clips::GAITS`, `gait`): the story runs them far faster
+than their legs cover (0.95 m/s down the stair, 1.9 for the fetch, 3 to 3.9 in the chase, 4.3 in Scene
+II's run, a body 0.74 m tall). Each run tells the animator the ground covered (`Act::Dash`), and the
+gait's cycle follows it, a stride a cycle, the stride being the ground a cycle carries the planted
+foot back under him (calibrated on the clips at the boys' scale: the walk 0.25 m, the run and the
+sprint 0.50; Mixamo's Jogging was tried, but its stance is short and its flight long and its foot
+slipped however it was played). Where he is faster than the clip, his speed over its pace is shared
+between a faster turnover and a longer stride: his thighs and shins swing further from his hips
+(`anim::cast::lengthen`: each turn's angle scaled, up to 1.6 times; the arms by its square root), of
+which the planted foot takes up three quarters. Measured over the speeds the story uses
+(`tests::the_boys_feet_stay_planted_as_they_run`), the planted foot slips 0 to 9% of the ground he
+covers, against 44 to 76% at the 1.0.14 release's rate.
+
+**The old man** stands on the flagstones by his corner the whole scene (his stool beside him a prop,
+`story_sets::STOOL`, back where the set had it), stooped over his staff: Mixamo's Old Man Standing Idle
+under everything; his gestures laid over its legs on his upper body but the arm that holds his staff
+(`Mask::UpperBut`). He stays warm and slow, never a sharp move. The camera frames his face where he
+stands (`story::marks::OLD_MAN_FACE`, 0.87 up and 0.22 out toward the boys, measured on his clips:
+`cast_clips::tests::the_old_mans_face_is_where_the_camera_looks_for_it`).
 
 | Moment | Clip (source) |
 |---|---|
-| Dozing, waking | `sit_idle` (Sitting Idle) slowed as he dozes, his head dropped on his chest |
-| Calming the dog; naming the souls | `sit_talk_2` with `sit_point` (Pointing, mirrored: his free left hand) over his upper body |
-| Talking | `sit_talk_2` and `sit_talk` (talking seated; Sitting Talking, its first 12 s), line by line |
-| "we slept" (looking away) | `nod` (Thoughtful Head Nod) |
-| Rising as the door opens | `sit_to_stand` (Sit To Stand) |
-| Stepping aside, seeing them off | `idle` (the boys' Idle), `walk` (the axe pack's walk, slowed), `wave` (Waving, mirrored, his left arm only) |
+| Dozing over his staff, waking | `idle` (Old Man Standing Idle) slowed as he dozes, his head dropped on his chest |
+| Calming the dog; naming the souls | `idle`, `talk` (talking two hands) at half over his upper body, `point` (Pointing Gesture, mirrored: his free left hand) over that arm |
+| Talking | `idle` with `talk` and `talk_m` (talking two hands, and mirrored) over his upper body, line by line |
+| "we slept" (looking away) | `idle` with `nod` (Thoughtful Head Nod) over his upper body |
+| Shuffling aside as the door opens, seeing them off | `idle`, `walk` (Slow Old Man Shuffle Walk) by the ground he covers (0.21 m a cycle; his step aside drawn out to 2.6 s for it, from the door's opening less 0.8 s), `wave` (Waving, mirrored, his left arm only) |
+
+**His staff** is held by the view, never through him: his staff arm (his right) is aimed from the
+shoulder so his fist is out at his right side, a little before him at his waist (`STAFF_HAND`, riding
+his chest), whatever the clip does with that arm; the staff passes through that fist, standing up out
+of his heading and leaning a little out from him (0.12 rad), and slides through the fist so its foot
+is on the floor (`hold_staff`). `cast_clips::tests::the_old_mans_staff_never_passes_through_him_and_stands_on_the_floor`:
+at every 0.1 s of every gateway beat, no voxel of the staff inside the box round any part of him but
+the arm that holds it, and its foot within a centimetre of the floor.
+
+**His robe** is one garment (`robe`, `robe.hem`): it hangs from his hips, following their turn nine
+tenths and a third of the mean swing of his legs beneath it, the hem lagging after (`CastAnims::swing`,
+as the beard and the scarf), so it sways as he shuffles and never parts.
 
 **Quitmer** (keyed, `block_cast.Dog` on the wolves' `Wolf`): `sleep` (a sphinx on his straw, his head
 on his paws, slow breaths), `lie` and `lie_wag` (head up, watching; his tail thumping), `stand_up`
@@ -1113,7 +1135,7 @@ The cast set's FBX files stay in `C:/Users/ulask/Games/mixamo/cast/`, outside th
 
 | What | |
 |---|---|
-| Embedded clips | the boys 29 (654 KB), the old man 9 (176 KB), Quitmer 8 (117 KB), Scene I's Krampus 2 (20 KB): 48 clips, 968 KB of GLB and JSON (thinned, §11.11) |
+| Embedded clips | (1.0.14; since: the boys 34, the old man 8) the boys 29 (654 KB), the old man 9 (176 KB), Quitmer 8 (117 KB), Scene I's Krampus 2 (20 KB): 48 clips, 968 KB of GLB and JSON (thinned, §11.11) |
 | Jointed rigs (`--export-rig`) | a boy about 14,900 voxels and 9,900 faces; the old man 48,614 and 28,896; Quitmer 65,170 and 28,926; Krampus 75,496 and 49,844 |
 | Reading the clips (once, as the scene begins) | the boys 7.8 ms, the old man 3.1, Quitmer 1.1, Krampus 0.2 (and the lair's, 2.8) |
 | Cutting the rigs and meshing them at every level of detail (once, as the scene begins: `prepare_cast`) | about 120 ms for the seven of Scene I (release); Scene II's boy 8 ms |
@@ -1121,19 +1143,13 @@ The cast set's FBX files stay in `C:/Users/ulask/Games/mixamo/cast/`, outside th
 
 ### 12.7 What still reads wrong
 
-- **The boys' feet slide when they run.** They are 0.74 m tall and the story runs them at 2 to 2.5
-  tiles a second: Mixamo's run carries a body their size 0.4 m a cycle, so their legs would have to
-  spin six times a second. The run plays at the staging's own stride (about two cycles a second) and
-  the ground slides under it, as the code's did.
-- **Mixamo's yells are mild.** "He took him!" is the Yelling Out clip, a step forward and a shout with
-  an arm out; the code's arms flung up read as louder from afar. A clip of a child screaming with
-  both arms up would serve better.
+- **The boys' fastest runs churn.** At 3 to 4.3 m/s their legs turn over three to four times a second
+  with strides 1.6 times the clip's: planted, but frantic (cartoonish) in the chase and Scene II's run.
+- **The scream's faces are the sculpts'**: the mouths do not open; the yell is in the body and arms.
 - **Terror is a window of Mixamo's Terrified** (its crouch with fists before the face), swung back and
   forth: past its fourth second the source cowers with its head down and hides the face.
-- **The old man's robe halves ride his legs**: seated, they lie along his thighs and part a little at
-  the knees; stepping aside they swing as trousers would.
-- **His staff is held upright by the view**, not by the clips: in the seated clips his hand rests on
-  his thigh, and the staff stands through it, its foot a little into the floor.
+- **The old man's staff hand is held still** at his side: his staff arm does not gesture (his free arm
+  does); his feet shuffle under a robe that sways but does not lift.
 - **Quitmer's hind paws** sink a few centimetres into the straw while he lies; his rising and lying
   down are blends of two poses, not a real roll onto his side.
 - **The hug** is keyed by script: the arms close round the hero's neck but cross a little behind it.
