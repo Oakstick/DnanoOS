@@ -20,6 +20,7 @@
 //! - `ending`: the end, Scene II, the words and the credits (FINALE.md §4)
 
 mod angels;
+pub mod bestiary;
 mod boss;
 pub mod bot;
 pub mod brawl;
@@ -182,6 +183,8 @@ pub enum MenuItem {
     DevMap,
     /// The Ledger of Grudges: the run's rivals, on their board.
     Ledger,
+    /// The bestiary: the old man's book of every foe met (`bestiary`).
+    Bestiary,
     Resume,
     /// The gatekeeper's promise: call him, and his wares open wherever you are.
     CallOldMan,
@@ -213,6 +216,7 @@ impl MenuItem {
             MenuItem::Map => "MAP",
             MenuItem::DevMap => "LEVELS",
             MenuItem::Ledger => "THE LEDGER",
+            MenuItem::Bestiary => "THE BESTIARY",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
@@ -343,6 +347,8 @@ pub struct Game {
     pub war: war::War,
     /// The run's Warband as saved (the Ledger of Grudges), its name card and its board.
     pub warband: ledger::Warband,
+    /// The bestiary: the book of every foe met, as saved, and its page while it is open.
+    pub bestiary: bestiary::Bestiary,
     /// The two voices: the old man's counsel, the line in the panel, the prince's cheats.
     pub voices: counsel::Voices,
     /// The heroes' mastery in the fight, its toast and its trials (WARBAND.md §11.1).
@@ -551,6 +557,7 @@ impl Game {
             war: war::War::default(),
             guide_open: false,
             warband: ledger::Warband::load(),
+            bestiary: bestiary::Bestiary::load(),
             voices: counsel::Voices::default(),
             mastery: mastery::MasteryRun::default(),
             want_fullscreen_toggle: false,

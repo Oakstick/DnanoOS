@@ -38,6 +38,8 @@ pub enum MapPage {
     Settings,
     /// The in-game loading card, over where he stands, for a few seconds.
     LoadingCard,
+    /// The bestiary, every page open for review (nothing of it saved).
+    Bestiary,
 }
 
 /// The road down: the Garden and its Cyclops, the Portals of Hell, then each sin's realm and
@@ -106,7 +108,11 @@ pub fn map_stops() -> Vec<MapStop> {
         stops.push(MapStop { stage, label: format!("THE FULL MAP - {name}"), scene: None, post: false, full_map: true, page: None });
     }
     // The UI's screens: the settings, and the loading card with its legend.
-    for (page, label) in [(MapPage::Settings, "THE UI - SETTINGS"), (MapPage::LoadingCard, "THE UI - THE LOADING CARD")] {
+    for (page, label) in [
+        (MapPage::Settings, "THE UI - SETTINGS"),
+        (MapPage::LoadingCard, "THE UI - THE LOADING CARD"),
+        (MapPage::Bestiary, "THE BESTIARY - EVERY PAGE OPEN"),
+    ] {
         stops.push(MapStop {
             stage: Stage::Dungeon(0),
             label: label.to_string(),
@@ -215,6 +221,7 @@ impl Game {
                 match page {
                     MapPage::Settings => self.open_settings(),
                     MapPage::LoadingCard => self.show_loading_card(6.0),
+                    MapPage::Bestiary => self.review_bestiary(0, 0),
                 }
                 return;
             }
