@@ -226,6 +226,17 @@ fn main() {
         print!("{}", void_harvest::game::qa::monkey(seed, secs, cheats, only));
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--reload-soak") {
+        // QA.md: every place on the LEVELS map in turn, ROUNDS times over, in one game (memory over a
+        // long session): `--reload-soak ROUNDS`.
+        let rounds: usize = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(5);
+        let dir = std::env::temp_dir().join("vh-reload-soak");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var("VH_SAVE_DIR", dir);
+        std::env::set_var("VH_NO_AUDIO", "1");
+        print!("{}", void_harvest::game::qa::reload_soak(rounds, 1));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--run") {
         // WARBAND.md W9: the whole run by one bot, one save carried through it: `--run SKILL SEED
         // [ORDER]` (skill 0 novice, 1 adept, 2 expert; order 0 the vaults first, 1 the reverse).

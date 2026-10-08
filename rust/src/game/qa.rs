@@ -376,3 +376,35 @@ pub fn monkey(seed: u32, secs: f64, cheats: bool, only: Option<usize>) -> String
     }
     out
 }
+
+/**
+ * Many levels in a row (QA.md: memory over a long session): every place on the LEVELS map entered
+ * in turn and played two seconds, `rounds` times over, in one game, as a player hopping through the
+ * map would. Each round's end is told on stderr with the seconds it took, for a watcher of the
+ * process's memory to set its samples against.
+ */
+pub fn reload_soak(rounds: usize, seed: u32) -> String {
+    let stops = map_stops();
+    let places: Vec<usize> = (0..stops.len()).filter(|&i| stops[i].scene.is_none() && stops[i].page.is_none()).collect();
+    let mut g = Game::new();
+    g.reseed(seed);
+    g.tour_pending = false;
+    let started = web_time::Instant::now();
+    let mut most = (0usize, 0usize, 0usize);
+    for round in 0..rounds {
+        for &i in &places {
+            enter_stop(&mut g, i);
+            if g.screen == Screen::Shop {
+                g.enter(Screen::Ready);
+            }
+            for _ in 0..120 {
+                g.update(crate::app::STEP);
+            }
+            most.0 = most.0.max(g.view.static_cubes.len());
+            most.1 = most.1.max(g.enemies.len());
+            most.2 = most.2.max(g.workshop.news.len());
+        }
+        eprintln!("round {} done at {:.1} s", round + 1, started.elapsed().as_secs_f64());
+    }
+    format!("{rounds} rounds of {} places: most static cubes {}, foes {}, workshop news {}\n", places.len(), most.0, most.1, most.2)
+}
