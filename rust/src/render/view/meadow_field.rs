@@ -173,7 +173,12 @@ fn flower(out: &mut Vec<Instance>, p: Vec3, bloom: Vec3, k: f32) {
         SHADE_SOFT,
     );
     block(out, p + Vec3::new(0.02, 0.025, 0.0), Vec3::new(0.06, 0.02, 0.035), k * 9.0, lin(0x405a2c), SHADE_SOFT);
-    block(out, top, Vec3::new(0.042, 0.024, 0.042), k * 5.0, bloom * (0.85 + k * 0.2), SHADE_SOFT);
+    block(out, top, Vec3::new(0.05, 0.026, 0.05), k * 5.0, bloom * (0.85 + k * 0.2), SHADE_SOFT);
+    if k > 0.55 {
+        // A second bloom on a side stem.
+        let side = p + Vec3::new((k - 0.75) * 0.12, tall * 0.7, ((k * 13.0).fract() - 0.5) * 0.1);
+        block(out, side, Vec3::new(0.04, 0.022, 0.04), k * 11.0, bloom * 0.92, SHADE_SOFT);
+    }
 }
 
 /// A tree of the treeline standing at `base`, `height` tall, its crown at most `reach` out: an
@@ -259,47 +264,39 @@ fn field_tree(out: &mut Vec<Instance>, base: Vec3, fir: bool, height: f32, reach
         );
     }
     let crown = height - trunk_h;
-    // The heart of the crown, dark, so no sky shows through the clumps.
-    block(
-        out,
-        top + Vec3::Y * (crown * 0.48),
-        Vec3::new(reach * 1.25, crown * 0.7, reach * 1.25),
-        r(9.0) * 2.0,
-        lin(LEAF[0]) * 0.7,
-        SHADE_SOFT,
-    );
-    let tiers: [(f32, f32, usize, u32); 3] = [(0.2, 0.8, 9, LEAF[0]), (0.52, 0.7, 8, LEAF[1]), (0.8, 0.42, 5, LEAF[2])];
-    let mut k = 10.0;
-    for (t, (y, spread, n, col)) in tiers.into_iter().enumerate() {
-        for j in 0..n {
-            k += 1.0;
-            let a = j as f32 / n as f32 * TAU + r(k) * 0.9 + t as f32;
-            let rr = reach * spread * (0.6 + r(k + 0.5) * 0.35);
-            let s = reach * (0.5 + r(k + 0.2) * 0.22) * (1.1 - t as f32 * 0.2);
-            let at = top + Vec3::new(a.cos() * rr, crown * y + (r(k + 0.7) - 0.5) * 0.15, a.sin() * rr);
-            let rot = Quat::from_rotation_y(r(k + 1.3) * 3.0)
-                * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.9)
-                * Quat::from_rotation_z((r(k + 1.6) - 0.5) * 0.8);
-            block_m(
+    // The crown in three puffs, each round (two squares a quarter turn apart), widest low down,
+    // their tones darkening toward the shade; then clumps breaking the outline, and its top lit.
+    let puffs: [(f32, f32, f32, u32); 3] = [(0.28, 1.75, 0.42, LEAF[0]), (0.58, 1.55, 0.4, LEAF[1]), (0.84, 0.95, 0.3, LEAF[2])];
+    for (i, (y, w, h, col)) in puffs.into_iter().enumerate() {
+        let off = Vec3::new((r(40.0 + i as f64) - 0.5) * reach * 0.3, crown * y, (r(41.0 + i as f64) - 0.5) * reach * 0.3);
+        let turn = r(42.0 + i as f64) * 1.5;
+        for q in 0..2 {
+            block(
                 out,
-                Mat4::from_scale_rotation_translation(Vec3::new(s, s * 0.72, s * 0.9), rot, at),
-                jit(col, r(k + 1.1) as f64, 0.12),
+                top + off,
+                Vec3::new(reach * w, crown * h, reach * w * 0.92),
+                turn + q as f32 * PI / 4.0,
+                jit(col, r(43.0 + i as f64 + q as f64) as f64, 0.1) * (0.9 + q as f32 * 0.08),
                 SHADE_SOFT,
             );
         }
     }
-    for j in 0..3 {
-        let a = j as f32 * 2.1 + r(30.0) * 3.0;
-        let cap = reach * (0.3 + r(31.0 + j as f64) * 0.12);
-        let at = top + Vec3::new(a.cos() * reach * 0.3, crown * 0.95, a.sin() * reach * 0.3);
-        block(
-            out,
-            at,
-            Vec3::new(cap, cap * 0.6, cap * 0.85),
-            r(32.0 + j as f64) * 3.0,
-            jit(LEAF_LIT, r(33.0 + j as f64) as f64, 0.1) * 0.85,
-            SHADE_SOFT,
-        );
+    let mut k = 10.0;
+    for j in 0..10 {
+        k += 1.0;
+        let a = j as f32 / 10.0 * TAU + r(k) * 0.6;
+        let y = 0.2 + (j % 3) as f32 * 0.25 + (r(k + 0.4) - 0.5) * 0.12;
+        let rr = reach * (0.8 - (y - 0.2) * 0.45) * (0.85 + r(k + 0.5) * 0.25);
+        let s = reach * (0.36 + r(k + 0.2) * 0.18);
+        let at = top + Vec3::new(a.cos() * rr, crown * y, a.sin() * rr);
+        let rot = Quat::from_rotation_y(a + r(k + 1.3)) * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.6) * Quat::from_rotation_z((r(k + 1.6) - 0.5) * 0.6);
+        block_m(out, Mat4::from_scale_rotation_translation(Vec3::new(s, s * 0.7, s * 0.85), rot, at), jit(LEAF[j % 3], r(k + 1.1) as f64, 0.12), SHADE_SOFT);
+    }
+    for j in 0..2 {
+        let a = j as f32 * 2.6 + r(30.0) * 3.0;
+        let cap = reach * (0.42 + r(31.0 + j as f64) * 0.12);
+        let at = top + Vec3::new(a.cos() * reach * 0.22, crown * 0.97, a.sin() * reach * 0.22);
+        block(out, at, Vec3::new(cap, cap * 0.45, cap * 0.85), r(32.0 + j as f64) * 3.0, jit(LEAF_LIT, r(33.0 + j as f64) as f64, 0.1) * 0.85, SHADE_SOFT);
     }
 }
 
@@ -589,8 +586,8 @@ impl WorldView {
         }
         // Wildflowers in drifts: where a drift crosses the tile, a few blooms of its colour.
         let drift = noise(xf * 0.33 + 31.0, yf * 0.33 + 7.0);
-        if drift > 0.56 && bare * 4 < bare_all * 3 {
-            let n = (((drift - 0.56) * 22.0) as usize + 1).min(6);
+        if drift > 0.52 && bare * 4 < bare_all * 3 {
+            let n = (((drift - 0.52) * 32.0) as usize + 2).min(10);
             let pick = hash((xf / 4.0).floor() as f64 * 3.7 + 1.0, (yf / 4.0).floor() as f64 * 2.3 + 5.0);
             let pair = [BLOOMS[(pick * 5.0) as usize % 5], BLOOMS[(pick * 13.0) as usize % 5]];
             for j in 0..n {
