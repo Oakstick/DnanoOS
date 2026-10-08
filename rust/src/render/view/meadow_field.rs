@@ -18,8 +18,8 @@
 
 use super::crypt::pal::{CHARCOAL, IRON, MOSS, PALE_STONE, UMBER};
 use super::crypt::{
-    block, block_m, bracket_cubes, brazier_cubes, jit, lantern_cubes, masonry, moss_cap, spout_cubes, Wall, SHADE_FLAG, SHADE_IRON,
-    SHADE_SOFT, SHADE_STONE, SHADE_WOOD,
+    block, block_m, brazier_cubes, jit, lantern_cubes, masonry, moss_cap, spout_cubes, Wall, SHADE_FLAG, SHADE_IRON, SHADE_SOFT,
+    SHADE_STONE, SHADE_WOOD,
 };
 use super::garden::WATER_DROP;
 use super::garden_beds::SHADE_GRAVEL;
@@ -45,7 +45,7 @@ pub(super) mod pal {
     /// Old timber, silvered and umber.
     pub const TIMBER: [u32; 3] = [0x5e5446, 0x52483c, 0x6a5e4c];
     /// Leaves and needles of the treeline: dark, a silhouette against the dusk.
-    pub const LEAF: [u32; 3] = [0x2a3626, 0x303e2a, 0x384630];
+    pub const LEAF: [u32; 3] = [0x2c3a28, 0x34442c, 0x3c4c32];
     pub const LEAF_LIT: u32 = 0x56603a;
     pub const PINE: [u32; 2] = [0x1d2f23, 0x25382a];
     pub const BARK: [u32; 2] = [0x3e3128, 0x30271f];
@@ -116,7 +116,7 @@ fn worn(x: f32, z: f32, pillars: &[Vec2]) -> f32 {
         let d = Vec2::new(x - p.x, z - p.y).length();
         w = w.max((1.0 - smooth(0.42, 0.75, d)) * (0.45 + 0.6 * noise(x * 3.1, z * 3.1)));
     }
-    w = w.max(smooth(0.86, 0.94, noise(x * 0.43 + 13.0, z * 0.43 + 21.0)));
+    w = w.max(smooth(0.9, 0.97, noise(x * 0.43 + 13.0, z * 0.43 + 21.0)));
     w * ragged
 }
 
@@ -262,20 +262,20 @@ fn field_tree(out: &mut Vec<Instance>, base: Vec3, fir: bool, height: f32, reach
     // The heart of the crown, dark, so no sky shows through the clumps.
     block(
         out,
-        top + Vec3::Y * (crown * 0.45),
-        Vec3::new(reach * 1.05, crown * 0.55, reach * 1.05),
+        top + Vec3::Y * (crown * 0.48),
+        Vec3::new(reach * 1.25, crown * 0.7, reach * 1.25),
         r(9.0) * 2.0,
-        lin(LEAF[0]) * 0.6,
+        lin(LEAF[0]) * 0.7,
         SHADE_SOFT,
     );
-    let tiers: [(f32, f32, usize, u32); 3] = [(0.18, 1.0, 12, LEAF[0]), (0.5, 0.85, 10, LEAF[1]), (0.8, 0.5, 6, LEAF[2])];
+    let tiers: [(f32, f32, usize, u32); 3] = [(0.2, 0.8, 9, LEAF[0]), (0.52, 0.7, 8, LEAF[1]), (0.8, 0.42, 5, LEAF[2])];
     let mut k = 10.0;
     for (t, (y, spread, n, col)) in tiers.into_iter().enumerate() {
         for j in 0..n {
             k += 1.0;
             let a = j as f32 / n as f32 * TAU + r(k) * 0.9 + t as f32;
-            let rr = reach * spread * (0.55 + r(k + 0.5) * 0.35);
-            let s = reach * (0.38 + r(k + 0.2) * 0.2) * (1.1 - t as f32 * 0.2);
+            let rr = reach * spread * (0.6 + r(k + 0.5) * 0.35);
+            let s = reach * (0.5 + r(k + 0.2) * 0.22) * (1.1 - t as f32 * 0.2);
             let at = top + Vec3::new(a.cos() * rr, crown * y + (r(k + 0.7) - 0.5) * 0.15, a.sin() * rr);
             let rot = Quat::from_rotation_y(r(k + 1.3) * 3.0)
                 * Quat::from_rotation_x((r(k + 1.5) - 0.5) * 0.9)
@@ -425,7 +425,7 @@ impl WorldView {
                     trees.push((
                         Some(P::new(x, y)),
                         c + jitter,
-                        hash(hx * 7.0 + 3.0, hy * 2.0) < 0.35,
+                        hash(hx * 7.0 + 3.0, hy * 2.0) < 0.55,
                         height,
                         0.62 + hash(hx * 2.0, hy * 5.0) as f32 * 0.2,
                     ));
@@ -466,7 +466,7 @@ impl WorldView {
             }
             let height = if south { 1.5 + k as f32 * 0.8 } else { 2.6 + k as f32 * 1.6 };
             let j = Vec3::new((hash(i as f64, 1.0) as f32 - 0.5) * 0.4, 0.0, (hash(i as f64, 2.0) as f32 - 0.5) * 0.4);
-            trees.push((None, Vec3::new(x, 0.0, z) + j, k < 0.3, height, 0.7 + k as f32 * 0.2));
+            trees.push((None, Vec3::new(x, 0.0, z) + j, k < 0.4, height, 0.7 + k as f32 * 0.2));
         };
         for x in -1..=w {
             ring_spot(x as f32, -1.25, false, &mut trees);
@@ -706,8 +706,8 @@ impl WorldView {
             // (Its legs sunk in the capital: a fire bowl on the pillar's head.)
             let s = 0.85;
             let foot = top - 0.5 * s;
-            brazier_cubes(out, c + Vec3::Y * foot, s, true);
-            let flame = c + Vec3::Y * (foot + 0.86 * s);
+            brazier_cubes(out, c + Vec3::Y * foot, s, false);
+            let flame = c + Vec3::Y * (foot + 0.84 * s);
             self.torches.insert(P::new(x, y), (flame - Vec3::Y * 0.5, (start, 0)));
             self.smoke.push((flame + Vec3::Y * 0.2, 0.9));
             top = flame.y + 0.15;
@@ -1109,8 +1109,13 @@ impl WorldView {
                     let face = Vec3::new(xf + 0.5 - 0.04, 0.2, yf);
                     let lip = spout_cubes(out, face, Vec3::new(-1.0, 0.0, 0.0), seed);
                     self.spouts.push((lip, Vec3::new(-1.0, 0.0, 0.0), surface));
-                    let hook = bracket_cubes(out, Vec3::new(xf + 0.46, 0.5, yf + 0.3), Vec3::new(-1.0, 0.0, 0.0));
-                    let glass = lantern_cubes(out, hook, 0.05);
+                    // (On an iron post at the wall's corner, high, so its pool lies on the banks and
+                    // the water without a glare under it.)
+                    let foot = Vec3::new(xf + 0.62, 0.55, yf + 0.36);
+                    let iron = lin(IRON).lerp(lin(0x5a3a26), 0.3);
+                    block(out, foot + Vec3::Y * 0.4, Vec3::new(0.05, 0.8, 0.05), 0.0, iron, SHADE_IRON);
+                    block(out, foot + Vec3::new(-0.1, 0.8, 0.0), Vec3::new(0.25, 0.03, 0.03), 0.0, iron, SHADE_IRON);
+                    let glass = lantern_cubes(out, foot + Vec3::new(-0.2, 0.78, 0.0), 0.03);
                     dim_glass(out);
                     self.torches.insert(P::new(x, y), (glass - Vec3::Y * 0.5, (start_bank, out.len() - start_bank)));
                 } else if end {

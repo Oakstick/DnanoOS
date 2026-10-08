@@ -703,8 +703,14 @@ impl WorldView {
             self.build_forest(grid);
         }
         if let Some(g) = gate.filter(|_| vault.is_none() && run.is_none() && !counting) {
-            // Eight lock lamps for the estate's keys; one for the Cyclops' red key (the vaults' far portal is a portal).
-            self.build_gate(grid, g, if meadow { 1 } else { 8 });
+            if meadow {
+                // The Cyclops' meadow takes the Garden's gatehouse in dressed stone, its one lock
+                // for the red key.
+                self.build_garden_gate(grid, g, &[gate::lock_spot(0, 1)]);
+            } else {
+                // Eight lock lamps for the estate's keys (the vaults' far portal is a portal).
+                self.build_gate(grid, g, 8);
+            }
         }
         // The garden and its gate, and the Cyclops' meadow, graded into the board's palette.
         if self.estate_art || theme == Theme::Meadow || (self.hell && !self.gym) {

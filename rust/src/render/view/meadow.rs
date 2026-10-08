@@ -83,6 +83,25 @@ impl WorldView {
         for (i, &(mouth, out, foot)) in self.spouts.iter().enumerate() {
             super::crypt::emit_fall(f, mouth, out, foot, time, i as f32);
         }
+        // The braziers on the pillars: flames licking up off the coals, a glow in the haze (their
+        // light is the torches' pool).
+        for (n, (_, (t, _))) in self.torches.iter().filter(|(p, _)| self.tree_index.contains_key(p)).enumerate() {
+            let base = *t + Vec3::Y * 0.5;
+            let fl = 1.0 + (time * 9.0 + n as f32 * 1.7).sin() * 0.07 + (time * 23.0 + n as f32).sin() * 0.04;
+            for k in 0..10 {
+                let a = time * 4.0 + k as f32 * 1.1 + n as f32;
+                let rise = (time * 2.2 + k as f32 * 0.23 + n as f32 * 0.37).fract();
+                let p = base + Vec3::new(a.cos() * 0.09 * (1.0 - rise), rise * 0.42, a.sin() * 0.09 * (1.0 - rise));
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.08 * (1.0 - rise * 0.7))),
+                    lin(if k % 3 == 0 { 0xffc060 } else { 0xff7a28 }) * 0.9,
+                    0.75 * (1.0 - rise) * (1.0 - rise),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
+            }
+            glow_orb(f, base + Vec3::new(0.0, 0.12, 0.0), 0.5, lin(0xff9030), 0.14 * fl);
+        }
         // Butterflies and moths wandering over the grass, fewer at dusk.
         let (x0, y0, x1, y1) = ARENA;
         for i in 0..10 {
