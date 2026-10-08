@@ -170,8 +170,63 @@ class Kid:
             p.turn(f"foot.{side}", E(-22, 0, 0))
         return p
 
+    @staticmethod
+    def arms_thrown_up(p, f, k=1.0, wide=30.0, shake=4.0):
+        """Both arms flung up over his head and out (`wide` degrees), the hands open, trembling."""
+        for side, s in (("L", 1), ("R", -1)):
+            tr = shake * math.sin(TAU * f / 7 + (0.0 if side == "L" else 1.7))
+            p.turn(f"upper_arm.{side}", E(0, 0, s * wide * k))
+            p.turn(f"upper_arm.{side}", E((-172 + tr) * k, 0, 0))
+            p.turn(f"forearm.{side}", E(-8 * k, 0, 0))
+            p.turn(f"hand.{side}", E(-15 * k, 0, s * 10 * k))
+        return p
+
+    def arms_up(self, f):
+        """The arms alone (laid over a yell): flung up and wide, shaking."""
+        return self.arms_thrown_up(Pose(), f, 1.0, 11.0, 6.0)
+
+    def alarm(self, f):
+        """Alarm: recoiling, his weight thrown back onto a bent back leg, his arms flung up before his
+        face, palms out, his head back and turned a little away; trembling all over."""
+        tr = math.sin(TAU * f / 6)
+        p = Pose()
+        p["loc"] = (0.0, -0.025 + 0.002 * tr, -0.04)
+        p.turn("spine", E(-10, 0, 0))
+        p.turn("chest", E(-8 + tr, 6, 0))
+        p.turn("neck", E(-10, -8, 0))
+        p.turn("head", E(-14, -10, 0))
+        for side, s in (("L", 1), ("R", -1)):
+            p.turn(f"upper_arm.{side}", E(0, 0, s * 18))
+            p.turn(f"upper_arm.{side}", E(-145 + 4 * tr, 0, 0))
+            p.turn(f"forearm.{side}", E(-55, -s * 12, 0))
+            p.turn(f"hand.{side}", E(-35, 0, 0))
+        # (One foot back, both knees bent under the recoil.)
+        p.turn("thigh.L", E(-22, 0, 4))
+        p.turn("shin.L", E(28, 0, 0))
+        p.turn("foot.L", E(-6, 0, 0))
+        p.turn("thigh.R", E(14, 0, -4))
+        p.turn("shin.R", E(30, 0, 0))
+        p.turn("foot.R", E(-16, 0, 0))
+        return p
+
+    def reach_out(self, f):
+        """After him: his right arm flung out at the gate, his left up over his head (laid over a yell)."""
+        tr = math.sin(TAU * f / 8)
+        p = Pose()
+        p.turn("upper_arm.R", E(0, 0, -8))
+        p.turn("upper_arm.R", E(-95 + 3 * tr, 0, 0))
+        p.turn("forearm.R", E(-8, 0, 0))
+        p.turn("hand.R", E(-10, 0, 0))
+        p.turn("upper_arm.L", E(0, 0, 35))
+        p.turn("upper_arm.L", E(-168 + 4 * tr, 0, 0))
+        p.turn("forearm.L", E(-12, 0, 0))
+        return p
+
     def make(self, arm):
         bake(arm, "hug", 120, self.hug, loop=True)
+        bake(arm, "arms_up", 42, self.arms_up, loop=True)
+        bake(arm, "alarm", 48, self.alarm, loop=True)
+        bake(arm, "reach_out", 48, self.reach_out, loop=True)
 
 
 # ------------------------------------------------------------------ Krampus in Scene I

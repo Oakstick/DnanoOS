@@ -25,6 +25,12 @@ mod pal {
 }
 use pal::*;
 
+/// How tall the golden key's model stands (its voxels' height), how much larger it is drawn
+/// lying in a level, and how far its tip keeps off the ground.
+const KEY_HEIGHT: f32 = 30.0 * 0.022;
+const KEY_SCALE: f32 = 1.25;
+const KEY_LIFT: f32 = 0.14;
+
 /// A golden key standing on its tip: a ring bow with a cross in it, a collar, a shaft, two teeth.
 pub fn golden_key() -> Mesh {
     const G: u32 = 0xf2c53d;
@@ -224,35 +230,37 @@ impl WorldView {
     /// Doors, lock lamps, braziers, the beacon and the glow; and the golden keys still lying about.
     pub(super) fn emit_gate_and_keys(&self, s: &SceneState, time: f32, hero: Vec3, f: &mut Frame) {
         let cube_i = MeshKind::Cube as usize;
-        // ---- keys: spinning, bobbing, haloed, a faint beam to find them by
+        // ---- keys: a golden key turning slowly in the air a hand over the ground (never into
+        // it, however it bobs), in a soft warm glow; a few motes of gold about it, and a faint
+        // thread of light rising from over it to find it by from afar.
         let mut lit: Vec<Vec3> = vec![];
         for p in &self.keys {
             if s.grid.get(p.x, p.y) != Tile::Nodule {
                 continue;
             }
             let base = Vec3::new(p.x as f32, floor_at(s.grid, p.x as f32, p.y as f32), p.y as f32);
-            let bob = (time * 2.0 + p.x as f32).sin() * 0.06;
-            let at = base + Vec3::new(0.0, 0.34 + bob, 0.0);
-            let spin = Quat::from_rotation_y(time * 1.8 + p.y as f32) * Quat::from_rotation_z(0.25);
+            let bob = (time * 1.6 + p.x as f32).sin() * 0.035;
             let m = &self.models.key;
+            // The key turns about its own middle (so its tip never swings into the ground).
+            let half = KEY_HEIGHT * KEY_SCALE / 2.0;
+            let at = base + Vec3::new(0.0, KEY_LIFT + half + bob, 0.0);
+            let spin = Quat::from_rotation_y(time * 1.2 + p.y as f32) * Quat::from_rotation_z(0.18);
+            let size = m.size * KEY_SCALE;
             for (off, c) in &m.cubes {
-                let pm = Mat4::from_scale_rotation_translation(Vec3::splat(m.size), spin, at + spin * *off - Vec3::new(0.0, 0.33, 0.0));
-                f.opaque[cube_i].push(Instance::new(pm, *c, 1.0, lin(GOLD) * 0.35, 13.0));
+                let local = (*off - Vec3::new(0.0, KEY_HEIGHT / 2.0, 0.0)) * KEY_SCALE;
+                let pm = Mat4::from_scale_rotation_translation(Vec3::splat(size), spin, at + spin * local);
+                f.opaque[cube_i].push(Instance::new(pm, *c, 1.0, lin(GOLD) * 0.1, 13.0));
             }
-            let halo = Mat4::from_translation(at) * Mat4::from_scale(Vec3::splat(0.36 + (time * 3.0).sin() * 0.03));
-            f.additive.push(Instance::new(halo, lin(GOLD), 0.12, Vec3::ZERO, SHADE_UNLIT));
-            let beam = Mat4::from_translation(base + Vec3::new(0.0, 3.0, 0.0)) * Mat4::from_scale(Vec3::new(0.07, 6.0, 0.07));
-            f.additive.push(Instance::new(beam, lin(GOLD), 0.1 + (time * 2.0 + p.x as f32).sin() * 0.03, Vec3::ZERO, SHADE_UNLIT));
+            let pulse = 1.0 + (time * 2.4 + p.x as f32).sin() * 0.12;
+            glow_orb(f, at, 0.62 * pulse, lin(0xffc860), 0.3 * pulse);
+            glow_orb(f, at, 0.22, lin(0xffe0a0), 0.12);
+            // The thread of light, from a little over the key up into the night.
+            let beam = Mat4::from_translation(base + Vec3::new(0.0, 4.6, 0.0)) * Mat4::from_scale(Vec3::new(0.03, 7.0, 0.03));
+            f.additive.push(Instance::new(beam, lin(0xffc860), 0.07 + (time * 2.0 + p.x as f32).sin() * 0.02, Vec3::ZERO, SHADE_UNLIT));
             for k in 0..4 {
-                let a = time * 1.5 + k as f32 * TAU / 4.0;
-                let sp = at + Vec3::new(a.cos() * 0.3, (a * 1.7).sin() * 0.15, a.sin() * 0.3);
-                f.additive.push(Instance::new(
-                    Mat4::from_translation(sp) * Mat4::from_scale(Vec3::splat(0.035)),
-                    lin(0xfff0a0),
-                    0.8,
-                    Vec3::ZERO,
-                    SHADE_UNLIT,
-                ));
+                let a = time * 1.1 + k as f32 * TAU / 4.0;
+                let sp = at + Vec3::new(a.cos() * 0.34, (a * 1.7).sin() * 0.18, a.sin() * 0.34);
+                glow_orb(f, sp, 0.05, lin(0xffd880), 0.8);
             }
             lit.push(at);
         }

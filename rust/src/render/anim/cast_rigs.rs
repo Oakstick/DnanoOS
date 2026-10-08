@@ -168,9 +168,9 @@ fn kid() -> &'static Joints {
  * forward a little higher up). His hips the rope belt (y 34), his chest from the middle of his back
  * (52) with the cape over his shoulders; his neck the skin under the hood (only skin, not the beard
  * before it), his head the hood, the face and the moustache. His beard hangs from his chin in two
- * (`beard.1` below y 63.5, `beard.2` below 49.5), so it can sway. The robe below the belt is cut down
- * the middle, each half riding its thigh to the knee (17) and its shin below, the sandals and toes
- * the feet. His staff arm (his right, at low x) is bent, its hand before him: cut square to the bend;
+ * (`beard.1` below y 63.5, `beard.2` below 49.5), so it can sway. The robe below the belt is one
+ * garment on bones of its own (`robe`, and `robe.hem` below the knee), his legs under it empty but
+ * for the sandals and toes, the feet. His staff arm (his right, at low x) is bent, its hand before him: cut square to the bend;
  * the staff (its wood and leather wraps) is the `blade`, its joint in his fist. His free arm hangs.
  */
 fn old_man() -> &'static Joints {
@@ -184,16 +184,19 @@ fn old_man() -> &'static Joints {
     let arm_l = [[43.5, 59.0, 21.0], [46.6, 50.5, 22.3], [47.6, 42.0, 23.2], [47.6, 35.0, 24.0]];
     arms(&mut b, &arm_l, &arm_r);
     b.at(Bone::Blade, [10.2, 45.0, 34.0]);
-    // The robe's halves: below the belt, down the middle.
-    let robe = |x0: f32, x1: f32| ([x0, -INF, -INF], [x1, INF, INF]);
-    for (x, (lo, hi), thigh, shin, foot) in
-        [(36.0, robe(cx, INF), Bone::ThighL, Bone::ShinL, Bone::FootL), (23.0, robe(-INF, cx), Bone::ThighR, Bone::ShinR, Bone::FootR)]
+    // His legs are hidden under the robe: only the sandals and toes peeping out are theirs (the feet).
+    for (x, thigh, shin, foot, (x0, x1)) in
+        [(36.0, Bone::ThighL, Bone::ShinL, Bone::FootL, (cx, INF)), (23.0, Bone::ThighR, Bone::ShinR, Bone::FootR, (-INF, cx))]
     {
         b.at(thigh, [x, 33.0, 21.0]).at(shin, [x, 17.0, 22.5]).at(foot, [x, 3.5, 27.0]);
-        b.cut(Cut::down(Bone::Hips.index(), thigh.index(), 33.5).across(lo, hi).except(&[mat::METAL]));
-        b.cut(Cut::down(thigh.index(), shin.index(), 17.0));
-        b.cut(Cut::cube(shin.index(), foot.index(), [-INF, -INF, 24.5], [INF, 4.5, INF]).only(&[mat::LEATHER, mat::SKIN]));
+        b.cut(Cut::cube(Bone::Hips.index(), foot.index(), [x0, -INF, 24.5], [x1, 4.5, INF]).only(&[mat::LEATHER, mat::SKIN]));
     }
+    // The robe below the belt one garment, hanging from his hips in two (to the knee, and the hem
+    // below it), swinging after him (`view::cast_clips`), never parted by his legs.
+    let robe = b.bone("robe", Bone::Hips.index(), [cx, 33.5, 20.5]);
+    let hem = b.bone("robe.hem", robe, [cx, 16.0, 20.5]);
+    b.cut(Cut::down(Bone::Hips.index(), robe, 33.5));
+    b.cut(Cut::down(robe, hem, 16.0));
     let beard1 = b.bone("beard.1", Bone::Head.index(), [cx, 63.5, 28.0]);
     let beard2 = b.bone("beard.2", beard1, [cx, 49.5, 30.0]);
     b.cut(Cut::cube(Bone::Head.index(), beard1, [-INF, -INF, 22.0], [INF, 63.5, INF]).only(&[mat::FUR]));
@@ -323,8 +326,12 @@ mod tests {
             assert!(p.cubes.iter().all(|(o, _)| (p.rest.x + o.x) * sign > 0.0), "{c:?}: {name} reaches across");
         };
         for c in [CastRig::Kid(0), CastRig::Kid(3), CastRig::OldMan, CastRig::Krampus] {
-            for (n, s) in [("hand.L", 1.0), ("hand.R", -1.0), ("foot.L", 1.0), ("foot.R", -1.0), ("thigh.L", 1.0), ("thigh.R", -1.0)] {
+            for (n, s) in [("hand.L", 1.0), ("hand.R", -1.0), ("foot.L", 1.0), ("foot.R", -1.0)] {
                 side(c, n, s);
+            }
+            if c != CastRig::OldMan {
+                side(c, "thigh.L", 1.0);
+                side(c, "thigh.R", -1.0);
             }
         }
         for (n, s) in [("paw_f.L", 1.0), ("paw_f.R", -1.0), ("paw_b.L", 1.0), ("paw_b.R", -1.0)] {
@@ -340,6 +347,11 @@ mod tests {
         assert!(count(CastRig::OldMan, "beard.1") > 200 && count(CastRig::OldMan, "beard.2") > 100);
         assert!(count(CastRig::OldMan, "blade") > 300, "his staff");
         assert!(count(CastRig::OldMan, "neck") > 10);
+        // His robe one garment: on its own bones, none of it on his legs.
+        assert!(count(CastRig::OldMan, "robe") > 3000 && count(CastRig::OldMan, "robe.hem") > 3000);
+        for leg in ["thigh.L", "thigh.R", "shin.L", "shin.R"] {
+            assert_eq!(count(CastRig::OldMan, leg), 0, "{leg}");
+        }
         assert!(count(CastRig::Dog, "jaw") > 50 && count(CastRig::Dog, "tail.3") > 10);
         // Krampus's are the lair's bones, so the lair's clips read for him.
         let lair = super::super::foe_rigs::FoeRig::Krampus.def();

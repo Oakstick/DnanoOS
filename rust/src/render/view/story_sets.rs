@@ -428,10 +428,8 @@ fn gate(out: &mut Vec<Instance>) {
     }
 }
 
-/// The old man's stool (gateway coordinates), where he dozes, and the top of its cushion: he sits
-/// on it through the scene (`story`), just behind where he would stand.
-pub(super) const STOOL: Vec3 = Vec3::new(1.52, 0.0, -2.46);
-pub(super) const STOOL_SEAT: f32 = 0.49;
+/// The old man's stool (gateway coordinates), in his corner beside where he stands: a prop.
+pub(super) const STOOL: Vec3 = Vec3::new(2.05, 0.0, -2.75);
 
 /// The old man's corner, right of the gate: a three-legged stool, a crate he uses for a table
 /// with a mug and a heel of bread, his pallet of straw under a folded blanket, a pail.

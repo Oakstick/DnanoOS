@@ -139,10 +139,13 @@ const OLD_MAN_AT: Vec3 = Vec3::new(1.45, 0.0, -2.2);
 const DOG_BED: Vec3 = Vec3::new(-1.95, 0.0, -2.35);
 const DOG_LUNGE: Vec3 = Vec3::new(-1.72, 0.0, -1.55);
 const CHAIN_LEN: f32 = 2.35;
-/// Seconds the old man takes to get up off his stool (`sit_to_stand`), and how high his hips' joint
-/// sits above the stool's cushion.
-const OLD_MAN_RISE: f32 = 136.0 / 60.0;
-const OLD_MAN_SITS: f32 = 0.06;
+/// By his clips the old man shuffles aside for the boys from and to these seconds into the descent
+/// (slower than the code's step: his shuffle covers little ground), this far, his shuffle covering
+/// `OLD_MAN_SHUFFLE` metres a cycle (`old man walk.fbx`, at his scale).
+const OLD_MAN_STEP: (f32, f32) = (stage::DOOR - 0.8, stage::DOOR + 1.8);
+const OLD_MAN_ASIDE_TO: Vec3 = Vec3::new(0.45, 0.0, 0.25);
+const OLD_MAN_ASIDE: f32 = 0.515;
+const OLD_MAN_SHUFFLE: f32 = 0.21;
 /// The souls rise before the iron door: Mehmed, Ragnar and Miyamoto, as on the character screen.
 const SOUL_AT: [Vec3; 3] = [Vec3::new(-0.82, 0.0, -2.62), Vec3::new(0.0, 0.0, -2.82), Vec3::new(0.82, 0.0, -2.62)];
 /// Each soul's tint: steel blue for the viking, jade for the janissary, rose for the samurai.
@@ -179,8 +182,17 @@ pub(super) enum Act {
     Miskick(f32),
     /// Landing hard and picking himself up: seconds since his feet touched (the code: `Up`).
     Land(f32),
-    /// Screaming after Krampus, seconds into it (the code: `Scared(1)`).
-    Yell(f32),
+    /// Screaming after Krampus, seconds into it, each of the three his own way (0 the one who screams
+    /// it, 1 recoiling, 2 flinging an arm after him) (the code: `Scared(1)`).
+    Yell(f32, u8),
+    /// Running over the ground: `dist` metres covered, at about `speed` metres a second, `pace` of the
+    /// way into the gait (the code: `Run` at `phase`).
+    Dash {
+        phase: f32,
+        pace: f32,
+        dist: f32,
+        speed: f32,
+    },
     /// Nodding, seconds into the line, and whether he is the one saying it (the code: `Talk` or `Stand`).
     Nod(f32, bool),
     /// Backing away in fright, seconds since it began, and how frightened (the code: `Scared`).
@@ -457,7 +469,12 @@ impl WorldView {
                     let u = ((establish - stage::FETCH) / (stage::AT_GATE - stage::FETCH)).min(1.0);
                     feet = home.lerp(GATE_SPOT, u);
                     yaw = yaw_to(home, GATE_SPOT);
-                    act = if u < 1.0 { Act::Run { phase: establish * 13.0, pace: 1.0 } } else { Act::Peer };
+                    let path = home.distance(GATE_SPOT);
+                    act = if u < 1.0 {
+                        Act::Dash { phase: establish * 13.0, pace: 1.0, dist: u * path, speed: path / (stage::AT_GATE - stage::FETCH) }
+                    } else {
+                        Act::Peer
+                    };
                 }
                 if i != 0 && establish > stage::BALL_AT_GATE {
                     look = (establish * 1.3 + i as f32).sin() * 0.25;
@@ -491,17 +508,23 @@ impl WorldView {
                         let beyond = Vec3::new((i as f32 - 2.0) * 0.5, 0.0, -5.6);
                         feet = if u < 0.5 { from.lerp(gate, u * 2.0) } else { gate.lerp(beyond, (u - 0.5) * 2.0) };
                         yaw = if u < 0.5 { yaw_to(from, gate) } else { yaw_to(gate, beyond) };
-                        act = if pursuit < start { Act::Scared(1.0) } else { Act::Run { phase: pursuit * 14.0 + i as f32, pace: 1.0 } };
+                        let (d1, d2) = (from.distance(gate), gate.distance(beyond));
+                        let dist = if u < 0.5 { u * 2.0 * d1 } else { d1 + (u - 0.5) * 2.0 * d2 };
+                        act = if pursuit < start {
+                            Act::Scared(1.0)
+                        } else {
+                            Act::Dash { phase: pursuit * 14.0 + i as f32, pace: 1.0, dist, speed: (d1 + d2) / 2.4 }
+                        };
                     }
                 }
             }
             if hidden || (i == 0 && pursuit >= 0.0) {
                 continue;
             }
-            // "He took him!": the middle one screams it after him (the others frozen in terror), the
-            // one the scream's close-up ends on.
-            if shot == Shot::Scream && i == 2 {
-                act = Act::Yell(t);
+            // "He took him!": the middle one screams it after him (the one the scream's close-up ends
+            // on), the others each in alarm their own way.
+            if shot == Shot::Scream && i > 0 {
+                act = Act::Yell(t, [0, 1, 0, 2][i]);
             }
             // Where the story looks (by the clips: the code turns heads its own way): the ball, the
             // gate, Krampus, the way he went.
@@ -512,7 +535,7 @@ impl WorldView {
                     GATE_SPOT + Vec3::new(0.0, 0.6, -1.0)
                 }),
                 Shot::Taken if i != 0 => Some(krampus_at(taken) + Vec3::new(0.0, 1.2, 0.0)),
-                Shot::Scream => Some(K_GONE + Vec3::new(0.0, 0.8, 0.0)),
+                Shot::Scream if i != 2 => Some(K_GONE + Vec3::new(0.0, 0.8, 0.0)),
                 _ => None,
             };
             self.emit_kid(f, i, kid_root(at(feet), yaw), act, time, look, Vec3::ZERO, aim.map(at));
@@ -845,19 +868,13 @@ impl WorldView {
             om_yaw = yaw_to(om_feet, BOYS_MID.lerp(Vec3::new(0.0, 0.0, -3.4), smooth(stage::WALK, stage::WALK + 5.0, descent)));
             raise = smooth(stage::WALK, stage::WALK + 0.6, descent) * 0.9;
         }
-        // By his clips he keeps his stool: dozing, woken, talking, his hand out to the dog and to the
-        // door; he rises only to see them off.
-        let rise_at = stage::DOOR - 1.0;
+        // By his clips he stands by his corner the whole scene, leaning on his staff: dozing over it,
+        // woken, talking, his hand out to the dog and to the door; he shuffles aside to see them off.
         let line = sv.said_before(Speaker::OldMan);
         let om_act = if (0.0..100.0).contains(&descent) {
-            if descent < rise_at {
-                OldAct::Sit { doze: 0.0 }
-            } else if descent < rise_at + OLD_MAN_RISE {
-                OldAct::Rise { t: descent - rise_at }
-            } else {
-                let walk = (descent - rise_at - OLD_MAN_RISE) / 0.8;
-                OldAct::Stand { pace: if (0.0..1.0).contains(&walk) { (walk * PI).sin().max(0.0) } else { 0.0 }, wave: raise }
-            }
+            let step = (descent - OLD_MAN_STEP.0) / (OLD_MAN_STEP.1 - OLD_MAN_STEP.0);
+            let pace = if (0.0..1.0).contains(&step) { (step * PI).sin().max(0.0).sqrt() } else { 0.0 };
+            OldAct::Step { pace, cycle: step.clamp(0.0, 1.0) * OLD_MAN_ASIDE / OLD_MAN_SHUFFLE, wave: raise }
         } else if shot == Shot::Easy || shot == Shot::Souls {
             OldAct::Hand { t, raise: (raise * 1.25).min(1.0) }
         } else if let Some(t) = talk {
@@ -867,7 +884,7 @@ impl WorldView {
                 OldAct::Talk { t, line }
             }
         } else {
-            OldAct::Sit { doze }
+            OldAct::Stand { doze }
         };
         if !self.emit_old_man_clips(f, om_act, om_yaw, head, doze, descent, time) {
             self.emit_old_man(f, at(om_feet), om_yaw, head, doze, raise, talk, time);
@@ -940,14 +957,14 @@ impl WorldView {
                 if descent > stage::WALK {
                     let walk = descent - stage::WALK - b as f32 * 0.25;
                     if walk > 0.0 {
-                        act = Act::Run { phase: walk * 8.5, pace: 0.5 };
+                        act = Act::Dash { phase: walk * 8.5, pace: 0.5, dist: walk * 0.95, speed: 0.95 };
                     }
                     yaw = yaw_to(feet, Vec3::new(feet.x * 0.3, 0.0, -4.5));
                 }
             }
             let root = root.unwrap_or_else(|| kid_root(at(feet), yaw));
             // Where the story looks (by the clips): the dog, the old man, the souls.
-            let old_head = story_sets::STOOL + Vec3::new(0.0, 0.85, 0.0);
+            let old_head = marks::OLD_MAN_FACE;
             let aim = match shot {
                 Shot::Arrive if arrive > stage::GROWL => Some(DOG_LUNGE + Vec3::new(0.0, 0.5, 0.0)),
                 Shot::Snarl => Some(DOG_LUNGE + Vec3::new(0.0, 0.5, 0.0)),
@@ -1025,7 +1042,8 @@ impl WorldView {
             Act::Miskick(k) => Act::Kick(k),
             Act::Land(t) if t >= 1.4 => Act::Stand,
             Act::Land(t) => Act::Up(smooth(0.8, 1.4, t)),
-            Act::Yell(_) => Act::Scared(1.0),
+            Act::Yell(..) => Act::Scared(1.0),
+            Act::Dash { phase, pace, .. } => Act::Run { phase, pace },
             Act::Nod(t, true) => Act::Talk(t),
             Act::Nod(_, false) => Act::Stand,
             Act::Back(_, a) => Act::Scared(a),
@@ -1130,7 +1148,7 @@ impl WorldView {
                 pose.rot[hd].y = -0.25 * k * (1.0 - gaze);
                 lean = -0.05 * gaze;
             }
-            Act::Miskick(_) | Act::Land(_) | Act::Yell(_) | Act::Nod(..) | Act::Back(..) => {}
+            Act::Miskick(_) | Act::Land(_) | Act::Yell(..) | Act::Nod(..) | Act::Back(..) | Act::Dash { .. } => {}
         }
         (pose, (lean, bob))
     }
@@ -1226,45 +1244,25 @@ impl WorldView {
         rig_point(rig, &pose, root, 0, body_pivot, cast::DOG_COLLAR_RING)
     }
 
-    /// Where the old man's hips are as he sits (in his model, `sit_idle`'s first frame), and how far
-    /// he is lifted to sit on his stool's cushion.
-    fn old_man_seat(&self) -> Option<(Vec3, f32)> {
-        use crate::render::anim::cast as ca;
-        let clip = crate::render::anim::library::cast_clips(CastRig::OldMan)?.get("sit_idle")?;
-        let (mut locals, mut world, mut d) = (Vec::new(), Vec::new(), ca::Delta::default());
-        ca::sample_delta(clip, 0.0, 1.0, &mut locals, &mut world, &mut d);
-        let hips = self.models.jointed_cast(CastRig::OldMan).parts.first()?.rest + d.root;
-        Some((hips, story_sets::STOOL_SEAT + OLD_MAN_SITS - hips.y))
-    }
-
-    /// The old man by his clips: `act`, facing `yaw`, his head turned `head` and dropped in his doze.
-    /// Seated, his hips are on his stool's cushion whichever way he turns on it; risen, he steps
-    /// aside for the boys. False when the code must draw him.
+    /// The old man by his clips: `act`, facing `yaw`, his head turned `head` and dropped in his doze,
+    /// on his feet by his corner (`OLD_MAN_AT`), and shuffling aside as the door opens. His staff arm
+    /// holds his staff beside him (`cast_clips::staff_arm`, `hold_staff`). False when the code must
+    /// draw him.
     #[allow(clippy::too_many_arguments)]
     fn emit_old_man_clips(&self, f: &mut Frame, act: OldAct, yaw: f32, head: f32, doze: f32, descent: f32, time: f32) -> bool {
         let c = CastRig::OldMan;
-        let Some((seat, lift)) = self.old_man_seat() else { return false };
         let breathe = (time * 1.6).sin();
         let play = cast_clips::old_man_play(act, time);
+        let joints: Vec<Vec3> = self.models.jointed_cast(c).parts.iter().map(|p| p.rest).collect();
         let Some((jr, mats)) = self.cast_mats(c, &play, time, |pose, def| {
-            cast_clips::look_steady(pose, def, head, 0.55 * doze + breathe * 0.02 * doze, 0.75);
-            // His staff stands upright in his fist, leaning a little out from him.
-            if let (Some(b), Some(ch)) = (def.index("blade"), def.index("chest")) {
-                pose.rot[b] = cast_clips::heading(pose.rot[ch]) * Quat::from_rotation_z(-0.07);
-            }
+            cast_clips::look_steady(pose, def, head, 0.6 * doze + breathe * 0.02 * doze, 0.75);
+            cast_clips::staff_arm(pose, def, &joints);
         }) else {
             return false;
         };
-        let turn = Quat::from_rotation_y(yaw);
-        let sat = story_sets::STOOL - turn * Vec3::new(seat.x, 0.0, seat.z);
-        let risen = match act {
-            OldAct::Rise { t } => smooth(0.3, 1.5, t),
-            OldAct::Stand { .. } => 1.0,
-            _ => 0.0,
-        };
-        let aside = smooth(stage::DOOR - 1.0 + OLD_MAN_RISE, stage::DOOR - 0.2 + OLD_MAN_RISE, descent.min(60.0));
-        let feet = sat + Vec3::new(0.45, 0.0, 0.25) * aside + Vec3::new(0.0, lift * (1.0 - risen), 0.0);
-        let root = Mat4::from_translation(GATEWAY + feet) * Mat4::from_quat(turn);
+        let aside = smooth(OLD_MAN_STEP.0, OLD_MAN_STEP.1, descent.min(60.0));
+        let feet = OLD_MAN_AT + OLD_MAN_ASIDE_TO * aside;
+        let root = Mat4::from_translation(GATEWAY + feet) * Mat4::from_rotation_y(yaw);
         f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
         true
     }
@@ -1438,10 +1436,12 @@ pub(super) mod marks {
     pub(in crate::render::view) const K_GRAB: Vec3 = super::K_GRAB;
     pub(in crate::render::view) const K_GONE: Vec3 = super::K_GONE;
     pub(in crate::render::view) const LAND: [Vec3; 3] = super::LAND;
-    /// The old man's face as he sits on his stool talking, by his clips (`sit_talk`, `sit_talk_2`:
-    /// his hips on the cushion, his face half a metre over them and a little before him).
-    pub(in crate::render::view) const OLD_MAN_FACE: Vec3 =
-        Vec3::new(super::story_sets::STOOL.x - 0.03, 1.0, super::story_sets::STOOL.z + 0.09);
+    #[cfg(test)]
+    pub(in crate::render::view) const OLD_MAN_AT: Vec3 = super::OLD_MAN_AT;
+    /// The old man's face as he stands by his corner, stooped over his staff (by his clips, `idle`:
+    /// measured, `cast_clips::tests`).
+    /// (0.87 up, 0.22 out toward the boys: as he faces them talking.)
+    pub(in crate::render::view) const OLD_MAN_FACE: Vec3 = Vec3::new(super::OLD_MAN_AT.x - 0.074, 0.87, super::OLD_MAN_AT.z + 0.207);
     pub(in crate::render::view) const DOG_BED: Vec3 = super::DOG_BED;
     pub(in crate::render::view) const DOG_LUNGE: Vec3 = super::DOG_LUNGE;
     pub(in crate::render::view) const SOUL_AT: [Vec3; 3] = super::SOUL_AT;
