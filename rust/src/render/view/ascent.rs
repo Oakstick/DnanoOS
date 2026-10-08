@@ -466,7 +466,10 @@ impl WorldView {
             let mut p = BOY_FROM.lerp(BOY_HUG, e);
             // Up the step onto the platform as he crosses its edge.
             p.y = if p.z > -PLATE { top } else { 0.0 } + (u * 21.0).sin().abs() * 0.035;
-            (PIT + p, 0.0, Act::Run { phase: embrace * 15.0, pace: 1.0 - smooth(0.85, 1.0, u) * 0.6 })
+            // (His run's cycle by the ground he covers, so his feet stay where they land.)
+            let path = BOY_FROM.distance(BOY_HUG);
+            let pace = 1.0 - smooth(0.85, 1.0, u) * 0.6;
+            (PIT + p, 0.0, Act::Dash { phase: embrace * 15.0, pace, dist: e * path, speed: path / (ascent::REACH - ascent::RUN) })
         } else if hand <= 0.0 {
             (on(BOY_HUG), 0.0, Act::Hug(smooth(ascent::REACH - 0.1, ascent::REACH + 0.5, embrace)))
         } else {

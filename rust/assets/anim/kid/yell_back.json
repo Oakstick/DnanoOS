@@ -1,7 +1,7 @@
 {
- "clip": "sit_to_stand",
+ "clip": "yell_back",
  "fps": 60,
- "frames": 136,
+ "frames": 330,
  "loop": false,
  "markers": {}
 }

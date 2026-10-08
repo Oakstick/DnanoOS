@@ -14,6 +14,8 @@
 //! A change of what plays (`Play::key`) crossfades from the pose before over `BLEND` (or the play's
 //! own); a jump in time (a capture, a skip) starts afresh.
 
+use std::f32::consts::PI;
+
 use glam::{Mat4, Quat, Vec3};
 
 use super::clip::Clip;
@@ -61,6 +63,29 @@ impl Delta {
                 self.rot[i] = (q * self.rot[i]).normalize();
             }
         }
+    }
+}
+
+/**
+ * Lengthens a gait's stride: each of `bones` swings `gain` times as far from its parent as the pose
+ * has it (its turn's angle scaled about the same axis), what hangs below it following. A child's legs
+ * cover the ground a run carries a man over only by reaching further and turning over faster
+ * (`view::cast_clips`, the boys' runs).
+ */
+pub fn lengthen(pose: &mut Delta, def: &SkeletonDef, bones: &[usize], gain: f32) {
+    if (gain - 1.0).abs() < 1e-4 {
+        return;
+    }
+    let old = pose.rot.clone();
+    for i in 0..old.len() {
+        let Some(p) = def.parents.get(i).copied().flatten() else { continue };
+        let mut local = (old[p].inverse() * old[i]).normalize();
+        if bones.contains(&i) {
+            let (axis, angle) = local.to_axis_angle();
+            let angle = if angle > PI { angle - 2.0 * PI } else { angle };
+            local = Quat::from_axis_angle(axis, angle * gain);
+        }
+        pose.rot[i] = (pose.rot[p] * local).normalize();
     }
 }
 
@@ -118,6 +143,9 @@ pub enum Mask {
     Upper,
     /// These bones and everything below them.
     Under(&'static [&'static str]),
+    /// The upper body but these bones and everything below them (a speaker's gestures over the legs
+    /// he stands on, but the arm that holds his staff).
+    UpperBut(&'static [&'static str]),
 }
 
 /// A clip at a moment: its name (or failing it, another's), seconds into it (a loop wraps), its weight
@@ -285,6 +313,10 @@ impl CastAnimator {
                 let roots: Vec<usize> = names.iter().filter_map(|b| def.index(b)).collect();
                 (0..n).map(|i| roots.iter().any(|&r| i == r || descends(def, i, r))).collect()
             }
+            Mask::UpperBut(names) => {
+                let roots: Vec<usize> = names.iter().filter_map(|b| def.index(b)).collect();
+                (0..n).map(|i| !def.legs.contains(&i) && !roots.iter().any(|&r| i == r || descends(def, i, r))).collect()
+            }
         };
         self.masks.push((m, v.clone()));
         Some(v)
@@ -323,9 +355,14 @@ mod tests {
                 "nod",
                 "reach",
                 "hug",
+                "yell_long",
+                "yell_back",
+                "arms_up",
+                "alarm",
+                "reach_out",
             ],
         ),
-        (CastRig::OldMan, &["sit_idle", "sit_talk", "sit_talk_2", "sit_point", "sit_to_stand", "nod", "idle", "walk", "wave"]),
+        (CastRig::OldMan, &["idle", "walk", "talk", "talk_m", "point", "nod", "look", "wave"]),
         (CastRig::Dog, &["idle", "sleep", "lie", "lie_wag", "stand_up", "lie_down", "snarl"]),
         (CastRig::Krampus, &["grab", "hold_up"]),
     ];

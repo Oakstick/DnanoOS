@@ -328,7 +328,7 @@ fn bench_cast() -> String {
     let mut out = String::new();
     let plays: [(CastRig, [&str; 2]); 4] = [
         (CastRig::Kid(0), ["run", "terrified"]),
-        (CastRig::OldMan, ["sit_talk", "sit_point"]),
+        (CastRig::OldMan, ["idle", "talk"]),
         (CastRig::Dog, ["idle", "snarl"]),
         (CastRig::Krampus, ["run", "hold_up"]),
     ];
