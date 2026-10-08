@@ -841,7 +841,7 @@ impl WorldView {
         for (i, p) in nearest(&self.hub_glow, hero, super::hell_art::HUB_GLOW_LIT).into_iter().enumerate() {
             let fi = (p.x * 0.37 + p.z * 0.61).fract() * 9.0 + i as f32 * 0.0;
             let pulse = 1.0 + (time * 0.9 + fi).sin() * 0.12 + (time * 2.3 + fi * 1.7).sin() * 0.05;
-            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 1.6 * pulse, distance: 4.6 });
+            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 1.6 * pulse, distance: 4.2 });
         }
     }
 

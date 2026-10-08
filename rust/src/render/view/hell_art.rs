@@ -69,9 +69,9 @@ pub(super) fn lava_glow(k: f32) -> Vec3 {
 
 /// How many of the lava's lights (rising past the edges, under the bridges) burn at once, the
 /// nearest the hero first.
-pub(super) const HUB_GLOW_LIT: usize = 18;
+pub(super) const HUB_GLOW_LIT: usize = 12;
 /// The hub's fire bowls and lanterns lit at once.
-pub(super) const HUB_LAMPS_LIT: usize = 9;
+pub(super) const HUB_LAMPS_LIT: usize = 7;
 
 /// Pushes `local` (built about the origin, facing +z) placed by `root`.
 pub(super) fn placed(out: &mut Vec<Instance>, root: Mat4, local: &[Instance]) {
