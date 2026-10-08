@@ -548,6 +548,19 @@ impl Game {
         }
     }
 
+    /// The controller in his hands was unplugged (or its battery died): as if he had looked away,
+    /// the game pauses, and play that would begin by itself waits for him (QA.md Q5). A controller
+    /// unplugged while he plays on the keyboard changes nothing.
+    pub fn controller_lost(&mut self) {
+        if !self.input.last_device().is_pad() {
+            return;
+        }
+        self.focused = false;
+        if self.screen == Screen::Playing {
+            self.enter(Screen::Paused);
+        }
+    }
+
     /// The window has the player's attention again (the pause menu he came back to stays up).
     pub fn focus_gained(&mut self) {
         self.focused = true;

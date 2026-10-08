@@ -448,6 +448,37 @@ fn a_foe_whose_den_turned_to_rock_goes_home_where_it_stood() {
     assert!(d.den.is_some_and(|den| den.contains(d.pos)), "its den goes with it");
 }
 
+/**
+ * The controller in his hands unplugged (or its battery dead) mid-fight: the game pauses, and
+ * the countdown after it ends on the pause menu; a controller unplugged while he plays on the
+ * keyboard changes nothing (QA.md Q5).
+ */
+#[test]
+fn a_controller_lost_mid_fight_pauses_the_game() {
+    let _dir = own_folder("pad-lost");
+    let mut g = Game::new();
+    g.map_jump(Stage::Court(Sin::Greed));
+    g.enter(Screen::Playing);
+    g.input.set_last_device(crate::input::Device::Xbox);
+    g.controller_lost();
+    assert_eq!(g.screen, Screen::Paused, "a controller lost mid-fight pauses");
+    // On the keyboard, a controller pulled out of the machine is nothing to him.
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing);
+    g.input.set_last_device(crate::input::Device::KeyboardMouse);
+    g.controller_lost();
+    assert_eq!(g.screen, Screen::Playing, "playing on the keyboard");
+    // Lost during the countdown: it ends on the pause menu.
+    g.input.set_last_device(crate::input::Device::Xbox);
+    g.map_jump(Stage::Realm(Sin::Pride));
+    g.controller_lost();
+    for _ in 0..((super::READY_SECONDS + 1.0) / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!(g.screen, Screen::Paused);
+}
+
 /// F2 (the testing cheat) sets him before the gate on its inner side, in a court's south wall as in
 /// the garden's north hedge, never inside the wall (QA.md Q4).
 #[test]
