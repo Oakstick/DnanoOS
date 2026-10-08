@@ -788,8 +788,9 @@ builder is `view/crypt.rs`. Both are off the road on the map.
     fewer stars and a teal moon halo.
   - The dusk (the Cyclops' meadow) runs amber at the horizon, through copper and mist-teal grey,
     to a charcoal zenith, instead of pink, mauve and navy.
-- **The Cyclops' meadow:** takes the Garden's grade and an amber dusk light instead of magenta
-  twilight.
+- **The Cyclops' meadow:** took the Garden's grade and an amber dusk light instead of magenta
+  twilight; since rebuilt at the Cisterns' bar (below, "The Cyclops' meadow, at the Cisterns'
+  bar").
 - **The character screen's cavern:** charcoal and umber stone, amber lava, crystals of mist teal.
 - **The Portals of Hell:**
   - charcoal basalt, slabs of umber and pale dressed stone;
@@ -1061,6 +1062,127 @@ paths are as they were.
   - From the top camera the lawns in the hedges' moon shadow are dark; the gravel still reads
     first.
   - A temple stands on four wall tiles; a bomb breaking one would leave it standing (as before).
+
+### The Cyclops' meadow, at the Cisterns' bar (2026-10-08)
+
+The first boss's arena was rebuilt to Dungeon II's quality (`view/meadow_field.rs`). It keeps its
+own character: a meadow at an amber dusk, with grass, wildflowers, a stream and old stones. It now
+has the Cisterns' depth: real materials, pools of warm light and contrast. The layout and
+gameplay are unchanged. The same tiles are floor, stream, bridge and rock. The pillars and low
+walls stand no higher than before, and the Cyclops' moves, bolts, boulders and slams, the red key,
+the gate and the walls that break all work as they did.
+
+- **What the meadow bypassed or under-used:**
+  - **RP14 materials:** almost none. The floor was one even lawn (`SHADE_GRASS`). The tufts,
+    flowers, brick walls, pale drums, voxel hedges, bushes and pines were all plain-lit, and the
+    grade turned pale greys into stone only after the fact.
+  - **RP17 lights:** five fire bowls lit as candles, and the hero's lantern at a quarter.
+  - **RP19 haze and RP18 probes:** they applied, but the flat field and the uniform daylight
+    left them little to work on.
+  - **The stream:** it used the Garden's old river builder, with squared banks and balustraded
+    bridges in the garden's colours.
+  - **Cost:** 81,000 static cubes, most of them the voxel hedge ring and bushes.
+- **The ground:** strand-shaded turf laid in quarter tiles from a smooth field.
+  - The turf is moss and olive, darker in the hollows and drier on the rises. Tufts are long in
+    the shelter of walls, banks and the ring, and short where the fights are.
+  - Wildflowers grow in drifts of the board's quieter colours: buttercup amber, poppy rust,
+    cornflower dusk, daisy pale stone and marigold copper.
+  - Tracks of trodden earth (`SHADE_GRAVEL` in umber, wet in its hollows) are laid in sixteenths
+    where they cross a tile, so their edges are ragged. One track leads from where he comes in,
+    over the middle bridge, to the gate. Short ones lead to the side bridges, and earth is scuffed
+    round the pillars. Stones are trodden into the earth, with now and then a flat one set in the
+    track.
+- **The stream:**
+  - The bed is dark mud and wet stones, with a few boulders breaking the surface.
+  - Near the bridges and at the ends, the banks are the crypt's `masonry`, wet and dark low down,
+    under a pale coping.
+  - Between the bridges the banks are wild: cut earth, a lip of turf with grass hanging over it,
+    a dark wet band at the waterline, wet stones, and reeds with their heads.
+  - At the east end a spring head (the crypt's `spout_cubes`) pours into the stream (`emit_fall`).
+    At the west end a culvert takes the water, a dark mouth behind an iron grate.
+  - The bridges are old timber: silvered planks, stringers, posts and rails, iron straps and moss.
+    The middle bridge carries a lantern over the water.
+- **The stone:**
+  - The pillars are chunky dressed stone on a plinth of four slabs. Each drum is its own stone,
+    with blocks standing proud and moss in the seams, and ivy grows up the side away from the
+    sun. Four carry copper braziers with live flames. Two have fallen, and their drums lie mossed
+    over in the grass.
+  - The low walls are `masonry` on both faces and at the ends of a run, with a chipped pale
+    coping, moss in its joints, a ruined course here and there, fallen blocks at the foot and
+    bramble against a face.
+- **The edge of the arena:**
+  - The ring's rock is a boundary wall, ruined and grown over. Two courses of stone face the open
+    ground, with a hedgerow of hawthorn and bramble on top. Its clumps stand out at their own
+    depths, a blossom or a haw shows here and there, and its top is a loose mound of growth.
+    Where the wall has fallen, rubble and moss.
+  - The level's edge is a treeline. Oaks are three round puffs with clumps breaking the outline
+    and a lit top. Firs are tiers of drooping boughs. They are dark against the dusk, taller in
+    the north, lower in the south toward the chase camera.
+  - Beyond the edge, a skirt of dark ground carries a row more of woods, so the arena reads as a
+    clearing, not an island.
+- **The light** (`meadow_atmosphere`):
+  - The sun is amber, low in the west-north-west (21°), and casts long shadows across the field.
+  - The sky light is a weak mist teal and the ambient is low (0.5), so the shade carries the
+    darkness. Exposure is 1.2 and the fog is a teal charcoal.
+  - The practicals light through the clusters (RP17): the four braziers and eight lanterns. Four
+    lanterns are on crooks at the low walls' ends, four on posts on the side walls by the gaps,
+    one at the spring and one on the bridge. The ten nearest burn at once (`MEADOW_LAMPS_LIT`),
+    amber, reach 5.5. The lanterns' glass is held at 0.55, so the pool is the light and the
+    glass is not.
+  - The lanterns at the low walls flanking the way in from the south hang at the walls' outer
+    ends, so the arrival is not framed by two lamps.
+  - The hero's lantern goes from 0.25 to 0.4.
+  - Moths and the last butterflies are in pale stone, amber and rust. Fireflies come out over the
+    stream and along the treeline. Dust drifts in the low sun.
+  - Mist lies only on the water and in the treeline.
+- **Dusk water** (`water` in `shaders.wgsl`, only under the dusk sky, which only the meadow has
+  water under): low down the stream mirrors the treeline, not the bright west, and higher up the
+  sky at half strength. The low sun's sheen is held to a glitter. The stream had read as a sandy
+  band; now it reads dark and holds the lamps.
+- **The gate:** the meadow takes the Garden's gatehouse (`build_garden_gate`, its one red lock),
+  in dressed stone, in place of the old one. Nothing in `gate.rs` changed.
+- **The Cyclops:** unchanged in model, size and behaviour. Against the darker field its red hide,
+  its smouldering iris, its charge glow and its bolts read from both cameras.
+- **Grade:** everything built is in the board's palette already (`authored`), so the grade leaves
+  it alone. A blown low wall leaves turf, not the old bright lawn green.
+- **The courts:** all seven princes' courts are now built to their own plans (`court::built`), so
+  no court stands in on the meadow any more. The stand-in path (`court::stand_in`, the sin's tint)
+  is unchanged and takes the new meadow under the sin's sky.
+- **Numbers (1080p, RTX 5070 Ti Laptop, interleaved A/B with rust-port):**
+
+  | | Before | After |
+  |---|---:|---:|
+  | Static cubes | 80,999 | 23,484 |
+  | `--bench` 300, the arrival (high clocks) | 12.2 / 12.2 ms (GPU 8.3 / 9.2) | 10.9 / 10.7 ms (GPU 7.7 / 8.3) |
+  | `--bench` 300, the fight (high clocks) | 11.6 / 11.6 ms (GPU 8.4 / 8.4) | 10.3 / 10.0 ms (GPU 6.9 / 7.7) |
+  | `--bench` 300, the arrival (low clocks, final build) | 25.4 / 25.4 ms | 22.6 / 22.6 ms |
+  | `--bench` 300, the fight (low clocks, final build) | 23.8 / 24.1 ms | 22.3 / 22.4 ms |
+  | `--perf closeup`, wall p50 (GPU p50), low clocks | 17.7 / 17.8 ms (16.9 / 17.0) | 15.9 / 15.9 ms (15.0 / 15.1) |
+  | `--perf battle30`, wall p50 (GPU p50), low clocks | 26.2 / 26.3 ms (25.4 / 25.4) | 21.9 / 21.7 ms (21.1 / 20.8) |
+
+  - The battle's 8 ms CPU budget fails now and then at frame 360 in both builds (8.9 to 11.2 ms),
+    as before. Its CPU medians are the same (3.7 ms).
+  - Everything is built once at load, behind the loading screen, and the probes are baked there
+    as before.
+- **Checks:**
+  - `--camera-check arena0`: no clips, no hidden-hero poses, no holes, in both cameras, before
+    and after.
+  - The harness is unchanged: `--run 2 1`, `--court 2 1 1`, `--pit 2 8 1` and all 17 bouts print
+    the same before and after, apart from their wall-clock lines. No bot plays the Cyclops' fight.
+  - The web build lints clean.
+- **Captures:** `C:/Users/ulask/Games/vh-meadow-cap/`.
+  - `side-*.png`: rust-port beside this build, 15 views. They are the arrival, the arena wide, the
+    stream and a bridge, the ruins, the low walls, the edge, the fight from both cameras and from
+    afar, the red key, the top camera, `--iso`, the spring, the culvert and the gate.
+  - `final-*.png`: the same views at 1080p.
+  - `meadow-vs-cisterns-garden.png` and `meadow-vs-cisterns-garden-1080.png`: the meadow beside
+    the Cisterns and the Garden.
+  - `views.sh` makes them.
+- **Still open:**
+  - Up close (rarely seen in play), the treeline's oaks are still blocky.
+  - The trodden earth reads a little grey where the low sun lies on it.
+  - The low walls' coping and moss read paler than the stone under the lanterns.
+  - The arena's floor is flat (heights all 0), so the hollows are tone only.
 
 ### Scene I's camera (2026-10-08)
 
