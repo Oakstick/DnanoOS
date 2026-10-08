@@ -153,7 +153,7 @@ impl Game {
     /// The run as the save holds it: the checkpoint, the purse and the Ledger (`Game::new` reads
     /// them so, outside tests).
     #[cfg(test)]
-    fn read_saved(&mut self) {
+    pub(super) fn read_saved(&mut self) {
         self.saved_run = super::save::read_run();
         self.progress = read_progress();
         self.warband = super::ledger::Warband::read();

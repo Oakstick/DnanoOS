@@ -54,6 +54,9 @@ mod persist;
 mod pickups;
 pub mod pit;
 mod preload;
+pub mod qa;
+#[cfg(test)]
+mod qa_tests;
 mod realm;
 mod realms;
 #[cfg(test)]

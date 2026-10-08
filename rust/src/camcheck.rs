@@ -75,6 +75,11 @@ fn stages() -> Vec<(String, Stage)> {
         v.push((format!("court{i}"), Stage::Court(*s)));
     }
     v.push(("gym".into(), Stage::Gym));
+    // The finale: the Pit's seven levels and Krampus's lair (QA.md: the road's last stops).
+    for n in 1..=crate::logic::pit::LEVELS {
+        v.push((format!("pit{n}"), Stage::Pit(n)));
+    }
+    v.push(("lair".into(), Stage::Lair));
     v
 }
 
