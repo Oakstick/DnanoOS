@@ -250,6 +250,26 @@ pub fn soak_stop(index: usize, seed: u32, secs: f64, cheats: bool) -> StopReport
         if holds && on_screen > SCREEN_HOLD && on_screen - step <= SCREEN_HOLD {
             found(&mut rep, t, "stuck screen", format!("{screen:?} for {SCREEN_HOLD:.0} s"));
         }
+        // (`VH_QA_TRACE=FROM:TO`: where he is and what he does, every frame between those seconds.)
+        if let Some((a, b)) =
+            std::env::var("VH_QA_TRACE").ok().and_then(|v| v.split_once(':').map(|(a, b)| (a.parse::<f64>().ok(), b.parse::<f64>().ok())))
+        {
+            if a.is_some_and(|a| t >= a) && b.is_some_and(|b| t <= b) {
+                let hp = g.hero.pos();
+                let held: Vec<String> = hands.held.iter().map(|h| format!("{:?}", h.0)).collect();
+                eprintln!(
+                    "t {t:.2} phase {phase} {:?} hero ({:.3}, {:.3}) air {} free {} fighter {:?} shove {:?} prince {:?} held {held:?}",
+                    g.screen,
+                    hp.x,
+                    hp.y,
+                    g.hero.airborne(),
+                    g.hero.free_move,
+                    g.brawl.as_ref().map(|b| b.hero.state),
+                    g.brawl.as_ref().map(|b| b.ails.shove),
+                    g.prince().map(|d| (d.f.state, d.pos))
+                );
+            }
+        }
         if g.screen == Screen::Playing {
             let hp = g.hero.pos();
             let grid = &g.level.grid;
@@ -263,7 +283,17 @@ pub fn soak_stop(index: usize, seed: u32, secs: f64, cheats: bool) -> StopReport
                 if grid.get(tile.x, tile.y) == Tile::Rock && !g.hero.airborne() {
                     hero_rock += step;
                     if hero_rock > IN_ROCK && hero_rock - step <= IN_ROCK {
-                        found(&mut rep, t, "hero in rock", format!("at ({:.2}, {:.2})", hp.x, hp.y));
+                        let near: String = (-1..=1)
+                            .map(|dy| {
+                                (-1..=1)
+                                    .map(|dx| if grid.get(tile.x + dx, tile.y + dy) == Tile::Rock { '#' } else { '.' })
+                                    .collect::<String>()
+                            })
+                            .collect::<Vec<_>>()
+                            .join("/");
+                        let fighter = g.brawl.as_ref().map(|b| format!("{:?}", b.hero.state)).unwrap_or_default();
+                        let what = format!("at ({:.2}, {:.2}) [{near}] {fighter} spawn {:?}", hp.x, hp.y, g.level.hero_spawn);
+                        found(&mut rep, t, "hero in rock", what);
                     }
                 } else {
                     hero_rock = 0.0;
