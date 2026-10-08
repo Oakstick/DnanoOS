@@ -554,6 +554,7 @@ impl ApplicationHandler for App {
                 self.set_capture(false);
                 self.game.focus_lost();
             }
+            WindowEvent::Focused(true) => self.game.focus_gained(),
             WindowEvent::RedrawRequested => {
                 #[cfg(not(target_arch = "wasm32"))]
                 if self.starting.is_some() {

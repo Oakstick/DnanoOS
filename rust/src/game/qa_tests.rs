@@ -368,3 +368,46 @@ fn the_story_plays_through_to_the_garden() {
     assert!(until(&mut g, Screen::Playing, 20.0), "into play: on {:?}", g.screen);
     assert_eq!(g.dungeon, 0);
 }
+
+/**
+ * Away from the window as play is about to begin (alt-tab during the countdown, the loading or
+ * the old man's door): the countdown ends on the pause menu, not in a fight he cannot see. Back,
+ * he resumes as ever; a controller's press while the window is behind another one counts as
+ * being back (QA.md Q1).
+ */
+#[test]
+fn play_never_begins_while_he_is_away() {
+    let _dir = own_folder("focus");
+    let mut g = Game::new();
+    g.map_jump(Stage::Realm(Sin::Greed));
+    assert_eq!(g.screen, Screen::Ready);
+    g.focus_lost();
+    for _ in 0..((super::READY_SECONDS + 1.0) / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!(g.screen, Screen::Paused, "the countdown ends on the pause menu");
+    g.focus_gained();
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing, "back, Esc resumes");
+    // Away mid-fight, the game pauses (as it did); a controller's Start while away resumes it.
+    g.focus_lost();
+    assert_eq!(g.screen, Screen::Paused);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing, "a press while away: he is there");
+    // The old man called, and left while away: his door opens on the pause menu too.
+    g.call_old_man();
+    assert_eq!(g.screen, Screen::Shop);
+    g.focus_lost();
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.focused = false;
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.focused = false;
+    for _ in 0..((super::READY_SECONDS + 1.0) / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!(g.screen, Screen::Paused, "the countdown after the wares ends on the pause menu");
+}
