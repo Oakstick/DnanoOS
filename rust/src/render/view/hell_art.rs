@@ -69,9 +69,9 @@ pub(super) fn lava_glow(k: f32) -> Vec3 {
 
 /// How many of the lava's lights (rising past the edges, under the bridges) burn at once, the
 /// nearest the hero first.
-pub(super) const HUB_GLOW_LIT: usize = 36;
+pub(super) const HUB_GLOW_LIT: usize = 18;
 /// The hub's fire bowls and lanterns lit at once.
-pub(super) const HUB_LAMPS_LIT: usize = 12;
+pub(super) const HUB_LAMPS_LIT: usize = 9;
 
 /// Pushes `local` (built about the origin, facing +z) placed by `root`.
 pub(super) fn placed(out: &mut Vec<Instance>, root: Mat4, local: &[Instance]) {
@@ -266,10 +266,10 @@ impl WorldView {
                     half,
                     base: -1.02,
                     height: 0.9,
-                    courses: 3,
+                    courses: 2,
                     seed: (seed + k as f64 * 7.0, seed * 0.3 + k as f64),
-                    len: (0.42, 0.45),
-                    depth: (0.12, 0.1),
+                    len: (0.6, 0.55),
+                    depth: (0.14, 0.12),
                     face: if dir.0 != 0 { w / 2.0 } else { h / 2.0 } - 0.1,
                     wet: false,
                     ruined: false,
@@ -502,7 +502,7 @@ impl WorldView {
             let coals = Vec3::new(x, top + 0.62, z);
             let len = out.len() - start;
             // (The pool's light hangs above the flames, so the copper does not blaze.)
-            self.torches.insert(p, (coals, (start, len)));
+            self.torches.insert(p, (coals + Vec3::Y * 0.3, (start, len)));
             self.smoke.push((coals + Vec3::Y * 0.2, 0.9));
             top += 0.75;
         }

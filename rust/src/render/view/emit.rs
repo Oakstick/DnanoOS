@@ -962,7 +962,7 @@ impl WorldView {
             } else if self.hell {
                 // The hub's fire bowls, lanterns and the House's braziers: amber pools on the
                 // polished basalt.
-                (1.0, 6.0)
+                (0.8, 6.0)
             } else if self.meadow {
                 // The meadow's braziers and lanterns at dusk: pools of their own on the turf and
                 // the wet stone, against the low sun.

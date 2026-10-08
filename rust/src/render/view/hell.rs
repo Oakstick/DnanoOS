@@ -841,7 +841,7 @@ impl WorldView {
         for (i, p) in nearest(&self.hub_glow, hero, super::hell_art::HUB_GLOW_LIT).into_iter().enumerate() {
             let fi = (p.x * 0.37 + p.z * 0.61).fract() * 9.0 + i as f32 * 0.0;
             let pulse = 1.0 + (time * 0.9 + fi).sin() * 0.12 + (time * 2.3 + fi * 1.7).sin() * 0.05;
-            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 2.0 * pulse, distance: 4.6 });
+            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 1.6 * pulse, distance: 4.6 });
         }
     }
 
@@ -953,7 +953,7 @@ impl WorldView {
                     ));
                 }
                 glow_orb(f, b + Vec3::new(0.0, 0.15, 0.0), 0.35, fire, 0.18);
-                if hub {
+                if hub && (near || spot.distance(hero) < 20.0) {
                     // Each brazier a pool of its sin's colour on the platform.
                     let flick = 1.0 + (time * 8.0 + i as f32 + side).sin() * 0.08 + (time * 13.0 + side * 3.0).sin() * 0.05;
                     f.lights.push(Light { pos: b + Vec3::new(0.0, 0.35, 0.0), color: fire * 2.2 * flick, distance: 4.6 });
@@ -1153,7 +1153,9 @@ impl WorldView {
             if t < 0.8 {
                 let r = 0.08 + t * 0.3;
                 let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::new(r, r * 0.7, r));
-                f.opaque[sphere].push(Instance::new(m, lin(LAVA_DEEP), 1.0, lin(LAVA) * (1.2 + t), SHADE_LIT));
+                // (The hub's bubbles a dull skin, glowing as they swell.)
+                let glow = if self.gym { lin(LAVA) * (1.2 + t) } else { lin(LAVA) * (0.25 + 0.6 * t) };
+                f.opaque[sphere].push(Instance::new(m, lin(LAVA_DEEP), 1.0, glow, SHADE_LIT));
             } else {
                 let k2 = (t - 0.8) / 0.2;
                 let m = Mat4::from_translation(p + Vec3::new(0.0, 0.02, 0.0))

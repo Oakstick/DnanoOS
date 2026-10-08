@@ -642,22 +642,26 @@ fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32) -> vec3<f32> {
         p = vec2<f32>((world.x + world.z) * 1.3, world.y * 1.6);
         flow = vec2<f32>(0.0, 0.55) * time;
     }
-    let heat = vnoise(p * 0.22 + flow * 0.25) * 0.5 + vnoise(p * 0.6 + vec2<f32>(7.0, 3.0) - flow * 0.5) * 0.32
-        + vnoise(p * 1.7 + flow) * 0.18;
+    let broad = vnoise(p * 0.22 + flow * 0.25);
+    let fine = vnoise(p * 0.75 + vec2<f32>(7.0, 3.0) - flow * 0.5);
+    let heat = broad * 0.62 + fine * 0.38;
     let hot = clamp((heat - 0.46) / 0.3, 0.0, 1.0);
-    // Plates of uneven size (the grid warped), their cracks healed over here and there.
-    let warp = vec2<f32>(vnoise(p * 0.7 + vec2<f32>(3.0, 1.0)), vnoise(p * 0.7 + vec2<f32>(8.0, 5.0))) - vec2<f32>(0.5);
-    let c = p * 1.15 + warp * 1.4 + flow * 1.4;
+    // Plates of uneven size (the grid warped by the heat's own noise).
+    let c = p * 1.15 + flow * 1.4 + vec2<f32>(broad * 2.2, fine * 1.6);
     let e = cell_border(c);
-    let healed = smoothstep(0.35, 0.7, vnoise(c * 0.9 + vec2<f32>(11.0, 4.0)));
-    let crack = (1.0 - smoothstep(0.01, 0.035 + 0.16 * hot, e)) * (1.0 - healed * (1.0 - hot));
-    let melt = smoothstep(0.42, 0.8, hot + 0.25 * (vnoise(c * 1.9 + vec2<f32>(time * 0.15, 0.0)) - 0.5));
-    let open = max(crack * (0.12 + 0.88 * hot), melt);
+    // The cracks, healed over where it is coldest.
+    let crack = (1.0 - smoothstep(0.015, 0.05 + 0.16 * hot, e)) * smoothstep(0.15, 0.4, heat);
+    // (The plates melt from their cracks inward, so the open flow's edge is the plates' edges.)
+    let melt = smoothstep(0.5, 0.72, hot + 0.25 * (fine - 0.5) + 0.6 * (0.12 - e));
+    let open = max(crack * (0.2 + 0.8 * hot), melt);
     // The crust: darker plates, paler and greyer where it has cooled longest.
-    let shade = (0.65 + 0.6 * vnoise(c * 3.3)) * (1.0 - 0.6 * open);
+    let shade = (0.6 + 0.7 * fine) * (1.0 - 0.6 * open);
     // A slow pulse where the flow is open.
     let pulse = 0.85 + 0.15 * sin(time * 1.3 + heat * 9.0);
-    return vec3<f32>(shade, open * (0.6 + 0.9 * hot * hot) * pulse + 0.03, hot);
+    // Where it runs open, streaks of brighter and duller flow drawn along by the current.
+    let streak = vnoise(vec2<f32>(c.x * 0.8, c.y * 3.0) - flow * 2.0);
+    let glow = open * (0.5 + 0.6 * hot * hot) * (0.75 + 0.5 * streak * melt + 0.25 * (1.0 - melt));
+    return vec3<f32>(shade, glow * pulse + 0.03, hot);
 }
 
 fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, base: vec3<f32>, n: vec3<f32>, seed: f32) -> Surface {
