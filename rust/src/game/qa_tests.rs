@@ -411,3 +411,40 @@ fn play_never_begins_while_he_is_away() {
     }
     assert_eq!(g.screen, Screen::Paused, "the countdown after the wares ends on the pause menu");
 }
+
+/**
+ * A fall brings the realm's foes home whole; a foe whose den the realm has since turned to rock
+ * (the Rotting Feast's teeth closed on its gatehouse while it chased him through) rises where it
+ * stood, not inside the rock (QA.md Q3).
+ */
+#[test]
+fn a_foe_whose_den_turned_to_rock_goes_home_where_it_stood() {
+    let _dir = own_folder("den-rock");
+    let mut g = Game::new();
+    g.map_jump(Stage::Realm(Sin::Greed));
+    g.enter(Screen::Playing);
+    g.update(STEP);
+    let grid = g.level.grid.clone();
+    let open = |p: crate::logic::types::P| grid.is_walkable(p.x, p.y, false);
+    let (i, home, stood) = g
+        .enemies
+        .iter()
+        .enumerate()
+        .find_map(|(i, e)| {
+            let home = e.duel.as_deref()?.den?.home;
+            let h = crate::logic::types::P::new(home.x.round() as i32, home.y.round() as i32);
+            let near = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+                .iter()
+                .map(|&(dx, dy)| crate::logic::types::P::new(h.x + dx, h.y + dy))
+                .find(|p| open(*p))?;
+            Some((i, h, near))
+        })
+        .expect("a foe at its den with floor beside it");
+    g.enemies[i].duel.as_mut().unwrap().pos = stood.v();
+    g.level.grid.set(home.x, home.y, crate::logic::types::Tile::Rock);
+    g.reset_round();
+    let d = g.enemies[i].duel.as_deref().unwrap();
+    assert_eq!((d.pos.x, d.pos.y), (stood.x as f64, stood.y as f64), "home where it stood");
+    assert!(d.den.is_some_and(|den| den.contains(d.pos)), "its den goes with it");
+}
+

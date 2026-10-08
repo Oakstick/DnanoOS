@@ -295,13 +295,37 @@ pub fn soak_stop(index: usize, seed: u32, secs: f64, cheats: bool) -> StopReport
                             })
                             .collect::<Vec<_>>()
                             .join("/");
-                        let what = format!(
+                        let mut what = format!(
                             "{kind} at ({:.2}, {:.2}) [{near}] hero at ({:.1}, {:.1})",
                             pos.x,
                             pos.y,
                             g.hero.pos().x,
                             g.hero.pos().y
                         );
+                        if let Some(crate::logic::realms::Run::Gluttony(f)) = g.run.as_ref() {
+                            let arch: Vec<String> = f
+                                .seams
+                                .iter()
+                                .map(|s| {
+                                    format!(
+                                        "{}..{} closed {} narrow {} wide {}",
+                                        s.top,
+                                        s.bottom,
+                                        s.closed,
+                                        s.narrow.contains(tile),
+                                        s.wide.contains(tile)
+                                    )
+                                })
+                                .collect();
+                            what += &format!(" bloat {} seams {arch:?}", f.bloat);
+                        }
+                        if let (Some(r), Some(d)) = (g.general.as_ref(), e.duel.as_deref()) {
+                            let w = r.walkers.iter().find(|w| w.id == d.id);
+                            what += &format!(
+                                " walker {:?}",
+                                w.map(|w| (w.then, w.at, w.path.len(), w.path.first().copied(), w.path.last().copied()))
+                            );
+                        }
                         found(&mut rep, t, "foe in rock", what);
                     }
                 } else {
