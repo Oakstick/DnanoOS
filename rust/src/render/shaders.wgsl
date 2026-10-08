@@ -634,8 +634,9 @@ fn cell_border(p: vec2<f32>) -> f32 {
 // river reads as one flow across its blocks: plates of dark crust drifting slowly, cracked, the
 // heat glowing in their cracks; where it runs hot the plates melt away into open flow, ember
 // going to amber. Upright faces run downhill (the volcano's rivers, the falls off the platforms).
-// Returns the crust's shade, the glow (about 1 on the average) and how hot it runs (0 to 1).
-fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32) -> vec3<f32> {
+// Returns the crust's shade, the glow (about 1 on the average) and how hot it runs (0 to 1);
+// `bias` runs it hotter.
+fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32, bias: f32) -> vec3<f32> {
     var p = world.xz;
     var flow = vec2<f32>(0.05, 0.03) * time;
     if (abs(n.y) < 0.5) {
@@ -645,7 +646,7 @@ fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32) -> vec3<f32> {
     let broad = vnoise(p * 0.22 + flow * 0.25);
     let fine = vnoise(p * 0.75 + vec2<f32>(7.0, 3.0) - flow * 0.5);
     let heat = broad * 0.62 + fine * 0.38;
-    let hot = clamp((heat - 0.46) / 0.3, 0.0, 1.0);
+    let hot = clamp((heat - 0.46) / 0.3 + bias, 0.0, 1.0);
     // Plates of uneven size (the grid warped by the heat's own noise).
     let c = p * 1.15 + flow * 1.4 + vec2<f32>(broad * 2.2, fine * 1.6);
     let e = cell_border(c);
@@ -1474,7 +1475,9 @@ fn fs_scene(in: VOut) -> FOut {
     var lava = vec3<f32>(1.0, 1.0, 0.0);
     let is_lava = mode > 16.5 && mode < 17.5;
     if (is_lava) {
-        lava = lava_at(in.world, n, g.sky_right.w);
+        // (A brighter block runs hotter: the volcano's rivers and its crater, the falls.)
+        let k = max(max(in.emissive.r, in.emissive.g), in.emissive.b);
+        lava = lava_at(in.world, n, g.sky_right.w, clamp((k - 0.4) * 0.9, -0.1, 0.8));
         surf.albedo = albedo * lava.x;
         surf.rough = mix(0.7, 0.35, lava.z);
         surf.specular = 0.4;

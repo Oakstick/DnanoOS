@@ -163,13 +163,14 @@ impl WorldView {
         let seed = (r.x0 * 31 + r.y0 * 17) as f64;
         let open_edge = |x: i32, y: i32| grid.get(x, y) == Tile::Pit;
         let out = &mut self.static_cubes;
+        // The joints' dark under the whole paving, in one piece.
+        block(out, Vec3::new(cx, -0.075, cz), Vec3::new(w, 0.13, h), 0.0, lin(GROUT), SHADE_LIT);
         for p in r.tiles() {
             let (x, z) = (p.x as f32, p.y as f32);
             let (hx, hy) = (p.x as f64, p.y as f64);
             let edge = p.x == r.x0 || p.x == r.x1 || p.y == r.y0 || p.y == r.y1;
             let ring = p.x == r.x0 + 1 || p.x == r.x1 - 1 || p.y == r.y0 + 1 || p.y == r.y1 - 1;
             let path = (p.x - mx).abs() <= 1 || (p.y - mz).abs() <= 1;
-            block(out, Vec3::new(x, -0.075, z), Vec3::new(1.0, 0.13, 1.0), 0.0, lin(GROUT), SHADE_LIT);
             if path && !edge {
                 // The processional way: pale dressed flags, two to a tile across the way, worn.
                 let along_x = (p.y - mz).abs() <= 1 && (p.x - mx).abs() > 1;
@@ -678,7 +679,7 @@ impl WorldView {
                     let on_river = r > crater + 0.3
                         && rivers.iter().any(|&ra| {
                             let da = (a - ra - 0.22 * (r * 0.9).sin()).rem_euclid(TAU);
-                            da.min(TAU - da) < 0.11 + 0.1 * (r / radius)
+                            da.min(TAU - da) < 0.16 + 0.12 * (r / radius)
                         });
                     if r < crater {
                         // The crater's lake.
@@ -687,7 +688,7 @@ impl WorldView {
                             Mat4::from_scale_rotation_translation(Vec3::new(0.5, 0.06, 0.5), Quat::IDENTITY, Vec3::new(x, top + 0.03, z)),
                             lin(CRUST),
                             1.0,
-                            lava_glow(2.2),
+                            lava_glow(1.3),
                             SHADE_LAVA,
                         ));
                     } else if on_river {
@@ -705,7 +706,7 @@ impl WorldView {
                             Mat4::from_scale_rotation_translation(Vec3::new(0.5, 0.62, 0.5), Quat::IDENTITY, Vec3::new(x, top - 0.25, z)),
                             lin(CRUST),
                             1.0,
-                            lava_glow(1.1 + hk * 0.4),
+                            lava_glow(0.85 + hk * 0.2),
                             SHADE_LAVA,
                         ));
                     } else {
@@ -719,16 +720,12 @@ impl WorldView {
                             Vec3::new(x, top + 0.2 - cap / 2.0 - 0.2, z),
                         );
                         block_m(out, m, color, SHADE_STONE);
-                        if tall > cap + 0.01 {
-                            let body = tall - cap;
-                            block(
-                                out,
-                                Vec3::new(x, LAVA_Y - 0.2 + body / 2.0, z),
-                                Vec3::new(0.52, body, 0.52),
-                                0.0,
-                                color * 0.8,
-                                SHADE_STONE,
-                            );
+                        // (Below a ledge's face its neighbours hide the body, but at the foot and
+                        // where a river cuts down beside it.)
+                        let floor = if r > radius - 1.6 { LAVA_Y - 0.2 } else { (top - cap - 1.4).max(LAVA_Y - 0.2) };
+                        let body = top - cap - floor;
+                        if body > 0.01 {
+                            block(out, Vec3::new(x, floor + body / 2.0, z), Vec3::new(0.52, body, 0.52), 0.0, color * 0.8, SHADE_STONE);
                         }
                     }
                 }
