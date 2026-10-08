@@ -211,7 +211,7 @@ impl MenuItem {
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Controls => "CONTROLLER",
             MenuItem::Map => "MAP",
-            MenuItem::DevMap => "DEV MAP",
+            MenuItem::DevMap => "LEVELS",
             MenuItem::Ledger => "THE LEDGER",
             MenuItem::Resume => "RESUME",
             MenuItem::CallOldMan => "CALL THE OLD MAN",
@@ -610,7 +610,9 @@ impl Game {
             show_map: false,
             map_index: 0,
             map_ui: fullmap::MapUi::load(),
-            dev: cfg!(debug_assertions) && !cfg!(test),
+            // (Developing: debug builds, and the release builds `tools/release.sh` makes for the
+            // Desktop (`VH_DEV_MENU`), not the distributables; F12 opens it in any build.)
+            dev: (cfg!(debug_assertions) || option_env!("VH_DEV_MENU").is_some()) && !cfg!(test),
             blessing: None,
             uriel_rest: 0.0,
             refused_at: -10.0,

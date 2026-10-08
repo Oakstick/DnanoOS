@@ -9,7 +9,9 @@ cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
 
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-cargo build --release
+# (The developer's level list, LEVELS, on the title and the pause menu: these builds are for
+# developing; the distributables, `build-windows.ps1`, leave it to F12.)
+VH_DEV_MENU=1 cargo build --release
 
 name="Adventures of the Ancient Blades"
 out="${USERPROFILE:-$HOME}/Desktop/$name"
