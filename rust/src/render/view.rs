@@ -75,6 +75,7 @@ mod select;
 mod showcase;
 mod spring;
 mod story;
+mod story_camera;
 mod story_sets;
 mod vault;
 mod vault_decor;
@@ -106,6 +107,7 @@ pub use resident::Resident;
 pub use select::SelectView;
 use showcase::STAGE;
 pub use story::StoryView;
+pub use story_camera::Dof;
 
 /// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
 pub mod colors {
@@ -378,6 +380,8 @@ pub struct WorldView {
     map_view: Option<f32>,
     /// What the camera is looking at (kept in focus by the depth of field).
     focus_point: Vec3,
+    /// A story shot's lens this frame (its field of view, roll and depth of field), if one is on.
+    lens: Option<story_camera::Lens>,
     /// The level's size in tiles, for the shadow map's coverage.
     level_dims: Vec2,
     initialized: bool,
@@ -552,6 +556,7 @@ impl WorldView {
             cam_look: Vec3::ZERO,
             map_view: None,
             focus_point: Vec3::ZERO,
+            lens: None,
             level_dims: Vec2::new(28.0, 24.0),
             initialized: false,
             last_focus: None,

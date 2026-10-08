@@ -1062,6 +1062,85 @@ paths are as they were.
     first.
   - A temple stands on four wall tiles; a bomb breaking one would leave it standing (as before).
 
+### Scene I's camera (2026-10-08)
+
+Scene I's camera was reworked so that each beat plays as a film shot, ready to cut the trailer
+from. The beats, their holds, the story's timing and the dialogue are unchanged. Only where the
+camera stands, how it moves, its lens and its focus changed.
+
+- **Where it lives:** `view/story_camera.rs`.
+  - `story.rs` keeps the cast and exposes their marks (`story::marks`: the friends' places, the
+    gate spot, the ball's rest, Krampus's four marks, the landing places, the old man, the dog's
+    bed and lunge, the souls).
+  - The camera is a pure function of the moment (`scene_one(StoryView)`), so captures and tests
+    see exactly what play shows.
+  - Scene II keeps its camera (`ascent_camera`), with the same hand-held drift as before.
+- **Lens:** each shot sets a `Lens`: a field of view, a lean (roll) and a `Dof`.
+  - `fov_degrees`, the eye's roll and the composite's depth of field all read it.
+    `WorldView::dof` gives the shot's `Dof`, or the old cinematic and gameplay values when no
+    story shot is on, so play is unchanged.
+  - The fields of view run from 56° (the crane, the arrival, the room) through 46° and 34° to
+    26° (the old man's lines, his promise).
+  - The depth of field now also has a near range (`Post.near`): what stands well in front of the
+    subject softens too (a shoulder in an over-the-shoulder shot, the boys' backs, the old man's
+    legs). It is off everywhere else.
+  - The blur is a gather. A soft foreground keeps a hard silhouette edge, because a sharp
+    background pixel never gathers it.
+- **Moves:** every move is eased, either with smoothstep or with smootherstep for the long ones.
+  - A hand-held drift stays on every shot. It is stronger for the gate's burst (a jolt), the
+    grab, the pursuit and the dog.
+  - The pursuit adds a running bob and lean. At the flash it drops and tips over into the white.
+
+The shots, as built (set coordinates; `stage` timings):
+
+| Beat | Shot | Lens | Move and focus |
+|------|------|------|----------------|
+| Title, Establish 0–4.55 s | The crane over the churchyard, coming down into the friends' game at a child's eye height (0.66), in front of the lane's bench | 56° → 38° | Starts as the picture fades up (title 2.7 s). It comes in high, then down. A slow push follows as the passes go, with the focus on the ball. Deep, then medium depth of field |
+| Establish 4.55–5.1 s | The miskick: low (0.24) behind the ball as it hops to the gate | 40° | Tracks the ball, which stays in focus |
+| Establish 5.1–7.4 s | Through the bars from among the graves: the ball rattles through toward the lens; the boy runs up and peers through the railings | 32° → 29° | Creeps toward the gate. The focus pulls from the ball to the boy, and his friends behind go soft |
+| Taken 0–1.0 s | Low (0.42) behind the three, their backs dark against the gate. The bells, then the eyes in the fog | 30° | Creeps in. The focus pulls from the gate to the eyes, and the near boys soften |
+| Taken 1.0–1.48 s | Low at the gate boy's back: the gate bursts open toward the lens | 46° | A jolt as the gate gives. The focus is on Krampus |
+| Taken 1.48–2.3 s | Cut in under him, looking up (0.2 high): the boy held high in his claws, the sky dark | 52° → 50° | A slight push and a settling lean. Strong hand-held |
+| Taken 2.3–4.6 s | From the gateway, down the path: he drags the boy into the graves, away from the lens, and the fog takes him | 40° → 33° | Dollies in through the gate, the look riding on him. The fog holds afterwards |
+| Scream | A push in on the three, low (0.42–0.48), the gate's lantern on them, landing on the middle boy's face as the line types | 44° → 34° | Over 2.8 s, then a breath more |
+| Pursuit | Running with them: low (0.52), behind, closing from 1.75 m to 1.15 m, through the gates, into the fog | 50° | Lags the pack by 0.22 s, with a running bob. At the flash it drops, tips down and rolls into the white |
+| Arrive 0–2.9 s | From the floor (0.16), looking up at the rent they are thrown out of. They land and get up around the lens | 56° | Slight rise |
+| Arrive 2.9–5.6 s | The room, over their heads: the door, the braziers, the dog waking and coming, the old man asleep in his corner | 56° → 53° | Slow push. The focus pulls from the door to the dog as he growls |
+| Snarl | The dog at the end of his chain, low (0.3), in his path | 46° → 44° | Edges back. Strong hand-held |
+| Easy | The old man found by his lantern first, low (0.28), then up to his face as he calms the dog | 40° → 34° | Crane up and tilt over 3 s. The focus pulls from the lantern to his face, and his legs in front go soft |
+| OldMan (odd lines) | A clean single at about his height, the gate's dark behind | 30° | A 7% push |
+| OldMan (even lines) | Over the boys' shoulders, low (0.66, a child's eye looking up), across the room | 26° | A 7% push. The near boy is soft |
+| Boys (odd lines) | Low on the boy who speaks, his friends beside him | 34° | A 6% push |
+| Boys (even lines) | Over the old man's shoulder, looking down on the three as he does | 25° | A 6% push. His shoulder and staff are soft |
+| Souls | Low (0.27) from the side of the three, so that no boy stands between the lens and a soul, looking up past the nearest boy | 44° → 41° | Push over 10 s. The souls are in focus and the boy is soft |
+| Promise | His face, closer and slower than anything before | 30° → 28° | Push over 14 s |
+| Descent | Close behind the boys as the souls go into them. Then a pull back as the lamps redden and the door opens on the stair's red light. Then held wide as they walk in, and in on the door when they are gone | 42° → 52° → 42° | Pull back 0.6–4.7 s, in on the door 9.5–17 s. The focus pulls from the boys to the door |
+
+- **Faces and the dialogue box:** in the dialogue beats, faces are framed in the upper part of the
+  picture, above the HUD's box at the foot (`hud/story.rs`).
+- **Tests** (`story_camera::tests`):
+  - Every shot moves smoothly between its cuts. The limits are 6 m/s for the eye, 3 rad/s for
+    the turn, 25°/s for the lens and 40 m/s for the focus (Krampus's rush is fast).
+  - The lens is never within 0.13 of the sets' blocks or the gate's and door's leaves. It is
+    never within 0.13 of any part of a cast member, using each part's voxel bounds as emitted
+    that frame. This is checked every 0.05 s through every action beat, and through the first
+    14 s of every line.
+  - The speaker's face stays clear of the bars and above the dialogue box.
+- **Captures:**
+  - `--shots N:T,...` and `--seq N:T:COUNT:EVERY` write many story frames from one start (in
+    `vh-camera-cap/`).
+- **Shared with the cast:** the camera follows the ball, Krampus and the chasing boys by copies
+  of their paths (`ball_at`, `krampus_at`, `pack_at`), taken from `emit_graveyard`. If the cast
+  changes those paths, these copies must change too.
+- **Still open:**
+  - The souls' reflections in the wet flags barely show from this angle: the puddles are not
+    where the mirror images fall.
+  - A soft foreground keeps a hard edge (see the blur, above).
+  - The reverse over the old man's shoulder shows his staff more than his shoulder. The wall
+    behind him leaves no room further back.
+  - Holding still, the long lines rest on a near-static frame once the push ends. Only the
+    hand-held drift moves after that.
+
 ## Findings
 
 - **The GPU cost is geometry, not shading.** With every shading effect switched off, the main pass kept

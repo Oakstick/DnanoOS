@@ -2,6 +2,7 @@
 //! the close-ups the tour and captures use, the map view, and the projections for the GPU.
 
 use super::*;
+use crate::render::gpu::{CINEMA_DOF_CLEAR, CINEMA_DOF_FULL, DOF_CLEAR, DOF_FULL, DOF_PX};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CameraMode {
@@ -407,10 +408,11 @@ impl WorldView {
             self.tops.refresh(&self.static_cubes, &tiles);
         }
         let story_cam = self.story.map(|sv| self.story_camera(sv));
-        let (desired, look, pos_lerp) = if let Some((eye, look, _)) = story_cam {
-            // The story's shots are placed exactly, cut to cut.
+        self.lens = story_cam.map(|c| c.lens);
+        let (desired, look, pos_lerp) = if let Some(c) = story_cam {
+            // The story's shots are placed exactly, cut to cut (story_camera.rs).
             self.initialized = false;
-            (eye, look, 1.0)
+            (c.eye, c.look, 1.0)
         } else if let Some((target, t, index)) = self.tour {
             // A dramatic swoop: in from high and wide, then a slow close orbit.
             if self.tour_index != Some(index) {
@@ -489,8 +491,8 @@ impl WorldView {
             }
             (eye, base + Vec3::new(0.0, 0.0, -TOP_LOOK_AHEAD), TOP_LERP)
         };
-        self.focus_point = if let Some((_, _, focus)) = story_cam {
-            focus
+        self.focus_point = if let Some(c) = story_cam {
+            c.focus
         } else if let Some((target, _, _)) = self.tour {
             target
         } else if let Some(sel) = self.select {
@@ -584,7 +586,9 @@ impl WorldView {
         let pos = self.cam_pos + self.shake_offset + kick;
         let look = self.cam_look + self.shake_offset * 0.6 + kick * 0.5;
         let fwd = (look - pos).normalize_or(Vec3::NEG_Z);
-        let up = if self.juice.roll != 0.0 { Quat::from_axis_angle(fwd, self.juice.roll) * Vec3::Y } else { Vec3::Y };
+        // (A story shot may lean the camera too: a hand-held tilt, the fall through the ground.)
+        let roll = self.juice.roll + self.lens.map(|l| l.roll).unwrap_or(0.0);
+        let up = if roll != 0.0 { Quat::from_axis_angle(fwd, roll) * Vec3::Y } else { Vec3::Y };
         (pos, look, up)
     }
 
@@ -648,6 +652,16 @@ impl WorldView {
                 let t = (self.fov_degrees().to_radians() * 0.5).tan();
                 (pos, fwd, right * t * aspect, up * t, false)
             }
+        }
+    }
+
+    /// The depth of field's reach (behind the in-focus plane, and in front of it). A story shot
+    /// sets its own (story_camera.rs); other composed shots soften less than play, at greater depth.
+    pub fn dof(&self) -> Dof {
+        match self.lens {
+            Some(l) => l.dof,
+            None if self.cinematic() => Dof::behind(CINEMA_DOF_CLEAR, CINEMA_DOF_FULL, DOF_PX),
+            None => Dof::behind(DOF_CLEAR, DOF_FULL, DOF_PX),
         }
     }
 

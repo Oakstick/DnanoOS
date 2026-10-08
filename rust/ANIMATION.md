@@ -973,8 +973,11 @@ script, Krampus by the lair's Krampus's own clips with a grab and a raised arm k
 same pipeline as the heroes' and the foes' (§2, §11), the same decisions (§0): each voxel on one
 bone, rigidly; the story's timings are the truth (a clip is placed on them, never the reverse: the
 beats, their holds and the skip are untouched); the code's poses stay the fallback (`VH_ANIM=code`,
-a clip missing) and the comparison (`--anim-compare`). The cameras are the shots' own, but for the
-old man's two close shots, which follow him down onto his stool (below).
+a clip missing) and the comparison (`--anim-compare`). The camera is the opening's own
+(`story_camera.rs`, 1.0.13); where it frames the cast it frames them as the clips pose them (the old
+man's face on his stool, the middle boy's face as he screams, the boy held up in Krampus's claw), and
+its tests (never inside the set or the cast's drawn pose; the speaker's face clear of the dialogue
+box) pass with the clips.
 
 ### 12.1 Skeletons (`anim/cast_rigs.rs`)
 
@@ -1037,7 +1040,7 @@ their arms carried 4 degrees clear of their round coats):
 | Running after the ball, the chase | `run`, `sprint` (Fast Run, Sprint) | the stride's phase as the staging gives it; two boys run, two sprint |
 | Peering through the gate | `look_nervous` (Nervously Look Around) | his head a little down |
 | The eyes, Krampus | `terrified` (Terrified, its second to fourth seconds swung back and forth: fists up before his face, trembling) | over the idle by the fright's weight |
-| "He took him!" | `yell` (Yelling Out), the boy on the right, his head up; the others in terror | |
+| "He took him!" | `yell` (Yelling Out), the middle boy, his head up, the one the close-up ends on; the others in terror | |
 | The fall through | `fall` (Falling), under the tumble the staging spins | |
 | The landing | `land` (Hard Landing: down, rolled onto his front, up again) | its touchdown (`land`) when the tumble ends, each boy a little after the last |
 | Backing from the dog | `walk_back` (Walking Backwards) with `terrified` over the upper body, then the terror | |
@@ -1054,9 +1057,9 @@ Also retargeted and embedded for later: `agree`, `point`, `wave`, `kneel`, `yell
 his clips through the whole of the gateway, his hips on its cushion whichever way he turns on it (the
 seat measured from `sit_idle`'s first frame), until he rises to see the boys off. Mixamo's seated
 clips are retargeted facing forward (`face=0`); his staff stands upright in his fist; he stays warm
-and slow, never a sharp move. His two close shots (`Shot::OldMan`, `Shot::Promise`) follow him onto
-the stool (their aim turned onto the stool and lowered 0.17, the eye dipped 0.1; the eye stays where it was, clear of the set) when his clips play; under
-`VH_ANIM=code` he stands where he stood and they are as they were.
+and slow, never a sharp move. The camera (`view/story_camera.rs`) frames his face where he sits (`story::marks::OLD_MAN_FACE`,
+measured on his seated talking clips); under `VH_ANIM=code` he stands where he stood, his face 0.1
+higher and 0.25 nearer.
 
 | Moment | Clip (source) |
 |---|---|
@@ -1105,3 +1108,41 @@ The cast set's FBX files stay in `C:/Users/ulask/Games/mixamo/cast/`, outside th
 - `python tools/cast_captures.py OUT` renders thirty moments of both scenes, code beside clips
   (`--anim-compare`), and a contact sheet of them all.
 - Nothing of the story's logic changed: its tests, beats and timings are as they were.
+
+### 12.6 Numbers (2026-10-08, the development laptop)
+
+| What | |
+|---|---|
+| Embedded clips | the boys 29 (654 KB), the old man 9 (176 KB), Quitmer 8 (117 KB), Scene I's Krampus 2 (20 KB): 48 clips, 968 KB of GLB and JSON (thinned, §11.11) |
+| Jointed rigs (`--export-rig`) | a boy about 14,900 voxels and 9,900 faces; the old man 48,614 and 28,896; Quitmer 65,170 and 28,926; Krampus 75,496 and 49,844 |
+| Reading the clips (once, as the scene begins) | the boys 7.8 ms, the old man 3.1, Quitmer 1.1, Krampus 0.2 (and the lair's, 2.8) |
+| Cutting the rigs and meshing them at every level of detail (once, as the scene begins: `prepare_cast`) | about 120 ms for the seven of Scene I (release); Scene II's boy 8 ms |
+| A frame of one of the cast (two clips sampled, blended, the touches, the hierarchy; `--anim-bench`, quick build) | a boy 2.7 µs, the old man 2.0, Quitmer 2.2, Krampus 3.7 (the lair's clips on his bones): at most seven a frame, under 20 µs |
+
+### 12.7 What still reads wrong
+
+- **The boys' feet slide when they run.** They are 0.74 m tall and the story runs them at 2 to 2.5
+  tiles a second: Mixamo's run carries a body their size 0.4 m a cycle, so their legs would have to
+  spin six times a second. The run plays at the staging's own stride (about two cycles a second) and
+  the ground slides under it, as the code's did.
+- **Mixamo's yells are mild.** "He took him!" is the Yelling Out clip, a step forward and a shout with
+  an arm out; the code's arms flung up read as louder from afar. A clip of a child screaming with
+  both arms up would serve better.
+- **Terror is a window of Mixamo's Terrified** (its crouch with fists before the face), swung back and
+  forth: past its fourth second the source cowers with its head down and hides the face.
+- **The old man's robe halves ride his legs**: seated, they lie along his thighs and part a little at
+  the knees; stepping aside they swing as trousers would.
+- **His staff is held upright by the view**, not by the clips: in the seated clips his hand rests on
+  his thigh, and the staff stands through it, its foot a little into the floor.
+- **Quitmer's hind paws** sink a few centimetres into the straw while he lies; his rising and lying
+  down are blends of two poses, not a real roll onto his side.
+- **The hug** is keyed by script: the arms close round the hero's neck but cross a little behind it.
+- **The talking clips turn the head aside** (their speaker talks to someone beside him); the view takes
+  back two thirds of it (`look_steady`), so heads still drift.
+- **Scene II's hand held up** is Reaching Out over the idle, small from the camera's distance.
+
+Mixamo clips that would help (not downloaded): a child's run (short legs, quick steps), "Scared"
+or "Scream" with arms raised, "Cowering" standing, "Sitting Dozing" or "Sleeping Sitting", "Sitting
+Disapproval" or "Sitting Thumbs Up" (the old man's reactions), "Stand To Sit" (for him to sit back
+down), "Hugging" (two figures), "Looking Up", "Pointing Forward" standing, a staff-walk (an old man
+leaning on a stick), and "Crawling" (a boy pushed back on the flags by the dog's lunge).

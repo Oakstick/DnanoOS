@@ -20,6 +20,7 @@ struct Post {
     moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through
     haze: vec4<f32>,      // ground haze (RP19): density at the floor, floor height, falloff, the fog's own scattering
     vol: vec4<f32>,       // lamps that light the air: how many (the first in priority order), exposure, strength
+    near: vec4<f32>,      // blur in front of the in-focus plane: starts this far in front, full this far; z: 1 if on
 };
 
 // The scene's lights (RP17's list, in priority order: the hero's lantern first, then nearest the eye).
@@ -333,7 +334,10 @@ fn shaded(uv: vec2<f32>) -> vec3<f32> {
 }
 
 fn blur_amount(d: f32, max_px: f32) -> f32 {
-    return smoothstep(p.cam_r.w, p.cam_u.w, d - p.cam_fwd.w) * max_px;
+    let behind = smoothstep(p.cam_r.w, p.cam_u.w, d - p.cam_fwd.w);
+    // (A story shot may soften what stands in front of its subject too: `near`.)
+    let front = select(0.0, smoothstep(p.near.x, p.near.y, p.cam_fwd.w - d), p.near.z > 0.0);
+    return max(behind, front) * max_px;
 }
 
 @fragment

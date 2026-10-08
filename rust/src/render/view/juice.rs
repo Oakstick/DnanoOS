@@ -149,7 +149,8 @@ impl WorldView {
             let u = (age / secs).clamp(0.0, 1.0);
             deg * (1.0 - u * u * (3.0 - 2.0 * u))
         });
-        FOV_DEGREES + punch.unwrap_or(0.0) * self.juice.shake_scale
+        // (A story shot chooses its own lens: story_camera.rs.)
+        self.lens.map(|l| l.fov).unwrap_or(FOV_DEGREES) + punch.unwrap_or(0.0) * self.juice.shake_scale
     }
 
     /// Where the kick has the camera now (world units), scaled by the shake setting.
