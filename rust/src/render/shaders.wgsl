@@ -607,6 +607,93 @@ fn gravel(m_in: Surface, world: vec3<f32>, n: vec3<f32>, detail: f32) -> Surface
     return m;
 }
 
+// The Vaults of Mammon's gold (modes 13.4 and 13.25, `vault_art::SHADE_GILT` and `SHADE_COINS`):
+// gold as metal, its colour its reflectance, so the lamps' highlights do the work. Gilt and plate
+// are rubbed bright and smooth along their edges and dulled by tarnish in a mottle over their
+// faces. Heaped coins are laid over a heap's faces in world space, overlapping, each its own tone
+// and tilt with its rim rolled over, dark gaps down between them, so their glints come and go as
+// the eye moves. `foot` is the world's width of a pixel there; far off, the mean of the heap.
+fn vault_gold(base: vec3<f32>, world: vec3<f32>, local: vec3<f32>, n: vec3<f32>, foot: f32, coins: bool, plain: f32) -> Surface {
+    var m: Surface;
+    m.albedo = base;
+    m.n = n;
+    m.metal = 0.92;
+    m.specular = 0.5;
+    m.wrap = 0.0;
+    m.sheen = 0.0;
+    // The face's plane in world space, and its two axes.
+    let a = abs(n);
+    var t = vec3<f32>(0.0, 0.0, 1.0);
+    var b = vec3<f32>(0.0, 1.0, 0.0);
+    if (a.y >= a.x && a.y >= a.z) {
+        t = vec3<f32>(1.0, 0.0, 0.0);
+        b = vec3<f32>(0.0, 0.0, 1.0);
+    } else if (a.z > a.x) {
+        t = vec3<f32>(1.0, 0.0, 0.0);
+    }
+    let p = vec2<f32>(dot(world, t), dot(world, b));
+    let mottle = vnoise(p * 5.0) * 0.65 + vnoise(p * 13.0 + vec2<f32>(4.1, 2.7)) * 0.35;
+    if (!coins) {
+        let uv = voxel_uv(local);
+        let e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+        let rub = (1.0 - smoothstep(0.02, 0.16, e)) * plain;
+        let tarnish = smoothstep(0.55, 0.9, mottle) * (1.0 - rub) * plain;
+        // Upright faces reeded (fine flutes down them, 3.5 cm apart), the rest hammered: the
+        // highlights break into streaks and flecks instead of washing a face.
+        let fine = (1.0 - smoothstep(0.004, 0.012, foot)) * plain;
+        var bump = vec2<f32>(sin(p.x * 180.0), 0.0) * 0.22;
+        if (a.y >= a.x && a.y >= a.z) {
+            bump = (vec2<f32>(vnoise(p * 40.0), vnoise(p * 40.0 + vec2<f32>(7.3, 1.9))) - vec2<f32>(0.5)) * 0.5;
+        }
+        m.n = normalize(n + (t * bump.x + b * bump.y) * fine * (1.0 - rub));
+        m.albedo = base * mix(1.0, 0.45, tarnish) * mix(1.0, 1.15, rub);
+        m.rough = mix(mix(0.15, 0.34, tarnish), 0.1, rub);
+        return m;
+    }
+    // One coin to each cell of a grid 7 cm across, overlapping its neighbours: the topmost wins.
+    let cell = 0.07;
+    let q = p / cell;
+    let i = floor(q);
+    var top = -1.0;
+    var rel = vec2<f32>(0.0);
+    var id = vec2<f32>(0.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let c = i + vec2<f32>(f32(x), f32(y));
+            let h = hash22(c);
+            let d = (q - c - vec2<f32>(0.5) - (h - vec2<f32>(0.5)) * 0.5) / (0.56 + 0.2 * h.x);
+            let k = fract(h.x * 7.31 + h.y * 3.17);
+            if (dot(d, d) < 1.0 && k > top) {
+                top = k;
+                rel = d;
+                id = c;
+            }
+        }
+    }
+    // A coin only a few pixels across glitters: there the heap's mean instead.
+    let k = (1.0 - smoothstep(0.25, 0.7, foot / cell)) * plain;
+    if (top < 0.0) {
+        // A gap: the dark down in the heap.
+        m.albedo = base * mix(0.6, 0.12, k);
+        m.rough = 0.55;
+        return m;
+    }
+    let h = hash22(id + vec2<f32>(17.0, 3.0));
+    let d = length(rel);
+    let rim = smoothstep(0.76, 0.92, d);
+    let ring = 1.0 - smoothstep(0.0, 0.07, abs(d - 0.6));
+    // Each coin its own gold (redder or paler, brighter or worn), tilted its own way.
+    let tone = mix(vec3<f32>(1.0, 0.86, 0.76), vec3<f32>(1.0, 1.04, 1.14), h.x) * (0.72 + 0.38 * h.y);
+    let tilt = (h - vec2<f32>(0.5)) * 0.9 + rel * (rim * 0.8 + ring * 0.3);
+    m.n = normalize(n + (t * tilt.x + b * tilt.y) * k);
+    m.albedo = base * mix(vec3<f32>(0.78), tone * (1.0 + 0.12 * rim) * (1.0 - 0.3 * ring), k);
+    m.rough = mix(0.36, mix(0.1 + 0.12 * fract(h.x * 5.7 + mottle), 0.08, rim), k);
+    return m;
+}
+
+// How much of the lamps' light round it the vaults' gold sees coming back off its surroundings.
+const VAULT_BOUNCE: f32 = 0.12;
+
 // How far `p` lies from the nearest border between the cells of a jittered grid (0 on a border):
 // the cracks between plates of cooling crust.
 fn cell_border(p: vec2<f32>) -> f32 {
@@ -1455,6 +1542,7 @@ fn fs_scene(in: VOut) -> FOut {
 
     let mode = in.emissive.w;
     let local_w = fwidth(in.local);
+    let world_w = fwidth(in.world);
     if (mode > 4.5 && mode < 5.5) {
         return cloud_sea(in);
     }
@@ -1527,6 +1615,11 @@ fn fs_scene(in: VOut) -> FOut {
     // A voxel only a few pixels across would glitter with a sharp highlight, so the smaller it
     // is on screen the rougher it is drawn (filtering the shading by the pixel's footprint).
     surf.rough = max(surf.rough, 0.6 * smoothstep(0.2, 0.6, px));
+    // The Vaults of Mammon's gilt (13.4) and heaped coins (13.25): filtered by their own footprint.
+    if (abs(mode - 13.4) < 0.05 || abs(mode - 13.25) < 0.05) {
+        surf = vault_gold(albedo, in.world, in.local, n, length(world_w), mode < 13.3, select(1.0, 0.0, fx_off(FX_MATERIALS)));
+        surf.rough = max(surf.rough, 0.45 * smoothstep(0.2, 0.6, px) * select(1.0, 0.0, mode < 13.3));
+    }
     let sn = surf.n;
     let view_dir = normalize(g.cam_pos.xyz - in.world);
     let nv = max(dot(sn, view_dir), 1e-3);
@@ -1556,6 +1649,8 @@ fn fs_scene(in: VOut) -> FOut {
         }
         var irr = ambient_irr;
         var spec = vec3<f32>(0.0);
+        // The lamps' light falling all round this spot (the vaults' gold reflects it, below).
+        var round_irr = vec3<f32>(0.0);
         let wrap = surf.wrap;
         let ndl_raw = dot(sn, g.moon_dir.xyz);
         let ndl = max((ndl_raw + wrap) / (1.0 + wrap), 0.0);
@@ -1591,6 +1686,7 @@ fn fs_scene(in: VOut) -> FOut {
                 att *= pow2(clamp(1.0 - r * r * r * r, 0.0, 1.0));
             }
             irr += nl * l.color.rgb * att;
+            round_irr += l.color.rgb * att;
             if (nl_raw > 0.0 && !is_lava) {
                 spec += ggx(sn, view_dir, ld, surf.rough, f0) * nl_raw * l.color.rgb * att;
             }
@@ -1617,6 +1713,13 @@ fn fs_scene(in: VOut) -> FOut {
             // (lit walls, ground, lava) fills the rest (RP18).
             let q = probe_toward(probe, refl);
             env = env * q.a + q.rgb;
+            // The Vaults of Mammon's gold: the lamps light the walls and gold round it too, which
+            // the probes (built without the lamps) miss, so it reflects a share of that bounce.
+            // (Off umber stone, which takes some of the lamps' colour out of it.)
+            if (abs(mode - 13.4) < 0.05 || abs(mode - 13.25) < 0.05) {
+                let grey = vec3<f32>(dot(round_irr, vec3<f32>(0.3, 0.55, 0.15)));
+                env += mix(grey, round_irr, 0.55) * (VAULT_BOUNCE / PI);
+            }
         } else {
             // Away from any level (the story's sets, the title): a share of the direct light
             // stands in for the lit surroundings the sky cube does not hold.

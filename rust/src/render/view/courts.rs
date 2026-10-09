@@ -47,7 +47,7 @@ impl WorldView {
     /// The ground haze of the court he is in (density and falloff), if he is in one.
     pub(super) fn court_haze(&self) -> Option<(f32, f32)> {
         Some(match self.court? {
-            Sin::Greed => (0.012, 2.0),
+            Sin::Greed => court_greed::HAZE,
             Sin::Pride => court_pride::HAZE,
             Sin::Envy => court_envy::HAZE,
             Sin::Wrath => court_wrath::HAZE,

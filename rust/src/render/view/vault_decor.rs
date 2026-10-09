@@ -10,6 +10,7 @@
 //! along a row becomes one stretched box, so the hundreds of decorations in
 //! the vaults cost a fraction of their voxels.
 
+use super::vault_art::{SHADE_COINS, SHADE_GILT};
 use super::*;
 use crate::render::carve::{ball, limb, v};
 use crate::render::characters::{mat, Sculpt};
@@ -19,20 +20,22 @@ const MARBLE_MAT: u32 = 10 << 24;
 
 mod pal {
     use super::{mat, MARBLE_MAT};
-    pub const G: u32 = 0xf2c53d | mat::GOLD;
-    pub const GD: u32 = 0xc0922c | mat::GOLD;
-    pub const GL: u32 = 0xfff0a0 | mat::GOLD;
+    // Gold by its reflectance (`vault_art::SHADE_GILT` draws it).
+    pub const G: u32 = 0xffd47a | mat::GOLD;
+    pub const GD: u32 = 0xd9ab58 | mat::GOLD;
+    pub const GL: u32 = 0xffdd94 | mat::GOLD;
     pub const M: u32 = 0xf0e8da | MARBLE_MAT;
     pub const MD: u32 = 0xd2c6b0 | MARBLE_MAT;
     pub const STEEL: u32 = 0xd4d8e0 | mat::METAL;
-    pub const RUBY: u32 = 0xe0203a;
-    pub const SAPPHIRE: u32 = 0x3a6aff;
-    pub const EMERALD: u32 = 0x2ad06a;
-    pub const PEARL: u32 = 0xf6f0ff;
+    pub const RUBY: u32 = 0xe0203a | mat::SLIME;
+    pub const SAPPHIRE: u32 = 0x3a6aff | mat::SLIME;
+    pub const EMERALD: u32 = 0x2ad06a | mat::SLIME;
+    pub const PEARL: u32 = 0xf6f0ff | mat::IVORY;
+    /// A heap's coins (`vault_art::SHADE_COINS` draws them).
+    pub const COIN: u32 = 0xf2cc78 | mat::GOLD;
     pub const DARK: u32 = 0x1a1410;
     pub const VELVET: u32 = 0x8a1a22 | mat::CLOTH;
     pub const SACK: u32 = 0x7a5a36 | mat::CLOTH;
-    pub const BLACK: u32 = 0x24222a | MARBLE_MAT;
 }
 use pal::*;
 
@@ -97,6 +100,53 @@ pub fn merge(c: &Collected, size: f32) -> Merged {
         }
     }
     Merged { boxes }
+}
+
+/// Merges a solid model (`Sculpt::finish_solid`, nothing hollow) into boxes layer by layer: each
+/// layer's runs of one colour grown into rectangles, so a heap is a few dozen boxes.
+pub fn merge_solid(c: &Collected, size: f32) -> Merged {
+    use std::collections::BTreeMap;
+    let ox = (c.width - 1) as f32 / 2.0;
+    let oz = (c.depth - 1) as f32 / 2.0;
+    let mut layers: BTreeMap<i32, BTreeMap<(i32, i32), u32>> = BTreeMap::new();
+    for vx in &c.voxels {
+        layers.entry(vx.y).or_default().insert((vx.z, vx.x), vx.c);
+    }
+    let mut boxes = Vec::new();
+    for (y, mut cells) in layers {
+        while let Some((&(z0, x0), &col)) = cells.iter().next() {
+            // As far along x as the colour runs, then as many rows on in z as match it whole.
+            let mut x1 = x0;
+            while cells.get(&(z0, x1 + 1)) == Some(&col) {
+                x1 += 1;
+            }
+            let mut z1 = z0;
+            while (x0..=x1).all(|x| cells.get(&(z1 + 1, x)) == Some(&col)) {
+                z1 += 1;
+            }
+            for z in z0..=z1 {
+                for x in x0..=x1 {
+                    cells.remove(&(z, x));
+                }
+            }
+            let (nx, nz) = ((x1 - x0 + 1) as f32, (z1 - z0 + 1) as f32);
+            boxes.push(MBox {
+                center: Vec3::new(((x0 + x1) as f32 / 2.0 - ox) * size, (y as f32 + 0.5) * size, ((z0 + z1) as f32 / 2.0 - oz) * size),
+                size: Vec3::new(nx * size, size, nz * size),
+                color: lin(col & 0x00ff_ffff),
+                shade: shade_of(col),
+            });
+        }
+    }
+    Merged { boxes }
+}
+
+/// Gives the boxes of colour `hex` (as painted, its material bits aside) the shade `shade`.
+pub fn reshade(m: &mut Merged, hex: u32, shade: f32) {
+    let c = lin(hex & 0x00ff_ffff);
+    for b in m.boxes.iter_mut().filter(|b| (b.color - c).abs().max_element() < 1e-4) {
+        b.shade = shade;
+    }
 }
 
 /// Puts a merged model's boxes into `out` under `m`, each glowing a little (`glow` of its colour).
@@ -341,27 +391,40 @@ fn urn() -> Collected {
     s.finish(0.0)
 }
 
+/// Gives a merged model's gold the vaults' gilt.
+fn gilt(mut m: Merged) -> Merged {
+    for c in [G, GD, GL] {
+        reshade(&mut m, c, SHADE_GILT);
+    }
+    m
+}
+
 /// Every statue design, then the urn last.
 pub fn statues() -> Vec<Merged> {
-    [king(), goddess(), lion(), knight(), mammon(), urn()].iter().map(|c| merge(c, STATUE_VOXEL)).collect()
+    [king(), goddess(), lion(), knight(), mammon(), urn()].iter().map(|c| gilt(merge(c, STATUE_VOXEL))).collect()
 }
 
 // ------------------------------------------------------------------ treasure
 
-/// A heap of treasure: gold coins, a goblet, a crown, pearls and gems.
+/// A heap of treasure: gold coins (solid, drawn by the shader), a goblet, a crown, a plate and a
+/// bar, pearls and gems on its slopes.
 pub fn treasure() -> Merged {
     let mut s = Sculpt::new(17, 12, 17);
-    s.ellipsoid((8.0, 0.0, 8.0), (8.0, 5.0, 7.0), 0, G);
-    s.ellipsoid((5.0, 0.5, 10.5), (4.0, 3.5, 3.6), 0, G);
-    s.paint(|x, y, z, c| {
-        let n = (x * 7 + y * 13 + z * 5) % 13;
-        Some(match n {
-            0 => GL,
-            1 | 2 => GD,
-            3 if y >= 2 => [RUBY, SAPPHIRE, EMERALD][((x + z) % 3) as usize],
-            _ => c,
-        })
-    });
+    s.ellipsoid((8.0, 0.0, 8.0), (8.0, 5.0, 7.0), 0, COIN);
+    s.ellipsoid((5.0, 0.5, 10.5), (4.0, 3.5, 3.6), 0, COIN);
+    // Gems lying on its slopes (only where nothing lies over them).
+    let mut gems = Vec::new();
+    for z in 0..17 {
+        for x in 0..17 {
+            let Some(y) = (0..12).rev().find(|&y| s.get(x, y, z).is_some()) else { continue };
+            if y >= 2 && (x * 7 + z * 5 + y * 13) % 23 == 0 {
+                gems.push((x, y + 1, z, [RUBY, SAPPHIRE, EMERALD][((x + z) % 3) as usize]));
+            }
+        }
+    }
+    for (x, y, z, c) in gems {
+        s.set(x, y, z, c);
+    }
     // A goblet standing in the heap.
     s.cuboid(11, 4, 6, 11, 6, 6, GD);
     s.ellipsoid((11.0, 8.0, 6.0), (1.8, 1.6, 1.8), 6, GL);
@@ -374,11 +437,23 @@ pub fn treasure() -> Merged {
             s.set(x, y, 8, RUBY);
         }
     }
+    // A plate leaning on the heap, and a bar on its foot.
+    for y in 1..6 {
+        for x in 13..16 {
+            if (x == 13 || x == 15) && (y == 1 || y == 5) {
+                continue;
+            }
+            s.set(x, y, 12, GD);
+        }
+    }
+    s.cuboid(2, 0, 2, 5, 0, 3, G);
     // A string of pearls over the top.
     for k in 0..9 {
         s.set(6 + k, 5 + ((k as f32 * 0.8).sin() * 1.2).round() as i32, 9 + k / 3, PEARL);
     }
-    merge(&s.finish(0.0), 0.05)
+    let mut m = gilt(merge_solid(&s.finish_solid(0.0), 0.05));
+    reshade(&mut m, COIN, SHADE_COINS);
+    m
 }
 
 // ------------------------------------------------------------------ paintings
@@ -528,11 +603,6 @@ pub fn paintings() -> Vec<Merged> {
             mixc(0x1a1a24, 0x3a3044, (x as f32 / 24.0 + y as f32 / 32.0).min(1.0))
         }),
     ]
-}
-
-/// Black marble for a niche's plinth (the colour the vault's walls use, kept in step with them).
-pub fn plinth_color() -> Vec3 {
-    lin(BLACK & 0x00ff_ffff)
 }
 
 #[cfg(test)]

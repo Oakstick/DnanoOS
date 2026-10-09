@@ -296,7 +296,7 @@ impl WorldView {
         if self.showcase {
             Haze::default()
         } else if self.vault.is_some() {
-            haze(0.008, 2.5)
+            haze(vault::VAULT_HAZE.0, vault::VAULT_HAZE.1)
         } else if self.lair.is_some() {
             haze(lair::HAZE.0, lair::HAZE.1)
         } else if let Some((density, falloff)) = self.court_haze() {

@@ -81,6 +81,7 @@ mod story;
 mod story_camera;
 mod story_sets;
 mod vault;
+mod vault_art;
 mod vault_decor;
 mod war_props;
 mod workshop;
