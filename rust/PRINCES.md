@@ -44,10 +44,11 @@ These come from COMBAT.md §0 and §13 and WARBAND.md, and they are not bent:
   the first prince to the seventh. The adept, a blocker, fells the first with a tier-3 kit and falls
   to the second.) **W10** (WARBAND.md's tuning log): the princes keep their wounds across the
   hero's falls, their hide lets 0.6 through in their courts, their blows (and their adds') stay at
-  0.6 of their breed's at every tier (0.85 rising 0.1 a key before), and five are tempered
-  (`court::temper`: Leviathan 0.85 health, Amon 0.75 health and 0.45 blows, Belphegor 0.75 health
-  and half his mending, Beelzebub 0.7 health, Lucifer 0.75 blows, Asmodeus 0.45 blows). The adept
-  now fells every prince at the kit it brings; the masher still cannot where the run meets them.
+  0.6 of their breed's at every tier (0.85 rising 0.1 a key before), and six are tempered
+  (`court::temper`: Lucifer 0.8 health and 0.75 blows, Leviathan 0.85 health, Amon 0.75 health and
+  0.45 blows, Belphegor 0.6 health and a quarter of his mending, Beelzebub 0.7 health, Asmodeus 0.45
+  blows). The adept now fells every prince at the kit it brings (whole runs carried past the realms
+  it loses, `VH_RUN_PASS`: all seven in 7 of 8); the masher still cannot where the run meets them.
 * **Determinism.** The sim uses its own seeded rolls; the view and the sound have their own.
 * **Art.** The prince is a voxel sculpt in parts its rig swings, about two and a half times the
   hero's height (as Mammon, 100 × 124 × 80 at 0.025), built at startup, so no larger than his.
@@ -543,9 +544,10 @@ every phase: his reach makes up for it).
   his own torpor (no token, no walking, no move) and `Duelist::exposed` is true, so Torpor (still a
   hide, `is_hide`) lets the whole blow through, and the bar says HIS HIDE IS OPEN.
 * **The Dreamer.** At two thirds he finishes his move, then lies down where he stands (40 f). Asleep
-  he mends 0.8% of his health a second (a floater says so), never past the two-thirds line. Blows
-  taking 6% of his health in one sleep, or any blow while the hero's finisher (L3) is out, wake him
-  (54 f, open, "STRUCK AWAKE!"); 540 frames later, if still in his second phase, he nods off again.
+  he mends 0.2% of his health a second (0.8% before W10; a floater says so), never past the
+  two-thirds line. Blows taking 6% of his health in one sleep, or any blow while the hero's
+  finisher (L3) is out, wake him (54 f, open, "STRUCK AWAKE!"); 540 frames later, if still in his
+  second phase, he nods off again.
 * **The nightmares** are hexers now (they keep their distance and hex; health ×1.4 of the
   Hexer's), raised either side of him (`nightmare_spots`), weighted as the court's tier. They fall
   when he does.
@@ -580,7 +582,8 @@ Belphegor is the most open target, and it leans into him to face him as it swing
 | expert | 2 | 3/3 | 88.2, 95.0, 106.4 | 0 | 0 |
 
 The expert parries everything and strikes him whenever he sleeps; the adept blocks and strikes
-little, and in his dream he mends faster than it hurts him: Sloth's lesson. Pinned by
+little, and in his dream he mends faster than it hurts him: Sloth's lesson (since W10 the adept
+outstrikes his mending, slowly: 1.5-3 minutes of his dream at its own kit). Pinned by
 `the_expert_beats_belphegor_in_his_court_and_a_masher_does_not` (game/court/sloth.rs).
 
 ### Beelzebub

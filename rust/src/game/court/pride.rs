@@ -580,7 +580,11 @@ mod tests {
             assert!(f.slain && f.deaths <= 1 && f.phase == 3, "tier {tier}: {f:?}");
             assert_eq!(f.stats.overlaps, 0, "{f:?}");
         }
-        let f = court_fight(Sin::Pride, Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
-        assert!(!f.slain && f.game_over, "{f:?}");
+        // The masher where the run meets Lucifer first, the second court (WARBAND.md W10: his health
+        // tempered for the adept who meets him sixth, a masher with three lives fells him at the
+        // first court's weight, where no run meets him; at the second it leaves him a fifth).
+        let (slain, _, _, _, lost) =
+            crate::game::whole_run::court_at(Sin::Pride, Skill::Novice, 1, Loadout::all(HeroKind::Ragnar, 2), 1, 200.0);
+        assert!(!slain && lost == 3, "{slain} {lost}");
     }
 }

@@ -11,7 +11,7 @@ Status: approved 2026-10-04 ("I like the plan... Lets go"), §17 settled on the 
 day, and W0 to W8 built and merged on `rust-port` that day (the build log at the end says what
 and how; several parts were built in parallel worktrees). W9's bots' half is done (2026-10-05: the
 whole-run harness, the tuning log and the checklist at the end of the build log); left is the
-playthrough by hand that closes it.
+playthrough by hand that closes it. W10 (2026-10-09) softened the princes' wall the QA pass found.
 
 ---
 
@@ -1597,3 +1597,131 @@ Expert, order 0, after (means of three seeds; minutes, lives lost, damage taken)
 8. **The ending**: the words held long enough to read (the 34-second beat), the hymn and the choir
    under the rise, the credits.
 9. **The glint** (Ragnar's first mastery rank) and its missing sound (W8's open item).
+
+### W10 The princes' wall (2026-10-09, branch `balance`)
+
+QA.md's design call 3: the adept stalled at the princes (1.0.20: the vaults first, it ended at
+Lucifer in 3 runs of 4 and at Leviathan in 1; the Garden of Thorns first, at Asmodeus, the first
+prince, in 4 of 4), because a prince was whole again after each of the hero's falls and the adept's
+guard-first play could not take one down in a life without a kit two or three tiers above the court.
+The user chose to soften it: the princes keep the damage done across the hero's falls, and each is
+tuned to the kit a player has when he meets him.
+
+**The harness** (`d2f1033`): `--court-at SIN SKILL KIT KEYS SEED` takes the run's mixed kit
+(BLADE/SHIELD/PATH), `VH_BELT=N` bottles, `VH_LIVES=N`, `VH_EDGE=N` (the blade's edge as the realm
+before left it), `VH_LIMIT=S` and `VH_COURT_STATS` (each life's numbers as it ends); `VH_RUN_PASS`
+lets `--run` go on past a walked realm it has lost three times (as a stand-in realm is passed), to
+measure the courts and the finale beyond it. Neither changes a default run.
+
+#### What moved, and why
+
+Only the courts' and the lair's numbers. The realms, the Pit, the ring's bouts (`--balance 2`: the
+same to the digit), the trees, the economy and the bots are as they were.
+
+| Change | Why |
+|---|---|
+| **The wounds stay** (`prince::after_fall`): a fall brings the prince (and Krampus) back before his throne with the health he had; HIS WOUNDS REMAIN is said over him and his bar stays where it was; fought again in a later phase he takes it up at once (its banner, its adds), without a second breather. A game over (a lost try) gives him back his health. | A full keep, not a share: a share still lets a prince outlast a player who lands a little each life, and keeping only his lost phases throws away a nearly finished phase. The lives are what the player pays, and the try (three lives) is what resets, so a prince must still be beaten with three lives' work. |
+| **The court's hide** lets 0.6 of a blow through outside his recoveries (`prince::COURT_HIDE`; 0.3 before, which the ring's Mammon and Krampus keep) | the adept blocks first and strikes what it can: at 0.3 its blows were turned to nothing (it blocked 233 of Lucifer's 260 blows and lost); a hero who strikes in the recoveries still lands whole |
+| **The princes' blows** stay at 0.6 of their breed's at every court (`court::COURT_DAMAGE`; 0.85 at the first court rising 0.1 a key before) | the late courts' blows felled a guard-first hero in one life whatever his shield: he meets them three tiers below the expert. Their health still grows with the keys. |
+| **Each prince tempered** (`court::temper`: health and blows over the court's weight; his adds' blows with his): Lucifer 0.8 health and 0.75 blows, Leviathan 0.85 health, Amon 0.75 health and 0.45 blows, Belphegor 0.6 health, Beelzebub 0.7 health, Asmodeus 0.45 blows (his elf-maids with him); Mammon as he was | measured court by court with `--court-at` at the adept's own kit, belt, rank and lives where each order meets him: the princes who mend (Belphegor, Beelzebub) and Leviathan, the longest of breed, ran past the 8-minute try; Lucifer met sixth (the Thorns first) took 7.2-7.9 minutes at 1.0 health, 5.6-6.1 at 0.8; Amon's charge, Asmodeus's elf-maids and Lucifer's lance ended an adept's life before his blade could tell |
+| **Belphegor mends a quarter as fast** in his dream (`prince::sloth::MEND` 0.008 → 0.002) | at 0.004 and 0.75 health the adept's dream phase still took 2-4 minutes and stalled at 63% in one seed of four (he mended back to the line each sleep); at 0.002 and 0.6 it is 1.5-3 minutes, and a sleeper left alone still mends 12% a minute |
+
+Their moves, tells, phases, adds and rules are their own still.
+
+#### The whole run (`--run`, seeds 1-4, both orders)
+
+Before is 1.0.20 (`6b45a7b`), after is this branch.
+
+| Bot, order | Before | After |
+|---|---|---|
+| Adept, vaults first | 0/4 endings: Lucifer ×3, Leviathan ×1 (53-83 min, 1-2 princes) | 0/4 endings: all 4 fell 5 princes and end at the Rotting Feast (82-108 min) |
+| Adept, Thorns first | 0/4: Asmodeus ×4 (21 min, no prince) | 0/4: all 4 fell Asmodeus and end at the Rotting Feast (12-13 min) |
+| Adept, vaults first, `VH_RUN_PASS` | as above: the princes are the wall | **all 7 princes in 4 runs of 4**; all end in the Pit (113-138 min) |
+| Adept, Thorns first, `VH_RUN_PASS` | as above | **all 7 princes in 3 of 4** (the fourth ends at Mammon, the seventh); the three end in the Pit (109-113 min) |
+| Expert, vaults first | 4/4 endings, 87-100 min (mean 93.5) | 4/4, 87-96 min (mean 92.3: 1.2 less) |
+| Expert, Thorns first | 4/4, 96-112 min (mean 105.5) | 4/4, 99-105 min (mean 101.5: 4.0 less) |
+| Novice, vaults first | the vaults, 4 min | the vaults, 4 min (a realm: unchanged) |
+| Novice, Thorns first | Asmodeus, 5 min (2.4 in his court) | Asmodeus, 10 min (7.3 in his court) |
+
+**The adept reaches the ending in none of the 8 runs, and no longer because of a prince.** With the
+princes softened its walls are the Rotting Feast (walked as a player walks it: met at tier 2 with a
+2/2/2 kit it loses all its lives three times in 8 minutes; at tier 6, in 9-14) and the Pit (with its
+7/4/4 kit it falls at levels 3-5, as W9 measured for a tier-7 kit). Both are outside this tuning
+(only the princes' numbers move) and are left for the user below. The novice goes no further in
+place (its walls are the vaults and the first prince, which PRINCES.md says a masher must not fell),
+but it lasts twice as long in Asmodeus's court and leaves every prince lower (below).
+
+The adept's courts in the run (`VH_RUN_PASS`; won of runs, mean minutes, tries lost, lives lost):
+
+| Court (vaults first) | Before | After | Court (Thorns first) | Before | After |
+|---|---|---|---|---|---|
+| Mammon (1) | 4/4, 4.7, 0, 0 | 4/4, 3.5, 0, 0 | Asmodeus (1) | 0/4, 18.5, 3, 9 | 4/4, 2.4, 0, 0 |
+| Lucifer (2) | 1/4, 19.9, 2.2, 3.2 | 4/4, 2.9, 0, 0 | Beelzebub (2) | - | 4/4, 3.6, 0, 0 |
+| Leviathan (3) | 0/1, 24.0, 3, 2 | 4/4, 3.7, 0, 0 | Belphegor (3) | - | 4/4, 4.2, 0, 0 |
+| Amon (4) | - | 4/4, 4.3, 0, 0 | Amon (4) | - | 4/4, 4.0, 0, 0.2 |
+| Belphegor (5) | - | 4/4, 8.3, 0.2, 0 | Leviathan (5) | - | 4/4, 6.0, 0, 0.8 |
+| Beelzebub (6) | - | 4/4, 5.3, 0, 0 | Lucifer (6) | - | 4/4, 6.1, 0, 0.2 |
+| Asmodeus (7) | - | 4/4, 6.2, 0, 0.5 | Mammon (7) | - | 3/4, 11.1, 0.8, 0 |
+
+The one prince lost (Mammon seventh, seed 4) was lost to the clock with no life lost: the adept came
+from the vaults lost, with no silver, and its blade wore to 0% over three 8-minute tries. The
+expert's courts in the run: 1.1-1.9 minutes (1.4-2.3 before), none lost.
+
+#### Each prince as the run meets him (`--court-at`, seeds 1-4, 480 s)
+
+The adept's kit, keys and rank where an order meets him (the run's tables), three lives; won, mean
+seconds when won, his health left when lost, lives lost. The novice with the same kit and one life:
+his health left.
+
+| Prince | Kit | Tier | Adept before | Adept after | Novice before | Novice after |
+|---|---|---|---|---|---|---|
+| Asmodeus | 2/2/1 | 1 | 0/4, 42% left, 3 | 4/4, 144 s, 0 | 89% | 64% |
+| Mammon | 3/2/2 | 1 | 4/4, 313 s, 0 | 4/4, 203 s, 0 | 88% | 81% |
+| Beelzebub | 2/2/2 | 2 | 0/4, 58%, 0.2 | 4/4, 220 s, 0 | 96% | 87% |
+| Lucifer | 3/2/2 | 2 | 1/4, 61%, 0.8 | 4/4, 176 s, 0 | 94% | 76% |
+| Belphegor | 3/2/2 | 3 | 0/4, 92%, 3 | 4/4, 223 s, 0 | 91% | 73% |
+| Leviathan | 3/3/2 | 3 | 0/4, 78%, 1 | 4/4, 245 s, 0 | 96% | 89% |
+| Amon | 3/3/3 | 4 | 0/4, 95%, 3 | 4/4, 264 s, 0.2 | 96% | 77% |
+| Belphegor | 4/3/3 | 5 | 0/4, 96%, 3 | 4/4, 314 s, 0 | 94% | 79% |
+| Leviathan | 4/4/3 | 5 | 0/4, 97%, 3 | 4/4, 335 s, 0 | 96% | 91% |
+| Beelzebub | 4/4/3 | 6 | 0/4, 99%, 3 | 3/4, 380 s, 0.8 | 98% | 90% |
+| Lucifer | 4/4/3 | 6 | 0/4, 98%, 3 | 4/4, 349 s, 0 | 98% | 88% |
+| Asmodeus | 4/4/4 | 7 | 0/4, 80%, 3 | 4/4, 353 s, 1 | 97% | 86% |
+| Mammon | 4/4/4 | 7 | 0/4, 96%, 3 | 4/4, 464 s, 0 | 96% | 89% |
+
+The expert at its own kit, the same way: every prince 4/4 both times, 63-126 s after (88-156 s
+before). The novice with three lives at the adept's kit fells none (5-66% of him left); with the
+expert's kit it now fells some (Lucifer at tier 2 with 3/3/3, Amon at 4/4/4, and Belphegor,
+Beelzebub and Lucifer late), as lives add up against a prince who keeps his wounds. A masher never
+reaches a court with that kit in a run (it does not clear the vaults).
+
+`--court SIN SKILL TIER SEED` (the first court's weight, the kit at TIER; seeds 1 and 2): the expert
+at tier 4 in 31-63 s (59-65 before), at tier 7 in 17-40 s (33-45); the adept at tier 4 wins 14 of 14
+in 57-108 s (12 of 14 before, Amon lost both, 89-194 s). The masher at tier 1 still loses to every
+prince but Amon, whom it now fells at the first court's weight (147 s); no run meets Amon, Lucifer
+or Belphegor there, and where the run meets them first (Lucifer the second court, Belphegor the
+third, Amon the fourth) it loses all three lives (Lucifer left with a fifth of his health).
+
+**Krampus** (`--lair`): the expert and the novice as before (the expert at tier 8 in 165 s; the novice
+loses every life in the Bells); the adept at tier 8 timed out in his second phase with 2 lives lost
+before, and with his wounds kept now reaches his third and loses all its lives there (seeds 1, 2).
+
+#### The tests
+
+Changed only where the tuning means it: the fall tests (`a_fall_brings_*_back_with_his_wounds_*`,
+the lair's too) expect the wounds kept and a game over to heal him; the hide's ratios read
+`COURT_HIDE`; the phase tests leave room for the larger blow through the hide; the masher meets
+Lucifer, Amon and Belphegor at the court where the run first meets each (`court_at`), not at the
+first court's weight, where their tempering lets three lives' work fell them;
+`a_fall_never_undoes_the_heros_blows` is new.
+
+#### Left for the user
+
+* **The Rotting Feast** is now the adept's wall in both orders (walked as a player walks it; the
+  Thorns first, it is met at tier 2 with a 2/2/2 kit). Softening it is a realm's tuning.
+* **The Pit** with the adept's kit (7/4/4: it never affords more, losing the stand-in realms'
+  silver) falls at levels 3-5. W9 left the Pit as designed.
+* **The adept's courts are long**: 2.4-8.3 minutes against the expert's 1.1-1.9. A guard-first
+  player wears a prince down rather than reading him (the expert is the reader), but its blade wears
+  with the length (Mammon seventh: to 0%).
+* **Runes**: a proposal, not built, is with the main session.

@@ -49,18 +49,19 @@ pub const COURT_DAMAGE: f64 = 0.6;
 
 /**
  * Each prince's health and blows over his court's weight (WARBAND.md W10), where the adept met him
- * with too light a kit: the princes who mend (Belphegor in his dream, Beelzebub at his table) and
- * Leviathan, the longest of breed, are lighter; the three whose blows ended an adept's life before
- * his blade could tell (Amon's charge, Asmodeus's elf-maids, Lucifer's lance) strike softer. Their
- * moves, tells and phases are their own still.
+ * with too light a kit: the princes who mend (Belphegor in his dream, Beelzebub at his table),
+ * Leviathan, the longest of breed, and Lucifer, whom the adept meets sixth (the vaults last) with a
+ * fourth-tier blade and fought for 7-8 minutes, are lighter; the three whose blows ended an adept's life before his blade
+ * could tell (Amon's charge, Asmodeus's elf-maids, Lucifer's lance) strike softer. Their moves,
+ * tells and phases are their own still.
  */
 pub fn temper(sin: Sin) -> (f64, f64) {
     match sin {
         Sin::Greed => (1.0, 1.0),
-        Sin::Pride => (1.0, 0.75),
+        Sin::Pride => (0.8, 0.75),
         Sin::Envy => (0.85, 1.0),
         Sin::Wrath => (0.75, 0.45),
-        Sin::Sloth => (0.75, 1.0),
+        Sin::Sloth => (0.6, 1.0),
         Sin::Gluttony => (0.7, 1.0),
         Sin::Lust => (1.0, 0.45),
     }
