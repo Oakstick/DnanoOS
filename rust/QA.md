@@ -10,12 +10,12 @@ and camera traps anywhere a reviewer could go. Branch `qa` (worktree `vh-qa`), f
 |---|---|---|---|
 | crash | 1 | 0 | 1 (Q2, GPU device lost) |
 | softlock | 0 | 0 | 0 |
-| broken | 5 | 5 | 0 |
+| broken | 6 | 6 | 0 |
 | ugly | 4 | 0 | 4 |
 | minor | 4 | 2 | 2 |
 | design (for the user) | 5 | - | 5 |
 
-No panic, stall, softlock or save bug was found in about 140 hours of simulated play (below). The
+No panic, stall, softlock or save bug was found in about 100 hours of simulated play (below). The
 fixes keep every harness number identical except one whole run (Q3, explained there).
 
 ## Issues
@@ -29,6 +29,7 @@ fixes keep every harness number identical except one whole run (Q3, explained th
 | Q5 | broken | everywhere | Unplug the controller (or its battery dies) mid-fight | The fight goes on without him | No handling of a controller going away | **fixed** fa68503: the game pauses (as for focus loss) when the controller in use goes; nothing happens if he plays on the keyboard. Test `a_controller_lost_mid_fight_pauses_the_game` |
 | Q6 | broken | Belphegor's court (the Hall of Stopped Clocks) | `--monkey 41 180 --stop 10`: hands off by the north wall, Belphegor yawns | The yawn carries him through the wall's face into the rock, and further yawns deeper; he stands inside the wall, the camera with him | The yawn shoves 0.36 tile a frame, more than his 0.3 reach of a wall; the walls push out only of the tiles about him, not the one he stands in | **fixed** 76a30dc: a shove that would take him onto a tile he could not step to is taken again in short steps. Harness numbers unchanged. Test `a_hard_shove_never_carries_him_into_a_wall` |
 | Q7 | broken | the HUD's location panel (bottom right) | Any court with a long name, e.g. `--capture x.png --script "0.1:court:0" --time 6`: `vh-qa-cap/q-location-label-under-glyph-court0.png` | THE THRONE OF THE MORNING STAR runs under the B glyph | The name shrank only to 70% and the panel was capped at its slot | **fixed** 63b05e5: shrinks to half, then widens the panel left. Test `every_place_name_clears_the_guides_glyph` (every place, five screen shapes) |
+| Q15 | broken | the pause menu over the old man's line | `--capture x.png --script "0.1:realm:4,3:ledger,3.5:pause" --time 5`: `vh-qa-cap/q-pause-over-counsel-panel.png` | Paused while he speaks (every realm's welcome, a counsel), his panel stays under the menu: THE ROAD DOWN and the score are set over his words, and its "Enter skip" reads as the menu's | `dialogue::draw` ran on every play screen, the pause too | **fixed** ea82798. Test `the_pause_hides_the_line_being_spoken` |
 | Q8 | ugly | all body text (dialogue, HUD lines) | Scene I, beat 2: `vh-qa-cap/q-word-spaces-scene1-scream.png` | "NO! He took him! LET HIM GO!" reads "NO! Hetook him! LETHIMGO!" | The body face's space is 0.16 em (4 px at 24 px); `Overlay::layout` adds word spacing only to all-capital text | open (typography is the user's call). Suggested: a word space of at least 0.22 em for the body face in `Overlay::layout` (widths grow slightly; the dialogue wraps by measure) |
 | Q9 | ugly | camera check (`--camera-check all`) | see the table under "Cameras" | The Hall of Mirrors shows the void through the floor (1039 hole poses in the chase survey, 64-98 in the top camera) and the chase camera clips there (72 poses); the Garden of Thorns clips in the walk with both cameras (56, 24); Cisterns and Bone Vaults hide him in 24-33 chase poses; every court's top camera loses him at the south gate (16,28) | Realm and court art since RP02's pass (the check reported all clear then) | open: art/camera work. Poses to reproduce are in the check's report (`--capture --script "at:X:Y,aim:YAW:PITCH"`) |
 | Q10 | ugly | the hub's top camera | `--camera-check hub` | Hides him at four platform corners | hub art | open: reported to the hub agent's area (not touched) |
