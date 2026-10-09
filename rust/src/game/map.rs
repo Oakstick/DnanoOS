@@ -65,7 +65,7 @@ pub fn map_stops() -> Vec<MapStop> {
     stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
     stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
     // The old man's workshop, as after the first Cyclops.
-    stops.push(stop(Stage::Shop(0), "THE OLD MAN'S WORKSHOP".to_string()));
+    stops.push(stop(Stage::Shop(0), "HIZIR'S WORKSHOP".to_string()));
     // Each realm's general at his command post.
     for sin in SINS {
         // (The Steward of the Last Course is the Steward on the Map's button.)

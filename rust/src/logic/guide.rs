@@ -90,7 +90,7 @@ fn page<A: AsRef<str>, B: AsRef<str>, C: AsRef<str>>(title: &str, hail: &str, ta
 const GARDEN_TALE: &[&str] = &[
     "in the Alpine valleys they tell of Krampus: horned and shaggy, the dark companion of St Nicholas, with chains, bells and birch switches.",
     "On Krampusnacht, the night of 5 December, he walks the villages, and a naughty child goes off in the sack or basket on his back.",
-    "At dusk, at the graveyard, he took one of four boys. The other three ran after him through the gate and fell into my gateway.",
+    "At dusk, at the graveyard, he took Toby, one of four boys. The other three ran after him through the gate and fell into my gateway.",
     "I gave them the souls of Ragnar, Mehmed and Miyamoto, and you carry one. Krampus takes the children he steals to the bottom of the world.",
     "This garden is the first depth. His statue stands on the fountain at its heart.",
 ];

@@ -122,7 +122,7 @@ pub fn short(a: Action) -> &'static str {
         Action::Drink => "Drink potion",
         Action::PotionPrev => "Potion ←",
         Action::PotionNext => "Potion →",
-        Action::Call => "Call the old man",
+        Action::Call => "Call Hızır",
         Action::Guide => "His word",
         Action::Map => "Map",
         Action::Camera => "Camera",

@@ -38,7 +38,7 @@ pub fn look(s: &Spoken) -> Look {
             accent: AMBER,
             words: mix_rgb(AMBER, 0xfff4e0, 0.35),
             portrait: true,
-            name: "THE OLD MAN".to_string(),
+            name: "HIZIR".to_string(),
             quitmer: s.text.to_lowercase().contains("quitmer"),
         },
         Speaker::Whisper(sin) => {
@@ -228,12 +228,12 @@ mod tests {
     #[test]
     fn the_old_man_never_looks_like_a_whisper_nor_a_whisper_like_him() {
         let him = look(&spoken(Speaker::OldMan, "Up, Ragnar. Quitmer has your scent."));
-        assert!(him.portrait && him.accent == AMBER && him.name == "THE OLD MAN" && him.quitmer);
+        assert!(him.portrait && him.accent == AMBER && him.name == "HIZIR" && him.quitmer);
         assert!(!look(&spoken(Speaker::OldMan, "Strike its back.")).quitmer, "the dog only when the line has him");
         for sin in SINS {
             let w = look(&spoken(Speaker::Whisper(sin), "The way is through the fire."));
             assert!(!w.portrait, "{sin:?}: a whisper shows no face");
-            assert!(!w.name.contains("OLD MAN") && w.name.contains(&sin.prince().to_uppercase()), "{sin:?}: {}", w.name);
+            assert!(!w.name.contains("HIZIR") && w.name.contains(&sin.prince().to_uppercase()), "{sin:?}: {}", w.name);
             for c in [w.accent, w.words] {
                 // (As `counsel::whisper_color` keeps it from his amber; his plate's gold and the HUD's too.)
                 assert!(far(c, AMBER) > 90.0 && far(c, PLATE) > 80.0 && far(c, GOLD) > 80.0, "{sin:?}: {c:06x} near the old man's colours");

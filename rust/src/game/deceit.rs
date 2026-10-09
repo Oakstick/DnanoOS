@@ -587,7 +587,7 @@ mod tests {
             for _ in 0..3 {
                 g.update_deceit(STEP);
                 if let Some(o) = g.deceit_offer() {
-                    assert!(!o.title.contains("OLD MAN") && !o.lines.join(" ").to_lowercase().contains("quitmer"), "{sin:?}: {o:?}");
+                    assert!(!o.title.contains("HIZIR") && !o.lines.join(" ").to_lowercase().contains("quitmer"), "{sin:?}: {o:?}");
                 }
                 if let Some(s) = g.voices_line() {
                     if matches!(s.who, Speaker::Whisper(_)) {

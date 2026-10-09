@@ -231,7 +231,7 @@ impl MenuItem {
             MenuItem::Ledger => "THE LEDGER",
             MenuItem::Bestiary => "THE BESTIARY",
             MenuItem::Resume => "RESUME",
-            MenuItem::CallOldMan => "CALL THE OLD MAN",
+            MenuItem::CallOldMan => "CALL HIZIR",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
             MenuItem::KeepAll => "KEEP THE GOLD",

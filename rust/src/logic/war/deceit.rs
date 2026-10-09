@@ -428,11 +428,14 @@ mod tests {
     #[test]
     fn no_cheat_takes_the_old_mans_form() {
         for kind in CheatKind::ALL {
-            assert!(!kind.name().contains("GATEKEEPER") && !kind.name().contains("OLD MAN"), "{kind:?}");
+            assert!(!kind.name().contains("GATEKEEPER") && !kind.name().contains("HIZIR"), "{kind:?}");
             for sin in SINS {
                 let c = cheat(kind, sin);
                 let lie = c.lie.to_lowercase();
-                assert!(!lie.contains("old man") && !lie.contains("quitmer") && !lie.contains("half price"), "{kind:?} {sin:?}: {lie}");
+                assert!(
+                    !lie.contains("old man") && !lie.contains("hızır") && !lie.contains("quitmer") && !lie.contains("half price"),
+                    "{kind:?} {sin:?}: {lie}"
+                );
             }
         }
         let tells = cheat(CheatKind::Whisper, Sin::Greed).tells;

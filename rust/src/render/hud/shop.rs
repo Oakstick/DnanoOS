@@ -547,7 +547,7 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
     // The old man's words, bottom left under the crypt.
     let bw = x0 - t * 1.2;
     panel(o, t * 0.4, h - t * 2.6, bw, t * 2.2, t);
-    o.text("THE OLD MAN", t * 0.9, h - t * 1.95, small, rgba(GOLD, 1.0), Align::Left, true);
+    o.text("HIZIR", t * 0.9, h - t * 1.95, small, rgba(GOLD, 1.0), Align::Left, true);
     wrap_left(o, &old_man_line(g), t * 0.9, h - t * 1.2, bw - t * 1.0, t * 0.6, small * 0.95, rgba(TEXT, 1.0));
 }
 
@@ -640,7 +640,7 @@ fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[Sho
             y += t * 0.9;
             let text = if g.hero.shield.is_none() && prog.is_broken(tier) {
                 format!(
-                    "DESTROYED. A shield that breaks is gone: the old man forges it anew for {} {}.",
+                    "DESTROYED. A shield that breaks is gone: Hızır forges it anew for {} {}.",
                     gear::reforge_price(tier),
                     progression::coin(hero)
                 )
@@ -712,9 +712,9 @@ fn draw_carve_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], tree: Tree) {
         * 100.0)
         .round();
     let text = if tree == Tree::Armory {
-        format!("The old man was smith to the heroes of old, and he cuts their blessing into your blade: their craft, no bargain. Each carving keeps its edge a quarter longer. A blow that lands wears it at {after}% of an uncut blade's.")
+        format!("Hızır was smith to the heroes of old, and he cuts their blessing into your blade: their craft, no bargain. Each carving keeps its edge a quarter longer. A blow that lands wears it at {after}% of an uncut blade's.")
     } else {
-        format!("The old man was smith to the heroes of old, and he cuts their blessing into your shield: their craft, no bargain. Each carving spares it a quarter of what a blocked blow wears off it. It wears at {after}% of an uncut shield's.")
+        format!("Hızır was smith to the heroes of old, and he cuts their blessing into your shield: their craft, no bargain. Each carving spares it a quarter of what a blocked blow wears off it. It wears at {after}% of an uncut shield's.")
     };
     wrap_left(o, &text, c[0] + pad, ay, c[2] - pad * 2.0, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
     let status = match progression::carve_price(done) {

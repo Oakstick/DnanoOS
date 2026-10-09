@@ -1270,7 +1270,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     glyphs::prompt_line(
         o,
         &g.input,
-        "{Move} run   {Attack} attack   {Jump} jump   {Block} shield   {Step} step   {Angel} archangel   {Guide} his word   {Call} call the old man   {Pause} pause",
+        "{Move} run   {Attack} attack   {Jump} jump   {Block} shield   {Step} step   {Angel} archangel   {Guide} his word   {Call} call Hızır   {Pause} pause",
         w / 2.0,
         h * 0.965,
         t * 0.45,

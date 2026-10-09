@@ -200,7 +200,7 @@ fn draw_banner(o: &mut Overlay, g: &Game, spar: &Sparring, brawl: &Brawl, t: f32
                 (format!("{alive} LEFT  {:.1}s", brawl.stats.frames as f64 / 60.0), TEXT_DIM)
             }
         },
-        BoutPhase::Won(left) | BoutPhase::Lost(left) if g.in_trial() => (format!("BACK TO THE OLD MAN IN {}", left.ceil() as u32), SAND),
+        BoutPhase::Won(left) | BoutPhase::Lost(left) if g.in_trial() => (format!("BACK TO HIZIR IN {}", left.ceil() as u32), SAND),
         BoutPhase::Won(left) => (format!("THE NEXT BOUT IN {}", left.ceil() as u32), GOLD),
         BoutPhase::Lost(left) => (format!("AGAIN IN {}", left.ceil() as u32), 0xff6a4a),
     };

@@ -159,11 +159,11 @@ impl Game {
         let place = match run.stage {
             Stage::Dungeon(n) => format!("dungeon {}", n + 1),
             Stage::Arena(n) => format!("the Cyclops of dungeon {}", n + 1),
-            Stage::Shop(_) => "the old man's wares".to_string(),
+            Stage::Shop(_) => "Hızır's wares".to_string(),
             Stage::Hub => "the Portals of Hell".to_string(),
             Stage::Realm(s) => format!("the realm of {}", s.name()),
             Stage::Court(s) => format!("the court of {}", s.prince()),
-            Stage::SinShop(_) => "the old man's wares".to_string(),
+            Stage::SinShop(_) => "Hızır's wares".to_string(),
             Stage::Gym => "the gym".to_string(),
             Stage::Pit(n) => format!("level {n} of the Pit"),
             Stage::Lair => "Krampus's lair".to_string(),

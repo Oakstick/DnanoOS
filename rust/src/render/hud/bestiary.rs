@@ -268,7 +268,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game, t: f32) {
     let count = if b.review { format!("EVERY PAGE OPEN FOR REVIEW   {all} PAGES") } else { format!("{open} OF {all} PAGES") };
     o.text_styled(&count, px + pw - pad, py + pad + t * 0.4, &style::label(t, size::LABEL, rgba(SAND, 1.0)).right());
     o.text_styled(
-        "The old man's book of every foe you have met down here.",
+        "Hızır's book of every foe you have met down here.",
         px + pw - pad,
         py + pad + t * 1.25,
         &style::body(t, 0.56, rgba(TEXT_DIM, 1.0)).right(),

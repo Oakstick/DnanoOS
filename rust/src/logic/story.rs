@@ -37,7 +37,7 @@ impl Speaker {
         match self {
             Speaker::Narrator => "",
             Speaker::Boys => "THE BOYS",
-            Speaker::OldMan => "THE OLD MAN",
+            Speaker::OldMan => "HIZIR",
             Speaker::Dog => "THE DOG",
         }
     }
@@ -213,7 +213,7 @@ pub const SOULS_LINE: &str =
     "Then you will not go alone. Rise, old souls... Ragnar (the Viking)... Mehmed (the Janissary)... Miyamoto (the Samurai). Will you carry them?";
 /// His promise, made out of guilt: the archangels' help (their shrines in every dungeon), and his own.
 pub const PROMISE_LINE: &str =
-    "So it begins... This is my failure, and I feel the guilt of it. I will ask the archangels to send you help. And call me whenever you need - I will come.";
+    "So it begins... This is my failure, and I feel the guilt of it. I will ask the archangels to send you help. And I am Hızır: call me whenever you need - I will come.";
 /// The last words: the road down past the House of Seven Seals, and why it goes so deep.
 pub const ROUTE_LINE: &str =
     "The boys took up the warrior souls and went down into the dark, depth by depth, after their stolen friend. The trail led past the House of Seven Seals, which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the world.";
@@ -433,7 +433,7 @@ pub fn credits() -> Vec<Credit> {
     out.extend([
         Credit::Gap,
         Credit::Heading("THE GATEKEEPER"),
-        Credit::Name("The Old Man".into(), "who kept the door, and kept his word".into()),
+        Credit::Name("Hızır".into(), "who kept the door, and kept his word".into()),
         Credit::Name("Quitmer".into(), "his dog".into()),
         Credit::Gap,
         Credit::Line("and the friend who was taken".into()),
@@ -568,7 +568,7 @@ mod tests {
         assert!(places[turn..].iter().all(|&p| p == Place::Gateway));
         for b in SCENE_ONE {
             // The bitmap font is plain ASCII.
-            assert!(b.line.is_ascii() && b.cue.is_ascii(), "{:?}", b.line);
+            assert!(crate::render::text::drawable(b.line) && b.cue.is_ascii(), "{:?}", b.line);
             assert!(b.waits() == !b.line.is_empty(), "lines wait for the player, action does not: {b:?}");
         }
     }
@@ -627,12 +627,11 @@ mod tests {
             })
             .collect();
         let has = |s: &str| text.iter().any(|t| t.contains(s));
-        for name in ["Ragnar", "Mehmed", "Miyamoto", "The Old Man", "Quitmer", "the friend who was taken", "THE PIT", "Mammon", "Asmodeus"]
-        {
+        for name in ["Ragnar", "Mehmed", "Miyamoto", "Hızır", "Quitmer", "the friend who was taken", "THE PIT", "Mammon", "Asmodeus"] {
             assert!(has(name), "{name} missing from the credits");
         }
         assert_eq!(text.last().map(String::as_str), Some("Made with Claude"));
-        assert!(text.iter().all(|t| t.is_ascii()));
+        assert!(text.iter().all(|t| crate::render::text::drawable(t)));
     }
 
     /// FINALE.md §5: there is no Devil, and no lord of devils. Krampus is simply Krampus.

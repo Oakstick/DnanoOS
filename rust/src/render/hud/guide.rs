@@ -70,7 +70,7 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
         style::diamond(o, cx, cy, t * 0.13, rgba(0xf2c46a, 1.0));
     }
     let under_face = style::label(t, 0.58, rgba(AMBER, 1.0)).centered();
-    o.text_styled("THE OLD MAN SPEAKS", fx + face / 2.0, fy + face + t * 0.7, &under_face);
+    o.text_styled("HIZIR SPEAKS", fx + face / 2.0, fy + face + t * 0.7, &under_face);
     let dog = style::body(t, 0.56, rgba(TEXT_DIM, 1.0)).centered();
     o.text_styled("Quitmer lies at his feet while he talks.", fx + face / 2.0, fy + face + t * 1.45, &dog);
 
