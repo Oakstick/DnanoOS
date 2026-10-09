@@ -53,7 +53,8 @@ fixes keep every harness number identical except one whole run (Q3, explained th
    F1 is the help key on many keyboards: a reviewer pressing it is thrown out of his level into the
    Cyclops' meadow. Proposal: keep them behind `dev` (as LEVELS is) in `build-windows.ps1` builds.
 2. **Decided and built (c9d4fe7): after the end the run is closed, Start begins anew; New Game+
-   beside it (72ff15c).** **After the ending, Continue goes back to Krampus.** The last checkpoint is `Stage::Lair`, kept
+   beside it (72ff15c), two tiers harder and heavier on top (`ngplus`: the princes, Krampus and every
+   foe, WARBAND.md §14).** **After the ending, Continue goes back to Krampus.** The last checkpoint is `Stage::Lair`, kept
    after Scene II and the credits, so the title's Continue reads "Ragnar, Krampus's lair" and puts him
    before Krampus again (the finished mark stays). Many games do this; the alternative is to clear the
    run at `begin_ending` so Continue opens the heroes with the purse and unlocks kept.
@@ -300,4 +301,14 @@ playthrough items above.
   aside; checked again after merging W10's princes, 6e64ac7). `--run SKILL SEED ORDER ng+N` plays New Game+ N times over (WARBAND.md §14). Test
   `after_the_end_new_game_plus_keeps_the_kit_a_tier_harder`. Captures `vh-fixes-cap/ng-title.png`,
   `ng-hud.png`, `ng-pause.png`.
+- **New Game+ heavier** (branch `ngplus`, the user's call: keep the gear, the princes and Krampus
+  heavier and harder-hitting, the realms' foes tougher): `newgame::NG_PRINCE`, `NG_KRAMPUS` and
+  `NG_FOES`, one row a level, multiplied on top of the tiers where each weight is applied (NG+1: the
+  princes' health x2.5, blows x1.5, poise x1.1; Krampus's health x2; every other foe's health and
+  blows x1.75; WARBAND.md §14 for the rows, the why and the tables). The expert's NG+1 takes 100-119
+  min (first runs 92-107) with 3-10 lives lost, each court 1.4-5.8 min (1.1-2.0 in a first run);
+  he finishes NG+2 on both seeds and orders. A first run is bit-identical in every harness (`--run`
+  expert and adept seed 1 both orders, `--court`, `--pit 2 8 1`, `--lair`, `--balance 2`, wall-clock
+  lines aside). The prince's bar says NEW GAME+N beside his name. Tests
+  `new_game_plus_weighs_the_princes_krampus_and_the_foes`, and the one above.
 

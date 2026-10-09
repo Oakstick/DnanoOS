@@ -765,7 +765,7 @@ All in the charcoal-and-copper panels of the art-direction pass.
 **New Game+** (2026-10-09, `game/newgame.rs`). Once the tale is told the title offers NEW GAME+
 beside Start: the adventure from Scene I again with the finished run's `vh.progress` (every hero's
 tiers, mastery, loadout; the purse) and its living rivals seeded back into the Ledger (their tally
-of the slain begins again), every foe and prince a tier harder. The offer is saved apart, from the
+of the slain begins again), every foe and prince tiers harder and heavier (below). The offer is saved apart, from the
 moment the end begins until the New Game+ it offers reaches its first checkpoint:
 
 | Key | Scope | Holds |
@@ -802,6 +802,68 @@ realm at tier 3. Expert, seed 1: order 0 the ending in 72 min, 3 lives lost, 4 r
 min, 14 and 9 lives): the carried kit (8/8/8 from the first realm, blade 10 by the second court)
 outweighs the tiers; the princes fall in 0.7-2.7 min. The tiers alone are not the lever; the kit
 carried is.
+
+**Heavier on top of the tiers** (2026-10-09, the user's call: keep all the gear; in New Game+ the
+princes and Krampus get more health and hit harder, and the realms' foes get tougher too). Three
+tables in `newgame.rs`, one row per level, multiplied on top of everything that weighs a foe today
+(the tiers, `court::weight` and `court::temper`, `lair_weight`, `realms::weight`, `VAULT_HP`),
+at the point each is applied; a first run's row is all 1 (`prince_weight`, `krampus_weight`,
+`foe_weight` of level 0), so its numbers are bit-identical.
+
+| Level | Princes (`NG_PRINCE`): health, blows, poise | Krampus (`NG_KRAMPUS`) | Every other foe (`NG_FOES`): health, blows |
+|---|---|---|---|
+| NG+1 | 2.5, 1.5, 1.1 | 2.0, 1.5, 1.1 | 1.75, 1.75 |
+| NG+2 | 1.75, 1.75, 1.2 | 1.6, 1.75, 1.2 | 1.85, 1.85 |
+| NG+3 | 1.5, 2.0, 1.3 | 1.4, 2.0, 1.3 | 2.0, 2.0 |
+
+"Every other foe": the realms' and the Pit's packs (`raise_packs`), the Vaults' garrison, what the
+generals raise, the princes' cheats' spawns, the Mire's young, the Peerless, the princes' adds
+(`adds_weight` at each court), the Perchten, and the Garden's bites (their contact damage).
+
+Why this shape. The prince's health is what makes a court last: the expert parries nearly every
+blow a prince throws (Asmodeus at NG+2 dealt the same 192 damage with his blows at 1.5 and at 2.0),
+so blows and poise are for the player who does not, and rise with every level. Health takes its big
+step at NG+1 and eases after it, because the two tiers each level adds already weigh more on the late
+princes every time (the court's curve): with 2.0 or more from NG+2 on, Asmodeus at the eleventh tier
+and beyond outlasted the expert's eight minutes (`COURT_LIMIT`) three tries running; Krampus, met two
+tiers below the last prince and untempered, came to 9.5 min of his 10 at NG+3 with the princes'
+health, hence his lighter row. The foes' row is what costs lives and realm time: at 1.5 health and
+1.3 blows the expert lost 1-5 lives in NG+1, at 1.75/1.75 about as many as his first run. The
+maids' health does not lengthen Asmodeus's fight (the same 345 s at NG+2 with them at 1 or 1.6).
+
+The expert (`--run 2 SEED ORDER ng+3`), every run of it in turn (the harness now prints the first
+and each New Game+), against the first run:
+
+| Expert | First run | NG+1 | NG+2 | NG+3 |
+|---|---|---|---|---|
+| seed 1, order 0 | 100 min, 14 lives, 3 tries | 112 min, 10 lives, 3 tries | 107 min, 10 lives, 3 tries | 130 min, 20 lives, 6 tries |
+| seed 1, order 1 | 107 min, 9 lives, 1 try | 100 min, 4 lives, 0 tries | 120 min, 8 lives, 1 try | 117 min, 14 lives, 3 tries |
+| seed 2, order 0 | 96 min, 9 lives, 2 tries | 119 min, 10 lives, 2 tries | 140 min, 19 lives, 6 tries | ends in the Rotting Feast (3 tries), 5 princes |
+| seed 2, order 1 | 92 min, 1 life, 0 tries | 106 min, 3 lives, 0 tries | 118 min, 1 life, 0 tries | 135 min, 16 lives, 3 tries |
+
+Every run reaches the ending up to NG+2; NG+3 once falls short in a realm. Each court (minutes,
+first run / NG+1 / NG+2 / NG+3; no life lost in any court, one in Krampus's lair at NG+3):
+
+| Seed 1 order 0 | | Seed 1 order 1 | | Seed 2 order 0 | | Seed 2 order 1 | |
+|---|---|---|---|---|---|---|---|
+| Mammon | 1.5 / 1.9 / 1.3 / 2.3 | Asmodeus | 1.7 / 2.1 / 1.6 / 2.7 | Mammon | 1.6 / 1.8 / 2.3 / 1.8 | Asmodeus | 1.5 / 2.3 / 2.3 / 3.0 |
+| Lucifer | 1.4 / 1.7 / 1.3 / 1.5 | Beelzebub | 1.1 / 1.4 / 1.2 / 1.6 | Lucifer | 1.4 / 1.6 / 1.7 / 1.8 | Beelzebub | 1.2 / 1.4 / 1.5 / 1.8 |
+| Leviathan | 1.8 / 2.2 / 2.3 / 3.2 | Belphegor | 1.2 / 1.9 / 1.7 / 1.5 | Leviathan | 1.8 / 2.3 / 3.2 / 3.6 | Belphegor | 1.3 / 1.7 / 1.9 / 1.6 |
+| Amon | 1.5 / 2.4 / 2.4 / 2.8 | Amon | 1.5 / 2.7 / 2.7 / 3.1 | Amon | 1.5 / 2.7 / 2.7 / 3.5 | Amon | 1.9 / 3.4 / 3.1 / 3.1 |
+| Belphegor | 1.4 / 2.2 / 2.1 / 2.7 | Leviathan | 1.6 / 3.7 / 3.3 / 3.4 | Belphegor | 1.4 / 2.6 / 2.4 / 3.2 | Leviathan | 1.7 / 4.5 / 3.7 / 4.0 |
+| Beelzebub | 1.3 / 2.6 / 2.2 / 2.3 | Lucifer | 1.4 / 2.7 / 2.7 / 2.6 | Beelzebub | 1.2 / 2.9 / 2.7 / - | Lucifer | 1.7 / 3.1 / 3.4 / 2.9 |
+| Asmodeus | 1.6 / 4.1 / 5.4 / 5.3 | Mammon | 1.3 / 5.8 / 4.7 / 3.5 | Asmodeus | 2.0 / 4.6 / 5.7 / - | Mammon | 1.4 / 5.3 / 5.1 / 8.0 |
+| Krampus | 2.5 / 5.8 / 6.7 / 5.9 | Krampus | 2.6 / 5.9 / 5.5 / 6.2 | Krampus | 2.6 / 6.3 / 6.6 / - | Krampus | 2.6 / 6.3 / 6.1 / 8.8 |
+
+The courts together: 10-11 min in a first run, 19-23 in NG+1. NG+1 is longer than the first run in
+three cases of four; seed 1 order 1 is 7 minutes quicker, all of it the realms: the first run's
+Rotting Feast ran out its 15 minutes on a 2/2/2 kit and the Wrath field cost a try, where NG+1's
+10/10/10 cleared the Feast in 4 (its courts took 22 minutes against 10). The expert loses his lives in
+the realms (the Wrath field, the Thorns), never at a prince; harder blows at the princes are felt by
+a player who does not parry them all. The adept for reference (`--run 1 1 ORDER ng+1`; his first run
+ends in the Rotting Feast and is never offered New Game+ in play): order 0 ends in the Vaults (10
+lives, 3 tries, 7 min; with one tier and nothing on top it reached the Feast), order 1 at Asmodeus (3 tries, 23
+min): the kit his first run left him (4/4/4 at best) is not a finished run's.
 
 ---
 
