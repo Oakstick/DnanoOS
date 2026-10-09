@@ -95,6 +95,7 @@ Open items and proposals from the agents' reports. Every new idea lands here fir
 | B36 | **Captures show the fallback light**: a `--capture` without `--draw-at` is drawn before the level's probes arrive, so captures can mislead reviews. Make captures wait for the probes by default. | Every capture is drawn with the probes in place; the capture docs updated. | S | to decide |
 | B37 | **"Old saves" after the ending**: a save that finished before 1.0.22 still offers Continue to Krampus's lair (left alone so no real run is wiped). | Decide: leave, or convert such saves to the finished state with New Game+ offered. | S | to decide |
 | B38 | **A death, a real device reset, sleep and resume**: Q2's GPU recovery is tested by a forced loss only; a real driver reset or sleep/resume is unchecked. | Checked by hand (part of B30) or a note that it holds. | S | to decide |
+| B39 | **Bug (user, 2026-10-09): the jump on the pad's A plays the wrong animation.** Leads: in fights the leap is the evade and plays the `roll` clip ("Stand To Roll", a dive and tuck that reads as a flip, ANIMATION.md open list); outside fights `jump`. Check which clip plays from A vs Space in each place (the Garden, the Vaults, a court), the timing against the leap's frames, and whether B05 (Space always leaps in a brawl, branch `quick`) changes it. | The leap looks like a jump wherever it is pressed, pad or keyboard; the evade's i-frames unchanged; a capture sequence before/after. | S–M | todo (bug) |
 
 ## Suggested order
 
