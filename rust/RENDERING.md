@@ -1420,6 +1420,159 @@ The realms' and courts' portals keep theirs (`emit_portal` draws the hub's style
   - Far out beyond the hub, where the sea is cooler, a large crust island can fill a view (behind
     Wrath's portal).
 
+### The Vaults of Mammon, at the Cisterns' bar (2026-10-09)
+
+Greed's realm, the bots' usual first pick from the hub, and Mammon's court that closes it (the
+Counting House) were rebuilt to Dungeon II's quality (`view/vault.rs`, `view/vault_art.rs`,
+`view/vault_decor.rs`, `view/court_greed.rs`). They keep their character, gold and greed:
+vaults heaped with coin, gilded columns, counting tables, strongroom doors and the glitter that
+tempts. They gain the Cisterns' mood: dressed stone, a deep dark between warm pools of light, and
+gold that reads as polished and worn metal. Only the art and the light changed: the rooms,
+corridors, dens, packs, mimics, toll, gate, the court's arena and Mammon's moves are as they were.
+
+- **What the realm and the court bypassed or under-used:**
+  - **Captures without probes:** a capture without `--draw-at` is drawn before the level's
+    probes come back from their worker thread (RP18), so it shows the out-of-level fallback
+    light. Every capture here uses `--draw-at` (the views and both timing scripts).
+  - **RP14 materials:** the gold was one flat material (`SHADE_GOLD`, kind 8) painted a
+    saturated yellow (its reflectance came out orange with no blue), with no variation, and
+    every coin, heap and chest glowed of its own colour (6 to 10%). The cream marble walls,
+    carpets, wood and candles were plain-lit. In the court the walls were plain-lit umber.
+  - **RP17 lights:** the vaults lit the 4 candelabra nearest the hero, and 3 of the gold heaps
+    shone as lights; the court lit its 5 nearest braziers.
+  - **RP18 probes:** they applied, but the room's light came almost all from a strong sun (1.25)
+    on cream marble, so everything was evenly bright. The lamps (clustered lights) do not reach
+    the probes, so metal could only reflect the sun-lit room.
+  - **RP19 haze:** 0.008 in the vaults, 0.012 in the court: practically none.
+  - **RP15 AO, RP16 presets:** applied; with the strong sun and flat walls they had little to do.
+  - **Cost:** 247,292 static cubes, most of them voxel coin stacks and heaps (a thousand coin
+    stacks of about 40 boxes each).
+- **Gold as metal** (`vault_gold` in `shaders.wgsl`, two shade modes routed through kind 8):
+  - **Gilt and plate** (`SHADE_GILT` = 13.4): colour is reflectance (yellow, red and pale golds
+    near (1.0, 0.65, 0.2) linear, `vault_art::gold`), metalness 0.92. A block's edges are rubbed
+    bright and smooth (roughness 0.1), its faces dulled by a world-space tarnish mottle (darker,
+    roughness to 0.34). Upright faces are reeded (fine flutes 3.5 cm apart) and tops hammered, so
+    a highlight breaks into streaks and flecks instead of washing a face. The detail fades with
+    the pixel's footprint.
+  - **Heaped coins** (`SHADE_COINS` = 13.25): coins laid over a heap's faces in world space, one
+    to a 7 cm cell and overlapping (the topmost wins), each its own tone (redder or paler,
+    brighter or worn) and tilt, the rim rolled over, a ring struck on its face, dark gaps down
+    between them. Their glints come and go as the eye moves. Far off (a coin a few pixels across)
+    the heap's mean is drawn instead.
+  - **The lamps' bounce:** the probes are built without the lamps, so in a lamp-lit room the gold
+    reflected only dark. The gold (and only it) reflects a share (0.12) of the lamps' light
+    falling round it, partly greyed as off umber stone (`VAULT_BOUNCE`). Near a lamp it gleams;
+    in the dark between it is dark.
+  - Coins, heaps and drifts keep a faint glow of their own (5%), so gold far from a lamp still
+    reads as gold; gilt fittings have none.
+  - Glints: now and then a small four-pointed star flares over a coin stack or a heap
+    (`vault::glint`), as the old soft glow did. Real chests still shine and a mimic still does
+    not (WARBAND.md §10.3).
+- **The vaults' stone** (`vault_art::vault_wall`):
+  - Walls are the crypt's `masonry` (4 courses, warmed: each block keeps its lightness, in
+    umber), on a pale plinth, under a gilt band, a pale moulded cornice and a coping of two dark
+    slabs. Height as before (1.6).
+  - Their faces, every six blocks: a gilded pilaster (in a cut of the courses, fluted, on a pale
+    base); a painting in a gilt frame between velvet drapes, set in a recess; or a strongroom door
+    of riveted iron in pale jambs, banded, with heavy hinges and a gilt lock plate; a niche lined
+    in velvet holding a statue (gilt king, lion, knight, Mammon, a marble goddess, an urn) or a
+    rack of gold: oak shelves of stacked bars, a plate on edge, a goblet; a gilt sconce of two
+    candles. Where nothing stands before a wall, coin is drifted against its foot.
+  - **Nothing on a wall's face stands out past 0.545 from its middle** above his knees
+    (`vault_art::LIP`, a test): the cameras take a block reaching over a tile's edge as standing
+    in that tile (`camera::footprint`), and a first build's cornice and pilasters did, which
+    hid him in 14 chase poses.
+  - Floors: two worn flags to a tile in one block (the hub's `SHADE_PAIRED`) in charcoal and
+    umber, turned tile by tile, a pale border round each room with a gilt line along its inner
+    edge; corridors flagged either side of a dark red runner (cloth) with gilt borders; the great
+    treasury's checker in polished black and cream marble, kept for its look from above.
+  - Columns are gilded: a pale stepped base, an octagonal shaft in three gilt lengths between
+    iron bands, a gilt capital under a pale abacus, and a copper fire bowl burning on top.
+  - The rock between the halls is capped in dark stone with a dull gilt coffer line. A rock tile
+    at a room's outer corner is capped on its own and fades with the walls.
+  - Mammon's idol keeps its form, in gilt on a black marble plinth over a pale base.
+- **The gold where it lies:**
+  - A coin stack is two to four coins, each as three thin boxes a twelfth turned (near enough
+    round), with one or two slid off beside it: about 8 boxes, not 40.
+  - Heaps are built solid and merged a layer at a time into rectangles (`merge_solid`): a heap is
+    a few dozen boxes, drawn by the coin shader.
+  - The treasure heap: coins, a goblet, a crown, a plate and a bar, pearls (ivory), and gems
+    (glossy) lying on its slopes.
+  - Chests are dark oak in iron bands, gilt corners and lock plate, coins to the brim inside.
+- **Light** (`vault_atmosphere`):
+  - A dim pale light from shafts far above (0.3, was 1.25), a warm dark from above and below,
+    low ambient, exposure 1.35, bloom 1.05. The fog and the haze (0.032, falloff 1.0) are a cool
+    charcoal teal: cool only in the far dark and the mist.
+  - The practicals are the light: gilt candelabra in the rooms' corners, copper braziers along
+    the great rooms' sides, fire bowls on the columns, sconces along the walls and down the
+    corridors. The 16 nearest burn at once (`VAULT_LAMPS_LIT`), amber, reaching 7 to 9.
+- **The Counting House** (`court_greed.rs`), in the same stone, gold and light:
+  - Walls of `masonry` (6 courses, 2.4 high) under the gilt band and cornice; black marble
+    pilasters banded in gilt (only where the wall runs on, not over the octagon's steps); on the
+    straight walls tall cases of ledgers sunk in the wall (east and west), Greed's banners of red
+    velvet with a gold coin (north), strongroom doors either side of the gate (south), gilt
+    sconces, and coin drifted against the foot.
+  - Two giant gilt statues of Mammon stand on the north wall either side of the scales, lit from
+    below (they fade as the walls do).
+  - The floor's veins, the coin mosaic and the seal are gilt and copper; the pillars black marble
+    banded in gilt; the heaps and the scales' pans coin; the throne gilt and velvet between two
+    gilt candelabra; the scales brass; the tables oak, a candle burning at each run's end.
+  - All ten braziers light the hall (5 before), with the candles and sconces, the throne's light,
+    the prince's key and rim and the cold teal on the scales. Haze 0.024.
+  - **His set pieces:** his coins glint as they turn in flight, a falling one draws a streak, the
+    spikes are gilt and throw glints as they burst; at the hoard slam a ring of coin sprays up
+    where the sceptre lands, glinting, with a flash of gold. The tells (the rings on the floor,
+    the quake's ring) are untouched. Mammon himself (model, size, behaviour) is unchanged and
+    reads against the darker hall in his own key and rim light.
+- **Numbers (1080p, RTX 5070 Ti Laptop, ABBA against rust-port 1.0.21, `--bench 600`):**
+
+  | | Before | After |
+  |---|---:|---:|
+  | Static cubes, the Vaults | 247,292 | 171,132 |
+  | Static cubes, the Counting House | 9,990 | 8,703 |
+  | Lights at the entrance (in clusters, fullest) | 11 (6,059, 6) | 23 (7,423, 8) |
+  | `--bench` 600, the entrance (top camera), GPU | 1.52 to 1.61 ms | 2.08 to 2.17 ms (+37%) |
+  | `--bench` 600, the treasury (chase camera), GPU | 2.06 to 2.09 ms | 2.68 to 2.75 ms (+30%) |
+  | `--bench` 600, a fight (chase camera), GPU | 2.72 to 3.14 ms | 3.43 to 3.53 ms (+18%) |
+  | `--bench` 600, the Counting House, GPU | 2.23 to 2.48 ms | 2.49 to 2.78 ms (+10%) |
+  | `--bench` 600, the coin rain, GPU | 2.19 to 2.48 ms | 2.47 to 2.85 ms (+12%) |
+  | `--perf vault`, wall p50 (GPU p50), 4 runs | 2.22 / 2.24 ms (1.82 / 1.84) | 2.97 / 3.00 ms (2.64 / 2.64) |
+  | First frame (`--perf vault`) | 189 to 212 ms | 186 to 187 ms |
+
+  - Two ABBA rounds (A, then B twice, then A), 1920×1080, the same clock state; a first round
+    taken while the player's game started was thrown away, and one run of the treasury at a
+    glitched clock (9.3 ms) is left out.
+  - **The cost:** about 0.3 to 0.8 ms of GPU time more, a tenth to a third: the twice as many
+    lights (16 practicals at once against 4, and the court's ten braziers and candles) and the
+    gold's material. The vaults stay under 3.6 ms of a 16.7 ms frame here; nothing was cut.
+  - Built once at load behind the loading screen; the probes as before. Fewer cubes to send.
+
+- **Checks:**
+  - `--camera-check realm4,court4`, after merging rust-port 5defc78 (its fading court portal): no
+    clips, no hidden poses, no holes, in both cameras, in the realm and the court, as rust-port's.
+    The realm's chase survey sees past the level's edge in more poses (1,810 of 33,240, was
+    517): with nothing reaching over the floor the camera backs off further.
+  - The harness is unchanged: `--run 2 1`, `--court 2 1 1`, `--pit 2 8 1` and all 17 bouts print
+    the same as rust-port's (5defc78), apart from their wall-clock lines.
+  - fmt, clippy (desktop and wasm) and the tests (912, `--test-threads=4`) pass.
+- **Captures:** `C:/Users/ulask/Games/vh-greed-cap/`: `side-*.png` (rust-port beside this build,
+  22 views: the entrance and the treasury from both cameras, the chests, a corridor, a chamber, a
+  fight from both cameras, a mimic, the Assessor's post from both cameras, `--iso`, the court from
+  its cameras, wide, at the throne, the west wall, the gate, the coin rain, the hoard slam and
+  `--iso`), `final-*.png` (the same at 1080p), `vaults-vs-cisterns-hub.png` (and `-1080`).
+  `views.sh`, `side.py`, `sheet.py`; `abba.sh` under `timed.sh` measures.
+- **Still open:**
+  - The gilded columns and pilasters read as a warm tan more than polished gold from the chase
+    camera's distance; their gleam depends on a lamp being near (the bounce stands in for the
+    probes' missing lamp light).
+  - The treasury's cream marble shows the shared marble material's veins as wavy lines from above.
+  - The great rooms' middles are dark from the top camera: the practicals stand round the walls
+    (and on the columns); the coins there read as faint gold flecks.
+  - The Counting House, seen wide, is darker than it was; the heaps in its corners gleam only near.
+  - The giant statues are the niche statue scaled up: blocky from close by.
+  - The paintings are the old pixel canvases; the counting-bell at the Assessor's post is the
+    shared war prop, plain-lit.
+
 ### Scene I's camera (2026-10-08)
 
 Scene I's camera was reworked so that each beat plays as a film shot, ready to cut the trailer
