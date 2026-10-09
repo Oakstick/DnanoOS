@@ -12,7 +12,7 @@ Nothing merged into `rust-port` or released.
 | crash | 1 | 1 | 0 |
 | softlock | 0 | 0 | 0 |
 | broken | 7 | 7 | 0 |
-| ugly | 5 | 4 | 1 (Q10, the hub's top camera: the hub agent's) |
+| ugly | 5 | 5 | 0 |
 | minor | 5 | 5 | 0 |
 | design (for the user) | 5 | 3 decided and built | 2 (the adept's wall, runes: the balance agent's) |
 
@@ -38,7 +38,7 @@ fixes keep every harness number identical except one whole run (Q3, explained th
 | Q17 | ugly | Asmodeus's court (the Rose Bower) | `--monkey 81 180` (stop 16, at 142 s) | Asmodeus stands inside the rock of the bower's middle (his Thorn Line under way) for over three seconds | A body's fit tested only the four corners of its square; for a body wider than a tile (his 0.95) two corners straddled the fountain's single-tile tip and let his middle onto it (traced: `GridTerrain::slide` from (15.65, 13.47) to (15.65, 13.53)) | **fixed** 09034ef: points between the corners no more than a tile apart. Test `a_big_body_never_slides_onto_a_single_tile_of_rock`. Harness: below |
 | Q8 | ugly | all body text (dialogue, HUD lines) | Scene I, beat 2: `vh-qa-cap/q-word-spaces-scene1-scream.png` | "NO! He took him! LET HIM GO!" reads "NO! Hetook him! LETHIMGO!" | The body face's space is 0.16 em (4 px at 24 px); `Overlay::layout` adds word spacing only to all-capital text | **fixed** 028be22: both faces set a space of at least 0.24 em (`text::WORD_SPACE`; Cinzel's own 0.25 unchanged; neither face kerns against the space). Captures before/after: `vh-fixes-cap/q8-*-before-after.png`. Test `a_word_space_sets_words_apart_in_both_faces_at_every_size` |
 | Q9 | ugly | camera check (`--camera-check all`) | see the table under "Cameras" | The Hall of Mirrors shows the void through the floor (1039 hole poses in the chase survey, 64-98 in the top camera) and the chase camera clips there (72 poses); the Garden of Thorns clips in the walk with both cameras (56, 24); Cisterns and Bone Vaults hide him in 24-33 chase poses; every court's top camera loses him at the south gate (16,28) | Traced pose by pose (`VH_CAMERA_DBG` names the cube in front of each mark): the Hall's "holes" were its throne floor, drawn each frame near him and missing from the check's one frame; its hides and clips all at the mirror-doors' recesses, which send him through the glass at once (never framed in play); the Garden's walk clips at the court's rose arch, its hides under the pavilion, the Black Thorn and a bower; the vaults' hides behind arch piers (under the crown's fade) and the masks, banners and brackets of fading walls; the courts' at the tall portal of the south wall | **fixed** 5d13be2: those fade as trees do (the courts' portals, the Banquet's candle wheels, the Garden's court arch, pavilion, bowers and Black Thorn, the vaults' arch piers and a fading wall's ornaments); the check counts what a pose draws each frame before calling a ray a hole, and passes over tiles that send him on at once. Numbers in "Cameras" below. Tests `the_court_portal_fades_out_of_the_top_cameras_way`, `a_mirror_doors_recess_is_passed_through_at_once` |
-| Q10 | ugly | the hub's top camera | `--camera-check hub` | Hides him at four platform corners | hub art | open: reported to the hub agent's area (not touched) |
+| Q10 | ugly | the hub's top camera | `--camera-check hub` | Hides him at four platform corners (6,30 58,30 6,50 58,50), still so after the hub's art pass (1.0.21) | Each is the edge tile beside a side portal's north tower: the top camera, looking north over the portal, met the pier's courses; only what stands above the imposts faded | **fixed** d0de9ed: each pier below the imposts fades on its own as trees do, only while it stands in the way. Top survey 4 -> 0 hides of 405; the chase camera and both walks 0 as before. Test `a_portals_pier_fades_out_of_the_top_cameras_way`. Capture `vh-fixes-cap/q10-hub-before-after.png` |
 | Q11 | ugly | the Burning Field | `--monkey 42 180` (stop 7) | A drifting wagon or tower on a slab overruns a standing foe, which stands inside it for seconds | The grid follows the slabs a whole tile at a time (rounded), so a block's rock steps onto the tiles beside it as its slab drifts; a foe there (carried, or at its post) was held fast in rock until the slab drifted on (traced: a werewolf at its post beside slab 17's block) | **fixed** 5ba209f: after every drift (and the horn's lurch) a foe in rock is shoved to the nearest spot with ground under it (never the lava). Test `a_drifting_block_never_holds_a_foe_in_its_rock`. Harness: below |
 | Q12 | minor | the Pit, while the platform goes down | B or Q during the descent | The guide does not open and nothing is drunk for those five seconds | `tick` returns early while the platform moves | **fixed** 4e09132: the guide and the belt are read during the descent (the descent waits while the guide is up). Test `the_guide_and_the_belt_work_while_the_platform_goes_down`. The Pit harness (7 runs) unchanged |
 | Q13 | minor | the camera choice before play | Continue, then Esc on "VIEW: TOP-DOWN / FOLLOW" | Esc does nothing; only a choice goes on | `update_view_choice` reads no Back | **fixed** db48bf1: Back closes the choice and keeps the camera in use when it opened. Test `back_closes_the_camera_choice_and_keeps_the_camera` |
@@ -209,7 +209,7 @@ vaults pass or nearly. Failures (survey/walk, chase/top; clips, hidden poses, ho
 
 ## The fixes pass (branch `fixes`, 2026-10-09)
 
-Every open issue but Q10 (the hub agent's) fixed, each in its own commit with a test where one can
+Every open issue fixed (Q10, the hub's, once the hub's art was merged: d0de9ed), each in its own commit with a test where one can
 catch it, and the user's two decisions built: the testing keys only in developer builds (6ba86d2:
 `Game::testing_keys`, test `testing_keys_are_inert_outside_developer_builds`) and the run closed at
 the end (c9d4fe7: no Continue, Start begins anew, the bestiary kept; test
@@ -261,7 +261,7 @@ as QA saw):
 | courts 1-6 | Top | survey | 0 | 1 each (the south gate) -> 0; court5 3 -> 0 | 0 |
 | court1, court4 | both | walk | 0 | 1 -> 0 | 0 |
 
-Unchanged: dungeon0 1 hide, the hub's 4 (Q10), realm1 1 and 1, realm2 6 clips and 11 hides (the
+Also the hub's top survey (Q10, against the merged hub art): 4 -> 0 hides. Unchanged: dungeon0 1 hide, realm1 1 and 1, realm2 6 clips and 11 hides (the
 Burning Field, as at RP02's first pass), realm5 3 and 1, court2's walk 1, court5's chase survey 3 (by
 the dais). Every level is at RP02's old numbers or better. Captures before|after:
 `vh-fixes-cap/q9-court1-before-after.png` (the portal fades), `q9-cisterns-before-after.png` (the pier
@@ -272,7 +272,7 @@ fades), `q9-thorns-before-after.png`.
 it now counts what a pose draws each frame before calling a ray a hole, and passes over tiles that
 send him on at once (a mirror-door's recess).
 
-**Still open**: Q10 (the hub agent's); the design calls 3 and 4 (the balance agent's); the hand
+**Still open**: the design calls 3 and 4 (the balance agent's); the hand
 playthrough items above. Proposal for the user, not built: a **New Game+** from the title once the
 tale is told (the finished mark): start again with the hero's kit (his unlocked tiers, mastery ranks)
 and the purse kept, the foes a tier harder throughout (the dealer's stage tier + 1, the princes at
