@@ -247,8 +247,10 @@ fn main() {
         let ng = args.iter().skip(i + 1).take(4).find_map(|a| a.strip_prefix("ng+").and_then(|n| n.parse::<u8>().ok())).unwrap_or(0);
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join(format!("vh-run-{skill}-{seed}-{order}-{ng}")));
         let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
-        let r = void_harvest::game::whole_run::whole_run_ng(skill, seed, order as usize, ng);
-        print!("{}", void_harvest::game::whole_run::run_table(&r));
+        // (Every run of it in turn, the first and each New Game+.)
+        for r in void_harvest::game::whole_run::whole_runs_ng(skill, seed, order as usize, ng) {
+            print!("{}", void_harvest::game::whole_run::run_table(&r));
+        }
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--runs") {
@@ -266,7 +268,7 @@ fn main() {
         // A prince as the run meets him: `--court-at SIN SKILL KIT KEYS SEED` (Ragnar's kit at KIT,
         // or BLADE/SHIELD/PATH; KEYS other keys held: the court weighed at tier KEYS + 1;
         // `VH_BELT=N` health bottles on his belt, `VH_MASTERY=N` his rank, `VH_LIVES=N` his lives,
-        // `VH_EDGE=N` his blade's edge, `VH_LIMIT=S` the seconds, `VH_COURT_STATS` each life's numbers).
+        // `VH_EDGE=N` his blade's edge, `VH_LIMIT=S` the seconds, `VH_NG=N` New Game+ N, `VH_COURT_STATS` each life's numbers).
         let sin =
             args.get(i + 1).and_then(|s| void_harvest::logic::sins::Sin::from_name(s)).unwrap_or(void_harvest::logic::sins::Sin::Greed);
         let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);

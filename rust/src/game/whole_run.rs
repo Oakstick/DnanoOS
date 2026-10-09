@@ -760,13 +760,22 @@ pub fn whole_run(skill: Skill, seed: u32, order: usize) -> WholeRun {
  * stopped, as if it had (the adept's runs end at a prince). `ng` 0 is `whole_run` itself.
  */
 pub fn whole_run_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> WholeRun {
+    whole_runs_ng(skill, seed, order, ng).pop().expect("the first run at least")
+}
+
+/// As `whole_run_ng`, every run of it in turn: the first, then each New Game+ (`ng` + 1 runs).
+pub fn whole_runs_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> Vec<WholeRun> {
     if ng == 0 {
-        return whole_run(skill, seed, order);
+        return vec![whole_run(skill, seed, order)];
     }
     let sins = ORDERS[order.min(1)];
     let mut g = fresh_game(seed);
     let mut run = play_run(&mut g, skill, seed, &sins, true);
+    let mut runs = Vec::new();
     for _ in 0..ng.min(super::newgame::NG_MAX) {
+        run.order = order;
+        finish_report(&mut run, &g);
+        runs.push(run);
         let offer = g.ng_offer.take().unwrap_or_else(|| g.new_game_plus_offer());
         // (Back to the title, as the end or Quit to Title leaves him, and the run closed.)
         if g.story.is_some() {
@@ -783,7 +792,8 @@ pub fn whole_run_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> WholeRun {
     }
     run.order = order;
     finish_report(&mut run, &g);
-    run
+    runs.push(run);
+    runs
 }
 
 /// The run through the realms of `sins` in that order, and on through the finale if `finale`.
@@ -1000,6 +1010,10 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
         let mut r = g.general_records();
         r.set(sin, crate::logic::war::general::Record { met: true, broken: 0, decree_done: v == "decree", slain: v == "slain" });
         g.warband.save.generals = r.encode();
+    }
+    // (`VH_NG=N`: New Game+ N, its tiers and its weight on the prince.)
+    if let Some(n) = std::env::var("VH_NG").ok().and_then(|v| v.parse::<u8>().ok()) {
+        g.ng_plus = n.min(super::newgame::NG_MAX);
     }
     g.map_jump(Stage::Court(sin));
     kit.equip(&mut g);
