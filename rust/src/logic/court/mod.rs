@@ -28,12 +28,14 @@ use super::sins::Sin;
 
 /// What the prince (and what he raises) is multiplied by in a court of `tier`: his health and his
 /// damage. The first court the hero comes to is the measure; every key held before it makes the
-/// prince stronger, as it does the realms, and a little more with each (WARBAND.md W9: on a straight
-/// line the kit a hero buys on the way outgrew the courts, the seventh prince falling sooner than
-/// the first).
+/// prince's health greater, as it does the realms', and a little more with each (WARBAND.md W9: on a
+/// straight line the kit a hero buys on the way outgrew the courts, the seventh prince falling
+/// sooner than the first). His blows do not grow with the keys (W10: a hero who guards first meets
+/// the late princes with a kit three tiers below the reader's, and their rising blows felled him in
+/// a life whatever his shield).
 pub fn weight(tier: usize) -> (f64, f64) {
     let t = tier.max(1) as f64 - 1.0;
-    (COURT_HEALTH * (1.0 + 0.3 * t + COURT_CURVE * t * (t - 1.0)), 0.85 + 0.1 * t)
+    (COURT_HEALTH * (1.0 + 0.3 * t + COURT_CURVE * t * (t - 1.0)), COURT_DAMAGE)
 }
 
 /// The princes' health above their breed's (WARBAND.md W9: with the blade no longer rusting through
@@ -41,6 +43,35 @@ pub fn weight(tier: usize) -> (f64, f64) {
 pub const COURT_HEALTH: f64 = 1.15;
 /// The courts' health, curved upward by this much per key held squared (the second court as before).
 pub const COURT_CURVE: f64 = 0.02;
+/// The princes' blows (and their adds') against their breed's, at every tier (WARBAND.md W10: from
+/// 0.85 at the first court rising 0.1 a key).
+pub const COURT_DAMAGE: f64 = 0.6;
+
+/**
+ * Each prince's health and blows over his court's weight (WARBAND.md W10), where the adept met him
+ * with too light a kit: the princes who mend (Belphegor in his dream, Beelzebub at his table) and
+ * Leviathan, the longest of breed, are lighter; the three whose blows ended an adept's life before
+ * his blade could tell (Amon's charge, Asmodeus's elf-maids, Lucifer's lance) strike softer. Their
+ * moves, tells and phases are their own still.
+ */
+pub fn temper(sin: Sin) -> (f64, f64) {
+    match sin {
+        Sin::Greed => (1.0, 1.0),
+        Sin::Pride => (1.0, 0.75),
+        Sin::Envy => (0.85, 1.0),
+        Sin::Wrath => (0.75, 0.45),
+        Sin::Sloth => (0.75, 1.0),
+        Sin::Gluttony => (0.7, 1.0),
+        Sin::Lust => (1.0, 0.45),
+    }
+}
+
+/// What the prince of `sin`'s adds are multiplied by in his court of `tier`: the court's weight,
+/// their blows tempered as his are (`temper`).
+pub fn adds_weight(sin: Sin, tier: usize) -> (f64, f64) {
+    let (hp, damage) = weight(tier);
+    (hp, damage * temper(sin).1)
+}
 
 /// Is the court of `sin` built to its own plan, its prince fought as himself? (If not, he is the
 /// Cyclops in the meadow under the sin's sky.)

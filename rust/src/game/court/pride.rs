@@ -15,7 +15,7 @@ use crate::logic::combat::ails::{Flash, FlashKind};
 use crate::logic::combat::duelist::Lore;
 use crate::logic::combat::prince::pride::{FALL_RISE, REFLECTIONS, REFLECTION_RISE};
 use crate::logic::combat::{math, MoveId, Phase};
-use crate::logic::court::{pride as plan, weight};
+use crate::logic::court::{adds_weight, pride as plan};
 use crate::logic::enemy::{EnemyKind, EnemyMode};
 use crate::logic::types::{dist_sq, P, V};
 
@@ -124,7 +124,7 @@ impl Game {
             doors.into_iter().take(REFLECTIONS as usize).collect()
         };
         let tier = self.realm_tier();
-        let (_, weight_damage) = if self.in_court() { weight(tier) } else { (1.0, 1.0) };
+        let (_, weight_damage) = if self.in_court() { adds_weight(crate::logic::sins::Sin::Pride, tier) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: REFLECTION_RISE, ..Lore::default() };
@@ -217,7 +217,7 @@ mod tests {
     use crate::game::{save, Screen};
     use crate::logic::combat::archetype::{Archetype, Power};
     use crate::logic::combat::frames::{Shape, REACTION};
-    use crate::logic::combat::prince::{phase_of, HIDE_SHARE};
+    use crate::logic::combat::prince::{phase_of, COURT_HIDE};
     use crate::logic::combat::{Duelist, State};
     use crate::logic::sins::Sin;
     use crate::logic::types::Tile;
@@ -287,7 +287,7 @@ mod tests {
         let max = lucifer(&mut g).max_hp;
         lucifer(&mut g).rest = u16::MAX;
         let from = lucifer(&mut g).pos;
-        lucifer(&mut g).hp = max * 0.67 + 1.0;
+        lucifer(&mut g).hp = max * 0.75;
         g.call_duel_hit(0, from);
         run(&mut g, 0.05);
         let hp = lucifer(&mut g).hp;
@@ -336,13 +336,12 @@ mod tests {
         let before = blow(&mut g, math::add(pos, V::new(0.0, 1.5)));
         let side = blow(&mut g, math::add(pos, V::new(1.5, 0.0)));
         let back = blow(&mut g, math::add(pos, V::new(0.3, -1.5)));
-        assert!(before > 0.0 && back > before * 2.0, "before him {before}, at his back {back}");
-        assert!(before <= (back * HIDE_SHARE).ceil(), "his light turns the rest: {before} of {back}");
+        assert!(before > 0.0 && back > before, "his light turns the rest: before him {before}, at his back {back}");
         assert!((side - before).abs() < 1e-9, "beside him he still sees it: {side}");
         // In a recovery his light is open from every side.
         lucifer(&mut g).f.state = State::Attack { mv: MoveId::RadiantCut, frame: 60 };
         let open = blow(&mut g, math::add(pos, V::new(0.0, 1.5)));
-        assert!(open > before * 2.0, "open {open}");
+        assert!(open > before && before <= (open * COURT_HIDE).ceil(), "his light turns the rest: {before} of {open}");
     }
 
     #[test]
@@ -498,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_lucifer_back_whole_and_continue_comes_back_to_his_court() {
+    fn a_fall_brings_lucifer_back_with_his_wounds_and_continue_comes_back_to_his_court() {
         let mut g = court();
         let max = lucifer(&mut g).max_hp;
         let (id, at) = (g.court.as_ref().unwrap().prince, lucifer(&mut g).pos);
@@ -509,14 +508,22 @@ mod tests {
         g.reset_round();
         assert_eq!(reflections(&g), 0, "his Reflections gone");
         let d = lucifer(&mut g);
-        assert_eq!((d.hp, d.breed.phase), (max, 1));
+        assert_eq!((d.hp, d.breed.phase), (max * 0.5, 2), "his wounds kept (WARBAND.md W10)");
         assert_eq!(d.pos, P::new(plan::LUCIFER.0, plan::LUCIFER.1).v(), "back at the foot of his steps");
+        // As the fight begins again he takes up his Mirror: its banner, his Reflections, no breather.
+        let crosses = g.level.grid.count(Tile::Charge);
+        g.enter(Screen::Playing);
+        run(&mut g, 0.05);
+        assert_eq!(reflections(&g), 2, "they step out of the glass again");
+        assert!(g.juice.banner.as_ref().is_some_and(|b| b.text.contains("THE MIRROR")));
+        assert_eq!(g.level.grid.count(Tile::Charge), crosses, "no second breather for the same phase");
+        assert!(g.floaters.iter().any(|f| f.text == super::super::WOUNDS_REMAIN), "said over him");
         g.checkpoint(save::Stage::Court(Sin::Pride));
         let run = g.saved_run.clone().unwrap();
         let mut h = Game::new();
         h.saved_run = Some(run);
         h.continue_game();
-        assert!(h.in_court() && h.prince().is_some());
+        assert!(h.in_court() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, "The Throne of the Morning Star");
     }
 

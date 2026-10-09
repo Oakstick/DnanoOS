@@ -39,7 +39,7 @@ use crate::logic::combat::frames::Shape;
 use crate::logic::combat::prince::krampus::{
     BELLS, DAZE, PERCHTEN, PERCHT_DAMAGE, PERCHT_HEALTH, PERCHT_RISE, TAUNTS, TAUNT_EVERY, TAUNT_FIRST, TAUNT_WALK,
 };
-use crate::logic::combat::prince::phase_name;
+use crate::logic::combat::prince::{after_fall, phase_for, phase_name};
 use crate::logic::combat::{math, Breed, Duelist, MoveId, Phase, Reel, State};
 use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::juice::{DilationKind, Stop, Trauma};
@@ -135,6 +135,10 @@ pub struct Lair {
     pub krampus: u32,
     pub phase: u8,
     pub trail: f32,
+    /// His health as the hero fell (what the fall leaves him: `note_wounds`), and whether he is
+    /// fought again wounded after a fall (`reset_lair`).
+    pub seen: f64,
+    pub rejoin: bool,
     pub slain: bool,
     /// The last frame of the fight the lair has seen (its work is done once a frame).
     pub frame: u32,
@@ -158,6 +162,8 @@ impl Lair {
             krampus,
             phase: 1,
             trail,
+            seen: trail as f64,
+            rejoin: false,
             slain: false,
             frame: 0,
             taunt: None,
@@ -277,6 +283,21 @@ impl Game {
                 l.frame = frame;
             }
             self.krampus_frame();
+        }
+        // Fought again after a fall with his wounds: said over him as the fight begins, and in a
+        // later phase he takes it up again.
+        if self.lair.as_ref().is_some_and(|l| l.rejoin) && self.screen == super::Screen::Playing {
+            if let Some(l) = self.lair.as_mut() {
+                l.rejoin = false;
+            }
+            let id = self.lair.as_ref().map(|l| l.krampus);
+            let found = self.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| Some(d.id) == id && d.alive()));
+            if let Some((i, phase, at)) = found.and_then(|i| self.enemies[i].duel.as_ref().map(|d| (i, d.breed.phase, d.pos))) {
+                self.floater(at.x, at.y - 3.0, super::court::WOUNDS_REMAIN, 2.4, Some(KRAMPUS_RED));
+                if phase >= 2 {
+                    self.krampus_phase(i, phase, false);
+                }
+            }
         }
         let hp = self.krampus().map(|d| d.hp.max(0.0) as f32);
         if let (Some(l), Some(hp)) = (self.lair.as_mut(), hp) {
@@ -451,11 +472,12 @@ impl Game {
     }
 
     /**
-     * Krampus's health has fallen into `phase` (`court::prince_phase` hands it here): his bells
-     * and his roar, the banner, a green cross for a breather; as the Chains begin his Perchten
-     * come out of the dark (once), and Krampusnacht sets the cage's taunt going.
+     * Krampus's health has fallen into `phase` (`court::prince_phase` hands it here), or he is
+     * fought again in it after a fall: his bells and his roar, the banner, a green cross for a
+     * breather if `breather`; as the Chains begin his Perchten come out of the dark (once), and
+     * Krampusnacht sets the cage's taunt going.
      */
-    pub(super) fn krampus_phase(&mut self, i: usize, phase: u8) {
+    pub(super) fn krampus_phase(&mut self, i: usize, phase: u8, breather: bool) {
         let Some(du) = self.enemies.get(i).and_then(|e| e.duel.as_deref()) else { return };
         if du.arch != Archetype::Prince {
             return;
@@ -495,7 +517,9 @@ impl Game {
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
             d.lore.summoned |= phase >= 2;
         }
-        self.drop_breather(pos);
+        if breather {
+            self.drop_breather(pos);
+        }
     }
 
     /// The phase banner's line under his name, and its colour.
@@ -776,17 +800,20 @@ impl Game {
         }
     }
 
-    /// After a fall: Krampus whole again before the cage, his Perchten gone, the floor cleared, the
-    /// boy back at the bars (unless Krampus has already fallen).
+    /// After a fall: Krampus back before the cage with the wounds he had (`prince::after_fall`,
+    /// WARBAND.md W10), his Perchten gone, the floor cleared, the boy back at the bars (unless
+    /// Krampus has already fallen).
     pub(super) fn reset_lair(&mut self) {
         let Some(l) = self.lair.as_ref() else { return };
         if l.slain {
             return;
         }
-        let keep = l.krampus;
+        let (keep, seen) = (l.krampus, l.seen);
         self.enemies.retain(|e| e.duel.as_ref().is_some_and(|d| d.id == keep));
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).next() {
             d.reset_home();
+            d.hp = after_fall(seen, d.max_hp);
+            d.breed.phase = phase_for(d.breed.kind, d.hp, d.max_hp);
             d.pos = P::new(KRAMPUS.0, KRAMPUS.1).v();
             d.facing = V::new(0.0, 1.0);
             d.rest = 90;
@@ -797,9 +824,10 @@ impl Game {
             b.traps.clear();
             b.bolts.clear();
         }
-        let max = self.enemies.first().and_then(|e| e.duel.as_ref()).map(|d| d.max_hp as f32).unwrap_or(0.0);
+        let (hp, max, phase) =
+            self.enemies.first().and_then(|e| e.duel.as_ref()).map(|d| (d.hp, d.max_hp, d.breed.phase)).unwrap_or((0.0, 0.0, 1));
         if let Some(l) = self.lair.as_mut() {
-            *l = Lair { charges: l.charges, dazes: l.dazes, frame: l.frame, ..Lair::new(keep, max) };
+            *l = Lair { charges: l.charges, dazes: l.dazes, frame: l.frame, phase, rejoin: hp < max, ..Lair::new(keep, hp as f32) };
         }
         self.refresh_foe_views();
     }
@@ -1179,7 +1207,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_krampus_back_whole_and_continue_comes_back_to_his_lair() {
+    fn a_fall_brings_krampus_back_with_his_wounds_and_continue_comes_back_to_his_lair() {
         let mut g = lair();
         let max = krampus(&mut g).max_hp;
         krampus(&mut g).hp = max * 0.5;
@@ -1189,17 +1217,24 @@ mod tests {
         g.lair.as_mut().unwrap().taunts = 2;
         g.reset_round();
         let d = krampus(&mut g);
-        assert_eq!((d.hp, d.breed.phase), (max, 1));
+        assert_eq!((d.hp, d.breed.phase), (max * 0.5, 2), "his wounds kept (WARBAND.md W10)");
         assert_eq!(d.pos, P::new(KRAMPUS.0, KRAMPUS.1).v(), "back before the cage");
         assert_eq!(perchten(&g), 0, "his Perchten gone");
         let l = g.lair.as_ref().unwrap();
-        assert_eq!((l.phase, l.taunts), (1, 0));
+        assert_eq!((l.phase, l.taunts, l.trail), (2, 0, (max * 0.5) as f32), "his bar where it was");
+        // As the fight begins again he takes up the Chains: his Perchten come once more, no breather.
+        let crosses = g.level.grid.count(Tile::Charge);
+        g.enter(Screen::Playing);
+        run(&mut g, 0.05);
+        assert!(perchten(&g) > 0, "his Perchten again");
+        assert_eq!(g.level.grid.count(Tile::Charge), crosses);
+        assert!(g.floaters.iter().any(|f| f.text == crate::game::court::WOUNDS_REMAIN));
         g.checkpoint(Stage::Lair);
         let saved = g.saved_run.clone().unwrap();
         let mut h = Game::new();
         h.saved_run = Some(saved);
         h.continue_game();
-        assert!(h.in_lair() && h.prince().is_some());
+        assert!(h.in_lair() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, NAME);
         assert_eq!(h.realm_tier(), 8);
     }

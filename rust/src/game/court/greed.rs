@@ -7,7 +7,7 @@ use crate::game::Game;
 use crate::logic::combat::duelist::Lore;
 use crate::logic::combat::math;
 use crate::logic::combat::prince::{GOLEMS, GOLEM_RISE};
-use crate::logic::court::{beside_heap, weight, HEAPS};
+use crate::logic::court::{adds_weight, beside_heap, HEAPS};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::types::{dist_sq, V};
 
@@ -60,7 +60,7 @@ impl Game {
             [-1.0, 1.0].iter().map(|s| math::add(at, math::scale(across, 2.2 * s))).collect()
         };
         let tier = self.realm_tier();
-        let (weight_hp, weight_damage) = if self.in_court() { weight(tier) } else { (1.0, 1.0) };
+        let (weight_hp, weight_damage) = if self.in_court() { adds_weight(crate::logic::sins::Sin::Greed, tier) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: GOLEM_RISE, ..Lore::default() };
@@ -124,8 +124,8 @@ mod tests {
         let max = mammon(&mut g).max_hp;
         mammon(&mut g).rest = u16::MAX;
         let from = mammon(&mut g).pos;
-        // A blow that leaves him just above two thirds: still the Banker.
-        mammon(&mut g).hp = max * 0.67 + 1.0;
+        // A blow that leaves him above two thirds: still the Banker.
+        mammon(&mut g).hp = max * 0.75;
         g.call_duel_hit(0, from);
         run(&mut g, 0.05);
         let golems = |g: &Game| g.enemies.iter().filter(|e| e.kind() == EnemyKind::GoldGolem).count();
@@ -166,7 +166,7 @@ mod tests {
         let before = d.hp;
         g.call_duel_hit(0, from);
         let open = before - mammon(&mut g).hp;
-        assert!(warded > 0.0 && open > warded * 2.5, "warded {warded}, open {open}");
+        assert!(warded > 0.0 && open > warded * 1.5, "warded {warded}, open {open}");
     }
 
     #[test]
@@ -271,21 +271,25 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_mammon_back_whole_and_continue_comes_back_to_his_court() {
+    fn a_fall_brings_mammon_back_with_his_wounds_and_continue_comes_back_to_his_court() {
         let mut g = court();
         let max = mammon(&mut g).max_hp;
         mammon(&mut g).hp = max * 0.5;
         mammon(&mut g).breed.phase = 2;
         g.reset_round();
         let d = mammon(&mut g);
-        assert_eq!((d.hp, d.breed.phase), (max, 1));
+        assert_eq!((d.hp, d.breed.phase), (max * 0.5, 2), "his wounds kept (WARBAND.md W10)");
+        // As the fight begins again, his golems climb out of the gold once more.
+        g.enter(Screen::Playing);
+        run(&mut g, 0.05);
+        assert_eq!(g.enemies.iter().filter(|e| e.kind() == EnemyKind::GoldGolem).count(), GOLEMS as usize);
         // Saved at the court's door, Continue loads it again.
         g.checkpoint(save::Stage::Court(Sin::Greed));
         let run = g.saved_run.clone().unwrap();
         let mut h = Game::new();
         h.saved_run = Some(run);
         h.continue_game();
-        assert!(h.in_court() && h.prince().is_some());
+        assert!(h.in_court() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, "The Counting House");
     }
 }

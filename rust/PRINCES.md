@@ -23,14 +23,18 @@ These come from COMBAT.md §0 and §13 and WARBAND.md, and they are not bent:
   token is three points; what he raises waits while he strikes (court pool 3, a grant every 45).
 * **Phases by health** (`prince::PHASE_AT`, two thirds and one third): each change gives his roar,
   a banner with his phase's title and a line of what to do, and a green cross for a breather.
-* **A hide** that turns most of a blow outside his recoveries (`HIDE_SHARE` 0.3), unless his
-  design says otherwise; a parry still deflects him.
+* **A hide** that turns a share of a blow outside his recoveries, unless his design says otherwise;
+  a parry still deflects him. In his court it lets `COURT_HIDE` (0.6) through, 0.3 before W10
+  (`HIDE_SHARE`, which the ring's Mammon and Krampus's pelt keep): a hero who strikes his
+  recoveries fells him as fast as before, one who guards first is no longer turned to nothing.
 * **His general weighs on him** (`PrinceTerms`): his general slain, he fights without his adds;
   his general's decree done, his adds come at once as the fight begins (and the design below
   may name one more thing the decree changes).
 * **He drops his sin's key.** The way on is as from Mammon: the gate behind him, the old man's
-  wares, the Portals of Hell with the sin sealed. A fall brings him back whole before his throne;
-  Continue comes back to his court.
+  wares, the Portals of Hell with the sin sealed. A fall brings him back before his throne **with
+  his wounds** (W10: `prince::after_fall`; HIS WOUNDS REMAIN over him, his bar where it was, and in
+  a later phase its banner and adds again at once, without a second breather); a game over gives
+  him back his health, and Continue comes back to his court.
 * **Balance targets**, played by the bots in his court (`--court SIN SKILL TIER SEED`): the expert
   beats him at tiers 1 and 2 without losing all three lives, in about 90 to 150 seconds; a masher
   (novice) cannot. Pinned by a test as Mammon's is. (W9, WARBAND.md's tuning log: with the blade no
@@ -38,7 +42,12 @@ These come from COMBAT.md §0 and §13 and WARBAND.md, and they are not bent:
   `court::COURT_HEALTH`, and the courts' health curves upward with the keys, `COURT_CURVE`: the
   expert at tiers 1 and 2 now takes 85-127 s, 88-139 before; in the whole run 1.4-2.3 minutes from
   the first prince to the seventh. The adept, a blocker, fells the first with a tier-3 kit and falls
-  to the second.)
+  to the second.) **W10** (WARBAND.md's tuning log): the princes keep their wounds across the
+  hero's falls, their hide lets 0.6 through in their courts, their blows (and their adds') stay at
+  0.6 of their breed's at every tier (0.85 rising 0.1 a key before), and five are tempered
+  (`court::temper`: Leviathan 0.85 health, Amon 0.75 health and 0.45 blows, Belphegor 0.75 health
+  and half his mending, Beelzebub 0.7 health, Lucifer 0.75 blows, Asmodeus 0.45 blows). The adept
+  now fells every prince at the kit it brings; the masher still cannot where the run meets them.
 * **Determinism.** The sim uses its own seeded rolls; the view and the sound have their own.
 * **Art.** The prince is a voxel sculpt in parts its rig swings, about two and a half times the
   hero's height (as Mammon, 100 × 124 × 80 at 0.025), built at startup, so no larger than his.

@@ -715,7 +715,7 @@ impl Duelist {
     pub fn taken(&self) -> f64 {
         match self.breed.power {
             Power::Ward if !self.exposed() => WARD_SHARE,
-            p if p.is_hide() && !self.exposed() => super::prince::HIDE_SHARE,
+            p if p.is_hide() && !self.exposed() => self.breed.hide,
             Power::Dish if self.lore.spilled > 0 => SPILLED_TAKEN,
             _ => 1.0,
         }
