@@ -676,7 +676,7 @@ fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32, bias: f32) -> vec3<f32> {
     // The flow's streaks, drawn along by the current, and its slow throb: veins of hotter melt.
     let streak = vnoise(vec2<f32>(c.x * 0.6, c.y * 2.6) - flow * 2.5);
     let pulse = 0.88 + 0.12 * sin(time * 1.7 + broad * 11.0);
-    let hot = clamp((0.58 - isl) / 0.44 + 0.08 * near + (streak - 0.5) * 0.9, 0.0, 1.0);
+    let hot = clamp((0.58 - isl) / 0.55 + 0.08 * near + (streak - 0.5) * 0.9, 0.0, 1.0);
     let melt = (0.25 + 1.0 * hot * hot * hot) * pulse;
     let cracks = crack * (0.3 + 0.3 * fine);
     let glow = mix(melt, cracks, crust);
