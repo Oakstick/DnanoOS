@@ -74,6 +74,9 @@ impl Game {
         // The run's snapshot (and a new high score) is written here, between fights, not on the
         // kill that set it.
         self.flush_saves();
+        // Play never begins by itself while he is away from the window (a countdown that ends, the
+        // old man's door): it waits on the pause menu for him.
+        let screen = if screen == Screen::Playing && !self.focused { Screen::Paused } else { screen };
         self.screen = screen;
         self.menu_index = 0;
         self.confirm_reset = false;
@@ -145,6 +148,10 @@ impl Game {
             .or_else(|| self.hub_focus());
         self.input.set_context(self.input_context());
         self.input.poll(dt);
+        // A press of any kind (a controller's reaches the game without the window's focus): he is here.
+        if self.input.presses().next().is_some() {
+            self.focused = true;
+        }
         self.note_device();
         self.handle_global_keys();
         self.settle_pace();
@@ -546,9 +553,28 @@ impl Game {
 
     /// Pauses the game when the window loses focus.
     pub fn focus_lost(&mut self) {
+        self.focused = false;
         self.input.blur();
         if self.screen == Screen::Playing {
             self.enter(Screen::Paused);
         }
+    }
+
+    /// The controller in his hands was unplugged (or its battery died): as if he had looked away,
+    /// the game pauses, and play that would begin by itself waits for him (QA.md Q5). A controller
+    /// unplugged while he plays on the keyboard changes nothing.
+    pub fn controller_lost(&mut self) {
+        if !self.input.last_device().is_pad() {
+            return;
+        }
+        self.focused = false;
+        if self.screen == Screen::Playing {
+            self.enter(Screen::Paused);
+        }
+    }
+
+    /// The window has the player's attention again (the pause menu he came back to stays up).
+    pub fn focus_gained(&mut self) {
+        self.focused = true;
     }
 }

@@ -433,10 +433,27 @@ impl Hero {
         if self.m.tile != self.synced {
             self.free_pos = self.m.tile.v();
         }
+        let start = self.free_pos;
         self.free_pos.x += step.x;
         self.push_out(grid);
         self.free_pos.y += step.y;
         self.push_out(grid);
+        // A shove longer than his reach of the wall (Belphegor's yawn carries him over a third of a
+        // tile a frame) could pass his middle through a wall's face, and the walls only push out of
+        // the tiles about him, not the one he stands in: through into rock, or onto ground he could
+        // not step to, it is taken again in short steps that the walls stop (QA.md Q6).
+        let tile_of = |v: V| grid.wrap(P::new(v.x.round() as i32, v.y.round() as i32));
+        let (from, to) = (tile_of(start), tile_of(self.free_pos));
+        if from != to && free_blocked(grid, from, to.x, to.y) {
+            self.free_pos = start;
+            let n = ((step.x.abs().max(step.y.abs())) / (FREE_RADIUS * 0.5)).ceil().max(1.0);
+            for _ in 0..n as usize {
+                self.free_pos.x += step.x / n;
+                self.push_out(grid);
+                self.free_pos.y += step.y / n;
+                self.push_out(grid);
+            }
+        }
         let tile = grid.wrap(P::new(self.free_pos.x.round() as i32, self.free_pos.y.round() as i32));
         self.m.tile = tile;
         self.m.offset = 0.0;
@@ -770,6 +787,13 @@ impl Hero {
         let top = self.m.speed;
         let m = &mut self.m;
         m.world_width = grid.width;
+        // On a center with a way it may not take (as free movement leaves him when it is switched
+        // off mid-stride: his heading kept, nothing checked), he rests there; on the grid a move
+        // is only begun where it may go (QA.md Q16).
+        if m.offset == 0.0 && m.dir != Dir::None && !grid.can_move(m.tile, m.dir, false, false) {
+            m.dir = Dir::None;
+            self.vel = 0.0;
+        }
 
         if m.dir == Dir::None {
             if wanted == Dir::None {
@@ -1525,5 +1549,49 @@ mod tests {
             h.update(DT, &g, Dir::Right);
         }
         assert_eq!(h.occupied(), P::new(2, 1));
+    }
+
+    /// A shove of more than his reach of a wall in one frame (Belphegor's yawn: 0.36 of a tile)
+    /// never carries him through the wall's face into the rock (QA.md Q6); a shove in the open is
+    /// carried whole.
+    #[test]
+    fn a_hard_shove_never_carries_him_into_a_wall() {
+        let g = room(9, 9);
+        let mut h = Hero::new(P::new(4, 4), 5.0);
+        h.free_move = true;
+        // Just off the north wall's face (y 0.5; his middle 0.351 from it, as Belphegor found him),
+        // a yawn's frames carry him north.
+        h.shove(&g, V::new(0.0, -3.149));
+        assert!((h.pos().y - 0.851).abs() < 1e-9, "beside the wall: {:?}", h.pos());
+        for _ in 0..20 {
+            h.shove(&g, V::new(0.0, -0.357));
+            assert!(h.pos().y >= 0.8 - 1e-9 && g.get(h.occupied().x, h.occupied().y) != Tile::Rock, "into the wall: {:?}", h.pos());
+        }
+        // In the open, a long shove is carried whole, as ever.
+        let mut h = Hero::new(P::new(4, 4), 5.0);
+        h.free_move = true;
+        h.shove(&g, V::new(0.0, -0.9));
+        assert!((h.pos().y - 3.1).abs() < 1e-9, "{:?}", h.pos());
+    }
+
+    /// Free movement switched off mid-stride (F4, or the setting) beside a wall: on the grid he
+    /// keeps out of it, resting on his tile (QA.md Q16: he walked into the garden's fountain).
+    #[test]
+    fn switching_to_the_grid_mid_stride_never_walks_into_a_wall() {
+        let g = room(9, 9);
+        let mut h = Hero::new(P::new(4, 2), 5.0);
+        h.free_move = true;
+        // Running south at the wall, switched to the grid as he comes onto the last row.
+        h.wish = V::new(0.0, 1.0);
+        while h.occupied().y < 7 {
+            h.update(DT, &g, Dir::None);
+        }
+        h.wish = V::new(0.0, 0.0);
+        h.free_move = false;
+        for _ in 0..120 {
+            h.update(DT, &g, Dir::None);
+            assert_ne!(g.get(h.occupied().x, h.occupied().y), Tile::Rock, "into the wall: {:?}", h.pos());
+        }
+        assert_eq!(h.occupied(), P::new(4, 7));
     }
 }

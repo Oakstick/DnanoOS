@@ -385,6 +385,9 @@ mod tests {
 
     #[test]
     fn l3_steps_the_minimaps_zoom_and_its_turning_is_a_setting() {
+        // (A save folder of its own: other tests write the shared one side by side, and a write
+        // between this one's save and its read made it fail now and then.)
+        platform::use_dir_on_this_thread(std::env::temp_dir().join(format!("vh-test-minimap-{}", std::process::id())));
         let mut g = playing();
         assert_eq!((g.map_ui.zoom, g.map_ui.turn), (0, false), "near, north up");
         for want in [1, 2, 0] {

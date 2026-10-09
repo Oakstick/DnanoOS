@@ -384,6 +384,8 @@ impl Game {
         for p in &tiles {
             self.level.grid.set(p.x, p.y, Tile::Rock);
         }
+        // (Shut for the general's puppets too: none of his walk through the teeth.)
+        self.general_ground_shut(&tiles);
         // The zone behind is digested, and whatever stayed in it.
         let mut gone = Vec::new();
         for e in self.enemies.iter_mut() {
@@ -1074,5 +1076,26 @@ mod tests {
             g.update_feast(STEP);
         }
         assert!(g.enemies[gaki].duel.as_ref().unwrap().hp < life, "into the gaki");
+    }
+
+    /**
+     * The teeth close on a seam and the zone behind is digested with its foes, and so is the
+     * garrison of its gatehouse: no foe is left alive inside the rock of a closed seam (QA.md Q3).
+     */
+    #[test]
+    fn no_foe_is_left_alive_in_a_closed_seam() {
+        let mut g = in_realm(Sin::Gluttony);
+        let n = feast(&g).seams.len();
+        for i in 0..n {
+            g.close_seam(i);
+        }
+        let entombed: Vec<String> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && g.level.grid.get(d.pos.x.round() as i32, d.pos.y.round() as i32) == Tile::Rock)
+            .map(|d| format!("{:?} at ({:.1}, {:.1})", d.breed.kind, d.pos.x, d.pos.y))
+            .collect();
+        assert!(entombed.is_empty(), "alive in the rock: {entombed:?}");
     }
 }

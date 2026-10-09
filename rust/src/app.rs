@@ -221,7 +221,12 @@ impl App {
         self.last = now;
         self.acc += dt;
 
+        let had_pad = self.pad_id.is_some();
         let pad = self.poll_pad();
+        if had_pad && pad.is_none() {
+            // Unplugged, or its battery gone: the game waits for him on the pause menu.
+            self.game.controller_lost();
+        }
         self.game.input.set_pad(pad);
         #[cfg(target_arch = "wasm32")]
         {
@@ -554,6 +559,7 @@ impl ApplicationHandler for App {
                 self.set_capture(false);
                 self.game.focus_lost();
             }
+            WindowEvent::Focused(true) => self.game.focus_gained(),
             WindowEvent::RedrawRequested => {
                 #[cfg(not(target_arch = "wasm32"))]
                 if self.starting.is_some() {
