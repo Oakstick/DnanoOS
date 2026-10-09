@@ -1945,6 +1945,15 @@ impl Gpu {
         self.lost.load(std::sync::atomic::Ordering::Acquire)
     }
 
+    /// QA (`VH_LOSE_DEVICE=SECS`): the device destroyed as a driver reset would lose it, and the
+    /// flag raised with it (a real loss raises it in the same call that finds it), so the way back
+    /// can be seen in a real window.
+    pub fn simulate_device_loss(&self) {
+        log_gpu_line("QA: the device is destroyed (VH_LOSE_DEVICE)");
+        self.device.destroy();
+        self.lost.store(true, std::sync::atomic::Ordering::Release);
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         let (w, h) = (width.max(1), height.max(1));
         if w == self.config.width && h == self.config.height {

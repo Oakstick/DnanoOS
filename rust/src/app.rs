@@ -76,6 +76,9 @@ pub struct App {
     fps: u32,
     modifiers: ModifiersState,
     fullscreen: bool,
+    /// QA (`VH_LOSE_DEVICE=SECS`): seconds after launch at which the GPU device is lost on purpose
+    /// (and again that long after each restart), to see the way back (QA.md Q2).
+    lose_device: Option<(f64, Instant)>,
     #[cfg(feature = "steam")]
     steam: Option<Steam>,
 }
@@ -116,6 +119,7 @@ impl App {
             fps: 0,
             modifiers: ModifiersState::empty(),
             fullscreen,
+            lose_device: std::env::var("VH_LOSE_DEVICE").ok().and_then(|v| v.parse().ok()).map(|s: f64| (s, Instant::now())),
             #[cfg(feature = "steam")]
             steam: Steam::init(),
         }
@@ -345,6 +349,12 @@ impl App {
     }
 
     fn render(&mut self) {
+        if let (Some((secs, since)), Some(gpu)) = (self.lose_device, &self.gpu) {
+            if since.elapsed().as_secs_f64() >= secs {
+                gpu.simulate_device_loss();
+                self.lose_device = Some((secs, Instant::now() + std::time::Duration::from_secs(10)));
+            }
+        }
         if self.gpu.as_ref().is_some_and(|g| g.device_lost()) {
             self.restart_renderer();
             return;
