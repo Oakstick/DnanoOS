@@ -1555,7 +1555,7 @@ corridors, dens, packs, mimics, toll, gate, the court's arena and Mammon's moves
   - The harness is unchanged: `--run 2 1`, `--court 2 1 1`, `--pit 2 8 1` and all 17 bouts print
     the same as rust-port's (5defc78), apart from their wall-clock lines.
   - fmt, clippy (desktop and wasm) and the tests (912, `--test-threads=4`) pass.
-- **Captures:** `C:/Users/ulask/Games/vh-greed-cap/`: `side-*.png` (rust-port beside this build,
+- **Captures:** `C:/Users/ulask/Games/vh-greed-cap/final/`: `side-*.png` (rust-port beside this build,
   22 views: the entrance and the treasury from both cameras, the chests, a corridor, a chamber, a
   fight from both cameras, a mimic, the Assessor's post from both cameras, `--iso`, the court from
   its cameras, wide, at the throne, the west wall, the gate, the coin rain, the hoard slam and
