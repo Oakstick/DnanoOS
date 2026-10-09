@@ -174,23 +174,15 @@ impl WorldView {
             let ring = p.x == r.x0 + 1 || p.x == r.x1 - 1 || p.y == r.y0 + 1 || p.y == r.y1 - 1;
             let path = (p.x - mx).abs() <= 1 || (p.y - mz).abs() <= 1;
             if path && !edge {
-                // The processional way: pale dressed flags, two to a tile across the way, worn.
+                // The processional way: pale dressed flags, two to a tile across the way, worn
+                // (one block, its material drawing the joint: `SHADE_PAIRED`).
                 let along_x = (p.y - mz).abs() <= 1 && (p.x - mx).abs() > 1;
-                for (k, s) in [-1.0f32, 1.0].into_iter().enumerate() {
-                    let hk = hash(hx * 3.3 + k as f64 * 1.7, hy * 2.9 + 4.0);
-                    let off = if along_x { Vec3::new(s * 0.245, 0.0, 0.0) } else { Vec3::new(0.0, 0.0, s * 0.245) };
-                    let size = if along_x { Vec3::new(0.465, 0.12, 0.965) } else { Vec3::new(0.965, 0.12, 0.465) };
-                    let worn = 0.92 + 0.08 * hk as f32;
-                    let lift = (hash(hy + k as f64, hx * 1.3) as f32 - 0.5) * 0.014;
-                    block(
-                        out,
-                        Vec3::new(x, -0.062 + lift, z) + off,
-                        size,
-                        (hk as f32 - 0.5) * 0.02,
-                        jit(PALE[(hk * 2.0) as usize % 2], hk, 0.07) * worn * 0.82,
-                        SHADE_STONE,
-                    );
-                }
+                let hk = hash(hx * 3.3, hy * 2.9 + 4.0);
+                let worn = 0.92 + 0.08 * hk as f32;
+                let lift = (hash(hy, hx * 1.3) as f32 - 0.5) * 0.012;
+                let turn = if along_x { 0.0 } else { PI / 2.0 } + (hk as f32 - 0.5) * 0.02;
+                let colour = jit(PALE[(hk * 2.0) as usize % 2], hk, 0.07) * worn * 0.82;
+                block(out, Vec3::new(x, -0.062 + lift, z), Vec3::new(0.965, 0.12, 0.965), turn, colour, SHADE_PAIRED);
                 continue;
             }
             // The basalt field: two polished flags to a tile, turned tile by tile (a basket weave).
@@ -268,7 +260,7 @@ impl WorldView {
                 }
             }
         }
-        // The sides: dressed stone in three courses under the kerb, on a pale plinth.
+        // The sides: one course of great dressed blocks under the kerb, on a pale plinth.
         for (k, dir) in [(1, 0), (-1, 0), (0, 1), (0, -1)].into_iter().enumerate() {
             let from = out.len();
             let half = if dir.0 != 0 { h / 2.0 } else { w / 2.0 };
@@ -280,7 +272,7 @@ impl WorldView {
                     half,
                     base: -1.02,
                     height: 0.9,
-                    courses: 2,
+                    courses: 1,
                     seed: (seed + k as f64 * 7.0, seed * 0.3 + k as f64),
                     len: (0.85, 0.6),
                     depth: (0.14, 0.12),
