@@ -475,6 +475,15 @@ impl Bot {
                 }
             }
         }
+        // A leap out of his swing's recovery or a block's stun carries no untouchable frames (B05):
+        // the adept and the expert hold it back until it would be an evade (the next update presses it).
+        if self.skill != Skill::Novice && pad.actions.contains(&Action::Jump) {
+            if let Some(b) = g.brawl.as_ref() {
+                if b.hero.leap_kind() == Some(crate::logic::combat::fsm::Event::Leap) {
+                    pad.actions.remove(&Action::Jump);
+                }
+            }
+        }
         pad
     }
 
