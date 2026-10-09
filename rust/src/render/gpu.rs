@@ -2346,7 +2346,13 @@ impl Gpu {
                 if frame.lantern { 1.0 } else { 0.0 },
             ],
             // Blur in front of the in-focus plane too, where a shot asks for it (a story shot's foreground).
-            near: [dof.near_clear, dof.near_full, if dof.near_clear > 0.0 { 1.0 } else { 0.0 }, 0.0],
+            // (w: the Portals of Hell's smoke over the background, `night_sky` 3.)
+            near: [
+                dof.near_clear,
+                dof.near_full,
+                if dof.near_clear > 0.0 { 1.0 } else { 0.0 },
+                if atm.night_sky > 2.5 { 1.0 } else { 0.0 },
+            ],
         };
         self.queue.write_buffer(&self.post.uniform, 0, bytemuck::bytes_of(&post));
         self.queue.write_buffer(&self.screen, 0, bytemuck::cast_slice(&[logical.0, logical.1, 0.0, 0.0]));
@@ -2691,7 +2697,9 @@ impl Gpu {
                 occlusion_query_set: if measuring { self.occlusion.as_ref().map(|o| &o.0) } else { None },
             });
             pass.set_bind_group(0, &self.scene_bind, &[]);
-            if atm.night_sky > 0.0 {
+            // (The Portals of Hell's smoke, `night_sky` 3, is laid over the background in the
+            // composite instead: a full-screen pass into the multisampled targets costs more.)
+            if atm.night_sky > 0.0 && atm.night_sky < 2.5 {
                 pass.set_pipeline(&self.sky_pipe);
                 pass.draw(0..3, 0..1);
                 counts.draw(1, 3);
@@ -3603,7 +3611,8 @@ fn write_region(queue: &wgpu::Queue, atlas: &wgpu::Texture, r: AtlasRegion, rgba
 fn moon_on_screen(fwd: Vec3, right: Vec3, up: Vec3, moon: Vec3, night_sky: f32) -> [f32; 4] {
     let m = moon.normalize_or(Vec3::Y);
     let k = m.dot(fwd) / fwd.length_squared();
-    if night_sky <= 0.0 || k <= 0.05 {
+    // (No moon over the Portals of Hell's smoke, `night_sky` 3.)
+    if night_sky <= 0.0 || night_sky > 2.5 || k <= 0.05 {
         return [0.0; 4];
     }
     let x = m.dot(right) / (k * right.length_squared());

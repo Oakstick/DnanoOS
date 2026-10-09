@@ -198,11 +198,11 @@ impl WorldView {
         }
         // Behind the orders, the wall they are set in: two courses of blocks.
         for (row, y) in [(0usize, 3.1f32), (1, 3.72)] {
-            let mut x = -1.48 + if row == 1 { 0.3 } else { 0.0 };
+            let mut x = -1.39 + if row == 1 { 0.3 } else { 0.0 };
             let mut k = 0;
-            while x < 1.48 {
+            while x < 1.39 {
                 let hk = hash(hx * 5.0 + k as f64 + row as f64 * 9.0, hy * 3.0);
-                let w = (0.55 + hk as f32 * 0.4).min(1.48 - x);
+                let w = (0.55 + hk as f32 * 0.4).min(1.39 - x);
                 block(&mut l, Vec3::new(x + w / 2.0, y, -0.32), Vec3::new(w - 0.03, 0.6, 0.5), 0.0, basalt(k, hk) * 0.85, SHADE_STONE);
                 x += w;
                 k += 1;
@@ -256,21 +256,30 @@ impl WorldView {
                 gem(&mut l, crown + Vec3::new(0.0, 0.04, depth / 2.0 + 0.03), 0.13, color, 1.2);
             }
         }
-        // The frieze with the sin's name in gold, a cornice, a stepped crest, horns, the beacon.
-        run(&mut l, Vec3::new(0.0, 4.37, 0.0), Vec3::new(3.1, 0.44, 1.0), basalt(1, hy * 3.0) * 0.6, hx * 3.0);
-        for y in [4.17f32, 4.57] {
-            run(&mut l, Vec3::new(0.0, y, 0.03), Vec3::new(3.16, 0.06, 1.02), pale(0, hy * 3.0 + y as f64) * 0.8, hy + y as f64 * 7.0);
+        // The frieze: two courses of the piers' own stone carried across over the orders (flush
+        // with the piers, so it reads as the wall going on up, not a board laid on top), a panel
+        // sunk in it with the sin's name in gold; a pale cornice, a stepped crest, the horns
+        // rising from its ends, the beacon.
+        for (k, y) in [4.26f32, 4.48].into_iter().enumerate() {
+            run(
+                &mut l,
+                Vec3::new(0.0, y, -0.02),
+                Vec3::new(2.78, 0.21, 0.92),
+                basalt(k, hy * 3.0 + k as f64) * 0.8,
+                hx * 3.0 + k as f64 * 5.0,
+            );
         }
-        run(&mut l, Vec3::new(0.0, 4.64, 0.04), Vec3::new(3.32, 0.1, 1.1), pale(1, hx * 3.0) * 0.8, hx + 11.0);
+        block(&mut l, Vec3::new(0.0, 4.37, 0.41), Vec3::new(2.2, 0.36, 0.08), 0.0, basalt(2, hx) * 0.45, SHADE_STONE);
+        run(&mut l, Vec3::new(0.0, 4.64, 0.0), Vec3::new(2.96, 0.1, 1.0), pale(1, hx * 3.0) * 0.8, hx + 11.0);
         run(&mut l, Vec3::new(0.0, 4.8, -0.02), Vec3::new(2.2, 0.22, 0.72), basalt(0, hx) * 0.9, hy + 13.0);
         block(&mut l, Vec3::new(0.0, 4.99, -0.02), Vec3::new(1.2, 0.16, 0.56), 0.0, basalt(2, hy) * 0.9, SHADE_STONE);
         block(&mut l, Vec3::new(0.0, 5.1, -0.02), Vec3::new(0.5, 0.08, 0.42), 0.0, pale(0, hy) * 0.9, SHADE_STONE);
         gem(&mut l, Vec3::new(0.0, 5.42, -0.02), 0.24, color, 1.2);
         for side in [-1.0f32, 1.0] {
-            ivory_horn(&mut l, Vec3::new(side * 1.38, 4.68, -0.02), side, 0.85);
+            ivory_horn(&mut l, Vec3::new(side * 1.0, 4.84, -0.02), side, 0.8);
         }
         let name = &self.models.portal_names[g.sin.index()];
-        let at = Mat4::from_translation(Vec3::new(0.0, 4.37, 0.505)) * Mat4::from_scale(Vec3::splat(NAME_SCALE));
+        let at = Mat4::from_translation(Vec3::new(0.0, 4.37, 0.445)) * Mat4::from_scale(Vec3::splat(NAME_SCALE));
         for (off, c) in &name.cubes {
             l.push(Instance::new(voxel_matrix(&at, name.size * NAME_SCALE, *off), *c, 1.0, *c * 0.2, SHADE_GOLD));
         }

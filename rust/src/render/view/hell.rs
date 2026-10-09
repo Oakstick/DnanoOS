@@ -76,7 +76,7 @@ pub fn hell_atmosphere() -> Atmosphere {
         sun_dir: Vec3::new(0.35, 0.8, 0.45).normalize(),
         sun: lin(0xffb070) * 0.75,
         exposure: 1.35,
-        night_sky: 0.0,
+        night_sky: 3.0,
         bloom: 1.1,
         moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
         cloud_tint: lin(0x2a1a14),
@@ -841,7 +841,7 @@ impl WorldView {
         for (i, p) in nearest(&self.hub_glow, hero, super::hell_art::HUB_GLOW_LIT).into_iter().enumerate() {
             let fi = (p.x * 0.37 + p.z * 0.61).fract() * 9.0 + i as f32 * 0.0;
             let pulse = 1.0 + (time * 0.9 + fi).sin() * 0.12 + (time * 2.3 + fi * 1.7).sin() * 0.05;
-            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 1.6 * pulse, distance: 4.2 });
+            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 1.7 * pulse, distance: 3.6 });
         }
     }
 
@@ -953,7 +953,7 @@ impl WorldView {
                     ));
                 }
                 glow_orb(f, b + Vec3::new(0.0, 0.15, 0.0), 0.35, fire, 0.18);
-                if hub && (near || spot.distance(hero) < 20.0) {
+                if hub && spot.distance(hero) < 14.0 {
                     // Each brazier a pool of its sin's colour on the platform.
                     let flick = 1.0 + (time * 8.0 + i as f32 + side).sin() * 0.08 + (time * 13.0 + side * 3.0).sin() * 0.05;
                     f.lights.push(Light { pos: b + Vec3::new(0.0, 0.35, 0.0), color: fire * 2.2 * flick, distance: 4.6 });
@@ -1102,7 +1102,13 @@ impl WorldView {
             let fk = k as f32 * 1.37;
             // (Each a little off the line, and its own size, so the wall is not a row.)
             let p = &(*p + Vec3::new((hash(k as f64, 3.0) as f32 - 0.5) * 0.5, 0.0, (hash(5.0, k as f64) as f32 - 0.5) * 0.5));
-            let big = 0.7 + hash(k as f64 * 1.7, 9.0) as f32 * 0.6;
+            // (The wall surges in waves round the volcano, low here, roaring there, and gutters
+            // out now and then.)
+            let surge = 0.55 + 0.45 * ((k as f32 * 0.21 + time * 0.35).sin() * 0.6 + (k as f32 * 0.53 - time * 0.2).sin() * 0.4);
+            if hash(k as f64 * 2.3, 11.0) < 0.12 {
+                continue;
+            }
+            let big = (0.6 + hash(k as f64 * 1.7, 9.0) as f32 * 0.6) * surge.max(0.25) * 1.3;
             // A bed of fire at the foot, and tongues of flame licking up out of it, each on its own
             // clock: soft, amber at the root, ember above, going to smoke at the tips.
             let base = *p + Vec3::new(0.0, 0.3, 0.0);

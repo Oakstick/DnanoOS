@@ -47,11 +47,12 @@ pub(super) mod art {
     pub const EMBER: u32 = 0xff7a20;
     pub const AMBER: u32 = 0xffa040;
     pub const LAVA_GLOW: u32 = 0xff6a18;
-    /// Smoke over the lava, lit from below.
-    pub const SMOKE: u32 = 0x5a4234;
 }
 use art::*;
 
+/// Two basalt flags laid as one block (wet flagstone, `voxel_surface` kind 14, the shader drawing
+/// the joint across the block's middle and each half its own shade).
+pub(super) const SHADE_PAIRED: f32 = 19.25;
 /// Lava (`voxel_surface` kind 12): its crust and glow from the flow's pattern.
 pub(super) const SHADE_LAVA: f32 = 17.0;
 /// Polished stone (`voxel_surface` kind 10): the seal's obsidian.
@@ -69,9 +70,9 @@ pub(super) fn lava_glow(k: f32) -> Vec3 {
 
 /// How many of the lava's lights (rising past the edges, under the bridges) burn at once, the
 /// nearest the hero first.
-pub(super) const HUB_GLOW_LIT: usize = 12;
+pub(super) const HUB_GLOW_LIT: usize = 6;
 /// The hub's fire bowls and lanterns lit at once.
-pub(super) const HUB_LAMPS_LIT: usize = 7;
+pub(super) const HUB_LAMPS_LIT: usize = 5;
 
 /// Pushes `local` (built about the origin, facing +z) placed by `root`.
 pub(super) fn placed(out: &mut Vec<Instance>, root: Mat4, local: &[Instance]) {
@@ -134,14 +135,15 @@ impl WorldView {
         }
         let from = self.static_cubes.len();
         self.build_ledge_and_cliffs();
-        self.build_far_rocks();
         as_stone(&mut self.static_cubes[from..], 1.1);
+        // (The far spires stay plain-lit: dim shapes in the fog, they would only pay for the
+        // stone's tooling.)
+        self.build_far_rocks();
         self.hub_volcano();
         for g in hub::gates() {
             self.hub_portal(&g);
         }
         self.hub_altar();
-        self.hub_smoke(grid);
         // Built in the board's palette already: the grade leaves it alone.
         self.authored.push((start, self.static_cubes.len() - start));
     }
@@ -192,13 +194,26 @@ impl WorldView {
                 continue;
             }
             // The basalt field: two polished flags to a tile, turned tile by tile (a basket weave).
+            // Most tiles are one block whose material draws the joint between its two flags
+            // (`SHADE_PAIRED`): two blocks a tile cost an eighth of the frame. Where a flag has
+            // cracked or been chipped, the tile is laid as two real flags.
             let along_x = (p.x + p.y) % 2 == 0;
             let scorched = if ring { 0.82 } else { 1.0 };
-            for (k, s) in [-1.0f32, 1.0].into_iter().enumerate() {
+            let worked = hash(hx * 5.1, hy * 3.3) < if ring || edge { 0.16 } else { 0.06 };
+            if !worked {
+                let hk = hash(hx * 2.1, hy * 1.7 + 9.0);
+                let lift = (hash(hy * 1.9, hx) as f32 - 0.5) * 0.012;
+                let turn = if along_x { PI / 2.0 } else { 0.0 } + (hk as f32 - 0.5) * 0.02;
+                let colour = jit(BASALT[(hk * 3.0) as usize % 3], hk, 0.12) * scorched;
+                block(out, Vec3::new(x, -0.062 + lift, z), Vec3::new(0.965, 0.12, 0.965), turn, colour, SHADE_PAIRED);
+            }
+            for (k, s) in [-1.0f32, 1.0].into_iter().enumerate().filter(|_| worked) {
                 let hk = hash(hx * 2.1 + k as f64 * 3.7, hy * 1.7 + 9.0);
                 let off = if along_x { Vec3::new(0.0, 0.0, s * 0.245) } else { Vec3::new(s * 0.245, 0.0, 0.0) };
-                // Some are chipped short at one end, showing the dark joint.
-                let chip = if hk < 0.14 { 0.05 + hk as f32 * 0.6 } else { 0.0 };
+                // One chipped short at one end, showing the dark joint; or one cracked across,
+                // the heat glowing up through the crack.
+                let cracked = k == 0 && hash(hx * 7.3, hy * 2.9) < 0.6;
+                let chip = if !cracked && k == 1 { 0.06 + hk as f32 * 0.1 } else { 0.0 };
                 let shift = if (hk * 31.0).fract() < 0.5 { chip / 2.0 } else { -chip / 2.0 };
                 let (size, sh) = if along_x {
                     (Vec3::new(0.965 - chip, 0.12, 0.465), Vec3::new(shift, 0.0, 0.0))
@@ -207,10 +222,8 @@ impl WorldView {
                 };
                 let lift = (hash(hy * 1.9 + k as f64, hx) as f32 - 0.5) * 0.016;
                 let colour = jit(BASALT[(hk * 3.0) as usize % 3], hk, 0.12) * scorched;
-                let cracked = (hash(hx * 5.1 + k as f64, hy * 3.3) < if ring || edge { 0.09 } else { 0.03 }) && chip == 0.0;
                 let at = Vec3::new(x, -0.062 + lift, z) + off + sh;
                 if cracked {
-                    // Split across, the heat glowing up through the crack.
                     let a = if along_x { Vec3::new(0.245, 0.0, 0.0) } else { Vec3::new(0.0, 0.0, 0.245) };
                     let half = if along_x { Vec3::new(0.46, 0.12, 0.465) } else { Vec3::new(0.465, 0.12, 0.46) };
                     block(out, at - a, half, 0.03, colour, SHADE_FLAG);
@@ -269,7 +282,7 @@ impl WorldView {
                     height: 0.9,
                     courses: 2,
                     seed: (seed + k as f64 * 7.0, seed * 0.3 + k as f64),
-                    len: (0.6, 0.55),
+                    len: (0.85, 0.6),
                     depth: (0.14, 0.12),
                     face: if dir.0 != 0 { w / 2.0 } else { h / 2.0 } - 0.1,
                     wet: false,
@@ -280,8 +293,9 @@ impl WorldView {
             );
             no_verdigris(&mut out[from..]);
         }
-        // The core, and the body tapering underneath in rough basalt.
-        block(out, Vec3::new(cx, -0.6, cz), Vec3::new(w - 0.1, 0.96, h - 0.1), 0.0, lin(BASALT_D), SHADE_STONE);
+        // The core, and the body tapering underneath in rough basalt (plain-lit: seen from below,
+        // and far, in the lava's light, the stone's tooling would not show).
+        block(out, Vec3::new(cx, -0.6, cz), Vec3::new(w - 0.1, 0.96, h - 0.1), 0.0, lin(BASALT_D), SHADE_LIT);
         for k in 1..=3 {
             let inset = 1.3 * k as f32;
             let top = -1.1 - 0.36 * (k - 1) as f32;
@@ -292,11 +306,11 @@ impl WorldView {
                 Vec3::new(w - 2.0 * inset, 0.46, h - 2.0 * inset),
                 (hk as f32 - 0.5) * 0.08,
                 jit(BASALT_D, hk, 0.1),
-                SHADE_STONE,
+                SHADE_LIT,
             );
         }
         // Jagged rock hanging beneath, longest in the middle.
-        for k in 0..38 {
+        for k in 0..24 {
             let a = hash(seed + k as f64 * 3.3, seed * 0.7 - k as f64) as f32;
             let b = hash(seed * 1.3 - k as f64 * 2.1, seed + k as f64 * 5.7) as f32;
             let (px, pz) = (r.x0 as f32 - 0.3 + a * (w - 0.4), r.y0 as f32 - 0.3 + b * (h - 0.4));
@@ -320,7 +334,7 @@ impl WorldView {
                     Quat::from_rotation_y(turn + t) * Quat::from_rotation_x((b - 0.5) * 0.3 * t),
                     Vec3::new(px + (b - 0.5) * 0.1 * t, y, pz + (a - 0.5) * 0.1 * t),
                 );
-                block_m(out, m, jit(BASALT[s % 3], hash(seed + s as f64, k as f64), 0.12) * 0.62, SHADE_STONE);
+                block_m(out, m, jit(BASALT[s % 3], hash(seed + s as f64, k as f64), 0.12) * 0.62, SHADE_LIT);
             }
         }
         // Veins of heat in the sides' joints.
@@ -725,7 +739,7 @@ impl WorldView {
                         let floor = if r > radius - 1.6 { LAVA_Y - 0.2 } else { (top - cap - 1.4).max(LAVA_Y - 0.2) };
                         let body = top - cap - floor;
                         if body > 0.01 {
-                            block(out, Vec3::new(x, floor + body / 2.0, z), Vec3::new(0.52, body, 0.52), 0.0, color * 0.8, SHADE_STONE);
+                            block(out, Vec3::new(x, floor + body / 2.0, z), Vec3::new(0.52, body, 0.52), 0.0, color * 0.8, SHADE_LIT);
                         }
                     }
                 }
@@ -739,26 +753,5 @@ impl WorldView {
         self.smoke.push((Vec3::new(cx - 0.5, peak + 0.3, cz + 0.4), 1.4));
         self.smoke.push((Vec3::new(cx + 0.2, peak + 1.4, cz + 0.2), 2.2));
         self.hub_house(cx, v.y1 as f32 + 0.45);
-    }
-
-    /// Smoke lying over the lava in slow banks, lit from below by its own glow (the lights near).
-    fn hub_smoke(&mut self, grid: &Grid) {
-        let tone = lin(SMOKE);
-        let n = hub::HUB_SIZE;
-        let lava = |x: i32, y: i32| !grid.in_bounds(x, y) || grid.get(x, y) == Tile::Pit;
-        let mut y = 0;
-        while y < n {
-            let mut x = 0;
-            while x < n {
-                let all = (0..3).all(|j| (0..3).all(|i| lava(x + i, y + j)));
-                if all {
-                    let c = Vec3::new(x as f32 + 1.0, LAVA_Y + 0.55, y as f32 + 1.0);
-                    let m = Mat4::from_translation(c) * Mat4::from_scale(Vec3::new(3.0, 0.002, 3.0));
-                    self.mist.push(Instance::new(m, tone, 0.5, Vec3::new(20.0, c.y, 0.0), SHADE_CLOUD));
-                }
-                x += 3;
-            }
-            y += 3;
-        }
     }
 }

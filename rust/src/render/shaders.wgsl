@@ -1470,6 +1470,15 @@ fn fs_scene(in: VOut) -> FOut {
             surf = gravel(surf, in.world, n, detail);
         }
     }
+    // Two flags laid as one block (the Portals of Hell's basket weave, mode 19.25): a dark joint
+    // across the block's middle, each half its own shade.
+    if (abs(mode - 19.25) < 0.05) {
+        let side = select(-1.0, 1.0, in.local.x > 0.0);
+        let joint = 1.0 - smoothstep(0.01, 0.022, abs(in.local.x));
+        let tone = 1.0 + side * (fract(dot(in.color.rgb, vec3<f32>(121.3, 77.7, 53.1))) - 0.5) * 0.2;
+        surf.albedo = mix(surf.albedo * tone, albedo * 0.1, joint);
+        surf.rough = mix(surf.rough, 0.95, joint);
+    }
     // Lava (kind 12): its crust and its glow from the flow's pattern; the instance's own glow is
     // the flow's mean (so the probes see the light it gives).
     var lava = vec3<f32>(1.0, 1.0, 0.0);
@@ -1500,7 +1509,12 @@ fn fs_scene(in: VOut) -> FOut {
         // The light from all around (ambient, sky and ground) is indirect; the sun or moon and the
         // lamps are direct. Inside the level it comes from the probes: the sky only as far as
         // this spot sees it, and the light coming back off its surroundings (RP18).
-        let probe = probe_at(in.world, sn);
+        // (Lava is its own light: what the room gives back to it is lost in its glow, so it skips
+        // the probes, and its crust reflects the plain environment.)
+        var probe = probe_at(in.world, sn);
+        if (is_lava) {
+            probe.inside = false;
+        }
         let hemi = mix(g.hemi_ground.rgb, g.hemi_sky.rgb, 0.5 * sn.y + 0.5);
         var ambient_irr = g.ambient.rgb + hemi;
         if (probe.inside) {
@@ -1513,7 +1527,13 @@ fn fs_scene(in: VOut) -> FOut {
         let ndl_raw = dot(sn, g.moon_dir.xyz);
         let ndl = max((ndl_raw + wrap) / (1.0 + wrap), 0.0);
         if (ndl > 0.0) {
-            let vis = sun_visibility(in.world, n, in.clip.xy);
+            // (Lava gives far more light than the smoke's glow from above puts on it: its crust
+            // takes that light unshadowed, and the shadow filter's taps are saved on the widest
+            // surface in the Portals of Hell.)
+            var vis = 1.0;
+            if (!is_lava) {
+                vis = sun_visibility(in.world, n, in.clip.xy);
+            }
             irr += ndl * g.moon_color.rgb * vis;
             if (ndl_raw > 0.0) {
                 spec += ggx(sn, view_dir, g.moon_dir.xyz, surf.rough, f0) * ndl_raw * g.moon_color.rgb * vis;
@@ -1538,7 +1558,7 @@ fn fs_scene(in: VOut) -> FOut {
                 att *= pow2(clamp(1.0 - r * r * r * r, 0.0, 1.0));
             }
             irr += nl * l.color.rgb * att;
-            if (nl_raw > 0.0) {
+            if (nl_raw > 0.0 && !is_lava) {
                 spec += ggx(sn, view_dir, ld, surf.rough, f0) * nl_raw * l.color.rgb * att;
             }
         }
@@ -1776,6 +1796,10 @@ fn dusk_sky(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
 
 // The night sky along `ray` (sRGB): horizon glow, milky band, stars, the moon. `px` is radians per pixel.
 fn sky_color(ray: vec3<f32>, px: f32, time: f32) -> vec3<f32> {
+    if (g.sky_fwd.w > 2.5) {
+        // (The Portals of Hell's smoke: the background colour here, drawn in the composite.)
+        return g.fog.rgb;
+    }
     if (g.sky_fwd.w > 1.5) {
         return dusk_sky(ray, px, time);
     }
