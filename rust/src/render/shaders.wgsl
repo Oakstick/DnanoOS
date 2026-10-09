@@ -630,39 +630,59 @@ fn cell_border(p: vec2<f32>) -> f32 {
     return sqrt(d2) - sqrt(d1);
 }
 
+// How near the Portals of Hell's stone a point of its lava lies, 1 against it to 0 four tiles
+// off: the hub's layout (`logic::hub`) is a 3 by 3 of 13-tile squares from tile 6, 20 apart (the
+// eight platforms and the volcano), joined by 3-wide spans across their middles (the bridges and
+// the sunk causeways). Lava runs hottest where it washes the stone.
+fn hub_nearness(xz: vec2<f32>) -> f32 {
+    // The nearest square: tile centres 6 + 20k to 18 + 20k, edges half a tile out.
+    let k = clamp(floor((xz - vec2<f32>(2.0)) / 20.0), vec2<f32>(0.0), vec2<f32>(2.0));
+    let lo = vec2<f32>(5.5) + k * 20.0;
+    let hi = lo + vec2<f32>(13.0);
+    let d_sq = length(max(max(lo - xz, xz - hi), vec2<f32>(0.0)));
+    // The spans: 3 wide round each square's middle line, within the hub.
+    let mid = vec2<f32>(12.0) + k * 20.0;
+    let inside = max(max(5.5 - xz.x, xz.x - 58.5), max(5.5 - xz.y, xz.y - 58.5));
+    let d_span = max(min(abs(xz.x - mid.x), abs(xz.y - mid.y)) - 1.5, max(inside, 0.0));
+    return 1.0 - smoothstep(0.0, 5.0, min(d_sq, max(d_span, 0.0)));
+}
+
 // Lava (`voxel_surface` kind 12, the Portals of Hell), worked out in world space so a sea or a
-// river reads as one flow across its blocks: plates of dark crust drifting slowly, cracked, the
-// heat glowing in their cracks; where it runs hot the plates melt away into open flow, ember
-// going to amber. Upright faces run downhill (the volcano's rivers, the falls off the platforms).
-// Returns the crust's shade, the glow (about 1 on the average) and how hot it runs (0 to 1);
-// `bias` runs it hotter.
+// river reads as one flow across its blocks: molten and moving, amber where it runs hottest
+// (against the stone, and in the volcano's rivers), ember where it cools; on it, islands of dark
+// crust drift, cracked into plates with the heat glowing in the cracks and a cooling rim of
+// ember round each island. Upright faces run downhill (the volcano's rivers, the falls off the
+// platforms). Returns the crust's shade, the glow (about 1 on the average) and how hot it runs
+// (0 to 1); `bias` runs it hotter.
 fn lava_at(world: vec3<f32>, n: vec3<f32>, time: f32, bias: f32) -> vec3<f32> {
     var p = world.xz;
-    var flow = vec2<f32>(0.05, 0.03) * time;
+    var flow = vec2<f32>(0.16, 0.09) * time;
+    var near = hub_nearness(world.xz);
     if (abs(n.y) < 0.5) {
         p = vec2<f32>((world.x + world.z) * 1.3, world.y * 1.6);
-        flow = vec2<f32>(0.0, 0.55) * time;
+        flow = vec2<f32>(0.0, 1.1) * time;
+        near = 0.5;
     }
-    let broad = vnoise(p * 0.22 + flow * 0.25);
-    let fine = vnoise(p * 0.75 + vec2<f32>(7.0, 3.0) - flow * 0.5);
-    let heat = broad * 0.62 + fine * 0.38;
-    let hot = clamp((heat - 0.46) / 0.3 + bias, 0.0, 1.0);
-    // Plates of uneven size (the grid warped by the heat's own noise).
-    let c = p * 1.15 + flow * 1.4 + vec2<f32>(broad * 2.2, fine * 1.6);
+    let broad = vnoise(p * 0.2 + flow * 0.35);
+    let fine = vnoise(p * 0.7 + vec2<f32>(7.0, 3.0) - flow * 0.6);
+    // Islands of crust where the field runs coolest, fewer near the stone and in a hot block.
+    let isl = broad * 0.65 + fine * 0.35 - 0.3 * near - bias;
+    let crust = smoothstep(0.57, 0.63, isl);
+    // The plates the islands are cracked into, drifting with them.
+    let c = p * 1.3 + flow * 0.9 + vec2<f32>(broad * 2.0, fine * 1.4);
     let e = cell_border(c);
-    // The cracks, healed over where it is coldest.
-    let crack = (1.0 - smoothstep(0.015, 0.05 + 0.16 * hot, e)) * smoothstep(0.15, 0.4, heat);
-    // (The plates melt from their cracks inward, so the open flow's edge is the plates' edges.)
-    let melt = smoothstep(0.5, 0.72, hot + 0.25 * (fine - 0.5) + 0.6 * (0.12 - e));
-    let open = max(crack * (0.2 + 0.8 * hot), melt);
-    // The crust: darker plates, paler and greyer where it has cooled longest.
-    let shade = (0.6 + 0.7 * fine) * (1.0 - 0.6 * open);
-    // A slow pulse where the flow is open.
-    let pulse = 0.85 + 0.15 * sin(time * 1.3 + heat * 9.0);
-    // Where it runs open, streaks of brighter and duller flow drawn along by the current.
-    let streak = vnoise(vec2<f32>(c.x * 0.8, c.y * 3.0) - flow * 2.0);
-    let glow = open * (0.5 + 0.6 * hot * hot) * (0.75 + 0.5 * streak * melt + 0.25 * (1.0 - melt));
-    return vec3<f32>(shade, glow * pulse + 0.03, hot);
+    let crack = 1.0 - smoothstep(0.015, 0.06, e);
+    // How hot the melt runs: ember against the islands' rims, amber out in the flow.
+    // The flow's streaks, drawn along by the current, and its slow throb: veins of hotter melt.
+    let streak = vnoise(vec2<f32>(c.x * 0.6, c.y * 2.6) - flow * 2.5);
+    let pulse = 0.88 + 0.12 * sin(time * 1.7 + broad * 11.0);
+    let hot = clamp((0.58 - isl) / 0.44 + 0.08 * near + (streak - 0.5) * 0.9, 0.0, 1.0);
+    let melt = (0.25 + 1.0 * hot * hot * hot) * pulse;
+    let cracks = crack * (0.3 + 0.3 * fine);
+    let glow = mix(melt, cracks, crust);
+    // The crust dark, greyer where it has cooled longest; the melt's own colour under its glow.
+    let shade = mix(0.5, (0.7 + 0.6 * fine) * (1.0 - 0.5 * crack), crust);
+    return vec3<f32>(shade, glow, hot * (1.0 - crust));
 }
 
 fn voxel_surface(kind: i32, local: vec3<f32>, detail: f32, bevel_detail: f32, base: vec3<f32>, n: vec3<f32>, seed: f32) -> Surface {
@@ -1496,9 +1516,10 @@ fn fs_scene(in: VOut) -> FOut {
     var lava = vec3<f32>(1.0, 1.0, 0.0);
     let is_lava = mode > 16.5 && mode < 17.5;
     if (is_lava) {
-        // (A brighter block runs hotter: the volcano's rivers and its crater, the falls.)
+        // (A brighter block runs hotter: the volcano's rivers and its crater, the falls; 0.26 is
+        // the sea's, `hell_art::SEA_GLOW`.)
         let k = max(max(in.emissive.r, in.emissive.g), in.emissive.b);
-        lava = lava_at(in.world, n, g.sky_right.w, clamp((k - 0.4) * 0.9, -0.1, 0.8));
+        lava = lava_at(in.world, n, g.sky_right.w, clamp(k / 0.26 - 1.0, 0.0, 0.5));
         surf.albedo = albedo * lava.x;
         surf.rough = mix(0.7, 0.35, lava.z);
         surf.specular = 0.4;
@@ -1576,10 +1597,13 @@ fn fs_scene(in: VOut) -> FOut {
         }
         var emissive = in.emissive.rgb;
         if (is_lava) {
-            // Ember in the cracks, going to amber and a pale gold where it runs hot.
+            // Ember in the cracks and the cooling rims, going to amber, and to a pale gold where it
+            // runs hottest (which blooms).
             let k = max(max(emissive.r, emissive.g), emissive.b);
-            let hot_col = vec3<f32>(1.0, 0.42, 0.09) * k;
-            emissive = mix(emissive, hot_col, lava.z * lava.z) * lava.y;
+            let amber = vec3<f32>(1.0, 0.32, 0.04) * k;
+            let gold = vec3<f32>(1.0, 0.46, 0.08) * k;
+            let col = mix(mix(emissive, amber, smoothstep(0.3, 0.8, lava.z)), gold, smoothstep(0.85, 1.0, lava.z));
+            emissive = col * lava.y;
         }
         if (mode > 1.5 && mode < 2.5) {
             emissive *= g.params.z;

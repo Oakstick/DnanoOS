@@ -71,7 +71,7 @@ pub fn hell_atmosphere() -> Atmosphere {
         fog_near: 18.0,
         fog_far: 52.0,
         hemi_sky: lin(0x6a5a50) * 0.38,
-        hemi_ground: lin(0xf07a2a) * 0.62,
+        hemi_ground: lin(0xf07a2a) * 0.95,
         ambient: lin(0x4a3c34) * 0.42,
         sun_dir: Vec3::new(0.35, 0.8, 0.45).normalize(),
         sun: lin(0xffb070) * 0.75,
@@ -841,7 +841,11 @@ impl WorldView {
         for (i, p) in nearest(&self.hub_glow, hero, super::hell_art::HUB_GLOW_LIT).into_iter().enumerate() {
             let fi = (p.x * 0.37 + p.z * 0.61).fract() * 9.0 + i as f32 * 0.0;
             let pulse = 1.0 + (time * 0.9 + fi).sin() * 0.12 + (time * 2.3 + fi * 1.7).sin() * 0.05;
-            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 1.7 * pulse, distance: 3.6 });
+            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::EMBER) * 2.6 * pulse, distance: 4.2 });
+        }
+        for (i, &p) in self.hub_rivers.iter().enumerate() {
+            let pulse = 1.0 + (time * 1.3 + i as f32 * 1.9).sin() * 0.1;
+            f.lights.push(Light { pos: p, color: lin(super::hell_art::art::AMBER) * 1.6 * pulse, distance: 3.5 });
         }
     }
 
@@ -1201,7 +1205,7 @@ impl WorldView {
                 let (glow, shade) = if self.gym {
                     (lin(LAVA).lerp(lin(LAVA_HOT), flow - 0.6) * flow * 1.6, SHADE_LIT)
                 } else {
-                    (super::hell_art::lava_glow(1.2), super::hell_art::SHADE_LAVA)
+                    (super::hell_art::lava_glow(super::hell_art::RIVER_GLOW), super::hell_art::SHADE_LAVA)
                 };
                 f.opaque[MeshKind::Cube as usize].push(Instance::new(m, lin(LAVA_DEEP), 1.0, glow, shade));
             }

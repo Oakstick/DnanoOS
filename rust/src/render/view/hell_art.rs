@@ -68,9 +68,14 @@ pub(super) fn lava_glow(k: f32) -> Vec3 {
     lin(LAVA_GLOW) * k
 }
 
+/// The lava sea's mean glow, and the hotter flows' (the volcano's rivers and crater, the falls):
+/// the shader runs a block hotter by its glow over the sea's.
+pub(super) const SEA_GLOW: f32 = 0.26;
+pub(super) const RIVER_GLOW: f32 = 0.38;
+
 /// How many of the lava's lights (rising past the edges, under the bridges) burn at once, the
 /// nearest the hero first.
-pub(super) const HUB_GLOW_LIT: usize = 6;
+pub(super) const HUB_GLOW_LIT: usize = 10;
 /// The hub's fire bowls and lanterns lit at once.
 pub(super) const HUB_LAMPS_LIT: usize = 5;
 
@@ -152,7 +157,7 @@ impl WorldView {
     fn hub_lava_sea(&mut self) {
         let c = (hub::HUB_SIZE - 1) as f32 / 2.0;
         let m = Mat4::from_scale_rotation_translation(Vec3::new(180.0, 0.1, 180.0), Quat::IDENTITY, Vec3::new(c, LAVA_Y - 0.05, c));
-        self.static_cubes.push(Instance::new(m, lin(CRUST), 1.0, lava_glow(0.35), SHADE_LAVA));
+        self.static_cubes.push(Instance::new(m, lin(CRUST), 1.0, lava_glow(SEA_GLOW), SHADE_LAVA));
     }
 
     /// A platform: paved, kerbed, its sides in courses, jagged rock beneath; bones, rubble and
@@ -685,7 +690,7 @@ impl WorldView {
                     let on_river = r > crater + 0.3
                         && rivers.iter().any(|&ra| {
                             let da = (a - ra - 0.22 * (r * 0.9).sin()).rem_euclid(TAU);
-                            da.min(TAU - da) < 0.16 + 0.12 * (r / radius)
+                            da.min(TAU - da) < 0.24 + 0.14 * (r / radius)
                         });
                     if r < crater {
                         // The crater's lake.
@@ -694,27 +699,20 @@ impl WorldView {
                             Mat4::from_scale_rotation_translation(Vec3::new(0.5, 0.06, 0.5), Quat::IDENTITY, Vec3::new(x, top + 0.03, z)),
                             lin(CRUST),
                             1.0,
-                            lava_glow(1.3),
+                            lava_glow(RIVER_GLOW),
                             SHADE_LAVA,
                         ));
                     } else if on_river {
-                        // The river's bed, and the lava running down it, tall enough to bridge each
-                        // ledge to the next so the river runs unbroken.
+                        // The river's bed: the ledges cut down where the lava runs (the lava itself
+                        // is laid along the river whole, below).
                         block(
                             out,
                             Vec3::new(x, LAVA_Y - 0.2 + (tall - 0.3) / 2.0, z),
                             Vec3::new(0.52, tall - 0.3, 0.52),
                             0.0,
-                            color * 0.7,
+                            color * 0.6,
                             SHADE_STONE,
                         );
-                        out.push(Instance::new(
-                            Mat4::from_scale_rotation_translation(Vec3::new(0.5, 0.62, 0.5), Quat::IDENTITY, Vec3::new(x, top - 0.25, z)),
-                            lin(CRUST),
-                            1.0,
-                            lava_glow(0.85 + hk * 0.2),
-                            SHADE_LAVA,
-                        ));
                     } else {
                         // The ledge's face a block of its own (one block the whole height would
                         // stretch the stone's tooling into streaks), the body below it darker.
@@ -738,6 +736,36 @@ impl WorldView {
                 dx += step;
             }
             dz += step;
+        }
+        // The rivers themselves: each one flow from the crater's rim to the sea, laid in sloping
+        // runs along its winding course over the ledges (so it runs unbroken, not in steps),
+        // widening as it comes down.
+        for &ra in &rivers {
+            let course = |r: f32| {
+                let t = ((r - crater) / (radius - crater)).clamp(0.0, 1.0);
+                let a = ra + 0.22 * (r * 0.9).sin();
+                Vec3::new(cx + a.cos() * r, peak + (LAVA_Y - peak) * t.powf(0.75) + 0.02, cz + a.sin() * r)
+            };
+            let mut r = crater + 0.2;
+            while r < radius + 0.6 {
+                let (a, b) = (course(r), course((r + 0.35).min(radius + 0.9)));
+                let wide = 0.45 + 0.4 * ((r - crater) / (radius - crater)).clamp(0.0, 1.0);
+                let dir = (b - a).normalize_or(Vec3::Y);
+                let side = dir.cross(Vec3::Y).normalize_or(Vec3::X) * wide;
+                let up = side.cross(dir).normalize_or(Vec3::Y) * 0.3;
+                let m = Mat4::from_cols((b - a).extend(0.0) * 1.15, up.extend(0.0), side.extend(0.0), ((a + b) * 0.5).extend(1.0));
+                out.push(Instance::new(m, lin(CRUST), 1.0, lava_glow(RIVER_GLOW), SHADE_LAVA));
+                r += 0.35;
+            }
+        }
+        // Where the rivers light the flanks: two lights down each.
+        for &ra in &rivers {
+            for r in [4.2f32, 7.0] {
+                let t = ((r - crater) / (radius - crater)).clamp(0.0, 1.0);
+                let a = ra + 0.22 * (r * 0.9).sin();
+                let y = peak + (LAVA_Y - peak) * t.powf(0.75) + 0.6;
+                self.hub_rivers.push(Vec3::new(cx + a.cos() * (r + 0.5), y, cz + a.sin() * (r + 0.5)));
+            }
         }
         // The crater's smoke, lit from below.
         self.smoke.push((Vec3::new(cx, peak + 0.2, cz), 2.6));
