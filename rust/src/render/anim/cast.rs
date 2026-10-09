@@ -89,6 +89,104 @@ pub fn lengthen(pose: &mut Delta, def: &SkeletonDef, bones: &[usize], gain: f32)
     }
 }
 
+/**
+ * A run's cycle as the ground carries it (ANIMATION.md §12.3, "a calmer sprint"): measured once on
+ * a gait's clip, lengthened `gain` times, which samples of its cycle have a foot planted and how far
+ * that foot sweeps back under the body over each, and which are in the air. A child running hard
+ * takes long strides with a long flight between them, not quick short ones: placed on a stride of
+ * the ground longer than its planted feet carry (`at`), the clip plays its stance at the pace the
+ * ground passes under the planted foot (so it stays where it lands) and stretches its flight over
+ * the rest.
+ */
+#[derive(Clone, Debug)]
+pub struct Stride {
+    /// Each sample interval's sweep of the planted foot (metres), or none in the air.
+    sweep: Vec<Option<f32>>,
+    /// The ground the planted feet carry the body over a cycle.
+    pub planted: f32,
+    /// The sample the measure starts from (a foot coming down, so no flight runs over the end).
+    shift: usize,
+}
+
+/// Samples a cycle is measured at.
+const STRIDE_SAMPLES: usize = 96;
+
+impl Stride {
+    /// Measures clip `clip`'s cycle with `legs` lengthened `gain` times (`lengthen`), its feet the
+    /// joints of `feet`, on this body's `joints`.
+    pub fn measure(clip: &Clip, def: &SkeletonDef, joints: &[Vec3], legs: &[usize], feet: [usize; 2], gain: f32) -> Stride {
+        let n = STRIDE_SAMPLES;
+        let (mut locals, mut world, mut pose, mut mats) = (Vec::new(), Vec::new(), Delta::default(), Vec::new());
+        let track: Vec<[Vec3; 2]> = (0..n)
+            .map(|k| {
+                sample_delta(clip, k as f32 / n as f32 * clip.duration(), 1.0, &mut locals, &mut world, &mut pose);
+                pose.rot.resize(def.len(), Quat::IDENTITY);
+                lengthen(&mut pose, def, legs, gain);
+                matrices(def, joints, &pose, &mut mats);
+                feet.map(|f| mats[f].w_axis.truncate())
+            })
+            .collect();
+        let floor = track.iter().flat_map(|f| f.iter().map(|p| p.y)).fold(f32::MAX, f32::min);
+        let sweep: Vec<Option<f32>> = (0..n)
+            .map(|k| {
+                let (a, b) = (track[k], track[(k + 1) % n]);
+                let i = if a[0].y < a[1].y { 0 } else { 1 };
+                let back = a[i].z - b[i].z;
+                (a[i].y < floor + 0.02 && b[i].y < floor + 0.02 && back > 0.0).then_some(back)
+            })
+            .collect();
+        let planted = sweep.iter().flatten().sum();
+        let shift = (0..n).find(|&k| sweep[k].is_some() && sweep[(k + n - 1) % n].is_none()).unwrap_or(0);
+        let sweep = (0..n).map(|k| sweep[(k + shift) % n]).collect();
+        Stride { sweep, planted, shift }
+    }
+
+    /// Each interval's share of a stride `s` of the ground: the planted ones their sweep, the flights
+    /// the rest (at least a little each, the whole scaled to `s` when the planted feet carry more).
+    fn ground(&self, s: f32) -> impl Iterator<Item = f32> + '_ {
+        let n = self.sweep.len() as f32;
+        let flights = self.sweep.iter().filter(|w| w.is_none()).count().max(1) as f32;
+        let air = ((s - self.planted) / flights).max(0.2 * s / n);
+        let total = self.planted + air * self.sweep.iter().filter(|w| w.is_none()).count() as f32;
+        let k = s / total.max(1e-6);
+        self.sweep.iter().map(move |w| w.unwrap_or(air) * k)
+    }
+
+    /// `d` metres into a stride of `s` metres (wrapping): the share of the clip's cycle there, and
+    /// how far through its flight the body is (none on a planted foot).
+    pub fn at(&self, d: f32, s: f32) -> (f32, Option<f32>) {
+        let n = self.sweep.len();
+        let d = d.rem_euclid(s.max(1e-4));
+        let mut at = 0.0;
+        for (k, g) in self.ground(s).enumerate() {
+            if d < at + g || k == n - 1 {
+                let u = ((k + self.shift) as f32 + ((d - at) / g.max(1e-6)).clamp(0.0, 1.0)) / n as f32;
+                if self.sweep[k].is_some() {
+                    return (u, None);
+                }
+                // (Through this flight: from its first interval in the air to its last.)
+                let (mut a, mut b) = (k, k);
+                while a > 0 && self.sweep[a - 1].is_none() {
+                    a -= 1;
+                }
+                while b + 1 < n && self.sweep[b + 1].is_none() {
+                    b += 1;
+                }
+                let ground: Vec<f32> = self.ground(s).collect();
+                let (from, len) = (ground[..a].iter().sum::<f32>(), ground[a..=b].iter().sum::<f32>());
+                return (u, Some(((d - from) / len.max(1e-6)).clamp(0.0, 1.0)));
+            }
+            at += g;
+        }
+        (0.0, None)
+    }
+
+    /// The ground of a stride `s` spent in the air (metres).
+    pub fn flight(&self, s: f32) -> f32 {
+        self.ground(s).zip(&self.sweep).filter(|(_, w)| w.is_none()).map(|(g, _)| g).sum()
+    }
+}
+
 /// Whether bone `i` hangs (at any depth) from bone `b`.
 pub fn descends(def: &SkeletonDef, mut i: usize, b: usize) -> bool {
     while let Some(p) = def.parents.get(i).copied().flatten() {

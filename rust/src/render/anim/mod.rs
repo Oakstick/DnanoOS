@@ -5,6 +5,7 @@
 //! comparison.
 
 pub mod cast;
+pub mod cast_faces;
 pub mod cast_rigs;
 pub mod clip;
 pub mod cloth;

@@ -179,6 +179,8 @@ pub(crate) enum Cmd {
     Nav(Dir),
     /// Scene I at a beat, seconds into it.
     Beat(usize, f64),
+    /// The beat's line typed again from its start (`retype`): a speaker's mouth mid-line.
+    Retype,
     Look(f64, f64),
     /// The Ledger board, filled with six made-up rivals (W5).
     Ledger,
@@ -391,6 +393,7 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
                 let at = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 Cmd::Beat(n, at)
             }
+            "retype" => Cmd::Retype,
             "nav" => match parts.next().and_then(dir) {
                 Some(d) => Cmd::Nav(d),
                 None => continue,
@@ -416,6 +419,11 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Hold(d, down) => game.input.hold_dir(d, down),
         Cmd::Nav(d) => game.input.nav = Some(d),
         Cmd::Beat(n, at) => game.story_jump(n, at),
+        Cmd::Retype => {
+            if let Some(st) = game.story.as_mut() {
+                st.shown = 0.0;
+            }
+        }
         Cmd::Look(dx, dy) => game.view.look(dx, dy),
         Cmd::Aim(yaw, pitch) => {
             game.view.cam_yaw = yaw;
@@ -1100,6 +1108,14 @@ fn story_shots(
         }
         let (mut frame, mut overlay) = (Frame::default(), Overlay::new());
         game.view.emit(&game.scene(), &mut frame);
+        // (Re-aimed as a single shot is, `--view`: the cast seen from aside as the scene plays.)
+        if let Some(v) = arg(args, "--view") {
+            let n: Vec<f32> = v.split(':').filter_map(|s| s.parse().ok()).collect();
+            if n.len() >= 5 {
+                let target = glam::Vec3::new(n[0], n[1], n[2]);
+                game.view.set_closeup_rise(target, n[3].to_radians(), n[4], n.get(5).copied().unwrap_or(0.28));
+            }
+        }
         overlay.begin(w as f32, h as f32);
         if !args.iter().any(|a| a == "--no-hud") {
             hud::draw(&mut overlay, game, 60);
