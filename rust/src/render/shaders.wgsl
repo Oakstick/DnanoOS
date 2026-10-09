@@ -646,8 +646,9 @@ fn vault_gold(base: vec3<f32>, world: vec3<f32>, local: vec3<f32>, n: vec3<f32>,
             bump = (vec2<f32>(vnoise(p * 40.0), vnoise(p * 40.0 + vec2<f32>(7.3, 1.9))) - vec2<f32>(0.5)) * 0.5;
         }
         m.n = normalize(n + (t * bump.x + b * bump.y) * fine * (1.0 - rub));
-        m.albedo = base * mix(1.0, 0.45, tarnish) * mix(1.0, 1.15, rub);
-        m.rough = mix(mix(0.15, 0.34, tarnish), 0.1, rub);
+        // (Gilt is laid on thick and yellow: it reads as gold, not brass, under the amber lamps.)
+        m.albedo = base * vec3<f32>(1.0, 0.9, 0.62) * mix(1.0, 0.65, tarnish) * mix(1.0, 1.15, rub);
+        m.rough = mix(mix(0.13, 0.3, tarnish), 0.09, rub);
         return m;
     }
     // One coin to each cell of a grid 7 cm across, overlapping its neighbours: the topmost wins.
@@ -692,7 +693,7 @@ fn vault_gold(base: vec3<f32>, world: vec3<f32>, local: vec3<f32>, n: vec3<f32>,
 }
 
 // How much of the lamps' light round it the vaults' gold sees coming back off its surroundings.
-const VAULT_BOUNCE: f32 = 0.12;
+const VAULT_BOUNCE: f32 = 0.2;
 
 // How far `p` lies from the nearest border between the cells of a jittered grid (0 on a border):
 // the cracks between plates of cooling crust.
@@ -1718,7 +1719,10 @@ fn fs_scene(in: VOut) -> FOut {
             // (Off umber stone, which takes some of the lamps' colour out of it.)
             if (abs(mode - 13.4) < 0.05 || abs(mode - 13.25) < 0.05) {
                 let grey = vec3<f32>(dot(round_irr, vec3<f32>(0.3, 0.55, 0.15)));
-                env += mix(grey, round_irr, 0.55) * (VAULT_BOUNCE / PI);
+                // Gilt reflects the lit floor (and its gold) below brightest, the dark above it
+                // least: the bands that make a column read as metal.
+                let down = select(1.0, 0.3 + 1.5 * smoothstep(0.1, -0.5, refl.y), abs(mode - 13.4) < 0.05);
+                env += mix(grey, round_irr, 0.55) * (VAULT_BOUNCE / PI) * down;
             }
         } else {
             // Away from any level (the story's sets, the title): a share of the direct light

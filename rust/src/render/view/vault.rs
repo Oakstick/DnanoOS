@@ -13,7 +13,7 @@
 //! of their rarity's colour. The portals in and out are Greed's, as in the Portals of Hell.
 
 use super::crypt::jit;
-use super::vault_art::{art, coin_stack, gold, yaw_of, Face, GOLD_GLOW, SHADE_COINS, SHADE_GEM, SHADE_GILT, WALL_H};
+use super::vault_art::{self, art, coin_patch, coin_stack, gold, yaw_of, Face, GOLD_GLOW, SHADE_COINS, SHADE_GEM, SHADE_GILT, WALL_H};
 use super::vault_decor::{self, push_merged, Merged};
 use super::*;
 use crate::logic::hub::{Gate, Rect};
@@ -45,6 +45,8 @@ const LOOT_RANGE: f32 = 30.0;
 const LID_SECONDS: f32 = 0.5;
 /// The practicals lit at once, nearest the hero first (RP17 bins every one).
 pub const VAULT_LAMPS_LIT: usize = 16;
+/// The heaps' gleams lit at once, nearest first.
+pub const VAULT_GLEAMS_LIT: usize = 8;
 
 /// Underground, lit by its practicals: a deep warm dark, the candles and braziers pooling on the
 /// gold and the stone, a dim pale light from shafts far above, and the far dark and the mist cool.
@@ -53,12 +55,12 @@ pub fn vault_atmosphere() -> Atmosphere {
         background: DARK,
         fog_near: 9.0,
         fog_far: 32.0,
-        hemi_sky: lin(0x8a6440) * 0.26,
-        hemi_ground: lin(0x4a3422) * 0.16,
-        ambient: lin(0x2e2924) * 0.75,
+        hemi_sky: lin(0x9a7048) * 0.42,
+        hemi_ground: lin(0x6a4a26) * 0.3,
+        ambient: lin(0x3a3026) * 1.25,
         sun_dir: Vec3::new(0.35, 1.0, 0.25).normalize(),
-        sun: lin(0xd8c8a8) * 0.3,
-        exposure: 1.35,
+        sun: lin(0xe0c8a0) * 0.42,
+        exposure: 1.45,
         night_sky: 0.0,
         bloom: 1.05,
         moon_view: Vec3::new(0.0, 0.3, -1.0).normalize(),
@@ -87,6 +89,8 @@ pub struct VaultView {
     yaws: Vec<f32>,
     pub opened: Vec<f32>,
     pub lamps: Vec<(Vec3, Lamp)>,
+    /// Where heaped gold and stacked bars gleam: each a warm light over the gold.
+    pub gleams: Vec<Vec3>,
     pub gates: [Gate; 2],
     pub idol: Vec3,
     art: VaultArt,
@@ -96,6 +100,7 @@ pub struct VaultView {
 /// urn, the paintings.
 pub(super) struct VaultArt {
     pub pile: Merged,
+    pub spill: Merged,
     pub treasure: Merged,
     pub chest: Merged,
     pub lid: Merged,
@@ -108,6 +113,7 @@ impl VaultArt {
         let (chest, lid) = chest();
         Self {
             pile: pile(),
+            spill: vault_art::spill(),
             treasure: vault_decor::treasure(),
             chest,
             lid,
@@ -225,7 +231,9 @@ impl WorldView {
             )
         };
         let mut lamps: Vec<(Vec3, Lamp)> = Vec::new();
+        let mut gleams: Vec<Vec3> = Vec::new();
         let built = self.static_cubes.len();
+        let looted = |q: P| v.loot.iter().any(|l| l.at == q);
 
         // ---- floors: the joints' dark under each room and corridor in one piece, then the flags
         for r in v.rooms.iter().map(|r| r.rect).chain(v.corridors.iter().copied()) {
@@ -355,6 +363,13 @@ impl WorldView {
                 // A column in a room, a fire bowl burning on it.
                 self.vault_column(Vec3::new(xf, 0.0, yf), hash(hx, hy));
                 lamps.push((self.vault_fire_bowl(Vec3::new(xf, 2.04, yf)), Lamp::Bowl));
+                // Coin heaped round its foot, where nothing he may take lies by it.
+                let clear = (-1..=1).all(|dy| (-1..=1).all(|dx| !looted(P::new(x + dx, y + dy))));
+                let r = if clear { 2.5 } else { 1.6 };
+                let m = Mat4::from_translation(Vec3::new(xf, 0.0, yf))
+                    * Mat4::from_rotation_y(hash(hy, hx) as f32 * TAU)
+                    * Mat4::from_scale(Vec3::new(r, 0.85, r));
+                push_merged(&mut self.static_cubes, &art.pile, m, GOLD_GLOW);
             } else {
                 // Every six blocks along a wall: a pilaster, a painting or a strongroom door, a
                 // pilaster, a niche (a statue or a rack of gold).
@@ -367,7 +382,10 @@ impl WorldView {
                         let pick = hash(hx * 1.3 + dx as f64 * 7.0, hy * 1.7 + dy as f64 * 5.0);
                         let front = p.step(d);
                         let in_room = room_of(front).is_some();
-                        let bare = in_room && !v.loot.iter().any(|l| l.at == front);
+                        // (What is heaped against it spills over the floor before it and a little
+                        // to each side: nothing he may take lies there.)
+                        let (ax, ay) = (dy.abs(), dx.abs());
+                        let bare = in_room && [0, -1, 1].iter().all(|&k| !looted(P::new(front.x + ax * k, front.y + ay * k)));
                         let face = match along.rem_euclid(6) {
                             _ if lit_by_sconce(d) => Face::Sconce,
                             1 if pick < 0.38 => Face::Door,
@@ -382,16 +400,17 @@ impl WorldView {
                             }
                             3 if in_room && open.len() == 1 => Face::Sconce,
                             0 => Face::Pilaster,
-                            // Coin drifted up against the wall where nothing stands before it.
-                            _ if bare && pick > 0.62 => Face::Drift,
+                            // Coin heaped up against the wall, or bars stacked, where nothing stands before it.
+                            _ if bare && pick < 0.22 => Face::Bars,
+                            _ if bare => Face::Drift,
                             _ => Face::Plain,
                         };
                         (d, face)
                     })
                     .collect();
-                for c in self.vault_wall(p, &open, &faces, &art) {
-                    lamps.push((c, Lamp::Candles));
-                }
+                let (candles, gold) = self.vault_wall(p, &open, &faces, &art);
+                lamps.extend(candles.into_iter().map(|c| (c, Lamp::Candles)));
+                gleams.extend(gold);
             }
             let len = self.static_cubes.len() - start;
             self.rock_index.insert(tile_key(x, y), (start, len));
@@ -537,7 +556,12 @@ impl WorldView {
             match l.kind {
                 LootKind::Coin => coin_stack(out, Mat4::from_translation(base) * Mat4::from_rotation_y(seed), seed),
                 LootKind::Pile => {
-                    push_merged(out, &art.pile, Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.7), GOLD_GLOW);
+                    push_merged(
+                        out,
+                        &art.pile,
+                        Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.7) * Mat4::from_scale(Vec3::new(1.35, 1.5, 1.35)),
+                        GOLD_GLOW,
+                    );
                     // Coins slid down off it onto the floor.
                     for k in 0..3 {
                         let a = seed * 1.3 + k as f32 * 2.1;
@@ -545,9 +569,12 @@ impl WorldView {
                         coin_stack(out, m * Mat4::from_scale(Vec3::new(1.0, 0.6, 1.0)), seed + k as f32 * 7.0);
                     }
                 }
-                LootKind::Treasure => {
-                    push_merged(out, &art.treasure, Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.3), GOLD_GLOW)
-                }
+                LootKind::Treasure => push_merged(
+                    out,
+                    &art.treasure,
+                    Mat4::from_translation(base) * Mat4::from_rotation_y(seed * 0.3) * Mat4::from_scale(Vec3::new(1.15, 1.35, 1.15)),
+                    GOLD_GLOW,
+                ),
                 LootKind::Chest => {
                     // It faces away from the wall it stands against.
                     let wall = CARDINALS.iter().copied().find(|d| {
@@ -558,6 +585,8 @@ impl WorldView {
                     yaws[i] = yaw;
                     let m = Mat4::from_translation(base) * Mat4::from_rotation_y(yaw);
                     push_merged(out, &art.chest, m, 0.0);
+                    // Its coins spilled before it on the floor.
+                    coin_patch(out, &art.spill, base + Vec3::new(yaw.sin(), 0.0, yaw.cos()) * 0.3, seed as f64 * 0.37, false, true);
                     let lid = out.len();
                     push_merged(out, &art.lid, lid_matrix(m, 0.0), 0.0);
                     ranges[i] = (lid, out.len() - lid);
@@ -566,6 +595,32 @@ impl WorldView {
                 LootKind::Gem(_) => {}
             }
             ranges[i] = (start, self.static_cubes.len() - start);
+        }
+
+        // ---- coin lying thick on the rooms' floors, thickest against the walls, wherever nothing
+        // he may take lies (flat: a coin's edge or two high)
+        for r in &v.rooms {
+            let rect = r.rect;
+            let rich = if r.kind == RoomKind::Hall { 2.0 } else { 1.0 };
+            for q in rect.tiles() {
+                if rock(q.x, q.y) || looted(q) || [v.arrival].iter().any(|g| (g.x - q.x).abs() + (g.y - q.y).abs() <= 1) {
+                    continue;
+                }
+                let dw = (q.x - rect.x0).min(rect.x1 - q.x).min(q.y - rect.y0).min(rect.y1 - q.y);
+                let chance = [0.75, 0.5, 0.32, 0.22][dw.min(3) as usize] * rich;
+                let h = hash(q.x as f64 * 3.3 + 1.0, q.y as f64 * 2.1 + 7.0);
+                if h < chance {
+                    let tight = (-1..=1).any(|dy| (-1..=1).any(|dx| looted(P::new(q.x + dx, q.y + dy))));
+                    coin_patch(
+                        &mut self.static_cubes,
+                        &art.spill,
+                        Vec3::new(q.x as f32, 0.0, q.y as f32),
+                        h * 91.0,
+                        dw <= 1 || rich > 1.0,
+                        tight,
+                    );
+                }
+            }
         }
 
         // ---- Mammon's idol in the treasury, and the portals
@@ -602,6 +657,7 @@ impl WorldView {
             yaws,
             opened: vec![0.0; v.loot.len()],
             lamps,
+            gleams,
             gates,
             idol,
             art,
@@ -835,6 +891,18 @@ impl WorldView {
                 Lamp::Bowl => (FIRE, 7.0, 9.0, 0.6),
             };
             f.lights.push(Light { pos: p + Vec3::new(0.0, up, 0.0), color: lin(c) * k * flick, distance: reach });
+        }
+        // The heaped gold and stacked bars: the nearest each a warm gleam over it, and a glint now
+        // and then.
+        let near_gleams: Vec<Vec3> = vv.gleams.iter().copied().filter(|g| near(*g)).collect();
+        for (i, g) in near_gleams.iter().enumerate() {
+            let k = ((time * 1.1 + i as f32 * 2.7).sin() * 0.5 + 0.5).powi(20);
+            if k > 0.05 {
+                glint(f, *g - Vec3::new(0.0, 0.5 - 0.2 * (i as f32 * 1.3).sin(), 0.0), 0.13, k, time + i as f32);
+            }
+        }
+        for p in nearest(&near_gleams, hero, VAULT_GLEAMS_LIT) {
+            f.lights.push(Light { pos: p, color: lin(CANDLE) * 2.4, distance: 3.6 });
         }
         let lit_points: Vec<Vec3> = lit.iter().map(|(p, _)| *p).collect();
         for p in nearest(&lit_points, hero, 3) {

@@ -87,7 +87,7 @@ pub(super) fn warm(out: &mut [Instance], start: usize) {
 
 /// How much a piece of gold glows of its own colour: the candlelight it holds in the dark, so a
 /// heap far from a lamp still reads as gold.
-pub(super) const GOLD_GLOW: f32 = 0.05;
+pub(super) const GOLD_GLOW: f32 = 0.07;
 
 /// What a wall's face holds, every few blocks.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -104,8 +104,10 @@ pub(super) enum Face {
     Hoard,
     /// A gilt sconce of two candles (a practical: its light is the room's).
     Sconce,
-    /// Coin drifted up against the wall.
+    /// Coin heaped up against the wall (a gleam of its own over it: a practical).
     Drift,
+    /// Gold bars stacked against the wall, high where they lean on it.
+    Bars,
 }
 
 /// Puts a box at `pos` (centre), `size`, turned `rot_y`, into `out`.
@@ -126,25 +128,63 @@ fn coin_at(out: &mut Vec<Instance>, m: Mat4, at: Vec3, r: f32, turn: f32, tilt: 
 /// A few coins stacked under `m` (on the floor at its origin), and one or two lying by them.
 pub(super) fn coin_stack(out: &mut Vec<Instance>, m: Mat4, seed: f32) {
     let h = |k: f32| ((seed * 12.9898 + k * 78.233).sin() * 43758.547).fract().abs();
-    let n = 2 + (h(1.0) * 3.0) as usize;
+    let n = 3 + (h(1.0) * 3.0) as usize;
     let c = gold(h(2.0) as f64);
     for k in 0..n {
         let top = k + 1 == n;
         let off = Vec3::new((h(3.0 + k as f32) - 0.5) * 0.02, 0.009 + k as f32 * 0.019, (h(4.0 + k as f32) - 0.5) * 0.02);
         if top {
-            coin_at(out, m, off, 0.1, h(5.0) * TAU, 0.0, c * 1.05);
+            coin_at(out, m, off, 0.12, h(5.0) * TAU, 0.0, c * 1.05);
         } else {
-            let bm =
-                m * Mat4::from_scale_rotation_translation(Vec3::new(0.1, 0.018, 0.1), Quat::from_rotation_y(h(6.0 + k as f32) * TAU), off);
+            let bm = m * Mat4::from_scale_rotation_translation(
+                Vec3::new(0.12, 0.018, 0.12),
+                Quat::from_rotation_y(h(6.0 + k as f32) * TAU),
+                off,
+            );
             let c = c * (0.9 + 0.1 * h(7.0 + k as f32));
             out.push(Instance::new(bm, c, 1.0, c * GOLD_GLOW, SHADE_GILT));
         }
     }
-    for k in 0..1 + (h(8.0) * 2.0) as usize {
+    for k in 0..2 + (h(8.0) * 3.0) as usize {
         let a = h(9.0 + k as f32) * TAU;
-        let d = 0.11 + h(10.0 + k as f32) * 0.06;
+        let d = 0.13 + h(10.0 + k as f32) * 0.1;
         let at = Vec3::new(a.cos() * d, 0.012, a.sin() * d);
-        coin_at(out, m, at, 0.1, a, (h(11.0 + k as f32) - 0.5) * 0.4, gold(h(12.0 + k as f32) as f64));
+        coin_at(out, m, at, 0.11, a, (h(11.0 + k as f32) - 0.5) * 0.4, gold(h(12.0 + k as f32) as f64));
+    }
+}
+
+/// A spill of coin lying on a floor: a low mound of three overlapping blobs, two coins thick at
+/// its edges, a few at its heart (`SHADE_COINS` draws the coins), merged solid.
+pub(super) fn spill() -> vault_decor::Merged {
+    use crate::render::characters::{mat, Sculpt};
+    let c = super::vault::COIN | mat::GOLD;
+    let mut s = Sculpt::new(10, 2, 10);
+    for (x, z, r) in [(4.6f32, 4.6f32, 3.6f32), (2.8, 6.4, 2.3), (6.8, 3.4, 2.5)] {
+        s.ellipsoid((x, 0.0, z), (r, 1.9, r * 0.85), 0, c);
+    }
+    let mut m = vault_decor::merge_solid(&s.finish_solid(0.0), 0.08);
+    vault_decor::reshade(&mut m, super::vault::COIN, SHADE_COINS);
+    m
+}
+
+/// Coin lying thick on a floor tile at `at` (its middle on the floor): one or two spills, each
+/// turned and sized its own way (no higher than a few coins).
+/// Beside a tile where gold he may take lies (`tight`), it keeps to its own tile, and low.
+pub(super) fn coin_patch(out: &mut Vec<Instance>, spill: &vault_decor::Merged, at: Vec3, h: f64, big: bool, tight: bool) {
+    let n = if big && !tight { 2 } else { 1 };
+    for k in 0..n {
+        let r = |j: f64| hash(h * 13.1 + k as f64 * 3.7 + j, h * 7.3 + j * 1.9) as f32;
+        let size = if tight {
+            0.75
+        } else if big {
+            0.9 + 0.5 * r(1.0)
+        } else {
+            0.6 + 0.4 * r(1.0)
+        };
+        let off = if tight { Vec3::ZERO } else { Vec3::new((r(2.0) - 0.5) * 0.45, 0.0, (r(3.0) - 0.5) * 0.45) };
+        let tall = if tight { 0.45 } else { 0.5 + 0.5 * r(4.0) };
+        let m = Mat4::from_translation(at + off) * Mat4::from_rotation_y(r(7.0) * TAU) * Mat4::from_scale(Vec3::new(size, tall, size));
+        vault_decor::push_merged(out, spill, m, GOLD_GLOW);
     }
 }
 
@@ -158,10 +198,11 @@ pub(super) fn ingot(out: &mut Vec<Instance>, at: Vec3, along_x: bool, c: Vec3) {
 impl WorldView {
     /// A wall tile of the vaults at `p`, its faces toward `open`, each dressed as `faces` says
     /// (`art` holds the models the niches and frames hold, and the heaps). Returns where the
-    /// candles of its sconces burn.
-    pub(super) fn vault_wall(&mut self, p: P, open: &[Dir], faces: &[(Dir, Face)], art: &super::vault::VaultArt) -> Vec<Vec3> {
+    /// candles of its sconces burn, and where its gold gleams (a warm light over a heap or bars).
+    pub(super) fn vault_wall(&mut self, p: P, open: &[Dir], faces: &[(Dir, Face)], art: &super::vault::VaultArt) -> (Vec<Vec3>, Vec<Vec3>) {
         let (statues, paintings) = (&art.statues, &art.paintings);
         let mut candles = Vec::new();
+        let mut gleams = Vec::new();
         let (xf, yf) = (p.x as f32, p.y as f32);
         let (hx, hy) = (p.x as f64, p.y as f64);
         let face_of = |d: Dir| faces.iter().find(|f| f.0 == d).map(|f| f.1).unwrap_or(Face::Plain);
@@ -383,20 +424,54 @@ impl WorldView {
                     candles.push(f + n * 0.05 + Vec3::Y * 0.99);
                 }
                 Face::Drift => {
-                    // A low drift of coin heaped against the wall's foot, a few coins slid out of it.
+                    // Coin heaped against the wall: a wide low skirt spilling onto the floor, the
+                    // heap rising high against the stone (above his knees, no further out than
+                    // `LIP`), coins slid off its foot; a gleam over it (returned as a lamp).
                     let h = hash(hx * 3.7 + dx as f64, hy * 2.9 + dy as f64) as f32;
-                    let m = Mat4::from_translation(c + n * (0.42 + 0.04 * h))
+                    let skirt = Mat4::from_translation(c + n * 0.64 + along * ((h - 0.5) * 0.2))
                         * Mat4::from_rotation_y(turn)
-                        * Mat4::from_scale(Vec3::new(1.5 + 0.4 * h, 0.55 + 0.3 * h, 0.75));
-                    vault_decor::push_merged(out, &art.pile, m, GOLD_GLOW);
-                    for k in 0..2 {
-                        let u = (k as f32 - 0.5) * 0.5 + (h - 0.5) * 0.2;
+                        * Mat4::from_scale(Vec3::new(2.5 + 0.3 * h, 1.05 + 0.1 * h, 1.3));
+                    vault_decor::push_merged(out, &art.pile, skirt, GOLD_GLOW);
+                    let top = Mat4::from_translation(c + n * 0.38 + Vec3::Y * 0.26)
+                        * Mat4::from_rotation_y(turn)
+                        * Mat4::from_scale(Vec3::new(1.45, 1.4 + 0.6 * h, 0.38));
+                    vault_decor::push_merged(out, &art.pile, top, GOLD_GLOW);
+                    for k in 0..3 {
+                        let u = (k as f32 - 1.0) * 0.4 + (h - 0.5) * 0.2;
                         coin_stack(
                             out,
-                            Mat4::from_translation(c + n * 0.86 + along * u) * Mat4::from_scale(Vec3::new(1.0, 0.6, 1.0)),
+                            Mat4::from_translation(c + n * 1.15 + along * u) * Mat4::from_rotation_y(u * 9.0),
                             h * 13.0 + k as f32,
                         );
                     }
+                    gleams.push(c + n * 0.95 + Vec3::Y * 0.9);
+                }
+                Face::Bars => {
+                    // Gold bars: a low stack spread on the floor before the wall, and a tall one
+                    // leaning on it, layer on layer crosswise.
+                    let h = hash(hx * 2.9 + dx as f64, hy * 3.1 + dy as f64);
+                    for layer in 0..6 {
+                        let crosswise = layer % 2 == 1;
+                        let rows = 5 - layer.min(4);
+                        for r in 0..rows {
+                            let off = (r as f32 - (rows - 1) as f32 / 2.0) * if crosswise { 0.075 } else { 0.16 };
+                            for k in 0..2 {
+                                let at = c
+                                    + n * (0.68 + k as f32 * 0.16 * if crosswise { 0.0 } else { 1.0 } + if crosswise { 0.08 } else { 0.0 })
+                                    + along * (off + if crosswise { (k as f32 - 0.5) * 0.16 } else { 0.0 })
+                                    + Vec3::Y * (layer as f32 * 0.046);
+                                let along_x = (dx == 0) != crosswise;
+                                ingot(out, at, along_x, gold(h + (layer * 7 + r * 3 + k) as f64 * 0.11));
+                            }
+                        }
+                    }
+                    for layer in 0..20 {
+                        for k in 0..3 {
+                            let at = c + n * 0.48 + along * ((k as f32 - 1.0) * 0.16) + Vec3::Y * (layer as f32 * 0.046);
+                            ingot(out, at, dx == 0, gold(h + (layer * 5 + k) as f64 * 0.13));
+                        }
+                    }
+                    gleams.push(c + n * 0.95 + Vec3::Y * 0.9);
                 }
                 Face::Niche(_) | Face::Hoard => {
                     // The niche's back lined in velvet, its sill and its soffit pale stone.
@@ -459,7 +534,7 @@ impl WorldView {
                 }
             }
         }
-        candles
+        (candles, gleams)
     }
 
     /// A gilded column on a pale stepped base: an octagonal shaft clad in gold in three lengths
@@ -583,8 +658,10 @@ mod tests {
                     for x in x0..=x1 {
                         assert!(
                             grid.get(x, z) == Tile::Rock,
-                            "a block of the wall at {} reaches over the floor at {x},{z} ({lo} to {hi})",
-                            t.base
+                            "a block of the wall at {} reaches over the floor at {x},{z} ({lo} to {hi}, shade {} colour {:?})",
+                            t.base,
+                            c.emissive[3],
+                            &c.color[..3]
                         );
                     }
                 }
@@ -603,7 +680,7 @@ mod tests {
         assert!(view.vault.is_some());
         walls_keep_to_their_tiles(&view, &level.grid);
         // (A budget: the vaults were 247,000 cubes before they were rebuilt.)
-        assert!(view.static_cubes.len() < 200_000, "{} cubes", view.static_cubes.len());
+        assert!(view.static_cubes.len() < 240_000, "{} cubes", view.static_cubes.len());
 
         let data = crate::logic::court::greed::counting_house(1);
         let level = parse_level(&data);
