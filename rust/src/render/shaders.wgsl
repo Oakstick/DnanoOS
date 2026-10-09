@@ -651,8 +651,15 @@ fn vault_gold(base: vec3<f32>, world: vec3<f32>, local: vec3<f32>, n: vec3<f32>,
         m.rough = mix(mix(0.13, 0.3, tarnish), 0.09, rub);
         return m;
     }
-    // One coin to each cell of a grid 7 cm across, overlapping its neighbours: the topmost wins.
+    // A coin only a few pixels across glitters: there the heap's mean instead.
     let cell = 0.07;
+    let k = (1.0 - smoothstep(0.25, 0.7, foot / cell)) * plain;
+    if (k <= 0.0) {
+        m.albedo = base * 0.78;
+        m.rough = 0.36;
+        return m;
+    }
+    // One coin to each cell of a grid 7 cm across, overlapping its neighbours: the topmost wins.
     let q = p / cell;
     let i = floor(q);
     var top = -1.0;
@@ -671,8 +678,6 @@ fn vault_gold(base: vec3<f32>, world: vec3<f32>, local: vec3<f32>, n: vec3<f32>,
             }
         }
     }
-    // A coin only a few pixels across glitters: there the heap's mean instead.
-    let k = (1.0 - smoothstep(0.25, 0.7, foot / cell)) * plain;
     if (top < 0.0) {
         // A gap: the dark down in the heap.
         m.albedo = base * mix(0.6, 0.12, k);

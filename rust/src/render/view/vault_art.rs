@@ -145,7 +145,7 @@ pub(super) fn coin_stack(out: &mut Vec<Instance>, m: Mat4, seed: f32) {
             out.push(Instance::new(bm, c, 1.0, c * GOLD_GLOW, SHADE_GILT));
         }
     }
-    for k in 0..2 + (h(8.0) * 3.0) as usize {
+    for k in 0..1 + (h(8.0) * 2.0) as usize {
         let a = h(9.0 + k as f32) * TAU;
         let d = 0.13 + h(10.0 + k as f32) * 0.1;
         let at = Vec3::new(a.cos() * d, 0.012, a.sin() * d);
@@ -158,9 +158,9 @@ pub(super) fn coin_stack(out: &mut Vec<Instance>, m: Mat4, seed: f32) {
 pub(super) fn spill() -> vault_decor::Merged {
     use crate::render::characters::{mat, Sculpt};
     let c = super::vault::COIN | mat::GOLD;
-    let mut s = Sculpt::new(10, 2, 10);
+    let mut s = Sculpt::new(10, 1, 10);
     for (x, z, r) in [(4.6f32, 4.6f32, 3.6f32), (2.8, 6.4, 2.3), (6.8, 3.4, 2.5)] {
-        s.ellipsoid((x, 0.0, z), (r, 1.9, r * 0.85), 0, c);
+        s.ellipsoid((x, 0.0, z), (r, 1.0, r * 0.85), 0, c);
     }
     let mut m = vault_decor::merge_solid(&s.finish_solid(0.0), 0.08);
     vault_decor::reshade(&mut m, super::vault::COIN, SHADE_COINS);
@@ -182,7 +182,7 @@ pub(super) fn coin_patch(out: &mut Vec<Instance>, spill: &vault_decor::Merged, a
             0.6 + 0.4 * r(1.0)
         };
         let off = if tight { Vec3::ZERO } else { Vec3::new((r(2.0) - 0.5) * 0.45, 0.0, (r(3.0) - 0.5) * 0.45) };
-        let tall = if tight { 0.45 } else { 0.5 + 0.5 * r(4.0) };
+        let tall = if tight { 0.6 } else { 0.7 + 0.7 * r(4.0) };
         let m = Mat4::from_translation(at + off) * Mat4::from_rotation_y(r(7.0) * TAU) * Mat4::from_scale(Vec3::new(size, tall, size));
         vault_decor::push_merged(out, spill, m, GOLD_GLOW);
     }

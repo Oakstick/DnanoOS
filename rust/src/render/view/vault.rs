@@ -44,9 +44,9 @@ const LOOT_RANGE: f32 = 30.0;
 /// Chests open over this long once taken.
 const LID_SECONDS: f32 = 0.5;
 /// The practicals lit at once, nearest the hero first (RP17 bins every one).
-pub const VAULT_LAMPS_LIT: usize = 16;
+pub const VAULT_LAMPS_LIT: usize = 12;
 /// The heaps' gleams lit at once, nearest first.
-pub const VAULT_GLEAMS_LIT: usize = 8;
+pub const VAULT_GLEAMS_LIT: usize = 5;
 
 /// Underground, lit by its practicals: a deep warm dark, the candles and braziers pooling on the
 /// gold and the stone, a dim pale light from shafts far above, and the far dark and the mist cool.
@@ -607,7 +607,7 @@ impl WorldView {
                     continue;
                 }
                 let dw = (q.x - rect.x0).min(rect.x1 - q.x).min(q.y - rect.y0).min(rect.y1 - q.y);
-                let chance = [0.75, 0.5, 0.32, 0.22][dw.min(3) as usize] * rich;
+                let chance = [0.75, 0.45, 0.26, 0.15][dw.min(3) as usize] * rich;
                 let h = hash(q.x as f64 * 3.3 + 1.0, q.y as f64 * 2.1 + 7.0);
                 if h < chance {
                     let tight = (-1..=1).any(|dy| (-1..=1).any(|dx| looted(P::new(q.x + dx, q.y + dy))));
@@ -886,9 +886,9 @@ impl WorldView {
             let fi = i as f32;
             let flick = 1.0 + (time * 7.0 + fi * 1.3).sin() * 0.06 + (time * 17.0 + fi).sin() * 0.04;
             let (c, k, reach, up) = match kind {
-                Lamp::Candles => (CANDLE, 5.0, 7.0, 0.25),
-                Lamp::Brazier => (FIRE, 6.0, 8.0, 0.7),
-                Lamp::Bowl => (FIRE, 7.0, 9.0, 0.6),
+                Lamp::Candles => (CANDLE, 4.6, 5.5, 0.25),
+                Lamp::Brazier => (FIRE, 5.6, 6.5, 0.7),
+                Lamp::Bowl => (FIRE, 6.4, 7.0, 0.6),
             };
             f.lights.push(Light { pos: p + Vec3::new(0.0, up, 0.0), color: lin(c) * k * flick, distance: reach });
         }
@@ -902,7 +902,7 @@ impl WorldView {
             }
         }
         for p in nearest(&near_gleams, hero, VAULT_GLEAMS_LIT) {
-            f.lights.push(Light { pos: p, color: lin(CANDLE) * 2.4, distance: 3.6 });
+            f.lights.push(Light { pos: p, color: lin(CANDLE) * 2.4, distance: 3.0 });
         }
         let lit_points: Vec<Vec3> = lit.iter().map(|(p, _)| *p).collect();
         for p in nearest(&lit_points, hero, 3) {
