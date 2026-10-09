@@ -209,6 +209,26 @@ impl Dealer {
     }
 }
 
+/**
+ * What a realm's packs (and what it raises later) are multiplied by over their weight, health and
+ * blows (WARBAND.md W11): the two realms the adept walks and fell to. The Rotting Feast's packs strike
+ * at half (its gaki's bites, and the deep natives that broke a guard-first hero's guard, took three
+ * lives a try); the vaults' blows soften with depth to half at the seventh realm (met last, their
+ * deepest packs meet a hero three kit tiers below the expert). Their moves and rules are their own.
+ */
+pub fn temper(sin: Sin, tier: usize) -> (f64, f64) {
+    let deep = (tier.clamp(1, 7) - 1) as f64 / 6.0;
+    match sin {
+        Sin::Gluttony => (1.0, FEAST_BLOWS + (DEEP_BLOWS - FEAST_BLOWS) * deep),
+        Sin::Greed => (1.0, 1.0 + (DEEP_BLOWS - 1.0) * deep),
+        _ => (1.0, 1.0),
+    }
+}
+/// The Rotting Feast's packs' blows over their weight as the first realm (`temper`)...
+pub const FEAST_BLOWS: f64 = 0.5;
+/// ...and both walked realms' at the seventh (the vaults' first as they were).
+pub const DEEP_BLOWS: f64 = 0.35;
+
 /// What a foe built for `stage` (0 for a realm's own) is multiplied by in a realm of `tier`: its
 /// health and its damage (on top of the brawl's weight for the realms, `brawl::VAULT_DAMAGE`).
 /// Natives fight as the vaults' packs do; a realm's own new foes grow with the tier, since they come
@@ -307,6 +327,24 @@ mod tests {
     use crate::logic::levels::level_for;
     use crate::logic::pathing::reachable;
     use crate::logic::sins::SINS;
+
+    /// WARBAND.md W11: the walked realms' packs soften with the depth they are met at; the vaults
+    /// at the first realm (the measure) and the five other realms as they were.
+    #[test]
+    fn the_walked_realms_are_tempered_with_depth_and_the_rest_as_they_were() {
+        assert_eq!(temper(Sin::Greed, 1), (1.0, 1.0));
+        assert!((temper(Sin::Greed, 7).1 - DEEP_BLOWS).abs() < 1e-9);
+        assert!((temper(Sin::Gluttony, 1).1 - FEAST_BLOWS).abs() < 1e-9);
+        assert!((temper(Sin::Gluttony, 7).1 - DEEP_BLOWS).abs() < 1e-9);
+        for tier in 1..7 {
+            assert!(temper(Sin::Greed, tier + 1).1 < temper(Sin::Greed, tier).1);
+            assert!(temper(Sin::Gluttony, tier + 1).1 < temper(Sin::Gluttony, tier).1);
+        }
+        assert_eq!(temper(Sin::Greed, 12), temper(Sin::Greed, 7), "no softer past the seventh");
+        for sin in [Sin::Pride, Sin::Envy, Sin::Wrath, Sin::Sloth, Sin::Lust] {
+            assert_eq!(temper(sin, 5), (1.0, 1.0));
+        }
+    }
 
     #[test]
     fn every_realm_but_the_vaults_is_laid_out_and_its_far_portal_can_be_reached() {

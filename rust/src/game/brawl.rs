@@ -1485,7 +1485,8 @@ impl Game {
                 Wound::Venom => 0x8ad04a,
                 Wound::Fire => 0xff7a2a,
             };
-            let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0);
+            // (What the realm's foes' blows carry is tempered as the blows are: WARBAND.md W11.)
+            let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0) * self.realm_blows();
             self.wound_hero((amount * taken).round(), color);
             if tracing() {
                 let frame = self.brawl.as_ref().map(|b| b.threat.frame).unwrap_or(0);
@@ -1687,6 +1688,13 @@ impl Game {
     /// His shield takes `amount` of wear from a blow it caught; worn through, it breaks for good
     /// (unless it is too well made to), and his guard is bare hands until the old man reforges it.
     fn wear_shield(&mut self, amount: f64) {
+        // (The old man's runes cut into it spare it some of each blow: WARBAND.md W11.)
+        let carved = self
+            .hero
+            .shield
+            .map(|s| self.progress.hero(self.hero_kind).carved(crate::logic::progression::Tree::Shield, s.tier))
+            .unwrap_or(0);
+        let amount = amount * crate::logic::progression::carved_share(carved, crate::logic::progression::CARVE_WEAR);
         let Some(s) = self.hero.shield.as_mut() else { return };
         let floor = if crate::logic::progression::ward(s.tier).unbreakable { 1 } else { 0 };
         s.durability = (s.durability - amount.round() as i32).max(floor);

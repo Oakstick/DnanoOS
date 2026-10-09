@@ -172,6 +172,9 @@ pub struct Hero {
     pub hunger: i32,
     /// How sharp the blade in his hand is, 0 to 1: a dull one bites the boss less (`gear::edge_power`).
     pub edge: f64,
+    /// The old man's rune carvings on the blade in his hand and the shield on his arm (0 to 3 each;
+    /// they show on them: `render::armory::carve_runes`).
+    pub carved: [u8; 2],
     /// The outfit he wears, and how many skills of his path he has learned (each a ribbon on his arm).
     pub outfit: u8,
     /// Timed potion effects, seconds left each.
@@ -250,6 +253,7 @@ impl Hero {
             pace: 1.0,
             hunger: 0,
             edge: 1.0,
+            carved: [0; 2],
             outfit: 0,
             fx: Effects::default(),
             regen_carry: 0.0,

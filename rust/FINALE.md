@@ -226,7 +226,9 @@ laptop, level 7 with ten foes, Hel's dead and Surtr's fire: 6.6 ms a frame from 
 table on the platform is solid, so the fight goes round it. The doors shut at 100 seconds (the last
 twenty are for clearing the platform, as designed), and a wave that cannot come out for the cap
 waits rather than being lost, until then. The tier is the realms' (8) and was not tuned further: the
-measured spread above already meets the targets. Continue does not remember riders (it loads the
+measured spread above already meets the targets. (W11, WARBAND.md's log: the inmates strike
+at 0.6, `pit::INMATE_BLOWS`: the adept at tier 7 went from game over at level 3 to 5 to the
+bottom, 3 of 3.) Continue does not remember riders (it loads the
 level fresh). Summoned foes (raised dead, illusions) may lift the count past ten for a moment.
 
 ### Krampus
@@ -251,7 +253,10 @@ are where his Perchten come out. No gate: the way out is up. Pinned by
 of a blow outside his recoveries); HP 2.1 × the Prince's 900 (1.35 until W9), poise 1.3 ×, radius
 1.0 (a tile of arm), then the courts' straight weight for tier 8 (`lair::lair_weight`: health × 3.1,
 blows × 1.55): 5859 health at the bottom of the Pit. His phases fall at 70% and 40% (`krampus::PHASE_AT`, through the
-new `prince::phase_for`), so Krampusnacht is the longest.
+new `prince::phase_for`), so Krampusnacht is the longest. **W11** (WARBAND.md's log): his pelt
+lets a court's hide through (0.6, as the princes' since W10), his blows are 0.6 of that weight
+(`lair::KRAMPUS_BLOWS`) and his health 0.8 (`KRAMPUS_HEALTH`): the expert fells him in about two
+minutes (122 s at tier 8, 164 before), the adept with a seventh-tier kit in seven or eight.
 
 | Phase | Title | Moves (preferred first) | Pace, rest | What else |
 |---|---|---|---|---|

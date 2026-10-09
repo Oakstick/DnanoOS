@@ -1640,6 +1640,43 @@ fn blades_dull_as_they_strike_bite_the_boss_less_and_are_sharpened_for_gold() {
 }
 
 #[test]
+fn the_old_man_carves_runes_into_the_blade_and_the_shield_and_they_wear_slower() {
+    use crate::logic::progression::{CARVE_RUNES, CARVINGS};
+    let mut g = meadow();
+    g.equip_from_progress();
+    g.open_shop();
+    g.progress.runes = 30;
+    // At the anvil: the blade in hand, three carvings for 4, 8 and 12 runes.
+    press_shop(&mut g, ShopAction::Tab(Tree::Armory));
+    for k in 0..CARVINGS {
+        assert!(g.shop_rows().iter().any(|r| r
+            .buttons
+            .iter()
+            .any(|b| b.action == ShopAction::Carve(Tree::Armory) && b.enabled && b.runes == CARVE_RUNES[k as usize] && b.price == 0)));
+        press_shop(&mut g, ShopAction::Carve(Tree::Armory));
+    }
+    let h = *g.progress.hero(g.hero_kind);
+    assert_eq!((h.carved(Tree::Armory, h.wield), g.progress.runes), (3, 6));
+    assert_eq!(g.hero.carved, [3, 0], "they show on the blade in his hand");
+    assert!(
+        g.shop_rows().iter().any(|r| r.buttons.iter().any(|b| b.action == ShopAction::Carve(Tree::Armory) && !b.enabled)),
+        "all three cut"
+    );
+    // At the shield wall: the shield he carries.
+    press_shop(&mut g, ShopAction::Tab(Tree::Shield));
+    press_shop(&mut g, ShopAction::Carve(Tree::Shield));
+    assert_eq!(g.progress.hero(g.hero_kind).carved(Tree::Shield, h.carry), 1);
+    assert_eq!((g.hero.carved, g.progress.runes), ([3, 1], 2));
+    // The carved blade keeps its edge: the hundred blows that take sixty off a bare one take a quarter.
+    let k = (g.hero.blade - 1) as usize;
+    for _ in 0..100 {
+        g.dull_blade();
+    }
+    let edge = g.progress.hero(g.hero_kind).edge[k];
+    assert!((73..=76).contains(&edge), "a carved blade worn down by about 25: {edge}");
+}
+
+#[test]
 fn a_rusted_blade_glances_off_some_foes_and_a_keen_one_never() {
     let mut g = meadow();
     let at = P::new(13, 16);

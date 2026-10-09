@@ -334,6 +334,11 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
     - **Refuse the food.** Parry the thrown food, and it deflects into the gaki instead of into you.
     - **Time the teeth.** Leap the pylorus during its 2-second opening; your airborne frames carry you past the teeth.
 
+**Tuned in W11** (WARBAND.md's log): its packs strike at half met as the first realm, falling to
+0.35 met as the seventh (`realms::temper`, the vaults' with it from 1.0); the gaki's bites do not
+grow with the depth, their health does; its foes, as every realm's, keep their wounds across the
+hero's falls. The bots walk it to the pylorus as a player does.
+
 ---
 
 ## 6 · LUST: The Garden of Thorns

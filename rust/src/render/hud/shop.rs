@@ -54,6 +54,7 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
             | RowKind::Repair
             | RowKind::Life
             | RowKind::Sharpen
+            | RowKind::Carve(_)
             | RowKind::Trials
             | RowKind::General(_)
             | RowKind::Rival(_)
@@ -88,7 +89,8 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
         buttons.push(b);
     }
     // The loadout's rows are fewer and taller: its card follows them.
-    let card_top = if wide_rows { y + t * 0.4 } else { first + 11.0 * (rh + t * 0.08) + t * 0.3 };
+    // (The shield wall's twelve rows, its tiers, mending and carving, push it down a row.)
+    let card_top = if wide_rows { y + t * 0.4 } else { (first + 11.0 * (rh + t * 0.08) + t * 0.3).max(y + t * 0.3) };
     let card = [x0 + pad, card_top, inner, (y0 + ph - t * 3.2 - card_top).max(t * 5.0)];
     Layout { panel: [x0, y0, pw, ph], rows: out_rows, buttons, card }
 }
@@ -109,6 +111,7 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
                 | RowKind::Repair
                 | RowKind::Life
                 | RowKind::Sharpen
+                | RowKind::Carve(_)
                 | RowKind::Patron
                 | RowKind::Outfit
                 | RowKind::Trials
@@ -313,6 +316,28 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 };
                 bar(o, rect[0] + t * 0.5, cy + t * 0.25, t * 7.0, t * 0.26, edge as f32, c);
             }
+            RowKind::Carve(tree) => {
+                o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.05]);
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                let what = if tree == Tree::Armory { "BLADE" } else { "SHIELD" };
+                let title = format!("{} ON YOUR {what}", progression::carving(hero));
+                o.text(&title, rect[0] + t * 0.5, cy - t * 0.25, small, rgba(SAND, 1.0), Align::Left, true);
+                // Three marks, the cut ones glowing.
+                let tier = if tree == Tree::Armory { prog.wield } else { prog.carry };
+                let done = prog.carved(tree, tier);
+                let glow = progression::carving_color(hero);
+                for k in 0..progression::CARVINGS {
+                    let (mx, my, mw) = (rect[0] + t * 0.5 + k as f32 * t * 0.75, cy + t * 0.12, t * 0.5);
+                    if k < done {
+                        o.rect(mx, my, mw, t * 0.26, rgba(glow, 1.0));
+                    } else {
+                        o.rect_outline(mx, my, mw, t * 0.26, 1.0, rgba(TEXT_DIM, 0.8));
+                    }
+                }
+            }
             RowKind::Patron | RowKind::Outfit => {
                 o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.05]);
                 if selected {
@@ -458,17 +483,26 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
             if b.price > 0 || b.runes > 0 {
                 // The price, a coin, and the runes too for a sealed tier.
                 let iw = size * 1.15;
-                let rune_part = if b.runes > 0 { format!("+{}", b.runes) } else { String::new() };
-                let mut tw = o.measure(&b.label, size) + iw + t * 0.12;
+                // (Runes alone, as a carving is: no coin, the runes' count with no plus.)
+                let coin = b.price > 0;
+                let rune_part = match (b.runes > 0, coin) {
+                    (true, true) => format!("+{}", b.runes),
+                    (true, false) => format!("{}", b.runes),
+                    _ => String::new(),
+                };
+                let mut tw = o.measure(&b.label, size) + t * 0.12 + if coin { iw } else { 0.0 };
                 if b.runes > 0 {
                     tw += t * 0.2 + o.measure(&rune_part, size) + iw;
                 }
                 let mut lx = rect[0] + rect[2] / 2.0 - tw / 2.0;
                 o.text(&b.label, lx, cy, size, rgba(color, 1.0), Align::Left, true);
                 lx += o.measure(&b.label, size) + t * 0.12;
-                draw_sprite(o, icon(Icon::Money(g.hero_kind)), lx, cy - iw / 2.0, iw / 16.0, None, if afford { 1.0 } else { 0.5 });
+                if coin {
+                    draw_sprite(o, icon(Icon::Money(g.hero_kind)), lx, cy - iw / 2.0, iw / 16.0, None, if afford { 1.0 } else { 0.5 });
+                    lx += iw;
+                }
                 if b.runes > 0 {
-                    lx += iw + t * 0.2;
+                    lx += t * 0.2;
                     o.text(
                         &rune_part,
                         lx,
@@ -637,6 +671,59 @@ fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[Sho
     }
 }
 
+/// The carving's card: the blade in hand or the shield on the arm, the old man's craft, what each
+/// carving does, and the runes the next one takes (WARBAND.md W11).
+fn draw_carve_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], tree: Tree) {
+    let hero = g.hero_kind;
+    let prog = g.progress.hero(hero);
+    let small = (t * 0.5).max(11.0);
+    let tier = if tree == Tree::Armory { prog.wield } else { prog.carry };
+    let n = progression::node(hero, tree, tier);
+    let done = prog.carved(tree, tier);
+    let pad = t * 0.5;
+    let iw = t * 3.4;
+    o.rect(c[0] + pad - 2.0, c[1] + pad - 2.0, iw + 4.0, iw + 4.0, [1.0, 1.0, 1.0, 0.05]);
+    draw_sprite(o, icon(Icon::Node(hero, tree, tier)), c[0] + pad, c[1] + pad, iw / 16.0, None, 1.0);
+    let tx = c[0] + pad + iw + t * 0.5;
+    let tw = c[0] + c[2] - pad - tx;
+    let name = n.name.to_uppercase();
+    let size = if o.measure(&name, t * 0.8) > tw { t * 0.62 } else { t * 0.8 };
+    o.text(&name, tx, c[1] + pad + t * 0.4, size, rgba(n.color, 1.0), Align::Left, true);
+    let glow = progression::carving_color(hero);
+    o.text(
+        &format!("{}  -  {} OF {} CUT", progression::carving(hero), done, progression::CARVINGS),
+        tx,
+        c[1] + pad + t * 1.2,
+        small * 0.85,
+        rgba(glow, 1.0),
+        Align::Left,
+        false,
+    );
+    let craft = match hero {
+        crate::logic::heroes::HeroKind::Ragnar => "Runes cut into the steel, as the smiths of the North cut them for the old heroes.",
+        crate::logic::heroes::HeroKind::Mehmed => "Turquoise set into the steel, as the imperial armourers set it for the old heroes.",
+        crate::logic::heroes::HeroKind::Miyamoto => {
+            "The steel tempered with spirit crystal, as the old swordsmiths tempered it for the heroes before him."
+        }
+    };
+    let ly = wrap_left(o, craft, tx, c[1] + pad + t * 1.95, tw, t * 0.55, small * 0.88, rgba(TEXT_DIM, 1.0));
+    let ay = (ly + t * 0.25).max(c[1] + pad + iw + t * 0.3);
+    let after = (progression::carved_share(done, if tree == Tree::Armory { progression::CARVE_EDGE } else { progression::CARVE_WEAR })
+        * 100.0)
+        .round();
+    let text = if tree == Tree::Armory {
+        format!("The old man was smith to the heroes of old, and he cuts their blessing into your blade: their craft, no bargain. Each carving keeps its edge a quarter longer. A blow that lands wears it at {after}% of an uncut blade's.")
+    } else {
+        format!("The old man was smith to the heroes of old, and he cuts their blessing into your shield: their craft, no bargain. Each carving spares it a quarter of what a blocked blow wears off it. It wears at {after}% of an uncut shield's.")
+    };
+    wrap_left(o, &text, c[0] + pad, ay, c[2] - pad * 2.0, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
+    let status = match progression::carve_price(done) {
+        Some(r) => (format!("THE NEXT CARVING: {r} {}", progression::gems(hero, r)), 0x9ad1ff),
+        None => ("ALL THREE ARE CUT".to_string(), GOLD),
+    };
+    o.text(&status.0, c[0] + pad, c[1] + c[3] - pad - t * 0.2, small * 0.9, rgba(status.1, 1.0), Align::Left, true);
+}
+
 /// The card for the highlighted row: the tier's legend, what it does, and what it takes.
 fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     let hero = g.hero_kind;
@@ -651,6 +738,10 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
     let kind = rows.get(g.shop.row).map(|r| r.kind).unwrap_or(RowKind::Tabs);
     if g.shop.board.is_some() || kind == RowKind::Trials {
         draw_board_card(o, g, t, c, kind);
+        return;
+    }
+    if let RowKind::Carve(tree) = kind {
+        draw_carve_card(o, g, t, c, tree);
         return;
     }
     let (tree, tier) = match kind {

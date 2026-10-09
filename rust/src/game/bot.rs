@@ -107,6 +107,9 @@ const ENGAGE: f64 = 1.3;
 const SLEEPER_ENGAGE: f64 = 0.9;
 /// Stamina the adept keeps for its guard.
 const RESERVE: f64 = 24.0;
+/// Tiles about it (beyond a foe's body) within which the adept counts a foe's dearest blow in the
+/// stamina it keeps (`Bot::block_worth`).
+const WORTH_RANGE: f64 = 4.0;
 /// Frames from pressing attack until the guard can come up again (L1's cancel frame, and the raise).
 const COMMIT: f64 = 16.0;
 
@@ -188,6 +191,17 @@ impl Bot {
             let off = math::dot(math::norm(to), d.aim).clamp(-1.0, 1.0).acos();
             let t = match data.shape {
                 Shape::Quake { radius, .. } if dist <= radius + HERO_RADIUS + 0.3 => start,
+                // A charge down its line, by the adept (WARBAND.md W11): seen as it sets off from
+                // afar, and met when the runner will reach him (before, it was seen only once on
+                // him, too late to guard: Krampus's hooves, Amon's horns). (The expert's timing,
+                // which parried them, is as it was.)
+                Shape::Charge { length, speed } if self.skill == Skill::Adept => {
+                    let aimed = off <= data.half_angle.min(0.6) + 0.2;
+                    if !aimed || dist > length + data.reach + HERO_RADIUS {
+                        continue;
+                    }
+                    start + ((dist - data.reach - HERO_RADIUS).max(0.0) / (speed / 60.0)).floor()
+                }
                 _ => {
                     let aimed = off <= data.half_angle + 0.35;
                     if !aimed || dist > data.reach + HERO_RADIUS + 0.4 {
@@ -362,6 +376,51 @@ impl Bot {
                 pad.actions.insert(Action::Attack);
             }
         }
+        Some(pad)
+    }
+
+    /**
+     * The Rotting Feast walked as a player walks it (WARBAND.md W11): between fights it goes on down
+     * the gullet rather than waking every den (the gaki in their corners off the way, which only
+     * the smell of food brings): through the next seam's arch (the wide one when too full for the
+     * narrow), to the dome at the Stomach's heart, and in the Last Course to the pylorus, through
+     * it when its teeth part for the lean, before it otherwise. In the Last Course it goes for the
+     * teeth while foes still hunt it (the walls and the acid wait for no fight).
+     */
+    fn feast_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        use crate::logic::realms::feast::{BLOAT_LEAN, BLOAT_WIDE};
+        let Some(crate::logic::realms::Run::Gluttony(f)) = g.run.as_ref() else { return None };
+        let climax = f.climax.as_ref();
+        let goal = if let Some(c) = climax {
+            let exit = f.base.exit;
+            if c.open() && f.bloat <= BLOAT_LEAN {
+                exit.tile.v()
+            } else if hunting_near {
+                return None;
+            } else {
+                exit.front().v()
+            }
+        } else if hunting_near {
+            return None;
+        } else if let Some(s) = f.seams.iter().find(|s| !s.closed) {
+            // (Through the arch it fits, on to where it rises once the seam is behind it.)
+            let arch = if f.bloat >= BLOAT_WIDE { &s.wide } else { &s.narrow };
+            if hp.y > s.bottom as f64 + 0.5 {
+                let n = arch.tiles.len().max(1) as f64;
+                let (sx, sy) = arch.tiles.iter().fold((0.0, 0.0), |(x, y), p| (x + p.x as f64, y + p.y as f64));
+                V::new(sx / n, sy / n)
+            } else {
+                s.landing.v()
+            }
+        } else if !f.lifted {
+            f.dome.v()
+        } else {
+            return None;
+        };
+        let mut pad = PadState::default();
+        let dir = self.way(g, hp, goal);
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
         Some(pad)
     }
 
@@ -627,6 +686,9 @@ impl Bot {
         if let Some(errand) = self.general_errand(g, hp, hunting_near) {
             return errand;
         }
+        if let Some(errand) = self.feast_errand(g, hp, hunting_near) {
+            return errand;
+        }
         // Between fights (or hurt), what lies near goes into the belt first: a potion, a weapon, a boon.
         let hurt = (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.6;
         if self.skill != Skill::Novice && (hunting.is_empty() || hurt) {
@@ -712,8 +774,12 @@ impl Bot {
         let swing = match self.skill {
             Skill::Novice => true,
             _ if begging_near => false,
-            // It keeps a block's worth in hand.
-            Skill::Adept => stamina >= 16.0 + RESERVE,
+            // It keeps a block's worth in hand: the dearest blow a foe near it can bring, blocked
+            // (WARBAND.md W11: a fixed 24 left Krampus, Surtr and the giants breaking its guard
+            // with every blow).
+            // (Not in a court, the princes being tempered to the adept as it fought them (W10), nor
+            // in the ring, whose bouts are COMBAT.md's measure.)
+            Skill::Adept => stamina >= 16.0 + if g.in_court() || g.in_ring() { RESERVE } else { Self::block_worth(g, hp).max(RESERVE) },
             // Into openings only: never into a wind-up that would land on its swing.
             // ...and never into a swing it could not guard out of before the next strike it has seen lands;
             // and Tepegöz only while his eye is in reach.
@@ -751,6 +817,29 @@ impl Bot {
 }
 
 impl Bot {
+    /**
+     * The stamina a block of the dearest blow a foe within reach of a pounce can bring costs it
+     * (the move's damage on the foe's body and the fight's weight, at its shield's cost a point):
+     * what the adept keeps in hand to block it whole.
+     */
+    fn block_worth(g: &Game, hp: V) -> f64 {
+        let Some(spar) = g.brawl.as_ref() else { return 0.0 };
+        g.enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && d.engaged() && math::len(math::sub(d.pos, hp)) < WORTH_RANGE + d.radius())
+            .map(|d| {
+                let moves = if d.arch == crate::logic::combat::archetype::Archetype::Prince {
+                    crate::logic::combat::prince::table(d.breed.kind, d.breed.phase)
+                } else {
+                    d.breed.moves()
+                };
+                let dearest = moves.iter().map(|&mv| d.data(mv)).filter(|m| !m.projectile).map(|m| m.damage).fold(0.0, f64::max);
+                dearest * d.breed.damage * spar.foe_damage * spar.kit.guard.cost
+            })
+            .fold(0.0, f64::max)
+    }
+
     /// Belphegor asleep or waking (PRINCES.md §4): his hide is open and he mends while he sleeps,
     /// so a player who knows strikes him before anything else (his nightmares keep their distance
     /// to be chased). Only his fight asks it.

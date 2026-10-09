@@ -54,16 +54,18 @@ pub(super) struct Kit {
     pub shield: Option<u8>,
     pub outfit: u8,
     pub path: u8,
+    /// The old man's carvings on the blade and the shield (WARBAND.md W11).
+    pub carved: [u8; 2],
 }
 
 impl Kit {
     pub fn plain(blade: u8, shield: Option<u8>) -> Self {
-        Self { blade, shield, outfit: 0, path: 0 }
+        Self { blade, shield, outfit: 0, path: 0, carved: [0; 2] }
     }
 
     /// The hero as he stands.
     pub fn of(h: &Hero) -> Self {
-        Self { blade: h.blade, shield: h.shield.map(|s| s.tier), outfit: h.outfit, path: h.path }
+        Self { blade: h.blade, shield: h.shield.map(|s| s.tier), outfit: h.outfit, path: h.path, carved: h.carved }
     }
 }
 
@@ -179,6 +181,11 @@ fn hero_rigs_strapped(hero: HeroKind, kit: Kit, strap: Option<f32>) -> (Rig, Opt
     let (width, depth, height) = (body.width, body.depth, body.height);
     let empty = || Collected { voxels: Vec::new(), width, depth, height };
     let mut back = kit.shield.map(|_| back_shield(&hero_body(hero, kit).0, &body));
+    // The old man's carvings glow on the shield's face (and so on the arm's, made from it).
+    let glow = progression::carving_color(hero);
+    if let Some(b) = back.as_mut() {
+        armory::carve_shield(b, kit.carved[1], glow);
+    }
     let mut arm = back
         .as_ref()
         .map(|b| match strap {
@@ -188,6 +195,8 @@ fn hero_rigs_strapped(hero: HeroKind, kit: Kit, strap: Option<f32>) -> (Rig, Opt
         .unwrap_or_else(empty);
     let mut main = armory::weapon_for(hero, w.form, w.color, false);
     let mut off = if armory::paired(w.form) { armory::weapon_for(hero, w.form, w.color, true) } else { empty() };
+    armory::carve_blade(&mut main, kit.carved[0], glow);
+    armory::carve_blade(&mut off, kit.carved[0], glow);
     // He is sculpted with his weapon in the fist at the model's high x: his left as he faces out.
     for c in [&mut body, &mut arm, &mut main, &mut off].into_iter().chain(back.as_mut()) {
         mirror(c, width);

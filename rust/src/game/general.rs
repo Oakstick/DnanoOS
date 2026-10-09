@@ -294,7 +294,7 @@ impl Game {
         });
         d.max_hp *= wh * health;
         d.hp = d.max_hp;
-        d.breed.damage *= wd;
+        d.breed.damage *= wd * self.realm_blows();
         // (A puppet on its way is asleep to the fight, not hunting him, until he comes near it.)
         d.den = if puppet { den.or(Some(Self::den_at(at, 0.6))) } else { den };
         d.puppet = puppet;

@@ -505,6 +505,93 @@ pub fn back_shield_at(s: &mut Sculpt, form: Form, col: u32, tier: u8, at: (i32, 
     }
 }
 
+/// Is this voxel of a weapon or shield its steel (or gold), where a carving can be cut?
+fn steel(c: u32) -> bool {
+    matches!(c >> 24, 0 | 1 | 8)
+}
+
+/**
+ * The old man's carvings on a weapon as `weapon_for` (or `hero_weapon`) made it (WARBAND.md W11):
+ * `n` of three, short glowing marks up the middle of its steel on both faces, in `color` (Ragnar's
+ * runes ice-blue, Mehmed's turquoise, Miyamoto's spirit crystal violet), each carving a third more
+ * of its length.
+ */
+pub fn carve_blade(c: &mut Collected, n: u8, color: u32) {
+    if n == 0 {
+        return;
+    }
+    let above = FIST_Y + 6;
+    let ys: Vec<i32> = c.voxels.iter().filter(|v| v.y > above && steel(v.c)).map(|v| v.y).collect();
+    let (Some(&y0), Some(&y1)) = (ys.iter().min(), ys.iter().max()) else { return };
+    // (Short of the tip, a third of the steel's length a carving.)
+    let top = y0 + ((y1 - 2 - y0) as f32 * n.min(3) as f32 / 3.0).round() as i32;
+    let glow = color | mat::GLOW;
+    for y in (y0 + 1)..=top {
+        // Marks two voxels long with a voxel between, a longer break every third.
+        if (y - y0) % 3 == 2 || (y - y0) % 9 == 8 {
+            continue;
+        }
+        let at: Vec<usize> = (0..c.voxels.len()).filter(|&i| c.voxels[i].y == y && steel(c.voxels[i].c)).collect();
+        if at.is_empty() {
+            continue;
+        }
+        let mut zs: Vec<i32> = at.iter().map(|&i| c.voxels[i].z).collect();
+        zs.sort_unstable();
+        let zc = zs[zs.len() / 2];
+        let mid: Vec<usize> = at.iter().copied().filter(|&i| c.voxels[i].z == zc).collect();
+        let (lo, hi) = (mid.iter().map(|&i| c.voxels[i].x).min(), mid.iter().map(|&i| c.voxels[i].x).max());
+        for &i in &mid {
+            if Some(c.voxels[i].x) == lo || Some(c.voxels[i].x) == hi {
+                c.voxels[i].c = glow;
+            }
+        }
+    }
+}
+
+/**
+ * The carvings on a shield as it hangs on his back (`forge`'s cut of it; the one on his arm is
+ * made from it): `n` of three, glowing marks round a ring on its face, a third of the ring a carving.
+ */
+pub fn carve_shield(c: &mut Collected, n: u8, color: u32) {
+    if n == 0 || c.voxels.is_empty() {
+        return;
+    }
+    let span = |f: fn(&super::voxels::Voxel) -> i32| {
+        let lo = c.voxels.iter().map(f).min().unwrap_or(0);
+        let hi = c.voxels.iter().map(f).max().unwrap_or(0);
+        (lo, hi)
+    };
+    let (x0, x1) = span(|v| v.x);
+    let (y0, y1) = span(|v| v.y);
+    let (cx, cy) = ((x0 + x1) as f32 / 2.0, (y0 + y1) as f32 / 2.0);
+    let r = ((x1 - x0).min(y1 - y0) as f32 / 2.0).max(1.0);
+    // The face: the front-most voxel of each column.
+    let mut front: std::collections::HashMap<(i32, i32), (i32, usize)> = std::collections::HashMap::new();
+    for (i, v) in c.voxels.iter().enumerate() {
+        let e = front.entry((v.x, v.y)).or_insert((v.z, i));
+        if v.z < e.0 {
+            *e = (v.z, i);
+        }
+    }
+    let glow = color | mat::GLOW;
+    for (&(x, y), &(_, i)) in &front {
+        let (dx, dy) = (x as f32 - cx, y as f32 - cy);
+        let d = (dx * dx + dy * dy).sqrt() / r;
+        if !(0.5..=0.62).contains(&d) {
+            continue;
+        }
+        // Twelve marks round the ring, four to a carving; a gap between each.
+        let a = (dy.atan2(dx) / std::f32::consts::TAU + 0.5) * 24.0;
+        let k = a.floor() as i32;
+        if k % 2 == 1 || (k / 2) % 3 >= n.min(3) as i32 {
+            continue;
+        }
+        if steel(c.voxels[i].c) || c.voxels[i].c >> 24 == 7 {
+            c.voxels[i].c = glow;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,6 +609,39 @@ mod tests {
                 let mut s = Sculpt::new(W * K, H * K, D * K);
                 back_shield(&mut s, n.form, n.color, tier);
                 assert!(s.finish(0.0).voxels.len() > 150, "{} is too small", n.name);
+            }
+        }
+    }
+
+    #[test]
+    fn the_old_mans_carvings_glow_on_every_blade_and_shield_more_with_each() {
+        let glowing = |c: &Collected| c.voxels.iter().filter(|v| v.c >> 24 == mat::GLOW >> 24).count();
+        for hero in ROSTER {
+            let color = crate::logic::progression::carving_color(hero);
+            for tier in 1..=TIERS {
+                let n = node(hero, Tree::Armory, tier);
+                let marks: Vec<usize> = (0..=3)
+                    .map(|k| {
+                        let mut w = weapon_for(hero, n.form, n.color, false);
+                        let before = glowing(&w);
+                        carve_blade(&mut w, k, color);
+                        glowing(&w) - before
+                    })
+                    .collect();
+                assert_eq!(marks[0], 0);
+                assert!(marks[1] > 0 && marks[2] > marks[1] && marks[3] > marks[2], "{}: {marks:?}", n.name);
+                let n = node(hero, Tree::Shield, tier);
+                let marks: Vec<usize> = (0..=3)
+                    .map(|k| {
+                        let mut s = Sculpt::new(W * K, H * K, D * K);
+                        back_shield(&mut s, n.form, n.color, tier);
+                        let mut c = s.finish(0.0);
+                        let before = glowing(&c);
+                        carve_shield(&mut c, k, color);
+                        glowing(&c) - before
+                    })
+                    .collect();
+                assert!(marks[0] == 0 && marks[1] > 0 && marks[3] > marks[1], "{}: {marks:?}", n.name);
             }
         }
     }

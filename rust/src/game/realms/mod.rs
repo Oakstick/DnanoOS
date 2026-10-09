@@ -70,6 +70,22 @@ impl Game {
         self.run.is_some()
     }
 
+    /**
+     * What the blows of what the realm (or the vaults, or the Pit) raises are multiplied by over
+     * their weight (WARBAND.md W11): its temper at the depth of the run (the keys held, New Game+'s
+     * offset aside), or the Pit's inmates'. 1 anywhere else.
+     */
+    pub(in crate::game) fn realm_blows(&self) -> f64 {
+        let depth = 1 + self.sins_cleared.count_ones() as usize;
+        if self.pit.is_some() {
+            crate::logic::pit::INMATE_BLOWS
+        } else if self.vault.is_some() {
+            crate::logic::realms::temper(Sin::Greed, depth).1
+        } else {
+            self.run.as_ref().map(|r| crate::logic::realms::temper(r.sin(), depth).1).unwrap_or(1.0)
+        }
+    }
+
     /// Lays out the realm of `sin` as its level is loaded: its packs asleep at their dens, the
     /// camera above, the far portal sealed.
     pub(super) fn enter_run(&mut self, sin: Sin) {
@@ -85,9 +101,9 @@ impl Game {
         let (tier, packs) = (b.tier, b.packs.clone());
         let mut brawl = Brawl::new(Field::Vault);
         brawl.reset(self.hero_kit());
+        self.run = Some(run);
         self.enemies = self.raise_packs(&packs, tier, &mut brawl);
         self.brawl = Some(brawl);
-        self.run = Some(run);
         self.gate_open = false;
         match sin {
             Sin::Pride => self.enter_mirrors(),
@@ -118,10 +134,15 @@ impl Game {
                 // Facing into its den, asleep at its post.
                 let facing = V::new(cx as f64 - post.x as f64, cy as f64 - post.y as f64 + 0.01);
                 let mut d = Duelist::bred(brawl.next_id(), Breed::of(kind), post.v(), facing);
-                let (hp, damage) = self.ng_foe(weight(if kind.realm_own() { 0 } else { stage }, tier));
+                let (hp, damage) = weight(if kind.realm_own() { 0 } else { stage }, tier);
+                // (The gaki's needle throats: their bites do not grow with the depth, as their
+                // number and their hunger do. WARBAND.md W11.)
+                let damage = if kind == crate::logic::enemy::EnemyKind::Gaki { 1.0 } else { damage };
+                let (hp, damage) = self.ng_foe((hp, damage));
                 d.max_hp *= hp;
                 d.hp = d.max_hp;
                 d.breed.damage *= damage;
+                d.breed.damage *= self.realm_blows();
                 d.den = Some(Den { lo, hi, home: post.v(), awake: false, returning: false });
                 e.duel = Some(Box::new(d));
                 out.push(e);
