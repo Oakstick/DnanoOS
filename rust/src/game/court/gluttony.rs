@@ -25,8 +25,8 @@ use crate::logic::combat::prince::gluttony::{
 };
 use crate::logic::combat::prince::PHASE_AT;
 use crate::logic::combat::{math, MoveId, Reel, State};
+use crate::logic::court::adds_weight;
 use crate::logic::court::gluttony::{beside_platter, platter_stand, PLATTERS, PLATTERS_LAID, PLATTERS_SET};
-use crate::logic::court::weight;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::sins::Sin;
 use crate::logic::types::{Tile, P, V};
@@ -194,7 +194,8 @@ impl Game {
             let across = math::norm(V::new(-(hp.y - at.y), hp.x - at.x));
             [-1.0, 1.0].iter().map(|s| math::add(at, math::scale(across, 2.2 * s))).collect()
         };
-        let (weight_hp, weight_damage) = if self.in_court() { weight(self.realm_tier()) } else { (1.0, 1.0) };
+        let (weight_hp, weight_damage) =
+            if self.in_court() { adds_weight(crate::logic::sins::Sin::Gluttony, self.realm_tier()) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: SWARM_RISE, ..Lore::default() };
@@ -555,7 +556,7 @@ mod tests {
         let max = beelzebub(&mut g).max_hp;
         let from = beelzebub(&mut g).pos;
         beelzebub(&mut g).rest = u16::MAX;
-        beelzebub(&mut g).hp = max * 0.67 + 1.0;
+        beelzebub(&mut g).hp = max * 0.75;
         g.call_duel_hit(0, from);
         run(&mut g, 0.05);
         let hp = beelzebub(&mut g).hp;
@@ -597,7 +598,7 @@ mod tests {
         let before = d.hp;
         g.call_duel_hit(0, from);
         let open = before - beelzebub(&mut g).hp;
-        assert!(warded > 0.0 && open > warded * 2.5, "warded {warded}, open {open}");
+        assert!(warded > 0.0 && open > warded * 1.5, "warded {warded}, open {open}");
     }
 
     /// He is hurt, rested and free, the hero far off: he goes to the nearest platter and eats.
@@ -836,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_him_back_whole_with_his_table_laid_and_continue_comes_back() {
+    fn a_fall_brings_him_back_with_his_wounds_and_his_table_laid_and_continue_comes_back() {
         let mut g = hungry();
         until_eating(&mut g);
         run(&mut g, 2.0);
@@ -846,7 +847,7 @@ mod tests {
         beelzebub(&mut g).breed.phase = 2;
         g.reset_round();
         let d = beelzebub(&mut g);
-        assert_eq!((d.hp, d.breed.phase), (max, 1));
+        assert_eq!((d.hp, d.breed.phase), (max * 0.5, 2), "his wounds kept (WARBAND.md W10)");
         assert!(!d.puppet && d.lore.vanish == 0);
         assert_eq!(banquet(&g).dishes, vec![Dish::Laden; PLATTERS_SET], "the table laid again");
         g.checkpoint(save::Stage::Court(Sin::Gluttony));
@@ -854,7 +855,7 @@ mod tests {
         let mut h = Game::new();
         h.saved_run = Some(saved);
         h.continue_game();
-        assert!(h.in_court() && h.prince().is_some());
+        assert!(h.in_court() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, "The Banquet of Flies");
     }
 

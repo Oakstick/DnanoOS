@@ -763,13 +763,18 @@ mod tests {
         draw(&mut o, &g, t);
         let whole = o.map.upload(|_, _| {});
         assert_eq!(whole, (1024 * 1024 * 4) as usize, "a new level's image goes up whole, the region cleared");
-        let n = 200;
-        let at0 = web_time::Instant::now();
-        for _ in 0..n {
-            o.begin(w, h);
-            draw(&mut o, &g, t);
+        // The fastest of 20 batches of 10 draws: a batch the scheduler took the core from (the
+        // whole suite running beside it on every core) does not count, only the draw's own cost.
+        let (batches, n) = (20, 10);
+        let mut ms = f64::MAX;
+        for _ in 0..batches {
+            let at0 = web_time::Instant::now();
+            for _ in 0..n {
+                o.begin(w, h);
+                draw(&mut o, &g, t);
+            }
+            ms = ms.min(at0.elapsed().as_secs_f64() * 1e3 / n as f64);
         }
-        let ms = at0.elapsed().as_secs_f64() * 1e3 / n as f64;
         let verts = o.verts.len();
         // A walk in the garden: each new tile's look sends a small patch.
         let mut g = at(Stage::Dungeon(0));
@@ -804,8 +809,8 @@ mod tests {
             sent.len()
         );
         assert!(!sent.is_empty() && most < whole / 8, "a patch, not the image");
-        // (Alone, about 0.02 ms; the whole suite running beside it on every core can make it a
-        // hundred times that, so only the pathological fails.)
-        assert!(ms < 5.0, "the minimap took {ms} ms");
+        // (Alone, about 0.02 ms. The best batch is seldom slowed by the load beside it, so the same
+        // limit holds under the whole suite, and a debug build; only the pathological fails.)
+        assert!(ms < 5.0, "the minimap took {ms} ms (its best batch of {n})");
     }
 }

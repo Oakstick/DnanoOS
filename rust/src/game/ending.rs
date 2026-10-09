@@ -2,7 +2,7 @@
 //! bottom of the Pit: `begin_ending` plays Scene II in the story's own player (`story`), with
 //! the hymn under it (`audio::hymn`), then the words and the credits, then the title. Esc skips
 //! it as it skips Scene I. The save remembers that the game was finished, and the title shows a
-//! small mark for it.
+//! small mark for it; the finished run is closed, so the title's Start begins a new one.
 
 use super::story::{Story, SKIP_FADE};
 use super::{Game, Screen};
@@ -61,13 +61,18 @@ impl Game {
     /**
      * The end begins: from wherever the lair leaves them (the hero and the freed boy together
      * at the bottom of the Pit), Scene II plays. The game's music stops for the hymn, the save
-     * marks the game as finished, and the fight's leftovers are cleared away.
+     * marks the game as finished, and the fight's leftovers are cleared away. The finished run is
+     * closed (the user's call, 2026-10-09): Continue is gone from the title and Start begins a new
+     * adventure; the bestiary, the settings and the finished mark stay (`close_run`).
      */
     pub fn begin_ending(&mut self) {
         self.finished = true;
         if !cfg!(test) {
             remember_finished();
         }
+        // New Game+ is offered with what the finished run holds, before it is closed (`newgame`).
+        self.offer_new_game_plus();
+        self.close_run();
         self.play_ending();
     }
 

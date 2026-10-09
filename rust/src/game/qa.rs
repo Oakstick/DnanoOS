@@ -50,8 +50,9 @@ const KEYS: [KeyCode; 24] = [
     KeyCode::Backspace,
 ];
 
-/// The testing keys (shipped in every build): F1 the Cyclops, F2 the gate, F4 the grid, F5 god
-/// mode, F6 gold, F7 and F9 the ring's bouts, F10 a rival, 0 the old man, F12 the map.
+/// The testing keys (working in developer builds only, `Game::testing_keys`; F4 the grid works in
+/// every build): F1 the Cyclops, F2 the gate, F4 the grid, F5 god mode, F6 gold, F7 and F9 the
+/// ring's bouts, F10 a rival, 0 the old man, F12 the map.
 const CHEATS: [KeyCode; 10] = [
     KeyCode::F1,
     KeyCode::F2,
@@ -174,6 +175,8 @@ pub fn soak_stop(index: usize, seed: u32, secs: f64, cheats: bool) -> StopReport
     let mut g = Game::new();
     g.reseed(seed);
     g.tour_pending = false;
+    // (With `cheats` the monkey presses the testing keys, as a developer build takes them.)
+    g.testing_keys = cheats;
     let step = crate::app::STEP;
     let mut bot = Bot::new(Skill::Expert, seed);
     let mut hands = Hands { rng: Rng::new(seed.wrapping_mul(7919).wrapping_add(index as u32)), held: Vec::new(), cheats };

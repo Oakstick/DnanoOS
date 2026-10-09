@@ -1036,6 +1036,9 @@ pub(super) fn fresh_game(seed: u32) -> Game {
     g.voices.deceit.off = true;
     g.progress = crate::logic::progression::Progress::default();
     g.saved_run = None;
+    // (Nor a New Game+ from whatever the save folder holds: a first run, unless one asks, `newgame`.)
+    g.ng_plus = 0;
+    g.ng_offer = None;
     // (And no grudges carried over from the last run's crawl: each run meets its own.)
     g.warband = Default::default();
     // ...nor the player's bestiary (filled as the bots fight, never written).

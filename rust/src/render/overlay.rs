@@ -810,6 +810,27 @@ pub fn sdf_size() -> (u32, u32) {
 mod tests {
     use super::*;
 
+    /// Words stand apart in both faces at every size the game sets (QA.md Q8: the body face's own
+    /// space, 0.16 em, ran "LET HIM GO" together): a space opens at least a quarter of the size
+    /// between two words, more than the gap between two letters, and the same in mixed case.
+    #[test]
+    fn a_word_space_sets_words_apart_in_both_faces_at_every_size() {
+        let o = Overlay::new();
+        for family in [Family::Body, Family::Display] {
+            for size in [9.0, 12.0, 16.0, 20.0, 24.0, 32.0, 48.0, 72.0] {
+                let style = Style::new(family, size, [1.0; 4]);
+                for (two, one) in [("LET HIM", "LETHIM"), ("He took", "Hetook"), ("I I", "II"), ("o o", "oo")] {
+                    let gap = o.measure_styled(two, &style) - o.measure_styled(one, &style);
+                    assert!(gap >= 0.24 * size, "{family:?} {size}: {two:?} opens {gap:.2} px");
+                }
+                // A word gap is wider than the widest gap between two letters of a word.
+                let letters = o.measure_styled("LL", &style) - 2.0 * o.measure_styled("L", &style);
+                let word = o.measure_styled("L L", &style) - 2.0 * o.measure_styled("L", &style);
+                assert!(word > letters + 0.2 * size, "{family:?} {size}");
+            }
+        }
+    }
+
     #[test]
     fn the_later_stages_names_draw_in_their_own_letters() {
         assert_eq!(build_atlas().len(), (LEGACY * LEGACY * 4) as usize);

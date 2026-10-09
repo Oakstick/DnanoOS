@@ -17,9 +17,10 @@ use crate::logic::sins::{Sin, ALL_SINS};
 use crate::logic::types::Tile;
 
 impl Game {
-    /// How hard the next realm is: as the first dungeon after the Garden, and one deeper for every sin's key held.
+    /// How hard the next realm is: as the first dungeon after the Garden, and one deeper for every
+    /// sin's key held; New Game+ adds a tier for each time over (`newgame`), on top of all of it.
     pub fn realm_tier(&self) -> usize {
-        1 + self.sins_cleared.count_ones() as usize
+        1 + self.sins_cleared.count_ones() as usize + (self.ng_plus * super::newgame::NG_TIERS) as usize
     }
 
     /// The realm of `sin`.

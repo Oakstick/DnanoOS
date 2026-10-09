@@ -48,6 +48,10 @@ pub const SDF_EM: f32 = RASTER_EM / 2.0;
 pub const SPREAD: f32 = 6.0;
 /// The atlas's width; its height is what the glyphs need, rounded up to a power of two.
 pub const SDF_W: u32 = 1024;
+/// The narrowest word space either face sets, in ems (QA.md Q8): the body face's own is 0.16, narrower
+/// than its i, and ran words together ("LET HIM GO" read "LETHIMGO"); Cinzel's is 0.25. Neither face
+/// kerns against the space.
+pub const WORD_SPACE: f32 = 0.24;
 
 /// The characters every face carries: printable ASCII, Latin-1, Latin Extended-A (the Turkish
 /// names, the macrons of the Japanese ones, and room for any name to come), and the marks the
@@ -215,6 +219,12 @@ fn build() -> Fonts {
                     faces[k].glyphs.insert(c, g);
                 }
             }
+        }
+    }
+    // Words set apart (QA.md Q8).
+    for f in faces.iter_mut() {
+        if let Some(g) = f.glyphs.get_mut(&' ') {
+            g.advance = g.advance.max(WORD_SPACE);
         }
     }
     let [b, d]: [Face; 2] = faces.try_into().ok().expect("two faces");

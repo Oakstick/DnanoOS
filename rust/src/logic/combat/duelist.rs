@@ -278,12 +278,19 @@ fn tile(p: V) -> P {
 }
 
 impl GridTerrain<'_> {
-    /// Can a body of `radius` stand at `p` (every tile its square touches walkable)?
+    /// Can a body of `radius` stand at `p` (every tile its square touches walkable)? Its corners,
+    /// and for a body wider than a tile points between them no more than a tile apart, so that a
+    /// single tile of rock (a censer, the tip of the bower's fountain) never slips between two
+    /// corners into the middle of a big body (QA.md Q17). A body a tile wide or less: its corners.
     fn fits(&self, p: V, radius: f64) -> bool {
         let r = radius * 0.9;
-        [(-r, -r), (r, -r), (-r, r), (r, r)].iter().all(|&(dx, dy)| {
-            let t = tile(V::new(p.x + dx, p.y + dy));
-            self.grid.is_walkable(t.x, t.y, false)
+        let n = ((2.0 * r).ceil() as usize).max(1);
+        let at = |k: usize| -r + 2.0 * r * k as f64 / n as f64;
+        (0..=n).all(|i| {
+            (0..=n).all(|j| {
+                let t = tile(V::new(p.x + at(i), p.y + at(j)));
+                self.grid.is_walkable(t.x, t.y, false)
+            })
         })
     }
 }
@@ -715,7 +722,7 @@ impl Duelist {
     pub fn taken(&self) -> f64 {
         match self.breed.power {
             Power::Ward if !self.exposed() => WARD_SHARE,
-            p if p.is_hide() && !self.exposed() => super::prince::HIDE_SHARE,
+            p if p.is_hide() && !self.exposed() => self.breed.hide,
             Power::Dish if self.lore.spilled > 0 => SPILLED_TAKEN,
             _ => 1.0,
         }
@@ -1248,6 +1255,35 @@ mod tests {
             }
         }
         Grid::new(w, h, tiles, vec![0; (w * h) as usize], vec![false; (w * h) as usize])
+    }
+
+    /// A big body (a prince's, 0.95) never slides onto a single tile of rock standing out of the
+    /// floor (the tip of the Rose Bower's fountain, a censer): its corners straddled it and let it
+    /// in (QA.md Q17, `--monkey 81 180`: Asmodeus inside the fountain's tip for three seconds). A
+    /// small body keeps its corners' test as it was.
+    #[test]
+    fn a_big_body_never_slides_onto_a_single_tile_of_rock() {
+        let (w, h) = (32, 32);
+        let mut tiles = vec![crate::logic::types::Tile::Open; (w * h) as usize];
+        tiles[(14 * w + 16) as usize] = crate::logic::types::Tile::Rock;
+        let grid = Grid::new(w, h, tiles, vec![0; (w * h) as usize], vec![false; (w * h) as usize]);
+        let flow = Flow::default();
+        let terrain = GridTerrain { grid: &grid, flow: &flow };
+        // The step the monkey's trace caught, and every step toward the tip from round it.
+        let to = terrain.slide(V::new(15.651432022656294, 13.474835572982817), V::new(-0.049976403659467976, 0.05376768793027485), 0.95);
+        assert!(tile(to) != P::new(16, 14), "into the rock: {to:?}");
+        for radius in [0.6, 0.8, 0.95, 1.4] {
+            for k in 0..64 {
+                let a = k as f64 / 64.0 * std::f64::consts::TAU;
+                let mut p = V::new(16.0 + a.cos() * 3.0, 14.0 + a.sin() * 3.0);
+                for _ in 0..200 {
+                    p = terrain.slide(p, scale(norm(sub(V::new(16.0, 14.0), p)), 0.05), radius);
+                    assert!(tile(p) != P::new(16, 14), "radius {radius} from {k}: into the rock at {p:?}");
+                }
+            }
+        }
+        // A small body (a tile wide or less) still stands where its corners are clear, as before.
+        assert!(terrain.fits(V::new(16.0, 13.0), 0.4) && !terrain.fits(V::new(16.0, 13.6), 0.4));
     }
 
     #[test]

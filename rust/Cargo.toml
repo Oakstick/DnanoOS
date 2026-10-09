@@ -1,6 +1,6 @@
 [package]
 name = "void-harvest"
-version = "1.0.21"
+version = "1.0.22"
 edition = "2021"
 description = "Adventures of the Ancient Blades: a voxel maze crawler"
 default-run = "AdventuresOfTheAncientBlades"

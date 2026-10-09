@@ -509,6 +509,9 @@ impl Targets {
 }
 
 pub struct Gpu {
+    /// Set by the device-lost callback (a driver reset, sleep and resume, a GPU switch): the app
+    /// presents nothing more and starts the renderer again (QA.md Q2).
+    lost: Arc<std::sync::atomic::AtomicBool>,
     pub surface: Option<wgpu::Surface<'static>>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -785,6 +788,8 @@ impl Gpu {
             .await
             .map_err(|e| format!("device: {e}"))?;
         device.on_uncaptured_error(Box::new(report_gpu_error));
+        let lost = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        device.set_device_lost_callback(on_device_lost(lost.clone()));
 
         // The shader encodes sRGB itself (as Three.js does), so the target must not.
         let format = match &surface {
@@ -1772,6 +1777,7 @@ impl Gpu {
             surface = Some(screen.finish());
         }
         Ok(Self {
+            lost,
             shadow_maps,
             shadow_views,
             preset,
@@ -1931,6 +1937,21 @@ impl Gpu {
             self.scene_bind = self.scene_inputs.bind(&self.device, &self.probe_tex);
         }
         self.preset = preset;
+    }
+
+    /// Has the device been lost? Then nothing more may be presented (wgpu ends the process on a
+    /// present to a lost device): the app starts the renderer again (QA.md Q2).
+    pub fn device_lost(&self) -> bool {
+        self.lost.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// QA (`VH_LOSE_DEVICE=SECS`): the device destroyed as a driver reset would lose it, and the
+    /// flag raised with it (a real loss raises it in the same call that finds it), so the way back
+    /// can be seen in a real window.
+    pub fn simulate_device_loss(&self) {
+        log_gpu_line("QA: the device is destroyed (VH_LOSE_DEVICE)");
+        self.device.destroy();
+        self.lost.store(true, std::sync::atomic::Ordering::Release);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -4173,6 +4194,14 @@ fn cylinder(r_top: f32, r_bottom: f32, h: f32, segments: u32) -> MeshData {
 /// rare error, and the log says what it was.
 fn report_gpu_error(error: wgpu::Error) {
     let text = format!("GPU error: {error}");
+    log_gpu_line(&text);
+    if std::env::var_os("VH_GPU_STRICT").is_some() {
+        panic!("{text}");
+    }
+}
+
+/// A line on the console and in `gpu-errors.log` beside the save.
+pub fn log_gpu_line(text: &str) {
     eprintln!("{text}");
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(dir) = crate::platform::save_dir() {
@@ -4183,14 +4212,36 @@ fn report_gpu_error(error: wgpu::Error) {
             let _ = writeln!(f, "[{when}] {} {text}", env!("CARGO_PKG_VERSION"));
         }
     }
-    if std::env::var_os("VH_GPU_STRICT").is_some() {
-        panic!("{text}");
+}
+
+/// The device-lost callback (QA.md Q2): logged, and `flag` set for the app to see before it
+/// presents. (wgpu calls it on the thread that found the loss, in the middle of a submit or a poll.)
+fn on_device_lost(flag: Arc<std::sync::atomic::AtomicBool>) -> impl Fn(wgpu::DeviceLostReason, String) + Send + 'static {
+    move |reason, message| {
+        log_gpu_line(&format!("GPU device lost ({reason:?}): {message}"));
+        flag.store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The device-lost callback raises the flag the app reads before it presents (QA.md Q2).
+    #[test]
+    fn a_lost_device_raises_the_flag_before_any_present() {
+        // (Its line goes to a log of the test's own, not the player's.)
+        let dir = std::env::temp_dir().join(format!("vh-gpu-lost-{}", std::process::id()));
+        crate::platform::use_dir_on_this_thread(dir.clone());
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cb = on_device_lost(flag.clone());
+        assert!(!flag.load(std::sync::atomic::Ordering::Acquire));
+        cb(wgpu::DeviceLostReason::Unknown, "test: the driver reset".into());
+        assert!(flag.load(std::sync::atomic::Ordering::Acquire));
+        let log = std::fs::read_to_string(dir.join("gpu-errors.log")).unwrap_or_default();
+        assert!(log.contains("GPU device lost") && log.contains("the driver reset"), "logged: {log}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn untonemap_finds_the_light_behind_a_display_colour() {

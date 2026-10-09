@@ -93,7 +93,7 @@ fn continue_comes_back_to_every_kind_of_checkpoint() {
         let hero = ROSTER[k % ROSTER.len()];
         let sins = sins_at(stage, k);
         let belt = vec![PotionKind::Health, PotionKind::Stamina][..k % 3].to_vec();
-        let run = Run { hero, stage, score: 100 + k as u32, lives: 1 + (k % 3) as u32, belt: belt.clone(), sins };
+        let run = Run { hero, stage, score: 100 + k as u32, lives: 1 + (k % 3) as u32, belt: belt.clone(), sins, ng: 0 };
         {
             let mut g = launched();
             g.saved_run = Some(run.clone());
@@ -263,6 +263,7 @@ fn a_spoiled_save_never_stops_the_game() {
         lives: 2,
         belt: vec![PotionKind::Health, PotionKind::Life],
         sins: 0b11,
+        ng: 0,
     };
     let valid = run.encode();
     g.progress = Progress::default();
@@ -799,4 +800,401 @@ fn the_bestiary_opens_everywhere_and_a_spoiled_book_never_stops_it() {
         let _ = g.bestiary.book.encode();
         draw_hud(&g);
     }
+}
+
+/// Esc (Back) on the camera choice closes it: the camera in use stays, whatever was highlighted,
+/// and play goes on to the countdown (QA.md Q13).
+#[test]
+fn back_closes_the_camera_choice_and_keeps_the_camera() {
+    use crate::render::view::CameraMode;
+    let _dir = own_folder("view-back");
+    for before in [CameraMode::Third, CameraMode::Top] {
+        let mut g = Game::new();
+        g.view.camera_mode = before;
+        g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 });
+        g.continue_game();
+        assert_eq!(g.screen, Screen::View);
+        // Another card highlighted, then Esc.
+        g.input.nav = Some(crate::logic::types::Dir::Right);
+        g.update(STEP);
+        g.input.nav = Some(crate::logic::types::Dir::Right);
+        g.update(STEP);
+        g.input.inject(Action::Back);
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Ready, "Esc closes the choice ({before:?})");
+        assert_eq!(g.view.camera_mode, before, "and keeps the camera in use");
+        assert!(until(&mut g, Screen::Playing, 10.0), "play goes on");
+    }
+}
+
+/// What a testing key could change, to see that none did.
+fn testing_marks(g: &Game) -> String {
+    let p = g.hero.pos();
+    format!(
+        "{:?} realm {:?} dungeon {} boss {} silver {} runes {} immortal {} map {} dev {} keys {} at ({:.2},{:.2}) foes {} readout {:?} bout {:?}",
+        g.screen,
+        g.realm,
+        g.dungeon,
+        g.boss.is_some(),
+        g.progress.silver,
+        g.progress.runes,
+        g.immortal,
+        g.show_map,
+        g.dev,
+        g.keys_got,
+        p.x,
+        p.y,
+        g.enemies.len(),
+        g.brawl.as_ref().map(|b| b.readout),
+        g.spar.as_ref().map(|s| s.bout),
+    )
+}
+
+/**
+ * The testing keys (F1 the Cyclops, F2 the gate, F5 god mode, F6 gold, F7-F10 the ring and a rival,
+ * F12 the developer's map, 0 the old man's wares) work only in developer builds: in a
+ * distributable (`Game::testing_keys` off, as `DEV_BUILD` leaves it there) each, pressed on the
+ * keyboard on the title, in play, in the vaults' brawl and in the Sparring Ring, does nothing. F3,
+ * F4 and F11 (the frame counter, the grid, the full screen) are the player's in every build, and
+ * the testing keys stay out of the bindable set (the user's call, 2026-10-09).
+ */
+#[test]
+fn testing_keys_are_inert_outside_developer_builds() {
+    use crate::input::bindings::{fixed_key, reserved, Control};
+    use winit::keyboard::KeyCode;
+    let _dir = own_folder("testing-keys");
+    let testing = [
+        Action::Cheat,
+        Action::KeyCheat,
+        Action::Immortal,
+        Action::Gold,
+        Action::NextStageBout,
+        Action::Readout,
+        Action::NextBout,
+        Action::MakeRival,
+        Action::DevMap,
+        Action::ShopCheat,
+    ];
+    let keys: Vec<KeyCode> = [
+        KeyCode::F1,
+        KeyCode::F2,
+        KeyCode::F5,
+        KeyCode::F6,
+        KeyCode::F7,
+        KeyCode::F8,
+        KeyCode::F9,
+        KeyCode::F10,
+        KeyCode::F12,
+        KeyCode::Digit0,
+        KeyCode::Numpad0,
+    ]
+    .into_iter()
+    .collect();
+    for k in &keys {
+        assert!(fixed_key(*k).is_some_and(|a| testing.contains(&a)), "{k:?} is a testing key");
+        assert!(reserved(Control::Key(*k)), "{k:?} stays out of the bindable set");
+    }
+    let press = |g: &mut Game, k: KeyCode| {
+        g.input.key_down(k, false);
+        g.update(STEP);
+        g.input.key_up(k);
+        for _ in 0..3 {
+            g.update(STEP);
+        }
+    };
+    let places: [(&str, Option<Stage>); 4] =
+        [("title", None), ("garden", Some(Stage::Dungeon(0))), ("vaults", Some(Stage::Realm(Sin::Greed))), ("ring", Some(Stage::Gym))];
+    for (name, stage) in places {
+        for &k in &keys {
+            let mut g = Game::new();
+            g.testing_keys = false;
+            g.dev = false;
+            if let Some(stage) = stage {
+                g.map_jump(stage);
+                g.enter(Screen::Playing);
+                g.hero.invuln = 1e9;
+            }
+            // Still for a moment, so only the key can change what is marked.
+            g.input.blur();
+            let before = testing_marks(&g);
+            press(&mut g, k);
+            g.input.blur();
+            let after = testing_marks(&g);
+            let still = |s: &str| s.split(" at (").next().unwrap_or("").to_string();
+            assert_eq!(still(&after), still(&before), "{name}: {k:?} did something in a distributable");
+        }
+    }
+    // (And where the testing keys work, they do: F6 in the garden.)
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(0));
+    g.enter(Screen::Playing);
+    let silver = g.progress.silver;
+    press(&mut g, KeyCode::F6);
+    assert_eq!(g.progress.silver, silver + super::CHEAT_COINS, "a developer build takes F6");
+}
+
+/**
+ * `--dev` on the command line is heeded only in developer builds (`DEV_BUILD`): in a distributable
+ * it leaves the developer's map hidden and the testing keys inert (F6 gives no silver), in a
+ * developer build it turns both on (the user's call, 2026-10-09).
+ */
+#[test]
+fn dev_on_the_command_line_is_ignored_outside_developer_builds() {
+    use winit::keyboard::KeyCode;
+    let _dir = own_folder("dev-flag");
+    for dev_build in [false, true] {
+        let mut g = Game::new();
+        // (A distributable's game, as `Game::new` makes it there.)
+        g.testing_keys = false;
+        g.dev = false;
+        g.ask_dev(true, dev_build);
+        assert_eq!(
+            (g.dev, g.testing_keys),
+            (dev_build, dev_build),
+            "--dev in a {} build",
+            if dev_build { "developer" } else { "distributable" }
+        );
+        g.map_jump(Stage::Dungeon(0));
+        g.enter(Screen::Playing);
+        let silver = g.progress.silver;
+        g.input.key_down(KeyCode::F6, false);
+        g.update(STEP);
+        g.input.key_up(KeyCode::F6);
+        g.update(STEP);
+        let gained = g.progress.silver - silver;
+        assert_eq!(gained, if dev_build { super::CHEAT_COINS } else { 0 }, "F6 after --dev (developer build: {dev_build})");
+    }
+    // (Without --dev nothing changes either way.)
+    let mut g = Game::new();
+    g.testing_keys = false;
+    g.dev = false;
+    g.ask_dev(false, true);
+    assert!(!g.dev && !g.testing_keys);
+}
+
+/**
+ * After the end the finished run is closed (the user's call, 2026-10-09): the title offers no
+ * Continue (now, and when the game is started again), Start begins a new adventure at once (no
+ * "start over?", nothing to lose), in the Garden with nothing of the old run (no keys, no purse,
+ * no unlocks, an empty Ledger), and the bestiary, its pages and the rivals it remembers, is intact.
+ */
+#[test]
+fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
+    use crate::logic::bestiary::{all_entries, Book, BOOK_KEY};
+    use crate::logic::enemy::EnemyKind;
+    use crate::logic::progression::Tree;
+    let _dir = own_folder("after-the-end");
+    let mut book = Book::default();
+    for e in all_entries().into_iter().take(12) {
+        book.met(e);
+        book.felled(e);
+    }
+    book.remember_rival("Thibault of Graufels", EnemyKind::Blemmyes, 3, false);
+    {
+        // A whole run behind him: at Krampus's lair, every key, a full purse, unlocks bought.
+        let mut g = launched();
+        g.bestiary.book = book.clone();
+        g.bestiary.live = true;
+        g.bestiary.dirty = true;
+        g.saved_run = Some(Run {
+            hero: HeroKind::Mehmed,
+            stage: Stage::Lair,
+            score: 9000,
+            lives: 2,
+            belt: vec![PotionKind::Health],
+            sins: ALL_SINS,
+            ng: 0,
+        });
+        g.progress.silver = 1500;
+        g.progress.runes = 40;
+        let _ = g.progress.unlock(HeroKind::Mehmed, Tree::Armory, 1);
+        g.warband.save.ledger.promote(EnemyKind::Blemmyes, crate::logic::war::names::Deed::KillingBlow, HeroKind::Mehmed, 7);
+        assert!(!g.ledger().rivals.is_empty());
+        g.mark_saves();
+        g.flush_saves();
+        g.continue_game();
+        assert!(g.in_lair());
+        assert!(until(&mut g, Screen::Playing, 30.0));
+        // Krampus falls and the friend reaches him: the end.
+        g.lair_won();
+        assert_eq!(g.screen, Screen::Story);
+        assert!(g.finished);
+        g.input.inject(Action::Pause);
+        assert!(until(&mut g, Screen::Title, 10.0), "Esc skips the end to the title");
+        assert!(!g.title_items().contains(&super::MenuItem::Continue), "no Continue after the end");
+        assert_eq!(g.saved_run, None);
+        assert_eq!(g.progress, Progress::default(), "the purse and the unlocks went with the run");
+        assert!(g.ledger().rivals.is_empty(), "the Ledger is the run's");
+        assert_eq!(g.bestiary.book, book, "the bestiary stays");
+        g.flush_saves();
+    }
+    // The game started again: still no Continue; the book as it was saved.
+    let mut g = launched();
+    assert_eq!(g.saved_run, None);
+    assert!(!g.title_items().contains(&super::MenuItem::Continue), "no Continue when started again");
+    assert_eq!(platform::load(BOOK_KEY).map(|s| Book::decode(&s)), Some(book.clone()), "the saved book stays");
+    g.bestiary.book = Book::decode(&platform::load(BOOK_KEY).unwrap_or_default());
+    // Start: a new adventure at once (nothing to ask about), from the heroes.
+    g.menu_index = g.title_items().iter().position(|&m| m == super::MenuItem::Play).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(!g.confirm_reset, "nothing to lose: Start does not ask");
+    assert_eq!(g.screen, Screen::Select);
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!((g.dungeon, g.realm, g.sins_cleared, g.keys_got), (0, None, 0, 0), "a fresh run, in the Garden");
+    assert_eq!(g.progress, Progress::default());
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(Stage::Dungeon(0)), "saved as a new run");
+    assert_eq!(g.bestiary.book.rival("Thibault of Graufels").map(|r| r.name.as_str()), Some("Thibault of Graufels"));
+    assert!(all_entries().into_iter().take(12).all(|e| g.bestiary.book.unlocked(e)), "every page still open");
+}
+
+/**
+ * New Game+ (the user's call, 2026-10-09): once the tale is told the title offers NEW GAME+ beside
+ * Start (and when the game is started again). Taken, the adventure begins from the heroes with the
+ * finished run's kit and purse, its living rivals back in the Ledger, every realm tiers harder
+ * (the Garden a stage deeper), the bestiary intact; its checkpoint carries the level and uses the
+ * offer up. Finished again, it offers NG+2. Start beside it still begins a fresh adventure.
+ */
+#[test]
+fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
+    use super::MenuItem;
+    use crate::logic::bestiary::{all_entries, Book};
+    use crate::logic::enemy::EnemyKind;
+    use crate::logic::progression::Tree;
+    use crate::logic::war::names::Deed;
+    let _dir = own_folder("new-game-plus");
+    let mut book = Book::default();
+    for e in all_entries().into_iter().take(8) {
+        book.met(e);
+    }
+    let (kit, rivals) = {
+        // A whole run behind him, as the end begins: a purse, unlocks, two rivals (one slain).
+        let mut g = launched();
+        g.bestiary.book = book.clone();
+        g.saved_run = Some(Run {
+            hero: HeroKind::Mehmed,
+            stage: Stage::Lair,
+            score: 9000,
+            lives: 2,
+            belt: vec![PotionKind::Health],
+            sins: ALL_SINS,
+            ng: 0,
+        });
+        g.progress.silver = 1500;
+        g.progress.runes = 40;
+        let _ = g.progress.unlock(HeroKind::Mehmed, Tree::Armory, 1);
+        let alive = g.warband.save.ledger.promote(EnemyKind::Blemmyes, Deed::KillingBlow, HeroKind::Mehmed, 7);
+        let slain = g.warband.save.ledger.promote(EnemyKind::Oni, Deed::KillingBlow, HeroKind::Mehmed, 9);
+        if let Some(r) = g.warband.save.ledger.get_mut(slain) {
+            r.alive = false;
+        }
+        g.mark_saves();
+        g.flush_saves();
+        g.continue_game();
+        assert!(until(&mut g, Screen::Playing, 30.0));
+        let kit = g.progress;
+        let name = g.ledger().get(alive).map(|r| r.full_name()).unwrap();
+        g.lair_won();
+        g.input.inject(Action::Pause);
+        assert!(until(&mut g, Screen::Title, 10.0));
+        assert!(g.title_items().contains(&MenuItem::NewGamePlus), "the title offers New Game+ once the tale is told");
+        assert!(g.title_items().contains(&MenuItem::Play), "...beside Start");
+        assert_eq!(g.ng_offer.as_ref().map(|o| o.level), Some(1));
+        g.flush_saves();
+        (kit, name)
+    };
+    // Started again: the offer stands. New Game+: nothing under way to lose, so it begins at once.
+    let mut g = launched();
+    g.bestiary.book = book.clone();
+    assert!(!g.title_items().contains(&MenuItem::Continue));
+    g.menu_index = g.title_items().iter().position(|&m| m == MenuItem::NewGamePlus).expect("offered when started again");
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(!g.confirm_reset);
+    assert_eq!(g.screen, Screen::Select);
+    g.select_index = HeroKind::Mehmed.slot();
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!((g.dungeon, g.sins_cleared, g.keys_got), (0, 0, 0), "from the start, in the Garden");
+    assert_eq!(g.progress, kit, "the kit and the purse kept");
+    assert!(g.progress.hero(HeroKind::Mehmed).has(Tree::Armory, 1));
+    assert_eq!(g.ledger().rivals.iter().map(|r| r.full_name()).collect::<Vec<_>>(), vec![rivals.clone()], "the living rival is back");
+    assert_eq!(g.ng_plus, 1);
+    assert_eq!(g.realm_tier(), 3, "two tiers harder: the first realm as the third");
+    assert_eq!(g.foe_stage(), 3, "the Garden two stages deeper");
+    assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.ng)), Some((Stage::Dungeon(0), 1)), "the checkpoint carries it");
+    assert!(g.ng_offer.is_none(), "the offer is used up");
+    assert!(all_entries().into_iter().take(8).all(|e| g.bestiary.book.unlocked(e)), "the bestiary intact");
+    g.flush_saves();
+    // Started again mid-way: Continue says so, and the level comes back with the run.
+    let mut g = launched();
+    assert_eq!(g.ng_plus, 1);
+    assert!(g.continue_caption().is_some_and(|c| c.contains("New Game+1")));
+    assert!(!g.title_items().contains(&MenuItem::NewGamePlus), "no offer while it is under way");
+    // Finished again: NG+2 is offered.
+    g.saved_run.as_mut().unwrap().stage = Stage::Lair;
+    g.saved_run.as_mut().unwrap().sins = ALL_SINS;
+    g.continue_game();
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!(g.realm_tier(), 10);
+    g.lair_won();
+    assert_eq!(g.ng_offer.as_ref().map(|o| o.level), Some(2));
+    g.input.inject(Action::Pause);
+    assert!(until(&mut g, Screen::Title, 10.0));
+    // Start beside it: a fresh adventure, nothing kept, a first run's tiers.
+    g.menu_index = g.title_items().iter().position(|&m| m == MenuItem::Play).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!(g.progress, Progress::default());
+    assert!(g.ledger().rivals.is_empty());
+    assert_eq!((g.ng_plus, g.realm_tier(), g.foe_stage()), (0, 1, 1));
+    assert_eq!(g.saved_run.as_ref().map(|r| r.ng), Some(0));
+    assert!(g.ng_offer.is_some(), "the offer stays on the title for another time");
+}
+
+/**
+ * The GPU lost mid-fight (QA.md Q2; the app drops the renderer and starts a new one): whatever save
+ * is marked is on disk before the renderer goes, play waits on the pause menu (and does not begin
+ * again by itself), the level is marked to go up whole to the new renderer, and a line says what
+ * happened; play goes on as before once he resumes.
+ */
+#[test]
+fn a_lost_gpu_saves_first_and_waits_on_the_pause_menu() {
+    let _dir = own_folder("gpu-lost");
+    let mut g = launched();
+    g.saved_run =
+        Some(Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Greed), score: 10, lives: 3, belt: Vec::new(), sins: 0, ng: 0 });
+    g.continue_game();
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    for _ in 0..60 {
+        g.update(STEP);
+    }
+    // Silver earned since the checkpoint, its save marked but not yet written.
+    g.progress.silver += 77;
+    g.mark_saves();
+    let silver = g.progress.silver;
+    assert_ne!(super::persist::read_progress().silver, silver, "(not yet on disk)");
+    g.view.static_dirty = false;
+    g.renderer_lost();
+    assert_eq!(super::persist::read_progress().silver, silver, "saved before the renderer goes");
+    assert_eq!(super::save::read_run().map(|r| r.stage), Some(Stage::Realm(Sin::Greed)));
+    assert_eq!(g.screen, Screen::Paused, "play waits for him");
+    assert!(g.view.static_dirty, "the level goes up whole to the new renderer");
+    assert!(g.juice.banner.as_ref().is_some_and(|b| b.text.contains("SCREEN")));
+    let at = g.hero.pos();
+    for _ in 0..(3.0 / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!((g.screen, g.hero.pos()), (Screen::Paused, at), "nothing goes on meanwhile");
+    g.focus_gained();
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing, "and on when he resumes");
 }

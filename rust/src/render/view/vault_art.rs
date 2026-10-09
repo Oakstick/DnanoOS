@@ -556,6 +556,11 @@ mod tests {
     /// 0.05); that is, its faces' dressing keeps within `LIP` of the wall's middle.
     fn walls_keep_to_their_tiles(view: &WorldView, grid: &Grid) {
         for t in &view.trees {
+            // (The court's portal is the hub's, standing on its gate's tile.)
+            let tile = (t.base.x.round() as i32, t.base.z.round() as i32);
+            if grid.get(tile.0, tile.1) != Tile::Rock || tile == crate::logic::court::GATE {
+                continue;
+            }
             for c in &view.static_cubes[t.range.0..t.range.0 + t.range.1] {
                 let m = Mat4::from_cols_array(&c.m);
                 let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));

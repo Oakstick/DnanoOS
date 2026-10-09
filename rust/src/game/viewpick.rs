@@ -38,17 +38,31 @@ impl Game {
     /// the tour (if `tour`) or the countdown.
     pub(super) fn ask_view(&mut self, tour: bool) {
         self.view_then_tour = tour;
+        self.view_before = self.view.camera_mode;
         self.enter(Screen::View);
         self.menu_index = VIEWS.iter().position(|v| v.1 == self.view.camera_mode).unwrap_or(1);
     }
 
     /// The choice: the world behind the cards is seen as the highlighted one shows it.
     pub(super) fn update_view_choice(&mut self) {
+        // Back (Esc, B) closes the choice and keeps the camera that was in use.
+        if self.input.was_pressed(&[Action::Back]) {
+            self.input.consume(Action::Back);
+            self.input.consume(Action::Pause);
+            self.view.camera_mode = self.view_before;
+            self.go_on_after_view();
+            return;
+        }
         let choice = self.menu_choice();
         self.view.camera_mode = VIEWS[self.menu_index.min(VIEWS.len() - 1)].1;
         let Some(item) = choice else { return };
         let mode = VIEWS.iter().find(|v| v.0 == item).map(|v| v.1).unwrap_or(CameraMode::Third);
         self.choose_camera(mode);
+        self.go_on_after_view();
+    }
+
+    /// The camera is settled: on to the tour (if owed) or the countdown.
+    fn go_on_after_view(&mut self) {
         self.input.consume(Action::Attack);
         self.input.consume(Action::Confirm);
         self.input.consume(Action::Jump);

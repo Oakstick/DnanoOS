@@ -39,8 +39,12 @@ pub const LINGER_SHARE: f64 = 0.25;
 
 /// His health's shares below which the second and the third phase begin.
 pub const PHASE_AT: [f64; 2] = [2.0 / 3.0, 1.0 / 3.0];
-/// The share of a blow his hide lets through outside his recoveries.
+/// The share of a blow his hide lets through outside his recoveries (a breed's own: in the ring,
+/// and Krampus's pelt).
 pub const HIDE_SHARE: f64 = 0.3;
+/// ...and in his court (WARBAND.md W10): a blow that misses his openings still tells, so a hero who
+/// guards first wears him down; one who strikes in his recoveries (whole) still fells him sooner.
+pub const COURT_HIDE: f64 = 0.6;
 /// The phase of a prince with `hp` of `max` health: 1, 2 or 3.
 pub fn phase_of(hp: f64, max: f64) -> u8 {
     let share = hp / max.max(1e-9);
@@ -59,6 +63,20 @@ pub fn phase_for(kind: EnemyKind, hp: f64, max: f64) -> u8 {
     match kind {
         EnemyKind::Krampus => krampus::phase_of(hp, max),
         _ => phase_of(hp, max),
+    }
+}
+
+/**
+ * A prince's health when the hero rises again after a fall, from `hp` of `max` as the hero fell
+ * (WARBAND.md W10): what the hero's blows took from him stays taken, as the Cyclops keeps his
+ * wounds, so a fight is never begun again from nothing while the hero has lives (a game over gives
+ * him back his health). Whole, or felled (a fall after his death is no fight), he is whole.
+ */
+pub fn after_fall(hp: f64, max: f64) -> f64 {
+    if hp.is_nan() || hp <= 0.0 || hp >= max {
+        max
+    } else {
+        hp
     }
 }
 
@@ -213,6 +231,16 @@ mod tests {
         assert_eq!(phase_of(301.0, 900.0), 2);
         assert_eq!(phase_of(300.0, 900.0), 3);
         assert_eq!(phase_of(0.0, 900.0), 3);
+    }
+
+    #[test]
+    fn a_fall_never_undoes_the_heros_blows() {
+        for hp in [1.0, 150.0, 299.5, 300.0, 300.5, 599.0, 600.0, 601.0, 899.0] {
+            assert_eq!(after_fall(hp, 900.0), hp, "his wounds stay, and his phase with them");
+        }
+        assert_eq!(after_fall(900.0, 900.0), 900.0);
+        assert_eq!(after_fall(0.0, 900.0), 900.0, "felled, no fight goes on");
+        assert_eq!(after_fall(f64::NAN, 900.0), 900.0);
     }
 
     #[test]

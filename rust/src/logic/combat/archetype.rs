@@ -271,6 +271,9 @@ pub struct Breed {
     /// The phase of a prince's fight (1 to 3, by his health; `prince::phase_of`): which of his move
     /// tables he fights with. 1 for every other body.
     pub phase: u8,
+    /// The share of a blow a hide lets through outside its openings (`prince::HIDE_SHARE`; a prince
+    /// in his court wears `prince::COURT_HIDE`).
+    pub hide: f64,
 }
 
 impl Breed {
@@ -386,7 +389,7 @@ impl Breed {
             K::Krampus => (Rider::None, Power::Pelt),
             _ => (Rider::None, Power::None),
         };
-        Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power, phase: 1 }
+        Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power, phase: 1, hide: super::prince::HIDE_SHARE }
     }
 
     /// The moves it knows, in the order it prefers them: its archetype's own, or its legend's.

@@ -448,7 +448,7 @@ impl WorldView {
 
         // ---- the gate: Wrath's portal in the south wall, looking into the hall
         let gate = Gate { tile: P::new(GATE.0, GATE.1), facing: Dir::Up, sin: crate::logic::sins::Sin::Wrath };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         self.anvil = Some(AnvilView { fires, seams, gate, throne, anvil });
     }
 

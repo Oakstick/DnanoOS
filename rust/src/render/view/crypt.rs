@@ -449,7 +449,8 @@ impl WorldView {
                 let (dx, dy) = d.vec();
                 floor_y(x + dx, y + dy)
             });
-            if lowest.fold(f32::INFINITY, f32::min) < base - 0.1 {
+            let fading = lowest.fold(f32::INFINITY, f32::min) < base - 0.1;
+            if fading {
                 let shades = self.static_cubes[start..start + len].iter().map(|c| c.emissive[3]).collect();
                 self.tree_index.insert(tile_key(x, y), self.trees.len());
                 self.trees.push(Tree {
@@ -466,6 +467,7 @@ impl WorldView {
                 continue;
             }
             let pick = hash(hx * 5.0 + 1.0, hy * 3.0 + 2.0);
+            let deco = self.static_cubes.len();
             if cis {
                 // The cisterns: columns and spouts, lanterns, few braziers, no banners.
                 let road = roads[(pick * 50.0) as usize % roads.len()];
@@ -493,6 +495,22 @@ impl WorldView {
                 self.statue(xf, yf, top + 0.11, roads[0], hx, hy);
             } else if pick < 0.25 {
                 self.wall_lantern(P::new(x, y), base, roads[(pick * 70.0) as usize % roads.len()]);
+            }
+            // What a fading wall carries on its faces (a spout's mask, a banner, a lantern's
+            // bracket, a pillar) fades with it: left standing in the air, it hid him on its own
+            // (QA.md Q9).
+            let len = self.static_cubes.len() - deco;
+            if fading && len > 0 {
+                let shades = self.static_cubes[deco..deco + len].iter().map(|c| c.emissive[3]).collect();
+                self.trees.push(Tree {
+                    range: (deco, len),
+                    base: Vec3::new(xf, 0.0, yf),
+                    radius: 0.7,
+                    height: top,
+                    fade: 1.0,
+                    alive: true,
+                    shades: Some(shades),
+                });
             }
         }
         // ---- arches over the passages (up to three wide), each with a lantern hung from its crown
@@ -787,8 +805,19 @@ impl WorldView {
             seed: (at.x as f64, at.y as f64),
         };
         let crown = arch_cubes(&mut self.static_cubes, &spec);
+        // Each pier (its shaft and its cap, the first cubes laid: `arch_cubes`) fades on its own
+        // when it stands between the camera and him: a low camera lost him behind one, under the
+        // crown's fade (QA.md Q9: the Cisterns and the Bone Vaults).
+        let shade = |cubes: &[Instance], start: usize, len: usize| cubes[start..start + len].iter().map(|c| c.emissive[3]).collect();
+        for (k, side) in [-1.0f32, 1.0].into_iter().enumerate() {
+            let range = (start + 2 * k, PIER_CUBES / 2);
+            let at = if across_x { Vec3::new(cx + side * r, floor, cz) } else { Vec3::new(cx, floor, cz + side * r) };
+            let shades = shade(&self.static_cubes, range.0, range.1);
+            self.trees.push(Tree { range, base: at, radius: 0.32, height: spring + 0.15, fade: 1.0, alive: true, shades: Some(shades) });
+        }
+        let start = start + PIER_CUBES;
         let len = self.static_cubes.len() - start;
-        let shades = self.static_cubes[start..start + len].iter().map(|c| c.emissive[3]).collect();
+        let shades = shade(&self.static_cubes, start, len);
         let foot = Vec3::new(cx, floor + spring - 0.2, cz);
         self.trees.push(Tree {
             range: (start, len),
@@ -993,6 +1022,10 @@ pub(super) struct Arch {
     pub lintel: bool,
     pub seed: (f64, f64),
 }
+
+/// The cubes of an arch's two piers (with `piers`), laid first by `arch_cubes`: for each side, west
+/// or north first, its shaft and its cap.
+const PIER_CUBES: usize = 4;
 
 pub(super) fn arch_cubes(out: &mut Vec<Instance>, a: &Arch) -> Vec3 {
     let (hx, hy) = a.seed;

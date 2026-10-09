@@ -203,13 +203,17 @@ impl WorldView {
                 self.trees.push(Tree { range: (start, len), base: c, radius: 1.1, height: 2.7, fade: 1.0, alive: true, shades: None });
             }
         }
-        // The rose arch from the court into the spiral.
+        // The rose arch from the court into the spiral (fading out of the camera's way as the
+        // path's arches do: both cameras cut into it and lost him under it, QA.md Q9).
         let (_, _, sx1, sy1) = crate::logic::realms::thorns::ring_bounds(0);
         let gate_arch = Vec3::new(sx1 as f32 + 1.5, 0.0, sy1 as f32 - 1.5);
+        let start = self.static_cubes.len();
         for (dx, across) in [(-0.5f32, Vec3::Z), (0.5, Vec3::Z)] {
             let lamp = decor::arch(&mut self.static_cubes, gate_arch + Vec3::new(dx, 0.0, 0.0), across, 3.0 + dx);
             view.lanterns.push(lamp);
         }
+        let len = self.static_cubes.len() - start;
+        self.trees.push(Tree { range: (start, len), base: gate_arch, radius: 1.3, height: 2.7, fade: 1.0, alive: true, shades: None });
 
         // ---- the props: censers, fountains, bowers, fruit trees, the pavilion, the fairy ring, the Thorn
         for c in &r.censers {
@@ -222,8 +226,13 @@ impl WorldView {
             let c = pd.center();
             view.spouts.push((spout, Vec3::new(c.x as f32, -0.08, c.y as f32)));
         }
+        // (The bowers' frames fade out of the camera's way as the arches do, QA.md Q9.)
         for (i, b) in r.bowers.iter().enumerate() {
-            decor::bower(&mut self.static_cubes, Vec3::new(b.at.x as f32, 0.0, b.at.y as f32), i as f32 * 1.7 + 0.3);
+            let start = self.static_cubes.len();
+            let at = Vec3::new(b.at.x as f32, 0.0, b.at.y as f32);
+            decor::bower(&mut self.static_cubes, at, i as f32 * 1.7 + 0.3);
+            let len = self.static_cubes.len() - start;
+            self.trees.push(Tree { range: (start, len), base: at, radius: 0.9, height: 2.4, fade: 1.0, alive: true, shades: None });
         }
         for (k, &(p, peach)) in trees.iter().enumerate() {
             let base = Vec3::new(p.x as f32, 0.0, p.y as f32);
@@ -232,11 +241,22 @@ impl WorldView {
             let len = self.static_cubes.len() - start;
             self.trees.push(Tree { range: (start, len), base, radius: 0.9, height: 2.4, fade: 1.0, alive: true, shades: None });
         }
-        decor::pavilion(&mut self.static_cubes, Vec3::new(r.home.x as f32, 0.0, r.home.y as f32));
+        // The pavilion's roof fades while he stands under it (the top camera lost him there, QA.md Q9).
+        let start = self.static_cubes.len();
+        let home = Vec3::new(r.home.x as f32, 0.0, r.home.y as f32);
+        decor::pavilion(&mut self.static_cubes, home);
+        let len = self.static_cubes.len() - start;
+        self.trees.push(Tree { range: (start, len), base: home, radius: 1.5, height: 3.0, fade: 1.0, alive: true, shades: None });
         for c in &r.dances {
             decor::fairy_ring(&mut self.static_cubes, Vec3::new(c.x as f32, 0.0, c.y as f32), 2.3);
         }
-        decor::black_thorn(&mut self.static_cubes, Vec3::new(r.black_thorn.x as f32, 0.0, r.black_thorn.y as f32));
+        // The Black Thorn's branches spread wide over the ground before it: like a fruit tree's crown
+        // it fades when the camera is in it or it stands between them (QA.md Q9).
+        let start = self.static_cubes.len();
+        let thorn = Vec3::new(r.black_thorn.x as f32, 0.0, r.black_thorn.y as f32);
+        decor::black_thorn(&mut self.static_cubes, thorn);
+        let len = self.static_cubes.len() - start;
+        self.trees.push(Tree { range: (start, len), base: thorn, radius: 1.0, height: 3.0, fade: 1.0, alive: true, shades: None });
 
         // ---- perfume mist pooled in the hollows: rose-tinted sheets, drawn every frame
         let mut mist: Vec<&P> = r.mist.iter().collect();

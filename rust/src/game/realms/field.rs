@@ -338,6 +338,48 @@ impl Game {
         f.lava += (target - f.lava).clamp(-dt / LAVA_SECONDS, dt / LAVA_SECONDS);
         self.field_mark();
         self.field_carry(&riders, &moved);
+        self.field_unblock();
+    }
+
+    /**
+     * A foe a drifting block came over is shoved out from under it (QA.md Q11). The grid follows
+     * the slabs a whole tile at a time, so as a slab drifts the rock of its wagons, towers and
+     * palisades steps onto the tiles beside them: a foe standing there (carried with the slab, or
+     * at its post) found itself inside the rock, held fast until the slab drifted on, seconds at a
+     * time. It goes to the nearest spot it can stand on with ground under it (a slab or an isle,
+     * never the lava), searched outward in quarter tiles; one with nowhere to go stays.
+     */
+    fn field_unblock(&mut self) {
+        let Some(f) = self.field() else { return };
+        let grid = &self.level.grid;
+        let flow = crate::logic::combat::duelist::Flow::default();
+        let ground = crate::logic::combat::duelist::GridTerrain { grid, flow: &flow };
+        let rock = |p: V| !grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false);
+        let mut moves: Vec<(usize, V)> = Vec::new();
+        for (i, e) in self.enemies.iter().enumerate() {
+            let Some(d) = e.duel.as_deref().filter(|d| d.alive()) else { continue };
+            if floats(e.kind()) || !rock(d.pos) {
+                continue;
+            }
+            let spot = (1..=8).find_map(|k| {
+                let r = k as f64 * 0.25;
+                (0..16).map(|a| a as f64 * std::f64::consts::TAU / 16.0).map(|a| V::new(d.pos.x + r * a.cos(), d.pos.y + r * a.sin())).find(
+                    |&p| {
+                        use crate::logic::combat::duelist::Terrain;
+                        ground.open(p) && f.ground_at(p, 0.0, None).is_some()
+                    },
+                )
+            });
+            if let Some(p) = spot {
+                moves.push((i, p));
+            }
+        }
+        for (i, p) in moves {
+            if let Some(d) = self.enemies[i].duel.as_deref_mut() {
+                d.pos = p;
+            }
+            self.enemies[i].m.tile = P::new(p.x.round() as i32, p.y.round() as i32);
+        }
     }
 
     /// Who stands on which slab now: the foes (by index), and him.
@@ -727,6 +769,7 @@ impl Game {
         let herald = f.herald.v();
         self.field_mark();
         self.field_carry(&riders, &moved);
+        self.field_unblock();
         for e in self.enemies.iter_mut() {
             if let Some(den) = e.duel.as_deref_mut().and_then(|d| d.den.as_mut()) {
                 den.awake = true;
@@ -781,6 +824,7 @@ mod tests {
     use crate::game::realms::tests::{in_realm, STEP};
     use crate::game::Screen;
     use crate::logic::sins::Sin;
+    use crate::logic::types::Tile;
 
     fn field(g: &Game) -> &Battlefield {
         g.field().unwrap()
@@ -952,6 +996,66 @@ mod tests {
         assert!(math::len(math::sub(d.pos, pa)) < 1.0, "where it fell (as its slab carried it)");
         assert!(d.lore.rise > 0, "climbing out of the ground");
         assert!(field(&g).corpses.is_empty());
+    }
+
+    /**
+     * A foe standing beside a wagon, a tower or a palisade on a drifting slab is never held inside
+     * its rock (QA.md Q11, `--monkey 81 180`: a werewolf at its post beside a block, inside the rock
+     * for three seconds and more as its slab drifted to and fro). Still foes set round every block of
+     * the drifting slabs, the field drifting on for twenty seconds: none stands in rock two frames
+     * running, and every one stays on ground.
+     */
+    #[test]
+    fn a_drifting_block_never_holds_a_foe_in_its_rock() {
+        let mut g = in_realm(Sin::Wrath);
+        run(&mut g, 0.1);
+        g.immortal = true;
+        let foe = g.enemies.iter().position(|e| !floats(e.kind()) && e.duel.is_some()).unwrap();
+        let mut keep = g.enemies.remove(foe);
+        g.enemies.clear();
+        if let Some(d) = keep.duel.as_deref_mut() {
+            d.puppet = true;
+            d.den = None;
+        }
+        // Spots just beside the blocks of the drifting slabs (outside each block's own square).
+        let mut spots: Vec<(u32, V)> = Vec::new();
+        for s in field(&g).slabs.iter().filter(|s| s.drifts() && s.solid()) {
+            for &(at, b) in &s.blocks {
+                for l in b.cover(at) {
+                    for (dx, dy) in [(-0.8, 0.0), (0.8, 0.0), (0.0, -0.8), (0.0, 0.8)] {
+                        let local = V::new(l.x as f64 + dx, l.y as f64 + dy);
+                        let near = P::new(local.x.round() as i32, local.y.round() as i32);
+                        if s.open_at(near) {
+                            spots.push((s.id, local));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(spots.len() > 40, "{} spots", spots.len());
+        let mut held = 0;
+        for (n, (id, local)) in spots.iter().enumerate().filter(|(n, _)| n % 4 == 0) {
+            let Some(s) = field(&g).slab(*id) else { continue };
+            let mut e = keep.clone();
+            if let Some(d) = e.duel.as_deref_mut() {
+                d.pos = s.world(*local);
+            }
+            g.enemies = vec![e];
+            let mut run_in_rock = 0;
+            for _ in 0..(6.0 / STEP) as usize {
+                g.update(STEP);
+                let Some(d) = g.enemies.first().and_then(|e| e.duel.as_deref()) else { break };
+                let t = P::new(d.pos.x.round() as i32, d.pos.y.round() as i32);
+                if g.level.grid.get(t.x, t.y) == Tile::Rock {
+                    run_in_rock += 1;
+                    held = held.max(run_in_rock);
+                } else {
+                    run_in_rock = 0;
+                }
+                assert!(field(&g).ground_at(d.pos, 0.3, None).is_some(), "spot {n}: off its ground at {:?}", d.pos);
+            }
+        }
+        assert!(held <= 1, "a foe held in a block's rock {held} frames running");
     }
 
     #[test]

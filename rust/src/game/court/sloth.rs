@@ -19,7 +19,7 @@ use crate::logic::combat::duelist::Lore;
 use crate::logic::combat::prince::sloth::{Doze, Slumber, DOZE_AGAIN, MEND, NIGHTMARES, NIGHTMARE_RISE, NOD_FRAMES, WAKE_FRAMES};
 use crate::logic::combat::prince::PHASE_AT;
 use crate::logic::combat::{math, MoveId};
-use crate::logic::court::{sloth::nightmare_spots, weight};
+use crate::logic::court::{adds_weight, sloth::nightmare_spots};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::sins::Sin;
 use crate::logic::types::V;
@@ -216,7 +216,8 @@ impl Game {
         let g = &self.level.grid;
         let spots = nightmare_spots((at.x, at.y), (facing.x, facing.y), |p| g.is_walkable(p.x, p.y, false));
         let hp = self.hero.pos();
-        let (weight_hp, weight_damage) = if self.in_court() { weight(self.realm_tier()) } else { (1.0, 1.0) };
+        let (weight_hp, weight_damage) =
+            if self.in_court() { adds_weight(crate::logic::sins::Sin::Sloth, self.realm_tier()) } else { (1.0, 1.0) };
         for (x, y) in spots.into_iter().take(NIGHTMARES as usize) {
             let p = V::new(x, y);
             let look = math::norm(math::sub(hp, p));
@@ -244,8 +245,8 @@ mod tests {
     use crate::game::{save, Screen};
     use crate::logic::combat::archetype::Archetype;
     use crate::logic::combat::fsm::Hit;
-    use crate::logic::combat::prince::phase_of;
     use crate::logic::combat::prince::sloth::WAKE_SHARE;
+    use crate::logic::combat::prince::{phase_of, COURT_HIDE};
     use crate::logic::combat::{Duelist, State};
     use crate::logic::types::{Tile, P};
     use crate::logic::war::general;
@@ -323,7 +324,7 @@ mod tests {
         let before = d.hp;
         strike(&mut g, 20.0);
         let warded = before - belphegor(&mut g).hp;
-        assert!(warded > 0.0 && warded < 10.0, "warded {warded}");
+        assert!(warded > 0.0 && warded <= 20.0 * COURT_HIDE + 1e-6, "warded {warded}");
         // And he fights: with the hero before him he begins a move.
         belphegor(&mut g).rest = 0;
         let mut moved = false;
@@ -345,7 +346,7 @@ mod tests {
         strike(&mut g, 1.0);
         run(&mut g, 1.5);
         assert_eq!(belphegor(&mut g).breed.phase, 1);
-        // A blow that leaves him just above two thirds: still the Sleeper.
+        // A blow that leaves him above two thirds: still the Sleeper.
         let d = belphegor(&mut g);
         (d.rest, d.token, d.f.state) = (u16::MAX, false, State::Neutral);
         d.hp = max * 0.67 + 30.0;
@@ -460,7 +461,7 @@ mod tests {
         strike(&mut g, 20.0);
         let open = before - belphegor(&mut g).hp;
         assert!((asleep - 20.0).abs() < 1e-6, "asleep: {asleep}");
-        assert!(warded > 0.0 && open > warded * 2.5, "warded {warded}, open {open}");
+        assert!(warded > 0.0 && open > warded * 1.5, "warded {warded}, open {open}");
     }
 
     /// Belphegor awake, `dist` tiles north of the hero, facing him, beginning `mv`.
@@ -580,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_belphegor_back_whole_and_asleep_and_continue_comes_back_to_his_court() {
+    fn a_fall_brings_belphegor_back_with_his_wounds_and_asleep_and_continue_comes_back_to_his_court() {
         let mut g = court();
         let max = belphegor(&mut g).max_hp;
         strike(&mut g, 1.0);
@@ -589,7 +590,7 @@ mod tests {
         belphegor(&mut g).breed.phase = 2;
         g.reset_round();
         let d = belphegor(&mut g);
-        assert_eq!((d.hp, d.breed.phase), (max, 0));
+        assert_eq!((d.hp, d.breed.phase), (max * 0.5, 0), "his wounds kept (WARBAND.md W10)");
         assert!(d.puppet && d.lore.slumber.chair, "back asleep in his chair");
         assert_eq!(d.pos, P::new(crate::logic::court::sloth::PRINCE.0, crate::logic::court::sloth::PRINCE.1).v());
         g.checkpoint(save::Stage::Court(Sin::Sloth));
@@ -597,7 +598,7 @@ mod tests {
         let mut h = Game::new();
         h.saved_run = Some(saved);
         h.continue_game();
-        assert!(h.in_court() && h.prince().is_some());
+        assert!(h.in_court() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, "The Hall of Stopped Clocks");
     }
 
@@ -638,7 +639,7 @@ mod tests {
         let before = belphegor(&mut g).hp;
         belphegor(&mut g).rest = u16::MAX;
         strike(&mut g, 20.0);
-        assert!(before - belphegor(&mut g).hp < 10.0, "no free blow: his hide turns it");
+        assert!(before - belphegor(&mut g).hp <= 20.0 * COURT_HIDE + 1e-6, "no free blow: his hide turns it");
         // ...and none come again at his second phase.
         belphegor(&mut g).hp = max * 0.6;
         strike(&mut g, 2.0);
@@ -659,7 +660,11 @@ mod tests {
             assert!(f.slain && f.deaths < 3 && f.phase == 3, "tier {tier}: {f:?}");
             assert_eq!(f.stats.overlaps, 0, "{f:?}");
         }
-        let f = court_fight(Sin::Sloth, Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 200.0);
-        assert!(!f.slain && f.game_over, "{f:?}");
+        // The masher where the run meets Belphegor first, the third court (WARBAND.md W10: his health
+        // tempered for the adept, a masher with three lives fells him at the first court's weight,
+        // where no run meets him).
+        let (slain, _, _, _, lost) =
+            crate::game::whole_run::court_at(Sin::Sloth, Skill::Novice, 1, Loadout::all(HeroKind::Ragnar, 2), 2, 200.0);
+        assert!(!slain && lost == 3, "{slain} {lost}");
     }
 }

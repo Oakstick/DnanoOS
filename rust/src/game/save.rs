@@ -2,7 +2,8 @@
 //! Cyclops' arena, the old man's wares after it), so Continue on the title
 //! picks up where the player left off: the same hero, the same stage, the
 //! score, lives and belt he had when he reached it. Start begins a new
-//! adventure and wipes everything earned, after asking.
+//! adventure and wipes everything earned, after asking. The end closes the
+//! run (`close_run`): after it, Start begins anew and there is no Continue.
 
 use super::{Game, MenuItem, Screen};
 use crate::audio::Sfx;
@@ -66,11 +67,14 @@ pub struct Run {
     pub belt: Vec<PotionKind>,
     /// The sins whose keys he holds (`Sin::bit`).
     pub sins: u8,
+    /// New Game+: how many times over the tale is being told again (0 the first time), each a tier
+    /// harder (`newgame`).
+    pub ng: u8,
 }
 
 impl Run {
     /// A line for the save file: "v2 hero stage dungeon score lives belt sins" (for a realm, its
-    /// court or the wares after it, the number is the sin's).
+    /// court or the wares after it, the number is the sin's); a New Game+ run's is "v3 ... sins ng".
     /// (A "v1" line, from before the Portals of Hell, has no sins and still loads.)
     pub fn encode(&self) -> String {
         let (kind, n) = match self.stage {
@@ -87,13 +91,19 @@ impl Run {
         };
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
-        format!("v2 {} {kind} {n} {} {} {belt} {}", self.hero.slot(), self.score, self.lives, self.sins)
+        let line = format!("{} {kind} {n} {} {} {belt} {}", self.hero.slot(), self.score, self.lives, self.sins);
+        // (A first run's line is as it always was.)
+        if self.ng == 0 {
+            format!("v2 {line}")
+        } else {
+            format!("v3 {line} {}", self.ng)
+        }
     }
 
     pub fn decode(text: &str) -> Option<Run> {
         let mut f = text.split_whitespace();
         let version = f.next()?;
-        if version != "v1" && version != "v2" {
+        if !matches!(version, "v1" | "v2" | "v3") {
             return None;
         }
         let hero = *ROSTER.get(f.next()?.parse::<usize>().ok()?)?;
@@ -118,8 +128,9 @@ impl Run {
             "-" => Vec::new(),
             list => list.split(',').map(|i| i.parse::<usize>().ok().and_then(|i| BREWS.get(i).copied())).collect::<Option<_>>()?,
         };
-        let sins = if version == "v2" { f.next()?.parse::<u8>().ok()? & ALL_SINS } else { 0 };
-        Some(Run { hero, stage, score, lives, belt, sins })
+        let sins = if version != "v1" { f.next()?.parse::<u8>().ok()? & ALL_SINS } else { 0 };
+        let ng = if version == "v3" { f.next()?.parse::<u8>().ok()?.min(super::newgame::NG_MAX) } else { 0 };
+        Some(Run { hero, stage, score, lives, belt, sins, ng })
     }
 }
 
@@ -157,7 +168,8 @@ impl Game {
             Stage::Pit(n) => format!("level {n} of the Pit"),
             Stage::Lair => "Krampus's lair".to_string(),
         };
-        Some(format!("{}, {place}", run.hero.name()))
+        let ng = if run.ng > 0 { format!(" (New Game+{})", run.ng) } else { String::new() };
+        Some(format!("{}, {place}{ng}", run.hero.name()))
     }
 
     /// Saves the adventure as it stands, at the start of `stage`.
@@ -169,7 +181,10 @@ impl Game {
             lives: self.score.lives,
             belt: self.belt.clone(),
             sins: self.sins_cleared,
+            ng: self.ng_plus,
         };
+        // (A New Game+ taken is under way from its first checkpoint: the offer is used up.)
+        self.settle_new_game_plus();
         self.write_run(Some(run));
     }
 
@@ -201,6 +216,7 @@ impl Game {
         };
         self.audio.play(Sfx::Start);
         self.hero_kind = run.hero;
+        self.ng_plus = run.ng;
         self.tour = None;
         self.tour_pending = false;
         self.score.resume(run.score, run.lives);
@@ -277,8 +293,12 @@ impl Game {
         self.menu_index = 0;
         self.input.consume(Action::Attack);
         self.input.consume(Action::Confirm);
+        let ng = std::mem::take(&mut self.confirm_ng);
         if erase {
             self.reset_everything();
+            if ng {
+                self.take_new_game_plus();
+            }
             self.play_from_title();
         }
     }
@@ -286,17 +306,28 @@ impl Game {
     /// Every hero's unlocks, the silver, the runes and the adventure under way are gone,
     /// and the first dungeon's tour is owed again. The best score stays on the board.
     fn reset_everything(&mut self) {
+        self.close_run();
+        self.hero_kind = HeroKind::Ragnar;
+        if !cfg!(test) {
+            super::tour::forget_tour();
+            self.tour_pending = true;
+        }
+    }
+
+    /// The run is over: the purse, every hero's unlocks, the Ledger and the checkpoint are gone, so
+    /// the title offers no Continue and Start begins a new adventure without asking. What lasts
+    /// across runs stays: the bestiary (its pages and the rivals it remembers), the settings and
+    /// bindings, the camera, the best score and the finished mark.
+    pub(super) fn close_run(&mut self) {
         self.progress = Progress::default();
         self.save_progress();
         self.wipe_warband();
         // (One write: the purse, the run and the Ledger go together.)
         self.write_run(None);
-        self.hero_kind = HeroKind::Ragnar;
         self.sins_cleared = 0;
-        if !cfg!(test) {
-            super::tour::forget_tour();
-            self.tour_pending = true;
-        }
+        // (A New Game+ under way is over with it; the offer, if one stands, stays on the title.)
+        self.ng_plus = 0;
+        self.ng_taken = false;
     }
 
     /// The title's buttons: Continue (when there is something to continue), Start, the
@@ -307,6 +338,10 @@ impl Game {
             vec![MenuItem::StartOver, MenuItem::KeepProgress]
         } else {
             let mut items = vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings];
+            // New Game+, once the tale is told (`newgame`), beside Start.
+            if self.ng_offer.is_some() {
+                items.insert(0, MenuItem::NewGamePlus);
+            }
             if self.can_continue() {
                 items.insert(0, MenuItem::Continue);
             }
@@ -337,16 +372,26 @@ mod tests {
                 lives: 2,
                 belt: vec![PotionKind::Health, PotionKind::Life, PotionKind::Spirit],
                 sins: 0,
+                ng: 0,
             },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0 },
-            Run { hero: HeroKind::Mehmed, stage: Stage::Shop(4), score: 99, lives: 1, belt: vec![PotionKind::Ragnarok], sins: 0b101_0011 },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Wrath), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
-            Run { hero: HeroKind::Miyamoto, stage: Stage::Court(Sin::Lust), score: 5, lives: 2, belt: Vec::new(), sins: 0x03 },
-            Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01 },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0 },
-            Run { hero: HeroKind::Mehmed, stage: Stage::Pit(4), score: 77, lives: 2, belt: vec![PotionKind::Health], sins: 0x7f },
-            Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 7, lives: 2, belt: Vec::new(), sins: 0x7f },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Envy), score: 5, lives: 3, belt: Vec::new(), sins: 0x05, ng: 2 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 },
+            Run {
+                hero: HeroKind::Mehmed,
+                stage: Stage::Shop(4),
+                score: 99,
+                lives: 1,
+                belt: vec![PotionKind::Ragnarok],
+                sins: 0b101_0011,
+                ng: 0,
+            },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f, ng: 0 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Wrath), score: 5, lives: 2, belt: Vec::new(), sins: 0x03, ng: 0 },
+            Run { hero: HeroKind::Miyamoto, stage: Stage::Court(Sin::Lust), score: 5, lives: 2, belt: Vec::new(), sins: 0x03, ng: 0 },
+            Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01, ng: 0 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 },
+            Run { hero: HeroKind::Mehmed, stage: Stage::Pit(4), score: 77, lives: 2, belt: vec![PotionKind::Health], sins: 0x7f, ng: 0 },
+            Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 7, lives: 2, belt: Vec::new(), sins: 0x7f, ng: 0 },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));

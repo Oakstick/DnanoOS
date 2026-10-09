@@ -21,8 +21,9 @@ pub const WAKE_SHARE: f64 = 0.06;
 pub const WAKE_FRAMES: u16 = 54;
 pub const NOD_FRAMES: u16 = 40;
 /// The share of his whole health he mends each second he sleeps in his second phase (never past
-/// the line where it began).
-pub const MEND: f64 = 0.008;
+/// the line where it began; WARBAND.md W10: a quarter of the 0.008 it was, which a hero with a light
+/// blade could not outstrike: at 0.004 the adept's dream phase still took two to four minutes).
+pub const MEND: f64 = 0.002;
 /// Frames awake in his second phase before he nods off again.
 pub const DOZE_AGAIN: u32 = 540;
 /// The nightmares that come out of his dream as his second phase begins (once in a fight), and

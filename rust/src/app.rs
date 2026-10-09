@@ -33,7 +33,8 @@ pub struct Options {
     pub no_vsync: bool,
     /// The quality preset (`--preset high|low`); none takes the build's default.
     pub preset: Option<crate::render::preset::Preset>,
-    /// `--dev`: the developer's map on the title and the pause menu (F12 opens it in any build).
+    /// `--dev`: the developer's map on the title and the pause menu, and the testing keys; heeded
+    /// only in developer builds (`game::DEV_BUILD`), ignored in the distributables.
     pub dev: bool,
 }
 
@@ -75,6 +76,9 @@ pub struct App {
     fps: u32,
     modifiers: ModifiersState,
     fullscreen: bool,
+    /// QA (`VH_LOSE_DEVICE=SECS`): seconds after launch at which the GPU device is lost on purpose
+    /// (and again that long after each restart), to see the way back (QA.md Q2).
+    lose_device: Option<(f64, Instant)>,
     #[cfg(feature = "steam")]
     steam: Option<Steam>,
 }
@@ -90,7 +94,7 @@ impl App {
             saved_full.unwrap_or(!cfg!(debug_assertions) && !cfg!(target_arch = "wasm32"))
         };
         let mut game = Game::new();
-        game.dev |= opts.dev;
+        game.ask_dev(opts.dev, crate::game::DEV_BUILD);
         Self {
             opts,
             window: None,
@@ -114,6 +118,7 @@ impl App {
             fps: 0,
             modifiers: ModifiersState::empty(),
             fullscreen,
+            lose_device: std::env::var("VH_LOSE_DEVICE").ok().and_then(|v| v.parse().ok()).map(|s: f64| (s, Instant::now())),
             #[cfg(feature = "steam")]
             steam: Steam::init(),
         }
@@ -291,7 +296,68 @@ impl App {
         self.render();
     }
 
+    /**
+     * The GPU device was lost (QA.md Q2): wgpu would end the process on the next present, so
+     * nothing more is presented. The game saves what is marked and pauses; the old renderer is
+     * dropped with everything it held, and a new one starts as at launch (the engine's loading
+     * screen in the window meanwhile, the game holding), and the level goes up to it whole.
+     */
+    fn restart_renderer(&mut self) {
+        crate::render::gpu::log_gpu_line("the renderer starts again after the device was lost");
+        self.game.renderer_lost();
+        self.set_capture(false);
+        self.gpu = None;
+        self.overlay = Overlay::new();
+        self.frame = Frame::default();
+        if let Some(window) = self.window.clone() {
+            self.start_renderer(&window);
+        }
+    }
+
+    /// Starts the renderer for `window`: on its own thread on the desktop (its shaders take
+    /// seconds to compile, and the window keeps answering), as a task on the web.
+    fn start_renderer(&mut self, window: &Arc<Window>) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // (Its surfaces are made here, where Windows gives out the window's handle.)
+            let size = window.inner_size();
+            let candidates = Gpu::surfaces(Some(window));
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let painted = tx.clone();
+                let gpu = Gpu::start(candidates, (size.width, size.height), move || {
+                    let _ = painted.send(Starting::Painted);
+                });
+                let _ = tx.send(Starting::Ready(pollster::block_on(gpu).map(Box::new)));
+            });
+            self.starting = Some(rx);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let pending = self.pending.clone();
+            let w = window.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let size = w.inner_size();
+                let gpu = Gpu::new(Some(w.clone()), (size.width.max(1), size.height.max(1))).await;
+                *pending.borrow_mut() = Some(gpu);
+                w.request_redraw();
+            });
+        }
+        self.last = Instant::now();
+        window.request_redraw();
+    }
+
     fn render(&mut self) {
+        if let (Some((secs, since)), Some(gpu)) = (self.lose_device, &self.gpu) {
+            if since.elapsed().as_secs_f64() >= secs {
+                gpu.simulate_device_loss();
+                self.lose_device = Some((secs, Instant::now() + std::time::Duration::from_secs(10)));
+            }
+        }
+        if self.gpu.as_ref().is_some_and(|g| g.device_lost()) {
+            self.restart_renderer();
+            return;
+        }
         let (Some(window), Some(gpu)) = (&self.window, &mut self.gpu) else { return };
         let size = window.inner_size();
         if size.width == 0 || size.height == 0 {
@@ -337,6 +403,13 @@ impl App {
                 } else {
                     Vec::new()
                 };
+                if gpu.device_lost() {
+                    // Lost during this frame's submit: presenting its texture, or dropping it
+                    // (a discard), would end the process; it is let go with the old renderer,
+                    // which the next frame replaces.
+                    std::mem::forget(tex);
+                    return;
+                }
                 window.pre_present_notify();
                 tex.present();
             }
@@ -472,36 +545,9 @@ impl ApplicationHandler for App {
             self.apply_fullscreen();
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // The renderer takes seconds to start (its shaders compile): on its own thread, so
-            // the event loop keeps answering and Windows never calls the window not responding.
-            // (Its surfaces are made here, where Windows gives out the window's handle.)
-            let size = window.inner_size();
-            let candidates = Gpu::surfaces(Some(&window));
-            let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                let painted = tx.clone();
-                let gpu = Gpu::start(candidates, (size.width, size.height), move || {
-                    let _ = painted.send(Starting::Painted);
-                });
-                let _ = tx.send(Starting::Ready(pollster::block_on(gpu).map(Box::new)));
-            });
-            self.starting = Some(rx);
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let pending = self.pending.clone();
-            let w = window.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let size = w.inner_size();
-                let gpu = Gpu::new(Some(w.clone()), (size.width.max(1), size.height.max(1))).await;
-                *pending.borrow_mut() = Some(gpu);
-                w.request_redraw();
-            });
-        }
-        self.last = Instant::now();
-        window.request_redraw();
+        // The renderer takes seconds to start (its shaders compile): on its own thread, so the
+        // event loop keeps answering and Windows never calls the window not responding.
+        self.start_renderer(&window);
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {

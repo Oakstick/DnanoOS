@@ -1,4 +1,5 @@
-//! Testing cheats and debug hooks: F1, F2 and 0 on the keyboard, and the capture tool's commands.
+//! Testing cheats and debug hooks: F1, F2 and 0 on the keyboard (developer builds only:
+//! `Game::testing_keys`), and the capture tool's commands.
 
 use super::{Game, Screen, CHEAT_COINS};
 use crate::input::Action;
@@ -14,6 +15,16 @@ use crate::logic::types::{Dir, PotionKind, Tile, P};
 const CHEAT_RUNES: u32 = 10;
 
 impl Game {
+    /// `--dev` on the command line (`asked`): the developer's map and the testing keys, but only in
+    /// a developer build (`dev_build`: `DEV_BUILD`, a debug build or `VH_DEV_MENU`). In the
+    /// distributables (`build-windows.ps1`, the web) it is ignored (the user's call, 2026-10-09).
+    pub fn ask_dev(&mut self, asked: bool, dev_build: bool) {
+        if asked && dev_build {
+            self.dev = true;
+            self.testing_keys = true;
+        }
+    }
+
     /// F2: every key found at once, and Ragnar at the gate (testing cheat).
     pub fn cheat_to_gate(&mut self) {
         if self.vault.is_some() {

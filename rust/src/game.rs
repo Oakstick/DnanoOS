@@ -50,6 +50,7 @@ mod level;
 mod map;
 pub mod mastery;
 mod movement;
+pub mod newgame;
 mod packs;
 mod persist;
 mod pickups;
@@ -154,6 +155,11 @@ const MODE_SCHEDULE: [(GlobalMode, f64); 1] = [(GlobalMode::Chase, f64::INFINITY
 /// The beat before play: READY, then GO!
 pub const READY_SECONDS: f64 = 2.0;
 
+/// A build for developing: a debug build, or a release build `tools/release.sh` makes for the
+/// Desktop (`VH_DEV_MENU`). The distributables (`build-windows.ps1`, the web) are not: there the
+/// testing keys do nothing (the user's call, 2026-10-09: F1 is the help key on many keyboards).
+pub const DEV_BUILD: bool = cfg!(debug_assertions) || option_env!("VH_DEV_MENU").is_some();
+
 /// The fanfare and the fade into the boss arena.
 pub const CLEARED_SECONDS: f64 = 3.4;
 /// The Cyclops' red diamond key, on the HUD and the gate's lock lamp.
@@ -174,6 +180,9 @@ pub enum MenuItem {
     Play,
     /// Back into the saved adventure.
     Continue,
+    /// Once the tale is told: begin again with the kit, the purse and the rivals, tiers harder
+    /// (`newgame`).
+    NewGamePlus,
     /// The answers to "start over?".
     StartOver,
     KeepProgress,
@@ -213,6 +222,7 @@ impl MenuItem {
         match self {
             MenuItem::Play => "START",
             MenuItem::Continue => "CONTINUE",
+            MenuItem::NewGamePlus => "NEW GAME+",
             MenuItem::StartOver => "START OVER",
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Controls => "CONTROLLER",
@@ -417,6 +427,8 @@ pub struct Game {
     pub tour_pending: bool,
     /// After the camera is chosen: the tour (or else the countdown).
     view_then_tour: bool,
+    /// The camera in use when the choice opened (Back keeps it).
+    view_before: crate::render::view::CameraMode,
     /// The hero being played (chosen on the character screen).
     pub hero_kind: crate::logic::heroes::HeroKind,
     /// The character screen: which place in the line-up is highlighted, seconds since it
@@ -434,6 +446,15 @@ pub struct Game {
     pub persist: persist::Persist,
     /// The title is asking whether to wipe everything and start over.
     pub confirm_reset: bool,
+    /// ...for New Game+ (it begins once the answer is yes).
+    pub confirm_ng: bool,
+    /// New Game+: how many times over this run tells the tale (0 the first time); every foe and
+    /// prince `newgame::NG_TIERS` harder for each (`newgame`).
+    pub ng_plus: u8,
+    /// New Game+ was chosen and its run has not reached its first checkpoint yet.
+    ng_taken: bool,
+    /// What New Game+ would begin with, once the tale is told (the title offers it).
+    pub ng_offer: Option<newgame::NgOffer>,
     /// The controller page is open over the title or the pause menu.
     pub show_controls: bool,
     /// The map page is open over the title or the pause menu; which stop is highlighted.
@@ -441,9 +462,12 @@ pub struct Game {
     pub map_index: usize,
     /// The minimap's settings and the full map while it is open (`fullmap`).
     pub map_ui: fullmap::MapUi,
-    /// Developer builds, `--dev`, or F12 pressed once: the developer's map on the title and the
-    /// pause menu.
+    /// Developer builds, `--dev`, or F12 pressed once (where the testing keys work): the
+    /// developer's map on the title and the pause menu.
     pub dev: bool,
+    /// The testing keys work (F1, F2, F5-F10, F12, 0): in developer builds only (`DEV_BUILD`), or
+    /// with `--dev` there (`ask_dev`) and the harnesses; inert in the distributables.
+    pub testing_keys: bool,
     /// The archangel's blessing he carries (from dungeon to dungeon), if any.
     pub blessing: Option<crate::logic::angels::Blessing>,
     /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
@@ -610,6 +634,7 @@ impl Game {
             // Tests start straight into play; they switch the tour on when they want it.
             tour_pending: !cfg!(test) && !tour::tour_seen(),
             view_then_tour: false,
+            view_before: crate::render::view::CameraMode::Third,
             hero_kind: crate::logic::heroes::HeroKind::Ragnar,
             select_index: 1,
             select_age: 0.0,
@@ -619,13 +644,20 @@ impl Game {
             saved_run: save::load_run(),
             persist: persist::Persist::default(),
             confirm_reset: false,
+            confirm_ng: false,
+            ng_plus: 0,
+            ng_taken: false,
+            ng_offer: newgame::load_offer(),
             show_controls: false,
             show_map: false,
             map_index: 0,
             map_ui: fullmap::MapUi::load(),
             // (Developing: debug builds, and the release builds `tools/release.sh` makes for the
-            // Desktop (`VH_DEV_MENU`), not the distributables; F12 opens it in any build.)
-            dev: (cfg!(debug_assertions) || option_env!("VH_DEV_MENU").is_some()) && !cfg!(test),
+            // Desktop (`VH_DEV_MENU`), not the distributables; F12 opens it where the testing keys
+            // work.)
+            dev: DEV_BUILD && !cfg!(test),
+            // (The tests press them; `testing_keys_are_inert_outside_developer_builds` turns them off.)
+            testing_keys: DEV_BUILD || cfg!(test),
             blessing: None,
             uriel_rest: 0.0,
             refused_at: -10.0,
@@ -657,6 +689,8 @@ impl Game {
             focused: true,
             device_saved: None,
         };
+        // A New Game+ under way, as its checkpoint says.
+        g.ng_plus = g.saved_run.as_ref().map_or(0, |r| r.ng);
         // The settings into the input, the mixer, the HUD and the view.
         g.apply_settings();
         g.load_level(0);
@@ -683,6 +717,31 @@ impl Game {
     pub fn reseed(&mut self, seed: u32) {
         self.rng = Rng::new(seed);
         self.view.reseed(seed.wrapping_add(1));
+    }
+
+    /// The old man's guide (B) and the belt (turned, drunk from): in play, and while the Pit's
+    /// platform goes down. True when the guide opened (the tick ends there).
+    fn guide_and_belt(&mut self) -> bool {
+        if self.input.was_pressed(&[Action::Guide]) && self.screen == Screen::Playing {
+            self.open_guide();
+            return true;
+        }
+        // The wheel or the D-pad's left and right: the potion before or after on the belt.
+        let turn = self.input.was_pressed(&[Action::PotionNext]) as usize
+            + self.belt.len().saturating_sub(1) * self.input.was_pressed(&[Action::PotionPrev]) as usize;
+        if turn > 0 && !self.belt.is_empty() {
+            self.belt_index = (self.belt_index + turn) % self.belt.len();
+            self.audio.play(Sfx::Nodule);
+        }
+        if self.input.was_pressed(&[Action::Drink]) {
+            self.drink(self.belt_index);
+        }
+        for slot in 0..BELT_SLOTS {
+            if self.input.was_pressed(&[Action::Slot(slot as u8)]) {
+                self.drink(slot);
+            }
+        }
+        false
     }
 
     fn tick(&mut self, dt: f64) {
@@ -755,24 +814,8 @@ impl Game {
         if !ring && self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
             self.audio.play(Sfx::Jump);
         }
-        if self.input.was_pressed(&[Action::Guide]) && self.screen == Screen::Playing {
-            self.open_guide();
+        if self.guide_and_belt() {
             return;
-        }
-        // The wheel or the D-pad's left and right: the potion before or after on the belt.
-        let turn = self.input.was_pressed(&[Action::PotionNext]) as usize
-            + self.belt.len().saturating_sub(1) * self.input.was_pressed(&[Action::PotionPrev]) as usize;
-        if turn > 0 && !self.belt.is_empty() {
-            self.belt_index = (self.belt_index + turn) % self.belt.len();
-            self.audio.play(Sfx::Nodule);
-        }
-        if self.input.was_pressed(&[Action::Drink]) {
-            self.drink(self.belt_index);
-        }
-        for slot in 0..BELT_SLOTS {
-            if self.input.was_pressed(&[Action::Slot(slot as u8)]) {
-                self.drink(slot);
-            }
         }
         self.sim.hero += lap.lap();
         self.update_projectiles(dt);
@@ -796,6 +839,9 @@ impl Game {
         }
         if self.lair.is_some() {
             self.update_lair(dt);
+            if self.screen == Screen::Story {
+                return; // the end has begun: the run is closed, nothing more of it is counted
+            }
         }
 
         self.sim.boss += lap.lap();

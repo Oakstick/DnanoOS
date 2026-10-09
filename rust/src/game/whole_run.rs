@@ -427,6 +427,8 @@ pub struct WholeRun {
     pub ledger: (u32, u32, u32, u8, u32),
     /// How the rivals' remembered fights ended: the hero won, the rival won, he fled, the hero left.
     pub outcomes: [u32; 4],
+    /// New Game+: the times over (0 a first run).
+    pub ng: u8,
 }
 
 impl WholeRun {
@@ -751,10 +753,49 @@ pub fn whole_run(skill: Skill, seed: u32, order: usize) -> WholeRun {
     run
 }
 
+/**
+ * New Game+ `ng` times over (`newgame`): the whole run played as `whole_run` plays it, then again
+ * from the start with what it left (the kit, the purse, the living rivals) tiers harder, `ng`
+ * times; the last is returned. A run that does not reach the end hands on what it had where it
+ * stopped, as if it had (the adept's runs end at a prince). `ng` 0 is `whole_run` itself.
+ */
+pub fn whole_run_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> WholeRun {
+    if ng == 0 {
+        return whole_run(skill, seed, order);
+    }
+    let sins = ORDERS[order.min(1)];
+    let mut g = fresh_game(seed);
+    let mut run = play_run(&mut g, skill, seed, &sins, true);
+    for _ in 0..ng.min(super::newgame::NG_MAX) {
+        let offer = g.ng_offer.take().unwrap_or_else(|| g.new_game_plus_offer());
+        // (Back to the title, as the end or Quit to Title leaves him, and the run closed.)
+        if g.story.is_some() {
+            g.finish_ending();
+        }
+        g.story = None;
+        g.enter(Screen::Title);
+        g.close_run();
+        // (Closing the run wipes the voices: the harness keeps the prince's cheats off, `fresh_game`.)
+        g.voices.deceit.off = true;
+        g.ng_offer = Some(offer);
+        g.take_new_game_plus();
+        run = play_run(&mut g, skill, seed, &sins, true);
+    }
+    run.order = order;
+    finish_report(&mut run, &g);
+    run
+}
+
 /// The run through the realms of `sins` in that order, and on through the finale if `finale`.
 pub fn run_of(skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
     let mut g = fresh_game(seed);
     let mut run = play_run(&mut g, skill, seed, sins, finale);
+    finish_report(&mut run, &g);
+    run
+}
+
+/// The purse and the Ledger at the run's end, into its report.
+fn finish_report(run: &mut WholeRun, g: &Game) {
     run.purse = (g.progress.silver, g.progress.runes);
     let l = &g.warband.save.ledger;
     run.ledger = (
@@ -773,7 +814,6 @@ pub fn run_of(skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
             Outcome::HeroLeft => 3,
         }] += 1;
     }
-    run
 }
 
 fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
@@ -791,6 +831,7 @@ fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -
         purse: (0, 0),
         ledger: (0, 0, 0, 0, 0),
         outcomes: [0; 4],
+        ng: g.ng_plus,
     };
     let mut before = Part::new(PartKind::Pit, g);
     shop(g, skill, seed, &mut before);
@@ -806,7 +847,9 @@ fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -
         }
         // (A realm the bots cannot read, lost to its ground, is passed as a player who learnt it
         // would pass it: its fights are counted, and the run goes on to the court.)
-        let lost = realm.game_overs >= TRIES && bots_walk(sin);
+        // (`VH_RUN_PASS`: a walked realm lost is passed as a stand-in's is, to measure the courts
+        // and the finale past a realm the bot cannot clear.)
+        let lost = realm.game_overs >= TRIES && bots_walk(sin) && std::env::var_os("VH_RUN_PASS").is_none();
         if !lost {
             // (He calls the old man before the court, as H does anywhere: the same rule.)
             shop(g, skill, seed, &mut realm);
@@ -866,8 +909,9 @@ pub fn run_table(r: &WholeRun) -> String {
     // (The Drum paces the realms and the Pit; a court keeps its own pace.)
     let drum = |fights: bool, v: f64, d: usize| if fights { "-".to_string() } else { format!("{v:.d$}") };
     let mut out = format!(
-        "THE WHOLE RUN {} seed {} order {} (Garden's purse {} silver, {} runes)\n",
+        "THE WHOLE RUN {}{} seed {} order {} (Garden's purse {} silver, {} runes)\n",
         r.skill.name(),
+        if r.ng > 0 { format!(" NEW GAME+{}", r.ng) } else { String::new() },
         r.seed,
         r.order,
         r.garden.0,
@@ -959,16 +1003,40 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
     }
     g.map_jump(Stage::Court(sin));
     kit.equip(&mut g);
+    // (`VH_EDGE=N`: his blade's edge, 0 to 100, as the run's realm left it.)
+    if let Some(n) = std::env::var("VH_EDGE").ok().and_then(|v| v.parse::<u8>().ok()) {
+        let h = g.progress.hero_mut(g.hero_kind);
+        h.edge[(h.wield.clamp(1, 10) - 1) as usize] = n.min(100);
+        g.equip_from_progress();
+    }
+    // (`VH_LIVES=N`: the lives he brings, as the run's checkpoint gives them.)
+    if let Some(n) = std::env::var("VH_LIVES").ok().and_then(|v| v.parse::<u32>().ok()) {
+        g.score.resume(g.score.score, n);
+    }
+    // (`VH_BELT=N`: N health bottles on his belt, as the run's old man fills it.)
+    if let Some(n) = std::env::var("VH_BELT").ok().and_then(|v| v.parse::<usize>().ok()) {
+        g.belt = vec![PotionKind::Health; n.min(BELT_SLOTS)];
+    }
     into_play(&mut g, Some(CameraMode::Top));
     let mut bot = Bot::new(skill, seed);
     let lives = g.score.lives;
     let (step, mut t, mut phase) = (crate::app::STEP, 0.0, 0);
     let mut slain = false;
+    // (`VH_COURT_STATS`: each life's numbers as it ends, and the last one's.)
+    let stats = std::env::var_os("VH_COURT_STATS").is_some();
+    let mut dying = false;
     while t < limit {
         let pad = if g.screen == Screen::Playing { bot.act(&g) } else { PadState::default() };
         g.input.set_pad(Some(pad));
         g.update(step);
         t += step;
+        if stats && (g.screen == Screen::Dying) != dying {
+            dying = !dying;
+            if dying {
+                let left = g.prince().map(|d| d.hp / d.max_hp * 100.0).unwrap_or(0.0);
+                eprintln!("fell at {t:.0} s, {left:.0}% left: {:?}", g.brawl.as_ref().map(|b| b.stats));
+            }
+        }
         match g.screen {
             Screen::GameOver => break,
             Screen::Ready | Screen::View => g.enter(Screen::Playing),
@@ -981,6 +1049,9 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
         }
     }
     let left = g.prince().map(|d| d.hp / d.max_hp).unwrap_or(0.0);
+    if stats {
+        eprintln!("ended at {t:.0} s: {:?}", g.brawl.as_ref().map(|b| b.stats));
+    }
     (slain, t, phase, left, lives.saturating_sub(g.score.lives))
 }
 

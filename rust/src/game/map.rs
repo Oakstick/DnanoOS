@@ -1,6 +1,6 @@
-//! The developer's map, from F12 (in any build) or LEVELS on the title and the pause menu (in
-//! developer builds and the Desktop builds `tools/release.sh` makes, with `--dev`, or once F12 has
-//! opened it): every stop on the road down (the
+//! The developer's map, from F12 or LEVELS on the title and the pause menu (in developer builds
+//! and the Desktop builds `tools/release.sh` makes, with `--dev`, or once F12 has opened it; F12,
+//! like every testing key, does nothing in the distributables: `Game::testing_keys`): every stop on the road down (the
 //! Garden and its Cyclops, the Portals of Hell, then each sin's realm and its prince's court, the
 //! Pit, the scenes, the full map), and a jump straight to any of them, for testing. It lies over
 //! the screen (drawn by `render::hud::map`) until B, Esc, Start or the map action puts it away.

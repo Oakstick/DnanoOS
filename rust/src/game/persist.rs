@@ -159,6 +159,8 @@ impl Game {
         self.saved_run = super::save::read_run();
         self.progress = read_progress();
         self.warband = super::ledger::Warband::read();
+        self.ng_plus = self.saved_run.as_ref().map_or(0, |r| r.ng);
+        self.ng_offer = super::newgame::NgOffer::read();
     }
 }
 
@@ -333,6 +335,7 @@ mod tests {
             lives: 2,
             belt: Vec::new(),
             sins: 1,
+            ng: 0,
         });
         g.progress.silver = 4321;
         let n = 40;
