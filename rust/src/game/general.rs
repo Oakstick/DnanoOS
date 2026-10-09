@@ -28,7 +28,7 @@ use crate::logic::enemy::{spec_of, Enemy, EnemyKind, EnemyMode};
 use crate::logic::juice::Trauma;
 use crate::logic::realms::{Dealer, Run};
 use crate::logic::sins::Sin;
-use crate::logic::types::{dist_sq, P, V};
+use crate::logic::types::{dist_sq, Tile, P, V};
 use crate::logic::war::general::{
     self, place, Command, Counter, Cue, General, OrderKind, OrderStage, Posts, PrinceTerms, Records, BAR_FRAMES, CARRIER_PACE, HAZARD_IDS,
     KINDLE_EVERY, KINDLE_FUSE, KINDLE_MARKS, KINDLE_RADIUS, KINDLE_ZONE, MUSTER, PATROL, PATROL_SIGHT, WHISTLE, WHISTLE_WAKES,
@@ -961,6 +961,14 @@ impl Game {
         let Some(g) = self.general.as_ref() else { return };
         let Some(gi) = g.gate else { return };
         let gate = g.posts.gates[gi];
+        // (A gate the realm has shut for good since, a seam's teeth closed on it: none come through.)
+        if g.layout.get(gate.x, gate.y) == Tile::Rock {
+            if let Some(r) = self.general.as_mut() {
+                r.gate = None;
+                r.bar = 0;
+            }
+            return;
+        }
         let n = MUSTER + g.command.muster_extra;
         let hp = self.hero.pos();
         let goal = P::new(hp.x.round() as i32, hp.y.round() as i32);
@@ -1413,6 +1421,58 @@ impl Game {
         self.know_general(false);
     }
 
+    /**
+     * The realm has shut `tiles` for good (the Rotting Feast's teeth closed on a seam): the general's
+     * map of the ground learns it, and nothing of his walks through them from now on. A puppet whose
+     * way crosses them gives the way up where it stands (one of a muster hunts him from there by its
+     * own way; the rest stand guard there), and a watch whose round crosses them sets out no more
+     * (QA.md Q3: the Steward's watch walked its round through the closed gatehouse, and his muster
+     * marched in through the teeth from the digested zone).
+     */
+    pub(super) fn general_ground_shut(&mut self, tiles: &[P]) {
+        let Some(g) = self.general.as_mut() else { return };
+        for p in tiles {
+            g.layout.set(p.x, p.y, Tile::Rock);
+        }
+        let crosses = |path: &[P]| path.iter().any(|p| tiles.contains(p));
+        if crosses(&g.posts.round) {
+            g.posts.round.clear();
+        }
+        // A muster's gate shut, or cut off from where he is: barred for good, as if he had barred
+        // it (the muster glowing there fails).
+        let mut failed = None;
+        for i in 0..g.posts.gates.len() {
+            let gate = g.posts.gates[i];
+            let cut = tiles.contains(&gate) || general::walk(&g.layout, gate, g.posts.post).is_none();
+            if cut && !g.barred[i] {
+                g.barred[i] = true;
+                if g.gate == Some(i) {
+                    g.gate = None;
+                    g.bar = 0;
+                    failed = g.general().index_of(OrderKind::Muster).and_then(|k| g.command.fail(k));
+                }
+            }
+        }
+        let mut released: Vec<(u32, bool)> = Vec::new();
+        g.walkers.retain(|w| {
+            if matches!(w.then, Then::Herald(_)) || !crosses(&w.path) {
+                return true;
+            }
+            released.push((w.id, w.then == Then::Hunt));
+            false
+        });
+        for (id, hunt) in released {
+            if let Some(d) = self.foe_mut(id) {
+                d.puppet = false;
+                let at = P::new(d.pos.x.round() as i32, d.pos.y.round() as i32);
+                d.den = if hunt { None } else { Some(Self::den_at(at, 2.0)) };
+            }
+        }
+        if let Some(c) = failed {
+            self.general_cue(c);
+        }
+    }
+
     /// The puppets on their ways: the watch on its round, the mustered on the march, the carriers,
     /// the guards sent to an instrument. A walker struck on the way turns on him (but a carrier).
     fn walk_puppets(&mut self, dt: f64) {
@@ -1509,8 +1569,11 @@ impl Game {
                     }
                 }
                 (Then::Hold(at), false) => {
+                    // (Where its post has turned to rock since, it holds where it came to.)
+                    let open = self.level.grid.get(at.x, at.y) != Tile::Rock;
                     if let Some(d) = self.foe_mut(w.id) {
                         d.puppet = false;
+                        let at = if open { at } else { P::new(d.pos.x.round() as i32, d.pos.y.round() as i32) };
                         d.pos = at.v();
                         d.den = Some(Self::den_at(at, 3.0));
                     }
@@ -1924,5 +1987,40 @@ mod tests {
         g.map_jump(Stage::Realm(Sin::Wrath));
         let r = g.general.as_ref().unwrap();
         assert!(r.command.instruments[1].broken && r.command.stages[1] == OrderStage::Broken);
+    }
+
+    /**
+     * The Rotting Feast's teeth close on a seam: nothing of the Steward's walks through them after
+     * (QA.md Q3). A puppet whose way crosses them gives it up where it stands, his map of the ground
+     * learns the rock (so no muster marches in through a gate behind them), and a watch whose round
+     * crossed them sets out no more.
+     */
+    #[test]
+    fn the_teeth_shut_the_generals_ways_too() {
+        let mut g = at_the_post(Sin::Gluttony);
+        frames(&mut g, 5);
+        let Some(Run::Gluttony(f)) = g.run.as_ref() else { panic!("the Rotting Feast") };
+        let seam = f.seams[0].clone();
+        let shut: Vec<P> = seam.narrow.tiles.iter().chain(&seam.wide.tiles).copied().collect();
+        let layout = g.general.as_ref().expect("the Steward").layout.clone();
+        let way = general::walk(&layout, seam.wide.south[0], seam.wide.north[0]).expect("a way through the gatehouse");
+        assert!(way.iter().any(|p| shut.contains(p)));
+        let id = g.raise(EnemyKind::Skeleton, 1, way[0], None, true, 1.0).expect("raised");
+        let hp = g.foe(id).unwrap().hp;
+        g.general.as_mut().unwrap().walkers.push(Walker { id, path: way, at: 0.0, pace: 1.0, then: Then::Hold(seam.wide.north[0]), hp });
+        let gate = g.general.as_ref().unwrap().posts.gates[0];
+        g.general_ground_shut(&shut);
+        let r = g.general.as_ref().unwrap();
+        assert!(r.walkers.iter().all(|w| w.id != id), "its way given up");
+        assert!(shut.iter().all(|p| r.layout.get(p.x, p.y) == Tile::Rock), "his map knows the rock");
+        assert!(r.posts.round.iter().all(|p| !shut.contains(p)), "no round through the teeth");
+        let d = g.foe(id).unwrap();
+        assert!(!d.puppet && d.den.is_some(), "it stands guard where it was");
+        // A muster through a gate shut since brings no one.
+        g.general.as_mut().unwrap().layout.set(gate.x, gate.y, Tile::Rock);
+        g.general.as_mut().unwrap().gate = Some(0);
+        let before = g.enemies.len();
+        g.muster(0);
+        assert_eq!(g.enemies.len(), before, "none come through the teeth");
     }
 }

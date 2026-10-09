@@ -328,8 +328,19 @@ impl Game {
             b.respawn(kit);
         }
         self.disband_packs();
+        let grid = &self.level.grid;
         for (i, e) in self.enemies.iter_mut().enumerate() {
             if let Some(d) = e.duel.as_deref_mut() {
+                // A den the realm has since turned to rock (a seam's teeth closed on its gatehouse):
+                // the foe that lived there makes its den where it stands (QA.md Q3).
+                let rock = |v: V| grid.get(v.x.round() as i32, v.y.round() as i32) == Tile::Rock;
+                let pos = d.pos;
+                if let Some(den) = d.den.as_mut().filter(|den| rock(den.home) && !rock(pos)) {
+                    let shift = V::new(pos.x - den.home.x, pos.y - den.home.y);
+                    den.lo = V::new(den.lo.x + shift.x, den.lo.y + shift.y);
+                    den.hi = V::new(den.hi.x + shift.x, den.hi.y + shift.y);
+                    den.home = pos;
+                }
                 d.reset_home();
                 continue;
             }

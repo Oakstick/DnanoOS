@@ -211,6 +211,32 @@ fn main() {
         println!("KRAMPUS'S LAIR {skill:?} tier {tier} seed {seed}: {r:?}");
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--monkey") {
+        // QA.md: every stop on the LEVELS map played by a bot and a monkey: `--monkey SEED SECS
+        // [cheats] [STOP]` (the testing keys pressed too with `cheats`; one stop only with STOP).
+        let seed: u32 = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let secs: f64 = args.get(i + 2).and_then(|s| s.parse().ok()).unwrap_or(60.0);
+        let cheats = args.iter().any(|a| a == "cheats");
+        let only = args.iter().position(|a| a == "--stop").and_then(|k| args.get(k + 1)).and_then(|s| s.parse().ok());
+        // (A save folder of its own, empty, so the same seed plays the same.)
+        let dir = std::env::temp_dir().join(format!("vh-monkey-{seed}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var("VH_SAVE_DIR", dir);
+        std::env::set_var("VH_NO_AUDIO", "1");
+        print!("{}", void_harvest::game::qa::monkey(seed, secs, cheats, only));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--reload-soak") {
+        // QA.md: every place on the LEVELS map in turn, ROUNDS times over, in one game (memory over a
+        // long session): `--reload-soak ROUNDS`.
+        let rounds: usize = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(5);
+        let dir = std::env::temp_dir().join("vh-reload-soak");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var("VH_SAVE_DIR", dir);
+        std::env::set_var("VH_NO_AUDIO", "1");
+        print!("{}", void_harvest::game::qa::reload_soak(rounds, 1));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--run") {
         // WARBAND.md W9: the whole run by one bot, one save carried through it: `--run SKILL SEED
         // [ORDER]` (skill 0 novice, 1 adept, 2 expert; order 0 the vaults first, 1 the reverse).

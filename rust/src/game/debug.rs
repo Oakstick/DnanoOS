@@ -37,9 +37,19 @@ impl Game {
         }
         self.keys_got = self.keys_total;
         self.unlock_gate();
-        self.hero.m.teleport(P::new(g.x, g.y + 2));
-        self.hero.face(Dir::Up);
-        self.view.aim_along(Dir::Up);
+        // Before the gate on its inner side (toward where he came in: south of a gate in a north
+        // hedge, north of one in a court's south wall), on the nearest floor to it (QA.md Q4: the
+        // meadow's low wall stands just inside its gate, and a court's gate faces the other way).
+        let inward = if self.level.hero_spawn.y >= g.y { 1 } else { -1 };
+        let face = if inward > 0 { Dir::Up } else { Dir::Down };
+        let at = [(0, 2), (-1, 2), (1, 2), (0, 3), (-1, 3), (1, 3), (0, 4), (-2, 3), (2, 3)]
+            .iter()
+            .map(|&(dx, dy)| P::new(g.x + dx, g.y + dy * inward))
+            .find(|p| self.level.grid.is_walkable(p.x, p.y, false))
+            .unwrap_or(P::new(g.x, g.y + 2 * inward));
+        self.hero.m.teleport(at);
+        self.hero.face(face);
+        self.view.aim_along(face);
     }
 
     /// F1: skip straight to the first Cyclops, from anywhere.

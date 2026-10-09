@@ -623,18 +623,28 @@ fn draw_location(o: &mut Overlay, g: &Game, l: &HudLayout) {
     let t = l.t;
     let [x, y, w, h] = l.location;
     let name = g.level.data.name.to_uppercase();
-    let base = style::label(t, 0.6, rgba(SAND, 1.0)).right();
-    let gs = t * 0.62;
-    let glyph = glyphs::measure_prompt_text(o, &g.input, "{Guide}", &base);
-    let room = w - glyph - t * 1.3;
-    let fit = (room / o.measure_styled(&name, &base).max(1.0)).clamp(0.7, 1.0);
-    let st = base.size(base.size * fit);
-    let pw = (o.measure_styled(&name, &st) + glyph + t * 1.3).min(w);
-    let px = x + w - pw;
+    let (st, px, pw) = location_fit(o, g, &name, l);
     style::panel_glass(o, [px, y, pw, h], t, 0.92);
     let cy = y + h / 2.0;
     o.text_styled(&name, x + w - t * 0.5, cy, &st);
-    glyphs::draw_prompt(o, &g.input, Action::Guide, px + t * 0.45, cy, gs);
+    glyphs::draw_prompt(o, &g.input, Action::Guide, px + t * 0.45, cy, t * 0.62);
+}
+
+/**
+ * The place's name as the location panel sets it: its style (made smaller to fit, down to half),
+ * and the panel's left and width. A name too long for the panel even so widens it to the left
+ * rather than run under the guide's glyph (QA.md Q10: THE THRONE OF THE MORNING STAR).
+ */
+fn location_fit(o: &Overlay, g: &Game, name: &str, l: &HudLayout) -> (crate::render::overlay::Style, f32, f32) {
+    let t = l.t;
+    let [x, _, w, _] = l.location;
+    let base = style::label(t, 0.6, rgba(SAND, 1.0)).right();
+    let glyph = glyphs::measure_prompt_text(o, &g.input, "{Guide}", &base);
+    let room = w - glyph - t * 1.3;
+    let fit = (room / o.measure_styled(name, &base).max(1.0)).clamp(0.5, 1.0);
+    let st = base.size(base.size * fit);
+    let pw = o.measure_styled(name, &st) + glyph + t * 1.3;
+    (st, x + w - pw, pw)
 }
 
 /// The pause screen's summary line: the score (the arcade game's) and the best.
@@ -646,6 +656,34 @@ pub(super) fn draw_pause_summary(o: &mut Overlay, g: &Game, t: f32, y: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every place's name fits its panel beside the guide's glyph, at every shape of screen, and
+    /// the panel keeps clear of the belt's (QA.md Q10).
+    #[test]
+    fn every_place_name_clears_the_guides_glyph() {
+        let mut g = Game::new();
+        let mut names: Vec<String> = Vec::new();
+        for stop in crate::game::map_stops() {
+            if stop.scene.is_some() || stop.page.is_some() {
+                continue;
+            }
+            g.map_jump(stop.stage);
+            names.push(g.level.data.name.to_uppercase());
+        }
+        names.push("THE THRONE OF THE MORNING STAR".into());
+        let mut o = Overlay::new();
+        for (w, h) in [(1920.0, 1080.0), (1920.0, 1200.0), (2560.0, 1080.0), (1600.0, 1200.0), (1280.0, 720.0)] {
+            o.begin(w, h);
+            let l = HudLayout::of(w, h);
+            let t = l.t;
+            for name in &names {
+                let (st, px, _) = location_fit(&o, &g, name, &l);
+                let glyph = glyphs::measure_prompt_text(&o, &g.input, "{Guide}", &style::label(t, 0.6, rgba(SAND, 1.0)));
+                let text_left = l.location[0] + l.location[2] - t * 0.5 - o.measure_styled(name, &st);
+                assert!(text_left >= px + t * 0.45 + glyph - 0.5, "{name} at {w}x{h}: the name runs under the glyph");
+            }
+        }
+    }
 
     #[test]
     fn the_objective_is_the_guides_first_task_made_short() {

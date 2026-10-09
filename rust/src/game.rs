@@ -55,6 +55,9 @@ mod persist;
 mod pickups;
 pub mod pit;
 mod preload;
+pub mod qa;
+#[cfg(test)]
+mod qa_tests;
 mod realm;
 mod realms;
 #[cfg(test)]
@@ -495,6 +498,9 @@ pub struct Game {
     pub settings_page: settings_page::SettingsPage,
     /// The window fills the screen (the app keeps it so, for the settings page to show).
     pub fullscreen: bool,
+    /// The window has the player's attention: away (another window in front), play that comes
+    /// on by itself (a countdown ending, a load done) waits on the pause menu (QA.md Q1).
+    pub focused: bool,
     /// The device used last as last saved (`vh.last_device`, for the engine's start screen).
     device_saved: Option<crate::input::Device>,
 }
@@ -648,6 +654,7 @@ impl Game {
             settings: crate::settings::Settings::load(),
             settings_page: Default::default(),
             fullscreen: false,
+            focused: true,
             device_saved: None,
         };
         // The settings into the input, the mixer, the HUD and the view.
