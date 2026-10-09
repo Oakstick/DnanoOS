@@ -797,6 +797,7 @@ builder is `view/crypt.rs`. Both are off the road on the map.
   - lava that burns amber and ember instead of blood red;
   - a charcoal smoke lit amber from below.
   - The sin portals keep their colours, and the gym keeps its look.
+  - Since rebuilt at the Cisterns' bar (below, "The Portals of Hell, at the Cisterns' bar").
 - **The princes' stand-in courts** (`court:0..6` but Greed's, which is Mammon's own): the Cyclops'
   meadow under the sin's sky is graded as the realms are (`grade_scenery` with the sin's hue
   kept), so its grass and hedges come to moss and olive, its walls and pillars to pale dressed
@@ -1222,6 +1223,152 @@ the gate and the walls that break all work as they did.
   - The trodden earth reads a little grey where the low sun lies on it.
   - The low walls' coping and moss read paler than the stone under the lanterns.
   - The arena's floor is flat (heights all 0), so the hollows are tone only.
+
+### The Portals of Hell, at the Cisterns' bar (2026-10-09)
+
+The hub, seen between every realm, was rebuilt to Dungeon II's quality (`view/hell_art.rs`,
+`view/hell_portals.rs`). It keeps its own character: eight platforms floating over a lava sea
+round a volcano, rope bridges between them, and seven portals, each burning in its sin's colour.
+It gains the Cisterns' depth: darkness carried by warm pools of light on polished stone, real
+materials, and contrast. Only the art and the light changed. The platforms, the bridges' paths,
+the portals' places and rules, the seal, the causeways' rise and the House's door are where they
+were. The gym, which shares the old builders, keeps its look and its light (`gym_atmosphere`).
+The realms' and courts' portals keep theirs (`emit_portal` draws the hub's style only in the hub).
+
+- **What the hub bypassed or under-used:**
+  - **RP14 materials:** none were authored. Everything was plain-lit, and the grade turned pale
+    greys into stone only after the fact. Timber, rope, iron, horn and gold had no material.
+  - **RP17 lights:** three torches nearest the hero, five candles, a light per portal only when
+    near, the crater and the wall of fire. The lava, the place's main light, lit only through
+    the probes.
+  - **RP18 probes:** they applied, but they saw 20,000 flat glowing lava cubes.
+  - **RP19 haze, RP15 AO, RP16 presets:** applied, with little to work on over flat tiles.
+  - **The sky:** a flat charcoal.
+- **The lava** is one sheet in its own material (`SHADE_LAVA` = 17, `voxel_surface` kind 12,
+  `lava_at` in `shaders.wgsl`), worked out in world space so the sea reads as one flow:
+  - Plates of dark crust drift slowly, cracked along a warped cell pattern. The heat glows in the
+    cracks, which heal over where it is coldest.
+  - Where it runs hot the plates melt from their cracks inward into open flow, ember going to
+    amber, with brighter streaks drawn along by the current.
+  - Upright faces run downhill (the volcano's rivers, the falls off the platforms). A brighter
+    block runs hotter, so the rivers and the crater's lake are open flow.
+  - The instance's glow is the flow's mean, so the probes see the light it gives (`probes.rs`
+    now counts shade 17 as glowing). Lava skips the sun's shadow and the probes: its own glow
+    swamps both.
+  - One cube replaces about 20,000.
+- **The platforms:**
+  - Paving of polished basalt (`SHADE_FLAG`) in a basket weave, and a cross of pale dressed stone
+    along the ways the bridges come in. A tile's two flags are drawn as one block whose material
+    draws the joint and gives each half its own shade (`SHADE_PAIRED` = 19.25). Real pairs of
+    flags, one chipped or cracked with the heat glowing through, lie on about one tile in six
+    near the edges and one in sixteen inside.
+  - A kerb of chunky pale and umber blocks round the edge, chipped and here and there fallen out
+    (the heat showing in the gap), with stubs of parapet over the lava in the edge's outer fifth.
+  - The sides are the crypt's `masonry`, one course of great blocks on a pale plinth, with veins
+    of heat in the joints. The jagged basalt beneath is plain-lit, lit from below.
+  - The columns are pale plinths, basalt and umber drums with a band of ember runes, broken (a
+    drum fallen beside them) or crowned with a pale capital and a copper fire bowl.
+  - Bones, rubble and iron chains over the edges stay where they were.
+- **The bridges:** old timber and hemp. The planks are scorched (some charred through, one now
+  and then gone, ember in the char at an end), on stringers and transoms. The posts have iron
+  bands, two rope rails sag with hangers down to the deck, and a copper lantern hangs on the
+  middle post.
+- **The portals** (`hub_portal`):
+  - Piers of chunky courses (basalt and umber, pale quoins) on pale plinths under pale imposts.
+    Three receding orders of voussoirs, the middle one pale with the sin's gem for its keystone.
+  - A lintel and a stepped tympanum over the doors, a gold ring round the sin's gem in it.
+  - A frieze of two courses of the piers' stone, flush with them, the name in gold letters on a
+    sunk panel. A pale cornice, a stepped crest, ivory horns, and the sin's gem as a beacon.
+  - Copper braziers on pale pedestals burn in the sin's colour, each a pool of it on the
+    platform (two lights a portal, within 14 of the hero).
+  - The states read at a glance: closed (sin-coloured fire, the doors shut), open (the doors
+    swing, the swirl, the realm's light pours out), won (calm gold fire, the key glowing in the
+    lock).
+  - Above the imposts a portal fades out of the way of the view of him, like a tree. From the top
+    camera a side portal stands between it and the walk north of it.
+- **The House** (its name and the story's words untouched; nothing on it depicts a devil): walls
+  of dressed courses round lancet windows burning ember-red, pale string courses and cornices,
+  roofs and spires of polished obsidian, ivory horns, an iron door under a pointed arch of
+  glowing stones, and copper braziers either side.
+- **The Seal:** pale dressed steps with ember runes, iron sockets and a polished obsidian
+  monolith. The causeways rise as three dressed blocks across, basalt kerbs either side of a
+  pale way, glowing as they come up out of the lava.
+- **The volcano:** basalt in strata (each ledge's face a block of its own, ash on the
+  shoulders), lava rivers in the lava's material, the crater's lake, its smoke lit from below.
+- **The wall of fire** is soft tongues of flame: glows drawn tall, amber at the root and ember
+  above, each a little off the line and its own size. It surges in waves round the volcano and
+  gutters out here and there.
+- **Light** (`hell_atmosphere`):
+  - The light from above is only a dim warm glow through the smoke (0.75, was 1.6). The ambient
+    and sky light are low; the lava is the light from below (hemisphere ground 0.62).
+  - Lights rise past the platforms' edges and under the bridges (the six nearest burn at once,
+    `HUB_GLOW_LIT`, reach 3.6). The fire bowls, lanterns and the House's braziers are amber
+    pools (the five nearest, `HUB_LAMPS_LIT`, reach 6). The portals' braziers burn in their
+    colours.
+  - **The sky** is smoke (`night_sky` 3): a charcoal pall in slow banks, its underside lit ember
+    and amber near the horizon. It is laid over the background in the composite (`smoke_sky` in
+    `post.wgsl`), not drawn by the sky pass: a full-screen pass into the multisampled targets
+    cost about 5%.
+- **Numbers (1080p, RTX 5070 Ti Laptop):** ABBA rounds (A, then B twice, then A, so the second
+  run's warmer clocks cancel) against rust-port's hub, GPU time.
+
+  | | Before | After |
+  |---|---:|---:|
+  | Static cubes | 28,660 | 10,875 |
+  | `--bench` 600, the arrival, GPU (high clocks, 3 rounds) | 2.0 to 2.25 ms | 2.5 to 3.1 ms (+28%) |
+  | `--bench` 600, at Wrath's portal, GPU (high clocks, 2 rounds) | 1.8 to 1.9 ms | 2.15 to 2.4 ms (+15%) |
+  | `--perf vista`, wall p50 (GPU p50) | 2.29 / 2.26 ms (2.01 / 1.99) | 2.79 / 2.78 ms (2.52 / 2.51) |
+  | `--perf portal`, wall p50 (GPU p50) | 2.25 / 2.18 ms (1.83 / 1.92) | 2.41 / 2.39 ms (2.13 / 2.12) |
+  | First frame (vista; portal) | 99 ms; 98 to 108 ms | 55 to 69 ms; 71 to 76 ms |
+
+  - **Over budget:** the hub costs more than it did, about a quarter in the wide views and a
+    sixth at a portal. What each item costs over the old one, measured by swapping it back in
+    this build (ABBA, 2 rounds, about ±5%):
+
+    | Item | Its cost over the old one |
+    |---|---:|
+    | The platforms (paving, kerb, sides, columns) | about +25%, before the last two cuts below |
+    | The portals | about +15% |
+    | The bridges | about +9% |
+    | The volcano, the House, the Seal, the ledge and the light, together | about +10% |
+    | The lava | about −7% (cheaper than the cubes) |
+    | The lights | about +1.5% |
+
+  - **What was cut on the way:** smoke sheets over the lava (about 7%; the smoke sky carries the
+    smoke), two flags a tile as two blocks (about 12%; now one block), the sky pass (about 5%;
+    now in the composite). Also the sides in one course of great blocks, the processional way
+    paired, the undersides and far spires plain-lit, the lava without shadows or probes, and
+    fewer lights at once.
+  - **Measuring on this laptop:** the second of two back-to-back runs is about 7% faster (warmer
+    clocks), and the per-pass timestamps glitch now and then. Only ABBA rounds compare.
+  - Everything is built once at load, behind the loading screen, and the probes are baked there
+    as before.
+- **Checks:**
+  - `--camera-check hub`: no clips. The top camera hides him in 4 poses of 405, the same tiles as
+    before (north of the side portals); the chase camera in none.
+  - The harness is unchanged: `--run 2 1`, `--court 2 1 1`, `--pit 2 8 1` and all 17 bouts print
+    the same as rust-port's, apart from their wall-clock lines.
+  - The gym, a realm, the Vaults, two courts, the Garden, the Cisterns and the meadow capture the
+    same as rust-port's (at most 3 pixels more than 20 levels apart).
+  - The web build lints clean.
+- **Captures:** `C:/Users/ulask/Games/vh-hub-cap/`.
+  - `side-*.png`: before beside after, 23 views. They are the arrival from both cameras, the cave,
+    the hub wide from two sides, each portal closed, Wrath's open and won and in the chase view, a
+    bridge, the lava's edge, the House, the seal, the causeways rising and risen, the top camera
+    and `--iso`.
+  - `final-*.png`: the same views at 1080p.
+  - `hub-vs-cisterns-meadow.png` and `hub-vs-cisterns-meadow-1080.png`: the hub beside the
+    Cisterns and the meadow.
+  - `views.sh` makes them and `sheet.py` lays them out. `abba.sh`, run under `timed.sh` (which
+    holds the GPU lock), measures.
+- **Still open:**
+  - The cost above. Cutting further means trading the portals' orders and crest, the bridges'
+    rope work, or the platforms' kerb and columns.
+  - From close in front, the frieze still reads a little as a band laid over the arch.
+  - There is no heat shimmer: it needs a refraction pass, which is not nearly free.
+  - The volcano's flanks are a stepped mass of blocks, and its rivers read as dashes from afar.
+  - Paired, the pale processional way takes the wet flagstone's glossy hollows, so it reads a
+    little darker than the dressed stone it was.
 
 ### Scene I's camera (2026-10-08)
 
