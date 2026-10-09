@@ -481,10 +481,14 @@ impl Game {
 
     /**
      * The tick while the platform goes down (or rests at the bottom): nothing fights, nothing walks;
-     * only his leap after it finishes, and the floaters drift. True while it holds the tick.
+     * only his leap after it finishes, and the floaters drift. The old man's guide (B) opens and the
+     * belt is drunk from as in play (QA.md Q12). True while it holds the tick.
      */
     pub(super) fn pit_holds(&mut self, dt: f64) -> bool {
         let Some(phase) = self.pit.as_ref().map(|p| p.phase) else { return false };
+        if phase != PitPhase::Fight && self.guide_and_belt() {
+            return true;
+        }
         let t = match phase {
             PitPhase::Fight => return false,
             PitPhase::Bottom => {
@@ -924,5 +928,37 @@ mod tests {
         assert!(g.in_pit());
         assert_eq!(g.pit.as_ref().unwrap().level, 5);
         assert_eq!(g.sins_cleared, ALL_SINS);
+    }
+
+    /// While the platform goes down nothing fights, but the old man's guide (B) opens and the belt
+    /// is drunk from, as in play; the descent waits while the guide is up (QA.md Q12).
+    #[test]
+    fn the_guide_and_the_belt_work_while_the_platform_goes_down() {
+        use crate::input::Action;
+        use crate::logic::types::PotionKind;
+        let mut g = in_pit(2);
+        g.immortal = true;
+        g.belt = vec![PotionKind::Health];
+        g.belt_index = 0;
+        g.pit.as_mut().unwrap().clock = pit::LEVEL_SECONDS - 0.05;
+        run(&mut g, 0.5);
+        assert!(matches!(g.pit.as_ref().unwrap().phase, PitPhase::Descent { .. }));
+        g.hero.hp = g.hero.max_hp / 4;
+        let hp = g.hero.hp;
+        g.input.inject(Action::Drink);
+        g.update(STEP);
+        assert!(g.belt.is_empty() && g.hero.hp > hp, "drunk on the way down: {} -> {}", hp, g.hero.hp);
+        // B: the guide opens, and the platform waits for him.
+        g.input.inject(Action::Guide);
+        g.update(STEP);
+        assert!(g.guide_open && g.screen == Screen::Paused, "the guide opens on the way down");
+        let PitPhase::Descent { t } = g.pit.as_ref().unwrap().phase else { panic!("still going down") };
+        run(&mut g, 1.0);
+        assert_eq!(g.pit.as_ref().unwrap().phase, PitPhase::Descent { t }, "the descent waits for him");
+        g.input.inject(Action::Guide);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Playing);
+        run(&mut g, pit::DESCENT_SECONDS);
+        assert_eq!(g.pit.as_ref().unwrap().level, 3, "and goes on down");
     }
 }

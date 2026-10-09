@@ -688,6 +688,31 @@ impl Game {
         self.view.reseed(seed.wrapping_add(1));
     }
 
+    /// The old man's guide (B) and the belt (turned, drunk from): in play, and while the Pit's
+    /// platform goes down. True when the guide opened (the tick ends there).
+    fn guide_and_belt(&mut self) -> bool {
+        if self.input.was_pressed(&[Action::Guide]) && self.screen == Screen::Playing {
+            self.open_guide();
+            return true;
+        }
+        // The wheel or the D-pad's left and right: the potion before or after on the belt.
+        let turn = self.input.was_pressed(&[Action::PotionNext]) as usize
+            + self.belt.len().saturating_sub(1) * self.input.was_pressed(&[Action::PotionPrev]) as usize;
+        if turn > 0 && !self.belt.is_empty() {
+            self.belt_index = (self.belt_index + turn) % self.belt.len();
+            self.audio.play(Sfx::Nodule);
+        }
+        if self.input.was_pressed(&[Action::Drink]) {
+            self.drink(self.belt_index);
+        }
+        for slot in 0..BELT_SLOTS {
+            if self.input.was_pressed(&[Action::Slot(slot as u8)]) {
+                self.drink(slot);
+            }
+        }
+        false
+    }
+
     fn tick(&mut self, dt: f64) {
         // The Pit's platform going down: nothing fights, nothing walks.
         if self.pit_holds(dt) {
@@ -758,24 +783,8 @@ impl Game {
         if !ring && self.input.was_pressed(&[Action::Jump]) && self.hero.try_jump(&self.level.grid) {
             self.audio.play(Sfx::Jump);
         }
-        if self.input.was_pressed(&[Action::Guide]) && self.screen == Screen::Playing {
-            self.open_guide();
+        if self.guide_and_belt() {
             return;
-        }
-        // The wheel or the D-pad's left and right: the potion before or after on the belt.
-        let turn = self.input.was_pressed(&[Action::PotionNext]) as usize
-            + self.belt.len().saturating_sub(1) * self.input.was_pressed(&[Action::PotionPrev]) as usize;
-        if turn > 0 && !self.belt.is_empty() {
-            self.belt_index = (self.belt_index + turn) % self.belt.len();
-            self.audio.play(Sfx::Nodule);
-        }
-        if self.input.was_pressed(&[Action::Drink]) {
-            self.drink(self.belt_index);
-        }
-        for slot in 0..BELT_SLOTS {
-            if self.input.was_pressed(&[Action::Slot(slot as u8)]) {
-                self.drink(slot);
-            }
         }
         self.sim.hero += lap.lap();
         self.update_projectiles(dt);
