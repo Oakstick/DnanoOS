@@ -96,7 +96,7 @@ impl Game {
                 let (hp, damage) = self.ng_foe((super::brawl::VAULT_HP, 1.0));
                 d.max_hp *= hp;
                 d.hp = d.max_hp;
-                d.breed.damage *= damage;
+                d.breed.damage *= damage * self.realm_blows();
                 d.den = Some(Den { lo, hi, home: post.v(), awake: false, returning: false });
                 e.duel = Some(Box::new(d));
                 out.push(e);
@@ -547,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn a_foe_in_the_vaults_can_slay_him_and_the_pack_goes_home_whole() {
+    fn a_foe_in_the_vaults_can_slay_him_and_the_pack_goes_home_with_its_wounds() {
         let mut g = one_on_one(1.4, true);
         g.enemies[0].duel.as_mut().unwrap().hp = 5.0;
         let lives = g.score.lives;
@@ -562,7 +562,8 @@ mod tests {
         assert_eq!(g.score.lives, lives - 1);
         let d = g.enemies[0].duel.as_ref().unwrap();
         let den = d.den.unwrap();
-        assert!(!den.awake && d.pos == den.home && d.hp == d.max_hp, "home, asleep and whole");
+        // (WARBAND.md W11: as a prince does, it keeps the wounds he gave it.)
+        assert!(!den.awake && d.pos == den.home && d.hp == 5.0, "home, asleep, and wounded still: {}", d.hp);
     }
 
     #[test]

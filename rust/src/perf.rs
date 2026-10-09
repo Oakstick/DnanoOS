@@ -297,7 +297,9 @@ const SCENES: &[Scene] = &[
         period: 0.0,
         motion: Motion::Still,
         secs: 20.0,
-        expect: Expect { fight: true, packs: 1, hurt: true, loads: 0, budget: Some(FIGHT_BUDGET_MS), fresh: false },
+        // (No pack asked to fall: since the inmates' blows were softened, WARBAND.md W11, the
+        // expert's twenty seconds spread its three kills over the doors' packs.)
+        expect: Expect { fight: true, packs: 0, hurt: true, loads: 0, budget: Some(FIGHT_BUDGET_MS), fresh: false },
     },
     Scene {
         name: "descent",
@@ -1148,7 +1150,7 @@ mod tests {
         let idle = Deeds::default();
         let short = scene("warband").expect.check(&idle);
         assert_eq!(short.len(), 5, "{short:?}");
-        assert_eq!(scene("pit").expect.check(&idle).len(), 6, "and the Pit asks for blood too");
+        assert_eq!(scene("pit").expect.check(&idle).len(), 5, "and the Pit asks for blood too (no pack since W11)");
         assert_eq!(scene("portal").expect.check(&idle), vec!["0 of 4 changes of level shown".to_string()]);
         assert!(NOTHING.check(&idle).is_empty());
     }

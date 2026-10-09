@@ -1479,7 +1479,8 @@ impl Game {
                 Wound::Venom => 0x8ad04a,
                 Wound::Fire => 0xff7a2a,
             };
-            let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0);
+            // (What the realm's foes' blows carry is tempered as the blows are: WARBAND.md W11.)
+            let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0) * self.realm_blows();
             self.wound_hero((amount * taken).round(), color);
             if tracing() {
                 let frame = self.brawl.as_ref().map(|b| b.threat.frame).unwrap_or(0);

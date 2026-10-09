@@ -658,9 +658,13 @@ pub fn bots_walk(sin: Sin) -> bool {
 /// Every duelist of the level down (a realm cleared): every one he could reach, that is (a ghost
 /// left hovering over a chasm counts as gone).
 fn cleared(g: &Game) -> bool {
-    !g.enemies.iter().any(|e| {
-        e.duel.as_deref().is_some_and(|d| d.alive() && !d.puppet && Bot::floor(g, P::new(d.pos.x.round() as i32, d.pos.y.round() as i32)))
-    })
+    // (Or left through its way out: the Rotting Feast's pylorus, WARBAND.md W11.)
+    g.screen == Screen::Cleared
+        || !g.enemies.iter().any(|e| {
+            e.duel
+                .as_deref()
+                .is_some_and(|d| d.alive() && !d.puppet && Bot::floor(g, P::new(d.pos.x.round() as i32, d.pos.y.round() as i32)))
+        })
 }
 
 /// A part: entered at `stage`, played (and played again by Continue after a loss) until done.
@@ -1169,5 +1173,17 @@ mod tests {
                 assert!(realm.dullest > crate::logic::gear::DULL_EDGE, "a realm leaves his blade short of dull: {realm:?}");
             }
         }
+    }
+
+    /// WARBAND.md W11: the bots walk the Rotting Feast as a player walks it, down the gullet and
+    /// out through the pylorus, rather than waking every den and fighting the Last Course's gaki
+    /// to the realm's time.
+    #[test]
+    fn the_bots_walk_the_rotting_feast_and_leave_through_the_pylorus() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-run"));
+        let r = run_of(Skill::Expert, 1, &[Sin::Gluttony], false);
+        let realm = &r.parts[0];
+        assert!(realm.done && realm.game_overs == 0, "{realm:?}");
+        assert!(realm.secs < 600.0, "well inside the realm's fifteen minutes: {realm:?}");
     }
 }
