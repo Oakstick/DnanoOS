@@ -603,10 +603,11 @@ impl Game {
         let facing = math::norm(math::sub(hp, at));
         let mut d = Duelist::bred(id, Breed::of(EnemyKind::Peerless), at, facing);
         let swell = 1.0 + ECHO_GLORY * glory as f64;
+        let (ng_hp, ng_damage) = self.ng_foe((1.0, 1.0));
         d.puppet = true;
         d.breed.reach = 0.0;
-        d.breed.damage = swell / brawl.foe_damage.max(1e-6);
-        d.max_hp = (PEERLESS_HP * weight(0, tier).0 * swell).round();
+        d.breed.damage = swell * ng_damage / brawl.foe_damage.max(1e-6);
+        d.max_hp = (PEERLESS_HP * weight(0, tier).0 * ng_hp * swell).round();
         d.hp = d.max_hp;
         d.f = Fighter::with_kit(&kit);
         d.f.armor = PEERLESS_ARMOR;

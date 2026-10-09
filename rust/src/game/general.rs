@@ -287,11 +287,11 @@ impl Game {
         let hp = self.hero.pos();
         let facing = math::norm(V::new(hp.x - at.x as f64 + 0.01, hp.y - at.y as f64));
         let mut d = Duelist::bred(id, Breed::of(kind), at.v(), facing);
-        let (wh, wd) = if self.in_vault() {
+        let (wh, wd) = self.ng_foe(if self.in_vault() {
             (super::brawl::VAULT_HP, 1.0)
         } else {
             crate::logic::realms::weight(if kind.realm_own() { 0 } else { stage }, tier)
-        };
+        });
         d.max_hp *= wh * health;
         d.hp = d.max_hp;
         d.breed.damage *= wd;

@@ -93,8 +93,10 @@ impl Game {
                 // Facing into the room, asleep at its post.
                 let facing = V::new(cx as f64 - post.x as f64, cy as f64 - post.y as f64 + 0.01);
                 let mut d = Duelist::bred(brawl.next_id(), Breed::of(kind), post.v(), facing);
-                d.max_hp *= super::brawl::VAULT_HP;
+                let (hp, damage) = self.ng_foe((super::brawl::VAULT_HP, 1.0));
+                d.max_hp *= hp;
                 d.hp = d.max_hp;
+                d.breed.damage *= damage;
                 d.den = Some(Den { lo, hi, home: post.v(), awake: false, returning: false });
                 e.duel = Some(Box::new(d));
                 out.push(e);

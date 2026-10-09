@@ -118,7 +118,7 @@ impl Game {
                 // Facing into its den, asleep at its post.
                 let facing = V::new(cx as f64 - post.x as f64, cy as f64 - post.y as f64 + 0.01);
                 let mut d = Duelist::bred(brawl.next_id(), Breed::of(kind), post.v(), facing);
-                let (hp, damage) = weight(if kind.realm_own() { 0 } else { stage }, tier);
+                let (hp, damage) = self.ng_foe(weight(if kind.realm_own() { 0 } else { stage }, tier));
                 d.max_hp *= hp;
                 d.hp = d.max_hp;
                 d.breed.damage *= damage;

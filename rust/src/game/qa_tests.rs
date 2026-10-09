@@ -1126,6 +1126,9 @@ fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
     assert_eq!(g.ng_plus, 1);
     assert_eq!(g.realm_tier(), 3, "two tiers harder: the first realm as the third");
     assert_eq!(g.foe_stage(), 3, "the Garden two stages deeper");
+    use crate::game::newgame::{NG_FOES, NG_KRAMPUS, NG_PRINCE};
+    assert_eq!((g.ng_prince(), g.ng_krampus()), (NG_PRINCE[0], NG_KRAMPUS[0]), "the princes and Krampus heavier on top");
+    assert_eq!(g.ng_foe((0.7, 0.9)), (0.7 * NG_FOES[0].0, 0.9 * NG_FOES[0].1), "and every foe");
     assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.ng)), Some((Stage::Dungeon(0), 1)), "the checkpoint carries it");
     assert!(g.ng_offer.is_none(), "the offer is used up");
     assert!(all_entries().into_iter().take(8).all(|e| g.bestiary.book.unlocked(e)), "the bestiary intact");
@@ -1155,6 +1158,11 @@ fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
     assert_eq!(g.progress, Progress::default());
     assert!(g.ledger().rivals.is_empty());
     assert_eq!((g.ng_plus, g.realm_tier(), g.foe_stage()), (0, 1, 1));
+    assert_eq!(
+        (g.ng_prince(), g.ng_krampus(), g.ng_foe((0.7, 0.9))),
+        ((1.0, 1.0, 1.0), (1.0, 1.0, 1.0), (0.7, 0.9)),
+        "a first run's weights"
+    );
     assert_eq!(g.saved_run.as_ref().map(|r| r.ng), Some(0));
     assert!(g.ng_offer.is_some(), "the offer stays on the title for another time");
 }

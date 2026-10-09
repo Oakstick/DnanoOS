@@ -240,7 +240,8 @@ impl Game {
         brawl.foe_damage = 1.0;
         let id = brawl.next_id();
         let at = P::new(KRAMPUS.0, KRAMPUS.1);
-        let (hp, damage) = lair_weight(tier);
+        let ((hp, damage), (ng_hp, ng_damage, ng_poise)) = (lair_weight(tier), self.ng_krampus());
+        let (hp, damage) = (hp * ng_hp, damage * ng_damage);
         let spec = spec_of(&self.level.grid, EnemyKind::Krampus);
         let mut e = Enemy::new(&spec, at, self.level.data.enemy_speed);
         e.post = Some(at);
@@ -250,6 +251,7 @@ impl Game {
         d.max_hp *= hp;
         d.hp = d.max_hp;
         d.breed.damage *= damage;
+        d.breed.poise *= ng_poise;
         d.rest = 90;
         let trail = d.max_hp as f32;
         e.duel = Some(Box::new(d));
@@ -541,7 +543,7 @@ impl Game {
             let across = math::norm(V::new(-(hp.y - at.y), hp.x - at.x));
             [-1.0, 1.0].iter().map(|s| math::add(at, math::scale(across, 2.4 * s))).collect()
         };
-        let (weight_hp, weight_damage) = lair_weight(self.realm_tier());
+        let (weight_hp, weight_damage) = self.ng_foe(lair_weight(self.realm_tier()));
         for p in spots.into_iter().take(PERCHTEN as usize) {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { rise: PERCHT_RISE, ..Lore::default() };

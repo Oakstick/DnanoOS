@@ -217,7 +217,7 @@ impl Game {
         let spots = nightmare_spots((at.x, at.y), (facing.x, facing.y), |p| g.is_walkable(p.x, p.y, false));
         let hp = self.hero.pos();
         let (weight_hp, weight_damage) =
-            if self.in_court() { adds_weight(crate::logic::sins::Sin::Sloth, self.realm_tier()) } else { (1.0, 1.0) };
+            if self.in_court() { self.ng_foe(adds_weight(crate::logic::sins::Sin::Sloth, self.realm_tier())) } else { (1.0, 1.0) };
         for (x, y) in spots.into_iter().take(NIGHTMARES as usize) {
             let p = V::new(x, y);
             let look = math::norm(math::sub(hp, p));

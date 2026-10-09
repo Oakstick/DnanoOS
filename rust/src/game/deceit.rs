@@ -401,7 +401,7 @@ impl Game {
     /// A spawned foe weighed as the realm weighs its own, times `extra` on its health.
     fn weigh_spawned(&mut self, id: u32, stage: u8, extra: f64) {
         let tier = self.realm_tier();
-        let (hp, damage) = weight(stage, tier);
+        let (hp, damage) = self.ng_foe(weight(stage, tier));
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
             d.max_hp *= hp * extra;
             d.hp = d.max_hp;

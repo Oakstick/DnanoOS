@@ -411,7 +411,9 @@ impl Game {
             if bite > 1 {
                 self.view.shake(0.3);
             }
-            let died = self.hurt_hero(CONTACT_DAMAGE * bite);
+            // (New Game+: the bite harder, `newgame::foe_weight`.)
+            let bite = (CONTACT_DAMAGE * bite) as f64 * super::newgame::foe_weight(self.ng_plus).1;
+            let died = self.hurt_hero(bite.round() as i32);
             if self.hero.blocked_hit {
                 self.hero.blocked_hit = false;
                 let ward = self.hero.shield.map(|s| progression::ward(s.tier));

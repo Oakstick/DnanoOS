@@ -124,7 +124,7 @@ impl Game {
             doors.into_iter().take(REFLECTIONS as usize).collect()
         };
         let tier = self.realm_tier();
-        let (_, weight_damage) = if self.in_court() { adds_weight(crate::logic::sins::Sin::Pride, tier) } else { (1.0, 1.0) };
+        let (_, weight_damage) = if self.in_court() { self.ng_foe(adds_weight(crate::logic::sins::Sin::Pride, tier)) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: REFLECTION_RISE, ..Lore::default() };
