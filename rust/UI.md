@@ -90,6 +90,8 @@ Keyboard and mouse:
 | F11, Alt+Enter | Fullscreen |
 
 Debug keys (F1–F10, 0) stay as they are, listed only on a developer page. Mute moves into Audio.
+(2026-10-09: the testing keys, F1, F2, F5-F10, F12 and 0, work only in developer builds: see the
+developer's map below.)
 
 Rumble: a light pulse on a hit landed, a stronger one on a hit taken, a long low one on a guard
 break, a short one on a parry; scaled by the setting (off, low, high).
@@ -619,14 +621,21 @@ highlighted. Its middle stays on the level. Input for it, added to `Input` and r
 it is bound), `wheel_turned()` and `sticks()`.
 
 **The developer's map** (`game/map.rs`, `render/hud/map.rs`, unchanged in look). The pause menu's
-MAP is the player's map now. The list of stops is the developer's map: **F12 opens it in every
-build** (from the title, play, the pause menu, or over the full map; a fixed key like the other
-testing keys, taken out of the keys the player may bind), and **LEVELS** (it was DEV MAP) stands on the title and
-in the pause menu in developer builds and the Desktop release builds (`VH_DEV_MENU`, 2026-10-08), with `--dev` on the command line, or for the rest of the
-session once F12 has opened it (`Game::dev`). Decided so because the user tests with the release
-build: one key from anywhere, and its buttons back after the first press. It gained two stops, the
-full map of the garden and of the vaults (every new screen on the Map). On the web, F12 reaches the
-page (the browser's tools want it too: a debug build or the buttons after one press).
+MAP is the player's map now. The list of stops is the developer's map: **F12 opens it** (from the
+title, play, the pause menu, or over the full map; a fixed key like the other testing keys, taken
+out of the keys the player may bind), and **LEVELS** (it was DEV MAP) stands on the title and in
+the pause menu in developer builds and the Desktop release builds (`VH_DEV_MENU`, 2026-10-08), with
+`--dev` on the command line, or for the rest of the session once F12 has opened it (`Game::dev`). It
+gained two stops, the full map of the garden and of the vaults (every new screen on the Map).
+
+**The testing keys are for developer builds only** (the user's call, 2026-10-09). F1 (the Cyclops),
+F2 (the gate), F5 (god mode), F6 (coins), F7, F8 and F9 (the ring), F10 (a rival), F12 (this map)
+and 0 (the old man's wares) work in debug builds and the Desktop builds `tools/release.sh` makes
+(`game::DEV_BUILD`: `debug_assertions` or `VH_DEV_MENU`), with `--dev`, and in the harnesses that
+press them (`--capture` scripts, `--monkey ... cheats`); in the distributables (`build-windows.ps1`,
+the web) they do nothing (`Game::testing_keys`; F1 is the help key on many keyboards). F3 (the frame
+counter), F4 (free or grid movement) and F11 (the full screen) are the player's in every build. Test
+`testing_keys_are_inert_outside_developer_builds`.
 
 **The HUD** (`render/hud.rs`, kept to calls into the new files): the minimap drawn after the
 corners, the full map over the pause (over its summary), the image prepared under the loading

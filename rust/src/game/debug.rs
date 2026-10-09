@@ -1,4 +1,5 @@
-//! Testing cheats and debug hooks: F1, F2 and 0 on the keyboard, and the capture tool's commands.
+//! Testing cheats and debug hooks: F1, F2 and 0 on the keyboard (developer builds only:
+//! `Game::testing_keys`), and the capture tool's commands.
 
 use super::{Game, Screen, CHEAT_COINS};
 use crate::input::Action;

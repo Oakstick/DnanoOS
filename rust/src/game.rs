@@ -154,6 +154,11 @@ const MODE_SCHEDULE: [(GlobalMode, f64); 1] = [(GlobalMode::Chase, f64::INFINITY
 /// The beat before play: READY, then GO!
 pub const READY_SECONDS: f64 = 2.0;
 
+/// A build for developing: a debug build, or a release build `tools/release.sh` makes for the
+/// Desktop (`VH_DEV_MENU`). The distributables (`build-windows.ps1`, the web) are not: there the
+/// testing keys do nothing (the user's call, 2026-10-09: F1 is the help key on many keyboards).
+pub const DEV_BUILD: bool = cfg!(debug_assertions) || option_env!("VH_DEV_MENU").is_some();
+
 /// The fanfare and the fade into the boss arena.
 pub const CLEARED_SECONDS: f64 = 3.4;
 /// The Cyclops' red diamond key, on the HUD and the gate's lock lamp.
@@ -443,9 +448,12 @@ pub struct Game {
     pub map_index: usize,
     /// The minimap's settings and the full map while it is open (`fullmap`).
     pub map_ui: fullmap::MapUi,
-    /// Developer builds, `--dev`, or F12 pressed once: the developer's map on the title and the
-    /// pause menu.
+    /// Developer builds, `--dev`, or F12 pressed once (where the testing keys work): the
+    /// developer's map on the title and the pause menu.
     pub dev: bool,
+    /// The testing keys work (F1, F2, F5-F10, F12, 0): in developer builds only (`DEV_BUILD`), or
+    /// with `--dev` and the harnesses; inert in the distributables.
+    pub testing_keys: bool,
     /// The archangel's blessing he carries (from dungeon to dungeon), if any.
     pub blessing: Option<crate::logic::angels::Blessing>,
     /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
@@ -627,8 +635,11 @@ impl Game {
             map_index: 0,
             map_ui: fullmap::MapUi::load(),
             // (Developing: debug builds, and the release builds `tools/release.sh` makes for the
-            // Desktop (`VH_DEV_MENU`), not the distributables; F12 opens it in any build.)
-            dev: (cfg!(debug_assertions) || option_env!("VH_DEV_MENU").is_some()) && !cfg!(test),
+            // Desktop (`VH_DEV_MENU`), not the distributables; F12 opens it where the testing keys
+            // work.)
+            dev: DEV_BUILD && !cfg!(test),
+            // (The tests press them; `testing_keys_are_inert_outside_developer_builds` turns them off.)
+            testing_keys: DEV_BUILD || cfg!(test),
             blessing: None,
             uriel_rest: 0.0,
             refused_at: -10.0,

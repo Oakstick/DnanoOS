@@ -826,3 +826,109 @@ fn back_closes_the_camera_choice_and_keeps_the_camera() {
         assert!(until(&mut g, Screen::Playing, 10.0), "play goes on");
     }
 }
+
+/// What a testing key could change, to see that none did.
+fn testing_marks(g: &Game) -> String {
+    let p = g.hero.pos();
+    format!(
+        "{:?} realm {:?} dungeon {} boss {} silver {} runes {} immortal {} map {} dev {} keys {} at ({:.2},{:.2}) foes {} readout {:?} bout {:?}",
+        g.screen,
+        g.realm,
+        g.dungeon,
+        g.boss.is_some(),
+        g.progress.silver,
+        g.progress.runes,
+        g.immortal,
+        g.show_map,
+        g.dev,
+        g.keys_got,
+        p.x,
+        p.y,
+        g.enemies.len(),
+        g.brawl.as_ref().map(|b| b.readout),
+        g.spar.as_ref().map(|s| s.bout),
+    )
+}
+
+/**
+ * The testing keys (F1 the Cyclops, F2 the gate, F5 god mode, F6 gold, F7-F10 the ring and a rival,
+ * F12 the developer's map, 0 the old man's wares) work only in developer builds: in a
+ * distributable (`Game::testing_keys` off, as `DEV_BUILD` leaves it there) each, pressed on the
+ * keyboard on the title, in play, in the vaults' brawl and in the Sparring Ring, does nothing. F3,
+ * F4 and F11 (the frame counter, the grid, the full screen) are the player's in every build, and
+ * the testing keys stay out of the bindable set (the user's call, 2026-10-09).
+ */
+#[test]
+fn testing_keys_are_inert_outside_developer_builds() {
+    use crate::input::bindings::{fixed_key, reserved, Control};
+    use winit::keyboard::KeyCode;
+    let _dir = own_folder("testing-keys");
+    let testing = [
+        Action::Cheat,
+        Action::KeyCheat,
+        Action::Immortal,
+        Action::Gold,
+        Action::NextStageBout,
+        Action::Readout,
+        Action::NextBout,
+        Action::MakeRival,
+        Action::DevMap,
+        Action::ShopCheat,
+    ];
+    let keys: Vec<KeyCode> = [
+        KeyCode::F1,
+        KeyCode::F2,
+        KeyCode::F5,
+        KeyCode::F6,
+        KeyCode::F7,
+        KeyCode::F8,
+        KeyCode::F9,
+        KeyCode::F10,
+        KeyCode::F12,
+        KeyCode::Digit0,
+        KeyCode::Numpad0,
+    ]
+    .into_iter()
+    .collect();
+    for k in &keys {
+        assert!(fixed_key(*k).is_some_and(|a| testing.contains(&a)), "{k:?} is a testing key");
+        assert!(reserved(Control::Key(*k)), "{k:?} stays out of the bindable set");
+    }
+    let press = |g: &mut Game, k: KeyCode| {
+        g.input.key_down(k, false);
+        g.update(STEP);
+        g.input.key_up(k);
+        for _ in 0..3 {
+            g.update(STEP);
+        }
+    };
+    let places: [(&str, Option<Stage>); 4] =
+        [("title", None), ("garden", Some(Stage::Dungeon(0))), ("vaults", Some(Stage::Realm(Sin::Greed))), ("ring", Some(Stage::Gym))];
+    for (name, stage) in places {
+        for &k in &keys {
+            let mut g = Game::new();
+            g.testing_keys = false;
+            g.dev = false;
+            if let Some(stage) = stage {
+                g.map_jump(stage);
+                g.enter(Screen::Playing);
+                g.hero.invuln = 1e9;
+            }
+            // Still for a moment, so only the key can change what is marked.
+            g.input.blur();
+            let before = testing_marks(&g);
+            press(&mut g, k);
+            g.input.blur();
+            let after = testing_marks(&g);
+            let still = |s: &str| s.split(" at (").next().unwrap_or("").to_string();
+            assert_eq!(still(&after), still(&before), "{name}: {k:?} did something in a distributable");
+        }
+    }
+    // (And where the testing keys work, they do: F6 in the garden.)
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(0));
+    g.enter(Screen::Playing);
+    let silver = g.progress.silver;
+    press(&mut g, KeyCode::F6);
+    assert_eq!(g.progress.silver, silver + super::CHEAT_COINS, "a developer build takes F6");
+}

@@ -33,7 +33,8 @@ pub struct Options {
     pub no_vsync: bool,
     /// The quality preset (`--preset high|low`); none takes the build's default.
     pub preset: Option<crate::render::preset::Preset>,
-    /// `--dev`: the developer's map on the title and the pause menu (F12 opens it in any build).
+    /// `--dev`: the developer's map on the title and the pause menu, and the testing keys (which
+    /// otherwise work only in developer builds: `game::DEV_BUILD`).
     pub dev: bool,
 }
 
@@ -91,6 +92,7 @@ impl App {
         };
         let mut game = Game::new();
         game.dev |= opts.dev;
+        game.testing_keys |= opts.dev;
         Self {
             opts,
             window: None,

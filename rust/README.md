@@ -62,13 +62,24 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Archangel's power | R | Left trigger |
 | Pause | Esc | Start |
 | Mute / FPS / Fullscreen | M / F3 / F11, Alt+Enter | |
-| Cheat: straight to the Cyclops | F1 | |
-| Cheat: straight to the old man's wares (with 1000 silver and 10 runes) | 0 | |
-| Sparring Ring: frame readout / next bout / next stage's bouts | F8 / F9 / F7 | |
-| Cheat: a thousand coins, every press | F6 | |
-| God mode (testing): foes still strike, but health always comes back | F5 | |
 | Ragnar's War Cry (his mastery's fourth rank) | F | Left stick press (L3) |
-| Cheat: the nearest foe becomes a rival of the Ledger | F10 | |
+| Free or grid movement | F4 | |
+
+**Testing keys, developer builds only** (debug builds and the Desktop builds `tools/release.sh` makes,
+`VH_DEV_MENU`, or `--dev` on the command line; inert in the distributables, `build-windows.ps1` and
+the web, since 2026-10-09: F1 is the help key on many keyboards). They are fixed keys, never offered
+for rebinding.
+
+| Testing key | Key |
+|---|---|
+| Straight to the Cyclops | F1 |
+| Every key, and him at the gate (a realm: its last trap; the Pit: the clock's last seconds) | F2 |
+| God mode: foes still strike, but health always comes back | F5 |
+| A thousand coins, every press | F6 |
+| Sparring Ring: frame readout / next bout / next stage's bouts | F8 / F9 / F7 |
+| The nearest foe becomes a rival of the Ledger | F10 |
+| The developer's map (LEVELS) | F12 |
+| Straight to the old man's wares (with 1000 silver and 10 runes) | 0 |
 
 The controls page (CONTROLLER on the title or the pause menu) shows either the controller or the keyboard and mouse: left and right, LT and RT, Tab or a click on its tabs switch between them, and it opens on the controller when one is plugged in.
 

@@ -664,6 +664,8 @@ pub fn run(args: &[String]) -> i32 {
         gpu.fx_off |= crate::render::profile::fx::LIGHT_HEAT;
     }
     let mut game = Game::new();
+    // (Scripts press the testing keys: `boss`, `god`, `readout`, `makerival`.)
+    game.testing_keys = true;
     // Fixed seeds, so the same script always renders the same picture.
     game.reseed(1);
     // Levels hold behind the loading screen (RP03); nothing is drawn until the capture, so this

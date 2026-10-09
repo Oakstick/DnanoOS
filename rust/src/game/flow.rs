@@ -413,16 +413,10 @@ impl Game {
         self.view.pose_foes_in_view(&state);
     }
 
-    pub(super) fn handle_global_keys(&mut self) {
-        // While the settings page waits for a control to bind (or asks about one), every press
-        // is its own: even the testing keys do nothing (it tells the player they are kept).
-        if self.settings_page.listen.is_some() || self.settings_page.conflict.is_some() {
-            let _ = self.input.take_look();
-            return;
-        }
-        if self.input.was_pressed(&[Action::Fps]) {
-            self.show_fps = !self.show_fps;
-        }
+    /// The testing keys (developer builds only: `testing_keys`): F1 the Cyclops, F10 a rival, F5
+    /// god mode, F8 the ring's readout, F6 gold, F9 and F7 the ring's bouts, F2 the gate, 0 the old
+    /// man's wares. (F12, the developer's map, is read with the pages.)
+    fn handle_testing_keys(&mut self) {
         if self.input.was_pressed(&[Action::Cheat]) {
             self.cheat_to_boss();
         }
@@ -449,15 +443,30 @@ impl Game {
         if self.input.was_pressed(&[Action::KeyCheat]) && self.screen == Screen::Playing {
             self.cheat_to_gate();
         }
+        if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
+            self.cheat_to_shop();
+        }
+    }
+
+    pub(super) fn handle_global_keys(&mut self) {
+        // While the settings page waits for a control to bind (or asks about one), every press
+        // is its own: even the testing keys do nothing (it tells the player they are kept).
+        if self.settings_page.listen.is_some() || self.settings_page.conflict.is_some() {
+            let _ = self.input.take_look();
+            return;
+        }
+        if self.input.was_pressed(&[Action::Fps]) {
+            self.show_fps = !self.show_fps;
+        }
+        if self.testing_keys {
+            self.handle_testing_keys();
+        }
         if self.input.was_pressed(&[Action::FreeMove]) {
             self.hero.free_move = !self.hero.free_move;
             platform::save("vh.free_move", if self.hero.free_move { "1" } else { "0" });
             let p = self.hero.pos();
             let text = if self.hero.free_move { "FREE MOVEMENT" } else { "GRID MOVEMENT" };
             self.floater(p.x, p.y - 0.8, text, 1.4, Some(0xf2e3c4));
-        }
-        if self.input.was_pressed(&[Action::ShopCheat]) && self.screen != Screen::Shop {
-            self.cheat_to_shop();
         }
         if self.input.was_pressed(&[Action::Call])
             && matches!(self.screen, Screen::Playing | Screen::Paused)
@@ -489,8 +498,10 @@ impl Game {
             self.open_full_map();
         }
         // F12: the developer's map (its stops to jump to), from the title, play or the pause menu;
-        // its buttons stay on the title and the pause menu for the rest of the session.
-        if self.input.was_pressed(&[Action::DevMap])
+        // its buttons stay on the title and the pause menu for the rest of the session (where the
+        // testing keys work).
+        if self.testing_keys
+            && self.input.was_pressed(&[Action::DevMap])
             && matches!(self.screen, Screen::Title | Screen::Playing | Screen::Paused)
             && !self.show_map
         {
