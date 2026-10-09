@@ -72,6 +72,8 @@
 //! 2 far) and `miniturn` turns it with the camera (neither saved).
 //! `--minimap` also writes the minimap's image (its fog and markers drawn on the CPU,
 //! `render::minimap::debug_picture`) beside the capture, as `NAME-minimap.png`.
+//! New Game+: `ngoffer:N` offers it on the title at level N, `ngplus:N` tells the run under way N
+//! times over (the HUD's and the pause's marks).
 //! The settings page (UI.md §8): `settings:N` opens it on tab N (0 Gameplay .. 4 Accessibility),
 //! `setrow:N` highlights row N, `settingspad` shows the controller's bindings, `rebind:Action` waits
 //! to bind the action's first slot (`Attack`, `Block`...), `key:KeyQ` presses and lets go a key,
@@ -102,6 +104,10 @@ pub(crate) fn arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 }
 
 pub(crate) enum Cmd {
+    /// New Game+ offered on the title at level N (`ngoffer:N`, with the kit as it stands), or the
+    /// run under way told N times over (`ngplus:N`).
+    NgOffer(u8),
+    NgPlus(u8),
     /// A bomb dropped where he stands (the bomb is disabled in play; the scripts still drop them).
     Bomb,
     Nugget,
@@ -303,6 +309,8 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "sins" => Cmd::Sins(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "slay" => Cmd::Slay,
             "god" => Cmd::God,
+            "ngoffer" => Cmd::NgOffer(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
+            "ngplus" => Cmd::NgPlus(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "makerival" => Cmd::Press(Action::MakeRival),
             "shop" => Cmd::Shop,
             "workshop" => Cmd::Workshop(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -505,6 +513,12 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         // (Past any prince's health at any tier: from W9 even the first court's pass a thousand.)
         Cmd::Slay => game.debug_wound_boss(100_000),
         Cmd::God => game.input.inject(crate::input::Action::Immortal),
+        Cmd::NgOffer(n) => {
+            let mut offer = game.new_game_plus_offer();
+            offer.level = n.clamp(1, crate::game::newgame::NG_MAX);
+            game.ng_offer = Some(offer);
+        }
+        Cmd::NgPlus(n) => game.ng_plus = n.min(crate::game::newgame::NG_MAX),
         Cmd::Bomb => game.place_bomb(),
         Cmd::Shop => game.open_shop(),
         Cmd::Workshop(n) => {

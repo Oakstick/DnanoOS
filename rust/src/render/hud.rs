@@ -316,7 +316,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             // Where the story stands: the road down after Krampus, below the last button.
             let rects = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height);
             let y = rects.last().map(|r| r[1] + r[3]).unwrap_or(o.height / 2.0) + t * 1.4;
-            o.text("THE ROAD DOWN", o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
+            // (A New Game+ run says which time over it is.)
+            let road = if g.ng_plus > 0 { format!("THE ROAD DOWN   NEW GAME+{}", g.ng_plus) } else { "THE ROAD DOWN".to_string() };
+            o.text(&road, o.width / 2.0, y, t * 0.55, rgba(GOLD, 0.9), Align::Center, true);
             o.text(&where_line(g), o.width / 2.0, y + t * 0.8, t * 0.5, rgba(SAND, 0.9), Align::Center, false);
             let below = o.wrap_text(
                 crate::logic::story::objective(),
@@ -1011,7 +1013,7 @@ fn draw_menu(o: &mut Overlay, g: &Game, t: f32) {
         } else {
             TEXT_DIM
         };
-        let big = matches!(item, MenuItem::Play | MenuItem::Continue);
+        let big = matches!(item, MenuItem::Play | MenuItem::Continue | MenuItem::NewGamePlus);
         if big && selected {
             // The highlighted big button glows gold and breathes.
             o.rect_outline(
@@ -1277,13 +1279,16 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     );
 
     // Under the buttons: where Continue leads, and that Start begins anew.
-    if !g.confirm_reset && g.can_continue() {
+    if !g.confirm_reset && (g.can_continue() || g.ng_offer.is_some()) {
         let items = g.menu_items();
         let rects = menu_rects(g.screen, &items, w, h);
         for (item, r) in items.iter().zip(&rects) {
             let note = match item {
                 MenuItem::Continue => g.continue_caption().unwrap_or_else(|| "Choose a hero and keep what is earned".to_string()),
                 MenuItem::Play => "A new adventure, all reset".to_string(),
+                MenuItem::NewGamePlus => g.ng_offer.as_ref().map_or(String::new(), |n| {
+                    format!("NG+{}: the kit, the purse and the rivals kept; every foe and prince a tier harder", n.level)
+                }),
                 _ => continue,
             };
             o.wrap_text(&note, r[0] + r[2] / 2.0, r[1] + r[3] + t * 0.5, r[2], t * 0.55, t * 0.42, rgba(TEXT_DIM, 1.0));
@@ -1293,16 +1298,16 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
         o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.6]);
         let [px, py, pw, ph] = reset_panel(w, h);
         panel(o, px, py, pw, ph, t);
-        o.text("START OVER?", w / 2.0, py + t * 1.35, t * 1.1, rgba(GOLD, 1.0), Align::Center, true);
-        o.wrap_text(
-            "Every hero's weapons, shields, paths and elixirs, the silver, the runes and the adventure under way will be lost.",
-            w / 2.0,
-            py + t * 2.6,
-            pw - t * 2.4,
-            t * 0.72,
-            t * 0.5,
-            rgba(SAND, 1.0),
-        );
+        let (ask, lost) = if g.confirm_ng {
+            ("NEW GAME+?", "The adventure under way will be lost: New Game+ begins with the finished tale's kit, purse and rivals instead.")
+        } else {
+            (
+                "START OVER?",
+                "Every hero's weapons, shields, paths and elixirs, the silver, the runes and the adventure under way will be lost.",
+            )
+        };
+        o.text(ask, w / 2.0, py + t * 1.35, t * 1.1, rgba(GOLD, 1.0), Align::Center, true);
+        o.wrap_text(lost, w / 2.0, py + t * 2.6, pw - t * 2.4, t * 0.72, t * 0.5, rgba(SAND, 1.0));
     }
     draw_menu(o, g, t);
     o.text(&format!("Best {}", g.score.high), w - t * 0.6, h * 0.035, t * 0.5, rgba(TEXT_DIM, 1.0), Align::Right, false);

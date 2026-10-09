@@ -50,6 +50,7 @@ mod level;
 mod map;
 pub mod mastery;
 mod movement;
+pub mod newgame;
 mod packs;
 mod persist;
 mod pickups;
@@ -179,6 +180,9 @@ pub enum MenuItem {
     Play,
     /// Back into the saved adventure.
     Continue,
+    /// Once the tale is told: begin again with the kit, the purse and the rivals, a tier harder
+    /// (`newgame`).
+    NewGamePlus,
     /// The answers to "start over?".
     StartOver,
     KeepProgress,
@@ -218,6 +222,7 @@ impl MenuItem {
         match self {
             MenuItem::Play => "START",
             MenuItem::Continue => "CONTINUE",
+            MenuItem::NewGamePlus => "NEW GAME+",
             MenuItem::StartOver => "START OVER",
             MenuItem::KeepProgress => "KEEP MY PROGRESS",
             MenuItem::Controls => "CONTROLLER",
@@ -441,6 +446,15 @@ pub struct Game {
     pub persist: persist::Persist,
     /// The title is asking whether to wipe everything and start over.
     pub confirm_reset: bool,
+    /// ...for New Game+ (it begins once the answer is yes).
+    pub confirm_ng: bool,
+    /// New Game+: how many times over this run tells the tale (0 the first time); every foe and
+    /// prince a tier harder for each (`newgame`).
+    pub ng_plus: u8,
+    /// New Game+ was chosen and its run has not reached its first checkpoint yet.
+    ng_taken: bool,
+    /// What New Game+ would begin with, once the tale is told (the title offers it).
+    pub ng_offer: Option<newgame::NgOffer>,
     /// The controller page is open over the title or the pause menu.
     pub show_controls: bool,
     /// The map page is open over the title or the pause menu; which stop is highlighted.
@@ -630,6 +644,10 @@ impl Game {
             saved_run: save::load_run(),
             persist: persist::Persist::default(),
             confirm_reset: false,
+            confirm_ng: false,
+            ng_plus: 0,
+            ng_taken: false,
+            ng_offer: newgame::load_offer(),
             show_controls: false,
             show_map: false,
             map_index: 0,
@@ -671,6 +689,8 @@ impl Game {
             focused: true,
             device_saved: None,
         };
+        // A New Game+ under way, as its checkpoint says.
+        g.ng_plus = g.saved_run.as_ref().map_or(0, |r| r.ng);
         // The settings into the input, the mixer, the HUD and the view.
         g.apply_settings();
         g.load_level(0);

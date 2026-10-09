@@ -93,7 +93,7 @@ fn continue_comes_back_to_every_kind_of_checkpoint() {
         let hero = ROSTER[k % ROSTER.len()];
         let sins = sins_at(stage, k);
         let belt = vec![PotionKind::Health, PotionKind::Stamina][..k % 3].to_vec();
-        let run = Run { hero, stage, score: 100 + k as u32, lives: 1 + (k % 3) as u32, belt: belt.clone(), sins };
+        let run = Run { hero, stage, score: 100 + k as u32, lives: 1 + (k % 3) as u32, belt: belt.clone(), sins, ng: 0 };
         {
             let mut g = launched();
             g.saved_run = Some(run.clone());
@@ -263,6 +263,7 @@ fn a_spoiled_save_never_stops_the_game() {
         lives: 2,
         belt: vec![PotionKind::Health, PotionKind::Life],
         sins: 0b11,
+        ng: 0,
     };
     let valid = run.encode();
     g.progress = Progress::default();
@@ -810,7 +811,7 @@ fn back_closes_the_camera_choice_and_keeps_the_camera() {
     for before in [CameraMode::Third, CameraMode::Top] {
         let mut g = Game::new();
         g.view.camera_mode = before;
-        g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0 });
+        g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 });
         g.continue_game();
         assert_eq!(g.screen, Screen::View);
         // Another card highlighted, then Esc.
@@ -996,8 +997,15 @@ fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
         g.bestiary.book = book.clone();
         g.bestiary.live = true;
         g.bestiary.dirty = true;
-        g.saved_run =
-            Some(Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 9000, lives: 2, belt: vec![PotionKind::Health], sins: ALL_SINS });
+        g.saved_run = Some(Run {
+            hero: HeroKind::Mehmed,
+            stage: Stage::Lair,
+            score: 9000,
+            lives: 2,
+            belt: vec![PotionKind::Health],
+            sins: ALL_SINS,
+            ng: 0,
+        });
         g.progress.silver = 1500;
         g.progress.runes = 40;
         let _ = g.progress.unlock(HeroKind::Mehmed, Tree::Armory, 1);
@@ -1044,6 +1052,114 @@ fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
 }
 
 /**
+ * New Game+ (the user's call, 2026-10-09): once the tale is told the title offers NEW GAME+ beside
+ * Start (and when the game is started again). Taken, the adventure begins from the heroes with the
+ * finished run's kit and purse, its living rivals back in the Ledger, every realm a tier harder
+ * (the Garden a stage deeper), the bestiary intact; its checkpoint carries the level and uses the
+ * offer up. Finished again, it offers NG+2. Start beside it still begins a fresh adventure.
+ */
+#[test]
+fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
+    use super::MenuItem;
+    use crate::logic::bestiary::{all_entries, Book};
+    use crate::logic::enemy::EnemyKind;
+    use crate::logic::progression::Tree;
+    use crate::logic::war::names::Deed;
+    let _dir = own_folder("new-game-plus");
+    let mut book = Book::default();
+    for e in all_entries().into_iter().take(8) {
+        book.met(e);
+    }
+    let (kit, rivals) = {
+        // A whole run behind him, as the end begins: a purse, unlocks, two rivals (one slain).
+        let mut g = launched();
+        g.bestiary.book = book.clone();
+        g.saved_run = Some(Run {
+            hero: HeroKind::Mehmed,
+            stage: Stage::Lair,
+            score: 9000,
+            lives: 2,
+            belt: vec![PotionKind::Health],
+            sins: ALL_SINS,
+            ng: 0,
+        });
+        g.progress.silver = 1500;
+        g.progress.runes = 40;
+        let _ = g.progress.unlock(HeroKind::Mehmed, Tree::Armory, 1);
+        let alive = g.warband.save.ledger.promote(EnemyKind::Blemmyes, Deed::KillingBlow, HeroKind::Mehmed, 7);
+        let slain = g.warband.save.ledger.promote(EnemyKind::Oni, Deed::KillingBlow, HeroKind::Mehmed, 9);
+        if let Some(r) = g.warband.save.ledger.get_mut(slain) {
+            r.alive = false;
+        }
+        g.mark_saves();
+        g.flush_saves();
+        g.continue_game();
+        assert!(until(&mut g, Screen::Playing, 30.0));
+        let kit = g.progress;
+        let name = g.ledger().get(alive).map(|r| r.full_name()).unwrap();
+        g.lair_won();
+        g.input.inject(Action::Pause);
+        assert!(until(&mut g, Screen::Title, 10.0));
+        assert!(g.title_items().contains(&MenuItem::NewGamePlus), "the title offers New Game+ once the tale is told");
+        assert!(g.title_items().contains(&MenuItem::Play), "...beside Start");
+        assert_eq!(g.ng_offer.as_ref().map(|o| o.level), Some(1));
+        g.flush_saves();
+        (kit, name)
+    };
+    // Started again: the offer stands. New Game+: nothing under way to lose, so it begins at once.
+    let mut g = launched();
+    g.bestiary.book = book.clone();
+    assert!(!g.title_items().contains(&MenuItem::Continue));
+    g.menu_index = g.title_items().iter().position(|&m| m == MenuItem::NewGamePlus).expect("offered when started again");
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(!g.confirm_reset);
+    assert_eq!(g.screen, Screen::Select);
+    g.select_index = HeroKind::Mehmed.slot();
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!((g.dungeon, g.sins_cleared, g.keys_got), (0, 0, 0), "from the start, in the Garden");
+    assert_eq!(g.progress, kit, "the kit and the purse kept");
+    assert!(g.progress.hero(HeroKind::Mehmed).has(Tree::Armory, 1));
+    assert_eq!(g.ledger().rivals.iter().map(|r| r.full_name()).collect::<Vec<_>>(), vec![rivals.clone()], "the living rival is back");
+    assert_eq!(g.ng_plus, 1);
+    assert_eq!(g.realm_tier(), 2, "a tier harder: the first realm as the second");
+    assert_eq!(g.foe_stage(), 2, "the Garden a stage deeper");
+    assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.ng)), Some((Stage::Dungeon(0), 1)), "the checkpoint carries it");
+    assert!(g.ng_offer.is_none(), "the offer is used up");
+    assert!(all_entries().into_iter().take(8).all(|e| g.bestiary.book.unlocked(e)), "the bestiary intact");
+    g.flush_saves();
+    // Started again mid-way: Continue says so, and the level comes back with the run.
+    let mut g = launched();
+    assert_eq!(g.ng_plus, 1);
+    assert!(g.continue_caption().is_some_and(|c| c.contains("New Game+1")));
+    assert!(!g.title_items().contains(&MenuItem::NewGamePlus), "no offer while it is under way");
+    // Finished again: NG+2 is offered.
+    g.saved_run.as_mut().unwrap().stage = Stage::Lair;
+    g.saved_run.as_mut().unwrap().sins = ALL_SINS;
+    g.continue_game();
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!(g.realm_tier(), 9);
+    g.lair_won();
+    assert_eq!(g.ng_offer.as_ref().map(|o| o.level), Some(2));
+    g.input.inject(Action::Pause);
+    assert!(until(&mut g, Screen::Title, 10.0));
+    // Start beside it: a fresh adventure, nothing kept, a first run's tiers.
+    g.menu_index = g.title_items().iter().position(|&m| m == MenuItem::Play).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!(g.progress, Progress::default());
+    assert!(g.ledger().rivals.is_empty());
+    assert_eq!((g.ng_plus, g.realm_tier(), g.foe_stage()), (0, 1, 1));
+    assert_eq!(g.saved_run.as_ref().map(|r| r.ng), Some(0));
+    assert!(g.ng_offer.is_some(), "the offer stays on the title for another time");
+}
+
+/**
  * The GPU lost mid-fight (QA.md Q2; the app drops the renderer and starts a new one): whatever save
  * is marked is on disk before the renderer goes, play waits on the pause menu (and does not begin
  * again by itself), the level is marked to go up whole to the new renderer, and a line says what
@@ -1053,7 +1169,8 @@ fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
 fn a_lost_gpu_saves_first_and_waits_on_the_pause_menu() {
     let _dir = own_folder("gpu-lost");
     let mut g = launched();
-    g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Greed), score: 10, lives: 3, belt: Vec::new(), sins: 0 });
+    g.saved_run =
+        Some(Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Greed), score: 10, lives: 3, belt: Vec::new(), sins: 0, ng: 0 });
     g.continue_game();
     assert!(until(&mut g, Screen::Playing, 30.0));
     for _ in 0..60 {

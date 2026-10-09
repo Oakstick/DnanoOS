@@ -239,12 +239,15 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--run") {
         // WARBAND.md W9: the whole run by one bot, one save carried through it: `--run SKILL SEED
-        // [ORDER]` (skill 0 novice, 1 adept, 2 expert; order 0 the vaults first, 1 the reverse).
+        // [ORDER] [ng+N]` (skill 0 novice, 1 adept, 2 expert; order 0 the vaults first, 1 the
+        // reverse; ng+N New Game+ N times over).
         let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
         let (skill, seed, order) = (num(1, 2), num(2, 1), num(3, 0));
-        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join(format!("vh-run-{skill}-{seed}-{order}")));
+        // (`ng+N` after them: New Game+ N times over, `whole_run_ng`.)
+        let ng = args.iter().skip(i + 1).take(4).find_map(|a| a.strip_prefix("ng+").and_then(|n| n.parse::<u8>().ok())).unwrap_or(0);
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join(format!("vh-run-{skill}-{seed}-{order}-{ng}")));
         let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
-        let r = void_harvest::game::whole_run::whole_run(skill, seed, order as usize);
+        let r = void_harvest::game::whole_run::whole_run_ng(skill, seed, order as usize, ng);
         print!("{}", void_harvest::game::whole_run::run_table(&r));
         return;
     }

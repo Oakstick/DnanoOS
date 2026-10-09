@@ -628,6 +628,11 @@ fn draw_location(o: &mut Overlay, g: &Game, l: &HudLayout) {
     let cy = y + h / 2.0;
     o.text_styled(&name, x + w - t * 0.5, cy, &st);
     glyphs::draw_prompt(o, &g.input, Action::Guide, px + t * 0.45, cy, t * 0.62);
+    // A New Game+ run says so, small in gold over the panel's right end.
+    if g.ng_plus > 0 {
+        let st = style::label(t, 0.5, rgba(GOLD, 0.95)).right();
+        o.text_styled(&format!("NEW GAME+{}", g.ng_plus), x + w - t * 0.5, y - t * 0.45, &st);
+    }
 }
 
 /**

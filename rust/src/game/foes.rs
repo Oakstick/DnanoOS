@@ -55,7 +55,8 @@ impl Game {
     }
 
     pub(super) fn foe_stage_of(&self, dungeon: usize) -> u8 {
-        (dungeon as u8).saturating_add(1).min(EnemyKind::STAGES)
+        // (New Game+: a stage deeper for each time over, `newgame`.)
+        (dungeon as u8).saturating_add(1).saturating_add(self.ng_plus).min(EnemyKind::STAGES)
     }
 
     /// A dungeon's cast: its own stage's foes, and with them one of every stage met before (by

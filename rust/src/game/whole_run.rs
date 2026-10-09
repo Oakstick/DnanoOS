@@ -427,6 +427,8 @@ pub struct WholeRun {
     pub ledger: (u32, u32, u32, u8, u32),
     /// How the rivals' remembered fights ended: the hero won, the rival won, he fled, the hero left.
     pub outcomes: [u32; 4],
+    /// New Game+: the times over (0 a first run).
+    pub ng: u8,
 }
 
 impl WholeRun {
@@ -751,10 +753,49 @@ pub fn whole_run(skill: Skill, seed: u32, order: usize) -> WholeRun {
     run
 }
 
+/**
+ * New Game+ `ng` times over (`newgame`): the whole run played as `whole_run` plays it, then again
+ * from the start with what it left (the kit, the purse, the living rivals) a tier harder, `ng`
+ * times; the last is returned. A run that does not reach the end hands on what it had where it
+ * stopped, as if it had (the adept's runs end at a prince). `ng` 0 is `whole_run` itself.
+ */
+pub fn whole_run_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> WholeRun {
+    if ng == 0 {
+        return whole_run(skill, seed, order);
+    }
+    let sins = ORDERS[order.min(1)];
+    let mut g = fresh_game(seed);
+    let mut run = play_run(&mut g, skill, seed, &sins, true);
+    for _ in 0..ng.min(super::newgame::NG_MAX) {
+        let offer = g.ng_offer.take().unwrap_or_else(|| g.new_game_plus_offer());
+        // (Back to the title, as the end or Quit to Title leaves him, and the run closed.)
+        if g.story.is_some() {
+            g.finish_ending();
+        }
+        g.story = None;
+        g.enter(Screen::Title);
+        g.close_run();
+        // (Closing the run wipes the voices: the harness keeps the prince's cheats off, `fresh_game`.)
+        g.voices.deceit.off = true;
+        g.ng_offer = Some(offer);
+        g.take_new_game_plus();
+        run = play_run(&mut g, skill, seed, &sins, true);
+    }
+    run.order = order;
+    finish_report(&mut run, &g);
+    run
+}
+
 /// The run through the realms of `sins` in that order, and on through the finale if `finale`.
 pub fn run_of(skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
     let mut g = fresh_game(seed);
     let mut run = play_run(&mut g, skill, seed, sins, finale);
+    finish_report(&mut run, &g);
+    run
+}
+
+/// The purse and the Ledger at the run's end, into its report.
+fn finish_report(run: &mut WholeRun, g: &Game) {
     run.purse = (g.progress.silver, g.progress.runes);
     let l = &g.warband.save.ledger;
     run.ledger = (
@@ -773,7 +814,6 @@ pub fn run_of(skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
             Outcome::HeroLeft => 3,
         }] += 1;
     }
-    run
 }
 
 fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
@@ -791,6 +831,7 @@ fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -
         purse: (0, 0),
         ledger: (0, 0, 0, 0, 0),
         outcomes: [0; 4],
+        ng: g.ng_plus,
     };
     let mut before = Part::new(PartKind::Pit, g);
     shop(g, skill, seed, &mut before);
@@ -866,8 +907,9 @@ pub fn run_table(r: &WholeRun) -> String {
     // (The Drum paces the realms and the Pit; a court keeps its own pace.)
     let drum = |fights: bool, v: f64, d: usize| if fights { "-".to_string() } else { format!("{v:.d$}") };
     let mut out = format!(
-        "THE WHOLE RUN {} seed {} order {} (Garden's purse {} silver, {} runes)\n",
+        "THE WHOLE RUN {}{} seed {} order {} (Garden's purse {} silver, {} runes)\n",
         r.skill.name(),
+        if r.ng > 0 { format!(" NEW GAME+{}", r.ng) } else { String::new() },
         r.seed,
         r.order,
         r.garden.0,

@@ -70,6 +70,8 @@ impl Game {
         if !cfg!(test) {
             remember_finished();
         }
+        // New Game+ is offered with what the finished run holds, before it is closed (`newgame`).
+        self.offer_new_game_plus();
         self.close_run();
         self.play_ending();
     }

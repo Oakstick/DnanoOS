@@ -762,6 +762,38 @@ All in the charcoal-and-copper panels of the art-direction pass.
 
 `Run` checkpoints write `vh.warband` alongside `vh.run`. Captures never write it (as now).
 
+**New Game+** (2026-10-09, `game/newgame.rs`). Once the tale is told the title offers NEW GAME+
+beside Start: the adventure from Scene I again with the finished run's `vh.progress` (every hero's
+tiers, mastery, loadout; the purse) and its living rivals seeded back into the Ledger (their tally
+of the slain begins again), every foe and prince a tier harder. The offer is saved apart, from the
+moment the end begins until the New Game+ it offers reaches its first checkpoint:
+
+| Key | Scope | Holds |
+|---|---|---|
+| `vh.ngplus`, `.kit`, `.rivals` | the offer, across runs | its level (1 to 3), the kit and purse, the Ledger's living rivals |
+| `vh.run` | the run | a New Game+ run's checkpoint is a "v3" line ending in its level (a first run's stays "v2") |
+
+"A tier harder" is an offset on top of the numbers, never a change to them: `Game::realm_tier` is
+1 + keys held + the level, so the dealer deals a stage deeper (to the seventh), packs grow and weigh
+as a later realm's, each prince fights at the next tier (`court::weight`), the Pit and Krampus too
+(`lair_weight`); the Garden brings a stage deeper (`foe_stage_of`). Whatever the princes' and foes'
+own numbers become, the offset composes with them; a first run (level 0) is untouched.
+
+`--run SKILL SEED ORDER ng+N` plays the whole run, then New Game+ N times over with what it left (a
+run that did not reach the end hands on what it had where it stopped), and prints the last.
+Seed 1, NG+1 against the first run as this build plays it (1.0.21 with the fixes):
+
+| Run | First run | NG+1 |
+|---|---|---|
+| expert, order 0 | the ending, 90 min, 12 lives and 3 tries lost, 4 realms cleared | the ending, 78 min, no life lost, 4 realms cleared (kit 9/8/8 to 10/10/10, rank 5, from the first realm) |
+| expert, order 1 | the ending, 110 min, 9 lives and 1 try lost, 1 realm cleared | the ending, 85 min, 1 life lost, 2 realms cleared |
+| adept, order 0 | ends at Lucifer's court, 57 min, 1 realm cleared, 1 prince | ends in the vaults (tier 2), 23 min, 9 lives lost (kit 3/3/3: the adept hands on little) |
+| adept, order 1 | ends at Asmodeus's court, 22 min | ends at Asmodeus's court (tier 2), 25 min, 17 lives lost |
+
+The expert's kit outgrows the tier: NG+1 is easier for him than his first run was (the princes
+fall in a minute or two at blade 9-10); the adept, who never finishes, is set back further. NG+2
+and NG+3 (`ng+2`, `ng+3`) are the knobs if the expert's NG+ should bite.
+
 ---
 
 ## 15. Tools: harness, telemetry, tests, captures, the Map

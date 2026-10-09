@@ -52,7 +52,8 @@ fixes keep every harness number identical except one whole run (Q3, explained th
    mode, F6 +1000 coins, F7/F9 the ring's bouts, F10 a rival, F12 the LEVELS map, F4 grid movement.
    F1 is the help key on many keyboards: a reviewer pressing it is thrown out of his level into the
    Cyclops' meadow. Proposal: keep them behind `dev` (as LEVELS is) in `build-windows.ps1` builds.
-2. **Decided and built (c9d4fe7): after the end the run is closed, Start begins anew.** **After the ending, Continue goes back to Krampus.** The last checkpoint is `Stage::Lair`, kept
+2. **Decided and built (c9d4fe7): after the end the run is closed, Start begins anew; New Game+
+   beside it (NGCOMMIT).** **After the ending, Continue goes back to Krampus.** The last checkpoint is `Stage::Lair`, kept
    after Scene II and the credits, so the title's Continue reads "Ragnar, Krampus's lair" and puts him
    before Krampus again (the finished mark stays). Many games do this; the alternative is to clear the
    run at `begin_ending` so Continue opens the heroes with the purse and unlocks kept.
@@ -273,9 +274,27 @@ it now counts what a pose draws each frame before calling a ray a hole, and pass
 send him on at once (a mirror-door's recess).
 
 **Still open**: the design calls 3 and 4 (the balance agent's); the hand
-playthrough items above. Proposal for the user, not built: a **New Game+** from the title once the
-tale is told (the finished mark): start again with the hero's kit (his unlocked tiers, mastery ranks)
-and the purse kept, the foes a tier harder throughout (the dealer's stage tier + 1, the princes at
-their next tier), and the rivals of the bestiary seeded back into the Ledger; cheap where it reuses
-`close_run` (keep `progress` instead of clearing it) and the tiers already in the data.
+playthrough items above.
+
+**Then built** (the user's calls after the pass, same branch):
+
+- **`--dev` only in developer builds** (e3acc49): the flag turns the developer's map and the testing
+  keys on only where `DEV_BUILD` holds (debug builds, `tools/release.sh`'s `VH_DEV_MENU`); in
+  `build-windows.ps1` and web builds it is ignored (`Game::ask_dev`). The harnesses that press the
+  testing keys (`--capture` scripts, `--monkey ... cheats`) are unchanged. Test
+  `dev_on_the_command_line_is_ignored_outside_developer_builds`.
+- **New Game+** (NGCOMMIT; the proposal above, approved): once the tale is told the title offers
+  NEW GAME+ beside Start. It begins again from Scene I with the finished run's kit (every hero's
+  tiers, mastery and loadout), its purse and its living rivals seeded back into the Ledger, every foe
+  and prince a tier harder: an offset on top of the numbers (`Game::realm_tier` + the level, so the
+  dealer's stage, the packs' weight, each prince's and Krampus's tier; the Garden a stage deeper),
+  never a change to them. Finished again it offers NG+2, then NG+3 (`newgame::NG_MAX`). The level
+  goes with the run's checkpoint (`Run::ng`, a "v3" line; a first run's line is "v2" as before) and is
+  shown on the title (the button's caption, Continue's), over the HUD's place name and in the pause
+  menu ("THE ROAD DOWN   NEW GAME+1"). Start beside it is a fresh adventure. A first run is
+  bit-identical in every harness (`--run` expert and adept seed 1 both orders, the seven courts at
+  expert t4 and adept t4, `--pit 2 8 1`, the 16 bouts: the same output as before, wall-clock lines
+  aside). `--run SKILL SEED ORDER ng+N` plays New Game+ N times over (WARBAND.md §14). Test
+  `after_the_end_new_game_plus_keeps_the_kit_a_tier_harder`. Captures `vh-fixes-cap/ng-title.png`,
+  `ng-hud.png`, `ng-pause.png`.
 

@@ -171,6 +171,7 @@ impl Game {
                 Some(MenuItem::Settings) => self.open_settings(),
                 Some(MenuItem::Bestiary) => self.open_bestiary(),
                 Some(MenuItem::Continue) => self.continue_game(),
+                Some(MenuItem::NewGamePlus) => self.choose_new_game_plus(),
                 Some(MenuItem::StartOver) => self.answer_reset(true),
                 Some(MenuItem::KeepProgress) => self.answer_reset(false),
                 // Start begins a new adventure: the story, then the character screen.
