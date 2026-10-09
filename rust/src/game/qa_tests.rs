@@ -932,3 +932,74 @@ fn testing_keys_are_inert_outside_developer_builds() {
     press(&mut g, KeyCode::F6);
     assert_eq!(g.progress.silver, silver + super::CHEAT_COINS, "a developer build takes F6");
 }
+
+/**
+ * After the end the finished run is closed (the user's call, 2026-10-09): the title offers no
+ * Continue (now, and when the game is started again), Start begins a new adventure at once (no
+ * "start over?", nothing to lose), in the Garden with nothing of the old run (no keys, no purse,
+ * no unlocks, an empty Ledger), and the bestiary, its pages and the rivals it remembers, is intact.
+ */
+#[test]
+fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
+    use crate::logic::bestiary::{all_entries, Book, BOOK_KEY};
+    use crate::logic::enemy::EnemyKind;
+    use crate::logic::progression::Tree;
+    let _dir = own_folder("after-the-end");
+    let mut book = Book::default();
+    for e in all_entries().into_iter().take(12) {
+        book.met(e);
+        book.felled(e);
+    }
+    book.remember_rival("Thibault of Graufels", EnemyKind::Blemmyes, 3, false);
+    {
+        // A whole run behind him: at Krampus's lair, every key, a full purse, unlocks bought.
+        let mut g = launched();
+        g.bestiary.book = book.clone();
+        g.bestiary.live = true;
+        g.bestiary.dirty = true;
+        g.saved_run =
+            Some(Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 9000, lives: 2, belt: vec![PotionKind::Health], sins: ALL_SINS });
+        g.progress.silver = 1500;
+        g.progress.runes = 40;
+        let _ = g.progress.unlock(HeroKind::Mehmed, Tree::Armory, 1);
+        g.warband.save.ledger.promote(EnemyKind::Blemmyes, crate::logic::war::names::Deed::KillingBlow, HeroKind::Mehmed, 7);
+        assert!(!g.ledger().rivals.is_empty());
+        g.mark_saves();
+        g.flush_saves();
+        g.continue_game();
+        assert!(g.in_lair());
+        assert!(until(&mut g, Screen::Playing, 30.0));
+        // Krampus falls and the friend reaches him: the end.
+        g.lair_won();
+        assert_eq!(g.screen, Screen::Story);
+        assert!(g.finished);
+        g.input.inject(Action::Pause);
+        assert!(until(&mut g, Screen::Title, 10.0), "Esc skips the end to the title");
+        assert!(!g.title_items().contains(&super::MenuItem::Continue), "no Continue after the end");
+        assert_eq!(g.saved_run, None);
+        assert_eq!(g.progress, Progress::default(), "the purse and the unlocks went with the run");
+        assert!(g.ledger().rivals.is_empty(), "the Ledger is the run's");
+        assert_eq!(g.bestiary.book, book, "the bestiary stays");
+        g.flush_saves();
+    }
+    // The game started again: still no Continue; the book as it was saved.
+    let mut g = launched();
+    assert_eq!(g.saved_run, None);
+    assert!(!g.title_items().contains(&super::MenuItem::Continue), "no Continue when started again");
+    assert_eq!(platform::load(BOOK_KEY).map(|s| Book::decode(&s)), Some(book.clone()), "the saved book stays");
+    g.bestiary.book = Book::decode(&platform::load(BOOK_KEY).unwrap_or_default());
+    // Start: a new adventure at once (nothing to ask about), from the heroes.
+    g.menu_index = g.title_items().iter().position(|&m| m == super::MenuItem::Play).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(!g.confirm_reset, "nothing to lose: Start does not ask");
+    assert_eq!(g.screen, Screen::Select);
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    assert_eq!((g.dungeon, g.realm, g.sins_cleared, g.keys_got), (0, None, 0, 0), "a fresh run, in the Garden");
+    assert_eq!(g.progress, Progress::default());
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(Stage::Dungeon(0)), "saved as a new run");
+    assert_eq!(g.bestiary.book.rival("Thibault of Graufels").map(|r| r.name.as_str()), Some("Thibault of Graufels"));
+    assert!(all_entries().into_iter().take(12).all(|e| g.bestiary.book.unlocked(e)), "every page still open");
+}

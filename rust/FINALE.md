@@ -104,7 +104,9 @@ system with Scene I's cast and camera):
    > The good and the bad were never below.
    > They were always within.
 
-4. The credits, then the title screen. The save remembers that the game was finished.
+4. The credits, then the title screen. The save remembers that the game was finished. The finished
+   run is closed (the user's call, 2026-10-09): the title offers no Continue, and Start begins a new
+   adventure; the bestiary, the settings and bindings and the finished mark stay.
 
 ## 5. The story without Satan
 
@@ -389,7 +391,12 @@ skipped exactly as Scene I is. Its beats, all action (`SCENE_TWO`, times in `sto
 Esc skips (to the title, the hymn let go over a second and a half); Enter during the credits lets
 them go. The save's `vh.finished` remembers the game was finished (`Game::finished`, read at
 start; the Map's Scene II stop does not set it); the title shows a gold diamond and THE TALE IS
-TOLD in its top-left corner once it is.
+TOLD in its top-left corner once it is. As the end begins the run is closed (`Game::close_run`, the
+same wipe as Start's "start over?" without the question): the checkpoint (Krampus's lair), the purse,
+every hero's unlocks and the Ledger go, so the title offers no Continue and Start begins a new
+adventure at once; the bestiary (its pages and the rivals it remembers), the settings, the bindings,
+the camera, the tour seen and the finished mark stay. Test
+`after_the_end_start_begins_anew_and_the_bestiary_stays`.
 
 **The set** (`render/view/ascent.rs`) stands on its own at (-240, 0, -40), so it needs neither the
 Pit's nor the lair's code: a frozen hollow at the bottom (black stone, drifted snow, icicles, the

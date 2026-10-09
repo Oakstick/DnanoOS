@@ -819,6 +819,9 @@ impl Game {
         }
         if self.lair.is_some() {
             self.update_lair(dt);
+            if self.screen == Screen::Story {
+                return; // the end has begun: the run is closed, nothing more of it is counted
+            }
         }
 
         self.sim.boss += lap.lap();

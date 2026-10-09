@@ -2,7 +2,8 @@
 //! Cyclops' arena, the old man's wares after it), so Continue on the title
 //! picks up where the player left off: the same hero, the same stage, the
 //! score, lives and belt he had when he reached it. Start begins a new
-//! adventure and wipes everything earned, after asking.
+//! adventure and wipes everything earned, after asking. The end closes the
+//! run (`close_run`): after it, Start begins anew and there is no Continue.
 
 use super::{Game, MenuItem, Screen};
 use crate::audio::Sfx;
@@ -286,17 +287,25 @@ impl Game {
     /// Every hero's unlocks, the silver, the runes and the adventure under way are gone,
     /// and the first dungeon's tour is owed again. The best score stays on the board.
     fn reset_everything(&mut self) {
+        self.close_run();
+        self.hero_kind = HeroKind::Ragnar;
+        if !cfg!(test) {
+            super::tour::forget_tour();
+            self.tour_pending = true;
+        }
+    }
+
+    /// The run is over: the purse, every hero's unlocks, the Ledger and the checkpoint are gone, so
+    /// the title offers no Continue and Start begins a new adventure without asking. What lasts
+    /// across runs stays: the bestiary (its pages and the rivals it remembers), the settings and
+    /// bindings, the camera, the best score and the finished mark.
+    pub(super) fn close_run(&mut self) {
         self.progress = Progress::default();
         self.save_progress();
         self.wipe_warband();
         // (One write: the purse, the run and the Ledger go together.)
         self.write_run(None);
-        self.hero_kind = HeroKind::Ragnar;
         self.sins_cleared = 0;
-        if !cfg!(test) {
-            super::tour::forget_tour();
-            self.tour_pending = true;
-        }
     }
 
     /// The title's buttons: Continue (when there is something to continue), Start, the
