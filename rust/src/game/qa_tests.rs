@@ -1054,7 +1054,7 @@ fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
 /**
  * New Game+ (the user's call, 2026-10-09): once the tale is told the title offers NEW GAME+ beside
  * Start (and when the game is started again). Taken, the adventure begins from the heroes with the
- * finished run's kit and purse, its living rivals back in the Ledger, every realm a tier harder
+ * finished run's kit and purse, its living rivals back in the Ledger, every realm tiers harder
  * (the Garden a stage deeper), the bestiary intact; its checkpoint carries the level and uses the
  * offer up. Finished again, it offers NG+2. Start beside it still begins a fresh adventure.
  */
@@ -1124,8 +1124,8 @@ fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
     assert!(g.progress.hero(HeroKind::Mehmed).has(Tree::Armory, 1));
     assert_eq!(g.ledger().rivals.iter().map(|r| r.full_name()).collect::<Vec<_>>(), vec![rivals.clone()], "the living rival is back");
     assert_eq!(g.ng_plus, 1);
-    assert_eq!(g.realm_tier(), 2, "a tier harder: the first realm as the second");
-    assert_eq!(g.foe_stage(), 2, "the Garden a stage deeper");
+    assert_eq!(g.realm_tier(), 3, "two tiers harder: the first realm as the third");
+    assert_eq!(g.foe_stage(), 3, "the Garden two stages deeper");
     assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.ng)), Some((Stage::Dungeon(0), 1)), "the checkpoint carries it");
     assert!(g.ng_offer.is_none(), "the offer is used up");
     assert!(all_entries().into_iter().take(8).all(|e| g.bestiary.book.unlocked(e)), "the bestiary intact");
@@ -1140,7 +1140,7 @@ fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
     g.saved_run.as_mut().unwrap().sins = ALL_SINS;
     g.continue_game();
     assert!(until(&mut g, Screen::Playing, 30.0));
-    assert_eq!(g.realm_tier(), 9);
+    assert_eq!(g.realm_tier(), 10);
     g.lair_won();
     assert_eq!(g.ng_offer.as_ref().map(|o| o.level), Some(2));
     g.input.inject(Action::Pause);

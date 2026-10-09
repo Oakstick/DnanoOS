@@ -1287,7 +1287,11 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
                 MenuItem::Continue => g.continue_caption().unwrap_or_else(|| "Choose a hero and keep what is earned".to_string()),
                 MenuItem::Play => "A new adventure, all reset".to_string(),
                 MenuItem::NewGamePlus => g.ng_offer.as_ref().map_or(String::new(), |n| {
-                    format!("NG+{}: the kit, the purse and the rivals kept; every foe and prince a tier harder", n.level)
+                    format!(
+                        "NG+{}: the kit, the purse and the rivals kept; every foe and prince {} tiers harder",
+                        n.level,
+                        n.level * crate::game::newgame::NG_TIERS
+                    )
                 }),
                 _ => continue,
             };

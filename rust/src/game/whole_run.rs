@@ -755,7 +755,7 @@ pub fn whole_run(skill: Skill, seed: u32, order: usize) -> WholeRun {
 
 /**
  * New Game+ `ng` times over (`newgame`): the whole run played as `whole_run` plays it, then again
- * from the start with what it left (the kit, the purse, the living rivals) a tier harder, `ng`
+ * from the start with what it left (the kit, the purse, the living rivals) tiers harder, `ng`
  * times; the last is returned. A run that does not reach the end hands on what it had where it
  * stopped, as if it had (the adept's runs end at a prince). `ng` 0 is `whole_run` itself.
  */

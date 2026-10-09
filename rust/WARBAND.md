@@ -796,6 +796,13 @@ first realm; the princes fall in a minute or two), and about as hard for the ade
 same place with what his first run left him. NG+2 and NG+3 (`ng+2`, `ng+3`) are the knobs if New
 Game+ should bite harder (or a larger offset per level).
 
+**Two tiers a level** (`newgame::NG_TIERS` = 2, the user's call, 2026-10-09): NG+1 meets the first
+realm at tier 3. Expert, seed 1: order 0 the ending in 72 min, 3 lives lost, 4 realms cleared; order
+1 the ending in 82 min, 3 lives lost, 3 realms cleared. Still quicker than the first run (100 and 107
+min, 14 and 9 lives): the carried kit (8/8/8 from the first realm, blade 10 by the second court)
+outweighs the tiers; the princes fall in 0.7-2.7 min. The tiers alone are not the lever; the kit
+carried is.
+
 ---
 
 ## 15. Tools: harness, telemetry, tests, captures, the Map

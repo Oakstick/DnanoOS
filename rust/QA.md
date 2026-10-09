@@ -289,7 +289,7 @@ playthrough items above.
 - **New Game+** (72ff15c; the proposal above, approved): once the tale is told the title offers
   NEW GAME+ beside Start. It begins again from Scene I with the finished run's kit (every hero's
   tiers, mastery and loadout), its purse and its living rivals seeded back into the Ledger, every foe
-  and prince a tier harder: an offset on top of the numbers (`Game::realm_tier` + the level, so the
+  and prince two tiers harder per level (`NG_TIERS`): an offset on top of the numbers (`Game::realm_tier` + the level, so the
   dealer's stage, the packs' weight, each prince's and Krampus's tier; the Garden a stage deeper),
   never a change to them. Finished again it offers NG+2, then NG+3 (`newgame::NG_MAX`). The level
   goes with the run's checkpoint (`Run::ng`, a "v3" line; a first run's line is "v2" as before) and is

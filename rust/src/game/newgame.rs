@@ -2,14 +2,15 @@
 //! offers NEW GAME+ beside Start: the adventure begins again from Scene I with the finished run's
 //! kit (every hero's tiers of the old man's trees, his mastery, his loadout), its purse (silver and
 //! runes), and its living rivals seeded back into the Ledger of Grudges; every foe and prince is a
-//! tier harder. Finished again, it offers the next (NG+2, NG+3), up to `NG_MAX`. Start stays beside
+//! tiers harder (`NG_TIERS`). Finished again, it offers the next (NG+2, NG+3), up to `NG_MAX`. Start stays beside
 //! it: a fresh adventure, all reset (the offer stays on the title).
 //!
-//! "A tier harder" is an offset on top of the numbers as they are, never a change to them: the
-//! realms' tier (`Game::realm_tier`) gains one for each time over, so the dealer deals a stage
-//! deeper (`logic::realms::Dealer`, to the seventh), the packs grow and weigh as a later realm's do
-//! (`logic::realms::weight`), each prince fights at the next tier (`court::weight`), the Pit and
-//! Krampus too (`lair_weight`); the Garden brings a stage deeper (`foe_stage_of`). A first run's
+//! "Tiers harder" is an offset on top of the numbers as they are, never a change to them: the
+//! realms' tier (`Game::realm_tier`) gains `NG_TIERS` for each time over (two: one was easier for
+//! the expert than his first run, the kit outgrowing it; the user's call, 2026-10-09), so the
+//! dealer deals stages deeper (`logic::realms::Dealer`, to the seventh), the packs grow and weigh as a later realm's do
+//! (`logic::realms::weight`), each prince fights tiers up (`court::weight`), the Pit and
+//! Krampus too (`lair_weight`); the Garden brings stages deeper (`foe_stage_of`). A first run's
 //! numbers are untouched (`ng_plus` 0).
 //!
 //! The run's level goes with its checkpoint (`Run::ng`); the offer is saved apart (`NG_KEY`, the
@@ -21,9 +22,11 @@ use crate::logic::progression::Progress;
 use crate::logic::war::ledger::Ledger;
 use crate::platform;
 
-/// The most times over: each a tier harder (NG+3 sends the seventh stage's foes from the first
-/// realm on, the princes three tiers up).
+/// The most times over: each `NG_TIERS` harder (NG+3 sends the seventh stage's foes from the first
+/// realm on, the princes six tiers up).
 pub const NG_MAX: u8 = 3;
+/// The tiers each time over adds to the realms' tier, the princes', the Pit's and the Garden's stage.
+pub const NG_TIERS: u8 = 2;
 /// Where the offer is saved: its level, and the kit and rivals it keeps.
 pub const NG_KEY: &str = "vh.ngplus";
 const NG_KIT_KEY: &str = "vh.ngplus.kit";
@@ -98,7 +101,7 @@ impl Game {
     }
 
     /**
-     * New Game+ begins (the run already closed): the offer's kit, purse and rivals, a tier harder
+     * New Game+ begins (the run already closed): the offer's kit, purse and rivals, tiers harder
      * for each time over. Nothing is written yet: the run's first checkpoint saves it all and uses
      * the offer up (`settle_new_game_plus`), so leaving before it loses nothing.
      */

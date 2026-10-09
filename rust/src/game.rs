@@ -180,7 +180,7 @@ pub enum MenuItem {
     Play,
     /// Back into the saved adventure.
     Continue,
-    /// Once the tale is told: begin again with the kit, the purse and the rivals, a tier harder
+    /// Once the tale is told: begin again with the kit, the purse and the rivals, tiers harder
     /// (`newgame`).
     NewGamePlus,
     /// The answers to "start over?".
@@ -449,7 +449,7 @@ pub struct Game {
     /// ...for New Game+ (it begins once the answer is yes).
     pub confirm_ng: bool,
     /// New Game+: how many times over this run tells the tale (0 the first time); every foe and
-    /// prince a tier harder for each (`newgame`).
+    /// prince `newgame::NG_TIERS` harder for each (`newgame`).
     pub ng_plus: u8,
     /// New Game+ was chosen and its run has not reached its first checkpoint yet.
     ng_taken: bool,
