@@ -20,7 +20,7 @@ struct Post {
     moon: vec4<f32>,      // the moon's place on screen (uv), how strongly it shines through
     haze: vec4<f32>,      // ground haze (RP19): density at the floor, floor height, falloff, the fog's own scattering
     vol: vec4<f32>,       // lamps that light the air: how many (the first in priority order), exposure, strength
-    near: vec4<f32>,      // blur in front of the in-focus plane: starts this far in front, full this far; z: 1 if on
+    near: vec4<f32>,      // blur in front of the in-focus plane: starts this far in front, full this far; z: 1 if on; w: 1 for the Portals of Hell's smoke
 };
 
 // The scene's lights (RP17's list, in priority order: the hero's lantern first, then nearest the eye).
@@ -340,6 +340,37 @@ fn blur_amount(d: f32, max_px: f32) -> f32 {
     return max(behind, front) * max_px;
 }
 
+fn sky_hash(q: vec2<f32>) -> f32 {
+    return fract(sin(dot(q, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+fn sky_noise(q: vec2<f32>) -> f32 {
+    let i = floor(q);
+    let f = q - i;
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = sky_hash(i);
+    let b = sky_hash(i + vec2<f32>(1.0, 0.0));
+    let c = sky_hash(i + vec2<f32>(0.0, 1.0));
+    let e = sky_hash(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, e, u.x), u.y);
+}
+
+// The Portals of Hell's sky: no sky, but smoke over the background (`bg`, the fog's light): a
+// pall darkest overhead, in slow banks, their undersides lit ember and amber by the lava where
+// they come down to the horizon. Drawn here, where the background already is, for the price of
+// a few sums per background pixel.
+fn smoke_sky(uv: vec2<f32>, bg: vec3<f32>) -> vec3<f32> {
+    let dir = normalize(world_at(uv, 1.0) - p.cam_pos.xyz);
+    let t = p.params2.z;
+    let q = vec2<f32>(dir.x * 2.3 + dir.z * 1.7 + t * 0.006, dir.y * 6.0 - t * 0.01);
+    let n = sky_noise(q) * 0.6 + sky_noise(q * 2.7 + vec2<f32>(t * 0.015, 3.0)) * 0.4;
+    let up = dir.y;
+    let low = exp(-max(up, 0.0) / 0.14) * smoothstep(-0.15, 0.0, up);
+    var c = bg * mix(0.5, 1.0, low) * (0.7 + 0.6 * n);
+    c += bg * vec3<f32>(2.4, 1.0, 0.35) * low * (0.4 + 0.9 * n);
+    return c;
+}
+
 @fragment
 fn fs_composite(in: POut) -> @location(0) vec4<f32> {
     let dim = vec2<f32>(textureDimensions(t0));
@@ -372,6 +403,9 @@ fn fs_composite(in: POut) -> @location(0) vec4<f32> {
         lin = acc / wsum;
     }
 
+    if (p.near.w > 0.5 && d >= SKY && p.cam_pos.w < 0.5) {
+        lin = smoke_sky(in.uv, lin);
+    }
     lin += textureSampleLevel(t3, samp, in.uv, 0.0).rgb * p.params.z;
     lin += lamp_glow(in.uv, d);
     var col = to_srgb(aces_filmic(lin));

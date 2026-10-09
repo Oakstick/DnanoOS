@@ -61,6 +61,8 @@ mod garden_beds;
 mod garden_landmarks;
 mod gate;
 mod hell;
+mod hell_art;
+mod hell_portals;
 mod juice;
 mod lair;
 mod lookdev;
@@ -321,6 +323,11 @@ pub struct WorldView {
     mist_set: InstanceSet,
     /// Candle flames in shrines, temples and graves: the nearest few cast light.
     candles: Vec<Vec3>,
+    /// The Portals of Hell: where the lava's light rises past the platforms' edges and under the
+    /// bridges (the nearest few light the stone from below), and its portals' braziers.
+    hub_glow: Vec<Vec3>,
+    /// The volcano's lava rivers, where they light its flanks (always lit).
+    hub_rivers: Vec<Vec3>,
     /// Where the golden keys lie (each drawn while its tile still holds one).
     keys: Vec<P>,
     /// The gate to the boss, in the outer wall.
@@ -515,6 +522,8 @@ impl WorldView {
             mist: Vec::new(),
             mist_set: InstanceSet::default(),
             candles: Vec::new(),
+            hub_glow: Vec::new(),
+            hub_rivers: Vec::new(),
             keys: Vec::new(),
             gate_tile: None,
             smoke: Vec::new(),
@@ -647,6 +656,8 @@ impl WorldView {
         self.keys.clear();
         self.smoke.clear();
         self.candles.clear();
+        self.hub_glow.clear();
+        self.hub_rivers.clear();
         self.mist.clear();
         self.static_cubes.clear();
         self.rings.clear();
