@@ -2,7 +2,7 @@
 
 From the editor's review of 1.0.22 (2026-10-09). The estimated Metacritic score was 70; the target is 78–82. Every item below is
 to be fixed. IDs are stable: refer to them in briefs, commits and QA.md. Status: **todo**, **doing**,
-**done** (with the release), **blocked** (waiting on a decision).
+**done** (with the release), **blocked** (waiting on a decision), **to decide** (a proposal: the user picks whether and when).
 
 Each item lists:
 - **Done when:** the acceptance criteria;
@@ -24,6 +24,7 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D7 | Localisation: which languages first (proposed: Turkish, Japanese, German)? | B24 |
 | D8 | Web build: make it run again (WebGPU only), or drop it? | B27 |
 | D9 | The boys in play. **Decided: all three:** the silhouette in the glow, a line per realm, a scene after each prince. | B07 |
+| D10 | Rune carvings: stay with the blade/shield they were cut into (today), or carry over to a newly bought tier? | B31 |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
@@ -79,6 +80,21 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | B28 | **Steam:** achievements for today's game (each prince, NG+, no-hit court, every bestiary page, every rival), the real App ID, store text. | 20–30 achievements wired and tested in the harness. | M | todo |
 | B29 | **Performance on modest hardware:** measure the Low/High presets on a mid GPU and a Steam Deck profile; tune the p99 spikes (the Pit 17.4 ms, the souls, destruction). | 60 FPS p99 at Low on the target; RENDERING.md "Open" updated. | M | todo |
 | B30 | **A human playthrough** (the user): the W9 hand-playthrough checklist and QA.md's untested items (device loss in the wild, resize, controller hot-plug, audio, alt-tab). | The checklist ticked in QA.md; issues filed back here. | M | todo (user) |
+
+## Wave F: from the work in progress (to decide)
+
+Open items and proposals from the agents' reports. Every new idea lands here first; the user decides what to build.
+
+| ID | Item | Done when | Size | Status |
+|---|---|---|---|---|
+| B31 | **Carvings and new tiers** (D10): a newly bought blade or shield starts uncarved today; carry the carvings over, or refund part of the runes. | As decided; save and test. | S | to decide |
+| B32 | **The blade's rune marks read faintly** next to the shield's ring (rune-carving captures). | Carved blades read at chase distance, from every hero's angle. | S | to decide |
+| B33 | **New Game+ courts never cost the expert a life**: its deaths are all in the realms. Asmodeus is about twice as long as the other princes at high tiers (his base weight and temper), and NG+3 is near a wall in places (Mammon 8 min at tier 13). | The expert loses some lives in NG+1 courts; Asmodeus in line with the others; NG+3 hard but finishable. | M | to decide |
+| B34 | **The novice's walls**: the tier-1 vaults (18–28 of 61 foes slain) and the first prince, which by design a masher must not fell. Covered for players by B19's Story mode? | The novice finishes on Story (B19), or a decision that the novice stays a measure only. | S | to decide |
+| B35 | **The Vaults' leftovers** (first pass, before the second): the gilt pilasters read tan at chase distance; the treasury marble's veins look wavy from above; the giant Mammon statues are scaled-up niche statues, blocky close to; the paintings are old pixel canvases; the Assessor's counting-bell is plain-lit. Review again after the second pass. | Each fixed or accepted after the second pass's captures. | M | to decide |
+| B36 | **Captures show the fallback light**: a `--capture` without `--draw-at` is drawn before the level's probes arrive, so captures can mislead reviews. Make captures wait for the probes by default. | Every capture is drawn with the probes in place; the capture docs updated. | S | to decide |
+| B37 | **"Old saves" after the ending**: a save that finished before 1.0.22 still offers Continue to Krampus's lair (left alone so no real run is wiped). | Decide: leave, or convert such saves to the finished state with New Game+ offered. | S | to decide |
+| B38 | **A death, a real device reset, sleep and resume**: Q2's GPU recovery is tested by a forced loss only; a real driver reset or sleep/resume is unchecked. | Checked by hand (part of B30) or a note that it holds. | S | to decide |
 
 ## Suggested order
 
