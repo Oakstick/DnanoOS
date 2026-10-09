@@ -26,7 +26,12 @@ pub(super) fn draw_prince_bar(o: &mut Overlay, g: &Game) {
     style::panel_glass(o, [px, y0, pw, ph], t, 1.0);
     let time = g.time as f32;
     let ty = y0 + t * 0.72;
-    o.text_styled(&b.name, x0, ty, &style::name(t, 0.7, rgba(SAND, 1.0)));
+    let nw = o.text_styled(&b.name, x0, ty, &style::name(t, 0.7, rgba(SAND, 1.0)));
+    // A New Game+ prince (or Krampus) says so beside his name, small in gold: he is the heavier for it.
+    if g.ng_plus > 0 {
+        let st = style::label(t, style::size::LABEL, rgba(GOLD, 0.95));
+        o.text_styled(&format!("NEW GAME+{}", g.ng_plus), x0 + nw + t * 0.6, ty, &st);
+    }
     let phase_color = match b.phase {
         1 => COPPER,
         2 => 0xd8a040,
