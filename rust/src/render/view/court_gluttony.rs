@@ -493,9 +493,11 @@ impl WorldView {
             self.build_banner(Vec3::new(bx, 0.0, 2.5));
         }
 
-        // ---- the candle wheels hung over the floor
+        // ---- the candle wheels hung over the floor (each fading out of the camera's way, as the
+        // trees do: under the top camera his marks fell behind its ring and struts, QA.md Q9)
         for &(wx, wz) in &WHEELS {
             let at = Vec3::new(wx, WHEEL_Y, wz);
+            let start = self.static_cubes.len();
             let out = &mut self.static_cubes;
             for k in 0..16 {
                 let a = k as f32 * TAU / 16.0;
@@ -519,11 +521,22 @@ impl WorldView {
                 cube(out, c + Vec3::new(0.03, -0.07, 0.0), Vec3::new(0.025, 0.12, 0.025), 0.0, lin(WAX) * 0.85, 11.0);
                 candles.push(c + Vec3::new(0.0, tall + 0.05, 0.0));
             }
+            let len = self.static_cubes.len() - start;
+            let shades: Vec<f32> = self.static_cubes[start..start + len].iter().map(|i| i.emissive[3]).collect();
+            self.trees.push(Tree {
+                range: (start, len),
+                base: at - Vec3::new(0.0, 0.2, 0.0),
+                radius: 1.0,
+                height: 4.8,
+                fade: 1.0,
+                alive: true,
+                shades: Some(shades),
+            });
         }
 
         // ---- the gate: Gluttony's portal in the south wall, looking into the hall
         let gate = Gate { tile: P::new(GATE.0, GATE.1), facing: Dir::Up, sin: Sin::Gluttony };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         let mut view = BanquetView { candles, cauldrons, throne, gate, platters, dishes: vec![None; PLATTERS.len()], shown: false };
         // (Until the court says otherwise: the four platters laid, laden.)
         let laid: Vec<Option<u8>> = (0..PLATTERS.len()).map(|k| (k < PLATTERS_SET).then_some(0)).collect();

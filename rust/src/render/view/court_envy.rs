@@ -421,7 +421,7 @@ impl WorldView {
         }
         // ---- the gate: Envy's portal in the south wall, looking into the hall
         let gate = Gate { tile: P::new(plan::GATE.0, plan::GATE.1), facing: Dir::Up, sin: crate::logic::sins::Sin::Envy };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         let _ = SPRINGS;
         self.bell = Some(BellView { gate, lanterns, cords, water });
     }

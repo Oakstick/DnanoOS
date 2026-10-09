@@ -53,6 +53,12 @@ impl Game {
         }
     }
 
+    /// Is `p` a tile he is sent on from the moment he sets foot on it (a mirror-door's recess: he
+    /// is through the glass at once)? The camera check never stands him there (QA.md Q9).
+    pub fn passes_through(&self, p: P) -> bool {
+        self.pride().is_some_and(|m| m.door_at(p).is_some())
+    }
+
     fn pride_mut(&mut self) -> Option<&mut Mirrors> {
         match self.run.as_mut() {
             Some(Run::Pride(m)) => Some(m),
@@ -1223,5 +1229,22 @@ mod tests {
         assert_eq!((m.gallery, m.glory, m.rings, m.echo.fight), (THRONE, 0, 0, false));
         assert!(g.pride_peerless().is_none());
         assert!(g.level.grid.is_walkable(m.landing.x, m.landing.y, false));
+    }
+
+    /// A mirror-door's recess sends him through the glass the moment he sets foot in it: no
+    /// camera ever frames him standing there (the camera check passes over those tiles, QA.md Q9).
+    #[test]
+    fn a_mirror_doors_recess_is_passed_through_at_once() {
+        let mut g = in_realm(Sin::Pride);
+        let tiles: Vec<P> = mirrors(&g).doors.iter().flat_map(|d| d.tiles.iter().copied()).collect();
+        assert!(!tiles.is_empty());
+        for &t in &tiles {
+            assert!(g.passes_through(t), "{t:?}");
+        }
+        assert!(!g.passes_through(mirrors(&g).base.arrival), "the floor he arrives on is not");
+        let (t, d) = (tiles[0], mirrors(&g).door_at(tiles[0]).unwrap());
+        g.hero.place(t);
+        g.update(STEP);
+        assert!(!mirrors(&g).doors[d].tiles.contains(&g.hero.occupied()), "through the glass at once");
     }
 }

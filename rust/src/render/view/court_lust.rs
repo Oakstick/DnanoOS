@@ -296,7 +296,7 @@ impl WorldView {
 
         // ---- the gate: Lust's portal in the south hedge, looking into the garden
         let gate = Gate { tile: P::new(court::GATE.0, court::GATE.1), facing: Dir::Up, sin: crate::logic::sins::Sin::Lust };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         let censers = CENSERS.iter().map(|&(x, y)| Vec3::new(x as f32, 1.42, y as f32)).collect();
         self.bower = Some(BowerView { lanterns, spout, censers, candles, gate });
     }

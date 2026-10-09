@@ -374,7 +374,7 @@ impl WorldView {
         self.build_drift();
         // ---- the gate: Sloth's portal in the south wall, looking into the hall
         let gate = Gate { tile: P::new(plan::GATE.0, plan::GATE.1), facing: Dir::Up, sin: crate::logic::sins::Sin::Sloth };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         let hourglass = Vec3::new(HOURGLASS.0 as f32, 0.0, HOURGLASS.1 as f32);
         self.clocks = Some(ClocksView { candles, clocks, windows, gate, hourglass });
     }

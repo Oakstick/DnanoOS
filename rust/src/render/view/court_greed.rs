@@ -358,7 +358,7 @@ impl WorldView {
 
         // ---- the gate: Greed's portal in the south wall, looking into the hall
         let gate = Gate { tile: P::new(court::GATE.0, court::GATE.1), facing: Dir::Up, sin: crate::logic::sins::Sin::Greed };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         let _ = rock;
         self.counting = Some(CountingView { braziers, gate, scales, throne });
     }

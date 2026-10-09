@@ -33,7 +33,9 @@
 //!   1080p. He is always drawn whole (`emit`), so this is reported, not failed.
 //!
 //! The report goes to `perf/camera-<time>.md`, with the worst poses to reproduce in `--capture`.
-//! It exits non-zero when any check fails.
+//! It exits non-zero when any check fails. `VH_CAMERA_ALL=1` lists every failing pose (not only
+//! the first six of a pass); `VH_CAMERA_DBG=1` prints, for every pose that hides him, the cube in
+//! front of each of his three marks (where it stands, its size and shade), to find what to fade.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -244,6 +246,25 @@ impl Solids {
     }
 
     /// Does a solid cube cut the segment from `a` to `b` (stopping a little short of `b`)?
+    fn blocker(&self, a: Vec3, b: Vec3, cubes: &[Instance]) -> Option<usize> {
+        let b = a.lerp(b, 0.95);
+        let (lo, hi) = (a.min(b), a.max(b));
+        for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
+            for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
+                for &id in self.cols.get(&(x, z)).into_iter().flatten() {
+                    if !self.standing(id, cubes) {
+                        continue;
+                    }
+                    let inv = &self.inv[id as usize];
+                    if slab(inv.transform_point3(a), inv.transform_point3(b)) {
+                        return Some(self.src[id as usize] as usize);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn blocks(&self, a: Vec3, b: Vec3, cubes: &[Instance]) -> bool {
         let b = a.lerp(b, 0.95);
         let mut seen = std::collections::HashSet::new();
@@ -325,8 +346,9 @@ impl Tally {
         self.clip > 0 || self.hidden > 0 || self.offscreen > 0 || self.out_of_bounds > 0 || self.dof_over > 0
     }
 
+    /// Keeps the first six poses to reproduce (every one with `VH_CAMERA_ALL` set).
     fn note(&mut self, what: String) {
-        if self.examples.len() < 6 {
+        if self.examples.len() < 6 || std::env::var_os("VH_CAMERA_ALL").is_some() {
             self.examples.push(what);
         }
     }
@@ -344,6 +366,19 @@ struct Look {
     hero_lod: u8,
 }
 
+/// Every instance a frame draws: its opaque and see-through cubes and its sets.
+fn frame_instances(frame: &Frame) -> Vec<Instance> {
+    let mut out = Vec::new();
+    for v in frame.opaque.iter().chain(frame.transparent.iter()) {
+        out.extend_from_slice(v);
+    }
+    out.extend_from_slice(&frame.transparent_early);
+    for set in frame.sets.iter().chain(frame.sets_blend.iter()) {
+        out.extend_from_slice(&set.instances);
+    }
+    out
+}
+
 fn hero_feet(game: &Game) -> Vec3 {
     let p = game.hero.pos();
     Vec3::new(p.x as f32, game.hero.altitude as f32 * RISE, p.y as f32)
@@ -351,7 +386,7 @@ fn hero_feet(game: &Game) -> Vec3 {
 
 /// The view rays below the horizon (a grid across the lower screen) that meet nothing: whether
 /// one of them went through the level's floor plan (a hole), and whether one ran past its edge.
-fn empty_rays(view: &WorldView, grid: &crate::logic::grid::Grid, seen: &Solids) -> (bool, bool) {
+fn empty_rays(view: &WorldView, grid: &crate::logic::grid::Grid, seen: &Solids, now: Option<&Solids>) -> (bool, bool) {
     let inv = view.view_proj().inverse();
     let eye = view.camera_position();
     let (w, h) = view.level_size();
@@ -366,13 +401,15 @@ fn empty_rays(view: &WorldView, grid: &crate::logic::grid::Grid, seen: &Solids) 
                 continue; // at or above the horizon: sky
             }
             let reach = crate::render::view::FAR.min((eye.y + 6.0) / -dir.y);
-            if !seen.ray_hits(eye, dir, reach) {
+            if !seen.ray_hits(eye, dir, reach) && now.is_none_or(|n| !n.ray_hits(eye, dir, reach)) {
                 // Where it passes the floor's height.
                 let g = eye + dir * (eye.y / -dir.y).min(reach);
                 // (Inside the outer wall's ring: past it is the backdrop.)
                 // Only ground he walks on counts: a pit, a well or a chasm (a tile he cannot walk)
                 // is a hole by design, and a seam between floor slabs is not one.
-                let pit = matches!(grid.get(g.x.round() as i32, g.z.round() as i32), Tile::Pit | Tile::Rock) || seen.covers_ground(g, 0.15);
+                let pit = matches!(grid.get(g.x.round() as i32, g.z.round() as i32), Tile::Pit | Tile::Rock)
+                    || seen.covers_ground(g, 0.15)
+                    || now.is_some_and(|n| n.covers_ground(g, 0.15));
                 if g.x > 0.5 && g.z > 0.5 && g.x < w - 1.5 && g.z < h - 1.5 && !pit {
                     hole = true;
                 } else {
@@ -392,13 +429,42 @@ fn look(game: &Game, solids: &Solids, seen: &Solids, edges: bool) -> Look {
     let feet = hero_feet(game);
     let marks = [feet + Vec3::Y * 0.25, feet + Vec3::Y * 0.6, feet + Vec3::Y * 1.0];
     let hidden = marks.iter().all(|&m| solids.blocks(eye, m, cubes));
+    if hidden && std::env::var_os("VH_CAMERA_DBG").is_some() {
+        for &m in &marks {
+            if let Some(src) = solids.blocker(eye, m, cubes) {
+                let c = Mat4::from_cols_array(&cubes[src].m);
+                eprintln!(
+                    "DBGHIDE at {:?} eye {eye:?} cube {src} at {:?} size {:?} shade {}",
+                    feet,
+                    c.w_axis.truncate(),
+                    (c.x_axis.truncate().length(), c.y_axis.truncate().length(), c.z_axis.truncate().length()),
+                    cubes[src].emissive[3]
+                );
+            }
+        }
+    }
     let vp = view.view_proj();
     let ndc = |p: Vec3| {
         let c = vp * Vec4::new(p.x, p.y, p.z, 1.0);
         (c.w > 1e-4).then(|| (c.x / c.w, c.y / c.w))
     };
     let offscreen = ndc(marks[1]).is_none_or(|(x, y)| x.abs() > 0.9 || y.abs() > 0.9);
-    let (out_of_bounds, backdrop) = if edges { empty_rays(view, &game.level.grid, seen) } else { (false, false) };
+    let (out_of_bounds, backdrop) = if !edges {
+        (false, false)
+    } else {
+        match empty_rays(view, &game.level.grid, seen, None) {
+            // What the level draws each frame only near him (the Hall of Mirrors' throne floor, whose
+            // rings fall) is not in the level's one frame taken at its start (`seen`): a ray that
+            // meets it as this pose draws it shows no hole (QA.md Q9).
+            (true, _) => {
+                let mut frame = Frame::default();
+                view.emit(&game.scene(), &mut frame);
+                let now = Solids::everything(&frame_instances(&frame));
+                empty_rays(view, &game.level.grid, seen, Some(&now))
+            }
+            other => other,
+        }
+    };
     // The composite's depth of field (`blur_amount` in post.wgsl).
     let mut dof = 0.0f32;
     if let Some(focus) = view.focus_depth() {
@@ -497,7 +563,9 @@ fn survey(game: &mut Game, solids: &Solids, seen: &Solids, mode: CameraMode, str
     let pitches = [crate::render::view::REST_PITCH, -1.15, 0.05];
     for z in (0..grid.height).step_by(stride as usize) {
         for x in (0..grid.width).step_by(stride as usize) {
-            if matches!(grid.get(x, z), Tile::Rock | Tile::Pit) {
+            // (Nor where he is sent on at once: a mirror-door's recess puts him through the glass the
+            // moment he sets foot in it, so no camera ever frames him there.)
+            if matches!(grid.get(x, z), Tile::Rock | Tile::Pit) || game.passes_through(P::new(x, z)) {
                 continue;
             }
             // Only where he can stand: some levels set props on tiles their grid leaves open
@@ -654,13 +722,7 @@ pub fn run(args: &[String]) -> i32 {
             {
                 let mut frame = Frame::default();
                 game.view.emit(&game.scene(), &mut frame);
-                for v in frame.opaque.iter().chain(frame.transparent.iter()) {
-                    drawn.extend_from_slice(v);
-                }
-                drawn.extend_from_slice(&frame.transparent_early);
-                for set in frame.sets.iter().chain(frame.sets_blend.iter()) {
-                    drawn.extend_from_slice(&set.instances);
-                }
+                drawn.extend(frame_instances(&frame));
             }
             let seen = Solids::everything(&drawn);
             let started = std::time::Instant::now();

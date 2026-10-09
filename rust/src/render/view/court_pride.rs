@@ -371,7 +371,7 @@ impl WorldView {
 
         // ---- the gate: Pride's portal in the south wall, looking into the hall
         let gate = Gate { tile: P::new(plan::GATE.0, plan::GATE.1), facing: Dir::Up, sin: Sin::Pride };
-        self.build_portal_arch(&gate);
+        self.build_court_portal(&gate);
         self.throne = Some(ThroneView { mirrors, sconces, gate, throne, window });
     }
 
