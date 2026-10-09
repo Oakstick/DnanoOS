@@ -97,6 +97,11 @@ impl Game {
 
     /// The guide is up: B, Esc, Enter, A or a click put it away, and play goes on.
     pub(super) fn update_guide(&mut self) {
+        // The menus' secondary (Y, R): his bestiary over his words.
+        if self.input.was_pressed(&[Action::Secondary]) {
+            self.open_bestiary_from_guide();
+            return;
+        }
         let back = [Action::Guide, Action::Pause, Action::Confirm, Action::Jump, Action::Tap];
         if !self.input.was_pressed(&back) && self.input.click.is_none() {
             return;

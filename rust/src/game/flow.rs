@@ -85,6 +85,7 @@ impl Game {
         self.settings_page = Default::default();
         self.map_ui.full = None;
         self.warband.board_open = false;
+        (self.bestiary.open, self.bestiary.review) = (false, false);
         // The backing track steps back when the game does, and under the fanfare.
         self.audio
             .duck_music(matches!(screen, Screen::Paused | Screen::Dying | Screen::GameOver | Screen::Won | Screen::Cleared | Screen::Toll));
@@ -156,6 +157,7 @@ impl Game {
         self.settle_pace();
 
         match self.screen {
+            Screen::Title | Screen::Paused if self.bestiary.open => self.update_bestiary(dt),
             Screen::Title | Screen::Paused if self.settings_page.open => self.update_settings(),
             Screen::Paused if self.full_map_open() => self.update_full_map(dt),
             Screen::Title | Screen::Paused if self.show_controls => self.update_controls(),
@@ -167,6 +169,7 @@ impl Game {
                 Some(MenuItem::Controls) => self.open_controls(),
                 Some(MenuItem::Map | MenuItem::DevMap) => self.open_map(),
                 Some(MenuItem::Settings) => self.open_settings(),
+                Some(MenuItem::Bestiary) => self.open_bestiary(),
                 Some(MenuItem::Continue) => self.continue_game(),
                 Some(MenuItem::StartOver) => self.answer_reset(true),
                 Some(MenuItem::KeepProgress) => self.answer_reset(false),
@@ -196,6 +199,8 @@ impl Game {
                 // while time is slowed the world runs slower, evenly (`juice`).
                 self.play_step(dt);
                 self.update_war(dt);
+                // (The bestiary only watches: the foes met and felled, and what felled him.)
+                self.observe_bestiary(dt);
             }
             Screen::Toll => {
                 if let Some(choice) = self.menu_choice() {
@@ -216,6 +221,7 @@ impl Game {
                 Some(MenuItem::Map) => self.open_full_map(),
                 Some(MenuItem::DevMap) => self.open_map(),
                 Some(MenuItem::Ledger) => self.open_ledger(),
+                Some(MenuItem::Bestiary) => self.open_bestiary(),
                 Some(MenuItem::QuitToTitle) => self.enter(Screen::Title),
                 Some(MenuItem::Quit) => self.quit_requested = true,
                 _ => {}
@@ -286,6 +292,7 @@ impl Game {
     /// over him, and the menus' otherwise (presentation only).
     pub fn input_context(&self) -> Context {
         let over = self.show_controls
+            || self.bestiary.open
             || self.show_map
             || self.guide_open
             || self.warband.board_open
@@ -332,6 +339,7 @@ impl Game {
                     MenuItem::Controls,
                     MenuItem::Map,
                     MenuItem::Ledger,
+                    MenuItem::Bestiary,
                     MenuItem::CallOldMan,
                     MenuItem::QuitToTitle,
                 ];
@@ -453,6 +461,7 @@ impl Game {
         }
         if self.input.was_pressed(&[Action::Call])
             && matches!(self.screen, Screen::Playing | Screen::Paused)
+            && !self.bestiary.open
             && !self.show_controls
             && !self.show_map
             && !self.full_map_open()
@@ -470,6 +479,7 @@ impl Game {
         // M, Tab, View or the D-pad's up: the full map, from play or the pause menu. Pressed again,
         // it is put away (`update_full_map`).
         let pages = self.show_controls
+            || self.bestiary.open
             || self.show_map
             || self.warband.board_open
             || self.guide_open
@@ -490,6 +500,7 @@ impl Game {
             }
             (self.show_controls, self.guide_open, self.warband.board_open) = (false, false, false);
             self.settings_page.open = false;
+            self.bestiary.open = false;
             self.map_ui.full = None;
             self.open_map();
             self.input.consume(Action::DevMap);
@@ -500,6 +511,7 @@ impl Game {
         }
         // With the controller page, a map or the settings open, Esc and Start close it instead.
         if self.input.was_pressed(&[Action::Pause])
+            && !self.bestiary.open
             && !self.show_controls
             && !self.show_map
             && !self.warband.board_open

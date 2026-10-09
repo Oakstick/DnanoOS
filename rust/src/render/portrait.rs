@@ -30,6 +30,19 @@ pub enum PortraitId {
     Foe(EnemyKind),
     /// The prince of this sin.
     Prince(Sin),
+    /// A whole figure, turning slowly where it stands (the bestiary's page).
+    Figure(Figure),
+}
+
+/// Whose whole figure a bestiary page shows.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Figure {
+    /// A foe of this kind (the Peerless wears the hero's own likeness).
+    Foe(EnemyKind),
+    /// The Cyclops of the meadows.
+    Cyclops,
+    /// The mimic chest, its mouth open.
+    Mimic,
 }
 
 /// How the model stands for its portrait, and how often it is made again.

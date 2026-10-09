@@ -1038,6 +1038,8 @@ pub(super) fn fresh_game(seed: u32) -> Game {
     g.saved_run = None;
     // (And no grudges carried over from the last run's crawl: each run meets its own.)
     g.warband = Default::default();
+    // ...nor the player's bestiary (filled as the bots fight, never written).
+    g.bestiary = super::bestiary::Bestiary::unsaved();
     g.hero_kind = HeroKind::Ragnar;
     // `VH_MASTERY=N`: every hero's mastery at rank N, to run any harness at that rank (WARBAND.md §11.1).
     let rank = std::env::var("VH_MASTERY").ok().and_then(|v| v.parse::<u8>().ok()).unwrap_or(0);

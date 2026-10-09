@@ -310,6 +310,10 @@ impl Game {
             if self.can_continue() {
                 items.insert(0, MenuItem::Continue);
             }
+            // The bestiary, once a page of it is open.
+            if !self.bestiary.book.is_empty() {
+                items.push(MenuItem::Bestiary);
+            }
             // The developer's map, while developing (F12 opens it in any build).
             if self.dev {
                 items.push(MenuItem::DevMap);

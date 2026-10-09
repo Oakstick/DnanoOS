@@ -21,6 +21,7 @@ use crate::logic::progression::{self, Tree};
 use crate::render::icons::{icon, Icon};
 
 mod angel;
+pub mod bestiary;
 mod controls;
 mod court;
 mod dialogue;
@@ -295,9 +296,17 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             if g.settings_page.open {
                 settings::draw_settings(o, g, t);
             }
+            if g.bestiary.open {
+                bestiary::draw(o, g, t);
+            }
         }
         Screen::Ready => draw_countdown(o, g, t),
-        Screen::Paused if g.guide_open => guide::draw_guide(o, g, t),
+        Screen::Paused if g.guide_open => {
+            guide::draw_guide(o, g, t);
+            if g.bestiary.open {
+                bestiary::draw(o, g, t);
+            }
+        }
         Screen::Paused => {
             o.rect(0.0, 0.0, o.width, o.height, [INK[0], INK[1], INK[2], 0.65]);
             let top = menu_rects(Screen::Paused, &g.menu_items(), o.width, o.height)[0][1];
@@ -331,6 +340,9 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             }
             if g.settings_page.open {
                 settings::draw_settings(o, g, t);
+            }
+            if g.bestiary.open {
+                bestiary::draw(o, g, t);
             }
         }
         Screen::Won => draw_screen(
@@ -934,7 +946,8 @@ pub fn menu_rects(screen: Screen, items: &[MenuItem], w: f32, h: f32) -> Vec<[f3
             // the settings (and the developer's map) small in the bottom-left corner; Quit (desktop)
             // small in the other.
             let (bw, bh, gap) = (t * 9.0, t * 1.9, t * 0.9);
-            let small = |i: &MenuItem| matches!(i, MenuItem::Controls | MenuItem::Settings | MenuItem::Map | MenuItem::DevMap);
+            let small =
+                |i: &MenuItem| matches!(i, MenuItem::Controls | MenuItem::Settings | MenuItem::Map | MenuItem::DevMap | MenuItem::Bestiary);
             let big = items.iter().filter(|i| !matches!(i, MenuItem::Quit) && !small(i)).count();
             let x0 = w / 2.0 - (big as f32 * bw + (big as f32 - 1.0) * gap) / 2.0;
             let (cw, ch) = (t * 4.6, t * 1.1);

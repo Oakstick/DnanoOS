@@ -1057,11 +1057,50 @@ paths are as they were.
   camera at 1080p (`first10-t*.png`, `first10-first10-sheet.png`; `first10.sh` makes them).
 - **Still open:**
   - Lit by the hero's own lantern, the yew and crowns right beside him turn a vivid green.
-  - The fountain's basin and the Krampus statue are the old sculpts (graded); they read, but
-    are not yet in chunky dressed stone.
+  - (Done 2026-10-08, below: the fountain's basin and the Krampus statue, rebuilt.)
   - From the top camera the lawns in the hedges' moon shadow are dark; the gravel still reads
     first.
   - A temple stands on four wall tiles; a bomb breaking one would leave it standing (as before).
+
+- **The fountain, rebuilt (2026-10-08, branch `polish`).** The plaza is the first thing a player
+  sees in play; its basin and statue were the old voxel sculpts, graded. Now (`view/fountain.rs`):
+  - **The basin** is built of the crypt's pieces, not voxels (`stonework`): an octagon on a pale
+    footing, its wall two courses of chunky charcoal and umber blocks (now and then one green with
+    verdigris), each its own depth out and a touch askew, some chipped, the lower course dark and
+    slick with the wet; a coping of pale slabs, two a side, overhanging and wet on top
+    (`SHADE_FLAG`, the puddles hold the lanterns); a copper lip along its inner edge, green in its
+    seams; verdigris run down the stone under it, inside and out. The water stands lower
+    (0.235, was 0.27), so a wet band of the wall shows over it. Four copper nozzles on pale bosses
+    on the coping feed the jets (the gilt cubes drawn each frame are gone). The basin's own four
+    little lanterns are gone: the plaza's four iron posts light it.
+  - **The pedestal and bowl**: a pale foot out of the water, three drums of dark stone and umber, a
+    pale capital; the bowl's underside in widening tiers, a rim of sixteen pale blocks under a
+    copper lip; in the bowl a **pale plinth** (a moulded foot, the block, a wet cornice, green run
+    down its front) where the rock was.
+  - **The statue** is the same sculpt (44 × 64 × 34 voxels at 0.02: the hunched goat-demon, his
+    basket of switches, the birch rods raised, the chain hanging, the horns, the lolling tongue the
+    water runs off), cast in **bronze weathered green** (`weather`): verdigris all over (shaded as
+    dressed stone, kind 13: matte, mottled, pitted) in blooms a few voxels across, paler where it
+    faces the sky and in streaks down his front, dark in the hollows; the bronze rubbed back on his
+    horns (their rings kept), hooves, rods and bells, and darker on his tongue, fangs, brow,
+    muzzle and knuckles; his ember eyes lit; the chain iron. Menacing, not gory: no red tongue.
+  - **The water** (`shaders.wgsl`, `water`, self-contained): a fountain's still water (`chop` 2 and
+    over on a disc) now carries **rings spreading** from where its water falls in (a circle given
+    as a share of the disc and the disc's size in the instance's flow): in the basin from the
+    veil's foot, in the bowl from where the jets land; 4.5 cm apart, travelling outward and fading
+    over about 15 cm, laid on the moving noise so the lanterns' glints break along them.
+  - All of it is `authored` (the grade leaves its colours), and it fades out of the camera's way as
+    a temple does, as before.
+- **Numbers** (1080p, `--bench 300` at the start, the same laptop, before | after on one run pair
+  free of other work): 8.44 ms (GPU 5.30) | 8.32 ms (GPU 5.39); static cubes 149,581 | 143,420 (the voxel basin was some six thousand cubes; the stonework is a few hundred blocks).
+- **Checks**: `--camera-check dungeon0` the same before and after (1 hidden pose of 16,992 in the
+  chase survey, elsewhere; none in the walks or the top view); the simulation is untouched.
+- **Captures**: `C:/Users/ulask/Games/vh-polish-cap/` (`shots.sh EXE PREFIX [shot...]`):
+  `before-plaza.png` / `after-plaza.png` (the start from the chase camera), `*-basin.png`,
+  `*-statue.png`, `*-head.png` (close), `z-plaza.png` (the fountain at the start side by side).
+- **Still open**: the statue is the old sculpt's shape (its coat's shag reads as noise from the chase
+  camera, and its face is small); the veil is a plain tube; the tongue's stream is a bright line
+  down his front in the close views.
 
 ### The Cyclops' meadow, at the Cisterns' bar (2026-10-08)
 

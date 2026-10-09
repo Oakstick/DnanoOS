@@ -1167,13 +1167,25 @@ fn water(in: VOut, n_geom: vec3<f32>) -> FOut {
     // Ripples: the normal from the slope of a moving height field.
     let q = in.world.xz;
     let e = 0.04;
-    let flow = in.emissive.xy;
-    let chop = in.emissive.z;
+    var flow = in.emissive.xy;
+    var chop = in.emissive.z;
+    // A fountain's still water (`chop` 2 and over, on a disc): rings spreading from where its water
+    // falls in, a circle `flow.x` of the disc's radius out, the disc `flow.y` across (world units).
+    var rings = vec2<f32>(0.0);
+    if (chop >= 2.0) {
+        let lr = max(length(in.local.xy), 1e-4);
+        let d = (lr - flow.x) * flow.y;
+        let phase = abs(d) * 140.0 - time * 10.0;
+        let slope = 0.32 * cos(phase) * exp(-abs(d) * 7.0) * sign(d);
+        rings = vec2<f32>(in.local.x, -in.local.y) / lr * slope;
+        flow = vec2<f32>(0.0);
+        chop -= 2.0;
+    }
     let h0 = water_height(q, time, flow, chop);
     let hx = water_height(q + vec2<f32>(e, 0.0), time, flow, chop);
     let hz = water_height(q + vec2<f32>(0.0, e), time, flow, chop);
     let bump = 0.06 + 0.07 * chop;
-    let n = normalize(vec3<f32>(-(hx - h0) / e * bump, 1.0, -(hz - h0) / e * bump));
+    let n = normalize(vec3<f32>(-(hx - h0) / e * bump - rings.x, 1.0, -(hz - h0) / e * bump - rings.y));
     let r = reflect(-view_dir, n);
     var sky = mix(g.fog.rgb, g.fog.rgb * 1.4 + vec3<f32>(0.05), clamp(r.y, 0.0, 1.0));
     if (g.sky_fwd.w > 0.0) {

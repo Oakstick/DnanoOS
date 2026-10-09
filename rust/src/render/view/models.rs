@@ -445,7 +445,12 @@ impl Models {
 
     /// Foe rig `foe` cut into its skeleton's bones (made once, the first time).
     pub(super) fn jointed_cast(&self, c: crate::render::anim::cast_rigs::CastRig) -> &Rig {
-        self.jointed_cast[c.slot()].get_or_init(|| c.jointed())
+        use crate::render::anim::cast_rigs::CastRig;
+        // (A boy's faces cut from his head, to open his mouth and blink: `anim::cast_faces`.)
+        self.jointed_cast[c.slot()].get_or_init(|| match c {
+            CastRig::Kid(_) => crate::render::anim::cast_faces::faced(c.jointed()),
+            _ => c.jointed(),
+        })
     }
 
     pub(super) fn jointed_foe(&self, foe: FoeRig) -> &Rig {
