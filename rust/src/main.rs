@@ -262,7 +262,8 @@ fn main() {
     if let Some(i) = args.iter().position(|a| a == "--court-at") {
         // A prince as the run meets him: `--court-at SIN SKILL KIT KEYS SEED` (Ragnar's kit at KIT,
         // or BLADE/SHIELD/PATH; KEYS other keys held: the court weighed at tier KEYS + 1;
-        // `VH_BELT=N` health bottles on his belt, `VH_MASTERY=N` his rank).
+        // `VH_BELT=N` health bottles on his belt, `VH_MASTERY=N` his rank, `VH_LIVES=N` his lives,
+        // `VH_EDGE=N` his blade's edge, `VH_LIMIT=S` the seconds, `VH_COURT_STATS` each life's numbers).
         let sin =
             args.get(i + 1).and_then(|s| void_harvest::logic::sins::Sin::from_name(s)).unwrap_or(void_harvest::logic::sins::Sin::Greed);
         let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);

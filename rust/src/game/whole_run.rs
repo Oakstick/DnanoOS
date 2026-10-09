@@ -961,6 +961,12 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
     }
     g.map_jump(Stage::Court(sin));
     kit.equip(&mut g);
+    // (`VH_EDGE=N`: his blade's edge, 0 to 100, as the run's realm left it.)
+    if let Some(n) = std::env::var("VH_EDGE").ok().and_then(|v| v.parse::<u8>().ok()) {
+        let h = g.progress.hero_mut(g.hero_kind);
+        h.edge[(h.wield.clamp(1, 10) - 1) as usize] = n.min(100);
+        g.equip_from_progress();
+    }
     // (`VH_LIVES=N`: the lives he brings, as the run's checkpoint gives them.)
     if let Some(n) = std::env::var("VH_LIVES").ok().and_then(|v| v.parse::<u32>().ok()) {
         g.score.resume(g.score.score, n);
