@@ -1555,23 +1555,72 @@ corridors, dens, packs, mimics, toll, gate, the court's arena and Mammon's moves
   - The harness is unchanged: `--run 2 1`, `--court 2 1 1`, `--pit 2 8 1` and all 17 bouts print
     the same as rust-port's (5defc78), apart from their wall-clock lines.
   - fmt, clippy (desktop and wasm) and the tests (912, `--test-threads=4`) pass.
-- **Captures:** `C:/Users/ulask/Games/vh-greed-cap/final/`: `side-*.png` (rust-port beside this build,
-  22 views: the entrance and the treasury from both cameras, the chests, a corridor, a chamber, a
-  fight from both cameras, a mimic, the Assessor's post from both cameras, `--iso`, the court from
-  its cameras, wide, at the throne, the west wall, the gate, the coin rain, the hoard slam and
-  `--iso`), `final-*.png` (the same at 1080p), `vaults-vs-cisterns-hub.png` (and `-1080`).
-  `views.sh`, `side.py`, `sheet.py`; `abba.sh` under `timed.sh` measures.
+- **Second pass (after review): the gold back.** The first pass lost the place's character, the
+  Garden's and the hub's trap again: the vaults "full of gold" read as a dark brown hall with faint
+  gold flecks, the coins specks from the top camera, the rooms' middles near black, the heaps that
+  made it a treasure vault gone. The stone, the doors, the gilt, the practicals, the cool far haze
+  and the coin shader are kept; the gold dominates again.
+  - **Coin on the floors** (`vault_art::spill`, `coin_patch`): low spills of coin (one layer,
+    merged, drawn by the coin shader) lie over the rooms' floors, thickest against the walls (three
+    in four tiles) and thinning to the middle, twice as thick in the great treasury; never on a
+    tile where gold he may take lies, and kept small and low beside one. Coin spills before every
+    chest.
+  - **Heaps:** every bare stretch of a room's wall has coin heaped against it: a wide low skirt
+    (under knee height) over the floor before it, the heap rising high against the stone within
+    the walls' lip (`LIP`, its test); about one in five has gold bars instead, a low stack spread
+    before the wall and a tall one leaning on it. Coin is heaped round the columns' feet (smaller
+    where gold he may take lies by them). The heaps he takes are larger (a third), the treasure
+    heaps a fifth, the coin stacks fuller and wider.
+  - **Light on the gold:** a warm gleam over the 5 nearest heaps and bar stacks (`VAULT_GLEAMS_LIT`)
+    and glints off them; a low warm fill (ambient 1.25 of a warm umber, sky light 0.42, ground
+    0.3, the shafts' light 0.42) and exposure 1.45, so the rooms' middles read from the top camera;
+    12 practicals lit at once, reaching 5.5 to 7.
+  - **Gilt:** laid on thicker and yellower (its reflectance pulled toward yellow), tarnish lighter,
+    and it reflects the lamps' bounce more strongly (0.2), brightest from the lit floor below and
+    least from the dark above, the bands that make a column read as metal.
+  - **The Counting House** a touch brighter seen wide (ambient, sky light, exposure 1.48).
+  - **Numbers (1080p, ABBA against rust-port 5defc78, GPU, `--bench 600`):**
+
+    | | Before | First pass | Second pass |
+    |---|---:|---:|---:|
+    | Static cubes, the Vaults | 247,292 | 171,132 | 209,075 |
+    | The entrance (top camera), high clocks | 1.51 to 1.53 ms | 2.08 to 2.17 ms | 2.31 to 2.63 ms (+60%) |
+    | The treasury (chase camera), high clocks | 1.98 to 2.25 ms | 2.68 to 2.75 ms | 3.14 to 3.20 ms (+50%) |
+    | The entrance, low clocks | 6.35 to 6.47 ms | | 7.86 to 7.88 ms (+23%) |
+    | The treasury, low clocks | 7.86 to 7.91 ms | | 9.69 to 9.76 ms (+23%) |
+    | A fight (chase camera), low clocks | 9.18 ms | | 11.02 to 11.09 ms (+20%) |
+    | The Counting House, low clocks | 8.05 to 8.15 ms | | 8.75 to 8.78 ms (+8%) |
+    | The coin rain, low clocks | 8.28 ms | | 8.94 to 9.01 ms (+8%) |
+    | `--perf vault`, GPU p50 (low clocks) | 6.60 / 6.64 ms | | 8.33 / 8.38 ms (+26%) |
+
+    - The laptop's clocks changed between and within rounds: only rows measured in one clock
+      state are compared. At high clocks the vaults cost about 0.8 to 1 ms more than rust-port's
+      (about half again), the reviewer's allowance.
+    - Where it goes (switching effects off, ABBA): the extra lights about 0.45 ms at low clocks,
+      the near shadow cascade 0.2 ms (more casters), the floor spills 0.4 ms; the gold's shader
+      itself is within noise. Cut on the way: the spills to one layer and fewer in the rooms'
+      middles, fewer loose coins, 12 lamps (16) and 5 gleams (8) lit with shorter reach, and the
+      coin shader skips its search where a coin is under a few pixels.
+  - **Checks:** `--camera-check realm4,court4`: no clips, no hidden poses, no holes, in both
+    cameras. The harness prints the same as rust-port's. fmt, clippy (desktop and wasm) and 912
+    tests pass.
+- **Captures:** `C:/Users/ulask/Games/vh-greed-cap/final/`, 22 views each (the entrance and the
+  treasury from both cameras, the chests, a corridor, a chamber, a fight from both cameras, a mimic,
+  the Assessor's post from both cameras, `--iso`, the court from its cameras, wide, at the throne,
+  the west wall, the gate, the coin rain, the hoard slam and its `--iso`): `side-*.png` (rust-port
+  beside the second pass), `passes-*.png` (the first pass beside the second), `final-*.png` (the
+  second pass at 1080p), `vaults-vs-cisterns-hub.png` (and `-1080`). `views.sh`, `shots.sh`,
+  `side.py`, `sheet.py`; `abba.sh` and `perfab.sh` under `timed.sh` measure; `checks.sh` runs the
+  camera check, the harness and the tests together.
 - **Still open:**
-  - The gilded columns and pilasters read as a warm tan more than polished gold from the chase
-    camera's distance; their gleam depends on a lamp being near (the bounce stands in for the
-    probes' missing lamp light).
+  - The coin spills are blocky up close (8 cm voxels), and from the chase camera a lone spill on
+    dark flags can read as a flat patch.
   - The treasury's cream marble shows the shared marble material's veins as wavy lines from above.
-  - The great rooms' middles are dark from the top camera: the practicals stand round the walls
-    (and on the columns); the coins there read as faint gold flecks.
-  - The Counting House, seen wide, is darker than it was; the heaps in its corners gleam only near.
+  - The entrance's floor away from its west wall is still mostly dark flags with scattered gold.
   - The giant statues are the niche statue scaled up: blocky from close by.
   - The paintings are the old pixel canvases; the counting-bell at the Assessor's post is the
     shared war prop, plain-lit.
+  - The vaults cost about half again their old GPU time at high clocks (above).
 
 ### Scene I's camera (2026-10-08)
 
