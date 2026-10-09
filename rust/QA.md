@@ -53,7 +53,7 @@ fixes keep every harness number identical except one whole run (Q3, explained th
    F1 is the help key on many keyboards: a reviewer pressing it is thrown out of his level into the
    Cyclops' meadow. Proposal: keep them behind `dev` (as LEVELS is) in `build-windows.ps1` builds.
 2. **Decided and built (c9d4fe7): after the end the run is closed, Start begins anew; New Game+
-   beside it (NGCOMMIT).** **After the ending, Continue goes back to Krampus.** The last checkpoint is `Stage::Lair`, kept
+   beside it (72ff15c).** **After the ending, Continue goes back to Krampus.** The last checkpoint is `Stage::Lair`, kept
    after Scene II and the credits, so the title's Continue reads "Ragnar, Krampus's lair" and puts him
    before Krampus again (the finished mark stays). Many games do this; the alternative is to clear the
    run at `begin_ending` so Continue opens the heroes with the purse and unlocks kept.
@@ -286,7 +286,7 @@ playthrough items above.
   `build-windows.ps1` and web builds it is ignored (`Game::ask_dev`). The harnesses that press the
   testing keys (`--capture` scripts, `--monkey ... cheats`) are unchanged. Test
   `dev_on_the_command_line_is_ignored_outside_developer_builds`.
-- **New Game+** (NGCOMMIT; the proposal above, approved): once the tale is told the title offers
+- **New Game+** (72ff15c; the proposal above, approved): once the tale is told the title offers
   NEW GAME+ beside Start. It begins again from Scene I with the finished run's kit (every hero's
   tiers, mastery and loadout), its purse and its living rivals seeded back into the Ledger, every foe
   and prince a tier harder: an offset on top of the numbers (`Game::realm_tier` + the level, so the
@@ -297,7 +297,7 @@ playthrough items above.
   menu ("THE ROAD DOWN   NEW GAME+1"). Start beside it is a fresh adventure. A first run is
   bit-identical in every harness (`--run` expert and adept seed 1 both orders, the seven courts at
   expert t4 and adept t4, `--pit 2 8 1`, the 16 bouts: the same output as before, wall-clock lines
-  aside). `--run SKILL SEED ORDER ng+N` plays New Game+ N times over (WARBAND.md §14). Test
+  aside; checked again after merging W10's princes, 6e64ac7). `--run SKILL SEED ORDER ng+N` plays New Game+ N times over (WARBAND.md §14). Test
   `after_the_end_new_game_plus_keeps_the_kit_a_tier_harder`. Captures `vh-fixes-cap/ng-title.png`,
   `ng-hud.png`, `ng-pause.png`.
 

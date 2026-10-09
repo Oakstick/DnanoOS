@@ -781,18 +781,20 @@ own numbers become, the offset composes with them; a first run (level 0) is unto
 
 `--run SKILL SEED ORDER ng+N` plays the whole run, then New Game+ N times over with what it left (a
 run that did not reach the end hands on what it had where it stopped), and prints the last.
-Seed 1, NG+1 against the first run as this build plays it (1.0.21 with the fixes):
+Seed 1, NG+1 against the first run as this build plays it (1.0.21 with the fixes and W10's
+princes):
 
 | Run | First run | NG+1 |
 |---|---|---|
-| expert, order 0 | the ending, 90 min, 12 lives and 3 tries lost, 4 realms cleared | the ending, 78 min, no life lost, 4 realms cleared (kit 9/8/8 to 10/10/10, rank 5, from the first realm) |
-| expert, order 1 | the ending, 110 min, 9 lives and 1 try lost, 1 realm cleared | the ending, 85 min, 1 life lost, 2 realms cleared |
-| adept, order 0 | ends at Lucifer's court, 57 min, 1 realm cleared, 1 prince | ends in the vaults (tier 2), 23 min, 9 lives lost (kit 3/3/3: the adept hands on little) |
-| adept, order 1 | ends at Asmodeus's court, 22 min | ends at Asmodeus's court (tier 2), 25 min, 17 lives lost |
+| expert, order 0 | the ending, 100 min, 14 lives and 3 tries lost, 3 realms cleared | the ending, 82 min, no life lost, 3 realms cleared |
+| expert, order 1 | the ending, 107 min, 9 lives and 1 try lost, 2 realms cleared | the ending, 84 min, 2 lives lost, 2 realms cleared |
+| adept, order 0 | ends in the Rotting Feast, 96 min, 24 lives and 9 tries lost, 5 princes | ends in the Rotting Feast, 70 min, 19 lives and 6 tries lost, 5 princes (kit 7/4 to 8/8 handed on) |
+| adept, order 1 | ends in the Rotting Feast, 12 min, 18 lives lost, 1 prince | ends in the Rotting Feast, 11 min, 16 lives lost, 1 prince |
 
-The expert's kit outgrows the tier: NG+1 is easier for him than his first run was (the princes
-fall in a minute or two at blade 9-10); the adept, who never finishes, is set back further. NG+2
-and NG+3 (`ng+2`, `ng+3`) are the knobs if the expert's NG+ should bite.
+The kit outgrows one tier: NG+1 is easier for the expert than his first run was (blade 9-10 from the
+first realm; the princes fall in a minute or two), and about as hard for the adept, who reaches the
+same place with what his first run left him. NG+2 and NG+3 (`ng+2`, `ng+3`) are the knobs if New
+Game+ should bite harder (or a larger offset per level).
 
 ---
 
