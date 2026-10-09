@@ -340,6 +340,13 @@ courts, the gym). The report goes to `perf/camera-<time>.md`, listing poses to r
   | Depth of field | more than 1 px of blur on a foe within 12 m of him |
   | Level of detail | his level under each camera at 1080p (reported) |
 
+**Since (QA.md Q9, 2026-10-09):** a ray is a hole only if what the pose draws each frame misses it
+too (the Hall of Mirrors' throne floor is drawn near him only); tiles that send him on at once (a
+mirror-door's recess) are not surveyed; `VH_CAMERA_ALL` lists every failing pose and `VH_CAMERA_DBG`
+the cube in front of each of his marks. What hid him now fades as trees do: the courts' portals, the
+Banquet's candle wheels, the Garden of Thorns' court arch, pavilion, bowers and Black Thorn, the
+vaults' arch piers (each on its own, under the crown's fade) and the ornaments of a fading wall.
+
 **Found and fixed:**
 - **Tunnels:** the camera eased across the whole map when Ragnar wrapped through a tunnel. It now
   cuts whenever he moves more than 4 m in one frame (also teleports and portals).
