@@ -794,3 +794,58 @@ letters, as the glyphs do.
   comes again.
 - Left: the 64 px icons; a jaw and eyelids for the old man; Miyamoto's arms (ANIMATION.md); the
   off-screen shrine arrow could be bigger.
+
+### The bestiary (2026-10-08)
+
+The old man's book of every foe met (`logic/bestiary.rs` the book and its words, `game/bestiary.rs`
+the watching and the page's rules, `render/hud/bestiary.rs` the page). THE BESTIARY stands in the
+pause menu (after THE LEDGER), small in the title's corner once a page of it is open, and in the
+old man's guide (`{Secondary}`, Y or R: "HIS BESTIARY"; Back returns to his words). On the
+developer's map: THE BESTIARY - EVERY PAGE OPEN (review: every page shown, nothing saved).
+
+- **The groups**, as the game groups its foes (`Group`, thirteen tabs): the seven stages' casts
+  (I The Restless Dead .. VII Ragnarök), the Cyclops' meadows, the realms' own (and the mimic
+  chest), the princes' hands (the seven generals), the princes' courts (the seven princes and what
+  they raise), the bottom of the Pit (Krampus and his Perchten), and the Ledger's names (the
+  rivals the player has made, newest first, remembered from runs gone by too: thirty at most).
+  60 fixed pages: 51 kinds of foe, the Cyclops, the mimic chest, seven generals.
+- **A page**: the foe's whole figure turning slowly (`PortraitId::Figure`: its rig at rest, the
+  portrait camera going round it once in about fourteen seconds, framed once a rig so it never
+  swims; the mimic chest has a rig of its own, its lid thrown back on teeth and eyes; the Peerless
+  wears the hero's likeness), its name as the game gives it, its name in its own tongue (Tepegöz,
+  Níðhöggr, jorōgumo, Ganglati and Ganglöt...), where its tale comes from, the question its
+  archetype asks and how its blows reach him (read from `Breed::of`, not written by hand), the
+  player's figures (MET, FELLED, FELLED YOU), and the words: THE LEGEND (two to four sentences;
+  "here" where the game takes a liberty), HOW IT FIGHTS (as the code has it: COMBAT.md §11,
+  PRINCES.md, FINALE.md), THE OLD MAN SAYS (beside his round live portrait, in his amber). A page
+  not yet met is a black silhouette with a "?", its name "? ? ?", and no words but that it waits.
+- **Unlocking**: a foe in his sight within twelve tiles (or within three, seen or not) is met,
+  each once a level (a duelist by its id, a foe of the dungeons by its place); felled from the war
+  log's `Slain` (the dungeons' foes when they go from the hunt to the hollow or to bones, the
+  Cyclops when it dies, the mimic when struck first); felled by: the foe that hurt him last
+  (the war log's `Landed`, or the foe touching him, or the Cyclops), if within three seconds of his
+  fall. Generals and rivals are counted on their own pages. Nothing in the game reads any of it:
+  the bot through the vaults plays the same game watched or not (`the_book_never_changes_the_fight`).
+- **Saved** as `vh.bestiary`, beside the run's snapshot and not in it (written when the snapshot
+  is flushed: a change of screen, a checkpoint, the game closing; Start Over keeps the book):
+  `b1;slug=met,felled,by;...;r=kind,rank,alive,met,felled,by,full name`. A save from before the
+  book has no key and opens an empty book; a later version's book is read as far as this one
+  knows it; anything else reads as empty. The bots' harnesses fill a book that is never written.
+- **Look**: the guide's glass ruled in amber over a dim, Cinzel for the names, Alegreya Sans for
+  the words (at the prose size the player chose: `prefs().prose`), every size in the unit, so the
+  UI scale holds; three columns (the list, the figure and its card, the words), laid out for
+  720p to 2160p and 4:3 to 21:9 at 80-150% (`the_page_fits_the_screen_at_every_size_and_scale`);
+  the words at 18 px or more at 1080p. Colours: legend gold, how it fights a cool blue, the old
+  man amber, the archetypes copper, sand, violet and gold, every one also named in words.
+- **Controls**: LB / RB (Q / E, Tab), the D-pad's or the arrows' left and right, or a click on a
+  tab: the group; up and down (the stick, W / S, the wheel off the words), or the pointer: the
+  page; the right stick, the wheel over the words, Page Up / Page Down: the words scroll a line
+  at a time (a track and MORE BELOW when they outgrow their column); B, Esc, Menu, or the BACK
+  button: close. The footer names them in the glyphs of the device used last.
+- **Captures**: `bestiary:G:I` (group G's page I, every page open, a few made-up figures),
+  `bestiarylocked:G:I` (as an empty book shows it), `bestiaryscroll:N`.
+- **The writing** is in `logic/bestiary.rs`, one match: its tests hold every kind to a page in one
+  group, every name to the game's, the legend to two to four sentences, every letter to the
+  type, the archetype named in HOW IT FIGHTS to the code's, every general's instruments to his
+  orders, and no page to a Devil, Satan, or the end. `VH_BESTIARY_OUT=entries.md cargo test --
+  --ignored write_the_book_out` writes every page's words out for reading.

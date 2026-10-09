@@ -1,6 +1,7 @@
 //! Game rules, free of any rendering or platform code.
 
 pub mod angels;
+pub mod bestiary;
 pub mod boss;
 pub mod combat;
 pub mod court;

@@ -77,6 +77,9 @@
 //! to bind the action's first slot (`Attack`, `Block`...), `key:KeyQ` presses and lets go a key,
 //! `padbtn:PadNorth` a controller button, `uiscale:N` sets the UI's scale (80..150) and
 //! `colourblind:K` the palette (0 off .. 3 tritanopia); `loading` shows the in-game loading card.
+//! The bestiary: `bestiary:G:I` opens it at group G's page I (0 the first stage .. 12 the rivals),
+//! every page open for review and a few made-up figures; `bestiarylocked:G:I` as an empty book
+//! shows it; `bestiaryscroll:N` scrolls its words N lines.
 //! `--splash out.png` draws the engine's start screen instead (`--splash-step N`,
 //! `--splash-progress F`, `--splash-device kbm|xbox|ps`; the size from `--size`).
 
@@ -231,6 +234,10 @@ pub(crate) enum Cmd {
     MapPan(f32, f32),
     MiniZoom(usize),
     MiniTurn,
+    /// The bestiary open at group G's page I: every page open for review, or (locked) as an empty
+    /// book shows it; its words scrolled N lines.
+    Bestiary(usize, usize, bool),
+    BestiaryScroll(usize),
 }
 
 pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
@@ -319,6 +326,12 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "block" => Cmd::Press(Action::Block),
             "unblock" => Cmd::Unblock,
             "settings" => Cmd::Settings(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "bestiary" | "bestiarylocked" => {
+                let g = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let i = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                Cmd::Bestiary(g, i, cmd == "bestiarylocked")
+            }
+            "bestiaryscroll" => Cmd::BestiaryScroll(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "setrow" => Cmd::SettingsRow(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "settingspad" => Cmd::SettingsPad,
             "rebind" => match parts.next().and_then(crate::input::from_token) {
@@ -537,6 +550,8 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Keyboard => game.controls_keyboard = true,
         Cmd::Unblock => game.input.inject_release(Action::Block),
         Cmd::Settings(k) => game.open_settings_on(crate::game::settings_page::Tab::ALL[k.min(4)]),
+        Cmd::Bestiary(g, i, locked) => game.debug_bestiary(g, i, locked),
+        Cmd::BestiaryScroll(n) => game.bestiary.scroll = n,
         Cmd::SettingsRow(k) => game.settings_page.row = k,
         Cmd::SettingsPad => game.settings_page.pad = true,
         Cmd::Rebind(a) => {
