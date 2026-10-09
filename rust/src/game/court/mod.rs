@@ -8,8 +8,11 @@
 //! the banner and the green cross for a breather as his health falls into a new phase, his adds
 //! sent ahead by his general's decree, his fall and his key. When he falls he drops the key of his
 //! sin, and the way on is as from any boss: the key opens the gate behind him, then the old man's
-//! wares, then the Portals of Hell with the sin sealed. If the hero falls, the prince is whole
-//! again and back where he began.
+//! wares, then the Portals of Hell with the sin sealed. If the hero falls, the prince is back where
+//! he began, but the hero's blows are not undone: he keeps his wounds (`prince::after_fall`,
+//! WARBAND.md W10; HIS WOUNDS REMAIN is said over him, and his bar stays where it was), and fought
+//! again in a later phase he takes it up again at once (its banner, its adds), without its
+//! breather. A game over gives him back his health.
 //!
 //! What each prince does of his own is his sin's module, through a few hooks it answers (called by
 //! `match` on the court's sin): `greed` (Mammon in the Counting House: his golems climb out of his
@@ -36,9 +39,9 @@ use super::{Banner, Game};
 use crate::audio::Sfx;
 use crate::logic::combat::archetype::Archetype;
 use crate::logic::combat::prince::krampus::PHASE_AT as KRAMPUS_AT;
-use crate::logic::combat::prince::{phase_name, PHASE_AT};
+use crate::logic::combat::prince::{after_fall, phase_for, phase_name, COURT_HIDE, PHASE_AT};
 use crate::logic::combat::{Breed, Duelist};
-use crate::logic::court::{prince_spot, weight};
+use crate::logic::court::{prince_spot, temper, weight};
 use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
 use crate::logic::sins::Sin;
 use crate::logic::types::{dist_sq, Tile, P, V};
@@ -47,6 +50,8 @@ use crate::logic::types::{dist_sq, Tile, P, V};
 /// frames between attack tokens.
 pub const COURT_CAPACITY: u8 = 3;
 pub const COURT_CADENCE: u32 = 45;
+/// Said over a prince (and Krampus) fought again after the hero's fall with the wounds he took.
+pub const WOUNDS_REMAIN: &str = "HIS WOUNDS REMAIN";
 
 /// What the court keeps of its fight: whose court it is, who the prince is, his phase as last
 /// seen, whether he has fallen, and his health as the bar showed it a moment ago (its pale trail).
@@ -59,6 +64,11 @@ pub struct Court {
     pub trail: f32,
     /// His adds are to come as his fight begins (his general's decree was done, WARBAND.md §9).
     pub adds_due: bool,
+    /// His health as the hero fell: what the fall leaves him (`note_wounds`, `reset_court`).
+    pub seen: f64,
+    /// Brought back after a fall in his second or third phase: he takes it up again as the fight
+    /// begins.
+    pub rejoin: bool,
     /// Lust's court: its censers, and the kiss on the hero (`lust`).
     bower: lust::Bower,
     /// Beelzebub's banquet: his platters, his meal, his flies (`gluttony`).
@@ -152,7 +162,8 @@ impl Game {
         let id = brawl.next_id();
         let spot = prince_spot(sin);
         let at = P::new(spot.0, spot.1);
-        let (hp, damage) = weight(tier);
+        let ((hp, damage), (hp_temper, damage_temper)) = (weight(tier), temper(sin));
+        let (hp, damage) = (hp * hp_temper, damage * damage_temper);
         let kind = sin.prince_kind();
         let spec = spec_of(&self.level.grid, kind);
         let mut e = Enemy::new(&spec, at, self.level.data.enemy_speed);
@@ -163,6 +174,7 @@ impl Game {
         d.max_hp *= hp;
         d.hp = d.max_hp;
         d.breed.damage *= damage;
+        d.breed.hide = COURT_HIDE;
         d.rest = 90;
         // His general's realm weighs on his fight: slain, his phase-two adds are lost; his decree
         // done, his adds come at once.
@@ -178,6 +190,8 @@ impl Game {
             phase: 1,
             slain: false,
             trail,
+            seen: trail as f64,
+            rejoin: false,
             adds_due: terms.adds_at_start,
             bower: lust::Bower::default(),
             banquet: Default::default(),
@@ -194,8 +208,20 @@ impl Game {
         }
     }
 
-    /// After a fall: the prince whole again where he began, his adds gone (unless he has already
-    /// fallen, and his key waits).
+    /// As the hero falls, before everyone is set back: the prince's health (or Krampus's), which
+    /// the fall leaves him (WARBAND.md W10).
+    pub(super) fn note_wounds(&mut self) {
+        let hp = self.prince().map(|d| d.hp);
+        if let (Some(c), Some(hp)) = (self.court.as_mut(), hp) {
+            c.seen = hp;
+        }
+        if let (Some(l), Some(hp)) = (self.lair.as_mut(), hp) {
+            l.seen = hp;
+        }
+    }
+
+    /// After a fall: the prince back where he began, his adds gone, his wounds kept
+    /// (`prince::after_fall`; unless he has already fallen, and his key waits).
     pub(super) fn reset_court(&mut self) {
         let Some(c) = self.court.clone() else { return };
         if c.slain {
@@ -208,15 +234,19 @@ impl Game {
         let terms = self.prince_terms(c.sin);
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).next() {
             d.reset_home();
+            d.hp = after_fall(c.seen, d.max_hp);
+            d.breed.phase = phase_for(d.breed.kind, d.hp, d.max_hp);
             d.pos = home;
             d.facing = V::new(0.0, 1.0);
             d.rest = 90;
             d.lore.summoned = !terms.phase_two_adds;
         }
-        if let Some(c) = self.court.as_mut() {
-            c.phase = 1;
+        let hp = self.enemies.first().and_then(|e| e.duel.as_ref()).map(|d| (d.hp, d.breed.phase));
+        if let (Some(c), Some((hp, phase))) = (self.court.as_mut(), hp) {
+            c.phase = phase;
             c.adds_due = terms.adds_at_start;
-            c.trail = self.enemies.first().and_then(|e| e.duel.as_ref()).map(|d| d.max_hp as f32).unwrap_or(0.0);
+            c.trail = hp as f32;
+            c.seen = hp;
         }
         match c.sin {
             Sin::Greed => self.greed_reset(),
@@ -226,6 +256,12 @@ impl Game {
             Sin::Sloth => self.sloth_reset(),
             Sin::Gluttony => self.gluttony_reset(),
             Sin::Lust => self.lust_reset(),
+        }
+        // (Belphegor back asleep in his chair wakes into his phase at the first blow, as ever.)
+        let (phase, wounded) = self.prince().map(|d| (d.breed.phase, d.hp < d.max_hp)).unwrap_or((0, false));
+        if let Some(c) = self.court.as_mut() {
+            c.phase = phase;
+            c.rejoin = wounded;
         }
         self.refresh_foe_views();
     }
@@ -248,6 +284,22 @@ impl Game {
                 d.lore.summoned = true;
             }
             self.raise_adds(sin, id, pos);
+        }
+        // Fought again after a fall with his wounds: said over him as the fight begins, and in a
+        // later phase he takes it up again (its banner, its adds).
+        let rejoin = self.court.as_ref().is_some_and(|c| c.rejoin) && self.screen == super::Screen::Playing;
+        if rejoin {
+            if let Some(c) = self.court.as_mut() {
+                c.rejoin = false;
+            }
+            let id = self.court.as_ref().map(|c| c.prince);
+            let found = self.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| Some(d.id) == id && d.alive()));
+            if let Some((i, phase, at)) = found.and_then(|i| self.enemies[i].duel.as_ref().map(|d| (i, d.breed.phase, d.pos))) {
+                self.floater(at.x, at.y - 2.8, WOUNDS_REMAIN, 2.4, Some(sin.color()));
+                if phase >= 2 {
+                    self.enter_phase(i, phase, false);
+                }
+            }
         }
         match sin {
             Sin::Greed => self.greed_tick(dt),
@@ -285,6 +337,12 @@ impl Game {
      * second begins), and a green cross for a breather.
      */
     pub(super) fn prince_phase(&mut self, i: usize, phase: u8) {
+        self.enter_phase(i, phase, true);
+    }
+
+    /// The prince `i` enters `phase` (as his health falls into it, or fought again in it after a
+    /// fall), with a green cross for a breather if `breather`.
+    fn enter_phase(&mut self, i: usize, phase: u8, breather: bool) {
         let Some(du) = self.enemies.get(i).and_then(|e| e.duel.as_deref()) else { return };
         if du.arch != Archetype::Prince {
             return;
@@ -292,7 +350,7 @@ impl Game {
         let (id, pos, kind) = (du.id, du.pos, du.breed.kind);
         if kind == crate::logic::enemy::EnemyKind::Krampus {
             // Krampus is no sin's prince: his lair has its own banners and adds (`lair`).
-            self.krampus_phase(i, phase);
+            self.krampus_phase(i, phase, breather);
             return;
         }
         let sin = Sin::of_prince(kind).unwrap_or(Sin::Greed);
@@ -340,7 +398,9 @@ impl Game {
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
             d.lore.summoned |= phase >= 2;
         }
-        self.drop_breather(pos);
+        if breather {
+            self.drop_breather(pos);
+        }
     }
 
     /// The prince `id`'s phase-two adds have not come yet (his general lives, and no decree or

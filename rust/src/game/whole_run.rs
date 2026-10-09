@@ -847,7 +847,9 @@ fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -
         }
         // (A realm the bots cannot read, lost to its ground, is passed as a player who learnt it
         // would pass it: its fights are counted, and the run goes on to the court.)
-        let lost = realm.game_overs >= TRIES && bots_walk(sin);
+        // (`VH_RUN_PASS`: a walked realm lost is passed as a stand-in's is, to measure the courts
+        // and the finale past a realm the bot cannot clear.)
+        let lost = realm.game_overs >= TRIES && bots_walk(sin) && std::env::var_os("VH_RUN_PASS").is_none();
         if !lost {
             // (He calls the old man before the court, as H does anywhere: the same rule.)
             shop(g, skill, seed, &mut realm);
@@ -1001,16 +1003,40 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
     }
     g.map_jump(Stage::Court(sin));
     kit.equip(&mut g);
+    // (`VH_EDGE=N`: his blade's edge, 0 to 100, as the run's realm left it.)
+    if let Some(n) = std::env::var("VH_EDGE").ok().and_then(|v| v.parse::<u8>().ok()) {
+        let h = g.progress.hero_mut(g.hero_kind);
+        h.edge[(h.wield.clamp(1, 10) - 1) as usize] = n.min(100);
+        g.equip_from_progress();
+    }
+    // (`VH_LIVES=N`: the lives he brings, as the run's checkpoint gives them.)
+    if let Some(n) = std::env::var("VH_LIVES").ok().and_then(|v| v.parse::<u32>().ok()) {
+        g.score.resume(g.score.score, n);
+    }
+    // (`VH_BELT=N`: N health bottles on his belt, as the run's old man fills it.)
+    if let Some(n) = std::env::var("VH_BELT").ok().and_then(|v| v.parse::<usize>().ok()) {
+        g.belt = vec![PotionKind::Health; n.min(BELT_SLOTS)];
+    }
     into_play(&mut g, Some(CameraMode::Top));
     let mut bot = Bot::new(skill, seed);
     let lives = g.score.lives;
     let (step, mut t, mut phase) = (crate::app::STEP, 0.0, 0);
     let mut slain = false;
+    // (`VH_COURT_STATS`: each life's numbers as it ends, and the last one's.)
+    let stats = std::env::var_os("VH_COURT_STATS").is_some();
+    let mut dying = false;
     while t < limit {
         let pad = if g.screen == Screen::Playing { bot.act(&g) } else { PadState::default() };
         g.input.set_pad(Some(pad));
         g.update(step);
         t += step;
+        if stats && (g.screen == Screen::Dying) != dying {
+            dying = !dying;
+            if dying {
+                let left = g.prince().map(|d| d.hp / d.max_hp * 100.0).unwrap_or(0.0);
+                eprintln!("fell at {t:.0} s, {left:.0}% left: {:?}", g.brawl.as_ref().map(|b| b.stats));
+            }
+        }
         match g.screen {
             Screen::GameOver => break,
             Screen::Ready | Screen::View => g.enter(Screen::Playing),
@@ -1023,6 +1049,9 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
         }
     }
     let left = g.prince().map(|d| d.hp / d.max_hp).unwrap_or(0.0);
+    if stats {
+        eprintln!("ended at {t:.0} s: {:?}", g.brawl.as_ref().map(|b| b.stats));
+    }
     (slain, t, phase, left, lives.saturating_sub(g.score.lives))
 }
 

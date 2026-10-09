@@ -14,7 +14,7 @@ use crate::logic::combat::fsm::Reel;
 use crate::logic::combat::math;
 use crate::logic::combat::prince::wrath::{DAZE, RAVENS, RAVEN_DESCENT, TWIN_REST};
 use crate::logic::combat::{MoveId, State};
-use crate::logic::court::weight;
+use crate::logic::court::adds_weight;
 use crate::logic::court::wrath::{below_perch, PERCHES};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::types::{dist_sq, V};
@@ -110,7 +110,7 @@ impl Game {
             [-1.0, 1.0, 0.0].iter().map(|s| math::add(at, math::scale(across, 2.2 * s + 0.01))).take(RAVENS as usize).collect()
         };
         let tier = self.realm_tier();
-        let (weight_hp, weight_damage) = if self.in_court() { weight(tier) } else { (1.0, 1.0) };
+        let (weight_hp, weight_damage) = if self.in_court() { adds_weight(crate::logic::sins::Sin::Wrath, tier) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: RAVEN_DESCENT, ..Lore::default() };
@@ -423,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_amon_back_whole_and_continue_comes_back_to_his_court() {
+    fn a_fall_brings_amon_back_with_his_wounds_and_calm_and_continue_comes_back_to_his_court() {
         let mut g = court();
         let max = amon(&mut g).max_hp;
         amon(&mut g).hp = max * 0.5;
@@ -432,14 +432,14 @@ mod tests {
         amon(&mut g).pos = V::new(10.0, 18.0);
         g.reset_round();
         let d = amon(&mut g);
-        assert_eq!((d.hp, d.breed.phase, d.lore.rage), (max, 1, 0));
+        assert_eq!((d.hp, d.breed.phase, d.lore.rage), (max * 0.5, 2, 0), "his wounds kept (WARBAND.md W10), his rage gone");
         assert_eq!(d.pos, P::new(PRINCE.0, PRINCE.1).v(), "back before his anvil");
         g.checkpoint(save::Stage::Court(Sin::Wrath));
         let saved = g.saved_run.clone().unwrap();
         let mut h = Game::new();
         h.saved_run = Some(saved);
         h.continue_game();
-        assert!(h.in_court() && h.prince().is_some());
+        assert!(h.in_court() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, "The Anvil of Wrath");
     }
 
@@ -490,7 +490,11 @@ mod tests {
             assert!(f.slain && f.deaths <= 1 && f.phase == 3, "tier {tier}: {f:?}");
             assert_eq!(f.stats.overlaps, 0, "{f:?}");
         }
-        let f = court_fight(Sin::Wrath, Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 2)), 240.0);
-        assert!(!f.slain && f.game_over, "{f:?}");
+        // The masher where the run meets Amon, the fourth court in either order (WARBAND.md W10: his
+        // blows tempered for the adept, a masher with three lives fells him at the first court's
+        // weight, where no run meets him).
+        let (slain, _, _, _, lost) =
+            crate::game::whole_run::court_at(Sin::Wrath, Skill::Novice, 1, Loadout::all(HeroKind::Ragnar, 2), 3, 240.0);
+        assert!(!slain && lost == 3, "{slain} {lost}");
     }
 }

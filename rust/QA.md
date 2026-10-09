@@ -72,6 +72,9 @@ fixes keep every harness number identical except one whole run (Q3, explained th
    - The expert reaches the ending in all 8 runs (87-112 min, 2-12 lives lost, 0-3 tries, all on the
      Burning Field) and fells every prince at tier 4 and 7 in 33-69 s without a death; the novice
      loses every life in the vaults (2 of 2) and to every prince at tier 1 (7 of 7).
+   - **Softened in W10** (WARBAND.md: the princes keep their wounds across the hero's falls, and are
+     tuned to the adept's kit): the adept now fells every prince it reaches; its walls are the
+     Rotting Feast and the Pit.
 4. **Runes are unused in a whole run.** The expert ends with 63-80 runes unspent in all 8 runs (purse
    228-1442 silver); the adept with 3-21. The relics unseal tiers before runes are wanted (the bots'
    rule never needs them).

@@ -322,7 +322,9 @@ impl Game {
         self.was_airborne = false;
         let center = self.level.nest_center;
         let graves = self.grave_spawns();
-        // Under the frame data the fight begins afresh: the vaults' packs back asleep at their posts, whole.
+        // Under the frame data the fight begins afresh: the vaults' packs back asleep at their posts, whole
+        // (a prince, and Krampus, keep their wounds: `note_wounds`).
+        self.note_wounds();
         let kit = self.hero_kit();
         if let Some(b) = self.brawl.as_mut() {
             b.respawn(kit);

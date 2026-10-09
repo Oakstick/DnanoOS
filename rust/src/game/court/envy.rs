@@ -22,8 +22,8 @@ use crate::logic::combat::prince::envy::{
     coiled, covet, coveted, fire_spots, thunder_marks, FIRE_RADIUS, SERPENTLINGS, SERPENTLING_RISE, SWIM,
 };
 use crate::logic::combat::{math, MoveId, State};
+use crate::logic::court::adds_weight;
 use crate::logic::court::envy::{springs_near, BELL};
-use crate::logic::court::weight;
 use crate::logic::enemy::EnemyKind;
 use crate::logic::types::V;
 
@@ -301,7 +301,7 @@ impl Game {
             [-1.0, 1.0].iter().map(|s| math::add(at, math::scale(across, 2.2 * s))).collect()
         };
         let tier = self.realm_tier();
-        let (weight_hp, weight_damage) = if self.in_court() { weight(tier) } else { (1.0, 1.0) };
+        let (weight_hp, weight_damage) = if self.in_court() { adds_weight(crate::logic::sins::Sin::Envy, tier) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: SERPENTLING_RISE, ..Lore::default() };
@@ -406,7 +406,7 @@ mod tests {
         leviathan(&mut g).rest = u16::MAX;
         let from = leviathan(&mut g).pos;
         let serpentlings = |g: &Game| g.enemies.iter().filter(|e| e.kind() == EnemyKind::Serpentling).count();
-        leviathan(&mut g).hp = max * 0.67 + 1.0;
+        leviathan(&mut g).hp = max * 0.75;
         g.call_duel_hit(0, from);
         run(&mut g, 0.05);
         let hp = leviathan(&mut g).hp;
@@ -458,7 +458,7 @@ mod tests {
         let warded = blow(&mut g, from);
         leviathan(&mut g).f.state = State::Attack { mv: MoveId::CoilLash, frame: 60 };
         let open = blow(&mut g, from);
-        assert!(warded > 0.0 && open > warded * 2.5, "warded {warded}, open {open}");
+        assert!(warded > 0.0 && open > warded * 1.5, "warded {warded}, open {open}");
         // Coiled round the hot bell: from the bell's side the whole blow lands, from the other his scales.
         leviathan(&mut g).f.state = State::Neutral;
         leviathan(&mut g).lore.bell = Some(BELL);
@@ -467,7 +467,7 @@ mod tests {
         assert!(burnt_side(pos, bell_side, BELL) && !burnt_side(pos, from, BELL));
         let burnt = blow(&mut g, bell_side);
         let scaled = blow(&mut g, from);
-        assert!(burnt > scaled * 2.5, "burnt {burnt}, scaled {scaled}");
+        assert!(burnt > scaled * 1.5, "burnt {burnt}, scaled {scaled}");
     }
 
     #[test]
@@ -667,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fall_brings_leviathan_back_whole_and_uncoiled_and_continue_comes_back_to_his_court() {
+    fn a_fall_brings_leviathan_back_with_his_wounds_and_continue_comes_back_to_his_court() {
         let mut g = court();
         let max = leviathan(&mut g).max_hp;
         leviathan(&mut g).hp = max * 0.2;
@@ -676,14 +676,18 @@ mod tests {
         g.reset_round();
         let home = P::new(crate::logic::court::envy::PRINCE.0, crate::logic::court::envy::PRINCE.1).v();
         let d = leviathan(&mut g);
-        assert_eq!((d.hp, d.breed.phase, d.lore.bell), (max, 1, None));
+        assert_eq!((d.hp, d.breed.phase, d.lore.bell), (max * 0.2, 3, None), "his wounds kept (WARBAND.md W10)");
         assert_eq!(d.pos, home, "before his altar");
+        // As the fight begins again he takes up the Bell: he coils round it once more.
+        g.enter(Screen::Playing);
+        run(&mut g, 0.05);
+        assert_eq!(leviathan(&mut g).lore.bell, Some(BELL));
         g.checkpoint(save::Stage::Court(Sin::Envy));
         let saved = g.saved_run.clone().unwrap();
         let mut h = Game::new();
         h.saved_run = Some(saved);
         h.continue_game();
-        assert!(h.in_court() && h.prince().is_some());
+        assert!(h.in_court() && h.prince().is_some_and(|d| d.hp == d.max_hp), "a game over gives him back his health");
         assert_eq!(h.level.data.name, "The Drowned Bell");
     }
 
