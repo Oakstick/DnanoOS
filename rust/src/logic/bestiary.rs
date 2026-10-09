@@ -182,6 +182,8 @@ pub struct Lore {
 /// The archetype a page's foe fights as, and how its blows reach the hero (none for the mimic).
 pub fn archetype(entry: Entry) -> Option<(Archetype, Attack)> {
     let kind = match entry {
+        // (The Peerless fights with the hero's own moves, turned on him: no archetype's.)
+        Entry::Foe(EnemyKind::Peerless) => return None,
         Entry::Foe(k) => k,
         Entry::General(s) => General::of(s).body,
         Entry::Cyclops | Entry::Mimic => return None,
@@ -196,7 +198,7 @@ pub fn question(arch: Archetype) -> &'static str {
         Archetype::Brute => "THE BRUTE: CAN YOU WAIT?",
         Archetype::Skirmisher => "THE SKIRMISHER: CAN YOU READ THE TIMING?",
         Archetype::Hexer => "THE HEXER: CAN YOU CLOSE THE DISTANCE?",
-        Archetype::Prince => "A PRINCE: THREE MOODS, AND A HIDE THAT OPENS",
+        Archetype::Prince => "A PRINCE: CAN YOU LEARN HIS MOODS?",
     }
 }
 
@@ -281,7 +283,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Old Norse: draugr",
             "Norse sagas",
             "The old warriors were laid in their mounds with their war gear about them. Here a draugr of the Cisterns still wears his iron cap, and the cap still does its work.",
-            "Its iron cap rings off your first blow: it takes two to fell. Like every draugr it falls to pieces, pulls itself together and hunts by the sound of your steps. Where foes fight blow for blow it is a small Brute, quick for one: wait out its chop, then punish.",
+            "In the dungeons its iron cap rings off your first blow, so it takes two to fell, and like every draugr it falls to pieces, pulls itself together and hunts by the sound of your steps. Where foes fight blow for blow it is a small Brute, quick for one: wait out its chop, then punish.",
             "A helmet is only as brave as the head inside it, and there is no head inside. Strike twice.",
         ),
         K::LargeBat => l(
@@ -289,7 +291,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "",
             "European folk belief",
             "In old Europe bats were creatures of the dusk, of church towers and ruined halls, and many thought them unlucky. The vampire bats of the Americas were named after the legend, not the other way round. Here, in the Cisterns, the bats grow large.",
-            "It swoops at where you are heading, a little short of it, and swerves off its line now and then, so it is hard to read. Where foes fight blow for blow it is a Skirmisher that bites from beside you: parry, or step aside and punish.",
+            "In the dungeons it swoops at where you are heading, a little short of it, and swerves off its line now and then, so it is hard to read. Where foes fight blow for blow it is a Skirmisher that bites from beside you: parry, or step aside and punish.",
             "It does not know where it is going either. Stand your ground and let it come to you.",
         ),
         K::Witch => l(
@@ -305,7 +307,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "",
             "European folklore: the familiar",
             "A familiar was a witch's helper spirit, said to take the shape of a small animal. Here the witch's minions are small, quick things she calls up in a puff of violet.",
-            "Small and quick, it runs straight at you, and one blow is enough. Where foes fight blow for blow it is the lightest Skirmisher, biting from beside you and breaking at a touch.",
+            "In the dungeons it runs straight at you, small and quick, and one blow is enough. Where foes fight blow for blow it is the lightest Skirmisher, biting from beside you and breaking at a touch.",
             "They are many and they are small. Count them later. For now, swing.",
         ),
         K::Werewolf => l(
@@ -321,7 +323,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Latin and Greek: Blemmyae",
             "Ancient and medieval travellers' tales",
             "Pliny and the medieval travellers wrote of the Blemmyae beyond the Nile, a people with no heads, their eyes and mouths set in their chests. The real Blemmyes were a people of the Nubian desert, and the monster grew out of rumour.",
-            "A headless brute: three blows to fell, and his touch hurts twice as much. Where foes fight blow for blow he is the Brute himself, a slow slam ahead and a sweep when you flank him: step out of the slam, punish its long recovery, and break him with your heaviest blow.",
+            "In the dungeons the headless brute takes three blows to fell, and his touch hurts twice as much. Where foes fight blow for blow he is the Brute himself, a slow slam ahead and a sweep when you flank him: step out of the slam, punish its long recovery, and break him with your heaviest blow.",
             "He has no head, so he cannot be talked out of anything. Be patient instead: his blow is slow, and yours is not.",
         ),
         // ---- the third stage
@@ -330,7 +332,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Japanese: tengu",
             "Japanese folklore",
             "Tengu are the mountain goblins of Japan, part bird and part man, often red-faced and long-nosed, and masters of the sword. Proud monks were said to become tengu, and the tengu of Mount Kurama is said to have taught the young Minamoto no Yoshitsune to fight.",
-            "Quick on his feet, he takes two blows. Where foes fight blow for blow he is a Brute who moves half again as fast as one, his sword swung slow and hard: wait for the cut, step out of it, and punish.",
+            "In the dungeons he is quick on his feet and takes two blows. Where foes fight blow for blow he is a Brute who moves half again as fast as one, his sword swung slow and hard: wait for the cut, step out of it, and punish.",
             "Pride made him what he is. Fight him with humility: let him swing first.",
         ),
         K::Rasetsu => l(
@@ -338,7 +340,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Japanese: rasetsu, from the Sanskrit rakshasa",
             "Buddhist tales of India and Japan",
             "In Buddhist tales the rasetsu, the rakshasa of India, are man-eating demons; Japan pictured them as horned, red-skinned brutes. Some were tamed by the faith and became its guardians.",
-            "Horned and red, with a curved blade in each fist: three blows to fell, and his touch hurts twice over. Where foes fight blow for blow he is a heavy Brute, harder to stagger than most: wait out his slam, punish, and finish with your heaviest blow.",
+            "In the dungeons he takes three blows to fell, a curved blade in each fist, and his touch hurts twice over. Where foes fight blow for blow he is a heavy Brute, harder to stagger than most: wait out his slam, punish, and finish with your heaviest blow.",
             "Even a rasetsu was turned to guard the good, once. Not this one. Be careful.",
         ),
         K::DireWolf => l(
@@ -346,7 +348,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Old Norse: vargr, \"wolf\"",
             "Norse myth",
             "Norse myth is full of great wolves: Fenrir, whom the gods bound with a ribbon made of impossible things, and his kin Sköll and Hati, who chase the sun and the moon across the sky. Here their lesser kin hunt the Bone Vaults.",
-            "Bigger than the loup-garou, it takes two blows. Where foes fight blow for blow it is a heavy Skirmisher whose jaws hit hard, biting from beside you: parry the bite, or step out and punish.",
+            "In the dungeons, bigger than the loup-garou, it takes two blows. Where foes fight blow for blow it is a heavy Skirmisher whose jaws hit hard, biting from beside you: parry the bite, or step out and punish.",
             "A wolf hunts the one who runs. Do not run: turn, and let it meet your shield.",
         ),
         K::Jorogumo => l(
@@ -354,7 +356,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Japanese: jorōgumo, \"entangling bride\"",
             "Japanese folklore",
             "In Japanese tales a spider that has lived four hundred years becomes a jorōgumo and can take the shape of a lovely woman, who lures travellers into her house. At the Jōren Falls in Izu, a woodcutter resting by the water was nearly pulled in by her silk.",
-            "She keeps her distance, comes on when you are far and backs away when you are near; it takes two blows to fell her. Where foes fight blow for blow she is a Hexer who hurls fire from afar: close in between her throws.",
+            "In the dungeons she keeps her distance, comes on when you are far and backs away when you are near; it takes two blows to fell her. Where foes fight blow for blow she is a Hexer who hurls fire from afar: close in between her throws.",
             "Never follow a lovely stranger into the dark. Make her come into the light, and then be quick.",
         ),
         K::Cobra => l(
@@ -362,7 +364,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "",
             "Egypt and India",
             "The cobra is the hooded snake of Africa and India. Old Egypt set it on the pharaoh's crown as the uraeus, rearing up to spit fire at his enemies.",
-            "Coiled, it rears and strikes: it takes two blows, and its bite hurts twice over. Where foes fight blow for blow it is a slow Skirmisher whose fangs land hard: parry the strike, or step out of its reach.",
+            "In the dungeons it rears and strikes, takes two blows, and its bite hurts twice over. Where foes fight blow for blow it is a slow Skirmisher whose fangs land hard: parry the strike, or step out of its reach.",
             "A snake rears before it strikes. That is its honesty. Watch for it.",
         ),
         // ---- the fourth stage: the yōkai
@@ -372,7 +374,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Japanese folklore",
             "Oni are the ogres of Japan: horned, red or blue, with an iron club, the kanabō. \"Oni ni kanabō\", an iron club for an oni, is said of the strong made stronger still. On Setsubun families throw roasted beans to drive them out: \"Oni out, good fortune in!\"",
             "A Brute with the iron club. Its Kanabō is a slam no blow of yours can interrupt; only a parry stops it, and the ground shakes all round it as it lands. Stand back from the club, then step in and punish the long recovery.",
-            "On Setsubun the children drive the oni out with a handful of beans. You have more than beans. Stand back from the club, then step in.",
+            "On Setsubun the children drive the oni out with a handful of beans. You have more than beans, and more patience than it has.",
         ),
         K::Kappa => l(
             "Kappa",
@@ -544,7 +546,7 @@ fn foe_lore(kind: EnemyKind) -> Lore {
             "Aramaic: māmōnā, \"wealth\"",
             "The Gospels, and Binsfeld's princes of sin (1589)",
             "Mammon is an old word for wealth: \"Ye cannot serve God and mammon\", says the Gospel of Matthew. Later writers made the word into a spirit of greed, and in 1589 Peter Binsfeld named Mammon the prince of greed. Here he weighs every soul by what it holds.",
-            "A prince whose gold hide turns most of every blow, except in his recoveries or when a parry leaves him reeling. The Banker tosses coins that burst on the floor (no shield stops them: step off or leap) and sweeps his sceptre wide. The Collector's grasp can only be parried; if his fist closes it holds your feet and takes your silver until you strike him, and two gold golems climb from his heaps. The Hoard rains coins, slams the floor and throws coins in fives.",
+            "A prince whose gold hide turns most of every blow, except in his recoveries or when a parry leaves him reeling. The Banker tosses coins that burst on the floor (no shield stops them: step off or leap) and sweeps his sceptre wide. The Collector's grasp can only be parried; if his fist closes it holds your feet and takes your silver until you strike him. Two gold golems climb from his heaps as the Collector begins. The Hoard rains coins, slams the floor and throws coins in fives.",
             "He weighs every soul by what it holds. You left his gold at the door; now keep your silver, and strike him the moment his fist closes.",
         ),
         K::GoldGolem => l(
@@ -727,8 +729,9 @@ fn general_lore(sin: Sin) -> Lore {
 
 /// A rival's page, made from what the Ledger knows of him: his tale, and the old man's word.
 pub fn rival_words(breed: &str, alive: bool) -> (String, &'static str) {
+    let a = article(breed);
     let tale = format!(
-        "No tale tells of him but yours. He is a {breed} who did a deed against you down here, and the deed gave him a name; he remembers it, and he remembers you."
+        "No tale tells of him but yours. He is {a} {breed} who did a deed against you down here, and the deed gave him a name; he remembers it, and he remembers you."
     );
     let word = if alive {
         "He learns from every fight, as you do. Learn faster, and do not let his name grow longer than yours."
@@ -811,6 +814,14 @@ The rivals' pages are made from the Ledger of Grudges: the name the game gave hi
         }
     }
     out
+}
+
+/// "a" or "an" before `word` (by its first letter: "an oni", "a gaki").
+pub fn article(word: &str) -> &'static str {
+    match word.chars().next().map(|c| c.to_ascii_lowercase()) {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
+    }
 }
 
 // ------------------------------------------------------------------ the record
@@ -1167,6 +1178,7 @@ mod tests {
                 assert!(!low.contains(b), "\"{b}\" in: {t}");
             }
         }
+        assert!(rival_words("oni", true).0.contains("He is an oni") && rival_words("gaki", true).0.contains("He is a gaki"));
         // The old man is never a foe: no page is his.
         assert!(all_entries().iter().all(|&e| !lore(e).name.to_lowercase().contains("old man")));
     }
@@ -1206,7 +1218,8 @@ mod tests {
         assert_eq!(archetype(Entry::General(Sin::Envy)).map(|a| a.0), Some(Archetype::Skirmisher), "the Bell-Warden is a kappa");
         assert_eq!(archetype(Entry::Mimic), None);
         // The words agree with the archetype each foe fights as.
-        for k in all_kinds() {
+        assert_eq!(archetype(Entry::Foe(EnemyKind::Peerless)), None, "the Peerless fights with the hero's own moves");
+        for k in all_kinds().into_iter().filter(|&k| k != EnemyKind::Peerless) {
             let (arch, _) = archetype(Entry::Foe(k)).unwrap();
             let fights = foe_lore(k).fights;
             let word = match arch {
@@ -1215,10 +1228,7 @@ mod tests {
                 Archetype::Hexer => "Hexer",
                 Archetype::Prince => "prince",
             };
-            // (The Peerless fights with his own kit: the hero's moves turned on him.)
-            if k != EnemyKind::Peerless {
-                assert!(fights.contains(word), "{k:?} fights as a {word}: {fights}");
-            }
+            assert!(fights.contains(word), "{k:?} fights as a {word}: {fights}");
             for other in ["Brute", "Skirmisher", "Hexer"].into_iter().filter(|w| *w != word) {
                 assert!(!fights.contains(other), "{k:?} is a {word}, not a {other}");
             }

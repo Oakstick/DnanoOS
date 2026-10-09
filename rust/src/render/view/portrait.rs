@@ -37,6 +37,7 @@ fn mimic() -> &'static Rig {
         let (mouth, throat) = (0x5a1018 | mat::SKIN, 0x2a0408 | mat::SKIN);
         let (tooth, tongue, eye) = (0xeee6cc | mat::IVORY, 0xc84a64 | mat::SKIN, 0xffd040 | mat::GLOW);
         let mut s = Sculpt::new(14, 18, 13);
+        // (The lid leans back two voxels thick from z 3 down to 0: the box sits forward of it.)
         // The box: wood, darker gold bands round it, the lock plate on its front.
         s.cuboid(0, 0, 3, 13, 6, 12, wood);
         for x in [0, 13] {
@@ -61,7 +62,7 @@ fn mimic() -> &'static Rig {
         // The lid, thrown back and leaning, red inside, teeth hanging from its rim, two eyes.
         for y in 7..18 {
             let z = 3 - (y - 7) / 4;
-            s.cuboid(0, y, z - 1, 13, y, z - 1, wood);
+            s.cuboid(0, y, z - 2, 13, y, z - 1, wood);
             s.cuboid(1, y, z, 12, y, z, mouth);
             for x in [3, 10] {
                 s.set(x, y, z - 1, gold);
@@ -139,7 +140,7 @@ impl WorldView {
                 }
                 let mid = (lo + hi) * 0.5;
                 let reach = world.iter().map(|w| Vec2::new(w.x - mid.x, w.z - mid.z).length()).fold(0.0, f32::max);
-                (mid, ((hi.y - lo.y) * 0.5).max(reach) * 1.08 + rig.size * 2.0)
+                (mid, ((hi.y - lo.y) * 0.5).max(reach) * 1.3 + rig.size * 2.0)
             })
         });
         let dist = half / (FOV.to_radians() * 0.5).tan();

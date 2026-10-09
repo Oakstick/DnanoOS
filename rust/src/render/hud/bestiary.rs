@@ -186,7 +186,11 @@ fn shown(g: &Game, b: &Bestiary, page: Page) -> Shown {
                     let c = x.card();
                     let traits: Vec<String> =
                         c.traits.iter().map(|(label, v)| format!("{}: {}", title_case(label), v.as_deref().unwrap_or("?"))).collect();
-                    let mut s = format!("He fights as a {breed} does, and better. What you have found of him: {}.", traits.join(", "));
+                    let mut s = format!(
+                        "He fights as {} {breed} does, and better. What you have found of him: {}.",
+                        book::article(breed),
+                        traits.join(", ")
+                    );
                     if let Some(l) = c.lesson {
                         s.push_str(&format!(" {l}"));
                         if !s.ends_with('.') {
@@ -195,7 +199,10 @@ fn shown(g: &Game, b: &Bestiary, page: Page) -> Shown {
                     }
                     s
                 }
-                None => format!("He fought as a {breed} does, and better. What you found of him went with the run you met him in."),
+                None => format!(
+                    "He fought as {} {breed} does, and better. What you found of him went with the run you met him in.",
+                    book::article(breed)
+                ),
             };
             Shown {
                 figure: Figure::Foe(r.kind),
@@ -246,7 +253,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game, t: f32) {
     let lay = layout(w, h, pages.len(), index);
     let time = g.time as f32;
     let (alpha, slide) = style::appear(time - b.since as f32, f32::MAX);
-    o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.88 * alpha]);
+    o.rect(0.0, 0.0, w, h, [INK[0], INK[1], INK[2], 0.95 * alpha]);
     let mut panel = lay.panel;
     panel[1] += slide * t * 0.8;
     let dy = panel[1] - lay.panel[1];
