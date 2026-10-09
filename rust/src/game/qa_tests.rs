@@ -934,6 +934,45 @@ fn testing_keys_are_inert_outside_developer_builds() {
 }
 
 /**
+ * `--dev` on the command line is heeded only in developer builds (`DEV_BUILD`): in a distributable
+ * it leaves the developer's map hidden and the testing keys inert (F6 gives no silver), in a
+ * developer build it turns both on (the user's call, 2026-10-09).
+ */
+#[test]
+fn dev_on_the_command_line_is_ignored_outside_developer_builds() {
+    use winit::keyboard::KeyCode;
+    let _dir = own_folder("dev-flag");
+    for dev_build in [false, true] {
+        let mut g = Game::new();
+        // (A distributable's game, as `Game::new` makes it there.)
+        g.testing_keys = false;
+        g.dev = false;
+        g.ask_dev(true, dev_build);
+        assert_eq!(
+            (g.dev, g.testing_keys),
+            (dev_build, dev_build),
+            "--dev in a {} build",
+            if dev_build { "developer" } else { "distributable" }
+        );
+        g.map_jump(Stage::Dungeon(0));
+        g.enter(Screen::Playing);
+        let silver = g.progress.silver;
+        g.input.key_down(KeyCode::F6, false);
+        g.update(STEP);
+        g.input.key_up(KeyCode::F6);
+        g.update(STEP);
+        let gained = g.progress.silver - silver;
+        assert_eq!(gained, if dev_build { super::CHEAT_COINS } else { 0 }, "F6 after --dev (developer build: {dev_build})");
+    }
+    // (Without --dev nothing changes either way.)
+    let mut g = Game::new();
+    g.testing_keys = false;
+    g.dev = false;
+    g.ask_dev(false, true);
+    assert!(!g.dev && !g.testing_keys);
+}
+
+/**
  * After the end the finished run is closed (the user's call, 2026-10-09): the title offers no
  * Continue (now, and when the game is started again), Start begins a new adventure at once (no
  * "start over?", nothing to lose), in the Garden with nothing of the old run (no keys, no purse,

@@ -33,8 +33,8 @@ pub struct Options {
     pub no_vsync: bool,
     /// The quality preset (`--preset high|low`); none takes the build's default.
     pub preset: Option<crate::render::preset::Preset>,
-    /// `--dev`: the developer's map on the title and the pause menu, and the testing keys (which
-    /// otherwise work only in developer builds: `game::DEV_BUILD`).
+    /// `--dev`: the developer's map on the title and the pause menu, and the testing keys; heeded
+    /// only in developer builds (`game::DEV_BUILD`), ignored in the distributables.
     pub dev: bool,
 }
 
@@ -94,8 +94,7 @@ impl App {
             saved_full.unwrap_or(!cfg!(debug_assertions) && !cfg!(target_arch = "wasm32"))
         };
         let mut game = Game::new();
-        game.dev |= opts.dev;
-        game.testing_keys |= opts.dev;
+        game.ask_dev(opts.dev, crate::game::DEV_BUILD);
         Self {
             opts,
             window: None,

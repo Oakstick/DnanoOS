@@ -452,7 +452,7 @@ pub struct Game {
     /// developer's map on the title and the pause menu.
     pub dev: bool,
     /// The testing keys work (F1, F2, F5-F10, F12, 0): in developer builds only (`DEV_BUILD`), or
-    /// with `--dev` and the harnesses; inert in the distributables.
+    /// with `--dev` there (`ask_dev`) and the harnesses; inert in the distributables.
     pub testing_keys: bool,
     /// The archangel's blessing he carries (from dungeon to dungeon), if any.
     pub blessing: Option<crate::logic::angels::Blessing>,

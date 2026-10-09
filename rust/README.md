@@ -66,8 +66,9 @@ Formatting follows `rustfmt.toml` (140 columns); lint settings are in `Cargo.tom
 | Free or grid movement | F4 | |
 
 **Testing keys, developer builds only** (debug builds and the Desktop builds `tools/release.sh` makes,
-`VH_DEV_MENU`, or `--dev` on the command line; inert in the distributables, `build-windows.ps1` and
-the web, since 2026-10-09: F1 is the help key on many keyboards). They are fixed keys, never offered
+`VH_DEV_MENU`; `--dev` on the command line turns them on there and is ignored elsewhere; inert in the
+distributables, `build-windows.ps1` and the web, since 2026-10-09: F1 is the help key on many
+keyboards). They are fixed keys, never offered
 for rebinding.
 
 | Testing key | Key |

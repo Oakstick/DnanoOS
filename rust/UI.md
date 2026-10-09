@@ -625,15 +625,16 @@ MAP is the player's map now. The list of stops is the developer's map: **F12 ope
 title, play, the pause menu, or over the full map; a fixed key like the other testing keys, taken
 out of the keys the player may bind), and **LEVELS** (it was DEV MAP) stands on the title and in
 the pause menu in developer builds and the Desktop release builds (`VH_DEV_MENU`, 2026-10-08), with
-`--dev` on the command line, or for the rest of the session once F12 has opened it (`Game::dev`). It
+`--dev` on the command line (heeded only in those builds: `Game::ask_dev`), or for the rest of the
+session once F12 has opened it (`Game::dev`). It
 gained two stops, the full map of the garden and of the vaults (every new screen on the Map).
 
 **The testing keys are for developer builds only** (the user's call, 2026-10-09). F1 (the Cyclops),
 F2 (the gate), F5 (god mode), F6 (coins), F7, F8 and F9 (the ring), F10 (a rival), F12 (this map)
 and 0 (the old man's wares) work in debug builds and the Desktop builds `tools/release.sh` makes
-(`game::DEV_BUILD`: `debug_assertions` or `VH_DEV_MENU`), with `--dev`, and in the harnesses that
-press them (`--capture` scripts, `--monkey ... cheats`); in the distributables (`build-windows.ps1`,
-the web) they do nothing (`Game::testing_keys`; F1 is the help key on many keyboards). F3 (the frame
+(`game::DEV_BUILD`: `debug_assertions` or `VH_DEV_MENU`), with `--dev` there, and in the harnesses
+that press them (`--capture` scripts, `--monkey ... cheats`); in the distributables (`build-windows.ps1`,
+the web) they do nothing, and `--dev` is ignored (test `dev_on_the_command_line_is_ignored_outside_developer_builds`) (`Game::testing_keys`; F1 is the help key on many keyboards). F3 (the frame
 counter), F4 (free or grid movement) and F11 (the full screen) are the player's in every build. Test
 `testing_keys_are_inert_outside_developer_builds`.
 
