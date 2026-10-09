@@ -800,3 +800,29 @@ fn the_bestiary_opens_everywhere_and_a_spoiled_book_never_stops_it() {
         draw_hud(&g);
     }
 }
+
+/// Esc (Back) on the camera choice closes it: the camera in use stays, whatever was highlighted,
+/// and play goes on to the countdown (QA.md Q13).
+#[test]
+fn back_closes_the_camera_choice_and_keeps_the_camera() {
+    use crate::render::view::CameraMode;
+    let _dir = own_folder("view-back");
+    for before in [CameraMode::Third, CameraMode::Top] {
+        let mut g = Game::new();
+        g.view.camera_mode = before;
+        g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0 });
+        g.continue_game();
+        assert_eq!(g.screen, Screen::View);
+        // Another card highlighted, then Esc.
+        g.input.nav = Some(crate::logic::types::Dir::Right);
+        g.update(STEP);
+        g.input.nav = Some(crate::logic::types::Dir::Right);
+        g.update(STEP);
+        g.input.inject(Action::Back);
+        g.input.inject(Action::Pause);
+        g.update(STEP);
+        assert_eq!(g.screen, Screen::Ready, "Esc closes the choice ({before:?})");
+        assert_eq!(g.view.camera_mode, before, "and keeps the camera in use");
+        assert!(until(&mut g, Screen::Playing, 10.0), "play goes on");
+    }
+}

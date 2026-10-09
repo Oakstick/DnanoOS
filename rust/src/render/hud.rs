@@ -1126,7 +1126,16 @@ fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
         );
     }
     let foot = rects.iter().map(|r| r[1] + r[3]).fold(0.0, f32::max) + t * 1.2;
-    glyphs::prompt_line(o, &g.input, "{NavLR} choose    {Confirm} play", o.width / 2.0, foot, t * 0.6, rgba(TEXT, 0.9), Align::Center);
+    glyphs::prompt_line(
+        o,
+        &g.input,
+        "{NavLR} choose    {Confirm} play    {Back} keep as it was",
+        o.width / 2.0,
+        foot,
+        t * 0.6,
+        rgba(TEXT, 0.9),
+        Align::Center,
+    );
     glyphs::prompt_line(
         o,
         &g.input,

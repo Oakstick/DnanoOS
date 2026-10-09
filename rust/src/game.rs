@@ -417,6 +417,8 @@ pub struct Game {
     pub tour_pending: bool,
     /// After the camera is chosen: the tour (or else the countdown).
     view_then_tour: bool,
+    /// The camera in use when the choice opened (Back keeps it).
+    view_before: crate::render::view::CameraMode,
     /// The hero being played (chosen on the character screen).
     pub hero_kind: crate::logic::heroes::HeroKind,
     /// The character screen: which place in the line-up is highlighted, seconds since it
@@ -610,6 +612,7 @@ impl Game {
             // Tests start straight into play; they switch the tour on when they want it.
             tour_pending: !cfg!(test) && !tour::tour_seen(),
             view_then_tour: false,
+            view_before: crate::render::view::CameraMode::Third,
             hero_kind: crate::logic::heroes::HeroKind::Ragnar,
             select_index: 1,
             select_age: 0.0,
