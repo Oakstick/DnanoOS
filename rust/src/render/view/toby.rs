@@ -32,7 +32,7 @@ pub(super) fn token_model(f: &mut Frame, token: Token, root: Mat4, glow: f32) {
             // A sheet of paper lying a little curled, four of them holding hands on it, a sun.
             let tilt = Quat::from_rotation_x(-1.45);
             let sheet = root * Mat4::from_translation(v(0.0, 0.02, 0.0)) * Mat4::from_quat(tilt);
-            put(f, Cube, sheet, v(0.0, 0.0, 0.0), v(0.3, 0.22, 0.006), q, 0xf2ead8, SHADE_CLOTH, glow);
+            put(f, Cube, sheet, v(0.0, 0.0, 0.0), v(0.3, 0.22, 0.006), q, 0xd8d0be, SHADE_CLOTH, glow * 0.3);
             for (k, c) in [0x34588e, 0x5e7a34, 0x923a2c, 0x5a3e6e].into_iter().enumerate() {
                 let x = -0.09 + k as f32 * 0.06;
                 let tall = if k == 0 { 0.07 } else { 0.085 + k as f32 * 0.004 };

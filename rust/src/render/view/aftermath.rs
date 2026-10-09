@@ -24,7 +24,7 @@ const HIZIR_AT: Vec3 = Vec3::new(-4.3, 0.0, -3.78);
 /// The three boys (kids 1, 2, 3, left to right as they landed in Scene I) round the anvil.
 const BOYS_AT: [Vec3; 3] = [Vec3::new(-4.98, 0.0, -2.08), Vec3::new(-4.0, 0.0, -1.76), Vec3::new(-3.02, 0.0, -2.08)];
 /// Quitmer on the floor by the hearth.
-const DOG_AT: Vec3 = Vec3::new(-5.75, 0.0, -3.05);
+const DOG_AT: Vec3 = Vec3::new(-6.05, 0.0, -3.55);
 /// The souls stand this far behind their boys.
 const SOUL_BACK: f32 = 0.62;
 
@@ -105,7 +105,7 @@ impl WorldView {
         token_model(f, token, root, 0.03 + 0.05 * show);
         let warm = lin(TOBY_COLOR);
         glow_orb(f, at(TOKEN_AT + Vec3::Y * 0.08), 0.45, warm, (0.05 + 0.06 * show) * swell + 0.015 * (time * 2.5).sin());
-        f.lights.push(Light { pos: at(TOKEN_AT + Vec3::new(0.0, 0.6, 0.4)), color: warm * (0.6 + 0.8 * show), distance: 2.0 });
+        f.lights.push(Light { pos: at(TOKEN_AT + Vec3::new(0.0, 0.6, 0.4)), color: warm * (0.45 + 0.35 * show), distance: 2.0 });
 
         // ---- Hızır, across the anvil, leaning on his staff
         let look_at = match speaker {

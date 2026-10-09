@@ -950,9 +950,16 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     g.hero.m.teleport(gate);
     g.update(STEP);
     assert_eq!(g.screen, Screen::Won);
-    // The old man, and then back before the portal, now sealed, with the next realm one deeper.
+    // The scene at Hızır's (B07), skipped; the old man's wares; and then back before the portal,
+    // now sealed, with the next realm one deeper.
     g.input.inject(Action::Confirm);
     g.update(STEP);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| s.scene), Some(crate::logic::story::Scene::After(Sin::Sloth)));
+    g.input.inject(Action::Pause);
+    for _ in 0..(1.0 / STEP) as usize {
+        g.update(STEP);
+    }
     assert_eq!(g.screen, Screen::Shop);
     g.input.inject(Action::Pause);
     g.update(STEP);

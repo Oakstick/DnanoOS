@@ -532,6 +532,9 @@ mod tests {
     fn the_old_man_speaks_once_in_45_seconds_and_never_at_the_peak() {
         let mut g = playing();
         g.update(crate::app::STEP);
+        // (The boy's line on coming into the Garden is said first, B07; it is not the old man's.)
+        g.voices.spoken = None;
+        g.voices.queue.clear();
         g.counsel_gear(GearWarning::BladeDulling);
         g.counsel_gear(GearWarning::ShieldBroken);
         // At the peak he holds his tongue.
@@ -558,6 +561,8 @@ mod tests {
     fn a_fall_brings_the_breeds_counter_to_the_death_screen_and_the_workshop() {
         let mut g = playing();
         g.update(crate::app::STEP);
+        g.voices.spoken = None;
+        g.voices.queue.clear();
         g.war.log.push(WarEvent::Landed {
             foe: 1,
             kind: Some(EnemyKind::Gashadokuro),
