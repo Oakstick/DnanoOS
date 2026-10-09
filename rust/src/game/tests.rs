@@ -257,7 +257,7 @@ fn the_menus_can_quit() {
     assert!(g.quit_requested);
     assert_eq!(g.screen, Screen::Title);
 
-    // Pause offers Resume / Settings / Controller / Map / the Ledger / Call the Old Man / Quit to
+    // Pause offers Resume / Settings / Controller / Map / the Ledger / the Bestiary / Call the Old Man / Quit to
     // Title / Quit Game (UI.md §8); clicking a button picks it.
     let mut g = playing();
     g.input.inject(Action::Pause);
@@ -271,6 +271,7 @@ fn the_menus_can_quit() {
             MenuItem::Controls,
             MenuItem::Map,
             MenuItem::Ledger,
+            MenuItem::Bestiary,
             MenuItem::CallOldMan,
             MenuItem::QuitToTitle,
             MenuItem::Quit
@@ -315,8 +316,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2 + 2,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II, the full map of two places, and the UI's settings and loading card"
+        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2 + 3,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));

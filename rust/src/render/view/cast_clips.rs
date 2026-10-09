@@ -12,6 +12,7 @@ use super::story::Act;
 use super::*;
 use crate::logic::story::stage;
 use crate::render::anim::cast::{self, CastAnimator, Delta, Layer, Mask, Play};
+use crate::render::anim::cast_faces::{self, Face};
 use crate::render::anim::cast_rigs::CastRig;
 use crate::render::anim::library::{self, ClipSet, Mode};
 use crate::render::anim::skeleton::SkeletonDef;
@@ -205,16 +206,9 @@ impl WorldView {
             Act::Yell(_, 0) => 1.0,
             _ => 0.0,
         };
-        let gain = match act {
-            Act::Dash { speed, .. } => gait(which, speed).2,
-            _ => 1.0,
-        };
-        let Some((rig, mats)) = self.cast_mats(CastRig::Kid(which.min(3) as u8), &play, time, |pose, def| {
-            if gain > 1.0 {
-                let legs: Vec<usize> = ["thigh.L", "thigh.R", "shin.L", "shin.R"].iter().filter_map(|b| def.index(b)).collect();
-                cast::lengthen(pose, def, &legs, gain);
-                let arms: Vec<usize> = ["upper_arm.L", "upper_arm.R"].iter().filter_map(|b| def.index(b)).collect();
-                cast::lengthen(pose, def, &arms, gain.sqrt());
+        let Some((rig, mut mats)) = self.cast_mats(CastRig::Kid(which.min(3) as u8), &play, time, |pose, def| {
+            if let Act::Dash { dist, speed, .. } = act {
+                dash_touch(pose, def, which, dist, speed);
             }
             if matches!(act, Act::Yell(_, 0)) {
                 square_up(pose, def);
@@ -223,12 +217,55 @@ impl WorldView {
         }) else {
             return false;
         };
+        cast_faces::wear(rig, &mut mats, self.kid_face(which, act, time));
         if alpha < 0.99 {
             f.rigs.push_matrices(rig, &mats, root, Vec3::ONE, alpha, Vec3::ZERO, rig_look::FADED, 0.0);
         } else {
             f.rigs.push_matrices(rig, &mats, root, Vec3::ONE, 1.0, glow, rig_look::PLAIN, 0.0);
         }
         true
+    }
+}
+
+impl WorldView {
+    /**
+     * A boy's face this frame (`anim::cast_faces`): shouting "He took him!" his mouth wide while
+     * the line types and a moment after, then gasping; speaking, it opens and shuts as his line
+     * types (shut at its stops, wider on a shouted line), shut once it is said; and every few
+     * seconds, each boy at his own time, a blink (not while he screams).
+     */
+    pub(super) fn kid_face(&self, which: usize, act: Act, time: f32) -> Face {
+        let typing = self.story.map(|sv| {
+            let line = sv.scene.beats()[sv.beat.min(sv.scene.beats().len() - 1)].line.as_bytes();
+            let at = sv.shown as usize;
+            let stop = at > 0 && at < line.len() && matches!(line[at - 1], b'.' | b',' | b'!' | b'?' | b'-');
+            (at < line.len() && !stop, line.contains(&b'!'))
+        });
+        let flap = ((time * 4.6 + which as f32 * 0.37) * TAU).sin() * 0.5 + 0.5;
+        let mouth = match act {
+            Act::Yell(t, _) => {
+                let shouting = typing.is_some_and(|(on, _)| on) || t < 3.2;
+                if shouting {
+                    if flap < 0.12 {
+                        1
+                    } else {
+                        2
+                    }
+                } else {
+                    // Out of breath after it.
+                    (((time * 1.6 + which as f32 * 0.5) * TAU).sin() > -0.2) as u8
+                }
+            }
+            Act::Talk(_) | Act::Nod(_, true) => match typing {
+                Some((true, shout)) if flap > 0.75 && shout => 2,
+                Some((true, _)) if flap > 0.4 => 1,
+                _ => 0,
+            },
+            _ => 0,
+        };
+        let period = 3.3 + which as f32 * 0.7;
+        let blink = !matches!(act, Act::Yell(..)) && (time + which as f32 * 1.9).rem_euclid(period) < 0.13;
+        Face { mouth, blink }
     }
 }
 
@@ -245,17 +282,118 @@ const IDLES: [&str; 4] = ["idle_happy", "idle", "idle_happy_2", "look"];
 pub(super) const GAITS: [(&str, f32, f32, f32, f32); 3] =
     [("walk", 82.0 / 60.0, 0.25, 0.8, 0.4), ("run", 32.0 / 60.0, 0.50, 0.75, 1.8), ("sprint", 32.0 / 60.0, 0.50, 0.75, f32::MAX)];
 
-/// The gait a boy runs at `speed`, the ground a cycle of it covers, and how much further his legs
-/// reach than the clip's (`anim::cast::lengthen`): his speed over the clip's own pace is shared
-/// between a faster turnover and a longer stride, the stride at most 1.6 times the clip's. Its cycle
-/// follows the ground he covers, so his feet stay where they land.
-pub(super) fn gait(which: usize, speed: f32) -> (&'static str, f32, f32) {
+/// How far a boy's legs may reach past the clip's (`anim::cast::lengthen`): longer, and the run
+/// reads as a child's legs flung out frantically (the 1.0.16 release's 1.6).
+const REACH: f32 = 1.45;
+
+/// A boy's run at a speed: the clip, how much further his legs reach than its own
+/// (`anim::cast::lengthen`), and the ground a cycle of it covers (a stride: two steps).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Gait {
+    pub clip: &'static str,
+    pub gain: f32,
+    pub stride: f32,
+    /// Placed on the ground by its planted feet, its flight stretched over the rest (`Stride`); the
+    /// walk, which has no flight, is played evenly.
+    pub flies: bool,
+}
+
+/// Strides a second a boy's run turns over at `speed` (metres a second): a child running hard, not
+/// a wind-up toy (the 1.0.16 release's ran three to four a second at 3 to 4.3 m/s).
+pub(super) fn cadence(speed: f32) -> f32 {
+    (1.75 + 0.24 * speed).min(2.9)
+}
+
+/// The gait a boy runs at `speed`: his speed over the clip's own pace shared between a longer reach
+/// of his legs (at most `REACH` times the clip's, in steps of a twentieth, as `stride_of` measures
+/// them) and, for the run and the sprint, a long flight between his steps at a child's cadence.
+pub(super) fn gait(which: usize, speed: f32) -> Gait {
     let k = GAITS.iter().position(|g| speed < g.4).unwrap_or(GAITS.len() - 1);
     // (Two sprint and two run, where it is a sprint at all.)
     let k = if k == 2 && which % 2 == 1 { 1 } else { k };
     let (clip, len, stride, take, _) = GAITS[k];
-    let gain = (speed / (stride / len)).sqrt().clamp(1.0, 1.6);
-    (clip, stride * (1.0 + take * (gain - 1.0)), gain)
+    let gain = ((speed / (stride / len)).sqrt().clamp(1.0, REACH) * 20.0).round() / 20.0;
+    let planted = stride * (1.0 + take * (gain - 1.0));
+    if k == 0 {
+        return Gait { clip, gain, stride: planted, flies: false };
+    }
+    Gait { clip, gain, stride: (speed / cadence(speed)).max(planted), flies: true }
+}
+
+/// Gait `clip`'s cycle measured at a reach of `gain` (once each, kept).
+pub(super) fn stride_of(clip: &'static str, gain: f32) -> Option<std::sync::Arc<cast::Stride>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    type Measured = Mutex<HashMap<(&'static str, u32), Arc<cast::Stride>>>;
+    static MEASURED: OnceLock<Measured> = OnceLock::new();
+    let key = (clip, (gain * 20.0).round() as u32);
+    let mut map = MEASURED.get_or_init(Default::default).lock().ok()?;
+    if let Some(s) = map.get(&key) {
+        return Some(s.clone());
+    }
+    let c = CastRig::Kid(0);
+    let (set, def) = (library::cast_clips(c)?, c.joints().def);
+    let source = set.get(clip)?;
+    let joints: Vec<Vec3> = (0..def.len()).map(|b| source.skeleton.rest_inv[b].inverse().w_axis.truncate()).collect();
+    let legs: Vec<usize> = LEGS.iter().filter_map(|b| def.index(b)).collect();
+    let feet = [def.index("foot.L")?, def.index("foot.R")?];
+    let s = Arc::new(cast::Stride::measure(source, def, &joints, &legs, feet, gain));
+    map.insert(key, s.clone());
+    Some(s)
+}
+
+/// The bones a run lengthens.
+const LEGS: [&str; 4] = ["thigh.L", "thigh.R", "shin.L", "shin.R"];
+
+/// Boy `which` running at `speed`, `dist` over the ground: his gait, the share of its cycle he is
+/// at, and how far through a flight between steps he is (none with a foot down).
+pub(super) fn dash(which: usize, dist: f32, speed: f32) -> (Gait, f32, Option<f32>) {
+    let g = gait(which, speed);
+    let offset = which as f32 * 0.17;
+    match g.flies.then(|| stride_of(g.clip, g.gain)).flatten() {
+        Some(s) => {
+            let (u, air) = s.at(dist + offset * g.stride, g.stride);
+            (g, u, air)
+        }
+        None => (g, dist / g.stride + offset, None),
+    }
+}
+
+/**
+ * What the view lays on a running boy's clip: his legs reaching further (`gain`), his arms driving
+ * harder, his body leaning into the run and rising through each flight (it carries the ground the
+ * planted feet do not: `Stride`), his head kept up. The tests run the same.
+ */
+pub(super) fn dash_touch(pose: &mut Delta, def: &SkeletonDef, which: usize, dist: f32, speed: f32) {
+    let (g, _, air) = dash(which, dist, speed);
+    if g.gain > 1.0 {
+        let legs: Vec<usize> = LEGS.iter().filter_map(|b| def.index(b)).collect();
+        cast::lengthen(pose, def, &legs, g.gain);
+    }
+    if !g.flies {
+        let arms: Vec<usize> = ["upper_arm.L", "upper_arm.R"].iter().filter_map(|b| def.index(b)).collect();
+        cast::lengthen(pose, def, &arms, g.gain.sqrt());
+        return;
+    }
+    // Arms pumping: the upper arms swing further, the elbows a little more bent.
+    let hard = ((speed - 1.5) / 2.5).clamp(0.0, 1.0);
+    let arms: Vec<usize> = ["upper_arm.L", "upper_arm.R"].iter().filter_map(|b| def.index(b)).collect();
+    cast::lengthen(pose, def, &arms, 1.0 + (g.gain - 1.0) * 0.8 + 0.25 * hard);
+    let fore: Vec<usize> = ["forearm.L", "forearm.R"].iter().filter_map(|b| def.index(b)).collect();
+    cast::lengthen(pose, def, &fore, 1.0 + 0.3 * hard);
+    // Leaning into it from the hips, the head kept level to look where he runs.
+    let lean = 0.06 + 0.16 * hard;
+    if let Some(spine) = def.index("spine") {
+        pose.turn(def, spine, Quat::from_rotation_x(lean));
+    }
+    look(pose, def, 0.0, -lean * 0.7);
+    // Up through each flight: the ground it carries over at his speed, as a ball thrown.
+    if let Some(p) = air {
+        let s = stride_of(g.clip, g.gain).map(|s| s.flight(g.stride) / 2.0).unwrap_or(0.0);
+        let time = s / speed.max(0.1);
+        let rise = (9.8 * time * time / 8.0 * 1.6).min(0.045);
+        pose.root.y += 4.0 * rise * p * (1.0 - p);
+    }
 }
 
 /// What a boy's clips play for `act`.
@@ -280,8 +418,8 @@ pub(super) fn kid_play(which: usize, act: Act, time: f32) -> Play {
         }
         // Over the ground: the cycle by the ground covered, so the feet stay planted.
         Act::Dash { dist, speed, pace, .. } => {
-            let (clip, stride, _) = gait(which, speed);
-            let layer = Layer::cycle(clip, dist / stride + which as f32 * 0.17).or("run");
+            let (g, u, _) = dash(which, dist, speed);
+            let layer = Layer::cycle(g.clip, u).or("run");
             if pace < 0.99 {
                 Play::base(idle, 17).with(layer.weight(pace))
             } else {
@@ -520,7 +658,7 @@ mod tests {
     /// How far a boy's planted foot slides over the ground, as a share of the ground he covers,
     /// running at `speed` with his clips played by `act_at(t, dist)`.
     fn slide(which: usize, speed: f32, act_at: impl Fn(f32, f32) -> Act) -> f32 {
-        use crate::render::anim::cast::{lengthen, matrices};
+        use crate::render::anim::cast::matrices;
         let c = CastRig::Kid(1);
         let (set, def) = (library::cast_clips(c).unwrap(), c.joints().def);
         let rig = c.jointed();
@@ -534,10 +672,8 @@ mod tests {
             let dist = speed * t;
             let act = act_at(t, dist);
             let mut pose = a.step(&[(set, 1.0)], def, &kid_play(which, act, t), Some(dt)).unwrap().clone();
-            if let Act::Dash { speed, .. } = act {
-                let g = gait(which, speed).2;
-                let legs: Vec<usize> = ["thigh.L", "thigh.R", "shin.L", "shin.R"].iter().filter_map(|b| def.index(b)).collect();
-                lengthen(&mut pose, def, &legs, g);
+            if let Act::Dash { dist, speed, .. } = act {
+                dash_touch(&mut pose, def, which, dist, speed);
             }
             matrices(def, &joints, &pose, &mut mats);
             // (Each ankle.)
@@ -559,22 +695,33 @@ mod tests {
 
     /// The boys' feet stay where they land: run at the speeds the story runs them (the fetch, the
     /// chase after Krampus, Scene II's run), their planted foot slides under a tenth of the ground
-    /// they cover (it slid as much as the clip played at the old rate fell short of it).
+    /// they cover (it slid as much as the clip played at the old rate fell short of it). And they run
+    /// like children running hard, not wind-up toys: at the chase's speeds their strides turn over
+    /// under three times a second (the 1.0.16 release's, four), a long flight between their steps.
     #[test]
     fn the_boys_feet_stay_planted_as_they_run() {
         let mut worst = 0.0f32;
-        for (which, speed) in [0.25, 0.6, 0.95, 1.2, 1.87, 3.0, 4.3].into_iter().flat_map(|v| [(0, v), (1, v)]) {
+        for (which, speed) in [0.25, 0.6, 0.95, 1.2, 1.87, 3.0, 3.9, 4.3].into_iter().flat_map(|v| [(0, v), (1, v)]) {
             let now = slide(which, speed, |t, dist| Act::Dash { phase: t * 13.0, pace: 1.0, dist, speed });
             let then = slide(which, speed, |t, _| Act::Run { phase: t * 13.0, pace: 1.0 });
+            let g = gait(which, speed);
+            let air = stride_of(g.clip, g.gain).map(|s| s.flight(g.stride) / g.stride).filter(|_| g.flies).unwrap_or(0.0);
             eprintln!(
-                "boy {which} at {speed} m/s ({:?}) the planted foot slides {:.0}% of the ground covered (by the old rate {:.0}%)",
-                gait(which, speed),
+                "boy {which} at {speed} m/s: {} reaching {:.2}, {:.2} m a stride, {:.1} strides a second, {:.0}% of it in the air;                  the planted foot slides {:.0}% of the ground covered (by the old rate {:.0}%)",
+                g.clip,
+                g.gain,
+                g.stride,
+                speed / g.stride,
+                air * 100.0,
                 now * 100.0,
                 then * 100.0
             );
             worst = worst.max(now.abs());
+            if speed >= 3.0 {
+                assert!(speed / g.stride < 3.0, "boy {which} at {speed} m/s turns over {:.1} strides a second", speed / g.stride);
+            }
         }
-        assert!(worst < 0.15, "the planted foot slides {worst:.2} of the ground covered");
+        assert!(worst < 0.1, "the planted foot slides {worst:.2} of the ground covered");
     }
 
     /// The camera frames his face at `story::marks::OLD_MAN_FACE`: it is where his clips put it as he

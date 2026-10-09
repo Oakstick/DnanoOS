@@ -66,6 +66,8 @@ impl Game {
     /// The snapshot, if marked (or a new high score is waiting), is written now: at a checkpoint,
     /// a change of screen, and as the game closes.
     pub fn flush_saves(&mut self) {
+        // (The bestiary is written beside the snapshot, not in it: it outlives the run.)
+        self.flush_bestiary();
         let high = self.score.high_to_save();
         if !self.persist.dirty && high.is_none() {
             return;

@@ -1037,7 +1037,7 @@ their arms carried 4 degrees clear of their round coats):
 | Standing about | `idle_happy`, `idle`, `idle_happy_2`, `look` (Happy Idle 1, Idle, Happy Idle 2 mirrored, Look Around), one a boy | each at his own offset, so the four never breathe in step |
 | The passes | `pass`, `pass_left` (Soccer Pass, and mirrored), `kick` (Kick Soccerball) | the contact (`hit`, from the kicking foot's speed) on the ball's moment (`stage::KICKS`) |
 | The miskick | `miskick` (Strike Foward Jog, its run-up kept in place) | its contact on `stage::MISKICK` |
-| Running after the ball, the chase, down the stair, Scene II's run | `walk`, `run`, `sprint` (the axe pack's walk, Fast Run, Sprint) by his speed; two boys run, two sprint | by the ground he covers (`Act::Dash`), so the planted foot stays put; the stride lengthened up to 1.6 times where he is faster than the clip (`cast::lengthen`, below) |
+| Running after the ball, the chase, down the stair, Scene II's run | `walk`, `run`, `sprint` (the axe pack's walk, Fast Run, Sprint) by his speed; two boys run, two sprint | by the ground he covers (`Act::Dash`), so the planted foot stays put; the stride lengthened up to 1.45 times where he is faster than the clip (`cast::lengthen`), and the run and the sprint placed on a long stride with a flight between the steps (`cast::Stride`, below) |
 | Peering through the gate | `look_nervous` (Nervously Look Around) | his head a little down |
 | The eyes, Krampus | `terrified` (Terrified, its second to fourth seconds swung back and forth: fists up before his face, trembling) | over the idle by the fright's weight |
 | "He took him!" | the middle boy (the close-up ends on him): `yell_back` (Long Yell While Standing Leaning Back) squared to the camera, both arms flung straight up over his head (`arms_up`, keyed); the left boy recoils (`alarm`, keyed: weight thrown back on a bent leg, arms up before his face, palms out, trembling), the Standing Long Yell on his head and neck; the right one yells after him (`yell_long`, Standing Long Yell) an arm flung out at the gate, the other up (`reach_out`, keyed) | each his own way, all three |
@@ -1052,18 +1052,66 @@ their arms carried 4 degrees clear of their round coats):
 Also retargeted and embedded for later: `agree`, `point`, `wave`, `kneel`, `yell_short`, `fall_land`,
 `get_up`.
 
-**The boys' runs, their feet planted** (`cast_clips::GAITS`, `gait`): the story runs them far faster
-than their legs cover (0.95 m/s down the stair, 1.9 for the fetch, 3 to 3.9 in the chase, 4.3 in Scene
-II's run, a body 0.74 m tall). Each run tells the animator the ground covered (`Act::Dash`), and the
-gait's cycle follows it, a stride a cycle, the stride being the ground a cycle carries the planted
-foot back under him (calibrated on the clips at the boys' scale: the walk 0.25 m, the run and the
-sprint 0.50; Mixamo's Jogging was tried, but its stance is short and its flight long and its foot
-slipped however it was played). Where he is faster than the clip, his speed over its pace is shared
-between a faster turnover and a longer stride: his thighs and shins swing further from his hips
-(`anim::cast::lengthen`: each turn's angle scaled, up to 1.6 times; the arms by its square root), of
-which the planted foot takes up three quarters. Measured over the speeds the story uses
-(`tests::the_boys_feet_stay_planted_as_they_run`), the planted foot slips 0 to 9% of the ground he
-covers, against 44 to 76% at the 1.0.14 release's rate.
+**The boys' runs, their feet planted** (`cast_clips::GAITS`, `gait`, `dash`): the story runs them far
+faster than their legs cover (0.95 m/s down the stair, 1.9 for the fetch, 3 to 3.9 in the chase, 4.3 in
+Scene II's run, a body 0.74 m tall). Each run tells the animator the ground covered (`Act::Dash`), and the
+gait's cycle follows it. Up to 1.0.18 a cycle was a stride the planted foot carried (calibrated: the
+walk 0.25 m, the run and the sprint 0.50), lengthened up to 1.6 times (`anim::cast::lengthen`): planted,
+but at 3 to 4.3 m/s the legs turned over 3 to 4 strides a second, frantic, cartoonish.
+
+**A calmer sprint (2026-10-08).** A child running hard takes long strides with a long flight between
+them. The walk is played as before; the run and the sprint now:
+
+- **turn over at a child's cadence** (`cadence`: 1.75 + 0.24 strides a second per m/s, at most 2.9:
+  2.2 at the fetch, 2.5 at 3 m/s, 2.8 at 4.3), so a stride is the speed over it (1.2 m at 3 m/s, 1.55
+  at 4.3);
+- **reach at most 1.45 times the clip** (`REACH`, in steps of a twentieth), not 1.6;
+- **are placed on the ground by their planted feet** (`anim::cast::Stride`, measured once per gait and
+  reach on the clip: which of 96 samples of its cycle have a foot down and how far it sweeps back
+  under him over each): the clip's stance plays at the pace the ground passes under the planted foot
+  (so it stays where it lands), and its flight is stretched over the rest of the stride. At the chase's
+  speeds about two thirds of the time is in the air (the stance a short, quick push, as a sprinter's);
+- **rise through each flight** as a thrown ball would at that flight's length (`dash_touch`, at most
+  4.5 cm), **lean into the run** from the spine (0.06 to 0.22 rad by speed, the head kept up), and
+  **drive the arms** (the upper arms swung further with the reach, the elbows a little more bent).
+
+Measured over the speeds the story uses (`tests::the_boys_feet_stay_planted_as_they_run`, which now
+also holds the cadence under three strides a second at 3 m/s and over), the planted foot slips 0 to 1%
+of the ground he covers (0 to 9% before, 44 to 76% at the 1.0.14 release's rate):
+
+| Speed (m/s) | Gait | Reach | Stride (m) | Strides a second (was) | In the air |
+|---|---|---:|---:|---:|---:|
+| 1.2 | run | 1.15 | 0.59 | 2.0 (2.0) | 33% |
+| 1.87 | sprint / run | 1.40 | 0.85 | 2.2 (2.9) | 52% |
+| 3.0 | sprint / run | 1.45 | 1.21 | 2.5 (4.1) | 66% |
+| 3.9 | sprint / run | 1.45 | 1.45 | 2.7 (5.4) | 72% |
+| 4.3 | sprint / run | 1.45 | 1.55 | 2.8 (5.9) | 74% |
+
+**Their faces** (`anim::cast_faces`, 2026-10-08): the sculpted faces did not move, so "He took him!"
+read only through arms and bodies. A boy's jointed rig as the view draws it (`Models::jointed_cast`)
+has the voxels of his head round the mouth (x 13 to 22, y 36 to 41, the face's front) and round the
+eyes (x 10 to 25, y 42 to 45) cut out into parts of their own, each in versions riding the head: the
+mouth shut (as sculpted), parted (a dark slot four voxels wide, two over it at its middle), and wide
+open (eight voxels wide and three rows tall, dark inside, his upper teeth under the lip, his tongue on
+its floor, the tip of his nose drawn up and the lower lip dropped a row below); the eyes open, or shut
+(the lids down, a line of lashes). The view picks one of each every frame (`WorldView::kid_face`,
+`cast_faces::wear`) and shrinks the others to nothing inside the head: no clip, skeleton or export
+changes (the clips' skeleton has no such bones; the parts follow the head's matrix).
+
+- **The scream**: all three mouths wide while the line types and three seconds into it (shut for a
+  flicker now and then), then out of breath (parting and shutting slowly).
+- **Talking** (`Act::Talk`, the speaker's nod): the mouth opens and shuts at about four and a half
+  times a second while the line types, shut at its stops (after a full stop, comma, dash, question or
+  exclamation mark) and once it is all typed; on a shouted line (one with an exclamation mark) it
+  opens wide at the top of each opening.
+- **Blinking**: every 3.3 to 5.4 seconds, each boy at his own, the eyes shut for 0.13 s; not while he
+  screams. The title's boys, the lair's caged friend and Scene II's boy blink as well.
+- `cast_faces::tests`: each boy's head plus his shut mouth and open eyes is the head as sculpted; the
+  versions differ (more dark in an open mouth, no whites in a blink); one of each is worn at a time.
+- Captures: the script's `retype` types the beat's line again (`0:beat:9:0.2,0.05:retype` with
+  `--time 1.1` shows a speaker mid-line); `--seq` now takes `--view` (a run seen from aside). The
+  polish captures are in `C:/Users/ulask/Games/vh-polish-cap/` (`before-*` and `after-*`: the scream
+  close and wide, the dialogue shut, parted and shouting, the chase from behind and from aside).
 
 **The old man** stands on the flagstones by his corner the whole scene (his stool beside him a prop,
 `story_sets::STOOL`, back where the set had it), stooped over his staff: Mixamo's Old Man Standing Idle
@@ -1143,9 +1191,11 @@ The cast set's FBX files stay in `C:/Users/ulask/Games/mixamo/cast/`, outside th
 
 ### 12.7 What still reads wrong
 
-- **The boys' fastest runs churn.** At 3 to 4.3 m/s their legs turn over three to four times a second
-  with strides 1.6 times the clip's: planted, but frantic (cartoonish) in the chase and Scene II's run.
-- **The scream's faces are the sculpts'**: the mouths do not open; the yell is in the body and arms.
+- **The runs** turn over at a child's cadence now, but their flight is long (two thirds of the time
+  at the chase's speeds) and the clip's flight is played slowly to fill it: from the side the legs
+  hang a moment in the air. A child's sprint clip (short legs, quick steps) would fit better.
+- **The faces** are three mouths and two eyes, swapped, not shaped: the open mouth sits low on the
+  round face, just over the scarf, and from above its lower half is hidden; no brows move.
 - **Terror is a window of Mixamo's Terrified** (its crouch with fists before the face), swung back and
   forth: past its fourth second the source cowers with its head down and hides the face.
 - **The old man's staff hand is held still** at his side: his staff arm does not gesture (his free arm
