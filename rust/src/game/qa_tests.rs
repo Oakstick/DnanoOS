@@ -506,7 +506,8 @@ fn every_page_over_the_pause(g: &mut Game, guide: bool) {
     g.update(STEP);
     assert_eq!(g.screen, Screen::Paused, "Esc pauses");
     type Opens = fn(&mut Game);
-    let pages: [(&str, Opens); 5] = [
+    let pages: [(&str, Opens); 6] = [
+        ("bestiary", Game::open_bestiary),
         ("settings", Game::open_settings),
         ("controls", Game::open_controls),
         ("full map", Game::open_full_map),
@@ -720,4 +721,82 @@ fn the_pause_hides_the_line_being_spoken() {
     let speaking = verts(&g);
     g.voices.spoken = None;
     assert_eq!(speaking, verts(&g), "nothing of his panel under the pause");
+}
+
+/**
+ * The bestiary (1.0.19) from every door: the title, the pause menu, the old man's guide (Back goes
+ * back to his words), every group and page turned, and a saved book broken, old or tampered with
+ * (cut short, numbers swapped for awkward ones, bytes flipped): nothing panics, the HUD draws it
+ * at four screen shapes, and Back always closes it (QA.md).
+ */
+#[test]
+fn the_bestiary_opens_everywhere_and_a_spoiled_book_never_stops_it() {
+    use crate::logic::bestiary::{all_entries, Book};
+    let _dir = own_folder("bestiary");
+    let mut g = Game::new();
+    // A book well filled: every entry met, some felled, rivals remembered.
+    let mut book = Book::default();
+    for (k, e) in all_entries().into_iter().enumerate() {
+        book.met(e);
+        if k % 2 == 0 {
+            book.felled(e);
+        }
+        if k % 5 == 0 {
+            book.felled_by(e);
+        }
+    }
+    book.remember_rival("Thibault of Graufels", crate::logic::enemy::EnemyKind::Blemmyes, 3, true);
+    let valid = book.encode();
+    assert_eq!(Book::decode(&valid).encode(), valid, "it round-trips");
+    let turn = |g: &mut Game| {
+        for k in 0..12 {
+            g.input.inject(if k % 3 == 0 { Action::TabNext } else { Action::Confirm });
+            g.input.nav = Some(if k % 2 == 0 { crate::logic::types::Dir::Down } else { crate::logic::types::Dir::Right });
+            g.update(STEP);
+            draw_hud(g);
+        }
+    };
+    // From the title.
+    g.bestiary.book = book.clone();
+    g.open_bestiary();
+    assert!(g.bestiary.open);
+    turn(&mut g);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert!(!g.bestiary.open && g.screen == Screen::Title, "Back closes it, on the title");
+    // From the pause menu, and from the guide.
+    g.map_jump(Stage::Realm(Sin::Lust));
+    g.enter(Screen::Playing);
+    g.update(STEP);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.open_bestiary();
+    turn(&mut g);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert!(!g.bestiary.open && g.screen == Screen::Paused, "Back closes it, on the pause menu");
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.input.inject(Action::Guide);
+    g.update(STEP);
+    assert!(g.guide_open);
+    g.open_bestiary_from_guide();
+    turn(&mut g);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert!(!g.bestiary.open && g.guide_open, "Back goes back to the old man's words");
+    // A spoiled book.
+    let mut rng = Rng::new(7);
+    for (k, text) in spoiled(&valid, &mut rng, 80).into_iter().enumerate() {
+        g.bestiary.book = Book::decode(&text);
+        if k % 10 == 0 {
+            g.enter(Screen::Paused);
+            g.open_bestiary();
+            turn(&mut g);
+            g.input.inject(Action::Pause);
+            g.update(STEP);
+        }
+        let _ = g.bestiary.book.encode();
+        draw_hud(&g);
+    }
 }
