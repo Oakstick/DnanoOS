@@ -101,6 +101,15 @@ Open items and proposals from the agents' reports. Every new idea lands here fir
 | B40 | **The princes never make a deal** (user, 2026-10-09). Remove every offered deal: the Crooked Bargain (WARBAND §10.3, `logic/war/deceit.rs`), Mammon's toll ("KEEP THE GOLD", `game/vault.rs`) and his "a chance to keep the gold". The Vaults then end at their door like every realm (B41). Update the guide pages, the bestiary, the tips and the docs that mention the bargain or the toll. See D11 for the other cheats. | No prince offers the hero anything, anywhere; tests pin it; WARBAND/REALMS/PRINCES updated; the harness numbers that move reported. | M | to decide |
 | B41 | **Every realm is fight, generals, keys, the prince's door** (user, 2026-10-09). Each level is about fighting through and beating its generals; the generals carry the keys; the keys open the door to the prince's court. Today a realm has no keys (`keys_total` 0) and closes on its own trap or the prince's lie, with one general (the Watch/Muster/Kindle/Decree officer, WARBAND §9). Build: the generals as the realm's key-bearers (named, with a post, an entrance and a fight of their own), the keys on the HUD and the minimap, the court's door sealed until all are held. See D12. | In all 7 realms the court opens only with the generals' keys; each general is a real fight with a name card; the bots find and beat them (`--run` with no carry); REALMS.md and WARBAND.md rewritten for it. | L | to decide |
 | B42 | **More enemies in the levels** (user, 2026-10-09). The realms, the Vaults and the Garden feel thin: raise the density (more packs, larger packs, more patrols between dens, reinforcements), within the threat manager's fairness (no two blows within 300 ms; the attack tokens) and the frame budget. Then retune W10/W11 so the adept still finishes. | Foes per minute of play up by a target to agree (e.g. +50%) in every realm; the adept still ≥3/4 per order; p99 frame time held; a before/after table. | M–L | to decide |
+| B43 | **More epic boss battles for every prince** (user, 2026-10-09). Today a court is a round arena, three phases, and 1–2 minutes for the expert (W10/W11). Explore for each of the seven princes (and Krampus):
+- a **cinematic entrance** and a death worth the wait;
+- **scale**: a prince that grows or towers in his last phase, or a giant form;
+- an **arena that transforms** by phase (the floor breaks, the room floods, the mirrors shatter, the clocks stop, the banquet collapses);
+- **set pieces** that use his realm's lie and his general's instrument;
+- **his own theme** (B14);
+- **a final phase that is a spectacle and still fair by frame data**.
+
+Find references (Souls, God of War, Hades, Zelda) per prince and propose before building. Related: B12, B14, B15 (deaths), B33. | A short design per prince (approved first), then built prince by prince: each court has an entrance, a transformation and a finale, its tells readable, the adept still wins, the camera checks clean. | L ×8 | to decide |
 
 ## Suggested order
 
