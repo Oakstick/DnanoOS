@@ -54,8 +54,8 @@ const HIGH: f32 = 3.1;
 /// yard with its post and dummy, the war table and the pinboard behind it on the front wall,
 /// the trophy wall on the left wall (two rows of five), and the door in the front wall.
 const HEARTH: Vec3 = Vec3::new(-6.2, 0.0, -4.15);
-const ANVIL: Vec3 = Vec3::new(-4.0, 0.0, -3.0);
-const ANVIL_TOP: f32 = 0.62;
+pub(super) const ANVIL: Vec3 = Vec3::new(-4.0, 0.0, -3.0);
+pub(super) const ANVIL_TOP: f32 = 0.62;
 const RACK: Vec3 = Vec3::new(-4.05, 0.0, -4.6);
 const RACK_STEP: f32 = 0.22;
 const SHIELDS: Vec3 = Vec3::new(-0.2, 0.0, -4.9);
@@ -1421,6 +1421,56 @@ impl WorldView {
             sigils: [None; 7],
             news: 0,
         });
+        self.emit_workshop_room(f, w, time);
+        let st = &self.shop_stage;
+        let at = |p: Vec3| WORKSHOP + p;
+
+        // The old man at the station, the hero and Quitmer.
+        let sp = spot(w.station);
+        let working = w.work.filter(|k| k.station == w.station && st.old_man.pos.distance(sp.old_man) < 0.15 && st.old_man.moving < 0.2);
+        let hand = self.emit_keeper(f, w, st.old_man, working, sp, time);
+        if let Some(k) = working {
+            self.emit_work(f, k, sp, hand, time);
+        }
+        self.emit_workshop_hero(f, st.hero, sp, time);
+        let (strain, snap, wag, calm) = match w.mood {
+            QuitmerMood::Calm => (0.0, 0.0, 0.25, st.settle),
+            QuitmerMood::Wag => (0.0, 0.0, 1.0, st.settle * 0.5),
+            QuitmerMood::Growl => (0.55, ((time * 3.0).sin() * 0.5 + 0.5) * 0.8, 0.0, 0.0),
+        };
+        let mut dog_feet = at(st.dog.pos);
+        dog_feet.y += (st.dog.phase * 2.0).sin().abs() * 0.025 * st.dog.moving;
+        self.emit_dog(f, dog_feet, st.dog.yaw, strain, 0.0, calm, snap, 0.0, wag, time, None);
+        if w.mood == QuitmerMood::Growl {
+            // Growling at the thing, his hackles up and his eyes hot.
+            glow_orb(f, dog_feet + Vec3::new(0.0, 0.7, 0.0), 0.5, lin(0xff5a20), 0.08);
+        }
+
+        // A lamp's light over the station's wares, a warm key light on faces from the camera's
+        // side, and a cool fill from the door.
+        let toward = (sp.eye - sp.subject) * Vec3::new(1.0, 0.0, 1.0);
+        let over = at(Vec3::new(sp.subject.x, HIGH - 0.2, sp.subject.z) + toward.normalize_or_zero() * 2.4);
+        f.lights.push(Light { pos: over, color: lin(0xffd0a0) * 3.0, distance: 6.0 });
+        let key = at(sp.hero_at() + (sp.eye - sp.hero_at()) * 0.4 + Vec3::Y * 1.0);
+        f.lights.push(Light { pos: key, color: lin(0xffe0c0) * 2.2, distance: 4.0 });
+        f.lights.push(Light { pos: at(DOOR + Vec3::new(0.0, 1.6, -1.2)), color: lin(0x9ab0c8) * 1.6, distance: 5.0 });
+    }
+
+    /// The workshop's sets made for `hero`'s dressing, if they are not yet (the scenes at Hızır's
+    /// use the room with no wares open).
+    pub(super) fn prepare_workshop_room(&mut self, hero: HeroKind) {
+        let st = &mut self.shop_stage;
+        let dress = Dress::of(hero);
+        if st.sets[dress.index()].is_none() {
+            st.sets[dress.index()] = Some(InstanceSet::new(dressing_set(dress)));
+        }
+        if st.racks.as_ref().is_none_or(|r| r.hero != hero) {
+            st.racks = Some(Racks::new(hero));
+        }
+    }
+
+    /// The room itself: its set and the wares on it, the blades and shields, the fire and the lamps.
+    pub(super) fn emit_workshop_room(&self, f: &mut Frame, w: WorkshopView, time: f32) {
         let st = &self.shop_stage;
         let dress = Dress::of(w.hero);
         let at = |p: Vec3| WORKSHOP + p;
@@ -1530,36 +1580,6 @@ impl WorldView {
             glow_orb(f, lp, 0.6, lin(c), glow * flick);
             f.lights.push(Light { pos: lp + Vec3::Y * 0.1, color: lin(c) * 4.6 * flick, distance: 6.0 });
         }
-
-        // The old man at the station, the hero and Quitmer.
-        let sp = spot(w.station);
-        let working = w.work.filter(|k| k.station == w.station && st.old_man.pos.distance(sp.old_man) < 0.15 && st.old_man.moving < 0.2);
-        let hand = self.emit_keeper(f, w, st.old_man, working, sp, time);
-        if let Some(k) = working {
-            self.emit_work(f, k, sp, hand, time);
-        }
-        self.emit_workshop_hero(f, st.hero, sp, time);
-        let (strain, snap, wag, calm) = match w.mood {
-            QuitmerMood::Calm => (0.0, 0.0, 0.25, st.settle),
-            QuitmerMood::Wag => (0.0, 0.0, 1.0, st.settle * 0.5),
-            QuitmerMood::Growl => (0.55, ((time * 3.0).sin() * 0.5 + 0.5) * 0.8, 0.0, 0.0),
-        };
-        let mut dog_feet = at(st.dog.pos);
-        dog_feet.y += (st.dog.phase * 2.0).sin().abs() * 0.025 * st.dog.moving;
-        self.emit_dog(f, dog_feet, st.dog.yaw, strain, 0.0, calm, snap, 0.0, wag, time, None);
-        if w.mood == QuitmerMood::Growl {
-            // Growling at the thing, his hackles up and his eyes hot.
-            glow_orb(f, dog_feet + Vec3::new(0.0, 0.7, 0.0), 0.5, lin(0xff5a20), 0.08);
-        }
-
-        // A lamp's light over the station's wares, a warm key light on faces from the camera's
-        // side, and a cool fill from the door.
-        let toward = (sp.eye - sp.subject) * Vec3::new(1.0, 0.0, 1.0);
-        let over = at(Vec3::new(sp.subject.x, HIGH - 0.2, sp.subject.z) + toward.normalize_or_zero() * 2.4);
-        f.lights.push(Light { pos: over, color: lin(0xffd0a0) * 3.0, distance: 6.0 });
-        let key = at(sp.hero_at() + (sp.eye - sp.hero_at()) * 0.4 + Vec3::Y * 1.0);
-        f.lights.push(Light { pos: key, color: lin(0xffe0c0) * 2.2, distance: 4.0 });
-        f.lights.push(Light { pos: at(DOOR + Vec3::new(0.0, 1.6, -1.2)), color: lin(0x9ab0c8) * 1.6, distance: 5.0 });
     }
 
     /// The old man: walking (his robe swaying and bobbing), or at his station, talking now and

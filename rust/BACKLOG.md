@@ -24,6 +24,7 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D7 | Localisation: which languages first (proposed: Turkish, Japanese, German)? | B24 |
 | D8 | Web build: make it run again (WebGPU only), or drop it? | B27 |
 | D9 | The boys in play. **Decided: all three:** the silhouette in the glow, a line per realm, a scene after each prince. | B07 |
+| D10 | The three boys' names. They go by the warrior they carry for now (RAGNAR'S BOY...); names would carry them better (STORY.md §7). | (B07) |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
@@ -40,10 +41,10 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 
 | ID | Item | Done when | Size | Status |
 |---|---|---|---|---|
-| B07 | **The boys present in play** (D9: all three). The boy's silhouette inside the warrior's soul-glow (select screen, shrines, when he falls); a line from the boy entering each realm; a short scene at Hızır's after each prince with the three boys and the warriors. | Each realm and court has at least one moment that names or shows the boy. The story tests pass; the simulation is unchanged. | L | todo |
-| B08 | **Toby's trail** (D1). His things left in every realm (scarf, ball, chalk mark, a toy), picked up and kept; they pay off in the lair and the ending. | 7 tokens, one per realm, shown in the pause menu and the bestiary; the reunion references them. | M | todo |
-| B09 | **The old man is Hızır** (D2) in Scene I, the wares, the guide and the credits. | His name in Scene I and the credits; the guide's title uses it. | S | todo |
-| B10 | **Warmer synth speech** (D3: no recorded voices): expressive formant speech with emotion per line (fear, resolve, warmth, menace), distinct voices for the three boys, Toby, Hızır, each prince and Krampus; extra care at the key beats ("He took him!", Hızır's promise, the reunion). | Each speaker distinct and the key beats emotionally readable; the voices slider and subtitles work. | M | todo |
+| B07 | **The boys present in play** (D9: all three). The boy's silhouette inside the warrior's soul-glow (select screen, shrines, when he falls); a line from the boy entering each realm; a short scene at Hızır's after each prince with the three boys and the warriors. | Each realm and court has at least one moment that names or shows the boy. The story tests pass; the simulation is unchanged. | L | done (pending merge, branch `story`) |
+| B08 | **Toby's trail** (D1). His things left in every realm (scarf, ball, chalk mark, a toy), picked up and kept; they pay off in the lair and the ending. | 7 tokens, one per realm, shown in the pause menu and the bestiary; the reunion references them. | M | done (pending merge, branch `story`) |
+| B09 | **The old man is Hızır** (D2) in Scene I, the wares, the guide and the credits. | His name in Scene I and the credits; the guide's title uses it. | S | done (pending merge, branch `story`) |
+| B10 | **Warmer synth speech** (D3: no recorded voices): expressive formant speech with emotion per line (fear, resolve, warmth, menace), distinct voices for the three boys, Toby, Hızır, each prince and Krampus; extra care at the key beats ("He took him!", Hızır's promise, the reunion). | Each speaker distinct and the key beats emotionally readable; the voices slider and subtitles work. | M | done (pending merge, branch `story`) |
 
 ## Wave C: the climax looks and sounds best (Tier 3, about +2 to +3)
 
@@ -66,7 +67,7 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | B20 | **The adept's walls:** the Rotting Feast and the Pit. | The adept reaches the ending in ≥3/4 runs per order. | M | done (merged 9873fe2, W11) |
 | B21 | **Runes have a use:** rune-carving at the anvil (Option A). | Built, measured: the expert spends ≥40 runes a run, the adept ≥20. | M | done (merged 9873fe2, W11) |
 | B22 | **New Game+ bites.** | The expert's NG+1 is longer than its first run, with the courts real fights. | M | done (1.0.23) |
-| B23 | **One cosmology** (D4, D5): one line in Scene I, the guide and the bestiary on why every culture's fears share Krampus's underworld, paid off by the poem; the hub's house renamed "The House of Seven Seals" everywhere (Scene I, the hub, the banner, the guide, docs). | The line appears in three places; the no-Devil rule is consistent with every name. | S | todo |
+| B23 | **One cosmology** (D4, D5): one line in Scene I, the guide and the bestiary on why every culture's fears share Krampus's underworld, paid off by the poem; the hub's house renamed "The House of Seven Seals" everywhere (Scene I, the hub, the banner, the guide, docs). | The line appears in three places; the no-Devil rule is consistent with every name. | S | done (pending merge, branch `story`) |
 | B24 | **Surface the warband.** Rivals, generals and the princes' cheats are seen in a normal run, not just possible: rival intro cards, a rival per realm guaranteed, a nemesis returning at least twice a run. | Lessons learned in most expert runs (W9 measured 3 of 15); every run meets a named rival twice. | M | todo |
 | B25 | **The remaining camera spots:** the Burning Field (6 clips, 11 hides), the Rotting Feast (3/1), court 5 (3), the Bone Vaults (2), the Hall of Mirrors' chase view. | `--camera-check all` at 0 clips and 0 hides. | M | todo |
 

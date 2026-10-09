@@ -350,6 +350,16 @@ impl WorldView {
             } else {
                 emit_rig_grey(&mut f.rigs, rig, &pose, root, Vec3::new(0.95, 0.97, 1.05) * (0.85 + 0.15 * step));
             }
+            // The boy who carries him (B07): his outline in the warrior's soul-glow, standing at his
+            // knee, brighter on the one picked.
+            if kind.unlocked() || self.preview_heroes {
+                let tint = lin(crate::logic::tale::soul_color(kind));
+                let glow = 0.55 + 0.45 * step;
+                glow_orb(f, feet + Vec3::new(0.0, 0.85, -0.1), 1.25, tint, 0.07 * glow);
+                let breathe = (time * 1.7 + i as f32).sin() * 0.04;
+                let boy = feet + Vec3::new(if i == 2 { 0.36 } else { -0.36 }, 0.0, 0.3);
+                self.emit_boy_ghost(f, crate::logic::tale::boy_of(kind), boy, yaw + breathe, tint, 0.12 + 0.12 * step, 1.0);
+            }
             // A pool of light at the picked hero's feet: gold if he can be chosen, pale if not.
             if picked {
                 let (color, strength) = if kind.unlocked() { (lin(0xffd58a), 0.35) } else { (lin(0x9ab0d0), 0.18) };

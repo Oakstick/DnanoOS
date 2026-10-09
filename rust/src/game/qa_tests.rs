@@ -324,6 +324,7 @@ fn the_story_skips_from_every_beat() {
                     g.story_jump(beat, 0.5);
                 }
                 Scene::Two => g.ending_jump(Scene::Two.time_at(beat, 0.5)),
+                Scene::After(_) => unreachable!(),
             }
             g.update(STEP);
             g.input.inject(Action::Pause);

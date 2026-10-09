@@ -72,6 +72,7 @@ pub mod sparring;
 mod story;
 #[cfg(test)]
 mod tests;
+mod toby;
 mod tour;
 mod vault;
 mod viewpick;
@@ -399,6 +400,8 @@ pub struct Game {
     pub shop: ShopState,
     /// What the old man's workshop shows of the war below (trophies, news, the generals known).
     pub workshop: WorkshopData,
+    /// Toby's thing lying in this realm, still to be found, and where (B08, `toby`).
+    pub token: Option<(crate::logic::tale::Token, P)>,
     /// Seconds the boss has left bleeding, and until its next bite.
     boss_bleed: f64,
     bleed_tick: f64,
@@ -617,6 +620,7 @@ impl Game {
             belt_index: 0,
             shop: ShopState::default(),
             workshop: WorkshopData::default(),
+            token: None,
             boss_bleed: 0.0,
             bleed_tick: 0.0,
             decoy: None,
@@ -784,6 +788,8 @@ impl Game {
         self.visit_shrines();
         self.visit_potions();
         self.visit_relic_shrine();
+        // (Toby's thing: a flag, nothing more.)
+        self.update_token();
         self.update_decoy(dt);
         self.update_spirits(dt);
         self.update_fires(dt);

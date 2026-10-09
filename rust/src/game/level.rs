@@ -294,6 +294,8 @@ impl Game {
         // The minimap's fog: kept if this is the level he was in, begun again for another.
         self.explore.enter(&self.level);
         self.reset_round();
+        // Toby's thing in this realm, if it is still to be found (B08).
+        self.lay_token();
         if let Some((WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
             self.hero.equip(w);
             self.hero.ammo = ammo;

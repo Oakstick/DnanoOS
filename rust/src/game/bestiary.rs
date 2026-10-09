@@ -47,6 +47,8 @@ pub enum Subject {
 pub enum Page {
     Fixed(Entry),
     Rival(usize),
+    /// Toby's page (B08): who he is, and his things found this run.
+    Toby,
 }
 
 /// What the book keeps an eye on between frames (never read by the game).
@@ -141,7 +143,7 @@ impl Bestiary {
     pub fn shown(&self, page: Page) -> bool {
         match page {
             Page::Fixed(e) => self.review || self.book.unlocked(e),
-            Page::Rival(_) => true,
+            Page::Rival(_) | Page::Toby => true,
         }
     }
 
@@ -149,6 +151,7 @@ impl Bestiary {
     pub fn pages(&self, g: Group) -> Vec<Page> {
         match g {
             Group::Rivals => (0..self.book.rivals.len()).rev().map(Page::Rival).collect(),
+            Group::Toby => vec![Page::Toby],
             _ => g.entries().into_iter().map(Page::Fixed).collect(),
         }
     }

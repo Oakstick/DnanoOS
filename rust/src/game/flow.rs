@@ -259,7 +259,11 @@ impl Game {
             Screen::Won => {
                 // The boss is down: off to the old gatekeeper.
                 if self.input.was_pressed(&[Action::Confirm, Action::Jump, Action::Tap]) {
-                    self.open_shop();
+                    // After a prince: the scene at Hızır's first (B07), then the wares.
+                    match self.realm.filter(|_| self.court.as_ref().is_some_and(|c| c.slain)) {
+                        Some(sin) => self.begin_after(sin),
+                        None => self.open_shop(),
+                    }
                     self.juice.fade = 1.0;
                     self.input.consume(Action::Attack);
                     self.input.consume(Action::Confirm);
@@ -276,6 +280,7 @@ impl Game {
         }
         // The old man's counsel and the prince's cheats (WARBAND.md §10).
         self.update_voices(dt);
+        self.view.token = self.token;
         let mut lap = crate::render::profile::Lap::start();
         self.sync_feel();
         let state = scene_state!(self);

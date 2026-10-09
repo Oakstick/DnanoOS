@@ -72,6 +72,8 @@ impl Game {
         }
         // New Game+ is offered with what the finished run holds, before it is closed (`newgame`).
         self.offer_new_game_plus();
+        // (His football at their feet in the end, if it was found: the run's things go with it.)
+        self.view.ending_ball = self.tokens().has(crate::logic::tale::Token::Ball);
         self.close_run();
         self.play_ending();
     }
@@ -83,6 +85,7 @@ impl Game {
         self.show_controls = false;
         self.floaters.clear();
         self.juice.banner = None;
+        self.view.ending_ball |= self.tokens().has(crate::logic::tale::Token::Ball);
         self.story = Some(Story::of(Scene::Two));
         self.view.prepare_cast(true);
         self.enter(Screen::Story);

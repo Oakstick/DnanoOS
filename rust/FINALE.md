@@ -458,3 +458,12 @@ scene), `game/map.rs` (a stop's scene is now `(Scene, beat)`; SCENE II - THE WAY
 
 **Captures:** `--script "0.1:ending:T" --time 0.2` shows Scene II T seconds in (0 the embrace, 8
 the light, 15 the rise, 30 the white, 33 the words, 67 the credits).
+
+### Toby's things at the end (B08, 2026-10-09)
+
+The friend is **Toby** (STORY.md). As the cage door opens he names what the hero carries, the things
+he left in the realms on the way down (`tale::toby_recognises`, in the voices' panel in his own voice);
+coming into the lair the hero's boy calls to him and he answers from the cage ("I knew you'd come. I
+knew it!"). In Scene II's embrace his football lies on the platform beside them if it was found, and
+rides up with them. Nothing of the scene's timing changed.
+

@@ -148,6 +148,7 @@ impl Game {
         let hp = self.hero.pos();
         self.view.explode(&self.level.grid, hp.x, hp.y, 0);
         self.view.shake(0.8);
+        self.boy_glow(true);
         self.enter(Screen::Dying);
     }
 }

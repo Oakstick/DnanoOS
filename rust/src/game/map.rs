@@ -91,6 +91,17 @@ pub fn map_stops() -> Vec<MapStop> {
             full_map: false,
         });
     }
+    // The scenes at Hızır's, one after each prince (B07).
+    for sin in SINS {
+        stops.push(MapStop {
+            stage: Stage::SinShop(sin),
+            label: format!("AT HIZIR'S - AFTER {}", sin.prince().to_uppercase()),
+            scene: Some((Scene::After(sin), 0)),
+            post: false,
+            page: None,
+            full_map: false,
+        });
+    }
     // The end: Scene II, from the bottom of the Pit to the credits (seen from here, it does not
     // count as finishing the game).
     stops.push(MapStop {
@@ -255,6 +266,11 @@ impl Game {
         match scene {
             Scene::One => self.begin_story(),
             Scene::Two => self.play_ending(),
+            Scene::After(sin) => {
+                // At the old man's after the prince, as Continue would find it.
+                self.load_court(sin);
+                self.play_after(sin);
+            }
         }
         if beat > 0 {
             self.story_jump(beat, 0.0);

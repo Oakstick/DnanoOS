@@ -729,6 +729,9 @@ impl Game {
         }
         if door {
             self.audio.play(Sfx::DoorGrind);
+            // Toby sees what the hero carries: his things, found on the way down (B08).
+            let said = crate::logic::tale::toby_recognises(self.tokens());
+            self.speak(super::counsel::Speaker::Toby, said);
         }
         if held {
             let p = math::scale(math::add(hp, c.pos), 0.5);

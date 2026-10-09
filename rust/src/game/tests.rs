@@ -316,8 +316,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2 + 3,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
+        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 7 + 1 + 2 + 3,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
@@ -1973,7 +1973,10 @@ fn the_map_plays_scene_one_from_either_place_and_scene_two() {
     let stops = map_stops();
     let scenes: Vec<(Scene, usize)> = stops.iter().filter_map(|s| s.scene).collect();
     let gateway = (Scene::One, first(Shot::Arrive).unwrap());
-    assert_eq!(scenes, vec![(Scene::One, 0), gateway, (Scene::Two, 0)], "the graveyard, the gateway below, and the end");
+    let mut want = vec![(Scene::One, 0), gateway];
+    want.extend(crate::logic::sins::SINS.iter().map(|&s| (Scene::After(s), 0)));
+    want.push((Scene::Two, 0));
+    assert_eq!(scenes, want, "the graveyard, the gateway below, the scenes at Hızır's, and the end");
     g.show_map = true;
     g.map_index = stops.iter().position(|s| s.scene == Some(gateway)).unwrap();
     g.input.inject(Action::Confirm);

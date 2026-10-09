@@ -70,6 +70,7 @@ impl Game {
         }
         self.blessing = Some(Blessing::of(angel));
         self.audio.play(Sfx::Milestone);
+        self.boy_glow(false);
         let (x, y) = (at.x as f64, at.y as f64);
         self.view.sparkle(&self.level.grid, x, y, 1.2, angel.color(), 40);
         self.view.flash_light(&self.level.grid, V::new(x, y), angel.color());

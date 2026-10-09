@@ -1,5 +1,6 @@
 //! Game rules, free of any rendering or platform code.
 
+pub mod after;
 pub mod angels;
 pub mod bestiary;
 pub mod boss;
@@ -30,6 +31,7 @@ pub mod rng;
 pub mod sins;
 pub mod story;
 pub mod systems;
+pub mod tale;
 pub mod types;
 pub mod vault;
 pub mod war;

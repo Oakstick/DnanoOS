@@ -23,6 +23,8 @@ pub struct WarSave {
     pub lies: u32,
     /// The old man's once-flags (W7). Kept as written.
     pub counsel: String,
+    /// Toby's things the hero has found on the way down (B08: `tale::Tokens`, a bit a realm).
+    pub toby: u8,
     /// Sections this build does not know, in the order they came.
     pub other: Vec<(String, String)>,
 }
@@ -35,6 +37,7 @@ impl WarSave {
             format!("generals:{}", self.generals),
             format!("lies:{}", self.lies),
             format!("counsel:{}", self.counsel),
+            format!("toby:{}", self.toby),
         ];
         sections.extend(self.other.iter().map(|(k, v)| format!("{k}:{v}")));
         format!("v1 {}", sections.join("|"))
@@ -52,6 +55,7 @@ impl WarSave {
                 "generals" => out.generals = value.to_string(),
                 "lies" => out.lies = value.parse().unwrap_or(0),
                 "counsel" => out.counsel = value.to_string(),
+                "toby" => out.toby = value.parse::<u8>().unwrap_or(0) & 0x7f,
                 _ => out.other.push((key.to_string(), value.to_string())),
             }
         }
@@ -75,6 +79,7 @@ mod tests {
         s.lies = 3;
         s.counsel = "first-death,met-rival".to_string();
         s.generals = "g4:110".to_string();
+        s.toby = 0b101_0010;
         let text = s.encode();
         assert!(text.starts_with("v1 ledger:") && !text.contains('\n'));
         assert_eq!(WarSave::decode(&text), Some(s.clone()));

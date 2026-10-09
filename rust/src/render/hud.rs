@@ -41,6 +41,7 @@ pub mod settings;
 mod shop;
 pub mod specimen;
 pub mod style;
+mod toby;
 mod war;
 
 pub use controls::controls_tab_rects;
@@ -330,6 +331,8 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 rgba(TEXT_DIM, 1.0),
             );
             play::draw_pause_summary(o, g, t, below + t * 0.5);
+            // Toby's things found on the way down (B08).
+            toby::draw_row(o, g, t, below + t * 1.45);
             fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);

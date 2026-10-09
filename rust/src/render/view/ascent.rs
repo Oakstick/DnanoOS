@@ -480,6 +480,12 @@ impl WorldView {
         let act = if lit >= 0.0 && hand <= 0.0 && hug < 0.05 { Act::Gaze(gaze) } else { act };
         let glow = Vec3::ZERO;
         self.emit_kid(f, 0, kid_root(feet, yaw), act, time, 0.0, glow, None);
+        // His football at their feet, found on the way down (B08): it rides up with them.
+        if self.ending_ball {
+            let ball = on(HERO_AT.lerp(BOY_HUG, 0.5) + Vec3::new(-1.1, 0.0, -0.45));
+            let root = Mat4::from_translation(ball) * Mat4::from_rotation_y(0.6) * Mat4::from_scale(Vec3::splat(0.8));
+            super::toby::token_model(f, crate::logic::tale::Token::Ball, root, 0.05);
+        }
 
         // ---- the light falling down the shaft
         self.emit_shaft_light(f, sv, top, light, time);

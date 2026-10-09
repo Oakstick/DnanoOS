@@ -29,6 +29,9 @@ pub enum Speaker {
     OldMan,
     /// Quitmer, the gatekeeper's dog.
     Dog,
+    /// One of the three boys by his part in a scene at Hızır's (`after`): 0 the boy whose warrior
+    /// is played, 1 and 2 the other two.
+    Boy(u8),
 }
 
 impl Speaker {
@@ -39,6 +42,15 @@ impl Speaker {
             Speaker::Boys => "THE BOYS",
             Speaker::OldMan => "HIZIR",
             Speaker::Dog => "THE DOG",
+            Speaker::Boy(_) => "THE BOY",
+        }
+    }
+
+    /// The name on the box with `hero` played: a boy goes by the warrior he carries.
+    pub fn tag(self, hero: crate::logic::heroes::HeroKind) -> &'static str {
+        match self {
+            Speaker::Boy(role) => crate::logic::tale::boy_tag(crate::logic::tale::warrior_of(crate::logic::after::kid_of_role(hero, role))),
+            s => s.name(),
         }
     }
 }
@@ -52,6 +64,8 @@ pub enum Place {
     Gateway,
     /// The shaft of the Pit, from its bottom up through its seven levels into the light.
     Pit,
+    /// Hızır's workshop, after a prince falls (`after`).
+    Workshop,
 }
 
 /// What the picture does during a beat: the view stages each one.
@@ -96,6 +110,15 @@ pub enum Shot {
     Words,
     /// The credits, rolling.
     Credits,
+    // ---- the scenes at Hızır's (`after`)
+    /// The room, the fire, the boys round the anvil with Toby's thing on it.
+    Gather,
+    /// A line spoken: the camera on the speaker.
+    Talk,
+    /// The finder speaks of Toby's thing: the camera on it.
+    Show,
+    /// The camera draws back as they turn to go.
+    Leave,
 }
 
 impl Shot {
@@ -103,14 +126,17 @@ impl Shot {
         match self {
             Shot::Title | Shot::Establish | Shot::Taken | Shot::Scream | Shot::Pursuit => Place::Graveyard,
             Shot::Embrace | Shot::Light | Shot::Rise | Shot::White | Shot::Words | Shot::Credits => Place::Pit,
+            Shot::Gather | Shot::Talk | Shot::Show | Shot::Leave => Place::Workshop,
             _ => Place::Gateway,
         }
     }
 
-    /// The scene the shot belongs to.
+    /// The scene the shot belongs to (the scenes at Hızır's are all of one shape: the first of them
+    /// stands for them all, `first_in` asks of a scene itself).
     pub fn scene(self) -> Scene {
         match self.place() {
             Place::Pit => Scene::Two,
+            Place::Workshop => Scene::After(crate::logic::sins::Sin::Pride),
             _ => Scene::One,
         }
     }
@@ -124,6 +150,8 @@ pub enum Scene {
     One,
     /// "The Way Up": the bottom of the Pit and the rise into the light, at the end.
     Two,
+    /// At Hızır's, after this sin's prince falls (`after`).
+    After(crate::logic::sins::Sin),
 }
 
 impl Scene {
@@ -131,6 +159,7 @@ impl Scene {
         match self {
             Scene::One => SCENE_ONE,
             Scene::Two => SCENE_TWO,
+            Scene::After(sin) => crate::logic::after::beats(sin),
         }
     }
 
@@ -139,6 +168,7 @@ impl Scene {
         match self {
             Scene::One => SCENE_TITLE,
             Scene::Two => SCENE_TWO_TITLE,
+            Scene::After(sin) => crate::logic::after::title(sin),
         }
     }
 
@@ -188,11 +218,11 @@ pub struct Beat {
 }
 
 impl Beat {
-    const fn action(shot: Shot, hold: f64, card: Option<Card>) -> Self {
+    pub(crate) const fn action(shot: Shot, hold: f64, card: Option<Card>) -> Self {
         Self { shot, speaker: Speaker::Narrator, cue: "", line: "", hold, card }
     }
 
-    const fn say(shot: Shot, speaker: Speaker, cue: &'static str, line: &'static str) -> Self {
+    pub(crate) const fn say(shot: Shot, speaker: Speaker, cue: &'static str, line: &'static str) -> Self {
         Self { shot, speaker, cue, line, hold: 0.0, card: None }
     }
 
@@ -284,7 +314,12 @@ pub const SCENE_ONE: &[Beat] = &[
 
 /// The first beat of a shot in its own scene, if the scene has one.
 pub fn first(shot: Shot) -> Option<usize> {
-    shot.scene().beats().iter().position(|b| b.shot == shot)
+    first_in(shot.scene(), shot)
+}
+
+/// The first beat of `shot` in `scene`, if it has one.
+pub fn first_in(scene: Scene, shot: Shot) -> Option<usize> {
+    scene.beats().iter().position(|b| b.shot == shot)
 }
 
 /// Seconds the typewriter holds after letter `i` of `line`: a moment on a comma or colon,

@@ -965,6 +965,21 @@ with a lame leg, for the draugr), a one-handed overhead sword chop (the chop is 
 
 ---
 
+
+### 12.8 The cast at Hızır's, and the boys in the glow (B07, 2026-10-09)
+
+The scenes after each prince (`view/aftermath.rs`, STORY.md §4.3) play the same cast by the same
+clips in the workshop: the three boys (`emit_kid`: `Act::Stand`, `Act::Talk` for the one speaking,
+their heads turned to whoever speaks, to Hızır, or to Toby's thing on the anvil; they turn a little to
+the door as it ends), Hızır by his clips standing anywhere now (`emit_old_man_at`: `Stand`, `Talk`),
+Quitmer lying by the hearth (`DogAct::Lie`, his tail going), and behind each boy his warrior's soul
+(`emit_soul`, at rest, dimmer than Scene I's). The camera: a wide from behind the anvil, singles on the
+speaker from beside Hızır, a close on the token, a pull back (`after_camera`; a test keeps it in the
+room on every beat).
+
+The boy's outline in the glow (`emit_boy_ghost`) is his code rig at rest in the GHOST look: on the
+character screen, at a shrine, where the warrior falls. It does not move by clips.
+
 ## 12. The story's cast (`cast`, 2026-10-08)
 
 Scene I's cast (the four boys, the old gatekeeper, Quitmer his dog, Krampus out of the fog) and
