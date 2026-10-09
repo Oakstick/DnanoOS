@@ -110,13 +110,13 @@ Open items and proposals from the agents' reports. Every new idea lands here fir
 - **a final phase that is a spectacle and still fair by frame data**.
 
 Find references (Souls, God of War, Hades, Zelda) per prince and propose before building. Related: B12, B14, B15 (deaths), B33. | A short design per prince (approved first), then built prince by prince: each court has an entrance, a transformation and a finale, its tells readable, the adept still wins, the camera checks clean. | L ×8 | to decide |
-| B44 | **Seven gems open the final level** (user, 2026-10-09). Each prince drops a gem when he falls; the hero collects it; with all **seven gems** the final level opens. This matches the hub's seal, which breaks today with "all seven keys" (`game/hub.rs`, `sins_cleared`). Build:
-- a gem per prince, each with its own look and colour, tied to his sin;
+| B44 | **Seven seal-stones open the final level** (user, 2026-10-09). Each prince drops a **seal-stone** when he falls; the hero collects it; with all **seven seal-stones** the final level opens. This matches the hub's seal, which breaks today with "all seven keys" (`game/hub.rs`, `sins_cleared`). Build:
+- a seal-stone per prince, each with its own look and colour, tied to his sin;
 - the drop and pickup in the court, a short moment when it is taken;
-- the gems shown in the hub (set into the House of Seven Seals, one seal per gem) and on the pause screen;
+- the seal-stones shown in the hub (set into the House of Seven Seals, one per seal) and on the pause screen;
 - with seven, the seals break and the way to the Pit opens.
 
-Note: "gems" is already a currency word (`progression::gems`: Mehmed's turquoise gems for runes); name the princes' gems so they don't clash (e.g. "seal-stones", or each by name). | Every prince drops his gem; the hub shows them set in the House; 7 gems open the final level; the save keeps them; tests; the docs updated. | M | to decide |
+**Name decided: "seal-stones"** (the user, 2026-10-09; "gems" stays Mehmed's currency word). | Every prince drops his seal-stone; the hub shows them set in the House; 7 seal-stones open the final level; the save keeps them; tests; the docs updated. | M | to decide |
 
 ## Suggested order
 
