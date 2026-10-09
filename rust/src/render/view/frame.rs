@@ -358,7 +358,8 @@ pub struct Atmosphere {
     pub sun_dir: Vec3,
     pub sun: Vec3,
     pub exposure: f32,
-    /// 1 for the starry night sky with its full moon, 0 for a plain background.
+    /// 1 for the starry night sky with its full moon, 2 for the dusk, 3 for the Portals of Hell's
+    /// smoke, 0 for a plain background.
     pub night_sky: f32,
     /// How strongly bright things glow (bloom).
     pub bloom: f32,
