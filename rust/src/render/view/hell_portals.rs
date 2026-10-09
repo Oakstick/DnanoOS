@@ -293,7 +293,28 @@ impl WorldView {
         // What stands above the imposts fades out of the way of the view of him (from the top
         // camera, a side portal stands between it and the walk along the edge north of it).
         let (low, high): (Vec<Instance>, Vec<Instance>) = l.into_iter().partition(|c| c.m[13] < 2.6);
+        // Each pier below them too, on its own: standing at the tower beside the doors, two tiles
+        // up the edge from the gate, the top camera lost him behind the pier's courses (QA.md Q10).
+        let pier = |c: &Instance, side: f32| c.m[12] * side > 0.6 && c.m[14].abs() < 0.4 && c.m[13] > 0.1;
+        let (piers, low): (Vec<Instance>, Vec<Instance>) = low.into_iter().partition(|c| pier(c, -1.0) || pier(c, 1.0));
         placed(&mut self.static_cubes, root, &low);
+        for side in [-1.0f32, 1.0] {
+            let start = self.static_cubes.len();
+            let mine: Vec<Instance> = piers.iter().filter(|c| pier(c, side)).copied().collect();
+            placed(&mut self.static_cubes, root, &mine);
+            let len = self.static_cubes.len() - start;
+            let shades = self.static_cubes[start..].iter().map(|c| c.emissive[3]).collect();
+            // (Its cylinder is fitted to its courses: `fit_trees`.)
+            self.trees.push(Tree {
+                range: (start, len),
+                base: root.transform_point3(Vec3::new(side * 1.02, 0.0, -0.05)),
+                radius: 0.45,
+                height: 2.6,
+                fade: 1.0,
+                alive: true,
+                shades: Some(shades),
+            });
+        }
         let start = self.static_cubes.len();
         placed(&mut self.static_cubes, root, &high);
         let len = self.static_cubes.len() - start;
@@ -528,6 +549,48 @@ impl WorldView {
         block(out, c + Vec3::new(0.0, 1.5, 0.0), Vec3::new(0.4, 0.28, 0.4), 0.0, lin(OBSIDIAN[1]), SHADE_GLOSS);
         for side in [-1.0f32, 1.0] {
             ivory_horn(out, c + Vec3::new(side * 0.16, 1.6, 0.0), side, 0.55);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game::{Game, Stage};
+    use crate::logic::hub;
+    use crate::logic::types::{Dir, P};
+    use crate::render::view::CameraMode;
+
+    /// At every side portal, standing on the edge two tiles up from the gate (beside its north
+    /// tower), the top camera, looking north over the portal, sees him: the pier in the way fades,
+    /// the other stands (QA.md Q10: `--camera-check hub` lost him at four such corners).
+    #[test]
+    fn a_portals_pier_fades_out_of_the_top_cameras_way() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        let mut g = Game::new();
+        g.map_jump(Stage::Hub);
+        g.tour = None;
+        g.view.camera_mode = CameraMode::Top;
+        let sides: Vec<_> = hub::gates().into_iter().filter(|gate| matches!(gate.facing, Dir::Left | Dir::Right)).collect();
+        assert_eq!(sides.len(), 4);
+        for gate in sides {
+            g.hero.place(P::new(gate.tile.x, gate.tile.y - 2));
+            g.view.snap_camera();
+            for _ in 0..60 {
+                g.update(crate::app::STEP);
+            }
+            // How solid the pier's courses stand (the most solid of them, under the lintel), and how many.
+            let pier = |dz: f32| {
+                let at = glam::Vec2::new(gate.tile.x as f32, gate.tile.y as f32 + dz);
+                let mine = g.view.static_cubes.iter().filter(|c| {
+                    let (p, y) = (glam::Vec2::new(c.m[12], c.m[14]), c.m[13]);
+                    p.distance(at) < 0.6 && y > 0.3 && y < 2.4
+                });
+                mine.fold((0usize, 0.0f32), |(n, a), c| (n + 1, a.max(c.color[3])))
+            };
+            let (n, solid) = pier(-1.02);
+            assert!(n >= 5 && solid < 0.5, "{:?}: the pier in the way fades ({n} courses, {solid})", gate.sin);
+            let (n, solid) = pier(1.02);
+            assert!(n >= 5 && solid > 0.99, "{:?}: the pier behind him stands ({n} courses, {solid})", gate.sin);
         }
     }
 }

@@ -345,7 +345,9 @@ too (the Hall of Mirrors' throne floor is drawn near him only); tiles that send 
 mirror-door's recess) are not surveyed; `VH_CAMERA_ALL` lists every failing pose and `VH_CAMERA_DBG`
 the cube in front of each of his marks. What hid him now fades as trees do: the courts' portals, the
 Banquet's candle wheels, the Garden of Thorns' court arch, pavilion, bowers and Black Thorn, the
-vaults' arch piers (each on its own, under the crown's fade) and the ornaments of a fading wall.
+vaults' arch piers (each on its own, under the crown's fade) and the ornaments of a fading wall;
+and (Q10) each pier of a Portal of Hell, below the imposts: the top camera lost him beside a side
+portal's north tower (the hub's top camera now hides him in no pose of 405).
 
 **Found and fixed:**
 - **Tunnels:** the camera eased across the whole map when Ragnar wrapped through a tunnel. It now
@@ -1353,7 +1355,8 @@ The realms' and courts' portals keep theirs (`emit_portal` draws the hub's style
     as before.
 - **Checks:**
   - `--camera-check hub`: no clips. The top camera hides him in 4 poses of 405, the same tiles as
-    before (north of the side portals); the chase camera in none.
+    before (north of the side portals); the chase camera in none. (Since fixed: QA.md Q10, the piers
+    fade too.)
   - The harness is unchanged: `--run 2 1`, `--court 2 1 1`, `--pit 2 8 1` and all 17 bouts print
     the same as rust-port's, apart from their wall-clock lines.
   - The gym, a realm, the Vaults, two courts, the Garden, the Cisterns and the meadow capture the
