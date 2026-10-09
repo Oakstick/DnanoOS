@@ -61,7 +61,7 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | ID | Item | Done when | Size | Status |
 |---|---|---|---|---|
 | B17 | **The five hard realms readable** (Mirrors, Grotto, Field, Mire, Thorns): one landmark or route cue each where people get lost, the lie intact. Proxy: the bots navigate them without the harness's carry. | `--run` with no carry in all 7 realms; a human playtest note per realm in QA.md. | L | todo |
-| B18 | **No mirrored controls.** Replace Thorns' Enthralled mirror with a pull toward the Bride, slower turning or blurred sight. | Nothing in the game turns the controls (PRINCES.md §0 holds everywhere); test. | S | todo |
+| B18 | **No mirrored controls.** Replace Thorns' Enthralled mirror with a pull toward the Bride, slower turning or blurred sight. | Nothing in the game turns the controls (PRINCES.md §0 holds everywhere); test. | S | done (pending merge) |
 | B19 | **Difficulty: Story / Normal / Hard.** Built from the Drum's pacings (Steady, Relentless), the prince damage and the lives; chosen at Start, changeable in Settings. | Three modes. The adept finishes Normal in ≥3/4 runs per order, the novice finishes Story, the expert finds Hard hard. Shown in the HUD/pause. | M | todo |
 | B20 | **The adept's walls:** the Rotting Feast and the Pit. | The adept reaches the ending in ≥3/4 runs per order. | M | doing (balance) |
 | B21 | **Runes have a use:** rune-carving at the anvil (Option A). | Built, measured: the expert spends ≥40 runes a run, the adept ≥20. | M | doing (balance) |

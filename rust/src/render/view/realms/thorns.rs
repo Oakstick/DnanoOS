@@ -14,7 +14,7 @@ mod decor;
 use std::collections::HashMap;
 
 use super::super::*;
-use crate::logic::realms::thorns::{Ground, Thorns, CHARM_MAX, SMOKE_REVEAL, SMOKE_SECONDS, WEDDING_SECONDS};
+use crate::logic::realms::thorns::{enthral_haze, Ground, Thorns, CHARM_MAX, SMOKE_REVEAL, SMOKE_SECONDS, WEDDING_SECONDS};
 use decor::pal::*;
 use decor::{bx, h, Face, HEDGE_H};
 
@@ -43,6 +43,8 @@ pub(in crate::render::view) struct ThornsState {
     lanterns: Vec<Vec3>,
     spouts: Vec<(Vec3, Vec3)>,
     thorns: Vec<Vec3>,
+    /// The rose paths' tiles (her false ways, glowing while she has him enthralled).
+    roses: Vec<Vec3>,
     time: f32,
 }
 
@@ -78,6 +80,7 @@ impl WorldView {
             lanterns: Vec::new(),
             spouts: Vec::new(),
             thorns: Vec::new(),
+            roses: Vec::new(),
             time: 0.0,
         };
 
@@ -89,8 +92,10 @@ impl WorldView {
                 continue;
             }
             self.thorns_floor(r, p);
-            if r.ground_at(p) == Ground::Thorn {
-                view.thorns.push(Vec3::new(x as f32, 0.0, y as f32));
+            match r.ground_at(p) {
+                Ground::Thorn => view.thorns.push(Vec3::new(x as f32, 0.0, y as f32)),
+                Ground::Rose => view.roses.push(Vec3::new(x as f32, 0.0, y as f32)),
+                _ => {}
             }
         }
         // Thresholds under the portals, walkable when their doors open.
@@ -759,6 +764,31 @@ impl WorldView {
             f.lights.push(Light { pos: at + Vec3::new(0.0, 1.5, 0.0), color: lin(0xffc8a0) * 3.0 * k, distance: 6.0 });
         }
 
+        // ---- enthralled: her false ways, the rose paths, glow invitingly round him, a warm wave
+        // running along them toward her (B18: the spell draws him, it never turns his controls)
+        let haze = enthral_haze(r.enthralled);
+        if haze > 0.0 && !r.unmade {
+            let her = w(r.bride);
+            for (i, p) in v.roses.iter().enumerate() {
+                let d = Vec2::new(p.x - hero.x, p.z - hero.z).length();
+                if d > 11.0 {
+                    continue;
+                }
+                let to_her = Vec2::new(p.x - her.x, p.z - her.z).length();
+                let wave = 0.5 + 0.5 * (time * 4.0 + to_her * 0.7).sin();
+                let reach = (1.0 - d / 11.0).clamp(0.0, 1.0);
+                let fi = i as f32;
+                let q = *p + Vec3::new((fi * 0.73).fract() * 0.6 - 0.3, 0.05 + wave * 0.12, (fi * 0.37).fract() * 0.6 - 0.3);
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(q) * Mat4::from_scale(Vec3::new(0.42, 0.01, 0.42)),
+                    lin(PINK) * 1.4,
+                    0.35 * haze * reach * (0.3 + wave),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
+            }
+        }
+
         // ---- the lanterns: rose glass glowing along the paths; the nearest light them
         let mut lit: Vec<Vec3> = Vec::new();
         for (i, l) in v.lanterns.iter().enumerate() {
@@ -769,7 +799,8 @@ impl WorldView {
             glow_orb(f, *l, 0.42, lin(ROSE_GLASS), 0.22 + 0.03 * (time * 2.3 + i as f32).sin());
         }
         for (i, p) in nearest(&lit, hero, 6).into_iter().enumerate() {
-            let flick = 2.8 + (time * 5.0 + i as f32 * 1.3).sin() * 0.25;
+            // (Brighter while she has him: her ways call.)
+            let flick = (2.8 + (time * 5.0 + i as f32 * 1.3).sin() * 0.25) * (1.0 + 0.8 * haze);
             f.lights.push(Light { pos: p, color: lin(ROSE_GLASS) * flick, distance: 5.0 });
         }
 
@@ -985,6 +1016,19 @@ pub(super) fn atmosphere(_v: &ThornsView, r: &Thorns, _s: &SceneState) -> Atmosp
     if r.smoke.is_some() || r.sight > 0.0 {
         a.ambient *= 1.25;
         a.fog_far += 8.0;
+    }
+    // Enthralled: a warm rose haze closes in round him (his sight narrows; nothing turns his controls).
+    let haze = enthral_haze(r.enthralled);
+    if haze > 0.0 {
+        a.fog_near += (4.0 - a.fog_near) * haze;
+        a.fog_far += (15.0 - a.fog_far) * haze;
+        a.ambient += lin(0x6a2848) * 0.4 * haze;
+        let (from, to) = (a.background, 0x4a1830u32);
+        let ch = |sh: u32| {
+            let (x, y) = (((from >> sh) & 255) as f32, ((to >> sh) & 255) as f32);
+            ((x + (y - x) * haze).round() as u32) << sh
+        };
+        a.background = ch(16) | ch(8) | ch(0);
     }
     a
 }
