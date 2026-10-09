@@ -96,7 +96,7 @@ pub enum Tell {
 /// How it is seen through.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Counter {
-    /// Call the old man (H): "I said no such thing."
+    /// Call the old man (E / Y): "I said no such thing."
     AskTheOldMan,
     /// Refuse the deal.
     Refuse,

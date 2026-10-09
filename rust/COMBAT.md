@@ -4,9 +4,11 @@ The combat loop, defined in frames, formulas and state machines. Code is the
 source of truth: every number below lives in `src/logic/combat/` and is pinned by
 tests (`cargo test combat`). Change the table, then change this document.
 
-Phase 1 runs in **the Sparring Ring** in the gym (west of the arrival platform).
-Everywhere else the game still plays its original contact rules, until the lab
-proves the loop (see the roadmap at the end).
+Phase 1 ran in **the Sparring Ring** in the gym (west of the arrival platform). Today the frame
+data runs every fight from the Portals of Hell down: the Ring, the Vaults of Mammon and the other six
+realms, the seven courts, the Pit and Krampus's lair (`Game::brawling`). The road above them still
+plays the original contact rules: the Garden of Krampus, the Cisterns, the Bone Vaults and the
+Cyclopes' arenas (BACKLOG.md B01-B03 bring them over).
 
 ---
 
@@ -580,7 +582,7 @@ where it is fought:
 | Threat | 3 points, a token per 30 f | **2 points, a token per 60 f**: a pack is a fight, not a pile-on |
 | His health | a lost bout, never death | real: lives, the dying, the packs back asleep at their posts and whole |
 | His gear | never worn | his shield wears as it blocks and breaks for good; his blade dulls as it strikes |
-| Blows from outside the frame data | nothing (the lab is pure) | a plain blow through the fighter (a bomb, an archangel's fire: 20 damage, 30 poise) |
+| Blows from outside the frame data | nothing (the lab is pure) | a plain blow through the fighter (an archangel's fire, a spirit: 20 damage, 30 poise; bombs are out of play) |
 | A kill | gone | gone, with its coins, rune chance, streak and points, and 20% a health potion |
 
 The kit is refreshed every frame, so a dulled blade, a broken shield or a potion counts at once

@@ -34,7 +34,7 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | B03 | **The side dungeons by frame data.** The Cisterns, the Bone Vaults and their Cyclopes (off the road, LEVELS map). | No old contact rules left anywhere; the code path removed or test-only. | M | todo |
 | B04 | **The old man teaches.** A short, skippable duel in the Garden: guard, parry, dodge, and the tells (glow, flash, red glint) on a sparring foe; the Sparring Ring reachable from the hub or the wares. | A first-time player is shown each of guard, parry, dodge and the three tells once, with prompts in the right glyphs. The Garden tour's control card names the shield. | M | todo |
 | B05 | **Jump and dodge are one verb.** Space always leaps; in fights the leap carries the i-frames. Fixes "jumping in the Vaults didn't work". | In the Vaults and every brawl, Space leaps from any state except hitstun, a hold and a guard break. A test covers each state. | S | done (pending merge) |
-| B06 | **Stale player-facing text.** README controls table, bombs (disabled), "only Ragnar", steam/README, PRINCES.md "Satan is the last boss", WARBAND §14 "a tier harder". | No stale claims found by a sweep; the controls table matches `input/bindings.rs`. | S | todo |
+| B06 | **Stale player-facing text.** README controls table, bombs (disabled), "only Ragnar", steam/README, PRINCES.md "Satan is the last boss", WARBAND §14 "a tier harder". | No stale claims found by a sweep; the controls table matches `input/bindings.rs`. | S | done (pending merge) |
 
 ## Wave B: carry the heart through play (Tier 2, about +3)
 
