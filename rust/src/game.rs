@@ -15,7 +15,7 @@
 //!   `save`: the archangels, the Portals of Hell, the realms, the Vaults of Mammon, the old man's
 //!   wares, the map, Scene I, the first-run tour, the character screen, the controller page, saves;
 //!   `settings_page`: the settings (UI.md §8) and the rebinding of the controls
-//! - `pit`: the Pit under the House of the Devil, ridden down level by level (FINALE.md)
+//! - `pit`: the Pit under the House of Seven Seals, ridden down level by level (FINALE.md)
 //! - `debug`: testing cheats and the capture tool's hooks
 //! - `ending`: the end, Scene II, the words and the credits (FINALE.md §4)
 

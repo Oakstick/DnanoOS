@@ -1,5 +1,5 @@
 //! The Pit in play (FINALE.md §1, §2; laid out in `logic::pit`). Through the open door of the House
-//! of the Devil there is no throne and no devil, only a square shaft and the platform at its lip;
+//! of Seven Seals there is no throne and no devil, only a square shaft and the platform at its lip;
 //! he leaps onto it and the first level's clock begins.
 //!
 //! Each level's inmates (the foes of its stage) come out of the iron doors in the walls, pack by
@@ -32,6 +32,9 @@ const BELL_RED: u32 = 0xff5a3a;
 const GREEN: u32 = 0x5cff6a;
 /// Seconds a door stands open once its pack has come out.
 const DOOR_OPEN: f64 = 2.5;
+/// The banner through the House's door (B23): the House of Seven Seals is empty, and the poem at the
+/// end says why ("There was never a devil").
+pub const PIT_BANNER: (&str, &str) = ("THE HOUSE IS EMPTY.", "NO THRONE, NO DEVIL. ONLY THE WAY DOWN.");
 
 /// A foe that rode the platform down: what it is, where it stood on the platform, and its health,
 /// so a fall can bring the level back as it began.
@@ -144,7 +147,7 @@ impl Game {
         self.pit.is_some()
     }
 
-    /// Through the door of the House of the Devil: no devil, only the shaft and its platform. He
+    /// Through the door of the House of Seven Seals: no throne and no devil, only the shaft and its platform. He
     /// stands at the lip, and leaps onto it as the first level begins.
     pub fn enter_pit(&mut self) {
         self.audio.play(Sfx::DoorGrind);
@@ -152,8 +155,7 @@ impl Game {
         self.load_pit(1);
         self.checkpoint(Stage::Pit(1));
         self.juice.fade = 1.0;
-        self.juice.banner =
-            Some(Banner { text: "THERE IS NO DEVIL HERE.".into(), sub: "ONLY THE WAY DOWN.".into(), color: 0xe8dcc8, life: 4.5, max: 4.5 });
+        self.juice.banner = Some(Banner { text: PIT_BANNER.0.into(), sub: PIT_BANNER.1.into(), color: 0xe8dcc8, life: 4.5, max: 4.5 });
         self.enter(Screen::Ready);
     }
 
@@ -875,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn the_open_door_of_the_house_of_the_devil_leads_down_into_the_pit() {
+    fn the_open_door_of_the_house_of_seven_seals_leads_down_into_the_pit() {
         use crate::logic::hub;
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
@@ -899,7 +901,7 @@ mod tests {
         assert_eq!(g.pit.as_ref().unwrap().level, 1);
         assert!(g.pit.as_ref().unwrap().leap_in, "he leaps onto the platform as it begins");
         assert_eq!(g.hero.occupied(), pit::arrival(), "on the lip");
-        assert_eq!(g.juice.banner.as_ref().map(|b| b.text.as_str()), Some("THERE IS NO DEVIL HERE."));
+        assert_eq!(g.juice.banner.as_ref().map(|b| b.text.as_str()), Some(PIT_BANNER.0));
         assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(Stage::Pit(1)));
         assert!(g.hub.is_none());
     }

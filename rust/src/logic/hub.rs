@@ -1,5 +1,5 @@
 //! The Portals of Hell: the hub's layout. Eight stone platforms float over a
-//! sea of lava in a 3x3 grid round the volcano, where the House of the Devil
+//! sea of lava in a 3x3 grid round the volcano, where the House of Seven Seals
 //! stands. The south platform is the entrance, reached along a ledge from the
 //! cliffs outside; each of the other seven has a portal gate to one sin's
 //! realm. Wooden bridges join each platform to its two neighbours in a ring,
@@ -160,7 +160,7 @@ pub fn altar() -> P {
     P::new((e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2)
 }
 
-/// The door of the House of the Devil, in the volcano's south face, where the south causeway ends.
+/// The door of the House of Seven Seals, in the volcano's south face, where the south causeway ends.
 pub fn house_door() -> P {
     let v = volcano();
     P::new((v.x0 + v.x1) / 2, v.y1)

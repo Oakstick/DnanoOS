@@ -20,10 +20,10 @@ keep the fight readable however many stand round him. The old man always leads t
 
 ## 1. The way in
 
-With all seven keys the causeways rise and the door of the House of the Devil opens (already
+With all seven keys the causeways rise and the door of the House of Seven Seals opens (already
 built). Inside there is no throne and no devil: a square shaft drops into the dark, and a stone
-platform waits at its lip, a long table on it set with a feast. A banner: **THERE IS NO DEVIL HERE.
-ONLY THE WAY DOWN.** The hero jumps onto the platform, and it begins to sink.
+platform waits at its lip, a long table on it set with a feast. A banner: **THE HOUSE IS EMPTY. NO THRONE,
+NO DEVIL. ONLY THE WAY DOWN.** The hero jumps onto the platform, and it begins to sink.
 
 ## 2. The Pit
 
@@ -111,9 +111,18 @@ system with Scene I's cast and camera):
 ## 5. The story without Satan
 
 Scene I's last line, the route and the old man's words no longer lead to Satan. The trail leads
-down to the House of the Devil, which the old man says nobody has ever seen the inside of. Wrath's
+down to the House of Seven Seals, which the old man says nobody has ever seen the inside of. Wrath's
 prince no longer keeps the sin "for Satan". Krampus is simply Krampus, who takes children down to
 the bottom of the world.
+
+**The House of Seven Seals** (B23, 2026-10-09; it was the House of the Devil): each prince's key
+holds one of its seven seals, which is why the seal of the seven breaks when all are brought. Its
+door's banner reads THE HOUSE IS EMPTY. NO THRONE, NO DEVIL. ONLY THE WAY DOWN. One line says why
+every land's monsters share this underworld, and it never names a lord over them: "Every fear and
+every wrong in the world, from every land and every tongue, sinks down here and grows teeth." The
+old man (Hızır) says it at his door in Scene I, the guide's page of the Portals of Hell says it, and
+the bestiary's heading; the poem pays it off ("Every monster in these depths was made of us"). See
+`STORY.md`.
 
 ## 6. Build
 
@@ -134,7 +143,7 @@ functions), `game/pit.rs` (the rules in play), `render/view/pit.rs` (the art), `
 (the clock), and the bot's `pit_board` and `pit_ride` in `game/bot.rs`.
 
 **The way in.** With all seven keys the House's door stands open (a banner says so as he comes up to
-it); walking into it calls `enter_pit()`: the banner THERE IS NO DEVIL HERE. ONLY THE WAY DOWN., the
+it); walking into it calls `enter_pit()`: the banner THE HOUSE IS EMPTY. NO THRONE, NO DEVIL. ONLY THE WAY DOWN., the
 countdown, and he leaps from the lip onto the platform as play begins (`Hero::leap_to`, the same
 arc as his own leap). Each level is a checkpoint (`Stage::Pit(n)`, saved as `p n`); Continue and the
 map's seven stops (THE PIT - LEVEL n) load the level fresh, with nothing riding down, and every key
@@ -427,7 +436,7 @@ on "oo", sings under the credits on "ah". The game sounds it bar by bar (`ending
 Esc releases it (`Synth::release_group`); the game's music is hushed for it. At most about 90
 voices sound at once, inside the mix's budget.
 
-**Satan is cut** (§5): Scene I's narrator now ends "The trail led past the House of the Devil,
+**Satan is cut** (§5): Scene I's narrator now ends "The trail led past the House of Seven Seals,
 which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the
 world" (the beats and timing unchanged); `ROUTE`, the objective and the module's words follow it;
 the old man's Garden page says the same; the hub page no longer says Wrath was Satan's or that

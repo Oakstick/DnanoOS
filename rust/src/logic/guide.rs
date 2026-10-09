@@ -26,7 +26,7 @@ pub enum GuidePlace {
     Court(Sin),
     /// The gym and its Sparring Ring.
     Gym,
-    /// Level `n` (1 to 7) of the Pit under the House of the Devil.
+    /// Level `n` (1 to 7) of the Pit under the House of Seven Seals.
     Pit(u8),
     /// Krampus's lair at the bottom of the Pit (FINALE.md §3).
     Lair,
@@ -185,17 +185,17 @@ fn cyclops(n: usize, hail: &str) -> Guide {
 // ------------------------------------------------------------------ the Portals of Hell
 
 const HUB_TALE: &[&str] = &[
-    "these are the Portals of Hell: eight platforms over a sea of lava, round the volcano where the House of the Devil stands.",
-    "Seven gates, one for each deadly sin, stand round it in the order of Dante's terraces of Purgatory, from Pride to Lust.",
-    "In 1589 Peter Binsfeld gave each sin a prince, and here each prince keeps his own. Amon, who stirs up feuds, keeps wrath.",
+    "these are the Portals of Hell: eight platforms over a sea of lava, round the volcano where the House of Seven Seals stands.",
+    crate::logic::story::COSMOLOGY,
+    "Seven gates, one for each deadly sin, stand round it in Dante's order, from Pride to Lust. In 1589 Peter Binsfeld gave each sin a prince.",
     "Pride is Lucifer's, envy Leviathan's, wrath Amon's, sloth Belphegor's, greed Mammon's, gluttony Beelzebub's, lust Asmodeus's.",
-    "Each prince keeps his sin's key. Behind the seal of the seven stands the House of the Devil: no one has ever seen inside it.",
+    "Each prince keeps his sin's key, and each key holds one of the House's seven seals. No one has ever seen inside it.",
 ];
 
 const HUB_TASK: &[&str] = &[
     "Choose any gate and go through. Each realm ends in its prince's court, and the prince drops his sin's key.",
     "A realm you have taken keeps its doors shut, its key in the lock. Bring all seven keys, and the seal of the seven breaks.",
-    "Then causeways rise from the lava to the House of the Devil. The trail runs on through it, down to the bottom of the world.",
+    "Then causeways rise from the lava to the House of Seven Seals. The trail runs on through it, down to the bottom of the world.",
 ];
 
 const HUB_WATCH: &[&str] = &[
@@ -592,7 +592,7 @@ const GYM_WATCH: &[&str] = &[
 // ------------------------------------------------------------------ the Pit
 
 const PIT_TALE: &[&str] = &[
-    "under the House of the Devil there is no throne and no devil. There is only this: a prison that goes down, one stone cell for every level.",
+    "under the House of Seven Seals there is no throne and no devil. There is only this: a prison that goes down, one stone cell for every level.",
     "In each cell's floor a square hole, and in the hole a stone platform with a long table on it. Those above eat first; each level below finds less.",
     "Krampus took the boy to the very bottom. Seven levels lie between you and him, and the platform is the only way down.",
 ];

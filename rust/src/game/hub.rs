@@ -4,7 +4,7 @@
 //! realm (`game::realm`); a realm he has cleared keeps its doors shut with
 //! its key in the lock. With all seven keys the seal breaks: the ground
 //! shakes, the wall of fire round the volcano dies and four causeways rise
-//! out of the lava to the House of the Devil, whose door stands open:
+//! out of the lava to the House of Seven Seals, whose door stands open:
 //! walking into it leads down into the Pit (`game::pit`).
 
 use super::{Banner, Game};
@@ -107,7 +107,7 @@ impl Game {
                 self.audio.play(Sfx::DoorGrind);
                 self.juice.banner = Some(Banner {
                     text: "THE SEAL OF THE SEVEN IS BROKEN".into(),
-                    sub: "THE WAY TO THE HOUSE OF THE DEVIL RISES FROM THE LAVA".into(),
+                    sub: "THE WAY TO THE HOUSE OF SEVEN SEALS RISES FROM THE LAVA".into(),
                     color: 0xff5a2a,
                     life: 4.0,
                     max: 4.0,
@@ -129,7 +129,7 @@ impl Game {
             h.hint = 4.0;
             self.audio.play(Sfx::DoorGrind);
             self.juice.banner = Some(Banner {
-                text: "THE HOUSE OF THE DEVIL".into(),
+                text: "THE HOUSE OF SEVEN SEALS".into(),
                 sub: "ITS DOOR STANDS OPEN   WALK IN".into(),
                 color: 0xff3a2a,
                 life: 3.0,

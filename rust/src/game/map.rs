@@ -57,7 +57,7 @@ pub fn map_stops() -> Vec<MapStop> {
     // The bottom of the Pit: Krampus in his lair, the friend in the cage (FINALE.md §3).
     stops.push(stop(Stage::Lair, "THE BOTTOM OF THE PIT - KRAMPUS".to_string()));
     stops.push(stop(Stage::Gym, "THE GYM - ONE OF EVERY FOE".to_string()));
-    // The Pit under the House of the Devil, level by level.
+    // The Pit under the House of Seven Seals, level by level.
     for n in 1..=crate::logic::pit::LEVELS {
         stops.push(stop(Stage::Pit(n), format!("THE PIT - LEVEL {n}")));
     }

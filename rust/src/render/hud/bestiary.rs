@@ -273,6 +273,13 @@ pub(super) fn draw(o: &mut Overlay, g: &Game, t: f32) {
         py + pad + t * 1.25,
         &style::body(t, 0.56, rgba(TEXT_DIM, 1.0)).right(),
     );
+    // Why every land's monsters share one underworld (B23), in the old man's amber, under the title.
+    o.text_styled(
+        crate::logic::story::COSMOLOGY,
+        px + pad,
+        py + pad + t * 1.62,
+        &style::body(t, 0.52, rgba(mix_rgb(AMBER, TEXT_DIM, 0.35), 1.0)),
+    );
 
     // ---- the tabs, between LB and RB
     let shift = |r: [f32; 4]| [r[0], r[1] + dy, r[2], r[3]];

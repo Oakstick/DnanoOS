@@ -10,7 +10,7 @@
 //! old man lends the boys the souls of three great warriors (Ragnar the
 //! viking, Mehmed the janissary and Miyamoto the samurai), swears to ask the
 //! archangels to send them help, and promises to come whenever they call. From there the road
-//! only goes down, depth by depth, past the House of the Devil (which no one has ever seen the
+//! only goes down, depth by depth, past the House of Seven Seals (which no one has ever seen the
 //! inside of) to the bottom of the world, where Krampus takes the children he steals.
 //!
 //! At the bottom the friend is freed, and Scene II plays (FINALE.md §4): the two hold each other,
@@ -214,9 +214,20 @@ pub const SOULS_LINE: &str =
 /// His promise, made out of guilt: the archangels' help (their shrines in every dungeon), and his own.
 pub const PROMISE_LINE: &str =
     "So it begins... This is my failure, and I feel the guilt of it. I will ask the archangels to send you help. And call me whenever you need - I will come.";
-/// The last words: the road down past the House of the Devil, and why it goes so deep.
+/// The last words: the road down past the House of Seven Seals, and why it goes so deep.
 pub const ROUTE_LINE: &str =
-    "The boys took up the warrior souls and went down into the dark, depth by depth, after their stolen friend. The trail led past the House of the Devil, which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the world.";
+    "The boys took up the warrior souls and went down into the dark, depth by depth, after their stolen friend. The trail led past the House of Seven Seals, which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the world.";
+
+/// Why every land's monsters share one underworld (B23): every fear and every wrong of the world sinks
+/// down to it and takes a shape. No lord made them, and none rules them; the poem pays it off ("Every
+/// monster in these depths was made of us"). The old man says it at his door, the guide's page of the
+/// Portals of Hell says it, and so does the bestiary's heading.
+pub const COSMOLOGY: &str = "Every fear and every wrong in the world, from every land and every tongue, sinks down here and grows teeth.";
+/// The old man at his door: what lies beyond it, and why it is full of every land's monsters.
+pub const WORLD_LINE: &str = concat!(
+    "Beyond this door lies the world of the dead. ",
+    "Every fear and every wrong in the world, from every land and every tongue, sinks down here and grows teeth."
+);
 
 /// Scene I, "The Threshold", beat by beat.
 pub const SCENE_ONE: &[Beat] = &[
@@ -249,12 +260,7 @@ pub const SCENE_ONE: &[Beat] = &[
         "Horns and bells... Krampus. So he slipped past me. I closed my eyes for one moment... one moment.",
     ),
     Beat::say(Shot::Boys, Speaker::Boys, "", "Then help us! We have to get him back!"),
-    Beat::say(
-        Shot::OldMan,
-        Speaker::OldMan,
-        "",
-        "Beyond this door lies the world of the dead. The living do not walk there... not for long.",
-    ),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "", WORLD_LINE),
     Beat::say(Shot::Boys, Speaker::Boys, "angrily", "You were supposed to guard it! How could you let him out?"),
     Beat::say(
         Shot::OldMan,
@@ -454,7 +460,7 @@ pub fn credits() -> Vec<Credit> {
 /**
  * The road the adventure takes. Past the gatekeeper's door each dungeon lies
  * a depth further down the underworld than the last, a Cyclops keeps the way
- * down out of each, and the trail runs on past the House of the Devil, which
+ * down out of each, and the trail runs on past the House of Seven Seals, which
  * no one has seen the inside of, to the bottom of the world: that is where
  * Krampus takes the children he steals.
  */
@@ -472,7 +478,7 @@ pub struct Route {
 pub const ROUTE: Route = Route {
     goal: "Bring back the friend Krampus stole",
     quarry: "Krampus",
-    destination: "The bottom of the world, down past the House of the Devil",
+    destination: "The bottom of the world, down past the House of Seven Seals",
     reveal: "Krampus takes the children he steals to the bottom of the world",
 };
 
@@ -520,7 +526,7 @@ pub fn depth_line(dungeon: usize, boss: bool) -> String {
 
 /// What the boys are doing, for the pause screen.
 pub fn objective() -> &'static str {
-    "Follow Krampus down through the underworld, past the House of the Devil to the bottom of the world, and bring your friend home."
+    "Follow Krampus down through the underworld, past the House of Seven Seals to the bottom of the world, and bring Toby home."
 }
 
 #[cfg(test)]
@@ -549,7 +555,7 @@ mod tests {
         assert!(promise.line.contains("I will ask the archangels to send you help"));
         let last = SCENE_ONE.last().unwrap();
         assert_eq!(last.shot, Shot::Descent);
-        assert!(last.line.contains("House of the Devil") && last.line.contains("bottom of the world"));
+        assert!(last.line.contains("House of Seven Seals") && last.line.contains("bottom of the world"));
         assert!(ROUTE.reveal.contains("bottom of the world"));
     }
 
@@ -667,6 +673,26 @@ mod tests {
         for line in shown {
             let low = line.to_lowercase();
             assert!(banned.iter().all(|b| !low.contains(b.as_str())), "{line}");
+        }
+    }
+
+    /// B23: one cosmology, said in three places (the old man at his door, the guide's page of the
+    /// Portals of Hell, the bestiary's heading), paid off by the poem, and never naming a devil.
+    #[test]
+    fn one_line_says_why_every_lands_monsters_share_the_underworld_and_the_poem_pays_it_off() {
+        let said = |line: &str| line.contains(COSMOLOGY);
+        assert!(SCENE_ONE.iter().any(|b| b.speaker == Speaker::OldMan && said(b.line)), "the old man says it at his door");
+        let hub = crate::logic::guide::guide(crate::logic::guide::GuidePlace::Hub, crate::logic::heroes::HeroKind::Mehmed);
+        assert!(hub.tale.iter().any(|l| said(l)), "the guide's page of the Portals of Hell");
+        assert!(include_str!("../render/hud/bestiary.rs").contains("story::COSMOLOGY"), "the bestiary's heading");
+        assert!(WORDS.iter().any(|w| w.contains("monster in these depths was made of us")), "the poem pays it off");
+        assert!(!COSMOLOGY.to_lowercase().contains("devil") && COSMOLOGY.is_ascii());
+        // The House is the House of Seven Seals wherever it is named.
+        assert!(ROUTE_LINE.contains("House of Seven Seals") && ROUTE.destination.contains("House of Seven Seals"));
+        for src in
+            [include_str!("guide.rs"), include_str!("../game/tour.rs"), include_str!("../game/hub.rs"), include_str!("../game/pit.rs")]
+        {
+            assert!(!src.contains(&["House of the ", "Devil"].concat()) && !src.contains(&["HOUSE OF THE ", "DEVIL"].concat()));
         }
     }
 

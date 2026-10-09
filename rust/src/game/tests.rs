@@ -413,7 +413,7 @@ fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
         g.update(crate::app::STEP);
     }
     assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
-    // All seven keys: the seal breaks and the causeways rise to the House of the Devil.
+    // All seven keys: the seal breaks and the causeways rise to the House of Seven Seals.
     let lane = hub::causeways()[2];
     let p = P::new(lane.x0 + 1, lane.y0 + 1);
     assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");

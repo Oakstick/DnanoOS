@@ -33,7 +33,7 @@ pub enum TourArt {
     Portal(u32),
     /// The Seal of the Seven: its sockets, lit for the keys he holds.
     Seal,
-    /// The volcano and the House of the Devil.
+    /// The volcano and the House of Seven Seals.
     Volcano,
 }
 
@@ -218,7 +218,7 @@ impl Game {
         stops
     }
 
-    /// The Portals of Hell: where he came in, the Seal of the Seven, each of the seven doors, and the House of the Devil.
+    /// The Portals of Hell: where he came in, the Seal of the Seven, each of the seven doors, and the House of Seven Seals.
     fn hub_tour_stops(&self) -> Vec<TourStop> {
         use logic::hub;
         let g = &self.level.grid;
@@ -227,14 +227,14 @@ impl Game {
             TourStop {
                 target: at(hub::arrival(), 0.5),
                 title: "THE PORTALS OF HELL",
-                body: "Down from the Cyclops' meadow into the pit of the underworld. Eight platforms float over the lava round the House of the Devil, joined by wooden bridges.".into(),
+                body: "Down from the Cyclops' meadow into the pit of the underworld. Eight platforms float over the lava round the House of Seven Seals, joined by wooden bridges.".into(),
                 color: 0xff6a3a,
                 art: TourArt::Hero,
             },
             TourStop {
                 target: at(hub::altar(), 0.9),
                 title: "THE SEAL OF THE SEVEN",
-                body: "A socket for each sin's key. Take a key from the prince of every realm: with all seven, the seal breaks and the way to the House of the Devil rises from the lava.".into(),
+                body: "A socket for each sin's key. Take a key from the prince of every realm: with all seven, the seals break and the way to the House of Seven Seals rises from the lava.".into(),
                 color: 0xffb040,
                 art: TourArt::Seal,
             },
@@ -258,9 +258,9 @@ impl Game {
         let (cx, cy) = hub::volcano().center();
         stops.push(TourStop {
             target: Vec3::new(cx, 2.4, cy + 2.0),
-            title: "THE HOUSE OF THE DEVIL",
+            title: "THE HOUSE OF SEVEN SEALS",
             body:
-                "No one has ever seen inside it; Krampus carried your friend past it, down to the bottom of the world. A wall of fire guards the volcano until the seal of the seven is broken."
+                "No one has ever seen inside it; Krampus carried Toby past it, down to the bottom of the world. A wall of fire guards the volcano until the seal of the seven is broken."
                     .into(),
             color: 0xff3a2a,
             art: TourArt::Volcano,
