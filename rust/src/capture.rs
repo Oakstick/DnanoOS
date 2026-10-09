@@ -7,6 +7,7 @@
 //! attack, guide, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
 //! up/down/left/right, `look:dx:dy` for a mouse turn in pixels, `nugget`,
 //! `hurt`, `boss` (the F1 cheat), `wound:N` (N damage to the boss), `daze`,
+//! `carve:B:S` (the old man's carvings, B on the blade in hand and S on the shield carried),
 //! `shop` (open the blacksmith), `workshop:S` (the old man's workshop at station S: 0 the anvil,
 //! 1 the shield wall, 2 the alchemy bench, 3 the training yard, 4 the war table, 5 the trophy
 //! wall), `stocked` (sample news, trophies and generals for its walls), `coins:N`, `tab`, `drink`, and `potion:I`
@@ -167,6 +168,8 @@ pub(crate) enum Cmd {
     Patron(usize),
     Outfit(u8),
     Edge(u8),
+    /// The old man's carvings on the blade in hand and the shield carried (WARBAND.md W11).
+    Carve(u8, u8),
     /// The controls page, and its keyboard tab.
     Controls,
     Keyboard,
@@ -331,6 +334,10 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "patron" => Cmd::Patron(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "outfit" => Cmd::Outfit(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "edge" => Cmd::Edge(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
+            "carve" => {
+                let b = parts.next().and_then(|v| v.parse().ok()).unwrap_or(3);
+                Cmd::Carve(b, parts.next().and_then(|v| v.parse().ok()).unwrap_or(b))
+            }
             "controls" => Cmd::Controls,
             "keyboard" => Cmd::Keyboard,
             "block" => Cmd::Press(Action::Block),
@@ -566,6 +573,14 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             let h = game.progress.hero_mut(hero);
             let k = (h.wield - 1) as usize;
             h.edge[k] = n.min(100);
+            game.equip_from_progress();
+        }
+        Cmd::Carve(b, s) => {
+            let hero = game.hero_kind;
+            let h = game.progress.hero_mut(hero);
+            let (w, c) = ((h.wield - 1) as usize, (h.carry - 1) as usize);
+            h.carved[0][w] = b.min(crate::logic::progression::CARVINGS);
+            h.carved[1][c] = s.min(crate::logic::progression::CARVINGS);
             game.equip_from_progress();
         }
         Cmd::Controls => game.open_controls(),

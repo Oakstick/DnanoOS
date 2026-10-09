@@ -424,6 +424,8 @@ impl Game {
         self.hero.path = h.path();
         self.hero.max_hp = self.hero.health_cap();
         self.hero.edge = h.sharpness(h.wield);
+        self.hero.carved =
+            [h.carved(crate::logic::progression::Tree::Armory, h.wield), h.carved(crate::logic::progression::Tree::Shield, h.carry)];
         self.hero.outfit = h.outfit;
     }
 

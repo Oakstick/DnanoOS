@@ -567,6 +567,27 @@ mod tests {
     }
 
     #[test]
+    fn the_old_mans_carvings_spare_the_shield_a_quarter_of_each_blocked_blow_apiece() {
+        let worn = |carved: u8| {
+            let mut g = one_on_one(1.4, true);
+            let tier = g.progress.hero(g.hero_kind).carry;
+            g.progress.hero_mut(g.hero_kind).carved[1][(tier - 1) as usize] = carved;
+            g.hero.shield = Some(gear::ShieldGear::new(tier));
+            let full = g.hero.shield.unwrap().durability;
+            g.input.inject(Action::Block);
+            for _ in 0..(1.2 / STEP) as usize {
+                g.update(STEP);
+            }
+            assert_eq!(g.brawl.as_ref().unwrap().stats.blocks, 1);
+            full - g.hero.shield.unwrap().durability
+        };
+        let (bare, three) = (worn(0), worn(3));
+        assert!(bare > 0, "a block wears the shield");
+        let want = (bare as f64 * crate::logic::progression::carved_share(3, crate::logic::progression::CARVE_WEAR)).round() as i32;
+        assert!((three - want).abs() <= 1, "three carvings: {three} of {bare}");
+    }
+
+    #[test]
     fn f2_brings_him_to_the_far_portal_where_mammon_asks_his_toll() {
         let mut g = in_the_vault();
         let v = g.vault.clone().unwrap();

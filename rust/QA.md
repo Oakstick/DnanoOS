@@ -79,6 +79,8 @@ fixes keep every harness number identical except one whole run (Q3, explained th
 4. **Runes are unused in a whole run.** The expert ends with 63-80 runes unspent in all 8 runs (purse
    228-1442 silver); the adept with 3-21. The relics unseal tiers before runes are wanted (the bots'
    rule never needs them).
+   - **Given a use in W11** (WARBAND.md): the old man's rune-carving at the anvil and the shield
+     wall; the adept now spends 32-68 runes a run, the expert 63-72.
 5. **Word spacing** (Q8) and the **camera regressions** (Q9): fixed on `fixes`.
 
 ## What was checked, and passed

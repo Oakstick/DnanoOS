@@ -34,6 +34,9 @@ pub enum ShopAction {
     Outfit(u8),
     /// Hone the blade in hand back to keen.
     Sharpen,
+    /// The old man carves the next rune into the blade in hand (`Tree::Armory`) or the shield on
+    /// the arm (`Tree::Shield`), for runes (WARBAND.md W11).
+    Carve(Tree),
     /// Forge a broken shield anew.
     Reforge,
     /// Pay for (or unseal with a relic) the next tier of a tree.
@@ -61,6 +64,8 @@ pub enum RowKind {
     Patron,
     Outfit,
     Sharpen,
+    /// The carvings on the blade in hand or the shield on the arm.
+    Carve(Tree),
     Repair,
     Life,
     /// The training yard's trials of mastery.
@@ -213,6 +218,19 @@ impl Game {
         rows
     }
 
+    /// The carving row for the blade in hand (`Tree::Armory`) or the shield he carries
+    /// (`Tree::Shield`): the next carving for its runes, or all three cut.
+    fn carve_row(&self, tree: Tree) -> ShopRow {
+        let h = self.progress.hero(self.hero_kind);
+        let tier = if tree == Tree::Armory { h.wield } else { h.carry };
+        let done = h.carved(tree, tier);
+        let b = match progression::carve_price(done) {
+            Some(runes) => button(ShopAction::Carve(tree), "CARVE", 0, runes, true),
+            None => button(ShopAction::Carve(tree), "CARVED", 0, 0, false),
+        };
+        ShopRow { kind: RowKind::Carve(tree), buttons: vec![b] }
+    }
+
     /// The yard's trial button: the trial that is set, the deeds it waits for, or mastered.
     fn trials_button(&self) -> ShopButton {
         let m = self.progress.hero(self.hero_kind).mastery;
@@ -320,14 +338,18 @@ impl Game {
             rows.push(ShopRow { kind: RowKind::Tier(tree, tier), buttons: vec![b] });
         }
         match tree {
-            Tree::Shield => rows.push(self.shield_row()),
+            // The anvil: the old man's runes for the blade in hand.
+            Tree::Armory => rows.push(self.carve_row(Tree::Armory)),
+            Tree::Shield => {
+                rows.push(self.shield_row());
+                rows.push(self.carve_row(Tree::Shield));
+            }
             Tree::Elixir => {
                 let p = progression::bottle_price(PotionKind::Life);
                 rows.push(ShopRow { kind: RowKind::Life, buttons: vec![button(ShopAction::Life, format!("BUY {p}"), p, 0, true)] });
             }
             // The yard: the trial of mastery that is set, or what it waits for.
             Tree::Path => rows.push(ShopRow { kind: RowKind::Trials, buttons: vec![self.trials_button()] }),
-            _ => {}
         }
         rows.push(leave_row);
         rows
@@ -511,6 +533,31 @@ impl Game {
                     self.equip_from_progress();
                     let n = progression::node(hero, Tree::Armory, h.wield);
                     self.sold(format!("{} IS KEEN AGAIN", n.name.to_uppercase()), n.color);
+                }
+            }
+            ShopAction::Carve(tree) => {
+                let h = *self.progress.hero(hero);
+                let tier = if tree == Tree::Armory { h.wield } else { h.carry };
+                match self.progress.carve(hero, tree, tier) {
+                    Ok(n) => {
+                        self.equip_from_progress();
+                        let node = progression::node(hero, tree, tier);
+                        self.sold(
+                            format!(
+                                "{} CARVED INTO {} - {} OF {}",
+                                progression::carving(hero),
+                                node.name.to_uppercase(),
+                                n,
+                                progression::CARVINGS
+                            ),
+                            progression::carving_color(hero),
+                        );
+                    }
+                    Err(Refusal::Runes(more)) => {
+                        self.audio.play(Sfx::Denied);
+                        self.note(format!("{more} MORE {} TO CARVE IT", progression::gems(hero, more)), 0x9ad1ff);
+                    }
+                    Err(_) => self.audio.play(Sfx::Denied),
                 }
             }
             ShopAction::Reforge => {
