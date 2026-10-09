@@ -1003,3 +1003,42 @@ fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
     assert_eq!(g.bestiary.book.rival("Thibault of Graufels").map(|r| r.name.as_str()), Some("Thibault of Graufels"));
     assert!(all_entries().into_iter().take(12).all(|e| g.bestiary.book.unlocked(e)), "every page still open");
 }
+
+/**
+ * The GPU lost mid-fight (QA.md Q2; the app drops the renderer and starts a new one): whatever save
+ * is marked is on disk before the renderer goes, play waits on the pause menu (and does not begin
+ * again by itself), the level is marked to go up whole to the new renderer, and a line says what
+ * happened; play goes on as before once he resumes.
+ */
+#[test]
+fn a_lost_gpu_saves_first_and_waits_on_the_pause_menu() {
+    let _dir = own_folder("gpu-lost");
+    let mut g = launched();
+    g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Greed), score: 10, lives: 3, belt: Vec::new(), sins: 0 });
+    g.continue_game();
+    assert!(until(&mut g, Screen::Playing, 30.0));
+    for _ in 0..60 {
+        g.update(STEP);
+    }
+    // Silver earned since the checkpoint, its save marked but not yet written.
+    g.progress.silver += 77;
+    g.mark_saves();
+    let silver = g.progress.silver;
+    assert_ne!(super::persist::read_progress().silver, silver, "(not yet on disk)");
+    g.view.static_dirty = false;
+    g.renderer_lost();
+    assert_eq!(super::persist::read_progress().silver, silver, "saved before the renderer goes");
+    assert_eq!(super::save::read_run().map(|r| r.stage), Some(Stage::Realm(Sin::Greed)));
+    assert_eq!(g.screen, Screen::Paused, "play waits for him");
+    assert!(g.view.static_dirty, "the level goes up whole to the new renderer");
+    assert!(g.juice.banner.as_ref().is_some_and(|b| b.text.contains("SCREEN")));
+    let at = g.hero.pos();
+    for _ in 0..(3.0 / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!((g.screen, g.hero.pos()), (Screen::Paused, at), "nothing goes on meanwhile");
+    g.focus_gained();
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Playing, "and on when he resumes");
+}

@@ -293,7 +293,62 @@ impl App {
         self.render();
     }
 
+    /**
+     * The GPU device was lost (QA.md Q2): wgpu would end the process on the next present, so
+     * nothing more is presented. The game saves what is marked and pauses; the old renderer is
+     * dropped with everything it held, and a new one starts as at launch (the engine's loading
+     * screen in the window meanwhile, the game holding), and the level goes up to it whole.
+     */
+    fn restart_renderer(&mut self) {
+        crate::render::gpu::log_gpu_line("the renderer starts again after the device was lost");
+        self.game.renderer_lost();
+        self.set_capture(false);
+        self.gpu = None;
+        self.overlay = Overlay::new();
+        self.frame = Frame::default();
+        if let Some(window) = self.window.clone() {
+            self.start_renderer(&window);
+        }
+    }
+
+    /// Starts the renderer for `window`: on its own thread on the desktop (its shaders take
+    /// seconds to compile, and the window keeps answering), as a task on the web.
+    fn start_renderer(&mut self, window: &Arc<Window>) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // (Its surfaces are made here, where Windows gives out the window's handle.)
+            let size = window.inner_size();
+            let candidates = Gpu::surfaces(Some(window));
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let painted = tx.clone();
+                let gpu = Gpu::start(candidates, (size.width, size.height), move || {
+                    let _ = painted.send(Starting::Painted);
+                });
+                let _ = tx.send(Starting::Ready(pollster::block_on(gpu).map(Box::new)));
+            });
+            self.starting = Some(rx);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let pending = self.pending.clone();
+            let w = window.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let size = w.inner_size();
+                let gpu = Gpu::new(Some(w.clone()), (size.width.max(1), size.height.max(1))).await;
+                *pending.borrow_mut() = Some(gpu);
+                w.request_redraw();
+            });
+        }
+        self.last = Instant::now();
+        window.request_redraw();
+    }
+
     fn render(&mut self) {
+        if self.gpu.as_ref().is_some_and(|g| g.device_lost()) {
+            self.restart_renderer();
+            return;
+        }
         let (Some(window), Some(gpu)) = (&self.window, &mut self.gpu) else { return };
         let size = window.inner_size();
         if size.width == 0 || size.height == 0 {
@@ -339,6 +394,13 @@ impl App {
                 } else {
                     Vec::new()
                 };
+                if gpu.device_lost() {
+                    // Lost during this frame's submit: presenting its texture, or dropping it
+                    // (a discard), would end the process; it is let go with the old renderer,
+                    // which the next frame replaces.
+                    std::mem::forget(tex);
+                    return;
+                }
                 window.pre_present_notify();
                 tex.present();
             }
@@ -474,36 +536,9 @@ impl ApplicationHandler for App {
             self.apply_fullscreen();
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // The renderer takes seconds to start (its shaders compile): on its own thread, so
-            // the event loop keeps answering and Windows never calls the window not responding.
-            // (Its surfaces are made here, where Windows gives out the window's handle.)
-            let size = window.inner_size();
-            let candidates = Gpu::surfaces(Some(&window));
-            let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                let painted = tx.clone();
-                let gpu = Gpu::start(candidates, (size.width, size.height), move || {
-                    let _ = painted.send(Starting::Painted);
-                });
-                let _ = tx.send(Starting::Ready(pollster::block_on(gpu).map(Box::new)));
-            });
-            self.starting = Some(rx);
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let pending = self.pending.clone();
-            let w = window.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let size = w.inner_size();
-                let gpu = Gpu::new(Some(w.clone()), (size.width.max(1), size.height.max(1))).await;
-                *pending.borrow_mut() = Some(gpu);
-                w.request_redraw();
-            });
-        }
-        self.last = Instant::now();
-        window.request_redraw();
+        // The renderer takes seconds to start (its shaders compile): on its own thread, so the
+        // event loop keeps answering and Windows never calls the window not responding.
+        self.start_renderer(&window);
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {

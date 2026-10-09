@@ -584,6 +584,30 @@ impl Game {
         }
     }
 
+    /**
+     * The GPU was lost (a driver reset, sleep and resume, a GPU switch) and the renderer starts
+     * again (QA.md Q2). Nothing of the run is lost: whatever save is marked is written now (as when
+     * the game closes), the game itself goes on in memory, play waits on the pause menu (and play
+     * that would begin by itself waits for him, as when he looks away), the level goes up whole to
+     * the new renderer, and a line tells him what happened when he resumes.
+     */
+    pub fn renderer_lost(&mut self) {
+        self.flush_saves();
+        self.focused = false;
+        self.input.blur();
+        if self.screen == Screen::Playing {
+            self.enter(Screen::Paused);
+        }
+        self.view.static_dirty = true;
+        self.juice.banner = Some(super::Banner {
+            text: "THE SCREEN WAS LOST, AND IS BACK".into(),
+            sub: "NOTHING OF YOUR RUN WAS LOST".into(),
+            color: 0xf2e3c4,
+            life: 4.0,
+            max: 4.0,
+        });
+    }
+
     /// The window has the player's attention again (the pause menu he came back to stays up).
     pub fn focus_gained(&mut self) {
         self.focused = true;
