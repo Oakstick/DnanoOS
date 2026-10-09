@@ -261,19 +261,29 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--court-at") {
         // A prince as the run meets him: `--court-at SIN SKILL KIT KEYS SEED` (Ragnar's kit at KIT,
-        // KEYS other keys held: the court weighed at tier KEYS + 1).
+        // or BLADE/SHIELD/PATH; KEYS other keys held: the court weighed at tier KEYS + 1;
+        // `VH_BELT=N` health bottles on his belt, `VH_MASTERY=N` his rank).
         let sin =
             args.get(i + 1).and_then(|s| void_harvest::logic::sins::Sin::from_name(s)).unwrap_or(void_harvest::logic::sins::Sin::Greed);
         let num = |k: usize, d: u32| args.get(i + k).and_then(|s| s.parse().ok()).unwrap_or(d);
-        let (skill, kit, keys, seed) = (num(2, 2), num(3, 1) as u8, num(4, 0) as usize, num(5, 1));
+        let (skill, keys, seed) = (num(2, 2), num(4, 0) as usize, num(5, 1));
+        // (KIT one tier for every tree, or BLADE/SHIELD/PATH as the run's tables print it.)
+        let tiers: Vec<u8> = args.get(i + 3).map(|s| s.split('/').filter_map(|t| t.trim().parse().ok()).collect()).unwrap_or_default();
+        let kit = tiers.first().copied().unwrap_or(1);
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-balance"));
         let skill = void_harvest::game::bot::Skill::ALL[(skill as usize).min(2)];
-        let l = void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, kit);
+        let mut l = void_harvest::game::bot::Loadout::all(void_harvest::logic::heroes::HeroKind::Ragnar, kit);
+        if let [blade, shield, path] = tiers[..] {
+            (l.blade, l.shield, l.path) = (blade, shield, path);
+        }
         let limit = std::env::var("VH_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(240.0);
         let (slain, secs, phase, left, lost) = void_harvest::game::whole_run::court_at(sin, skill, seed, l, keys, limit);
         println!(
-            "{} {skill:?} kit {kit} tier {}: slain {slain} in {secs:.0} s, phase {phase}, {:.0}% left, {lost} lives lost",
+            "{} {skill:?} kit {}/{}/{} tier {}: slain {slain} in {secs:.0} s, phase {phase}, {:.0}% left, {lost} lives lost",
             sin.prince(),
+            l.blade,
+            l.shield,
+            l.path,
             keys + 1,
             left * 100.0
         );
