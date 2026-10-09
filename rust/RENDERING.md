@@ -1256,6 +1256,7 @@ The realms' and courts' portals keep theirs (`emit_portal` draws the hub's style
     now counts shade 17 as glowing). Lava skips the sun's shadow and the probes: its own glow
     swamps both.
   - One cube replaces about 20,000.
+  - (As first built it was mostly crust; the second pass, below, made it mostly molten.)
 - **The platforms:**
   - Paving of polished basalt (`SHADE_FLAG`) in a basket weave, and a cross of pale dressed stone
     along the ways the bridges come in. A tile's two flags are drawn as one block whose material
@@ -1361,14 +1362,53 @@ The realms' and courts' portals keep theirs (`emit_portal` draws the hub's style
     Cisterns and the meadow.
   - `views.sh` makes them and `sheet.py` lays them out. `abba.sh`, run under `timed.sh` (which
     holds the GPU lock), measures.
+- **The cost** was accepted as it is (about 2.5 to 3.1 ms of a 16.7 ms frame): the portals'
+  orders, the bridges' rope work and the kerbs stay.
+- **Second pass (after review): the fire back.** The first pass's lava was mostly dark crust with
+  a few glowing patches, and its rivers dim dashes: the hub read murky and dead, not infernal (the
+  Garden's first-pass trap: more craft, less character). The lava was reworked; nothing else
+  changed.
+  - **The sea is molten** (`lava_at`): ember to amber, moving visibly (its flow three times
+    faster), with veins of hotter melt drawn along by the current and a slow throb. The crust is
+    only drifting islands, cracked into plates with the heat in the cracks, about a fifth of it.
+    The hottest melt runs to a deep gold and blooms.
+  - **Hottest against the stone:** `hub_nearness` in the shader knows the hub's layout (the 3 by 3
+    of 13-tile squares and the 3-wide spans between them, `logic::hub`), and the melt runs freer
+    and hotter within five tiles of the platforms, the bridges and the volcano.
+  - **The rivers are laid whole:** each a chain of sloping runs of lava along its winding course
+    from the crater's rim to the sea, widening as it comes down, over a bed cut into the ledges.
+    They run bright and unbroken. A block brighter than the sea (`RIVER_GLOW` over `SEA_GLOW`)
+    runs hotter: the rivers, the crater's lake and the falls are open flow.
+  - **The light from below:** the hemisphere from below 0.95 (was 0.62); ten lava lights at once
+    (was six), stronger (2.6) and further (4.2); two lights down each river onto the flanks. The
+    platforms' sides and undersides, the bridges, the portals' bases and the volcano are warm from
+    below.
+  - **Numbers (1080p, high clocks, ABBA against rust-port's original hub):**
+
+    | | Original | After the second pass |
+    |---|---:|---:|
+    | `--bench` 600, the arrival, GPU (3 rounds) | 2.0 to 2.35 ms | 2.5 to 3.05 ms (+20%) |
+    | `--bench` 600, at Wrath's portal, GPU (2 rounds) | 1.6 to 1.95 ms | 2.05 to 2.3 ms (+18%) |
+    | `--perf vista`, wall p50 (GPU p50), 4 runs | 2.26 to 2.35 ms (1.99 to 2.12) | 2.79 to 2.85 ms (2.53 to 2.62) |
+    | `--perf portal`, wall p50 (GPU p50), 4 runs | 2.17 to 2.58 ms (1.72 to 1.92) | 2.42 to 2.48 ms (2.13 to 2.18) |
+    | First frame (vista; portal) | 98 to 126 ms; 104 to 140 ms | 53 to 87 ms; 53 to 79 ms |
+
+    The second pass costs about what the first did: the shader's pattern is no dearer, and the
+    four more lava lights and eight river lights are within the noise.
+  - **Checks:** fmt, clippy (desktop and wasm) and 895 tests (`--test-threads=4`) pass. The
+    harness prints the same as rust-port's apart from its wall-clock lines.
+    `--camera-check hub` is as before.
+  - **Captures:** `side-*.png`, `final-*.png` and `hub-vs-cisterns-meadow*.png` (above) are of
+    this pass, beside rust-port's original hub.
 - **Still open:**
-  - The cost above. Cutting further means trading the portals' orders and crest, the bridges'
-    rope work, or the platforms' kerb and columns.
   - From close in front, the frieze still reads a little as a band laid over the arch.
   - There is no heat shimmer: it needs a refraction pass, which is not nearly free.
-  - The volcano's flanks are a stepped mass of blocks, and its rivers read as dashes from afar.
+  - The volcano's flanks are a stepped mass of blocks; the rivers over them read as smooth
+    ribbons from close by.
   - Paired, the pale processional way takes the wet flagstone's glossy hollows, so it reads a
     little darker than the dressed stone it was.
+  - Far out beyond the hub, where the sea is cooler, a large crust island can fill a view (behind
+    Wrath's portal).
 
 ### Scene I's camera (2026-10-08)
 
