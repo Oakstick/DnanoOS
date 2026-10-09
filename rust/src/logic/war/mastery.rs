@@ -119,7 +119,7 @@ const BERSERKER: Way = Way {
         "A gold glint when a foe's blow is spent: punish it",
         "The finisher breaks harder (+5 poise)",
         "A kill while time is slowed gives back 16 stamina",
-        "WAR CRY (F / L3): body foes about him stagger",
+        "WAR CRY (STEP KEY): body foes about him stagger",
         "Once a pack, a broken guard leaves him guarded",
     ],
 };

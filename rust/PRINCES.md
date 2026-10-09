@@ -147,8 +147,8 @@ coils behind him. He moves over the floor as a duelist like every prince.
 ## 3. Amon, Wrath: the Anvil of Wrath
 
 Amon (the Goetia): a great marquis, a wolf with a serpent's tail who vomits flame; at the
-conjurer's word, a man with a raven's head and a dog's teeth. Wrath's prince here (Satan is the
-last boss). The realm before him is the Burning Field: *"Sound the horn and the battle ends."*
+conjurer's word, a man with a raven's head and a dog's teeth. Wrath's prince here (Binsfeld gave
+wrath to Satan; this game has no Devil, and Krampus is the last boss). The realm before him is the Burning Field: *"Sound the horn and the battle ends."*
 
 **The court.** A ring of black basalt cracked with glowing seams, broken weapons stuck in the
 ground, a great anvil on a dais in the north with a burning throne behind it, war banners on

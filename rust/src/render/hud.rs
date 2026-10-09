@@ -510,6 +510,13 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
     if j.hurt > 0.0 {
         style::vignette(o, t * 3.0, rgba(0xd8262e, flash(0.55 * j.hurt)));
     }
+    // Enthralled in the Garden of Thorns: a rose haze closes in from the edges and his sight narrows
+    // (B18: the spell draws him; it never turns his controls).
+    let haze = g.enthral_haze();
+    if haze > 0.0 {
+        style::vignette(o, t * 9.0, rgba(0xff5a8a, 0.3 * haze));
+        style::vignette(o, t * 4.0, rgba(0xc8306a, 0.4 * haze));
+    }
 
     // Nuggets flying to the counter along an arc, with a short trail.
     let (tx, ty) = key_target(w, h);

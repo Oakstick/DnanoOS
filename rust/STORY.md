@@ -16,7 +16,7 @@ voices), `game/toby.rs`, `game/counsel.rs` (the panel), `render/view/aftermath.r
 | The friend Krampus takes | **Toby** (Tobias) | Kid 0 of the cast: red bobble cap, red scarf, blue coat. After the Book of Tobit, where the archangel Raphael walks beside young Tobias and Asmodeus is driven off; felt in the Lust scene and his bestiary page, never preached. |
 | The old gatekeeper | **Hızır** (Khidr) | The ageless guide who comes to travellers in need when called. Always good, never lies; a kind, ancient, guilty gatekeeper, not a religious figure on screen. He names himself in Scene I's promise. |
 | His dog | **Quitmer** | |
-| The three boys | *not named yet* (open: D10) | Each goes by the warrior he carries: **MEHMED'S BOY** (kid 1: flat cap, yellow scarf, olive coat; steady), **RAGNAR'S BOY** (kid 2: fair, bare-headed, brick-red coat; hot-headed, he screamed "He took him!"), **MIYAMOTO'S BOY** (kid 3: ginger, teal cap and mittens, plum coat; quiet, imaginative). In Scene I the souls rise Mehmed, Ragnar, Miyamoto before the boys left to right and go into them (`tale::boy_of`). |
+| The three boys | *not named yet* (open: D13) | Each goes by the warrior he carries: **MEHMED'S BOY** (kid 1: flat cap, yellow scarf, olive coat; steady), **RAGNAR'S BOY** (kid 2: fair, bare-headed, brick-red coat; hot-headed, he screamed "He took him!"), **MIYAMOTO'S BOY** (kid 3: ginger, teal cap and mittens, plum coat; quiet, imaginative). In Scene I the souls rise Mehmed, Ragnar, Miyamoto before the boys left to right and go into them (`tale::boy_of`). |
 | The souls | jade (Mehmed), steel blue (Ragnar), rose (Miyamoto) | `tale::soul_color`: the boy's name and words in the panel, his outline in the glow. |
 | The House | **The House of Seven Seals** | (was the House of the Devil.) Each prince's key holds one of its seven seals. Its door's banner: THE HOUSE IS EMPTY. / NO THRONE, NO DEVIL. ONLY THE WAY DOWN. |
 
@@ -183,7 +183,7 @@ before it, a breath, an octave beneath or a growl where the voice has one.
 ## 7. What still reads wrong
 
 - **The boys have no names.** The panel says RAGNAR'S BOY and so on. Names would carry them better
-  (D10 in BACKLOG.md).
+  (D13 in BACKLOG.md).
 - The scenes at Hızır's are of one shape and staged still: the boys stand and talk (Mixamo's talking
   clips), nobody picks the thing up or hands it round; the souls stand by but never move.
 - The token in a realm lies near the way in, not on the way to the court; a player rarely misses it,

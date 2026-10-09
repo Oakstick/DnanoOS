@@ -178,6 +178,48 @@ fn the_evade_passes_under_a_slam_and_an_open_hero_pays_for_it() {
     assert_eq!(g.brawl.as_ref().unwrap().hero.reeling(), Some(Reel::Hitstun));
 }
 
+/// B05: Space leaps in a brawl whatever his fighter is doing but reeling or held: out of a swing's
+/// recovery (bare: the slam still lands on him), out of a block's stun; in a prince's fist, never.
+#[test]
+fn space_leaps_out_of_a_swing_or_a_block_but_not_out_of_a_fist() {
+    use crate::logic::combat::fsm::State;
+    let l1 = MoveId::L1.data();
+    // Out of his swing's recovery, before its cancel frame.
+    let mut g = face_off(1, 3.0);
+    g.input.inject(Action::Attack);
+    frames(&mut g, l1.startup + l1.active + 1);
+    assert!(matches!(g.brawl.as_ref().unwrap().hero.attack(), Some((MoveId::L1, crate::logic::combat::Phase::Recovery, _))));
+    g.input.inject(Action::Jump);
+    frames(&mut g, 2);
+    assert!(g.hero.airborne(), "leapt out of the recovery");
+    assert!(g.brawl.as_ref().unwrap().hero.bare_leap(), "bare: no untouchable frames");
+    // Out of a block's stun.
+    let mut g = face_off(1, 3.0);
+    g.brawl.as_mut().unwrap().hero.state = State::Reel { kind: Reel::Blockstun, left: 10, total: 10 };
+    g.input.inject(Action::Jump);
+    frames(&mut g, 2);
+    assert!(g.hero.airborne() && g.brawl.as_ref().unwrap().hero.bare_leap(), "leapt out of the blockstun");
+    // In the fist: nothing.
+    let mut g = face_off(1, 3.0);
+    let id = duel(&g, 0).id;
+    g.brawl.as_mut().unwrap().held = Some(id);
+    g.input.inject(Action::Jump);
+    frames(&mut g, 4);
+    assert!(!g.hero.airborne(), "held, he does not leap");
+    // A bare leap under a slam: it lands on him in the air.
+    let mut g = face_off(1, 1.4);
+    strike(&mut g, MoveId::Slam);
+    let slam = MoveId::Slam.data();
+    frames(&mut g, slam.startup - 6);
+    g.hero.face(Dir::Down);
+    g.brawl.as_mut().unwrap().hero.state = State::Attack { mv: MoveId::L1, frame: l1.startup + l1.active };
+    g.input.inject(Action::Jump);
+    frames(&mut g, 14);
+    let s = g.brawl.as_ref().unwrap();
+    assert_eq!(s.stats.evades, 0, "{:?}", s.stats);
+    assert!(g.hero.hp < g.hero.max_hp, "struck in the air");
+}
+
 /// Walks him to the right for `n` frames (the stick held over); how far he went.
 fn walk(g: &mut Game, n: u16, guard: bool) -> f64 {
     let from = g.hero.pos();

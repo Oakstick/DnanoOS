@@ -367,7 +367,7 @@ const LUST_TASK: [&str; 3] = [
 ];
 
 const LUST_WATCH: &[&str] = &[
-    "Charm fills while you face the Bride or stand in perfume mist. Full, you are enthralled three seconds: your controls turn, and she pulls.",
+    "Charm fills while you face the Bride or stand in perfume mist. Full, you are enthralled three seconds: a rose haze, and she pulls you.",
     "The rose paths heal you, but every one points at her. The thorn paths bite and slow you, and turn your back on her: they are honest.",
     "Stand two seconds in a koi pond to catch a fish, and burn it at a censer: ten seconds of smoke that blocks charm and lights the true paths.",
     "The elf-maids cannot be hurt from the front: strike their hollow backs. A ring of dancing elf-maids drags in whoever comes near.",

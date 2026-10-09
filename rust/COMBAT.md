@@ -4,9 +4,11 @@ The combat loop, defined in frames, formulas and state machines. Code is the
 source of truth: every number below lives in `src/logic/combat/` and is pinned by
 tests (`cargo test combat`). Change the table, then change this document.
 
-Phase 1 runs in **the Sparring Ring** in the gym (west of the arrival platform).
-Everywhere else the game still plays its original contact rules, until the lab
-proves the loop (see the roadmap at the end).
+Phase 1 ran in **the Sparring Ring** in the gym (west of the arrival platform). Today the frame
+data runs every fight from the Portals of Hell down: the Ring, the Vaults of Mammon and the other six
+realms, the seven courts, the Pit and Krampus's lair (`Game::brawling`). The road above them still
+plays the original contact rules: the Garden of Krampus, the Cisterns, the Bone Vaults and the
+Cyclopes' arenas (BACKLOG.md B01-B03 bring them over).
 
 ---
 
@@ -63,7 +65,8 @@ different numbers (§8).
 | **Parry** | guard f2-f9 (8 f, 133 ms) | A hit landing in the window: no damage, no stamina. Attacker → *Deflected* **60 f** (longer than any recovery, so a parry always opens more than a dodge) and loses 50% of max poise. A hex bolt is **reflected** (×1.5 damage to foes). |
 | Block | after f9 | Stamina − **0.7** × damage (the training buckler's 30% stability). Hero → *Blockstun* 6 + dmg/3 f (he walks on at his guard's pace). |
 | Guard break | block with stamina < cost | 50% damage through, hero → *GuardBroken* 48 f, stamina → 0. He walks on at his whole pace. |
-| Evade (Space / A) | 25 f airborne + 6 f landing | The leap. **Airborne = i-frames** (f0-f24), then 6 f landing recovery. Cancels any startup frame, or recovery from its cancel frame. |
+| Evade (Space / A) | 25 f airborne + 6 f landing | The leap. **Airborne = i-frames** (f0-f24), then 6 f landing recovery. From neutral or the guard, any startup frame, or recovery from its cancel frame. |
+| Bare leap (Space / A) | the same 25 + 6 f | **Space always leaps** in a fight (B05): out of a recovery *before* its cancel frame, or out of a block's stun, it is the same leap with **no i-frames** (a blow reaches him in the air), so a whiffed swing's punish window stays honest. Never from the active frames, hitstun, a broken guard, Mammon's grasp or death: a press there waits in the 8 f buffer and leaps the frame they end. |
 | Hit taken | hitstun 10 + dmg/2 f | Then **30 f mercy** i-frames, so two attacks can't stack into one combo. The formula of §2 applies to him too: a foe that catches his recovery deals ×1.25, a broken guard ×1.5. |
 | No hit-lock | any reel | Hitstun, blockstun and a broken guard keep him from swinging and guarding for their frames, and nothing else: he walks at his whole pace through them (`Fighter::stride`). Only his own swing plants him. No foe slows him but the bog slime's trail. |
 | Soft lock | at Began and the first active frame | The swing turns onto the nearest foe within its reach + 1 tile and 46° of his facing, and he turns with it. Four keys and a stick are coarse. |
@@ -155,9 +158,13 @@ pub enum State {
 | Attack: Startup | Evade | Evade{0} | **startup cancel** (feint out) |
 | Attack: Active | anything | — | **no cancels**: commitment |
 | Attack: Recovery ≥ cancel | Attack | Attack{chain, 0} | chain exists |
+| Attack: Recovery < cancel | Evade | Evade{0}, bare | **recovery leap**: no i-frames (`Event::Leap`, `Fighter::leap`) |
 | Attack: Recovery ≥ cancel | Evade / Guard | Evade{0} / Guard{0} | |
 | Attack: frame = total | — | Neutral | starts the 12 f chain grace |
 | Guard | release | Neutral | |
+| Guard | Evade | Evade{0} | |
+| Reel{Blockstun} | Evade | Evade{0}, bare | no i-frames (the stun is open to the next blow anyway) |
+| Reel{Hitstun / GuardBroken} | Evade | — | held in the buffer: leaps the frame the reel ends |
 | Evade: frame = 31 | — | Neutral | an attack buffered in landing fires at f31 |
 | any but Dead | hit, Π ≥ armor | Reel{Hitstun, H(n)} | interrupts the move; the token is revoked |
 | any but Dead | poise ≤ 0, resolve 0 | Reel{Staggered} | |
@@ -170,6 +177,13 @@ tries to consume it, so a press made early in L1 comes out as L2 on L2's first l
 frame, and a press during hitstun comes out the frame the hitstun ends. A press made in a
 hitstop freeze (when no frame runs) is kept and reaches the buffer on the first frame after
 it, fresh: the buffer ages on frames, and none pass in a freeze (`Game::play_step`).
+
+**One verb (B05):** in every brawl (the Ring, the Vaults, the realms, the courts, the Pit, the lair)
+Space is the fighter's `Evade` press, and it always leaps but in the states above; outside brawls
+it is the plain leap. The adept and expert bots hold a press back while the leap would be bare and
+press it on the first frame it is an evade (`Fighter::leap_kind`); measured against rust-port 0ea0616 that moved
+only Krampus's fight (the expert 0.1 min longer, 59 → 0 damage taken in order 1) and the adept's
+FIRE AND ICE bout (taken 148 → 154, blocks 5.5 → 4, of 2 seeds; still 0%).
 
 ---
 
@@ -568,7 +582,7 @@ where it is fought:
 | Threat | 3 points, a token per 30 f | **2 points, a token per 60 f**: a pack is a fight, not a pile-on |
 | His health | a lost bout, never death | real: lives, the dying, the packs back asleep at their posts and whole |
 | His gear | never worn | his shield wears as it blocks and breaks for good; his blade dulls as it strikes |
-| Blows from outside the frame data | nothing (the lab is pure) | a plain blow through the fighter (a bomb, an archangel's fire: 20 damage, 30 poise) |
+| Blows from outside the frame data | nothing (the lab is pure) | a plain blow through the fighter (an archangel's fire, a spirit: 20 damage, 30 poise; bombs are out of play) |
 | A kill | gone | gone, with its coins, rune chance, streak and points, and 20% a health potion |
 
 The kit is refreshed every frame, so a dulled blade, a broken shield or a potion counts at once
@@ -837,7 +851,7 @@ lab's choices are the same table as before.
 ### 11.4 What the guard can do
 
 * **Guarding:** most blows are blocked or parried. A grab is parried only (`GuardRule::ParryOnly`).
-  A burrow's mark on the floor is neither (`GuardRule::Bare`): he walks out of it, or leaps. The leap is airborne, and every blow passes under it.
+  A burrow's mark on the floor is neither (`GuardRule::Bare`): he walks out of it, or leaps. The evade is airborne, and every blow passes under it (not under a bare leap, §1.2).
 * **Nothing holds him:** no legend pins, grabs, roots, freezes, stuns past the ordinary hitstun,
   or drags him. (The pin, the grab's hold, the roots, the freeze, the long stun and the call's
   pull were cut: the bites they dealt went into the blows.)

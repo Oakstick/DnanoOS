@@ -46,9 +46,16 @@ pub const CHARM_MIST: f64 = 10.0;
 pub const CHARM_DRAIN: f64 = 15.0;
 /// How far off her bearing he may face and still be facing her (radians: 45 degrees).
 pub const FACING_HALF_ANGLE: f64 = std::f64::consts::FRAC_PI_4;
-/// Enthralled: for this long, his controls mirrored and drawn toward her this fast (tiles a second).
+/// Enthralled: for this long, drawn toward her this fast (tiles a second), a drift he can walk
+/// against at what is left of his pace. It never turns his controls (B18).
 pub const ENTHRAL_SECONDS: f64 = 3.0;
 pub const ENTHRAL_PULL: f64 = 3.0;
+
+/// How deep the spell's haze is with `left` seconds of it to run, 0 to 1: all at once as it takes
+/// him (with the bells and the shake), thinning over its last half second.
+pub fn enthral_haze(left: f64) -> f32 {
+    (left / 0.5).clamp(0.0, 1.0) as f32
+}
 /// Where charm falls back to when the spell breaks.
 pub const CHARM_AFTER: f64 = 45.0;
 /// The thorns: health a second while he walks them, and the pace they leave him.

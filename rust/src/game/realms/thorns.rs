@@ -1,8 +1,10 @@
 //! The Garden of Thorns in play (Lust's realm, REALMS.md §6; laid out in `logic::realms::thorns`).
 //!
 //! - **Charm** fills while he faces the Bride (within 45 degrees of her bearing) and in the perfume
-//!   mist, and drains otherwise; full, it leaves him Enthralled for three seconds, his controls
-//!   mirrored and drawn toward her. She stands always ahead on the rose path he walks, so walking
+//!   mist, and drains otherwise; full, it leaves him Enthralled for three seconds: drawn toward her
+//!   (a drift he can walk against, slower), a rose haze closing in round him and the rose paths, her
+//!   false ways, glowing. His controls stay his own (B18: nothing turns them, PRINCES.md §0). She
+//!   stands always ahead on the rose path he walks, so walking
 //!   one is facing her; the rose paths heal him for it. The thorn paths bite and slow him, and
 //!   walking them turns his back on her.
 //! - **Tobit's cure:** a koi caught in a pond and burnt at a censer makes ten seconds of smoke that
@@ -646,13 +648,16 @@ impl Game {
         });
     }
 
-    /// The controls as the realm leaves them (`Game::steer_run`): mirrored while he is enthralled.
+    /// The controls as the realm leaves them (`Game::steer_run`): his own, enthralled or not. (The
+    /// spell draws him toward her in `thorns_charm`; it never turns his controls, B18.)
     pub(in crate::game) fn steer_thorns(&mut self, wanted: Dir) -> Dir {
-        if self.thorns().is_some_and(|t| t.enthralled > 0.0) {
-            self.hero.wish = V::new(-self.hero.wish.x, -self.hero.wish.y);
-            return wanted.opposite();
-        }
         wanted
+    }
+
+    /// How deep the spell's haze is now, 0 to 1 (the HUD's rose vignette; the garden's fog closes
+    /// in by the same measure).
+    pub fn enthral_haze(&self) -> f32 {
+        self.thorns().map(|t| enthral_haze(t.enthralled)).unwrap_or(0.0)
     }
 
     /// After a fall, as he rises at the checkpoint (and as the realm is first entered): the spell
@@ -790,8 +795,63 @@ mod tests {
         assert!(d < c - 10.0, "a second with his back to her drains it: {c} -> {d}");
     }
 
+    /// Walks him with the stick held `stick` for `secs`; how far and which way he went.
+    fn walk(g: &mut Game, stick: (f32, f32), secs: f64) -> V {
+        let from = g.hero.pos();
+        for _ in 0..(secs / STEP).round() as usize {
+            g.input.set_pad(Some(crate::input::PadState { left: stick, ..Default::default() }));
+            g.update(STEP);
+        }
+        g.input.set_pad(None);
+        math::sub(g.hero.pos(), from)
+    }
+
     #[test]
-    fn full_charm_enthrals_him_mirrors_his_steering_and_draws_him_to_her() {
+    fn enthralled_his_stick_still_goes_where_he_pushes_it_against_her_pull() {
+        let mut g = garden();
+        g.hero.free_move = true;
+        g.enemies.clear();
+        g.refresh_foe_views();
+        // (The court where he arrives, three tiles in: open ground, the Bride on her dais at its far end.)
+        let a = t(&g).base.arrival;
+        let p = P::new(a.x - 3, a.y);
+        let from = |g: &mut Game| {
+            g.hero.place(p);
+            g.hero.face(Dir::Left);
+            let t = t_mut(g);
+            t.charm = 0.0;
+            t.enthralled = 0.0;
+        };
+        // Free, each way of the stick: which one carries him furthest from her.
+        let mut away = None;
+        for stick in [(0.0, 1.0), (0.0, -1.0), (1.0, 0.0), (-1.0, 0.0)] {
+            from(&mut g);
+            let her = t(&g).bride;
+            let d = walk(&mut g, stick, 0.5);
+            let off = -math::dot(d, toward(p.v(), her));
+            if away.is_none_or(|(_, _, o)| off > o) {
+                away = Some((stick, d, off));
+            }
+        }
+        let (stick, free, off) = away.unwrap();
+        assert!(off > 1.0, "free, he walks away from her: {free:?}");
+        // Enthralled, the same stick: the same way (never mirrored), slower against her pull.
+        from(&mut g);
+        t_mut(&mut g).enthralled = ENTHRAL_SECONDS;
+        let held = walk(&mut g, stick, 0.5);
+        assert!(t(&g).enthralled > 0.0);
+        let along = math::dot(held, math::norm(free));
+        assert!(along > 0.3, "enthralled, he still goes where he pushes: {held:?} against {free:?}");
+        assert!(math::len(held) < math::len(free) - 0.5, "slower against her pull: {held:?} against {free:?}");
+        for d in [Dir::Up, Dir::Down, Dir::Left, Dir::Right] {
+            g.hero.wish = d.vecf();
+            assert_eq!(g.steer_thorns(d), d, "the controls his own");
+            assert_eq!(g.hero.wish, d.vecf());
+        }
+    }
+
+    #[test]
+    fn full_charm_enthrals_him_and_draws_him_to_her() {
         let mut g = garden();
         g.hero.free_move = true;
         let (p, _) = west_side(&g);
@@ -802,10 +862,7 @@ mod tests {
         g.update(STEP);
         assert!(t(&g).enthralled > 0.0, "enthralled");
         assert!(g.floaters.iter().any(|f| f.text == "ENTHRALLED"));
-        assert_eq!(g.steer_thorns(Dir::Left), Dir::Right, "his controls mirrored");
-        g.hero.wish = V::new(1.0, 0.0);
-        g.steer_thorns(Dir::Right);
-        assert_eq!(g.hero.wish, V::new(-1.0, 0.0));
+        assert!(g.enthral_haze() > 0.0, "the haze closes in");
         // Drawn toward her (she stands up the path, on its outer hedge).
         let her = t(&g).bride;
         let before = math::len(math::sub(g.hero.pos(), her));
@@ -815,7 +872,9 @@ mod tests {
         // The spell lasts three seconds, then breaks.
         run(&mut g, 2.2);
         assert_eq!(t(&g).enthralled, 0.0);
-        assert_eq!(g.steer_thorns(Dir::Left), Dir::Left);
+        assert_eq!(g.enthral_haze(), 0.0);
+        let c = t(&g).charm;
+        assert!((CHARM_AFTER..CHARM_AFTER + 10.0).contains(&c), "and charm falls back: {c}");
     }
 
     #[test]

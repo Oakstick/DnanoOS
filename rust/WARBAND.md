@@ -774,11 +774,14 @@ moment the end begins until the New Game+ it offers reaches its first checkpoint
 | `vh.ngplus`, `.kit`, `.rivals` | the offer, across runs | its level (1 to 3), the kit and purse, the Ledger's living rivals |
 | `vh.run` | the run | a New Game+ run's checkpoint is a "v3" line ending in its level (a first run's stays "v2") |
 
-"A tier harder" is an offset on top of the numbers, never a change to them: `Game::realm_tier` is
-1 + keys held + the level, so the dealer deals a stage deeper (to the seventh), packs grow and weigh
-as a later realm's, each prince fights at the next tier (`court::weight`), the Pit and Krampus too
-(`lair_weight`); the Garden brings a stage deeper (`foe_stage_of`). Whatever the princes' and foes'
-own numbers become, the offset composes with them; a first run (level 0) is untouched.
+"Tiers harder" is an offset on top of the numbers, never a change to them: `Game::realm_tier` is
+1 + keys held + `NG_TIERS` (2) for each level, so the dealer deals two stages deeper (to the
+seventh), packs grow and weigh as a later realm's, each prince fights two tiers up for each level
+(`court::weight`), the Pit and Krampus too (`lair_weight`); the Garden brings two stages deeper
+(`foe_stage_of`). On top of the offset the New Game+ multipliers (`NG_PRINCE`, `NG_KRAMPUS`,
+`NG_FOES`, below) weigh the princes, Krampus and every other foe. Whatever the princes' and foes'
+own numbers become, both compose with them; a first run (level 0) is untouched. (The first table
+below was measured at one tier a level, before either; what follows it brings it to today's.)
 
 `--run SKILL SEED ORDER ng+N` plays the whole run, then New Game+ N times over with what it left (a
 run that did not reach the end hands on what it had where it stopped), and prints the last.

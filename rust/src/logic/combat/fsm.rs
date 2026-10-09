@@ -88,6 +88,9 @@ pub enum Event {
     Ended(MoveId),
     /// The fighter evades now: the owner starts the leap and calls `evade`.
     Evade,
+    /// The fighter leaps now out of a committed state (an attack's recovery before its cancel frame,
+    /// a block's stun): the owner starts the leap and calls `leap`. It carries no untouchable frames.
+    Leap,
     /// A reel ran out.
     Recovered(Reel),
 }
@@ -182,6 +185,8 @@ pub struct Fighter {
     grace: Option<(MoveId, u16)>,
     buffer: Option<(Input, u16)>,
     guard_lock: u16,
+    /// The leap under way cut a committed state short: nothing passes under him.
+    bare: bool,
 }
 
 impl Fighter {
@@ -204,6 +209,7 @@ impl Fighter {
             grace: None,
             buffer: None,
             guard_lock: 0,
+            bare: false,
             table: MoveId::HERO.map(MoveId::data),
             parry_to: PARRY_TO,
             evade_total: EVADE_TOTAL,
@@ -347,9 +353,21 @@ impl Fighter {
         true
     }
 
-    /// The leap took off.
+    /// The leap took off: an evade, untouchable while in the air.
     pub fn evade(&mut self) {
         self.state = State::Evade { frame: 0 };
+        self.bare = false;
+    }
+
+    /// The leap took off out of a committed state: the same leap, but nothing passes under him.
+    pub fn leap(&mut self) {
+        self.state = State::Evade { frame: 0 };
+        self.bare = true;
+    }
+
+    /// In a leap that carries no untouchable frames (`leap`, not `evade`).
+    pub fn bare_leap(&self) -> bool {
+        self.bare && matches!(self.state, State::Evade { .. })
     }
 
     pub fn kill(&mut self) {
@@ -461,6 +479,27 @@ impl Fighter {
         }
     }
 
+    /// What a leap pressed now would be: free, an evade; out of a recovery before its cancel frame
+    /// or a block's stun, a bare leap (the punish window stays honest); in the active frames, a
+    /// hitstun, a broken guard or the leap itself, none (the press waits in the buffer).
+    pub fn leap_kind(&self) -> Option<Event> {
+        match self.state {
+            State::Neutral | State::Guard { .. } => Some(Event::Evade),
+            State::Attack { mv, frame } => {
+                let d = self.data(mv);
+                if frame < d.startup || frame >= d.cancel_frame() {
+                    Some(Event::Evade)
+                } else if frame >= d.startup + d.active {
+                    Some(Event::Leap)
+                } else {
+                    None
+                }
+            }
+            State::Reel { kind: Reel::Blockstun, .. } => Some(Event::Leap),
+            _ => None,
+        }
+    }
+
     /// Takes the buffered press if the state allows it (the cancel rules of COMBAT.md §3).
     fn consume(&mut self, input: Input, ev: &mut Vec<Event>) -> bool {
         match input {
@@ -480,30 +519,23 @@ impl Fighter {
                 true
             }
             Input::Evade => {
-                let free = match self.state {
-                    State::Neutral | State::Guard { .. } => true,
-                    State::Attack { mv, frame } => {
-                        let d = self.data(mv);
-                        frame < d.startup || frame >= d.cancel_frame()
-                    }
-                    _ => false,
-                };
-                if free {
-                    ev.push(Event::Evade);
+                let leap = self.leap_kind();
+                if let Some(e) = leap {
+                    ev.push(e);
                 }
-                free
+                leap.is_some()
             }
         }
     }
 
     /**
-     * A blow reached the hero: in the air it passes under him, in his mercy frames it does nothing; on a raised
+     * A blow reached the hero: in the air it passes under him (not in a bare leap), in his mercy frames it does nothing; on a raised
      * guard from the front it is parried (the window), blocked (if he has the `stamina` for its
      * `cost`), or it breaks the guard, as far as `rule` lets the guard count. Otherwise he is
      * open, and the owner applies the hit.
      */
     pub fn defend(&mut self, airborne: bool, from_front: bool, stamina: f64, cost: f64, rule: GuardRule) -> Defense {
-        if airborne {
+        if airborne && !self.bare_leap() {
             return Defense::Evaded;
         }
         if self.mercy > 0 {
@@ -651,10 +683,107 @@ mod tests {
         let mut f = Fighter::hero();
         let log = run(&mut f, 6, &[(0, Input::Attack), (3, Input::Evade)]);
         assert!(log.contains(&(3, Event::Evade)), "out of the startup");
+        // Pressed in the active frames, it waits for them to end and leaps (bare) on the first
+        // recovery frame; past the cancel frame it is a full evade again.
+        let l1 = MoveId::L1.data();
         let mut f = Fighter::hero();
         let log = run(&mut f, 30, &[(0, Input::Attack), (7, Input::Evade)]);
-        let at = log.iter().find(|e| e.1 == Event::Evade).map(|e| e.0);
-        assert_eq!(at, Some(MoveId::L1.data().cancel_frame()), "held through the active frames, out at the cancel frame");
+        let at = log.iter().find(|e| matches!(e.1, Event::Evade | Event::Leap)).copied();
+        assert_eq!(at, Some((l1.startup + l1.active, Event::Leap)), "held through the active frames, out as they end");
+        let mut f = Fighter::hero();
+        let log = run(&mut f, 30, &[(0, Input::Attack), (l1.cancel_frame(), Input::Evade)]);
+        assert!(log.contains(&(l1.cancel_frame(), Event::Evade)), "from the cancel frame on, an evade");
+    }
+
+    /// B05: Space leaps from every state but a hitstun, a broken guard (and a hold, the game's) and
+    /// death. Presses `Evade` on a copy of `f` and steps it `frames` frames; the leap it brings
+    /// about (on its first frame, the owner starting it) and whether a blow in the air then
+    /// passes under him.
+    fn leap_from(f: &Fighter, frames: u16) -> Option<(u16, Event, Defense)> {
+        let mut f = f.clone();
+        f.press(Input::Evade);
+        for t in 0..frames {
+            if let Some(e) = f.step().into_iter().find(|e| matches!(e, Event::Evade | Event::Leap)) {
+                if e == Event::Evade {
+                    f.evade();
+                } else {
+                    f.leap();
+                }
+                return Some((t, e, f.defend(true, true, 100.0, 15.0, GuardRule::Full)));
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn space_leaps_from_every_state_but_hitstun_a_broken_guard_and_death() {
+        let air = (Event::Evade, Defense::Evaded);
+        let bare = (Event::Leap, Defense::Open);
+        let only = |r: Option<(u16, Event, Defense)>| r.map(|r| (r.1, r.2));
+        // Neutral: an evade, its 25 frames in the air untouchable.
+        let f = Fighter::hero();
+        assert_eq!(leap_from(&f, 1), Some((0, Event::Evade, Defense::Evaded)), "neutral");
+        // The guard raised: an evade.
+        let mut f = Fighter::hero();
+        f.guard_held = true;
+        for _ in 0..4 {
+            f.step();
+        }
+        assert!(matches!(f.state, State::Guard { .. }));
+        assert_eq!(only(leap_from(&f, 1)), Some(air), "guard");
+        // An attack's startup: an evade (it cancels the swing).
+        let l1 = MoveId::L1.data();
+        let mut f = Fighter::hero();
+        f.press(Input::Attack);
+        for _ in 0..3 {
+            f.step();
+        }
+        assert_eq!(f.attack().map(|a| a.1), Some(Phase::Startup));
+        assert_eq!(only(leap_from(&f, 1)), Some(air), "attack startup");
+        // Its recovery before the cancel frame: a bare leap, struck in the air (the punish window
+        // stays honest); from the cancel frame on, an evade.
+        let mut f = Fighter::hero();
+        f.press(Input::Attack);
+        for _ in 0..=l1.startup + l1.active {
+            f.step();
+        }
+        assert_eq!(f.attack().map(|a| a.1), Some(Phase::Recovery));
+        assert_eq!(only(leap_from(&f, 1)), Some(bare), "attack recovery");
+        for _ in l1.startup + l1.active + 1..=l1.cancel_frame() {
+            f.step();
+        }
+        assert_eq!(only(leap_from(&f, 1)), Some(air), "past the cancel frame");
+        // A block's stun: a bare leap.
+        let mut f = Fighter::hero();
+        f.guard_held = true;
+        for _ in 0..12 {
+            f.step();
+        }
+        assert_eq!(f.defend(false, true, 100.0, 15.0, GuardRule::Full), Defense::Blocked);
+        assert_eq!(f.reeling(), Some(Reel::Blockstun));
+        assert_eq!(only(leap_from(&f, 1)), Some(bare), "blockstun");
+        // Hitstun and a broken guard: no leap; a press in their last BUFFER frames comes out (an
+        // evade) on the frame they end, one before that is dropped.
+        for kind in [Reel::Hitstun, Reel::GuardBroken] {
+            let mut f = Fighter::hero();
+            f.state = State::Reel { kind, left: 20, total: 20 };
+            assert_eq!(leap_from(&f, 40), None, "{kind:?}: pressed 20 frames before it ends");
+            f.state = State::Reel { kind, left: BUFFER, total: 20 };
+            assert_eq!(leap_from(&f, 40), Some((BUFFER - 1, Event::Evade, Defense::Evaded)), "{kind:?}: buffered");
+        }
+        // Dead: nothing.
+        let mut f = Fighter::hero();
+        f.kill();
+        assert_eq!(leap_from(&f, 40), None, "dead");
+        // A bare leap lands as an ordinary one: the next evade is untouchable again.
+        let mut f = Fighter::hero();
+        f.leap();
+        assert!(f.bare_leap());
+        for _ in 0..f.evade_total {
+            f.step();
+        }
+        assert!(f.is_neutral() && !f.bare_leap());
+        assert_eq!(only(leap_from(&f, 1)), Some(air));
     }
 
     #[test]
