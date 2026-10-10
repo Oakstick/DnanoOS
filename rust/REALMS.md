@@ -11,6 +11,31 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
 | Gluttony | The Rotting Feast · Beelzebub | Architectural Transition Seams | *"Finish your plate, and you may leave."* | The stomach convulses, and only a lean hero fits the way out |
 | Lust | The Garden of Thorns · Asmodeus | Focal Landmark Anchors | *"Turn around."* | The Bride walks up behind you; one look makes you her eighth groom |
 
+## The structure since B41: fight, three generals, three keys, the prince's door
+
+(BACKLOG B40, B41, D11, D12, 2026-10-10.) Every realm, the vaults with them, is about fighting
+through it, beating its **three generals**, taking **their three keys** and opening **the door to
+the prince's court**, sealed with a "3 KEYS" lock until then (WARBAND.md §9.3 has the generals, their
+orders and their instruments). No prince makes a deal (B40: Mammon's toll and the crooked bargain are
+gone); the princes' lies stay, each with its tell (D11). **The climaxes below stay, as the road to
+the third general**: where the old design opened the court's portal, the climax now ends and its
+general comes out before the portal a breath later, with his guard; the door opens only with all
+three keys. The first two generals hold rooms of the realm, each with his own guard pack, on
+ground the hero reaches on foot where the realm has rooms enough there.
+
+| Realm | The first two (rooms of the realm) | The climax's road leads to |
+|---|---|---|
+| The Vaults of Mammon | the Assessor, the Hoard-Hound | (no climax) the Usurer, in a room near the door |
+| The Hall of Mirrors | the Chamberlain of Glass, the Peacock Guard | the Peerless shattered: **the Mirror-Cin**, at the spire's foot |
+| The Serpent Grotto | the Bell-Warden, the Cobra Priestess | Kiyohime's bell survived, the seam dived: **Kiyohime**, on the Drowned Floor before the portal |
+| The Burning Field | Marshal Gorebrand, the Wolf-Coat | the truce stone held: **the Carrion Herald**, on the hill |
+| The Grey Mire | the Lamplighter, Ganglati | the Long Sleep outlasted (or slept through): **the Night Hag**, out of Hel's bed |
+| The Rotting Feast | the Steward of the Last Course, the Starved Knight | the gullet: **the Gingerbread Witch** at the table at the Stomach's heart (a seam's teeth stay shut while a general holds the zone before it; the pylorus parts for the lean key-bearer) |
+| The Garden of Thorns | the Bridesmaid, the Matchmaker | the wedding night survived: **the Thorn-Warden**, out of the Black Thorn |
+
+In the sections below, wherever a climax "opens the court's portal" or "the gate", read: it ends,
+and its general comes out; the door waits for the keys.
+
 ---
 
 ## 1 · PRIDE: The Hall of Mirrors
@@ -68,7 +93,7 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
     - **Bait the echo.** Throw a single L1 and raise your guard as it ends. The copy lands inside your parry window, which Deflects it for 60 f, so punish with a full chain.
     - **Strike only while it reels.** A Deflected echo drops the moves it missed, so your punish isn't copied back. A chain thrown at a standing echo is copied, straight into your own recovery.
     - **Never leap toward it.**
-    - **Break the symmetry.** Potions and blessings aren't copied, because grace can't be mirrored. Drink, and it stands posing, open, for 40 f.
+    - **Break the symmetry.** Potions and archangels' powers aren't copied, because grace can't be mirrored. Drink, and it stands posing, open, for 40 f.
     - **Shrink it first.** Humble yourself before the dais (take a hit, or drink) to face a smaller echo.
   - **The way out is down:** the Peerless shatters, the floor gives way, and you fall the full length of the spire. Lucifer's court was at its foot all along. *How art thou fallen.*
 
@@ -117,7 +142,7 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
     - Each phantom you chase costs a dive, a geyser ride back and 10–15 s.
   - **The Eye:** every 20 s or so it opens and sweeps a green cone for 6 s.
     - If it sees you, you are **Doomed**: your next wound deals ×1.3.
-    - Use a blessing, a potion or a rune while it watches, and the grotto takes it. The nearest native keeps it until you kill it: a cobra throws your Raphael beam, a kappa drinks your potion.
+    - Call an archangel, drink a potion or use a rune while it watches, and the grotto takes it. The nearest native keeps it until you kill it: a cobra throws your Raphael beam, a kappa drinks your potion.
   - **The ward:** about one nazar bead per cavern, on either layer. A bead takes one gaze whole, then cracks audibly on your belt. Phantom beads glitter on the other layer to bait dives.
   - **Manipulation:** the other side always looks richer, and you bleed time and beads chasing the second picture.
 - **The Climax: Kiyohime's Bell**
@@ -126,7 +151,7 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
   - **Punishment:**
     - The outer tile scorches (5 health every 20 f), and the safe circle shrinks by a ring every 6 s.
     - Steam vents burst in rings.
-    - The Eye watches through the bell's sound-hole, so any blessing you use inside is stolen.
+    - The Eye watches through the bell's sound-hole, so any archangel you call inside is stolen (sent away, B58).
     - When the disc is gone, the bell crushes you, and you surface at the mouth of the cavern.
   - **Survive it:**
     - **Find the head.** Where the serpent's head presses, the bronze glows white. Strike that patch with your L3; after three recoils it uncoils, and the bell lifts for **1 s**.
@@ -155,7 +180,7 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
 **Folklore Integration**
 - **Amon** (*Ars Goetia*): a wolf with a serpent's tail vomiting flame, or a man with a raven's head, who "procures feuds".
   - His wolves and ravens hold the field.
-  - **Michael's** fire, which turns foes on each other, is this realm's best blessing: let them feud.
+  - **Michael's** fire, which turns foes on each other, is this realm's best archangel: let them feud.
 - **The Einherjar of Valhalla** fight all day, rise at evening and fight again. Here, everything slain rises at the next lightning flash.
 - **Berserkergang,** the wolf-coat frenzy of the *úlfheðnar*, becomes Fury.
 - **Goryō:** the rage of the wronged dead, falling as lightning. They ride the storm.
@@ -238,7 +263,7 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
     - The tower stands on the giant's palm.
     - After 3 s of moving, the hand withdraws (1 tile/s). While you stand still, it curls toward you (1.5 tiles/s).
     - The goal comes to those who wait: Sloth's own argument.
-  - **Bearing:** a loud fight near the giant's head (three or more foes engaged, or any blessing) makes him turn in his sleep.
+  - **Bearing:** a loud fight near the giant's head (three or more foes engaged, or any archangel called) makes him turn in his sleep.
     - Over 3 s the land rotates 90° round the hourglass.
     - The tower stays put. The chapel, the dead oak and every causeway you mapped swing to new bearings.
 - **False anchors:** the marsh-lights look like lanterns along a path, but they always hover over bog holes.
