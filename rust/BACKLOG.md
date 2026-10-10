@@ -34,10 +34,10 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D17 | B43 template: Lucifer first, built with B11 Pride's art pass (more spectacle), or Mammon first (his court's art is done; less spectacle)? **Decided: Lucifer first**, built with B11 Pride's art pass. | B43 |
 | D18 | B43: Asmodeus's dragon mount left out for now (L on its own)? | B43 |
 | D19 | B43 Krampus's finale: Toby unties the red ribbon (Krampus loses Birch Lash), and the seven seal-stones rise and burn his pelt away. Approve? **Decided: approved** as written. | B43 |
-| D20 | B63: who offers the temptation? Proposed: **the sin itself** (a voice and a glowing altar at the court door, in the sin's colour), not the prince, so B40 (princes never deal) holds. | B63 |
-| D21 | B63: when? Proposed: **at the court door, once the three generals' keys are held** (B41), before the prince. | B63 |
-| D22 | B64: Hızır only between levels: does the B guide (his pages) stay usable in a level, or only the call (E/Y) goes? | B64 |
-| D23 | B65: what counts as the level's hoard? Proposed: the silver, runes, chest loot, relics and Toby's token found in that realm; potions drunk and mastery earned stay spent/earned. | B65 |
+| D20 | B63: who offers the temptation? Proposed: **the sin itself** (a voice and a glowing altar at the court door, in the sin's colour), not the prince, so B40 (princes never deal) holds. **Decided: the sin itself** (a voice and an altar in its colour at the court door). | B63 |
+| D21 | B63: when? Proposed: **at the court door, once the three generals' keys are held** (B41), before the prince. **Decided: at the court door**, once the three keys are held. | B63 |
+| D22 | B64: Hızır only between levels: does the B guide (his pages) stay usable in a level, or only the call (E/Y) goes? **Decided: the pages stay readable**; only the call in person (E/Y) waits until between levels. | B64 |
+| D23 | B65: what counts as the level's hoard? Proposed: the silver, runes, chest loot, relics and Toby's token found in that realm; potions drunk and mastery earned stay spent/earned. **Decided: loot and finds** (silver, runes, chest loot, relics, Toby's token); potions drunk stay used, mastery stays earned. | B65 |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
@@ -141,10 +141,10 @@ The gifts:
 • **Envy:** "you found Krampus's crown: be the new King of the Underworld" (the user's).
 • **Greed:** "keep all the gold" (the toll as built).
 Proposals for the rest:
-• **Wrath:** "the Fury": every blow kills and the world burns, but you can never stop attacking. Asked at the end: "keep your fury?"
-• **Sloth:** "Rest": the road walks itself; foes sleep and time stands still for all but you. At the end: "lie down here for ever?"
-• **Gluttony:** "the Endless Feast": you grow huge and devour foes, eating heals you. At the end: "one more course?"
-• **Lust:** "the Bride's love": everyone adores you and no foe will strike. At the end: "stay with her for ever, and forget why you came?"
+• **Wrath (approved):** "the Fury": every blow kills and the world burns, but you can never stop attacking. Asked at the end: "keep your fury?"
+• **Sloth (approved):** "Rest": the road walks itself; foes sleep and time stands still for all but you. At the end: "lie down here for ever?"
+• **Gluttony (approved):** "the Endless Feast": you grow huge and devour foes, eating heals you. At the end: "one more course?"
+• **Lust:** "the marriage" (the user's words): accept the Bride's hand and you become the most adorable person in the realm. Say yes and you play it again with nobody attacking you; at the end, asked again. **Approved.**
 Each gift is fun to play once, and each "yes" costs a replay. The bots refuse. Needs B41's door hook and the replay machinery kept from the toll (the realms job is told). See D20, D21. | All seven temptations playable; yes replays with the gift and the hoard reset; no passes; Hızır's line after a wrong choice; tests; REALMS.md and STORY.md updated; the user approves the gifts' lines. | L | to decide |
 | B64 | **Hızır can be called only between levels** (user, 2026-10-10): no calling him (E/Y) inside a level. He appears between levels (the wares, after each prince) and at the temptation's wrong choice (B63). See D22. | The call is unavailable in levels with a clear cue; tips and docs updated; tests. | S | to decide |
 | B65 | **Everything collected in a level is its hoard, kept only when the level is passed** (user, 2026-10-10). If the player fails the temptation (says yes), they don't take the hoard. Replaying puts the level's hoard back unchanged, with no duplication. See D23. | The hoard is shown during the level and banked on passing; a replay restores it exactly; save-safe; tests. | M | to decide |
