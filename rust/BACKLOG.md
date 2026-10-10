@@ -19,15 +19,15 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D2 | The old man's name. **Decided: Hızır (Khidr)**, the ageless guide who comes to travellers in need when called. Quitmer stays the dog's name. | B09 |
 | D3 | Voice. **Decided: better synth, no recorded voices.** Warmer, more expressive stylized speech. | B10 |
 | D4 | "House of the Devil". **Decided: rename to "The House of Seven Seals".** | B23 |
-| D5 | Lucifer's last phase "The Fallen": keep or rename? | B23 |
+| D5 | Lucifer's last phase "The Fallen". **Decided: rename** (the user, 2026-10-10). New name chosen: **"The Shattered Star"** (the Morning Star's pride broken, as his mirrors break); the move "Pride's Fall" keeps its name. | B54 |
 | D6 | Music per place: do you want to compose or supply themes (Krampus, each prince), or assign from the 12 tracks we have? | B14 |
-| D7 | Localisation: which languages first (proposed: Turkish, Japanese, German)? | B24 |
-| D8 | Web build: make it run again (WebGPU only), or drop it? | B27 |
+| D7 | Localisation. **Decided: Danish, Turkish and German** (all Latin script: æ ø å, ç ğ ı İ ö ş ü, ä ö ü ß; no CJK font needed). | B26 | **Localisation** (D7: Danish, Turkish, German): string tables for every player-facing string, a language setting, the fonts checked for each language's letters (Cinzel and Alegreya Sans cover them), then the three languages, with names kept (Hızır, Toby, the bestiary's native names). | A language setting; every player-facing string through the table; Danish, Turkish and German complete and checked by a reader. | L | todo |
+| D8 | Web build. **Decided: drop it.** | B27 | **Drop the web build** (D8): remove the wasm target, its build scripts and the wasm-only code paths, the WebGPU/WebGL claims in README and the docs, and the wasm clippy step from the checks and the agents' rules. | No wasm code or claim left; the desktop checks pass; README and RENDERING.md updated. | S | todo |
 | D9 | The boys in play. **Decided: all three:** the silhouette in the glow, a line per realm, a scene after each prince. | B07 |
-| D10 | Rune carvings: stay with the blade/shield they were cut into (today), or carry over to a newly bought tier? | B31 |
+| D10 | Rune carvings. **Decided: no carry-over**; carvings stay with the blade or shield they were cut into. | B31 | **Carvings and new tiers** (D10: no carry-over). Nothing to build; perhaps make it plain on the anvil card that a new blade starts uncut. | The card says so. | S | todo |
 | D11 | With no deals (B40): do the princes' other cheats stay (the Whisper, Loaded Dice, the Turned Sign: lies with a tell, not deals), and the end-of-realm lies ("take your throne")? | B40 |
-| D12 | Generals and keys (B41). **Decided: 3 generals per realm, each carrying a key; the 3 keys open the prince's court.** Still open: do the realms' climaxes (the Peerless, Kiyohime's bell, Hel's bed, the pylorus...) stay as the road to a general, or go? | B41 |
-| D13 | The three boys' names. They go by the warrior they carry for now (RAGNAR'S BOY...); names would carry them better (STORY.md §7). | (B07) |
+| D12 | Generals and keys (B41). **Decided: 3 generals per realm, each carrying a key; the 3 keys open the prince's court. The realms' climaxes stay** (the Peerless, Kiyohime's bell, Hel's bed, the pylorus...) as the road to a general. | B41 |
+| D13 | The three boys' names. **Decided by Claude at the user's word (2026-10-10): Magnus** (Ragnar's boy), **Emre** (Mehmed's boy), **Kenji** (Miyamoto's boy): a mixed group of friends, each boy's name from the land of the soul that chose him; Toby is the fourth. | B55 |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
@@ -127,6 +127,8 @@ Find references (Souls, God of War, Hades, Zelda) per prince and propose before 
 | B51 | **Toby's tokens lie near each realm's entrance**, not along the route to the court; unchecked in the Mire (turning ground) and Envy (two layers); only on fixed islands in the Burning Field. Place them along the way (or at a general, B41). | Each token placed on the route, reachable, never blocking; checked in every realm. | S | to decide |
 | B52 | **Story visuals:** on the select screen the boys stand in front of the warriors' knees; at shrines the boy flashes over the hero; the drawing token reads as a pale sheet with stick figures; the Pit banner's seal ornaments cross its text. | Each fixed; captures. | S | to decide |
 | B53 | **A realm line is spoken even mid-fight**: it plays only on arrival, so this is rare. Hold it until the Drum's Rest, as Hızır's counsel does. | Arrival lines never start in a Build or Peak. | S | to decide |
+| B54 | **Rename Lucifer's last phase** (D5) to "The Shattered Star": the phase banner, PRINCES.md, the guide's court page, the bestiary, tests. | No "The Fallen" left anywhere. | S | todo |
+| B55 | **The boys' names** (D13): Magnus, Emre and Kenji in the speech panel (instead of RAGNAR'S BOY...), Scene I's lines, the prince scenes, the credits, STORY.md. | The names used everywhere the boys speak or are named. | S | todo |
 
 ## Suggested order
 
