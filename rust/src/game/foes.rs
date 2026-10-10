@@ -159,7 +159,14 @@ impl Game {
 
     /// Reinforcements crawl out of the hollow on a schedule, cycling through the cast.
     pub(super) fn update_spawns(&mut self, dt: f64) {
-        if self.arena() || self.hub.is_some() || self.theme().is_gym() || self.vault.is_some() || self.run.is_some() || self.pit.is_some() {
+        if self.arena()
+            || self.hub.is_some()
+            || self.theme().is_gym()
+            || self.vault.is_some()
+            || self.run.is_some()
+            || self.pit.is_some()
+            || self.in_garden_fight()
+        {
             return; // the arena belongs to the Cyclops; no foes come to the Portals of Hell, and the gym's and the vaults' are all there
         }
         self.spawn_timer -= dt;

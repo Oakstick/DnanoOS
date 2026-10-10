@@ -164,6 +164,8 @@ pub struct Brawl {
     met: Vec<u32>,
     /// The threat pool and cadence this field was made with, before the Drum bounds them.
     base: Option<(u8, u32)>,
+    /// The Garden of Krampus (B01): a beginner's field on terraced ground (`garden_fight`).
+    pub garden: bool,
 }
 
 impl Brawl {
@@ -200,6 +202,7 @@ impl Brawl {
             held: None,
             met: Vec::new(),
             base: None,
+            garden: false,
         }
     }
 
@@ -1113,7 +1116,9 @@ impl Game {
         let mut flow = std::mem::take(&mut b.flow);
         let ho = P::new(hp.x.round() as i32, hp.y.round() as i32);
         if field == Field::Vault && (flow.from != ho || flow.dist(ho) != 0) {
-            flow = Flow::new(&self.level.grid, ho, FLOW_REACH);
+            // (The Garden's terraces are climbed only at its ramps.)
+            let garden = self.brawl.as_ref().is_some_and(|b| b.garden);
+            flow = if garden { Flow::climbing(&self.level.grid, ho, FLOW_REACH) } else { Flow::new(&self.level.grid, ho, FLOW_REACH) };
         }
         let (lo, hi) = match field {
             Field::Ring => gym::ring_bounds(),

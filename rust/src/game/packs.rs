@@ -27,7 +27,8 @@ impl Game {
         if *OFF.get_or_init(|| std::env::var_os("VH_NO_PACKS").is_some()) {
             return false; // (for A/B runs of the harness)
         }
-        self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault) && !self.in_court()
+        // (Nor the Garden, whose lone foes and pairs are a beginner's: B01.)
+        self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault && !b.garden) && !self.in_court()
     }
 
     /// Where duelist `id` is in `self.enemies`.

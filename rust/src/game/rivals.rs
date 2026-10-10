@@ -103,7 +103,8 @@ impl Grudges {
 impl Game {
     /// Grudges are kept here.
     fn grudges_kept(&self) -> bool {
-        self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault) && !self.in_court()
+        // (Not in the Garden: the Ledger begins below it, B01.)
+        self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault && !b.garden) && !self.in_court()
     }
 
     fn duel_index(&self, id: u32) -> Option<usize> {

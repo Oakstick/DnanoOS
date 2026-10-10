@@ -188,6 +188,22 @@ fn main() {
         println!("THE COURT OF {} {skill:?} tier {tier} seed {seed}: {r:?}", name.to_uppercase());
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--garden" || a == "--meadow") {
+        // The first hour (B01, B57): `--garden SKILL [SEEDS]` walks the Garden of Krampus to its gate,
+        // `--meadow SKILL [SEEDS]` fights its Cyclops (skill 0 novice, 1 adept, 2 expert; seeds 1 to
+        // SEEDS, or one seed as `SEED..SEED`), a line a seed and the means.
+        let meadow = args[i] == "--meadow";
+        let skill: usize = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(2);
+        let range = args.get(i + 2).cloned().unwrap_or_else(|| "8".into());
+        let seeds: Vec<u32> = match range.split_once("..") {
+            Some((a, b)) => (a.parse().unwrap_or(1)..=b.parse().unwrap_or(1)).collect(),
+            None => (1..=range.parse().unwrap_or(8)).collect(),
+        };
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join(format!("vh-first-{skill}")));
+        let skill = void_harvest::game::bot::Skill::ALL[skill.min(2)];
+        print!("{}", void_harvest::game::garden_run::first_hour_report(meadow, skill, &seeds));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--pit") {
         // The Pit ridden by a bot: `--pit SKILL TIER SEED` (skill 0 novice, 1 adept, 2 expert; TIER
         // its kit's), from level 1 or `--pit-level N`, each level's numbers reported.
