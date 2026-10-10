@@ -28,6 +28,12 @@ use crate::logic::sins::SINS;
 pub(super) const PORTAL_BRAZIER: (f32, f32) = (1.3, 0.72);
 pub(super) const PORTAL_COALS: f32 = 0.37 + 0.77 * 0.75;
 
+/// The height of the House's seven seals, and where each stands across its front (B44).
+pub(super) const HOUSE_SEALS_Y: f32 = 2.62;
+pub(super) fn house_seal_x(k: usize) -> f32 {
+    (k as f32 - 3.0) * 0.4
+}
+
 /// The name over a hub portal, this much larger than a realm's.
 const NAME_SCALE: f32 = 1.25;
 /// Obsidian, polished; the windows' ember-red; ivory.
@@ -368,6 +374,13 @@ impl WorldView {
                 jit(PALE[1], 0.6, 0.0) * 0.8,
                 SHADE_STONE,
             );
+        }
+        // The seven seals (B44): an iron socket for each prince's seal-stone in a band over the door.
+        block(out, Vec3::new(cx, HOUSE_SEALS_Y, face - 0.08), Vec3::new(3.0, 0.42, 0.1), 0.0, jit(PALE[0], 0.9, 0.0) * 0.78, SHADE_STONE);
+        for k in 0..7 {
+            let x = cx + house_seal_x(k);
+            block(out, Vec3::new(x, HOUSE_SEALS_Y, face - 0.02), Vec3::new(0.3, 0.3, 0.06), PI / 4.0, lin(IRON), SHADE_IRON);
+            block(out, Vec3::new(x, HOUSE_SEALS_Y, face + 0.0), Vec3::new(0.18, 0.18, 0.04), PI / 4.0, lin(0x14100e), SHADE_IRON);
         }
         // A pale cornice; the roof stepped up in polished obsidian, iron spikes along its edge.
         block(out, Vec3::new(cx, 3.24, face - 1.58), Vec3::new(4.0, 0.12, 3.12), 0.0, jit(PALE[1], 0.2, 0.0) * 0.82, SHADE_STONE);

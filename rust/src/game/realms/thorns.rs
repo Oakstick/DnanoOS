@@ -411,7 +411,7 @@ impl Game {
 
     /// He reaches the Black Thorn: the wedding night begins.
     fn thorns_begin_wedding(&mut self) {
-        if self.gate_open {
+        if self.realm_climax_done() {
             return;
         }
         let hp = self.hero.pos();
@@ -619,7 +619,8 @@ impl Game {
             t.bride_moved = 0.0;
             t.bride_from
         };
-        self.gate_open = true;
+        // (The road leads to the Thorn-Warden, out of the Black Thorn: B41.)
+        self.climax_survived();
         self.thorns_music();
         self.audio.play(Sfx::Win);
         self.view.sparkle(&self.level.grid, b.x, b.y, 2.0, 0xffd0e8, 70);
@@ -692,7 +693,7 @@ impl Game {
     /// F2: straight to the wedding night, before the gate at the Black Thorn's foot.
     pub(in crate::game) fn cheat_thorns(&mut self) {
         self.cheat_to_far_portal();
-        if self.thorns().is_some_and(|t| t.wedding.is_none() && !t.unmade) && !self.gate_open {
+        if self.thorns().is_some_and(|t| t.wedding.is_none() && !t.unmade) && !self.realm_climax_done() {
             self.begin_wedding();
         }
     }
@@ -1015,11 +1016,11 @@ mod tests {
             g.hero.invuln = 1.0;
             g.hero.hp = g.hero.max_hp;
         }
-        assert!(!g.gate_open, "not yet");
+        assert!(!g.realm_climax_done(), "not yet");
         let d = math::len(math::sub(t(&g).bride, g.hero.pos()));
         assert!(d < EMBRACE * 1.2, "she stands at his back: {d}");
         run(&mut g, 0.7);
-        assert!(g.gate_open, "ten seconds with his back to her: the gate opens");
+        assert!(g.realm_climax_done(), "ten seconds with his back to her: the wedding night is over (B41)");
         assert!(t(&g).wedding.is_none() && t(&g).grooms == 0);
     }
 
@@ -1079,7 +1080,7 @@ mod tests {
         // Face her hollow back and strike it three times.
         g.hero.face(Dir::Up);
         for _ in 0..12 {
-            if g.gate_open {
+            if g.realm_climax_done() {
                 break;
             }
             let her = t(&g).bride;
@@ -1089,7 +1090,7 @@ mod tests {
             run(&mut g, 0.45);
         }
         assert!(t(&g).unmade, "unmade: {:?}", t(&g).wedding);
-        assert!(g.gate_open, "the gate opens at once");
+        assert!(g.realm_climax_done(), "the wedding night is over at once");
     }
 
     #[test]

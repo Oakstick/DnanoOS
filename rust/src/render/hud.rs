@@ -335,6 +335,21 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             play::draw_pause_summary(o, g, t, below + t * 0.5);
             // Toby's things found on the way down (B08).
             toby::draw_row(o, g, t, below + t * 1.45);
+            // The seal-stones taken for the House of Seven Seals (B44).
+            let held = g.seal_stones.count_ones();
+            let sy = below + t * 2.5;
+            let gs = t * 0.26;
+            let gap = gs * 3.0;
+            o.text(
+                &format!("SEAL-STONES {held}/7"),
+                o.width / 2.0 - gap * 3.5 - t * 0.6,
+                sy,
+                t * 0.42,
+                rgba(0xff8a5a, 0.95),
+                Align::Right,
+                true,
+            );
+            play::draw_stones(o, g, o.width / 2.0 - gap * 3.0, sy, gs, gap);
             fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);
@@ -397,7 +412,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             ],
             0.65,
         ),
-        Screen::Toll => draw_toll(o, g, t),
+        Screen::Toll => draw_offer(o, g, t),
         Screen::View => draw_view_choice(o, g, t),
         Screen::Cleared => {
             // The fanfare's last moments fade to black on the way to the boss.
@@ -1065,7 +1080,7 @@ fn draw_run_meters(o: &mut Overlay, g: &Game, t: f32, right: f32, y: f32, small:
     }
 }
 
-/// A prince's offer in one of the realms after the vaults: its title, what is said, and the answers.
+/// A realm's lie put to him at its end (the Grey Mire's bed): its title, what is said, and the answers.
 fn draw_offer(o: &mut Overlay, g: &Game, t: f32) {
     let Some(offer) = g.run_offer() else { return };
     o.rect(0.0, 0.0, o.width, o.height, [0.02, 0.02, 0.04, 0.72]);
@@ -1150,40 +1165,6 @@ fn draw_view_choice(o: &mut Overlay, g: &Game, t: f32) {
         rgba(SAND, 0.85),
         Align::Center,
     );
-}
-
-/// Mammon's toll, before the far portal of his vaults: what he carries, and the choice.
-fn draw_toll(o: &mut Overlay, g: &Game, t: f32) {
-    if !g.in_vault() || g.deceit_offer().is_some() {
-        draw_offer(o, g, t);
-        return;
-    }
-    o.rect(0.0, 0.0, o.width, o.height, [0.06, 0.03, 0.0, 0.72]);
-    let top = menu_rects(Screen::Toll, &[MenuItem::KeepAll], o.width, o.height)[0][1];
-    let pulse = 0.9 + (g.time as f32 * 3.0).sin() * 0.1;
-    o.text("MAMMON'S TOLL", o.width / 2.0, top - t * 4.6, t * 1.45, rgba(GOLD, pulse), Align::Center, true);
-    let h = g.hoard;
-    let carried = if h.is_empty() {
-        "You carry nothing out of the vaults.".to_string()
-    } else {
-        format!(
-            "You carry {} gold: {} coins, {} heaps, {} treasures, {} chests, {} gems.",
-            h.gold, h.coins, h.piles, h.treasures, h.chests, h.gems
-        )
-    };
-    o.text(&carried, o.width / 2.0, top - t * 3.4, t * 0.62, rgba(SAND, 1.0), Align::Center, true);
-    // His offer, and nothing of what keeping costs: there is no chance, and keeping always begins the vaults again.
-    o.text(
-        "There is a chance for you to keep the gold.",
-        o.width / 2.0,
-        top - t * 2.45,
-        t * 0.7,
-        rgba(0xffe08a, pulse),
-        Align::Center,
-        true,
-    );
-    o.text("Keep it, or leave it.", o.width / 2.0, top - t * 1.5, t * 0.55, rgba(TEXT_DIM, 1.0), Align::Center, false);
-    draw_menu(o, g, t);
 }
 
 /// Centered overlay for ready, pause, win, and game over screens.

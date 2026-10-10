@@ -234,8 +234,8 @@ impl Game {
             },
             TourStop {
                 target: at(hub::altar(), 0.9),
-                title: "THE SEAL OF THE SEVEN",
-                body: "A socket for each sin's key. Take a key from the prince of every realm: with all seven, the seals break and the way to the House of Seven Seals rises from the lava.".into(),
+                title: "THE SEVEN SEALS",
+                body: "Every prince carries a seal-stone. Take each from his court and it is set in the House of Seven Seals: with all seven, the seals break and the way to the House rises from the lava.".into(),
                 color: 0xffb040,
                 art: TourArt::Seal,
             },

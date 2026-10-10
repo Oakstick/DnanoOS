@@ -316,10 +316,11 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 1 + 2 + 1 + 7 + 7 + 7 + 1 + 2 + 3,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Hızır's lesson, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
+        3 + 2 * 7 + 1 + 1 + 2 + 1 + 2 + 1 + 3 * 7 + 7 + 7 + 1 + 2 + 3,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Hızır's lesson, Scene I's two places, the old man's workshop, each realm's three generals' posts, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
     );
-    assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
+    assert!(stops.iter().any(|s| s.post == Some(0) && s.label == "GREED - THE ASSESSOR"));
+    assert_eq!(stops.iter().filter(|s| s.post.is_some()).count(), 21, "three generals a realm");
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
     assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
     // From the title (developing): DEV MAP, down to the fourth stop (the realm of Pride), go.
@@ -413,11 +414,18 @@ fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
         g.update(crate::app::STEP);
     }
     assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
-    // All seven keys: the seal breaks and the causeways rise to the House of Seven Seals.
+    // Seven princes beaten is not enough: the seals break for the seven seal-stones (B44), and the
+    // causeways rise to the House of Seven Seals.
     let lane = hub::causeways()[2];
     let p = P::new(lane.x0 + 1, lane.y0 + 1);
     assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");
     g.sins_cleared = ALL_SINS;
+    g.seal_stones = ALL_SINS & !Sin::Lust.bit();
+    for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().seal, 0.0, "six seal-stones: the seals hold");
+    g.seal_stones = ALL_SINS;
     for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
     }
@@ -475,11 +483,12 @@ fn the_realms_foes_are_tougher_than_the_gardens() {
     // Off the road, a realm after the vaults sends the foes met so far, no deeper than its tier allows.
     g.map_jump(save::Stage::Realm(Sin::Sloth));
     let met = crate::logic::realms::roster(g.realm_tier());
-    // (But its general, who wears the body the plan gives him: WARBAND.md §9.3.)
-    let general = g.general_pack();
-    assert!(g.enemies.iter().all(|e| e.kind().realm_own()
-        || met.iter().any(|n| n.0 == e.kind())
-        || e.duel.as_ref().is_some_and(|d| general.first() == Some(&d.id))));
+    // (But its generals, who wear the bodies the plan gives them: WARBAND.md §9.3, B41.)
+    let generals: Vec<u32> = (0..3).filter_map(|k| g.general_pack(k).first().copied()).collect();
+    assert!(g
+        .enemies
+        .iter()
+        .all(|e| e.kind().realm_own() || met.iter().any(|n| n.0 == e.kind()) || e.duel.as_ref().is_some_and(|d| generals.contains(&d.id))));
     g.map_jump(save::Stage::Gym);
     g.enter(Screen::Playing);
     let o = g.hero.occupied();
@@ -926,15 +935,16 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     );
     assert_eq!(g.level.data.name, Sin::Sloth.realm());
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Sloth)));
-    assert_eq!(g.keys_total, 0, "no keys: the realm's own trap seals its far portal");
+    assert_eq!(g.keys_total, 3, "the three generals' keys open the court's door (B41)");
     assert!(g.run.is_some(), "the Grey Mire itself");
     assert!(
         g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel),
         "gear only from the old man; the archangels stand here too"
     );
-    // Its far portal leads to the prince's court, once the realm's last trap has been survived.
+    // Its far portal leads to the prince's court, once the three generals' keys are held.
     g.enter(Screen::Playing);
     g.gate_open = true;
+    g.keys_got = 3;
     let exit = g.run.as_ref().unwrap().base().exit;
     let gate = exit.tile;
     g.hero.m.teleport(exit.front());
@@ -969,7 +979,8 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::SinShop(Sin::Sloth)));
     g.hero.m.teleport(key);
     g.update(STEP);
-    assert!(g.red_key.is_none() && g.gate_open, "the key of Sloth opens the court's gate");
+    assert!(g.red_key.is_none() && g.gate_open, "the seal-stone of Sloth opens the court's gate");
+    assert_eq!(g.seal_stones, Sin::Sloth.bit(), "his seal-stone is the hero's, for the House of Seven Seals (B44)");
     let gate = g.gate.unwrap();
     // (Inside the gate: the meadow's is in its north hedge, a built court's in its south wall.)
     let inside = if g.in_court() { gate.y - 1 } else { gate.y + 1 };

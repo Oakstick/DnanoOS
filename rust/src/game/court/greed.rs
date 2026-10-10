@@ -249,13 +249,14 @@ mod tests {
         assert!(g.court.as_ref().unwrap().slain);
         assert!(g.red_key.is_some(), "the Key of Greed lies on the floor");
         assert!(g.sins_cleared & Sin::Greed.bit() != 0, "Greed's bit is set");
-        assert_eq!(g.key_name(), "THE KEY OF GREED");
+        assert_eq!(g.key_name(), "THE SEAL-STONE OF GREED");
         assert!(g.saved_run.as_ref().is_some_and(|r| r.stage == save::Stage::SinShop(Sin::Greed)), "and the checkpoint is the old man's");
         // He takes the key, the gate opens, and through it he goes on to the old man.
         let k = g.red_key.unwrap();
         g.hero.place(k);
         run(&mut g, 0.3);
         assert!(g.red_key.is_none() && g.gate_open);
+        assert!(g.seal_stones & Sin::Greed.bit() != 0, "his seal-stone is the hero's (B44)");
         let gate = g.gate.unwrap();
         g.hero.place(P::new(gate.x, gate.y - 1));
         for _ in 0..1200 {

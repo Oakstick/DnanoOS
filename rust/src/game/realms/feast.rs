@@ -326,11 +326,34 @@ impl Game {
     fn feast_bar(&mut self) {
         let o = self.hero.occupied();
         let hp = self.hero.pos();
+        // A general standing in a zone before a seam holds its teeth shut, both arches, until he
+        // falls: his key is the way on (B41; the zone behind is digested once he is past, so no
+        // general is ever left behind the teeth).
+        let holders: Vec<(i32, String)> = self
+            .general
+            .as_ref()
+            .map(|g| {
+                (0..3).filter(|&k| !g.lords[k].slain && !g.lords[k].waiting).map(|k| (g.posts.post(k).y, g.lords[k].name.clone())).collect()
+            })
+            .unwrap_or_default();
         let Some(f) = self.feast_mut() else { return };
         let want = f.bloat >= BLOAT_WIDE;
         let mut set: Vec<(P, Tile)> = Vec::new();
         let mut near = false;
+        let mut held_near: Option<String> = None;
         for s in f.seams.iter().filter(|s| !s.closed) {
+            let holder = holders.iter().find(|h| h.0 >= s.top).map(|h| h.1.clone());
+            let close = s.narrow.south.iter().chain(&s.wide.south).any(|m| dist_sq(m.v(), hp) < 2.5 * 2.5);
+            if let Some(name) = holder {
+                if !s.narrow.contains(o) && !s.wide.contains(o) {
+                    set.extend(s.narrow.tiles.iter().chain(&s.wide.tiles).map(|&p| (p, Tile::Rock)));
+                }
+                if close {
+                    held_near = Some(name);
+                }
+                continue;
+            }
+            set.extend(s.wide.tiles.iter().map(|&p| (p, Tile::Open)));
             if want && s.narrow.contains(o) {
                 continue;
             }
@@ -338,6 +361,16 @@ impl Game {
             set.extend(s.narrow.tiles.iter().map(|&p| (p, t)));
             near |= s.narrow.south.iter().any(|m| dist_sq(m.v(), hp) < 2.5 * 2.5);
         }
+        if let Some(name) = held_near.filter(|_| f.hint <= 0.0) {
+            f.hint = 3.0;
+            for (p, t) in set.drain(..) {
+                self.level.grid.set(p.x, p.y, t);
+            }
+            self.audio.play(Sfx::Denied);
+            self.floater(hp.x, hp.y - 1.0, format!("THE TEETH STAY SHUT: {name} HOLDS THIS ZONE"), 1.8, Some(ORANGE));
+            return;
+        }
+        let Some(f) = self.feast_mut() else { return };
         f.barred = want;
         let hint = want && near && f.hint <= 0.0;
         if hint {
@@ -386,6 +419,8 @@ impl Game {
         }
         // (Shut for the general's puppets too: none of his walk through the teeth.)
         self.general_ground_shut(&tiles);
+        // (A general's key lying in the zone behind comes through the teeth with him: B41.)
+        self.keys_come_through(top, landing);
         // The zone behind is digested, and whatever stayed in it.
         let mut gone = Vec::new();
         for e in self.enemies.iter_mut() {
@@ -518,6 +553,7 @@ impl Game {
             let f = self.feast().unwrap();
             (f.squeeze, f.stomach, f.stomach_radius, f.bloat, f.base.exit.tile)
         };
+        let keyed = self.court_keys_held();
         let hp = self.hero.pos();
         let from_door = len(V::new(hp.x - squeeze.x, hp.y - squeeze.y));
         if from_door > c.walls() || c.t >= CLIMAX_END {
@@ -674,7 +710,8 @@ impl Game {
         c.teeth += (target - c.teeth) * (dt * 8.0).min(1.0);
         let opened = open && !c.was_open;
         c.was_open = open;
-        c.admitted = open && lean;
+        // (And only for one who carries the three generals' keys: B41.)
+        c.admitted = open && lean && keyed;
         let on_door = self.hero.occupied() == exit;
         if c.admitted {
             self.gate_open = true;
@@ -1004,8 +1041,15 @@ mod tests {
         g.feast_mut().unwrap().climax.as_mut().unwrap().t = PYLORUS_PERIOD - 1.5;
         g.update(STEP);
         assert!(!g.gate_open && g.level.grid.get(exit.tile.x, exit.tile.y) == Tile::Rock, "too full to pass");
-        // Open, and lean enough.
+        // Open, and lean enough, but without the three generals' keys (B41): still shut.
         g.feast_mut().unwrap().bloat = BLOAT_LEAN;
+        g.update(STEP);
+        assert!(!g.gate_open, "the pylorus parts only for the key-bearer");
+        if let Some(r) = g.general.as_mut() {
+            for l in r.lords.iter_mut() {
+                (l.slain, l.key_taken, l.key, l.waiting) = (true, true, None, false);
+            }
+        }
         g.update(STEP);
         assert!(g.gate_open && g.door >= 1.0 && g.level.grid.is_walkable(exit.tile.x, exit.tile.y, false));
         g.hero.m.teleport(exit.tile);

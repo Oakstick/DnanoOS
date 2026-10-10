@@ -48,7 +48,13 @@ macro_rules! scene_state {
             fires: &$g.fires,
             red_key: $g.red_key,
             realm: $g.realm,
-            hub: $g.hub.as_ref().map(|h| HubView { doors: h.doors.map(|d| d as f32), sins: $g.sins_cleared, seal: h.seal as f32 }),
+            in_court: $g.court.is_some(),
+            hub: $g.hub.as_ref().map(|h| HubView {
+                doors: h.doors.map(|d| d as f32),
+                sins: $g.sins_cleared,
+                stones: $g.seal_stones,
+                seal: h.seal as f32,
+            }),
             loot: $g.vault.as_ref().map(|v| v.loot.as_slice()).unwrap_or(&[]),
             drops: $g.vault.as_ref().map(|v| v.drops.as_slice()).unwrap_or(&[]),
             run: $g.run.as_ref(),
@@ -203,15 +209,10 @@ impl Game {
                 // (The bestiary only watches: the foes met and felled, and what felled him.)
                 self.observe_bestiary(dt);
             }
+            // (A realm's own lie put to him at its end: the Grey Mire's bed. No prince makes a deal.)
             Screen::Toll => {
                 if let Some(choice) = self.menu_choice() {
-                    if self.voices.deceit.asking.is_some() {
-                        self.answer_deceit(choice);
-                    } else if self.vault.is_some() {
-                        self.pay_toll(choice);
-                    } else {
-                        self.answer_run_offer(choice);
-                    }
+                    self.answer_run_offer(choice);
                 }
             }
             Screen::Paused => match self.menu_choice() {
@@ -355,10 +356,7 @@ impl Game {
                 items
             }
             Screen::View => return super::viewpick::VIEWS.iter().map(|v| v.0).collect(),
-            // Keep first, and highlighted: Mammon would have it so. (A prince's offer in the realms
-            // after the vaults puts the answer he would have first, too.)
-            Screen::Toll if self.voices.deceit.asking.is_some() => return self.deceit_offer().map(|o| o.choices).unwrap_or_default(),
-            Screen::Toll if self.vault.is_some() => return vec![MenuItem::KeepAll, MenuItem::DropAll],
+            // (A realm's lie at its end puts the answer the prince would have first.)
             Screen::Toll => return self.run_offer().map(|o| o.choices).unwrap_or_default(),
             _ => return Vec::new(),
         };

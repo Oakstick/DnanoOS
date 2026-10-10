@@ -909,14 +909,22 @@ pub fn markers(game: &Game) -> Vec<Marker> {
         let (x, y) = crate::logic::lair::CAGE_MIDDLE;
         put(MarkerKind::Cage { open: l.cage.broken || l.cage.door > 0.0 }, V::new(x, y), true);
     }
-    // The general's instruments and his post (known once seen, or marked on a caught herald's map).
+    // The generals' instruments, each general's post (known once seen, or marked on a caught
+    // herald's map; the third's where the realm's climax ends), and each key lying where its
+    // general fell (BACKLOG B41).
     let general = game.general.as_ref();
     if let Some(r) = general {
         for (k, i) in r.command.instruments.iter().enumerate() {
             put(MarkerKind::Instrument { order: k, broken: i.broken }, i.tile.v(), seen(i.tile));
         }
-        if !r.command.slain {
-            put(MarkerKind::Post, r.posts.post.v(), r.post_known || seen(r.posts.post));
+        for (k, l) in r.lords.iter().enumerate() {
+            if !l.slain {
+                let post = r.posts.post(k);
+                put(MarkerKind::Post, post.v(), l.known || (!l.waiting && seen(post)));
+            }
+            if let Some(at) = l.key {
+                put(MarkerKind::Key, at, true);
+            }
         }
     }
 
@@ -927,7 +935,7 @@ pub fn markers(game: &Game) -> Vec<Marker> {
         fog.visible(t.x, t.y) || (fog.whole() && crate::logic::types::dist_sq(at, hp) <= FOE_RANGE * FOE_RANGE)
     };
     let boss_id = game.court.as_ref().map(|c| c.prince).or(game.lair.as_ref().map(|l| l.krampus));
-    let general_id = general.and_then(|r| r.id);
+    let general_ids: Vec<u32> = general.map(|r| r.lords.iter().filter_map(|l| l.id).collect()).unwrap_or_default();
     for e in &game.enemies {
         if matches!(e.mode(), EnemyMode::Eaten | EnemyMode::Nest) || e.is_ally() {
             continue;
@@ -935,7 +943,7 @@ pub fn markers(game: &Game) -> Vec<Marker> {
         let rank = match e.duel.as_deref() {
             Some(d) if !d.alive() => continue,
             Some(d) if Some(d.id) == boss_id || d.arch == crate::logic::combat::Archetype::Prince => FoeRank::Boss,
-            Some(d) if Some(d.id) == general_id => FoeRank::General,
+            Some(d) if general_ids.contains(&d.id) => FoeRank::General,
             Some(d) if game.rival_of(d.id).is_some() => FoeRank::Rival,
             Some(d) if game.leads_a_pack(d.id) => FoeRank::Elite,
             _ => FoeRank::Plain,

@@ -172,39 +172,58 @@ pub struct Instrument {
     pub turned: bool,
 }
 
-/// One of the seven (§9.3): his realm, his name, the body he wears and its colour, his three
-/// orders and what each one's instrument is called, the realm's hazard, and his decree.
+/// One of a realm's three generals (BACKLOG B41): his name, the body he wears and his cloak's
+/// colour, and a line of who he is (his name card). He holds one of the realm's three orders (the
+/// one at his own index) and carries one of the three keys to the prince's court.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Captain {
+    pub name: &'static str,
+    pub body: EnemyKind,
+    pub cloak: u32,
+    pub line: &'static str,
+}
+
+/// A realm's command (§9.3, B41): its three generals, the three orders they hold (general `k` gives
+/// order `k`) and what each order's instrument is called, the realm's hazard, and the decree.
+/// The third general (`CLIMAX`) is the one the realm's climax leads to, in the six realms after
+/// the vaults: he comes out as its last trap ends (`Game::climax_general`).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct General {
     pub sin: Sin,
-    pub name: &'static str,
-    pub body: EnemyKind,
-    /// His cloak's colour (and his banner's field).
-    pub cloak: u32,
+    pub captains: [Captain; 3],
     pub orders: [OrderKind; 3],
     /// What each order's instrument is called, in the order of `orders`.
     pub instruments: [&'static str; 3],
-    /// The realm's hazard his kindling wakes, and its colour.
+    /// The realm's hazard the kindling wakes, and its colour.
     pub hazard: &'static str,
     pub hazard_color: u32,
-    /// What his decree does (the card's words), and what it does to the prince's fight.
+    /// What the decree does (the card's words), and what it does to the prince's fight.
     pub decree: &'static str,
     pub decree_done: &'static str,
 }
 
+/// The general the realm's climax leads to (the third), in the six realms after the vaults.
+pub const CLIMAX: usize = 2;
+
+const fn cap(name: &'static str, body: EnemyKind, cloak: u32, line: &'static str) -> Captain {
+    Captain { name, body, cloak, line }
+}
+
 impl General {
-    /// The general of `sin`'s realm.
+    /// The command of `sin`'s realm.
     pub fn of(sin: Sin) -> General {
         use EnemyKind as K;
         use OrderKind::*;
         match sin {
             Sin::Greed => General {
                 sin,
-                name: "THE ASSESSOR",
-                body: K::Blemmyes,
-                cloak: 0xd8a830,
-                orders: [Muster, Kindle, Decree],
-                instruments: ["THE COUNTING-BELL", "THE COIN-BELLOWS", "THE TREASURY CHAIN"],
+                captains: [
+                    cap("THE ASSESSOR", K::Blemmyes, 0xd8a830, "HE COUNTS WHAT YOU CARRY"),
+                    cap("THE HOARD-HOUND", K::DireWolf, 0x8a6a30, "THE TREASURY'S GUARD-DOG"),
+                    cap("THE USURER", K::Kitsune, 0xe8c060, "A FOX WHO LENDS AT A HUNDRED IN THE HUNDRED"),
+                ],
+                orders: [Muster, Decree, Kindle],
+                instruments: ["THE COUNTING-BELL", "THE TREASURY CHAIN", "THE COIN-BELLOWS"],
                 hazard: "COIN TRAPS",
                 hazard_color: 0xf2c53d,
                 decree: "THE TREASURERS EMPTY THE CHESTS INTO THE COURT",
@@ -212,11 +231,13 @@ impl General {
             },
             Sin::Pride => General {
                 sin,
-                name: "THE CHAMBERLAIN OF GLASS",
-                body: K::Tengu,
-                cloak: 0xf0e8d0,
-                orders: [Watch, Kindle, Decree],
-                instruments: ["THE MIRROR-FIRE", "THE LENS-BELLOWS", "THE THRONE CHAIN"],
+                captains: [
+                    cap("THE CHAMBERLAIN OF GLASS", K::Tengu, 0xf0e8d0, "TOO PROUD FOR PARADISE, HE KEEPS THE MIRRORS"),
+                    cap("THE PEACOCK GUARD", K::Rasetsu, 0x4a6ad8, "THE THRONE'S GILDED BLADES"),
+                    cap("THE MIRROR-CIN", K::Cin, 0xb8a8ff, "SHE STEPS IN AT ONE MIRROR AND OUT AT ANOTHER"),
+                ],
+                orders: [Kindle, Decree, Watch],
+                instruments: ["THE LENS-BELLOWS", "THE THRONE CHAIN", "THE MIRROR-FIRE"],
                 hazard: "LIGHT BEAMS",
                 hazard_color: 0xfff4d0,
                 decree: "THE SERVANTS POLISH THE THRONE-MIRROR",
@@ -224,11 +245,13 @@ impl General {
             },
             Sin::Envy => General {
                 sin,
-                name: "THE BELL-WARDEN",
-                body: K::Kappa,
-                cloak: 0x4a9a7a,
-                orders: [Kindle, Muster, Decree],
-                instruments: ["THE GEYSER VALVE", "THE DROWNED BELL", "THE BELL CHAIN"],
+                captains: [
+                    cap("THE BELL-WARDEN", K::Kappa, 0x4a9a7a, "HE DRAGS SWIMMERS DOWN TO THE BELL"),
+                    cap("THE COBRA PRIESTESS", K::Cobra, 0x6ac040, "SHE KEEPS THE DROWNED TEMPLE'S RITES"),
+                    cap("KIYOHIME", K::Rokurokubi, 0xc0e0a0, "JEALOUSY MADE HER A SERPENT ROUND THE BELL"),
+                ],
+                orders: [Muster, Decree, Kindle],
+                instruments: ["THE DROWNED BELL", "THE BELL CHAIN", "THE GEYSER VALVE"],
                 hazard: "GEYSERS",
                 hazard_color: 0x5ad8c0,
                 decree: "THE BELL IS LOWERED INTO THE DEEP",
@@ -236,11 +259,13 @@ impl General {
             },
             Sin::Wrath => General {
                 sin,
-                name: "MARSHAL GOREBRAND",
-                body: K::Oni,
-                cloak: 0x9a1a10,
-                orders: [Muster, Kindle, Decree],
-                instruments: ["THE WAR HORN", "THE LAVA SLUICE", "THE BRIDGE CHAIN"],
+                captains: [
+                    cap("MARSHAL GOREBRAND", K::Oni, 0x9a1a10, "AMON'S MARSHAL OF THE ENDLESS BATTLE"),
+                    cap("THE WOLF-COAT", K::Werewolf, 0x6a5040, "A BERSERKER WHO NEVER TOOK THE COAT OFF"),
+                    cap("THE CARRION HERALD", K::Tulukus, 0x5a3a4a, "HE CRIES THE HORN THAT ENDS NO BATTLE"),
+                ],
+                orders: [Muster, Decree, Kindle],
+                instruments: ["THE WAR HORN", "THE BRIDGE CHAIN", "THE LAVA SLUICE"],
                 hazard: "LAVA SLUICES",
                 hazard_color: 0xff6a20,
                 decree: "THE SAPPERS BURN THE BRIDGES",
@@ -248,11 +273,13 @@ impl General {
             },
             Sin::Sloth => General {
                 sin,
-                name: "THE LAMPLIGHTER",
-                body: K::Karakoncolos,
-                cloak: 0x5a6a8a,
-                orders: [Watch, Kindle, Decree],
-                instruments: ["THE LANTERN-FIRE", "THE LAMP-BELLOWS", "THE HOURGLASS CHAIN"],
+                captains: [
+                    cap("THE LAMPLIGHTER", K::Karakoncolos, 0x5a6a8a, "HIS LAMPS WALK TRAVELLERS INTO THE BOG"),
+                    cap("GANGLATI", K::Ganglot, 0x6a7080, "HEL'S SERVANT, SLOW AND NEVER STOPPING"),
+                    cap("THE NIGHT HAG", K::Albasti, 0x8a7aa8, "SHE SITS ON THE SLEEPER'S CHEST"),
+                ],
+                orders: [Kindle, Decree, Watch],
+                instruments: ["THE LAMP-BELLOWS", "THE HOURGLASS CHAIN", "THE LANTERN-FIRE"],
                 hazard: "SMOULDERING LAMPS",
                 hazard_color: 0x9ab0e0,
                 decree: "THE HOURGLASS IS WOUND",
@@ -260,11 +287,13 @@ impl General {
             },
             Sin::Gluttony => General {
                 sin,
-                name: "THE STEWARD OF THE LAST COURSE",
-                body: K::Gaki,
-                cloak: 0xd8c8a0,
-                orders: [Muster, Kindle, Decree],
-                instruments: ["THE DINNER GONG", "THE ACID VALVE", "THE LARDER CHAIN"],
+                captains: [
+                    cap("THE STEWARD OF THE LAST COURSE", K::Gaki, 0xd8c8a0, "HE SETS THE PRINCE'S TABLE"),
+                    cap("THE STARVED KNIGHT", K::Helmeted, 0x8a8070, "HE GUARDED THE LARDER UNTIL HE STARVED"),
+                    cap("THE GINGERBREAD WITCH", K::Witch, 0xc08040, "SHE FATTENS HER GUESTS FOR THE OVEN"),
+                ],
+                orders: [Muster, Decree, Kindle],
+                instruments: ["THE DINNER GONG", "THE LARDER CHAIN", "THE ACID VALVE"],
                 hazard: "ACID TIDES",
                 hazard_color: 0x9ae040,
                 decree: "THE COOKS LAY THE PRINCE'S FEAST",
@@ -272,11 +301,13 @@ impl General {
             },
             Sin::Lust => General {
                 sin,
-                name: "THE BRIDESMAID",
-                body: K::Albasti,
-                cloak: 0xf0d0e0,
-                orders: [Watch, Kindle, Decree],
-                instruments: ["THE PROCESSION'S TORCH", "THE CENSER", "THE VOW-CHAIN"],
+                captains: [
+                    cap("THE BRIDESMAID", K::Ellepige, 0xf0d0e0, "LOVELY BEFORE, HOLLOW BEHIND"),
+                    cap("THE MATCHMAKER", K::Jorogumo, 0xc04a7a, "A SPIDER WHO SPINS THE WEDDING THREADS"),
+                    cap("THE THORN-WARDEN", K::Arcura, 0x4a6a3a, "THE GARDEN'S ROOTS ARE HIS THORNS"),
+                ],
+                orders: [Watch, Decree, Kindle],
+                instruments: ["THE PROCESSION'S TORCH", "THE VOW-CHAIN", "THE CENSER"],
                 hazard: "CENSER SMOKE",
                 hazard_color: 0xff7ab0,
                 decree: "THE VOWS ARE SPOKEN",
@@ -285,14 +316,24 @@ impl General {
         }
     }
 
-    /// His muster sounds a bell (or a gong), not a horn.
+    /// The muster sounds a bell (or a gong), not a horn.
     pub fn bell(&self) -> bool {
         matches!(self.sin, Sin::Greed | Sin::Envy | Sin::Gluttony)
     }
 
-    /// The card's line for an order of his: "THE ASSESSOR MUSTERS".
-    pub fn card(&self, order: OrderKind) -> String {
-        format!("{} {}", self.name, order.verb())
+    /// The first of the three (the realm's general before B41, WARBAND.md §9.3): his name.
+    pub fn name(&self) -> &'static str {
+        self.captains[0].name
+    }
+
+    /// The general who gives order `k`.
+    pub fn captain(&self, k: usize) -> &Captain {
+        &self.captains[k.min(2)]
+    }
+
+    /// The card's line for order `k`: "THE ASSESSOR MUSTERS".
+    pub fn card(&self, k: usize) -> String {
+        format!("{} {}", self.captain(k).name, self.orders[k.min(2)].verb())
     }
 
     /// The order he gives by index, and where it is in his three, for `kind`.
@@ -301,32 +342,38 @@ impl General {
     }
 }
 
-/// What the prince's fight is, after his general's decree and his death (§9.2, §17 decision 5).
+/// What the prince's fight is, after his generals' realm (§9.2, BACKLOG B41, decision D14). His
+/// adds always come (D14: they are part of the spectacle), so a general slain takes nothing from
+/// him; the court can read which of the three fell and whether the decree was done (for the epic
+/// courts' set pieces, PRINCES-EPIC.md §0).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PrinceTerms {
-    /// His adds come as his fight begins (his general's decree done): Mammon's golems climb out
-    /// of the gold at once.
+    /// His adds come as his fight begins (the decree done): Mammon's golems climb out of the gold
+    /// at once.
     pub adds_at_start: bool,
-    /// His second phase brings its adds (his general lives).
+    /// His second phase brings its adds (always, D14).
     pub phase_two_adds: bool,
-    /// His health as a multiple (a prince still stood in by a Cyclops takes his general's decree
-    /// and death this way: a decree done raises it, a general slain lowers it).
+    /// His health as a multiple (a prince stood in by a Cyclops took the decree this way).
     pub health: f64,
+    /// The realm's generals slain, a bit each (general `k` at bit `k`).
+    pub slain: u8,
+    /// The decree was carried to the court.
+    pub decree_done: bool,
 }
 
 impl PrinceTerms {
-    pub const WHOLE: PrinceTerms = PrinceTerms { adds_at_start: false, phase_two_adds: true, health: 1.0 };
+    pub const WHOLE: PrinceTerms = PrinceTerms { adds_at_start: false, phase_two_adds: true, health: 1.0, slain: 0, decree_done: false };
 }
 
-/// The prince of `sin`'s fight, his general's decree done or not, his general slain or not. In a
-/// court built to its own plan the decree brings his adds at once and his general's death loses
-/// him those of his second phase; a prince stood in by a Cyclops takes them on his health.
-pub fn terms(sin: Sin, decree_done: bool, slain: bool) -> PrinceTerms {
+/// The prince of `sin`'s fight, his realm's decree done or not, with `slain` of its generals down
+/// (a bit each). The decree done brings his adds at once; no general's death takes them (D14).
+pub fn terms(sin: Sin, decree_done: bool, slain: u8) -> PrinceTerms {
+    let slain = slain & 0b111;
     if crate::logic::court::built(sin) {
-        return PrinceTerms { adds_at_start: decree_done, phase_two_adds: !slain, health: 1.0 };
+        return PrinceTerms { adds_at_start: decree_done, phase_two_adds: true, health: 1.0, slain, decree_done };
     }
-    let health = 1.0 + if decree_done { 0.25 } else { 0.0 } - if slain { 0.2 } else { 0.0 };
-    PrinceTerms { adds_at_start: false, phase_two_adds: true, health }
+    let health = 1.0 + if decree_done { 0.25 } else { 0.0 };
+    PrinceTerms { adds_at_start: false, phase_two_adds: true, health, slain, decree_done }
 }
 
 /// How the general answers the loss of an instrument (once for each).
@@ -353,8 +400,10 @@ pub enum Cue {
     Answered { counter: Counter },
 }
 
-/// The general's mind through a realm: his orders, his instruments, when he may give the next
-/// order, and the counter-orders he owes. One step a frame; deterministic per seed.
+/// The generals' mind through a realm: their orders (general `k` gives order `k`), the instruments,
+/// when the next order may be given, and the counter-orders they owe. One step a frame;
+/// deterministic per seed. A general slain gives his order no more (BACKLOG B41); all three slain,
+/// the realm's orders are over.
 #[derive(Clone, Debug)]
 pub struct Command {
     pub general: General,
@@ -366,6 +415,9 @@ pub struct Command {
     pub running: Option<usize>,
     /// Frames of the build before he may give the next order.
     pub wait: u32,
+    /// Each of the three generals slain.
+    pub fallen: [bool; 3],
+    /// All three slain: no order and no answer comes again.
     pub slain: bool,
     pub decree_done: bool,
     /// Frames his decree has (its carriers' walk to the court).
@@ -400,6 +452,7 @@ impl Command {
             instruments,
             running: None,
             wait: FIRST_ORDER,
+            fallen: [false; 3],
             slain: false,
             decree_done: false,
             decree_frames: DECREE_LEAST,
@@ -423,9 +476,9 @@ impl Command {
         }
     }
 
-    /// He may give order `k` now (its instrument whole, a decree not yet done).
+    /// Order `k` may be given now (its general standing, its instrument whole, a decree not yet done).
     pub fn can_give(&self, k: usize) -> bool {
-        !self.slain && self.stages[k] == OrderStage::Ready && !self.instruments[k].broken
+        !self.slain && !self.fallen[k] && self.stages[k] == OrderStage::Ready && !self.instruments[k].broken
     }
 
     /**
@@ -566,18 +619,38 @@ impl Command {
         true
     }
 
-    /// He is slain: every order still standing ends at once, and no answer comes.
-    pub fn slay(&mut self) -> Vec<Cue> {
+    /// General `k` is slain: his order ends at once and is never given again (a decree already
+    /// done stays done). With the third slain every order is over and no answer comes.
+    pub fn slay(&mut self, k: usize) -> Vec<Cue> {
         let mut cues = Vec::new();
-        if self.slain {
+        let k = k.min(2);
+        if self.fallen[k] {
             return cues;
         }
-        if let Some(k) = self.running {
+        self.fallen[k] = true;
+        if self.running == Some(k) {
             cues.push(self.end(k, OrderStage::Broken));
+        } else if self.stages[k] != OrderStage::Done {
+            self.stages[k] = OrderStage::Broken;
         }
-        self.slain = true;
-        self.answer = None;
+        if self.fallen.iter().all(|&f| f) {
+            if let Some(r) = self.running {
+                cues.push(self.end(r, OrderStage::Broken));
+            }
+            self.slain = true;
+            self.answer = None;
+        }
         cues
+    }
+
+    /// Every general slain at once (a cheat, a test).
+    pub fn slay_all(&mut self) -> Vec<Cue> {
+        (0..3).flat_map(|k| self.slay(k)).collect()
+    }
+
+    /// The generals slain, a bit each.
+    pub fn fallen_bits(&self) -> u8 {
+        (0..3).filter(|&k| self.fallen[k]).fold(0u8, |a, k| a | 1 << k)
     }
 
     /// Instruments broken.
@@ -587,13 +660,13 @@ impl Command {
 
     /// What the prince fights with, as things stand.
     pub fn terms(&self) -> PrinceTerms {
-        terms(self.general.sin, self.decree_done, self.slain)
+        terms(self.general.sin, self.decree_done, self.fallen_bits())
     }
 
     /// What the run keeps of him.
     pub fn record(&self) -> Record {
         let broken = self.instruments.iter().enumerate().filter(|(_, i)| i.broken).fold(0u8, |a, (k, _)| a | 1 << k);
-        Record { met: true, broken, decree_done: self.decree_done, slain: self.slain }
+        Record { met: true, broken, decree_done: self.decree_done, slain: self.fallen_bits(), keys: 0 }
     }
 
     /// As the run left him: instruments broken stay broken, a decree done stays done.
@@ -611,7 +684,15 @@ impl Command {
                 self.stages[k] = OrderStage::Done;
             }
         }
-        self.slain = r.slain;
+        for k in 0..3 {
+            if r.slain & (1 << k) != 0 {
+                self.fallen[k] = true;
+                if self.stages[k] != OrderStage::Done {
+                    self.stages[k] = OrderStage::Broken;
+                }
+            }
+        }
+        self.slain = self.fallen.iter().all(|&f| f);
     }
 }
 
@@ -625,10 +706,24 @@ pub struct Record {
     /// His instruments broken, a bit each (in the order of his orders).
     pub broken: u8,
     pub decree_done: bool,
-    pub slain: bool,
+    /// His realm's generals slain, a bit each (BACKLOG B41).
+    pub slain: u8,
+    /// Their keys taken, a bit each.
+    pub keys: u8,
 }
 
-/// Every realm's general, as the run keeps them (in the order of `SINS`).
+impl Record {
+    /// All three of the realm's generals slain.
+    pub fn all_slain(&self) -> bool {
+        self.slain & 0b111 == 0b111
+    }
+    /// The keys taken.
+    pub fn key_count(&self) -> u32 {
+        (self.keys & 0b111).count_ones()
+    }
+}
+
+/// Every realm's generals, as the run keeps them (in the order of `SINS`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Records(pub [Record; 7]);
 
@@ -640,14 +735,16 @@ impl Records {
         self.0[sin.index()] = r;
     }
 
-    /// The section's text: `I.B.D.S` for each realm whose general has been met (I the realm's
-    /// index, B the broken bits, D and S 0 or 1), joined by commas. No '|' and no ':'.
+    /// The section's text: `I.B.D.S.K` for each realm whose generals have been met (I the realm's
+    /// index, B the broken bits, D 0 or 1, S the generals slain and K the keys taken, a bit each),
+    /// joined by commas. No '|' and no ':'. (Before B41 it was `I.B.D.S`, S 0 or 1 for the one
+    /// general: read as the first of the three slain and his key taken.)
     pub fn encode(&self) -> String {
         self.0
             .iter()
             .enumerate()
             .filter(|(_, r)| r.met)
-            .map(|(i, r)| format!("{i}.{}.{}.{}", r.broken, u8::from(r.decree_done), u8::from(r.slain)))
+            .map(|(i, r)| format!("{i}.{}.{}.{}.{}", r.broken, u8::from(r.decree_done), r.slain, r.keys))
             .collect::<Vec<_>>()
             .join(",")
     }
@@ -657,9 +754,14 @@ impl Records {
         let mut out = Records::default();
         for entry in text.split(',').filter(|e| !e.is_empty()) {
             let n: Vec<u8> = entry.split('.').filter_map(|v| v.parse().ok()).collect();
-            if let [i, broken, d, s] = n[..] {
-                if let Some(r) = out.0.get_mut(i as usize) {
-                    *r = Record { met: true, broken: broken & 7, decree_done: d == 1, slain: s == 1 };
+            let r = match n[..] {
+                [i, broken, d, s, k] => Some((i, Record { met: true, broken: broken & 7, decree_done: d == 1, slain: s & 7, keys: k & 7 })),
+                [i, broken, d, s] => Some((i, Record { met: true, broken: broken & 7, decree_done: d == 1, slain: s & 1, keys: s & 1 })),
+                _ => None,
+            };
+            if let Some((i, r)) = r {
+                if let Some(slot) = out.0.get_mut(i as usize) {
+                    *slot = r;
                 }
             }
         }
@@ -669,20 +771,29 @@ impl Records {
 
 // ------------------------------------------------------------------ the realm's plan
 
-/// Where a general's realm puts him and his instruments (§9.3: "the realm's posts").
+/// Where a realm puts its three generals and their instruments (§9.3: "the realm's posts"; B41).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Posts {
-    /// His command post: where he stands, in the room he holds.
-    pub post: P,
-    pub room: Rect,
-    /// Each instrument's tile, in the order of his orders.
+    /// Each general's command post: where he stands, in the room he holds (general `k` at `k`).
+    /// The third general's (`CLIMAX`) is where the realm's climax ends, in a realm that has one:
+    /// he comes out there as its last trap ends.
+    pub posts: [P; 3],
+    pub rooms: [Rect; 3],
+    /// Each instrument's tile, in the order of the orders.
     pub instruments: [P; 3],
     /// The gates a muster marches in through.
     pub gates: [P; 2],
-    /// The watch's round from its fire and back, tile by tile (empty if he sets no watch).
+    /// The watch's round from its fire and back, tile by tile (empty if none sets a watch).
     pub round: Vec<P>,
-    /// The decree's way from his post to the court's portal, tile by tile.
+    /// The decree's way from its general's post to the court's portal, tile by tile.
     pub court: Vec<P>,
+}
+
+impl Posts {
+    /// General `k`'s post.
+    pub fn post(&self, k: usize) -> P {
+        self.posts[k.min(2)]
+    }
 }
 
 /// The shortest walk from `a` to `b` over open floor, both ends included.
@@ -758,13 +869,26 @@ pub fn ground(grid: &Grid, arrival: P, foes: &[P]) -> HashSet<P> {
 }
 
 /**
- * Picks the general's post and his instruments in a realm, by `seed`: his post in a room past the
- * middle of the way (not the last, where the court's portal is), each instrument in a room of its
- * own, the muster's gates on open floor between rooms, the watch's round through two rooms and
- * back, and the decree's way to the court's portal (`court`, the tile before it). Every one is
- * reached from `arrival`. `rooms` are the realm's rooms (or its dens), the entry's left out.
+ * Picks the three generals' posts and the instruments in a realm, by `seed` (BACKLOG B41): each
+ * general in a room of his own (where one of its foes stood: its pack is his guard), the first a
+ * quarter of the way or more, the second past the middle, the third (`CLIMAX`) nearer the court,
+ * or at `climax` where the realm's climax ends; each instrument in a room of its own, apart from
+ * the posts; the muster's gates on open floor between rooms; the watch's round through two rooms
+ * and back; and the decree's way from its general's post to the court's portal (`court`, the tile
+ * before it). Every one is reached from `arrival`. `rooms` are the realm's rooms (or its dens),
+ * the entry's left out.
  */
-pub fn place(grid: &Grid, arrival: P, court: P, rooms: &[Rect], foes: &[P], orders: [OrderKind; 3], seed: u32) -> Option<Posts> {
+#[allow(clippy::too_many_arguments)]
+pub fn place(
+    grid: &Grid,
+    arrival: P,
+    court: P,
+    rooms: &[Rect],
+    foes: &[P],
+    orders: [OrderKind; 3],
+    seed: u32,
+    climax: Option<P>,
+) -> Option<Posts> {
     let mut rng = Rng::new(seed ^ 0x9e3b_1c55);
     let reach = ground(grid, arrival, foes);
     let far = |r: &Rect| {
@@ -777,42 +901,88 @@ pub fn place(grid: &Grid, arrival: P, court: P, rooms: &[Rect], foes: &[P], orde
     };
     let span = (court.x as f64 - arrival.x as f64).hypot(court.y as f64 - arrival.y as f64).max(1.0);
     let mut rooms: Vec<Rect> = rooms.iter().copied().filter(|r| r.tiles().any(|p| reach.contains(&p))).collect();
-    if rooms.len() < 4 {
+    let want = if climax.is_some() { 5 } else { 6 };
+    if rooms.len() < want {
         // (Too few rooms on foot from where he arrives: a realm whose other parts are reached some
         // other way, as Pride's galleries by their mirrors. The floor he can walk is cut into
         // squares instead, and those with floor enough serve as rooms.)
-        rooms = squares(&reach);
+        let mut more = squares(&reach);
+        more.retain(|r| !rooms.iter().any(|o| o.x0 <= r.x1 && r.x0 <= o.x1 && o.y0 <= r.y1 && r.y0 <= o.y1));
+        rooms.extend(more);
     }
-    if rooms.len() < 4 {
+    if rooms.len() < want {
         return None;
     }
     // (Sorted by how far along the way they lie, so the seed picks the same way every time.)
     rooms.sort_by(|a, b| far(a).total_cmp(&far(b)).then(a.x0.cmp(&b.x0)).then(a.y0.cmp(&b.y0)));
     let mut busy: HashSet<P> = HashSet::from([arrival, court]);
-    // His post: past the middle of the way, not the court's own room.
-    // (Of those, the smaller half: a general's room holds a fight, not a pile-on.)
-    let mut posts: Vec<Rect> = rooms.iter().copied().filter(|r| far(r) >= span * 0.45 && near_court(r) >= span * 0.2).collect();
     let area = |r: &Rect| (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
-    posts.sort_by(|a, b| area(a).cmp(&area(b)).then(far(a).total_cmp(&far(b))).then(a.x0.cmp(&b.x0)));
-    posts.truncate(posts.len().div_ceil(2).max(1));
-    let pool = if posts.is_empty() { &rooms } else { &posts };
-    let room = pool[rng.index(pool.len())];
-    // He stands where one of the room's own foes stood (the realm keeps its foes' posts on its
-    // ground, however that ground moves), else on its open floor.
-    let (cx, cy) = room.center();
-    let mut theirs: Vec<P> = foes.iter().copied().filter(|p| room.contains(*p) && reach.contains(p)).collect();
-    theirs.sort_by(|a, b| {
-        let d = |p: &P| (p.x as f32 - cx).powi(2) + (p.y as f32 - cy).powi(2);
-        d(a).total_cmp(&d(b)).then(a.y.cmp(&b.y)).then(a.x.cmp(&b.x))
-    });
-    let post = match theirs.first() {
-        Some(&p) => p,
-        None => spot_in(grid, room, &reach, &busy, (0.0, 0.0))?,
-    };
-    busy.insert(post);
+    // The generals' posts: bands of the way (the last not the court's own room), each a room with
+    // foes in it if there is one (the smaller half: a general's room holds a fight, not a pile-on).
+    let bands: [(f64, f64); 3] = [(0.2, 0.55), (0.45, 0.8), (0.6, 1.2)];
+    // (On ground he walks to from where he arrives, where the realm has rooms enough there: a
+    // general on an island its foes reach some other way is no fight to be found. Pride's galleries,
+    // joined by mirrors alone, keep the whole ground.)
+    let walk0 = super::super::pathing::reachable(grid, arrival, false, false);
+    let on_foot = |r: &Rect| r.tiles().filter(|p| walk0.contains(p)).count() >= 4;
+    let footed = rooms.iter().filter(|r| on_foot(r) && near_court(r) >= span * 0.15).count() >= 3;
+    let holds = |r: &Rect| foes.iter().any(|p| r.contains(*p) && reach.contains(p) && (!footed || walk0.contains(p)));
+    let mut chosen_rooms: Vec<Rect> = Vec::new();
+    let mut posts = [arrival; 3];
+    let mut post_rooms = [Rect { x0: arrival.x, y0: arrival.y, x1: arrival.x, y1: arrival.y }; 3];
+    for k in 0..3 {
+        if k == CLIMAX {
+            if let Some(c) = climax {
+                posts[k] = c;
+                post_rooms[k] = Rect { x0: c.x - 2, y0: c.y - 2, x1: c.x + 2, y1: c.y + 2 };
+                busy.insert(c);
+                continue;
+            }
+        }
+        let (lo, hi) = bands[k];
+        let free = |r: &&Rect| !chosen_rooms.contains(r) && near_court(r) >= span * 0.15 && (!footed || on_foot(r));
+        let mut pool: Vec<Rect> =
+            rooms.iter().filter(free).filter(|r| far(r) >= span * lo && far(r) < span * hi && holds(r)).copied().collect();
+        if pool.is_empty() {
+            pool = rooms.iter().filter(free).filter(|r| far(r) >= span * lo && far(r) < span * hi).copied().collect();
+        }
+        if pool.is_empty() {
+            pool = rooms.iter().filter(free).filter(|r| holds(r)).copied().collect();
+        }
+        if pool.is_empty() {
+            pool = rooms.iter().filter(|r| !chosen_rooms.contains(r)).copied().collect();
+        }
+        pool.sort_by(|a, b| area(a).cmp(&area(b)).then(far(a).total_cmp(&far(b))).then(a.x0.cmp(&b.x0)));
+        pool.truncate(pool.len().div_ceil(2).max(1));
+        let room = *pool.get(rng.index(pool.len().max(1)))?;
+        chosen_rooms.push(room);
+        // He stands where one of the room's own foes stood (the realm keeps its foes' posts on its
+        // ground, however that ground moves), else on its open floor.
+        let (cx, cy) = room.center();
+        let mut theirs: Vec<P> = foes
+            .iter()
+            .copied()
+            .filter(|p| room.contains(*p) && reach.contains(p) && !busy.contains(p) && (!footed || walk0.contains(p)))
+            .collect();
+        theirs.sort_by(|a, b| {
+            let d = |p: &P| (p.x as f32 - cx).powi(2) + (p.y as f32 - cy).powi(2);
+            d(a).total_cmp(&d(b)).then(a.y.cmp(&b.y)).then(a.x.cmp(&b.x))
+        });
+        let post = match theirs.first() {
+            Some(&p) => p,
+            None => spot_in(grid, room, if footed { &walk0 } else { &reach }, &busy, (0.0, 0.0))?,
+        };
+        busy.insert(post);
+        posts[k] = post;
+        post_rooms[k] = room;
+    }
     busy.extend(foes.iter().copied());
-    // Each instrument in a room of its own, spread along the way.
-    let mut others: Vec<Rect> = rooms.iter().copied().filter(|r| *r != room).collect();
+    // Each instrument in a room of its own, spread along the way, none in a general's room.
+    let mut others: Vec<Rect> =
+        rooms.iter().copied().filter(|r| !chosen_rooms.contains(r) && !posts.iter().any(|p| r.contains(*p))).collect();
+    if others.len() < 3 {
+        others = rooms.iter().copied().filter(|r| !chosen_rooms.contains(r)).collect();
+    }
     rng.shuffle(&mut others);
     let mut chosen: Vec<Rect> = Vec::new();
     for r in &others {
@@ -836,7 +1006,7 @@ pub fn place(grid: &Grid, arrival: P, court: P, rooms: &[Rect], foes: &[P], orde
     if chosen.len() < 3 {
         return None;
     }
-    let mut tiles = [post; 3];
+    let mut tiles = [arrival; 3];
     for k in 0..3 {
         let pull = (rng.range(-2.0, 2.0), rng.range(-2.0, 2.0));
         tiles[k] = spot_in(grid, chosen[k], &reach, &busy, pull)?;
@@ -874,7 +1044,7 @@ pub fn place(grid: &Grid, arrival: P, court: P, rooms: &[Rect], foes: &[P], orde
     let round = match orders.iter().position(|&o| o == OrderKind::Watch) {
         Some(w) => {
             let fire = tiles[w];
-            let mut stops: Vec<Rect> = rooms.iter().copied().filter(|r| !r.contains(fire) && *r != room).collect();
+            let mut stops: Vec<Rect> = rooms.iter().copied().filter(|r| !r.contains(fire) && !chosen_rooms.contains(r)).collect();
             stops.sort_by(|a, b| {
                 let d = |r: &Rect| {
                     let (x, y) = r.center();
@@ -911,17 +1081,19 @@ pub fn place(grid: &Grid, arrival: P, court: P, rooms: &[Rect], foes: &[P], orde
         }
         None => Vec::new(),
     };
-    // (Where the court cannot be walked to from his post, as from a gallery of Pride's spire, the
-    // decree is carried to the far end of his own floor: the throne-mirror, the altar.)
-    let court_way = match walk(grid, post, court) {
+    // The decree is carried from its general's post. (Where the court cannot be walked to from
+    // there, as from a gallery of Pride's spire, to the far end of his own floor: the
+    // throne-mirror, the altar.)
+    let from = orders.iter().position(|&o| o == OrderKind::Decree).map(|k| posts[k]).unwrap_or(posts[0]);
+    let court_way = match walk(grid, from, court) {
         Some(w) => w,
         None => {
-            let own = super::super::pathing::reachable(grid, post, false, false);
-            let far_end = own.iter().copied().max_by_key(|p| ((p.x - post.x).pow(2) + (p.y - post.y).pow(2), p.y, p.x))?;
-            walk(grid, post, far_end)?
+            let own = super::super::pathing::reachable(grid, from, false, false);
+            let far_end = own.iter().copied().max_by_key(|p| ((p.x - from.x).pow(2) + (p.y - from.y).pow(2), p.y, p.x))?;
+            walk(grid, from, far_end)?
         }
     };
-    Some(Posts { post, room, instruments: tiles, gates, round, court: court_way })
+    Some(Posts { posts, rooms: post_rooms, instruments: tiles, gates, round, court: court_way })
 }
 
 /// The rooms of the vaults a general may hold or set an instrument in (all but the entry).
@@ -964,21 +1136,36 @@ mod tests {
         out
     }
 
+    /// BACKLOG B41: three generals in every realm, each a body and a name of his own, each giving
+    /// one of the realm's three orders; the first is the realm's general of WARBAND.md §9.3.
     #[test]
     fn the_seven_generals_follow_the_plans_table() {
         let g = all();
-        let names: Vec<&str> = g.iter().map(|g| g.name).collect();
+        let names: Vec<&str> = g.iter().map(|g| g.name()).collect();
         assert!(names.contains(&"THE ASSESSOR") && names.contains(&"MARSHAL GOREBRAND") && names.contains(&"THE BRIDESMAID"));
+        let mut every: Vec<&str> = Vec::new();
         for gen in g {
-            // Three orders, never two of a kind, a kindling and a decree in each realm.
+            // Three orders, never two of a kind, a kindling and a decree in each realm; the decree
+            // never the climax's general's (he is not at a post until the climax ends).
             let o = gen.orders;
             assert!(o[0] != o[1] && o[1] != o[2] && o[0] != o[2], "{:?}", gen.sin);
             assert!(o.contains(&OrderKind::Kindle) && o.contains(&OrderKind::Decree), "{:?}", gen.sin);
-            assert!(gen.name.is_ascii() && gen.decree.is_ascii() && gen.instruments.iter().all(|s| s.is_ascii()));
+            assert_ne!(o[CLIMAX], OrderKind::Decree, "{:?}", gen.sin);
+            assert!(gen.decree.is_ascii() && gen.instruments.iter().all(|s| s.is_ascii()));
+            let c = gen.captains;
+            assert!(c[0].body != c[1].body && c[1].body != c[2].body && c[0].body != c[2].body, "{:?}: three bodies", gen.sin);
+            for k in c {
+                assert!(k.name.is_ascii() && k.line.is_ascii() && !k.body.court_own() && !k.body.lair_own(), "{k:?}");
+                every.push(k.name);
+            }
         }
-        assert_eq!(General::of(Sin::Greed).body, EnemyKind::Blemmyes);
-        assert_eq!(General::of(Sin::Greed).orders, [OrderKind::Muster, OrderKind::Kindle, OrderKind::Decree]);
-        assert_eq!(General::of(Sin::Greed).card(OrderKind::Muster), "THE ASSESSOR MUSTERS");
+        every.sort();
+        every.dedup();
+        assert_eq!(every.len(), 21, "twenty-one names");
+        assert_eq!(General::of(Sin::Greed).captains[0].body, EnemyKind::Blemmyes);
+        assert_eq!(General::of(Sin::Greed).orders, [OrderKind::Muster, OrderKind::Decree, OrderKind::Kindle]);
+        assert_eq!(General::of(Sin::Greed).card(0), "THE ASSESSOR MUSTERS");
+        assert_eq!(General::of(Sin::Greed).card(1), "THE HOARD-HOUND DECREES");
     }
 
     #[test]
@@ -1015,8 +1202,8 @@ mod tests {
             }
         }
         // The decree, once done, is never given again.
-        assert!(c.decree_done && c.stages[2] == OrderStage::Done);
-        assert_eq!(c.given[2], 1);
+        assert!(c.decree_done && c.stages[1] == OrderStage::Done);
+        assert_eq!(c.given[1], 1);
     }
 
     #[test]
@@ -1056,7 +1243,7 @@ mod tests {
         assert!(c.strike(0).is_empty() && c.strike(0).is_empty(), "three blows break it");
         let cues = c.strike(0);
         assert!(cues.contains(&Cue::Over { order: 0, stage: OrderStage::Broken }));
-        // The next whole one is the bellows: a guard pack goes to it.
+        // The next whole one is the chain: a guard pack goes to it.
         assert!(cues.contains(&Cue::Answer { counter: Counter::GuardTo(1), lead: COUNTER_LEAD }));
         assert_eq!(c.stages[0], OrderStage::Broken);
         let later = run(&mut c, COUNTER_LEAD, false);
@@ -1068,39 +1255,48 @@ mod tests {
         // The muster whole and the last other one broken: its gates are doubled.
         let mut c = Command::new(Sin::Greed, [P::new(1, 1), P::new(2, 2), P::new(3, 3)]);
         for _ in 0..BLOWS {
-            c.strike(2);
-        }
-        for _ in 0..BLOWS - 1 {
             c.strike(1);
         }
-        let cues = c.strike(1);
+        for _ in 0..BLOWS - 1 {
+            c.strike(2);
+        }
+        let cues = c.strike(2);
         assert!(cues.contains(&Cue::Answer { counter: Counter::DoubleMuster, lead: COUNTER_LEAD }));
         run(&mut c, COUNTER_LEAD, false);
         assert_eq!(c.muster_extra, MUSTER);
         // The bellows may be turned (once, while whole); nothing else may.
         let mut c = Command::new(Sin::Greed, [P::new(1, 1); 3]);
-        assert!(!c.turn(0) && c.turn(1) && !c.turn(1));
+        assert!(!c.turn(0) && c.turn(2) && !c.turn(2));
     }
 
+    /// D14: the princes' adds always come, however many of the generals fell; the decree done
+    /// brings them at once. A general slain ends his own order; the third slain ends them all.
     #[test]
-    fn the_decree_and_the_generals_death_change_the_princes_fight() {
-        assert_eq!(terms(Sin::Greed, false, false), PrinceTerms::WHOLE);
-        let t = terms(Sin::Greed, true, false);
+    fn the_decree_changes_the_princes_fight_and_each_general_takes_his_order_with_him() {
+        assert_eq!(terms(Sin::Greed, false, 0), PrinceTerms::WHOLE);
+        let t = terms(Sin::Greed, true, 0);
         assert!(t.adds_at_start && t.phase_two_adds, "the treasurers' decree done: the golems come sooner");
-        let t = terms(Sin::Greed, false, true);
-        assert!(!t.adds_at_start && !t.phase_two_adds, "the Assessor slain: no golems in phase two");
-        for sin in SINS.into_iter().filter(|&s| !crate::logic::court::built(s)) {
-            assert!(terms(sin, true, false).health > 1.0 && terms(sin, false, true).health < 1.0, "{sin:?}");
-        }
-        // Slain, every order ends at once and nothing more is given.
+        let t = terms(Sin::Greed, false, 0b111);
+        assert!(!t.adds_at_start && t.phase_two_adds && t.slain == 0b111, "all three slain: his golems still come (D14)");
+        // One slain: his order ends at once and is never given again; the others go on.
         let mut c = Command::new(Sin::Wrath, [P::new(1, 1); 3]);
         run(&mut c, FIRST_ORDER + 1, true);
-        let cues = c.slay();
-        assert!(cues.iter().any(|q| matches!(q, Cue::Over { stage: OrderStage::Broken, .. })));
+        assert_eq!(c.running, Some(0));
+        let cues = c.slay(0);
+        assert!(cues.contains(&Cue::Over { order: 0, stage: OrderStage::Broken }));
+        assert!(!c.slain && c.fallen == [true, false, false]);
+        let given: Vec<usize> = run(&mut c, 20_000, true)
+            .iter()
+            .filter_map(|q| if let Cue::Announce { order, .. } = q.1 { Some(order) } else { None })
+            .collect();
+        assert!(!given.contains(&0) && given.contains(&1) && given.contains(&2), "{given:?}");
+        // All three slain: nothing more is given.
+        let mut c = Command::new(Sin::Wrath, [P::new(1, 1); 3]);
+        run(&mut c, FIRST_ORDER + 1, true);
+        c.slay_all();
+        assert!(c.slain && c.running.is_none());
         assert!(run(&mut c, 20_000, true).is_empty());
-        // (His prince fights weaker: without his adds in a court built to its plan, else on his health.)
-        let t = c.terms();
-        assert!(!t.phase_two_adds || t.health < 1.0, "{t:?}");
+        assert_eq!(c.terms().slain, 0b111);
         // A failed order (the gate barred) may be given again after his rest.
         let mut c = Command::new(Sin::Greed, [P::new(1, 1); 3]);
         run(&mut c, FIRST_ORDER + 1, true);
@@ -1131,15 +1327,18 @@ mod tests {
             for tier in [1, 4, 7] {
                 let (grid, arrival, court, rooms, foes) = realm(sin, tier);
                 let gen = General::of(sin);
-                let posts =
-                    place(&grid, arrival, court, &rooms, &foes, gen.orders, seed_of(sin, tier)).unwrap_or_else(|| panic!("{sin:?} {tier}"));
+                let posts = place(&grid, arrival, court, &rooms, &foes, gen.orders, seed_of(sin, tier), None)
+                    .unwrap_or_else(|| panic!("{sin:?} {tier}"));
                 assert_eq!(
-                    place(&grid, arrival, court, &rooms, &foes, gen.orders, seed_of(sin, tier)).as_ref(),
+                    place(&grid, arrival, court, &rooms, &foes, gen.orders, seed_of(sin, tier), None).as_ref(),
                     Some(&posts),
                     "the same every time"
                 );
                 let seen = ground(&grid, arrival, &foes);
-                let mut all = vec![posts.post];
+                // Three generals, each in a room of his own.
+                assert!(posts.posts[0] != posts.posts[1] && posts.posts[1] != posts.posts[2] && posts.posts[0] != posts.posts[2]);
+                assert!(posts.rooms[0] != posts.rooms[1] && posts.rooms[1] != posts.rooms[2], "{sin:?} {tier}: {:?}", posts.rooms);
+                let mut all = posts.posts.to_vec();
                 all.extend(posts.instruments);
                 all.extend(posts.gates);
                 for p in &all {
@@ -1149,12 +1348,13 @@ mod tests {
                 for (k, p) in posts.instruments.iter().enumerate() {
                     let sides = CARDINALS.iter().filter(|&&d| seen.contains(&p.step(d))).count();
                     assert!(sides >= 2, "{sin:?}: instrument {k} has no floor to strike it from");
-                    assert!(!posts.room.contains(*p), "{sin:?}: an instrument in his own room");
+                    assert!(!posts.rooms.iter().any(|r| r.contains(*p)), "{sin:?}: an instrument in a general's room");
                 }
                 assert!(posts.instruments[0] != posts.instruments[1] && posts.instruments[1] != posts.instruments[2]);
-                // His post is past the middle of the way; the decree walks from it to the court.
-                assert_eq!(posts.court.first(), Some(&posts.post));
-                if crate::logic::pathing::reachable(&grid, posts.post, false, false).contains(&court) {
+                // The decree walks from its general's post to the court.
+                let dk = gen.index_of(OrderKind::Decree).unwrap();
+                assert_eq!(posts.court.first(), Some(&posts.post(dk)));
+                if crate::logic::pathing::reachable(&grid, posts.post(dk), false, false).contains(&court) {
                     assert_eq!(posts.court.last(), Some(&court));
                 }
                 assert!(posts.court.windows(2).all(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs() == 1));
@@ -1182,19 +1382,22 @@ mod tests {
     fn the_generals_record_survives_the_save() {
         let mut c = Command::new(Sin::Envy, [P::new(1, 1); 3]);
         for _ in 0..BLOWS {
-            c.strike(1);
+            c.strike(0);
         }
         c.decree_done = true;
         let mut all = Records::default();
         all.set(Sin::Envy, c.record());
-        all.set(Sin::Lust, Record { met: true, slain: true, ..Record::default() });
+        all.set(Sin::Lust, Record { met: true, slain: 0b101, keys: 0b001, ..Record::default() });
         let text = all.encode();
         assert!(!text.contains('|') && !text.contains(':'), "{text}");
         assert_eq!(Records::decode(&text), all);
         let mut back = Command::new(Sin::Envy, [P::new(1, 1); 3]);
         back.restore(Records::decode(&text).get(Sin::Envy));
-        assert!(back.instruments[1].broken && back.stages[1] == OrderStage::Broken && back.decree_done);
-        assert_eq!(back.stages[2], OrderStage::Done);
+        assert!(back.instruments[0].broken && back.stages[0] == OrderStage::Broken && back.decree_done);
+        assert_eq!(back.stages[1], OrderStage::Done);
         assert_eq!(Records::decode("x,9.1.1.1,2.1"), Records::default(), "rubbish is left out");
+        // A save from before B41: its one general slain is the first of the three, his key taken.
+        let old = Records::decode("4.2.0.1").get(Sin::Greed);
+        assert_eq!((old.broken, old.slain, old.keys), (2, 0b001, 0b001));
     }
 }

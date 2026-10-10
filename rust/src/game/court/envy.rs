@@ -626,12 +626,13 @@ mod tests {
         assert!(g.court.as_ref().unwrap().slain);
         assert!(g.red_key.is_some(), "the Key of Envy lies on the floor");
         assert!(g.sins_cleared & Sin::Envy.bit() != 0, "Envy's bit is set");
-        assert_eq!(g.key_name(), "THE KEY OF ENVY");
+        assert_eq!(g.key_name(), "THE SEAL-STONE OF ENVY");
         assert!(g.saved_run.as_ref().is_some_and(|r| r.stage == save::Stage::SinShop(Sin::Envy)), "and the checkpoint is the old man's");
         let k = g.red_key.unwrap();
         g.hero.place(k);
         run(&mut g, 0.3);
         assert!(g.red_key.is_none() && g.gate_open);
+        assert!(g.seal_stones & Sin::Envy.bit() != 0, "his seal-stone is the hero's (B44)");
         let gate = g.gate.unwrap();
         g.hero.place(P::new(gate.x, gate.y - 1));
         for _ in 0..1200 {
@@ -673,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn his_general_slain_no_serpentlings_and_his_decree_done_they_rise_at_once() {
+    fn his_generals_slain_the_serpentlings_still_rise_and_his_decree_done_they_rise_at_once() {
         use crate::logic::war::general::{Record, Records};
         let set = |g: &mut Game, r: Record| {
             let mut all = Records::decode(&g.warband.save.generals);
@@ -684,16 +685,17 @@ mod tests {
             g.hero.free_move = true;
         };
         let serpentlings = |g: &Game| g.enemies.iter().filter(|e| e.kind() == EnemyKind::Serpentling).count();
-        // The Bell-Warden slain: none at his second phase.
+        // All three generals slain (the door's price, B41): his serpentlings still come at his
+        // second phase (D14: the adds always come).
         let mut g = court();
-        set(&mut g, Record { met: true, slain: true, ..Default::default() });
-        assert!(leviathan(&mut g).lore.summoned, "his phase-two adds are lost");
+        set(&mut g, Record { met: true, slain: 0b111, keys: 0b111, ..Default::default() });
+        assert!(!leviathan(&mut g).lore.summoned, "his phase-two adds still come");
         let (max, from) = (leviathan(&mut g).max_hp, leviathan(&mut g).pos);
         leviathan(&mut g).hp = max * 0.6;
         g.call_duel_hit(0, from);
         run(&mut g, 0.1);
         assert_eq!(leviathan(&mut g).breed.phase, 2);
-        assert_eq!(serpentlings(&g), 0);
+        assert_eq!(serpentlings(&g), SERPENTLINGS as usize);
         // The bell lowered by decree: they rise as the fight begins, and not again.
         let mut g = court();
         set(&mut g, Record { met: true, decree_done: true, ..Default::default() });

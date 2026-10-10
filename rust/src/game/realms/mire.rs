@@ -125,7 +125,7 @@ impl Game {
         let kills = self.brawl.as_ref().map(|b| b.stats.kills).unwrap_or(0);
         let walkable_here = self.level.grid.is_walkable(tile.x, tile.y, false);
         let calls = self.angels.calls;
-        let gate_open = self.gate_open;
+        let gate_open = self.realm_climax_done();
         let vel = self.hero.vel;
         let engaged = self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged() && dist_sq(d.pos, hp) < 64.0).count();
         let alive_raised = |m: &Mire, enemies: &[Enemy]| {
@@ -476,7 +476,8 @@ impl Game {
             }
         }
         if out.sand_out {
-            self.gate_open = true;
+            // (The road leads to the Night Hag, out of Hel's bed: B41.)
+            self.climax_survived();
             self.audio.play(Sfx::Win);
             self.view.shake(0.4);
             self.juice.banner = Some(Banner {
@@ -742,10 +743,11 @@ impl Game {
         self.relevel();
         let mut brawl = self.brawl.take().unwrap_or_else(|| Brawl::new(Field::Vault));
         brawl.reset(self.hero_kit());
-        self.enemies = self.raise_packs(&packs, tier, &mut brawl);
+        self.enemies = self.raise_realm_packs(&packs, tier, &mut brawl);
         self.brawl = Some(brawl);
         self.enter_mire();
-        self.gate_open = true;
+        // (Woken three hundred years on: the Night Hag is out, waiting by the open door.)
+        self.climax_survived();
         self.rebuild_mire_view();
         self.reset_round();
     }
@@ -776,7 +778,7 @@ impl Game {
     /// sunk back. (What time has done to the mire stays done.)
     pub(in crate::game) fn reset_mire(&mut self) {
         let kills = self.brawl.as_ref().map(|b| b.stats.kills).unwrap_or(0);
-        let gate_open = self.gate_open;
+        let gate_open = self.realm_climax_done();
         let Some(m) = self.mire_mut() else { return };
         m.torpor = 0.0;
         m.still = 0.0;
@@ -1005,7 +1007,7 @@ mod tests {
         assert_eq!(g.screen, Screen::Ready, "he sleeps, and wakes");
         let m = mire(&g);
         assert_eq!(m.age, 1, "three hundred years later");
-        assert!(g.gate_open, "the door stands open");
+        assert!(g.realm_climax_done(), "the Long Sleep is over (the door waits for the keys, B41)");
         assert!(m.rotten.iter().any(|&r| r), "the causeways rot");
         assert_eq!(g.hero.occupied(), arrival, "at the edge of the mire");
         assert_eq!(m.torpor, 0.0);
@@ -1242,7 +1244,7 @@ mod tests {
         g.update(STEP);
         assert_eq!(g.screen, Screen::Ready);
         assert_eq!(mire(&g).age, 1, "he slept three hundred years");
-        assert!(g.gate_open);
+        assert!(g.realm_climax_done());
         assert_eq!(g.hero.occupied(), mire(&g).base.arrival);
     }
 
@@ -1330,7 +1332,7 @@ mod tests {
         let door = mire(&g).base.exit.tile;
         g.hero.place(P::new(bed.x - 3, bed.y - 1));
         for _ in 0..((SAND + 12.0) / STEP) as usize {
-            if g.gate_open {
+            if g.realm_climax_done() {
                 break;
             }
             g.hero.invuln = 99.0;
@@ -1342,7 +1344,7 @@ mod tests {
             }
             g.update(STEP);
         }
-        assert!(g.gate_open, "the giant's hand opens the door: {:?} {:?} {:?}", g.screen, mire(&g).phase, g.hero.pos());
+        assert!(g.realm_climax_done(), "the sand runs out: {:?} {:?} {:?}", g.screen, mire(&g).phase, g.hero.pos());
         assert!(matches!(mire(&g).phase, Phase::Done { .. }));
         let servants = g.enemies.iter().filter(|e| e.kind() == EnemyKind::Ganglot && e.duel.as_ref().is_some_and(|d| d.alive())).count();
         assert!(servants >= 3, "{servants} servants waded in");
@@ -1354,6 +1356,7 @@ mod tests {
         // Through the door to Belphegor's court.
         g.enemies.clear();
         g.refresh_foe_views();
+        g.debug_all_keys();
         g.hero.place(P::new(door.x, door.y + 1));
         run(&mut g, 3.0);
         assert!(g.door >= 1.0);

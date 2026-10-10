@@ -152,6 +152,9 @@ pub(crate) enum Cmd {
     /// A boulder hurled at the meadow's cover nearest him (B57's captures).
     Hurl,
     Gate,
+    SlayGeneral(usize),
+    Keys,
+    TakeKey,
     Foes(usize, Option<u8>),
     Dungeon(usize),
     /// Hızır's lesson at step N (1 strike .. 5 the tells, 6 the farewell; 0 the greeting).
@@ -219,7 +222,7 @@ pub(crate) enum Cmd {
     Trial(u8),
     Toast,
     /// Into sin S's realm, before its general's command post (WARBAND.md §9).
-    General(usize),
+    General(usize, usize),
     /// The realm's general gives his order K (0..2) now.
     Order(usize),
     /// The end: Scene II from T seconds in (FINALE.md §4).
@@ -312,7 +315,9 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "bot" => Cmd::Bot(parts.next().and_then(|v| v.parse().ok()).unwrap_or(2)),
             "readout" => Cmd::Press(Action::Readout),
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
-            "general" => Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4)),
+            "general" => {
+                Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4), parts.next().and_then(|v| v.parse().ok()).unwrap_or(0))
+            }
             "order" => Cmd::Order(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "ending" => Cmd::Ending(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0)),
             "after" => {
@@ -347,6 +352,9 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "goo" => Cmd::Goo,
             "hurl" => Cmd::Hurl,
             "gate" => Cmd::Gate,
+            "slaygeneral" => Cmd::SlayGeneral(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "keys" => Cmd::Keys,
+            "takekey" => Cmd::TakeKey,
             "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1), parts.next().and_then(|v| v.parse().ok())),
             "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "lesson" => Cmd::Lesson(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -532,9 +540,9 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             *bot = Some(crate::game::bot::Bot::new(crate::game::bot::Skill::ALL[k.min(2)], 1));
         }
         Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
-        Cmd::General(n) => {
+        Cmd::General(n, k) => {
             game.map_jump(Stage::Realm(SINS[n.min(6)]));
-            game.jump_to_post();
+            game.debug_general(k);
         }
         Cmd::Order(k) => game.debug_order(k),
         Cmd::Ending(at) => game.ending_jump(at),
@@ -551,7 +559,10 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Prince(m) => game.debug_prince_move(m),
         Cmd::FoeMove(m) => game.debug_foe_move(m),
         Cmd::FoeLine(n) => game.debug_foe_line(n),
-        Cmd::Sins(n) => game.sins_cleared = n & ALL_SINS,
+        Cmd::Sins(n) => {
+            game.sins_cleared = n & ALL_SINS;
+            game.seal_stones = n & ALL_SINS;
+        }
         // (Past any prince's health at any tier: from W9 even the first court's pass a thousand.)
         Cmd::Slay => game.debug_wound_boss(100_000),
         Cmd::God => game.input.inject(crate::input::Action::Immortal),
@@ -575,6 +586,13 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Goo => game.debug_goo(),
         Cmd::Hurl => game.debug_hurl(),
         Cmd::Gate => game.cheat_to_gate(),
+        Cmd::SlayGeneral(k) => game.debug_slay_general(k),
+        Cmd::Keys => game.debug_all_keys(),
+        Cmd::TakeKey => {
+            if let Some(k) = game.general.as_ref().and_then(|g| g.lords.iter().find_map(|l| l.key)) {
+                game.hero.place(crate::logic::types::P::new(k.x.round() as i32, k.y.round() as i32));
+            }
+        }
         Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
         Cmd::Dungeon(n) => game.debug_dungeon(n),
         Cmd::Lesson(n) => game.debug_lesson(n),

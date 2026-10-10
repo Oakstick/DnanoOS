@@ -77,6 +77,7 @@ mod portrait;
 mod realms;
 mod resident;
 mod sanctum;
+mod seal_stones;
 mod select;
 mod showcase;
 mod spring;
@@ -180,6 +181,8 @@ pub struct SceneState<'a> {
     pub red_key: Option<P>,
     /// The sin whose realm or court this is: its colour on the key he drops.
     pub realm: Option<Sin>,
+    /// In a prince's court (what he drops is his seal-stone, B44).
+    pub in_court: bool,
     /// The Portals of Hell, while he is there.
     pub hub: Option<HubView>,
     /// The gold of the Vaults of Mammon: where each piece lies, and whether he has taken it.
@@ -221,6 +224,8 @@ pub struct SceneState<'a> {
 pub struct HubView {
     pub doors: [f32; 7],
     pub sins: u8,
+    /// The seal-stones set in the House of Seven Seals (B44).
+    pub stones: u8,
     pub seal: f32,
 }
 

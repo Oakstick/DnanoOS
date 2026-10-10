@@ -210,11 +210,7 @@ pub enum MenuItem {
     QuitToTitle,
     /// Leave the game entirely. Desktop only: a browser tab cannot close itself.
     Quit,
-    /// Mammon's toll: keep the gold (he promises a chance; there is none, and the vaults begin
-    /// again), or leave it and go through.
-    KeepAll,
-    DropAll,
-    /// An answer to a prince's offer in one of the realms after the vaults, in its own words.
+    /// An answer to a realm's lie put to him at its end (the Grey Mire's bed), in its own words.
     Choice(&'static str),
     /// The camera: from above, or over his shoulder (the choice before play).
     ViewTop,
@@ -241,8 +237,6 @@ impl MenuItem {
             MenuItem::CallOldMan => "CALL HIZIR",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
-            MenuItem::KeepAll => "KEEP THE GOLD",
-            MenuItem::DropAll => "LEAVE IT",
             MenuItem::Choice(words) => words,
             MenuItem::ViewTop => "VIEW: TOP-DOWN",
             MenuItem::ViewFollow => "VIEW: FOLLOW",
@@ -496,6 +490,10 @@ pub struct Game {
     pub holy_wave: Option<angels::HolyWave>,
     /// The sins whose keys he holds (one bit each, `Sin::bit`).
     pub sins_cleared: u8,
+    /// The seal-stones taken from the princes' courts, a bit a sin (BACKLOG B44): with all seven
+    /// the seals of the House of Seven Seals break and the way down opens. (`sins_cleared` counts
+    /// the princes beaten, for the realms' tier.)
+    pub seal_stones: u8,
     /// The Portals of Hell, while he is there.
     pub hub: Option<hub::HubState>,
     /// The sin whose realm, or whose prince's court, he is in.
@@ -510,11 +508,12 @@ pub struct Game {
     pub lair: Option<lair::Lair>,
     /// The general of the realm he is in, while he is in it (WARBAND.md §9, `general`).
     pub general: Option<general::GeneralRun>,
-    /// The gold he carries out of the vaults, and whether Mammon has asked his toll for it.
+    /// The gold he carries out of the vaults (counted into his score as he goes through their far
+    /// door: no prince makes a deal for it, BACKLOG B40).
     pub hoard: Hoard,
-    toll_asked: bool,
-    /// His belt and rune fragments as he came into the vaults (restored if the vaults close on him).
-    vault_kit: (Vec<PotionKind>, u32),
+    /// His belt and rune fragments as he came into the realm he is in: what `replay_realm` gives
+    /// back when the realm begins again with everything where it lay.
+    pub(crate) realm_kit: (Vec<PotionKind>, u32),
     /// The camera as it was before the vaults turned it to the top view.
     camera_before_vault: Option<CameraMode>,
     /// The gym's Sparring Ring: its bouts (none elsewhere).
@@ -680,6 +679,7 @@ impl Game {
             controls_keyboard: false,
             holy_wave: None,
             sins_cleared: 0,
+            seal_stones: 0,
             hub: None,
             realm: None,
             vault: None,
@@ -688,8 +688,7 @@ impl Game {
             lair: None,
             general: None,
             hoard: Hoard::default(),
-            toll_asked: false,
-            vault_kit: (Vec::new(), 0),
+            realm_kit: (Vec::new(), 0),
             camera_before_vault: None,
             spar: None,
             brawl: None,

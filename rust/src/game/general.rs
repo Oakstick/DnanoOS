@@ -12,9 +12,16 @@
 //! * **Decree**: carriers walk from his post to the court's portal; whatever reaches it, the
 //!   prince fights with. Kill them or cut the chain.
 //!
-//! Every instrument breaks under three of his blows; the general answers each loss once (a guard to
-//! the next instrument, or the muster doubled), announced as any order is. Slain, the general's
-//! orders end, his banner goes to the workshop's wall, and the prince is weakened.
+//! Every instrument breaks under three of his blows; the generals answer each loss once (a guard to
+//! the next instrument, or the muster doubled), announced as any order is.
+//!
+//! **Three generals a realm, three keys** (BACKLOG B41): each general stands at his own post with
+//! his guard, gives one of the three orders, and carries a key. Slain, his order ends, his banner
+//! goes to the workshop's wall, and his key falls where he fell: a pickup with a moment. With all
+//! three keys the door to the prince's court opens (`gate`); until then it is sealed with a
+//! "3 KEYS" lock. In the six realms after the vaults the third general comes out where the realm's
+//! climax ends (`climax_survived`): the climax is the road to him. The prince's adds always come
+//! (D14); the court reads which generals fell and whether the decree was done (`prince_terms`).
 
 use super::workshop::{GeneralCard, Trophy};
 use super::{Banner, Game};
@@ -30,8 +37,8 @@ use crate::logic::realms::{Dealer, Run};
 use crate::logic::sins::Sin;
 use crate::logic::types::{dist_sq, Tile, P, V};
 use crate::logic::war::general::{
-    self, place, Command, Counter, Cue, General, OrderKind, OrderStage, Posts, PrinceTerms, Records, BAR_FRAMES, CARRIER_PACE, HAZARD_IDS,
-    KINDLE_EVERY, KINDLE_FUSE, KINDLE_MARKS, KINDLE_RADIUS, KINDLE_ZONE, MUSTER, PATROL, PATROL_SIGHT, WHISTLE, WHISTLE_WAKES,
+    self, place, Command, Counter, Cue, General, OrderKind, OrderStage, Posts, PrinceTerms, Records, BAR_FRAMES, CARRIER_PACE, CLIMAX,
+    HAZARD_IDS, KINDLE_EVERY, KINDLE_FUSE, KINDLE_MARKS, KINDLE_RADIUS, KINDLE_ZONE, MUSTER, PATROL, PATROL_SIGHT, WHISTLE, WHISTLE_WAKES,
 };
 use crate::logic::war::ledger::RivalId;
 use crate::logic::war::WarEvent;
@@ -57,6 +64,18 @@ const AMBUSH_RUNES: u32 = 2;
 
 /// The slowest a herald runs (tiles a second), however long his muster's horn.
 pub const HERALD_PACE: f64 = 3.2;
+/// The keys to the prince's court: one a general.
+pub const KEYS: u32 = 3;
+/// He takes a fallen general's key this near it (tiles).
+pub const KEY_REACH: f64 = 0.8;
+/// A general's post is known once he has come this near it (tiles).
+const SEEN_AT: f64 = 11.0;
+/// His name card is shown when he wakes this near the hero (tiles).
+const CARD_AT: f64 = 12.0;
+/// Tiles of road between one picket and the next on the way to a general (B42).
+const PICKET_EVERY: usize = 14;
+/// Seconds after a climax's payoff before its general comes out.
+pub const CLIMAX_BREATH: f64 = 2.0;
 
 /// A puppet on its way: which duelist, the tiles of its way, how far along (tiles), and what it
 /// does at the end.
@@ -137,21 +156,56 @@ pub struct GeneralTally {
     pub decrees: u32,
     /// Heralds caught before their muster bit.
     pub heralds: u32,
+    /// When the last general fell (the realm's clock), and the generals slain, a bit each.
     pub slain_at: Option<f64>,
+    pub slain: u8,
+    /// Keys taken this visit.
+    pub keys: u32,
+    /// Each general's fight: when he woke for the hero (the realm's clock) and when he fell.
+    pub woke: [Option<f64>; 3],
+    pub fell: [Option<f64>; 3],
 }
 
-/// A realm's general at run time.
+/// One of the realm's three generals in play (BACKLOG B41).
+#[derive(Clone, Debug)]
+pub struct Lord {
+    /// His name (a usurper's, if a rival took his place), his body and his cloak.
+    pub name: String,
+    pub body: EnemyKind,
+    pub cloak: u32,
+    pub usurper: Option<RivalId>,
+    /// His duelist (none if he fell earlier in the run, or has not come out yet).
+    pub id: Option<u32>,
+    pub slain: bool,
+    /// His guard called at half his health: the frames to its coming.
+    pub rally: Option<u32>,
+    pub rallied: bool,
+    /// His post is known (seen, mapped by a caught herald, named by the old man): on the minimap.
+    pub known: bool,
+    /// His name card shown this visit.
+    pub met: bool,
+    /// The climax's general, waiting for the realm's last trap to end before he comes out.
+    pub waiting: bool,
+    /// His key lying where he fell, and whether it is taken.
+    pub key: Option<V>,
+    pub key_taken: bool,
+}
+
+/// A realm's generals at run time.
 #[derive(Clone, Debug)]
 pub struct GeneralRun {
     pub sin: Sin,
     pub command: Command,
     pub posts: Posts,
-    /// His name (a usurper's, if a rival took his place) and his body.
-    pub name: String,
-    pub body: EnemyKind,
-    pub usurper: Option<RivalId>,
-    /// His duelist (none if he fell earlier in the run), and the watch.
-    pub id: Option<u32>,
+    /// The three, general `k` giving order `k`.
+    pub lords: [Lord; 3],
+    /// The realm has a climax that leads to the third (the six realms after the vaults), and it
+    /// has been survived.
+    pub climax: bool,
+    pub climax_done: bool,
+    /// When the third comes out (the realm's clock), a breath after the climax's own payoff.
+    pub climax_due: Option<f64>,
+    /// The watch.
     pub patrol: Vec<u32>,
     /// Everything his orders brought into the realm (cleared when the hero falls).
     pub brought: Vec<u32>,
@@ -175,13 +229,8 @@ pub struct GeneralRun {
     /// The instruments his present swing has struck, and the swing's last frame seen.
     struck: [bool; 3],
     swing: Option<(MoveId, u16)>,
-    /// His guard called at half his health: the frames to its coming.
-    pub rally: Option<u32>,
-    pub rallied: bool,
-    /// The herald on his way with the muster, and whether a caught herald's map has marked the
-    /// general's post.
+    /// The herald on his way with the muster.
     pub herald: Option<u32>,
-    pub post_known: bool,
     /// Foes dealt for his orders, so far.
     dealt: usize,
     pub cards: Vec<OrderCard>,
@@ -194,9 +243,29 @@ pub struct GeneralRun {
 }
 
 impl GeneralRun {
-    /// The general's mind.
+    /// The realm's command.
     pub fn general(&self) -> &General {
         &self.command.general
+    }
+    /// General `k` in play.
+    pub fn lord(&self, k: usize) -> &Lord {
+        &self.lords[k.min(2)]
+    }
+    /// Which general duelist `id` is.
+    pub fn lord_of(&self, id: u32) -> Option<usize> {
+        (0..3).find(|&k| self.lords[k].id == Some(id))
+    }
+    /// The keys taken.
+    pub fn keys(&self) -> u32 {
+        self.lords.iter().filter(|l| l.key_taken).count() as u32
+    }
+    /// The generals still standing (or still to come out).
+    pub fn standing(&self) -> usize {
+        self.lords.iter().filter(|l| !l.slain).count()
+    }
+    /// The card's line for order `k`, in its general's name as he is now ("THE ASSESSOR MUSTERS").
+    pub fn card(&self, k: usize) -> String {
+        format!("{} {}", self.lord(k).name, self.general().orders[k.min(2)].verb())
     }
     /// Instrument `k`'s place in the world.
     pub fn instrument_at(&self, k: usize) -> V {
@@ -219,31 +288,50 @@ impl Game {
         Records::decode(&self.warband.save.generals)
     }
 
-    /**
-     * The prince's crooked bargain is taken (WARBAND.md §10.3): its unnamed price is the
-     * general's decree, done as if his carriers had reached the court; the prince fights by it.
-     * Returns what the decree did (the card's words), or None if no general stands here to have it.
-     */
-    pub(super) fn bargain_completes_the_decree(&mut self) -> Option<&'static str> {
-        let g = self.general.as_mut().filter(|g| !g.command.slain && !g.command.decree_done)?;
-        g.command.decree_done = true;
-        let done = g.command.general.decree_done;
-        self.keep_record();
-        self.save_warband();
-        Some(done)
-    }
-
     fn keep_record(&mut self) {
         let Some(g) = self.general.as_ref() else { return };
         let mut all = self.general_records();
-        all.set(g.sin, g.command.record());
+        let mut r = g.command.record();
+        r.keys = (0..3).filter(|&k| g.lords[k].key_taken).fold(0u8, |a, k| a | 1 << k);
+        all.set(g.sin, r);
         self.warband.save.generals = all.encode();
     }
 
-    /// The prince of `sin`'s fight, by what his general's realm came to this run.
+    /// The prince of `sin`'s fight, by what his generals' realm came to this run: which of them fell
+    /// and whether the decree was done (his adds always come, D14).
     pub fn prince_terms(&self, sin: Sin) -> PrinceTerms {
         let r = self.general_records().get(sin);
         general::terms(sin, r.decree_done, r.slain)
+    }
+
+    /// The door to the prince's court may open: all three keys held (or the realm has no generals,
+    /// `VH_NO_GENERAL`).
+    pub fn court_keys_held(&self) -> bool {
+        self.general.as_ref().is_none_or(|g| g.keys() >= KEYS)
+    }
+
+    /// Where the third general comes out as the realm's climax ends: a few steps before the court's
+    /// portal, on its floor.
+    fn climax_spot(grid: &crate::logic::grid::Grid, exit: crate::logic::hub::Gate) -> P {
+        let (dx, dy) = exit.facing.vec();
+        Self::near_floor(grid, P::new(exit.tile.x + dx * 3, exit.tile.y + dy * 3), Some(exit.front()))
+    }
+
+    /// The floor tile nearest `want` (within five), not `not`.
+    fn near_floor(grid: &crate::logic::grid::Grid, want: P, not: Option<P>) -> P {
+        let mut best = want;
+        let mut d = i32::MAX;
+        for y in -5..=5 {
+            for x in -5..=5 {
+                let p = P::new(want.x + x, want.y + y);
+                let dd = (p.x - want.x).abs() + (p.y - want.y).abs();
+                if grid.is_walkable(p.x, p.y, false) && dd < d && Some(p) != not {
+                    d = dd;
+                    best = p;
+                }
+            }
+        }
+        best
     }
 
     /// Duelist `id`'s index in `self.enemies`.
@@ -318,10 +406,11 @@ impl Game {
     }
 
     /**
-     * The realm's general takes his post as the level is laid out (the vaults, or one of the six
-     * realms): placed by the realm's seed, his instruments standing, his guard asleep about him,
-     * the watch asleep at its fire; as the run left him (instruments broken stay broken, a slain
-     * general stays slain). The war table learns of him.
+     * The realm's three generals take their posts as the level is laid out (the vaults, or one of
+     * the six realms): placed by the realm's seed, their instruments standing, each general's guard
+     * asleep about him, the watch asleep at its fire; as the run left them (instruments broken stay
+     * broken, a slain general stays slain and his key, taken, stays his). In a realm after the
+     * vaults the third waits for its climax to end. The war table learns of them.
      */
     pub(super) fn enter_general(&mut self) {
         self.general = None;
@@ -330,40 +419,84 @@ impl Game {
         }
         let tier = self.realm_tier();
         // (Placed on the realm's ground as it was laid out, before its rules flood or hide any of it.)
-        let (sin, arrival, court, rooms, layout) = if let Some(v) = &self.vault {
-            (Sin::Greed, v.arrival, P::new(v.exit_gate.x - 1, v.exit_gate.y), general::vault_rooms(v), self.level.grid.clone())
+        let (sin, arrival, court, rooms, layout, climax) = if let Some(v) = &self.vault {
+            (Sin::Greed, v.arrival, P::new(v.exit_gate.x - 1, v.exit_gate.y), general::vault_rooms(v), self.level.grid.clone(), None)
         } else if let Some(r) = &self.run {
             let b = r.base();
             let layout = crate::logic::level::parse_level(&b.level(&self.level.data)).grid;
-            (Run::sin(r), b.arrival, b.exit.front(), general::realm_rooms(b), layout)
+            // (The Rotting Feast's third stands at the table at the Stomach's heart, the gullet his
+            // road; every other realm's comes out where its climax ends, before the court's portal.)
+            let spot = match r {
+                Run::Gluttony(f) => Self::near_floor(&layout, P::new(f.dome.x, f.dome.y + 3), Some(f.dome)),
+                _ => Self::climax_spot(&layout, b.exit),
+            };
+            (Run::sin(r), b.arrival, b.exit.front(), general::realm_rooms(b), layout, Some(spot))
         } else {
             return;
         };
-        // The realm's foes' posts, on its ground as it was laid out (he takes one of them).
+        let waits = climax.is_some() && !matches!(self.run.as_ref(), Some(Run::Gluttony(_)));
+        // The realm's foes' posts, on its ground as it was laid out (the generals take some of them).
         let foes: Vec<P> = self
             .enemies
             .iter()
             .filter_map(|e| e.duel.as_deref().and_then(|d| d.den).map(|den| P::new(den.home.x.round() as i32, den.home.y.round() as i32)))
             .collect();
+        // (The Rotting Feast's seams are no posts: a general in a gatehouse would be shut in its
+        // teeth. Its garrisons and their posts are left out.)
+        let (rooms, foes) = match self.run.as_ref() {
+            Some(Run::Gluttony(f)) => {
+                let seams: Vec<crate::logic::hub::Rect> = f
+                    .seams
+                    .iter()
+                    .map(|s| crate::logic::hub::Rect { x0: 0, y0: s.bottom.min(s.top) - 1, x1: layout.width, y1: s.bottom.max(s.top) + 1 })
+                    .collect();
+                let clear = |r: &crate::logic::hub::Rect| !seams.iter().any(|s| r.y0 <= s.y1 && s.y0 <= r.y1);
+                let rooms: Vec<_> = rooms.into_iter().filter(clear).collect();
+                let foes: Vec<P> = foes.into_iter().filter(|p| !seams.iter().any(|s| s.contains(*p))).collect();
+                (rooms, foes)
+            }
+            _ => (rooms, foes),
+        };
         let gen = General::of(sin);
-        let Some(posts) = place(&layout, arrival, court, &rooms, &foes, gen.orders, general::seed_of(sin, tier)) else { return };
+        let Some(posts) = place(&layout, arrival, court, &rooms, &foes, gen.orders, general::seed_of(sin, tier), climax) else { return };
         let mut command = Command::new(sin, posts.instruments);
         command.decree_frames = ((posts.court.len() as f64 / CARRIER_PACE) * 60.0) as u32 + 120;
         let record = self.general_records().get(sin);
         command.restore(record);
-        // A rival of rank four or more may have taken his place.
-        let usurper = if record.slain { None } else { self.ledger().usurper() };
-        let (name, body) = match usurper.and_then(|id| self.ledger().get(id)) {
-            Some(r) => (r.name.to_uppercase(), r.kind),
-            None => (gen.name.to_string(), gen.body),
-        };
+        // A rival of rank four or more may have taken the place of the first general still standing.
+        let usurped = (0..3).find(|&k| record.slain & (1 << k) == 0 && k != CLIMAX);
+        let usurper = usurped.and(self.ledger().usurper());
+        let lords: [Lord; 3] = std::array::from_fn(|k| {
+            let c = gen.captains[k];
+            let rival = if Some(k) == usurped {
+                usurper.and_then(|id| self.ledger().get(id).map(|r| (id, r.name.to_uppercase(), r.kind)))
+            } else {
+                None
+            };
+            let slain = record.slain & (1 << k) != 0;
+            Lord {
+                name: rival.as_ref().map(|r| r.1.clone()).unwrap_or_else(|| c.name.to_string()),
+                body: rival.as_ref().map(|r| r.2).unwrap_or(c.body),
+                cloak: c.cloak,
+                usurper: rival.map(|r| r.0),
+                id: None,
+                slain,
+                rally: None,
+                rallied: false,
+                known: false,
+                met: false,
+                waiting: waits && k == CLIMAX && !slain,
+                key: None,
+                key_taken: record.keys & (1 << k) != 0,
+            }
+        });
         self.general = Some(GeneralRun {
             sin,
             command,
-            name,
-            body,
-            usurper,
-            id: None,
+            lords,
+            climax: waits,
+            climax_done: false,
+            climax_due: None,
             patrol: Vec::new(),
             brought: Vec::new(),
             walkers: Vec::new(),
@@ -372,7 +505,7 @@ impl Game {
             gate: None,
             barred: vec![false; posts.gates.len()],
             bar: 0,
-            zone: posts.post.v(),
+            zone: posts.posts[0].v(),
             volleys: Vec::new(),
             next_volley: 0,
             volley_no: 0,
@@ -380,10 +513,7 @@ impl Game {
             carriers: Vec::new(),
             struck: [false; 3],
             swing: None,
-            rally: None,
-            rallied: false,
             herald: None,
-            post_known: false,
             dealt: 0,
             cards: Vec::new(),
             tally: GeneralTally::default(),
@@ -392,119 +522,272 @@ impl Game {
             posts,
             layout,
         });
-        if !record.slain {
-            self.raise_general();
+        // A key that fell and was not taken (he left the realm before) lies where its general stood.
+        for k in 0..3 {
+            let lying = self.general.as_ref().is_some_and(|g| g.lords[k].slain && !g.lords[k].key_taken);
+            if lying {
+                let at = self.general.as_ref().map(|g| g.posts.post(k).v()).unwrap_or_default();
+                self.drop_key(k, at, false);
+            }
         }
+        for k in 0..3 {
+            let up = self.general.as_ref().is_some_and(|g| !g.lords[k].slain && !g.lords[k].waiting);
+            if up {
+                self.raise_lord(k);
+            }
+        }
+        self.raise_watch();
+        self.raise_pickets(arrival);
+        // The court's door: three keys (B41).
+        self.keys_total = KEYS;
+        self.keys_got = self.general.as_ref().map(|g| g.keys()).unwrap_or(0);
         self.know_general(!record.met);
         self.keep_record();
+        // (Every key already his, from an earlier visit: the door stands unsealed.)
+        self.check_court_door();
     }
 
-    /// The general and his guard at his post (asleep in its room, his pack to be), and the watch
-    /// at its fire.
-    fn raise_general(&mut self) {
+    /// The realm's climax has been survived this visit (with no generals, `VH_NO_GENERAL`: its door
+    /// open, as before B41).
+    pub fn realm_climax_done(&self) -> bool {
+        match self.general.as_ref() {
+            Some(g) => g.climax_done,
+            None => self.gate_open,
+        }
+    }
+
+    /// General `k` and his guard at his post (asleep in its room, its pack his to lead).
+    fn raise_lord(&mut self, k: usize) {
         let Some(g) = self.general.as_ref() else { return };
-        let (room, post, body) = (g.posts.room, g.posts.post, g.body);
-        let den = Den {
+        let (room, post, body) = (g.posts.rooms[k], g.posts.post(k), g.lords[k].body);
+        let mut den = Den {
             lo: V::new(room.x0 as f64 - 0.5, room.y0 as f64 - 0.5),
             hi: V::new(room.x1 as f64 + 0.5, room.y1 as f64 + 0.5),
             home: post.v(),
             awake: false,
             returning: false,
         };
-        // He takes the post of the room's foe that stood there: its pack is his guard.
-        let mut den = den;
+        // He takes the post of the room's foe that stood there: its pack is his guard. (Where none
+        // stood, as where a climax ends, two of the realm's foes are his guard.)
+        let mut guard = true;
         if let Some(i) = self.enemies.iter().position(|e| e.duel.as_deref().and_then(|d| d.den).is_some_and(|d| d.home == post.v())) {
             if let Some(theirs) = self.enemies[i].duel.as_deref().and_then(|d| d.den) {
                 den = Den { home: post.v(), ..theirs };
             }
             self.enemies.remove(i);
+            guard = false;
+        }
+        // (His room's pack is raised half as large again as laid out, B42: the post is reinforced.)
+        if guard {
+            den = Self::den_at(post, 3.0);
+            for n in 0..2 {
+                let (kind, stage) = self.deal();
+                let at = self.open_near(post, n + 2);
+                self.raise(kind, stage, at, Some(den), false, 1.0);
+            }
         }
         let id =
             self.raise(body, crate::logic::realms::deepest_stage(self.realm_tier()), post, Some(den), false, general::general_health(body));
-        let mut patrol = Vec::new();
-        let watch =
-            self.general.as_ref().and_then(|g| g.general().index_of(OrderKind::Watch).filter(|&w| !g.command.instruments[w].broken));
-        if let Some(w) = watch {
-            let fire = self.general.as_ref().map(|g| g.command.instruments[w].tile).unwrap_or(post);
-            for k in 0..PATROL {
-                let (kind, stage) = self.deal();
-                let at = self.open_near(fire, k as i32 + 1);
-                if let Some(pid) = self.raise(kind, stage, at, Some(Self::den_at(at, 2.0)), false, 1.0) {
-                    patrol.push(pid);
-                }
-            }
-        }
         // A usurper is a rival of the Ledger still: his lesson, his weakness and his nature go
         // with him into the fight (WARBAND.md §8-§9), and his card when he is met.
-        if let (Some(fid), Some(rival)) = (id, self.general.as_ref().and_then(|g| g.usurper)) {
+        if let (Some(fid), Some(rival)) = (id, self.general.as_ref().and_then(|g| g.lords[k].usurper)) {
             self.war.grudges.seated.push((fid, rival));
         }
+        if let (Some(i), Some(g)) = (id.and_then(|id| self.foe_at(id)), self.general.as_ref()) {
+            self.enemies[i].b.name = g.lords[k].name.clone();
+        }
         if let Some(g) = self.general.as_mut() {
-            g.id = id;
+            g.lords[k].id = id;
+        }
+    }
+
+    /**
+     * Pickets on the roads to the generals (BACKLOG B42: more foes met a minute): along the way from
+     * where he arrives to each general's post, every `PICKET_EVERY` tiles of open road clear of the
+     * dens and of every foe, two of the realm's foes asleep in a small den of their own. Not in the
+     * Rotting Feast, whose gullet is one road already full, nor with `VH_THIN`.
+     */
+    fn raise_pickets(&mut self, arrival: P) {
+        if std::env::var_os("VH_THIN").is_some() || matches!(self.run.as_ref(), Some(Run::Gluttony(_))) {
+            return;
+        }
+        let Some(g) = self.general.as_ref() else { return };
+        let mut roads: Vec<Vec<P>> = Vec::new();
+        for k in 0..3 {
+            if g.lords[k].slain || g.lords[k].waiting {
+                continue;
+            }
+            if let Some(w) = general::walk(&g.layout, arrival, g.posts.post(k)) {
+                roads.push(w);
+            }
+        }
+        let dens: Vec<crate::logic::hub::Rect> = match (&self.vault, &self.run) {
+            (Some(v), _) => v.packs.iter().map(|p| p.den).collect(),
+            (_, Some(r)) => r.base().packs.iter().map(|p| p.den).collect(),
+            _ => Vec::new(),
+        };
+        let mut placed: Vec<P> = Vec::new();
+        for road in roads {
+            let mut i = PICKET_EVERY;
+            while i + 8 < road.len() {
+                let p = road[i];
+                i += 1;
+                let clear = !dens.iter().any(|d| d.contains(p))
+                    && self.enemies.iter().all(|e| crate::logic::types::dist_sq(e.pos(), p.v()) > 5.0 * 5.0)
+                    && placed.iter().all(|q| (q.x - p.x).abs() + (q.y - p.y).abs() > PICKET_EVERY as i32 / 2)
+                    && self.level.grid.is_walkable(p.x, p.y, false);
+                if !clear {
+                    continue;
+                }
+                let den = Self::den_at(p, 2.5);
+                for n in 0..2 {
+                    let (kind, stage) = self.deal();
+                    let at = if n == 0 { p } else { self.open_near(p, 1) };
+                    self.raise(kind, stage, at, Some(den), false, 1.0);
+                }
+                placed.push(p);
+                i += PICKET_EVERY;
+            }
+        }
+    }
+
+    /// The watch asleep at its fire (its fire whole, its general standing).
+    fn raise_watch(&mut self) {
+        let watch = self
+            .general
+            .as_ref()
+            .and_then(|g| g.general().index_of(OrderKind::Watch).filter(|&w| !g.command.instruments[w].broken && !g.lords[w].slain));
+        let Some(w) = watch else { return };
+        let fire = self.general.as_ref().map(|g| g.command.instruments[w].tile).unwrap_or_default();
+        let mut patrol = Vec::new();
+        for k in 0..PATROL {
+            let (kind, stage) = self.deal();
+            let at = self.open_near(fire, k as i32 + 1);
+            if let Some(pid) = self.raise(kind, stage, at, Some(Self::den_at(at, 2.0)), false, 1.0) {
+                patrol.push(pid);
+            }
+        }
+        if let Some(g) = self.general.as_mut() {
             g.patrol = patrol;
         }
     }
 
-    /// An open tile about `at`, `k` steps round it.
-    fn open_near(&self, at: P, k: i32) -> P {
-        let ring = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1), (2, 0), (0, 2)];
-        let g = &self.level.grid;
-        ring.iter()
-            .cycle()
-            .skip(k as usize)
-            .take(ring.len())
-            .map(|&(dx, dy)| P::new(at.x + dx, at.y + dy))
-            .find(|p| g.is_walkable(p.x, p.y, false))
-            .unwrap_or(at)
+    /**
+     * The realm's climax is survived (the Peerless shattered, the bell lifted and dived, the truce
+     * held, the Long Sleep outlasted, the Last Course left lean, the wedding night endured): its
+     * general comes out before the court's portal with his guard, the third key on him (B41). Where
+     * the realm has no generals (`VH_NO_GENERAL`) the portal simply opens, as before B41.
+     */
+    pub(super) fn climax_survived(&mut self) {
+        let Some(g) = self.general.as_mut() else {
+            self.gate_open = true;
+            return;
+        };
+        if g.climax_done {
+            return;
+        }
+        g.climax_done = true;
+        if g.lords[CLIMAX].waiting {
+            g.climax_due = Some(self.time + CLIMAX_BREATH);
+            g.lords[CLIMAX].known = true;
+        }
+        self.keep_record();
+        self.check_court_door();
     }
 
-    /// The war table's card for him, and the old man's news of him the first time.
+    /// The climax's general comes out at his post, awake, with his guard: his entrance.
+    pub(super) fn bring_out_climax_general(&mut self) {
+        let Some(g) = self.general.as_mut() else { return };
+        g.climax_due = None;
+        if !g.lords[CLIMAX].waiting {
+            return;
+        }
+        g.lords[CLIMAX].waiting = false;
+        self.raise_lord(CLIMAX);
+        let post = self.general.as_ref().map(|g| g.posts.post(CLIMAX)).unwrap_or_default();
+        // He comes for the hero at once: his den awake.
+        for e in self.enemies.iter_mut() {
+            if let Some(d) = e.duel.as_deref_mut() {
+                if let Some(den) = d.den.as_mut().filter(|den| {
+                    den.home.x.round() as i32 - post.x <= 3
+                        && post.x - den.home.x.round() as i32 <= 3
+                        && (den.home.y.round() as i32 - post.y).abs() <= 3
+                }) {
+                    den.awake = true;
+                }
+            }
+        }
+        let (name, line, cloak) = self
+            .general
+            .as_ref()
+            .map(|g| (g.lords[CLIMAX].name.clone(), g.general().captains[CLIMAX].line, g.lords[CLIMAX].cloak))
+            .unwrap_or_default();
+        self.juice.banner = Some(Banner {
+            text: format!("{name} COMES OUT"),
+            sub: format!("{line}   HE CARRIES THE LAST KEY"),
+            color: cloak,
+            life: 3.4,
+            max: 3.4,
+        });
+        if let Some(g) = self.general.as_mut() {
+            g.lords[CLIMAX].met = true;
+        }
+        self.audio.play(Sfx::Stinger);
+        self.view.trauma(Trauma::Horn);
+        let p = post.v();
+        self.view.sparkle(&self.level.grid, p.x, p.y, 1.6, cloak, 40);
+        self.view.dust(&self.level.grid, p.x, p.y, 0x8a7a68, 30, 2.2);
+        self.refresh_foe_views();
+    }
+
+    /// The war table's card for the realm's generals, and the old man's news of them the first time.
     fn know_general(&mut self, first: bool) {
         let Some(g) = self.general.as_ref() else { return };
         let gen = *g.general();
         let mut known: Vec<String> = Vec::new();
         for k in 0..3 {
             let i = g.command.instruments[k];
-            let state = if i.broken {
+            let state = if g.lords[k].slain {
+                "slain"
+            } else if i.broken {
                 "broken"
             } else if i.turned {
                 "turned"
             } else {
                 "standing"
             };
-            known.push(format!("{} by {} ({state})", gen.orders[k].verb().to_lowercase(), title_case(gen.instruments[k])));
+            known.push(format!(
+                "{} {} by {} ({state})",
+                title_case(&g.lords[k].name),
+                gen.orders[k].verb().to_lowercase(),
+                title_case(gen.instruments[k])
+            ));
         }
-        let note = if g.command.slain {
-            format!(
-                "Slain. His banner hangs on your wall. {}",
-                if crate::logic::court::built(gen.sin) {
-                    format!("{} fights without his {}.", gen.sin.prince(), crate::logic::court::adds(gen.sin))
-                } else {
-                    "His prince is weaker for it.".to_string()
-                }
-            )
-        } else {
-            format!("He {}.", known.join("; he "))
-        };
-        let name = g.name.clone();
+        let keys = g.keys();
+        let note = format!("{}. Keys to {}'s court: {keys} of {KEYS}.", known.join("; "), gen.sin.prince());
+        let names = g.lords.iter().map(|l| title_case(&l.name)).collect::<Vec<_>>().join(", ");
         let sin = g.sin;
-        self.workshop.generals[sin.index()] = Some(GeneralCard { sin, name: title_case(&name), note });
+        let first_name = title_case(&g.lords[0].name);
+        let climax = g.climax;
+        let last = title_case(&g.lords[CLIMAX].name);
+        self.workshop.generals[sin.index()] = Some(GeneralCard { sin, name: names, note });
         if first {
             let line = format!(
-                "{} holds {} for {}. He {} by {}: break it, and he cannot.",
-                title_case(&name),
+                "Three generals hold {} for {}, and each carries a key to his court. {} {} by {}: break it, and he cannot.{}",
                 sin.realm(),
                 sin.prince(),
+                first_name,
                 gen.orders[0].verb().to_lowercase(),
-                title_case(gen.instruments[0]).to_lowercase()
+                title_case(gen.instruments[0]).to_lowercase(),
+                if climax { format!(" {last} waits at the end of the realm's trap.") } else { String::new() }
             );
             self.workshop.news.push(line);
         }
     }
 
     /// The hero fell and the realm begins again: what the orders brought is gone, the order under
-    /// way is called off, the kindled floor is cold; the general and his guard are home (as the
-    /// dens are); broken instruments stay broken.
+    /// way is called off, the kindled floor is cold; the generals and their guards are home (as the
+    /// dens are); broken instruments stay broken, the slain stay slain, their keys stay his.
     pub(super) fn reset_general(&mut self) {
         let Some(g) = self.general.as_mut() else { return };
         let gone: Vec<u32> = g.brought.drain(..).chain(g.carriers.drain(..)).collect();
@@ -514,7 +797,9 @@ impl Game {
         g.gate = None;
         g.bar = 0;
         g.volleys.clear();
-        g.rally = None;
+        for l in g.lords.iter_mut() {
+            l.rally = None;
+        }
         g.cards.clear();
         g.seen = 0;
         if let Some(k) = g.command.running {
@@ -538,16 +823,37 @@ impl Game {
             }
         }
         // (A realm that raises its packs afresh after a fall, as the Burning Field does, raises
-        // them without him: he takes his post again.)
-        let lost = self.general.as_ref().is_some_and(|g| !g.command.slain && g.id.is_some_and(|id| self.foe(id).is_none()));
-        if lost {
-            self.raise_general();
+        // them without the generals: each takes his post again.)
+        for k in 0..3 {
+            let lost = self.general.as_ref().is_some_and(|g| {
+                let l = &g.lords[k];
+                !l.slain && !l.waiting && l.id.is_none_or(|id| self.foe(id).is_none())
+            });
+            if lost {
+                self.raise_lord(k);
+            }
         }
         self.refresh_foe_views();
     }
 
+    /// An open tile about `at`, `k` steps round it.
+    fn open_near(&self, at: P, k: i32) -> P {
+        let ring = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1), (2, 0), (0, 2)];
+        let g = &self.level.grid;
+        ring.iter()
+            .cycle()
+            .skip(k as usize)
+            .take(ring.len())
+            .map(|&(dx, dy)| P::new(at.x + dx, at.y + dy))
+            .find(|p| g.is_walkable(p.x, p.y, false))
+            .unwrap_or(at)
+    }
+
     /// One frame of the general's realm (after the brawl's).
     pub(super) fn update_general(&mut self, dt: f64) {
+        if self.general.as_ref().and_then(|g| g.climax_due).is_some_and(|t| self.time >= t) {
+            self.bring_out_climax_general();
+        }
         if self.general.is_none() || !self.brawling() {
             return;
         }
@@ -598,32 +904,43 @@ impl Game {
         })
     }
 
-    /// His death, his half-health horn, the watch's ambush, the carriers' fate.
+    /// Each general's death, his half-health horn, his name card when he wakes, his post seen; the
+    /// keys lying about; the carriers' fate.
     fn watch_the_general(&mut self) {
-        let Some(g) = self.general.as_ref() else { return };
-        // (Slain this frame, as the war log has it: the vaults sweep the fallen away at once.)
-        let fell = g.id.and_then(|id| {
-            self.war.log.iter().find_map(|e| match *e {
+        let hp = self.hero.pos();
+        for k in 0..3 {
+            let Some(g) = self.general.as_ref() else { return };
+            let l = &g.lords[k];
+            if l.slain {
+                continue;
+            }
+            // His post is known once he has come near it (or near him).
+            if !l.known && dist_sq(g.posts.post(k).v(), hp) <= SEEN_AT * SEEN_AT {
+                if let Some(g) = self.general.as_mut() {
+                    g.lords[k].known = true;
+                }
+            }
+            let Some(g) = self.general.as_ref() else { return };
+            let Some(id) = g.lords[k].id else { continue };
+            // (Slain this frame, as the war log has it: the vaults sweep the fallen away at once.)
+            let fell = self.war.log.iter().find_map(|e| match *e {
                 WarEvent::Slain { foe, at, .. } if foe == id => Some(at),
                 _ => None,
-            })
-        });
-        if let Some(at) = fell.filter(|_| !g.command.slain) {
-            self.general_slain(at);
-            return;
-        }
-        let Some(g) = self.general.as_ref() else { return };
-        if let Some(id) = g.id.filter(|_| !g.command.slain) {
-            match self.foe(id).map(|d| (d.alive(), d.hp / d.max_hp.max(1.0), d.pos)) {
-                Some((true, share, _)) if share <= RALLY_AT && !g.rallied => {
-                    let name = g.name.clone();
-                    let gen = g.sin;
+            });
+            if let Some(at) = fell {
+                self.general_slain(k, at);
+                continue;
+            }
+            let rallied = g.lords[k].rallied;
+            let met = g.lords[k].met;
+            match self.foe(id).map(|d| (d.alive(), d.hp / d.max_hp.max(1.0), d.pos, d.engaged())) {
+                Some((true, share, at, _)) if share <= RALLY_AT && !rallied => {
+                    let name = g.lords[k].name.clone();
                     if let Some(g) = self.general.as_mut() {
-                        g.rallied = true;
-                        g.rally = Some(RALLY_LEAD);
+                        g.lords[k].rallied = true;
+                        g.lords[k].rally = Some(RALLY_LEAD);
                     }
-                    let at = self.foe(id).map(|d| d.pos).unwrap_or_default();
-                    self.horn(at, gen, false);
+                    self.horn(at, k, false);
                     self.order_card(
                         format!("{name} SOUNDS HIS HORN - 1"),
                         "HIS GUARD STANDS FAST: STRIKE NOW OR WAIT IT OUT".into(),
@@ -631,13 +948,15 @@ impl Game {
                         None,
                     );
                 }
+                Some((true, _, at, true)) if !met && dist_sq(at, hp) <= CARD_AT * CARD_AT => self.general_met(k, at),
                 Some((true, ..)) => {}
-                Some((false, _, at)) => self.general_slain(at),
+                Some((false, _, at, _)) => self.general_slain(k, at),
                 // (Gone from the field without falling: a realm raised its packs afresh. He takes his
                 // post again when the hero next rises.)
                 None => {}
             }
         }
+        self.take_keys();
         // The decree's carriers: all cut down before any reached the court, the decree fails.
         let Some(g) = self.general.as_ref() else { return };
         if let Some(k) = g.general().index_of(OrderKind::Decree) {
@@ -662,11 +981,33 @@ impl Game {
         }
     }
 
+    /// General `k` wakes and comes for him: his name card (WARBAND.md §8.4's beat for a rival), a
+    /// moment's slowing, his cry.
+    fn general_met(&mut self, k: usize, at: V) {
+        let t = self.time;
+        let Some(g) = self.general.as_mut() else { return };
+        g.lords[k].met = true;
+        g.lords[k].known = true;
+        g.tally.woke[k].get_or_insert(t);
+        let (name, body, cloak) = (g.lords[k].name.clone(), g.lords[k].body, g.lords[k].cloak);
+        let line = if g.lords[k].usurper.is_some() { "A RIVAL IN A GENERAL'S PLACE" } else { g.general().captains[k].line };
+        let order = g.general().orders[k];
+        let instrument = g.general().instruments[k];
+        self.juice.banner = Some(Banner {
+            text: name,
+            sub: format!("{line}   {} BY {instrument}   HE CARRIES A KEY", order.verb()),
+            color: cloak,
+            life: 3.0,
+            max: 3.0,
+        });
+        self.dilate(crate::logic::juice::DilationKind::RivalMet);
+        self.audio.foe_cry(body, crate::audio::Cry::Alert, at);
+    }
+
     /// What the general's mind says, done in the world.
     fn general_cue(&mut self, cue: Cue) {
         let Some(g) = self.general.as_ref() else { return };
         let gen = *g.general();
-        let name = g.name.clone();
         let sin = g.sin;
         match cue {
             Cue::Announce { order, lead } => {
@@ -724,8 +1065,9 @@ impl Game {
                     _ => {}
                 }
                 let at = self.general.as_ref().map(|g| g.instrument_at(order)).unwrap_or(hp);
-                self.horn(at, sin, kind == OrderKind::Muster);
-                self.order_card(gen.card(kind).replace(gen.name, &name), sub, gen.cloak, Some(order));
+                self.horn(at, order, kind == OrderKind::Muster);
+                let (card, cloak) = self.general.as_ref().map(|g| (g.card(order), g.lords[order].cloak)).unwrap_or_default();
+                self.order_card(card, sub, cloak, Some(order));
                 self.war_note(WarEvent::Order { general: sin, order: kind, stage: OrderStage::Announced { left: lead } });
                 if let Some(g) = self.general.as_mut() {
                     g.tally.announced += 1;
@@ -780,7 +1122,7 @@ impl Game {
                         self.juice.banner = Some(Banner {
                             text: format!("{} IS DONE", gen.decree),
                             sub: gen.decree_done.to_string(),
-                            color: gen.cloak,
+                            color: gen.captain(order).cloak,
                             life: 3.0,
                             max: 3.0,
                         });
@@ -798,6 +1140,11 @@ impl Game {
                     Counter::GuardTo(j) => format!("GUARDS TO {}", gen.instruments[j]),
                     Counter::DoubleMuster => "THE MUSTER IS DOUBLED".to_string(),
                 };
+                let name = self
+                    .general
+                    .as_ref()
+                    .map(|g| g.lords.iter().find(|l| !l.slain).map(|l| l.name.clone()).unwrap_or_default())
+                    .unwrap_or_default();
                 self.order_card(format!("{name} ANSWERS"), line, 0xff6a3a, None);
                 self.audio.play(Sfx::Stinger);
             }
@@ -813,18 +1160,22 @@ impl Game {
     }
 
     /// A horn (or the counting-bell) from `at`, on the music's bar line if it is near.
-    fn horn(&mut self, at: V, sin: Sin, muster: bool) {
-        let gen = General::of(sin);
-        if muster && gen.bell() {
+    fn horn(&mut self, at: V, k: usize, muster: bool) {
+        let Some((bell, body, cloak)) =
+            self.general.as_ref().map(|g| (g.general().bell(), g.lords[k.min(2)].body, g.lords[k.min(2)].cloak))
+        else {
+            return;
+        };
+        if muster && bell {
             self.audio.play_at(Sfx::Bells, at);
         } else {
             let listener = self.audio.listener();
-            self.audio.tell(gen.body, MoveId::Rally, at, listener);
+            self.audio.tell(body, MoveId::Rally, at, listener);
         }
         if muster {
             self.view.trauma(Trauma::Horn);
         }
-        self.view.sparkle(&self.level.grid, at.x, at.y, 1.6, gen.cloak, 18);
+        self.view.sparkle(&self.level.grid, at.x, at.y, 1.6, cloak, 18);
     }
 
     /// An order's card goes up under the banner.
@@ -928,10 +1279,10 @@ impl Game {
         let (cue, name) = match self.general.as_mut() {
             Some(g) => {
                 g.herald = None;
-                g.post_known = true;
+                g.lords[order.min(2)].known = true;
                 g.tally.heralds += 1;
                 g.walkers.retain(|w| w.id != id);
-                (g.command.fail(order), g.name.clone())
+                (g.command.fail(order), g.lords[order.min(2)].name.clone())
             }
             None => return,
         };
@@ -1000,7 +1351,7 @@ impl Game {
     fn send_carriers(&mut self) {
         let Some(g) = self.general.as_ref() else { return };
         let way = g.posts.court.clone();
-        let post = g.posts.post;
+        let post = g.general().index_of(OrderKind::Decree).map(|k| g.posts.post(k)).unwrap_or(g.posts.post(0));
         for k in 0..3 {
             let at = self.open_near(post, k + 3);
             let (kind, stage) = self.deal();
@@ -1039,7 +1390,12 @@ impl Game {
     fn send_guards(&mut self, j: usize) {
         let Some(g) = self.general.as_ref() else { return };
         let to = g.command.instruments[j].tile;
-        let from = g.posts.post;
+        // (From the post of the general nearest the instrument still standing.)
+        let from = (0..3)
+            .filter(|&k| !g.lords[k].slain && !g.lords[k].waiting)
+            .map(|k| g.posts.post(k))
+            .min_by_key(|p| (p.x - to.x).abs() + (p.y - to.y).abs())
+            .unwrap_or(g.posts.post(0));
         let Some(way) = general::walk(&g.layout, from, to) else { return };
         for k in 0..2 {
             let (kind, stage) = self.deal();
@@ -1085,24 +1441,32 @@ impl Game {
         }
         self.update_whistle();
         self.update_kindling(now);
-        // At half his health his horn steadies his guard: their poise whole again.
-        let due = self.general.as_mut().and_then(|g| {
-            let r = g.rally.as_mut()?;
-            *r = r.saturating_sub(1);
-            (*r == 0).then(|| {
-                g.rally = None;
-                g.id
-            })
-        });
-        if let Some(Some(id)) = due {
+        // At half his health a general's horn steadies his guard: their poise whole again.
+        for k in 0..3 {
+            let due = self.general.as_mut().and_then(|g| {
+                let l = &mut g.lords[k];
+                let r = l.rally.as_mut()?;
+                *r = r.saturating_sub(1);
+                (*r == 0).then(|| {
+                    l.rally = None;
+                    l.id
+                })
+            });
+            self.rally_guard(k, due.flatten());
+        }
+    }
+
+    /// General `k`'s horn has sounded out: his guard stands fast.
+    fn rally_guard(&mut self, k: usize, id: Option<u32>) {
+        if let Some(id) = id {
             if let Some(at) = self.foe(id).filter(|d| d.alive()).map(|d| d.pos) {
-                let pack = self.general_pack();
+                let pack = self.general_pack(k);
                 for d in self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()) {
                     if pack.contains(&d.id) && d.alive() && dist_sq(d.pos, at) <= 36.0 && d.f.reeling().is_none() {
                         d.f.poise = d.f.max_poise;
                     }
                 }
-                let color = self.general.as_ref().map(|g| g.general().cloak).unwrap_or(0xffc040);
+                let color = self.general.as_ref().map(|g| g.lords[k].cloak).unwrap_or(0xffc040);
                 self.floater(at.x, at.y - 1.8, "HIS GUARD STANDS FAST", 1.4, Some(color));
                 self.view.sparkle(&self.level.grid, at.x, at.y, 1.4, color, 24);
             }
@@ -1166,7 +1530,11 @@ impl Game {
             }
             self.floater(at.x, at.y - 1.6, "! THE WATCH SEES YOU: STRIKE THE WHISTLER", 1.2, Some(0xffd040));
             self.audio.play_at(Sfx::Shriek, at);
-            let name = self.general.as_ref().map(|g| g.name.clone()).unwrap_or_default();
+            let name = self
+                .general
+                .as_ref()
+                .and_then(|g| g.general().index_of(OrderKind::Watch).map(|w| g.lords[w].name.clone()))
+                .unwrap_or_default();
             self.order_card(format!("{name}'S WATCH WHISTLES - 1"), "KILL THE WHISTLER BEFORE THE DENS WAKE".into(), 0xffd040, None);
         }
     }
@@ -1444,7 +1812,7 @@ impl Game {
         let mut failed = None;
         for i in 0..g.posts.gates.len() {
             let gate = g.posts.gates[i];
-            let cut = tiles.contains(&gate) || general::walk(&g.layout, gate, g.posts.post).is_none();
+            let cut = tiles.contains(&gate) || !(0..3).any(|k| general::walk(&g.layout, gate, g.posts.post(k)).is_some());
             if cut && !g.barred[i] {
                 g.barred[i] = true;
                 if g.gate == Some(i) {
@@ -1589,22 +1957,30 @@ impl Game {
         }
     }
 
-    /// The general falls: his orders end, his banner is the hero's, his prince is weakened.
-    fn general_slain(&mut self, at: V) {
+    /// General `k` falls: his order ends, his banner is the hero's, his key falls where he fell.
+    fn general_slain(&mut self, k: usize, at: V) {
         let Some(g) = self.general.as_mut() else { return };
-        if g.command.slain {
+        if g.lords[k].slain {
             return;
         }
-        let cues = g.command.slay();
-        g.id = None;
-        g.rally = None;
+        let cues = g.command.slay(k);
+        g.lords[k].slain = true;
+        g.lords[k].id = None;
+        g.lords[k].rally = None;
+        g.lords[k].known = true;
         let t = self.time;
         g.tally.slain_at = Some(t);
+        g.tally.slain |= 1 << k;
+        g.tally.fell[k] = Some(t);
         let gen = *g.general();
-        let name = g.name.clone();
-        let usurper = g.usurper;
-        let pending: Vec<u32> = g.volleys.iter().map(|v| v.id).collect();
-        g.volleys.clear();
+        let name = g.lords[k].name.clone();
+        let cloak = g.lords[k].cloak;
+        let usurper = g.lords[k].usurper;
+        let order = gen.orders[k];
+        let all = g.command.slain;
+        // His kindling dies with him.
+        let pending: Vec<u32> = if order == OrderKind::Kindle || all { g.volleys.iter().map(|v| v.id).collect() } else { Vec::new() };
+        g.volleys.retain(|v| !pending.contains(&v.id));
         if let Some(b) = self.brawl.as_mut() {
             for id in pending {
                 b.threat.release(id);
@@ -1613,26 +1989,153 @@ impl Game {
         for c in cues {
             self.general_cue(c);
         }
-        self.drop_the_decree();
-        self.stand_down_the_watch();
+        if order == OrderKind::Decree || all {
+            self.drop_the_decree();
+        }
+        if order == OrderKind::Watch || all {
+            self.stand_down_the_watch();
+        }
         if let Some(r) = usurper.and_then(|id| self.warband.save.ledger.slain(id)) {
             self.progress.runes += r.runes;
             self.progress.silver += r.silver;
         }
-        self.workshop.trophies.push(banner_of(&name, gen.sin));
-        let weaker = if gen.sin == Sin::Greed { "MAMMON LOSES HIS GOLEMS" } else { "HIS PRINCE IS WEAKER" };
+        self.workshop.trophies.push(banner_of(&name, cloak, gen.sin));
+        let left = self.general.as_ref().map(|g| g.standing()).unwrap_or(0);
         self.juice.banner = Some(Banner {
             text: format!("{name} IS SLAIN"),
-            sub: format!("HIS ORDERS DIE WITH HIM   {weaker}"),
-            color: gen.cloak,
+            sub: if left == 0 {
+                "THE LAST OF THE THREE   TAKE HIS KEY".to_string()
+            } else {
+                format!("{} DIES WITH HIM   HIS KEY FALLS   {left} GENERAL{} LEFT", gen.instruments[k], if left == 1 { "" } else { "S" })
+            },
+            color: cloak,
             life: 3.2,
             max: 3.2,
         });
-        self.floater(at.x, at.y - 2.0, "HIS BANNER IS YOURS", 1.8, Some(gen.cloak));
+        self.floater(at.x, at.y - 2.0, "HIS BANNER IS YOURS", 1.8, Some(cloak));
         self.view.trauma(Trauma::Trophy);
         self.audio.play(Sfx::Milestone);
+        self.drop_key(k, at, true);
         self.keep_record();
         self.know_general(false);
+    }
+
+    /// General `k`'s key falls at `at` (on the nearest open floor): a key in his cloak's colour,
+    /// glinting, his for the walking over.
+    fn drop_key(&mut self, k: usize, at: V, fresh: bool) {
+        let grid = &self.level.grid;
+        let t = P::new(at.x.round() as i32, at.y.round() as i32);
+        // (On floor he can walk to from where he stands: a general digested behind the Feast's
+        // teeth, or fallen off a slab, leaves his key where the hero can have it.)
+        // (A key left lying on an earlier visit lies where its general stood.)
+        let reach = if fresh { crate::logic::pathing::reachable(grid, self.hero.occupied(), false, false) } else { Default::default() };
+        let mut best = if fresh { self.hero.occupied() } else { t };
+        let mut d = i32::MAX;
+        for y in -6..=6 {
+            for x in -6..=6 {
+                let p = P::new(t.x + x, t.y + y);
+                let dd = x * x + y * y;
+                if (reach.contains(&p) || !fresh && grid.is_walkable(p.x, p.y, false)) && dd < d && crate::game::bot::Bot::floor(self, p) {
+                    d = dd;
+                    best = p;
+                }
+            }
+        }
+        if fresh && d == i32::MAX {
+            // (Nothing he can walk to near: the nearest floor he can walk to.)
+            if let Some(p) = reach
+                .iter()
+                .copied()
+                .filter(|p| crate::game::bot::Bot::floor(self, *p))
+                .min_by_key(|p| ((p.x - t.x).pow(2) + (p.y - t.y).pow(2), p.y, p.x))
+            {
+                best = p;
+            }
+        }
+        let spot = best.v();
+        let Some(g) = self.general.as_mut() else { return };
+        if g.lords[k].key_taken {
+            return;
+        }
+        g.lords[k].key = Some(spot);
+        let cloak = g.lords[k].cloak;
+        if fresh {
+            self.view.sparkle(&self.level.grid, spot.x, spot.y, 1.2, cloak, 40);
+            self.audio.play_at(Sfx::Nodule, spot);
+        }
+    }
+
+    /// Keys lying where their generals fell: walked over, each is his, with a moment (a flash, a
+    /// chime, a beat of slowing, the count on the banner). The third opens the court's door.
+    fn take_keys(&mut self) {
+        if !self.hero.alive || self.hero.airborne() {
+            return;
+        }
+        let hp = self.hero.pos();
+        let Some(g) = self.general.as_ref() else { return };
+        let Some(k) = (0..3).find(|&k| g.lords[k].key.is_some_and(|at| dist_sq(at, hp) <= KEY_REACH * KEY_REACH)) else { return };
+        let at = g.lords[k].key.unwrap_or(hp);
+        let name = g.lords[k].name.clone();
+        let cloak = g.lords[k].cloak;
+        let prince = g.sin.prince().to_uppercase();
+        if let Some(g) = self.general.as_mut() {
+            g.lords[k].key = None;
+            g.lords[k].key_taken = true;
+            g.tally.keys += 1;
+        }
+        let held = self.general.as_ref().map(|g| g.keys()).unwrap_or(0);
+        self.keys_got = held;
+        self.view.sparkle(&self.level.grid, at.x, at.y, 1.0, cloak, 50);
+        self.view.flash_light(&self.level.grid, at, cloak);
+        self.audio.play(Sfx::Milestone);
+        self.juice.coin_punch = 1.0;
+        self.dilate(crate::logic::juice::DilationKind::RivalMet);
+        self.floater(at.x, at.y - 0.8, format!("{name}'S KEY"), 2.0, Some(cloak));
+        self.juice.banner = Some(Banner {
+            text: format!("KEY {held} OF {KEYS}"),
+            sub: if held >= KEYS {
+                format!("THE DOOR TO {prince}'S COURT OPENS")
+            } else {
+                format!("{} MORE TO OPEN {prince}'S DOOR", KEYS - held)
+            },
+            color: cloak,
+            life: 2.6,
+            max: 2.6,
+        });
+        self.keep_record();
+        self.save_warband();
+        self.know_general(false);
+        self.check_court_door();
+    }
+
+    /// With every key held the court's door is unsealed (the realm's far portal, the vaults' door);
+    /// the Rotting Feast's pylorus still parts only on its own beat, for the lean.
+    pub(super) fn check_court_door(&mut self) {
+        if !self.court_keys_held() || self.gate_open {
+            return;
+        }
+        if !self.door_may_open() {
+            return;
+        }
+        if matches!(self.run.as_ref(), Some(Run::Gluttony(_))) {
+            return;
+        }
+        if self.run.is_some() || self.vault.is_some() {
+            self.gate_open = true;
+            self.audio.play(Sfx::Win);
+            if let Some(g) = self.gate {
+                self.view.sparkle(&self.level.grid, g.x as f64, g.y as f64, 1.4, 0xf2c53d, 50);
+            }
+        }
+    }
+
+    /**
+     * Between "all three keys held" and "the court's door opens": the place for a choice offered at
+     * the door (the backlog's temptation at a realm's end may go here; it would return false while
+     * it asks, and call `check_court_door` again once answered). Today the door simply opens.
+     */
+    fn door_may_open(&mut self) -> bool {
+        true
     }
 
     /// The banners of the generals the run has slain on the trophy wall (a run continued from its
@@ -1640,22 +2143,25 @@ impl Game {
     pub fn hang_banners(&mut self) {
         let records = self.general_records();
         for sin in crate::logic::sins::SINS {
-            if !records.get(sin).slain {
-                continue;
-            }
-            let color = General::of(sin).cloak;
-            if !self.workshop.trophies.iter().any(|t| t.name.ends_with("'S BANNER") && t.color == color) {
-                self.workshop.trophies.push(banner_of(General::of(sin).name, sin));
+            let r = records.get(sin);
+            for (k, c) in General::of(sin).captains.iter().enumerate() {
+                if r.slain & (1 << k) == 0 {
+                    continue;
+                }
+                let name = format!("{}'S BANNER", c.name);
+                if !self.workshop.trophies.iter().any(|t| t.name == name) {
+                    self.workshop.trophies.push(banner_of(c.name, c.cloak, sin));
+                }
             }
         }
     }
 
-    /// The general's command post, for the Map and the `general:S` capture: into the realm of
-    /// `sin`, and set down before his post.
-    pub fn jump_to_post(&mut self) {
+    /// General `k`'s command post, for the Map and the `general:S` capture: set down before his post
+    /// (the third, in a realm with a climax, at the place he comes out).
+    pub fn jump_to_post(&mut self, k: usize) {
         let Some(g) = self.general.as_ref() else { return };
-        let post = g.posts.post;
-        let room = g.posts.room;
+        let post = g.posts.post(k);
+        let room = g.posts.rooms[k.min(2)];
         // Just inside his room's door, facing him: the room's edge on the way he came.
         let way = general::walk(&g.layout, self.level.hero_spawn, post).unwrap_or_default();
         // (Where no floor leads there from where he arrives, as to a gallery of Pride's spire, a few
@@ -1677,7 +2183,17 @@ impl Game {
         }
     }
 
-    /// Fires order `k` of the realm's general at once (the `order:K` capture): announced now.
+    /// The Map's and the `general:S:K` capture's stop: before general `k`'s post (the climax's
+    /// general brought out first, as if the realm's last trap had been survived).
+    pub fn debug_general(&mut self, k: usize) {
+        if k >= CLIMAX && self.general.as_ref().is_some_and(|g| g.climax) {
+            self.climax_survived();
+            self.bring_out_climax_general();
+        }
+        self.jump_to_post(k);
+    }
+
+    /// Fires order `k` of the realm's generals at once (the `order:K` capture): announced now.
     pub fn debug_order(&mut self, k: usize) {
         let Some(g) = self.general.as_mut() else { return };
         let k = k.min(2);
@@ -1694,18 +2210,109 @@ impl Game {
         self.general_cue(Cue::Announce { order: k, lead });
     }
 
-    /// The nearest whole instrument within `reach` tiles, the gate glowing (and the general's
-    /// pack), for the bot.
+    /// The Rotting Feast's teeth close at row `top`: a key lying behind them (south) comes through to
+    /// `to`, so none is ever shut in a digested zone.
+    pub(super) fn keys_come_through(&mut self, top: i32, to: P) {
+        let Some(g) = self.general.as_mut() else { return };
+        for l in g.lords.iter_mut() {
+            if l.key.is_some_and(|k| k.y.round() as i32 >= top) {
+                l.key = Some(to.v());
+            }
+        }
+    }
+
+    /// General `k` falls at once (the `slaygeneral:K` capture): his key drops where he stood.
+    pub fn debug_slay_general(&mut self, k: usize) {
+        let Some(id) = self.general.as_ref().and_then(|g| g.lords[k.min(2)].id) else { return };
+        if let Some(d) = self.foe_mut(id) {
+            d.f.kill();
+        }
+    }
+
+    /// Every general of the realm counted slain and his key taken (the tests, a testing cheat).
+    pub fn debug_all_keys(&mut self) {
+        let Some(g) = self.general.as_mut() else { return };
+        for l in g.lords.iter_mut() {
+            (l.slain, l.key_taken, l.key, l.waiting) = (true, true, None, false);
+        }
+        g.command.slay_all();
+        self.keys_got = KEYS;
+        self.keep_record();
+        self.check_court_door();
+    }
+
+    /// The whole instruments and the gate glowing, for the bot.
     pub fn general_targets(&self) -> (Vec<(usize, V)>, Option<V>) {
         let Some(g) = self.general.as_ref() else { return (Vec::new(), None) };
         let whole = (0..3).filter(|&k| !g.command.instruments[k].broken).map(|k| (k, g.instrument_at(k))).collect();
         (whole, g.glowing().map(|x| x.0))
     }
 
-    /// The duelists of the general's own pack (him first, then his guard and his room's foes).
-    pub fn general_pack(&self) -> Vec<u32> {
+    /// The tile before the court's door (the realm's far portal, the vaults' east door).
+    pub fn court_door_front(&self) -> Option<P> {
+        if let Some(v) = &self.vault {
+            return Some(P::new(v.exit_gate.x - 1, v.exit_gate.y));
+        }
+        self.run.as_ref().map(|r| r.base().exit.front())
+    }
+
+    /// The bot's errand in a realm with generals (B41): a key lying about, else (with every key) the
+    /// court's door, else the nearest general standing at his post (him, or his post if he is not
+    /// on the field), else the climax's way (none: the realm's own errand).
+    pub fn general_errand_goal(&self) -> Option<V> {
+        let g = self.general.as_ref()?;
+        let hp = self.hero.pos();
+        let near = |a: &V, b: &V| dist_sq(*a, hp).total_cmp(&dist_sq(*b, hp));
+        if let Some(k) = g.lords.iter().filter_map(|l| l.key).min_by(near) {
+            return Some(k);
+        }
+        if g.keys() >= KEYS {
+            // (The Rotting Feast's way out is its own errand: the dome, then the pylorus on its beat.)
+            if matches!(self.run.as_ref(), Some(Run::Gluttony(_))) {
+                return None;
+            }
+            return self.gate.map(|p| p.v());
+        }
+        let standing = g
+            .lords
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| !l.slain && !l.waiting)
+            .map(|(k, l)| l.id.and_then(|id| self.foe(id)).map(|d| d.pos).unwrap_or(g.posts.post(k).v()))
+            .min_by(near);
+        if standing.is_some() {
+            return standing;
+        }
+        // (The other two down, their keys taken: on to the realm's climax, the road to the third.)
+        if g.lords[CLIMAX].waiting && !g.climax_done {
+            return self.climax_road();
+        }
+        None
+    }
+
+    /// Where the realm's climax is sprung: the throne's dais, the bell's pool, the horn on the
+    /// field (then the truce stone), Hel's bed, the Black Thorn's gate.
+    pub fn climax_road(&self) -> Option<V> {
+        Some(match self.run.as_ref()? {
+            Run::Pride(m) => m.throne.v(),
+            Run::Envy(gr) => gr.bell.pool.first()?.v(),
+            Run::Wrath(f) => {
+                if f.called.is_some() {
+                    f.stone.v()
+                } else {
+                    f.horn.v()
+                }
+            }
+            Run::Sloth(m) => m.to_world(m.bed).v(),
+            Run::Lust(t) => t.base.exit.front().v(),
+            Run::Gluttony(_) => return None,
+        })
+    }
+
+    /// The duelists of general `k`'s own pack (him first, then his guard and his room's foes).
+    pub fn general_pack(&self, k: usize) -> Vec<u32> {
         let Some(g) = self.general.as_ref() else { return Vec::new() };
-        let Some(id) = g.id else { return Vec::new() };
+        let Some(id) = g.lords[k.min(2)].id else { return Vec::new() };
         let den = self.foe(id).and_then(|d| d.den);
         let mates = self
             .enemies
@@ -1717,11 +2324,11 @@ impl Game {
 }
 
 /// A slain general's banner, for the trophy wall.
-fn banner_of(name: &str, sin: Sin) -> Trophy {
+fn banner_of(name: &str, color: u32, sin: Sin) -> Trophy {
     Trophy {
         name: format!("{name}'S BANNER"),
         line: format!("{} ran {} against you. His banner hangs here now.", title_case(name), sin.realm()),
-        color: General::of(sin).cloak,
+        color,
     }
 }
 
@@ -1783,8 +2390,8 @@ mod tests {
             g.update(crate::app::STEP);
         }
         let run = g.general.as_ref().expect("a general");
-        assert_eq!(run.usurper, Some(rival));
-        let id = run.id.expect("at his post");
+        assert_eq!(run.lords[0].usurper, Some(rival));
+        let id = run.lords[0].id.expect("at his post");
         let seated: Vec<_> = g.war.grudges.seated.iter().filter(|s| s.1 == rival).collect();
         assert_eq!(seated.len(), 1, "seated once: {seated:?}");
         assert_eq!(seated[0].0, id, "as the general");
@@ -1814,30 +2421,6 @@ mod tests {
             if g.screen == Screen::Ready {
                 g.enter(Screen::Playing);
             }
-        }
-    }
-
-    #[test]
-    fn every_realm_has_its_general_at_his_post_with_his_guard_asleep() {
-        for sin in crate::logic::sins::SINS {
-            let g = at_the_post(sin);
-            let r = g.general.as_ref().unwrap_or_else(|| panic!("{sin:?}: no general"));
-            assert_eq!(r.sin, sin);
-            let id = r.id.expect("he stands");
-            let d = g
-                .enemies
-                .iter()
-                .filter_map(|e| e.duel.as_deref())
-                .find(|d| d.id == id)
-                .unwrap_or_else(|| panic!("{sin:?}: he is not among the foes"));
-            assert_eq!(d.breed.kind, General::of(sin).body);
-            assert!(d.den.is_some_and(|den| !den.awake), "asleep at his post");
-            // (At least his breed's health under the realm's weight; never past a lesser prince's.)
-            assert!(d.max_hp >= Breed::of(d.breed.kind).stats().hp * 0.8, "{sin:?}: a general is as tough as his breed at least");
-            assert!(general::general_health(d.breed.kind) <= general::GENERAL_HEALTH);
-            // (His room's own pack is his guard, he its leader to be.)
-            assert!(g.general_pack().len() >= 2, "{sin:?}: a guard about him");
-            assert!(g.workshop.generals[sin.index()].is_some(), "the war table knows him");
         }
     }
 
@@ -1933,7 +2516,7 @@ mod tests {
         frames(&mut g, 2);
         let r = g.general.as_ref().unwrap();
         assert_eq!(r.tally.heralds, 1);
-        assert!(r.post_known, "his map marks the post");
+        assert!(r.lords[m].known, "his map marks his general's post");
         assert_eq!(r.command.stages[m], OrderStage::Ready, "the muster failed");
         assert!(g.workshop.news.iter().any(|n| n.contains("herald")));
         frames(&mut g, 400);
@@ -1941,28 +2524,94 @@ mod tests {
         assert!(after < before, "nobody marched in");
     }
 
+    /// BACKLOG B41: every realm has three generals, each in his own room with his guard asleep
+    /// about him, wearing his own body; the third of a realm after the vaults waits for its climax
+    /// to end, and comes out before the court's portal. The court's door is sealed: three keys.
     #[test]
-    fn slaying_the_general_ends_his_orders_hangs_his_banner_and_weakens_the_prince() {
+    fn every_realm_has_its_three_generals_at_their_posts_with_their_guards_asleep() {
+        for sin in crate::logic::sins::SINS {
+            let mut g = at_the_post(sin);
+            let r = g.general.as_ref().unwrap_or_else(|| panic!("{sin:?}: no general"));
+            assert_eq!(r.sin, sin);
+            assert_eq!((g.keys_total, g.keys_got), (KEYS, 0), "{sin:?}: three keys to the court");
+            assert!(!g.gate_open, "{sin:?}: the court's door sealed");
+            let climax = r.climax;
+            assert_eq!(climax, sin != Sin::Greed && sin != Sin::Gluttony, "{sin:?}: the third waits for the climax");
+            let posts = r.posts.posts;
+            assert!(posts[0] != posts[1] && posts[1] != posts[2] && posts[0] != posts[2], "{sin:?}: {posts:?}");
+            if climax {
+                assert!(r.lords[CLIMAX].waiting && r.lords[CLIMAX].id.is_none(), "{sin:?}: not out before the climax");
+                g.debug_general(CLIMAX);
+            }
+            let r = g.general.as_ref().unwrap();
+            for k in 0..3 {
+                let id = r.lords[k].id.unwrap_or_else(|| panic!("{sin:?}: general {k} stands"));
+                let d = g
+                    .enemies
+                    .iter()
+                    .filter_map(|e| e.duel.as_deref())
+                    .find(|d| d.id == id)
+                    .unwrap_or_else(|| panic!("{sin:?}: general {k} is not among the foes"));
+                assert_eq!(d.breed.kind, General::of(sin).captains[k].body);
+                if k != CLIMAX || !climax {
+                    assert!(d.den.is_some_and(|den| !den.awake), "{sin:?} {k}: asleep at his post");
+                } else {
+                    assert!(d.den.is_some_and(|den| den.awake), "{sin:?}: come out, he comes for him");
+                }
+                // (At least his breed's health under the realm's weight; never past a lesser prince's.)
+                assert!(d.max_hp >= Breed::of(d.breed.kind).stats().hp * 0.8, "{sin:?}: a general is as tough as his breed at least");
+                assert!(g.general_pack(k).len() >= 2, "{sin:?} {k}: a guard about him");
+            }
+            assert!(g.workshop.generals[sin.index()].is_some(), "the war table knows them");
+        }
+    }
+
+    /// A general slain: his order ends, his key falls (a pickup with a moment), and with the third
+    /// key taken the court's door opens. The prince's adds still come (D14); the court reads which
+    /// fell.
+    #[test]
+    fn slaying_a_general_ends_his_order_drops_his_key_and_three_keys_open_the_door() {
         let mut g = at_the_post(Sin::Greed);
         g.immortal = true;
         let d = General::of(Sin::Greed).index_of(OrderKind::Decree).unwrap();
         g.debug_order(d);
         frames(&mut g, 200);
         assert!(!g.general.as_ref().unwrap().carriers.is_empty(), "the carriers set out");
-        let id = g.general.as_ref().unwrap().id.unwrap();
-        if let Some(du) = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|x| x.id == id) {
-            du.f.kill();
-        }
-        frames(&mut g, 2);
+        let kill = |g: &mut Game, k: usize| {
+            let id = g.general.as_ref().unwrap().lords[k].id.unwrap();
+            if let Some(du) = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|x| x.id == id) {
+                du.f.kill();
+            }
+            frames(g, 2);
+        };
+        kill(&mut g, d);
         let r = g.general.as_ref().unwrap();
-        assert!(r.command.slain && r.carriers.is_empty() && r.command.running.is_none());
-        assert!(g.workshop.trophies.iter().any(|t| t.name.contains("BANNER")));
+        assert!(r.lords[d].slain && !r.command.slain, "one of three");
+        assert!(r.carriers.is_empty() && r.command.stages[d] == OrderStage::Broken, "his decree dies with him");
+        assert!(g.workshop.trophies.iter().any(|t| t.name.contains("HOARD-HOUND'S BANNER")));
+        let key = r.lords[d].key.expect("his key falls");
+        assert!(g.level.grid.is_walkable(key.x as i32, key.y as i32, false));
+        // Taken: one of three, and the door still sealed.
+        g.hero.place(P::new(key.x as i32, key.y as i32));
+        frames(&mut g, 2);
+        assert_eq!(g.keys_got, 1);
+        assert!(!g.gate_open);
+        assert_eq!(g.general_records().get(Sin::Greed).keys, 1 << d, "the run keeps it");
+        for k in [0, 2] {
+            kill(&mut g, k);
+            let key = g.general.as_ref().unwrap().lords[k].key.expect("his key");
+            g.hero.place(P::new(key.x as i32, key.y as i32));
+            frames(&mut g, 2);
+        }
+        assert_eq!(g.keys_got, KEYS);
+        assert!(g.gate_open, "three keys: the door to Mammon's court opens");
+        assert!(g.general.as_ref().unwrap().command.slain);
         let t = g.prince_terms(Sin::Greed);
-        assert!(!t.phase_two_adds && !t.adds_at_start);
-        // Mammon's court: no golems at his second phase.
+        assert!(t.phase_two_adds && !t.adds_at_start && t.slain == 0b111, "{t:?}");
+        // Mammon's court: his golems still come at his second phase (D14).
         g.map_jump(Stage::Court(Sin::Greed));
         let m = g.prince().unwrap();
-        assert!(m.lore.summoned, "his phase-two adds are lost");
+        assert!(!m.lore.summoned, "his phase-two adds still come");
         // And a decree done brings them at once.
         let mut g = at_the_post(Sin::Greed);
         let mut all = g.general_records();
@@ -1975,6 +2624,25 @@ mod tests {
         assert_eq!(golems, crate::logic::combat::prince::GOLEMS as usize, "the treasurers' decree: the golems come at once");
     }
 
+    /// The realm's climax is the road to its third general: survived, he comes out before the
+    /// court's portal a breath later, with his guard, awake.
+    #[test]
+    fn the_climax_survived_brings_out_its_general() {
+        let mut g = at_the_post(Sin::Lust);
+        g.immortal = true;
+        assert!(g.general.as_ref().unwrap().lords[CLIMAX].waiting);
+        g.climax_survived();
+        assert!(g.general.as_ref().unwrap().lords[CLIMAX].waiting, "a breath first");
+        frames(&mut g, (CLIMAX_BREATH * 60.0) as u32 + 10);
+        let r = g.general.as_ref().unwrap();
+        assert!(!r.lords[CLIMAX].waiting);
+        let id = r.lords[CLIMAX].id.expect("out");
+        let exit = g.run.as_ref().unwrap().base().exit;
+        let d = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id).unwrap();
+        assert!((d.pos.x - exit.tile.x as f64).hypot(d.pos.y - exit.tile.y as f64) < 9.0, "before the court's portal: {:?}", d.pos);
+        assert!(!g.gate_open, "the door waits for the keys");
+    }
+
     #[test]
     fn the_generals_realm_survives_the_save() {
         let mut g = at_the_post(Sin::Wrath);
@@ -1984,10 +2652,20 @@ mod tests {
         let text = g.warband.save.encode();
         let back = crate::logic::war::save::WarSave::decode(&text).unwrap();
         assert_eq!(Records::decode(&back.generals).get(Sin::Wrath).broken, 0b010);
-        // Back into the realm (Continue): the sluice is still broken.
+        // A general slain, his key left lying.
+        let id = g.general.as_ref().unwrap().lords[0].id.unwrap();
+        if let Some(du) = g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|x| x.id == id) {
+            du.f.kill();
+        }
+        frames(&mut g, 2);
+        // Back into the realm (Continue): the chain is still broken, the general still slain, and
+        // his key lies where he stood.
         g.map_jump(Stage::Realm(Sin::Wrath));
         let r = g.general.as_ref().unwrap();
         assert!(r.command.instruments[1].broken && r.command.stages[1] == OrderStage::Broken);
+        let l = &r.lords[0];
+        assert!(l.slain && l.id.is_none() && l.key.is_some(), "{:?} {:?} {:?} {}", l.slain, l.id, l.key, l.key_taken);
+        assert_eq!(r.command.stages[0], OrderStage::Broken, "his order with him");
     }
 
     /**

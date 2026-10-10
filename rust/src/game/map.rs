@@ -23,8 +23,8 @@ pub struct MapStop {
     pub stage: Stage,
     pub label: String,
     pub scene: Option<(Scene, usize)>,
-    /// The stop is a general's command post in the stage's realm (WARBAND.md §9).
-    pub post: bool,
+    /// The stop is general `k`'s command post in the stage's realm (WARBAND.md §9, B41).
+    pub post: Option<usize>,
     /// The stop opens the full map of the stage's level, over the pause (UI.md §7).
     pub full_map: bool,
     /// The stop is a screen of the UI rather than a place (UI.md §8, §9).
@@ -71,25 +71,28 @@ pub fn map_stops() -> Vec<MapStop> {
         stage: Stage::Dungeon(0),
         label: "DEPTH I - HIZIR'S LESSON".to_string(),
         scene: None,
-        post: false,
+        post: None,
         full_map: false,
         page: Some(MapPage::Lesson),
     });
     // The old man's workshop, as after the first Cyclops.
     stops.push(stop(Stage::Shop(0), "HIZIR'S WORKSHOP".to_string()));
-    // Each realm's general at his command post.
+    // Each realm's three generals at their command posts (B41; the third of a realm after the vaults
+    // where its climax ends, come out).
     for sin in SINS {
-        // (The Steward of the Last Course is the Steward on the Map's button.)
-        let full = crate::logic::war::general::General::of(sin).name;
-        let name = if full.len() > 26 { full.split(" OF ").next().unwrap_or(full) } else { full };
-        stops.push(MapStop {
-            stage: Stage::Realm(sin),
-            label: format!("{} - {name}'S POST", sin.title()),
-            scene: None,
-            post: true,
-            page: None,
-            full_map: false,
-        });
+        for k in 0..3 {
+            // (The Steward of the Last Course is the Steward on the Map's button.)
+            let full = crate::logic::war::general::General::of(sin).captains[k].name;
+            let name = if full.len() > 26 { full.split(" OF ").next().unwrap_or(full) } else { full };
+            stops.push(MapStop {
+                stage: Stage::Realm(sin),
+                label: format!("{} - {name}", sin.title()),
+                scene: None,
+                post: Some(k),
+                page: None,
+                full_map: false,
+            });
+        }
     }
     // The story's scenes, from the start of each place: the graveyard at dusk, and the gateway below.
     for (beat, label) in [(0, "SCENE I - THE GRAVEYARD"), (story::first(Shot::Arrive).unwrap_or(0), "SCENE I - THE DUNGEON GATEWAY")] {
@@ -97,7 +100,7 @@ pub fn map_stops() -> Vec<MapStop> {
             stage: Stage::Dungeon(0),
             label: label.to_string(),
             scene: Some((Scene::One, beat)),
-            post: false,
+            post: None,
             page: None,
             full_map: false,
         });
@@ -108,7 +111,7 @@ pub fn map_stops() -> Vec<MapStop> {
             stage: Stage::SinShop(sin),
             label: format!("AT HIZIR'S - AFTER {}", sin.prince().to_uppercase()),
             scene: Some((Scene::After(sin), 0)),
-            post: false,
+            post: None,
             page: None,
             full_map: false,
         });
@@ -119,7 +122,7 @@ pub fn map_stops() -> Vec<MapStop> {
         stage: Stage::Dungeon(0),
         label: "SCENE II - THE WAY UP".to_string(),
         scene: Some((Scene::Two, 0)),
-        post: false,
+        post: None,
         full_map: false,
         page: None,
     });
@@ -127,7 +130,7 @@ pub fn map_stops() -> Vec<MapStop> {
     for (stage, name) in
         [(Stage::Dungeon(0), level_for(0).name.to_uppercase()), (Stage::Realm(Sin::Greed), Sin::Greed.realm().to_uppercase())]
     {
-        stops.push(MapStop { stage, label: format!("THE FULL MAP - {name}"), scene: None, post: false, full_map: true, page: None });
+        stops.push(MapStop { stage, label: format!("THE FULL MAP - {name}"), scene: None, post: None, full_map: true, page: None });
     }
     // The UI's screens: the settings, and the loading card with its legend.
     for (page, label) in [
@@ -139,7 +142,7 @@ pub fn map_stops() -> Vec<MapStop> {
             stage: Stage::Dungeon(0),
             label: label.to_string(),
             scene: None,
-            post: false,
+            post: None,
             full_map: false,
             page: Some(page),
         });
@@ -148,7 +151,7 @@ pub fn map_stops() -> Vec<MapStop> {
 }
 
 fn stop(stage: Stage, label: String) -> MapStop {
-    MapStop { stage, label, scene: None, post: false, full_map: false, page: None }
+    MapStop { stage, label, scene: None, post: None, full_map: false, page: None }
 }
 
 impl Game {
@@ -256,8 +259,8 @@ impl Game {
                 None => {
                     let (post, full_map) = (stop.post, stop.full_map);
                     self.map_jump(stop.stage);
-                    if post {
-                        self.jump_to_post();
+                    if let Some(k) = post {
+                        self.debug_general(k);
                     }
                     if full_map {
                         self.enter(Screen::Paused);

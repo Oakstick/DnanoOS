@@ -336,6 +336,7 @@ mod tests {
             belt: Vec::new(),
             sins: 1,
             ng: 0,
+            stones: 1,
         });
         g.progress.silver = 4321;
         let n = 40;

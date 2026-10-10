@@ -7,9 +7,8 @@
 //! is strewn with gold: coins, heaps of them, treasure heaps, chests stacked
 //! against the walls and rare gems, all of which he may take. A chest also
 //! throws out one to three items as it opens, of four rarities as in Diablo
-//! (see `roll_drops`). At the far portal Mammon takes his toll (see
-//! `game::vault`): only those who leave his gold go through, and they keep
-//! what his chests gave them.
+//! (see `roll_drops`). The far portal leads to his court (see `game::vault`;
+//! Mammon makes no deal for the gold, BACKLOG B40).
 
 use std::collections::HashSet;
 

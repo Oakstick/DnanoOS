@@ -10,6 +10,10 @@
 //! realm, and never take an owned tier, a relic or a life: what they take is time, health, silver
 //! carried, or a better road (`Stake`).
 //!
+//! **The princes never make a deal** (the user's rule, BACKLOG B40, D11): no cheat offers the hero
+//! anything to accept or refuse. They lie (the whisper, the mimic, the turned sign, and each realm's
+//! own lie at its end), and every lie has a tell. The crooked bargain was one of them, and is gone.
+//!
 //! The whisper is false counsel, and false by construction: it names an answer that does not hold
 //! for the breed (`Answer::holds`), a trait the rival does not have, or the way the portal is not.
 
@@ -33,13 +37,11 @@ pub const SIGN_SECONDS: f64 = 20.0;
 /// its breed's damage; checked as a bound, not applied).
 pub const BITE_SHARE: f64 = 0.3;
 
-/// The four cheats.
+/// The three cheats (lies, never deals).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum CheatKind {
     /// False counsel, in the prince's own voice.
     Whisper,
-    /// A deal mid-realm, its price bigger than it says.
-    CrookedBargain,
     /// A mimic chest.
     LoadedDice,
     /// The compass turned toward a trap.
@@ -47,23 +49,20 @@ pub enum CheatKind {
 }
 
 impl CheatKind {
-    pub const ALL: [CheatKind; 4] = [CheatKind::Whisper, CheatKind::CrookedBargain, CheatKind::LoadedDice, CheatKind::TurnedSign];
+    pub const ALL: [CheatKind; 3] = [CheatKind::Whisper, CheatKind::LoadedDice, CheatKind::TurnedSign];
 
     pub fn name(self) -> &'static str {
         match self {
             CheatKind::Whisper => "THE WHISPER",
-            CheatKind::CrookedBargain => "THE CROOKED BARGAIN",
             CheatKind::LoadedDice => "LOADED DICE",
             CheatKind::TurnedSign => "THE TURNED SIGN",
         }
     }
 
-    /// Where it may be dealt: the dice only where there are chests to mimic (Greed, Gluttony); the
-    /// bargain only where the realm has a road to shorten (not the vaults).
+    /// Where it may be dealt: the dice only where there are chests to mimic (Greed, Gluttony).
     pub fn fits(self, sin: Sin) -> bool {
         match self {
             CheatKind::LoadedDice => matches!(sin, Sin::Greed | Sin::Gluttony),
-            CheatKind::CrookedBargain => sin != Sin::Greed,
             _ => true,
         }
     }
@@ -81,8 +80,6 @@ pub enum Tell {
     NoBark,
     /// No face in the frame.
     NoPortrait,
-    /// The old man said it early: the prince's offers cost more than they say.
-    CostsMore,
     /// The chest breathes.
     Breathes,
     /// Its coins never glint.
@@ -98,8 +95,6 @@ pub enum Tell {
 pub enum Counter {
     /// Call the old man (E / Y): "I said no such thing."
     AskTheOldMan,
-    /// Refuse the deal.
-    Refuse,
     /// Strike the chest before opening it.
     StrikeFirst,
     /// Follow the old man's amber marker, which is always true.
@@ -113,8 +108,6 @@ pub enum Reward {
     SeenThrough { runes: u32 },
     /// The chest struck first gives twice (and the mark).
     DoubleLoot,
-    /// Refusing a bargain gives nothing: it is a decision, not a trap.
-    Nothing,
 }
 
 /// What a believed cheat may take: never what the hero owns.
@@ -135,8 +128,6 @@ pub enum Stake {
 pub enum Cost {
     /// A wasted elixir or a walk into a den.
     WrongCounsel,
-    /// The gain is real, and so is the hidden price: the realm's dens all wake.
-    HiddenPrice,
     /// It bites: one body strike, planned by the threat manager.
     Bite,
     /// A detour for `SIGN_SECONDS`.
@@ -148,7 +139,6 @@ impl Cost {
     pub fn stakes(self) -> &'static [Stake] {
         match self {
             Cost::WrongCounsel => &[Stake::Time, Stake::Health],
-            Cost::HiddenPrice => &[Stake::Health, Stake::Time],
             Cost::Bite => &[Stake::Health],
             Cost::Detour => &[Stake::Time, Stake::Route],
         }
@@ -158,19 +148,17 @@ impl Cost {
     pub fn bound(self) -> Bound {
         match self {
             Cost::WrongCounsel => Bound::Seconds(ASK_WINDOW),
-            Cost::HiddenPrice => Bound::TheRealm,
             Cost::Bite => Bound::Share(BITE_SHARE),
             Cost::Detour => Bound::Seconds(SIGN_SECONDS),
         }
     }
 }
 
-/// How far a cost reaches: some seconds, a share of his health, or until he leaves the realm.
+/// How far a cost reaches: some seconds, or a share of his health.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Bound {
     Seconds(f64),
     Share(f64),
-    TheRealm,
 }
 
 /// A cheat, whole.
@@ -195,7 +183,6 @@ pub fn cheat(kind: CheatKind, sin: Sin) -> Cheat {
             Reward::SeenThrough { runes: SEEN_RUNES },
             Cost::WrongCounsel,
         ),
-        CheatKind::CrookedBargain => (vec![Tell::CostsMore, Tell::SinColour], Counter::Refuse, Reward::Nothing, Cost::HiddenPrice),
         CheatKind::LoadedDice => (vec![Tell::Breathes, Tell::NoGlint, Tell::Creaks], Counter::StrikeFirst, Reward::DoubleLoot, Cost::Bite),
         CheatKind::TurnedSign => {
             (vec![Tell::SinColour, Tell::Flickers], Counter::FollowTheLamp, Reward::SeenThrough { runes: SEEN_RUNES }, Cost::Detour)
@@ -205,37 +192,30 @@ pub fn cheat(kind: CheatKind, sin: Sin) -> Cheat {
 }
 
 /// What the prince says, in his sin's flavour: Mammon's are all prices, Lucifer's flatter,
-/// Leviathan offers what another hero had, Amon goads, Belphegor offers rest, Beelzebub food,
-/// Asmodeus what the hero wants most.
+/// Leviathan speaks of what another hero had, Amon goads, Belphegor speaks of rest, Beelzebub of
+/// food, Asmodeus of what the hero wants most. (Words only: he offers nothing.)
 pub fn lie(kind: CheatKind, sin: Sin) -> String {
     use CheatKind as C;
     let s = match (sin, kind) {
         (Sin::Greed, C::Whisper) => "Listen. I would charge for this, but you may have it free:",
-        (Sin::Greed, C::CrookedBargain) => "A fair price, and a short road: the door, now.",
         (Sin::Greed, C::LoadedDice) => "A chest, unguarded. Whose? Yours, if you are quick.",
         (Sin::Greed, C::TurnedSign) => "The door is this way, and it costs you nothing.",
         (Sin::Pride, C::Whisper) => "Listen. A hero like you needs only half of this:",
-        (Sin::Pride, C::CrookedBargain) => "You have proven yourself. Why walk the long way? The door is open.",
         (Sin::Pride, C::LoadedDice) => "A prize worthy of you. Take it.",
         (Sin::Pride, C::TurnedSign) => "The bold way is this way. It suits you.",
         (Sin::Envy, C::Whisper) => "Listen. The other one knew this, and it kept him alive:",
-        (Sin::Envy, C::CrookedBargain) => "The samurai took this road. Will you let him be first?",
         (Sin::Envy, C::LoadedDice) => "The northman left this chest behind. It is yours now.",
         (Sin::Envy, C::TurnedSign) => "The others went this way. Follow them.",
         (Sin::Wrath, C::Whisper) => "Listen, unless you are afraid to:",
-        (Sin::Wrath, C::CrookedBargain) => "Through them, now, the door open. Unless you would rather hide.",
         (Sin::Wrath, C::LoadedDice) => "A chest. Kick it open, if you dare.",
         (Sin::Wrath, C::TurnedSign) => "The fight is this way. Go on.",
         (Sin::Sloth, C::Whisper) => "Listen, and save yourself the trouble:",
-        (Sin::Sloth, C::CrookedBargain) => "Why walk? Rest, and the door opens by itself.",
         (Sin::Sloth, C::LoadedDice) => "A chest, and no work to open it.",
         (Sin::Sloth, C::TurnedSign) => "The easy way is this way.",
         (Sin::Gluttony, C::Whisper) => "Listen, and eat your fill of this:",
-        (Sin::Gluttony, C::CrookedBargain) => "One more course, and then the door. Just one.",
         (Sin::Gluttony, C::LoadedDice) => "A chest, and it is full. Help yourself.",
         (Sin::Gluttony, C::TurnedSign) => "The banquet is this way.",
         (Sin::Lust, C::Whisper) => "Listen. You want this more than anything:",
-        (Sin::Lust, C::CrookedBargain) => "The boy you came for is just beyond that door. I'll open it now.",
         (Sin::Lust, C::LoadedDice) => "What you most desire is in that chest.",
         (Sin::Lust, C::TurnedSign) => "What you want is this way.",
     };
@@ -387,10 +367,7 @@ mod tests {
                 match c.cost.bound() {
                     Bound::Seconds(s) => assert!(s > 0.0 && s <= 60.0, "{kind:?}: {s} s"),
                     Bound::Share(f) => assert!(f > 0.0 && f <= 0.35, "{kind:?}: {f} of his health"),
-                    Bound::TheRealm => {}
                 }
-                // Every counter but the refusal is rewarded; the bargain is a decision.
-                assert_eq!(c.reward == Reward::Nothing, kind == CheatKind::CrookedBargain, "{kind:?}");
             }
             // Never in Peak or Release; never more than two in a realm; the dice only with chests.
             for seed in 0..50 {
@@ -408,6 +385,24 @@ mod tests {
             lies.sort();
             lies.dedup();
             assert_eq!(lies.len(), 7, "{kind:?}");
+        }
+    }
+
+    /// BACKLOG B40 (D11): the princes never make a deal. No cheat is answered by accepting or
+    /// refusing anything; each is a lie with its tells, seen through by the old man's word, his
+    /// lamp, or a blow struck first.
+    #[test]
+    fn no_cheat_is_a_deal() {
+        assert_eq!(CheatKind::ALL.len(), 3, "the whisper, loaded dice, the turned sign");
+        for sin in SINS {
+            for kind in CheatKind::ALL {
+                let c = cheat(kind, sin);
+                assert!(matches!(c.counter, Counter::AskTheOldMan | Counter::StrikeFirst | Counter::FollowTheLamp), "{kind:?}");
+                let lie = c.lie.to_lowercase();
+                for word in ["accept", "refuse", "bargain", "deal", "i'll open"] {
+                    assert!(!lie.contains(word), "{kind:?} in {sin:?} offers something: {lie}");
+                }
+            }
         }
     }
 

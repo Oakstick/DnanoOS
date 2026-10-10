@@ -106,6 +106,8 @@ impl WorldView {
         let warm = lin(TOBY_COLOR);
         glow_orb(f, at(TOKEN_AT + Vec3::Y * 0.08), 0.45, warm, (0.05 + 0.06 * show) * swell + 0.015 * (time * 2.5).sin());
         f.lights.push(Light { pos: at(TOKEN_AT + Vec3::new(0.0, 0.6, 0.4)), color: warm * (0.45 + 0.35 * show), distance: 2.0 });
+        // ---- and beside it, the prince's seal-stone (B44), for the House of Seven Seals
+        super::seal_stones::emit_seal_stone(f, at(TOKEN_AT + Vec3::new(0.32, 0.1, 0.05)), sin, time, 0.11, 0.0, 0.8 + 0.6 * show);
 
         // ---- Hızır, across the anvil, leaning on his staff
         let look_at = match speaker {

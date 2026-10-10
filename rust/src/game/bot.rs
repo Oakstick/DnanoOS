@@ -145,6 +145,11 @@ pub struct Bot {
     /// Where it stood a while ago, and for how many updates it has pushed without getting
     /// anywhere: wedged on a corner the straight line cuts, it takes the tiles' way round.
     stand: (V, u32),
+    /// The way across a realm's other ground (Pride's mirror-doors, the Grotto's pools and vents):
+    /// from which tile, to which, and the next door, pool or vent to take (none: walk).
+    crossing: Option<(P, P, Option<P>)>,
+    /// The floor it can walk to from its tile (searched again when it changes tile).
+    reach: Option<(P, std::collections::HashSet<P>)>,
     /// An archangel's button was down last update (each press is let go before the next).
     angel_down: bool,
     /// It calls the archangels (a test of the foes' own play may keep them out).
@@ -166,6 +171,8 @@ impl Bot {
             chase: (P::new(-1, -1), 0),
             given_up: Vec::new(),
             stand: (V::new(f64::NAN, f64::NAN), 0),
+            crossing: None,
+            reach: None,
             angel_down: false,
             angels: true,
         }
@@ -377,9 +384,19 @@ impl Bot {
             self.attack_down = false;
             return Some(pad);
         }
+        // (Only those it can walk to: one across a realm's other ground is the keys' errand's way.)
+        let here = P::new(hp.x.round() as i32, hp.y.round() as i32);
+        if self.reach.as_ref().is_none_or(|r| r.0 != here) {
+            self.reach = Some((here, crate::logic::pathing::reachable(&g.level.grid, here, false, false)));
+        }
+        let reach = &self.reach.as_ref().unwrap().1;
+        let walkable = |at: &V| {
+            let t = P::new(at.x.round() as i32, at.y.round() as i32);
+            crate::logic::types::CARDINALS.iter().any(|&d| reach.contains(&t.step(d)))
+        };
         let (_, at) = instruments
             .into_iter()
-            .filter(|(_, at)| math::len(math::sub(*at, hp)) < out_of_way)
+            .filter(|(_, at)| math::len(math::sub(*at, hp)) < out_of_way && walkable(at))
             .min_by(|a, b| math::len(math::sub(a.1, hp)).total_cmp(&math::len(math::sub(b.1, hp))))?;
         let to = math::sub(at, hp);
         let dir = if math::len(to) > 0.6 { self.way(g, hp, at) } else { math::norm(to) };
@@ -391,6 +408,79 @@ impl Bot {
             }
         }
         Some(pad)
+    }
+
+    /**
+     * The realm's generals (BACKLOG B41): between fights the adept and the expert go for a key lying
+     * where its general fell, then (with all three) through the court's door, else to the nearest
+     * general standing at his post, waking what lies on the way rather than every den of the realm.
+     */
+    fn keys_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        if self.skill == Skill::Novice || hunting_near {
+            return None;
+        }
+        let goal = g.general_errand_goal()?;
+        // (Across a realm's other ground first: the door, pool or vent its way takes.)
+        let crossing = self.crossing_toward(g, hp, goal);
+        let goal = crossing.unwrap_or(goal);
+        let mut pad = PadState::default();
+        let to = math::sub(goal, hp);
+        // (Into a pool or a recess straight once beside it: its tile is no floor to route over.)
+        let near = if crossing.is_some() { 1.6 } else { 0.6 };
+        let dir = if math::len(to) > near { self.way(g, hp, goal) } else { math::norm(to) };
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        // (A pool is deep water, no floor to walk onto: he leaps in.)
+        let t = P::new(goal.x.round() as i32, goal.y.round() as i32);
+        if crossing.is_some() && math::len(to) < 1.8 && !g.level.grid.is_walkable(t.x, t.y, false) && !g.hero.airborne() {
+            pad.actions.insert(Action::Jump);
+        }
+        if std::env::var_os("VH_BOT_TRACE").is_some() && g.time.fract() < 0.01 {
+            eprintln!("keys errand at {hp:?} to {goal:?} dir {dir:?}");
+        }
+        Some(pad)
+    }
+
+    /**
+     * A realm whose ground is joined by more than floor (BACKLOG B41: the bots find the generals):
+     * the shortest way from `hp` to `goal` over the floor and the realm's own crossings (Pride's
+     * mirror-doors, each to the mirror it leads to; the Grotto's pools down and vents up), and the
+     * first crossing on it, if the way takes one. Searched again only when either end changes tile.
+     */
+    fn crossing_toward(&mut self, g: &Game, hp: V, goal: V) -> Option<V> {
+        let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        let (a, b) = (tile(hp), tile(goal));
+        if let Some((ca, cb, step)) = self.crossing {
+            if ca == a && cb == b {
+                return step.map(|p| p.v());
+            }
+        }
+        let portals: Vec<(P, P)> = match g.run.as_ref() {
+            Some(crate::logic::realms::Run::Pride(m)) => m
+                .doors
+                .iter()
+                .flat_map(|d| {
+                    let out = match d.out {
+                        Some(o) => m.doors[o].front(0),
+                        None => m.base.arrival,
+                    };
+                    d.tiles.iter().map(move |&t| (t, out))
+                })
+                .collect(),
+            Some(crate::logic::realms::Run::Envy(gr)) => {
+                gr.pools.iter().map(|q| (q.at, q.to)).chain(gr.vents.iter().map(|v| (v.at, v.to))).collect()
+            }
+            _ => {
+                self.crossing = None;
+                return None;
+            }
+        };
+        let step = crossing_path(&g.level.grid, a, b, &portals);
+        if std::env::var_os("VH_BOT_TRACE").is_some() {
+            eprintln!("crossing {a:?} -> {b:?}: {step:?} ({} portals)", portals.len());
+        }
+        self.crossing = Some((a, b, step));
+        step.map(|p| p.v())
     }
 
     /**
@@ -788,6 +878,25 @@ impl Bot {
             .filter(|d| d.alive() && !d.untouchable() && !d.begging())
             .filter(|d| !self.ignore.contains(&d.id))
             .collect();
+        // (Where the realm's ground is joined by more than floor, Pride's galleries and the Grotto's
+        // two surfaces, a foe it cannot walk to is no target: one hunting it from the other surface
+        // would hold it against a wall.)
+        let split = matches!(g.run.as_ref(), Some(crate::logic::realms::Run::Pride(_) | crate::logic::realms::Run::Envy(_)));
+        let all: Vec<_> = if split {
+            let here = P::new(hp.x.round() as i32, hp.y.round() as i32);
+            if self.reach.as_ref().is_none_or(|r| r.0 != here) {
+                self.reach = Some((here, crate::logic::pathing::reachable(&g.level.grid, here, false, false)));
+            }
+            let reach = &self.reach.as_ref().unwrap().1;
+            all.into_iter()
+                .filter(|d| {
+                    let t = P::new(d.pos.x.round() as i32, d.pos.y.round() as i32);
+                    reach.contains(&t) || crate::logic::types::CARDINALS.iter().any(|&k| reach.contains(&t.step(k)))
+                })
+                .collect()
+        } else {
+            all
+        };
         let mut hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
         if g.in_garden_fight() {
             // (In the Garden a hunter far off is met when it comes: the keys first, B01.)
@@ -797,6 +906,9 @@ impl Bot {
         // off their planned frames.)
         let hunting_near = hunting.iter().any(|d| !d.puppet);
         if let Some(errand) = self.general_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        if let Some(errand) = self.keys_errand(g, hp, hunting_near) {
             return errand;
         }
         if let Some(errand) = self.feast_errand(g, hp, hunting_near) {
@@ -1228,6 +1340,55 @@ const SEE_THROUGH: f64 = 14.0;
 const STRIKE_AT: f64 = 1.3;
 
 /// How a bout went.
+/**
+ * The first crossing on the shortest way from `a` to `b` over open floor and `portals` (each an
+ * entrance tile and where it sets him down), or none if the way needs none (or there is none).
+ */
+fn crossing_path(grid: &crate::logic::grid::Grid, a: P, b: P, portals: &[(P, P)]) -> Option<P> {
+    use crate::logic::types::CARDINALS;
+    let mut prev: HashMap<P, (P, bool)> = HashMap::from([(a, (a, false))]);
+    let mut queue = std::collections::VecDeque::from([a]);
+    let mut found = false;
+    while let Some(p) = queue.pop_front() {
+        if p == b {
+            found = true;
+            break;
+        }
+        // (Standing on an entrance, he is through it.)
+        if let Some(&(_, out)) = portals.iter().find(|q| q.0 == p) {
+            if let std::collections::hash_map::Entry::Vacant(e) = prev.entry(out) {
+                e.insert((p, true));
+                queue.push_back(out);
+            }
+            continue;
+        }
+        for d in CARDINALS {
+            let n = grid.neighbor(p, d);
+            // (An entrance may be deep water: the dive is into it.)
+            if grid.can_move(p, d, false, false) || portals.iter().any(|q| q.0 == n) {
+                if let std::collections::hash_map::Entry::Vacant(e) = prev.entry(n) {
+                    e.insert((p, false));
+                    queue.push_back(n);
+                }
+            }
+        }
+    }
+    if !found {
+        return None;
+    }
+    // Back from the goal: the first portal taken on the way out from `a`.
+    let mut at = b;
+    let mut first = None;
+    while at != a {
+        let (p, through) = prev[&at];
+        if through {
+            first = Some(p);
+        }
+        at = p;
+    }
+    first
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct BoutResult {
     pub won: bool,
@@ -1841,7 +2002,7 @@ fn crawl_full(
     let mut bot = Bot::new(skill, seed);
     // (Skipping him, the bot goes round his post: his room's pack is held out of the fight, a
     // stand-in for a player who never sets foot there, while his orders run on.)
-    let skipped = if skip_general { g.general_pack() } else { Vec::new() };
+    let skipped = if skip_general { (0..3).flat_map(|k| g.general_pack(k)).collect() } else { Vec::new() };
     for d in g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).filter(|d| skipped.contains(&d.id)) {
         d.puppet = true;
     }
@@ -1862,7 +2023,6 @@ fn crawl_full(
                 out.game_over = true;
                 break;
             }
-            super::Screen::Toll => break,
             super::Screen::Ready => g.enter(super::Screen::Playing),
             _ => {}
         }
@@ -1931,7 +2091,7 @@ pub fn general_report(sin: crate::logic::sins::Sin, skill: Skill, tier: u8, seed
         "{} - {} ({}), {} with Ragnar's tier-{tier} kit, seed {seed}
 ",
         sin.realm(),
-        crate::logic::war::general::General::of(sin).name,
+        crate::logic::war::general::General::of(sin).name(),
         sin.title(),
         skill.name()
     );

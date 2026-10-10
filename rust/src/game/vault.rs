@@ -7,18 +7,14 @@
 //! them, treasure heaps, chests and gems, all counted into his hoard. A chest
 //! also throws out one to three items as it opens (potions, weapons, boons,
 //! runes, bombs, in Diablo's four rarities), which land beside it and are his
-//! for the walking over. At the far portal Mammon makes his offer: "There is
-//! a chance for you to keep the gold. Keep it, or leave it." It is a lie.
-//! Leave the gold and the portal opens on his court, and what the chests gave
-//! him is his to keep; keep it and the vaults close, every time, and he
-//! starts the realm again with every coin back where it lay and his kit as it
-//! was when he came in. F2 brings him straight to the far portal.
+//! for the walking over. The far portal leads to Mammon's court; the gold he
+//! carries through it is counted into his score. Mammon makes no deal for it
+//! (BACKLOG B40: the princes never make a deal; his toll is gone). F2 brings
+//! him straight to the far portal.
 
 use super::brawl::{Brawl, Field};
-use super::save::Stage;
-use super::{Banner, Game, MenuItem, Screen};
+use super::{Banner, Game};
 use crate::audio::Sfx;
-use crate::input::Action;
 use crate::logic::combat::duelist::Den;
 use crate::logic::combat::{Breed, Duelist};
 use crate::logic::enemy::{spec_of, Enemy, EnemyMode};
@@ -26,7 +22,6 @@ use crate::logic::gear;
 use crate::logic::hub::Rect;
 use crate::logic::items::ItemKind;
 use crate::logic::progression;
-use crate::logic::sins::Sin;
 use crate::logic::types::{Dir, Tile, P, V};
 use crate::logic::vault::{roll_drops, Drop, DropItem, LootKind, Rarity, Vault, SEED};
 use crate::render::view::CameraMode;
@@ -65,9 +60,8 @@ impl Game {
         self.start_facing = Dir::Right;
         self.level.hero_spawn = vault.arrival;
         self.hoard = Hoard::default();
-        self.toll_asked = false;
-        // His kit as he came in: what he gets back if he keeps the gold and the vaults close on him.
-        self.vault_kit = (self.belt.clone(), self.progress.runes);
+        // His kit as he came in: what he gets back if the realm is played again (`replay_realm`).
+        self.realm_kit = (self.belt.clone(), self.progress.runes);
         self.vault = Some(vault);
         let mut brawl = Brawl::new(Field::Vault);
         brawl.reset(self.hero_kit());
@@ -79,12 +73,15 @@ impl Game {
     fn vault_garrison(&self, brawl: &mut Brawl) -> Vec<Enemy> {
         let Some(v) = &self.vault else { return Vec::new() };
         let mut out = Vec::new();
+        let grid = &self.level.grid;
+        let open = |p: P| grid.get(p.x, p.y) == Tile::Open && !v.loot.iter().any(|l| l.at == p);
         for pack in &v.packs {
             let r = pack.den;
             let lo = V::new(r.x0 as f64 - 0.5, r.y0 as f64 - 0.5);
             let hi = V::new(r.x1 as f64 + 0.5, r.y1 as f64 + 0.5);
             let (cx, cy) = r.center();
-            for &(kind, _, post) in &pack.foes {
+            // (Half as large again as laid out: B42.)
+            for (kind, _, post) in crate::logic::realms::thickened(pack, &open) {
                 let mut spec = spec_of(&self.level.grid, kind);
                 spec.name = format!("{} {}", spec.name, out.len() + 1);
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
@@ -305,68 +302,20 @@ impl Game {
         }
     }
 
-    /// Before the far portal: Mammon's offer. Keep the gold, or leave it.
-    pub(super) fn ask_toll(&mut self) {
-        self.toll_asked = true;
-        self.audio.play(Sfx::Toll);
-        self.enter(Screen::Toll);
-        self.menu_index = 0;
-        self.input.consume(Action::Confirm);
-        self.input.consume(Action::Jump);
-        self.input.consume(Action::Attack);
-    }
-
-    /// His answer. Leave it: the hoard is left where he stands and the portal opens. Keep it: there
-    /// never was a chance; the vaults close on him, and the realm begins again with every coin back
-    /// where it lay.
-    pub(super) fn pay_toll(&mut self, choice: MenuItem) {
-        let hp = self.hero.pos();
-        match choice {
-            MenuItem::DropAll => {
-                let was = self.hoard;
-                self.hoard = Hoard::default();
-                self.gate_open = true;
-                self.audio.play(Sfx::Win);
-                self.view.sparkle(&self.level.grid, hp.x, hp.y, 0.8, 0xffd860, 60);
-                self.view.dust(&self.level.grid, hp.x, hp.y, 0xf2c53d, 24, 2.0);
-                self.juice.banner = Some(Banner {
-                    text: "THE HOARD LIES WHERE IT FELL".into(),
-                    sub: if was.is_empty() {
-                        "EMPTY-HANDED HE CAME, AND EMPTY-HANDED HE GOES THROUGH".into()
-                    } else {
-                        format!("{} GOLD LEFT BEHIND   THE PORTAL TO MAMMON'S COURT OPENS", was.gold)
-                    },
-                    color: 0xf2c53d,
-                    life: 3.5,
-                    max: 3.5,
-                });
-                self.enter(Screen::Playing);
-            }
-            _ => {
-                self.audio.play(Sfx::Denied);
-                self.audio.play(Sfx::DoorGrind);
-                self.view.shake(0.6);
-                // What the chests gave him goes back with the gold.
-                let (belt, runes) = self.vault_kit.clone();
-                self.belt = belt;
-                self.belt_index = 0;
-                self.progress.runes = runes;
-                self.load_realm(Sin::Greed);
-                self.checkpoint(Stage::Realm(Sin::Greed));
-                self.juice.fade = 1.0;
-                self.juice.banner = Some(Banner {
-                    text: "MAMMON LAUGHS: THERE WAS NEVER A CHANCE".into(),
-                    sub: "THE VAULTS CLOSE ON THE GREEDY   EVERY COIN BACK WHERE IT LAY".into(),
-                    color: 0xff8a5a,
-                    life: 4.0,
-                    max: 4.0,
-                });
-                self.enter(Screen::Ready);
-            }
+    /// Through the far portal: the gold he carries is counted into his score (Mammon asks nothing
+    /// for it: no prince makes a deal).
+    pub(super) fn count_hoard(&mut self) {
+        if self.hoard.is_empty() {
+            return;
         }
+        let gold = self.hoard.gold;
+        let points = self.award(gold);
+        self.hoard = Hoard::default();
+        let hp = self.hero.pos();
+        self.floater(hp.x, hp.y - 1.0, format!("THE HOARD IS COUNTED +{points}"), 2.0, Some(0xffd860));
     }
 
-    /// F2 in the vaults: straight to the far portal, where the toll is asked.
+    /// F2 in the vaults: straight to the far portal.
     pub(super) fn cheat_to_vault_exit(&mut self) {
         let Some(v) = &self.vault else { return };
         let gate = v.exit_gate;
@@ -381,7 +330,7 @@ mod tests {
     use super::*;
     use crate::game::{save, Screen, CLEARED_SECONDS, READY_SECONDS};
     use crate::input::Action;
-    use crate::logic::types::PotionKind;
+    use crate::logic::sins::Sin;
     use crate::logic::vault::RoomKind;
     const STEP: f64 = crate::app::STEP;
 
@@ -414,7 +363,7 @@ mod tests {
         let v = g.vault.as_ref().expect("the Vaults of Mammon");
         assert_eq!(g.level.data.name, "The Vaults of Mammon");
         assert_eq!(g.hero.occupied(), v.arrival, "he arrives in the antechamber");
-        assert_eq!(g.keys_total, 0, "no keys here: the far portal asks a toll instead");
+        assert_eq!(g.keys_total, 3, "the three generals' keys to Mammon's court (B41)");
         assert!(g.enemies.len() >= 50, "packs sized for frame-data fights");
         assert!(g.enemies.iter().all(asleep), "every foe sleeps in its room");
         assert!(g.brawl.as_ref().is_some_and(|b| b.field == Field::Vault), "the vaults are fought by frame data");
@@ -587,56 +536,71 @@ mod tests {
         assert!((three - want).abs() <= 1, "three carvings: {three} of {bare}");
     }
 
+    /// BACKLOG B40: Mammon makes no deal. F2 brings him to the far portal; it opens on his court
+    /// with no question asked, and the gold he carries through is counted into his score.
     #[test]
-    fn f2_brings_him_to_the_far_portal_where_mammon_asks_his_toll() {
+    fn f2_brings_him_to_the_far_portal_sealed_by_three_keys_and_it_opens_with_no_toll() {
         let mut g = in_the_vault();
         let v = g.vault.clone().unwrap();
-        // A coin in hand, so there is something to answer for.
         let coin = v.loot.iter().find(|l| l.kind == LootKind::Coin).unwrap();
         g.hero.place(coin.at);
         g.update(STEP);
         assert_eq!(g.hoard.gold, 10);
+        let score = g.score.score;
         g.input.key_down(winit::keyboard::KeyCode::F2, false);
         g.update(STEP);
         assert_eq!(g.hero.occupied(), P::new(v.exit_gate.x - 1, v.exit_gate.y));
-        g.update(STEP);
-        assert_eq!(g.screen, Screen::Toll, "before the portal, the question");
-        assert_eq!(g.menu_items(), vec![MenuItem::KeepAll, MenuItem::DropAll]);
-        assert_eq!(g.menu_index, 0, "keeping is what he offers first");
-        // Keep it: there was never a chance; the vaults close and the realm starts again, the coin back where it lay.
-        g.input.inject(Action::Confirm);
-        g.update(STEP);
-        assert_eq!(g.screen, Screen::Ready);
-        assert!(g.hoard.is_empty());
-        assert_eq!(g.hero.occupied(), v.arrival);
-        assert!(g.vault.as_ref().unwrap().loot.iter().all(|l| !l.taken));
-        for _ in 0..((READY_SECONDS + 0.1) / STEP) as usize {
+        for _ in 0..(1.0 / STEP) as usize {
             g.update(STEP);
+            g.hero.invuln = 1.0;
+            assert_ne!(g.screen, Screen::Toll, "no question at the portal");
         }
-        // Leave it: the portal opens on Mammon's court.
-        g.cheat_to_gate();
-        g.update(STEP);
-        assert_eq!(g.screen, Screen::Toll);
-        g.input.nav = Some(Dir::Down);
-        g.update(STEP);
-        g.input.inject(Action::Confirm);
-        g.update(STEP);
-        assert_eq!(g.screen, Screen::Playing);
-        assert!(g.gate_open && g.hoard.is_empty());
+        assert!(!g.gate_open, "sealed: the three generals' keys (B41)");
+        // The three keys: the door unseals.
+        if let Some(r) = g.general.as_mut() {
+            for l in r.lords.iter_mut() {
+                (l.slain, l.key_taken, l.key) = (true, true, None);
+            }
+        }
+        g.check_court_door();
         for _ in 0..(3.0 / STEP) as usize {
             g.update(STEP);
             g.hero.invuln = 1.0;
+            assert_ne!(g.screen, Screen::Toll, "no question at the portal");
         }
-        assert!(g.door >= 1.0, "the doors swing open");
+        assert!(g.gate_open && g.door >= 1.0, "the doors swing open");
         g.hero.m.teleport(v.exit_gate);
         g.update(STEP);
         assert_eq!(g.screen, Screen::Cleared);
+        assert!(g.hoard.is_empty() && g.score.score >= score + 10, "the hoard counted into his score");
         for _ in 0..((CLEARED_SECONDS + 0.1) / STEP) as usize {
             g.update(STEP);
         }
         assert_eq!((g.screen, g.realm, g.in_court()), (Screen::Ready, Some(Sin::Greed), true), "Mammon's court");
         assert!(g.boss.is_none() && g.prince().is_some(), "Mammon himself, by frame data");
         assert!(g.vault.is_none());
+    }
+
+    /// The old toll's machinery, kept as a function any realm can call (`replay_realm`): the realm
+    /// begins again with every coin back where it lay, the hoard emptied, and his kit as he came in.
+    #[test]
+    fn replaying_the_realm_puts_every_coin_back_and_his_kit_as_he_came_in() {
+        let mut g = in_the_vault();
+        g.belt = vec![crate::logic::types::PotionKind::Health];
+        g.progress.runes = 3;
+        g.realm_kit = (g.belt.clone(), g.progress.runes);
+        let v = g.vault.clone().unwrap();
+        let coin = v.loot.iter().find(|l| l.kind == LootKind::Coin).unwrap();
+        g.hero.place(coin.at);
+        g.update(STEP);
+        assert_eq!(g.hoard.gold, 10);
+        g.progress.runes = 9;
+        g.belt.clear();
+        g.replay_realm(crate::logic::sins::Sin::Greed);
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(g.hoard.is_empty() && g.vault.as_ref().unwrap().loot.iter().all(|l| !l.taken), "every coin back where it lay");
+        assert_eq!((g.progress.runes, g.belt.len()), (3, 1), "his kit as he came in");
+        assert_eq!(g.hero.occupied(), v.arrival);
     }
 
     #[test]
@@ -667,83 +631,5 @@ mod tests {
         }
         assert!(g.vault.as_ref().unwrap().drops[0].taken);
         assert_eq!(g.bombs_left, bombs + 2);
-    }
-
-    #[test]
-    fn leaving_the_gold_keeps_what_the_chests_gave_and_keeping_it_takes_that_back_too() {
-        let mut g = in_the_vault();
-        g.belt = vec![PotionKind::Health];
-        g.progress.runes = 3;
-        // As if he had come in with this kit.
-        g.vault_kit = (g.belt.clone(), g.progress.runes);
-        let v = g.vault.clone().unwrap();
-        let chest = v.loot.iter().find(|l| l.kind == LootKind::Chest).unwrap().at;
-        g.hero.place(chest);
-        g.update(STEP);
-        {
-            let vault = g.vault.as_mut().unwrap();
-            vault.drops.truncate(1);
-            vault.drops[0].item = DropItem::Runes(5);
-            vault.drops[0].age = 1.0;
-        }
-        let at = g.vault.as_ref().unwrap().drops[0].at;
-        g.hero.place(at);
-        g.update(STEP);
-        assert_eq!(g.progress.runes, 8);
-        // Keep the gold: the vaults close, and the runes go back with it.
-        g.cheat_to_gate();
-        g.update(STEP);
-        assert_eq!(g.screen, Screen::Toll);
-        g.input.inject(Action::Confirm);
-        g.update(STEP);
-        assert_eq!((g.progress.runes, g.belt.clone()), (3, vec![PotionKind::Health]));
-        assert!(g.vault.as_ref().unwrap().drops.is_empty() && g.vault.as_ref().unwrap().loot.iter().all(|l| !l.taken));
-        // This time leave the gold: what the chest gave stays his.
-        for _ in 0..((READY_SECONDS + 0.1) / STEP) as usize {
-            g.update(STEP);
-        }
-        g.hero.place(chest);
-        g.update(STEP);
-        {
-            let vault = g.vault.as_mut().unwrap();
-            vault.drops.truncate(1);
-            vault.drops[0].item = DropItem::Runes(5);
-            vault.drops[0].age = 1.0;
-        }
-        let at = g.vault.as_ref().unwrap().drops[0].at;
-        g.hero.place(at);
-        g.update(STEP);
-        g.cheat_to_gate();
-        g.update(STEP);
-        g.input.nav = Some(Dir::Down);
-        g.update(STEP);
-        g.input.inject(Action::Confirm);
-        g.update(STEP);
-        assert_eq!(g.screen, Screen::Playing);
-        assert!(g.hoard.is_empty() && g.gate_open);
-        assert_eq!(g.progress.runes, 8, "the runes are his");
-    }
-
-    #[test]
-    fn mammon_promises_a_chance_to_keep_the_gold_but_keeping_always_begins_again() {
-        let mut g = in_the_vault();
-        let v = g.vault.clone().unwrap();
-        let coin = v.loot.iter().find(|l| l.kind == LootKind::Coin).unwrap();
-        for _ in 0..5 {
-            g.hero.place(coin.at);
-            g.update(STEP);
-            assert_eq!(g.hoard.gold, 10);
-            g.cheat_to_gate();
-            g.update(STEP);
-            assert_eq!(g.screen, Screen::Toll);
-            g.input.inject(Action::Confirm);
-            g.update(STEP);
-            assert_eq!(g.screen, Screen::Ready, "no chance, ever");
-            assert!(g.hoard.is_empty() && !g.gate_open);
-            assert_eq!(g.hero.occupied(), v.arrival);
-            for _ in 0..((READY_SECONDS + 0.1) / STEP) as usize {
-                g.update(STEP);
-            }
-        }
     }
 }

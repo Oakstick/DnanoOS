@@ -54,8 +54,9 @@ impl Meter {
     }
 }
 
-/// The prince's offer, when a realm makes one (as Mammon makes his toll): its title, what is
-/// said, and the answers, the one he would have chosen first.
+/// A realm's own lie put to him as a question at its end (the Grey Mire's bed: "Lie down. The door
+/// opens when you wake."): its title, what is said, and the answers, the one the prince would have
+/// him choose first. A lie with its tell, never a deal (BACKLOG B40).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Offer {
     pub title: String,
@@ -90,6 +91,8 @@ impl Game {
     /// camera above, the far portal sealed.
     pub(super) fn enter_run(&mut self, sin: Sin) {
         let Some(run) = Run::generate(sin, self.realm_tier()) else { return };
+        // His kit as he came in: what he gets back if the realm is played again (`replay_realm`).
+        self.realm_kit = (self.belt.clone(), self.progress.runes);
         // Seen from above, as the vaults are; the camera goes back to what it was on leaving.
         if self.camera_before_vault.is_none() {
             self.camera_before_vault = Some(self.view.camera_mode);
@@ -102,7 +105,7 @@ impl Game {
         let mut brawl = Brawl::new(Field::Vault);
         brawl.reset(self.hero_kit());
         self.run = Some(run);
-        self.enemies = self.raise_packs(&packs, tier, &mut brawl);
+        self.enemies = self.raise_realm_packs(&packs, tier, &mut brawl);
         self.brawl = Some(brawl);
         self.gate_open = false;
         match sin {
@@ -119,13 +122,26 @@ impl Game {
     /// Every foe of `packs` at its post in its den, asleep there: a duelist on its archetype,
     /// weighed for `tier` (`logic::realms::weight`).
     pub(super) fn raise_packs(&self, packs: &[Pack], tier: usize, brawl: &mut Brawl) -> Vec<Enemy> {
+        self.raise_packs_as(packs, tier, brawl, false)
+    }
+
+    /// The realm's own packs as laid out, raised half as large again (BACKLOG B42).
+    pub(super) fn raise_realm_packs(&self, packs: &[Pack], tier: usize, brawl: &mut Brawl) -> Vec<Enemy> {
+        self.raise_packs_as(packs, tier, brawl, true)
+    }
+
+    fn raise_packs_as(&self, packs: &[Pack], tier: usize, brawl: &mut Brawl, thick: bool) -> Vec<Enemy> {
         let mut out = Vec::new();
+        let grid = &self.level.grid;
+        let open = |p: crate::logic::types::P| grid.is_walkable(p.x, p.y, false);
         for pack in packs {
             let r = pack.den;
             let lo = V::new(r.x0 as f64 - 0.5, r.y0 as f64 - 0.5);
             let hi = V::new(r.x1 as f64 + 0.5, r.y1 as f64 + 0.5);
             let (cx, cy) = r.center();
-            for &(kind, stage, post) in &pack.foes {
+            // (Half as large again as laid out: B42.)
+            let foes = if thick { crate::logic::realms::thickened(pack, &open) } else { pack.foes.clone() };
+            for (kind, stage, post) in foes {
                 let mut spec = spec_of(&self.level.grid, kind);
                 spec.name = format!("{} {}", spec.name, out.len() + 1);
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);
@@ -266,12 +282,8 @@ impl Game {
         )
     }
 
-    /// The prince's offer standing before him now, if his realm makes one.
+    /// The realm's lie put to him now, if his realm asks one.
     pub fn run_offer(&self) -> Option<Offer> {
-        // A prince's cheat asking (his bargain) comes first.
-        if let Some(o) = self.deceit_offer() {
-            return Some(o);
-        }
         let sin = self.run.as_ref()?.sin();
         match sin {
             Sin::Sloth => self.mire_offer(),
@@ -300,8 +312,12 @@ impl Game {
         }
     }
 
-    /// What the sealed far portal tells him when he comes up to it.
+    /// What the sealed door to the court tells him when he comes up to it: the three keys' lock.
     pub(super) fn run_seal_hint(&self) -> String {
+        let held = self.general.as_ref().map(|g| g.keys()).unwrap_or(0);
+        if self.general.is_some() && held < super::general::KEYS {
+            return format!("SEALED: 3 KEYS   {held}/3   THE GENERALS CARRY THEM");
+        }
         let Some(sin) = self.run.as_ref().map(Run::sin) else { return String::new() };
         format!("SEALED: {} HAS NOT LET YOU GO", sin.realm().to_uppercase())
     }
@@ -339,7 +355,7 @@ pub(super) mod tests {
             assert!(g.brawl.as_ref().is_some_and(|b| b.field == Field::Vault), "{sin:?} is fought by frame data");
             assert!(g.enemies.iter().all(|e| e.duel.as_ref().is_some_and(|d| d.den.is_some_and(|d| !d.awake))), "{sin:?}: asleep");
             assert_eq!(g.view.camera_mode, CameraMode::Top);
-            assert_eq!(g.keys_total, 0, "{sin:?}: no keys; the realm's own trap seals the way");
+            assert_eq!(g.keys_total, 3, "{sin:?}: the three generals keys open the court (B41)");
             assert!(g.relic_shrine.is_none() && g.potions.is_empty());
         }
     }

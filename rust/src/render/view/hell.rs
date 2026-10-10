@@ -979,8 +979,21 @@ impl WorldView {
         }
     }
 
-    /// The seal's sockets: a gem glowing in each for the keys he holds.
+    /// The seal's sockets: a gem glowing in each for the princes beaten; and in the House of Seven
+    /// Seals each seal-stone taken, set in its seal over the door (B44).
     fn emit_seal(&self, hv: &HubView, time: f32, f: &mut Frame) {
+        let v = hub::volcano();
+        let (hx, _) = v.center();
+        let face = v.y1 as f32 + 0.45;
+        for (i, sin) in SINS.iter().enumerate() {
+            if hv.stones & sin.bit() == 0 {
+                continue;
+            }
+            let at = Vec3::new(hx + super::hell_portals::house_seal_x(i), super::hell_portals::HOUSE_SEALS_Y, face + 0.06);
+            let broken = hv.seal > 0.0;
+            super::seal_stones::emit_seal_stone(f, at, *sin, time, 0.2, 0.0, if broken { 0.7 } else { 0.35 });
+            f.lights.push(Light { pos: at + Vec3::new(0.0, 0.0, 0.5), color: lin(sin.color()) * 0.9, distance: 1.6 });
+        }
         let p = hub::altar();
         let c = Vec3::new(p.x as f32, 0.36, p.y as f32);
         let mut held = 0;
@@ -1002,7 +1015,7 @@ impl WorldView {
         if held > 0 {
             f.lights.push(Light { pos: c + Vec3::new(0.0, 0.6, 0.0), color: lin(0xffb070) * (1.0 + held as f32 * 0.5), distance: 4.0 });
         }
-        if hv.sins & ALL_SINS == ALL_SINS {
+        if hv.stones & ALL_SINS == ALL_SINS {
             let beam = Mat4::from_translation(c + Vec3::new(0.0, 6.4, 0.0)) * Mat4::from_scale(Vec3::new(0.18, 10.0, 0.18));
             f.additive.push(Instance::new(beam, lin(0xffc070), 0.18 + (time * 2.0).sin() * 0.04, Vec3::ZERO, SHADE_UNLIT));
         }

@@ -122,7 +122,7 @@ impl Group {
             Group::Stage(_) => "The seventh stage: the Norse end of the world.",
             Group::Cyclops => "The one-eyed guardian of the meadows on the way down.",
             Group::Realms => "Born of the sins' realms, and a cheat of the princes.",
-            Group::Generals => "Each realm's general, who runs it against you by his orders.",
+            Group::Generals => "Each realm's first general, who runs it against you by orders with two more; three keys to the court.",
             Group::Courts => "The seven princes of the sins, and what each one raises.",
             Group::Pit => "What waits at the very bottom.",
             Group::Toby => "Not a foe: the friend Krampus took, and what he left on the way down.",
@@ -191,7 +191,7 @@ pub fn archetype(entry: Entry) -> Option<(Archetype, Attack)> {
         // (The Peerless fights with the hero's own moves, turned on him: no archetype's.)
         Entry::Foe(EnemyKind::Peerless) => return None,
         Entry::Foe(k) => k,
-        Entry::General(s) => General::of(s).body,
+        Entry::General(s) => General::of(s).captains[0].body,
         Entry::Cyclops | Entry::Mimic => return None,
     };
     let b = Breed::of(kind);
@@ -679,7 +679,7 @@ fn general_lore(sin: Sin) -> Lore {
             "",
             "This place: the Vaults of Mammon",
             "No old tale knows him. Here he is Mammon's hand in the Vaults, a gilded blemmyes who counts what you carry.",
-            "He waits at his command post with his guard, and fights as a blemmyes does, far tougher; at half his health he calls his guard to him. He runs the vaults by orders, each through an instrument three blows will break: he musters at the counting-bell, kindles coin traps with the coin-bellows, and sends his decree down the treasury chain. Slay him, and Mammon fights without his golems; let the decree reach the court, and they rise at once.",
+            "He waits at his command post with his guard, and fights as a blemmyes does, far tougher; at half his health he calls his guard to him. With two other generals he runs the vaults by orders, each through an instrument three blows will break: he musters at the counting-bell, kindles coin traps with the coin-bellows, and sends his decree down the treasury chain. He carries one of the three keys to the court; let the decree reach the court, and they rise at once.",
             "He counts your coins. Let him count: what you carry down here is not in your purse.",
         ),
         Sin::Pride => l(
@@ -687,7 +687,7 @@ fn general_lore(sin: Sin) -> Lore {
             "",
             "This place: the Hall of Mirrors",
             "No old tale knows him. Here he is Lucifer's hand in the Hall of Mirrors, a tengu in white and gold; in Japan the proud were said to become tengu.",
-            "He waits at his command post with his guard, and fights as a tengu does, far tougher; at half his health he calls his guard to him. He sets the watch at the mirror-fire, kindles light beams with the lens-bellows, and sends his decree up the throne chain to polish the throne-mirror. Each instrument breaks under three blows. Slay him, and no Reflections come to Lucifer's side; let the decree be done, and they stand beside him from the start.",
+            "He waits at his command post with his guard, and fights as a tengu does, far tougher; at half his health he calls his guard to him. He sets the watch at the mirror-fire, kindles light beams with the lens-bellows, and sends his decree up the throne chain to polish the throne-mirror. Each instrument breaks under three blows. He carries one of the three keys to the court; let the decree be done, and they stand beside him from the start.",
             "A chamberlain of glass breaks like glass. Break his instruments first, then the man.",
         ),
         Sin::Envy => l(
@@ -695,7 +695,7 @@ fn general_lore(sin: Sin) -> Lore {
             "",
             "This place: the Serpent Grotto",
             "No old tale knows him. Here he is Leviathan's hand in the Serpent Grotto, a kappa green as old bronze, keeper of the drowned bell.",
-            "He waits at his command post with his guard, and fights as a kappa does, far tougher; at half his health he calls his guard to him. He kindles geysers at the geyser valve, musters the drowned at the drowned bell, and lowers the bell by the bell chain. Each instrument breaks under three blows. Slay him, and no serpentlings rise for Leviathan; let the bell be lowered, and they come at once.",
+            "He waits at his command post with his guard, and fights as a kappa does, far tougher; at half his health he calls his guard to him. He kindles geysers at the geyser valve, musters the drowned at the drowned bell, and lowers the bell by the bell chain. Each instrument breaks under three blows. He carries one of the three keys to the court; let the bell be lowered, and they come at once.",
             "Bow to him as you would to any kappa. Then strike while his dish is spilled.",
         ),
         Sin::Wrath => l(
@@ -703,7 +703,7 @@ fn general_lore(sin: Sin) -> Lore {
             "",
             "This place: the Burning Field",
             "No old tale knows him. Here he is Amon's hand on the Burning Field, a scarred oni who has never once called a truce.",
-            "He waits at his command post with his guard, and fights as an oni does, far tougher; at half his health he calls his guard to him. He musters at the war horn, kindles the lava sluice, and sends his sappers to burn the bridges by the bridge chain. Each instrument breaks under three blows. Slay him, and Amon's ravens never come; let the bridges burn, and they come at once.",
+            "He waits at his command post with his guard, and fights as an oni does, far tougher; at half his health he calls his guard to him. He musters at the war horn, kindles the lava sluice, and sends his sappers to burn the bridges by the bridge chain. Each instrument breaks under three blows. He carries one of the three keys to the court; let the bridges burn, and they come at once.",
             "A marshal of wrath. Break his horn, and he shouts at no one.",
         ),
         Sin::Sloth => l(
@@ -711,7 +711,7 @@ fn general_lore(sin: Sin) -> Lore {
             "",
             "This place: the Grey Mire",
             "No old tale knows him. Here he is Belphegor's hand in the Grey Mire, a hooded karakoncolos with a lantern, who lights lamps for sleepers.",
-            "He waits at his command post with his guard, and fights as a karakoncolos does, far tougher; at half his health he calls his guard to him. He sets the watch at the lantern-fire, kindles smouldering lamps with the lamp-bellows, and winds the hourglass by the hourglass chain. Each instrument breaks under three blows. Slay him, and Belphegor dreams without nightmares; let the hourglass be wound, and Belphegor wakes rested, with no free blow, and his nightmares come at once.",
+            "He waits at his command post with his guard, and fights as a karakoncolos does, far tougher; at half his health he calls his guard to him. He sets the watch at the lantern-fire, kindles smouldering lamps with the lamp-bellows, and winds the hourglass by the hourglass chain. Each instrument breaks under three blows. He carries one of the three keys to the court; let the hourglass be wound, and Belphegor wakes rested, with no free blow, and his nightmares come at once.",
             "He lights lamps so that others may sleep by them. Put out his lamps, and keep your own eyes open.",
         ),
         Sin::Gluttony => l(
@@ -719,15 +719,15 @@ fn general_lore(sin: Sin) -> Lore {
             "",
             "This place: the Rotting Feast",
             "No old tale knows him. Here he is Beelzebub's hand in the Rotting Feast, an aproned gaki who serves what he can never eat.",
-            "He waits at his command post with his guard, and fights as a gaki does, far tougher; at half his health he calls his guard to him. He musters at the dinner gong, kindles acid tides at the acid valve, and has the cooks lay the prince's feast by the larder chain. Each instrument breaks under three blows. Slay him, and no fly swarms come; let the feast be laid, and six platters wait for Beelzebub and the swarms come at once.",
+            "He waits at his command post with his guard, and fights as a gaki does, far tougher; at half his health he calls his guard to him. He musters at the dinner gong, kindles acid tides at the acid valve, and has the cooks lay the prince's feast by the larder chain. Each instrument breaks under three blows. He carries one of the three keys to the court; let the feast be laid, and six platters wait for Beelzebub and the swarms come at once.",
             "Even the steward is hungry. Leave his table, and he has nothing to serve you.",
         ),
         Sin::Lust => l(
             "The Bridesmaid",
             "",
             "This place: the Garden of Thorns",
-            "No old tale knows her. Here she is Asmodeus's hand in the Garden of Thorns, a veiled albastı who leads the wedding procession.",
-            "She waits at her command post with her guard, and fights as an albastı does, far tougher; at half her health she calls her guard to her. She sets the watch with the procession's torch, kindles censer smoke at the censer, and speaks the vows by the vow-chain. Each instrument breaks under three blows. Slay her, and no elf-maids come to Asmodeus; let the vows be spoken, and they come at once, and each censer lights only once.",
+            "No old tale knows her. Here she is Asmodeus's hand in the Garden of Thorns, a veiled elf-maid who leads the wedding procession.",
+            "She waits at her command post with her guard, and fights as an elf-maid does, far tougher, struck only from behind; at half her health she calls her guard to her. She sets the watch with the procession's torch, kindles censer smoke at the censer, and speaks the vows by the vow-chain. Each instrument breaks under three blows. She carries one of the three keys to the court; let the vows be spoken, and they come at once, and each censer lights only once.",
             "No wedding down here is worth your heart. Snuff her torch, and walk on.",
         ),
     }
@@ -1129,7 +1129,7 @@ mod tests {
             assert_eq!(foe_lore(k).name, spec.name, "{k:?}");
         }
         for s in SINS {
-            let name = General::of(s).name.to_lowercase();
+            let name = General::of(s).name().to_lowercase();
             assert_eq!(general_lore(s).name.to_lowercase(), name, "{s:?}");
         }
     }

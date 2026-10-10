@@ -1,18 +1,17 @@
 //! The prince's cheats at run time (WARBAND.md §10.3; their rules in `logic::war::deceit`).
 //!
 //! Each realm visit deals two (`deceit::deal`). One is a place: **loaded dice**, a mimic chest (it
-//! breathes, its coins never glint, its hinge creaks). Three are moments, played one at a time in
+//! breathes, its coins never glint, its hinge creaks). Two are moments, played one at a time in
 //! Rest or Build: **the whisper** (false counsel in the prince's own voice and his sin's colour, with
-//! a reversed echo, no face and no bark), **the crooked bargain** (an offer through the prince's
-//! offer screen, with an honest hidden price), and **the turned sign** (the realm's compass needle
-//! turned toward a den for 20 s, flickering in the sin's colour, while the old man's amber lamp
-//! stays true).
+//! a reversed echo, no face and no bark) and **the turned sign** (the realm's compass needle turned
+//! toward a den for 20 s, flickering in the sin's colour, while the old man's amber lamp stays
+//! true). The princes never make a deal (BACKLOG B40): nothing here offers him a choice.
 //!
 //! The old man is never one of them: the prince never takes his form, his name, his shop or his
 //! dog. Nothing here takes what the hero owns.
 
-use super::counsel::{toward, Speaker, AMBER};
-use super::{Banner, Game, MenuItem, Offer, Screen};
+use super::counsel::{toward, Speaker};
+use super::Game;
 use crate::audio::Sfx;
 use crate::logic::combat::duelist::Lore;
 use crate::logic::combat::Phase;
@@ -30,8 +29,6 @@ const BETWEEN: f64 = 60.0;
 const STRIKE_REACH: f64 = 1.7;
 /// The silver a chest is worth outside the vaults, twice over when struck first.
 const CHEST_SILVER: u32 = 40;
-/// The bargain's hidden price: this share of his health.
-pub const PRICE_SHARE: f64 = 1.0 / 3.0;
 
 /// A whisper in the air: what it said, and when (the visit's clock).
 #[derive(Clone, Debug, PartialEq)]
@@ -60,12 +57,6 @@ pub struct Sign {
     pub entered: bool,
 }
 
-/// What the prince's offer screen is asking.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Asking {
-    Bargain,
-}
-
 /// The prince's cheats in the realm he is in.
 #[derive(Clone, Debug, Default)]
 pub struct Deceit {
@@ -80,7 +71,6 @@ pub struct Deceit {
     pub whisper: Option<LiveWhisper>,
     pub mimic: Option<Mimic>,
     pub sign: Option<Sign>,
-    pub asking: Option<Asking>,
     /// His swing was in its active frames last frame (each swing counts once).
     swinging: bool,
     visits: u32,
@@ -191,15 +181,11 @@ impl Game {
         }
         // The next moment of deceit: in Rest or Build, one at a time, the panel free.
         let d = &self.voices.deceit;
-        let busy = d.whisper.is_some() || d.sign.is_some() || d.asking.is_some();
+        let busy = d.whisper.is_some() || d.sign.is_some();
         if busy || d.clock < d.next_at || !may_begin(self.war.drum.phase) || self.voices_line().is_some() {
             return;
         }
-        let Some(next) = d
-            .dealt
-            .iter()
-            .copied()
-            .find(|c| matches!(c, CheatKind::Whisper | CheatKind::TurnedSign | CheatKind::CrookedBargain) && !d.played.contains(c))
+        let Some(next) = d.dealt.iter().copied().find(|c| matches!(c, CheatKind::Whisper | CheatKind::TurnedSign) && !d.played.contains(c))
         else {
             return;
         };
@@ -208,7 +194,6 @@ impl Game {
         match next {
             CheatKind::Whisper => self.begin_whisper(sin),
             CheatKind::TurnedSign => self.begin_sign(),
-            CheatKind::CrookedBargain => self.begin_bargain(),
             _ => {}
         }
     }
@@ -342,62 +327,6 @@ impl Game {
         }
     }
 
-    // ------------------------------------------------------------------ the bargain
-
-    fn begin_bargain(&mut self) {
-        if self.run.is_none() || self.gate_open {
-            return;
-        }
-        self.voices.deceit.asking = Some(Asking::Bargain);
-        self.ask_offer();
-    }
-
-    /// The offer the prince's screen shows for a cheat, if one is being asked.
-    pub fn deceit_offer(&self) -> Option<Offer> {
-        let d = &self.voices.deceit;
-        let sin = d.sin?;
-        match d.asking? {
-            Asking::Bargain => Some(Offer {
-                title: format!("{}'S BARGAIN", sin.prince().to_uppercase()),
-                lines: vec![deceit::lie(CheatKind::CrookedBargain, sin), "Accept, and you stand at the end of the road.".into()],
-                choices: vec![MenuItem::Choice("ACCEPT"), MenuItem::Choice("REFUSE")],
-                color: sin.color(),
-            }),
-        }
-    }
-
-    /// His answer on the prince's screen.
-    pub(super) fn answer_deceit(&mut self, choice: MenuItem) {
-        let asking = self.voices.deceit.asking.take();
-        self.enter(Screen::Playing);
-        let sin = self.voices.deceit.sin.unwrap_or(Sin::Greed);
-        match asking {
-            Some(Asking::Bargain) if choice == MenuItem::Choice("ACCEPT") => {
-                // The gain is real: the end of the road. So is the price he did not name.
-                self.cheat_run();
-                // The price he did not name: his general's decree done (the prince stronger for
-                // it); where no general stands to have it, a share of the hero's health.
-                let sub = match self.bargain_completes_the_decree() {
-                    Some(done) => format!("AND THE PRICE HE DID NOT NAME: {done}"),
-                    None => {
-                        let loss = ((self.hero.max_hp as f64 * PRICE_SHARE).round() as i32).min(self.hero.hp - 1).max(0);
-                        self.hero.hp -= loss;
-                        format!("AND THE PRICE HE DID NOT NAME: {loss} OF YOUR HEALTH")
-                    }
-                };
-                self.audio.play(Sfx::Toll);
-                self.view.shake(0.4);
-                self.juice.banner = Some(Banner { text: "THE END OF THE ROAD".into(), sub, color: sin.color(), life: 3.5, max: 3.5 });
-            }
-            Some(Asking::Bargain) => {
-                let hp = self.hero.pos();
-                self.audio.play(Sfx::Nodule);
-                self.floater(hp.x, hp.y - 1.0, "REFUSED", 1.4, Some(AMBER));
-            }
-            None => {}
-        }
-    }
-
     /// A spawned foe weighed as the realm weighs its own, times `extra` on its health.
     fn weigh_spawned(&mut self, id: u32, stage: u8, extra: f64) {
         let tier = self.realm_tier();
@@ -527,8 +456,10 @@ pub fn biter_of(stage: u8) -> EnemyKind {
 #[cfg(test)]
 mod tests {
 
+    use super::super::counsel::AMBER;
     use super::super::realms::tests::{in_realm, STEP};
     use super::*;
+    use crate::game::Screen;
     use crate::logic::progression::TREES;
     use crate::logic::war::drum::DrumPhase;
 
@@ -576,8 +507,9 @@ mod tests {
         assert_eq!(g.progress.silver, 1000, "nor his silver");
     }
 
-    /// The old man is never one of the prince's cheats (the user's rule): no offer comes in his
-    /// name, and no whisper in his colour.
+    /// The old man is never one of the prince's cheats (the user's rule): no whisper in his colour.
+    /// And the princes never make a deal (BACKLOG B40): with every cheat dealt and played, no offer
+    /// is ever put to him.
     #[test]
     fn the_old_man_is_never_one_of_the_cheats() {
         for sin in crate::logic::sins::SINS {
@@ -586,9 +518,7 @@ mod tests {
             g.voices.deceit.next_at = 0.0;
             for _ in 0..3 {
                 g.update_deceit(STEP);
-                if let Some(o) = g.deceit_offer() {
-                    assert!(!o.title.contains("HIZIR") && !o.lines.join(" ").to_lowercase().contains("quitmer"), "{sin:?}: {o:?}");
-                }
+                assert_ne!(g.screen, Screen::Toll, "{sin:?}: no prince offers him anything");
                 if let Some(s) = g.voices_line() {
                     if matches!(s.who, Speaker::Whisper(_)) {
                         assert_ne!(s.color(), AMBER, "{sin:?}");
@@ -615,31 +545,6 @@ mod tests {
         assert_eq!(g.progress.runes, runes + deceit::SEEN_RUNES);
         let said = g.workshop_counsel().unwrap();
         assert!(said.starts_with("I said no such thing.") && said.contains(&live.w.truth), "{said}");
-    }
-
-    #[test]
-    fn the_bargain_gives_what_it_says_and_takes_what_it_does_not() {
-        let mut g = dealt(Sin::Sloth, &[CheatKind::CrookedBargain]);
-        g.voices.deceit.next_at = 0.0;
-        g.update_deceit(STEP);
-        assert_eq!(g.screen, Screen::Toll, "the offer is put to him");
-        let offer = g.run_offer().expect("through the offer screen");
-        assert!(offer.title.contains("BELPHEGOR") && !offer.lines.join(" ").to_lowercase().contains("health"), "the price unsaid");
-        let (hp, max) = (g.hero.hp, g.hero.max_hp);
-        let general = g.general.as_ref().is_some_and(|r| !r.command.slain);
-        g.answer_deceit(MenuItem::Choice("ACCEPT"));
-        assert_eq!(g.screen, Screen::Playing);
-        if general {
-            // The hidden price is his general's decree: the prince fights by it.
-            assert!(g.general.as_ref().unwrap().command.decree_done, "the decree is done");
-            // (A built court's prince takes it as his adds at once; a stand-in, on his health.)
-            let terms = g.prince_terms(Sin::Sloth);
-            assert!(terms.adds_at_start || terms.health > 1.0, "the prince stronger for it");
-            assert_eq!(g.hero.hp, hp, "and nothing else");
-        } else {
-            assert!(g.hero.hp < hp && g.hero.hp >= 1, "the hidden price");
-            assert!(hp - g.hero.hp <= (max as f64 * PRICE_SHARE).round() as i32 + 1, "bounded");
-        }
     }
 
     #[test]

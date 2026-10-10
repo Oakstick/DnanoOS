@@ -129,9 +129,17 @@ pub struct Part {
     /// The breaths between peaks (seconds in all, how many).
     pub gaps: (f64, u32),
     pub routs: u32,
-    /// The general's instruments broken (of three), and whether he fell.
+    /// The generals' instruments broken (of three), the generals slain (of three) and their keys
+    /// taken (B41).
     pub broken: usize,
     pub general_slain: bool,
+    pub generals: u32,
+    pub keys: u32,
+    /// The generals' fights: seconds from his waking to his fall, each.
+    pub duels: Vec<f64>,
+    /// The harness stood in for the realm's climax (its general brought out) where the bot could
+    /// not play it.
+    pub climax_carried: bool,
     pub overlaps: u32,
     /// Foes that came in mid-fight and could land a blow within `TELL_FRAMES` of being seen.
     pub sudden: u32,
@@ -180,6 +188,10 @@ impl Part {
             routs: 0,
             broken: 0,
             general_slain: false,
+            generals: 0,
+            keys: 0,
+            duels: Vec::new(),
+            climax_carried: false,
             overlaps: 0,
             sudden: 0,
             silver_in: 0,
@@ -269,6 +281,10 @@ struct Watch {
     since_kill: f64,
     stood: V,
     still: f64,
+    /// Seconds waited for the bot to play the realm's climax (`climax_stand_in`).
+    climax_wait: f64,
+    /// Each general's fall already counted into the part's duels.
+    duel_seen: [Option<f64>; 3],
 }
 
 impl Watch {
@@ -362,6 +378,16 @@ impl Watch {
         if let Some(r) = g.general.as_ref() {
             part.broken = part.broken.max(r.command.broken());
             part.general_slain |= r.command.slain;
+            part.generals = part.generals.max(r.lords.iter().filter(|l| l.slain).count() as u32);
+            part.keys = part.keys.max(r.keys());
+            for k in 0..3 {
+                if let (Some(a), Some(b)) = (r.tally.woke[k], r.tally.fell[k]) {
+                    if r.tally.fell[k].is_some() && part.duels.len() < 3 && self.duel_seen[k] != Some(b) {
+                        self.duel_seen[k] = Some(b);
+                        part.duels.push(b - a);
+                    }
+                }
+            }
         }
         // (The guide's clock: seconds since a blow last landed either way.)
         let mark = g.brawl.as_ref().map(|b| (b.stats.hits, b.stats.landings, b.stats.kills)).unwrap_or_default();
@@ -598,6 +624,37 @@ fn into_play(g: &mut Game, cam: Option<CameraMode>) {
  */
 fn guide(g: &mut Game) -> bool {
     let hp = g.hero.pos();
+    // (A realm with generals: on his way, to a key lying about, the court's door, or the nearest
+    // general standing; B41.)
+    if let Some(goal) = g.general_errand_goal() {
+        let t = P::new(goal.x.round() as i32, goal.y.round() as i32);
+        // (With every key, to the tile before the court's door.)
+        if g.court_keys_held() {
+            if let Some(front) = g.court_door_front() {
+                if (front.x as f64 - hp.x).hypot(front.y as f64 - hp.y) > 1.5 {
+                    g.hero.place(front);
+                    return true;
+                }
+                return false;
+            }
+        }
+        let near = crate::logic::pathing::reachable(&g.level.grid, t, false, false);
+        let mut spots: Vec<(i64, P)> = (-6..=6)
+            .flat_map(|dy| (-6..=6).map(move |dx| P::new(t.x + dx, t.y + dy)))
+            .filter(|p| Bot::floor(g, *p) && near.contains(p))
+            .map(|p| {
+                let d = ((p.x - t.x) as f64).hypot((p.y - t.y) as f64);
+                (((d - 3.0).abs() * 100.0) as i64, p)
+            })
+            .collect();
+        spots.sort_by_key(|(s, p)| (*s, p.y, p.x));
+        if let Some(&(_, at)) = spots.first() {
+            if (at.x as f64 - hp.x).hypot(at.y as f64 - hp.y) > 2.0 {
+                g.hero.place(at);
+                return true;
+            }
+        }
+    }
     let homes: Vec<V> = g
         .enemies
         .iter()
@@ -605,6 +662,13 @@ fn guide(g: &mut Game) -> bool {
         .filter(|d| d.alive() && !d.puppet)
         .map(|d| d.den.as_ref().map(|n| n.home).unwrap_or(d.pos))
         .collect();
+    // (Dens he can walk to first; where none is, any, as across Pride's galleries, but never into
+    // the Rotting Feast's digested zones behind the teeth.)
+    let here = P::new(hp.x.round() as i32, hp.y.round() as i32);
+    let reach = crate::logic::pathing::reachable(&g.level.grid, here, false, false);
+    let walkable: Vec<V> = homes.iter().copied().filter(|h| reach.contains(&P::new(h.x.round() as i32, h.y.round() as i32))).collect();
+    let feast = matches!(g.run.as_ref(), Some(crate::logic::realms::Run::Gluttony(_)));
+    let homes = if !walkable.is_empty() || feast { walkable } else { homes };
     let Some(home) = homes.into_iter().min_by(|a, b| (a.x - hp.x).hypot(a.y - hp.y).total_cmp(&(b.x - hp.x).hypot(b.y - hp.y))) else {
         return false;
     };
@@ -643,7 +707,7 @@ fn play(g: &mut Game, bot: &mut Bot, limit: f64, guided: bool, done: &dyn Fn(&Ga
             let foes: Vec<_> =
                 g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).map(|d| (d.breed.kind, d.hp as i32)).collect();
             eprintln!(
-                "{} t {t:.0}/{every} {:?} hero ({:.1}, {:.1}) hp {} lives {} edge {:.2} idle {:.0} foes {foes:?}",
+                "{} t {t:.0}/{every} {:?} hero ({:.1}, {:.1}) hp {} lives {} edge {:.2} idle {:.0} generals {:?} goal {:?} foes {foes:?}",
                 part.kind.name(),
                 g.screen,
                 hp.x,
@@ -651,17 +715,78 @@ fn play(g: &mut Game, bot: &mut Bot, limit: f64, guided: bool, done: &dyn Fn(&Ga
                 g.hero.hp,
                 g.score.lives,
                 g.hero.edge,
-                w.idle
+                w.idle,
+                g.general.as_ref().map(|r| (0..3)
+                    .map(|k| (
+                        r.posts.post(k),
+                        r.lords[k].slain,
+                        r.lords[k].waiting,
+                        r.lords[k].key,
+                        r.lords[k].key_taken,
+                        r.lords[k].id.and_then(|id| g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id)).map(|d| (
+                            d.hp as i32,
+                            d.pos.x as i32,
+                            d.pos.y as i32
+                        ))
+                    ))
+                    .collect::<Vec<_>>()),
+                g.general_errand_goal()
             );
+            if let (Some(crate::logic::realms::Run::Gluttony(f)), true) = (g.run.as_ref(), std::env::var_os("VH_RUN_GRID").is_some()) {
+                let seams: Vec<_> = f.seams.iter().map(|s| (s.top, s.bottom, s.closed, s.landing)).collect();
+                eprintln!("    seams {seams:?} checkpoint {:?} lifted {} bloat {} zone {:?}", f.base.checkpoint, f.lifted, f.bloat, f.zone);
+            }
+            if std::env::var_os("VH_RUN_GRID").is_some() {
+                // (The ground about him: # rock, . floor, ~ other, H him, G a general, F a foe.)
+                let o = g.hero.occupied();
+                for y in o.y - 9..=o.y + 9 {
+                    let row: String = (o.x - 14..=o.x + 14)
+                        .map(|x| {
+                            let p = P::new(x, y);
+                            let foe = |k: Option<usize>| {
+                                g.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|d| {
+                                    d.alive()
+                                        && P::new(d.pos.x.round() as i32, d.pos.y.round() as i32) == p
+                                        && g.general.as_ref().and_then(|r| r.lord_of(d.id)).is_some() == k.is_some()
+                                })
+                            };
+                            if p == o {
+                                'H'
+                            } else if foe(Some(0)) {
+                                'G'
+                            } else if foe(None) {
+                                'F'
+                            } else if !g.level.grid.in_bounds(x, y) || g.level.grid.get(x, y) == crate::logic::types::Tile::Rock {
+                                '#'
+                            } else if g.level.grid.is_walkable(x, y, false) {
+                                '.'
+                            } else {
+                                '~'
+                            }
+                        })
+                        .collect();
+                    eprintln!("    {row}");
+                }
+            }
         }
         match g.screen {
             Screen::GameOver => return End::GameOver,
             Screen::Ready | Screen::View => g.enter(Screen::Playing),
-            Screen::Toll => return End::Done,
+            // (A realm's lie put as a question, the Grey Mire's bed: a careful player stands.)
+            Screen::Toll => {
+                let stand =
+                    g.menu_items().into_iter().find(|m| *m == super::MenuItem::Choice("STAND")).unwrap_or(super::MenuItem::Choice("STAND"));
+                g.answer_run_offer(stand);
+            }
             _ => {}
         }
         if done(g) {
             return End::Done;
+        }
+        // (The realm's climax, where the bot cannot play it: once the other two generals are down,
+        // the harness stands in for it after a while, and its general comes out; counted.)
+        if guided && g.screen == Screen::Playing && climax_stand_in(g, w) {
+            part.climax_carried = true;
         }
         if guided && (w.idle >= GUIDE_AFTER || w.still >= STUCK_AFTER || w.since_kill >= 2.0 * GUIDE_AFTER) && g.screen == Screen::Playing {
             if guide(g) {
@@ -673,6 +798,28 @@ fn play(g: &mut Game, bot: &mut Bot, limit: f64, guided: bool, done: &dyn Fn(&Ga
     End::Time
 }
 
+/// Seconds the bot is given to play a realm's climax once the other two generals are down, before
+/// the harness stands in for it.
+pub const CLIMAX_GRACE: f64 = 120.0;
+
+/// The realm's climax stood in for (see `play`): true when its general was brought out now.
+fn climax_stand_in(g: &mut Game, w: &mut Watch) -> bool {
+    let Some(r) = g.general.as_ref() else { return false };
+    let waiting = r.lords[crate::logic::war::general::CLIMAX].waiting && !r.climax_done;
+    let others = (0..crate::logic::war::general::CLIMAX).all(|k| r.lords[k].slain && r.lords[k].key.is_none());
+    if !(waiting && others) || std::env::var_os("VH_RUN_NOCLIMAX").is_some() {
+        w.climax_wait = 0.0;
+        return false;
+    }
+    w.climax_wait += crate::app::STEP;
+    if w.climax_wait < CLIMAX_GRACE {
+        return false;
+    }
+    w.climax_wait = 0.0;
+    g.debug_general(crate::logic::war::general::CLIMAX);
+    true
+}
+
 /// The realms whose ground the bots walk as a player does: the vaults and the Rotting Feast. The
 /// other five lie to them (see the module's note).
 pub fn bots_walk(sin: Sin) -> bool {
@@ -682,13 +829,15 @@ pub fn bots_walk(sin: Sin) -> bool {
 /// Every duelist of the level down (a realm cleared): every one he could reach, that is (a ghost
 /// left hovering over a chasm counts as gone).
 fn cleared(g: &Game) -> bool {
-    // (Or left through its way out: the Rotting Feast's pylorus, WARBAND.md W11.)
+    // (Or left through its way out: the Rotting Feast's pylorus, WARBAND.md W11; with the
+    // generals, every realm is left through its court's door with their three keys, B41.)
     g.screen == Screen::Cleared
-        || !g.enemies.iter().any(|e| {
-            e.duel
-                .as_deref()
-                .is_some_and(|d| d.alive() && !d.puppet && Bot::floor(g, P::new(d.pos.x.round() as i32, d.pos.y.round() as i32)))
-        })
+        || g.general.is_none()
+            && !g.enemies.iter().any(|e| {
+                e.duel
+                    .as_deref()
+                    .is_some_and(|d| d.alive() && !d.puppet && Bot::floor(g, P::new(d.pos.x.round() as i32, d.pos.y.round() as i32)))
+            })
 }
 
 /// A part: entered at `stage`, played (and played again by Continue after a loss) until done.
@@ -957,12 +1106,12 @@ pub fn run_table(r: &WholeRun) -> String {
         r.garden.0,
         r.garden.1
     );
-    out += "part              tier kit    rk done  go  min  died lives taken kills/foes met made slain peak  rest rout inst  ovl sudden carry  worn dull silver+ lost runes+  spent  bought\n";
+    out += "part              tier kit    rk done  go  min  died lives taken kills/foes met made slain peak  rest rout inst gen key  ovl sudden carry  worn dull silver+ lost runes+  spent  bought\n";
     for p in &r.parts {
         let fights = matches!(p.kind, PartKind::Court(_) | PartKind::Lair);
         let _ = writeln!(
             out,
-            "{:<17} {:>4} {:>2}/{:>2}/{:>2} {:>2} {:>4} {:>3} {:>4.1} {:>4} {:>5} {:>5.0} {:>5}/{:<4} {:>3} {:>4} {:>5} {:>4} {:>5} {:>4} {:>2}{:<2} {:>4} {:>6} {:>5} {:>5.2} {:>4.0}% {:>7} {:>4} {:>6} {:>4}/{:<2} {}",
+            "{:<17} {:>4} {:>2}/{:>2}/{:>2} {:>2} {:>4} {:>3} {:>4.1} {:>4} {:>5} {:>5.0} {:>5}/{:<4} {:>3} {:>4} {:>5} {:>4} {:>5} {:>4} {:>2}{:<2} {:>3} {:>2}{:<1} {:>4} {:>6} {:>5} {:>5.2} {:>4.0}% {:>7} {:>4} {:>6} {:>4}/{:<2} {}",
             p.kind.name(),
             p.tier,
             p.kit.0,
@@ -985,6 +1134,9 @@ pub fn run_table(r: &WholeRun) -> String {
             p.routs,
             p.broken,
             if p.general_slain { "+" } else { "" },
+            p.generals,
+            p.keys,
+            if p.climax_carried { "*" } else { "" },
             p.overlaps,
             p.sudden,
             p.carried,
@@ -995,7 +1147,7 @@ pub fn run_table(r: &WholeRun) -> String {
             p.runes_in,
             p.spent_silver,
             p.spent_runes,
-            p.bought.join(" ")
+            if p.duels.is_empty() { p.bought.join(" ") } else { format!("duels {:?}s {}", p.duels.iter().map(|d| d.round() as i32).collect::<Vec<_>>(), p.bought.join(" ")) }
         );
         for l in &p.pit {
             let _ = writeln!(
@@ -1040,7 +1192,16 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
     // (`VH_GENERAL=slain` or `decree`: the prince's terms as his general left them.)
     if let Ok(v) = std::env::var("VH_GENERAL") {
         let mut r = g.general_records();
-        r.set(sin, crate::logic::war::general::Record { met: true, broken: 0, decree_done: v == "decree", slain: v == "slain" });
+        r.set(
+            sin,
+            crate::logic::war::general::Record {
+                met: true,
+                broken: 0,
+                decree_done: v == "decree",
+                slain: if v == "slain" { 7 } else { 0 },
+                keys: 0,
+            },
+        );
         g.warband.save.generals = r.encode();
     }
     // (`VH_NG=N`: New Game+ N, its tiers and its weight on the prince.)
@@ -1138,7 +1299,7 @@ pub fn runs_summary(runs: &[WholeRun]) -> String {
         let kinds: Vec<String> = here.iter().map(|p| p.kind.name()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
         let _ = writeln!(
             out,
-            "{:<17} {:>4} {:>3.0}% {:>4.1} {:>4.1}/{:>3.1}/{:>3.1} {:>4.1} {:>5.0} {:>4.1} {:>5.1} {:>4.1} {:>5.0} {:>5.0} {:>4.1} {:>4.1} {:>5.1} {:>4} {:>5} {:>4} {:>4.1} {:>4.1} {:>3.1} {:>6.1} {:>5.1} {:>7.0} {:>5.0}",
+            "{:<17} {:>4} {:>3.0}% {:>4.1} {:>4.1}/{:>3.1}/{:>3.1} {:>4.1} {:>5.0} {:>4.1} {:>5.1} {:>4.1} {:>5.0} {:>5.0} {:>4.1} {:>4.1} {:>5.1} {:>4} {:>5} {:>4} {:>4.1} {:>4.1} {:>4.1} {:>4.1} {:>3.1} {:>6.1} {:>5.1} {:>7.0} {:>5.0}",
             if kinds.len() == 1 { kinds[0].clone() } else { format!("part {}", k + 1) },
             here.len(),
             avg(&|p| f64::from(u8::from(p.done))) * 100.0,
@@ -1161,6 +1322,8 @@ pub fn runs_summary(runs: &[WholeRun]) -> String {
             if fights { "-".to_string() } else { format!("{:.1}", avg(&|p| p.gap())) },
             avg(&|p| p.routs as f64),
             avg(&|p| p.broken as f64),
+            avg(&|p| p.generals as f64),
+            avg(&|p| p.keys as f64),
             avg(&|p| p.overlaps as f64),
             avg(&|p| p.sudden as f64),
             avg(&|p| p.carried as f64),

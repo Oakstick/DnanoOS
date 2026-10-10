@@ -475,12 +475,13 @@ mod tests {
         assert!(g.court.as_ref().unwrap().slain);
         assert!(g.red_key.is_some(), "the Key of Pride lies on the floor");
         assert!(g.sins_cleared & Sin::Pride.bit() != 0, "Pride's bit is set");
-        assert_eq!(g.key_name(), "THE KEY OF PRIDE");
+        assert_eq!(g.key_name(), "THE SEAL-STONE OF PRIDE");
         assert!(g.saved_run.as_ref().is_some_and(|r| r.stage == save::Stage::SinShop(Sin::Pride)), "and the checkpoint is the old man's");
         let k = g.red_key.unwrap();
         g.hero.place(k);
         run(&mut g, 0.3);
         assert!(g.red_key.is_none() && g.gate_open);
+        assert!(g.seal_stones & Sin::Pride.bit() != 0, "his seal-stone is the hero's (B44)");
         let gate = g.gate.unwrap();
         g.hero.place(P::new(gate.x, gate.y - 1));
         for _ in 0..1200 {
@@ -541,16 +542,16 @@ mod tests {
     }
 
     #[test]
-    fn the_chamberlain_slain_he_has_no_reflections_and_his_decree_done_they_stand_at_his_side() {
-        // Slain: no Reflections when the Mirror comes.
-        let mut g = court_after(Record { met: true, slain: true, ..Default::default() });
-        assert!(lucifer(&mut g).lore.summoned, "his Reflections are lost");
+    fn the_generals_slain_his_reflections_still_come_and_his_decree_done_they_stand_at_his_side() {
+        // All three slain (B41): his Reflections still come when the Mirror comes (D14).
+        let mut g = court_after(Record { met: true, slain: 0b111, keys: 0b111, ..Default::default() });
+        assert!(!lucifer(&mut g).lore.summoned, "his Reflections still come");
         let (max, from) = (lucifer(&mut g).max_hp, lucifer(&mut g).pos);
         lucifer(&mut g).hp = max * 0.6;
         g.call_duel_hit(0, from);
         run(&mut g, 0.1);
         assert_eq!(lucifer(&mut g).breed.phase, 2);
-        assert_eq!(reflections(&g), 0, "the glass stays empty");
+        assert_eq!(reflections(&g), REFLECTIONS as usize, "they step out of the glass");
         // The throne-mirror polished: they stand at his side as the fight begins, and not again.
         let mut g = court_after(Record { met: true, decree_done: true, ..Default::default() });
         run(&mut g, 0.05);
