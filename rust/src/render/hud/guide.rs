@@ -100,5 +100,11 @@ pub(super) fn draw_guide(o: &mut Overlay, g: &Game, t: f32) {
         y += t * 0.35;
     }
     let back = style::label(t, 0.58, rgba(TEXT_DIM, 1.0)).centered();
-    glyphs::prompt_text(o, &g.input, "{Back} BACK TO THE ROAD      {Secondary} HIS BESTIARY", px + pw / 2.0, py + ph - t * 0.65, &back);
+    // (In the Garden his lesson is taught again from here: B04.)
+    let keys = if g.in_garden_fight() {
+        "{Back} BACK TO THE ROAD      {Secondary} HIS BESTIARY      {Attack} HIS LESSON AGAIN"
+    } else {
+        "{Back} BACK TO THE ROAD      {Secondary} HIS BESTIARY"
+    };
+    glyphs::prompt_text(o, &g.input, keys, px + pw / 2.0, py + ph - t * 0.65, &back);
 }

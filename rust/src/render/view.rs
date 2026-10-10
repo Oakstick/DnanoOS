@@ -66,6 +66,7 @@ mod hell_art;
 mod hell_portals;
 mod juice;
 mod lair;
+pub mod lesson;
 mod lookdev;
 mod meadow;
 mod meadow_field;
@@ -212,6 +213,8 @@ pub struct SceneState<'a> {
     pub pit: Option<PitView>,
     /// Krampus's lair: his death, the cage and the boy in it (FINALE.md §3).
     pub lair: Option<&'a crate::game::lair::Lair>,
+    /// Hızır and Quitmer, while he teaches his lesson in the Garden (B04).
+    pub lesson: Option<lesson::LessonView>,
 }
 
 /// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the

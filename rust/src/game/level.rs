@@ -234,6 +234,7 @@ impl Game {
         };
         self.boss_shots.clear();
         self.red_key = None;
+        self.cover = Default::default();
         self.angels_used = [false; 4];
         self.diamonds = self
             .level

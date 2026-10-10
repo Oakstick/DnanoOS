@@ -151,6 +151,8 @@ pub(crate) enum Cmd {
     Gate,
     Foes(usize, Option<u8>),
     Dungeon(usize),
+    /// Hızır's lesson at step N (1 strike .. 5 the tells, 6 the farewell; 0 the greeting).
+    Lesson(usize),
     /// An archangel's blessing: 0 Michael, 1 Gabriel, 2 Raphael, 3 Uriel.
     Bless(usize),
     /// Every tree owned up to tier N, that weapon in hand and that shield on his back.
@@ -341,6 +343,7 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "gate" => Cmd::Gate,
             "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1), parts.next().and_then(|v| v.parse().ok())),
             "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "lesson" => Cmd::Lesson(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "bless" => Cmd::Bless(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "angel" => Cmd::Press(Action::Angel),
             "arm" => Cmd::Arm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
@@ -562,6 +565,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Gate => game.cheat_to_gate(),
         Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
         Cmd::Dungeon(n) => game.debug_dungeon(n),
+        Cmd::Lesson(n) => game.debug_lesson(n),
         Cmd::Bless(n) => game.blessing = Some(Blessing::of(ARCHANGELS[n.min(3)])),
         Cmd::Arm(tier) => game.debug_arm(tier),
         Cmd::Shield(tier) => {

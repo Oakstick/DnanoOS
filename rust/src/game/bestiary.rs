@@ -746,7 +746,8 @@ mod tests {
 
     #[test]
     fn foes_met_felled_and_falls_go_into_the_book() {
-        let mut g = super::super::tests::playing();
+        // (Off the road, where a draugr still falls to the old rules: B01.)
+        let mut g = super::super::tests::playing_off_road();
         // A draugr of the garden at arm's length: met, once.
         let i = g.enemies.iter().position(|e| e.kind() == EnemyKind::Skeleton).expect("a draugr in the garden");
         let at = g.hero.pos();

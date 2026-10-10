@@ -214,6 +214,7 @@ impl Game {
                 self.view.add_enemy(e);
             }
         }
+        self.update_lesson(dt);
         if self.lesson_holds() {
             return;
         }

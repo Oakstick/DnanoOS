@@ -50,6 +50,8 @@ pub enum ShopAction {
     Life,
     /// The training yard's trial of mastery that is set.
     Trials,
+    /// Hızır's lesson again (B04), in the Garden.
+    Lesson,
     /// The war table: a rival's true weakness, bought (WARBAND.md §10.1).
     Intel(crate::logic::war::ledger::RivalId),
     Leave,
@@ -70,6 +72,8 @@ pub enum RowKind {
     Life,
     /// The training yard's trials of mastery.
     Trials,
+    /// Hızır's lesson, taught again (B04).
+    Lesson,
     /// A realm's general at the war table (by the order of `SINS`).
     General(u8),
     /// A hook on the trophy wall.
@@ -349,7 +353,16 @@ impl Game {
                 rows.push(ShopRow { kind: RowKind::Life, buttons: vec![button(ShopAction::Life, format!("BUY {p}"), p, 0, true)] });
             }
             // The yard: the trial of mastery that is set, or what it waits for.
-            Tree::Path => rows.push(ShopRow { kind: RowKind::Trials, buttons: vec![self.trials_button()] }),
+            Tree::Path => {
+                rows.push(ShopRow { kind: RowKind::Trials, buttons: vec![self.trials_button()] });
+                // (His lesson, again: only in the Garden, where his sparring draugr is.)
+                let b = if self.in_garden_fight() {
+                    button(ShopAction::Lesson, "AGAIN", 0, 0, true)
+                } else {
+                    button(ShopAction::Lesson, "IN THE GARDEN", 0, 0, false)
+                };
+                rows.push(ShopRow { kind: RowKind::Lesson, buttons: vec![b] });
+            }
         }
         rows.push(leave_row);
         rows
@@ -661,6 +674,17 @@ impl Game {
                 }
             }
             ShopAction::Intel(id) => self.buy_intel(id),
+            ShopAction::Lesson => {
+                if self.replay_lesson() {
+                    // Out of the workshop, into the Garden, where he teaches it.
+                    self.audio.play(Sfx::Start);
+                    self.enter(Screen::Ready);
+                    self.juice.fade = 1.0;
+                    self.input.consume(Action::Attack);
+                } else {
+                    self.audio.play(Sfx::Denied);
+                }
+            }
             ShopAction::Life => {
                 if self.score.lives >= MAX_LIVES {
                     self.audio.play(Sfx::Denied);

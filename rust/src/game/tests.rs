@@ -316,8 +316,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 7 + 1 + 2 + 3,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
+        3 + 2 * 7 + 1 + 1 + 2 + 1 + 2 + 1 + 7 + 7 + 7 + 1 + 2 + 3,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Hızır's lesson, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
@@ -727,7 +727,7 @@ fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
 
 #[test]
 fn one_swing_fells_every_foe_it_sweeps_through() {
-    let mut g = playing();
+    let mut g = playing_off_road();
     // Two foes side by side just ahead of him, as in a corridor two tiles wide, and one behind.
     let o = g.hero.occupied();
     g.hero.face(Dir::Up);
@@ -735,6 +735,8 @@ fn one_swing_fells_every_foe_it_sweeps_through() {
     for (e, &at) in g.enemies.iter_mut().zip(&spots) {
         e.m.teleport(at);
         e.b.mode = EnemyMode::Chase;
+        // (The Cisterns' foes take more than one blow: one each here, as the Garden's took.)
+        e.b.hits = 1;
     }
     g.hitstop = 0.0;
     g.perform_attack();
@@ -753,11 +755,19 @@ fn those_waiting_in_the_hollow_stand_in_it() {
 
 #[test]
 fn draugr_rise_from_the_churchyard() {
-    let g = playing();
+    // (B01: the Garden's hunters; a draugr among them claws out of a grave.)
+    let mut g = playing();
+    g.skip_lesson();
     let graves = g.grave_spawns();
     assert!(!graves.is_empty(), "Dungeon I has a churchyard");
-    let draugr = g.enemies.iter().find(|e| e.kind() == EnemyKind::Skeleton).expect("a draugr");
-    assert!(graves.contains(&draugr.m.tile), "it starts by the graves, not in the hollow: {:?}", draugr.m.tile);
+    g.spawned = 3; // the draugr's turn in the hunters' order
+    g.spawn_timer = 0.0;
+    g.update(crate::app::STEP);
+    let draugr = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.den.is_none() && d.breed.kind == EnemyKind::Skeleton);
+    let draugr = draugr.expect("a draugr hunter");
+    let at = P::new(draugr.pos.x.round() as i32, draugr.pos.y.round() as i32);
+    assert!(graves.contains(&at), "it climbs out by the graves, not the hollow: {at:?}");
+    assert!(draugr.lore.rise > 0, "climbing out");
 }
 
 #[test]
@@ -1210,7 +1220,7 @@ fn each_dungeon_hides_a_shrine_with_a_relic() {
 
 #[test]
 fn the_path_revives_and_restores_once_per_dungeon() {
-    let mut g = playing();
+    let mut g = playing_off_road();
     g.progress.hero_mut(g.hero_kind).owned[1] = 10;
     g.equip_from_progress();
     g.hero.shield = None;
@@ -1231,7 +1241,7 @@ fn the_path_revives_and_restores_once_per_dungeon() {
 
 #[test]
 fn the_blades_carry_their_gifts() {
-    let mut g = playing();
+    let mut g = playing_off_road();
     // Tier 4 stuns the foes around the blow.
     g.debug_arm(4);
     let hp = g.hero.pos();
@@ -1252,8 +1262,21 @@ fn the_blades_carry_their_gifts() {
 }
 
 /// A game in play as `hero`, with his trees owned up to `tier`.
-fn playing_as(hero: HeroKind, tier: u8) -> Game {
+/// Play under way off the road, in the Cisterns, where the old contact rules still hold (the
+/// Garden fights by frame data since B01): the tests of the blades' and paths' old gifts.
+pub(super) fn playing_off_road() -> Game {
     let mut g = playing();
+    g.map_jump(save::Stage::Dungeon(1));
+    for _ in 0..(READY_SECONDS / crate::app::STEP) as usize + 2 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    assert!(!g.brawling(), "the old rules");
+    g
+}
+
+fn playing_as_off_road(hero: HeroKind, tier: u8) -> Game {
+    let mut g = playing_off_road();
     g.hero_kind = hero;
     g.debug_arm(tier);
     g.hero.hp = g.hero.max_hp;
@@ -1262,7 +1285,7 @@ fn playing_as(hero: HeroKind, tier: u8) -> Game {
 
 #[test]
 fn a_samurai_stands_his_last_and_a_spirit_fights_beside_him() {
-    let mut g = playing_as(HeroKind::Miyamoto, 9);
+    let mut g = playing_as_off_road(HeroKind::Miyamoto, 9);
     g.hero.shield = None;
     g.hero.invuln = 0.0;
     g.hurt_hero(500);
@@ -1285,7 +1308,7 @@ fn a_samurai_stands_his_last_and_a_spirit_fights_beside_him() {
 
 #[test]
 fn the_janissary_has_a_squad_a_pistol_and_a_bow() {
-    let mut g = playing_as(HeroKind::Mehmed, 9);
+    let mut g = playing_as_off_road(HeroKind::Mehmed, 9);
     g.update_spirits(crate::app::STEP);
     assert_eq!(g.spirits.len(), 3, "a squad of three");
     g.debug_arm(5);
@@ -1304,7 +1327,7 @@ fn the_janissary_has_a_squad_a_pistol_and_a_bow() {
 #[test]
 fn a_sun_blade_obliterates_the_foes_around_him() {
     for hero in [HeroKind::Miyamoto, HeroKind::Mehmed] {
-        let mut g = playing_as(hero, 10);
+        let mut g = playing_as_off_road(hero, 10);
         let hp = g.hero.pos();
         for (k, e) in g.enemies.iter_mut().enumerate() {
             e.b.mode = EnemyMode::Chase;
@@ -1331,7 +1354,7 @@ fn zero_opens_the_shop_from_anywhere() {
 
 #[test]
 fn a_third_quick_kill_is_brutal_and_doubles_points() {
-    let mut g = playing();
+    let mut g = playing_off_road();
     let before = g.score.score;
     g.slay_enemy(0);
     g.slay_enemy(1);
@@ -1437,7 +1460,7 @@ fn potions_ride_on_the_belt_until_drunk() {
 
 #[test]
 fn right_click_raises_the_shield_and_left_click_swings() {
-    let mut g = playing();
+    let mut g = playing_off_road();
     g.input.mouse_button(winit::event::MouseButton::Right, true);
     g.update(crate::app::STEP);
     assert_eq!(g.bombs.len(), 0, "the bomb is disabled");

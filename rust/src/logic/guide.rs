@@ -102,11 +102,11 @@ const GARDEN_TASK: &[&str] = &[
 ];
 
 const GARDEN_WATCH: &[&str] = &[
-    "Draugr fall to pieces and pull themselves together again, and hunt by the sound of your steps. Ravens fly over the pits.",
-    "Bog slimes leave a trail that slows you, but they cannot cross the bridges. The slain gather in the hollow and come out again.",
-    "Every key angers the garden: more foes come out, and faster. Strike with {Attack}; leap the pits with {Jump}.",
+    "A pack sleeps by each key. The first three come alone: a draugr (wait out its slow swing), a raven (read its bite), a bog slime (close in).",
+    "A foe glows as it winds up and flashes as it strikes. Raise your shield with {Block}; raise it as the blow lands to parry.",
+    "A red glint means no shield holds the blow: leap with {Jump}. Every key angers the garden: more come for you, and sooner.",
     "An archangel's shrine stands in each quarter. Strike one to change its angel, step on it for his blessing, and use it with {Angel}.",
-    "Raise your shield with {Block}, drink with {Drink}, and call me with {Call} whenever you need. {Guide} brings you back to these words.",
+    "Drink with {Drink}, and call me with {Call} whenever you need: my training yard teaches the lesson again. {Guide} brings you back to these words.",
 ];
 
 const CISTERNS_TALE: &[&str] = &[

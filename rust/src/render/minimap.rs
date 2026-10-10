@@ -1488,6 +1488,12 @@ mod tests {
             .unwrap();
         g.enemies[0].m.tile = P::new(near.x.round() as i32, near.y.round() as i32);
         g.enemies[1].m.tile = far;
+        // (The Garden's foes are duelists since B01: where they stand is their fighter's.)
+        for (k, at) in [(0, near), (1, far.v())] {
+            if let Some(d) = g.enemies[k].duel.as_deref_mut() {
+                d.pos = at;
+            }
+        }
         let m = markers(&g);
         let foes: Vec<&Marker> = m.iter().filter(|m| matches!(m.kind, MarkerKind::Foe(_))).collect();
         assert_eq!(foes.len(), g.enemies.len());

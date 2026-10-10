@@ -65,6 +65,7 @@ macro_rules! scene_state {
             general: $g.general.as_ref(),
             pit: $g.pit_view(),
             lair: $g.lair.as_ref(),
+            lesson: $g.lesson_view(),
         }
     };
 }
@@ -536,7 +537,10 @@ impl Game {
             && !self.full_map_open()
             && !self.settings_page.open
         {
-            if self.screen == Screen::Playing {
+            if self.lesson_wants_skip() {
+                // Esc (Start) puts Hızır's lesson away (B04).
+                self.skip_lesson();
+            } else if self.screen == Screen::Playing {
                 self.enter(Screen::Paused);
                 // Nothing pressed with it may pick Resume at once.
                 self.input.consume(Action::Confirm);

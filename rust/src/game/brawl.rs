@@ -1674,6 +1674,10 @@ impl Game {
         }
         self.floater(hp.x, hp.y - 0.5, format!("-{loss}"), 0.9, Some(color));
         self.keep_immortal();
+        if self.lesson_spares() {
+            // (Hızır's sparring draugr cannot slay him: B04.)
+            self.hero.hp = self.hero.hp.max(1);
+        }
         let down = self.hero.hp == 0;
         let (live, vault) = self.brawl.as_ref().map(|b| (b.live, b.field == Field::Vault)).unwrap_or((false, false));
         if let Some(b) = self.brawl.as_mut() {
