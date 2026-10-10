@@ -9,16 +9,18 @@ use super::*;
 use crate::logic::combat::State;
 
 /// Seconds between afterimages while he is untouchable, how many are kept, and how fast each fades.
-const TRAIL_EVERY: f32 = 0.05;
-const TRAIL_MAX: usize = 3;
+const TRAIL_EVERY: f32 = 0.06;
+const TRAIL_MAX: usize = 2;
 const TRAIL_FADE: f32 = 4.5;
 /// How fast the glow comes on as he takes off, and goes as the untouchable frames end.
 const GLOW_IN: f32 = 14.0;
 const GLOW_OUT: f32 = 8.0;
 /// The glow's colour and strength, and the afterimages' opacity.
 const GLOW: u32 = 0xdce8ff;
-const GLOW_STRENGTH: f32 = 0.32;
-const TRAIL_ALPHA: f32 = 0.22;
+const GLOW_STRENGTH: f32 = 0.04;
+const TRAIL_ALPHA: f32 = 0.16;
+/// An afterimage nearer him than this (tiles) is not drawn: over him it would only wash him out.
+const TRAIL_GAP: f32 = 0.4;
 
 /// The glow and trail's state between frames.
 #[derive(Default)]
@@ -64,12 +66,14 @@ impl WorldView {
     }
 
     /// The afterimages behind him, in his pose of the moment, pale and fading.
-    pub(super) fn emit_leap_trail(&self, f: &mut Frame) {
+    pub(super) fn emit_leap_trail(&self, hero: &Hero, f: &mut Frame) {
         let Some((jointed, mats)) = self.clip_pose() else { return };
-        for (p, yaw, life) in &self.leap_glow.trail {
+        let hp = hero.pos();
+        let near = |p: &Vec3| (p.x - hp.x as f32).hypot(p.z - hp.y as f32) < TRAIL_GAP;
+        for (p, yaw, life) in self.leap_glow.trail.iter().filter(|t| !near(&t.0)) {
             let root = Mat4::from_translation(*p) * Mat4::from_rotation_y(*yaw) * Mat4::from_scale(self.hero_squash());
             let alpha = TRAIL_ALPHA * life * life;
-            f.rigs_blend.push_matrices(jointed, mats, root, lin(GLOW), alpha, lin(GLOW) * 0.5, rig_look::TINT_ALL, 0.0);
+            f.rigs_blend.push_matrices(jointed, mats, root, lin(GLOW), alpha, lin(GLOW) * 0.12, rig_look::TINT_ALL, 0.0);
         }
     }
 

@@ -59,7 +59,7 @@ pub const LANDING_KEEP: f64 = 0.6;
 pub const TURN_TAP_SECONDS: f64 = 0.12;
 /// A jump pressed keeps the way the stick or keys pointed at the press this long: in a fight a
 /// press waits in the fighter's 8-frame buffer (out of a swing's active frames, a reel) and takes
-/// off a little later, still the way it was pressed (B78).
+/// off a little later: the way it was pressed, if the stick is let go meanwhile (B78).
 const PRESS_KEEP: f64 = 0.2;
 /// The stick pushed past this far is a way to leap; nearer its middle, he leaps the way he faces.
 const LEAP_STICK: f64 = 0.3;
@@ -500,7 +500,7 @@ impl Hero {
     }
 
     /// The jump was pressed: the leap that comes of it, now or out of a fight's buffer, goes the
-    /// way the stick or keys point now (B78).
+    /// way the stick or keys point now, if they are let go before it takes off (B78).
     pub fn press_jump(&mut self) {
         self.pressed = self.stick().map(|v| (v, 0.0));
     }
@@ -511,10 +511,12 @@ impl Hero {
         (len > LEAP_STICK).then(|| V::new(self.wish.x / len, self.wish.y / len))
     }
 
-    /// The way a leap goes: the stick or keys held at the jump's press, else those held now, else
-    /// the way he faces.
+    /// The way a leap goes: the stick or keys held now (as he takes off), else those held at the
+    /// jump's press (let go while a fight's buffer held it), else the way he faces. (The stick of
+    /// the press over that of the take-off cost the adept bot, whose stick follows the blow coming,
+    /// three lives a run in the vaults-first order.)
     pub fn leap_aim(&self) -> V {
-        self.pressed.map(|p| p.0).or_else(|| self.stick()).unwrap_or_else(|| self.aim())
+        self.stick().or(self.pressed.map(|p| p.0)).unwrap_or_else(|| self.aim())
     }
 
     /**

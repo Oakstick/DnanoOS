@@ -390,7 +390,7 @@ impl WorldView {
         }
         // Untouchable in his leap: a soft pale glow, and afterimages behind him (B78).
         emissive += self.leap_glow();
-        self.emit_leap_trail(f);
+        self.emit_leap_trail(hero, f);
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
             let root = hero_group
