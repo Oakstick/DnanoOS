@@ -469,6 +469,26 @@ portal's north tower (the hub's top camera now hides him in no pose of 405).
 - **Decision for TA07:** the visual cue that says a wall can be broken. Today every interior wall
   can be, with no cue.
 
+### B57: the meadow's cover breaks
+
+- **What breaks:** the Cyclops' bolts (1), boulders (3) and a dive's slam (5, within 1.8 tiles)
+  wear the meadow's pillars (12) and low-wall tiles (7) (`game::cover`). Half worn, a tile cracks
+  (a clang, CRACKED over it, chips of stone each blow); worn through, it comes down through RP04's
+  path: the grid opens in the same step, `remove_rock` hides its cubes (and its fire bowl), lays the
+  turf patch and the low rubble, and the probes refresh round it.
+- **Debris:** `effects::crumble`, stone chunks thrown up and tumbling with no fireball (a bomb's
+  `explode` would read as a blast), under the same 160-chunk budget; dust and a crash.
+- **Not done:** no stages of damage on the stone itself (a crack decal or chipped silhouette); the
+  half-worn cue is the clang and the word.
+
+### B66: the slime's trail
+
+- Render only (`emit::emit_goo`): a glossy splat in a bright colour of its own with a clear dark
+  edge under every splat, droplet and smear, a slicked highlight across the pool, faint see-through
+  bubbles, and a faint emissive so it reads in the dark realms. Colours from `palette::slime_trail`
+  (bog green; sulphur yellow in deuteranopia and protanopia; sea green in tritanopia).
+- A squelch (`Sfx::Squelch`) as his boot goes into it.
+
 ### RP06: the 30-foe budget
 
 - **The simulation step is timed by section** (`profile::SimTimes`, filled by `Game::update`):

@@ -5,10 +5,10 @@ source of truth: every number below lives in `src/logic/combat/` and is pinned b
 tests (`cargo test combat`). Change the table, then change this document.
 
 Phase 1 ran in **the Sparring Ring** in the gym (west of the arrival platform). Today the frame
-data runs every fight from the Portals of Hell down: the Ring, the Vaults of Mammon and the other six
-realms, the seven courts, the Pit and Krampus's lair (`Game::brawling`). The road above them still
-plays the original contact rules: the Garden of Krampus, the Cisterns, the Bone Vaults and the
-Cyclopes' arenas (BACKLOG.md B01-B03 bring them over).
+data runs every fight on the road: the Garden of Krampus (since B01, §14), the Ring, the Vaults of
+Mammon and the other six realms, the seven courts, the Pit and Krampus's lair (`Game::brawling`).
+The original contact rules are left in the Cisterns and the Bone Vaults (off the road, on the LEVELS
+map) and in the Cyclopes' meadows (BACKLOG.md B02, B03 bring them over).
 
 ---
 
@@ -1128,3 +1128,56 @@ overlaps; a masher cannot win) and `the_expert_beats_mammon_in_his_court_and_a_m
 |---|---|
 | The court's pool 4 → 3 points | the golems' slams came while Mammon's own were planned; with his token filling the pool, they strike between his |
 | The bots play the court from the top view | the stick is the camera's way round in the chase view: a bot pushing south walked north into the wall |
+
+## 14. The Garden by frame data (B01), and Hızır's lesson (B04)
+
+The first hour now fights as the rest of the game does. The Garden of Krampus runs the vaults' brawl
+(`Field::Vault`, with `Brawl::garden` set; `game::garden_fight`) on a beginner's terms:
+
+| | The Garden | The vaults |
+|---|---|---|
+| Foes | the first stage: draugr (brute), raven and night raven (skirmishers), bog slime (hexer) | dealt by progress |
+| Wind-ups | every move +12 frames (`Breed::tell` → `Fighter::tell`; the aim commits as early as ever) | as the table |
+| Blows | x0.6 of a breed's | x0.8 |
+| Health | x0.8 of a breed's | x0.85 |
+| Threat pool | 2 points, a token every 75 frames: two attackers at most, never together | 2 points, 60 frames |
+| Packs, rivals | none | the Warband's |
+
+- **Dens by the keys:** each of the eight golden keys has a den near it (`garden_dens`: its post up
+  to four steps from the key, on the roomiest floor, 14 steps and 9 tiles from his start at least,
+  clear of the shrines, bottles, gate and hollow). The three nearest his start hold one foe each and
+  ask the three questions in turn (the brute, the skirmisher, the hexer); the next five come in twos.
+- **The Garden takes every key badly** (its escalation, kept): hunters come on the old reinforcement
+  schedule (the first after 20 s, then every 25 s shrinking to a quarter with the keys, one at once
+  after each key), a draugr clawing out of a grave or a raven or the slime out of the hollow, `1 +
+  keys/3` of them at once. They have no den and hunt until slain; after a fall they are gone and the
+  schedule begins again (the dens keep their wounds, as the vaults' do).
+- **The terraces:** a foe climbs only up a ramp, a level at a time, as he does (`Flow::climbing`,
+  `GridTerrain` reads `Flow::climbs`); the vaults' and realms' floors are walked as flat, as before.
+
+**Hızır's lesson** (`game::lesson`, `render::hud::lesson`, `render::view::lesson`): early in the
+Garden (after the countdown, once a save, before any den wakes) Hızır comes with Quitmer and a
+sparring draugr (a puppet that cannot slay him: `Game::lesson_spares`). Five steps, each done when
+the player does it, read from the war log: the three-hit string (a finisher lands), the guard
+(a block or a parry), the parry, the leap (a blow evaded) and the three tells (a plain slam, then a
+grab's red glint, leapt). A wrong answer gets a gentle line and another try. Esc/Start skips it; it
+is taught again from his training yard and his guide (B) in the Garden, and from the LEVELS map.
+
+### 14.1 Results (`--garden SKILL 8`, Ragnar's starting kit, eight seeds)
+
+| Skill | Before (contact rules) | After (frame data) |
+|---|---|---|
+| novice | 0/8 through (dies at 7/8 keys, ~74 s; 4 deaths, 305 taken) | 8/8 through, 127 s; 0.5 deaths, 75 taken |
+| adept | 0/8 through (~79 s, 7/8 keys) | 8/8 through, 127 s; no deaths, 8 taken |
+| expert | 4/8 through, 100 s when through | 8/8 through, 98 s (-2%); no deaths, nothing taken |
+
+(The pre-B01 numbers come from an old-rules stand-in bot, `garden_run::OldBot`; the Garden had no
+bot before. The expert's time is the target: within 25% of the old.) Foes' strikes reaching him per
+walk: novice 9, adept 11, expert 3.5; kills 16-18. `--run`, `--court`, `--lair`, `--pit` and
+`--balance 2` are unchanged by B01 (the Garden is not in them).
+
+| Change | Why |
+|---|---|
+| Health x0.6 → x0.8, blows x0.5 → x0.6, cadence 110 → 75 | at the gentlest values no blow ever reached the novice: a masher stun-locked lone foes before they struck |
+| The bots meet a far hunter when it comes | they ran back across the Garden after each one and never reached the last keys |
+| The Garden's goal by walking distance, and no climbing in its straight lines | the nearest key by a straight line flipped as it walked; a terrace wall stopped it |

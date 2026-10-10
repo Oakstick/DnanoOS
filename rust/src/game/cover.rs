@@ -123,7 +123,9 @@ impl Game {
             .filter(|&p| self.is_cover(p))
             .min_by(|a, b| crate::logic::types::dist_sq(a.v(), hp).total_cmp(&crate::logic::types::dist_sq(b.v(), hp)));
         if let Some(p) = near {
-            let from = V::new(hp.x + 0.6, hp.y);
+            let to = V::new(hp.x - p.x as f64, hp.y - p.y as f64);
+            let l = (to.x * to.x + to.y * to.y).sqrt().max(1e-6);
+            let from = V::new(p.x as f64 + to.x / l * 2.5, p.y as f64 + to.y / l * 2.5);
             let dir = (p.y as f64 - from.y).atan2(p.x as f64 - from.x);
             self.boss_shots.push(crate::logic::boss::BossShot::new(from, dir, 6.0, crate::logic::boss::ShotKind::Boulder));
         }
