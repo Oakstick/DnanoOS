@@ -917,10 +917,16 @@ pub fn place(
     rooms.sort_by(|a, b| far(a).total_cmp(&far(b)).then(a.x0.cmp(&b.x0)).then(a.y0.cmp(&b.y0)));
     let mut busy: HashSet<P> = HashSet::from([arrival, court]);
     let area = |r: &Rect| (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
-    let holds = |r: &Rect| foes.iter().any(|p| r.contains(*p) && reach.contains(p));
     // The generals' posts: bands of the way (the last not the court's own room), each a room with
     // foes in it if there is one (the smaller half: a general's room holds a fight, not a pile-on).
     let bands: [(f64, f64); 3] = [(0.2, 0.55), (0.45, 0.8), (0.6, 1.2)];
+    // (On ground he walks to from where he arrives, where the realm has rooms enough there: a
+    // general on an island its foes reach some other way is no fight to be found. Pride's galleries,
+    // joined by mirrors alone, keep the whole ground.)
+    let walk0 = super::super::pathing::reachable(grid, arrival, false, false);
+    let on_foot = |r: &Rect| r.tiles().filter(|p| walk0.contains(p)).count() >= 4;
+    let footed = rooms.iter().filter(|r| on_foot(r) && near_court(r) >= span * 0.15).count() >= 3;
+    let holds = |r: &Rect| foes.iter().any(|p| r.contains(*p) && reach.contains(p) && (!footed || walk0.contains(p)));
     let mut chosen_rooms: Vec<Rect> = Vec::new();
     let mut posts = [arrival; 3];
     let mut post_rooms = [Rect { x0: arrival.x, y0: arrival.y, x1: arrival.x, y1: arrival.y }; 3];
@@ -934,7 +940,7 @@ pub fn place(
             }
         }
         let (lo, hi) = bands[k];
-        let free = |r: &&Rect| !chosen_rooms.contains(r) && near_court(r) >= span * 0.15;
+        let free = |r: &&Rect| !chosen_rooms.contains(r) && near_court(r) >= span * 0.15 && (!footed || on_foot(r));
         let mut pool: Vec<Rect> =
             rooms.iter().filter(free).filter(|r| far(r) >= span * lo && far(r) < span * hi && holds(r)).copied().collect();
         if pool.is_empty() {
@@ -953,14 +959,15 @@ pub fn place(
         // He stands where one of the room's own foes stood (the realm keeps its foes' posts on its
         // ground, however that ground moves), else on its open floor.
         let (cx, cy) = room.center();
-        let mut theirs: Vec<P> = foes.iter().copied().filter(|p| room.contains(*p) && reach.contains(p) && !busy.contains(p)).collect();
+        let mut theirs: Vec<P> =
+            foes.iter().copied().filter(|p| room.contains(*p) && reach.contains(p) && !busy.contains(p) && (!footed || walk0.contains(p))).collect();
         theirs.sort_by(|a, b| {
             let d = |p: &P| (p.x as f32 - cx).powi(2) + (p.y as f32 - cy).powi(2);
             d(a).total_cmp(&d(b)).then(a.y.cmp(&b.y)).then(a.x.cmp(&b.x))
         });
         let post = match theirs.first() {
             Some(&p) => p,
-            None => spot_in(grid, room, &reach, &busy, (0.0, 0.0))?,
+            None => spot_in(grid, room, if footed { &walk0 } else { &reach }, &busy, (0.0, 0.0))?,
         };
         busy.insert(post);
         posts[k] = post;
