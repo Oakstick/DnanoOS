@@ -1,0 +1,2564 @@
+//! A scripted player for the Sparring Ring, and the balance harness built on it (COMBAT.md,
+//! phase 2). The bot plays through the real controller path (a pad's stick and buttons fed to
+//! `Input`), and sees only what a player sees: a foe's tell from the frame its reaction delay has
+//! passed, bolts in flight, its own stamina. Three skills:
+//!
+//! - **Novice**: walks at the nearest foe and mashes attack. Never guards.
+//! - **Adept**: holds the guard when it sees a strike coming (reaction 18 ± 4 frames), attacks
+//!   whatever is in reach while it has the stamina, keeping a block's worth in hand.
+//! - **Expert**: raises the guard to put each strike in the parry window (reaction 12 ± 2,
+//!   timing ± 2), and strikes only into openings (recovery, reeling, or a foe not winding up),
+//!   never into a swing it could not guard out of before the next strike it has seen.
+//!
+//! Against the later stages' legends (COMBAT.md §11) the adept and the expert also walk out of
+//! a burrow's mark on the floor (leaping when it is too late to walk), step out of fire,
+//! leap a grab they cannot parry (the adept), strike Tepegöz only while his eye is in reach (the
+//! expert), and never strike a felled dragon begging for a second blow. Nothing out of reach is a
+//! target. Against a prince (§13) they step off his coins before they burst, by the way clearest
+//! of the others, and held in his fist they strike him (as a masher would anyway).
+//!
+//! Against the prince's cheats (WARBAND.md §10.3, §15.2), when nothing hunts it, the adept and the
+//! expert refuse a whisper (they call the old man, who denies it), strike a mimic chest
+//! rather than trade with him, and strike a mimic chest before they would open it.
+//!
+//! Wherever the archangels may be called (not in the ring), the adept and the expert call each of the four as
+//! soon as he is back and has something to strike: Michael and Gabriel a foe near, Raphael one
+//! along its aim, Uriel one within his wave; the chosen one is called, or the next button turned
+//! toward one worth calling (B58); the novice, the masher, never does. They reckon only foes already awake, call
+//! only Michael on the Burning Field, and do not call while Envy's Eye watches.
+//!
+//! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
+//! kill and damage taken against the targets of COMBAT.md §2.1 (`gym::Bout::target`).
+
+use super::sparring::{BoutPhase, BoutStats};
+use super::Game;
+use crate::input::{Action, PadState};
+use crate::logic::combat::archetype::{Attack, Power};
+use crate::logic::combat::duelist::{from_segment, HERO_RADIUS};
+use crate::logic::combat::frames::{Shape, BOLT_RADIUS, BOLT_SPEED};
+use crate::logic::combat::fsm::GuardRule;
+use crate::logic::combat::Kit;
+use crate::logic::combat::{math, Phase, State};
+use crate::logic::enemy::EnemyKind;
+use crate::logic::gym;
+use crate::logic::heroes::{HeroKind, ROSTER};
+use crate::logic::progression::{self, Tree};
+use crate::logic::rng::Rng;
+use crate::logic::types::{P, V};
+use std::collections::HashMap;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Skill {
+    Novice,
+    Adept,
+    Expert,
+}
+
+impl Skill {
+    pub const ALL: [Skill; 3] = [Skill::Novice, Skill::Adept, Skill::Expert];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Skill::Novice => "novice",
+            Skill::Adept => "adept",
+            Skill::Expert => "expert",
+        }
+    }
+
+    /// Frames before it notices a tell, and how far that wanders either way.
+    fn reaction(self) -> (u16, u16) {
+        match self {
+            Skill::Novice => (u16::MAX, 0),
+            Skill::Adept => (18, 4),
+            Skill::Expert => (12, 2),
+        }
+    }
+}
+
+/// A strike on its way to the hero: frames until it lands, where it comes from, and what his
+/// guard can do about it.
+#[derive(Clone, Copy, Debug)]
+struct Threat {
+    t: f64,
+    from: V,
+    rule: GuardRule,
+}
+
+/// Ground he must be off before it falls (a mark, fire): frames until it does, and the quickest
+/// way out.
+#[derive(Clone, Copy, Debug)]
+struct Dodge {
+    t: f64,
+    out: V,
+}
+
+/// Frames before a blow from the ground falls at which the bot leaps instead of walking.
+const LEAP_AT: f64 = 8.0;
+/// Frames ahead the bot looks to leave the ground a blow will fall on.
+const DODGE_AHEAD: f64 = 40.0;
+/// Frames earlier than its flight says that a bolt is reckoned to arrive: it reaches him on the
+/// frame it is drawn touching him, a frame or two before a blow's first active frame would.
+const BOLT_EARLY: f64 = 2.0;
+/// Frames before a grab the adept leaps it.
+const GRAB_LEAP: f64 = 9.0;
+
+/// Frames before impact the expert raises its guard (the hit then lands on guard frame 5 or so).
+const PARRY_LEAD: f64 = 6.0;
+/// Frames before impact the adept raises its guard.
+const BLOCK_LEAD: f64 = 22.0;
+/// The reach it closes to before swinging: the string's reach, less a little.
+const ENGAGE: f64 = 1.3;
+/// ...and on Belphegor asleep, who turns to no one (WARBAND.md W9: from 1.3 off, a swing leant
+/// into him from beside his hourglass met nothing, and he mended for good).
+const SLEEPER_ENGAGE: f64 = 0.9;
+/// Stamina the adept keeps for its guard.
+const RESERVE: f64 = 24.0;
+/// Tiles about it (beyond a foe's body) within which the adept counts a foe's dearest blow in the
+/// stamina it keeps (`Bot::block_worth`).
+const WORTH_RANGE: f64 = 4.0;
+/// Tiles within which a hunter of the Garden is a fight now rather than one to meet when it comes.
+const GARDEN_NEAR: f64 = 9.0;
+/// Frames from pressing attack until the guard can come up again (L1's cancel frame, and the raise).
+const COMMIT: f64 = 16.0;
+
+pub struct Bot {
+    pub skill: Skill,
+    /// The way round the walls to its target: from which tile, to which, and the step (the vaults).
+    route: Option<(P, P, V)>,
+    rng: Rng,
+    /// The reaction delay drawn for each foe's current move (by foe id and the move's start frame).
+    noticed: HashMap<u32, (u32, u16)>,
+    /// The attack button was down last update (mashing toggles it).
+    attack_down: bool,
+    /// Frames the guard stays up after the last strike it was raised for.
+    guard_hold: u16,
+    /// The expert's timing error for the strike it is waiting on.
+    lead: f64,
+    /// Frames before it may drink again.
+    sip: u16,
+    /// Duelists it leaves alone (a general it means to skip, and his room: WARBAND.md §15.1).
+    pub ignore: Vec<u32>,
+    /// The drop it is walking to and for how many updates, and those it gave up on (one wedged
+    /// behind a pillar's corner would hold it for good).
+    chase: (P, u32),
+    given_up: Vec<P>,
+    /// Where it stood a while ago, and for how many updates it has pushed without getting
+    /// anywhere: wedged on a corner the straight line cuts, it takes the tiles' way round.
+    stand: (V, u32),
+    /// The way across a realm's other ground (Pride's mirror-doors, the Grotto's pools and vents):
+    /// from which tile, to which, and the next door, pool or vent to take (none: walk).
+    crossing: Option<(P, P, Option<P>)>,
+    /// The floor it can walk to from its tile (searched again when it changes tile).
+    reach: Option<(P, std::collections::HashSet<P>)>,
+    /// An archangel's button was down last update (each press is let go before the next).
+    angel_down: bool,
+    /// It calls the archangels (a test of the foes' own play may keep them out).
+    pub angels: bool,
+}
+
+impl Bot {
+    pub fn new(skill: Skill, seed: u32) -> Self {
+        Self {
+            skill,
+            route: None,
+            sip: 0,
+            rng: Rng::new(seed.wrapping_mul(2654435761).wrapping_add(7)),
+            noticed: HashMap::new(),
+            attack_down: false,
+            guard_hold: 0,
+            lead: PARRY_LEAD,
+            ignore: Vec::new(),
+            chase: (P::new(-1, -1), 0),
+            given_up: Vec::new(),
+            stand: (V::new(f64::NAN, f64::NAN), 0),
+            crossing: None,
+            reach: None,
+            angel_down: false,
+            angels: true,
+        }
+    }
+
+    /// The strikes it has noticed, soonest first.
+    fn threats(&mut self, g: &Game) -> Vec<Threat> {
+        let Some(spar) = g.brawl.as_ref() else { return Vec::new() };
+        let hp = g.hero.pos();
+        let now = spar.threat.frame;
+        let (base, spread) = self.skill.reaction();
+        let mut out = Vec::new();
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
+            let State::Attack { mv, frame } = d.f.state else {
+                self.noticed.remove(&d.id);
+                continue;
+            };
+            let started = now.saturating_sub(frame as u32);
+            let entry = self.noticed.entry(d.id).or_insert((started, 0));
+            if entry.0 != started {
+                *entry = (started, 0);
+            }
+            if entry.1 == 0 {
+                let jitter = if spread == 0 { 0 } else { (self.rng.next() * (2 * spread + 1) as f64) as u16 };
+                entry.1 = base.saturating_add(jitter).saturating_sub(spread).max(1);
+            }
+            let data = d.data(mv);
+            if frame < entry.1 || data.phase(frame) == Phase::Recovery || !data.strikes() {
+                continue;
+            }
+            let to = math::sub(hp, d.pos);
+            let dist = math::len(to);
+            if data.projectile || !data.parriable() {
+                continue; // its bolt is watched in flight, below; the ground's blows are dodged
+            }
+            let start = (data.startup as f64 - frame as f64).max(0.0);
+            let off = math::dot(math::norm(to), d.aim).clamp(-1.0, 1.0).acos();
+            let t = match data.shape {
+                Shape::Quake { radius, .. } if dist <= radius + HERO_RADIUS + 0.3 => start,
+                // A charge down its line, by the adept (WARBAND.md W11): seen as it sets off from
+                // afar, and met when the runner will reach him (before, it was seen only once on
+                // him, too late to guard: Krampus's hooves, Amon's horns). (The expert's timing,
+                // which parried them, is as it was.)
+                Shape::Charge { length, speed } if self.skill == Skill::Adept => {
+                    let aimed = off <= data.half_angle.min(0.6) + 0.2;
+                    if !aimed || dist > length + data.reach + HERO_RADIUS {
+                        continue;
+                    }
+                    start + ((dist - data.reach - HERO_RADIUS).max(0.0) / (speed / 60.0)).floor()
+                }
+                _ => {
+                    let aimed = off <= data.half_angle + 0.35;
+                    if !aimed || dist > data.reach + HERO_RADIUS + 0.4 {
+                        continue;
+                    }
+                    start
+                }
+            };
+            let rule = if data.blockable() { GuardRule::Full } else { GuardRule::ParryOnly };
+            out.push(Threat { t, from: d.pos, rule });
+        }
+        for b in &spar.bolts {
+            if b.reflected || b.touched {
+                continue;
+            }
+            let dir = math::norm(b.vel);
+            let to = math::sub(hp, b.pos);
+            let along = math::dot(dir, to);
+            let across = (math::len(to).powi(2) - along * along).max(0.0).sqrt();
+            if along > 0.0 && across < BOLT_RADIUS + HERO_RADIUS + 0.1 {
+                let speed = math::len(b.vel).max(BOLT_SPEED * 0.25);
+                let t = ((along - BOLT_RADIUS - HERO_RADIUS).max(0.0) / (speed / 60.0)).floor() - BOLT_EARLY;
+                out.push(Threat { t, from: math::sub(b.pos, b.vel), rule: GuardRule::Full });
+            }
+        }
+        out.sort_by(|a, b| a.t.total_cmp(&b.t));
+        out
+    }
+
+    /**
+     * The ground it has seen a blow is about to fall on, with him on it: a burrow's mark on the
+     * floor (once its reaction has passed), Surtr's fire under his feet. The way out is straight
+     * away from a mark's middle, off the fire.
+     */
+    fn dodges(&mut self, g: &Game) -> Vec<Dodge> {
+        let Some(spar) = g.brawl.as_ref() else { return Vec::new() };
+        let hp = g.hero.pos();
+        let now = spar.threat.frame;
+        let mut out = Vec::new();
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
+            let State::Attack { mv, frame } = d.f.state else { continue };
+            let data = d.data(mv);
+            if data.phase(frame) == Phase::Recovery || data.parriable() || !data.strikes() {
+                continue;
+            }
+            let started = now.saturating_sub(frame as u32);
+            let seen = self.noticed.get(&d.id).is_some_and(|&(at, delay)| at == started && delay > 0 && frame >= delay);
+            if !seen {
+                continue;
+            }
+            let t = (data.startup as f64 - frame as f64).max(0.0);
+            if let Shape::Mark { radius } = data.shape {
+                let away = math::sub(hp, d.lore.mark);
+                if math::len(away) < radius + HERO_RADIUS + 0.35 {
+                    let out_dir = if math::len(away) < 0.05 {
+                        let a = math::norm(math::sub(hp, d.lore.from));
+                        V::new(-a.y, a.x)
+                    } else {
+                        math::norm(away)
+                    };
+                    out.push(Dodge { t, out: out_dir });
+                }
+            }
+        }
+        for h in spar.hazards.iter().filter(|h| h.burns(hp, HERO_RADIUS + 0.1)) {
+            out.push(Dodge { t: 0.0, out: math::norm(math::sub(hp, h.pos)) });
+        }
+        // A prince's coins lying on the floor, with him on one: off by the way clearest of them all.
+        let armed: Vec<&crate::logic::combat::prince::Trap> = spar.traps.iter().filter(|t| t.armed()).collect();
+        if let Some(t) = armed.iter().filter(|t| t.reaches(hp, HERO_RADIUS + 0.35)).min_by_key(|t| t.fuse) {
+            let clearance = |dir: V| {
+                let p = math::add(hp, math::scale(dir, 1.7));
+                armed.iter().map(|o| math::len(math::sub(p, o.pos)) - o.radius).fold(f64::MAX, f64::min)
+            };
+            let away = math::sub(hp, t.pos);
+            let base = if math::len(away) < 0.05 { 0.0 } else { math::angle(away) };
+            let best = (0..16)
+                .map(|k| math::from_angle(base + k as f64 * std::f64::consts::TAU / 16.0))
+                .filter(|&dir| Self::keep_in(g, hp, dir) == dir)
+                .max_by(|a, b| clearance(*a).total_cmp(&clearance(*b)))
+                .unwrap_or_else(|| math::from_angle(base));
+            out.push(Dodge { t: t.fuse as f64, out: best });
+        }
+        // A general's kindled marks (WARBAND.md §9): off the one he stands on, as its fuse runs out.
+        if let Some(r) = g.general.as_ref() {
+            let reach = crate::logic::war::general::KINDLE_RADIUS + HERO_RADIUS + 0.35;
+            for v in r.volleys.iter().filter(|v| !v.turned && v.burst.is_none()) {
+                let Some(due) = v.due else { continue };
+                for m in v.marks.iter().filter(|m| math::len(math::sub(hp, **m)) < reach) {
+                    let away = math::sub(hp, *m);
+                    let dir = if math::len(away) < 0.05 { V::new(1.0, 0.0) } else { math::norm(away) };
+                    // (Off it as soon as it is seen, while nothing else is close: not in the last
+                    // moment, when other blows may be on their way.)
+                    let _ = due;
+                    out.push(Dodge { t: DODGE_AHEAD * 0.9, out: dir });
+                }
+            }
+        }
+        out.extend(self.lucifer_dodges(g, hp, now));
+        for d in out.iter_mut() {
+            d.out = Self::keep_in(g, hp, d.out);
+        }
+        out.sort_by(|a, b| a.t.total_cmp(&b.t));
+        out
+    }
+
+    /**
+     * Lucifer's lance of dawn (PRINCES.md §1), once its reaction has passed: a beam along a line on
+     * the floor that no parry turns. With him in its line, the way out is across it, to the side he
+     * already stands to (the shield would only block it). Only Lucifer's beam, and Krampus's chain
+     * lash, which runs as it does (FINALE.md §3): every other fight plays as it did.
+     */
+    fn lucifer_dodges(&self, g: &Game, hp: V, now: u32) -> Vec<Dodge> {
+        let mut out = Vec::new();
+        let beams = |k: EnemyKind| matches!(k, EnemyKind::Lucifer | EnemyKind::Krampus);
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive() && beams(d.breed.kind)) {
+            let State::Attack { mv, frame } = d.f.state else { continue };
+            let data = d.data(mv);
+            let Shape::Beam { length, width } = data.shape else { continue };
+            let started = now.saturating_sub(frame as u32);
+            let seen = self.noticed.get(&d.id).is_some_and(|&(at, delay)| at == started && delay > 0 && frame >= delay);
+            if data.phase(frame) == Phase::Recovery || !seen {
+                continue;
+            }
+            let span = if d.lore.span > 0.0 { d.lore.span } else { length };
+            let end = math::add(d.pos, math::scale(d.aim, span));
+            if from_segment(d.pos, end, hp) >= width / 2.0 + HERO_RADIUS + 0.45 {
+                continue;
+            }
+            let side = V::new(-d.aim.y, d.aim.x);
+            let out_dir = if math::dot(math::sub(hp, d.pos), side) >= 0.0 { side } else { math::scale(side, -1.0) };
+            out.push(Dodge { t: (data.startup as f64 - frame as f64).max(0.0), out: out_dir });
+        }
+        out
+    }
+
+    /**
+     * A general's instruments and the gate his muster glows at (WARBAND.md §15.2): with nothing
+     * hunting it near (never mid-fight), the bot bars a glowing gate it can reach in time and breaks the instruments
+     * it passes, the expert going farther out of its way than the adept (the novice never).
+     */
+    fn general_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        let (out_of_way, gate_reach) = match self.skill {
+            Skill::Novice => return None,
+            Skill::Adept => (6.0, 9.0),
+            Skill::Expert => (16.0, 18.0),
+        };
+        let (instruments, gate) = g.general_targets();
+        let mut pad = PadState::default();
+        if hunting_near {
+            return None;
+        }
+        if let Some(at) = gate.filter(|at| math::len(math::sub(*at, hp)) < gate_reach) {
+            let d = math::len(math::sub(at, hp));
+            if d > 0.35 {
+                let dir = self.way(g, hp, at);
+                pad.left = (dir.x as f32, dir.y as f32);
+            }
+            self.attack_down = false;
+            return Some(pad);
+        }
+        // (Only those it can walk to: one across a realm's other ground is the keys' errand's way.)
+        let here = P::new(hp.x.round() as i32, hp.y.round() as i32);
+        if self.reach.as_ref().is_none_or(|r| r.0 != here) {
+            self.reach = Some((here, crate::logic::pathing::reachable(&g.level.grid, here, false, false)));
+        }
+        let reach = &self.reach.as_ref().unwrap().1;
+        let walkable = |at: &V| {
+            let t = P::new(at.x.round() as i32, at.y.round() as i32);
+            crate::logic::types::CARDINALS.iter().any(|&d| reach.contains(&t.step(d)))
+        };
+        let (_, at) = instruments
+            .into_iter()
+            .filter(|(_, at)| math::len(math::sub(*at, hp)) < out_of_way && walkable(at))
+            .min_by(|a, b| math::len(math::sub(a.1, hp)).total_cmp(&math::len(math::sub(b.1, hp))))?;
+        let to = math::sub(at, hp);
+        let dir = if math::len(to) > 0.6 { self.way(g, hp, at) } else { math::norm(to) };
+        pad.left = (dir.x as f32, dir.y as f32);
+        if math::len(to) <= ENGAGE && g.hero.stamina >= 16.0 {
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
+        Some(pad)
+    }
+
+    /**
+     * The realm's generals (BACKLOG B41): between fights the adept and the expert go for a key lying
+     * where its general fell, then (with all three) through the court's door, else to the nearest
+     * general standing at his post, waking what lies on the way rather than every den of the realm.
+     */
+    fn keys_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        if self.skill == Skill::Novice || hunting_near {
+            return None;
+        }
+        let goal = g.general_errand_goal()?;
+        // (Across a realm's other ground first: the door, pool or vent its way takes.)
+        let crossing = self.crossing_toward(g, hp, goal);
+        let goal = crossing.unwrap_or(goal);
+        let mut pad = PadState::default();
+        let to = math::sub(goal, hp);
+        // (Into a pool or a recess straight once beside it: its tile is no floor to route over.)
+        let near = if crossing.is_some() { 1.6 } else { 0.6 };
+        let dir = if math::len(to) > near { self.way(g, hp, goal) } else { math::norm(to) };
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        // (A pool is deep water, no floor to walk onto: he leaps in.)
+        let t = P::new(goal.x.round() as i32, goal.y.round() as i32);
+        if crossing.is_some() && math::len(to) < 1.8 && !g.level.grid.is_walkable(t.x, t.y, false) && !g.hero.airborne() {
+            pad.actions.insert(Action::Jump);
+        }
+        if std::env::var_os("VH_BOT_TRACE").is_some() && g.time.fract() < 0.01 {
+            eprintln!("keys errand at {hp:?} to {goal:?} dir {dir:?}");
+        }
+        Some(pad)
+    }
+
+    /**
+     * A realm whose ground is joined by more than floor (BACKLOG B41: the bots find the generals):
+     * the shortest way from `hp` to `goal` over the floor and the realm's own crossings (Pride's
+     * mirror-doors, each to the mirror it leads to; the Grotto's pools down and vents up), and the
+     * first crossing on it, if the way takes one. Searched again only when either end changes tile.
+     */
+    fn crossing_toward(&mut self, g: &Game, hp: V, goal: V) -> Option<V> {
+        let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        let (a, b) = (tile(hp), tile(goal));
+        if let Some((ca, cb, step)) = self.crossing {
+            if ca == a && cb == b {
+                return step.map(|p| p.v());
+            }
+        }
+        let portals: Vec<(P, P)> = match g.run.as_ref() {
+            Some(crate::logic::realms::Run::Pride(m)) => m
+                .doors
+                .iter()
+                .flat_map(|d| {
+                    let out = match d.out {
+                        Some(o) => m.doors[o].front(0),
+                        None => m.base.arrival,
+                    };
+                    d.tiles.iter().map(move |&t| (t, out))
+                })
+                .collect(),
+            Some(crate::logic::realms::Run::Envy(gr)) => {
+                gr.pools.iter().map(|q| (q.at, q.to)).chain(gr.vents.iter().map(|v| (v.at, v.to))).collect()
+            }
+            _ => {
+                self.crossing = None;
+                return None;
+            }
+        };
+        let step = crossing_path(&g.level.grid, a, b, &portals);
+        if std::env::var_os("VH_BOT_TRACE").is_some() {
+            eprintln!("crossing {a:?} -> {b:?}: {step:?} ({} portals)", portals.len());
+        }
+        self.crossing = Some((a, b, step));
+        step.map(|p| p.v())
+    }
+
+    /**
+     * The Rotting Feast walked as a player walks it (WARBAND.md W11): between fights it goes on down
+     * the gullet rather than waking every den (the gaki in their corners off the way, which only
+     * the smell of food brings): through the next seam's arch (the wide one when too full for the
+     * narrow), to the dome at the Stomach's heart, and in the Last Course to the pylorus, through
+     * it when its teeth part for the lean, before it otherwise. In the Last Course it goes for the
+     * teeth while foes still hunt it (the walls and the acid wait for no fight).
+     */
+    fn feast_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        use crate::logic::realms::feast::{BLOAT_LEAN, BLOAT_WIDE};
+        let Some(crate::logic::realms::Run::Gluttony(f)) = g.run.as_ref() else { return None };
+        let climax = f.climax.as_ref();
+        let goal = if let Some(c) = climax {
+            let exit = f.base.exit;
+            if c.open() && f.bloat <= BLOAT_LEAN {
+                exit.tile.v()
+            } else if hunting_near {
+                return None;
+            } else {
+                exit.front().v()
+            }
+        } else if hunting_near {
+            return None;
+        } else if let Some(s) = f.seams.iter().find(|s| !s.closed) {
+            // (Through the arch it fits, on to where it rises once the seam is behind it.)
+            let arch = if f.bloat >= BLOAT_WIDE { &s.wide } else { &s.narrow };
+            if hp.y > s.bottom as f64 + 0.5 {
+                let n = arch.tiles.len().max(1) as f64;
+                let (sx, sy) = arch.tiles.iter().fold((0.0, 0.0), |(x, y), p| (x + p.x as f64, y + p.y as f64));
+                V::new(sx / n, sy / n)
+            } else {
+                s.landing.v()
+            }
+        } else if !f.lifted {
+            f.dome.v()
+        } else {
+            return None;
+        };
+        let mut pad = PadState::default();
+        let dir = self.way(g, hp, goal);
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        Some(pad)
+    }
+
+    /// The Garden walked as a player walks it (B01): between fights, to the nearest golden key still
+    /// lying, then to the gate (`garden_run::garden_goal`); the dens on the way wake as it passes.
+    fn garden_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        if hunting_near || !g.in_garden_fight() {
+            return None;
+        }
+        let goal = super::garden_run::garden_goal(g)?;
+        let mut pad = PadState::default();
+        let dir = self.way(g, hp, goal);
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        Some(pad)
+    }
+
+    /// Floor it may walk on: the grid's, less the Burning Field's lava (a third of his health each
+    /// time; WARBAND.md W9 taught the bots that much of the realm).
+    pub(super) fn floor(g: &Game, t: P) -> bool {
+        if !g.level.grid.is_walkable(t.x, t.y, false) {
+            return false;
+        }
+        match g.run.as_ref() {
+            Some(crate::logic::realms::Run::Wrath(f)) => !f.lava_at(t),
+            _ => true,
+        }
+    }
+
+    /// `out`, or the nearest way round from it that keeps him on the fight's floor (walking or
+    /// leaping off the ring calls the bout off).
+    fn keep_in(g: &Game, hp: V, out: V) -> V {
+        let inside = |p: V| {
+            if g.in_ring() {
+                let (lo, hi) = gym::ring_bounds();
+                p.x > lo.x + 0.8 && p.x < hi.x - 0.8 && p.y > lo.y + 0.8 && p.y < hi.y - 0.8
+            } else {
+                Self::floor(g, P::new(p.x.round() as i32, p.y.round() as i32))
+            }
+        };
+        let base = math::angle(out);
+        for k in [0.0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, std::f64::consts::PI] {
+            let dir = math::from_angle(base + k);
+            if inside(math::add(hp, math::scale(dir, 1.6))) {
+                return dir;
+            }
+        }
+        out
+    }
+
+    /// The straight walk from `from` to `to` (in `n` steps) climbs nothing his legs cannot: the
+    /// Garden's terraces are climbed at their ramps (B01).
+    fn no_climb(g: &Game, from: V, to: V, n: usize) -> bool {
+        let grid = &g.level.grid;
+        let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        let mut at = tile(from);
+        (1..=n).all(|k| {
+            let t = tile(math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64)));
+            let climb = grid.elevation(t.x, t.y) - grid.elevation(at.x, at.y);
+            let ok = t == at || climb <= 0 || (climb == 1 && (grid.is_ramp(t.x, t.y) || grid.is_ramp(at.x, at.y)));
+            at = t;
+            ok
+        })
+    }
+
+    /// Which way to walk from `from` to `to`: straight while nothing stands between, else the
+    /// first step of the shortest way round (searched again only when either end changes tile).
+    pub(super) fn way(&mut self, g: &Game, from: V, to: V) -> V {
+        let grid = &g.level.grid;
+        let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        // Pushing a second (120 updates) without moving a tenth of a tile: wedged, so no shortcut.
+        if math::len(math::sub(from, self.stand.0)) > 0.1 || self.stand.0.x.is_nan() {
+            self.stand = (from, 0);
+        } else {
+            self.stand.1 += 1;
+        }
+        // (Not in the ring: there it presses on a foe's body by design, and the lab's numbers hold.)
+        let wedged = self.stand.1 > 120 && !g.in_ring();
+        let n = (math::len(math::sub(to, from)) / 0.3).ceil().max(1.0) as usize;
+        let clear = !wedged
+            && (0..=n).all(|k| {
+                let p = math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64));
+                [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)]
+                    .iter()
+                    .all(|&(dx, dy)| Self::floor(g, tile(V::new(p.x + dx, p.y + dy))))
+            })
+            && (!g.in_garden_fight() || Self::no_climb(g, from, to, n));
+        if clear {
+            self.route = None;
+            return math::norm(math::sub(to, from));
+        }
+        let (a, b) = (tile(from), tile(to));
+        if let Some((ra, rb, step)) = self.route {
+            if ra == a && rb == b {
+                return math::norm(math::sub(step, from));
+            }
+        }
+        let step = match crate::logic::pathing::route_toward(grid, a, to, false, false, false) {
+            Some(d) => {
+                let (dx, dy) = d.vec();
+                P::new(a.x + dx, a.y + dy).v()
+            }
+            None => to,
+        };
+        // (The tiles' way knows nothing of the Burning Field's lava: it stands rather than walk in.)
+        let into = tile(step);
+        if grid.is_walkable(into.x, into.y, false) && !Self::floor(g, into) && Self::floor(g, a) {
+            self.route = None;
+            return V::new(0.0, 0.0);
+        }
+        self.route = Some((a, b, step));
+        math::norm(math::sub(step, from))
+    }
+
+    /// This update's stick and buttons.
+    pub fn act(&mut self, g: &Game) -> PadState {
+        let mut pad = self.decide(g);
+        // On the Burning Field no stick leads him off his ground into the lava (a leap may cross it).
+        // Nor does it fight with its back to the lava: off an edge as soon as nothing is about to land,
+        // a blow's shove would put it in (the adept and the expert).
+        if let (Some(crate::logic::realms::Run::Wrath(f)), false) = (g.run.as_ref(), pad.actions.contains(&Action::Jump)) {
+            let hp = g.hero.pos();
+            let dir = V::new(pad.left.0 as f64, pad.left.1 as f64);
+            let ahead = math::add(hp, math::scale(dir, 0.45));
+            if math::len(dir) > 0.01 && !Self::floor(g, P::new(ahead.x.round() as i32, ahead.y.round() as i32)) {
+                pad.left = (0.0, 0.0);
+            }
+            let guarding = pad.actions.contains(&Action::Block);
+            if self.skill != Skill::Novice && !guarding && f.edge_near(hp, 1.2) {
+                let t = P::new(hp.x.round() as i32, hp.y.round() as i32);
+                let lava = (-2..=2)
+                    .flat_map(|dy| (-2..=2).map(move |dx| P::new(t.x + dx, t.y + dy)))
+                    .filter(|p| f.lava_at(*p))
+                    .min_by(|a, b| math::len(math::sub(a.v(), hp)).total_cmp(&math::len(math::sub(b.v(), hp))));
+                if let Some(l) = lava {
+                    let away = math::norm(math::sub(hp, l.v()));
+                    let on = math::add(hp, math::scale(away, 0.6));
+                    if Self::floor(g, P::new(on.x.round() as i32, on.y.round() as i32)) {
+                        pad.left = (away.x as f32, away.y as f32);
+                    }
+                }
+            }
+        }
+        // A leap out of his swing's recovery or a block's stun carries no untouchable frames (B05):
+        // the adept and the expert hold it back until it would be an evade (the next update presses it).
+        if self.skill != Skill::Novice && pad.actions.contains(&Action::Jump) {
+            if let Some(b) = g.brawl.as_ref() {
+                if b.hero.leap_kind() == Some(crate::logic::combat::fsm::Event::Leap) {
+                    pad.actions.remove(&Action::Jump);
+                }
+            }
+        }
+        pad
+    }
+
+    /// The archangels on their cooldowns: the chosen one called when he is back and has something to
+    /// strike, else the next button turned toward one who has (a press, then a release).
+    fn call_angels(&mut self, g: &Game, pad: &mut PadState) {
+        use crate::logic::angels::{Archangel, ARCHANGELS, THUNDER_RADIUS, WAVE_RADIUS};
+        // (`VH_NO_ANGELS`: the bots never call them, to measure the run without.)
+        static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        // (The novice is the masher, the floor: it never calls them.)
+        if std::mem::take(&mut self.angel_down)
+            || !self.angels
+            || self.skill == Skill::Novice
+            || *OFF.get_or_init(|| std::env::var_os("VH_NO_ANGELS").is_some())
+        {
+            return;
+        }
+        let patron = g.patron();
+        if !g.angels.any(patron) || g.grotto_watched() {
+            return;
+        }
+        let hp = g.hero.pos();
+        let aim = g.hero.aim();
+        let foes: Vec<V> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && !d.untouchable() && !self.ignore.contains(&d.id))
+            // (The adept and the expert reckon only the foes already up: a power's blow would wake a
+            // sleeping pack, and Uriel's wave three.)
+            .filter(|d| d.den.is_none_or(|den| den.awake && !den.returning))
+            .map(|d| d.pos)
+            .collect();
+        // ...nor strike all about them while a pack sleeps within reach.
+        let sleeping: Vec<V> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && d.den.is_some_and(|den| !den.awake || den.returning))
+            .map(|d| d.pos)
+            .collect();
+        let near = |r: f64| foes.iter().any(|p| math::len(math::sub(*p, hp)) <= r);
+        let quiet = |r: f64| !sleeping.iter().any(|p| math::len(math::sub(*p, hp)) <= r + 1.0);
+        // On the Burning Field every blow cracks the ground and every kill rises again: the adept and
+        // the expert call only Michael there, as Hızır counsels (let them feud).
+        let field = matches!(g.run, Some(crate::logic::realms::Run::Wrath(_)));
+        let worth = |a: Archangel| match a {
+            _ if field && a != Archangel::Michael => false,
+            Archangel::Michael => near(9.0),
+            Archangel::Gabriel => near(THUNDER_RADIUS - 0.5) && quiet(THUNDER_RADIUS),
+            Archangel::Raphael => foes.iter().any(|p| {
+                let d = math::sub(*p, hp);
+                let l = math::len(d);
+                l > 0.1 && l <= 10.0 && (d.x * aim.x + d.y * aim.y) / l > 0.95
+            }),
+            Archangel::Uriel => near(WAVE_RADIUS - 2.0) && quiet(WAVE_RADIUS),
+        };
+        let want: Vec<Archangel> = ARCHANGELS.into_iter().filter(|&a| g.angels.ready(a, patron) && worth(a)).collect();
+        if want.is_empty() {
+            return;
+        }
+        let call = g.chosen_angel().is_some_and(|c| want.contains(&c));
+        pad.actions.insert(if call { Action::Angel } else { Action::AngelNext });
+        self.angel_down = true;
+    }
+
+    /// The stick and buttons as the bot's reading of the fight gives them (`act` keeps the
+    /// Burning Field's lava out of them).
+    fn decide(&mut self, g: &Game) -> PadState {
+        let mut pad = PadState::default();
+        let Some(spar) = g.brawl.as_ref() else { return pad };
+        if !spar.live || !g.brawling() {
+            self.attack_down = false;
+            return pad;
+        }
+        let hp = g.hero.pos();
+        let threats = self.threats(g);
+        let soonest = threats.first().copied();
+        let mut dodges = self.dodges(g);
+        if g.court_sin() == Some(crate::logic::sins::Sin::Envy) {
+            self.envy_dodges(g, &mut dodges);
+        }
+        // (Asmodeus's court: his kisses leapt, his censers lit.)
+        if let Some(p) = self.lust_court(g, &threats, &dodges) {
+            return p;
+        }
+        let can_leap = !g.hero.airborne();
+        let leap = |pad: &mut PadState, out: V| {
+            pad.left = (out.x as f32, out.y as f32);
+            if can_leap {
+                pad.actions.insert(Action::Jump);
+            }
+        };
+        let guard_lead = match self.skill {
+            Skill::Novice => -1.0,
+            Skill::Adept => BLOCK_LEAD,
+            Skill::Expert => self.lead,
+        };
+        let dodge = dodges.first().copied().filter(|d| self.skill != Skill::Novice && d.t <= DODGE_AHEAD);
+        if let Some(d) = dodge {
+            // A blow from the ground about to fall with him on it, and one to guard coming at the same
+            // time, or too late to walk out: the leap clears them all.
+            let both = soonest.is_some_and(|t| t.t <= guard_lead + 4.0 && d.t <= t.t + 12.0);
+            if d.t <= LEAP_AT || both {
+                leap(&mut pad, d.out);
+                self.attack_down = false;
+                return pad;
+            }
+        }
+        if self.skill != Skill::Novice && soonest.is_none_or(|t| t.t > guard_lead) {
+            // Off the ground a blow is about to fall on (the guard can wait).
+            if let Some(d) = dodge {
+                pad.left = (d.out.x as f32, d.out.y as f32);
+                self.attack_down = false;
+                return pad;
+            }
+        }
+        // Amon's court: the expert steps out of his charge's way and lets the stone stop him.
+        if let Some(p) = self.amon_court(g, &dodges, soonest) {
+            return p;
+        }
+        // A grab no shield holds: the adept leaps it (the expert parries it below).
+        if let Some(t) = soonest.filter(|t| self.skill == Skill::Adept && t.rule == GuardRule::ParryOnly && t.t <= GRAB_LEAP) {
+            leap(&mut pad, math::norm(math::sub(hp, t.from)));
+            return pad;
+        }
+
+        // Low on health, the adept and the expert drink from the belt.
+        self.sip = self.sip.saturating_sub(1);
+        if self.skill != Skill::Novice && self.sip == 0 && !g.belt.is_empty() && (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.4 {
+            self.sip = 240;
+            pad.actions.insert(Action::Drink);
+        }
+
+        // Defence.
+        let guard_at = match self.skill {
+            Skill::Novice => None,
+            Skill::Adept => soonest.filter(|t| t.t <= BLOCK_LEAD),
+            Skill::Expert => soonest.filter(|t| t.t <= self.lead),
+        };
+        if let Some(t) = guard_at {
+            self.guard_hold = 8;
+            pad.actions.insert(Action::Block);
+            let face = math::norm(math::sub(t.from, hp));
+            pad.left = (face.x as f32, face.y as f32);
+            return pad;
+        }
+        if self.guard_hold > 0 && dodge.is_none() {
+            self.guard_hold -= 1;
+            pad.actions.insert(Action::Block);
+            if self.guard_hold == 0 {
+                self.lead = PARRY_LEAD + (self.rng.next() * 5.0).floor() - 2.0;
+            }
+            return pad;
+        }
+        self.guard_hold = 0;
+        // The archangels, on their cooldowns.
+        self.call_angels(g, &mut pad);
+
+        // The prince's cheats, while nothing hunts it.
+        if let Some(p) = self.see_through(g, &mut pad) {
+            return p;
+        }
+        // Beelzebub's banquet: the green crosses taken before he eats them.
+        if let Some(p) = self.banquet(g, soonest.map(|t| t.t), &mut pad) {
+            return p;
+        }
+        // The Pit: onto the platform before it sinks.
+        if let Some(p) = self.pit_board(g, hp) {
+            return p;
+        }
+        // Ragnar's War Cry (his mastery's fourth rank): the expert cries when a body foe stands about
+        // him (not reeling) and no other kind is left to strike him in it, and nothing it has seen
+        // lands before the cry is done.
+        if self.skill == Skill::Expert && g.war_cry_ready() {
+            let cry = crate::logic::war::mastery::WAR_CRY;
+            let living: Vec<_> = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()).collect();
+            let near = living
+                .iter()
+                .filter(|d| d.breed.attack() == Attack::Body && d.f.reeling().is_none())
+                .filter(|d| math::len(math::sub(d.pos, hp)) <= cry.radius + d.radius())
+                .count();
+            // (A bolt or a blade from outside the cry would find him in it.)
+            let worth = near >= 1 && living.iter().all(|d| d.breed.attack() == Attack::Body);
+            if worth && soonest.is_none_or(|t| t.t > cry.total() as f64) && dodges.is_empty() {
+                pad.actions.insert(Action::Step);
+                self.attack_down = false;
+                return pad;
+            }
+        }
+
+        // Offence: the most open foe (reeling, then recovering), then the nearest; in the vaults those
+        // hunting him first, and when none is, the nearest pack asleep (to wake it).
+        // (Nothing out of his reach is a target, nor a felled dragon begging to be struck again.)
+        let all: Vec<_> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && !d.untouchable() && !d.begging())
+            .filter(|d| !self.ignore.contains(&d.id))
+            .collect();
+        // (Where the realm's ground is joined by more than floor, Pride's galleries and the Grotto's
+        // two surfaces, a foe it cannot walk to is no target: one hunting it from the other surface
+        // would hold it against a wall.)
+        let split = matches!(g.run.as_ref(), Some(crate::logic::realms::Run::Pride(_) | crate::logic::realms::Run::Envy(_)));
+        let all: Vec<_> = if split {
+            let here = P::new(hp.x.round() as i32, hp.y.round() as i32);
+            if self.reach.as_ref().is_none_or(|r| r.0 != here) {
+                self.reach = Some((here, crate::logic::pathing::reachable(&g.level.grid, here, false, false)));
+            }
+            let reach = &self.reach.as_ref().unwrap().1;
+            all.into_iter()
+                .filter(|d| {
+                    let t = P::new(d.pos.x.round() as i32, d.pos.y.round() as i32);
+                    reach.contains(&t) || crate::logic::types::CARDINALS.iter().any(|&k| reach.contains(&t.step(k)))
+                })
+                .collect()
+        } else {
+            all
+        };
+        let mut hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
+        if g.in_garden_fight() {
+            // (In the Garden a hunter far off is met when it comes: the keys first, B01.)
+            hunting.retain(|d| math::len(math::sub(d.pos, hp)) < GARDEN_NEAR);
+        }
+        // (Between fights only: walking off on an errand mid-fight drags its foes' blows and bolts
+        // off their planned frames.)
+        let hunting_near = hunting.iter().any(|d| !d.puppet);
+        if let Some(errand) = self.general_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        if let Some(errand) = self.keys_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        if let Some(errand) = self.feast_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        if let Some(errand) = self.garden_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        // Between fights (or hurt), what lies near goes into the belt first: a potion, a weapon, a boon.
+        let hurt = (g.hero.hp as f64) < g.hero.max_hp as f64 * 0.6;
+        if self.skill != Skill::Novice && (hunting.is_empty() || hurt) {
+            let near = g.vault.as_ref().and_then(|v| {
+                v.drops
+                    .iter()
+                    .filter(|d| !d.taken && d.landed() && !self.given_up.contains(&d.at))
+                    .map(|d| d.at.v())
+                    .filter(|p| math::len(math::sub(*p, hp)) < 6.0)
+                    .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))
+            });
+            if let Some(p) = near {
+                let at = P::new(p.x.round() as i32, p.y.round() as i32);
+                self.chase = if self.chase.0 == at { (at, self.chase.1 + 1) } else { (at, 0) };
+                if self.chase.1 > 1200 {
+                    self.given_up.push(at);
+                }
+                let dir = self.way(g, hp, p);
+                pad.left = (dir.x as f32, dir.y as f32);
+                return pad;
+            }
+        }
+        let foes = if hunting.is_empty() { all } else { hunting };
+        let foes = self.pit_targets(g, foes);
+        let openness = |d: &crate::logic::combat::Duelist| {
+            if Self::belphegor_asleep(d) || d.f.vulnerable() || d.f.reeling().is_some() {
+                0
+            } else if matches!(d.f.attack(), Some((_, Phase::Recovery, _))) {
+                1
+            } else {
+                2
+            }
+        };
+        let target = foes.iter().min_by(|a, b| {
+            let (da, db) = (math::len(math::sub(a.pos, hp)), math::len(math::sub(b.pos, hp)));
+            if self.skill == Skill::Novice {
+                da.total_cmp(&db)
+            } else {
+                openness(a).cmp(&openness(b)).then(da.total_cmp(&db))
+            }
+        });
+        let Some(target) = target else { return pad };
+        let to = math::sub(target.pos, hp);
+        let dist = math::len(to) - target.radius();
+        let dir = self.way(g, hp, target.pos);
+        if let Some(stand) = self.envy_stand(g, target) {
+            // Leviathan coiled round the bell: round to the side he turns to it first.
+            let dir = self.way(g, hp, stand);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+            return pad;
+        }
+        // (A sleeper turns to no one: it closes right in on him, round his bed if it must, so the
+        // swing it leans into reaches him.)
+        let engage = if Self::belphegor_asleep(target) { SLEEPER_ENGAGE } else { ENGAGE };
+        if dist > engage {
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+            return pad;
+        }
+        // An elf-maid takes no blow on her lovely front (the old man's answer: from behind). The
+        // adept and the expert go round to her back first.
+        if self.skill != Skill::Novice && target.breed.power == Power::Hollow && math::dot(math::sub(hp, target.pos), target.facing) > -0.2
+        {
+            let back = math::add(target.pos, math::scale(target.facing, -(target.radius() + HERO_RADIUS + 0.4)));
+            let side = V::new(-target.facing.y, target.facing.x);
+            let side = if math::dot(math::sub(hp, target.pos), side) >= 0.0 { side } else { math::scale(side, -1.0) };
+            // (Round her flank, not through her.)
+            let via = math::add(target.pos, math::scale(side, target.radius() + HERO_RADIUS + 0.6));
+            let goal = if math::dot(math::sub(hp, target.pos), target.facing) > 0.3 { via } else { back };
+            let dir = self.way(g, hp, goal);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+            return pad;
+        }
+        let stamina = g.hero.stamina;
+        // A felled dragon in the way of the swing: a careful player holds his hand.
+        let begging_near = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .any(|d| d.begging() && math::len(math::sub(d.pos, hp)) < ENGAGE + d.radius() + 0.8);
+        let swing = match self.skill {
+            Skill::Novice => true,
+            _ if begging_near => false,
+            // It keeps a block's worth in hand: the dearest blow a foe near it can bring, blocked
+            // (WARBAND.md W11: a fixed 24 left Krampus, Surtr and the giants breaking its guard
+            // with every blow).
+            // (Not in a court, the princes being tempered to the adept as it fought them (W10), nor
+            // in the ring, whose bouts are COMBAT.md's measure.)
+            Skill::Adept => stamina >= 16.0 + if g.in_court() || g.in_ring() { RESERVE } else { Self::block_worth(g, hp).max(RESERVE) },
+            // Into openings only: never into a wind-up that would land on its swing.
+            // ...and never into a swing it could not guard out of before the next strike it has seen lands;
+            // and Tepegöz only while his eye is in reach.
+            Skill::Expert => {
+                let winding = matches!(target.f.attack(), Some((_, Phase::Startup | Phase::Active, _)));
+                // A press now commits it to the rest of this swing and the next one's cancel frame
+                // (from neutral, L1's); nothing it has seen may land before it can guard again, nor
+                // a blow from the ground fall before it could walk out.
+                let commit = match spar.hero.attack() {
+                    Some((mv, _, frame)) => {
+                        let d = spar.hero.data(mv);
+                        let next = d.chain.map(|c| spar.hero.data(c).cancel_frame()).unwrap_or(0);
+                        d.cancel_frame().saturating_sub(frame) as f64 + next as f64 + 2.0
+                    }
+                    None => COMMIT,
+                };
+                let clear = soonest.is_none_or(|t| t.t > commit) && dodges.first().is_none_or(|d| d.t > commit + DODGE_AHEAD * 0.5);
+                let warded = target.breed.power == Power::Ward && !target.exposed();
+                stamina >= 16.0 && clear && !warded && (openness(target) < 2 || !winding || Self::feasting(target))
+            }
+        };
+        if swing && Self::belphegor_asleep(target) {
+            // (Nothing turns it toward a sleeper: it leans into him, to face him as it swings.)
+            pad.left = (dir.x as f32 * 0.4, dir.y as f32 * 0.4);
+        }
+        if swing {
+            // Mash: the button goes down every other update.
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
+        pad
+    }
+}
+
+impl Bot {
+    /**
+     * The stamina a block of the dearest blow a foe within reach of a pounce can bring costs it
+     * (the move's damage on the foe's body and the fight's weight, at its shield's cost a point):
+     * what the adept keeps in hand to block it whole.
+     */
+    fn block_worth(g: &Game, hp: V) -> f64 {
+        let Some(spar) = g.brawl.as_ref() else { return 0.0 };
+        g.enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && d.engaged() && math::len(math::sub(d.pos, hp)) < WORTH_RANGE + d.radius())
+            .map(|d| {
+                let moves = if d.arch == crate::logic::combat::archetype::Archetype::Prince {
+                    crate::logic::combat::prince::table(d.breed.kind, d.breed.phase)
+                } else {
+                    d.breed.moves()
+                };
+                let dearest = moves.iter().map(|&mv| d.data(mv)).filter(|m| !m.projectile).map(|m| m.damage).fold(0.0, f64::max);
+                dearest * d.breed.damage * spar.foe_damage * spar.kit.guard.cost
+            })
+            .fold(0.0, f64::max)
+    }
+
+    /// Belphegor asleep or waking (PRINCES.md §4): his hide is open and he mends while he sleeps,
+    /// so a player who knows strikes him before anything else (his nightmares keep their distance
+    /// to be chased). Only his fight asks it.
+    fn belphegor_asleep(d: &crate::logic::combat::Duelist) -> bool {
+        d.breed.kind == crate::logic::enemy::EnemyKind::Belphegor && d.lore.slumber.open()
+    }
+
+    /// What it does about the prince's cheats (not the novice: it falls for them all), when no foe
+    /// hunts it: a whisper in the air, it calls the old man; a mimic chest
+    /// near, it walks up to striking distance (no nearer: near enough to trade, or to open the
+    /// chest, is too near) and strikes. `None`: nothing to see through.
+    fn see_through(&mut self, g: &Game, pad: &mut PadState) -> Option<PadState> {
+        if self.skill == Skill::Novice {
+            return None;
+        }
+        if g.enemies.iter().filter_map(|e| e.duel.as_deref()).any(|d| d.engaged()) {
+            return None;
+        }
+        let d = &g.voices.deceit;
+        if d.whisper.is_some() {
+            pad.actions.insert(Action::Call);
+            return Some(pad.clone());
+        }
+        let hp = g.hero.pos();
+        let target = d.mimic.as_ref().filter(|m| !m.done).map(|m| m.at).filter(|p| math::len(math::sub(*p, hp)) < SEE_THROUGH)?;
+        let dist = math::len(math::sub(target, hp));
+        if dist > STRIKE_AT {
+            let dir = self.way(g, hp, target);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+        } else {
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
+        Some(pad.clone())
+    }
+}
+
+impl Bot {
+    /**
+     * Amon's court (PRINCES.md §3), and Krampus's lair (his hoof charge and his coals, FINALE.md
+     * §3), and nowhere else. Once the charge's aim has locked with the hero in its path, the expert
+     * steps aside (leaping if it is too late to walk) and lets him run on into the stone behind; and
+     * the adept and the expert walk out of the rift's lava (or the coals) while it lingers. `None`:
+     * nothing of theirs to answer.
+     */
+    fn amon_court(&mut self, g: &Game, dodges: &[Dodge], soonest: Option<Threat>) -> Option<PadState> {
+        if self.skill == Skill::Novice || (g.court_sin() != Some(crate::logic::sins::Sin::Wrath) && !g.in_lair()) {
+            return None;
+        }
+        let hp = g.hero.pos();
+        let mut pad = PadState::default();
+        if self.skill == Skill::Expert {
+            let amon = g.prince().filter(|d| matches!(d.breed.kind, EnemyKind::Amon | EnemyKind::Krampus))?;
+            if let Some((mv @ (crate::logic::combat::MoveId::FieryCharge | crate::logic::combat::MoveId::HoofCharge), phase, frame)) =
+                amon.f.attack()
+            {
+                let data = amon.data(mv);
+                let Shape::Charge { length, speed } = data.shape else { return None };
+                let seen = self.noticed.get(&amon.id).is_some_and(|&(_, delay)| delay > 0 && frame >= delay);
+                let locked = phase == Phase::Active || (phase == Phase::Startup && frame >= data.track);
+                if seen && locked && phase != Phase::Recovery {
+                    let rel = math::sub(hp, amon.pos);
+                    let along = math::dot(rel, amon.aim);
+                    let side = amon.aim.x * rel.y - amon.aim.y * rel.x;
+                    let left = (length - amon.lore.span).max(0.0);
+                    let corridor = data.reach + HERO_RADIUS + 0.45;
+                    if along > -0.5 && along < left + data.reach + 0.5 && side.abs() < corridor {
+                        let start = if phase == Phase::Startup { (data.startup - frame) as f64 } else { 0.0 };
+                        let t = start + (along - data.reach - HERO_RADIUS).max(0.0) / speed * 60.0;
+                        let normal = V::new(-amon.aim.y, amon.aim.x);
+                        let away = if side >= 0.0 { normal } else { math::scale(normal, -1.0) };
+                        let out = Self::keep_in(g, hp, away);
+                        // (The way it was pushed back out of the floor: the other side.)
+                        let out = if math::dot(out, away) < 0.2 { Self::keep_in(g, hp, math::scale(away, -1.0)) } else { out };
+                        pad.left = (out.x as f32, out.y as f32);
+                        if t <= LEAP_AT && !g.hero.airborne() {
+                            pad.actions.insert(Action::Jump);
+                        }
+                        self.attack_down = false;
+                        return Some(pad);
+                    }
+                }
+            }
+        }
+        // Out of the rift's lingering lava he stands in (unless a blow or a step from the ground is due first).
+        if dodges.first().is_some_and(|d| d.t <= DODGE_AHEAD) || soonest.is_some_and(|t| t.t <= BLOCK_LEAD + 8.0) {
+            return None;
+        }
+        let spar = g.brawl.as_ref()?;
+        let lava = spar.traps.iter().filter(|t| t.lingering() && t.reaches(hp, HERO_RADIUS + 0.2)).min_by_key(|t| t.linger)?;
+        let clear = |dir: V| {
+            let p = math::add(hp, math::scale(dir, 1.4));
+            spar.traps
+                .iter()
+                .filter(|t| t.lingering() || t.armed())
+                .map(|o| math::len(math::sub(p, o.pos)) - o.radius)
+                .fold(f64::MAX, f64::min)
+        };
+        let away = math::sub(hp, lava.pos);
+        let base = if math::len(away) < 0.05 { 0.0 } else { math::angle(away) };
+        let best = (0..12)
+            .map(|k| math::from_angle(base + k as f64 * std::f64::consts::TAU / 12.0))
+            .filter(|&dir| Self::keep_in(g, hp, dir) == dir)
+            .max_by(|a, b| clear(*a).total_cmp(&clear(*b)))?;
+        pad.left = (best.x as f32, best.y as f32);
+        self.attack_down = false;
+        Some(pad)
+    }
+}
+
+/// Frames before a blown kiss reaches it that the bot leaps it (Asmodeus's court).
+const KISS_LEAP: f64 = 10.0;
+/// Frames nothing it has seen may land within for it to go and light a censer.
+const CENSER_QUIET: f64 = 45.0;
+
+impl Bot {
+    /**
+     * Asmodeus's court (PRINCES.md §6), for the adept and the expert (a masher knows nothing of
+     * it): a blown kiss on its way is leapt, out of its line, since no shield stops it; and while no
+     * censer smokes and nothing it has seen comes at it soon, it goes to the nearest censer that
+     * will still light and strikes it (the smoke takes his allure away). `None` anywhere else, and
+     * whenever there is nothing of the court's to do: it plays on as everywhere.
+     */
+    fn lust_court(&mut self, g: &Game, threats: &[Threat], dodges: &[Dodge]) -> Option<PadState> {
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Lust) {
+            return None;
+        }
+        let spar = g.brawl.as_ref()?;
+        let hp = g.hero.pos();
+        let mut pad = PadState::default();
+        for b in spar
+            .bolts
+            .iter()
+            .filter(|b| b.look == crate::logic::combat::duelist::BoltLook::Kiss && !b.reflected && !b.touched && b.life > 0)
+        {
+            let dir = math::norm(b.vel);
+            let to = math::sub(hp, b.pos);
+            let along = math::dot(dir, to);
+            let across = (math::len(to).powi(2) - along * along).max(0.0).sqrt();
+            let speed = math::len(b.vel).max(BOLT_SPEED * 0.25);
+            let t = (along - BOLT_RADIUS - HERO_RADIUS).max(0.0) / (speed / 60.0);
+            if along > 0.0 && across < BOLT_RADIUS + HERO_RADIUS + 0.2 && t <= KISS_LEAP {
+                let out = Self::keep_in(g, hp, V::new(-dir.y, dir.x));
+                pad.left = (out.x as f32, out.y as f32);
+                if !g.hero.airborne() {
+                    pad.actions.insert(Action::Jump);
+                }
+                self.attack_down = false;
+                return Some(pad);
+            }
+        }
+        // His elf-maids: no blow tells on their fronts, and they fall with him. Left alone.
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.breed.kind == crate::logic::enemy::EnemyKind::Ellepige) {
+            if !self.ignore.contains(&d.id) {
+                self.ignore.push(d.id);
+            }
+        }
+        // Smitten (no guard): what it would have guarded, it leaps.
+        if let Some(t) = threats.first().filter(|t| g.smitten() && t.t <= LEAP_AT) {
+            let out = Self::keep_in(g, hp, math::norm(math::sub(hp, t.from)));
+            pad.left = (out.x as f32, out.y as f32);
+            if !g.hero.airborne() {
+                pad.actions.insert(Action::Jump);
+            }
+            self.attack_down = false;
+            return Some(pad);
+        }
+        // The bull's charge, with him on its line: guarded as the runner comes (the expert puts it in
+        // its parry window), or leapt while he is smitten.
+        if let Some(d) = g.prince() {
+            if let Some((crate::logic::combat::MoveId::BullCharge, ph, frame)) = d.f.attack() {
+                let data = d.data(crate::logic::combat::MoveId::BullCharge);
+                let to = math::sub(hp, d.pos);
+                let along = math::dot(d.aim, to);
+                let across = (math::len(to).powi(2) - along * along).max(0.0).sqrt();
+                if let (false, false, Shape::Charge { speed, .. }) = (ph == Phase::Recovery, d.struck, data.shape) {
+                    let reach = data.reach + HERO_RADIUS;
+                    let seen = frame >= self.skill.reaction().0;
+                    if seen && along > 0.0 && across < reach + 0.3 {
+                        let run = (along - reach).max(0.0) / (speed / 60.0);
+                        let t = data.startup.saturating_sub(frame) as f64 + run;
+                        let lead = if self.skill == Skill::Expert { self.lead } else { BLOCK_LEAD };
+                        if g.smitten() && t <= LEAP_AT {
+                            let side = V::new(-d.aim.y, d.aim.x);
+                            let out = Self::keep_in(g, hp, side);
+                            pad.left = (out.x as f32, out.y as f32);
+                            pad.actions.insert(Action::Jump);
+                            return Some(pad);
+                        }
+                        if t <= lead {
+                            self.guard_hold = 8;
+                            pad.actions.insert(Action::Block);
+                            let face = math::norm(math::sub(d.pos, hp));
+                            pad.left = (face.x as f32, face.y as f32);
+                            return Some(pad);
+                        }
+                    }
+                }
+            }
+        }
+        let censers = g.censers();
+        let striking = g.prince().is_some_and(|d| matches!(d.f.attack(), Some((_, Phase::Startup | Phase::Active, _))));
+        let quiet = !striking && threats.first().is_none_or(|t| t.t > CENSER_QUIET) && dodges.first().is_none_or(|d| d.t > DODGE_AHEAD);
+        if censers.iter().any(|c| c.1) || !quiet || g.hero.stamina < 16.0 {
+            return None;
+        }
+        let at = censers
+            .iter()
+            .filter(|c| c.2 > 0)
+            .map(|c| c.0)
+            .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
+        let to = math::sub(at, hp);
+        // (Within its reach: from the north the hero stands 1.3 from its middle at the nearest.)
+        if math::len(to) > 1.45 {
+            let dir = self.way(g, hp, at);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = false;
+        } else {
+            let dir = math::norm(to);
+            pad.left = (dir.x as f32, dir.y as f32);
+            self.attack_down = !self.attack_down;
+            if self.attack_down {
+                pad.actions.insert(Action::Attack);
+            }
+        }
+        Some(pad)
+    }
+}
+
+impl Bot {
+    /**
+     * Against Beelzebub in the Banquet of Flies (PRINCES.md §5), the adept and the expert take a
+     * green cross off the floor before he can eat it, whenever nothing it has seen lands within
+     * `CROSS_CLEAR` frames. `None`: no cross to take (or not his court).
+     */
+    fn banquet(&mut self, g: &Game, soonest: Option<f64>, pad: &mut PadState) -> Option<PadState> {
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Gluttony) {
+            return None;
+        }
+        if soonest.is_some_and(|t| t <= CROSS_CLEAR) {
+            return None;
+        }
+        let hp = g.hero.pos();
+        let grid = &g.level.grid;
+        let cross = grid
+            .cells()
+            .filter(|&(_, _, t)| t == crate::logic::types::Tile::Charge)
+            .map(|(x, y, _)| P::new(x, y).v())
+            .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
+        let dir = self.way(g, hp, cross);
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        Some(pad.clone())
+    }
+
+    /// Beelzebub bent over his food, eating: no blow comes of it, and a blow chokes him.
+    fn feasting(target: &crate::logic::combat::Duelist) -> bool {
+        matches!(target.f.attack(), Some((crate::logic::combat::MoveId::Gorge, _, _)))
+    }
+}
+
+/// Frames clear of every strike it has seen that the bot wants before it walks off for a cross.
+const CROSS_CLEAR: f64 = 30.0;
+
+/// How far off it notices a cheat standing in the world, and how near it walks to strike it.
+const SEE_THROUGH: f64 = 14.0;
+const STRIKE_AT: f64 = 1.3;
+
+/// How a bout went.
+/**
+ * The first crossing on the shortest way from `a` to `b` over open floor and `portals` (each an
+ * entrance tile and where it sets him down), or none if the way needs none (or there is none).
+ */
+fn crossing_path(grid: &crate::logic::grid::Grid, a: P, b: P, portals: &[(P, P)]) -> Option<P> {
+    use crate::logic::types::CARDINALS;
+    let mut prev: HashMap<P, (P, bool)> = HashMap::from([(a, (a, false))]);
+    let mut queue = std::collections::VecDeque::from([a]);
+    let mut found = false;
+    while let Some(p) = queue.pop_front() {
+        if p == b {
+            found = true;
+            break;
+        }
+        // (Standing on an entrance, he is through it.)
+        if let Some(&(_, out)) = portals.iter().find(|q| q.0 == p) {
+            if let std::collections::hash_map::Entry::Vacant(e) = prev.entry(out) {
+                e.insert((p, true));
+                queue.push_back(out);
+            }
+            continue;
+        }
+        for d in CARDINALS {
+            let n = grid.neighbor(p, d);
+            // (An entrance may be deep water: the dive is into it.)
+            if grid.can_move(p, d, false, false) || portals.iter().any(|q| q.0 == n) {
+                if let std::collections::hash_map::Entry::Vacant(e) = prev.entry(n) {
+                    e.insert((p, false));
+                    queue.push_back(n);
+                }
+            }
+        }
+    }
+    if !found {
+        return None;
+    }
+    // Back from the goal: the first portal taken on the way out from `a`.
+    let mut at = b;
+    let mut first = None;
+    while at != a {
+        let (p, through) = prev[&at];
+        if through {
+            first = Some(p);
+        }
+        at = p;
+    }
+    first
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BoutResult {
+    pub won: bool,
+    /// Seconds of fighting (to the win, the defeat, or the time limit).
+    pub secs: f64,
+    pub stats: BoutStats,
+}
+
+/// Seconds a bout may run before it counts as a timeout (neither won nor lost).
+pub const LIMIT: f64 = 120.0;
+
+/// A new game on a fresh save, whatever the save folder holds: no progress, no adventure under way
+/// (one run's broken shield or bought tier must never leak into the next).
+pub(super) fn fresh_game(seed: u32) -> Game {
+    let mut g = Game::new();
+    g.reseed(seed);
+    // The harnesses play without the juice (WARBAND.md §4): their numbers must not move with the feel.
+    g.set_juice_off(crate::render::profile::fx::JUICE);
+    // ...and without the prince's cheats (WARBAND.md §10.3), which would move them too.
+    g.voices.deceit.off = true;
+    g.progress = crate::logic::progression::Progress::default();
+    g.saved_run = None;
+    // (Nor a New Game+ from whatever the save folder holds: a first run, unless one asks, `newgame`.)
+    g.ng_plus = 0;
+    g.ng_offer = None;
+    // (And no grudges carried over from the last run's crawl: each run meets its own.)
+    g.warband = Default::default();
+    // ...nor the player's bestiary (filled as the bots fight, never written).
+    g.bestiary = super::bestiary::Bestiary::unsaved();
+    g.hero_kind = HeroKind::Ragnar;
+    // `VH_MASTERY=N`: every hero's mastery at rank N, to run any harness at that rank (WARBAND.md §11.1).
+    let rank = std::env::var("VH_MASTERY").ok().and_then(|v| v.parse::<u8>().ok()).unwrap_or(0);
+    for h in g.progress.heroes.iter_mut() {
+        h.mastery.rank = rank.min(crate::logic::war::mastery::RANKS);
+    }
+    g.equip_from_progress();
+    g
+}
+
+/// A hero, with his blade, shield and path at their tiers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Loadout {
+    pub hero: HeroKind,
+    pub blade: u8,
+    pub shield: u8,
+    pub path: u8,
+}
+
+impl Loadout {
+    /// Every tree at `tier`.
+    pub fn all(hero: HeroKind, tier: u8) -> Self {
+        Self { hero, blade: tier, shield: tier, path: tier }
+    }
+
+    /// Puts it on the game's hero.
+    pub(super) fn equip(&self, g: &mut Game) {
+        g.hero_kind = self.hero;
+        let h = g.progress.hero_mut(self.hero);
+        h.owned[Tree::Armory.index()] = self.blade;
+        h.owned[Tree::Shield.index()] = self.shield;
+        h.owned[Tree::Path.index()] = self.path;
+        h.wield = self.blade;
+        h.carry = self.shield;
+        g.hero.shield = Some(crate::logic::gear::ShieldGear::new(self.shield));
+        g.equip_from_progress();
+    }
+}
+
+/// Plays bout `bout` (0-based) with `skill`, seeded with `seed`, from a fresh game on a clean save.
+pub fn play_bout(bout: usize, skill: Skill, seed: u32) -> BoutResult {
+    play_bout_as(bout, skill, seed, None)
+}
+
+/// The same, with the hero and his kit of `loadout` (none: a fresh Ragnar).
+pub fn play_bout_as(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadout>) -> BoutResult {
+    play_bout_mastered(bout, skill, seed, loadout, 0)
+}
+
+/// The same, with his mastery at `rank` (WARBAND.md §11.1; the bots never cry War Cry).
+pub fn play_bout_mastered(bout: usize, skill: Skill, seed: u32, loadout: Option<Loadout>, rank: u8) -> BoutResult {
+    let mut g = fresh_game(seed);
+    g.debug_ring(bout + 1);
+    if let Some(l) = loadout {
+        // (After the jump, which takes the saved run's hero from the title.)
+        l.equip(&mut g);
+        g.start_bout();
+    }
+    if rank > 0 {
+        let hero = g.hero_kind;
+        g.progress.hero_mut(hero).mastery.rank = rank;
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let step = crate::app::STEP;
+    let steps = ((LIMIT + super::sparring::COUNTDOWN + 1.0) / step) as usize;
+    for _ in 0..steps {
+        let pad = bot.act(&g);
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        let (spar, b) = (g.spar.as_ref().unwrap(), g.brawl.as_ref().unwrap());
+        match spar.phase {
+            BoutPhase::Won(_) | BoutPhase::Lost(_) => {
+                let won = matches!(spar.phase, BoutPhase::Won(_));
+                return BoutResult { won, secs: b.stats.frames as f64 / 60.0, stats: b.stats };
+            }
+            _ => {}
+        }
+    }
+    let b = g.brawl.as_ref().unwrap();
+    BoutResult { won: false, secs: b.stats.frames as f64 / 60.0, stats: b.stats }
+}
+
+/// One bout and skill over every seed: the averages.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Summary {
+    pub runs: u32,
+    pub wins: u32,
+    /// Mean seconds to win (wins only; 0 if none).
+    pub ttk: f64,
+    /// Mean health lost (every run).
+    pub taken: f64,
+    pub parries: f64,
+    pub blocks: f64,
+    pub hurt: f64,
+    pub caught: f64,
+    pub guard_breaks: f64,
+    pub overlaps: u32,
+}
+
+impl Summary {
+    pub fn win_rate(&self) -> f64 {
+        self.wins as f64 / self.runs.max(1) as f64
+    }
+}
+
+/// Plays `bout` with `skill` once per seed in `seeds`.
+pub fn summarize(bout: usize, skill: Skill, seeds: &[u32]) -> Summary {
+    summarize_as(bout, skill, seeds, None)
+}
+
+/// The same, with `loadout`.
+pub fn summarize_as(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>) -> Summary {
+    summarize_mastered(bout, skill, seeds, loadout, 0)
+}
+
+/// The same, with his mastery at `rank`.
+pub fn summarize_mastered(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>, rank: u8) -> Summary {
+    let mut s = Summary::default();
+    let mut win_secs = 0.0;
+    for &seed in seeds {
+        let r = play_bout_mastered(bout, skill, seed, loadout, rank);
+        s.runs += 1;
+        if r.won {
+            s.wins += 1;
+            win_secs += r.secs;
+        }
+        s.taken += r.stats.taken;
+        s.parries += r.stats.parries as f64;
+        s.blocks += r.stats.blocks as f64;
+        s.hurt += r.stats.hurt as f64;
+        s.caught += r.stats.caught as f64;
+        s.guard_breaks += r.stats.guard_breaks as f64;
+        s.overlaps += r.stats.overlaps;
+    }
+    let n = s.runs.max(1) as f64;
+    s.ttk = if s.wins > 0 { win_secs / s.wins as f64 } else { 0.0 };
+    s.taken /= n;
+    s.parries /= n;
+    s.blocks /= n;
+    s.hurt /= n;
+    s.caught /= n;
+    s.guard_breaks /= n;
+    s
+}
+
+/// Every bout with every skill over `seeds`, as a table against the targets.
+pub fn balance(seeds: &[u32]) -> String {
+    let mut out = String::from("bout                 skill   win   ttk(s)  target    taken  hurt caught gbrk  parry block overlaps\n");
+    for (k, b) in gym::BOUTS.iter().enumerate() {
+        for skill in Skill::ALL {
+            let s = summarize(k, skill, seeds);
+            let target = if skill == Skill::Expert { format!("{:>4.0}-{:<4.0}", b.target.0, b.target.1) } else { "    -    ".to_string() };
+            out += &format!(
+                "{:<20} {:<7} {:>4.0}% {:>7.1}  {}  {:>5.0}  {:>4.1} {:>5.1} {:>4.1}  {:>5.1} {:>5.1} {:>4}\n",
+                b.name,
+                skill.name(),
+                s.win_rate() * 100.0,
+                s.ttk,
+                target,
+                s.taken,
+                s.hurt,
+                s.caught,
+                s.guard_breaks,
+                s.parries,
+                s.blocks,
+                s.overlaps
+            );
+        }
+    }
+    out
+}
+
+/// The kit tiers a stage's report plays: two below its bouts' own tier, theirs, and three above
+/// (within 1 to 10); the third stage's are 1, 4 and 7.
+pub fn stage_tiers(stage: u8) -> Vec<u8> {
+    if stage <= 3 {
+        return vec![1, 4, 7];
+    }
+    let tier = gym::bouts_of(stage).next().map(|k| gym::BOUTS[k].tier).unwrap_or(1);
+    let mut tiers = vec![tier.saturating_sub(2).max(1), tier, (tier + 3).min(progression::TIERS)];
+    tiers.dedup();
+    tiers
+}
+
+/// A stage's bouts (COMBAT.md §10, §11) with every skill, and Ragnar's kit at each tier of `tiers`
+/// (1: a fresh Ragnar, as in `balance`).
+pub fn stage_report(seeds: &[u32], stage: u8, tiers: &[u8]) -> String {
+    let mut out = String::from(
+        "bout                 tier  skill   win   ttk(s)  target    taken  hurt  parry block overlaps
+",
+    );
+    for k in gym::bouts_of(stage) {
+        let b = &gym::BOUTS[k];
+        for &tier in tiers {
+            let loadout = (tier > 1).then(|| Loadout::all(HeroKind::Ragnar, tier));
+            for skill in Skill::ALL {
+                let s = summarize_as(k, skill, seeds, loadout);
+                let target =
+                    if skill == Skill::Expert { format!("{:>4.0}-{:<4.0}", b.target.0, b.target.1) } else { "    -    ".to_string() };
+                out += &format!(
+                    "{:<20} {:>4}  {:<7} {:>4.0}% {:>7.1}  {}  {:>5.0}  {:>4.1}  {:>5.1} {:>5.1} {:>4}
+",
+                    b.name,
+                    tier,
+                    skill.name(),
+                    s.win_rate() * 100.0,
+                    s.ttk,
+                    target,
+                    s.taken,
+                    s.hurt,
+                    s.parries,
+                    s.blocks,
+                    s.overlaps
+                );
+            }
+        }
+    }
+    out
+}
+
+/// The bouts the mastery sweep plays: the Brute, the Pack and the Trio.
+pub const MASTERY_BOUTS: [usize; 3] = [0, 1, 3];
+
+/**
+ * What mastery is worth (WARBAND.md §11.1): every hero at tiers 1 and 4, the novice and the
+ * expert, each bout of `MASTERY_BOUTS` at rank 0 and rank 5: wins, time to kill (of the wins) and
+ * damage dealt per second of fighting. Mastery rewards skill: the expert's gain should be the
+ * larger.
+ */
+pub fn mastery_sweep(seeds: &[u32]) -> String {
+    let mut out = String::from(
+        "hero      tier skill   bout                 | rank 0: win  ttk   dps | rank 5: win  ttk   dps | dps gain
+",
+    );
+    for hero in ROSTER {
+        for tier in [1, 4] {
+            for skill in [Skill::Novice, Skill::Expert] {
+                for k in MASTERY_BOUTS {
+                    let l = Some(Loadout::all(hero, tier));
+                    let (a, b) = (mastery_line(k, skill, seeds, l, 0), mastery_line(k, skill, seeds, l, 5));
+                    out += &format!(
+                        "{:<9} {:>4} {:<7} {:<20} | {:>10.0}% {:>5.1} {:>5.1} | {:>10.0}% {:>5.1} {:>5.1} | {:>+7.0}%
+",
+                        hero.name(),
+                        tier,
+                        skill.name(),
+                        gym::BOUTS[k].name,
+                        a.0 * 100.0,
+                        a.1,
+                        a.2,
+                        b.0 * 100.0,
+                        b.1,
+                        b.2,
+                        (b.2 / a.2.max(1e-9) - 1.0) * 100.0
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
+/// One bout and skill at a rank: the win rate, the mean time to kill (wins) and the damage dealt
+/// per second of fighting (every run).
+pub fn mastery_line(bout: usize, skill: Skill, seeds: &[u32], loadout: Option<Loadout>, rank: u8) -> (f64, f64, f64) {
+    let (mut wins, mut win_secs, mut dealt, mut secs) = (0, 0.0, 0.0, 0.0);
+    for &seed in seeds {
+        let r = play_bout_mastered(bout, skill, seed, loadout, rank);
+        if r.won {
+            wins += 1;
+            win_secs += r.secs;
+        }
+        dealt += r.stats.dealt;
+        secs += r.secs;
+    }
+    let n = seeds.len().max(1) as f64;
+    (wins as f64 / n, if wins > 0 { win_secs / wins as f64 } else { 0.0 }, dealt / secs.max(1e-9))
+}
+
+/// The tiers the kit sweep plays.
+pub const SWEEP: [u8; 4] = [1, 4, 7, 10];
+
+/// Every hero at each tier of `SWEEP` (blade, shield and path alike): the expert's times on the
+/// Brute, the Trio and the Gauntlet, and how the adept fares on the Brute and the Trio (COMBAT.md §8).
+pub fn kit_sweep(seeds: &[u32]) -> String {
+    let mut out = String::from(
+        "hero      tier  tempo power reach parry cost | expert: brute   trio  gauntlet      | adept: brute (blocks)  trio (win, blocks)\n",
+    );
+    for hero in ROSTER {
+        for tier in SWEEP {
+            let l = Some(Loadout::all(hero, tier));
+            let k = Kit::of(hero, tier, 1.0, Some(tier), tier);
+            let eb = summarize_as(0, Skill::Expert, seeds, l);
+            let et = summarize_as(3, Skill::Expert, seeds, l);
+            let eg = summarize_as(4, Skill::Expert, seeds, l);
+            let ab = summarize_as(0, Skill::Adept, seeds, l);
+            let at = summarize_as(3, Skill::Adept, seeds, l);
+            out += &format!(
+                "{:<9} {:>4}  {:>5.2} {:>5.2} {:>5.1} {:>4}f {:>4.2} | {:>13.1} {:>6.1} {:>6.1} ({:>3.0}%) | {:>12.1} ({:>4.1})  {:>4.0}% {:>5.1}\n",
+                hero.name(),
+                tier,
+                k.strike.tempo,
+                k.strike.power,
+                k.strike.reach,
+                k.guard.parry,
+                k.guard.cost,
+                eb.ttk,
+                et.ttk,
+                eg.ttk,
+                eg.win_rate() * 100.0,
+                ab.ttk,
+                ab.blocks,
+                at.win_rate() * 100.0,
+                at.blocks
+            );
+        }
+    }
+    out
+}
+
+/// Every blade and shield as the ring reads it (COMBAT.md §8).
+pub fn kit_table() -> String {
+    let mut out = String::from("hero      tier blade                     tempo power poise reach  arc   finisher        traits\n");
+    for hero in ROSTER {
+        for tier in 1..=progression::TIERS {
+            let s = Kit::of(hero, tier, 1.0, None, 0).strike;
+            let l3 = Kit::of(hero, tier, 1.0, None, 0).moves()[2];
+            let finisher = if s.thrown.is_some() {
+                "thrown".to_string()
+            } else if s.whirl {
+                "whirl".to_string()
+            } else {
+                format!("{:.1} t", l3.reach)
+            };
+            let mut traits = Vec::new();
+            if s.pierce > 0.0 {
+                traits.push("pierce".to_string());
+            }
+            if s.crit > 0.0 {
+                traits.push(format!("crit +{:.2}", s.crit));
+            }
+            if s.blood > 0.0 {
+                traits.push(format!("blood {}", s.blood));
+            }
+            if s.finisher_power > 1.0 {
+                traits.push(format!("finisher x{}", s.finisher_power));
+            }
+            out += &format!(
+                "{:<9} {:>4} {:<25} {:>5.2} {:>5.2} {:>5.2} {:>+5.1} {:>+4.0}deg {:<15} {}\n",
+                hero.name(),
+                tier,
+                progression::node(hero, Tree::Armory, tier).name,
+                s.tempo,
+                s.power,
+                s.poise,
+                s.reach,
+                s.arc.to_degrees(),
+                finisher,
+                traits.join(", ")
+            );
+        }
+    }
+    out += "\ntier shield                    parry cost  riposte deflect reflect bolt-proof break\n";
+    for tier in 1..=progression::TIERS {
+        let g = crate::logic::combat::kit::Guard::of(tier);
+        out += &format!(
+            "{:>4} {:<25} {:>4}f {:>4.2} {:>7.0} {:>6}f {:>6.1}x {:<10} {:.0}%/{}f\n",
+            tier,
+            progression::node(HeroKind::Ragnar, Tree::Shield, tier).name,
+            g.parry,
+            g.cost,
+            g.riposte,
+            g.deflect,
+            g.reflect,
+            if g.bolt_proof { "yes" } else { "no" },
+            g.break_share * 100.0,
+            g.break_frames
+        );
+    }
+    out
+}
+
+/// What each part of a kit is worth: the expert's time on the Brute and the Trio with one tree
+/// raised at a time (`hero`, tier `tier`), against none raised.
+pub fn kit_parts(hero: HeroKind, tier: u8, seeds: &[u32]) -> String {
+    let parts = [
+        ("none", Loadout { hero, blade: 1, shield: 1, path: 0 }),
+        ("blade", Loadout { hero, blade: tier, shield: 1, path: 0 }),
+        ("shield", Loadout { hero, blade: 1, shield: tier, path: 0 }),
+        ("path", Loadout { hero, blade: 1, shield: 1, path: tier }),
+        ("all", Loadout::all(hero, tier)),
+    ];
+    let mut out = format!(
+        "{} tier {tier}: part   brute  trio
+",
+        hero.name()
+    );
+    for (name, l) in parts {
+        let b = summarize_as(0, Skill::Expert, seeds, Some(l));
+        let t = summarize_as(3, Skill::Expert, seeds, Some(l));
+        out += &format!(
+            "{:<20} {:>6.1} {:>5.1}
+",
+            name, b.ttk, t.ttk
+        );
+    }
+    out
+}
+
+/// How a crawl through the Vaults of Mammon went (COMBAT.md §9).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Crawl {
+    /// Every foe of the vaults slain.
+    pub cleared: bool,
+    /// Lives lost, and whether they ran out.
+    pub deaths: u32,
+    pub game_over: bool,
+    pub foes: u32,
+    pub kills: u32,
+    /// Seconds in all, and seconds with at least one foe hunting him.
+    pub secs: f64,
+    pub combat_secs: f64,
+    /// The most foes hunting him at once.
+    pub peak: usize,
+    pub stats: BoutStats,
+    /// The Drum (WARBAND.md §6): the share of fighting time at peak, the peaks, and the mean rest
+    /// between fights (seconds; 0 if none finished).
+    pub peak_share: f64,
+    pub peaks: u32,
+    pub rest: f64,
+    /// The packs (WARBAND.md §7): broken, and rallies sounded.
+    pub routs: u32,
+    pub rallies: u32,
+    /// The Ledger (§8): rivals met in the last life, and foes made rivals.
+    pub rivals_met: u32,
+    pub promoted: u32,
+}
+
+/**
+ * `runs` crawls in a row by `skill` with Ragnar's kit at `tier`, one Ledger carried through them all
+ * (WARBAND.md §15.2): how the rivals grow, rank and learn, and how the bot fares against them.
+ */
+pub fn rivals_report(runs: u32, seed: u32, skill: Skill, tier: u8) -> String {
+    use std::fmt::Write;
+    let mut ledger = crate::logic::war::ledger::Ledger::default();
+    let mut out = String::from("run  cleared  kills  deaths  minutes  met  made  live  slain\n");
+    for r in 0..runs {
+        let c = crawl_full(
+            crate::logic::sins::Sin::Greed,
+            skill,
+            seed + r,
+            Some(Loadout::all(HeroKind::Ragnar, tier)),
+            900.0,
+            &mut None,
+            false,
+            Some(&mut ledger),
+        )
+        .0;
+        let _ = writeln!(
+            out,
+            "{:>3}  {:>7}  {:>2}/{:<2}  {:>6}  {:>7.1}  {:>3}  {:>4}  {:>4}  {:>5}",
+            r + 1,
+            if c.cleared { "yes" } else { "no" },
+            c.kills,
+            c.foes,
+            c.deaths,
+            c.secs / 60.0,
+            c.rivals_met,
+            c.promoted,
+            ledger.live().count(),
+            ledger.slain
+        );
+    }
+    out += "\nthe Ledger at the end:\n";
+    for r in &ledger.rivals {
+        let lesson = r.lesson.map(|l| format!("{l:?}")).unwrap_or_else(|| "-".into());
+        let _ = writeln!(
+            out,
+            "  {:<40} {:<14} rank {}  {}  lesson {:<10} {:?} / {:?} / {:?}  fights {}",
+            r.full_name(),
+            format!("{:?}", r.kind),
+            r.rank,
+            if r.alive { "alive" } else { "slain" },
+            lesson,
+            r.strength,
+            r.weakness,
+            r.personality,
+            r.memory.len()
+        );
+    }
+    out
+}
+
+/// The Drum, second by second through a crawl: (seconds, intensity, phase).
+pub type DrumTrace = Vec<(f64, f64, crate::logic::war::drum::DrumPhase)>;
+
+impl Crawl {
+    /// Overlapping strikes per minute of fighting.
+    pub fn overlaps_per_minute(&self) -> f64 {
+        self.stats.overlaps as f64 / (self.combat_secs / 60.0).max(1e-9)
+    }
+}
+
+/// A bot crawls the Vaults of Mammon from the antechamber, waking pack after pack and fighting it
+/// out, until every foe is slain, its lives run out, or `limit` seconds pass.
+pub fn crawl(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> Crawl {
+    crawl_traced(skill, seed, loadout, limit, &mut None)
+}
+
+/// A crawl, with the Drum's trace kept in `trace` if it is given one.
+pub fn crawl_traced(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64, trace: &mut Option<DrumTrace>) -> Crawl {
+    crawl_full(crate::logic::sins::Sin::Greed, skill, seed, loadout, limit, trace, false, None).0
+}
+
+/// How a crawl through a general's realm went (WARBAND.md §15.2): the crawl, his orders, his
+/// instruments broken, and whether he was slain.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GeneralCrawl {
+    pub crawl: Crawl,
+    pub tally: super::general::GeneralTally,
+    pub broken: usize,
+    pub slain: bool,
+    pub decree_done: bool,
+}
+
+/**
+ * A bot crawls the realm of `sin` with its general, as `crawl` does the vaults: until every foe is
+ * slain (with `skip_general`, every foe but the general's own pack, which it leaves asleep unless
+ * it wakes), its lives run out, or `limit` seconds pass.
+ */
+pub fn crawl_realm(
+    sin: crate::logic::sins::Sin,
+    skill: Skill,
+    seed: u32,
+    loadout: Option<Loadout>,
+    limit: f64,
+    trace: &mut Option<DrumTrace>,
+    skip_general: bool,
+) -> (Crawl, GeneralCrawl) {
+    crawl_full(sin, skill, seed, loadout, limit, trace, skip_general, None)
+}
+
+/// A crawl of `sin`'s realm (see `crawl_realm`), against `ledger`'s rivals if it is given one (and
+/// what the crawl made of them written back into it).
+#[allow(clippy::too_many_arguments)]
+fn crawl_full(
+    sin: crate::logic::sins::Sin,
+    skill: Skill,
+    seed: u32,
+    loadout: Option<Loadout>,
+    limit: f64,
+    trace: &mut Option<DrumTrace>,
+    skip_general: bool,
+    ledger: Option<&mut crate::logic::war::ledger::Ledger>,
+) -> (Crawl, GeneralCrawl) {
+    let mut g = fresh_game(seed);
+    if let Some(l) = ledger.as_deref() {
+        g.warband.save.ledger = l.clone();
+    }
+    if let Some(n) = std::env::var("VH_CRAWL_RIVALS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        // Rivals waiting in the vaults (WARBAND.md §8), for a crawl against the Ledger.
+        use crate::logic::enemy::EnemyKind;
+        use crate::logic::war::names::Deed;
+        for k in [EnemyKind::Skeleton, EnemyKind::Werewolf, EnemyKind::Witch, EnemyKind::Blemmyes].into_iter().take(n) {
+            let id = g.promote_rival(k, Deed::KillingBlow);
+            for _ in 0..2 {
+                g.warband.save.ledger.rank_up(id);
+            }
+        }
+    }
+    g.map_jump(super::save::Stage::Realm(sin));
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    // (Skipping him, the bot goes round his post: his room's pack is held out of the fight, a
+    // stand-in for a player who never sets foot there, while his orders run on.)
+    let skipped = if skip_general { (0..3).flat_map(|k| g.general_pack(k)).collect() } else { Vec::new() };
+    for d in g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).filter(|d| skipped.contains(&d.id)) {
+        d.puppet = true;
+    }
+    bot.ignore = skipped.clone();
+    let foes = g.enemies.iter().filter(|e| e.duel.is_some()).count() as u32;
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = Crawl { foes, ..Crawl::default() };
+    let mut t = 0.0;
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        t += step;
+        match g.screen {
+            super::Screen::GameOver => {
+                out.game_over = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+        let hunting = g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged()).count();
+        out.peak = out.peak.max(hunting);
+        if hunting > 0 {
+            out.combat_secs += step;
+        }
+        if let Some(tr) = trace.as_mut() {
+            if tr.last().is_none_or(|l| t - l.0 >= 1.0) {
+                tr.push((t, g.war.drum.intensity, g.war.drum.phase));
+            }
+        }
+        let left = |d: &crate::logic::combat::Duelist| d.alive() && !skipped.contains(&d.id);
+        if !g.enemies.iter().any(|e| e.duel.as_deref().is_some_and(left)) {
+            out.cleared = true;
+            break;
+        }
+    }
+    out.secs = t;
+    out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
+    out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.kills = out.foes.saturating_sub(g.enemies.iter().filter(|e| e.duel.as_ref().is_some_and(|d| d.alive())).count() as u32);
+    if std::env::var_os("VH_CRAWL_LEFT").is_some() {
+        let hp = g.hero.pos();
+        eprintln!("hero at ({:.1}, {:.1})", hp.x, hp.y);
+        let (inst, gate) = g.general_targets();
+        eprintln!("  general's instruments standing {inst:?}, glowing gate {gate:?}");
+        for d in g.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.alive()) {
+            eprintln!(
+                "  left: {:?} at ({:.1}, {:.1}) hp {:.0}/{:.0} den {:?} state {:?}",
+                d.breed.kind, d.pos.x, d.pos.y, d.hp, d.max_hp, d.den, d.f.state
+            );
+        }
+    }
+    if let Some(l) = ledger {
+        *l = g.warband.save.ledger.clone();
+    }
+    out.rivals_met = g.war.grudges.met.len() as u32;
+    out.promoted = g.war.grudges.promoted;
+    let drum = &g.war.drum;
+    out.peak_share = drum.peak_share();
+    out.peaks = drum.peaks;
+    out.routs = g.war.tally.routs;
+    out.rallies = g.war.tally.rallies;
+    out.rest = if drum.rests.is_empty() { 0.0 } else { drum.rests.iter().sum::<f64>() / drum.rests.len() as f64 };
+    let general = g
+        .general
+        .as_ref()
+        .map(|r| GeneralCrawl {
+            crawl: out,
+            tally: r.tally,
+            broken: r.command.broken(),
+            slain: r.command.slain,
+            decree_done: r.command.decree_done,
+        })
+        .unwrap_or(GeneralCrawl { crawl: out, ..GeneralCrawl::default() });
+    (out, general)
+}
+
+/// `--general SIN SKILL TIER SEED`: one realm with its general, the bot taking him on and then
+/// leaving him be, and what his orders came to in each (WARBAND.md §15.2).
+pub fn general_report(sin: crate::logic::sins::Sin, skill: Skill, tier: u8, seed: u32, limit: f64) -> String {
+    let kit = Some(Loadout::all(HeroKind::Ragnar, tier));
+    let mut out = format!(
+        "{} - {} ({}), {} with Ragnar's tier-{tier} kit, seed {seed}
+",
+        sin.realm(),
+        crate::logic::war::general::General::of(sin).name(),
+        sin.title(),
+        skill.name()
+    );
+    out += "general  cleared  minutes  deaths  kills/foes  announced  bit  failed  answered  broken  barred  turned  bursts  burned  whistles  decrees  slain-at  overlaps
+";
+    let mut times = [0.0; 2];
+    for (k, skip) in [false, true].into_iter().enumerate() {
+        let (c, r) = crawl_realm(sin, skill, seed, kit, limit, &mut None, skip);
+        times[k] = c.secs;
+        out += &format!(
+            "{:<8} {:>7} {:>8.1} {:>7} {:>5}/{:<5} {:>10} {:>4} {:>7} {:>9} {:>4}/3 {:>7} {:>7} {:>7} {:>7} {:>9} {:>8} {:>9} {:>9}
+",
+            if skip { "alive" } else { "fought" },
+            if c.cleared { "yes" } else { "no" },
+            c.secs / 60.0,
+            c.deaths,
+            c.kills,
+            c.foes,
+            r.tally.announced,
+            r.tally.bitten,
+            r.tally.failed,
+            r.tally.answered,
+            r.broken,
+            r.tally.barred,
+            r.tally.turned,
+            r.tally.bursts,
+            r.tally.burned,
+            r.tally.whistles,
+            r.tally.decrees,
+            r.tally.slain_at.map(|t| format!("{:.0}s", t)).unwrap_or_else(|| if r.slain { "yes".into() } else { "-".into() }),
+            c.stats.overlaps
+        );
+    }
+    let diff = (times[1] - times[0]) / times[0].max(1.0) * 100.0;
+    out += &format!(
+        "time with him alive against slain: {:+.0}% (target within 25%)
+",
+        diff
+    );
+    out
+}
+
+/// Crawls by every skill (and the kit at each tier of `tiers`, Ragnar's), one line each.
+pub fn crawl_report(seeds: &[u32], tiers: &[u8], limit: f64) -> String {
+    let mut out = String::from(
+        "skill   tier  cleared  kills/foes  deaths  minutes  combat  peak  taken  parry block caught  overlaps/min  at-peak peaks  rest  routs rallies\n",
+    );
+    for &tier in tiers {
+        for skill in [Skill::Adept, Skill::Expert] {
+            let runs: Vec<Crawl> = seeds.iter().map(|&s| crawl(skill, s, Some(Loadout::all(HeroKind::Ragnar, tier)), limit)).collect();
+            let n = runs.len() as f64;
+            let avg = |f: &dyn Fn(&Crawl) -> f64| runs.iter().map(f).sum::<f64>() / n;
+            out += &format!(
+                "{:<7} {:>4}  {:>5.0}%  {:>5.0}/{:<4.0}  {:>6.1}  {:>7.1}  {:>6.1}  {:>4.0}  {:>5.0}  {:>5.0} {:>5.0} {:>6.0}  {:>12.2}  {:>6.0}% {:>5.1} {:>5.1} {:>6.1} {:>7.1}\n",
+                skill.name(),
+                tier,
+                avg(&|c| f64::from(u8::from(c.cleared))) * 100.0,
+                avg(&|c| c.kills as f64),
+                avg(&|c| c.foes as f64),
+                avg(&|c| c.deaths as f64),
+                avg(&|c| c.secs / 60.0),
+                avg(&|c| c.combat_secs / 60.0),
+                avg(&|c| c.peak as f64),
+                avg(&|c| c.stats.taken),
+                avg(&|c| c.stats.parries as f64),
+                avg(&|c| c.stats.blocks as f64),
+                avg(&|c| c.stats.caught as f64),
+                avg(&|c| c.overlaps_per_minute()),
+                avg(&|c| c.peak_share) * 100.0,
+                avg(&|c| c.peaks as f64),
+                avg(&|c| c.rest),
+                avg(&|c| c.routs as f64),
+                avg(&|c| c.rallies as f64)
+            );
+        }
+    }
+    out
+}
+
+/// How a fight in a prince's court went.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CourtFight {
+    /// The prince fell, and the key lay on the floor.
+    pub slain: bool,
+    pub game_over: bool,
+    pub deaths: u32,
+    /// Seconds of play, the phase he was brought to, and the fight's numbers (the last life's).
+    pub secs: f64,
+    pub phase: u8,
+    pub stats: BoutStats,
+    /// The archangels called (Michael, Gabriel, Raphael, Uriel).
+    pub angels: [u32; 4],
+}
+
+/// A bot fights the prince of `sin` in his court (Greed's: the Counting House) until he falls, its
+/// lives run out, or `limit` seconds pass. (A court not yet built is the Cyclops' meadow: no prince
+/// stands there to fall.)
+pub fn court_fight(sin: crate::logic::sins::Sin, skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> CourtFight {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Court(sin));
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    // (It plays from the top view, as in the ring and the vaults: its stick is the world's way round.)
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = CourtFight::default();
+    let mut t = 0.0;
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        t += step;
+        match g.screen {
+            super::Screen::GameOver => {
+                out.game_over = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+        out.phase = out.phase.max(g.prince().map(|d| d.breed.phase).unwrap_or(0));
+
+        if g.court.as_ref().is_some_and(|c| c.slain) {
+            out.slain = true;
+            break;
+        }
+    }
+    out.secs = t;
+    out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
+    out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.angels = g.angels.count;
+    out
+}
+
+/// How a fight in Krampus's lair went: as a court's, and his charges, those that ended dazed in
+/// stone, and his taunts at the cage.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LairFight {
+    pub fight: CourtFight,
+    pub charges: u32,
+    pub dazes: u32,
+    pub taunts: u32,
+}
+
+/// A bot fights Krampus in his lair at the bottom of the Pit (all seven keys held: tier 8 by the
+/// keys, its kit as `loadout` gives it) until he falls, its lives run out, or `limit` seconds pass.
+pub fn lair_fight(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64) -> LairFight {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Lair);
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    // (It plays from the top view, as in the courts: its stick is the world's way round.)
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = LairFight::default();
+    let mut t = 0.0;
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        g.update(step);
+        t += step;
+        match g.screen {
+            super::Screen::GameOver => {
+                out.fight.game_over = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+        out.fight.phase = out.fight.phase.max(g.prince().map(|d| d.breed.phase).unwrap_or(0));
+        if g.lair.as_ref().is_some_and(|l| l.slain) {
+            out.fight.slain = true;
+            break;
+        }
+    }
+    out.fight.secs = t;
+    out.fight.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.fight.game_over);
+    out.fight.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.fight.angels = g.angels.count;
+    if let Some(l) = g.lair.as_ref() {
+        (out.charges, out.dazes, out.taunts) = (l.charges, l.dazes, l.taunts);
+    }
+    out
+}
+
+// ------------------------------------------------------------------ Leviathan (Envy's court)
+
+impl Bot {
+    /**
+     * Under the drowned bell (not the novice): off the line of Leviathan's coveted beam once it
+     * no longer follows him, off the burning coil's fires, and out of the coveted thunder's three
+     * marks by the way clearest of all of them (toward him, or straight back between the two
+     * behind). These come first among blows from the ground due on the same frame.
+     */
+    fn envy_dodges(&mut self, g: &Game, dodges: &mut Vec<Dodge>) {
+        use crate::logic::combat::duelist::from_segment;
+        use crate::logic::combat::prince::envy::{fire_spots, thunder_marks, FIRE_RADIUS};
+        use crate::logic::combat::MoveId;
+        use crate::logic::court::envy::BELL;
+        let Some(spar) = g.brawl.as_ref().filter(|_| self.skill != Skill::Novice) else { return };
+        let Some(d) = g.prince() else { return };
+        let State::Attack { mv, frame } = d.f.state else { return };
+        let data = d.data(mv);
+        let started = spar.threat.frame.saturating_sub(frame as u32);
+        let seen = self.noticed.get(&d.id).is_some_and(|&(at, delay)| at == started && delay > 0 && frame >= delay);
+        if !seen || frame >= data.startup {
+            return;
+        }
+        let hp = g.hero.pos();
+        let t = (data.startup - frame) as f64;
+        // The way out of a few circles on the floor that clears them all by the most.
+        let clearest = |spots: &[(V, f64)], from: V| {
+            let clearance = |dir: V| {
+                let p = math::add(hp, math::scale(dir, 1.7));
+                spots.iter().map(|(o, r)| math::len(math::sub(p, *o)) - r).fold(f64::MAX, f64::min)
+            };
+            let away = math::sub(hp, from);
+            let base = if math::len(away) < 0.05 { 0.0 } else { math::angle(away) };
+            (0..16)
+                .map(|k| math::from_angle(base + k as f64 * std::f64::consts::TAU / 16.0))
+                .filter(|&dir| Self::keep_in(g, hp, dir) == dir)
+                .max_by(|a, b| clearance(*a).total_cmp(&clearance(*b)))
+                .unwrap_or_else(|| math::from_angle(base))
+        };
+        let mine = match mv {
+            MoveId::CovetBeam if frame >= data.track => {
+                let Shape::Beam { width, .. } = data.shape else { return };
+                let end = math::add(d.pos, math::scale(d.aim, d.lore.span));
+                if from_segment(d.pos, end, hp) > width / 2.0 + HERO_RADIUS + 0.3 {
+                    return;
+                }
+                let side = V::new(-d.aim.y, d.aim.x);
+                let out = if math::dot(side, math::sub(hp, d.pos)) >= 0.0 { side } else { math::scale(side, -1.0) };
+                Some(Dodge { t, out: Self::keep_in(g, hp, out) })
+            }
+            MoveId::BurningCoil => {
+                let spots: Vec<(V, f64)> = fire_spots(BELL, d.lore.mark).into_iter().map(|p| (p, FIRE_RADIUS)).collect();
+                let on = spots
+                    .iter()
+                    .filter(|(p, r)| math::len(math::sub(hp, *p)) < r + HERO_RADIUS + 0.35)
+                    .min_by(|a, b| math::len(math::sub(hp, a.0)).total_cmp(&math::len(math::sub(hp, b.0))));
+                on.map(|(p, _)| Dodge { t, out: clearest(&spots, *p) })
+            }
+            MoveId::CovetThunder => {
+                let Shape::Mark { radius } = data.shape else { return };
+                let spots: Vec<(V, f64)> = thunder_marks(d.lore.mark, d.pos).into_iter().map(|p| (p, radius)).collect();
+                let on = spots.iter().any(|(p, r)| math::len(math::sub(hp, *p)) < r + HERO_RADIUS + 0.35);
+                on.then(|| Dodge { t, out: clearest(&spots, d.lore.mark) })
+            }
+            _ => None,
+        };
+        if let Some(m) = mine {
+            dodges.insert(0, m);
+            dodges.sort_by(|a, b| a.t.total_cmp(&b.t));
+        }
+    }
+
+    /// Leviathan coiled round the bell, and the expert or the adept not yet on the side he turns to
+    /// it (where his scales are burnt off): the place beside him on that side to go to first.
+    fn envy_stand(&self, g: &Game, target: &crate::logic::combat::Duelist) -> Option<V> {
+        use crate::logic::combat::prince::envy::burnt_side;
+        if self.skill == Skill::Novice || g.court_sin() != Some(crate::logic::sins::Sin::Envy) {
+            return None;
+        }
+        let bell = target.lore.bell?;
+        let hp = g.hero.pos();
+        if burnt_side(target.pos, hp, bell) {
+            return None;
+        }
+        // Beside him, round toward the bell on whichever hand is nearer.
+        let toward = math::norm(math::sub(bell, target.pos));
+        let reach = target.radius() + HERO_RADIUS + 0.55;
+        let spots = [0.9f64, -0.9].map(|a| math::add(target.pos, math::scale(math::from_angle(math::angle(toward) + a), reach)));
+        let stand = spots
+            .into_iter()
+            .filter(|p| g.level.grid.is_walkable(p.x.round() as i32, p.y.round() as i32, false))
+            .min_by(|a, b| math::len(math::sub(*a, hp)).total_cmp(&math::len(math::sub(*b, hp))))?;
+        // (Round his body, not through it: by his flank on the stand's side first.)
+        let clear = target.radius() + HERO_RADIUS + 0.25;
+        if crate::logic::combat::duelist::from_segment(hp, stand, target.pos) < clear {
+            let side = V::new(-toward.y, toward.x);
+            let side = if math::dot(side, math::sub(stand, target.pos)) >= 0.0 { side } else { math::scale(side, -1.0) };
+            return Some(math::add(target.pos, math::scale(side, clear + 0.4)));
+        }
+        Some(stand)
+    }
+}
+
+// ------------------------------------------------------------------ the Pit
+
+/// Seconds before the platform sinks that each skill makes for it from the ledge (the novice, a
+/// masher, never looks at the clock).
+const BOARD_AT: [f64; 3] = [0.0, 4.0, 7.0];
+
+impl Bot {
+    /**
+     * The Pit (FINALE.md §2): with the platform about to sink and the bot on the ledge, the adept and
+     * the expert walk onto it (the expert sooner), well in from its edge; the guard and the dodges
+     * still come first. The novice leaps after it at zero, and lands hurt.
+     */
+    fn pit_board(&mut self, g: &Game, hp: V) -> Option<PadState> {
+        let (_, left, _, _, _) = g.pit_status()?;
+        let lead = BOARD_AT[self.skill as usize];
+        let r = crate::logic::pit::platform();
+        let (lo, hi) = (V::new(r.x0 as f64 + 0.3, r.y0 as f64 + 0.3), V::new(r.x1 as f64 - 0.3, r.y1 as f64 - 0.3));
+        let aboard = hp.x >= lo.x && hp.x <= hi.x && hp.y >= lo.y && hp.y <= hi.y;
+        if lead <= 0.0 || left > lead || left <= 0.0 || aboard {
+            return None;
+        }
+        let to = V::new(hp.x.clamp(lo.x + 0.6, hi.x - 0.6), hp.y.clamp(lo.y + 0.6, hi.y - 0.6));
+        let dir = self.way(g, hp, to);
+        self.attack_down = false;
+        Some(PadState { left: (dir.x as f32, dir.y as f32), ..PadState::default() })
+    }
+
+    /// While the bell tolls the expert strikes first at what stands on the platform, so that as
+    /// little as it can rides down with it.
+    fn pit_targets<'a>(&self, g: &Game, foes: Vec<&'a crate::logic::combat::Duelist>) -> Vec<&'a crate::logic::combat::Duelist> {
+        let Some((_, left, on, _, _)) = g.pit_status() else { return foes };
+        if self.skill != Skill::Expert || left > crate::logic::pit::BELL_SECONDS || on == 0 {
+            return foes;
+        }
+        let aboard: Vec<_> = foes.iter().copied().filter(|d| crate::logic::pit::on_platform(d.pos)).collect();
+        if aboard.is_empty() {
+            foes
+        } else {
+            aboard
+        }
+    }
+}
+
+/// How a bot's ride down the Pit went: each level's tally, whether it reached the bottom or its lives
+/// ran out, the lives lost, seconds in all, the fight's numbers, and the most foes standing at once.
+#[derive(Clone, Debug, Default)]
+pub struct PitRide {
+    pub levels: Vec<super::pit::LevelTally>,
+    pub bottom: bool,
+    pub game_over: bool,
+    pub deaths: u32,
+    pub secs: f64,
+    pub stats: BoutStats,
+    pub peak: usize,
+    /// The sim's cost per step (ms): its mean, its slowest, and the mean with eight or more standing.
+    pub step_ms: (f64, f64, f64),
+}
+
+/// A bot rides the Pit down from level `from` until it reaches the bottom, its lives run out, or
+/// `limit` seconds pass.
+pub fn pit_ride(skill: Skill, seed: u32, loadout: Option<Loadout>, from: u8, limit: f64) -> PitRide {
+    let mut g = fresh_game(seed);
+    g.map_jump(super::save::Stage::Pit(from));
+    if let Some(l) = loadout {
+        l.equip(&mut g);
+    }
+    // (It plays from the top view, as in the ring and the vaults: its stick is the world's way round.)
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.enter(super::Screen::Playing);
+    let kit = g.hero_kit();
+    if let Some(b) = g.brawl.as_mut() {
+        b.reset(kit);
+    }
+    g.hero.free_move = true;
+    let mut bot = Bot::new(skill, seed);
+    let lives = g.score.lives;
+    let step = crate::app::STEP;
+    let mut out = PitRide::default();
+    let mut t = 0.0;
+    let (mut sum, mut n, mut crowd, mut crowded) = (0.0, 0u32, 0.0, 0u32);
+    while t < limit {
+        let playing = g.screen == super::Screen::Playing;
+        let pad = if playing { bot.act(&g) } else { PadState::default() };
+        g.input.set_pad(Some(pad));
+        let clock = web_time::Instant::now();
+        g.update(step);
+        let ms = clock.elapsed().as_secs_f64() * 1e3;
+        (sum, n) = (sum + ms, n + 1);
+        out.step_ms.1 = out.step_ms.1.max(ms);
+        if g.pit_standing() >= 8 {
+            (crowd, crowded) = (crowd + ms, crowded + 1);
+        }
+        t += step;
+        out.peak = out.peak.max(g.pit_standing());
+        if let Some(p) = g.pit.as_ref() {
+            out.levels = p.tallies.clone();
+            out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+        }
+        // The platform has come to rest at the bottom: Krampus's lair (his fight is `lair_fight`'s).
+        if g.in_lair() {
+            out.bottom = true;
+            break;
+        }
+        match g.screen {
+            super::Screen::GameOver => {
+                out.game_over = true;
+                break;
+            }
+            super::Screen::Ready => g.enter(super::Screen::Playing),
+            _ => {}
+        }
+    }
+    out.secs = t;
+    out.step_ms.0 = sum / n.max(1) as f64;
+    out.step_ms.2 = crowd / crowded.max(1) as f64;
+    out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
+    out
+}
+
+/// `--pit SKILL TIER SEED [--pit-level N]`: the ride, level by level.
+pub fn pit_report(skill: Skill, tier: u8, seed: u32, from: u8) -> String {
+    use std::fmt::Write;
+    let kit = Some(Loadout::all(HeroKind::Ragnar, tier));
+    let started = web_time::Instant::now();
+    let r = pit_ride(skill, seed, kit, from, 1500.0);
+    let wall = started.elapsed().as_secs_f64();
+    let mut out = format!("THE PIT {skill:?} tier {tier} seed {seed} from level {from}\n");
+    out += "level  secs  kills  rode in  rode out  left  taken  falls  leapt\n";
+    for l in &r.levels {
+        let _ = writeln!(
+            out,
+            "{:>5}  {:>4.0}  {:>5}  {:>7}  {:>8}  {:>4}  {:>5.0}  {:>5}  {:>5}",
+            l.level,
+            l.secs,
+            l.kills,
+            l.riders_in,
+            l.riders_out,
+            l.left,
+            l.taken,
+            l.falls,
+            if l.leapt { "yes" } else { "no" }
+        );
+    }
+    let end = if r.bottom {
+        "reached the bottom"
+    } else if r.game_over {
+        "game over"
+    } else {
+        "out of time"
+    };
+    let _ = writeln!(
+        out,
+        "{end}: {} lives lost, {:.0} s, {} kills, {:.0} taken, {} overlaps, at most {} standing ({:.1} s to run)",
+        r.deaths, r.secs, r.stats.kills, r.stats.taken, r.stats.overlaps, r.peak, wall
+    );
+    let _ = writeln!(
+        out,
+        "sim per step (120 a second): mean {:.3} ms, {:.3} ms with eight or more standing, slowest {:.2} ms",
+        r.step_ms.0, r.step_ms.2, r.step_ms.1
+    );
+    out
+}

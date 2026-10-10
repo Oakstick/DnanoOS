@@ -1,0 +1,1634 @@
+//! Scene I on screen. Two sets stand far from the level and the other stages.
+//! The first is the edge of an old graveyard at dusk: a stone wall with a
+//! wrought-iron gate between two pillars, graves and bare trees in the fog
+//! behind it, a chapel beyond, and a lantern on the gate post. The second is
+//! the dungeon gateway at the top of the underworld: wet flagstones, torches
+//! on the pillars, the iron door under a carved skull, the old man's stool
+//! and lantern, Quitmer's straw and chain, and a stair going down behind the
+//! door. The cast plays out each beat on them and the camera cuts from shot
+//! to shot.
+
+use super::cast_clips::{self, DogAct, OldAct};
+use super::story_sets::{self, dusk, CHAIN_RING};
+use super::*;
+use crate::logic::heroes::HeroKind;
+use crate::logic::story::{first, stage, Place, Scene, Shot, Speaker};
+use crate::render::anim::cast_rigs::CastRig;
+use crate::render::cast;
+use crate::render::voxels::PartDef;
+
+/// Where the two sets stand, well away from everything else.
+pub(super) const GRAVEYARD: Vec3 = Vec3::new(-160.0, 0.0, -40.0);
+pub(super) const GATEWAY: Vec3 = Vec3::new(-200.0, 0.0, -40.0);
+
+/// Voxel sizes of the cast, in world units.
+pub(super) const KID_VOXEL: f32 = cast::KID_VOXEL;
+pub(super) const OLD_MAN_VOXEL: f32 = cast::OLD_MAN_VOXEL;
+pub(super) const DOG_VOXEL: f32 = cast::DOG_VOXEL;
+pub(super) const KRAMPUS_VOXEL: f32 = cast::KRAMPUS_VOXEL;
+
+/// Material shade modes for plain blocks (5 + the material's number).
+const SHADE_METAL: f32 = 6.0;
+
+/// What the story shows this frame: the scene and its beat, seconds into it, seconds since the
+/// scene began, how much of the line has typed, and which of the warriors' souls have risen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StoryView {
+    pub scene: Scene,
+    pub beat: usize,
+    pub t: f32,
+    pub age: f32,
+    pub shown: f32,
+    pub souls: u8,
+}
+
+impl StoryView {
+    pub(super) fn shot(&self) -> Shot {
+        let beats = self.scene.beats();
+        beats[self.beat.min(beats.len() - 1)].shot
+    }
+
+    fn speaker(&self) -> Speaker {
+        let beats = self.scene.beats();
+        beats[self.beat.min(beats.len() - 1)].speaker
+    }
+
+    /// Seconds since the first beat of `shot` began: negative before it, large after it.
+    pub(super) fn since(&self, shot: Shot) -> f32 {
+        match crate::logic::story::first_in(self.scene, shot) {
+            Some(i) if self.beat == i => self.t,
+            Some(i) if self.beat > i => 1000.0,
+            _ => -1.0,
+        }
+    }
+
+    /// How many of the boys' lines have been said before this beat (who speaks next).
+    fn boys_lines(&self) -> usize {
+        self.said_before(Speaker::Boys)
+    }
+
+    /// How many lines `who` has spoken before this beat.
+    fn said_before(&self, who: Speaker) -> usize {
+        let beats = self.scene.beats();
+        beats[..self.beat.min(beats.len())].iter().filter(|b| b.speaker == who).count()
+    }
+}
+
+// ------------------------------------------------------------------ helpers
+
+fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn glowing(out: &mut Vec<Instance>, p: Vec3, s: Vec3, rot: Quat, c: Vec3, glow: Vec3) {
+    out.push(Instance::new(Mat4::from_scale_rotation_translation(s, rot, p), c, 1.0, glow, SHADE_LIT));
+}
+
+/// The heading that looks from `from` toward `to`, for a model facing +z.
+fn yaw_to(from: Vec3, to: Vec3) -> f32 {
+    (to.x - from.x).atan2(to.z - from.z)
+}
+
+/// A point of a model's voxel grid, posed: `p` lies in part `part`, whose joint is at grid point `pivot`.
+fn rig_point(rig: &Rig, pose: &Pose, root: Mat4, part: usize, pivot: [f32; 3], p: [f32; 3]) -> Vec3 {
+    let local = (Vec3::from(p) - Vec3::from(pivot)) * rig.size;
+    (root * Mat4::from_translation(pose.pos[part]) * euler(pose.rot[part])).transform_point3(local)
+}
+
+fn pivot_of(defs: &[PartDef], name: &str) -> [f32; 3] {
+    defs.iter().find(|d| d.name == name).map(|d| d.pivot).unwrap_or([0.0; 3])
+}
+
+/// Like `emit_rig`, but screen-door faded by `alpha` (a shadow thinning into fog), all plain lit.
+fn emit_rig_faded(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, alpha: f32) {
+    out.push(rig, pose, root, Vec3::ONE, alpha, Vec3::ZERO, rig_look::FADED, 0.0);
+}
+
+/// A warrior's soul: the model drawn see-through in glowing spirit light, its colours kept only as shading.
+fn emit_rig_ghost(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32) {
+    out.push(rig, pose, root, tint, alpha, Vec3::ZERO, rig_look::GHOST, 0.0);
+}
+
+// ---------------------------------------------------------------- the sets
+
+// ------------------------------------------------------------ atmospheres
+
+// ------------------------------------------------------------ choreography
+
+/// Where each friend stands kicking the ball about (graveyard coordinates).
+const KID_HOME: [Vec3; 4] = [Vec3::new(0.5, 0.0, 0.7), Vec3::new(-1.05, 0.0, 1.05), Vec3::new(-0.45, 0.0, 2.15), Vec3::new(0.55, 0.0, 2.2)];
+/// Where the boy who fetches the ball stands at the gate, peering through.
+const GATE_SPOT: Vec3 = Vec3::new(0.12, 0.0, -1.42);
+/// The passes, kicker to receiver, one at each of `stage::KICKS`.
+const PASSES: [(usize, usize); 5] = [(0, 1), (1, 3), (3, 2), (2, 0), (0, 2)];
+/// Where the ball comes to rest among the graves.
+const BALL_REST: Vec3 = Vec3::new(0.38, 0.07, -4.3);
+const BALL_R: f32 = 0.07;
+/// Krampus: waiting in the fog, at the gate, reaching through it, and gone into the graves.
+const K_FOG: Vec3 = Vec3::new(0.35, 0.0, -6.4);
+const K_GATE: Vec3 = Vec3::new(0.12, 0.0, -2.55);
+const K_GRAB: Vec3 = Vec3::new(0.12, 0.0, -2.12);
+const K_GONE: Vec3 = Vec3::new(0.8, 0.0, -8.2);
+/// The gateway: where the three land, the old man stands, the dog lies and his chain is fixed.
+const LAND: [Vec3; 3] = [Vec3::new(-0.58, 0.0, 1.62), Vec3::new(0.08, 0.0, 1.88), Vec3::new(0.66, 0.0, 1.58)];
+const OLD_MAN_AT: Vec3 = Vec3::new(1.45, 0.0, -2.2);
+const DOG_BED: Vec3 = Vec3::new(-1.95, 0.0, -2.35);
+const DOG_LUNGE: Vec3 = Vec3::new(-1.72, 0.0, -1.55);
+const CHAIN_LEN: f32 = 2.35;
+/// By his clips the old man shuffles aside for the boys from and to these seconds into the descent
+/// (slower than the code's step: his shuffle covers little ground), this far, his shuffle covering
+/// `OLD_MAN_SHUFFLE` metres a cycle (`old man walk.fbx`, at his scale).
+const OLD_MAN_STEP: (f32, f32) = (stage::DOOR - 0.8, stage::DOOR + 1.8);
+const OLD_MAN_ASIDE_TO: Vec3 = Vec3::new(0.45, 0.0, 0.25);
+const OLD_MAN_ASIDE: f32 = 0.515;
+const OLD_MAN_SHUFFLE: f32 = 0.21;
+/// The souls rise before the iron door: Mehmed, Ragnar and Miyamoto, as on the character screen.
+const SOUL_AT: [Vec3; 3] = [Vec3::new(-0.82, 0.0, -2.62), Vec3::new(0.0, 0.0, -2.82), Vec3::new(0.82, 0.0, -2.62)];
+/// Each soul's tint: steel blue for the viking, jade for the janissary, rose for the samurai.
+pub(super) const SOUL_TINT: [u32; 3] = [0x7ae8c8, 0x7ab4ff, 0xff98b0];
+/// The middle of the three boys in the gateway, for looking at them.
+const BOYS_MID: Vec3 = Vec3::new(0.05, 0.0, 1.7);
+
+/// What a boy is doing, for his limbs.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Act {
+    Stand,
+    /// Running, or walking with `pace` below 1: the stride's phase.
+    Run {
+        phase: f32,
+        pace: f32,
+    },
+    /// A kick: seconds since the foot met the ball (negative while winding up).
+    Kick(f32),
+    Peer,
+    Scared(f32),
+    Talk(f32),
+    /// Picking himself up off the floor: 0 flat on his front, 1 standing.
+    Up(f32),
+    Flail(f32),
+    /// Scene II: holding someone close, arms round his neck (0 open, 1 closed), the cheek laid
+    /// against him.
+    Hug(f32),
+    /// Looking up into the light, with wonder (0..1).
+    Gaze(f32),
+    /// Holding a hand up to someone beside him (0..1), and looking up as `Gaze`.
+    HandUp(f32, f32),
+    // ---- moments the clips play their own way (the code poses each as the act it stood for)
+    /// The kick that goes wide (the code: `Kick`).
+    Miskick(f32),
+    /// Landing hard and picking himself up: seconds since his feet touched (the code: `Up`).
+    Land(f32),
+    /// Screaming after Krampus, seconds into it, each of the three his own way (0 the one who screams
+    /// it, 1 recoiling, 2 flinging an arm after him) (the code: `Scared(1)`).
+    Yell(f32, u8),
+    /// Running over the ground: `dist` metres covered, at about `speed` metres a second, `pace` of the
+    /// way into the gait (the code: `Run` at `phase`).
+    Dash {
+        phase: f32,
+        pace: f32,
+        dist: f32,
+        speed: f32,
+    },
+    /// Nodding, seconds into the line, and whether he is the one saying it (the code: `Talk` or `Stand`).
+    Nod(f32, bool),
+    /// Backing away in fright, seconds since it began, and how frightened (the code: `Scared`).
+    Back(f32, f32),
+}
+
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
+
+fn ease_in(t: f32) -> f32 {
+    t.clamp(0.0, 1.0).powi(2)
+}
+
+/// About where Krampus is, `taken` seconds into the beat he takes the boy (for the boys to look at).
+fn krampus_at(taken: f32) -> Vec3 {
+    if taken < stage::GATE_BURST {
+        K_FOG.lerp(K_GATE, smooth(stage::RUSH, stage::GATE_BURST, taken))
+    } else if taken < stage::TURN {
+        K_GATE.lerp(K_GRAB, smooth(stage::GATE_BURST, stage::GRAB, taken))
+    } else {
+        K_GRAB.lerp(K_GONE, smooth(stage::TURN, stage::GONE, taken))
+    }
+}
+
+/// A boy's feet on the ground, facing `yaw`.
+pub(super) fn kid_root(feet: Vec3, yaw: f32) -> Mat4 {
+    Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw)
+}
+
+impl WorldView {
+    /// The soul-rise smoothing and anything else the story animates by the step.
+    pub(super) fn update_story(&mut self, dt: f32, sv: StoryView) {
+        let before = sv.scene != Scene::One || first(Shot::Souls).map(|i| sv.beat < i).unwrap_or(true);
+        for (i, r) in self.story_rise.iter_mut().enumerate() {
+            // The old man names Ragnar first, then Mehmed, then Miyamoto; they stand Mehmed, Ragnar, Miyamoto.
+            let bit = [1u8, 0, 2][i];
+            let goal = if sv.souls & (1 << bit) != 0 { 1.0 } else { 0.0 };
+            let step = dt * 0.9;
+            *r = if before {
+                0.0
+            } else if goal > *r {
+                (*r + step).min(goal)
+            } else {
+                (*r - step).max(goal)
+            };
+        }
+    }
+
+    /// Scene I, each frame: whichever set the beat is on, its cast and its light.
+    /// Scene I's set on show (the one lit by its own probes), if it is on.
+    pub fn story_set_id(&self) -> Option<u64> {
+        match self.story?.shot().place() {
+            Place::Graveyard => Some(self.story_sets[0].id),
+            Place::Gateway => Some(self.story_sets[1].id),
+            Place::Pit | Place::Workshop => None,
+        }
+    }
+
+    /// Scene I's sets with their probes' extent and settled light (`SetProbes`).
+    fn story_probes(&self, i: usize) -> SetProbes {
+        let set = self.story_sets[i].clone();
+        if i == 0 {
+            SetProbes { set, origin: GRAVEYARD + Vec3::new(-16.0, 0.0, -20.0), size: Vec2::new(32.0, 30.0), atm: dusk(0.0, 0.0) }
+        } else {
+            SetProbes {
+                set,
+                origin: GATEWAY + Vec3::new(-5.5, 0.0, -9.0),
+                size: Vec2::new(11.0, 14.0),
+                atm: story_sets::gateway_atmosphere(),
+            }
+        }
+    }
+
+    pub(super) fn emit_story(&self, sv: StoryView, s: &SceneState, f: &mut Frame) {
+        let place = sv.shot().place();
+        if matches!(place, Place::Graveyard | Place::Gateway) {
+            // Each set lit by its own probes, both worked out (and sent up) as the story loads.
+            let shown = usize::from(place == Place::Gateway);
+            f.probes = Some(self.story_probes(shown));
+            f.probes_warm.push(self.story_probes(1 - shown));
+        }
+        match place {
+            Place::Graveyard => {
+                f.sets.push(self.story_sets[0].clone());
+                f.sets_blend.push(self.story_mist[0].clone());
+                f.bounds = Vec4::new(GRAVEYARD.x - 13.5, GRAVEYARD.z - 17.5, GRAVEYARD.x + 13.5, GRAVEYARD.z + 6.5);
+                self.emit_graveyard(sv, s, f);
+            }
+            Place::Gateway => {
+                f.sets.push(self.story_sets[1].clone());
+                f.sets_blend.push(self.story_mist[1].clone());
+                f.bounds = Vec4::new(GATEWAY.x - 4.5, GATEWAY.z - 3.5, GATEWAY.x + 4.5, GATEWAY.z + 4.5);
+                self.emit_gateway(sv, s, f);
+            }
+            Place::Pit => self.emit_ascent(sv, s, f),
+            Place::Workshop => self.emit_after(sv, s, f),
+        }
+    }
+
+    // -------------------------------------------------------- the graveyard
+
+    fn emit_graveyard(&self, sv: StoryView, s: &SceneState, f: &mut Frame) {
+        let time = s.time as f32;
+        let t = sv.t;
+        let shot = sv.shot();
+        let cube = MeshKind::Cube as usize;
+        let at = |p: Vec3| GRAVEYARD + p;
+        let taken = sv.since(Shot::Taken);
+        let pursuit = if shot == Shot::Pursuit { t } else { -1.0 };
+        // The light dims and the fog closes in once Krampus comes, and thickens as they chase him.
+        let darken = smooth(stage::EYES, stage::GRAB, taken).max(if taken > 100.0 { 1.0 } else { 0.0 });
+        let fog = if pursuit >= 0.0 { smooth(0.6, stage::FLASH + 0.4, pursuit) } else { 0.0 };
+        f.atmosphere = dusk(darken * 0.6, fog);
+        f.haze = story_sets::dusk_haze(fog);
+
+        // ---- the ball
+        let feet_of = |i: usize| KID_HOME[i] + Vec3::new(0.0, BALL_R, 0.0);
+        let ball = match shot {
+            Shot::Title | Shot::Establish => {
+                let t = if shot == Shot::Title { 0.0 } else { t };
+                let mut p = feet_of(0) + Vec3::new(0.08, 0.0, -0.1);
+                for (n, &(a, b)) in PASSES.iter().enumerate() {
+                    let k = stage::KICKS[n];
+                    if t >= k {
+                        let u = ((t - k) / 0.62).min(1.0);
+                        p = feet_of(a).lerp(feet_of(b), ease_out(u)) + Vec3::new(0.0, (u * PI).sin() * 0.12, 0.0);
+                    }
+                }
+                if t >= stage::MISKICK {
+                    let u = ((t - stage::MISKICK) / (stage::BALL_AT_GATE - stage::MISKICK)).min(1.0);
+                    let gate = Vec3::new(0.02, BALL_R, -2.0);
+                    // Bouncing away in three shrinking hops.
+                    let hop = ((u * 3.0).fract() * PI).sin() * 0.35 * (1.0 - u) + 0.0;
+                    p = feet_of(2).lerp(gate, u) + Vec3::new(0.0, hop, 0.0);
+                    if t >= stage::BALL_AT_GATE {
+                        let v = ((t - stage::BALL_AT_GATE) / 1.1).min(1.0);
+                        p = gate.lerp(BALL_REST, ease_out(v));
+                    }
+                }
+                Some(p)
+            }
+            _ => Some(BALL_REST),
+        };
+        if let Some(p) = ball {
+            let spin = Quat::from_rotation_x(-p.z * 9.0) * Quat::from_rotation_z(p.x * 9.0);
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(
+                Mat4::from_scale_rotation_translation(Vec3::splat(BALL_R), spin, at(p)),
+                lin(0x9a5a2e),
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ));
+            // A darker band round it.
+            let band = Mat4::from_scale_rotation_translation(Vec3::new(BALL_R * 1.02, BALL_R * 0.3, BALL_R * 1.02), spin, at(p));
+            f.opaque[MeshKind::Sphere as usize].push(Instance::new(band, lin(0x4a2a16), 1.0, Vec3::ZERO, SHADE_LIT));
+        }
+
+        // ---- the gate's two leaves: ajar, then burst open by Krampus, swinging to rest
+        let open = if taken < stage::GATE_BURST {
+            0.12 + if taken > stage::EYES { (time * 30.0).sin() * 0.015 } else { 0.0 }
+        } else {
+            let u = (taken - stage::GATE_BURST).min(60.0);
+            1.4 + 0.5 * (-2.5 * u).exp() * (8.0 * u).cos() * smooth(0.0, 0.05, u) - 1.28 * (1.0 - smooth(0.0, 0.12, u))
+        };
+        for side in [-1.0f32, 1.0] {
+            // Each leaf swings out toward the path about its hinge on the pillar.
+            let hinge = at(Vec3::new(side * 1.06, 0.0, -2.0));
+            let q = Quat::from_rotation_y(side * open);
+            for &(off, size) in gate_leaf().iter() {
+                let local = Vec3::new(-side * off.x, off.y, off.z);
+                f.opaque[cube].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(size, q, hinge + q * local),
+                    lin(0x2a2624).lerp(lin(0x5a3a26), 0.35),
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_METAL,
+                ));
+            }
+        }
+
+        // ---- the lantern on its bracket, flickering as he comes, out for a moment when he strikes
+        let lamp = at(Vec3::new(1.34, 1.64, -1.1));
+        let mut flick = 1.0 + (time * 11.0).sin() * 0.04 + (time * 5.3).sin() * 0.05;
+        if (0.0..stage::GONE + 0.4).contains(&taken) {
+            let n = (time * 23.0).sin() * (time * 7.7).cos();
+            flick *= if n > 0.35 { 0.15 } else { 0.8 };
+            if (stage::GRAB..stage::GRAB + 0.55).contains(&taken) {
+                flick = 0.45 + 0.1 * (time * 40.0).sin();
+            }
+        }
+        let swing = (time * 1.3).sin() * 0.06 + if (stage::RUSH..stage::GONE).contains(&taken) { (time * 17.0).sin() * 0.12 } else { 0.0 };
+        let lq = Quat::from_rotation_x(swing);
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.02, 0.12, 0.02), lq, lamp + lq * Vec3::new(0.0, 0.14, 0.0)),
+            lin(0x1c1c20),
+            1.0,
+            Vec3::ZERO,
+            SHADE_METAL,
+        ));
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.15, 0.2, 0.15), lq, lamp),
+            lin(0xffd49a),
+            1.0,
+            lin(0xffa040) * 1.3 * flick,
+            SHADE_LIT,
+        ));
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(0.19, 0.04, 0.19), lq, lamp + lq * Vec3::new(0.0, 0.12, 0.0)),
+            lin(0x1c1c20),
+            1.0,
+            Vec3::ZERO,
+            SHADE_METAL,
+        ));
+        glow_orb(f, lamp, 0.7, lin(0xffa050), 0.3 * flick);
+        f.lights.push(Light { pos: lamp + Vec3::new(0.0, -0.15, 0.35), color: lin(0xffb060) * 4.2 * flick, distance: 5.5 });
+        // A soft warm fill on the friends from where the camera stands, so faces read against the sunset.
+        f.lights.push(Light { pos: at(Vec3::new(0.4, 2.2, 4.2)), color: lin(0xffc8a8) * 3.2 * (1.0 - 0.4 * darken), distance: 7.5 });
+        // The chapel's windows, and the lantern on its post by the lane.
+        for w in story_sets::CHAPEL_WINDOWS {
+            f.lights.push(Light { pos: at(w + Vec3::new(0.0, -0.3, 0.9)), color: lin(0xffa050) * 2.4, distance: 4.0 });
+            glow_orb(f, at(w), 0.9, lin(0xffa050), 0.12);
+        }
+        let post = at(story_sets::LANE_LANTERN);
+        glow_orb(f, post, 0.6, lin(0xffb050), 0.22 * flick);
+        f.lights.push(Light { pos: post - Vec3::Y * 0.1, color: lin(0xffb868) * 2.6 * flick, distance: 5.0 });
+
+        // ---- crows on the gate and the pillar, flying off when the eyes open in the fog
+        for (i, perch) in [Vec3::new(0.34, 2.92, -2.0), Vec3::new(1.34, 2.93, -2.0), Vec3::new(-0.42, 2.8, -2.0)].into_iter().enumerate() {
+            let off = taken - stage::EYES - i as f32 * 0.12;
+            let (pos, flap, yaw) = if off > 0.0 {
+                let dir = Vec3::new([0.6, 1.0, -0.9][i], 0.0, -1.0).normalize();
+                (
+                    perch + dir * off * 3.2 + Vec3::new(0.0, off * 1.6 + off * off * 0.4, 0.0),
+                    (time * 34.0 + i as f32).sin(),
+                    dir.x.atan2(dir.z),
+                )
+            } else {
+                (perch, -0.2, [0.4, -0.9, 2.6][i] + (time * 0.7 + i as f32 * 2.0).sin() * 0.5)
+            };
+            if off > 4.0 {
+                continue;
+            }
+            self.emit_crow(f, at(pos), yaw, flap, (time * 3.0 + i as f32).sin() * 0.3);
+        }
+
+        // ---- the friends
+        let establish = if shot == Shot::Establish {
+            t
+        } else if shot == Shot::Title {
+            0.0
+        } else {
+            100.0
+        };
+        let ball_now = ball.unwrap_or(BALL_REST);
+        for i in 0..4 {
+            let home = KID_HOME[i];
+            let mut feet = home;
+            let mut yaw = yaw_to(home, if establish < stage::MISKICK + 0.3 { ball_now } else { GATE_SPOT });
+            let mut act = Act::Stand;
+            let mut look = 0.0;
+            let mut hidden = false;
+            // Kicks and runs during the establishing shot.
+            if establish < 100.0 {
+                for (n, &(a, _)) in PASSES.iter().enumerate() {
+                    let k = establish - stage::KICKS[n];
+                    if a == i && (-0.25..0.45).contains(&k) {
+                        act = Act::Kick(k);
+                    }
+                }
+                if i == 2 && (-0.25..0.45).contains(&(establish - stage::MISKICK)) {
+                    act = Act::Miskick(establish - stage::MISKICK);
+                }
+                if i == 0 && establish >= stage::FETCH {
+                    let u = ((establish - stage::FETCH) / (stage::AT_GATE - stage::FETCH)).min(1.0);
+                    feet = home.lerp(GATE_SPOT, u);
+                    yaw = yaw_to(home, GATE_SPOT);
+                    let path = home.distance(GATE_SPOT);
+                    act = if u < 1.0 {
+                        Act::Dash { phase: establish * 13.0, pace: 1.0, dist: u * path, speed: path / (stage::AT_GATE - stage::FETCH) }
+                    } else {
+                        Act::Peer
+                    };
+                }
+                if i != 0 && establish > stage::BALL_AT_GATE {
+                    look = (establish * 1.3 + i as f32).sin() * 0.25;
+                }
+            } else if taken >= 0.0 {
+                if i == 0 {
+                    // The one at the gate: startled, turning to run, seized and carried off.
+                    feet = GATE_SPOT;
+                    yaw = PI;
+                    act = if taken < stage::EYES { Act::Peer } else { Act::Scared(smooth(stage::EYES, stage::EYES + 0.3, taken) * 0.4) };
+                    if taken > stage::RUSH {
+                        let u = smooth(stage::RUSH, stage::GRAB, taken);
+                        yaw = PI - u * 2.6;
+                        feet = GATE_SPOT + Vec3::new(0.0, 0.0, u * 0.28);
+                        act = Act::Run { phase: taken * 15.0, pace: u };
+                    }
+                    if taken >= stage::GRAB {
+                        hidden = true; // carried: drawn with Krampus
+                    }
+                } else {
+                    let fright = smooth(stage::RUSH, stage::RUSH + 0.35, taken);
+                    feet = home + Vec3::new(0.0, 0.0, fright * 0.45);
+                    yaw = yaw_to(home, GATE_SPOT + Vec3::new(0.0, 0.0, -1.5));
+                    act = if fright > 0.0 { Act::Scared(fright) } else { Act::Stand };
+                    if pursuit >= 0.0 {
+                        // After him: through the gate and into the fog.
+                        let start = (i - 1) as f32 * 0.14;
+                        let u = ((pursuit - start) / 2.4).clamp(0.0, 1.0);
+                        let from = home + Vec3::new(0.0, 0.0, 0.45);
+                        let gate = Vec3::new((i as f32 - 2.0) * 0.28, 0.0, -2.0);
+                        let beyond = Vec3::new((i as f32 - 2.0) * 0.5, 0.0, -5.6);
+                        feet = if u < 0.5 { from.lerp(gate, u * 2.0) } else { gate.lerp(beyond, (u - 0.5) * 2.0) };
+                        yaw = if u < 0.5 { yaw_to(from, gate) } else { yaw_to(gate, beyond) };
+                        let (d1, d2) = (from.distance(gate), gate.distance(beyond));
+                        let dist = if u < 0.5 { u * 2.0 * d1 } else { d1 + (u - 0.5) * 2.0 * d2 };
+                        act = if pursuit < start {
+                            Act::Scared(1.0)
+                        } else {
+                            Act::Dash { phase: pursuit * 14.0 + i as f32, pace: 1.0, dist, speed: (d1 + d2) / 2.4 }
+                        };
+                    }
+                }
+            }
+            if hidden || (i == 0 && pursuit >= 0.0) {
+                continue;
+            }
+            // "He took him!": the middle one screams it after him (the one the scream's close-up ends
+            // on), the others each in alarm their own way.
+            if shot == Shot::Scream && i > 0 {
+                act = Act::Yell(t, [0, 1, 0, 2][i]);
+            }
+            // Where the story looks (by the clips: the code turns heads its own way): the ball, the
+            // gate, Krampus, the way he went.
+            let aim = match shot {
+                Shot::Establish if i != 0 || establish < stage::FETCH => Some(if establish < stage::BALL_AT_GATE + 0.4 {
+                    ball_now + Vec3::new(0.0, 0.3, 0.0)
+                } else {
+                    GATE_SPOT + Vec3::new(0.0, 0.6, -1.0)
+                }),
+                Shot::Taken if i != 0 => Some(krampus_at(taken) + Vec3::new(0.0, 1.2, 0.0)),
+                Shot::Scream if i != 2 => Some(K_GONE + Vec3::new(0.0, 0.8, 0.0)),
+                _ => None,
+            };
+            self.emit_kid(f, i, kid_root(at(feet), yaw), act, time, look, Vec3::ZERO, aim.map(at));
+        }
+
+        // ---- Krampus: eyes in the fog, the rush, the grab, and back into the graves with the boy
+        if (0.0..stage::GONE).contains(&taken) {
+            let k = taken;
+            let (mut pos, mut yaw, mut run, mut reach, mut lift, mut rear) = (K_FOG, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32);
+            let mut alpha = smooth(stage::EYES, stage::RUSH, k) * 0.45;
+            if k >= stage::RUSH {
+                let u = ease_in((k - stage::RUSH) / (stage::GATE_BURST - stage::RUSH));
+                pos = K_FOG.lerp(K_GATE, u);
+                run = 1.0;
+                alpha = 0.45 + 0.55 * u;
+            }
+            if k >= stage::GATE_BURST {
+                let u = ease_out((k - stage::GATE_BURST) / (stage::GRAB - stage::GATE_BURST));
+                pos = K_GATE.lerp(K_GRAB, u);
+                reach = u;
+                run = 1.0 - u;
+                alpha = 1.0;
+            }
+            if k >= stage::GRAB {
+                let u = smooth(stage::GRAB, stage::GRAB + 0.3, k);
+                reach = 1.0 - u;
+                lift = u;
+                rear = smooth(stage::GRAB, stage::GRAB + 0.25, k) * (1.0 - smooth(stage::TURN - 0.2, stage::TURN, k));
+            }
+            if k >= stage::TURN {
+                let u = smooth(stage::TURN, stage::TURN + 0.3, k);
+                yaw = u * PI;
+                let v = ease_in((k - stage::TURN - 0.15) / (stage::GONE - stage::TURN - 0.15));
+                pos = K_GRAB.lerp(K_GONE, v);
+                run = smooth(stage::TURN, stage::TURN + 0.25, k);
+                alpha = 1.0 - smooth(stage::TURN + 0.45, stage::GONE, k);
+            }
+            let hop = if run > 0.0 { (k * 9.0).sin().abs() * 0.12 * run } else { 0.0 };
+            let hand = self.emit_krampus(
+                f,
+                at(pos + Vec3::new(0.0, hop, 0.0)),
+                yaw,
+                run,
+                k * 11.0,
+                reach,
+                lift,
+                rear,
+                alpha,
+                time,
+                Some((k, hop)),
+            );
+            if k >= stage::GRAB {
+                // The lantern's glow still catches the boy.
+                f.lights.push(Light { pos: hand + Vec3::new(0.35, 0.1, 0.7), color: lin(0xffc080) * 1.0 * alpha, distance: 1.3 });
+                // The boy in his claws: held round the middle, kicking and flailing.
+                let (kw, _, kd) = cast::KID_SIZE;
+                let waist = (Vec3::from(cast::KID_WAIST) - Vec3::new((kw - 1) as f32 / 2.0, 0.0, (kd - 1) as f32 / 2.0)) * KID_VOXEL;
+                let root = Mat4::from_translation(hand)
+                    * Mat4::from_rotation_y(yaw + PI * 0.5)
+                    * Mat4::from_rotation_z(-1.1 + (time * 9.0).sin() * 0.12)
+                    * Mat4::from_translation(-waist);
+                if alpha > 0.5 {
+                    self.emit_kid(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO, None);
+                } else if !self.emit_kid_clips(f, 0, root, Act::Flail(time), time, 0.0, Vec3::ZERO, alpha * 2.0) {
+                    let (pose, _) = self.kid_pose(0, Act::Flail(time), time, 0.0);
+                    emit_rig_faded(&mut f.rigs, &self.models.kids[0], &pose, root, alpha * 2.0);
+                }
+            }
+            // Smoke boiling off him as he moves, left hanging in the air behind him.
+            let back = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
+            for n in 0..40 {
+                let fk = n as f32;
+                let age = (time * 1.1 + fk * 0.37).fract();
+                let p = at(pos)
+                    + back * (age * (0.3 + run * 1.2))
+                    + Vec3::new((fk * 2.3).sin() * 0.35, 0.15 + (fk * 0.61).fract() * 0.9 + age * 0.25, (fk * 1.7).cos() * 0.3);
+                let size = 0.05 + age * 0.13;
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(Vec3::splat(size), Quat::IDENTITY, p),
+                    lin(0x040306),
+                    alpha.max(0.3) * 0.13 * (1.0 - age) * (0.3 + 0.7 * run.max(reach)),
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
+            }
+        }
+        // A cold wind of leaves and grit when he strikes.
+        if (stage::RUSH..stage::GONE + 1.5).contains(&taken) {
+            for n in 0..30 {
+                let fk = n as f32;
+                let u = ((taken - stage::RUSH) * 0.8 + fk * 0.113).fract();
+                let p = at(Vec3::new(
+                    -2.5 + u * 5.0 + (fk * 3.1).sin() * 0.4,
+                    0.1 + ((u * 6.0 + fk).sin() * 0.5 + 0.5) * 0.8,
+                    -1.8 + (fk * 1.9).cos() * 1.5 + u * 2.0,
+                ));
+                let c = [0x8a4a1e, 0x9a6a24, 0x3a2a1a][n % 3];
+                f.opaque[cube].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(
+                        Vec3::new(0.06, 0.008, 0.04),
+                        Quat::from_rotation_x(u * 20.0 + fk) * Quat::from_rotation_y(fk),
+                        p,
+                    ),
+                    lin(c),
+                    1.0,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
+            }
+        }
+    }
+
+    fn emit_crow(&self, f: &mut Frame, pos: Vec3, yaw: f32, flap: f32, head: f32) {
+        let cube = MeshKind::Cube as usize;
+        let q = Quat::from_rotation_y(yaw);
+        let black = lin(0x101014);
+        let put = |f: &mut Frame, off: Vec3, s: Vec3, r: Quat, c: Vec3| {
+            f.opaque[cube].push(Instance::new(
+                Mat4::from_scale_rotation_translation(s, q * r, pos + q * off),
+                c,
+                1.0,
+                Vec3::ZERO,
+                SHADE_LIT,
+            ))
+        };
+        put(f, Vec3::new(0.0, 0.05, 0.0), Vec3::new(0.07, 0.07, 0.15), Quat::from_rotation_x(-0.3), black);
+        let hq = Quat::from_rotation_y(head);
+        put(f, Vec3::new(0.0, 0.1, 0.08), Vec3::splat(0.055), hq, black);
+        put(f, Vec3::new(0.0, 0.095, 0.08) + hq * Vec3::new(0.0, 0.0, 0.05), Vec3::new(0.018, 0.018, 0.05), hq, lin(0x2a2622));
+        put(f, Vec3::new(0.0, 0.03, -0.1), Vec3::new(0.05, 0.015, 0.08), Quat::from_rotation_x(0.3), black);
+        for side in [-1.0f32, 1.0] {
+            let r = Quat::from_rotation_z(side * flap * 0.9);
+            put(f, Vec3::new(side * 0.035, 0.07, 0.0) + r * Vec3::new(side * 0.06, 0.0, 0.0), Vec3::new(0.12, 0.012, 0.08), r, black);
+        }
+    }
+
+    // ---------------------------------------------------------- the gateway
+
+    fn emit_gateway(&self, sv: StoryView, s: &SceneState, f: &mut Frame) {
+        let time = s.time as f32;
+        let t = sv.t;
+        let shot = sv.shot();
+        let cube = MeshKind::Cube as usize;
+        let at = |p: Vec3| GATEWAY + p;
+        f.atmosphere = story_sets::gateway_atmosphere();
+        f.haze = story_sets::gateway_haze();
+        let arrive = sv.since(Shot::Arrive);
+        let easy = sv.since(Shot::Easy);
+        let descent = sv.since(Shot::Descent).min(60.0);
+
+        gateway_lights(f, time, descent);
+
+        // ---- the door: shut, then grinding open on the stair and its red glow
+        let open = smooth(stage::DOOR, stage::DOOR + 2.0, descent) * 1.45;
+        gateway_door(f, open, time);
+
+        // ---- the way they came: a swirling rent in the arch, and it closing
+        if arrive < stage::CLOSE + 0.45 {
+            // (In its stone frame in the front wall, before the sealed stone deep inside it.)
+            let c = at(story_sets::PORTAL + Vec3::new(0.0, 0.0, 0.17));
+            let close = smooth(stage::CLOSE, stage::CLOSE + 0.35, arrive);
+            let open_k = smooth(0.0, 0.25, arrive) * (1.0 - close);
+            let flash = if arrive > stage::CLOSE { (1.0 - (arrive - stage::CLOSE) / 0.45).max(0.0) } else { 0.0 };
+            for k in 0..7 {
+                let r = (0.25 + k as f32 * 0.12) * open_k;
+                let spin = time * (2.0 + k as f32 * 0.6) * if k % 2 == 0 { 1.0 } else { -1.0 };
+                let m = Mat4::from_translation(c + Vec3::new(0.0, 0.0, -0.01 * k as f32))
+                    * Mat4::from_rotation_z(spin)
+                    * Mat4::from_scale(Vec3::new(r * 0.98, r * 1.3, 1.0));
+                f.transparent[MeshKind::Annulus as usize].push(Instance::new(
+                    m,
+                    lin(if k % 2 == 0 { 0xb8a0ff } else { 0x7ae0ff }) * 1.6,
+                    0.45 * open_k,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
+            }
+            let disc =
+                Mat4::from_translation(c + Vec3::new(0.0, 0.0, 0.02)) * Mat4::from_scale(Vec3::new(0.95 * open_k, 1.28 * open_k, 1.0));
+            f.transparent[MeshKind::Disc as usize].push(Instance::new(disc, lin(0x4a3a8a), 0.85 * open_k, Vec3::ZERO, SHADE_UNLIT));
+            glow_orb(f, c, 0.9 + flash * 2.2, lin(0xa898ff), 0.16 * open_k + flash * 0.7);
+            f.lights.push(Light {
+                pos: c + Vec3::new(0.0, 0.0, -0.5),
+                color: lin(0xb8a8ff) * (4.0 * open_k + 16.0 * flash),
+                distance: 6.0,
+            });
+            // Wisps of the graveyard's fog pouring through.
+            for n in 0..16 {
+                let fk = n as f32;
+                let u = (time * 0.9 + fk * 0.21).fract();
+                let p = c + Vec3::new((fk * 2.1).sin() * 0.5 * (1.0 - u), -0.9 + (fk * 1.3).cos() * 0.2 + u * 0.3, -u * 1.6);
+                f.transparent[MeshKind::Sphere as usize].push(Instance::new(
+                    Mat4::from_scale_rotation_translation(Vec3::splat(0.12 + u * 0.25), Quat::IDENTITY, p),
+                    lin(0xb4a8c8),
+                    0.2 * (1.0 - u) * open_k,
+                    Vec3::ZERO,
+                    SHADE_LIT,
+                ));
+            }
+        }
+
+        // ---- the souls of the three warriors, rising before the door, then going into the boys
+        let taken_k = smooth(stage::SOULS_TAKEN, stage::SOULS_TAKEN + 1.2, descent);
+        for i in 0..3 {
+            let rise = self.story_rise[i];
+            if rise <= 0.0 || taken_k >= 1.0 {
+                continue;
+            }
+            let kind = [HeroKind::Mehmed, HeroKind::Ragnar, HeroKind::Miyamoto][i];
+            let boy = self.story_boy_feet(sv, i);
+            let base = SOUL_AT[i].lerp(boy + Vec3::new(0.0, 0.2, 0.0), ease_in(taken_k)) + Vec3::new(0.0, (taken_k * PI).sin() * 0.6, 0.0);
+            self.emit_soul(
+                f,
+                kind,
+                at(base),
+                yaw_to(SOUL_AT[i], BOYS_MID),
+                rise,
+                1.0 - taken_k * 0.85,
+                lin(SOUL_TINT[i]),
+                time + i as f32 * 1.3,
+            );
+        }
+
+        // ---- Quitmer
+        let (mut feet, mut yaw, mut strain, mut lunge, mut snap) = (DOG_BED, yaw_to(DOG_BED, BOYS_MID) - 0.4, 0.0f32, 0.0f32, 0.0f32);
+        let mut sleep = 0.0;
+        let (calm, wag): (f32, f32);
+        if arrive < stage::GROWL - 0.4 {
+            // Asleep on his straw until the boys come tumbling in.
+            sleep = 1.0 - smooth(stage::TUMBLE[0] + 0.6, stage::TUMBLE[0] + 1.0, arrive);
+            calm = 1.0 - smooth(1.9, 2.6, arrive);
+            wag = 0.0;
+        } else if easy < 0.5 {
+            // Up, and at them as far as his chain allows.
+            let u = smooth(stage::GROWL - 0.4, stage::GROWL + 0.4, arrive);
+            calm = 0.0;
+            strain = u;
+            feet = DOG_BED.lerp(DOG_LUNGE, u);
+            yaw = yaw_to(feet, BOYS_MID);
+            lunge = ((time * 5.5).sin() * 0.5 + 0.5).powf(2.0) * strain;
+            snap = ((time * 7.0).sin() * 0.5 + 0.5) * strain;
+            wag = 0.0;
+        } else {
+            // "Easy, Quitmer." He backs down and lies on his straw, watching.
+            let back = smooth(0.5, 1.1, easy);
+            let down = smooth(1.0, 2.1, easy);
+            strain = 1.0 - back;
+            feet = DOG_LUNGE.lerp(DOG_BED, down);
+            yaw = lerp_angle(yaw_to(DOG_LUNGE, BOYS_MID), yaw_to(DOG_BED, BOYS_MID) - 0.4, down);
+            calm = down;
+            snap = ((time * 7.0).sin() * 0.5 + 0.5) * strain;
+            wag = 0.6 * down;
+        }
+        // (By his clips: asleep and rising as the boys come; straining; backing down and lying again.)
+        let dog_act = if arrive < stage::GROWL - 0.4 {
+            if calm >= 0.999 {
+                DogAct::Lie { sleep, wag: 0.0 }
+            } else {
+                DogAct::Rise(1.0 - calm)
+            }
+        } else if easy < 0.5 || calm <= 0.001 {
+            DogAct::Strain(strain)
+        } else if calm < 0.999 {
+            DogAct::Down(calm)
+        } else {
+            DogAct::Lie { sleep: 0.0, wag }
+        };
+        let collar = self.emit_dog(f, at(feet), yaw, strain, lunge, calm, snap, sleep, wag, time, Some(dog_act));
+        if strain > 0.1 {
+            f.lights.push(Light { pos: at(feet + Vec3::new(1.1, 1.1, -0.4)), color: lin(0xffc89a) * 2.4 * strain, distance: 3.0 });
+        }
+        // His chain, taut when he strains, slack on the flagstones when he lies.
+        let ring = at(CHAIN_RING);
+        let span = collar - ring;
+        let d = span.length();
+        let sag = ((CHAIN_LEN * CHAIN_LEN - d * d).max(0.0)).sqrt() * 0.5;
+        let links = (CHAIN_LEN / 0.055) as usize;
+        for n in 0..links {
+            let u = n as f32 / links as f32;
+            let mut p = ring + span * u - Vec3::new(0.0, sag * (u * PI).sin(), 0.0);
+            p.y = p.y.max(GATEWAY.y + 0.02);
+            let q = Quat::from_rotation_arc(Vec3::Z, span.normalize_or(Vec3::Z))
+                * if n % 2 == 0 { Quat::IDENTITY } else { Quat::from_rotation_z(PI / 2.0) };
+            f.opaque[cube].push(Instance::new(
+                Mat4::from_scale_rotation_translation(Vec3::new(0.035, 0.012, 0.06), q, p),
+                lin(0x3a3c40),
+                1.0,
+                Vec3::ZERO,
+                SHADE_METAL,
+            ));
+        }
+
+        // ---- the old man
+        let dog_dir = yaw_to(OLD_MAN_AT, feet);
+        let boys_dir = yaw_to(OLD_MAN_AT, BOYS_MID);
+        let mut om_yaw = boys_dir;
+        let mut head = 0.0;
+        let mut doze = 0.0;
+        let mut raise = 0.0;
+        let mut talk = None;
+        let mut om_feet = OLD_MAN_AT;
+        if arrive < stage::REVEAL + 0.3 {
+            doze = 1.0 - smooth(2.2, 2.45, arrive);
+            head = (time * 0.4).sin() * 0.08 * doze;
+        }
+        if shot == Shot::Snarl {
+            head = (dog_dir - boys_dir) * 0.5 * smooth(0.3, 1.0, t);
+        }
+        if shot == Shot::Easy {
+            om_yaw = lerp_angle(boys_dir, dog_dir, smooth(0.0, 0.5, t) * 0.6);
+            head = (dog_dir - om_yaw) * 0.6 * smooth(0.0, 0.5, t);
+            raise = smooth(0.1, 0.5, t) * (1.0 - smooth(1.6, 2.2, t));
+            talk = Some(t);
+        }
+        if sv.speaker() == Speaker::OldMan && shot != Shot::Easy {
+            talk = Some(t);
+            if Some(sv.beat) == first(Shot::OldMan) {
+                // Turning from the dog to the boys.
+                om_yaw = lerp_angle(lerp_angle(boys_dir, dog_dir, 0.6), boys_dir, smooth(0.0, 0.8, t));
+            }
+        }
+        if shot == Shot::Souls {
+            // An arm sweeping toward the door as the souls come up.
+            raise = smooth(0.6, 1.4, t) * 0.8;
+            head = -0.5 * smooth(0.8, 1.6, t) * (1.0 - smooth(3.5, 4.5, t));
+        }
+        if (0.0..100.0).contains(&descent) {
+            // Stepping aside for them; a hand raised to see them off.
+            om_feet = OLD_MAN_AT.lerp(OLD_MAN_AT + Vec3::new(0.45, 0.0, 0.25), smooth(stage::DOOR - 0.6, stage::DOOR + 0.6, descent));
+            om_yaw = yaw_to(om_feet, BOYS_MID.lerp(Vec3::new(0.0, 0.0, -3.4), smooth(stage::WALK, stage::WALK + 5.0, descent)));
+            raise = smooth(stage::WALK, stage::WALK + 0.6, descent) * 0.9;
+        }
+        // By his clips he stands by his corner the whole scene, leaning on his staff: dozing over it,
+        // woken, talking, his hand out to the dog and to the door; he shuffles aside to see them off.
+        let line = sv.said_before(Speaker::OldMan);
+        let om_act = if (0.0..100.0).contains(&descent) {
+            let step = (descent - OLD_MAN_STEP.0) / (OLD_MAN_STEP.1 - OLD_MAN_STEP.0);
+            let pace = if (0.0..1.0).contains(&step) { (step * PI).sin().max(0.0).sqrt() } else { 0.0 };
+            OldAct::Step { pace, cycle: step.clamp(0.0, 1.0) * OLD_MAN_ASIDE / OLD_MAN_SHUFFLE, wave: raise }
+        } else if shot == Shot::Easy || shot == Shot::Souls {
+            OldAct::Hand { t, raise: (raise * 1.25).min(1.0) }
+        } else if let Some(t) = talk {
+            if sv.scene.beats()[sv.beat].cue == "looking away" {
+                OldAct::Nod { t }
+            } else {
+                OldAct::Talk { t, line }
+            }
+        } else {
+            OldAct::Stand { doze }
+        };
+        if !self.emit_old_man_clips(f, om_act, om_yaw, head, doze, descent, time) {
+            self.emit_old_man(f, at(om_feet), om_yaw, head, doze, raise, talk, time);
+        }
+
+        // ---- the three boys
+        let speaker_boy = (sv.boys_lines() % 3) + 1;
+        for i in 1..4usize {
+            let b = i - 1;
+            let tumble = arrive - stage::TUMBLE[b];
+            if tumble < 0.0 {
+                continue;
+            }
+            let mut feet = self.story_boy_feet(sv, b);
+            let mut yaw = yaw_to(feet, OLD_MAN_AT.lerp(DOG_BED, 0.5));
+            let mut act = Act::Stand;
+            let mut look = 0.0;
+            let mut root = None;
+            if tumble < 0.5 {
+                // Thrown out of the rent in the air, rolling over as they land.
+                let u = tumble / 0.5;
+                let from = Vec3::new(LAND[b].x * 0.6, 0.55, 3.95);
+                let p = from.lerp(LAND[b], ease_out(u)) + Vec3::new(0.0, (u * PI).sin() * 0.25, 0.0);
+                let spin = u * (PI * 2.0 + PI * 0.5);
+                root = Some(
+                    Mat4::from_translation(at(p) + Vec3::new(0.0, 0.1, 0.0))
+                        * Mat4::from_rotation_y(PI)
+                        * Mat4::from_rotation_x(spin)
+                        * Mat4::from_translation(Vec3::new(0.0, -0.1, 0.0)),
+                );
+                act = Act::Flail(time);
+            } else if tumble < 1.9 {
+                yaw = PI + (b as f32 - 1.0) * 0.3;
+                act = Act::Land(tumble - 0.5);
+            } else if arrive < stage::REVEAL + 0.4 {
+                // Up, and looking round at where they are.
+                look = (time * 1.1 + b as f32 * 2.0).sin() * 0.6;
+                if tumble < 2.6 {
+                    // (By the clips still getting up off the flags.)
+                    act = Act::Land(tumble - 0.5);
+                }
+                let face = yaw_to(feet, OLD_MAN_AT.lerp(DOG_BED, 0.5));
+                yaw = lerp_angle(PI + (b as f32 - 1.0) * 0.3, face, smooth(stage::REVEAL - 0.6, stage::REVEAL + 0.2, arrive));
+            }
+            if shot == Shot::Snarl || (shot == Shot::Arrive && arrive > stage::GROWL) {
+                let fright = if shot == Shot::Snarl { 1.0 } else { smooth(stage::GROWL, stage::GROWL + 0.4, arrive) };
+                feet += Vec3::new(0.0, 0.0, 0.22 * fright);
+                let a = fright * if b == 0 { 1.0 } else { 0.55 };
+                let backing = if shot == Shot::Arrive { arrive - stage::GROWL } else { 100.0 };
+                act = if backing < 0.9 { Act::Back(backing, a) } else { Act::Scared(a) };
+                yaw = yaw_to(feet, DOG_LUNGE);
+            }
+            if sv.speaker() == Speaker::Boys && i == speaker_boy && shot != Shot::Descent {
+                act = Act::Talk(t);
+            }
+            if shot == Shot::Boys && sv.souls != 0 {
+                // "We will. For our friend.": the three as one.
+                act = Act::Nod(t + b as f32 * 0.15, i == speaker_boy);
+            }
+            if shot == Shot::Souls || (shot == Shot::Boys && sv.souls != 0) {
+                yaw = yaw_to(feet, SOUL_AT[1]);
+                look = (SOUL_AT[b].x - feet.x) * 0.3;
+            }
+            let mut glow = Vec3::ZERO;
+            if (0.0..100.0).contains(&descent) {
+                let arrive_at = stage::SOULS_TAKEN + 1.2;
+                let g = (1.0 - (descent - arrive_at).abs() / 0.9).max(0.0)
+                    + if descent > arrive_at { 0.15 * (1.0 - smooth(arrive_at, arrive_at + 3.0, descent)) } else { 0.0 };
+                glow = lin(SOUL_TINT[b]) * g * 0.22;
+                if descent > stage::WALK {
+                    let walk = descent - stage::WALK - b as f32 * 0.25;
+                    if walk > 0.0 {
+                        act = Act::Dash { phase: walk * 8.5, pace: 0.5, dist: walk * 0.95, speed: 0.95 };
+                    }
+                    yaw = yaw_to(feet, Vec3::new(feet.x * 0.3, 0.0, -4.5));
+                }
+            }
+            let root = root.unwrap_or_else(|| kid_root(at(feet), yaw));
+            // Where the story looks (by the clips): the dog, the old man, the souls.
+            let old_head = marks::OLD_MAN_FACE;
+            let aim = match shot {
+                Shot::Arrive if arrive > stage::GROWL => Some(DOG_LUNGE + Vec3::new(0.0, 0.5, 0.0)),
+                Shot::Snarl => Some(DOG_LUNGE + Vec3::new(0.0, 0.5, 0.0)),
+                Shot::Easy | Shot::OldMan | Shot::Promise => Some(old_head),
+                Shot::Boys if sv.souls == 0 => Some(old_head),
+                Shot::Souls | Shot::Boys => Some(SOUL_AT[b] + Vec3::new(0.0, 0.9, 0.0)),
+                _ => None,
+            };
+            self.emit_kid(f, i, root, act, time, look, glow, aim.map(at));
+        }
+
+        // ---- puddles on the flags, holding the lamps; drips from the vault, rings spreading where
+        // they land; dust in the light
+        for (i, &(p, size)) in story_sets::PUDDLES.iter().enumerate() {
+            crypt::emit_pool(f, at(p), size, i as f32 * 1.3);
+        }
+        for (n, &(x, z)) in [(-1.2f32, 1.4f32), (2.2, 0.4), (-0.4, -1.6), (1.1, 2.9)].iter().enumerate() {
+            let period = 2.3 + n as f32 * 0.7;
+            let u = ((time + n as f32 * 1.1) / period).fract() * period;
+            let fall = 0.55;
+            if u < fall {
+                let y = 3.6 - (u / fall).powi(2) * 3.6;
+                f.additive.push(Instance::new(
+                    Mat4::from_translation(at(Vec3::new(x, y, z))) * Mat4::from_scale(Vec3::new(0.012, 0.035, 0.012)),
+                    lin(0xa8c8e8),
+                    0.7,
+                    Vec3::ZERO,
+                    SHADE_UNLIT,
+                ));
+            } else if u < fall + 0.8 {
+                let r = (u - fall) / 0.8;
+                let m = Mat4::from_translation(at(Vec3::new(x, 0.012, z)))
+                    * Mat4::from_rotation_x(-PI / 2.0)
+                    * Mat4::from_scale(Vec3::new(0.05 + r * 0.25, 0.05 + r * 0.25, 1.0));
+                f.transparent[MeshKind::Annulus as usize].push(Instance::new(m, lin(0xa8b8c8), 0.45 * (1.0 - r), Vec3::ZERO, SHADE_UNLIT));
+            }
+        }
+        for k in 0..30 {
+            let fk = k as f32;
+            let p = at(Vec3::new(
+                ((fk * 0.618).fract() - 0.5) * 7.0 + (time * 0.15 + fk).sin() * 0.25,
+                0.3 + (fk * 0.37).fract() * 2.8 + (time * 0.2 + fk * 1.3).sin() * 0.12,
+                ((fk * 0.29).fract() - 0.5) * 6.0,
+            ));
+            glow_orb(f, p, 0.02, lin(0xffe0b0), 0.25 + 0.2 * (time * 1.7 + fk).sin());
+        }
+    }
+
+    /// Where boy `b` (of the three in the gateway) stands: landed, then walking to the door and down.
+    fn story_boy_feet(&self, sv: StoryView, b: usize) -> Vec3 {
+        let descent = sv.since(Shot::Descent).min(60.0);
+        let home = LAND[b] + Vec3::new(0.0, 0.0, -0.05);
+        if descent < 0.0 || descent < stage::WALK {
+            return home;
+        }
+        let walk = (descent - stage::WALK - b as f32 * 0.25).max(0.0);
+        let door = Vec3::new((b as f32 - 1.0) * 0.32, 0.0, -3.35);
+        let path = home.distance(door);
+        let d = walk * 0.95;
+        if d < path {
+            home.lerp(door, d / path)
+        } else {
+            // Down the stair beyond, into the red light.
+            let e = d - path;
+            door + Vec3::new(0.0, -e * 0.55, -e)
+        }
+    }
+
+    // --------------------------------------------------------- the cast
+
+    /// A boy's limbs for what he is doing, and how far he leans and bobs.
+    fn kid_pose(&self, which: usize, act: Act, time: f32, look: f32) -> (Pose, (f32, f32)) {
+        // (The clips' own moments, posed by the code as the acts they stood for.)
+        let act = match act {
+            Act::Miskick(k) => Act::Kick(k),
+            Act::Land(t) if t >= 1.4 => Act::Stand,
+            Act::Land(t) => Act::Up(smooth(0.8, 1.4, t)),
+            Act::Yell(..) => Act::Scared(1.0),
+            Act::Dash { phase, pace, .. } => Act::Run { phase, pace },
+            Act::Nod(t, true) => Act::Talk(t),
+            Act::Nod(_, false) => Act::Stand,
+            Act::Back(_, a) => Act::Scared(a),
+            a => a,
+        };
+        let rig = &self.models.kids[which.min(3)];
+        let mut pose = Pose::rest(rig);
+        let idx = |n: &str| rig.index(n).unwrap_or(0);
+        let (la, lb, aa, ab, hd) = (idx("legA"), idx("legB"), idx("armA"), idx("armB"), idx("head"));
+        let breathe = (time * 2.2 + which as f32 * 1.3).sin();
+        let (mut lean, mut bob) = (0.0, 0.0);
+        pose.rot[hd].y = look;
+        pose.rot[aa].z = -0.06;
+        pose.rot[ab].z = 0.06;
+        match act {
+            Act::Stand => {
+                pose.rot[hd].x = breathe * 0.03;
+                pose.rot[aa].x = breathe * 0.04;
+                pose.rot[ab].x = -breathe * 0.04;
+            }
+            Act::Run { phase, pace } => {
+                let s = phase.sin();
+                pose.rot[la].x = -0.95 * s * pace;
+                pose.rot[lb].x = 0.95 * s * pace;
+                pose.rot[aa].x = 0.85 * s * pace;
+                pose.rot[ab].x = -0.85 * s * pace;
+                lean = 0.2 * pace;
+                bob = phase.cos().abs() * 0.035 * pace;
+            }
+            Act::Kick(k) => {
+                // Wind up, swing through, follow through.
+                let swing =
+                    if k < 0.0 { 0.9 * smooth(-0.25, -0.05, k) } else { 0.9 - 2.2 * smooth(0.0, 0.12, k) + 1.3 * smooth(0.15, 0.45, k) };
+                pose.rot[lb].x = swing;
+                pose.rot[aa].x = -0.5 * (1.0 - smooth(0.2, 0.45, k));
+                pose.rot[ab].x = 0.4 * (1.0 - smooth(0.2, 0.45, k));
+                lean = -0.08;
+            }
+            Act::Peer => {
+                lean = 0.22;
+                pose.rot[hd].x = 0.2;
+                pose.rot[aa].x = -1.2 + (time * 3.0).sin() * 0.05;
+                pose.rot[ab].x = -0.3;
+            }
+            Act::Scared(a) => {
+                let shake = (time * 31.0 + which as f32).sin() * 0.04 * a;
+                pose.rot[aa].x = -2.5 * a + shake;
+                pose.rot[ab].x = -2.5 * a - shake;
+                pose.rot[aa].z = -0.35 * a;
+                pose.rot[ab].z = 0.35 * a;
+                pose.rot[hd].x = -0.15 * a;
+                lean = -0.12 * a;
+            }
+            Act::Talk(t) => {
+                pose.rot[hd].x = (t * 8.0).sin() * 0.07;
+                pose.rot[ab].x = -0.7 - (t * 4.0).sin() * 0.25;
+                pose.rot[ab].z = 0.25;
+                pose.rot[aa].x = -0.2;
+                bob = ((t * 8.0).sin() * 0.5 + 0.5) * 0.012;
+            }
+            Act::Up(u) => {
+                // Arms pushing off the floor, then a knee under him, then up.
+                pose.rot[aa].x = -1.4 * (1.0 - u);
+                pose.rot[ab].x = -1.4 * (1.0 - u);
+                pose.rot[la].x = -1.2 * (u * PI).sin();
+                pose.rot[hd].x = -0.4 * (1.0 - u);
+                lean = (1.0 - u) * PI * 0.5;
+                bob = (1.0 - u) * 0.14;
+            }
+            Act::Flail(t) => {
+                pose.rot[la].x = (t * 15.0).sin() * 0.9;
+                pose.rot[lb].x = -(t * 15.0).sin() * 0.9;
+                pose.rot[aa].x = -2.2 + (t * 13.0).sin() * 0.7;
+                pose.rot[ab].x = -2.2 - (t * 13.0).cos() * 0.7;
+                pose.rot[hd].x = (t * 6.0).sin() * 0.2;
+            }
+            Act::Hug(k) => {
+                // Up on his toes, arms thrown round a neck, the head turned and laid on a shoulder;
+                // a breath, a little sob, shaking his shoulders.
+                let sob = (time * 5.5).sin().max(0.0) * 0.03 * k;
+                pose.rot[aa].x = -1.95 * k + sob;
+                pose.rot[ab].x = -1.95 * k - sob;
+                pose.rot[aa].z = 0.62 * k;
+                pose.rot[ab].z = -0.62 * k;
+                pose.rot[hd].y = 0.55 * k;
+                pose.rot[hd].x = 0.12 * k;
+                lean = 0.1 * k;
+                bob = 0.012 * k;
+            }
+            Act::Gaze(k) => {
+                pose.rot[hd].x = -0.85 * k + breathe * 0.02;
+                pose.rot[aa].x = -0.12 * k;
+                pose.rot[ab].x = -0.12 * k;
+                lean = -0.05 * k;
+            }
+            Act::HandUp(k, gaze) => {
+                // His hand in a bigger one beside him (the one at the model's high x), looking up.
+                pose.rot[ab].x = -0.55 * k;
+                pose.rot[ab].z = 0.32 * k;
+                pose.rot[aa].x = -0.08;
+                pose.rot[hd].x = -0.85 * gaze + breathe * 0.02;
+                pose.rot[hd].y = -0.25 * k * (1.0 - gaze);
+                lean = -0.05 * gaze;
+            }
+            Act::Miskick(_) | Act::Land(_) | Act::Yell(..) | Act::Nod(..) | Act::Back(..) | Act::Dash { .. } => {}
+        }
+        (pose, (lean, bob))
+    }
+
+    /// A boy doing `act`, his head turned `look` (the code's) or, by his clips, toward `aim` (a
+    /// point in the world) where there is one.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_kid(&self, f: &mut Frame, which: usize, root: Mat4, act: Act, time: f32, look: f32, glow: Vec3, aim: Option<Vec3>) {
+        let toward = aim.map(|p| {
+            let local = root.inverse().transform_point3(p);
+            local.x.atan2(local.z).clamp(-1.1, 1.1)
+        });
+        let mut orb = root;
+        if !self.emit_kid_clips(f, which, root, act, time, toward.unwrap_or(look), glow, 1.0) {
+            let (pose, (lean, bob)) = self.kid_pose(which, act, time, look);
+            orb = root * Mat4::from_translation(Vec3::new(0.0, bob, 0.0)) * Mat4::from_rotation_x(lean);
+            emit_rig(&mut f.rigs, &self.models.kids[which.min(3)], &pose, orb, Vec3::ONE, 1.0, glow);
+        }
+        if glow.length_squared() > 0.0001 {
+            glow_orb(
+                f,
+                orb.transform_point3(Vec3::new(0.0, 0.35, 0.0)),
+                0.75,
+                glow.normalize_or_zero(),
+                (glow.length() * 2.5).min(1.0) * 0.45,
+            );
+        }
+    }
+
+    /**
+     * Quitmer: straining at his chain and snapping (`strain`, `lunge`, `snap`), or lying calm
+     * on his straw (`calm`), asleep (`sleep`), his tail wagging (`wag`). Returns where his
+     * collar's ring is, for the chain.
+     */
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_dog(
+        &self,
+        f: &mut Frame,
+        feet: Vec3,
+        yaw: f32,
+        strain: f32,
+        lunge: f32,
+        calm: f32,
+        snap: f32,
+        sleep: f32,
+        wag: f32,
+        time: f32,
+        act: Option<DogAct>,
+    ) -> Vec3 {
+        if let Some(act) = act {
+            let c = CastRig::Dog;
+            if let Some((jr, mats)) = self.cast_mats(c, &cast_clips::dog_play(act, time), time, |_, _| {}) {
+                let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw);
+                f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+                for e in cast::DOG_EYES {
+                    if let Some(p) = cast_clips::bone_point(c, jr, &mats, "head", [e[0], e[1], e[2] + 1.0]) {
+                        glow_orb(f, root.transform_point3(p), 0.07, lin(0xffa030), (0.9 - 0.8 * sleep) * (1.0 + 0.3 * strain));
+                    }
+                }
+                let ring = cast_clips::bone_point(c, jr, &mats, "neck", cast::DOG_COLLAR_RING).unwrap_or(Vec3::ZERO);
+                return root.transform_point3(ring);
+            }
+        }
+        let rig = &self.models.dog;
+        let mut pose = Pose::rest(rig);
+        let idx = |n: &str| rig.index(n).unwrap_or(0);
+        let (jaw, head, fa, fb, ha, hb, tail) =
+            (idx("jaw"), idx("head"), idx("foreA"), idx("foreB"), idx("hindA"), idx("hindB"), idx("tail"));
+        let breathe = (time * if sleep > 0.5 { 1.4 } else { 2.6 }).sin();
+        // Braced legs and a lowered head when he strains; legs folded flat when he lies.
+        pose.rot[fa].x = -0.4 * strain - 1.5 * calm;
+        pose.rot[fb].x = -0.4 * strain - 1.5 * calm;
+        pose.rot[ha].x = 0.35 * strain - 1.35 * calm;
+        pose.rot[hb].x = 0.35 * strain - 1.35 * calm;
+        pose.rot[head].x = 0.28 * strain + 0.06 * calm + 0.45 * sleep + breathe * 0.02;
+        pose.rot[head].y = (time * 0.5).sin() * 0.15 * calm * (1.0 - sleep);
+        pose.rot[jaw].x = 0.55 * snap + 0.05 * breathe.max(0.0) * (1.0 - sleep);
+        pose.rot[tail].y = (time * (4.0 + wag * 6.0)).sin() * (0.15 + wag * 0.5);
+        pose.rot[tail].x = -0.5 * strain + 0.6 * calm;
+        let forward = Vec3::new(yaw.sin(), 0.0, yaw.cos());
+        let sink = calm * 17.0 * DOG_VOXEL;
+        let root = Mat4::from_translation(feet + forward * (lunge * 0.1) + Vec3::new(0.0, -sink + breathe * 0.004, 0.0))
+            * Mat4::from_rotation_y(yaw)
+            * Mat4::from_rotation_x(0.1 * strain + lunge * 0.05);
+        emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+        // Eyes glowing amber (dim when he dozes).
+        for e in cast::DOG_EYES {
+            let p = rig_point(rig, &pose, root, head, pivot_of(cast::DOG_RIG, "head"), [e[0], e[1], e[2] + 1.0]);
+            glow_orb(f, p, 0.07, lin(0xffa030), (0.9 - 0.8 * sleep) * (1.0 + 0.3 * strain));
+        }
+        let (w, _, d) = cast::DOG_SIZE;
+        let body_pivot = [(w - 1) as f32 / 2.0, 0.0, (d - 1) as f32 / 2.0];
+        rig_point(rig, &pose, root, 0, body_pivot, cast::DOG_COLLAR_RING)
+    }
+
+    /// The old man by his clips: `act`, facing `yaw`, his head turned `head` and dropped in his doze,
+    /// on his feet by his corner (`OLD_MAN_AT`), and shuffling aside as the door opens. His staff arm
+    /// holds his staff beside him (`cast_clips::staff_arm`, `hold_staff`). False when the code must
+    /// draw him.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_old_man_clips(&self, f: &mut Frame, act: OldAct, yaw: f32, head: f32, doze: f32, descent: f32, time: f32) -> bool {
+        let aside = smooth(OLD_MAN_STEP.0, OLD_MAN_STEP.1, descent.min(60.0));
+        let feet = OLD_MAN_AT + OLD_MAN_ASIDE_TO * aside;
+        self.emit_old_man_at(f, act, GATEWAY + feet, yaw, head, doze, time)
+    }
+
+    /// The old man by his clips standing at `feet` (the world's), facing `yaw` (Scene I's gateway, the
+    /// scenes at his workshop). False when the code must draw him.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_old_man_at(&self, f: &mut Frame, act: OldAct, feet: Vec3, yaw: f32, head: f32, doze: f32, time: f32) -> bool {
+        let c = CastRig::OldMan;
+        let breathe = (time * 1.6).sin();
+        let play = cast_clips::old_man_play(act, time);
+        let joints: Vec<Vec3> = self.models.jointed_cast(c).parts.iter().map(|p| p.rest).collect();
+        let Some((jr, mats)) = self.cast_mats(c, &play, time, |pose, def| {
+            cast_clips::look_steady(pose, def, head, 0.6 * doze + breathe * 0.02 * doze, 0.75);
+            cast_clips::staff_arm(pose, def, &joints);
+        }) else {
+            return false;
+        };
+        let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw);
+        f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+        true
+    }
+
+    /// The old man: facing `yaw`, his head turned `head` and drooping with sleep (`doze`),
+    /// his free hand raised (`raise`), talking (seconds into the line) or not.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_old_man(&self, f: &mut Frame, feet: Vec3, yaw: f32, head: f32, doze: f32, raise: f32, talk: Option<f32>, time: f32) {
+        let rig = &self.models.old_man;
+        let mut pose = Pose::rest(rig);
+        let idx = |n: &str| rig.index(n).unwrap_or(0);
+        let (hd, staff, free) = (idx("head"), idx("staffArm"), idx("freeArm"));
+        let breathe = (time * 1.6).sin();
+        pose.rot[hd].y = head;
+        pose.rot[hd].x = 0.5 * doze + breathe * 0.02;
+        pose.rot[staff].x = breathe * 0.01;
+        pose.rot[free].x = -1.25 * raise;
+        pose.rot[free].z = 0.2 * raise;
+        if let Some(t) = talk {
+            pose.rot[hd].x += (t * 5.5).sin() * 0.05 * (1.0 - smooth(3.0, 5.0, t));
+            pose.rot[free].x += -0.35 - (t * 2.7).sin() * 0.2;
+        }
+        let sway = (time * 0.7).sin() * 0.012 * (1.0 + 2.0 * doze);
+        let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(sway) * Mat4::from_rotation_x(0.05);
+        emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+    }
+
+    /**
+     * Krampus, running (`run`, stride `phase`), reaching with his right claw (`reach`), holding
+     * it up with his catch (`lift`), rearing back to bellow (`rear`), and thinning away into
+     * the fog as `alpha` falls. Returns where the claws of his right hand are.
+     */
+    #[allow(clippy::too_many_arguments)]
+    fn emit_krampus(
+        &self,
+        f: &mut Frame,
+        feet: Vec3,
+        yaw: f32,
+        run: f32,
+        phase: f32,
+        reach: f32,
+        lift: f32,
+        rear: f32,
+        alpha: f32,
+        time: f32,
+        moment: Option<(f32, f32)>,
+    ) -> Vec3 {
+        // By his clips (`moment`: seconds into the beat, and his hop the code adds, which they carry).
+        if let Some((k, hop)) = moment {
+            let c = CastRig::Krampus;
+            let play = cast_clips::krampus_play(k, phase);
+            if let Some((jr, mats)) = self.cast_mats(c, &play, time, |_, _| {}) {
+                let root = Mat4::from_translation(feet - Vec3::new(0.0, hop, 0.0)) * Mat4::from_rotation_y(yaw);
+                if alpha >= 0.99 {
+                    f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
+                } else if alpha > 0.01 {
+                    f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, alpha, Vec3::ZERO, rig_look::FADED, 0.0);
+                }
+                let eyes: Vec<Vec3> = cast::KRAMPUS_EYES
+                    .iter()
+                    .filter_map(|&e| cast_clips::bone_point(c, jr, &mats, "head", e).map(|p| root.transform_point3(p)))
+                    .collect();
+                self.krampus_eyes(f, &eyes, root, alpha);
+                let hand = cast_clips::bone_point(c, jr, &mats, "hand.R", cast::KRAMPUS_HAND).unwrap_or(Vec3::ZERO);
+                return root.transform_point3(hand);
+            }
+        }
+        let rig = &self.models.krampus;
+        let mut pose = Pose::rest(rig);
+        let idx = |n: &str| rig.index(n).unwrap_or(0);
+        let (hd, ar, al, lr, ll) = (idx("head"), idx("armR"), idx("armL"), idx("legR"), idx("legL"));
+        let s = phase.sin();
+        pose.rot[lr].x = -0.8 * s * run;
+        pose.rot[ll].x = 0.8 * s * run;
+        pose.rot[al].x = -0.9 * s * run - 0.3 * rear;
+        pose.rot[ar].x = 0.9 * s * run * (1.0 - reach) - 1.5 * reach - 1.05 * lift;
+        pose.rot[ar].z = -0.35 * lift;
+        pose.rot[al].z = 0.3 * rear;
+        pose.rot[hd].x = -0.35 * rear + (time * 3.0).sin() * 0.05;
+        pose.rot[hd].y = (time * 1.7).sin() * 0.1 * (1.0 - run);
+        let root =
+            Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(0.28 * run - 0.25 * rear + 0.1 * reach);
+        if alpha >= 0.99 {
+            emit_rig(&mut f.rigs, rig, &pose, root, Vec3::ONE, 1.0, Vec3::ZERO);
+        } else if alpha > 0.01 {
+            emit_rig_faded(&mut f.rigs, rig, &pose, root, alpha);
+        }
+        let eyes: Vec<Vec3> =
+            cast::KRAMPUS_EYES.iter().map(|&e| rig_point(rig, &pose, root, hd, pivot_of(cast::KRAMPUS_RIG, "head"), e)).collect();
+        self.krampus_eyes(f, &eyes, root, alpha);
+        rig_point(rig, &pose, root, ar, pivot_of(cast::KRAMPUS_RIG, "armR"), cast::KRAMPUS_HAND)
+    }
+
+    /// Krampus's ember eyes at `at`, bright even when the rest of him is only a shape in the fog,
+    /// and their light falling ahead of him.
+    fn krampus_eyes(&self, f: &mut Frame, at: &[Vec3], root: Mat4, alpha: f32) {
+        let eyes = alpha.max(0.0).powf(0.3).min(1.0);
+        let mut mid = Vec3::ZERO;
+        for &p in at {
+            mid += p * 0.5;
+            glow_orb(f, p, 0.12, lin(0xff3010), 1.4 * eyes);
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.035)),
+                lin(0xff6a30) * 2.0,
+                eyes,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
+        }
+        let ahead = (root.transform_vector3(Vec3::Z)).normalize_or(Vec3::Z);
+        // Their light falls ahead of him, on what he comes for more than on his own face.
+        f.lights.push(Light { pos: mid + ahead * 1.2 - Vec3::new(0.0, 0.35, 0.0), color: lin(0xff2a10) * 0.6 * eyes, distance: 1.8 });
+    }
+
+    /// A warrior's soul: rising out of the floor in a column of light, hovering, glowing.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_soul(&self, f: &mut Frame, kind: HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
+        use HeroKind;
+        let rig = match kind {
+            HeroKind::Ragnar => &self.models.ragnar,
+            HeroKind::Mehmed => &self.models.mehmed,
+            HeroKind::Miyamoto => &self.models.miyamoto,
+        };
+        let r = ease_out(rise);
+        let hover = (time * 1.6).sin() * 0.035;
+        let base = feet + Vec3::new(0.0, -1.2 * (1.0 - r) + 0.08 * r + hover, 0.0);
+        let root = Mat4::from_translation(base) * Mat4::from_rotation_y(yaw) * Mat4::from_scale(Vec3::splat(scale));
+        let pose = Pose::rest(rig);
+        // Thinner up close, where many layers of it would pile up into a white glare.
+        let near = (self.cam_pos.distance(base + Vec3::new(0.0, 0.6, 0.0)) / 3.6).clamp(0.4, 1.0);
+        emit_rig_ghost(&mut f.rigs_blend, rig, &pose, root, tint * (1.0 + 0.15 * (time * 3.0).sin()), 0.24 * r * near);
+        glow_orb(f, base + Vec3::new(0.0, 0.6 * scale, 0.0), 1.1 * scale, tint, 0.18 * r);
+        // A ring of light on the floor where it rose, and motes streaming up.
+        let ring = Mat4::from_translation(feet + Vec3::new(0.0, 0.012, 0.0))
+            * Mat4::from_rotation_x(-PI / 2.0)
+            * Mat4::from_scale(Vec3::new(0.45, 0.45, 1.0));
+        f.glow.push(Instance::new(ring, tint, 0.35 * r * (1.0 - (1.0 - scale) * 1.2).max(0.0), Vec3::ZERO, SHADE_GLOW));
+        for k in 0..10 {
+            let fk = k as f32;
+            let u = (time * 0.6 + fk * 0.1).fract();
+            let a = fk * 2.4 + time * 0.8;
+            let p = base + Vec3::new(a.cos() * 0.3, u * 1.4 * scale, a.sin() * 0.3);
+            glow_orb(f, p, 0.03, tint, 0.6 * r * (1.0 - u));
+        }
+        f.lights.push(Light { pos: base + Vec3::new(0.0, 0.8, 0.4), color: tint * 2.5 * r, distance: 3.0 });
+    }
+
+    // --------------------------------------------------------- the camera
+    // (Scene I's camera is in story_camera.rs, framing the cast by `marks`.)
+
+    /// The part of the world the shadow map covers during the story.
+    pub(super) fn story_shadow_box(&self, sv: StoryView) -> (Vec3, f32) {
+        match sv.shot().place() {
+            Place::Graveyard => (GRAVEYARD + Vec3::new(0.0, 0.6, -2.8), 10.0),
+            Place::Gateway => (GATEWAY + Vec3::new(0.0, 1.0, 0.0), 6.5),
+            Place::Pit => self.ascent_shadow_box(sv),
+            Place::Workshop => self.after_shadow_box(),
+        }
+    }
+}
+
+/// Where the cast stands and moves, for the camera (story_camera.rs) to frame them by.
+pub(super) mod marks {
+    use super::Vec3;
+    pub(in crate::render::view) const KID_HOME: [Vec3; 4] = super::KID_HOME;
+    pub(in crate::render::view) const GATE_SPOT: Vec3 = super::GATE_SPOT;
+    pub(in crate::render::view) const PASSES: [(usize, usize); 5] = super::PASSES;
+    pub(in crate::render::view) const BALL_REST: Vec3 = super::BALL_REST;
+    pub(in crate::render::view) const BALL_R: f32 = super::BALL_R;
+    pub(in crate::render::view) const K_FOG: Vec3 = super::K_FOG;
+    pub(in crate::render::view) const K_GATE: Vec3 = super::K_GATE;
+    pub(in crate::render::view) const K_GRAB: Vec3 = super::K_GRAB;
+    pub(in crate::render::view) const K_GONE: Vec3 = super::K_GONE;
+    pub(in crate::render::view) const LAND: [Vec3; 3] = super::LAND;
+    #[cfg(test)]
+    pub(in crate::render::view) const OLD_MAN_AT: Vec3 = super::OLD_MAN_AT;
+    /// The old man's face as he stands by his corner, stooped over his staff (by his clips, `idle`:
+    /// measured, `cast_clips::tests`).
+    /// (0.87 up, 0.22 out toward the boys: as he faces them talking.)
+    pub(in crate::render::view) const OLD_MAN_FACE: Vec3 = Vec3::new(super::OLD_MAN_AT.x - 0.074, 0.87, super::OLD_MAN_AT.z + 0.207);
+    pub(in crate::render::view) const DOG_BED: Vec3 = super::DOG_BED;
+    pub(in crate::render::view) const DOG_LUNGE: Vec3 = super::DOG_LUNGE;
+    pub(in crate::render::view) const SOUL_AT: [Vec3; 3] = super::SOUL_AT;
+    pub(in crate::render::view) const BOYS_MID: Vec3 = super::BOYS_MID;
+}
+
+/// One leaf of the graveyard gate, from its hinge (at x = 0) out to the latch: bars with spear
+/// points, rails, a scroll in the middle. (offset, size) pairs.
+fn gate_leaf() -> Vec<(Vec3, Vec3)> {
+    let mut out = Vec::new();
+    out.push((Vec3::new(0.02, 0.98, 0.0), Vec3::new(0.05, 1.96, 0.05)));
+    for i in 0..7 {
+        let x = 0.15 + i as f32 * 0.14;
+        let top = 1.78 + if i % 2 == 0 { 0.1 } else { 0.0 };
+        out.push((Vec3::new(x, top / 2.0 + 0.04, 0.0), Vec3::new(0.03, top, 0.03)));
+        out.push((Vec3::new(x, top + 0.07, 0.0), Vec3::new(0.06, 0.06, 0.03)));
+    }
+    for y in [0.2f32, 0.95, 1.62] {
+        out.push((Vec3::new(0.52, y, 0.0), Vec3::new(1.04, 0.035, 0.04)));
+    }
+    for k in 0..10 {
+        let a = k as f32 / 10.0 * TAU;
+        out.push((Vec3::new(0.52 + a.cos() * 0.16, 1.28 + a.sin() * 0.16, 0.0), Vec3::new(0.03, 0.03, 0.03)));
+    }
+    out.push((Vec3::new(1.0, 0.95, 0.03), Vec3::new(0.05, 0.12, 0.04)));
+    out
+}
+
+/// One leaf of the iron door, from its hinge (at x = 0) to the middle: plates, straps, rivets,
+/// a ring to pull it by. (offset, size, colour, shade) tuples.
+fn door_leaf() -> Vec<(Vec3, Vec3, u32, f32)> {
+    let mut out = Vec::new();
+    // Plates of black iron, a few gone to rust, riveted along their seams.
+    for row in 0..5 {
+        let y = 0.25 + row as f32 * 0.475;
+        let c = [0x26221f, 0x2e2722, 0x3a2a20, 0x24201e, 0x2c241f][row];
+        out.push((Vec3::new(0.485, y, 0.0), Vec3::new(0.95, 0.46, 0.1), c, SHADE_METAL));
+        for k in 0..5 {
+            out.push((Vec3::new(0.1 + k as f32 * 0.19, y + 0.2, 0.055), Vec3::splat(0.03), 0x4a3a30, SHADE_METAL));
+        }
+    }
+    // Heavy bars down its face, as a gate's, and the straps across them.
+    for k in 0..4 {
+        out.push((Vec3::new(0.16 + k as f32 * 0.23, 1.2, 0.08), Vec3::new(0.06, 2.36, 0.06), 0x2a2624, SHADE_METAL));
+    }
+    for y in [0.3f32, 1.2, 2.1] {
+        out.push((Vec3::new(0.485, y, 0.12), Vec3::new(0.97, 0.11, 0.04), 0x3a2e26, SHADE_METAL));
+        for k in 0..6 {
+            out.push((Vec3::new(0.08 + k as f32 * 0.165, y, 0.145), Vec3::splat(0.04), 0x5a4636, SHADE_METAL));
+        }
+    }
+    // The pull ring, on a boss.
+    out.push((Vec3::new(0.82, 1.1, 0.16), Vec3::new(0.08, 0.08, 0.05), 0x4a3a30, SHADE_METAL));
+    for k in 0..10 {
+        let a = k as f32 / 10.0 * TAU;
+        out.push((Vec3::new(0.82 + a.cos() * 0.1, 0.97 + a.sin() * 0.1, 0.17), Vec3::splat(0.032), 0x5a4a3c, SHADE_METAL));
+    }
+    out
+}
+
+/// The gateway's light: its braziers' flames, the lanterns under the ribs and on the front
+/// pillars, the old man's lantern, the lock lamps over the gate, cool fills on faces.
+fn gateway_lights(f: &mut Frame, time: f32, descent: f32) {
+    let cube = MeshKind::Cube as usize;
+    let at = |p: Vec3| GATEWAY + p;
+    // ---- the braziers: flames licking up off the coals, a glow in the haze, warm light
+    for (n, &b) in story_sets::BRAZIERS.iter().enumerate() {
+        let s = story_sets::BRAZIER_SCALE;
+        let base = at(b) + Vec3::Y * 0.84 * s;
+        let fl = 1.0 + (time * 9.0 + n as f32 * 1.7).sin() * 0.07 + (time * 23.0 + n as f32).sin() * 0.04;
+        for k in 0..12 {
+            let a = time * 4.0 + k as f32 * 1.1 + n as f32;
+            let rise = (time * 2.2 + k as f32 * 0.21).fract();
+            let p = base + Vec3::new(a.cos() * 0.11 * (1.0 - rise), rise * 0.5, a.sin() * 0.11 * (1.0 - rise));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.095 * (1.0 - rise * 0.7))),
+                lin(if k % 3 == 0 { 0xffc060 } else { 0xff7a28 }) * 0.9,
+                0.75 * (1.0 - rise) * (1.0 - rise),
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
+        }
+        glow_orb(f, base + Vec3::new(0.0, 0.15, 0.0), 0.6, lin(0xff9030), 0.16 * fl);
+        f.lights.push(Light { pos: base + Vec3::new(0.0, 0.35, 0.0), color: lin(0xffb074) * 5.2 * fl, distance: 6.5 });
+    }
+    // ---- the lanterns: steady amber behind their glass
+    for (n, &l) in story_sets::RIB_LANTERNS.iter().chain(story_sets::WALL_LANTERNS.iter()).enumerate() {
+        let fl = 1.0 + (time * 7.0 + n as f32 * 2.3).sin() * 0.03;
+        glow_orb(f, at(l), 0.4, lin(0xffb050), 0.22 * fl);
+        let (power, reach) = if n < 2 { (2.6, 5.0) } else { (1.6, 3.6) };
+        f.lights.push(Light { pos: at(l) - Vec3::Y * 0.1, color: lin(0xffb868) * power * fl, distance: reach });
+    }
+    // The old man's lantern by his stool: he keeps it lit.
+    let lantern = at(Vec3::new(2.4, 0.13, -2.25));
+    f.opaque[cube].push(Instance::new(
+        Mat4::from_scale_rotation_translation(Vec3::new(0.14, 0.2, 0.14), Quat::from_rotation_y(0.4), lantern),
+        lin(0xffd49a),
+        1.0,
+        lin(0xffa040) * 1.8,
+        SHADE_LIT,
+    ));
+    for (dy, w) in [(0.11f32, 0.17f32), (-0.11, 0.16)] {
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::new(w, 0.03, w), Quat::from_rotation_y(0.4), lantern + Vec3::new(0.0, dy, 0.0)),
+            lin(0x9a5b3c),
+            1.0,
+            Vec3::ZERO,
+            13.0,
+        ));
+    }
+    glow_orb(f, lantern, 0.45, lin(0xffa050), 0.25);
+    f.lights.push(Light { pos: lantern + Vec3::new(0.0, 0.3, 0.2), color: lin(0xffb060) * 2.8, distance: 3.8 });
+    // ---- the lock lamps over the gate: a dim amber, kindling red one by one as the door opens
+    for (k, &p) in story_sets::LOCK_LAMPS.iter().enumerate() {
+        let lit = smooth(stage::DOOR - 1.2 + k as f32 * 0.18, stage::DOOR - 0.9 + k as f32 * 0.18, descent);
+        let c = lin(0xffa040).lerp(lin(0xff3a10), lit);
+        let glow = 0.9 + 1.4 * lit + (time * 3.0 + k as f32).sin() * 0.05;
+        f.opaque[cube].push(Instance::new(
+            Mat4::from_scale_rotation_translation(Vec3::splat(0.07), Quat::from_rotation_z(PI / 4.0), at(p)),
+            c,
+            1.0,
+            c * glow,
+            SHADE_LIT,
+        ));
+        glow_orb(f, at(p), 0.16 + 0.1 * lit, c, 0.18 + 0.25 * lit);
+    }
+    f.lights.push(Light {
+        pos: at(Vec3::new(0.0, 3.6, -2.7)),
+        color: lin(0xff7a30) * (0.8 + 1.6 * smooth(stage::DOOR - 1.2, stage::DOOR, descent)),
+        distance: 3.2,
+    });
+    // Cool fills from above and on faces from the front, mist teal; a warm one on the dog's side.
+    f.lights.push(Light { pos: at(Vec3::new(0.3, 2.4, 3.2)), color: lin(0x9ec4bc) * 2.2, distance: 7.0 });
+    f.lights.push(Light { pos: at(Vec3::new(1.0, 2.2, 0.2)), color: lin(0xa8c8c0) * 2.0, distance: 5.0 });
+    f.lights.push(Light { pos: at(Vec3::new(-1.2, 1.5, -0.3)), color: lin(0xc8b8a8) * 1.8, distance: 3.6 });
+}
+
+/// The door to the stair: its two leaves swung `open` (radians) and the red glow beyond.
+fn gateway_door(f: &mut Frame, open: f32, time: f32) {
+    let cube = MeshKind::Cube as usize;
+    let at = |p: Vec3| GATEWAY + p;
+    for side in [-1.0f32, 1.0] {
+        // Each leaf swings in, away from the room, about its hinge in the jamb.
+        let hinge = at(Vec3::new(side * 0.97, 0.0, -3.47));
+        let q = Quat::from_rotation_y(-side * open);
+        for &(off, size, c, mat) in door_leaf().iter() {
+            let local = Vec3::new(-side * off.x, off.y, off.z);
+            f.opaque[cube].push(Instance::new(
+                Mat4::from_scale_rotation_translation(size, q, hinge + q * local),
+                lin(c),
+                1.0,
+                Vec3::ZERO,
+                mat,
+            ));
+        }
+    }
+    let red = 0.35 + open * 3.0;
+    glowing(
+        &mut f.opaque[cube],
+        at(Vec3::new(0.0, 0.015, -3.36)),
+        Vec3::new(1.85, 0.02, 0.04),
+        Quat::IDENTITY,
+        lin(0x300800),
+        lin(0xff3a10) * (0.8 + 0.3 * (time * 2.0).sin()) * (1.0 - open / 1.45),
+    );
+    f.lights.push(Light { pos: at(Vec3::new(0.0, 0.3, -3.3 - open * 0.4)), color: lin(0xff4a1a) * red, distance: 3.0 + open * 3.5 });
+    if open > 0.05 {
+        f.lights.push(Light { pos: at(Vec3::new(0.0, -1.5, -6.5)), color: lin(0xff3a0a) * 8.0 * open, distance: 7.0 });
+        glow_orb(f, at(Vec3::new(0.0, 0.9, -4.6)), 1.6, lin(0xff4a18), 0.2 * open);
+        glow_orb(f, at(Vec3::new(0.0, -0.9, -6.6)), 2.2, lin(0xff3010), 0.35 * open);
+        for n in 0..20 {
+            let fk = n as f32;
+            let u = (time * 0.35 + fk * 0.13).fract();
+            let p = at(Vec3::new((fk * 1.7).sin() * 0.7, -1.4 + u * 3.5, -6.0 + u * 3.0 + (fk * 2.3).cos() * 0.3));
+            f.additive.push(Instance::new(
+                Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(0.025)),
+                lin(0xff8a30) * 1.6,
+                (1.0 - u) * open * 0.8,
+                Vec3::ZERO,
+                SHADE_UNLIT,
+            ));
+        }
+    }
+}

@@ -1,0 +1,37 @@
+//! Game rules, free of any rendering or platform code.
+
+pub mod after;
+pub mod angels;
+pub mod bestiary;
+pub mod boss;
+pub mod combat;
+pub mod court;
+pub mod enemy;
+pub mod explore;
+pub mod garden;
+pub mod gear;
+pub mod grid;
+pub mod guide;
+pub mod gym;
+pub mod hero;
+pub mod heroes;
+pub mod hub;
+pub mod items;
+pub mod juice;
+pub mod lair;
+pub mod level;
+pub mod levels;
+pub mod mover;
+pub mod pathing;
+pub mod pit;
+pub mod progression;
+pub mod projectile;
+pub mod realms;
+pub mod rng;
+pub mod sins;
+pub mod story;
+pub mod systems;
+pub mod tale;
+pub mod types;
+pub mod vault;
+pub mod war;

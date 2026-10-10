@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+release/
+standalone/
+
+# Assets are not in this branch: see ENGINE.md (branch rust-port has them)
+rust/assets/
+art/

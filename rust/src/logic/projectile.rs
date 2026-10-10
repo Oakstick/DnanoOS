@@ -1,0 +1,185 @@
+use std::collections::HashSet;
+
+use super::grid::Grid;
+use super::items::{weapon, RangedKind, WeaponDef};
+use super::types::{dist_sq, js_round, Dir, P, V};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShotState {
+    Flying,
+    Wall,
+    Spent,
+    Caught,
+}
+
+const CATCH_RADIUS: f64 = 0.5;
+/// Seeking knives notice foes this close and turn this fast (radians per second).
+const SEEK_RANGE: f64 = 7.0;
+const SEEK_TURN: f64 = 7.0;
+
+/**
+ * A ranged shot. Flies straight along a cardinal direction, passes through
+ * tunnels and over the crypt floor, and breaks on rock or at max range.
+ * Piercing shots keep going after a hit; returning shots fly back to be caught.
+ */
+#[derive(Clone, Debug)]
+pub struct Projectile {
+    pub pos: V,
+    pub dir: Dir,
+    pub kind: RangedKind,
+    pub def: WeaponDef,
+    pub traveled: f64,
+    pub alive: bool,
+    pub returning: bool,
+    /// Enemies already struck (by index), so piercing shots hit each one once.
+    pub struck: HashSet<usize>,
+    /// Render-only spin of the model, in radians.
+    pub spin: f32,
+    /// Unit direction of flight; seeking shots bend it toward their prey.
+    pub heading: V,
+}
+
+impl Projectile {
+    /// A shot from `start` flying along `heading` (a unit vector, any way).
+    pub fn new(start: V, heading: V, kind: RangedKind) -> Self {
+        Self {
+            pos: start,
+            dir: Dir::nearest(heading),
+            kind,
+            def: weapon(kind),
+            traveled: 0.0,
+            alive: true,
+            returning: false,
+            struck: HashSet::new(),
+            spin: 0.0,
+            heading,
+        }
+    }
+
+    /// Tile the shot is currently over.
+    pub fn tile(&self) -> P {
+        P::new(js_round(self.pos.x) as i32, js_round(self.pos.y) as i32)
+    }
+
+    /// Flies one step. Seeking shots steer toward the nearest of `prey` within reach.
+    pub fn update(&mut self, dt: f64, grid: &Grid, hero_pos: V, prey: &[V]) -> ShotState {
+        if !self.alive {
+            return ShotState::Spent;
+        }
+        if self.def.homing {
+            let near = prey
+                .iter()
+                .filter(|p| dist_sq(**p, self.pos) < SEEK_RANGE * SEEK_RANGE)
+                // Only what lies ahead, so a knife never doubles back.
+                .filter(|p| (p.x - self.pos.x) * self.heading.x + (p.y - self.pos.y) * self.heading.y > -0.2)
+                .min_by(|a, b| dist_sq(**a, self.pos).partial_cmp(&dist_sq(**b, self.pos)).unwrap());
+            if let Some(t) = near {
+                let want = (t.y - self.pos.y).atan2(t.x - self.pos.x);
+                let have = self.heading.y.atan2(self.heading.x);
+                let mut d = (want - have) % std::f64::consts::TAU;
+                if d > std::f64::consts::PI {
+                    d -= std::f64::consts::TAU;
+                }
+                if d < -std::f64::consts::PI {
+                    d += std::f64::consts::TAU;
+                }
+                let turn = d.clamp(-SEEK_TURN * dt, SEEK_TURN * dt);
+                let a = have + turn;
+                self.heading = V::new(a.cos(), a.sin());
+            }
+        }
+        let mut remaining = self.def.speed * dt;
+        // Sub-step so a fast shot cannot skip over a wall block.
+        while remaining > 0.0 {
+            let s = remaining.min(0.25);
+            remaining -= s;
+            let v = self.heading;
+            // Tile centers are integers, so wrap x within [-0.5, width - 0.5).
+            let w = grid.width as f64;
+            let raw_x = self.pos.x + v.x * s + 0.5;
+            self.pos = V::new(raw_x.rem_euclid(w) - 0.5, self.pos.y + v.y * s);
+            self.traveled += s;
+
+            let t = self.tile();
+            if !grid.is_walkable(t.x, t.y, true) {
+                if self.def.returns && !self.returning {
+                    self.turn_back();
+                    continue;
+                }
+                self.alive = false;
+                return ShotState::Wall;
+            }
+            if self.returning && dist_sq(self.pos, hero_pos) <= CATCH_RADIUS * CATCH_RADIUS {
+                self.alive = false;
+                return ShotState::Caught;
+            }
+            if self.traveled >= self.def.range {
+                if self.def.returns && !self.returning {
+                    self.turn_back();
+                    continue;
+                }
+                self.alive = false;
+                return ShotState::Spent;
+            }
+        }
+        ShotState::Flying
+    }
+
+    /// Boomerang reversal: fly back the way it came for a little more than it went out.
+    fn turn_back(&mut self) {
+        self.returning = true;
+        self.dir = self.dir.opposite();
+        self.heading = V::new(-self.heading.x, -self.heading.y);
+        let back = self.traveled + 2.0;
+        self.traveled = self.def.range - back;
+        self.struck.clear();
+    }
+}
+
+/// Spawns the projectiles a weapon fires from a position along `aim` (a unit vector, `Hero::aim`).
+pub fn spawn_shots(kind: RangedKind, from: V, aim: V) -> Vec<Projectile> {
+    let def = weapon(kind);
+    let f = aim;
+    let right = V::new(-f.y, f.x);
+    let mut shots = Vec::new();
+    for &off in def.lateral {
+        shots.push(Projectile::new(V::new(from.x + right.x * off, from.y + right.y * off), f, kind));
+    }
+    if def.spread {
+        // Out to either side, square to the aim.
+        for side in [V::new(-right.x, -right.y), right] {
+            shots.push(Projectile::new(from, side, kind));
+        }
+    }
+    shots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trishot_fires_three_ways() {
+        let shots = spawn_shots(RangedKind::Trishot, V::new(3.0, 3.0), Dir::Up.vecf());
+        let dirs: Vec<Dir> = shots.iter().map(|s| s.dir).collect();
+        assert_eq!(dirs, vec![Dir::Up, Dir::Left, Dir::Right]);
+    }
+
+    #[test]
+    fn shots_fly_any_way_they_are_aimed() {
+        let aim = V::new(0.6, 0.8);
+        let shots = spawn_shots(RangedKind::Trishot, V::new(3.0, 3.0), aim);
+        assert_eq!((shots[0].heading.x, shots[0].heading.y), (0.6, 0.8));
+        // The side shots go square to it.
+        for s in &shots[1..] {
+            assert!((s.heading.x * aim.x + s.heading.y * aim.y).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn double_arrow_is_side_by_side() {
+        let shots = spawn_shots(RangedKind::Double, V::new(3.0, 3.0), Dir::Right.vecf());
+        assert_eq!(shots.len(), 2);
+        assert!((shots[0].pos.y - shots[1].pos.y).abs() > 0.5);
+    }
+}

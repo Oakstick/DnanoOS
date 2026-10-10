@@ -1,0 +1,2131 @@
+# The Warband: enemy AI, rivals, generals, the two voices, the workshop and game feel
+
+An implementation plan, written to be handed back and built phase by phase (§16). It builds on
+what already exists: the frame data, the fighter state machine and the threat manager
+(`COMBAT.md`), the realms and their `Dealer` (`ROADMAP.md`, `REALMS.md`), the four trees per
+hero (`logic/progression.rs`) and the old man's wares (`game/shop.rs`). Nothing here replaces
+the combat core. Everything here sits **above** it, as a layer that decides *who* fights,
+*where*, *when* and *why*, and **around** it, as the feel, the sound and the voices.
+
+Status: approved 2026-10-04 ("I like the plan... Lets go"), §17 settled on the proposals the same
+day, and W0 to W8 built and merged on `rust-port` that day (the build log at the end says what
+and how; several parts were built in parallel worktrees). W9's bots' half is done (2026-10-05: the
+whole-run harness, the tuning log and the checklist at the end of the build log); left is the
+playthrough by hand that closes it. W10 (2026-10-09) softened the princes' wall the QA pass found;
+W11 the adept's last walls (the Rotting Feast, the Pit, Krampus) and gave the runes a use (rune-carving).
+
+---
+
+## 0. The goal: player flow
+
+The design goal is flow. Each part of the plan has to serve one of these five, and §15 turns them
+into numbers the harness measures.
+
+| Pillar | What it means here | What serves it |
+|---|---|---|
+| **Readable challenges** | Every threat announces itself before it can hurt, to the eye *and* the ear. The player loses to what he misread, never to what he could not see. | Telegraphs (exist), tells by sound (§5), order cards and horns (§9), the prince's lies always carry a tell (§10) |
+| **Responsive combat** | The hero obeys at once; the feedback lands on the same frame as the blow. | Hit pause, trauma, overshoot, layered sound (§4); no hit-lock (exists, kept) |
+| **Meaningful decisions** | Choices with a visible price: fight the general now or later, break the horn or chase the herald, trust the voice or not, which elixir to bring for which rival. | Generals' instruments (§9), the two voices (§10), the workshop's counsel and trials (§12) |
+| **Opportunities for mastery** | The enemy learns the player's habits, so habits must grow into skills. Every enemy pattern has a counter that can be learned. | Rivals' lessons (§8), pack plays with answers (§7), hero mastery ranks (§11) |
+| **Pressure and recovery** | A fight breathes: build, peak, release, rest. Rest is where the player shops, listens and decides. | The Drum (§6), pack morale and the rout (§7) |
+
+The player fantasy in one sentence: *I am a soul the guilty old gatekeeper armed and sent down,
+and hell remembers me: its captains learn my name, its generals change their plans for me, and
+its princes try to trick me. The old man never lies to me.*
+
+---
+
+## 1. What exists, and the rules this plan keeps
+
+### 1.1 The baseline
+
+| System | Where | Kept as |
+|---|---|---|
+| Frame data, `Fighter` FSM, input buffer | `logic/combat/{frames,fsm}.rs` | the unchanged core: no layer here edits a move's frames |
+| Threat manager: tokens, cadence, commit gate, sectors | `logic/combat/threat.rs` | **the only authority on who strikes when**. Roles and plays only bias its requests and slots. |
+| Archetypes and breeds (Brute / Skirmisher / Hexer / Prince) | `logic/combat/archetype.rs`, `prince.rs` | a role (§7) is a second axis on top of the archetype |
+| Duelists, dens (sleep, wake, leash, return) | `logic/combat/duelist.rs`, `game/brawl.rs` (`update_dens`) | dens become packs with a leader and morale |
+| `Dealer` deals foes by progress | `logic/realms/mod.rs` | it still picks the bodies; the pack composer (§7.4) gives them roles |
+| Hitstop (global freeze), trauma shake, particles, debris, floaters, flashes | `game/flow.rs:177`, `render/view/effects.rs`, `game/feedback.rs` | extended in §4 |
+| Procedural synth, ~60 `Sfx`, pitch/gain variance, `tell_sfx` | `audio/mod.rs`, `audio/synth.rs`, `game/brawl.rs:80` | extended in §5 |
+| The old man's wares: 4 trees + loadout, the gateway crypt set | `game/shop.rs`, `render/hud/shop.rs`, `render/view/story.rs:2054` | rebuilt as the workshop (§12) |
+| The princes' lies: Mammon's toll and one line per realm | `game/vault.rs`, `game/realms/*` | grown into the prince's cheats (§10.3) |
+| The bot, the harnesses, the captures, the Map | `game/bot.rs`, `--crawl`, `--bout`, `capture.rs`, `game/map.rs` | every new system gets its harness, capture and Map stop |
+
+### 1.2 The invariants (each is, or becomes, a test)
+
+| # | Rule | Source |
+|---|---|---|
+| I1 | Every foe attack: startup ≥ 18 f, recovery ≥ 10 f, melee startup ≥ 17 f. | COMBAT.md §0 |
+| I2 | No two strikes land within 18 f of each other (the commit gate). Every new hurt (hazards, reinforcements, rivals, generals) goes through the threat manager. | COMBAT.md §4.1 |
+| I3 | No enemy slows, holds or drags the hero, except the bog slime's trail, the realms' own ground and Mammon's grasp. No general's hazard or rival's lesson may break this. | COMBAT.md §11.4, §12 |
+| I4 | Body foes bite from beside him; only distance foes strike from afar, with bolts. No rubber band. | COMBAT.md §12 |
+| I5 | The simulation is deterministic per seed. Presentation (juice, sound variance, barks) draws from **its own rng** and never touches the simulation's. | new: §3 |
+| I6 | A layer may change *choices* (which move, which slot, when to ask), never *frame data*. The one exception is the time scale (§4.2), which scales everything evenly, so every frame relation holds. | new |
+| I7 | Pressure never arrives unannounced: every reinforcement, order and hazard has a tell of ≥ 60 f (1 s) by eye and ear. | new: §6, §9 |
+| I8 | The old man never lies; the prince's lies always carry a tell and a counter, and never take what the hero owns for good. | new: §10 |
+
+---
+
+## 2. Architecture: four layers of command
+
+```
+ ┌───────────────────────────────────────────────────────────────────────────┐
+ │ THE DRUM (macro, seconds)        logic/war/drum.rs                        │
+ │   reads the fight's intensity, schedules build / peak / release / rest     │
+ │   bounds: threat capacity, cadence, wake range, when orders may fire      │
+ ├───────────────────────────────────────────────────────────────────────────┤
+ │ THE GENERAL (strategic, the realm)   logic/war/general.rs                  │
+ │   issues orders (watch, muster, kindle, decree) through instruments       │
+ │   the player can break; only when the Drum allows                          │
+ ├───────────────────────────────────────────────────────────────────────────┤
+ │ THE PACK (tactical, the room)        logic/war/pack.rs                    │
+ │   roles, a leader, morale, plays (pincer, screen, rotate, crossfire...)    │
+ │   output: slot preferences and token-request biases, nothing else         │
+ ├───────────────────────────────────────────────────────────────────────────┤
+ │ THE DUELIST + THREAT MANAGER (micro, frames)  logic/combat/*  (exists)    │
+ │   frame data, FSM, commit gate: the last word on every strike              │
+ └───────────────────────────────────────────────────────────────────────────┘
+          ▲ reads                                   │ emits
+          │                                         ▼
+ THE LEDGER (rivals, across the run)        THE WAR LOG (events, §3)
+ logic/war/ledger.rs                          → juice, sound, counsel, ledger,
+                                                telemetry, the HUD
+```
+
+Each layer only talks *down* through a narrow interface, and every outcome goes *out* through one
+event stream. That keeps the layers testable alone, as the threat manager is today.
+
+### 2.1 New modules
+
+| Module | Holds |
+|---|---|
+| `logic/war/mod.rs` | `WarEvent`, the shared types, `PresRng` (presentation rng) |
+| `logic/war/drum.rs` | intensity, phases, the bounds it hands down |
+| `logic/war/pack.rs` | `Pack`, `Role`, `Play`, morale, elite affixes, the composer |
+| `logic/war/ledger.rs` | `Rival`, traits, memory, lessons, names, promotion |
+| `logic/war/names.rs` | name and epithet tables per culture |
+| `logic/war/general.rs` | `General`, `Order`, `Instrument`, the seven generals' tables |
+| `logic/war/counsel.rs` | the old man's rules and lines |
+| `logic/war/deceit.rs` | the prince's cheats: tell, counter, reward |
+| `logic/war/mastery.rs` | the heroes' mastery ranks and deeds |
+| `logic/juice.rs` | hitstop table, dilation, trauma sources (numbers only) |
+| `game/war.rs` | the runtime glue: feeds the brawl, reads `WarEvent`s, owns the Drum/packs/general per level |
+| `game/juice.rs` | applies `WarEvent`s to the time scale, camera, debris, sound |
+| `game/workshop.rs` | the workshop's stations (wraps today's `ShopState`) |
+| `audio/voices.rs` | per-breed voice sets, recipes, the layered hit builder |
+| `audio/mix.rs` | priorities, voice limits, dedupe, ducking, a limiter, pan/attenuation |
+| `render/view/workshop.rs` | the workshop set, three dressings |
+| `render/view/spring.rs` | springs for overshoot |
+| `render/hud/war.rs` | the general's banner, order cards, rival name cards, the voices' lines |
+| `render/hud/ledger.rs` | the Ledger of Grudges board (workshop and pause) |
+
+---
+
+## 3. Phase W0's foundation: the war log
+
+Today every branch of `brawl.rs` calls `audio.play`, `view.shake`, `floater` and `hitstop`
+directly, and whiffs emit nothing. Every system in this plan needs to *know* what happened, so the
+first job is one event stream.
+
+```rust
+pub enum WarEvent {
+    Tell     { foe: u32, kind: EnemyKind, mv: MoveId, at: V },          // a move began (its startup)
+    Commit   { foe: u32, mv: MoveId },                                  // tracking over, aim locked
+    Landed   { foe: u32, mv: MoveId, how: Defense, dmg: f64, dir: V },  // reached the hero
+    Whiffed  { foe: u32, mv: MoveId },                                  // active frames over, nothing met
+    HeroHit  { foe: u32, effect: Effect, dmg: f64, finisher: bool, dir: V, matter: Matter },
+    Broken   { foe: u32 },                                              // poise break
+    Slain    { foe: u32, kind: EnemyKind, last_of_pack: bool, rival: Option<RivalId>, dir: V },
+    Drank    { potion: PotionKind },
+    Rally    { pack: PackId }, Rout { pack: PackId },
+    Order    { general: Sin, order: OrderKind, stage: OrderStage },     // announced / live / broken
+    Instrument { id: u16, broken: bool },
+    RivalSeen { rival: RivalId }, Promoted { rival: RivalId, why: Deed },
+    Whisper  { cheat: CheatKind }, SeenThrough { cheat: CheatKind },
+    DrumPhase { phase: DrumPhase },
+}
+```
+
+* `Brawl.log: Vec<WarEvent>` is filled during `brawl_frame` and drained once per game frame by
+  `game::war` and `game::juice`. The direct calls move into the consumers, one branch at a time,
+  with captures before and after (the feel must not change in W0).
+* `PresRng`: a second rng for presentation only (I5). The harness runs with presentation off and
+  must print the same numbers before and after W0, to the decimal.
+* Test: `the_war_log_reports_every_strike_once` (each landing, whiff and parry appears once; the
+  log's landings equal `BoutStats`).
+
+---
+
+## 4. Game feel: the juice
+
+Six tools, each with a table of numbers in `logic/juice.rs`, each switched by `--fx-off`
+(as RP07 does) so the perf and balance harnesses can run without them.
+
+### 4.1 Hit pause (hitstop)
+
+It exists as a global freeze. The plan makes it a **table**, with a **budget**, and fixes one drift.
+
+| Event | Freeze (f, 60 Hz) | Note |
+|---|---|---|
+| Hero's light blow lands | move's own (3) | unchanged |
+| Hero's finisher lands | move's own (6) | unchanged |
+| Poise break | 8 | unchanged (`HITSTOP_BREAK`) |
+| Parry | 8, plus 4 on a prince's move | the parry is the game's best moment; it should feel like it |
+| Kill | 6 | unchanged |
+| Last foe of a pack | 6 + dilation (§4.2) | the release beat |
+| Rival or general slain | 12 + dilation | the trophy beat |
+| **Hero is struck** | 3 | short: being hit must never feel sticky |
+| Blocked | 2 | |
+| Guard broken | 5 | |
+
+* **Budget**: freezes add up to at most 14 f in any 60 f window; past it, each new freeze is
+  halved. A sweep that meets four foes must not stall the game for half a second.
+* **The input survives it**: the 8 f buffer counts only simulated frames, so a press made during a
+  freeze comes out after it (verify in `fsm.rs`; test
+  `a_press_during_hitstop_comes_out_when_it_ends`).
+* **Fix**: the hero's slash pose is timed in seconds (`slash_t += dt`, `render/view.rs:748`) and
+  runs on while the fighter is frozen. Drive it from the fighter's frame, as the foes' poses are.
+
+### 4.2 Time dilation
+
+New: `Game.time_scale`, a small stack of `Dilation { scale, hold, ease }`, applied where hitstop is
+applied (`game/flow.rs:178`, scaling the `dt` handed to `tick`). `FrameClock` keeps the fraction,
+so the brawl runs slower evenly and every frame relation holds (I6). The view eases on real time.
+
+| Trigger | Scale | Hold | Ease back |
+|---|---|---|---|
+| Last foe of a pack slain | 0.35 | 0.20 s | 0.25 s |
+| Rival or general slain | 0.2 | 0.45 s | 0.35 s |
+| Prince's phase falls | 0.3 | 0.35 s | 0.3 s |
+| Parry of a prince's move | 0.5 | 0.12 s | 0.15 s |
+| A blow passes under his leap at < 15% health | 0.5 | 0.15 s | 0.2 s |
+
+* At most one dilation every 3 s; none while a story or tour camera runs.
+* During dilation the SFX bus drops in pitch by `scale^0.25` and the music is low-passed, so the
+  ear feels it too.
+* Settings: "Slow motion on kills" on by default.
+
+### 4.3 Camera trauma
+
+Exists as translation from trauma² (`effects.rs:132`, decay 1.9). The plan adds:
+
+* **Rotation**: roll ±2.5° × trauma².
+* **Directional kick**: an impulse along the blow's direction (`WarEvent.dir`), a spring back with
+  overshoot (§4.5), separate from the noise. The player feels *where* the hit came from.
+* **FOV punch**: −3° for 80 ms on a finisher or a break, +2° on a quake.
+* **Sources and caps** (trauma added, capped per source):
+
+| Source | Trauma | Cap |
+|---|---|---|
+| Hero struck | 0.22 + dmg/200 | 0.5 |
+| Hero's finisher lands / break | 0.12 / 0.2 | 0.35 |
+| Quake (kanabō, frost slam, hoard slam) | 0.45 × falloff over 6 tiles | 0.6 |
+| Giant's footfall within 4 tiles | 0.05 | 0.1 |
+| Muster horn | 0.15 | 0.15 |
+| Rival/general slain | 0.4 | 0.4 |
+
+* Settings: "Screen shake 0-100%" (accessibility), applied after the sum.
+* Captures seed the noise, so shots stay comparable.
+
+### 4.4 Kinetic debris
+
+Debris today comes only from walls and bombs (`MAX_DEBRIS` 160). The plan adds matter to every
+blow, and voxel shatter to every death: this is a voxel game, and breaking a foe into its voxels is
+the most satisfying thing it can show.
+
+* `Matter` per breed: Flesh (ichor drops), Bone (chips), Iron (sparks), Stone, Feather (slow fall,
+  high drag), Smoke (rising, no bounce), Ember (glowing, lights the floor for 0.5 s), Ice (shards),
+  Gold (coins that ring when they land), Slime (globs that stick and fade).
+* **On a blow**: 4-10 chips from the struck side, thrown along the blade's arc plus the blow's
+  direction, more on a finisher, a fan of sparks on a block (from the shield's rim).
+* **On a death**: shatter the foe's coarse rig (`Rig::lod` quarter copy) into 24-60 cubes, part by
+  part, each with the blow's direction × 3 t/s + radial 1.5 + up 2.5, gravity, restitution 0.3,
+  friction, rest, then sink and fade over 2.5 s. Giants: 90 cubes and a dust ring.
+* **Budget**: `MAX_DEBRIS` 160 → 480 as one instanced set (as the mist uses `InstanceSet`),
+  ≤ 0.3 ms CPU at 480 in `--perf battle30`. Over budget, the oldest go first, then counts scale down.
+* Variance: counts ±25% and spin from `PresRng`.
+
+### 4.5 Animation overshoot
+
+Poses ease with smoothstep and ease-out cubic today; nothing overshoots. `render/view/spring.rs`
+adds a damped spring (`Spring { x, v, k, zeta }`, stepped on view time) and these uses:
+
+| Use | Spring | What it shows |
+|---|---|---|
+| Foe flinch | kicked back along the blow, ζ 0.35, settles in 150 ms | weight |
+| Hero's blade follow-through | past the end pose by 12%, back | the swing has mass |
+| Foe anticipation | pulls back 8% in the first third of startup, held until commit | the tell reads in silhouette |
+| Brute's slam impact | squash 0.85 on the first active frame, overshoot to 1.06 | the floor took it |
+| Evade landing | squash 0.9, overshoot | the leap ends |
+| Shield on block | knocked 10° back, ζ 0.4 | the block cost something |
+| Death topple | the body tips along the blow before it shatters (6 f) | read who killed it and how |
+
+Rule: the anticipation must still read as the tell. The pose is fully wound by 60% of startup, and
+the commit flash (the last 8 f) is not hidden by any overshoot. Driven by the fighter's frame, not
+seconds, so hitstop and dilation freeze it too.
+
+### 4.6 Audio layering, tempo and variance
+
+**Layering.** Every hit is built from up to five layers by `audio/voices.rs` (§5 gives the voices):
+
+| Outcome | Transient | Body | Tail | Sweetener | Voice |
+|---|---|---|---|---|---|
+| Blow on flesh | click | thud by the foe's matter | short room | crit: high ring | foe's hurt cry |
+| Blow on armor (no flinch) | tick | dull iron | — | — | — |
+| Finisher | click ×2 | heavy thud | long room | low boom | foe's hurt cry |
+| Poise break | crack | thud | — | glass ring | foe's stagger groan |
+| Parry | bright ting | low thump | reverse whoosh | bell | hero's grunt |
+| Block | clang by shield tier (wood, iron, steel, gilded) | — | — | — | — |
+| Guard broken | crack | splinter | — | — | hero's gasp |
+| Kill | crunch | matter's shatter | room | streak semitone (exists) | death cry |
+| Hero struck | slap | thud | — | — | hero's hurt (one per hero) |
+
+**Mixing** (`audio/mix.rs`, new): priorities (the token holder's tell first, then the hero's own
+blows, then the rest), at most 3 of the same sound inside 40 ms (merged, louder), a 96-voice
+budget for SFX, a ducking of everything else by 4 dB for 120 ms under a parry or a struck hero, and
+a soft limiter on the master in place of the hard clamp. **Stereo pan and distance**: `play_at(sfx,
+pos)` pans by the camera-relative bearing and falls off over 18 tiles; a tell from his back arc gets
++3 dB, because the eye can't help there.
+
+**Tempo.** The recorded songs can't change tempo. Each track gets its BPM in `Soundtrack`, and a
+synth **war-drum layer** plays over it, locked to that BPM, its density following the Drum (§6):
+silent at rest, a heartbeat in build, full drums at peak, a single low hit on release. Muster horns
+and general orders land on a bar line.
+
+**Variance.** Pitch ±6% and gain (exist), plus 3 round-robin variants per voice, never the same
+twice in a row, idle timings and breath per foe offset by `PresRng`, barks drawn without repeat.
+None of it may touch the simulation (I5).
+
+---
+
+## 5. The voices of the bestiary: attack sounds by character
+
+Today one `tell_sfx` maps 33 bodies onto about 15 shared sounds, and every impact is generic. The
+plan gives every breed a **voice set** and keeps one rule above it: **the archetype is a family,
+the breed is a voice.** The ear first learns the three ways of attack, then the faces.
+
+| Family | Signature on every tell | Why |
+|---|---|---|
+| Melee (Brute) | low brass swell + a metal scrape as the weapon rises | slow, heavy: "wait" |
+| Body (Skirmisher) | a sharp intake of breath, rising snarl | close and quick: "time it" |
+| Distance (Hexer) | a rising shimmer that peaks on release | "close in now" |
+
+```rust
+pub struct VoiceSet {
+    pub tell: Recipe,      // the startup cry, family signature + the breed's timbre
+    pub swing: Recipe,     // weapon whoosh: blade, club, claw, jaws, wings, spell
+    pub matter: Matter,    // its body's impact layer (§4.4)
+    pub hurt: Recipe, pub stagger: Recipe, pub death: Recipe,
+    pub alert: Recipe,     // waking in its den
+    pub bark: BarkSet,     // rivals and generals only (§8, §9)
+    pub size: f32,         // pitch scales down with size: giants an octave below
+}
+```
+
+Recipes are short descriptions for the procedural synth (`Voice`: wave, envelope, filter, detune,
+vibrato), so a new voice costs data, not samples.
+
+| Stage | Breed | Tell (on top of the family) | Swing / release | Matter | Death |
+|---|---|---|---|---|---|
+| 1 | Draugr | rattling exhale, grave-cold | rusty blade whoosh | Bone | collapsing bones |
+| 1 | Raven / night raven | harsh caw (night: lower, doubled) | wingbeat burst | Feather | caw cut short |
+| 1 | Bog slime | bubbling gurgle | wet spit | Slime | splat and hiss |
+| 2 | Witch | cackle rising into the shimmer | violet star chime | Flesh | shriek fading to wind |
+| 2 | Witch's minion | squeak | small claw | Flesh | pop |
+| 2 | Helmeted skeleton | helmet rattle, sword drawn | steel whoosh | Bone/Iron | armour clatter |
+| 2 | Loup-garou | growl into howl-breath | claw rake | Flesh | whimper |
+| 2 | Blemmyes | chest-mouth bellow | club whoosh, heavy | Flesh | belly groan |
+| 2 | Large bat | ultrasonic chirp sweep | leathery wing | Flesh | squeal |
+| 3 | Tengu | wind gust, "kaa" | twin steel | Feather | gust dying |
+| 3 | Rasetsu | demonic double laugh | two blades, crossed ring | Flesh | roar choked |
+| 3 | Dire wolf | deep growl | jaws snap | Flesh | yelp |
+| 3 | Jorogumo | woman's hum into chitter | fireball whoomp | Flesh/Chitin | hiss |
+| 3 | Cobra | rattle-less hiss, hood flare | strike snap | Flesh | hiss trails off |
+| 4 | Oni | drum-chant grunt | kanabō: iron club whoosh, studs ringing | Flesh | earthshaking fall |
+| 4 | Kappa | water slosh + "hah" | palm slap | Slime | dish spill |
+| 4 | Rokurokubi | giggle, neck creak | neck whip | Flesh | sigh |
+| 4 | Kitsune | fox bark into bell | foxfire whisper ×3 | Smoke | yip and bells |
+| 5 | Karakoncolos | calls the hero's own name (per hero: Ragnar/Mehmed/Miyamoto) in a cold voice | fur-heavy swing | Flesh | howling wind |
+| 5 | Tülükuş | owl's cry (dooming) | silence then talon rip | Feather | soft thud |
+| 5 | Albastı | wheezing breath, close | weight-drop thump | Flesh | rattle |
+| 5 | Cin | crackling flame, no source | flame snap | Smoke/Ember | flame gutters |
+| 5 | Arçura | creaking wood, leaves | thorn dart whistle | Wood | timber crack |
+| 6 | Tepegöz | single-eye roar, stone grind | boulder-arm sweep | Stone | eye bursts, rumble |
+| 6 | Gashadokuro | ringing in the ears (rising tone) | bone hands, clatter | Bone | huge bone collapse |
+| 6 | Yedi başlı ejder | seven hisses in a chord | heads snap in sequence | Flesh | "Bir daha vur!" plea |
+| 6 | Goryō | thunder murmur, court flute | lightning crack | Smoke | thunder rolls away |
+| 7 | Frost giant | glacier groan | ice-crack slam | Ice | ice shatter |
+| 7 | Surtr | forge roar | burning sword roar | Ember | fire collapses |
+| 7 | Níðhöggr | root-gnawing, earth groan | burrow rumble under | Flesh/Stone | roots snapping |
+| 7 | Hel | two voices at once, alive and dead | drain whisper | Smoke | a long exhale |
+| realms | Peerless, Ganglot, Gaki, Ellepige | from their realm's sound palette | — | — | — |
+| prince | Mammon | coins poured, toll bell (exists), banker's laugh | sceptre ring | Gold | an avalanche of coins |
+
+* The karakoncolos speaking the hero's name is a tell that is also a story beat: three recipes,
+  one per hero, from the `Speech` synth (`Old`/`Beast` voices).
+* Test: `every_breed_has_its_own_voice_and_its_familys_signature` (no two breeds share a tell
+  recipe; each tell starts with its family's layer).
+
+---
+
+## 6. The Drum: pressure and recovery
+
+The threat manager spaces strikes **inside** a fight (frames). Nothing spaces fights **across** a
+level (seconds). The Drum does. It is not a difficulty cheat: it never changes a number of the
+frame data, never spawns without a tell, and never refuses a fight the player picks.
+
+### 6.1 Intensity
+
+Every 30 f:
+
+```
+I = clamp( 0.35 · taken_5s / (0.25 · max_hp)       recent damage
+         + 0.25 · engaged / 6                       foes hunting him
+         + 0.20 · (1 − hp / max_hp)                  how low he is
+         + 0.20 · landings_5s / 5 , 0, 1 )          strikes reaching him
+```
+
+### 6.2 Phases
+
+```
+   REST ──(player enters a den / a timer)──▶ BUILD ──(I ≥ 0.6)──▶ PEAK
+     ▲                                                              │
+     └──────(6-10 s)─── RELEASE ◀──(pack routed, cleared, or peak > 35 s)┘
+```
+
+| Phase | What the AI layers may do | Bounds handed down |
+|---|---|---|
+| **Rest** | nothing new on their own. The old man may speak; the prince may whisper. | threat capacity as the field's; no orders; dens wake only by the hero |
+| **Build** | generals issue orders; patrols walk; dens' wake range normal | normal |
+| **Peak** | no new orders; announced reinforcements still arrive | capacity as the field's, peak length 25-40 s |
+| **Release** | the pack's morale drops; a routed pack flees | capacity −1, cadence +30 f, for 6 s; potion drop chance ×1.5 |
+
+* **Player-driven escalation is always allowed.** If he wakes three dens, three dens fight. The
+  Drum only holds back what the *AI* would start.
+* Difficulty presets map to the Drum's bounds, openly: **Steady** (longer rests, shorter peaks)
+  and **Relentless** (the reverse). No hidden rubber band on skill.
+* F9: the Drum's readout (I, phase, time in phase, what it blocks). `--drum-trace` writes the
+  intensity curve to CSV for the crawl.
+* The war-drum music layer (§4.6) follows the phase.
+
+---
+
+## 7. Packs: roles, leaders, plays, morale (the Diablo IV lesson)
+
+Diablo IV's packs work because their members do different jobs that fit together. Here each foe
+keeps its archetype (how it attacks) and gains a **role** (what job it does in the pack).
+
+### 7.1 Roles
+
+| Role | Who | Job | How (only slots and request biases) | Counter |
+|---|---|---|---|---|
+| **Vanguard** | Brute breeds | hold the front, screen the callers | claims the front sectors; when he comes within 3 tiles of a caller, takes the sector between them, always leaving a 1.2-tile gap (no trapping) | break its poise, or go round: it turns at 150°/s |
+| **Harrier** | Skirmisher breeds | press his sides | claims side sectors in pairs (never the back arc first, as now) | parry one, step away from the other |
+| **Caller** | Hexer breeds | punish standing still | ranged ring; asks for a token more eagerly when he is blocking | close in between bolts |
+| **Leader** | one per pack (an elite of any archetype) | command the plays, hold the morale | crowned (`crown` exists), banner aura, one or two affixes | kill it first: the pack routs or breaks |
+
+### 7.2 Plays
+
+The leader picks one play every 30 f from those whose conditions hold, by score. A play only
+changes **slot preferences** and **request scores**; the threat manager still decides who strikes,
+so I2 holds by construction.
+
+| Play | When | What it does | The answer the player learns |
+|---|---|---|---|
+| **Pincer** | 2 harriers awake | they take opposite sides | turn to one; the other must wait for its token |
+| **Screen** | a caller and a vanguard | vanguard interposes | flank the vanguard, or reflect the bolts |
+| **Rotate** | a foe below 30% health | it falls back to the hold ring; a fresh one takes the token | chase the wounded (a choice: risk vs. a kill) |
+| **Crossfire** (tier ≥ 4) | 2 callers | their bolts are time-locked to land on the same frame from two sides, as **one strike** (as a volley counts) | leap: one parry can't meet both |
+| **Hold the door** | a den with one mouth | the vanguard stands in it, gap kept | bomb or archangel, or bait it out |
+| **Rally** | leader hurt, 2+ allies | the leader's own move: 40 f startup, a horn, allies refill 30% poise | punish the rally: it is a 40 f window |
+
+### 7.3 Morale and the rout
+
+Each pack holds morale 100: −35 when its leader dies, −20 per ally slain, −10 per poise break it
+sees, +10 per rally. At 0 the pack **routs**, by its breeds' temperament:
+
+| Temperament | Breeds (examples) | At 0 morale |
+|---|---|---|
+| Cowardly | ravens, minions, bats, cin, kitsune | flee to the den for 180 f, no token requests: a release beat |
+| Stalwart | brutes, giants, skeletons | hold: they fight on (no change) |
+| Frenzied | loup-garou, rasetsu, dire wolf, oni | +15% pace, rest after a move −20%, for 6 s (frame data untouched) |
+
+The rout feeds the Drum's release. Killing the leader first is the pack's lesson.
+
+### 7.4 Elites and the composer
+
+`pack::compose(dealt_foes, tier, seed)` turns the `Dealer`'s bodies into a pack: roles by
+archetype, a leader (the toughest, or a rival from the Ledger, §8), and affixes on the leader from
+tier 3 (one) and tier 6 (two). Every affix is checked against I1-I4 by test
+(`no_affix_slows_holds_or_quickens_a_move_past_the_floor`).
+
+| Affix | Effect |
+|---|---|
+| Ironhide | +15 armor (the finisher still flinches it below 45) |
+| Bannered | allies within 4 tiles regain poise 50% faster |
+| Vengeful | when an ally dies, it gains 20 poise and rest −20% for 4 s |
+| Echoing | its tell is followed by a harmless ghost tell; the floor fill shows only the real one |
+| Warding | callers within 3 tiles take bolts reflected at them at 50% |
+| Gilded | drops twice the silver, flees at 30% |
+
+---
+
+## 8. The Ledger of Grudges: rivals (the Shadow of Mordor lesson)
+
+Foes that hurt the hero, or get away from him, become **somebody**: named, remembered, ranked,
+and they remember him.
+
+### 8.1 Promotion
+
+A foe is promoted to a rival when it:
+
+| Deed | Epithet it earns (examples) |
+|---|---|
+| deals the killing blow | "Ragnar's Bane", "Who Ate the Janissary", "Bane of the Two Swords" |
+| breaks his guard 3 times in one fight | "the Shield-Breaker" |
+| survives a fight below 25% health (routed, or he walked off) | "the Twice-Wounded", "Who Fled the Blade" |
+| is a leader he left behind (the leash ran out with it alive) | "the Unfinished" |
+| takes his silver at a death (§17, decision 2) | "the Silver-Drinker" |
+
+Names come from the breed's folklore (`names.rs`): Norse for draugr and the giants (Hrafn, Skuld,
+Grimkel...), Japanese for the yōkai (Kurokane, Akaishi...), Turkish and Turkic for the Anatolian
+nights (Kara Yusuf, Ayaz, Tepeli...), old European for the witches and the loup-garou, hellish
+titles for the realm natives. Name + epithet + breed: *Kara Ayaz the Shield-Breaker, karakoncolos*.
+
+At most **9 live rivals**; a tenth replaces the lowest rank. A rival rises in rank (1-5) each time
+he wins again: +8% health per rank, an affix at ranks 2 and 4, a lesson from rank 3.
+
+### 8.2 Traits
+
+Each rival rolls one **strength**, one **weakness** and one **personality**. Weaknesses are what the
+old man learns and sells (§10.1), and they tie to the hero's weapons, elixirs and mastery.
+
+| Strengths | Weaknesses | Personalities |
+|---|---|---|
+| Unflinching: +15 armor | Proud: after he lands a blow he taunts, open for 60 f | **Braggart**: taunts by name, by memory |
+| Patient: tracks 4 f longer (still commits for the last 12) | Scarred: blows from the side of his old wound ×1.3 | **Coward**: routs at 40% health and runs to rank up |
+| Elixir-proof: one elixir's effect on him halved | Fears steel / fire / the thrown blade: that family staggers him at once | **Duelist**: his pack stands back; the threat pool is his alone (a 1-on-1 the player can accept) |
+| Pack-lord: leads a pack of 5 | Greedy: stops to pick up dropped silver (a 50 f opening) | **Schemer**: when hurt, blows a horn that wakes the next den (60 f tell; interrupt it) |
+| Vengeful: enraged when his pack dies | Old wound: poise −30% | **Avenger**: hunts the hero if he slew a rival of the same breed (his "brother") |
+
+### 8.3 Memory and lessons
+
+Each rival keeps up to 8 encounters: where, how it ended, which hero, which blade family and tier,
+which elixirs were drunk, and counts of the hero's verbs (parries, blocks, evades, finishers).
+From rank 3 he carries **one lesson**, drawn from the hero's most used answer to him, and the name
+card says so. One lesson at a time, always announced: the player's mastery is to change his answer.
+
+| The hero mostly... | The lesson | What it does (choices only, I6) | The new answer |
+|---|---|---|---|
+| parries | "He remembers your parry." | varies his startup between two lengths of the same move (e.g. 26 and 34 f, both ≥ the floors); the floor's fill shows the real landing | read the fill, not the rhythm; or evade |
+| evades | "He remembers your leap." | prefers his wide arc or his floor move, and waits out the leap's 6 f landing | block, or parry |
+| blocks | "He remembers your shield." | prefers the move with the most poise; his blows wear the shield ×1.3 | parry or step out |
+| drinks one elixir | "He brought the antidote." | that elixir's effect on him is halved | another elixir, or none |
+| finishes with L3 | "He knows your finisher." | evades on L3's startup when he can (his own leap) | end chains on L2, punish the leap |
+
+### 8.4 Meeting a rival
+
+* The Ledger offers one rival per realm visit (two from tier 5), placed as a pack's leader in a
+  den chosen by the realm's seed.
+* Within 10 tiles: his **name card** (name, epithet, rank, the lesson if any, the known traits;
+  unknown ones as "?"), his bark (by memory: "The janissary's shield again? It broke last time."),
+  and a 0.5× dilation for 0.25 s. No pause.
+* Killing him: 12 f freeze + dilation, his **trophy** (a piece of him: a helm, a horn, a fang)
+  goes to the workshop's wall (§12), plus runes by rank, and the silver he took, ×1.5.
+* A rival who wins: ranks up and walks off (a rout to his den) with a bark.
+* The Ledger is part of the **run**: Start wipes it, Continue keeps it.
+
+### 8.5 The ledger board
+
+`render/hud/ledger.rs`: portraits drawn from each rival's rig (`sprite_from`, as the HUD portrait
+is made), in a pinned-note style, with name, rank, the traits as found, the lesson, and his last
+encounter. Seen in the workshop (§12) and from the pause menu.
+
+---
+
+## 9. The Prince's Hands: the generals (the dungeon-general lesson)
+
+Each realm gets a **general**: a named commander serving its prince. He does not wait in a room
+for the hero: he **runs the realm against him**, by orders the player can see and counter.
+
+### 9.1 Orders and instruments
+
+A general has three orders, from four kinds. Each order works through an **instrument**, a thing in
+the realm the player can break, snuff, bar or kill. Every order is announced (I7): a horn or bell,
+a herald's bark, an order card on screen (`render/hud/war.rs`), and a ping on the compass.
+
+| Kind | What the general does | The instrument | Counters (and the reward for each) |
+|---|---|---|---|
+| **Watch** (patrols) | 1-2 patrol packs walk between rooms; a patrol that sees him blows a whistle (60 f) that wakes the dens within 10 tiles | the watch-fire | snuff it (3 blows): patrols stop. Ambush a patrol before it whistles: its leader drops runes. |
+| **Muster** (reinforcements) | a war horn sounds (4 s), a marked gate glows, a pack marches in. Only in Build. | the war horn on its tower, or the herald who carries the order (a fleeing courier) | break the horn: no more musters. Bar the gate (interact, 1.5 s): that gate is shut. Catch the herald: the order fails, and he carries a map of the general's post. |
+| **Kindle** (hazards) | wakes the realm's hazard in a zone (coins, lava vents, acid, censers' smoke), marked 3 s ahead. Hazards are `Shape::Traps`, `GuardRule::Bare`, planned by the threat manager (I2), and never slow (I3). | the bellows, valve or lever | break it: the zone goes quiet. **Turn it**: it now burns the foes; lure them in. |
+| **Decree** (objectives) | a timed scheme that changes the prince's fight: treasurers empty the chests into the court, sappers burn the bridges, cooks lay the prince's feast | carriers walking a route, or a chain to cut | kill the carriers or cut the chain before the timer. Whatever the decree finished, the prince fights with. |
+
+### 9.2 The general himself
+
+He waits at his **command post**, a fortified room of the realm, with a bodyguard pack playing
+Screen. He fights as a lesser prince: two phases by health, `Archetype::Prince` machinery with
+smaller numbers (health ≈ 300 × the realm weight, hide only in phase 2, token cost 2). Slain:
+
+* every order still standing ends at once, and his banner hangs in the workshop;
+* the prince's fight is weakened by one step (proposal: the prince loses his phase-two adds, or
+  his hide falls from 70% to 50%; §17, decision 5);
+* skipping him is a choice: the hero saves a hard fight now, but the general's orders go on for the
+  rest of the realm and the prince keeps his full strength.
+
+**The general adapts once per loss.** When an instrument breaks he answers with one counter-order
+(a guard pack moves to the next instrument, or the remaining muster gate is doubled), announced as
+any order is. This is the "they change their plans for me" beat.
+
+A rival of rank ≥ 4 can **usurp** a general's place in a realm not yet taken: the general becomes
+the rival, with his memory and lesson, and the orders keep their instruments. The Mordor tie.
+
+### 9.3 The generals: three a realm, each carrying a key (BACKLOG B41, D12)
+
+Every realm is about fighting, beating its generals, taking their keys and opening the prince's
+door. **Each realm has three generals**, each a named, real fight (a frame-data duel on his breed,
+health ×2.5 his breed's but not past 300 × the realm's weight, a horn at half health that steadies
+his guard: two phases), each at a post of his own with his own guard pack, **each giving one of the
+realm's three orders** (general `k` gives order `k`; slain, his order ends for good, a decree
+already done stays done) and **each carrying a key**. Slain, his key falls where he fell (a gold key
+turning over a glint of his cloak, on floor the hero can walk to: a pickup with a moment, a chime,
+a beat of slowing and KEY n OF 3), his banner goes to the workshop's wall, and his name card is
+shown as he wakes (WARBAND §8.4's beat for a rival). With all three keys **the door to the
+prince's court opens**; until then it is sealed with a "3 KEYS n/3" lock. The HUD's banner shows the
+keys held (KEYS 0/3 to 3/3) and a key under each general's order disc; the minimap and the screen
+show each general's post once known (seen, named, or marked by a caught herald's map) and each key
+lying about.
+
+The first is the realm's general of the first plan. The third (`CLIMAX`) is the one the realm's
+climax leads to in the six realms after the vaults: he waits until its last trap ends and comes out
+before the court's portal a breath later, with his guard (`climax_survived`): the Peerless leads to
+the Mirror-Cin, Kiyohime's bell to Kiyohime, the truce stone to the Carrion Herald, Hel's bed to the
+Night Hag, the wedding night to the Thorn-Warden. In the Rotting Feast the gullet is the road: the
+Gingerbread Witch stands at the table at the Stomach's heart, the teeth of a seam stay shut while a
+general holds the zone before it (no general is ever digested behind them), and the pylorus parts
+for the lean key-bearer only. In the vaults all three hold rooms.
+
+| Realm | General (order, instrument) | Body |
+|---|---|---|
+| Greed: the Vaults of Mammon | **The Assessor** (Muster, the counting-bell) · **the Hoard-Hound** (Decree, the treasury chain) · **the Usurer** (Kindle, the coin-bellows) | blemmyes · dire wolf · kitsune |
+| Pride: the Hall of Mirrors | **The Chamberlain of Glass** (Kindle, the lens-bellows) · **the Peacock Guard** (Decree, the throne chain) · **the Mirror-Cin** (Watch, the mirror-fire; after the Peerless) | tengu · rasetsu · cin |
+| Envy: the Serpent Grotto | **The Bell-Warden** (Muster, the drowned bell) · **the Cobra Priestess** (Decree, the bell chain) · **Kiyohime** (Kindle, the geyser valve; after the bell) | kappa · cobra · rokurokubi |
+| Wrath: the Burning Field | **Marshal Gorebrand** (Muster, the war horn) · **the Wolf-Coat** (Decree, the bridge chain) · **the Carrion Herald** (Kindle, the lava sluice; after the truce stone) | oni · loup-garou · tülükuş |
+| Sloth: the Grey Mire | **The Lamplighter** (Kindle, the lamp-bellows) · **Ganglati** (Decree, the hourglass chain) · **the Night Hag** (Watch, the lantern-fire; after the Long Sleep) | karakoncolos · Ganglöt · albastı |
+| Gluttony: the Rotting Feast | **The Steward of the Last Course** (Muster, the dinner gong) · **the Starved Knight** (Decree, the larder chain) · **the Gingerbread Witch** (Kindle, the acid valve; at the dome) | gaki · helmeted skeleton · witch |
+| Lust: the Garden of Thorns | **The Bridesmaid** (Watch, the procession's torch) · **the Matchmaker** (Decree, the vow-chain) · **the Thorn-Warden** (Kindle, the censer; after the wedding night) | elf-maid · jorōgumo · arçura |
+
+Twenty-one bodies, none twice. The names that PRINCES-EPIC.md's set pieces use (the Chamberlain's
+mirror-lines, the Bell-Warden's toll, Gorebrand's horn, the Lamplighter's lamps, the Assessor's
+counting-bell, the Steward's gong, the Bridesmaid's procession) keep those instruments.
+
+**The prince's fight** (`PrinceTerms`, decision D14): **his adds always come**, however many of his
+generals fell (all three always have, since the door asks their keys); the decree done brings them
+at once as before. The court reads which generals fell and whether the decree was done
+(`PrinceTerms::slain`, `decree_done`) for the epic courts' set pieces; no general's death weakens
+him otherwise.
+
+Realm generators expose candidate places for the post and the instruments (`Base.posts`), picked
+by seed, each reachable (a test as the hub's portals have).
+
+---
+
+## 10. The two voices: the old man guides, the prince cheats
+
+The game has two voices that speak to the hero. Learning to tell them apart is a skill.
+
+### 10.1 The old man's counsel (always true)
+
+`logic/war/counsel.rs`: rules of the form *trigger → line set*, each with a priority, a cooldown
+and a once-flag. Lines are **generated from the game's own data** (a rival's real weakness, a
+general's real instrument), so they are true by construction, and a test pins it
+(`the_old_man_never_lies`: every counsel line about a rival or general names a trait it really has).
+
+| Trigger | What he says (examples; each hero hears his own register) |
+|---|---|
+| First time a breed kills him | its counter, in one line: "The blemmyes swings slow. Wait for it, then strike." |
+| Three deaths in the same room | a specific tip, and an offer: "Come back to me. I'll mend the shield, and we'll talk." |
+| A rival is met | one true trait, if the player has paid him for it (or found it) |
+| Entering a realm | the general's name, and where one instrument is |
+| His blade dulls, his shield cracks | the existing warnings, in his voice instead of a floater |
+| A prince's cheat was seen through | praise, and Quitmer barks |
+| Rest phase, nothing else to say | silence (he only speaks when it matters) |
+
+* **Delivery**: a portrait in a bottom corner, one or two lines typed out, Quitmer's bark as his
+  signature sound, amber text. Only in Rest or Release (the Drum), or on the death screen; never in
+  Peak. At most one line every 45 s.
+* **Calling him** (H / Back, exists) opens the workshop's War Table first when he has news (§12).
+* **Intel costs.** True weaknesses of a rival cost silver at the War Table (cheap: 40-120), or are
+  learnt by exploiting them once in a fight.
+
+### 10.2 What makes the old man recognisable
+
+His lines are amber and come with Quitmer's bark. His shop has Quitmer in it. His lantern burns
+warm white. These three are the tells the prince fakes, and gets wrong.
+
+### 10.3 The prince's cheats (always lies, always with a tell)
+
+**The old man always leads to good** (the user's rule, 2026-10-04). No cheat takes his form, his
+name, his shop or his dog: the prince lies in his own voice and colour. The false gatekeeper (a
+mimic old man selling tainted wares) was built and then removed for it, and the whisper speaks
+under the prince's own name ("MAMMON WHISPERS"), never "THE OLD MAN".
+
+`logic/war/deceit.rs`. Every cheat is a struct of **the lie, its tell, its counter, the reward for
+seeing through it, and what it costs if believed**, and a test checks each part exists
+(`every_cheat_has_a_tell_a_counter_and_a_bounded_cost`). Cheats come only in Rest and Build, one at
+a time, at most two per realm. They never take an owned tier, a relic or a life; what they take is
+time, health, silver carried, or a better route.
+
+| Cheat | The lie | Its tell | Counter → reward | Cost if believed |
+|---|---|---|---|---|
+| **The Whisper** | false counsel: a wrong weakness, a wrong instrument, a wrong way | the sin's colour instead of amber, a reversed echo, no bark | ask the old man (H): "I said no such thing." → **Seen-through** mark (+runes) | a wasted elixir, a walk into a den |
+| ~~The Crooked Bargain~~ | removed (BACKLOG B40, D11): **the princes never make a deal** | | | |
+| **Loaded Dice** | a mimic chest (Greed, Gluttony) | it breathes; its coins don't glint; the hinge creaks | strike it first → double loot | it bites (a body strike, planned by the threat manager) |
+| **The Turned Sign** | the realm's compass points toward a trap for 20 s | the arrow in the sin's colour, and it flickers | follow the old man's amber marker, which is always true | a detour |
+| **The Prince's lie** (exists) | the end-of-realm lie ("take your throne", "all you want lies below", ...); Mammon's toll was a deal and is gone (B40) | kept as built | kept as built | kept as built |
+
+Each prince flavours his cheats with his sin: Mammon's are all prices, Lucifer's flatter, Leviathan
+offers what another hero had, Amon goads, Belphegor offers rest, Beelzebub offers food, Asmodeus
+offers what the hero wants most. A "lies seen through" count is kept per run, and the old man
+remarks on it at the workshop.
+
+---
+
+## 11. The heroes: mastery, weapons and elixirs
+
+Each hero has three things to grow: **weapons** (the blade and shield trees, exist), **elixirs**
+(the elixir tree and the belt, exist) and **mastery**. Mastery today is the path tree, bought with
+silver. The plan keeps the path tree, and adds a **mastery of technique** that is *earned*, by
+deeds in fights and by the old man's trials, because mastery that is bought is not mastery.
+
+### 11.1 The three masteries (5 ranks each)
+
+| Hero | Mastery | Deeds that feed it | Ranks (proposal; each audited by `kit.rs`'s path audit) |
+|---|---|---|---|
+| Ragnar | **The Berserker's Way** | punishes, poise breaks, finishers | 1: a gold glint when a foe enters recovery (teaches the punish) · 2: the finisher's poise +5 · 3: a kill during dilation refunds 16 stamina · 4: **War Cry**, a move (frame data, 30 f startup) that staggers body foes about him · 5: once per pack, a guard break leaves him guarded |
+| Mehmed | **The Discipline of the Ocak** | blocks, halberd-tip hits (the last 0.3 tiles of reach) | 1: block cost −10% · 2: tip hits +25% poise · 3: **Hold the Line**: a block shoves a body foe 0.5 tiles back · 4: blocks in a row fill a "discipline" meter; full, his next chain costs no stamina · 5: once per pack, a guard break leaves him guarded |
+| Miyamoto | **The Way of Two Heavens** | parries, evades with a blow passing under | 1: the parry window shows a white edge on the telegraph · 2: **Riposte**: a strike in the 20 f after a parry lands ×1.25 more · 3: **Mushin**: three parries without a wound, and the next strike ×1.5 · 4: an evade through a blow refunds 10 stamina · 5: the parry window +1 f (8 → 9; still within the bout's targets) |
+
+* Deeds are counted from `WarEvent`s; each rank needs deeds **and** a trial (§12) to confirm it.
+* `--kits N` and `the_bouts_meet_their_balance_targets` must stay green with every rank: mastery
+  rewards skill, so its effects grow the expert's margin far more than the masher's.
+
+### 11.2 How the enemy meets them
+
+* **Rivals read them** (§8.3): mastery becomes the habit a rival learns, and the next lesson.
+* **Weapons**: weaknesses name weapon families (steel, fire, the thrown blade); the old man's
+  counsel says which blade to bring; trophies of rivals slain unlock a cosmetic **inscription**
+  on that blade ("Bane of Kara Ayaz") that the next rival of that breed remarks on.
+* **Elixirs**: drinking one is a `WarEvent`. Cowardly packs lose 15 morale when he drinks
+  strength or Ragnarök; a rival who saw an elixir comes with the antidote; the Steward of the Last
+  Course's Decree is to steal one bottle from the belt each time his cooks reach the court (a
+  stated cost, countered by killing the cooks); and the prince's tainted elixirs (§10.3) are
+  tellable by a wrong colour in the bottle.
+
+---
+
+## 12. The old man's workshop, rebuilt
+
+Today the wares are a right-hand panel over the Scene I crypt set with a static line per tab. The
+rebuild turns it into a **place**: the old gatekeeper's hidden workshop, where the hero is armed,
+counselled and tested, and where the war against him hangs on the walls.
+
+### 12.1 The set
+
+Its own stage (as the title and the cutscenes have theirs), drawn by `render/view/workshop.rs`, in
+the board's palette (charcoal, umber, copper, amber, mist teal, pale stone). The camera moves
+between **stations**; the old man walks to each and works there; Quitmer follows and reacts.
+
+| Station | Tree / job | What happens there |
+|---|---|---|
+| **The Anvil** | weapons | blades on racks, owned ones lit, sealed tiers bound in chains with rune seals. Buying: the old man hammers it out (three strikes, sparks, `Anvil` with a 6 f freeze and a little trauma on the last), the hero takes it up. |
+| **The Shield Wall** | shields, repair | shields on the wall by tier; reforging is done in front of you |
+| **The Alchemy Bench** | elixirs, the belt | bottles on shelves, the belt laid out on the bench; brewing shows the colour that the prince's fakes get wrong |
+| **The Training Yard** | path, mastery, trials | a sparring post and a ring of chalk. Preview: the hero swings the chosen blade at a dummy, and a card compares it with what he holds (damage, tempo, reach, parry window, from `Kit`). **Trials** are short bouts in the Sparring Ring's rules: one per mastery rank, against archetypes or the ghosts of slain rivals. |
+| **The War Table** | counsel, intel | a map of the hub and the realms: each general's sigil, his orders, the instruments found; the Ledger of Grudges pinned beside it (§8.5); true weaknesses for sale |
+| **The Trophy Wall** | — | what the hero took: rivals' trophies, generals' banners, the princes' keys. Every trophy has its line from the old man. |
+
+### 12.2 Three dressings, one layout
+
+Same stations in the same places (so the menus and the code stay one), dressed for the hero being
+played, because the fantasy is his:
+
+* **Ragnar**: a Norse smithy, a turf roof, a rune-carved anvil, axes on the wall, a hearth.
+* **Mehmed**: an Ottoman armoury tent, carpets, brass lamps, halberds racked, a kazan on the fire.
+* **Miyamoto**: a Japanese forge, tatami, a whetstone, katana on a stand, paper screens.
+
+### 12.3 Controls and flow
+
+* LT/RT (and Tab) step between stations as they page the tabs today; up/down in a station's
+  rows as today (`ShopState` is kept: each station wraps its existing tab; Counsel, Trials and
+  Trophies are new). Esc goes to the door.
+* Calling him (H / Back) mid-realm opens at the **War Table** if he has news, otherwise where you
+  left.
+* The old man's static line per tab becomes counsel (§10.1): what he says depends on what just
+  happened down there.
+* `emit_wares` retires; `wares_camera` becomes a camera per station.
+
+---
+
+## 13. The HUD and the screens
+
+| Element | Where | Shows |
+|---|---|---|
+| General's banner | top centre, small | his sigil, his three orders (active / counting down / broken) |
+| Order card | slides in under it, 3 s | "THE ASSESSOR MUSTERS · 4" with the instrument's ping |
+| Rival name card | beside the rival, 2.5 s | name, epithet, rank, lesson, traits known |
+| The voices | bottom left | the old man (amber, portrait, Quitmer) or the whisper (sin colour, no portrait) |
+| Pack leader | over his head | the crown (exists) and his morale as a thin ring |
+| Drum readout (F9) | debug | intensity, phase, what is held back |
+| Ledger board | pause menu + workshop | §8.5 |
+
+All in the charcoal-and-copper panels of the art-direction pass.
+
+---
+
+## 14. Saving
+
+| Key | Scope | Holds |
+|---|---|---|
+| `vh.warband` (new) | the run (Start wipes, Continue keeps) | the Ledger (rivals, memory, trophies), each realm's general state (instruments broken, decrees done, slain), lies seen through, counsel once-flags |
+| `vh.progress` (exists) | across runs | mastery ranks and trial results join `HeroProgress` (format v3, v2 still loads) |
+
+`Run` checkpoints write `vh.warband` alongside `vh.run`. Captures never write it (as now).
+
+**New Game+** (2026-10-09, `game/newgame.rs`). Once the tale is told the title offers NEW GAME+
+beside Start: the adventure from Scene I again with the finished run's `vh.progress` (every hero's
+tiers, mastery, loadout; the purse) and its living rivals seeded back into the Ledger (their tally
+of the slain begins again), every foe and prince tiers harder and heavier (below). The offer is saved apart, from the
+moment the end begins until the New Game+ it offers reaches its first checkpoint:
+
+| Key | Scope | Holds |
+|---|---|---|
+| `vh.ngplus`, `.kit`, `.rivals` | the offer, across runs | its level (1 to 3), the kit and purse, the Ledger's living rivals |
+| `vh.run` | the run | a New Game+ run's checkpoint is a "v3" line ending in its level (a first run's stays "v2") |
+
+"Tiers harder" is an offset on top of the numbers, never a change to them: `Game::realm_tier` is
+1 + keys held + `NG_TIERS` (2) for each level, so the dealer deals two stages deeper (to the
+seventh), packs grow and weigh as a later realm's, each prince fights two tiers up for each level
+(`court::weight`), the Pit and Krampus too (`lair_weight`); the Garden brings two stages deeper
+(`foe_stage_of`). On top of the offset the New Game+ multipliers (`NG_PRINCE`, `NG_KRAMPUS`,
+`NG_FOES`, below) weigh the princes, Krampus and every other foe. Whatever the princes' and foes'
+own numbers become, both compose with them; a first run (level 0) is untouched. (The first table
+below was measured at one tier a level, before either; what follows it brings it to today's.)
+
+`--run SKILL SEED ORDER ng+N` plays the whole run, then New Game+ N times over with what it left (a
+run that did not reach the end hands on what it had where it stopped), and prints the last.
+Seed 1, NG+1 against the first run as this build plays it (1.0.21 with the fixes and W10's
+princes):
+
+| Run | First run | NG+1 |
+|---|---|---|
+| expert, order 0 | the ending, 100 min, 14 lives and 3 tries lost, 3 realms cleared | the ending, 82 min, no life lost, 3 realms cleared |
+| expert, order 1 | the ending, 107 min, 9 lives and 1 try lost, 2 realms cleared | the ending, 84 min, 2 lives lost, 2 realms cleared |
+| adept, order 0 | ends in the Rotting Feast, 96 min, 24 lives and 9 tries lost, 5 princes | ends in the Rotting Feast, 70 min, 19 lives and 6 tries lost, 5 princes (kit 7/4 to 8/8 handed on) |
+| adept, order 1 | ends in the Rotting Feast, 12 min, 18 lives lost, 1 prince | ends in the Rotting Feast, 11 min, 16 lives lost, 1 prince |
+
+The kit outgrows one tier: NG+1 is easier for the expert than his first run was (blade 9-10 from the
+first realm; the princes fall in a minute or two), and about as hard for the adept, who reaches the
+same place with what his first run left him. NG+2 and NG+3 (`ng+2`, `ng+3`) are the knobs if New
+Game+ should bite harder (or a larger offset per level).
+
+**Two tiers a level** (`newgame::NG_TIERS` = 2, the user's call, 2026-10-09): NG+1 meets the first
+realm at tier 3. Expert, seed 1: order 0 the ending in 72 min, 3 lives lost, 4 realms cleared; order
+1 the ending in 82 min, 3 lives lost, 3 realms cleared. Still quicker than the first run (100 and 107
+min, 14 and 9 lives): the carried kit (8/8/8 from the first realm, blade 10 by the second court)
+outweighs the tiers; the princes fall in 0.7-2.7 min. The tiers alone are not the lever; the kit
+carried is.
+
+**Heavier on top of the tiers** (2026-10-09, the user's call: keep all the gear; in New Game+ the
+princes and Krampus get more health and hit harder, and the realms' foes get tougher too). Three
+tables in `newgame.rs`, one row per level, multiplied on top of everything that weighs a foe today
+(the tiers, `court::weight` and `court::temper`, `lair_weight`, `realms::weight`, `VAULT_HP`),
+at the point each is applied; a first run's row is all 1 (`prince_weight`, `krampus_weight`,
+`foe_weight` of level 0), so its numbers are bit-identical.
+
+| Level | Princes (`NG_PRINCE`): health, blows, poise | Krampus (`NG_KRAMPUS`) | Every other foe (`NG_FOES`): health, blows |
+|---|---|---|---|
+| NG+1 | 2.5, 1.5, 1.1 | 2.0, 1.5, 1.1 | 1.75, 1.75 |
+| NG+2 | 1.75, 1.75, 1.2 | 1.6, 1.75, 1.2 | 1.85, 1.85 |
+| NG+3 | 1.5, 2.0, 1.3 | 1.4, 2.0, 1.3 | 2.0, 2.0 |
+
+"Every other foe": the realms' and the Pit's packs (`raise_packs`), the Vaults' garrison, what the
+generals raise, the princes' cheats' spawns, the Mire's young, the Peerless, the princes' adds
+(`adds_weight` at each court), the Perchten, and the Garden's bites (their contact damage).
+
+Why this shape. The prince's health is what makes a court last: the expert parries nearly every
+blow a prince throws (Asmodeus at NG+2 dealt the same 192 damage with his blows at 1.5 and at 2.0),
+so blows and poise are for the player who does not, and rise with every level. Health takes its big
+step at NG+1 and eases after it, because the two tiers each level adds already weigh more on the late
+princes every time (the court's curve): with 2.0 or more from NG+2 on, Asmodeus at the eleventh tier
+and beyond outlasted the expert's eight minutes (`COURT_LIMIT`) three tries running; Krampus, met two
+tiers below the last prince and untempered, came to 9.5 min of his 10 at NG+3 with the princes'
+health, hence his lighter row. The foes' row is what costs lives and realm time: at 1.5 health and
+1.3 blows the expert lost 1-5 lives in NG+1, at 1.75/1.75 about as many as his first run. The
+maids' health does not lengthen Asmodeus's fight (the same 345 s at NG+2 with them at 1 or 1.6).
+
+The expert (`--run 2 SEED ORDER ng+3`), every run of it in turn (the harness now prints the first
+and each New Game+), against the first run:
+
+| Expert | First run | NG+1 | NG+2 | NG+3 |
+|---|---|---|---|---|
+| seed 1, order 0 | 100 min, 14 lives, 3 tries | 112 min, 10 lives, 3 tries | 107 min, 10 lives, 3 tries | 130 min, 20 lives, 6 tries |
+| seed 1, order 1 | 107 min, 9 lives, 1 try | 100 min, 4 lives, 0 tries | 120 min, 8 lives, 1 try | 117 min, 14 lives, 3 tries |
+| seed 2, order 0 | 96 min, 9 lives, 2 tries | 119 min, 10 lives, 2 tries | 140 min, 19 lives, 6 tries | ends in the Rotting Feast (3 tries), 5 princes |
+| seed 2, order 1 | 92 min, 1 life, 0 tries | 106 min, 3 lives, 0 tries | 118 min, 1 life, 0 tries | 135 min, 16 lives, 3 tries |
+
+Every run reaches the ending up to NG+2; NG+3 once falls short in a realm. Each court (minutes,
+first run / NG+1 / NG+2 / NG+3; no life lost in any court, one in Krampus's lair at NG+3):
+
+| Seed 1 order 0 | | Seed 1 order 1 | | Seed 2 order 0 | | Seed 2 order 1 | |
+|---|---|---|---|---|---|---|---|
+| Mammon | 1.5 / 1.9 / 1.3 / 2.3 | Asmodeus | 1.7 / 2.1 / 1.6 / 2.7 | Mammon | 1.6 / 1.8 / 2.3 / 1.8 | Asmodeus | 1.5 / 2.3 / 2.3 / 3.0 |
+| Lucifer | 1.4 / 1.7 / 1.3 / 1.5 | Beelzebub | 1.1 / 1.4 / 1.2 / 1.6 | Lucifer | 1.4 / 1.6 / 1.7 / 1.8 | Beelzebub | 1.2 / 1.4 / 1.5 / 1.8 |
+| Leviathan | 1.8 / 2.2 / 2.3 / 3.2 | Belphegor | 1.2 / 1.9 / 1.7 / 1.5 | Leviathan | 1.8 / 2.3 / 3.2 / 3.6 | Belphegor | 1.3 / 1.7 / 1.9 / 1.6 |
+| Amon | 1.5 / 2.4 / 2.4 / 2.8 | Amon | 1.5 / 2.7 / 2.7 / 3.1 | Amon | 1.5 / 2.7 / 2.7 / 3.5 | Amon | 1.9 / 3.4 / 3.1 / 3.1 |
+| Belphegor | 1.4 / 2.2 / 2.1 / 2.7 | Leviathan | 1.6 / 3.7 / 3.3 / 3.4 | Belphegor | 1.4 / 2.6 / 2.4 / 3.2 | Leviathan | 1.7 / 4.5 / 3.7 / 4.0 |
+| Beelzebub | 1.3 / 2.6 / 2.2 / 2.3 | Lucifer | 1.4 / 2.7 / 2.7 / 2.6 | Beelzebub | 1.2 / 2.9 / 2.7 / - | Lucifer | 1.7 / 3.1 / 3.4 / 2.9 |
+| Asmodeus | 1.6 / 4.1 / 5.4 / 5.3 | Mammon | 1.3 / 5.8 / 4.7 / 3.5 | Asmodeus | 2.0 / 4.6 / 5.7 / - | Mammon | 1.4 / 5.3 / 5.1 / 8.0 |
+| Krampus | 2.5 / 5.8 / 6.7 / 5.9 | Krampus | 2.6 / 5.9 / 5.5 / 6.2 | Krampus | 2.6 / 6.3 / 6.6 / - | Krampus | 2.6 / 6.3 / 6.1 / 8.8 |
+
+The courts together: 10-11 min in a first run, 19-23 in NG+1. NG+1 is longer than the first run in
+three cases of four; seed 1 order 1 is 7 minutes quicker, all of it the realms: the first run's
+Rotting Feast ran out its 15 minutes on a 2/2/2 kit and the Wrath field cost a try, where NG+1's
+10/10/10 cleared the Feast in 4 (its courts took 22 minutes against 10). The expert loses his lives in
+the realms (the Wrath field, the Thorns), never at a prince; harder blows at the princes are felt by
+a player who does not parry them all. The adept for reference (`--run 1 1 ORDER ng+1`; his first run
+ends in the Rotting Feast and is never offered New Game+ in play): order 0 ends in the Vaults (10
+lives, 3 tries, 7 min; with one tier and nothing on top it reached the Feast), order 1 at Asmodeus (3 tries, 23
+min): the kit his first run left him (4/4/4 at best) is not a finished run's.
+
+---
+
+## 15. Tools: harness, telemetry, tests, captures, the Map
+
+### 15.1 Flow targets (measured by the crawl)
+
+| Measure | Target |
+|---|---|
+| Overlaps (two strikes inside 18 f) | 0, as now |
+| Share of combat time in Peak | 35-55% |
+| Rest between peaks | ≥ 8 s on average (Steady ≥ 12, Relentless ≥ 5) |
+| Pressure without a ≥ 60 f tell | 0 |
+| Rivals met per realm | 1-2 |
+| Instruments broken by the expert bot / the adept | ≥ 2 of 3 / ≥ 1 of 3 |
+| Expert's time through a realm with its general alive vs slain | the difference ≤ 25% (the choice is real, not forced) |
+| AI cost with 30 foes | ≤ 0.5 ms per frame (`--perf battle30`) |
+| Debris at 480 | ≤ 0.3 ms |
+
+### 15.2 Harnesses
+
+* `--crawl N` gains the Drum, packs and generals; prints peak share, rest length, routs, orders
+  issued and countered.
+* `--drum-trace` writes the intensity per second.
+* `--rivals RUNS SEED`: plays RUNS crawls in a row with one Ledger and prints promotions, ranks,
+  lessons and how the bots fared against each lesson.
+* `--general SIN SKILL TIER SEED`: one realm with its general, instrument by instrument.
+* The bot learns: break instruments it passes, bar gates, refuse whispers (asks the old man), strike
+  the false gatekeeper, and switch answers when a lesson is announced (the expert does; the adept
+  doesn't, which is the gap mastery should open).
+
+### 15.3 Tests (names as the suite writes them)
+
+* `the_war_log_reports_every_strike_once`
+* `presentation_never_touches_the_simulation` (same harness numbers with fx on and off)
+* `a_press_during_hitstop_comes_out_when_it_ends`, `hitstop_stays_inside_its_budget`
+* `time_dilation_keeps_every_frame_relation`
+* `no_play_lets_two_strikes_land_inside_the_reaction_window`
+* `no_affix_slows_holds_or_quickens_a_move_past_the_floor`
+* `a_rout_releases_the_pressure` (threat requests stop for its frames)
+* `every_rivals_lesson_changes_choices_not_frame_data`
+* `a_rival_remembers_and_says_so` (lesson announced on the card)
+* `every_order_is_announced_a_second_before_it_bites`
+* `every_instrument_can_be_reached_and_broken`
+* `the_old_man_never_lies`
+* `every_cheat_has_a_tell_a_counter_and_a_bounded_cost`
+* `the_prince_never_takes_what_the_hero_owns`
+* `every_breed_has_its_own_voice_and_its_familys_signature`
+* `mastery_grows_the_experts_margin_more_than_the_mashers`
+* plus the existing balance tests, kept green.
+
+### 15.4 Captures, Map stops and cheats
+
+* Captures: `rival:N` (a rival of rank N leads the nearest pack), `ledger`, `general:S`,
+  `order:K`, `whisper`, `gatekeeper`, `workshop:STATION`, `trial:N`, `drum:PHASE`, `juice` (a scene
+  that fires every juice event in turn for side-by-side shots).
+* Map stops (per the standing rule): the workshop (each station), each general's command post,
+  and a "rival yard" (a test room where a chosen rival waits). Bump the count in
+  `the_map_jumps_to_any_dungeon_or_cyclops`.
+* Cheats: F9 the Drum readout; F10 promote the nearest foe to a rival; F11 break the nearest
+  instrument. F5 (GOD MODE) and F8 stay as they are.
+
+---
+
+## 16. Roadmap
+
+Sizes as in ROADMAP.md: M is about one working session, L several. Each phase ends with tests green,
+captures checked, a frame-time check, the docs updated, and a commit.
+
+| Phase | Scope | Exit criterion |
+|---|---|---|
+| **W0 The war log** (M) | `WarEvent`, `Brawl.log`, `PresRng`; move the direct audio/shake/floater/hitstop calls into consumers; the hero's slash pose on frames | captures look and sound the same; the harness prints identical numbers |
+| **W1 Feel** (L) | hitstop table and budget; time dilation; trauma rotation, kick, FOV punch, sources, the shake slider; matter, chips and voxel shatter, 480 debris instanced; springs and overshoot | the `juice` capture shows each; `--perf` within budget; balance tests unchanged with `--fx-off` |
+| **W2 Voices** (M) | `audio/voices.rs` with every breed's set; layered hits; `audio/mix.rs` (priority, dedupe, ducking, limiter, pan and distance); BPM per track and the war-drum layer | the voice test green; a listening pass by you on stage 1-3 bouts |
+| **W3 The Drum** (M) | intensity, phases, bounds, the presets, F9, `--drum-trace` | the crawl meets §15.1's peak and rest targets, overlaps 0 |
+| **W4 Packs** (L) | roles, leaders, plays, morale and the rout, affixes, the composer; the vaults and the six realms use it | the crawl still cleared by the expert at tier 1 and the adept from tier 4; routs visible; zero overlaps |
+| **W5 The Ledger** (L) | promotion, names, traits, memory, lessons, name cards, barks, trophies, the board, `vh.warband`, `--rivals` | over 10 crawls the expert meets 1-2 rivals a realm and beats each lesson; the adept loses more to lessons than to plain foes |
+| **W6 Generals** (L, Greed first, then one M per realm) | `general.rs`, orders and instruments, the herald, the post fight, the counter-order, the usurper, the banner HUD, `--general`; then the other six | Greed: §15.1's general targets; then each realm in turn |
+| **W7 The two voices** (M) | counsel rules and lines per hero; the cheats and their tells; the seen-through count | the two truth tests green; every cheat captured with its tell |
+| **W8 Mastery and the workshop** (L) | `mastery.rs`, deeds and trials; the workshop set and three dressings; stations over `ShopState`; the War Table, the Trophy Wall | the kit tests green at every rank; captures of every station for each hero |
+| **W9 Tune** (M) | a full run from the Garden to the House door with the bots and by hand; tune the Drum, morale and lesson rates; write the tuning log in this file | §15.1 targets met; your playthrough notes closed |
+
+Order: the feel and the log first, because every later system speaks through them and they make
+the game better at once. The workshop shell (the set and dressings, W8's art) has no dependency and
+can run in parallel from W1 as a background agent in a worktree, as the realms were built.
+
+---
+
+## 17. Decisions (settled 2026-10-04: the user chose every proposal, the first option of each)
+
+1. **Mastery**: an earned technique track beside the path tree (proposal) / the path tree itself
+   renamed Mastery, nothing new.
+2. **A rival who kills the hero takes 15% of the silver he carries**, given back ×1.5 when slain
+   (proposal) / takes nothing.
+3. **The Ledger lasts for the run** and Start wipes it (proposal) / it lasts across runs.
+4. **The Drum paces only** (proposal) / it also adapts to skill.
+5. **Slaying a general**: the prince loses his phase-two adds (proposal) / his hide falls from 70% to 50%.
+6. ~~**The False Gatekeeper and tainted wares** are in (proposal)~~ (removed 2026-10-04: the old man is never evil) / the prince's cheats stay
+   words only (whispers and bargains).
+7. **Slow motion on kills** on by default (proposal) / off by default.
+8. **Generals' bodies**: dressed existing breeds now, own sculpts later (proposal) / sculpt seven now.
+9. **The workshop**: one layout in three dressings (proposal) / three different workshops.
+
+## 18. Risks
+
+| Risk | Guard |
+|---|---|
+| The AI layers create overlaps or pile-ons | they only bias the threat manager, which keeps the commit gate; the overlap tests run on every crawl |
+| Rival lessons feel unfair | one at a time, announced, choices only; the fill shows the real landing |
+| The prince's cheats annoy | two per realm, never in Peak, always a tell, never a permanent loss; decision 6 can pare them back |
+| Juice hurts responsiveness | the hitstop budget, a short freeze when he is struck, the input buffer frozen with the game |
+| Juice hurts frame time | `--fx-off`, the debris budget, instancing, `--perf` per phase |
+| Mastery breaks the balance | the kit audit and the balance tests at every rank |
+| Scope | each phase stands alone and ships; the generals go one realm at a time |
+
+---
+
+## Build log
+
+### W0 The war log (4f5c65e)
+
+`logic::war` (`WarEvent`, `PresRng`), `game::war` (`War`, `war_note`, `update_war`, `WarTally`). The
+brawl notes tells, landings (with how he met them), whiffs, his hits, kills (with `last_of_pack`)
+and drinks. `BoutStats.landings`. The direct audio and shake calls stay where they are until the
+feel (W1) and the voices (W2) are merged: their consumers replace them then.
+Test: `the_war_log_reports_every_strike_once`.
+
+### W3 The Drum
+
+`logic::war::drum` (`Drum`, `DrumPhase`, `Pacing`, `Bounds`, `intensity`), heard and ticked in
+`update_war`; its bounds go to the threat manager of the vaults and the realms (`pace_the_brawl`;
+the ring stays the lab, a prince's court keeps its own pace) and to the health-potion chance.
+The readout is on F8 with the ring's (not F9). `VH_NO_DRUM=1` switches it off for A/B harness runs.
+`--drum-trace` writes `perf/drum_trace.csv`; `--crawl` prints the share at peak, the peaks and the
+mean rest.
+
+Intensity, as built: 0.30 × foes hunting him (full at 4) + 0.30 × strikes reaching him in 5 s (full
+at 4, however he met them) + 0.25 × damage taken in 5 s (full at a fifth of his health) + 0.15 × how
+low he is. Peak from 0.5 (Steady 0.6, Relentless 0.45).
+
+| Change | Why |
+|---|---|
+| Damage and low health weigh less, foes and strikes more | the expert, barely hit, never reached a peak (p90 0.27) |
+| A release never takes the pool below 2 points | at 1 point a brute (cost 2) could not strike: lone brutes stood idle and two adept crawls ran out of time |
+
+The crawl (`--crawl 6`, Drum on / off):
+
+| | adept t1 | expert t1 | adept t4 | expert t4 | adept t7 | expert t7 |
+|---|---|---|---|---|---|---|
+| cleared | 0% / 0% | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% | 100% / 100% |
+| kills of 61 | 27 / 32 | 61 / 61 | 61 / 61 | 61 / 61 | 61 / 61 | 61 / 61 |
+| at peak | 52% | 21% | 50% | 14% | 25% | 3% |
+| overlaps/min | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+
+The adept, the player the pacing is for, spends about half its fighting at peak, inside §15.1's
+35-55%; the expert feels less pressure, as it should. Rests are short (about 6 s) because the bot
+walks straight on to the next den: player-driven, which the Drum allows.
+
+### W4 Packs
+
+`logic::war::pack` (`Role`, `Temperament`, `Affix`, `Play`, `Pack`, `compose`, `Directive`) and
+`game::packs` (composing the dens into packs, hearing the war log, `packs_frame` from the brawl's
+foes' frame after the dens). The threat manager's `Request` gained `bias` and its `Waiter` a
+`want` (a bearing): the only ways a play reaches the fight. `MoveId::Rally` (40/1/36, a spell: no
+blow) is the leader's move. The HUD writes LEADER and its affixes over a leader's bars, with its
+pack's heart as a thin blue bar. `VH_NO_PACKS=1` switches the packs off for A/B runs;
+`--crawl-one SKILL TIER SEED` plays one crawl and lists what is left standing.
+
+Built: Hold, Pincer, Screen, Rotate (a foe under 30% falls back while another takes its place),
+Rally (600 f between rallies); morale and the break by temperament (cowardly flee for 180 f and
+give their tokens back at once, frenzied +15% pace and quicker rests for 360 f, stalwart fight on);
+all five affixes (Ironhide, Bannered, Vengeful, Warding, Gilded). Not built: Crossfire and Hold the
+door (the riskiest for the reaction window and the den mouths; left for W9), Echoing (dropped: a
+ghost tell with no blow fights the rule that every tell means a strike).
+
+| Change | Why |
+|---|---|
+| Rallies rest 600 f per pack | without it a hurt leader rallied every 1.3 s (35 rallies in one adept crawl) |
+| A foe slain in the vaults gives its token back as it falls | the slain are swept from the field before their next frame; two committed tokens never came back and closed the pool for good (an expert crawl stood still for 13 minutes). Not in the ring: its slain stay a frame, and the lab's numbers hold to the decimal |
+| A cowardly pack gives its tokens back the moment it breaks | it held them for a frame while turning to flee |
+
+The crawl (`--crawl 6`, Drum and packs on): every clear as before (the adept from tier 4, the
+expert at every tier), 5-11 packs broken and 1-8 rallies a crawl, the adept 45-54% of its fighting
+at peak, overlaps 0 but for the adept at tier 1 (0.02 a minute: one in six crawls, a hero on the
+move). Test: `the_packs_play_together_inside_the_reaction_window_and_a_rout_releases_the_pressure`.
+
+### W1 "Feel": the presentation primitives (2026-10-04, branch `warband-juice`)
+
+Built §4.1-§4.5 as primitives with an API; the brawl's calls into them are wired by the integrator
+(`game/brawl.rs` was not touched), so until then the ring and the vaults feel as before, but for
+the hero's slash (now on his fighter's frames) and the outside callers below.
+
+* **`logic/juice.rs`**: the numbers. `Stop` (the freeze table, with `legacy_frames` for the
+  harnesses) and `budgeted` (14 f in any 60, halved past it); `DilationKind` → `Dilation { scale,
+  hold, ease }` with `scale_at` and `pitch_of` (for the audio); `Trauma` sources with amounts and
+  caps (`add_to`), the roll, FOV punches and kicks; `Matter` (12) with each `Grain`'s physics and
+  `matter_of(EnemyKind)` for every foe (the audio shares it), `is_giant`, the shatter's counts
+  and speeds; the springs' tunings. Pure and unit-tested.
+* **`game/juice.rs`**: `Game::freeze(Stop)` / `freeze_frames(f)` within the budget;
+  `Game::dilate(DilationKind)` (once in 3 s, never out of play or under a cinematic camera, not
+  with the setting off), applied with the freeze in `play_step` (flow.rs) by scaling the `dt` handed
+  to `tick` (the `FrameClock` keeps the fraction); `time_scale()` and `pace()`; the settings `Feel`
+  (`vh.slow_motion`, `vh.shake`) stepped from the pause menu (two new buttons); `set_juice_off`.
+  The garden's freezes (`foes.rs`), the Cyclops' (`boss.rs`) and BRUTAL's (`feedback.rs`) go
+  through the budget now.
+* **`render/view/spring.rs`**: `Spring { x, v, k, zeta }` (stepped exactly), `Spring3`, and
+  `step_response` / `squash` in closed form for poses driven by frames.
+* **`render/view/juice.rs`**: `trauma(Trauma)`, `kick(dir, amount)`, `fov_punch(deg, secs)`, the
+  roll (±2.5° × trauma²), all scaled by the "screen shake" setting after the sum, the noise seeded
+  by `reseed`; `chips(grid, at, dir, matter, n)`, `sparks_block(grid, at, dir)`, `shatter(i, dir)`
+  (the body as last drawn tips along the blow for 6 f on the game's time, then breaks into 24-60
+  cubes of its quarter rig, 90 and a dust ring for a giant; the foe itself is hidden once it is
+  not alive); `recoil(id, dir)` (per duelist id, in the view), `shield_jolt()`; and on top of the
+  duelists' poses (`overshoot_duel`): the flinch, the anticipation (pulled back 8% by a third of
+  the startup, held to the strike, sprung forward), the slam's squash 0.85 → 1.06; his landing's
+  squash; his blade's follow-through (12%).
+* **Debris**: `MAX_DEBRIS` 160 → 480, one instanced cube batch, the oldest retired first and counts
+  scaled down past half; pieces fly by their matter, rest, then sink and shrink over 2.5 s; debris
+  slows with the time scale. Measured (`debris_at_its_budget_is_cheap`, quick profile): 480 pieces
+  cost 0.014 ms a step, flying and drawn (budget 0.3 ms).
+* **The hero's slash** follows his fighter's frame wherever the brawl drives him (a freeze holds
+  it, a parry or a blow that ends his swing ends it); the garden's plain slash keeps its clock.
+* **Switches**: `--fx-off dilation,hitstop,shake,debris,springs` or `juice` (all); the bots'
+  harnesses run with `juice` off and print the same numbers as before (`--balance 1`, `--bout
+  1 2 1 1`, `--crawl 1` compared to the decimal).
+* **Captures**: `juice:K` fires event K of `game::JUICE_EVENTS` on the ring's nearest foe.
+* **Tests**: `time_dilation_keeps_every_frame_relation`, `the_freeze_follows_the_table_within_its_budget`,
+  `with_the_juice_off_the_brawl_freezes_as_it_always_did`, `time_slows_at_most_once_in_three_seconds_and_eases_back`,
+  `a_freeze_then_the_slowing_of_time`, `a_slain_foe_topples_and_breaks_into_its_voxels`,
+  `chips_and_trauma_stay_in_their_budgets`, `the_pause_menu_steps_the_feels_settings`, and the
+  unit tests of `logic::juice` and `spring`.
+
+### W2 Voices (branch `warband-voices`)
+
+* `audio/voices.rs`: every sound is a `Recipe` of `Layer`s (wave, pitch glide, envelope, filter,
+  vibrato, tagged by `Part`). `tell_for(kind, mv, hero)` = the family's `signature` (Melee: brass
+  swell + scrape; Body: breath intake + rising snarl; Distance: shimmer peaking on release) + the
+  breed's timbre from §5's table, for all 38 bodies (the karakoncolos calls Ragnar, Mehmed or
+  Miyamoto by name in formant speech; Mammon's tell changes with his move). `voice_set(kind, hero)`
+  gives tell, swing, matter, hurt, stagger, death, alert and size; pitch goes down with size (giants
+  an octave, the family signature half as far). Three round-robin variants, never twice running.
+  `hit_recipe` builds §4.6's five layers per outcome (`HitSound`), with `SoundMatter` (twelve
+  matters, to be unified with `logic::juice::Matter`), shield tiers and swing kinds; one voice per
+  hero (`hero_voice`). `tell_for` replaces brawl.rs's `tell_sfx`.
+* `audio/mix.rs`: `Priority` (Tell > Hero > Rest > Ambient), `Dedupe` (3 per 40 ms, then merged
+  +1 dB), the 96-voice budget with stealing (`steal`, 5 ms fade), the duck (-4 dB, 120 ms, under a
+  parry or a struck hero), a soft `Limiter` on the master (replacing the hard clamp), stereo
+  (`pan_gains`: constant power, unity at the centre) and `place` (camera-relative bearing, falloff
+  over 18 tiles, +3 dB from the back arc). The effects bus is now stereo; the music is unchanged.
+* Time scale: `set_time_scale(s)` pitches the effects by `s^0.25` and closes a two-pole low-pass on
+  the music below full speed.
+* Tempo: `Soundtrack::bpm`/`downbeat`, measured with `tools/track_tempo.py` (spectral-flux onset
+  autocorrelation; octave folded to 80-160): Level1 105, Menu 105, Boss 93.4, BastionLux 104,
+  LastOne 140.05, DesolationVesper 91.95, LevelOneBoss 82.95. `audio/wardrum.rs` plays over the
+  music locked to that beat (`Synth::beat_clock`): `set_drum(DrumLevel)` Rest silent, Build a
+  heartbeat, Peak full drums, Release one low hit. `next_bar_in()` for horns on the bar line.
+* `--audio-sheet DIR` writes every breed's tell/swing/hit/death, the hits, the families, a pan
+  circle and the drum levels as WAVs, and prints each one's peak and RMS.
+* Wiring left to the integrator (brawl.rs is not touched): see the W2 report; `feedback.rs` sets
+  the listener and the hero each frame.
+
+### W5 The Ledger of Grudges: logic, save, HUD (branch `warband-ledger`)
+
+Built without touching `game/brawl.rs` or `logic/combat/*`; the fight's wiring is the integrator's.
+
+* `logic/war/names.rs`: names by the breed's folklore (`Culture::of`: Norse, Japanese, Turkic,
+  old European, hellish titles), 16+ given names for a he and a she in each, Norse patronyms,
+  Turkic bynames, European places, hellish titles; epithets by `Deed` naming the hero where they
+  fit; `breed_name`, pronouns; every letter drawable by the HUD's font. All from a seed.
+* `logic/war/ledger.rs`: `Rival` (traits, ≤8 `Encounter`s, `known` bits, silver, `Trophy`),
+  `Ledger` (`promote` with nine living at most, `rank_up`, `record`, `after_fight`, `offer`,
+  `slain` → `Reward`, `usurper`, `reveal`, `took_silver`), `choose_lesson` from the hero's most
+  used answer (rank ≥ 3), `Lesson`'s data (`startups`/`hold`, `prefer`, `waits_after_leap`,
+  `shield_wear`, `elixir_scale`, `evades_finisher`), `Rival::dress` (health +8%/rank, Unflinching
+  +15 armor, old wound's poise), `EncounterTracker` (folds the war log into answers and deeds),
+  `bark` by nature and memory, `counsel_line_for` (true by construction).
+* `logic/war/save.rs`: `WarSave`, the sectioned `vh.warband` line
+  (`v1 ledger:…|generals:…|lies:N|counsel:…`, unknown sections kept). Sections must not hold '|'.
+* `game/ledger.rs`: `Warband` on `Game` (`warband`), written with every `write_run`, wiped by
+  Start over, loaded only when a run is saved; `meet_rival`, `rival_bark`, `promote_rival`,
+  `rival_fought`, THE LEDGER in the pause menu, capture hooks `ledger` and `rival:N`.
+* `render/hud/ledger.rs`: the name card beside the rival (2.5 s), and `draw_ledger_board(o,
+  ledger, rect, t, time)` (pinned notes, portraits from each breed's rig by `sprite_from`), shown
+  full-screen from the pause menu; the War Table hosts the same function.
+* Tests: `names_are_deterministic_and_of_the_breeds_folklore`,
+  `nine_live_rivals_at_most_and_a_tenth_replaces_the_lowest_rank`,
+  `the_lesson_comes_from_the_heros_most_used_answer`,
+  `every_rivals_lesson_changes_choices_not_frame_data`, `the_old_man_never_lies` (200 rivals),
+  `a_rival_remembers_and_says_so`, `the_tracker_folds_a_fight_into_answers_and_deeds`,
+  `a_ledger_survives_the_save`, `the_warband_survives_the_save_file`,
+  `the_ledger_opens_from_the_pause_menu_and_is_part_of_the_run`, and others.
+* Left for the integrator: rivals as pack leaders in `raise_packs`, trackers fed in `update_war`,
+  lessons applied where the duelist thinks and begins (`game/brawl.rs`), the 0.5× dilation on
+  meeting, trophies on the workshop's wall, the `--rivals` harness, F10, a Map stop for the rival
+  yard.
+
+### W8 art: the old man's workshop (set and stations), 2026-10-04
+
+* **Stations** (`game/workshop.rs`): `Station {Anvil, ShieldWall, Bench, Yard, WarTable, Trophies}`
+  over `ShopState` (a tree's tab is its station's: Anvil = Armory, ShieldWall = Shield, Bench =
+  Elixir, Yard = Path; `ShopState.board` opens the two without wares). LT/RT/Tab step through the
+  six in the order they stand, then the **loadout**, which is kept at the anvil (the whetstone is
+  there, and the patron, the outfit and the reforge are about his kit, not a seventh place). The
+  yard holds a disabled TRIALS row ("SOON"); the war table lists the seven realms' generals; the
+  trophy wall ten hooks. Esc goes to the door as before.
+* **Hooks for later phases**: `Game.workshop: WorkshopData { trophies: Vec<Trophy>, news:
+  Vec<String>, generals: [Option<GeneralCard>; 7] }` (placeholder types in `game/workshop.rs`);
+  `Game::set_quitmer_mood(QuitmerMood::{Calm, Wag, Growl}, seconds)`; `Game::go_to_station(s)`.
+  `call_old_man` opens at the war table when `news` is not empty, otherwise at the station the
+  hero left (the loadout if he left it). The old man's box shows the first news line there.
+* **Work**: every sale (`sold`) starts `ShopState.work`: at the anvil and the shield wall the old
+  man strikes three times (`STRIKES`, `Sfx::Anvil`; the last also `Sfx::Clang` and a 0.18 shake),
+  sparks off the anvil; at the bench a puff of the brew's colour; at the yard a raised hand.
+  Quitmer wags for 2.6 s.
+* **The set** (`render/view/workshop.rs`, stage `WORKSHOP` = (-240, 0, -40)): one room, 14 by 10,
+  the hearth and the weapon rack on the back wall with the anvil before them, the shield wall
+  beside them and its reforging block, the bench and shelves on the right wall, the chalk ring
+  with a sparring post and a straw dummy, the war table (the hub's 3x3 with seven sigil sockets)
+  and the Ledger's pinboard (six empty frames) on the front wall, the trophy wall (ten plaques)
+  on the left, the door with the red glow under it. Three dressings over the one layout: Norse
+  (log walls, turf roof, stone hearth, rune-carved anvil, crossed axes), Ottoman (striped tent
+  cloth, carpets, brass lamps, halberds, the kazan), Japanese (boards and tatami, shoji, a clay
+  hodo with bellows, a whetstone, a sword stand). Each is an `InstanceSet` built when first
+  wanted (about 2-4k blocks); what he owns (chains and rune seals on the sealed tiers, a lit
+  shelf under each blade he has, bottles on the shelves, his belt on the bench, sigils, notes,
+  trophies) is a second set rebuilt when it changes. The blades and shields are the armory's own
+  models of the hero played (rigs), lit if his, dimmed if not; the one in his hand and the one on
+  his arm are missing from the wall.
+* **Cast**: the old man, the hero and Quitmer walk to their places at each station (by way of the
+  open middle when it is across the room); the old man faces his work and swings a hammer drawn
+  in his free hand; Quitmer lies down when calm, half rises to wag, strains to growl.
+* **Camera**: a shot per station that frames it in the left 40% of the screen (`Spot.left`),
+  gliding between them; replaces `wares_camera`. `emit_wares` is retired (the crypt set stays
+  for Scene I). Continue, the boss, F0, the pause menu, H, and the Map all reach it through
+  `open_shop`/`call_old_man`.
+* **HUD**: the panel is named for the station ("THE ANVIL"...), the tree's per-hero title under the
+  tabs; seven tabs (labels shrink to fit); board rows and cards for the war table (each general,
+  NEWS FROM BELOW), the trophy wall and the trials.
+* **Captures**: `workshop:S` (0 anvil .. 5 trophy wall) and `stocked` (sample news, three trophies,
+  two generals). Map stop "THE OLD MAN'S WORKSHOP" (`Stage::Shop(0)`, now opening the shop).
+* **Frame time** (RTX 5070 Ti laptop, 1600x900, `--bench 300`, two runs): the old wares 3.6-4.2 ms a frame
+  (GPU 2.4-2.7); the workshop 3.7-4.9 ms (GPU 2.1-2.9), 21 rigs, 11 lights.
+* Tests: `lt_and_rt_step_round_the_six_stations_and_the_loadout`,
+  `calling_him_opens_at_the_war_table_when_he_has_news_else_where_you_left`,
+  `a_sale_at_the_anvil_rings_three_strikes_and_quitmer_wags`,
+  `the_maps_workshop_stop_opens_the_workshop`,
+  `each_station_frames_its_subject_and_keeps_the_cast_in_the_room`,
+  `the_three_dressings_build_moderate_sets`, `the_hammer_rises_and_falls_three_times`.
+* Open: the yard's preview swing at the dummy and its comparison card (needs `Kit`), the hero
+  taking up the new blade after the hammering, a walk cycle for Quitmer, a pass by eye on the
+  Ottoman kazan and the Japanese hodo at close range.
+
+### W5 in the fight (the integrator)
+
+`game::rivals` (`Grudges` on `War`): every foe's part in a fight is followed from the war log by an
+`EncounterTracker`; when he falls, the foes that brought him down (or broke his guard thrice, or
+lived on low) are promoted (two a level at most), a killer takes 15% of his silver; a hunt called
+off ends their part (a leader left standing becomes "the Unfinished"). The Ledger's offer is seated
+when the packs are made: the rival leads a pack (his kind among its foes dressed as him, or he
+comes in beside them), his name over his bars. Within ten tiles he is met: card, bark, a 0.5×
+slowing of time (`DilationKind::RivalMet`). Lessons as choices: the Parry lesson waits a short or a
+long beat before its tell, the Leap lesson waits out his leap, the Shield lesson wears the shield
+×1.3, an antidote lifts strength and Ragnarok less on him. Weaknesses: Proud gloats 60 f after a
+blow lands, Scarred takes ×1.3 from his wound's side. Natures: the Coward flees below 40%, the
+Duelist's pack stands back, the Schemer's horn wakes the next den after 60 f. His fall: the
+trophy's freeze and slowing, runes and the silver back ×1.5, his last words, his trophy on the
+workshop's wall (`sync_trophies`). Not built yet: Patient's longer tracking and the Finisher
+lesson's leap (both need the duelist's own frames), Fears (a family that staggers), Greedy.
+
+The harness's `fresh_game` clears the Ledger too: a crawl's rivals were saved and seated in the next
+crawl of the same `--crawl` run (an adept crawl stood at 59/61). `VH_CRAWL_RIVALS=N` seeds N rivals
+before a crawl. Test: `the_foe_that_slays_him_becomes_a_rival_and_leads_a_pack_next_time`.
+
+### W4 again: Crossfire
+
+From the fourth tier a pack with two casters plays Crossfire: when one caster's single bolt is on
+its way, another standing at least 60° round him from it, free, in its range, whose bolt can be
+paced (0.5× to 1.6× its speed, as every bolt is) to touch him on the very frame the first does,
+joins the first's strike (`ThreatManager::join`: a point of the pool, the same landing frame).
+The two bolts share a volley, so whichever touches first lands and the other passes as part of it:
+one strike, one parry turns only one, a leap passes under both. One crossfire a pack at a time.
+Test: `two_casters_cross_their_fire_as_one_strike` (five minutes of a tier-4 vault: crossfires,
+no overlaps).
+
+### The Ledger across runs (`--rivals RUNS SEED SKILL TIER`)
+
+Ten adept crawls at tier 1 with one Ledger: two rivals made in each run the adept falls in, each
+seated as a pack's leader in the next and mostly slain there (9 slain, 7 alive after ten runs).
+
+| Change | Why |
+|---|---|
+| A rival is born at rank 1: the fight that made him is remembered, not counted as a win | every rival came out at rank 2 |
+| No two rivals of a run share a given name, living or slain | the board showed two Grisels and two Morcants |
+| Greedy: a rival within 5 tiles of a foe that falls stops 50 f to eye its spoils | the weakness did nothing |
+
+Open for W9: at tier 1 the adept slays a rival on its second fight, so lessons (rank 3) come only
+from rivals that kill him again; whether a rival that gets away should rank up too is a tuning call.
+
+### W7 The two voices (branch `warband-voices2`)
+
+Built without touching `game/brawl.rs` or `logic/combat/*` (the brawl's `spawn_duelist` is called,
+not changed).
+
+* **`logic/war/counsel.rs`**: the old man's rules (`Rule`: first death to a breed, three deaths in
+  a room, a rival met, a realm entered, the gear, a cheat seen through), each with a priority, a
+  cooldown and a once-flag (`Counsel`, its flags saved in `vh.warband`'s `counsel:` section); at
+  most one line in 45 s (`GAP`), stale after 90 s. Lines are built from the data: `Answer::of(kind)`
+  reads a breed's answer from its folklore power, its moves (unblockable, a mark, the call, an
+  unstoppable club) and its archetype, for all 38 kinds, and `Answer::holds` checks a claim against
+  the frame data and the breed table; a rival's line is `ledger::counsel_line_for`, said only when a
+  trait is known; a realm's line names its general only through `GeneralIntel` (W6 fills
+  `Game::general_intel`; until then he says only that the prince keeps a general there). The first
+  realm entered adds his rule: "whatever the prince offers you, it costs more than he says". Each
+  hero hears his own register (`framed`: Ragnar by name, Mehmed as "janissary", Miyamoto as
+  "swordsman"); the facts are the same.
+* **`logic/war/deceit.rs`**: `Cheat { lie, tells, counter, reward, cost }` for the five cheats, the
+  lie flavoured per prince (`lie`); `Stake` (time, health, silver carried, the road: nothing owned)
+  and `Bound` per cost; `deal` (two a realm, the dice only in Greed and Gluttony, the bargain not in
+  the vaults, the false gatekeeper not on the drifting Burning Field), `may_begin` (Rest, Build);
+  the whisper, false by construction: `whisper_breed` (an answer that does not hold), `whisper_rival`
+  (a weakness he does not have), `whisper_way` (the opposite way), each with the truth beside it;
+  the false gatekeeper's wares at half price, and their full worth paid when he is slain.
+* **`game/counsel.rs`**: `Game.voices` (`Voices`: the counsel, the line in the panel, the cheats).
+  The fall's killer is read from the war log (`counsel_fell`, from `kill_hero`), the rival from
+  `meet_rival`, the realm from a change of place, the shield cracking from its wear, the blade's
+  dulling and rusting from `dull_blade` and the broken shield from `shatter_shield` (their floaters
+  are now his lines). Delivery: one line at a time, typed out at 42 letters a second with the
+  old man's blips, Quitmer's bark (`Sfx::Bark`) as he begins, only when `drum_bounds().voices` or on
+  the death screen. At the workshop his line is `workshop_counsel` (a fall and its answer, a
+  whisper denied with the truth, a cheat seen through, the lies seen this run at the war table).
+  The War Table sells the living rivals' true weaknesses (`RowKind::Rival`, `ShopAction::Intel`,
+  40 + 20 per rank above the first: 40-120 silver) through `Ledger::reveal`.
+* **`game/deceit.rs`**: per realm visit the cheats are dealt from the layout (never the game's
+  dice). The false gatekeeper stands on quiet floor (in the vaults an alcove of the corridors: every
+  chamber has a pack), puts his wares through the prince's offer screen when walked up to (a tainted
+  elixir of strength that turns his blows to 60% for 10 s when drunk; a bright blade, 130% for 30
+  blows, then it shatters and his hands sting for 8 s; all gone, the bottle off his belt, when the
+  realm is left); struck, he is a demon (`spawn_duelist`, the melee body of the realm's deepest
+  stage, weighed as the realm weighs its own, 1.5× health), and slain it pays his wares' full worth.
+  The mimic chest breathes, does not glint and creaks (`Sfx::Creak`); struck first it gives double
+  (the vaults' chest twice, or 80 silver); opened, a body foe comes out biting (a duelist: the threat
+  manager plans its bite). The whisper comes in the sin's colour, no portrait, no bark, a reversed
+  echo (`Sfx::Whisper`); calling the old man within 40 s has him deny it. The crooked bargain is
+  put on the offer screen ("the end of the road", `cheat_run`), and its unsaid price is a third of
+  his health. The turned sign turns the realm's compass needle toward a sleeping den for 20 s,
+  flickering in the sin's colour; the old man's amber lamp keeps pointing at the far portal; not
+  followed, it is seen through. Each lie seen through counts in the save (`lies:`) and gives 2 runes.
+* **HUD and view**: `render/hud/voices.rs` (the bottom-left panel with his face from his sculpt's
+  `sprite_from` in an amber frame; the whisper's empty frame; the compass and the lamp about the
+  hero; "THE OLD MAN" over the false one in his prince's colour), `render/view/deceit.rs` (the old
+  man's rig with a lantern in the sin's colour and a dark, still dog; the vaults' chest, breathing).
+* **Bot**: the adept and the expert, when nothing hunts them, call the old man on a whisper, walk up
+  to striking distance of the false gatekeeper or a mimic chest and strike. The harnesses
+  (`fresh_game`) play with the cheats off (`Deceit::off`; `VH_NO_DECEIT=1` in play), so their
+  numbers do not move; the tests deal their own.
+* **Captures**: `counsel`, `whisper`, `gatekeeper`, `sign`, `mimic`.
+* **Tests**: `the_old_man_never_lies` (breeds in every register, rivals, the generals' intel),
+  `every_breed_has_a_true_answer_read_from_its_data`, `each_hero_hears_his_own_register_of_the_same_facts`,
+  `counsel_keeps_its_gap_its_priorities_and_its_once_flags`,
+  `every_cheat_has_a_tell_a_counter_and_a_bounded_cost`, `the_prince_never_takes_what_the_hero_owns`
+  (the rules, and in play: wares bought, drunk, shattered, a chest opened, the realm left),
+  `the_whisper_is_always_false_and_always_tellable`, `the_old_man_speaks_once_in_45_seconds_and_never_at_the_peak`,
+  `a_fall_brings_the_breeds_counter_to_the_death_screen_and_the_workshop`,
+  `the_war_table_sells_a_rivals_true_weakness_by_rank`, `striking_the_false_gatekeeper_reveals_a_demon_whose_death_pays_his_wares`,
+  `a_whisper_is_seen_through_by_asking_the_old_man`, `the_bargain_gives_what_it_says_and_takes_what_it_does_not`,
+  `the_turned_sign_points_at_a_den_and_the_old_mans_lamp_stays_true`, `striking_a_mimic_first_doubles_its_loot`,
+  `the_bot_refuses_whispers_and_strikes_the_false_gatekeeper_and_the_mimic`,
+  `every_realm_has_a_side_room_for_the_false_gatekeeper_and_a_spot_for_a_chest`.
+* Open: the tainted bottle is not yet drawn in a wrong colour on the belt (§11.2); Greed's gold is
+  close to the old man's amber, so in the vaults the whisper's colour is the weakest of its tells;
+  the bargain's price is health until W6's decrees can be its price; the bot's whisper refusal
+  opens the workshop, which a harness has to leave.
+
+### Frame time (`--perf warband`)
+
+A new perf scene, `warband`: the Vaults of Mammon with the expert bot fighting its packs (the
+Drum, the packs, the rivals, the threat manager, the juice and the voices all at work). On the dev
+laptop at 1600x900: the fight's simulation (the brawl with the packs and the grudges) 0.03 ms a
+frame at the median, 0.06 at p95, 0.1 at most, inside §15.1's 0.5 ms; the whole frame 2.7 ms at the
+median, 5.8 ms at p99.
+
+**Correction (2026-10-05):** those numbers were taken with an idle hero: the harness made the bot
+but never let it act. The scene is now played by the capture's driver (the bot's pad every step, the
+prince's cheats off as in the harnesses) and fails unless the hero swings, deals damage, meets blows
+and a pack falls (20 simulated seconds: 19 swings, 336 damage, 10 blows met, 4 kills, 1 pack). In
+the game's own steps per frame (`--perf-mode gameplay`, 1920x1080, dev laptop, perf/2026-10-04-225333) the fight's simulation
+is 0.02 ms per frame at 60 FPS at the median, 0.04 at p95, 0.10 at most (0.03 / 0.05 / 0.14 at 30
+FPS), and the whole update 0.06 / 0.11 ms (at most 1.5): still well inside 0.5 ms. The whole frame
+is 2.6 ms at the median, 3.2 at p95; its worst, 14 ms, is a new foe's rig built and uploaded mid-fight
+(9.7 MB), which the idle run never met.
+
+### W8 mastery: deeds, ranks and the old man's trials (branch `warband-mastery`)
+
+Built without touching `game/brawl.rs`; `logic/combat/kit.rs` gained two additive `Strike` fields.
+
+* **`logic/war/mastery.rs`**: `Feat` (punish, break, finisher, block, tip, parry, evade), `Way` per
+  hero (§11.1's three, their deeds and five ranks), `Mastery { rank, deeds, tries, best }` (ranks
+  want `DEEDS_FOR` 25/75/150/300/500 deeds of the way **and** the trial: `count`, `ready`, `tried`),
+  every rank's number as a constant, `Stance` and `Kit::with_mastery` (Ragnar 2 finisher +5 poise,
+  Mehmed 1 block ×0.9, Mehmed 4 a free chain, Miyamoto 2 Riposte ×1.15 on the one swing begun
+  within 20 f of a parry, 3 Mushin ×1.3 on the swing after three parries unwounded, 5 parry +1 f),
+  `Temper` (riposte, calm, discipline, the unbroken guard), `WAR_CRY` (30/2/30 f, 2.5 tiles, 24
+  stamina, 360 f rest), `Rule` and `TRIALS` (five a hero, bouts 0-4 of the ring).
+* **`game/mastery.rs`**: `count_deeds` (from `update_war`) folds the war log into deeds: a punish
+  is the first blow into a foe that ended the last frame in its recovery or reeling from a parry;
+  a tip is a blow landed with the last 0.3 tiles of the swing's reach. The rules kept here: Ragnar
+  1 gold glint as a foe opens, 3 a kill under dilation gives 16 stamina, 4 War Cry (F / L3 in a
+  fight; his fighter is held in the cry's frames, a blow in its startup ends it; body foes within
+  reach are staggered through `Fighter::shake`), 5 and Mehmed 5 once a pack the broken guard stands;
+  Mehmed 2 a tip breaks 25% harder (`shake`), 3 Hold the Line (a blocked body foe gets a knock
+  worth 0.5 tiles); Miyamoto 1 the white edge on a telegraph while a guard raised now would parry,
+  4 a leap a blow passes under gives 10 stamina. The toast when a rank's deeds are met.
+  `Game::mastered(k)` puts the rank on the kit: **the integrator adds it last in `hero_kit`**.
+* **Trials**: the yard's row says `TRIAL N`, `DEEDS have/need` or `MASTERED`; pressed, the gym is
+  loaded (no checkpoint written), the ring's bout is the trial's, its banner counts the deeds; the
+  deeds done pass it, a rule broken, defeat, the time (90 s), leaving the ring or all foes down
+  first fail it. The card through the aftermath, then back to the checkpoint's stage at the yard
+  (the `called` flag kept: a dungeon called from starts again from its door, as Continue does).
+* **Save**: `vh.progress` v3 adds 14 numbers a hero; v2 and v1 load with mastery fresh.
+* **Harness**: `--mastery N` (every hero, tiers 1 and 4, novice and expert, rank 0 and 5);
+  `VH_MASTERY=N` runs any harness or test at rank N. The expert bot cries War Cry when a body foe
+  is near and only body foes stand. With the integrator's line, every balance test (the bouts'
+  targets, the third and later stages, the kit growth and parity, the vaults) is green at ranks
+  1-5, and `--balance 3` at rank 0 prints the same table to the digit.
+
+| `--mastery 3`, expert, rank 0 → 5 | Brute | Pack | Trio |
+|---|---|---|---|
+| Ragnar t1 / t4 | 11.4 → 11.4 / 5.9 → 5.9 | 7.3 → 4.9 / 4.3 → 2.4 | 15.9 → 15.9 / 8.1 → 8.1 |
+| Mehmed t1 / t4 | 10.4 → 10.4 / 5.4 → 5.4 | 5.0 → 5.0 / 3.2 → 3.2 | 12.5 → 12.5 / 9.1 → 9.1 |
+| Miyamoto t1 / t4 | 8.9 → 8.7 / 5.4 → 4.5 | 5.8 → 5.8 / 3.4 → 3.4 | 12.7 → 12.2 / 7.4 → 6.9 |
+
+The novice gains nothing anywhere (one Mehmed tier-4 Trio run is 18% slower by chance). Mehmed's
+ranks reward the blocker and the spacing (the adept's Brute at rank 5: 27 → 15 s), not the
+parrying expert.
+
+| Change | Why |
+|---|---|
+| Riposte ×1.25 → ×1.15, for the one swing; Mushin ×1.5 → ×1.3 | the parrying expert bot gained 19% on the Brute and broke the heroes' 1.35× parity from rank 2 |
+| A punish counts a parried foe's reel too | the expert parries the slam, so its punishes never fell in a recovery |
+| War Cry 24 stamina (30 proposed) | the expert never had 30 to spare with a foe beside it |
+
+* Tests: `a_rank_wants_its_deeds_and_its_trial`, `a_mastery_goes_into_the_save_and_back`,
+  `rank_zero_changes_nothing_and_every_rank_stays_inside_the_tables_bounds`,
+  `the_war_cry_keeps_the_frame_rules`, `the_temper_charges_riposte_mushin_and_the_discipline`,
+  `every_trial_is_a_bout_of_the_ring_with_a_deed_of_its_way`,
+  `mastery_is_saved_and_saves_from_before_it_still_load`, `deeds_are_counted_from_the_war_log`,
+  `the_deeds_that_meet_a_rank_raise_the_toast`,
+  `a_trial_from_the_yard_is_fought_in_the_ring_and_returns_to_the_yard_with_its_card` (the expert
+  bot passes Miyamoto's first), `a_trial_is_failed_by_its_rule_and_grants_nothing`,
+  `the_unbroken_guard_stands_once_a_pack_and_hold_the_line_shoves_a_body_foe`,
+  `the_war_cry_holds_him_for_its_frames_and_staggers_the_body_foes_about_him`, and
+  `mastery_grows_the_experts_margin_more_than_the_mashers` (`#[ignore]` until the line in
+  `hero_kit` is in; it passes with it).
+* Captures: `hero:K`, `mastery:N`, `yard`, `trial:N`, `toast`.
+* Open: trials against the ghosts of slain rivals (§12.1), rivals learning a mastery as a habit
+  (§11.2), the white edge for bolts, a sound for the glint.
+
+### W6 The Prince's Hands: the generals (branch `warband-generals`)
+
+Greed's realm first, then the six on the same machinery. `VH_NO_GENERAL=1` switches the generals
+off for A/B runs.
+
+* **`logic/war/general.rs`** (pure): the seven (§9.3: name, body, cloak, orders, what each
+  instrument is called, the hazard, the decree and what it does); `OrderKind` (lead: Watch 90 f,
+  Muster 240 f, Kindle 120 f then each mark 180 f, Decree 120 f; all ≥ `MIN_LEAD` 60), `OrderStage
+  {Ready, Announced{left}, Live{left}, Broken, Done}`, `Instrument`/`InstrumentKind` (watch-fire,
+  war horn, bell, bellows, chain; 3 blows each). `Command::step_with(build, room)`: an order only
+  while the Drum builds, one at a time, round his three, 25 s apart; `strike` (a broken instrument
+  ends its order for good and owes one counter-order, announced 90 f ahead: a guard pair to the
+  next instrument, or the muster doubled), `turn` (the bellows burns his own), `fail`/`finish`,
+  `slay`. `terms(sin, decree_done, slain)`: Greed's decree done brings Mammon's golems at the start
+  of his fight, his general slain takes his phase-two golems (§17 decision 5); the six Cyclops
+  stand-ins take +25% / −20% health. `Records` (the `generals:` section of `vh.warband`:
+  `I.broken.decree.slain`). `place`: his post on a room's own foe post past the middle of the way
+  (the smaller rooms), each instrument in a room of its own, muster gates on the floor between
+  rooms, the watch's round, the decree's way to the court; on the realm's ground as laid out
+  (Pride's galleries and other floors joined by more than floor count too).
+* **`game/general.rs`**: `GeneralRun` on `Game.general`; the general takes a room foe's post (its
+  pack is his guard, he its leader), health ×2.5 his breed's but not past 300 (×the realm's weight),
+  a horn at half health that steadies his guard; Watch (the patrol asleep at its fire walks its
+  round as puppets; sight 7 tiles → a 60 f whistle that wakes dens within 10, unless the whistler
+  falls; struck on the round, it turns on him and its leader drops runes), Muster (the gate nearest
+  him glows; standing 1.5 s at it bars it for good; a pack marches in, held back while six would
+  hunt him), Kindle (marks about him planned through the threat manager as a no-cost token
+  committed 180 f out, one strike a volley, `GuardRule::Bare`, no rider: never slows), Decree (the
+  realm's foes carry it from his post to the court; kill them all or cut the chain). Instruments
+  break under his swing's active frames (read from his fighter, no brawl hook); F at the bellows
+  turns it. Slain: orders end, carriers flee, banner on the trophy wall (`hang_banners` rebuilds
+  them from the save), the record kept. A Ledger rival of rank ≥ 4 takes his name and body (his
+  death is the rival's in the Ledger). The war table gets his card, the old man news of him.
+* **`game/brawl.rs`**: one new function at its end, `general_hazard_blow` (the kindled burst
+  through `blow_on_hero`).
+* **HUD** (`render/hud/war.rs`): the banner at the top centre (pennant, sigil, name, three order
+  discs: ready, counting down with seconds, under way, crossed out, done), order cards with their
+  countdown, pings over whole instruments (an edge arrow for the one under way), the glowing gate
+  and how far it is barred, his name over his head. **View** (`render/view/war_props.rs`): the
+  instruments in blocks (and as wreckage), the gate's ring of fire, the kindled marks and spikes,
+  his cloak and banner; a few dozen cubes a frame.
+* **Bot**: steps off a kindled mark as soon as it is marked; between fights bars a glowing gate and
+  breaks the instruments it passes (expert 16 tiles out of its way, adept 6); gives up a drop it
+  cannot reach in 10 s (one wedged behind a pillar held a crawl for eight minutes).
+* **Harness** `--general SIN SKILL TIER SEED`: fought, then left alive (his room held out of the
+  fight). Greed, seed 1: expert t4 6.1 / 6.0 min, 3 of 3 broken, −2%; adept t4 10.8 / 9.9 min,
+  3 of 3, −8%; expert t1 (seed 2) 11.7 / 9.9 min, −16%; no overlap from his orders. The six
+  realms' own rules (the Field's lava, the Hall's mirrors) beat the vaults' bot, so its numbers
+  there say nothing yet.
+* **`--crawl 2`** before / after: every clear as before (adept t1 0%, the rest 100%); minutes
+  expert t1 9.7 → 11.2, adept t4 9.4 → 11.3, expert t4 5.5 → 6.8, adept t7 5.4 → 6.7, expert t7
+  4.3 → 4.7; peak ≤ 7; overlaps 0 but adept t4 0.06/min (one, a bolt flying late after a shove,
+  none of the general's).
+* Captures `general:S`, `order:K`; Map stops "SIN - NAME'S POST" ×7.
+* Tests: `every_order_is_announced_a_second_before_it_bites`, `orders_only_come_in_the_build`,
+  `every_instrument_can_be_reached_and_broken`, `a_broken_instrument_ends_its_order_and_the_general_answers_once`,
+  `the_decree_and_the_generals_death_change_the_princes_fight`, `the_generals_record_survives_the_save`,
+  `the_seven_generals_follow_the_plans_table`, `every_realm_has_its_general_at_his_post_with_his_guard_asleep`,
+  `no_order_slows_or_holds_the_hero`, `the_kindled_floor_is_marked_three_seconds_and_bursts_as_planned`,
+  `a_broken_horn_ends_the_muster_and_a_barred_gate_turns_it_back`,
+  `slaying_the_general_ends_his_orders_hangs_his_banner_and_weakens_the_prince`,
+  `the_generals_realm_survives_the_save`.
+* Open: the herald (a fleeing courier) and the "catch him for a map" reward; F11; the usurper's
+  lesson and memory in the fight (the integrator's, with the rivals); per-realm placement for
+  ground that moves (the Field's slabs: his post rides a slab, his instruments stand where the
+  layout put them); Watch only round the fire's own floor in Pride; the Steward's long name on the
+  Map's button.
+
+### After W6's merge (the integrator)
+
+The crawl harness is one function for every realm (`crawl_full`: the realm, its general, a
+Ledger). With the generals in the vaults every crawl is slower (the expert at tier 1 9.7 → 11.5
+minutes, the adept at tier 4 9.5 → 12.3), every clear is as before, and overlaps stay at none for
+the expert from tier 4 and the adept at tier 7 (0.02-0.04 a minute where a bot on the move meets a
+bolt paced late; none of them a general's).
+
+| Change | Why |
+|---|---|
+| A bot that has pushed a second without moving (outside the ring) takes the tiles' way round | an adept crawl stood 6 minutes wedged on a doorway's corner its straight-line check (±0.28) let through but the hero's body did not; the generals' slower crawl walked it there |
+| The crossfire test plays ten minutes, not five | with a general in the vault the bot meets its packs in another order |
+
+### The herald (W6's last piece) and the gaps closed after the merges
+
+- **The herald**: a muster's horn sends a herald (a slight, quick puppet) from the horn to the
+  glowing gate, paced to reach it as the muster bites. Cut down on the way, the muster fails, and the
+  map he carried marks the general's post (a ping, or an arrow at the screen's edge) and puts a
+  line in the old man's news; whichever way the muster ends, its herald goes. Test:
+  `a_herald_caught_fails_the_muster_and_his_map_marks_the_post`.
+- **The old man names the general** (`general_intel`: his name and where his first standing
+  instrument is from where the hero came in), and **the crooked bargain's price** is that general's
+  decree, done; **a usurper** is seated in the grudges at the general's post, his lesson with him.
+- **The workshop's card weighs** a blade or a shield against his own (damage a second, reach, tempo;
+  parry window, block cost), green where better.
+- **No whisper looks like the old man**: Mammon's in tarnish, Beelzebub's in bile (their sins' gold
+  and orange were too near his amber), the turned needle too.
+- **The false gatekeeper's bottles** are known by their belt slot, the prince's colour in the glass.
+- Rivals: the Finisher lesson (a sway back out of the finisher), Patient, Fears, Greedy; F10; `--rivals`.
+
+### The old man always good; the compass when idle; F6
+
+- **No evil old man** (the user's rule): the false gatekeeper and his tainted wares are gone (the
+  cheat, its room, its demon, its bottles and blade, its capture hook and tests); the whisper speaks
+  as "<PRINCE> WHISPERS". Four cheats remain: the whisper, the crooked bargain, loaded dice, the
+  turned sign. Tests: `no_cheat_takes_the_old_mans_form`, `the_old_man_is_never_one_of_the_cheats`.
+- **The compass shows only when he stands idle** (0.8 s still, out of any swing, fading in over
+  0.4 s): the realm's needle and the old man's amber lamp. Test: `the_compass_shows_only_while_he_stands_idle`.
+- **F6 puts a thousand coins in his purse**, every press (a testing cheat); the ring's next bout
+  moved to F9. Test: `f6_gives_a_thousand_coins_every_press`.
+
+### W9 Tune: the whole run (2026-10-05, branch `tune-w9`)
+
+**The harness** (`game/whole_run.rs`): one bot plays the run in order with one game: one save, one
+purse, one Ledger, the kit it buys and the mastery it earns carried through; the tier rises with the
+keys (`realm_tier`). `--run SKILL SEED [ORDER]` prints one run part by part (tier, kit, rank, time,
+lives, damage, kills, rivals met/made/slain, the Drum, routs, instruments, overlaps, silver and runes
+in and spent, what was bought); `--runs SKILL N [ORDER]` the parts of N seeds side by side;
+`--court-at SIN SKILL KIT KEYS SEED` a prince as the run meets him (`VH_GENERAL=slain|decree` for
+his general's terms). Order 0 is the vaults first, order 1 the reverse, so every realm is met early
+and late. About 40 s for an expert's run, 6 s for an adept's (quick profile).
+
+* **Stand-ins.** The Garden and its Cyclops are not played (no bot walks the Garden): the run begins
+  at the old man's with the Garden's purse (every key's silver, the Cyclops' bounty and runes and his
+  relic: 490 silver, 3 runes, no kills counted). The bots walk the vaults and the Rotting Feast as a
+  player does; the other five realms' spatial lies defeat them, so their fights are played on their
+  own ground and rules, and the harness *carries* the bot to the doorstep of the nearest den when it
+  has gone 30 s without a blow either way, 60 s without a kill, or 6 s standing still with nothing
+  hunting it (counted per realm). Such a realm has 10 minutes, and lost to its ground it does not end
+  the run. The gate's last trap is not played: a realm is done when every foe he can reach is down.
+  A trial at the yard is the trial's bout of the ring, passed on a win.
+* **The shopping rule** (`shop`, the old man before each court, after it, and at the bottom of the
+  Pit, as H does anywhere): sharpen the blade below 70%, reforge or mend the shield, then raise the
+  lowest of blade, shield and path (in that order on a tie) while the purse holds the price and 60
+  more (a sealed tier wants its runes, or a relic), then fill the belt with health bottles; a rank
+  whose deeds are met is tried.
+* **Tries.** A part lost (all lives gone, or a fight not won in its time: courts 8 min, Krampus 10)
+  is played again from its checkpoint by Continue, up to three tries; the run ends at a part lost
+  thrice.
+* **The bots, taught the least they needed** (`game/bot.rs`): on the Burning Field the lava is not
+  floor (`Bot::floor`): no stick leads off the ground into it and the adept and the expert step off
+  an edge between blows (a shove at an isle's edge cost a third of his health each time); an
+  elf-maid (`Power::Hollow`) is struck from behind; a censer is struck from 1.45 tiles (from the
+  north the hero stood 1.3 from its middle at the nearest and walked at it for ever: with his
+  general slain Asmodeus could not be finished); Belphegor asleep is closed on to 0.9 tiles (from
+  1.3 a swing leant into him beside his hourglass met nothing and he mended for good).
+
+**The measures** added for §15.1: the Drum's breath between one peak's end and the next one's start
+(`Drum::gaps`: §15.1's "rest between peaks"; the old `rests` count only the rest phase, which a
+player walking straight to the next den never has); foes come in mid-fight that could land a blow
+within 60 frames of being seen (`sudden`; one out of a Pit door is credited the door's second).
+
+#### What the run found, and the tuning
+
+Before is the game as merged (the same harness and the same taught bots), after is this branch.
+Three seeds each; experts and adepts in both orders.
+
+| Change | Why | Before | After |
+|---|---|---|---|
+| A fight by frame data wears the blade at 0.1 a swing that lands (`gear::EDGE_LOSS_DUEL`; the Garden keeps 0.6) | at the Garden's rate a blade rusted through a third of the way into every realm (a crawl lands 500-800 swings): every prince and Krampus were fought at 40% of the blade, and Belphegor out-mended it | edge at a realm's end 0% (rusted) in every realm; the expert lost the run at Belphegor in 2 of 3 runs (order 0) | the expert's blade loses 25% in the vaults, 13-86% across the realms (the Feast's fifteen minutes the most), 90% through the Pit; 6 of 6 expert runs reach the ending |
+| Krampus's health 1.35 → 2.1 of a prince's (`archetype.rs`) | with a keen blade the expert felled him in 105 s at tier 8, shorter than FINALE's 150-250 and than the lair test's 120 | 105 s (tier 8, seed 1) | tier 8: 136-164 s; tier 7: 178-186 s; in the run 2.7-2.9 min, the longest fight |
+| The princes 1.15 of their breed's health (`court::COURT_HEALTH`) | with a keen blade the expert's first two courts fell in 78-103 s, under PRINCES.md's 90 | 88-139 s (rusted) / 78-103 s (keen) | 85-127 s |
+| The courts' health curves up with the keys (`court::COURT_CURVE` 0.02 × t(t−1)), Krampus's line kept straight (`lair_weight`) | the kit bought on the way outgrew the straight line: the seventh prince fell sooner than the first | expert, courts 1-7: 1.7, 1.7, 2.2, 3.0, 17.5 (lost twice), 2.3, 2.5 min (rust) | 1.4, 1.9, 2.3, 2.0, 2.1, 1.8, 2.1 min (order 0); 1.6, 1.6, 2.0, 2.0, 2.0, 1.8, 1.5 (order 1) |
+| A kill pays 10 silver (`gear::COINS_KILL`, from 5) | the adept reached Mammon with tier-2 blade and shield and could not beat him in a life (he needs tier 3 at the first court) | adept beats Mammon 1 of 3 (order 0) | 3 of 3, and one of three Lucifer too |
+| Mastery's deeds ×2: 50 / 150 / 300 / 600 / 1000 (`mastery::DEEDS_FOR`) | the expert was a master (rank 5) a third of the way into the run: nothing left to earn | rank 5 by the sixth part of sixteen | rank 5 by the tenth (order 0) or the eighth (order 1); the vaults give about 140 deeds, the Feast 350, a court 35-90 |
+| A rival ranks up when the fight ends with the hero gone, not only when he wins or flees (`Ledger::after_fight`: `Outcome::HeroLeft`) | §8's open question, decided by measure: in 15 whole runs no rival carried a lesson (the ones that ranked were the masher's killers, who learn nothing from a masher) | ranks at most 1-4, lessons in 0 of 15 runs | ranks up to 5, lessons in 3 of 15 runs (two adepts', one expert's) |
+| The Pit's doors grind open a second before their pack comes out (`pit::DOOR_TELL`, `PitRun::grind`); a pack held back for the cap is told again when its room comes | I7: the packs stood up at the door mouths with no warning | 0-0.5 foes a Pit able to land within 60 f of coming out | 0 |
+
+Measured and left alone:
+
+* **The Drum** (35-55% at peak, ≥ 8 s between peaks): the adept, the player the pacing is for (W3),
+  spends 53% of the vaults at peak, 60% of the Hall of Mirrors (where it dies), 49% of the Grotto;
+  the expert 12-51% (it ends fights before they peak); the Pit 32-42%. The breath between peaks is
+  10-77 s in every realm but the Mire's (0-6 s: the bot never leaves its first pack, a stand-in's
+  number). Lowering the peak's threshold would push the adept over 55%; the decision of §17 (the Drum
+  paces, it does not read skill) stands. Unchanged.
+* **Morale and the rout**: 5-6 routs in the vaults, 1-5 in the Feast, none in the small packs of the
+  later realms (three foes a den: the last falls before the morale runs out). A lower morale would
+  rout a three-foe pack at one death and end fights the release already eases. Unchanged.
+* **The general**: the expert breaks 2.3-3 of 3 instruments in the realms it can walk or is carried
+  through (§15.1: ≥ 2), but 0-0.3 on the Field and 1 in the Mire, where it never reaches them; the
+  adept 1.7-2.7 (≥ 1); alive against slain stays inside 25% where the bots can walk (W6's
+  `--general`).
+* **Overlaps**: 0 for the expert in every part but Belphegor's court (one in three runs) and the Pit
+  (0.7-1.0 a run: a bolt paced late after a shove); the adept 0.3 in the vaults.
+* **Pressure without a tell**: 0 in 15 runs (one measured case was the harness counting a fallen
+  foe's id handed to a raised skeleton; fixed in the measure).
+* **Rivals met a realm** (§15.1: 1-2): 0 for the expert until it first dies (no rival exists: it makes
+  them only in its falls, mostly on the Burning Field), then 1.3-2.0 a realm; the adept 1.0 a realm
+  from the second on.
+
+#### The curve
+
+Expert, order 0, after (means of three seeds; minutes, lives lost, damage taken):
+
+| | vaults | Mammon | Mirrors | Lucifer | Grotto | Leviathan | Field | Amon | Mire | Belphegor | Feast | Beelzebub | Thorns | Asmodeus | Pit | Krampus |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| tier / kit | 1 / 2-2-1 | 1 / 3-2-2 | 2 / 3-3-2 | 2 / 3-3-3 | 3 / 4-3-3 | 3 / 4-3-3 | 4 / 4-4-4 | 4 / 5-5-4 | 5 / 7-5-4 | 5 / 7-5-5 | 6 / 7-6-6 | 6 / 7-7-7 | 7 / 8-7-7 | 7 / 8-7-7 | 8 / 8-8-7 | 8 / 8-8-8 |
+| min | 6.4 | 1.4 | 2.7 | 1.9 | 6.7 | 2.3 | 14.3 | 2.0 | 10.0 | 2.1 | 15.0 | 1.8 | 3.2 | 2.1 | 16.5 | 2.9 |
+| lives lost | 0 | 0 | 0 | 0 | 0.3 | 0 | 6.7 | 0 | 0.3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| taken | 42 | 0 | 47 | 25 | 86 | 0 | 1594 | 9 | 303 | 6 | 392 | 0 | 232 | 28 | 181 | 0 |
+
+* **The expert finishes** the whole run in all six runs (87-112 minutes), its lost tries (0-3) all on
+  the Burning Field, the bots' worst ground (a stand-in: carried round its slabs, it still dies to
+  shoves into the lava at the isles' edges).
+* **The adept** clears the vaults and fells Mammon in every run of order 0, then falls at Lucifer (2)
+  or Leviathan (1). In order 1 it dies on the Garden of Thorns' ground (the elf-maids) and then to
+  Asmodeus at tier 1. **It does not get "well into" the run.** Its wall is the princes: a prince is
+  whole again after each of its falls, and the adept's guard-first play (it blocks 233 of Lucifer's
+  260 blows, and is caught by the 13 it swings into) cannot take him down in one life without a kit
+  two or three tiers above the court (Lucifer at tier 1, before the princes' 1.15: lost at kit 3,
+  won at kit 4 in 132 s). The economy now buys the
+  first prince; no count or rate buys the rest without making the expert's courts trivial. This is
+  left for the user (below).
+* **The novice** (a masher) loses every life in the vaults three times over (4 minutes, 18 kills).
+* **The seam into the Pit**: a step up in length (16.5 minutes) but not in danger for the expert (181
+  taken, none of its lives); levels 1-3 are a breather (0-24 taken each: stage 1-3 foes against a
+  tier-8 hero), the danger is in levels 5-6 (69-115 taken, 7-9 left on the ledge). The adept with a
+  tier-8 kit reaches the bottom with 0-1 lives lost, with tier 7 it falls at level 3 to 5; the
+  novice at level 4. Left as designed (the descent through the bestiary).
+* **Krampus against the hardest prince**: 2.7-2.9 minutes against the courts' 1.4-2.3, his damage
+  dealt to the expert 0 (the princes' 0-28). The adept at tier 8 runs out of time in the Chains with 2
+  lives lost; the novice loses every life in the Bells in 38 s.
+* **The economy**: the purse ends at 230-1440 silver; the kit reaches 7-7-7 by the seventh court and
+  8-8-8 for Krampus, most of the sealed tiers by the seven princes' relics (each unseals the next
+  sealed tier of the tree with most left). So **runes are meaningless in a whole run**: 61-80 are
+  left unspent at the end (a sealed tier is free by relic before the runes are wanted); the bots'
+  rule leaves the elixir tree alone and still wants for nothing. Nothing the late parts assume is unaffordable to a hero who fights
+  well. Left for the user (below).
+* **Greed taken last** (order 1, tier 7) is the longest realm: 61 foes of every stage, the deepest
+  legends among them; the expert has not cleared it in 15 minutes in two of three runs (a Goryō
+  hovering out of reach, a Tepegöz half-slain).
+
+#### Closed from the build log
+
+* **Rival ranking** (W5's open question): decided as above, a rival who saw the fight end with the
+  hero gone ranks up.
+* **Hold the door** (§7.2) **stays out.** Its answers were "bomb or archangel, or bait it out", and
+  the bomb is disabled (B is the old man's guide); with the 1.2-tile gap §7.1 keeps (no trapping) a
+  vanguard in a one-tile mouth either holds it shut, which traps him outside or in (against I3's
+  spirit), or leaves the gap and holds nothing; and the realms' dens are open ground or rooms with
+  several ways in, so it would rarely fire. The vanguard's Screen does its job in the open.
+* **Crossfire's test** plays a tier-3 kit (it played tier 6): with the blade kept keen its casters
+  fell before two were ever free together.
+
+#### Left for the user
+
+* **The adept's wall at the second prince.** Ways to open it, for a decision: a prince keeps the
+  wounds of one fall on Steady (the harness says the adept would then fell Lucifer); a cheaper
+  first-tier price list; or accept that the princes are for a player who reads (the expert) and the
+  adept is to grow (mastery, trials) before the second court.
+* **Runes.** Make them worth having in a run (the relics unseal fewer tiers, or runes buy the trials,
+  the elixir tree's sealed tiers, or reforging), or let them be the second run's currency.
+* **The five realms the bots cannot read** were not measured as a player meets them (carried from
+  den to den): their times, deaths and deeds (the Mire and the Feast loop to their time limits)
+  are stand-ins. The playthrough below is their measure.
+* `capture.rs`'s `slay` now wounds by 100 000 (a prince at tier 1 passes 1000 health).
+
+#### The playthrough by hand: what to watch at each part
+
+1. **The Garden and the Cyclops**: does the old man's first visit afford the second blade and shield
+   (490 silver, the bots' estimate)?
+2. **The vaults** (first or last): the blade's edge through a whole realm (now 13-45% lost in a
+   walked realm: does the DULL warning still come at a sensible moment, and does sharpening feel
+   worth the silver?); the generals' orders and their instruments; the rivals' name cards once one
+   exists, and whether a lesson is ever met in your run.
+3. **The Hall of Mirrors, the Grotto, the Mire, the Garden of Thorns**: the spatial lies themselves
+   (the bots were carried): how long each takes, whether its rules read. The elf-maids: is "strike
+   from behind" learnable without the old man's page?
+4. **The Burning Field**: the isles' edges. The bots died to shoves into the lava (5-7 lives a run
+   for the expert): is the edge readable, and is a shove into it fair, or does the lava want a lip?
+5. **The courts**: Belphegor asleep (close in), Asmodeus's censers (reach), the length of each (the
+   expert 1.4-2.3 min); does the seventh feel harder than the first?
+6. **The Pit's descent**: the doors' new second of grinding before a pack ("THE DOOR OPENS", the grind
+   sound, the door rising) before anything comes out; the five seconds of the platform sinking; the
+   bell's fifteen; whether levels 1-3 feel a breather or dull, and 5-6 a climax.
+7. **Krampus's phases** (70%, 40%): now 2.7-3 minutes for an expert; the cage taunt's three seconds
+   open; the Perchten; is it long in the right way?
+8. **The ending**: the words held long enough to read (the 34-second beat), the hymn and the choir
+   under the rise, the credits.
+9. **The glint** (Ragnar's first mastery rank) and its missing sound (W8's open item).
+
+### W10 The princes' wall (2026-10-09, branch `balance`)
+
+QA.md's design call 3: the adept stalled at the princes (1.0.20: the vaults first, it ended at
+Lucifer in 3 runs of 4 and at Leviathan in 1; the Garden of Thorns first, at Asmodeus, the first
+prince, in 4 of 4), because a prince was whole again after each of the hero's falls and the adept's
+guard-first play could not take one down in a life without a kit two or three tiers above the court.
+The user chose to soften it: the princes keep the damage done across the hero's falls, and each is
+tuned to the kit a player has when he meets him.
+
+**The harness** (`d2f1033`): `--court-at SIN SKILL KIT KEYS SEED` takes the run's mixed kit
+(BLADE/SHIELD/PATH), `VH_BELT=N` bottles, `VH_LIVES=N`, `VH_EDGE=N` (the blade's edge as the realm
+before left it), `VH_LIMIT=S` and `VH_COURT_STATS` (each life's numbers as it ends); `VH_RUN_PASS`
+lets `--run` go on past a walked realm it has lost three times (as a stand-in realm is passed), to
+measure the courts and the finale beyond it. Neither changes a default run.
+
+#### What moved, and why
+
+Only the courts' and the lair's numbers. The realms, the Pit, the ring's bouts (`--balance 2`: the
+same to the digit), the trees, the economy and the bots are as they were.
+
+| Change | Why |
+|---|---|
+| **The wounds stay** (`prince::after_fall`): a fall brings the prince (and Krampus) back before his throne with the health he had; HIS WOUNDS REMAIN is said over him and his bar stays where it was; fought again in a later phase he takes it up at once (its banner, its adds), without a second breather. A game over (a lost try) gives him back his health. | A full keep, not a share: a share still lets a prince outlast a player who lands a little each life, and keeping only his lost phases throws away a nearly finished phase. The lives are what the player pays, and the try (three lives) is what resets, so a prince must still be beaten with three lives' work. |
+| **The court's hide** lets 0.6 of a blow through outside his recoveries (`prince::COURT_HIDE`; 0.3 before, which the ring's Mammon and Krampus keep) | the adept blocks first and strikes what it can: at 0.3 its blows were turned to nothing (it blocked 233 of Lucifer's 260 blows and lost); a hero who strikes in the recoveries still lands whole |
+| **The princes' blows** stay at 0.6 of their breed's at every court (`court::COURT_DAMAGE`; 0.85 at the first court rising 0.1 a key before) | the late courts' blows felled a guard-first hero in one life whatever his shield: he meets them three tiers below the expert. Their health still grows with the keys. |
+| **Each prince tempered** (`court::temper`: health and blows over the court's weight; his adds' blows with his): Lucifer 0.8 health and 0.75 blows, Leviathan 0.85 health, Amon 0.75 health and 0.45 blows, Belphegor 0.6 health, Beelzebub 0.7 health, Asmodeus 0.45 blows (his elf-maids with him); Mammon as he was | measured court by court with `--court-at` at the adept's own kit, belt, rank and lives where each order meets him: the princes who mend (Belphegor, Beelzebub) and Leviathan, the longest of breed, ran past the 8-minute try; Lucifer met sixth (the Thorns first) took 7.2-7.9 minutes at 1.0 health, 5.6-6.1 at 0.8; Amon's charge, Asmodeus's elf-maids and Lucifer's lance ended an adept's life before his blade could tell |
+| **Belphegor mends a quarter as fast** in his dream (`prince::sloth::MEND` 0.008 → 0.002) | at 0.004 and 0.75 health the adept's dream phase still took 2-4 minutes and stalled at 63% in one seed of four (he mended back to the line each sleep); at 0.002 and 0.6 it is 1.5-3 minutes, and a sleeper left alone still mends 12% a minute |
+
+Their moves, tells, phases, adds and rules are their own still.
+
+#### The whole run (`--run`, seeds 1-4, both orders)
+
+Before is 1.0.20 (`6b45a7b`), after is this branch.
+
+| Bot, order | Before | After |
+|---|---|---|
+| Adept, vaults first | 0/4 endings: Lucifer ×3, Leviathan ×1 (53-83 min, 1-2 princes) | 0/4 endings: all 4 fell 5 princes and end at the Rotting Feast (82-108 min) |
+| Adept, Thorns first | 0/4: Asmodeus ×4 (21 min, no prince) | 0/4: all 4 fell Asmodeus and end at the Rotting Feast (12-13 min) |
+| Adept, vaults first, `VH_RUN_PASS` | as above: the princes are the wall | **all 7 princes in 4 runs of 4**; all end in the Pit (113-138 min) |
+| Adept, Thorns first, `VH_RUN_PASS` | as above | **all 7 princes in 3 of 4** (the fourth ends at Mammon, the seventh); the three end in the Pit (109-113 min) |
+| Expert, vaults first | 4/4 endings, 87-100 min (mean 93.5) | 4/4, 87-96 min (mean 92.3: 1.2 less) |
+| Expert, Thorns first | 4/4, 96-112 min (mean 105.5) | 4/4, 99-105 min (mean 101.5: 4.0 less) |
+| Novice, vaults first | the vaults, 4 min | the vaults, 4 min (a realm: unchanged) |
+| Novice, Thorns first | Asmodeus, 5 min (2.4 in his court) | Asmodeus, 10 min (7.3 in his court) |
+
+**The adept reaches the ending in none of the 8 runs, and no longer because of a prince.** With the
+princes softened its walls are the Rotting Feast (walked as a player walks it: met at tier 2 with a
+2/2/2 kit it loses all its lives three times in 8 minutes; at tier 6, in 9-14) and the Pit (with its
+7/4/4 kit it falls at levels 3-5, as W9 measured for a tier-7 kit). Both are outside this tuning
+(only the princes' numbers move) and are left for the user below. The novice goes no further in
+place (its walls are the vaults and the first prince, which PRINCES.md says a masher must not fell),
+but it lasts twice as long in Asmodeus's court and leaves every prince lower (below).
+
+The adept's courts in the run (`VH_RUN_PASS`; won of runs, mean minutes, tries lost, lives lost):
+
+| Court (vaults first) | Before | After | Court (Thorns first) | Before | After |
+|---|---|---|---|---|---|
+| Mammon (1) | 4/4, 4.7, 0, 0 | 4/4, 3.5, 0, 0 | Asmodeus (1) | 0/4, 18.5, 3, 9 | 4/4, 2.4, 0, 0 |
+| Lucifer (2) | 1/4, 19.9, 2.2, 3.2 | 4/4, 2.9, 0, 0 | Beelzebub (2) | - | 4/4, 3.6, 0, 0 |
+| Leviathan (3) | 0/1, 24.0, 3, 2 | 4/4, 3.7, 0, 0 | Belphegor (3) | - | 4/4, 4.2, 0, 0 |
+| Amon (4) | - | 4/4, 4.3, 0, 0 | Amon (4) | - | 4/4, 4.0, 0, 0.2 |
+| Belphegor (5) | - | 4/4, 8.3, 0.2, 0 | Leviathan (5) | - | 4/4, 6.0, 0, 0.8 |
+| Beelzebub (6) | - | 4/4, 5.3, 0, 0 | Lucifer (6) | - | 4/4, 6.1, 0, 0.2 |
+| Asmodeus (7) | - | 4/4, 6.2, 0, 0.5 | Mammon (7) | - | 3/4, 11.1, 0.8, 0 |
+
+The one prince lost (Mammon seventh, seed 4) was lost to the clock with no life lost: the adept came
+from the vaults lost, with no silver, and its blade wore to 0% over three 8-minute tries. The
+expert's courts in the run: 1.1-1.9 minutes (1.4-2.3 before), none lost.
+
+#### Each prince as the run meets him (`--court-at`, seeds 1-4, 480 s)
+
+The adept's kit, keys and rank where an order meets him (the run's tables), three lives; won, mean
+seconds when won, his health left when lost, lives lost. The novice with the same kit and one life:
+his health left.
+
+| Prince | Kit | Tier | Adept before | Adept after | Novice before | Novice after |
+|---|---|---|---|---|---|---|
+| Asmodeus | 2/2/1 | 1 | 0/4, 42% left, 3 | 4/4, 144 s, 0 | 89% | 64% |
+| Mammon | 3/2/2 | 1 | 4/4, 313 s, 0 | 4/4, 203 s, 0 | 88% | 81% |
+| Beelzebub | 2/2/2 | 2 | 0/4, 58%, 0.2 | 4/4, 220 s, 0 | 96% | 87% |
+| Lucifer | 3/2/2 | 2 | 1/4, 61%, 0.8 | 4/4, 176 s, 0 | 94% | 76% |
+| Belphegor | 3/2/2 | 3 | 0/4, 92%, 3 | 4/4, 223 s, 0 | 91% | 73% |
+| Leviathan | 3/3/2 | 3 | 0/4, 78%, 1 | 4/4, 245 s, 0 | 96% | 89% |
+| Amon | 3/3/3 | 4 | 0/4, 95%, 3 | 4/4, 264 s, 0.2 | 96% | 77% |
+| Belphegor | 4/3/3 | 5 | 0/4, 96%, 3 | 4/4, 314 s, 0 | 94% | 79% |
+| Leviathan | 4/4/3 | 5 | 0/4, 97%, 3 | 4/4, 335 s, 0 | 96% | 91% |
+| Beelzebub | 4/4/3 | 6 | 0/4, 99%, 3 | 3/4, 380 s, 0.8 | 98% | 90% |
+| Lucifer | 4/4/3 | 6 | 0/4, 98%, 3 | 4/4, 349 s, 0 | 98% | 88% |
+| Asmodeus | 4/4/4 | 7 | 0/4, 80%, 3 | 4/4, 353 s, 1 | 97% | 86% |
+| Mammon | 4/4/4 | 7 | 0/4, 96%, 3 | 4/4, 464 s, 0 | 96% | 89% |
+
+The expert at its own kit, the same way: every prince 4/4 both times, 63-126 s after (88-156 s
+before). The novice with three lives at the adept's kit fells none (5-66% of him left); with the
+expert's kit it now fells some (Lucifer at tier 2 with 3/3/3, Amon at 4/4/4, and Belphegor,
+Beelzebub and Lucifer late), as lives add up against a prince who keeps his wounds. A masher never
+reaches a court with that kit in a run (it does not clear the vaults).
+
+`--court SIN SKILL TIER SEED` (the first court's weight, the kit at TIER; seeds 1 and 2): the expert
+at tier 4 in 31-63 s (59-65 before), at tier 7 in 17-40 s (33-45); the adept at tier 4 wins 14 of 14
+in 57-108 s (12 of 14 before, Amon lost both, 89-194 s). The masher at tier 1 still loses to every
+prince but Amon, whom it now fells at the first court's weight (147 s); no run meets Amon, Lucifer
+or Belphegor there, and where the run meets them first (Lucifer the second court, Belphegor the
+third, Amon the fourth) it loses all three lives (Lucifer left with a fifth of his health).
+
+**Krampus** (`--lair`): the expert and the novice as before (the expert at tier 8 in 165 s; the novice
+loses every life in the Bells); the adept at tier 8 timed out in his second phase with 2 lives lost
+before, and with his wounds kept now reaches his third and loses all its lives there (seeds 1, 2).
+
+#### The tests
+
+Changed only where the tuning means it: the fall tests (`a_fall_brings_*_back_with_his_wounds_*`,
+the lair's too) expect the wounds kept and a game over to heal him; the hide's ratios read
+`COURT_HIDE`; the phase tests leave room for the larger blow through the hide; the masher meets
+Lucifer, Amon and Belphegor at the court where the run first meets each (`court_at`), not at the
+first court's weight, where their tempering lets three lives' work fell them;
+`a_fall_never_undoes_the_heros_blows` is new.
+
+#### Left for the user
+
+* **The Rotting Feast** is now the adept's wall in both orders (walked as a player walks it; the
+  Thorns first, it is met at tier 2 with a 2/2/2 kit). Softening it is a realm's tuning.
+* **The Pit** with the adept's kit (7/4/4: it never affords more, losing the stand-in realms'
+  silver) falls at levels 3-5. W9 left the Pit as designed.
+* **The adept's courts are long**: 2.4-8.3 minutes against the expert's 1.1-1.9. A guard-first
+  player wears a prince down rather than reading him (the expert is the reader), but its blade wears
+  with the length (Mammon seventh: to 0%).
+* **Runes**: a proposal, not built, is with the main session.
+
+### W11 The adept's last walls, and the runes' use (2026-10-09/10, branch `balance`)
+
+After W10 the adept felled every prince it reached, and its runs ended at the Rotting Feast (both
+orders) and, past it, the Pit and Krampus (and, the Thorns first, the vaults met seventh). The user
+chose to soften those walls and to build the runes' use the proposal recommended: the old man's
+rune-carving.
+
+#### Why the adept fell there (traced blow by blow, `VH_TRACE`, `VH_RUN_TRACE`)
+
+* **The Rotting Feast, the harness.** The bots hunted every den, the gaki in their corners off the
+  way included, and then fought the Last Course's endless gaki to the realm's fifteen minutes: no
+  bot ever left by the pylorus (the expert too survived the fifteen minutes rather than finishing).
+* **The Rotting Feast met second (tier 2, kit 2/2/2):** the gaki's bites were half the adept's
+  damage (724 of 1396 in a traced run, 36 of 50 bites landing: the Bite's 18 frames sit at the
+  adept's reaction of 18 ± 4), the stage-3 natives' bites most of the rest.
+* **The Feast met sixth (tier 6, kit 4/4/4), the vaults met seventh, Krampus:** guard breaks. The
+  adept attacked down to a fixed 40 stamina, and a deep foe's blow (Surtr's, Tepegöz's, Krampus's
+  bells) costs more than that to block: 860 of 1400 taken in the Feast came through broken guards,
+  and against Krampus every blow after the first few. Every foe it had worn down was whole again
+  after each of its falls (Surtr worn to 8 rose at 646). At depth the gaki, whose blows grow with
+  the tier (1.62 at the sixth), took the rest; the giants' frostbite and venom rode on top.
+* **Krampus's charge:** the bots saw a charge only once its runner was on them, too late to raise a
+  guard (12 hoof charges landed open in a traced fight, 362 of the adept's 390 taken).
+* **The Pit:** the stage 5-7 inmates against a shield three tiers below the expert's.
+
+#### What moved, and why
+
+| Change | Why |
+|---|---|
+| **The bots walk the Rotting Feast** (`Bot::feast_errand`): between fights on down the gullet (through the next seam's arch, the wide one when too full), to the dome, and in the Last Course to the pylorus, through it when its teeth part for the lean. A realm left through its way out is done (`whole_run::cleared`). | the harness made them fight four times what a player walks past (a measure, not the game) |
+| **The adept keeps a block's worth** (`Bot::block_worth`): the stamina the dearest blow of a foe within four tiles would cost to block, not a fixed 24, outside the courts and the ring | what the adept's description said it did; a fixed 24 let every deep foe break its guard |
+| **The adept sees a charge coming** (`Bot::threats`, `Shape::Charge`): from the length of the charge, met when the runner will reach it (the expert's timing as it was) | the charge was read only on contact |
+| **A realm's foes keep their wounds across the hero's falls** (`Game::reset_round`; the vaults and the six realms), as the princes since W10 | a fall undid every blow; the dead already stayed dead |
+| **The walked realms are tempered with depth** (`realms::temper`): the Rotting Feast's packs strike at 0.5 met first, falling to 0.35 met seventh (`FEAST_BLOWS`, `DEEP_BLOWS`); the vaults' as they were met first, falling to 0.35 met seventh. Their generals' men and what their foes' blows carry (frost, venom, fire) with them (`Game::realm_blows`). The depth is the keys held, New Game+'s offset aside. | the two realms the bots walk as a player does, met at every depth; the adept's kit is three tiers behind the expert's there |
+| **The gaki's bites do not grow with the depth** (their health does): `game::realms::raise_packs` | their needle throats; at the sixth realm their bites were 1.62 of the first's |
+| **The Pit's inmates strike at 0.6** (`pit::INMATE_BLOWS`) | at tier 7 the adept lost all its lives by level 5 (`--pit 1 7`, 3 of 3); with it it reaches the bottom 3 of 3 |
+| **Krampus: his pelt a court's hide (0.6, as the princes' since W10), his blows at 0.6 and his health at 0.8 of his weight** (`lair::KRAMPUS_BLOWS`, `KRAMPUS_HEALTH`) | the adept's blows were turned to nothing and he outlasted its ten minutes; the expert, who strikes his recoveries, fells him in about two |
+| **Rune-carving** (below) | the adept's blade wore to nothing in its long fights, and its runes were never spent |
+
+The courts, the ring's bouts (`--balance 2`: the same to the digit), the five stand-in realms'
+numbers, the trees and their prices are as they were.
+
+#### The whole run (`--run`, seeds 1-8 for the adept, 1-4 for the expert and the novice)
+
+Before is `rust-port` at 5defc78 (W10 merged); after is this branch.
+
+| Bot, order | Before | After |
+|---|---|---|
+| Adept, vaults first | **0/8 endings**: all end at the Rotting Feast (85-106 min) | **7/8 endings** (113-137 min); one ends at the Feast |
+| Adept, Thorns first | **0/8**: all end at the Rotting Feast (11-14 min) | **7/8** (115-127 min); one ends at Leviathan |
+| Expert, vaults first | 4/4, 92-100 min (mean 95.3) | 4/4, 74-82 min (mean 77.8: 17.5 less) |
+| Expert, Thorns first | 4/4, 92-116 min (mean 106.0) | 4/4, 92-99 min (mean 95.8: 10.2 less) |
+| Novice, vaults first | the vaults, 4 min, 18 of 61 foes slain | the vaults, 4-5 min, 28 of 61 slain |
+| Novice, Thorns first | Asmodeus, 10 min | Asmodeus, 10 min (unchanged: a prince a masher must not fell) |
+
+The expert's time: the Rotting Feast 15.0 → 7.1 min (vaults first) and 13.4 → 8.2 (Thorns first),
+now left by the pylorus rather than survived to the realm's time; the Burning Field 21.4 → 13.8
+and 16.9 → 14.4 (its foes keep their wounds across its falls into the lava); Krampus 2.6 → 1.9;
+the rest within a minute. Its lives lost and its courts are as they were (1.1-1.9 min a court).
+
+The adept where it fell, mean of eight runs:
+
+| Part | Before | After |
+|---|---|---|
+| The Feast met sixth (kit 4/4/4) | 0/8 done, 3 tries lost, 7.9 lives, 1418 taken | 5/8 done, 0.5 tries lost, 2.8 lives, 589 taken |
+| The Feast met second (kit 2/2/2) | 0/8, 3 tries, 9 lives, 1430 taken | 8/8, 0.6 tries, 3.0 lives, 658 taken |
+| The vaults met seventh (kit 4/4/4) | (not reached) | 7/7 passed (survived to the realm's time), 0.7 lives |
+| The Pit (kit 7/7/4 to 7/7/7) | (not reached; `--pit 1 7`: game over at levels 3-5) | 14/14 reach the bottom, 0-1 lives |
+| Krampus | (not reached; `--lair 1 8`: game over in his third phase) | 14/14 felled in 7.4-7.9 min, 0-0.3 lives |
+
+#### The harnesses
+
+* `--lair` (tier 8, seed 1, 2): the expert 164 → 122 s; the adept game over (313 s, 351 s) → felled
+  in 234 and 206 s without a fall; the novice still loses every life (37 → 69 s).
+* `--pit` (tier 8): the expert reaches the bottom as before (81 → 110 taken); the adept as before
+  (258 → 205 and 351 → 156 taken, 1 → 0 lives lost); the novice still falls (619 → 670 s). At
+  tier 7 the adept (seeds 1-3) went from game over at levels 3-5 to the bottom.
+* `--court` (every prince, expert tiers 4 and 7, adept 4, novice 1; seeds 1-2): the same but the
+  adept's Amon 87 → 75 s, Beelzebub 69 → 66 s, the expert's Asmodeus 61 → 62 s.
+* `--balance 2`: unchanged.
+
+#### The runes' use: rune-carving (the proposal's Option A, as written)
+
+At the anvil the old man, smith to the heroes of old, cuts their blessing into the blade in hand;
+at the shield wall, into the shield carried: **three carvings each, 4 / 8 / 12 runes, no silver**
+(`progression::CARVE_RUNES`). **Each carving on a blade leaves ×0.75 of the edge a landed blow takes
+off it, each on a shield ×0.75 of the wear a blocked blow takes** (three: ×0.42); no damage
+bonus. Ragnar's are runes, Mehmed's turquoise inlay, Miyamoto's spirit-crystal temper
+(`progression::carving`), and they glow on the steel in play, on the blade's middle and in a ring on
+the shield's face (`render::armory::carve_blade`, `carve_shield`; ice-blue, turquoise, violet), a
+third more with each carving. Carvings are kept per blade and per shield in the save (v4: twenty
+numbers a hero; a v3 save reads none). The bots' shopping rule carves the blade in hand and the
+shield carried in turn, the one with fewer first, while the runes hold the price and what the next
+sealed tier of its lowest tree would want.
+
+Runes a run (`--run`): before, the adept spent none (39-58 earned with the vaults first), the expert
+8-12 of 71-88. After, the adept spends 44-68 of 58-80 (vaults first) and 32-64 of 34-70 (Thorns
+first), 7-12 carvings a run; the expert 63-72 of 71-82, 11-12 carvings. A carving cut into a blade
+stays with that blade: a new tier is bought uncut (the bots cut each blade they wield).
+
+#### The tests
+
+New: `the_walked_realms_are_tempered_with_depth_and_the_rest_as_they_were`,
+`the_old_man_carves_three_runes_into_a_blade_or_a_shield_for_runes_alone` (prices, the limit, the
+save, a v3 save), `the_old_man_carves_runes_into_the_blade_and_the_shield_and_they_wear_slower`
+(the anvil and the shield wall, the edge), `the_old_mans_carvings_spare_the_shield_a_quarter_of_each_blocked_blow_apiece`,
+`the_old_mans_carvings_glow_on_every_blade_and_shield_more_with_each`,
+`the_bots_have_the_old_man_carve_the_blade_and_the_shield_in_turn`,
+`the_bots_walk_the_rotting_feast_and_leave_through_the_pylorus`. Changed where the tuning means it:
+the vaults' pack goes home with its wounds (it went home whole); Krampus's pelt lets a court's hide
+through and is lighter than he was, still above any prince; the progress line is v4; the Pit's perf
+scene no longer asks for a pack to fall in its twenty seconds (with the inmates' blows softened the
+expert's three kills spread over the doors' packs).
+
+#### Left for the user
+
+* **The expert's run is shorter** by 10-18 minutes: mostly the Feast left by its way out (a
+  measure the harness did not take before) and the Burning Field's foes keeping their wounds.
+* **The adept's long fights:** Krampus 7.4-7.9 minutes against the expert's 1.9.
+* **The novice** goes no further in place: its walls are the vaults at the first realm (the measure,
+  untouched) and the first prince, which a masher must not fell.
+* **Carvings stay with the blade:** a player who buys a new tier starts it uncut. Carrying them over
+  (the old man recuts them) would make the runes stretch further; a call for the user.
+
+### B58 The archangels on their cooldowns, for the bots too (2026-10-10, branch `angels`)
+
+Every shrine now gives all four archangels, each back 25 s after its call (README, UI.md §6).
+W10 had noted that the bots never called them; now the adept and the expert call each of the four
+as soon as he is back and has something to strike (`Bot::call_angels`): Michael and Gabriel a foe
+near, Raphael one along the aim, Uriel one within his wave; the chosen one is called, or the next
+button turned toward one worth calling. They reckon only foes already awake and keep Gabriel and
+Uriel off while a pack sleeps within reach (a power's blow wakes its den), call only Michael on the
+Burning Field (every blow cracks the ground there and every kill rises again), and do not call
+while Envy's Eye watches. The novice stays the masher and never calls them. `VH_NO_ANGELS` keeps
+every bot from calling them (with it the runs match the build before, number for number); the run
+table ends with the calls of each archangel, and a court's or the lair's line with `angels`.
+
+The harnesses that move (before: `rust-port` at 55788d3; after: this branch):
+
+| | before | after |
+|---|---|---|
+| adept, 8 seeds, the vaults first | the ending 7/8, 128 min, 19.5 lives and 6.2 tries lost | the ending 7/8, 100 min, 12.9 lives and 4.2 tries lost |
+| adept, 8 seeds, the reverse | the ending 7/8, 117 min, 25.8 lives and 8.2 tries lost | the ending 8/8, 115 min, 27.6 lives and 8.6 tries lost |
+| adept's courts (8 seeds, vaults first; minutes) | Mammon 3.1, Lucifer 3.0, Leviathan 3.9, Amon 5.0, Belphegor 4.9, Beelzebub 4.4, Asmodeus 5.8, Krampus 7.5 | 2.4, 2.4, 3.4, 4.0, 3.1, 3.6, 5.0, 6.1 |
+| expert seed 1, the vaults first | 74 min, 1 life lost; courts 1.2-1.9 min | 83 min, 10 lives and 3 tries lost (all on the Burning Field); courts 1.2-1.9 min |
+| expert seed 1, the reverse | 97 min, 2 lives lost, 2 realms cleared | 81 min, 2 lives lost, 4 realms cleared; courts 1.1-1.9 min (Mammon 1.8 to 1.5, Lucifer 1.7 to 1.4) |
+| `--court` (Mammon, expert) | 119.9 s | 106.4 s |
+| `--lair` (Krampus, expert, tier 8) | 122.9 s | 111.3 s |
+| `--pit 2 8 1` | 985 s, 153 kills, 110 taken, no fall | 1026 s, 158 kills, 193 taken, one fall on level 7 |
+| `--balance 2` | | the same (the ring forbids the archangels) |
+
+No court fell under half its time (the shortest ratio is about 0.7). The Burning Field is where the
+numbers move the wrong way (the adept's reverse order: 5.0 to 8.1 deaths there). With no calls on
+the field at all the expert's reverse run still read worse there, so part of it is the run arriving
+changed: the powers end fights sooner, and the bots earn fewer of the deeds mastery counts (none
+counts an archangel's call; that run came to the field a rank lower). The Krampus test's floor went
+from 120 s to 100 s.
+
+### W12 The realms redesigned: generals, keys, seal-stones and more foes (2026-10-10, branch `realms`)
+
+BACKLOG B40, B41, B42, B44 (decisions D11, D12, D14). What moved the simulation, on purpose:
+
+| Change | Why |
+|---|---|
+| **Three generals a realm, each carrying a key** (§9.3); a realm is done through the court's door, which opens on the third key (`whole_run::cleared`; before, when every foe the bot could reach was down) | B41: every realm is fight, generals, keys, the prince's door |
+| The realms' climaxes no longer open the court: they bring out the third general | D12 |
+| **The princes' adds always come** (D14); before, a slain general took them, and the bots slew the realm's one general in most runs | the user's decision: the adds are part of the spectacle |
+| The bots: a keys errand (a key lying about, the door, the nearest general), crossings over Pride's mirror-doors and the Grotto's pools and vents, foes across the other surface not targets, the climax's road once the other two fall | B41: the bots find and beat the generals |
+| The harness: its carry goes to the generals (never into the Feast's digested zones), and a realm's climax is stood in for after 120 s where the bot cannot play it (counted, `*` in the tables) | as the carry before it: a measure, not the game |
+| **Packs half as large again** as laid out (`realms::thickened`, `THICKEN` 0.5: 2 foes become 3, 4 become 6, a single foe stays single; the extras of the pack's own body and blade kinds), in the vaults and the six realms (not the Garden), and **pickets** of two on the roads to the generals every 14 tiles (not the Feast) | B42: the user's +50%. (Extras copying the pack's casters crossed a second caster's late bolt into the first's: the crossfire test met one; body and blade extras keep the overlaps where they were.) |
+
+Foes laid out (realm counts at their start, the adept's runs): the vaults 61 → 102, the Hall
+24 → 33, the Grotto 29 → 42, the Field 35 → 48, the Mire 39 → 57, the Feast 60 → 91, the Thorns
+18 → 24 (+54% in all, pickets with them). **Foes met a minute**: kills a minute of realm play, both
+orders, the adept 5.5 → 5.9 (+7%), the expert 7.9 → 8.0. With B41 the bots walk to the generals and
+wake what lies on the way rather than every den, so a realm's count grew more than its count a
+minute did: the bots fight near their own pace either way. The threat manager is untouched
+(tokens, no two blows inside 300 ms): overlaps 1 → 2 in 190 parts of the whole runs (the Pit's).
+
+**The whole run** (`--run`, seeds 1-4 for the adept, 1-2 for the expert; before is rust-port at
+66fa1e6, with the archangels of B58 and the first hour):
+
+| Bot, order | Before | B41 + B44 | B42 (now) |
+|---|---|---|---|
+| Adept, vaults first | 3/4 endings (76-103 min), one ends at the Feast | 4/4 (102-114) | 3/4 (85-119), one ends at the Feast |
+| Adept, Thorns first | 4/4 (116-118) | 3/4 (111-122), one ends at the Feast (second realm) | 3/4 (106-112), one ends at the Feast (second realm) |
+| Expert, vaults first | 2/2 (77-83) | 2/2 (93-99) | 2/2 (91-101) |
+| Expert, Thorns first | 2/2 (81-87) | 2/2 (84-90) | 2/2 (86-89) |
+| Novice | the vaults (4 min); Asmodeus (10 min) | as before | as before |
+
+The adept keeps reaching the ending in 3 runs of 4 in each order; the expert finishes every run,
+up to 20 minutes longer (the generals, the climaxes played or waited for, the thicker packs). No
+retune was needed after B42. The adept's wall is the Rotting Feast, as before: met sixth (kit
+4/4/4) it is through the pylorus in 1 run of 4 (3 of 4 before), 22 minutes and 5 lives a run; met
+second, 3 of 4 (4 of 4 before).
+
+**The courts** in the run: as long as before (the adept 2.2-5.1 minutes, the expert 1.1-2.0), the
+adds now felled in each (3 kills a court where 1-2 before). `--court`, `--pit 2 8 1`, `--lair` and
+`--balance 2` are unchanged to the digit (no general's record in them; B42 does not touch them).
+
+**The generals' fights** (from the run's tables: generals slain of three and keys taken, each run;
+the duel's seconds, waking to fall, print in the `duels` column since this branch): the expert takes
+all three keys in the vaults, the Hall, the Grotto and the Feast in every run, 2 of 3 in the Garden of
+Thorns (the wedding night kills it), 0-3 on the Field and none in the Mire; the adept all three in
+the vaults, the Hall and the Feast in every run, in the Grotto in the runs that meet it early (none at
+tier 5), none in the Thorns, on the Field or in the Mire.
+
+**The frame budget** (`--perf warband`, the vaults with the expert fighting, A/B twice): wall p99
+5.06 / 5.21 ms before, 4.93 / 5.06 after; CPU p50 +0.1 ms (1.68-1.78 → 1.80-1.92 ms).
+
+**What the bots still cannot do without the harness** (B41 asked for none; this is what is left):
+
+* **The vaults and the Rotting Feast**: all three generals and the door with no carry.
+* **The Hall of Mirrors**: the first two with no carry (through the mirror-doors); the Peerless,
+  the road to the Mirror-Cin, is stood in for.
+* **The Serpent Grotto**: the first two with no carry (pools and vents); Kiyohime's bell kills the
+  bots (3 lives an expert), so it is stood in for.
+* **The Garden of Thorns**: the expert takes the first two with no carry, then dies in the wedding
+  night (the stand-in waits two minutes in a try, and its tries end first); the adept dies to the
+  elf-maids before any general, as it died there before B41.
+* **The Burning Field**: shoves into the lava kill the bots (4-10 lives a realm), carried or not.
+* **The Grey Mire**: Torpor puts the bots to sleep and the Long Sleep raises the realm older, its
+  generals whole again; the bots never take a key there.
+
+
+**Per realm** (means of the runs that reached it: done %, minutes, lives lost, kills / foes at its start; done before = every foe it could reach down, after = through the court's door with the three keys):
+
+| adept, vaults first | before | after |
+|---|---|---|
+| greed | 100%, 7.2 min, 0.0, 68/61 | 100%, 5.1 min, 0.2, 53/102 |
+| pride | 100%, 3.5 min, 0.0, 24/24 | 100%, 4.5 min, 0.0, 14/33 |
+| envy | 75%, 8.6 min, 0.8, 31/29 | 100%, 9.5 min, 4.5, 42/42 |
+| wrath | 0%, 14.1 min, 3.5, 120/35 | 0%, 11.6 min, 4.2, 138/48 |
+| sloth | 0%, 10.0 min, 0.5, 21/39 | 0%, 10.0 min, 0.2, 19/57 |
+| gluttony | 75%, 10.6 min, 2.8, 72/60 | 25%, 22.3 min, 5.0, 157/91 |
+| lust | 0%, 3.7 min, 6.3, 16/18 | 0%, 2.9 min, 5.0, 16/24 |
+
+| adept, Thorns first | before | after |
+|---|---|---|
+| lust | 0%, 2.9 min, 9.0, 10/15 | 0%, 2.5 min, 9.0, 8/20 |
+| gluttony | 100%, 3.0 min, 1.0, 30/41 | 75%, 9.7 min, 4.0, 84/63 |
+| sloth | 0%, 10.0 min, 0.5, 34/39 | 0%, 10.0 min, 0.0, 31/57 |
+| wrath | 0%, 20.3 min, 9.0, 184/35 | 0%, 12.1 min, 5.7, 136/48 |
+| envy | 0%, 10.0 min, 0.8, 11/29 | 0%, 2.9 min, 8.0, 2/42 |
+| pride | 0%, 7.4 min, 8.2, 3/24 | 33%, 7.9 min, 7.7, 8/33 |
+| greed | 0%, 15.0 min, 0.2, 66/61 | 33%, 18.8 min, 1.3, 51/102 |
+
+| expert, vaults first | before | after |
+|---|---|---|
+| greed | 100%, 5.3 min, 0.0, 67/61 | 100%, 3.2 min, 0.0, 48/102 |
+| pride | 100%, 2.3 min, 0.0, 24/24 | 100%, 3.7 min, 0.0, 16/33 |
+| envy | 100%, 4.9 min, 0.0, 29/29 | 100%, 6.1 min, 3.0, 42/42 |
+| wrath | 0%, 20.8 min, 9.0, 240/35 | 0%, 14.6 min, 3.0, 166/48 |
+| sloth | 0%, 10.0 min, 0.0, 39/39 | 0%, 10.0 min, 0.0, 34/57 |
+| gluttony | 100%, 5.5 min, 0.0, 57/60 | 0%, 15.0 min, 0.0, 178/91 |
+| lust | 100%, 3.0 min, 0.5, 27/18 | 50%, 14.4 min, 5.0, 61/24 |
+
+| expert, Thorns first | before | after |
+|---|---|---|
+| lust | 100%, 1.9 min, 0.0, 19/15 | 0%, 10.0 min, 1.5, 22/20 |
+| gluttony | 100%, 4.2 min, 0.0, 43/41 | 100%, 9.4 min, 1.0, 148/63 |
+| sloth | 0%, 10.0 min, 0.0, 40/39 | 0%, 10.0 min, 0.0, 42/57 |
+| wrath | 0%, 13.2 min, 5.5, 134/35 | 0%, 10.0 min, 2.0, 120/48 |
+| envy | 100%, 6.8 min, 0.0, 33/29 | 100%, 8.6 min, 2.5, 51/42 |
+| pride | 50%, 7.1 min, 0.0, 31/24 | 100%, 4.0 min, 0.0, 11/33 |
+| greed | 50%, 12.6 min, 0.0, 70/61 | 100%, 7.1 min, 0.0, 72/102 |

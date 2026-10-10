@@ -1,0 +1,1218 @@
+//! The voxel dungeon as a scene: everything the old Three.js renderer did,
+//! minus the GPU. Grid x maps to world x, grid y to world z, and floor
+//! elevation to world y in steps of STEP. Each frame it emits instanced
+//! draws and a light list; `gpu.rs` turns those into pixels.
+
+use std::collections::HashMap;
+use std::f32::consts::{PI, TAU};
+
+use bytemuck::{Pod, Zeroable};
+use glam::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
+
+use super::voxels::*;
+use crate::game::Spirit;
+use crate::logic::angels::{Archangel, ARCHANGELS};
+use crate::logic::boss::{BossShot, Cyclops};
+use crate::logic::enemy::{Enemy, EnemyKind, EnemyMode};
+use crate::logic::garden::GardenPlan;
+use crate::logic::gear::ALL_POTIONS;
+use crate::logic::grid::Grid;
+use crate::logic::hero::Hero;
+use crate::logic::heroes::{HeroKind, ROSTER};
+use crate::logic::items::{Bomb, Diamond, DiamondKind, Potion, RangedKind};
+use crate::logic::level::Theme;
+use crate::logic::projectile::Projectile;
+use crate::logic::rng::Rng;
+use crate::logic::sins::{Sin, SINS};
+use crate::logic::systems::{Frenzy, PuddleField, PUDDLE_SECONDS};
+use crate::logic::types::{js_round, Dir, Tile, CARDINALS, P, V};
+use crate::logic::vault::{Loot, Vault};
+use crate::logic::{gear, progression, systems};
+use crate::render::foliage;
+use crate::render::foliage::FOREST;
+
+mod aftermath;
+mod angels;
+mod animation;
+mod ascent;
+mod camera;
+mod cast_clips;
+mod court_envy;
+mod court_gluttony;
+mod court_greed;
+mod court_lust;
+mod court_pride;
+mod court_sloth;
+mod court_wrath;
+mod courts;
+mod crypt;
+mod deceit;
+mod duel;
+pub mod effects;
+mod emit;
+mod estate;
+mod fade;
+mod foe_clips;
+mod forest;
+mod forge;
+mod fountain;
+mod frame;
+mod garden;
+mod garden_beds;
+mod garden_landmarks;
+mod gate;
+mod hell;
+mod hell_art;
+mod hell_portals;
+mod juice;
+mod lair;
+mod leap_glow;
+pub mod lesson;
+mod lookdev;
+mod meadow;
+mod meadow_field;
+mod models;
+mod pit;
+mod portrait;
+mod realms;
+mod resident;
+mod sanctum;
+mod seal_stones;
+mod select;
+mod showcase;
+mod spring;
+mod story;
+mod story_camera;
+mod story_sets;
+pub mod toby;
+mod vault;
+mod vault_art;
+mod vault_decor;
+mod war_props;
+mod workshop;
+
+pub use animation::SLASH_SECONDS;
+use animation::{EnemyView, Pose, TURN_RATE_HERO};
+use camera::chase;
+pub use camera::{CameraMode, FAR, FOV_DEGREES, NEAR, REST_PITCH};
+pub use deceit::DeceitView;
+pub use duel::crown;
+use effects::{Blast, Debris, EffectLight, Particle, GRAVITY};
+use fade::Tree;
+pub use fade::TREE_FADE_MIN;
+pub use forge::jointed_hero;
+pub use fountain::krampus;
+use frame::mix_hex;
+pub use frame::{
+    glow_orb, rig_look, Atmosphere, Frame, Haze, Instance, InstanceSet, Light, LodPolicy, MeshKind, RigDraw, RigList, SetProbes,
+    MESH_KINDS, SHADE_CLOUD, SHADE_DITHER, SHADE_GLOW, SHADE_GRASS, SHADE_JET, SHADE_LIT, SHADE_PULSE, SHADE_UNLIT, SHADE_WATER,
+};
+pub use lookdev::LookLight;
+pub use meadow::meadow_atmosphere;
+use models::{Models, RigId};
+pub use pit::PitView;
+pub use portrait::PortraitCamera;
+pub use resident::Resident;
+pub use select::SelectView;
+use showcase::STAGE;
+pub use story::StoryView;
+pub use story_camera::Dof;
+
+/// Moonlit forest palette. Walls are undergrowth and trees; higher floors read a little lighter.
+pub mod colors {
+    pub const BACKGROUND: u32 = 0x06100b;
+    pub const STONE_A: u32 = 0x2b5a2a;
+    pub const STONE_B: u32 = 0x234a22;
+    pub const FLOOR_A: u32 = 0x3a6a32;
+    pub const FLOOR_B: u32 = 0x33602c;
+    pub const PIT: u32 = 0x050406;
+    pub const PIT_RIM: u32 = 0x2a1e12;
+    pub const RAMP: u32 = 0x5a4324;
+    pub const HOLLOW: u32 = 0x3a2a18;
+    pub const DIRT: u32 = 0x4a3620;
+    pub const TORCH_LIGHT: u32 = 0xd6ff5a;
+    pub const HERO_LIGHT: u32 = 0xffe6b0;
+    pub const MOON: u32 = 0xbfd4ff;
+    pub const STUN: u32 = 0x6a8cff;
+    pub const STUN_WARN: u32 = 0xffffff;
+    pub const SLASH: u32 = 0xbfefff;
+    pub const SHIELD: u32 = 0x7fd7ff;
+    pub const INVINCIBLE: u32 = 0xffd84a;
+    pub const REMEDY: u32 = 0x4cf06a;
+    pub const MOTE: u32 = 0xe4ff6a;
+}
+use colors::*;
+
+/// World units per elevation level.
+pub const STEP: f32 = 0.55;
+const MOTE_COUNT: usize = 220;
+const LIGHT_POOL_EFFECTS: usize = 2;
+
+/// Ragnar's voxel size: 23 voxels make him about as tall as a tile is wide.
+const VOXEL: f32 = 0.05;
+
+// ------------------------------------------------------------ GPU records
+
+pub struct SceneState<'a> {
+    pub grid: &'a Grid,
+    pub hero: &'a Hero,
+    pub enemies: &'a [Enemy],
+    pub frenzy: &'a Frenzy,
+    pub time: f64,
+    pub bombs: &'a [Bomb],
+    pub projectiles: &'a [Projectile],
+    pub diamonds: &'a [Diamond],
+    pub potions: &'a [Potion],
+    pub puddles: &'a PuddleField,
+    pub boss: Option<&'a Cyclops>,
+    pub boss_shots: &'a [BossShot],
+    pub gate: Option<GateView>,
+    /// This dungeon's hidden shrine, until its relic is taken.
+    pub relic: Option<P>,
+    /// A decoy of Loki's trick.
+    pub decoy: Option<V>,
+    /// Who is being played, for his weapon and shield models and his brews' colours.
+    pub hero_kind: HeroKind,
+    /// The ancestral spirits at his side.
+    pub spirits: &'a [Spirit],
+    /// Holy fire burning on tiles, seconds left each.
+    pub fires: &'a [(P, f64)],
+    /// The red diamond key the Cyclops dropped, while it lies on the grass.
+    pub red_key: Option<P>,
+    /// The sin whose realm or court this is: its colour on the key he drops.
+    pub realm: Option<Sin>,
+    /// In a prince's court (what he drops is his seal-stone, B44).
+    pub in_court: bool,
+    /// The Portals of Hell, while he is there.
+    pub hub: Option<HubView>,
+    /// The gold of the Vaults of Mammon: where each piece lies, and whether he has taken it.
+    pub loot: &'a [Loot],
+    /// The items the vaults' chests have thrown out.
+    pub drops: &'a [crate::logic::vault::Drop],
+    /// One of the six realms after the vaults, while he is in it.
+    pub run: Option<&'a crate::logic::realms::Run>,
+    /// The Sparring Ring's hex bolts in flight.
+    pub bolts: &'a [crate::logic::combat::duelist::Bolt],
+    /// The floor burning where Surtr's sword fell, the legends' marks on the scene, and what ails him.
+    pub hazards: &'a [crate::logic::combat::ails::Hazard],
+    pub flashes: &'a [crate::logic::combat::ails::Flash],
+    pub ails: crate::logic::combat::ails::Ails,
+    /// A prince's coins lying on the floor, to burst.
+    pub traps: &'a [crate::logic::combat::prince::Trap],
+    /// The share of real time the game ran this step (0 in a freeze or the pause), and its time
+    /// scale (below 1 while time is slowed): poses and springs keep the game's time (WARBAND.md §4.5).
+    pub pace: f32,
+    pub time_scale: f32,
+    /// His fighter, where his fighting goes by frame data: his slash follows its frames.
+    pub hero_fighter: Option<&'a crate::logic::combat::Fighter>,
+    /// His last parrying guard frame, when his mastery shows the parry's moment as a white edge on
+    /// the telegraphs (WARBAND.md §11.1, Miyamoto's first rank).
+    pub parry_edge: Option<u16>,
+    /// The general of the realm, his instruments and his orders' marks (WARBAND.md §9).
+    pub general: Option<&'a crate::game::general::GeneralRun>,
+    /// The Pit, while he is in it: its level, its clock, its platform's descent.
+    pub pit: Option<PitView>,
+    /// Krampus's lair: his death, the cage and the boy in it (FINALE.md §3).
+    pub lair: Option<&'a crate::game::lair::Lair>,
+    /// Hızır and Quitmer, while he teaches his lesson in the Garden (B04).
+    pub lesson: Option<lesson::LessonView>,
+}
+
+/// The Portals of Hell as the view needs them: how far each portal's doors stand open (in the
+/// order of `logic::sins::SINS`), the sins whose keys he holds, and how far the causeways have risen.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HubView {
+    pub doors: [f32; 7],
+    pub sins: u8,
+    /// The seal-stones set in the House of Seven Seals (B44).
+    pub stones: u8,
+    pub seal: f32,
+}
+
+/// The gate to the boss as the view needs it: where, how many locks are lit, how far the doors have swung.
+#[derive(Clone, Copy, Debug)]
+pub struct GateView {
+    pub tile: P,
+    pub keys: u32,
+    pub total: u32,
+    pub door: f32,
+    /// The arena's gate: one lock, for the Cyclops' red diamond key.
+    pub red: bool,
+    /// That one key's colour: the red diamond's, or the sin's.
+    pub key: u32,
+}
+
+// ---------------------------------------------------------------- views
+
+pub struct WorldView {
+    pub camera_mode: CameraMode,
+    /// Where the chase camera looks, in world radians. The mouse drives these.
+    pub cam_yaw: f32,
+    pub cam_pitch: f32,
+    /// True while the mouse is captured; otherwise the view trails his heading.
+    pub mouse_look: bool,
+    pub aspect: f32,
+    /// The screen's height in pixels, for how big things are on it (levels of detail).
+    pub viewport_h: f32,
+    /// Levels of detail: how soon rigs drop detail (1 normal, higher sooner, 0 never) and
+    /// whether each level is tinted to show where it switches.
+    pub lod_bias: f32,
+    pub lod_debug: bool,
+    /// The colour-blind palette for the fight's tells (the settings: `render::palette`).
+    pub colour_blind: crate::settings::ColourBlind,
+    /// Hit flashes dimmed and strobes held still (the settings' reduce flashing).
+    pub reduce_flashing: bool,
+    /// Title screen: the camera circles Ragnar instead of chasing him.
+    pub showcase: bool,
+    /// Free movement: the chase camera turns after him only while he runs straight ahead.
+    pub follow_heading: bool,
+    showcase_angle: f32,
+    showcase_timer: f32,
+
+    models: Models,
+    /// The heroes not played, as their portraits show them (made the first time one is asked for).
+    portrait_heroes: [std::sync::OnceLock<Rig>; 3],
+    /// Level geometry that only changes when a bomb or a pickup changes it.
+    pub static_cubes: Vec<Instance>,
+    pub static_dirty: bool,
+    /// Static instances that make up each wall tile, hidden when a bomb breaks it.
+    rock_index: HashMap<P, (usize, usize)>,
+    /// A boss arena: the sunny meadow instead of the night forest.
+    pub meadow: bool,
+    /// The Portals of Hell: platforms over a sea of lava.
+    pub hell: bool,
+    /// A sin's realm or its prince's court: the sin's colour over the sky and the light.
+    pub tint: Option<u32>,
+    /// The gym: the hub's lava and platforms, but none of its landmarks.
+    pub gym: bool,
+    /// The Bone Vaults and the estates deeper still: built in stone to the art direction
+    /// (`crypt`), not as a forest. Set before the level is built.
+    pub crypt: bool,
+    /// The Cisterns (dungeon II): the same stone, flooded. Set with `crypt`.
+    pub cisterns: bool,
+    /// The Garden of Krampus, graded to the art direction (set as it is built).
+    estate_art: bool,
+    /// The cisterns' standing water (tile centres at the water's height), and the spouts pouring
+    /// into it (each mouth, the way it pours, and the floor below).
+    flood: Vec<Vec3>,
+    spouts: Vec<(Vec3, Vec3, f32)>,
+    /// Rain standing in the garden's walks: each puddle's middle (at its surface) and size.
+    puddles: Vec<(Vec3, Vec2)>,
+    /// Static ranges built in the board's palette already, which the grade leaves alone.
+    authored: Vec<(usize, usize)>,
+    /// The Vaults of Mammon, while he is in them.
+    vault: Option<vault::VaultView>,
+    /// One of the six realms after the vaults, while he is in it.
+    run_view: Option<realms::RunView>,
+    /// The sin of the prince's court he is in, while it is one built to its own plan (`courts`).
+    court: Option<Sin>,
+    /// Greed's court, the Counting House, while he is in it.
+    counting: Option<court_greed::CountingView>,
+    /// The six other courts, each while he is in it (once it is built).
+    throne: Option<court_pride::ThroneView>,
+    bell: Option<court_envy::BellView>,
+    anvil: Option<court_wrath::AnvilView>,
+    clocks: Option<court_sloth::ClocksView>,
+    banquet: Option<court_gluttony::BanquetView>,
+    bower: Option<court_lust::BowerView>,
+    /// The Pit, while he is in it: its level as last seen, and the level below as a set.
+    pit: Option<pit::PitScene>,
+    /// Krampus's lair at the bottom of the Pit, while he is in it (`lair`).
+    lair: Option<lair::LairView>,
+    /// Stream tiles (bridges included) and whether the water runs along x.
+    water: Vec<(P, bool)>,
+    /// Dungeon I's landscape garden, when this level is it.
+    garden: Option<GardenPlan>,
+    /// The Krampus fountain in the garden's middle.
+    fountain: Option<fountain::FountainView>,
+    /// Where the will-o'-the-wisps haunt: the churchyard's middle, at its turf.
+    wisps: Option<Vec3>,
+    /// Ground mist sheets as the level's builders lay them, and the same kept on the GPU, drawn every frame.
+    mist: Vec<Instance>,
+    mist_set: InstanceSet,
+    /// Candle flames in shrines, temples and graves: the nearest few cast light.
+    candles: Vec<Vec3>,
+    /// The Portals of Hell: where the lava's light rises past the platforms' edges and under the
+    /// bridges (the nearest few light the stone from below), and its portals' braziers.
+    hub_glow: Vec<Vec3>,
+    /// The volcano's lava rivers, where they light its flanks (always lit).
+    hub_rivers: Vec<Vec3>,
+    /// Where the golden keys lie (each drawn while its tile still holds one).
+    keys: Vec<P>,
+    /// The gate to the boss, in the outer wall.
+    gate_tile: Option<P>,
+    /// Smoke sources: where, and how strongly.
+    smoke: Vec<(Vec3, f32)>,
+    /// Slam shockwaves: center and age.
+    rings: Vec<(Vec3, f32)>,
+    trees: Vec<Tree>,
+    tree_index: HashMap<P, usize>,
+    /// Static instance ranges rewritten since the last upload (tree fades).
+    pub static_patches: Vec<(usize, usize)>,
+    coin_ranges: HashMap<P, (usize, usize)>,
+    /// Ordered, so the nearest lanterns always light in the same order.
+    torches: std::collections::BTreeMap<P, (Vec3, (usize, usize))>,
+    charges: Vec<(P, Vec3)>,
+    mote_base: Vec<Vec3>,
+    effect_lights: [EffectLight; LIGHT_POOL_EFFECTS],
+    effect_cursor: usize,
+    next_blast_id: u64,
+    blasts: Vec<Blast>,
+    debris: Vec<Debris>,
+    hero_pose: Pose,
+    hero_phase: f32,
+    hero_yaw: f32,
+    hero_root_rot: Vec3,
+    /// Seconds into the current sword slash, or negative when idle.
+    slash_t: f32,
+    /// +1 forehand, -1 backhand; alternates every swing.
+    slash_side: f32,
+    /// A slash keyed to frame data (startup, active, recovery seconds); none for the plain one.
+    slash_timing: Option<[f32; 3]>,
+    hero_lunge: f32,
+    /// Counts his swings (each a fresh strike for the clips), and whether this one is his finisher.
+    slash_serial: u32,
+    slash_heavy: bool,
+    /// Seconds since his guard last turned a blow (a parry), for his clips.
+    parry_t: Option<f32>,
+    /// The hero animated by his clips (`anim`): the animator, how he is animated (`VH_ANIM`), and
+    /// this frame's matrices for his jointed rig's parts, when his clips pose him.
+    hero_anim: crate::render::anim::hero::Animator,
+    anim_mode: crate::render::anim::library::Mode,
+    hero_mats: Option<Vec<Mat4>>,
+    /// His cloak's cloth (`anim::cloth`): how it hangs, for the jointed rig it was worked out from,
+    /// and its points as they move.
+    cape: Option<(u64, crate::render::anim::cloth::Cape)>,
+    cloth: crate::render::anim::cloth::Cloth,
+    particles: Vec<Particle>,
+    /// 0..1 accumulated impact, driving the screen shake.
+    trauma: f32,
+    shake_clock: f32,
+    shake_offset: Vec3,
+    enemy_views: Vec<EnemyView>,
+    diamond_spin: Vec<f32>,
+    cam_pos: Vec3,
+    cam_look: Vec3,
+    /// A fixed orthographic map view (half the visible height), for the isometric overview.
+    map_view: Option<f32>,
+    /// What the camera is looking at (kept in focus by the depth of field).
+    focus_point: Vec3,
+    /// A story shot's lens this frame (its field of view, roll and depth of field), if one is on.
+    lens: Option<story_camera::Lens>,
+    /// The level's size in tiles, for the shadow map's coverage.
+    level_dims: Vec2,
+    initialized: bool,
+    /// Where the gameplay camera was following last frame, to cut rather than sweep when he
+    /// jumps across the level (a tunnel's wrap, a teleport).
+    last_focus: Option<Vec3>,
+    /// The camera mode last frame, and how much of a switch between the two is still blending
+    /// (1 just switched, 0 settled).
+    mode_was: CameraMode,
+    switching: f32,
+    /// The solid scenery over each tile, as spans of height, for the chase camera to keep
+    /// clear of; worked out again when the scenery changes (`camera::Spans`).
+    tops: camera::Spans,
+    tops_dirty: bool,
+    /// Tiles whose scenery changed since (a wall blown away), worked out again on their own.
+    tops_tiles: Vec<(i32, i32)>,
+    was_showcase: bool,
+    /// R3 was pressed: the camera is swinging back behind him.
+    recentering: bool,
+    /// A boss the chase camera keeps in view (ground position), when there is one.
+    pub focus: Option<Vec3>,
+    /// The shop: the camera looks into the blacksmith's forge.
+    pub forge: bool,
+    /// The old man's workshop while the shop is up (the station, what the hero owns, the work).
+    pub workshop: Option<crate::game::WorkshopView>,
+    shop_stage: workshop::WorkshopStage,
+    /// The prince's cheats standing in the world: a mimic chest.
+    pub deceit: DeceitView,
+    /// Toby's thing lying in this realm, still to be found (B08, `toby`).
+    pub token: Option<(crate::logic::tale::Token, P)>,
+    /// The boy inside the warrior's soul-glow, at a shrine or where he fell (B07).
+    pub boy_glow: Option<toby::BoyGlow>,
+    /// The hero played in the scene at Hızır's (its camera frames the boy who speaks, by his part).
+    pub after_hero: crate::logic::heroes::HeroKind,
+    /// Toby's football was found: it lies at their feet in the end (B08).
+    pub ending_ball: bool,
+    /// The character screen, while it is up.
+    pub select: Option<SelectView>,
+    /// The character screen's cavern (built once), how far each hero has stepped forward,
+    /// where the camera has drifted to, and whether the screen was up last frame.
+    select_set: InstanceSet,
+    select_step: [f32; 3],
+    select_cam: f32,
+    was_select: bool,
+    /// Draw the heroes not yet unlocked in colour too (a capture option, to look at them).
+    pub preview_heroes: bool,
+    /// The Look Dev room, while it is open (a capture option, for judging materials and light).
+    lookdev: Option<lookdev::LookDev>,
+    /// Scene I while it plays; its two sets and their mist (built once); how far each
+    /// warrior's soul has risen; and whether the story was on last frame.
+    pub story: Option<StoryView>,
+    story_sets: [InstanceSet; 2],
+    story_mist: [InstanceSet; 2],
+    story_rise: [f32; 3],
+    was_story: bool,
+    /// The story's cast by their clips: their animators, kept for their crossfades (`cast_clips`).
+    cast_anim: std::cell::RefCell<cast_clips::CastAnims>,
+    /// Scene II's set: the shaft of the Pit, its seven levels and its bottom (built once).
+    ascent_set: InstanceSet,
+    /// The first-run tour: what the camera circles, seconds at this stop, and which stop.
+    pub tour: Option<(Vec3, f32, usize)>,
+    tour_index: Option<usize>,
+    tour_angle: f32,
+    was_forge: bool,
+    zaps: Vec<forge::Zap>,
+    /// Gabriel's thunderbolts, Raphael's beams, Uriel's waves.
+    bolts: Vec<angels::Bolt>,
+    beams: Vec<angels::Beam>,
+    waves: Vec<angels::Wave>,
+    /// Arrows of a heavenly bow falling, and sun-blade flashes fading (where, how much is left, colour).
+    rains: Vec<forge::Falling>,
+    flashes: Vec<(Vec3, f32, Vec3)>,
+    /// Swiftness afterimages: position, heading, fade.
+    ghosts: Vec<(Vec3, f32, f32)>,
+    ghost_clock: f32,
+    /// The leap's untouchable frames: his glow and its afterimages (B78).
+    leap_glow: leap_glow::LeapGlow,
+    rng: Rng,
+    /// The rigs the level keeps ready on the GPU from its load to the next (`prepare_rigs`).
+    resident: Resident,
+    /// The juice on screen: the camera's kick, roll and FOV punch, flinches, bodies breaking.
+    juice: juice::JuiceView,
+}
+
+fn tile_key(x: i32, y: i32) -> P {
+    P::new(x, y)
+}
+
+impl WorldView {
+    pub fn new() -> Self {
+        let models = Models::new();
+        let hero_pose = Pose::rest(&models.ragnar);
+        Self {
+            camera_mode: CameraMode::Third,
+            cam_yaw: 0.0,
+            cam_pitch: chase::REST_PITCH,
+            mouse_look: false,
+            aspect: 16.0 / 9.0,
+            viewport_h: 1080.0,
+            lod_bias: 1.0,
+            colour_blind: Default::default(),
+            reduce_flashing: false,
+            lod_debug: false,
+            showcase: false,
+            follow_heading: false,
+            showcase_angle: 0.6,
+            showcase_timer: 0.0,
+            models,
+            portrait_heroes: Default::default(),
+            static_cubes: Vec::new(),
+            static_dirty: true,
+            rock_index: HashMap::new(),
+            meadow: false,
+            hell: false,
+            crypt: false,
+            cisterns: false,
+            estate_art: false,
+            flood: Vec::new(),
+            puddles: Vec::new(),
+            authored: Vec::new(),
+            spouts: Vec::new(),
+            tint: None,
+            vault: None,
+            run_view: None,
+            court: None,
+            counting: None,
+            throne: None,
+            bell: None,
+            anvil: None,
+            clocks: None,
+            banquet: None,
+            bower: None,
+            pit: None,
+            lair: None,
+            gym: false,
+            water: Vec::new(),
+            garden: None,
+            fountain: None,
+            wisps: None,
+            mist: Vec::new(),
+            mist_set: InstanceSet::default(),
+            candles: Vec::new(),
+            hub_glow: Vec::new(),
+            hub_rivers: Vec::new(),
+            keys: Vec::new(),
+            gate_tile: None,
+            smoke: Vec::new(),
+            rings: Vec::new(),
+            trees: Vec::new(),
+            tree_index: HashMap::new(),
+            static_patches: Vec::new(),
+            coin_ranges: HashMap::new(),
+            torches: std::collections::BTreeMap::new(),
+            charges: Vec::new(),
+            mote_base: Vec::new(),
+            effect_lights: [EffectLight::default(); LIGHT_POOL_EFFECTS],
+            effect_cursor: 0,
+            next_blast_id: 1,
+            blasts: Vec::new(),
+            debris: Vec::new(),
+            hero_pose,
+            hero_phase: 0.0,
+            hero_yaw: 0.0,
+            hero_root_rot: Vec3::ZERO,
+            slash_t: -1.0,
+            slash_side: 1.0,
+            slash_timing: None,
+            hero_lunge: 0.0,
+            slash_serial: 0,
+            slash_heavy: false,
+            parry_t: None,
+            hero_anim: Default::default(),
+            anim_mode: crate::render::anim::library::Mode::from_env(),
+            hero_mats: None,
+            cape: None,
+            cloth: Default::default(),
+            particles: Vec::new(),
+            trauma: 0.0,
+            shake_clock: 0.0,
+            shake_offset: Vec3::ZERO,
+            enemy_views: Vec::new(),
+            diamond_spin: Vec::new(),
+            cam_pos: Vec3::ZERO,
+            cam_look: Vec3::ZERO,
+            map_view: None,
+            focus_point: Vec3::ZERO,
+            lens: None,
+            level_dims: Vec2::new(28.0, 24.0),
+            initialized: false,
+            last_focus: None,
+            mode_was: CameraMode::Third,
+            switching: 0.0,
+            tops: Default::default(),
+            tops_dirty: true,
+            tops_tiles: Vec::new(),
+            was_showcase: false,
+            recentering: false,
+            focus: None,
+            forge: false,
+            workshop: None,
+            deceit: DeceitView::default(),
+            token: None,
+            boy_glow: None,
+            after_hero: Default::default(),
+            ending_ball: false,
+            shop_stage: Default::default(),
+            select: None,
+            select_set: InstanceSet::new(select::cavern()),
+            select_step: [0.0, 1.0, 0.0],
+            select_cam: 0.0,
+            was_select: false,
+            preview_heroes: false,
+            lookdev: None,
+            story: None,
+            story_sets: [InstanceSet::new(story_sets::graveyard_set()), InstanceSet::new(story_sets::gateway_set())],
+            story_mist: [InstanceSet::new(story_sets::graveyard_mist()), InstanceSet::new(story_sets::gateway_mist())],
+            story_rise: [0.0; 3],
+            was_story: false,
+            cast_anim: Default::default(),
+            ascent_set: InstanceSet::new(ascent::pit_set()),
+            tour: None,
+            tour_index: None,
+            tour_angle: 0.0,
+            was_forge: false,
+            zaps: Vec::new(),
+            bolts: Vec::new(),
+            beams: Vec::new(),
+            waves: Vec::new(),
+            rains: Vec::new(),
+            flashes: Vec::new(),
+            ghosts: Vec::new(),
+            leap_glow: Default::default(),
+            ghost_clock: 0.0,
+            rng: Rng::from_time(),
+            resident: Resident::default(),
+            juice: juice::JuiceView::default(),
+        }
+    }
+
+    /// Seeds the view's random generator (particles, fireflies), for repeatable captures.
+    pub fn reseed(&mut self, seed: u32) {
+        self.rng = Rng::new(seed);
+        self.seed_noise();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_level(
+        &mut self,
+        grid: &Grid,
+        enemies: &[Enemy],
+        diamonds: &[Diamond],
+        theme: Theme,
+        garden: Option<&GardenPlan>,
+        gate: Option<P>,
+        vault: Option<&Vault>,
+        run: Option<&crate::logic::realms::Run>,
+    ) {
+        let meadow = theme.is_meadow();
+        self.hell = theme.is_hell();
+        self.gym = theme == Theme::Gym;
+        // A sin's colour over the sky, but for the vaults and the realms after them, which have their own light.
+        self.tint = theme.sin().filter(|_| vault.is_none() && run.is_none()).map(|s| s.color());
+        self.vault = None;
+        self.run_view = None;
+        self.pit = None;
+        self.clear_courts();
+        // A prince's court built to its own plan: its own view and light (the rest, the stand-in meadow).
+        let court = theme.sin().filter(|_| theme.is_princes_court());
+        let counting = court.is_some();
+        if counting {
+            self.tint = None;
+        }
+        self.garden = garden.cloned();
+        self.fountain = None;
+        self.wisps = None;
+        self.lair = None;
+        self.level_dims = Vec2::new(grid.width as f32, grid.height as f32);
+        self.gate_tile = gate;
+        self.keys.clear();
+        self.smoke.clear();
+        self.candles.clear();
+        self.hub_glow.clear();
+        self.hub_rivers.clear();
+        self.mist.clear();
+        self.static_cubes.clear();
+        self.rings.clear();
+        self.water.clear();
+        self.flood.clear();
+        self.puddles.clear();
+        self.authored.clear();
+        self.spouts.clear();
+        self.estate_art = false;
+        self.rock_index.clear();
+        self.trees.clear();
+        self.tree_index.clear();
+        self.static_patches.clear();
+        self.coin_ranges.clear();
+        self.torches.clear();
+        self.charges.clear();
+        self.enemy_views.clear();
+        // What a fight left in the air goes with the level (RP05): blasts, debris, sparks, and the
+        // angels' bolts, beams and waves, falling arrows, flashes and afterimages.
+        self.blasts.clear();
+        self.debris.clear();
+        self.debris.reserve(effects::MAX_DEBRIS);
+        self.particles.clear();
+        self.zaps.clear();
+        self.bolts.clear();
+        self.beams.clear();
+        self.waves.clear();
+        self.rains.clear();
+        self.flashes.clear();
+        self.ghosts.clear();
+        self.leap_glow = Default::default();
+        self.juice.reset();
+        self.trauma = 0.0;
+        for l in self.effect_lights.iter_mut() {
+            l.intensity = 0.0;
+        }
+        self.meadow = meadow;
+        if let Some(v) = vault {
+            self.build_vault(grid, v);
+        } else if let Some(r) = run {
+            self.build_run(grid, r);
+        } else if let Some(sin) = court {
+            self.build_court(sin, grid);
+        } else if theme.is_pit() {
+            self.build_pit(grid);
+        } else if theme == Theme::Lair {
+            self.build_lair(grid);
+        } else if self.hell {
+            self.build_hell(grid);
+        } else if meadow {
+            self.build_meadow(grid);
+        } else if self.crypt {
+            self.build_crypt(grid);
+        } else {
+            self.build_forest(grid);
+        }
+        if let Some(g) = gate.filter(|_| vault.is_none() && run.is_none() && !counting) {
+            if meadow {
+                // The Cyclops' meadow takes the Garden's gatehouse in dressed stone, its one lock
+                // for the red key.
+                self.build_garden_gate(grid, g, &[gate::lock_spot(0, 1)]);
+            } else {
+                // Eight lock lamps for the estate's keys (the vaults' far portal is a portal).
+                self.build_gate(grid, g, 8);
+            }
+        }
+        // The garden and its gate, and the Cyclops' meadow, graded into the board's palette.
+        if self.estate_art || theme == Theme::Meadow || (self.hell && !self.gym) {
+            self.grade_estate();
+        } else if vault.is_some() || run.is_some() || counting || matches!(theme, Theme::Court(_)) {
+            // The sin realms, the princes' courts and their stand-ins: graded into the board,
+            // their sin's colour kept as their accent.
+            self.grade_scenery(theme.sin().map(|s| s.color()));
+        }
+        self.mist_set = InstanceSet::new(self.mist.clone());
+        // A thread of smoke above every candle.
+        let wisps: Vec<(Vec3, f32)> = self.candles.iter().map(|c| (*c + Vec3::new(0.0, 0.12, 0.0), 0.35)).collect();
+        self.smoke.extend(wisps);
+        self.build_pickups(grid, enemies, diamonds);
+    }
+
+    /// Nuggets, green crosses, the cast and the fireflies: the same in every theme.
+    fn build_pickups(&mut self, grid: &Grid, enemies: &[Enemy], diamonds: &[Diamond]) {
+        let floor_y = |x: i32, y: i32| grid.elevation(x, y) as f32 * STEP;
+        let white = Vec3::ONE;
+
+        // Golden keys: drawn each frame, spinning, for as long as their tile holds one.
+        for (x, y, t) in grid.cells() {
+            if t == Tile::Nodule {
+                self.keys.push(P::new(x, y));
+            }
+        }
+        let nugget = super::props::nugget();
+        let nugget_glow = lin(0xf2c53d);
+        for (x, y, t) in grid.cells() {
+            if t != Tile::Nodule || !self.keys.is_empty() {
+                continue;
+            }
+            let (xf, yf) = (x as f64, y as f64);
+            let start = self.static_cubes.len();
+            push_field(
+                &mut self.static_cubes,
+                &nugget,
+                Vec3::new(x as f32, floor_y(x, y), y as f32),
+                hash(xf, yf) as f32 * TAU,
+                0.9 + hash(yf, xf) as f32 * 0.4,
+                white,
+                nugget_glow,
+                SHADE_PULSE,
+            );
+            self.coin_ranges.insert(P::new(x, y), (start, self.static_cubes.len() - start));
+        }
+
+        for (x, y, t) in grid.cells() {
+            if t == Tile::Charge {
+                self.charges.push((P::new(x, y), Vec3::new(x as f32, floor_y(x, y) + 0.3, y as f32)));
+            }
+        }
+
+        for e in enemies {
+            self.add_enemy(e);
+        }
+        self.diamond_spin = vec![0.0; diamonds.len()];
+
+        // Fireflies drifting over the forest.
+        self.mote_base = (0..MOTE_COUNT)
+            .map(|_| Vec3::new(self.rng.nextf() * grid.width as f32, 0.6 + self.rng.nextf() * 1.4, self.rng.nextf() * grid.height as f32))
+            .collect();
+
+        self.static_dirty = true;
+        self.tops_dirty = true;
+        self.initialized = false;
+    }
+
+    fn hide_range(&mut self, range: (usize, usize)) {
+        let hidden = Mat4::from_translation(Vec3::new(0.0, -50.0, 0.0)) * Mat4::from_scale(Vec3::ZERO);
+        for i in range.0..range.0 + range.1 {
+            self.static_cubes[i].m = hidden.to_cols_array();
+        }
+        self.static_patches.push(range);
+    }
+
+    /// Is the wall on tile `p` still standing in the scenery (for tests and tools)?
+    pub fn wall_standing(&self, p: P) -> bool {
+        self.rock_index.contains_key(&p)
+    }
+
+    /// Chunks of broken wall in the air.
+    pub fn debris_count(&self) -> usize {
+        self.debris.len()
+    }
+
+    /// Collapse a wall block after a blast and patch the floor beneath it.
+    pub fn remove_rock(&mut self, grid: &Grid, x: i32, y: i32) {
+        let k = tile_key(x, y);
+        // The wall's own colours, for the rubble it leaves.
+        let mut colors: Vec<Vec3> = Vec::new();
+        if let Some(range) = self.rock_index.remove(&k) {
+            colors = self.static_cubes[range.0..range.0 + range.1]
+                .iter()
+                .filter(|c| c.color[3] > 0.99 && c.emissive[3] < SHADE_WATER)
+                .map(|c| Vec3::new(c.color[0], c.color[1], c.color[2]))
+                .collect();
+            self.hide_range(range);
+        }
+        self.tops_tiles.push((x, y));
+        if let Some((_, range)) = self.torches.remove(&k) {
+            self.hide_range(range);
+        }
+        // A tree standing on the blasted block falls with it.
+        if let Some(i) = self.tree_index.remove(&k) {
+            self.trees[i].alive = false;
+            let range = self.trees[i].range;
+            self.hide_range(range);
+        }
+        let h = floor_at(grid, x as f32, y as f32);
+        let thick = 0.1 + h;
+        let m = Mat4::from_translation(Vec3::new(x as f32, h - thick / 2.0, y as f32)) * Mat4::from_scale(Vec3::new(1.0, thick, 1.0));
+        let patch = if self.meadow {
+            lin(meadow_field::pal::TURF) * 0.8
+        } else if self.estate_art {
+            lin(garden_beds::pal::GRAVEL[0])
+        } else {
+            lin(0x3c6c32)
+        };
+        // (Added cubes go up on their own; see `Gpu::sync_static`.)
+        self.static_cubes.push(Instance::new(
+            m,
+            patch,
+            1.0,
+            Vec3::ZERO,
+            if self.meadow {
+                SHADE_GRASS
+            } else if self.estate_art {
+                crypt::SHADE_FLAG
+            } else {
+                SHADE_GRASS
+            },
+        ));
+        self.push_rubble(x, y, h, &colors);
+    }
+
+    /// What is left of a blown wall (RP04): a low heap of its stones on the floor, the same for the
+    /// same tile every time. It never stands above a shin, so it neither blocks the way (the tile
+    /// is open floor) nor hides a telegraph on the ground. A stand-in until the broken pieces are
+    /// authored (TA07).
+    fn push_rubble(&mut self, x: i32, y: i32, floor: f32, colors: &[Vec3]) {
+        let pick = |k: f64| hash(x as f64 * 1.37 + k * 7.1, y as f64 * 2.11 - k * 3.3) as f32;
+        let fallback = [lin(STONE_A), lin(DIRT)];
+        for i in 0..6 {
+            let k = i as f64;
+            let size = 0.1 + 0.14 * pick(k);
+            let (ox, oz) = ((pick(k + 0.3) - 0.5) * 0.7, (pick(k + 0.6) - 0.5) * 0.7);
+            let color = if colors.is_empty() {
+                fallback[i % 2]
+            } else {
+                colors[(pick(k + 0.9) * colors.len() as f32) as usize % colors.len()] * (0.7 + 0.25 * pick(k + 1.2))
+            };
+            let m = Mat4::from_scale_rotation_translation(
+                Vec3::new(size, size * (0.6 + 0.4 * pick(k + 1.5)), size),
+                Quat::from_rotation_y(pick(k + 1.8) * TAU),
+                Vec3::new(x as f32 + ox, floor + size * 0.4, y as f32 + oz),
+            );
+            self.static_cubes.push(Instance::new(m, color, 1.0, Vec3::ZERO, SHADE_LIT));
+        }
+    }
+
+    pub fn remove_collectible(&mut self, x: i32, y: i32) {
+        let k = tile_key(x, y);
+        if let Some(range) = self.coin_ranges.remove(&k) {
+            self.hide_range(range);
+        }
+        self.charges.retain(|(p, _)| *p != k);
+    }
+
+    /// Advances animation, effects and the camera by one fixed step.
+    pub fn update(&mut self, dt: f64, s: &SceneState) {
+        let dtf = dt as f32;
+        let time = s.time as f32;
+        self.refit_hero(s.hero_kind, s.hero);
+        self.update_juice(dtf, s.pace, s.time_scale, s.hero.airborne());
+        self.update_effects(dtf, s);
+
+        if let Some(sv) = self.story {
+            self.update_story(dtf, sv);
+        }
+        // The character screen: the picked hero steps forward, the others back.
+        if let Some(sel) = self.select {
+            let k = 1.0 - (-7.0 * dtf).exp();
+            for (i, step) in self.select_step.iter_mut().enumerate() {
+                let goal = if i == sel.index { 1.0 } else { 0.0 };
+                *step += (goal - *step) * k;
+            }
+        }
+
+        // Hero pose: stride cycle, facing, sword swing, jump tuck.
+        let hero = s.hero;
+        if self.showcase {
+            // Ragnar shows off his axe now and then on the title screen.
+            self.showcase_timer += dtf;
+            if self.showcase_timer > 3.6 {
+                self.showcase_timer = 0.0;
+                self.sword_slash();
+            }
+        }
+        if self.slash_t >= 0.0 {
+            // Where his fighting goes by frame data, his slash keeps his fighter's frame (a freeze
+            // holds it, a slowing of time slows it, a blow that cuts his swing short ends it);
+            // elsewhere it runs on its own clock.
+            let frame = s.hero_fighter.filter(|_| self.slash_timing.is_some()).map(|f| match f.state {
+                crate::logic::combat::State::Attack { frame, .. } => Some(frame),
+                _ => None,
+            });
+            match frame {
+                Some(Some(frame)) => self.slash_t = frame as f32 / 60.0,
+                Some(None) => self.slash_t = f32::INFINITY,
+                None => self.slash_t += dtf,
+            }
+            if self.slash_t > self.slash_len() {
+                self.slash_t = -1.0;
+                self.slash_timing = None;
+            }
+        }
+        self.hero_phase += dtf * hero.motion as f32 * if hero.hasted() { 17.0 } else { 13.0 };
+        let turn_to =
+            if hero.free_move { (hero.heading.cos() as f32).atan2(hero.heading.sin() as f32) } else { dir_to_rotation(hero.facing) };
+        self.hero_yaw = lerp_angle(self.hero_yaw, turn_to, 1.0 - (-TURN_RATE_HERO * dtf).exp());
+        self.animate_hero(hero);
+        self.animate_clips(hero, s, dtf);
+        self.update_leap_glow(dtf, s);
+
+        for (i, e) in s.enemies.iter().enumerate() {
+            if i >= self.enemy_views.len() {
+                break;
+            }
+            self.update_enemy(i, e, s, dtf, time);
+        }
+        // The vaults' gold leaves the scene as it is taken; their chests stand open.
+        self.update_vault_view(s, dtf);
+        self.update_run_view(s, dtf);
+        self.update_pit_view(s);
+        for (i, d) in s.diamonds.iter().enumerate() {
+            if d.active {
+                if let Some(a) = self.diamond_spin.get_mut(i) {
+                    *a += dtf * (2.0 + d.cycle_progress() as f32 * 8.0);
+                }
+            }
+        }
+        self.update_meadow(dtf);
+        self.update_forge_fx(dtf, hero);
+        self.update_workshop(dtf);
+        self.update_angel_fx(dtf);
+        self.update_camera(dtf, s.grid, hero);
+        // (The foes the camera has just swung onto, posed by their clips too.)
+        self.pose_foes_in_view(s);
+        if !self.showcase {
+            self.update_tree_fade(dtf, hero);
+        }
+        self.update_shake(dtf);
+    }
+}
+
+impl Default for WorldView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------- title diorama
+
+// ---------------------------------------------------------------- helpers
+
+fn euler(r: Vec3) -> Mat4 {
+    Mat4::from_quat(Quat::from_euler(EulerRot::XYZ, r.x, r.y, r.z))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_field(out: &mut Vec<Instance>, mesh: &Mesh, pos: Vec3, rot_y: f32, scale: f32, tint: Vec3, emissive: Vec3, shade: f32) {
+    let q = Quat::from_rotation_y(rot_y);
+    for (off, c) in &mesh.cubes {
+        let p = pos + q * (*off * scale);
+        let m = Mat4::from_scale_rotation_translation(Vec3::splat(mesh.size * scale), q, p);
+        out.push(Instance::new(m, *c * tint, 1.0, emissive, shade));
+    }
+}
+
+/// A voxel cube `size` across at `off` in a posed part's frame `pm`: the same as
+/// `pm * translation(off) * scale(size)`, without two matrix products per cube.
+#[inline]
+pub(super) fn voxel_matrix(pm: &Mat4, size: f32, off: Vec3) -> Mat4 {
+    Mat4::from_cols(pm.x_axis * size, pm.y_axis * size, pm.z_axis * size, pm.transform_point3(off).extend(1.0))
+}
+
+fn emit_mesh(out: &mut Vec<Instance>, mesh: &Mesh, base: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
+    for (off, c) in &mesh.cubes {
+        out.push(Instance::new(voxel_matrix(&base, mesh.size, *off), *c * tint, alpha, emissive, SHADE_LIT));
+    }
+}
+
+/// A posed rig, drawn whole from the mesh the GPU keeps of it. (A voxel lit from within,
+/// `mat::GLOW`, keeps its own light whatever tints the rest: eyes in a shadow, fire on a giant
+/// dimmed in his recovery.)
+fn emit_rig(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3, alpha: f32, emissive: Vec3) {
+    out.push(rig, pose, root, tint, alpha, emissive, rig_look::PLAIN, 0.0);
+}
+
+/// Like `emit_rig`, but drained of colour to grey and tinted (a hero not yet unlocked): like a
+/// statue in pale stone, the colours' lightness kept, squeezed into a narrow range.
+fn emit_rig_grey(out: &mut RigList, rig: &Rig, pose: &Pose, root: Mat4, tint: Vec3) {
+    out.push(rig, pose, root, tint, 1.0, Vec3::ZERO, rig_look::GREY, 0.0);
+}
+
+/// Floor height in world units under a point, as the web build rounds it.
+pub fn floor_at(grid: &Grid, x: f32, y: f32) -> f32 {
+    grid.elevation(js_round(x as f64) as i32, js_round(y as f64) as i32) as f32 * STEP
+}
+
+/// Camera yaw for a facing: forward = (cos yaw, 0, sin yaw) in world XZ.
+pub fn dir_to_yaw(d: Dir) -> f32 {
+    let (x, y) = d.or_down().vec();
+    (y as f32).atan2(x as f32)
+}
+
+pub fn lerp_angle(a: f32, b: f32, t: f32) -> f32 {
+    let mut d = (b - a) % TAU;
+    if d > PI {
+        d -= TAU;
+    }
+    if d < -PI {
+        d += TAU;
+    }
+    a + d * t
+}
+
+/// Models face +z (grid "down"); rotate so they face the movement direction.
+pub fn dir_to_rotation(d: Dir) -> f32 {
+    match d {
+        Dir::Up => PI,
+        Dir::Right => PI / 2.0,
+        Dir::Left => -PI / 2.0,
+        _ => 0.0,
+    }
+}
+
+/// The `count` points closest to `focus` in the ground plane, nearest first.
+fn nearest(points: &[Vec3], focus: Vec3, count: usize) -> Vec<Vec3> {
+    let mut v: Vec<(f32, Vec3)> = points.iter().map(|p| ((p.x - focus.x).powi(2) + (p.z - focus.z).powi(2), *p)).collect();
+    if v.len() > count {
+        v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        v.truncate(count);
+    }
+    v.into_iter().map(|(_, p)| p).collect()
+}
+
+/// ToInt32, the way JavaScript's `| 0` truncates.
+fn to_int32(v: f64) -> i32 {
+    (v.trunc().rem_euclid(4_294_967_296.0) as u64 as u32) as i32
+}
+
+/// The web build's tile hash, including its float rounding, so woods grow in the same places.
+pub fn hash(x: f64, y: f64) -> f64 {
+    let h = to_int32(x * 374_761_393.0 + y * 668_265_263.0);
+    let a = (h ^ ((h as u32 >> 13) as i32)) as f64;
+    let h2 = to_int32(a * 1_274_126_177.0) as u32;
+    ((h2 ^ (h2 >> 16)) as f64) / 4_294_967_296.0
+}
+
+/// Three.js Color.offsetHSL on a linear color.
+pub fn offset_hsl(c: Vec3, dh: f32, ds: f32, dl: f32) -> Vec3 {
+    let (r, g, b) = (c.x, c.y, c.z);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (min + max) / 2.0;
+    let (mut h, mut s) = (0.0, 0.0);
+    if min != max {
+        let delta = max - min;
+        s = if l <= 0.5 { delta / (max + min) } else { delta / (2.0 - max - min) };
+        h = if max == r {
+            (g - b) / delta + if g < b { 6.0 } else { 0.0 }
+        } else if max == g {
+            (b - r) / delta + 2.0
+        } else {
+            (r - g) / delta + 4.0
+        };
+        h /= 6.0;
+    }
+    let h = (h + dh).rem_euclid(1.0);
+    let s = (s + ds).clamp(0.0, 1.0);
+    let l = (l + dl).clamp(0.0, 1.0);
+    if s == 0.0 {
+        return Vec3::splat(l);
+    }
+    let p = if l <= 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = 2.0 * l - p;
+    let hue = |mut t: f32| {
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return q + (p - q) * 6.0 * t;
+        }
+        if t < 0.5 {
+            return p;
+        }
+        if t < 2.0 / 3.0 {
+            return q + (p - q) * 6.0 * (2.0 / 3.0 - t);
+        }
+        q
+    };
+    Vec3::new(hue(h + 1.0 / 3.0), hue(h), hue(h - 1.0 / 3.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_matches_the_web_build() {
+        // Values printed by the TypeScript hash().
+        assert!((hash(3.0, 7.0) - 0.060_723_933_158_442_38).abs() < 1e-12, "{}", hash(3.0, 7.0));
+        assert!((hash(26.0, 22.0) - 0.367_933_403_700_590_13).abs() < 1e-12, "{}", hash(26.0, 22.0));
+    }
+
+    #[test]
+    fn a_tree_on_the_sight_line_blocks_it() {
+        let tree = Tree { range: (0, 0), base: Vec3::new(2.0, 0.7, 3.0), radius: 0.35, height: 1.1, fade: 1.0, alive: true, shades: None };
+        let eye = Vec3::new(2.0, 3.1, 0.9);
+        assert!(tree.blocks(eye, Vec3::new(2.0, 0.6, 4.0)));
+        assert!(!tree.blocks(eye, Vec3::new(5.0, 0.6, 4.0)), "a tree off to the side does not block");
+        assert!(!tree.blocks(Vec3::new(2.0, 3.1, 5.0), Vec3::new(2.0, 0.6, 4.0)), "nor one behind him");
+    }
+
+    #[test]
+    fn trees_fade_out_of_the_way_at_spawn() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+        // Standing right against a wall tree, south of it and facing south, the chase camera can only
+        // sit behind the tree (as at the web build's old spawn). It must fade, and not much else.
+        let mut g = crate::game::Game::new();
+        // Play on the title, then begin with Ragnar on the character screen.
+        for _ in 0..2 {
+            g.input.inject(crate::input::Action::Confirm);
+            g.update(crate::app::STEP);
+        }
+        let grid = g.level.grid.clone();
+        let mut spots: Vec<P> = g
+            .view
+            .tree_tiles()
+            .into_iter()
+            .map(|t| P::new(t.x, t.y + 1))
+            .filter(|p| grid.is_walkable(p.x, p.y, false) && grid.is_walkable(p.x, p.y + 1, false))
+            .collect();
+        spots.sort_by_key(|p| (p.y, p.x));
+        let spot = *spots.first().expect("a tree with room south of it");
+        g.hero.m.teleport(spot);
+        g.hero.altitude = grid.elevation(spot.x, spot.y) as f64;
+        g.hero.facing = Dir::Down;
+        g.view.aim_along(Dir::Down);
+        for _ in 0..300 {
+            g.update(crate::app::STEP);
+        }
+        assert!(g.view.tree_fades().filter(|&f| f < 0.5).count() >= 1, "no tree faded");
+        assert!(g.view.tree_fades().filter(|&f| f < 1.0).count() < 12, "only the blockers fade");
+    }
+
+    #[test]
+    fn hsl_offset_round_trips() {
+        let c = lin(0x3a6a32);
+        let d = offset_hsl(c, 0.0, 0.0, 0.0);
+        assert!((c - d).length() < 1e-5);
+    }
+}

@@ -1,0 +1,2129 @@
+//! The game's rules, played through `Game::update` as the player would.
+
+use super::feedback::war_cry;
+use super::*;
+use crate::game::hub::SEAL_SECONDS;
+use crate::input::PadState;
+use crate::logic;
+use crate::logic::enemy::{enemy_specs, EnemyMode, REASSEMBLE_SECONDS, WOLF_FURY_SPEED};
+use crate::logic::gear::{ShieldGear, COINS_BOSS, RUNES_BOSS, RUNES_SHRINE};
+use crate::logic::hero::{CONTACT_DAMAGE, HEALTH_POTION};
+use crate::logic::heroes::{HeroKind, MIYAMOTO_TEMPO, ROSTER};
+use crate::logic::items::{DiamondKind, Offer, RangedKind, WeaponKind};
+use crate::logic::levels::{ARENA_GATE, ARENA_HERO};
+use crate::logic::progression::{self, Tree};
+use crate::logic::sins::Sin;
+use crate::logic::story::SCENE_ONE;
+use crate::logic::systems::POINTS_NODULE;
+use crate::logic::types::{dist_sq, Tile, P};
+use crate::logic::{gym, pathing};
+use crate::render::{hud, view};
+
+/// Play on the title, then begin with the hero on the character screen (Ragnar), and keep the
+/// camera highlighted (follow).
+fn start_from_title(g: &mut Game) {
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Select);
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    choose_view(g);
+}
+
+/// The camera choice before play: Enter takes the highlighted one.
+fn choose_view(g: &mut Game) {
+    assert_eq!(g.screen, Screen::View, "the camera is chosen first");
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+}
+
+pub(super) fn playing() -> Game {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    start_from_title(&mut g);
+    for _ in 0..(READY_SECONDS / crate::app::STEP) as usize + 2 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    g
+}
+
+#[test]
+fn the_character_screen_offers_three_heroes_and_each_can_begin() {
+    let mut g = Game::new();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Select);
+    assert_eq!(g.select_hero(), HeroKind::Ragnar, "Ragnar is highlighted first");
+    // Left of Ragnar stands Mehmed, right Miyamoto; each of the three can begin.
+    g.input.nav = Some(Dir::Left);
+    g.update(crate::app::STEP);
+    assert_eq!(g.select_hero(), HeroKind::Mehmed);
+    for hero in ROSTER {
+        g.enter(Screen::Title);
+        g.open_select();
+        g.select_index = hero.slot();
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+        choose_view(&mut g);
+        assert_eq!(g.screen, Screen::Ready, "{hero:?} begins");
+        assert_eq!(g.hero_kind, hero);
+        assert_eq!(g.hero.kind, hero, "and plays with his own armory");
+    }
+    g.enter(Screen::Title);
+    g.open_select();
+    // Esc goes back to the title.
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Title);
+}
+
+#[test]
+fn play_opens_scene_one_which_plays_every_beat_then_the_heroes() {
+    use SCENE_ONE;
+    let mut g = Game::new();
+    g.intro = true;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Story, "Play starts the story");
+    let mut seen: Vec<usize> = Vec::new();
+    for _ in 0..(300.0 / crate::app::STEP) as usize {
+        if g.screen != Screen::Story {
+            break;
+        }
+        let st = g.story.as_ref().unwrap();
+        if seen.last() != Some(&st.beat) {
+            seen.push(st.beat);
+        }
+        // Wait out the action; press on through the lines.
+        if st.beat().waits() && st.t > 0.5 {
+            g.input.inject(Action::Confirm);
+        }
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Select, "the heroes are chosen after the story");
+    assert_eq!(seen, (0..SCENE_ONE.len()).collect::<Vec<_>>(), "every beat plays, in order");
+    assert!(g.story.is_none());
+}
+
+#[test]
+fn a_press_shows_the_whole_line_before_moving_on_and_esc_skips_the_story() {
+    use logic::story::{first, Shot};
+    let mut g = Game::new();
+    g.story_jump(first(Shot::Souls).unwrap(), 0.0);
+    let st = g.story.as_mut().unwrap();
+    st.shown = 0.0;
+    for _ in 0..40 {
+        g.update(crate::app::STEP);
+    }
+    let st = g.story.as_ref().unwrap();
+    assert!(st.shown > 0.0 && !st.line_done(), "the line types itself out");
+    let beat = st.beat;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    let st = g.story.as_ref().unwrap();
+    assert!(st.line_done() && st.beat == beat, "the first press shows the rest of the line");
+    assert_eq!(st.souls, 0b111, "all three warriors' souls rise once they are named");
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.story.as_ref().unwrap().beat, beat + 1, "the next press moves on");
+    // Esc skips what is left, straight to the character screen.
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    for _ in 0..(1.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Select);
+}
+
+#[test]
+fn every_key_enrages_the_dungeon() {
+    let mut g = playing();
+    assert_eq!(g.rage(), 0.0);
+    let (calm_wait, calm_cap) = (g.spawn_every(), g.max_enemies());
+    let before = g.enemies.len();
+    // Take a key: a reinforcement is on its way within moments.
+    let o = g.hero.occupied();
+    g.level.grid.set(o.x, o.y, Tile::Nodule);
+    g.collect();
+    assert!(g.rage() > 0.0);
+    assert!(g.spawn_timer <= 1.5, "someone comes at once");
+    for _ in 0..(2.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.enemies.len() > before, "a new foe arrived");
+    // Half the keys: shorter waits, more foes allowed; and they never scatter.
+    g.keys_got = g.keys_total / 2;
+    assert!(g.spawn_every() < calm_wait && g.max_enemies() > calm_cap);
+    g.global_mode = GlobalMode::Scatter;
+    g.mode_index = 0;
+    g.update(crate::app::STEP);
+    assert_eq!(g.global_mode, GlobalMode::Chase, "they hunt without a break");
+}
+
+#[test]
+fn every_second_key_quickens_the_music() {
+    let mut g = playing();
+    for n in 1..=7u32 {
+        g.keys_got = n - 1;
+        // Put a nugget under him and let him pick it up.
+        let o = g.hero.occupied();
+        g.level.grid.set(o.x, o.y, Tile::Nodule);
+        g.collect();
+        assert_eq!(g.audio.tempo_step(), n / KEYS_PER_TEMPO_STEP, "after {n} keys");
+    }
+}
+
+#[test]
+fn ragnar_starts_in_the_middle_after_ready_go() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    let spawn = g.level.hero_spawn;
+    let (w, h) = (g.level.grid.width, g.level.grid.height);
+    assert!((spawn.x - (w - 1) / 2).abs() <= 2 && (spawn.y - (h - 1) / 2).abs() <= 2, "spawn {spawn:?}");
+    // Every pickup is still reachable from the new start.
+    let seen = pathing::reachable(&g.level.grid, spawn, true, false);
+    for (x, y, t) in g.level.grid.cells() {
+        if t == Tile::Nodule || t == Tile::Charge {
+            assert!(seen.contains(&P::new(x, y)), "pickup at {x},{y} unreachable from the center");
+        }
+    }
+    start_from_title(&mut g);
+    assert_eq!(g.screen, Screen::Ready);
+    for _ in 0..((crate::game::READY_SECONDS - 0.1) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Ready, "still READY just before GO");
+    for _ in 0..(0.2 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    assert_eq!(g.hero.occupied(), spawn);
+}
+
+#[test]
+fn the_right_stick_turns_the_camera_and_it_stays_put() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = playing();
+    let start = g.view.cam_yaw;
+    let pad = |x: f32, y: f32| PadState { right: (x, y), ..Default::default() };
+    g.input.set_pad(Some(pad(1.0, 0.0)));
+    for _ in 0..60 {
+        g.update(crate::app::STEP);
+    }
+    let turned = g.view.cam_yaw;
+    assert!(turned - start > 0.5, "stick barely turned the camera: {}", turned - start);
+    // Let go and wait: the camera keeps the angle instead of drifting back behind him.
+    g.input.set_pad(Some(pad(0.0, 0.0)));
+    for _ in 0..(3.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!((g.view.cam_yaw - turned).abs() < 1e-3, "camera drifted");
+    // Tilting the stick up and down pitches it.
+    let pitch = g.view.cam_pitch;
+    g.input.set_pad(Some(pad(0.0, -1.0)));
+    for _ in 0..20 {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.view.cam_pitch != pitch);
+    // R3 swings it back behind him.
+    let mut click = pad(0.0, 0.0);
+    click.actions.insert(Action::CameraReset);
+    g.input.set_pad(Some(click));
+    g.update(crate::app::STEP);
+    g.input.set_pad(Some(pad(0.0, 0.0)));
+    for _ in 0..120 {
+        g.update(crate::app::STEP);
+    }
+    let behind = view::dir_to_yaw(g.hero.facing);
+    let off = (g.view.cam_yaw - behind).rem_euclid(std::f32::consts::TAU);
+    assert!(off < 0.05 || off > std::f32::consts::TAU - 0.05, "not recentered: {off}");
+}
+
+#[test]
+fn the_menus_can_quit() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit]);
+    // Right three times, then Enter, on the title picks Quit.
+    for _ in 0..3 {
+        g.input.key_down(winit::keyboard::KeyCode::ArrowRight, false);
+        g.update(crate::app::STEP);
+        g.input.key_up(winit::keyboard::KeyCode::ArrowRight);
+        g.update(crate::app::STEP);
+    }
+    g.input.key_down(winit::keyboard::KeyCode::Enter, false);
+    g.update(crate::app::STEP);
+    assert!(g.quit_requested);
+    assert_eq!(g.screen, Screen::Title);
+
+    // Pause offers Resume / Settings / Controller / Map / the Ledger / the Bestiary / Call the Old Man / Quit to
+    // Title / Quit Game (UI.md §8); clicking a button picks it.
+    let mut g = playing();
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Paused);
+    assert_eq!(
+        g.menu_items(),
+        vec![
+            MenuItem::Resume,
+            MenuItem::Settings,
+            MenuItem::Controls,
+            MenuItem::Map,
+            MenuItem::Ledger,
+            MenuItem::Bestiary,
+            MenuItem::CallOldMan,
+            MenuItem::QuitToTitle,
+            MenuItem::Quit
+        ]
+    );
+    // Settings opens over the pause, and the camera is switched there.
+    g.menu_index = 1;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(g.settings_page.open);
+    assert_eq!(g.settings_row(), Some(crate::game::settings_page::Row::Camera));
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!((g.screen, g.view.camera_mode), (Screen::Paused, view::CameraMode::Top));
+    g.input.inject(Action::Back);
+    g.update(crate::app::STEP);
+    assert!(!g.settings_page.open);
+    assert_eq!(g.screen, Screen::Paused, "back to the pause menu, still paused");
+    let quit = g.menu_items().iter().position(|&m| m == MenuItem::QuitToTitle).unwrap();
+    let r = hud::menu_rects(Screen::Paused, &g.menu_items(), g.viewport.0, g.viewport.1)[quit];
+    g.input.cursor_moved_to(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+    g.input.mouse_button(winit::event::MouseButton::Left, true);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Title);
+}
+
+#[test]
+fn he_stands_on_his_raised_start_through_the_tour_and_the_countdown() {
+    let mut g = Game::new();
+    start_from_title(&mut g);
+    assert_eq!(g.screen, Screen::Ready);
+    let spawn = g.level.hero_spawn;
+    let floor = g.level.grid.elevation(spawn.x, spawn.y) as f64;
+    assert!(floor > 0.0, "the first start is on the fountain's terrace");
+    assert_eq!(g.hero.altitude, floor, "not sunk into the stone before he moves");
+}
+
+#[test]
+fn the_map_jumps_to_any_dungeon_or_cyclops() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    let stops = map_stops();
+    assert_eq!(
+        stops.len(),
+        3 + 2 * 7 + 1 + 1 + 2 + 1 + 2 + 1 + 3 * 7 + 7 + 7 + 1 + 2 + 3,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Hızır's lesson, Scene I's two places, the old man's workshop, each realm's three generals' posts, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
+    );
+    assert!(stops.iter().any(|s| s.post == Some(0) && s.label == "GREED - THE ASSESSOR"));
+    assert_eq!(stops.iter().filter(|s| s.post.is_some()).count(), 21, "three generals a realm");
+    assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
+    assert_eq!(stops[2].stage, save::Stage::Hub, "the Portals of Hell come after the first Cyclops");
+    // From the title (developing): DEV MAP, down to the fourth stop (the realm of Pride), go.
+    assert!(!g.menu_items().contains(&MenuItem::DevMap), "not for the player");
+    g.dev = true;
+    g.menu_index = g.menu_items().iter().position(|&m| m == MenuItem::DevMap).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(g.show_map);
+    for _ in 0..3 {
+        g.input.nav = Some(Dir::Down);
+        g.update(crate::app::STEP);
+    }
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(!g.show_map);
+    assert_eq!((g.screen, g.dungeon, g.boss.is_some()), (Screen::Ready, 1, false));
+    assert_eq!(g.realm, Some(Sin::Pride));
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Pride)), "Continue comes back here");
+    // From the pause menu, to a Cyclops; Esc closes the map without going anywhere.
+    g.enter(Screen::Paused);
+    g.open_map();
+    assert_eq!(stops[g.map_index].stage, save::Stage::Realm(Sin::Pride), "where he is, highlighted");
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert_eq!((g.show_map, g.screen), (false, Screen::Paused));
+    g.map_jump(save::Stage::Arena(0));
+    assert_eq!((g.screen, g.dungeon, g.boss.is_some()), (Screen::Ready, 0, true));
+}
+
+#[test]
+fn mehmed_is_slow_and_sturdy_and_hits_hard_miyamoto_quick_and_frail_and_strikes_fast() {
+    let mut g = Game::new();
+    // Bare heroes: no path skills to add health or quicken the blade.
+    g.progress = Progress::default();
+    let mut seen = Vec::new();
+    for hero in [HeroKind::Ragnar, HeroKind::Mehmed, HeroKind::Miyamoto] {
+        g.hero_kind = hero;
+        g.load_level(0);
+        assert!(g.hero.try_attack());
+        seen.push((hero, g.hero.max_hp, g.hero.hp, g.hero.m.speed, g.hero.blow(3), g.hero.attack_cooldown));
+    }
+    let [(_, r_max, r_hp, r_speed, r_blow, _), (_, m_max, m_hp, m_speed, m_blow, _), (_, y_max, _, y_speed, y_blow, y_cool)] = seen[..]
+    else {
+        unreachable!()
+    };
+    // (Each with his first shield on his arm, which adds its 5.)
+    assert_eq!((r_max, m_max, y_max), (105, 125, 85), "health 1 : 1.2 : 0.8");
+    assert_eq!((r_hp, m_hp), (105, 125), "and each begins with it full");
+    assert!((m_speed / r_speed - 0.9).abs() < 1e-9 && (y_speed / r_speed - 1.1).abs() < 1e-9, "speed 1 : 0.9 : 1.1");
+    assert!(m_blow > r_blow && y_blow == r_blow, "Mehmed hits harder: {m_blow} against {r_blow}");
+    // Miyamoto's blade waits a fifth less than it would for anyone else.
+    let own = progression::blade(HeroKind::Miyamoto, g.hero.blade).cooldown;
+    assert!((y_cool - own * MIYAMOTO_TEMPO).abs() < 1e-9, "{y_cool} against {own}");
+}
+
+#[test]
+fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
+    use logic::hub;
+    use logic::sins::{Sin, ALL_SINS};
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.map_jump(save::Stage::Hub);
+    assert_eq!(g.screen, Screen::Ready);
+    assert!(g.hub.is_some() && g.enemies.is_empty() && g.boss.is_none(), "a calm hub: no foes");
+    assert_eq!(g.hero.occupied(), hub::arrival(), "he comes in from outside");
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Hub));
+    g.enter(Screen::Playing);
+    for _ in 0..(10.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.enemies.len(), 0, "and none come later");
+    // Before Greed's gate its doors swing open; walking away, they close.
+    let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Greed).unwrap();
+    let i = Sin::Greed.index();
+    g.hero.m.teleport(greed.front());
+    g.hero.face(greed.facing); // looking away from the doors, or he would go through
+    for _ in 0..(1.5 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.hub.as_ref().unwrap().doors[i] >= 1.0, "the doors open as he comes");
+    g.hero.m.teleport(hub::arrival());
+    for _ in 0..(1.5 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "and close behind him");
+    // A realm he has cleared keeps its doors shut.
+    g.sins_cleared = Sin::Greed.bit();
+    g.hero.m.teleport(greed.front());
+    for _ in 0..(1.5 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
+    // Seven princes beaten is not enough: the seals break for the seven seal-stones (B44), and the
+    // causeways rise to the House of Seven Seals.
+    let lane = hub::causeways()[2];
+    let p = P::new(lane.x0 + 1, lane.y0 + 1);
+    assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");
+    g.sins_cleared = ALL_SINS;
+    g.seal_stones = ALL_SINS & !Sin::Lust.bit();
+    for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().seal, 0.0, "six seal-stones: the seals hold");
+    g.seal_stones = ALL_SINS;
+    for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().seal, 1.0);
+    assert!(hub::causeways().iter().all(|c| c.tiles().all(|t| g.level.grid.is_walkable(t.x, t.y, false))), "the causeways are up");
+    let seen = pathing::reachable(&g.level.grid, hub::arrival(), true, false);
+    let door = hub::house_door();
+    assert!(seen.contains(&P::new(door.x, door.y + 1)), "the way to the House is open");
+    // Coming back later, the causeways already stand.
+    g.checkpoint(save::Stage::Hub);
+    g.load_hub();
+    assert_eq!(g.hub.as_ref().unwrap().seal, 1.0);
+}
+
+#[test]
+fn the_realms_foes_are_tougher_than_the_gardens() {
+    use WOLF_FURY_SPEED;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.map_jump(save::Stage::Gym);
+    let kinds: Vec<EnemyKind> = g.enemies.iter().map(|e| e.kind()).collect();
+    let every: Vec<EnemyKind> = (1..=EnemyKind::STAGES).flat_map(|s| EnemyKind::of_stage(s).iter().copied()).collect();
+    assert_eq!(kinds, every, "one of every foe, stage by stage, in the gym");
+    assert_eq!(g.hero.occupied(), gym::arrival());
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Gym));
+    g.enter(Screen::Playing);
+    // A slain foe rises again at its post.
+    let post = g.enemies[1].post.expect("a post");
+    g.slay_enemy(1);
+    for _ in 0..((REASSEMBLE_SECONDS - 0.2) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    assert_eq!((g.enemies[1].mode(), g.enemies[1].occupied()), (EnemyMode::Scattered, post), "in pieces at its post");
+    for _ in 0..(0.5 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    assert!(g.enemies[1].is_dangerous(), "back on its feet");
+    // The foes keep to their platforms while he crosses the bridge, and nothing there can hurt him.
+    let second = gym::platform(1);
+    g.hero.m.teleport(P::new(second.x0 + 1, (second.y0 + second.y1) / 2));
+    let hp = g.hero.hp;
+    for _ in 0..(8.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        for e in &g.enemies {
+            if let Some(keep) = e.b.keep {
+                assert!(keep.contains(e.occupied()), "{} left its platform", e.b.name);
+                assert!(e.m.speed <= e.b.base_speed * e.b.speed_factor * 0.75, "{} wanders at an easy pace", e.b.name);
+            }
+        }
+    }
+    assert_eq!(g.hero.hp, hp, "unhurt in the gym");
+    assert!(g.enemies.iter().filter(|e| e.post.is_some()).all(|e| e.b.keep.is_some()));
+    // Off the road, a realm after the vaults sends the foes met so far, no deeper than its tier allows.
+    g.map_jump(save::Stage::Realm(Sin::Sloth));
+    let met = crate::logic::realms::roster(g.realm_tier());
+    // (But its generals, who wear the bodies the plan gives them: WARBAND.md §9.3, B41.)
+    let generals: Vec<u32> = (0..3).filter_map(|k| g.general_pack(k).first().copied()).collect();
+    assert!(g
+        .enemies
+        .iter()
+        .all(|e| e.kind().realm_own() || met.iter().any(|n| n.0 == e.kind()) || e.duel.as_ref().is_some_and(|d| generals.contains(&d.id))));
+    g.map_jump(save::Stage::Gym);
+    g.enter(Screen::Playing);
+    let o = g.hero.occupied();
+    g.enemies.clear();
+    g.view.clear_enemies();
+    // A blemmyes takes three blows, staggering after each, and bites twice as hard.
+    let brute = foe_at(&mut g, EnemyKind::Blemmyes, P::new(o.x, o.y - 1));
+    g.hero.facing = Dir::Up;
+    for left in [2u8, 1] {
+        g.hitstop = 0.0;
+        g.perform_attack();
+        assert_eq!(g.enemies[brute].hits_left(), left);
+        assert!(g.enemies[brute].is_stunned(), "it staggers");
+        assert!(!fell(&g, brute));
+        for _ in 0..(WOUND_STAGGER / crate::app::STEP + 2.0) as usize {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+        g.enemies[brute].b.mode = EnemyMode::Chase;
+        g.enemies[brute].m.teleport(P::new(o.x, o.y - 1));
+    }
+    g.hitstop = 0.0;
+    g.perform_attack();
+    assert!(fell(&g, brute), "the third blow fells it");
+    g.enemies.clear(); // (a slain foe with no post leaves the gym's list)
+    g.view.clear_enemies();
+    // The loup-garou howls at the first cut and runs faster, and the helmeted skeleton's cap rings.
+    let wolf = foe_at(&mut g, EnemyKind::Werewolf, P::new(o.x, o.y - 1));
+    g.hitstop = 0.0;
+    g.perform_attack();
+    assert!(!fell(&g, wolf) && !g.enemies[wolf].is_stunned(), "wounded, it comes on");
+    assert!(g.enemies[wolf].b.fury > 0.0);
+    g.hitstop = 0.0;
+    g.update(crate::app::STEP);
+    let quick = g.enemies[wolf].m.speed;
+    g.enemies[wolf].b.fury = 0.0;
+    g.update(crate::app::STEP);
+    assert!((quick / g.enemies[wolf].m.speed - WOLF_FURY_SPEED).abs() < 0.01, "faster in its fury");
+    g.enemies.clear();
+    g.view.clear_enemies();
+    let helm = foe_at(&mut g, EnemyKind::Helmeted, P::new(o.x, o.y - 1));
+    g.hitstop = 0.0;
+    g.perform_attack();
+    assert_eq!((g.enemies[helm].hits_left(), fell(&g, helm)), (1, false), "the helmet turns the first blow");
+    g.hitstop = 0.0;
+    g.enemies[helm].b.mode = EnemyMode::Chase;
+    g.perform_attack();
+    assert_eq!(g.enemies[helm].mode(), EnemyMode::Scattered, "and it falls to pieces at the second, to rise again");
+    // A witch keeps her distance and conjures a minion once she has the hero in reach.
+    g.enemies.clear();
+    g.view.clear_enemies();
+    let witch = foe_at(&mut g, EnemyKind::Witch, P::new(o.x, o.y - 4));
+    g.enemies[witch].b.cast = 0.1;
+    g.hero.invuln = 1.0;
+    for _ in 0..30 {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    assert!(g.enemies.iter().any(|e| e.kind() == EnemyKind::Minion && e.is_dangerous()), "a minion appears at her feet");
+    // Out in a realm (the gym hurts no one), the blemmyes' touch hurts double.
+    g.map_jump(save::Stage::Realm(Sin::Greed));
+    g.enter(Screen::Playing);
+    g.enemies.clear();
+    g.view.clear_enemies();
+    let hp = g.hero.hp;
+    g.hero.invuln = 0.0;
+    g.hero.shield = None; // bare, so the whole bite lands
+    let at = g.hero.occupied();
+    foe_at(&mut g, EnemyKind::Blemmyes, at);
+    g.resolve_contact();
+    assert_eq!(hp - g.hero.hp, 2 * CONTACT_DAMAGE, "its touch hurts double");
+}
+
+/// A foe of `kind` hunting at `at`, in the game and in the view.
+fn foe_at(g: &mut Game, kind: EnemyKind, at: P) -> usize {
+    let grid = &g.level.grid;
+    let spec = enemy_specs(grid, 1).into_iter().chain(enemy_specs(grid, 2)).find(|s| s.kind == kind).unwrap();
+    let mut e = Enemy::new(&spec, at, g.level.data.enemy_speed);
+    e.b.mode = EnemyMode::Chase;
+    g.view.add_enemy(&e);
+    g.enemies.push(e);
+    g.enemies.len() - 1
+}
+
+fn fell(g: &Game, i: usize) -> bool {
+    matches!(g.enemies[i].mode(), EnemyMode::Eaten | EnemyMode::Scattered)
+}
+
+/// Into the Cyclops' open meadow, with no foes but those placed; he stands at the south edge facing north.
+fn meadow() -> Game {
+    let mut g = playing();
+    g.load_boss(0);
+    g.enemies.clear();
+    g.view.clear_enemies();
+    g.enter(Screen::Playing);
+    g
+}
+
+#[test]
+fn an_archangels_shrine_turns_and_brings_all_four_then_readies_them() {
+    use logic::angels::{Archangel, ARCHANGELS, RECHARGE};
+    let mut g = playing();
+    assert!(!g.angels.granted && g.chosen_angel().is_none(), "none before the first shrine");
+    let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).expect("an archangel's shrine");
+    assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Michael));
+    // Its statue turns through the four on its own (a blow turns it at once).
+    for _ in 0..((logic::items::ANGEL_TURN_SECONDS + 0.1) / crate::app::STEP) as usize {
+        g.diamonds[i].update(crate::app::STEP);
+    }
+    assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Gabriel));
+    g.diamonds[i].cycle();
+    assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Raphael));
+    // Stepping on: all four, whichever it showed; this shrine stands grey for the level.
+    g.hero.m.teleport(g.diamonds[i].tile);
+    g.visit_shrines();
+    assert!(g.angels.granted && ARCHANGELS.iter().all(|&a| g.angels.ready(a, None)));
+    assert!(g.juice.blessed.is_some_and(|b| b.0), "the four's banner");
+    assert!(!g.diamonds[i].active);
+    // Another shrine readies all four at once.
+    g.angels.call(Archangel::Uriel);
+    g.angels.call(Archangel::Gabriel);
+    let other = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel && d.active).unwrap();
+    g.hero.m.teleport(g.diamonds[other].tile);
+    g.visit_shrines();
+    assert_eq!(g.angels.wait, [0.0; 4]);
+    assert!(g.juice.blessed.is_some_and(|b| !b.0), "the ready banner");
+    // They stay with him; the next dungeon's shrines stand fresh, and he begins it with all four ready.
+    g.angels.call(Archangel::Raphael);
+    g.load_level(1);
+    assert_eq!(g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel && d.active).count(), 4, "fresh in the next level");
+    assert!(g.angels.granted && g.angels.wait == [0.0; 4]);
+    // Each power comes back 25 seconds after its call, on its own.
+    g.angels.chosen = Archangel::Gabriel;
+    g.invoke_angel();
+    assert!((g.angels.wait[Archangel::Gabriel.index()] - RECHARGE).abs() < 1e-9);
+    assert_eq!(g.angels.wait[Archangel::Uriel.index()], 0.0);
+}
+
+#[test]
+fn the_next_button_chooses_among_the_four_and_the_patron_is_chosen_first() {
+    use crate::input::Action;
+    use logic::angels::Archangel;
+    let mut g = playing();
+    // Before a shrine, his patron alone: chosen, and the next button has nothing to choose.
+    let kind = g.hero_kind;
+    g.progress.hero_mut(kind).patron = Some(Archangel::Uriel);
+    g.input.inject(Action::AngelNext);
+    g.update(crate::app::STEP);
+    assert_eq!(g.chosen_angel(), Some(Archangel::Uriel));
+    // The first shrine: all four, his patron chosen; the next button goes round them.
+    let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).unwrap();
+    g.hero.m.teleport(g.diamonds[i].tile);
+    g.visit_shrines();
+    assert_eq!(g.chosen_angel(), Some(Archangel::Uriel));
+    for want in [Archangel::Michael, Archangel::Gabriel, Archangel::Raphael, Archangel::Uriel] {
+        g.input.inject(Action::AngelNext);
+        g.update(crate::app::STEP);
+        assert_eq!(g.chosen_angel(), Some(want));
+    }
+    // Called while away: refused, and nothing is spent.
+    g.angels.wait[Archangel::Uriel.index()] = 10.0;
+    let calls = g.angels.calls;
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert_eq!(g.angels.calls, calls);
+}
+
+#[test]
+fn gabriels_thunder_strikes_every_foe_near_him() {
+    use logic::angels::Archangel;
+    let mut g = meadow();
+    let o = g.hero.occupied();
+    let near = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 4));
+    let far = foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 7, o.y - 11));
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Gabriel;
+    g.invoke_angel();
+    assert!(fell(&g, near) && !fell(&g, far));
+    assert!(!g.angels.ready(Archangel::Gabriel, None), "away 25 seconds");
+}
+
+#[test]
+fn raphaels_beam_fells_all_in_its_path_and_nothing_beside_it() {
+    use logic::angels::Archangel;
+    let mut g = meadow();
+    let o = g.hero.occupied();
+    g.hero.face(Dir::Up);
+    let ahead = [foe_at(&mut g, EnemyKind::Slime, P::new(o.x, o.y - 2)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x, o.y - 4))];
+    let beside = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 3));
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Raphael;
+    g.invoke_angel();
+    assert!(ahead.iter().all(|&i| fell(&g, i)) && !fell(&g, beside));
+}
+
+#[test]
+fn uriels_wave_rolls_out_over_everything_it_reaches() {
+    use logic::angels::Archangel;
+    let mut g = meadow();
+    let o = g.hero.occupied();
+    let foes = [foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 1, o.y - 1)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 6, o.y - 11))];
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Uriel;
+    g.invoke_angel();
+    assert!(!fell(&g, foes[1]), "the far one only when the wave reaches it");
+    for _ in 0..(1.6 / crate::app::STEP) as usize {
+        g.update_angels(crate::app::STEP);
+    }
+    assert!(foes.iter().all(|&i| fell(&g, i)));
+    // No ten minutes' rest any more: 25 seconds, like the others.
+    assert!(g.angels.wait[Archangel::Uriel.index()] <= logic::angels::RECHARGE);
+}
+
+#[test]
+fn michaels_fire_turns_a_foe_that_then_hunts_the_others() {
+    use logic::angels::Archangel;
+    let mut g = meadow();
+    let o = g.hero.occupied();
+    g.hero.face(Dir::Up);
+    let turned = foe_at(&mut g, EnemyKind::Slime, P::new(o.x, o.y - 3));
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Michael;
+    g.invoke_angel();
+    for _ in 0..(1.0 / crate::app::STEP) as usize {
+        g.update_projectiles(crate::app::STEP);
+    }
+    assert!(g.enemies[turned].is_ally() && !g.enemies[turned].is_dangerous(), "turned to his side");
+    // A foe that comes within its reach dies.
+    let at = g.enemies[turned].occupied();
+    let foe = foe_at(&mut g, EnemyKind::Bat, at);
+    g.update_angels(crate::app::STEP);
+    assert!(fell(&g, foe));
+    assert!(!fell(&g, turned));
+}
+
+#[test]
+fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
+    use logic::angels::Archangel;
+    let mut g = playing();
+    g.input.key_down(winit::keyboard::KeyCode::F1, false);
+    g.update(crate::app::STEP);
+    for _ in 0..((READY_SECONDS + 2.2) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    let hp0 = g.boss.as_ref().unwrap().hp;
+    assert_eq!(g.boss.as_ref().unwrap().max_hp, 50);
+    let bp = g.boss.as_ref().unwrap().pos;
+    g.hero.m.teleport(P::new(bp.x.round() as i32, bp.y.round() as i32 + 4));
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Gabriel;
+    g.invoke_angel();
+    assert_eq!(g.boss.as_ref().unwrap().hp, hp0 - 3);
+    // Dazed, it would take double from a blade, but an archangel's blow is what it is.
+    g.debug_daze_boss();
+    for _ in 0..20 {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    let hp1 = g.boss.as_ref().unwrap().hp;
+    g.angels.refresh();
+    g.invoke_angel();
+    assert_eq!(g.boss.as_ref().unwrap().hp, hp1 - 3);
+}
+
+#[test]
+fn one_swing_fells_every_foe_it_sweeps_through() {
+    let mut g = playing_off_road();
+    // Two foes side by side just ahead of him, as in a corridor two tiles wide, and one behind.
+    let o = g.hero.occupied();
+    g.hero.face(Dir::Up);
+    let spots = [P::new(o.x, o.y - 1), P::new(o.x + 1, o.y - 1), P::new(o.x, o.y + 2)];
+    for (e, &at) in g.enemies.iter_mut().zip(&spots) {
+        e.m.teleport(at);
+        e.b.mode = EnemyMode::Chase;
+        // (The Cisterns' foes take more than one blow: one each here, as the Garden's took.)
+        e.b.hits = 1;
+    }
+    g.hitstop = 0.0;
+    g.perform_attack();
+    let fell = |g: &Game, i: usize| matches!(g.enemies[i].mode(), EnemyMode::Eaten | EnemyMode::Scattered);
+    assert!(fell(&g, 0) && fell(&g, 1), "both foes ahead fall to one blow");
+    assert!(!fell(&g, 2), "the one behind him is untouched");
+}
+
+#[test]
+fn those_waiting_in_the_hollow_stand_in_it() {
+    let g = playing();
+    for p in &g.nest_slots[1..] {
+        assert_eq!(g.level.grid.get(p.x, p.y), Tile::Nest, "{p:?} is not in the hollow");
+    }
+}
+
+#[test]
+fn draugr_rise_from_the_churchyard() {
+    // (B01: the Garden's hunters; a draugr among them claws out of a grave.)
+    let mut g = playing();
+    g.skip_lesson();
+    let graves = g.grave_spawns();
+    assert!(!graves.is_empty(), "Dungeon I has a churchyard");
+    g.spawned = 3; // the draugr's turn in the hunters' order
+    g.spawn_timer = 0.0;
+    g.update(crate::app::STEP);
+    let draugr = g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.den.is_none() && d.breed.kind == EnemyKind::Skeleton);
+    let draugr = draugr.expect("a draugr hunter");
+    let at = P::new(draugr.pos.x.round() as i32, draugr.pos.y.round() as i32);
+    assert!(graves.contains(&at), "it climbs out by the graves, not the hollow: {at:?}");
+    assert!(draugr.lore.rise > 0, "climbing out");
+}
+
+#[test]
+fn the_last_key_unlocks_the_gate_and_going_through_wins() {
+    let mut g = playing();
+    assert_eq!(g.keys_total, 8);
+    g.keys_got = g.keys_total - 1;
+    let o = g.hero.occupied();
+    g.level.grid.set(o.x, o.y, Tile::Nodule);
+    g.collect();
+    assert!(g.gate_open);
+    assert_eq!(g.screen, Screen::Playing, "the gate must still be reached");
+    // Up to the gate: the doors swing open, and he steps through.
+    let gate = g.gate.unwrap();
+    g.hero.m.teleport(P::new(gate.x, gate.y + 1));
+    for _ in 0..((DOOR_SECONDS + 0.2) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.door >= 1.0);
+    assert!(g.level.grid.is_walkable(gate.x, gate.y, false));
+    g.hero.m.teleport(gate);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Cleared);
+    assert!(g.events.contains(&GameEvent::Won));
+    // After the fanfare, the Cyclops' meadow, and a countdown.
+    for _ in 0..((CLEARED_SECONDS + 0.1) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Ready);
+    assert!(g.level.data.boss);
+    assert!(g.boss.is_some());
+    assert!(g.enemies.is_empty());
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Arena(0)), "the arena is a checkpoint");
+}
+
+#[test]
+fn f1_jumps_to_the_boss_and_felling_it_leads_on() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.input.key_down(winit::keyboard::KeyCode::F1, false);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Ready);
+    assert!(g.level.data.boss, "F1 goes straight to the boss arena");
+    for _ in 0..((READY_SECONDS + 2.2) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0; // keep him alive while we watch
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    assert!(g.boss.as_ref().unwrap().active(), "the Cyclops has landed");
+    // An axe blow in reach lands.
+    let bp = g.boss.as_ref().unwrap().pos;
+    g.hero.m.teleport(P::new(bp.x.round() as i32, bp.y.round() as i32 + 1));
+    g.hero.facing = Dir::Up;
+    let hp = g.boss.as_ref().unwrap().hp;
+    g.hitstop = 0.0;
+    g.perform_attack();
+    assert!(g.boss.as_ref().unwrap().hp < hp, "axe missed the Cyclops");
+    // Beat it and the victory screen leads to dungeon II.
+    while g.boss.as_ref().unwrap().alive() {
+        g.debug_wound_boss(10);
+        for _ in 0..20 {
+            g.update(crate::app::STEP);
+            g.hero.invuln = 1.0;
+        }
+    }
+    // Back at the south edge while it falls (so he does not pick the key up at once).
+    g.hero.m.teleport(P::new(ARENA_HERO.0, ARENA_HERO.1));
+    for _ in 0..(6.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    // It drops a red diamond key; the gate in the north hedge stays shut without it.
+    assert_eq!(g.screen, Screen::Playing, "no victory yet: the key and the gate first");
+    let key = g.red_key.expect("the Cyclops drops a red diamond key");
+    assert!(g.level.grid.is_walkable(key.x, key.y, false), "on grass he can reach");
+    let gate = g.gate.expect("a gate in the arena");
+    assert_eq!((gate.x, gate.y), ARENA_GATE);
+    let front = P::new(gate.x, gate.y + 1);
+    assert!(g.level.grid.is_walkable(front.x, front.y, false), "the way to the gate is clear");
+    g.hero.m.teleport(front);
+    for _ in 0..(2.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(!g.gate_open && g.door == 0.0, "locked without the key");
+    // He takes the key: the gate unlocks, and its doors open as he comes to it.
+    g.hero.m.teleport(key);
+    g.update(crate::app::STEP);
+    assert!(g.red_key.is_none() && g.gate_open, "the red key opens the gate");
+    g.hero.m.teleport(front);
+    for _ in 0..(3.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.door >= 1.0, "the doors swing open");
+    g.hero.m.teleport(gate);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Won);
+    assert!(g.events.contains(&GameEvent::BossSlain));
+    assert!(g.progress.silver >= COINS_BOSS, "the boss pays out");
+    assert!(g.progress.runes >= RUNES_BOSS, "and leaves rune fragments");
+    assert!((0..4).any(|t| g.progress.hero(g.hero_kind).relics[t] != 0), "and a relic");
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Shop(0)), "Continue would bring back the old man");
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Shop, "the old man comes after the boss");
+    // Leave him: down into the Portals of Hell.
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Ready);
+    assert!(g.hub.is_some() && !g.level.data.boss, "the Garden's Cyclops slain, the Portals of Hell open");
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Hub));
+}
+
+#[test]
+fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins_key() {
+    use logic::hub;
+    use Sin;
+    const STEP: f64 = crate::app::STEP;
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.map_jump(save::Stage::Hub);
+    g.enter(Screen::Playing);
+    // Into Sloth's portal: up to the doors, pushing on them as they open.
+    let greed = hub::gates().into_iter().find(|gt| gt.sin == Sin::Sloth).unwrap();
+    g.hero.m.teleport(greed.front());
+    g.hero.face(greed.facing.opposite());
+    for _ in 0..(1.5 / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!(g.screen, Screen::Ready, "through the portal");
+    assert_eq!(
+        (g.realm, g.dungeon, g.level.data.boss),
+        (Some(Sin::Sloth), 1, false),
+        "the realm of Sloth, as hard as the first dungeon after the Garden"
+    );
+    assert_eq!(g.level.data.name, Sin::Sloth.realm());
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Realm(Sin::Sloth)));
+    assert_eq!(g.keys_total, 3, "the three generals' keys open the court's door (B41)");
+    assert!(g.run.is_some(), "the Grey Mire itself");
+    assert!(
+        g.potions.is_empty() && g.diamonds.iter().all(|d| d.kind == DiamondKind::Angel),
+        "gear only from the old man; the archangels stand here too"
+    );
+    // Its far portal leads to the prince's court, once the three generals' keys are held.
+    g.enter(Screen::Playing);
+    g.gate_open = true;
+    g.keys_got = 3;
+    let exit = g.run.as_ref().unwrap().base().exit;
+    let gate = exit.tile;
+    g.hero.m.teleport(exit.front());
+    for _ in 0..(3.0 / STEP) as usize {
+        g.update(STEP);
+        g.hero.invuln = 1.0;
+    }
+    g.hero.m.teleport(gate);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Cleared);
+    for _ in 0..((CLEARED_SECONDS + 0.1) / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!((g.screen, g.realm, g.boss.is_some() || g.in_court()), (Screen::Ready, Some(Sin::Sloth), true), "Belphegor's court");
+    assert_eq!(g.boss_name(), "BELPHEGOR");
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Court(Sin::Sloth)));
+    // The prince falls and drops the key of Greed.
+    for _ in 0..((READY_SECONDS + 2.5) / STEP) as usize {
+        g.update(STEP);
+        g.hero.invuln = 1.0;
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    // (His whole health and more: the courts weigh their princes 1.15 above their breeds, W9.)
+    g.debug_wound_boss(100_000);
+    g.hero.m.teleport(P::new(ARENA_HERO.0, ARENA_HERO.1));
+    for _ in 0..(6.0 / STEP) as usize {
+        g.update(STEP);
+        g.hero.invuln = 1.0;
+    }
+    let key = g.red_key.expect("the prince drops the key of Sloth");
+    assert_eq!(g.sins_cleared, Sin::Sloth.bit(), "Sloth is conquered");
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::SinShop(Sin::Sloth)));
+    g.hero.m.teleport(key);
+    g.update(STEP);
+    assert!(g.red_key.is_none() && g.gate_open, "the seal-stone of Sloth opens the court's gate");
+    assert_eq!(g.seal_stones, Sin::Sloth.bit(), "his seal-stone is the hero's, for the House of Seven Seals (B44)");
+    let gate = g.gate.unwrap();
+    // (Inside the gate: the meadow's is in its north hedge, a built court's in its south wall.)
+    let inside = if g.in_court() { gate.y - 1 } else { gate.y + 1 };
+    g.hero.m.teleport(P::new(gate.x, inside));
+    for _ in 0..(3.0 / STEP) as usize {
+        g.update(STEP);
+    }
+    g.hero.m.teleport(gate);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Won);
+    // The scene at Hızır's (B07), skipped; the old man's wares; and then back before the portal,
+    // now sealed, with the next realm one deeper.
+    g.input.inject(Action::Confirm);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| s.scene), Some(crate::logic::story::Scene::After(Sin::Sloth)));
+    g.input.inject(Action::Pause);
+    for _ in 0..(1.0 / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!(g.screen, Screen::Shop);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    g.input.inject(Action::Pause);
+    g.update(STEP);
+    assert_eq!(g.screen, Screen::Ready);
+    assert!(g.hub.is_some(), "back in the Portals of Hell");
+    assert_eq!(g.hero.occupied(), greed.front(), "before the portal he went through");
+    assert_eq!(g.saved_run.as_ref().map(|r| (r.stage, r.sins)), Some((save::Stage::Hub, Sin::Sloth.bit())));
+    assert_eq!(g.realm_tier(), 2, "the next realm is one deeper");
+    g.enter(Screen::Playing);
+    for _ in 0..(1.5 / STEP) as usize {
+        g.update(STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().doors[Sin::Sloth.index()], 0.0, "and Sloth's doors stay shut");
+}
+
+#[test]
+fn free_movement_lasts_from_dungeon_to_dungeon() {
+    let mut g = Game::new();
+    g.hero.free_move = true;
+    start_from_title(&mut g);
+    assert!(g.hero.free_move, "beginning a game keeps it");
+    g.load_boss(0);
+    g.load_level(1);
+    assert!(g.hero.free_move, "and so does every level after");
+}
+
+#[test]
+fn continue_picks_up_the_saved_stage_and_start_asks_before_wiping_everything() {
+    let mut g = Game::new();
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit], "nothing to continue yet");
+    start_from_title(&mut g);
+    assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::Dungeon(0)), "an adventure is saved from its start");
+
+    // Mehmed reaches the Cyclops with silver, a score, two lives and two bottles.
+    g.hero_kind = HeroKind::Mehmed;
+    g.progress.silver = 500;
+    g.score.resume(7000, 2);
+    g.belt = vec![PotionKind::Health, PotionKind::Life];
+    g.checkpoint(save::Stage::Arena(0));
+    g.enter(Screen::Title);
+    assert_eq!(g.menu_items(), vec![MenuItem::Continue, MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit]);
+    g.hero_kind = HeroKind::Ragnar;
+    g.score.reset();
+    g.belt.clear();
+    g.load_level(0);
+    // Continue is highlighted first.
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    choose_view(&mut g);
+    assert_eq!(g.screen, Screen::Ready, "no story and no character screen");
+    assert!(g.level.data.boss && g.boss.is_some());
+    assert_eq!((g.hero_kind, g.hero.kind), (HeroKind::Mehmed, HeroKind::Mehmed));
+    assert_eq!((g.score.score, g.score.lives), (7000, 2));
+    assert_eq!(g.belt, vec![PotionKind::Health, PotionKind::Life]);
+
+    // Start asks first, with "keep my progress" highlighted: Enter loses nothing.
+    g.enter(Screen::Title);
+    g.menu_index = 1;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(g.confirm_reset);
+    assert_eq!(g.menu_items(), vec![MenuItem::StartOver, MenuItem::KeepProgress]);
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(!g.confirm_reset);
+    assert_eq!((g.screen, g.progress.silver), (Screen::Title, 500));
+    assert!(g.saved_run.is_some());
+    // Esc backs out too.
+    g.menu_index = 1;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert!(!g.confirm_reset && g.saved_run.is_some());
+    // Start over: everything goes, and the new adventure begins (with the heroes, the story being off in tests).
+    g.menu_index = 1;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    g.menu_index = 0;
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Select);
+    assert_eq!(g.progress, Progress::default());
+    assert!(g.saved_run.is_none());
+    g.enter(Screen::Title);
+    assert_eq!(g.menu_items(), vec![MenuItem::Play, MenuItem::Controls, MenuItem::Settings, MenuItem::Quit]);
+}
+
+#[test]
+fn a_foe_across_the_maze_finds_the_hero_rather_than_circling() {
+    let mut g = playing();
+    g.enemies.clear();
+    g.view.clear_enemies();
+    let hero = g.hero.occupied();
+    // Somewhere well away by the paths.
+    let far = pathing::reachable(&g.level.grid, hero, false, false)
+        .into_iter()
+        .filter(|p| (p.x - hero.x).abs() + (p.y - hero.y).abs() >= 14 && g.level.grid.get(p.x, p.y) == Tile::Open)
+        .min_by_key(|p| ((p.x - hero.x).abs() + (p.y - hero.y).abs(), p.y, p.x))
+        .unwrap();
+    let i = foe_at(&mut g, EnemyKind::Skeleton, far);
+    let mut closest = f64::INFINITY;
+    for _ in 0..(15.0 / crate::app::STEP) as usize {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+        closest = closest.min(dist_sq(g.enemies[i].pos(), g.hero.pos()).sqrt());
+    }
+    assert!(closest < 1.5, "it came no closer than {closest}");
+}
+
+#[test]
+fn lt_and_rt_page_through_the_old_mans_wares() {
+    let mut g = playing();
+    g.open_shop();
+    let first = g.shop.tab;
+    g.input.inject(Action::TabNext);
+    g.input.inject(Action::Attack); // RT is Attack as well; it must not buy
+    g.update(crate::app::STEP);
+    let second = g.shop.tab;
+    assert_ne!(first, second);
+    g.input.inject(Action::TabPrev);
+    g.update(crate::app::STEP);
+    assert_eq!(g.shop.tab, first);
+}
+
+#[test]
+fn the_controllers_menu_button_opens_the_pause_menu_and_it_stays_open() {
+    let mut g = playing();
+    // Menu is Pause and Confirm at once.
+    g.input.inject(Action::Pause);
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Paused);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Paused, "not resumed straight away");
+    assert!(g.menu_items().contains(&MenuItem::CallOldMan), "the old man's wares from the menu");
+    // Menu again resumes.
+    g.input.inject(Action::Pause);
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Playing);
+}
+
+#[test]
+fn the_controller_page_opens_from_the_title_and_the_pause_menu() {
+    let mut g = Game::new();
+    g.menu_index = g.menu_items().iter().position(|&i| i == MenuItem::Controls).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(g.show_controls && g.screen == Screen::Title);
+    // B closes it, back on the title with the button still highlighted.
+    g.input.inject(Action::Guide);
+    g.update(crate::app::STEP);
+    assert!(!g.show_controls && g.screen == Screen::Title);
+    assert_eq!(g.menu_items()[g.menu_index], MenuItem::Controls);
+
+    // From the pause menu, Esc closes the page and leaves the game paused.
+    let mut g = playing();
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    g.menu_index = g.menu_items().iter().position(|&i| i == MenuItem::Controls).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(g.show_controls && g.screen == Screen::Paused);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert!(!g.show_controls);
+    assert_eq!(g.screen, Screen::Paused, "still paused");
+}
+
+#[test]
+fn the_old_man_sells_each_tree_in_order_and_equips() {
+    let mut g = playing();
+    g.open_shop();
+    g.progress.silver = 5000;
+    let press = |g: &mut Game, action: ShopAction| {
+        let rows = g.shop_rows();
+        let (r, c) = rows
+            .iter()
+            .enumerate()
+            .find_map(|(r, row)| row.buttons.iter().position(|b| b.action == action).map(|c| (r, c)))
+            .expect("no such button");
+        g.shop.row = r;
+        g.shop.col = c;
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+    };
+    // Tier 3 cannot be had before tier 2.
+    press(&mut g, ShopAction::Unlock(Tree::Armory, 3));
+    assert_eq!(g.progress.hero(g.hero_kind).owned(Tree::Armory), 1);
+    press(&mut g, ShopAction::Unlock(Tree::Armory, 2));
+    assert_eq!(g.hero.blade, 2, "a new weapon goes straight to hand");
+    assert_eq!(g.hero.main, WeaponKind::Ranged(RangedKind::Hurled(HeroKind::Ragnar, 2)), "Skofnung is thrown");
+    press(&mut g, ShopAction::Wield(1));
+    assert_eq!(g.hero.blade, 1);
+    assert_eq!(g.hero.main, WeaponKind::Sword);
+    assert_eq!(g.progress.silver, 5000 - progression::price(Tree::Armory, 2).silver);
+    g.shop.tab = Tree::Path;
+    press(&mut g, ShopAction::Unlock(Tree::Path, 1));
+    assert_eq!(g.hero.path, 1, "the skill is his at once");
+    g.shop.tab = Tree::Shield;
+    press(&mut g, ShopAction::Unlock(Tree::Shield, 2));
+    assert_eq!(g.hero.shield.unwrap().tier, 2);
+    g.shop.tab = Tree::Elixir;
+    let before = g.belt.len();
+    press(&mut g, ShopAction::Bottle(PotionKind::Health));
+    assert_eq!(g.belt.len(), before + 1);
+    // An elixir must be unlocked before its bottles are sold.
+    assert!(g.shop_rows().iter().flat_map(|r| &r.buttons).all(|b| b.action != ShopAction::Bottle(PotionKind::Strength)));
+    // Too poor: nothing changes hands.
+    g.progress.silver = 10;
+    press(&mut g, ShopAction::Unlock(Tree::Elixir, 2));
+    assert_eq!(g.progress.silver, 10);
+    assert_eq!(g.progress.hero(g.hero_kind).owned(Tree::Elixir), 1);
+}
+
+#[test]
+fn the_old_man_can_be_called_from_the_dungeon_and_it_waits() {
+    let mut g = playing();
+    let at = g.hero.pos();
+    g.input.key_down(winit::keyboard::KeyCode::KeyE, false);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Shop);
+    assert!(g.shop.called);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Ready, "back to the same dungeon after a countdown");
+    assert_eq!(g.dungeon, 0);
+    assert_eq!(g.hero.pos(), at, "where he was");
+}
+
+#[test]
+fn each_dungeon_hides_a_shrine_with_a_relic() {
+    let mut g = playing();
+    let t = g.relic_shrine.expect("a hidden shrine");
+    assert_eq!(g.level.grid.get(t.x, t.y), Tile::Open);
+    let runes = g.progress.runes;
+    g.hero.m.teleport(t);
+    g.update(crate::app::STEP);
+    assert!(g.relic_shrine.is_none());
+    assert_eq!(g.progress.runes, runes + RUNES_SHRINE);
+    assert!((0..4).any(|i| g.progress.hero(g.hero_kind).relics[i] != 0));
+}
+
+#[test]
+fn the_path_revives_and_restores_once_per_dungeon() {
+    let mut g = playing_off_road();
+    g.progress.hero_mut(g.hero_kind).owned[1] = 10;
+    g.equip_from_progress();
+    g.hero.shield = None;
+    g.hero.hp = 20;
+    g.update(crate::app::STEP);
+    assert_eq!(g.hero.hp, g.hero.max_hp, "the World Tree restores him at a quarter health");
+    g.hero.hp = 20;
+    g.update(crate::app::STEP);
+    assert_eq!(g.hero.hp, 20, "only once");
+    g.hero.invuln = 0.0;
+    g.hurt_hero(500);
+    assert!(g.hero.alive, "the Valkyrie raises him");
+    assert_eq!(g.hero.hp, g.hero.max_hp / 2);
+    g.hero.invuln = 0.0;
+    g.hurt_hero(500);
+    assert!(!g.hero.alive, "but only once");
+}
+
+#[test]
+fn the_blades_carry_their_gifts() {
+    let mut g = playing_off_road();
+    // Tier 4 stuns the foes around the blow.
+    g.debug_arm(4);
+    let hp = g.hero.pos();
+    for e in g.enemies.iter_mut() {
+        e.b.mode = EnemyMode::Chase;
+        e.m.teleport(P::new(hp.x as i32 - 2, hp.y as i32));
+    }
+    g.hero.facing = Dir::Right;
+    g.hero.attack_cooldown = 0.0;
+    assert!(g.hero.try_attack());
+    g.perform_attack();
+    assert!(g.enemies.iter().all(|e| e.is_stunned()), "the oath binds them");
+    // Tier 6 leaves a decoy.
+    g.debug_arm(6);
+    g.hero.attack_cooldown = 0.0;
+    g.perform_attack();
+    assert!(g.decoy.is_some());
+}
+
+/// A game in play as `hero`, with his trees owned up to `tier`.
+/// Play under way off the road, in the Cisterns, where the old contact rules still hold (the
+/// Garden fights by frame data since B01): the tests of the blades' and paths' old gifts.
+pub(super) fn playing_off_road() -> Game {
+    let mut g = playing();
+    g.map_jump(save::Stage::Dungeon(1));
+    for _ in 0..(READY_SECONDS / crate::app::STEP) as usize + 2 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    assert!(!g.brawling(), "the old rules");
+    g
+}
+
+fn playing_as_off_road(hero: HeroKind, tier: u8) -> Game {
+    let mut g = playing_off_road();
+    g.hero_kind = hero;
+    g.debug_arm(tier);
+    g.hero.hp = g.hero.max_hp;
+    g
+}
+
+#[test]
+fn a_samurai_stands_his_last_and_a_spirit_fights_beside_him() {
+    let mut g = playing_as_off_road(HeroKind::Miyamoto, 9);
+    g.hero.shield = None;
+    g.hero.invuln = 0.0;
+    g.hurt_hero(500);
+    assert!(g.hero.alive, "Seppuku Resolve holds death off");
+    assert!(g.hero.last_stand > 0.0);
+    assert_eq!(g.hero.blow(2), 6, "and triples his blows");
+    g.hero.invuln = 0.0;
+    g.hurt_hero(500);
+    assert!(g.hero.alive && g.hero.hp == 1, "he cannot die while it lasts");
+    // His ancestor strikes down a foe that comes near.
+    let hp = g.hero.pos();
+    g.enemies[0].b.mode = EnemyMode::Chase;
+    g.enemies[0].m.teleport(P::new(hp.x as i32, hp.y as i32));
+    for _ in 0..(2.0 / crate::app::STEP) as usize {
+        g.update_spirits(crate::app::STEP);
+    }
+    assert_eq!(g.spirits.len(), 1);
+    assert!(!g.enemies[0].is_dangerous(), "the spirit slew it");
+}
+
+#[test]
+fn the_janissary_has_a_squad_a_pistol_and_a_bow() {
+    let mut g = playing_as_off_road(HeroKind::Mehmed, 9);
+    g.update_spirits(crate::app::STEP);
+    assert_eq!(g.spirits.len(), 3, "a squad of three");
+    g.debug_arm(5);
+    assert_eq!(g.hero.main, WeaponKind::Ranged(RangedKind::Hurled(HeroKind::Mehmed, 5)), "Koroglu's flintlock is shot");
+    // The Simurg bow rains arrows on the nearest foes.
+    g.debug_arm(8);
+    let hp = g.hero.pos();
+    for e in g.enemies.iter_mut().take(3) {
+        e.b.mode = EnemyMode::Chase;
+        e.m.teleport(P::new(hp.x as i32 + 2, hp.y as i32));
+    }
+    g.perform_attack();
+    assert!(g.enemies.iter().take(3).all(|e| !e.is_dangerous()), "every one of them struck");
+}
+
+#[test]
+fn a_sun_blade_obliterates_the_foes_around_him() {
+    for hero in [HeroKind::Miyamoto, HeroKind::Mehmed] {
+        let mut g = playing_as_off_road(hero, 10);
+        let hp = g.hero.pos();
+        for (k, e) in g.enemies.iter_mut().enumerate() {
+            e.b.mode = EnemyMode::Chase;
+            e.m.teleport(P::new(hp.x as i32 + if k % 2 == 0 { 2 } else { -2 }, hp.y as i32));
+        }
+        g.perform_attack();
+        assert!(g.enemies.iter().all(|e| !e.is_dangerous()), "{hero:?}: all gone in the flash");
+    }
+}
+
+#[test]
+fn zero_opens_the_shop_from_anywhere() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Shop);
+    assert!(g.progress.silver >= CHEAT_COINS);
+    let mut g = playing();
+    g.input.key_down(winit::keyboard::KeyCode::Digit0, false);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Shop);
+}
+
+#[test]
+fn a_third_quick_kill_is_brutal_and_doubles_points() {
+    let mut g = playing_off_road();
+    let before = g.score.score;
+    g.slay_enemy(0);
+    g.slay_enemy(1);
+    assert_eq!(g.double_points, 0.0);
+    g.slay_enemy(2);
+    assert!(g.double_points > 0.0, "no BRUTAL on the third kill");
+    let call = g.juice.banner.as_ref().map(|b| b.text.clone()).unwrap();
+    assert!(STREAK_CALLS[0].contains(&call.as_str()), "{call} is one of the first tier's calls");
+    // The third kill already counts double: 100 + 100 + 200.
+    assert_eq!(g.score.score - before, 400);
+    let mid = g.score.score;
+    g.debug_collect_key();
+    assert_eq!(g.score.score - mid, POINTS_NODULE * 2, "nuggets count double too");
+}
+
+#[test]
+fn streak_calls_vary_and_grow_fiercer_as_the_streak_goes_on() {
+    assert_eq!((streak_tier(3), streak_tier(6), streak_tier(9), streak_tier(12), streak_tier(30)), (0, 1, 2, 3, 3));
+    let mut g = playing();
+    let mut heard = Vec::new();
+    for _ in 0..40 {
+        g.kill_streak = 3;
+        g.brutal();
+        heard.push(g.juice.banner.as_ref().unwrap().text.clone());
+    }
+    assert!(heard.windows(2).all(|w| w[0] != w[1]), "never the same call twice running");
+    let mut kinds = heard.clone();
+    kinds.sort();
+    kinds.dedup();
+    assert!(kinds.len() >= 3, "more than one word: {kinds:?}");
+    // A long streak calls from the top tier, where the hero's war cry is heard too.
+    let mut cried = false;
+    for _ in 0..60 {
+        g.kill_streak = 12;
+        g.brutal();
+        let call = g.juice.banner.as_ref().unwrap().text.clone();
+        assert!(STREAK_CALLS[3].contains(&call.as_str()) || call == war_cry(g.hero_kind), "{call}");
+        cried |= call == war_cry(g.hero_kind);
+    }
+    assert!(cried, "the hero's own cry comes up");
+}
+
+#[test]
+fn the_first_game_opens_with_a_tour() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-tour"));
+    let mut g = Game::new();
+    g.tour_pending = true;
+    start_from_title(&mut g);
+    assert_eq!(g.screen, Screen::Tour);
+    let stops = g.tour.as_ref().unwrap().stops.len();
+    // Kept short: the hero, the goal, one foe and the objective.
+    let arts: Vec<TourArt> = g.tour.as_ref().unwrap().stops.iter().map(|s| s.art).collect();
+    assert!(matches!(arts[..], [TourArt::Hero, TourArt::Gate, TourArt::Enemy(_), TourArt::Nugget]), "{arts:?}");
+    // The camera flies to the first thing.
+    for _ in 0..60 {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.view.tour.is_some());
+    // Click through every stop; then the countdown.
+    for _ in 0..stops {
+        for _ in 0..40 {
+            g.update(crate::app::STEP);
+        }
+        g.input.inject(Action::Confirm);
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Ready);
+    assert!(!g.tour_pending);
+    assert!(tour::tour_seen(), "the tour is remembered");
+}
+
+#[test]
+fn shields_wear_down_and_break() {
+    let mut g = playing();
+    g.hero.shield = Some(ShieldGear::new(1));
+    let hp = g.hero.hp;
+    g.debug_hurt(); // 25: the first shield takes 40%
+    assert!(g.hero.hp < hp && g.hero.hp > hp - 25, "shield took no share: {}", g.hero.hp);
+    let left = g.hero.shield.unwrap().durability;
+    assert!(left < ShieldGear::new(1).max());
+    for _ in 0..10 {
+        g.debug_hurt();
+        g.hero.hp = 100;
+    }
+    assert!(g.hero.shield.is_none(), "it should have broken");
+}
+
+#[test]
+fn potions_ride_on_the_belt_until_drunk() {
+    let mut g = playing();
+    g.belt = vec![PotionKind::Strength, PotionKind::Health];
+    g.hero.hp = 40;
+    g.input.inject(Action::Slot(1));
+    g.update(crate::app::STEP);
+    assert_eq!(g.hero.hp, 40 + HEALTH_POTION);
+    assert_eq!(g.belt, vec![PotionKind::Strength]);
+    g.input.inject(Action::Drink);
+    g.update(crate::app::STEP);
+    assert!(g.belt.is_empty());
+    assert!(g.hero.fx.strength > 0.0);
+    assert_eq!(g.hero.blow(1), 3);
+}
+
+#[test]
+fn right_click_raises_the_shield_and_left_click_swings() {
+    let mut g = playing_off_road();
+    g.input.mouse_button(winit::event::MouseButton::Right, true);
+    g.update(crate::app::STEP);
+    assert_eq!(g.bombs.len(), 0, "the bomb is disabled");
+    assert!(g.input.held(Action::Block), "held, the shield is up");
+    g.input.mouse_button(winit::event::MouseButton::Right, false);
+    g.update(crate::app::STEP);
+    assert!(!g.input.held(Action::Block));
+    g.input.mouse_button(winit::event::MouseButton::Left, true);
+    g.update(crate::app::STEP);
+    assert!(g.hero.swinging());
+}
+
+#[test]
+fn in_play_the_d_pad_turns_the_belt_chooses_the_archangel_and_the_camera_and_never_runs() {
+    use crate::input::{Device, PadButton, PadState};
+    let mut g = playing();
+    g.belt = vec![PotionKind::Strength, PotionKind::Health, PotionKind::Life];
+    let at = g.hero.pos();
+    let pad = |b: &[PadButton]| PadState { buttons: b.iter().copied().collect(), kind: Some(Device::Xbox), ..Default::default() };
+    let press = |g: &mut Game, b: PadButton| {
+        g.input.set_pad(Some(pad(&[b])));
+        g.update(crate::app::STEP);
+        g.input.set_pad(Some(pad(&[])));
+        g.update(crate::app::STEP);
+    };
+    press(&mut g, PadButton::DPadRight);
+    assert_eq!(g.belt_index, 1);
+    press(&mut g, PadButton::DPadLeft);
+    press(&mut g, PadButton::DPadLeft);
+    assert_eq!(g.belt_index, 2, "round from the first to the last");
+    // Held for a second, the D-pad moves him nowhere and turns the belt once.
+    g.input.set_pad(Some(pad(&[PadButton::DPadRight])));
+    for _ in 0..120 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.belt_index, 0);
+    assert_eq!(g.hero.pos(), at, "the D-pad does not run");
+    g.input.set_pad(Some(pad(&[])));
+    g.update(crate::app::STEP);
+    assert_eq!(g.input.last_device(), Device::Xbox);
+    // Down switches the camera; up chooses the next archangel; View opens the full map over the
+    // pause, and View again puts it away, back to play.
+    let mode = g.view.camera_mode;
+    press(&mut g, PadButton::DPadDown);
+    assert_ne!(g.view.camera_mode, mode);
+    g.angels.granted = true;
+    let chosen = g.chosen_angel();
+    press(&mut g, PadButton::DPadUp);
+    assert_eq!(g.chosen_angel(), chosen.map(|a| a.next()), "the next archangel");
+    assert!(!g.full_map_open() && g.screen == Screen::Playing);
+    press(&mut g, PadButton::View);
+    assert!(g.full_map_open() && g.screen == Screen::Paused);
+    press(&mut g, PadButton::DPadDown);
+    assert!(g.full_map_open(), "the D-pad's other ways leave it open");
+    press(&mut g, PadButton::View);
+    assert!(!g.full_map_open() && g.screen == Screen::Playing);
+    press(&mut g, PadButton::Menu);
+    // B backs out of the pause, and Menu pauses again.
+    press(&mut g, PadButton::East);
+    assert_eq!(g.screen, Screen::Playing);
+    press(&mut g, PadButton::Menu);
+    assert_eq!(g.screen, Screen::Paused);
+    // In the pause menu the D-pad moves the highlight and A picks: Resume.
+    press(&mut g, PadButton::DPadDown);
+    assert_eq!(g.menu_index, 1);
+    press(&mut g, PadButton::DPadUp);
+    press(&mut g, PadButton::South);
+    assert_eq!(g.screen, Screen::Playing);
+}
+
+#[test]
+fn the_keyboard_and_mouse_defaults_in_play() {
+    use winit::keyboard::KeyCode;
+    let mut g = playing();
+    g.belt = vec![PotionKind::Strength, PotionKind::Health];
+    let key = |g: &mut Game, k: KeyCode| {
+        g.input.key_down(k, false);
+        g.update(crate::app::STEP);
+        g.input.key_up(k);
+        g.update(crate::app::STEP);
+    };
+    g.input.wheel(-1.0);
+    g.update(crate::app::STEP);
+    assert_eq!(g.belt_index, 1, "the wheel down: the next potion");
+    g.input.wheel(1.0);
+    g.update(crate::app::STEP);
+    assert_eq!(g.belt_index, 0);
+    let mode = g.view.camera_mode;
+    key(&mut g, KeyCode::KeyC);
+    assert_ne!(g.view.camera_mode, mode);
+    key(&mut g, KeyCode::Tab);
+    assert!(g.full_map_open() && g.screen == Screen::Paused, "Tab opens the map");
+    key(&mut g, KeyCode::Tab);
+    assert!(!g.full_map_open() && g.screen == Screen::Playing, "and Tab puts it away");
+    key(&mut g, KeyCode::KeyM);
+    assert!(g.full_map_open(), "M too");
+    key(&mut g, KeyCode::Escape);
+    assert_eq!((g.full_map_open(), g.screen), (false, Screen::Playing), "and Esc");
+    key(&mut g, KeyCode::KeyB);
+    assert!(g.guide_open, "B: the old man's word");
+    key(&mut g, KeyCode::KeyB);
+    assert!(!g.guide_open && g.screen == Screen::Playing, "and B again puts it away");
+    key(&mut g, KeyCode::KeyQ);
+    assert_eq!(g.belt, vec![PotionKind::Health], "Q drinks the chosen potion");
+}
+
+// ------------------------------------------------------------------ the loadout
+
+/// Clicks the shop button for `action` (the tab it lives on must be open).
+fn press_shop(g: &mut Game, action: ShopAction) {
+    let rows = g.shop_rows();
+    let (r, c) = rows
+        .iter()
+        .enumerate()
+        .find_map(|(r, row)| row.buttons.iter().position(|b| b.action == action).map(|c| (r, c)))
+        .expect("no such button");
+    let b = crate::render::hud::shop_rects(&rows, g.viewport.0, g.viewport.1)[r][c];
+    g.input.click = Some((b[0] + b[2] / 2.0, b[1] + b[3] / 2.0));
+    g.update(crate::app::STEP);
+}
+
+#[test]
+fn the_loadout_tab_swears_an_archangel_who_is_with_him_before_the_shrines_and_chosen_first() {
+    use logic::angels::{Archangel, RECHARGE};
+    let mut g = playing();
+    g.open_shop();
+    press_shop(&mut g, ShopAction::Loadout);
+    assert!(g.shop.loadout);
+    let rows = g.shop_rows();
+    assert_eq!(rows.iter().find(|r| r.kind == RowKind::Patron).unwrap().buttons.len(), 4, "the four archangels");
+    assert_eq!(rows.iter().find(|r| r.kind == RowKind::Outfit).unwrap().buttons.len(), 4, "four outfits");
+    press_shop(&mut g, ShopAction::Patron(Archangel::Michael));
+    assert_eq!(g.progress.hero(g.hero_kind).patron, Some(Archangel::Michael));
+    press_shop(&mut g, ShopAction::Leave);
+    for _ in 0..((READY_SECONDS + 0.1) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    // Before any shrine: Michael's fire, then 25 seconds before it comes again.
+    assert!(!g.angels.granted);
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert!(g.projectiles.iter().any(|p| p.kind == RangedKind::Grace), "blue fire");
+    assert!((g.angels.wait[Archangel::Michael.index()] - RECHARGE).abs() < 0.05);
+    g.projectiles.clear();
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert!(g.projectiles.is_empty(), "not yet");
+    for _ in 0..((RECHARGE + 0.1) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+        g.hero.invuln = 1.0;
+    }
+    assert_eq!(g.angels.wait[Archangel::Michael.index()], 0.0, "back after 25 seconds");
+    // Sworn to another, he is chosen at once.
+    g.open_shop();
+    press_shop(&mut g, ShopAction::Loadout);
+    press_shop(&mut g, ShopAction::Patron(Archangel::Raphael));
+    assert_eq!(g.chosen_angel(), Some(Archangel::Raphael));
+}
+
+#[test]
+fn blades_dull_as_they_strike_bite_the_boss_less_and_are_sharpened_for_gold() {
+    let mut g = meadow();
+    let k = (g.hero.blade - 1) as usize;
+    assert_eq!(g.progress.hero(g.hero_kind).edge[k], 100);
+    for _ in 0..100 {
+        g.dull_blade();
+    }
+    let edge = g.progress.hero(g.hero_kind).edge[k];
+    assert!((39..=41).contains(&edge), "worn down by about sixty: {edge}");
+    assert!((g.hero.edge - edge as f64 / 100.0).abs() < 1e-9, "the hero holds the same blade");
+    // A dull blade bites the boss less (into the fight as F1 goes, the Cyclops risen and awake).
+    let blow = |edge: f64| {
+        let mut b = playing();
+        b.input.key_down(winit::keyboard::KeyCode::F1, false);
+        b.update(crate::app::STEP);
+        for _ in 0..((READY_SECONDS + 2.2) / crate::app::STEP) as usize {
+            b.update(crate::app::STEP);
+            b.hero.invuln = 1.0;
+        }
+        let bp = b.boss.as_ref().unwrap().pos;
+        let hp = b.boss.as_ref().unwrap().hp;
+        b.hero.edge = edge;
+        assert!(b.strike_boss(10, bp), "the blow lands");
+        hp - b.boss.as_ref().unwrap().hp
+    };
+    let (keen, dull) = (blow(1.0), blow(0.0));
+    assert!(dull < keen, "keen {keen}, rusted {dull}");
+    // The old man puts the edge back, for gold.
+    g.equip_from_progress();
+    g.open_shop();
+    g.progress.silver = 1000;
+    press_shop(&mut g, ShopAction::Loadout);
+    let price = logic::gear::sharpen_price(g.hero.blade, g.hero.edge);
+    assert!(price > 0);
+    press_shop(&mut g, ShopAction::Sharpen);
+    assert_eq!(g.progress.hero(g.hero_kind).edge[k], 100);
+    assert_eq!(g.hero.edge, 1.0);
+    assert_eq!(g.progress.silver, 1000 - price);
+}
+
+#[test]
+fn the_old_man_carves_runes_into_the_blade_and_the_shield_and_they_wear_slower() {
+    use crate::logic::progression::{CARVE_RUNES, CARVINGS};
+    let mut g = meadow();
+    g.equip_from_progress();
+    g.open_shop();
+    g.progress.runes = 30;
+    // At the anvil: the blade in hand, three carvings for 4, 8 and 12 runes.
+    press_shop(&mut g, ShopAction::Tab(Tree::Armory));
+    for k in 0..CARVINGS {
+        assert!(g.shop_rows().iter().any(|r| r
+            .buttons
+            .iter()
+            .any(|b| b.action == ShopAction::Carve(Tree::Armory) && b.enabled && b.runes == CARVE_RUNES[k as usize] && b.price == 0)));
+        press_shop(&mut g, ShopAction::Carve(Tree::Armory));
+    }
+    let h = *g.progress.hero(g.hero_kind);
+    assert_eq!((h.carved(Tree::Armory, h.wield), g.progress.runes), (3, 6));
+    assert_eq!(g.hero.carved, [3, 0], "they show on the blade in his hand");
+    assert!(
+        g.shop_rows().iter().any(|r| r.buttons.iter().any(|b| b.action == ShopAction::Carve(Tree::Armory) && !b.enabled)),
+        "all three cut"
+    );
+    // At the shield wall: the shield he carries.
+    press_shop(&mut g, ShopAction::Tab(Tree::Shield));
+    press_shop(&mut g, ShopAction::Carve(Tree::Shield));
+    assert_eq!(g.progress.hero(g.hero_kind).carved(Tree::Shield, h.carry), 1);
+    assert_eq!((g.hero.carved, g.progress.runes), ([3, 1], 2));
+    // The carved blade keeps its edge: the hundred blows that take sixty off a bare one take a quarter.
+    let k = (g.hero.blade - 1) as usize;
+    for _ in 0..100 {
+        g.dull_blade();
+    }
+    let edge = g.progress.hero(g.hero_kind).edge[k];
+    assert!((73..=76).contains(&edge), "a carved blade worn down by about 25: {edge}");
+}
+
+#[test]
+fn a_rusted_blade_glances_off_some_foes_and_a_keen_one_never() {
+    let mut g = meadow();
+    let at = P::new(13, 16);
+    let mut felled = [0, 0];
+    for (k, edge) in [1.0, 0.05].into_iter().enumerate() {
+        for _ in 0..30 {
+            g.enemies.clear();
+            g.view.clear_enemies();
+            g.hero.place(P::new(13, 17));
+            g.hero.face(Dir::Up);
+            let i = foe_at(&mut g, EnemyKind::Bat, at);
+            g.hero.edge = edge;
+            g.perform_attack();
+            felled[k] += usize::from(fell(&g, i));
+        }
+    }
+    assert_eq!(felled[0], 30, "a keen blade fells every one");
+    assert!(felled[1] < 30, "a rusted one glances off some: {} of 30 fell", felled[1]);
+}
+
+#[test]
+fn a_shield_that_breaks_is_gone_until_the_old_man_reforges_it() {
+    let mut g = playing();
+    let tier = g.progress.hero(g.hero_kind).carry;
+    g.hero.shield = Some(ShieldGear { durability: 1, ..ShieldGear::new(tier) });
+    g.hero.invuln = 0.0;
+    g.hurt_hero(40);
+    assert!(g.hero.shield.is_none());
+    assert!(g.progress.hero(g.hero_kind).is_broken(tier), "struck off for good");
+    // A new adventure does not bring it back.
+    g.new_kit();
+    assert!(g.hero.shield.is_none());
+    // Nor can it be carried; it must be reforged.
+    g.open_shop();
+    g.progress.silver = 2000;
+    press_shop(&mut g, ShopAction::Tab(Tree::Shield));
+    assert!(g.shop_rows().iter().all(|r| r.buttons.iter().all(|b| b.action != ShopAction::Carry(tier))), "no carrying a broken shield");
+    press_shop(&mut g, ShopAction::Reforge);
+    assert_eq!(g.hero.shield.map(|s| s.tier), Some(tier));
+    assert!(!g.progress.hero(g.hero_kind).is_broken(tier));
+    assert_eq!(g.progress.silver, 2000 - logic::gear::reforge_price(tier));
+}
+
+#[test]
+fn lb_raises_the_shield_to_take_the_whole_blow_at_a_slower_walk() {
+    let mut g = meadow();
+    g.hero.shield = Some(ShieldGear::new(1));
+    g.update(crate::app::STEP);
+    let pace = g.hero.m.speed;
+    g.input.inject(Action::Block);
+    g.update(crate::app::STEP);
+    assert!(g.hero.blocking);
+    assert!(g.hero.m.speed < pace * 0.7, "slower: {} from {pace}", g.hero.m.speed);
+    let (hp, dur) = (g.hero.hp, g.hero.shield.unwrap().durability);
+    g.hero.invuln = 0.0;
+    g.hurt_hero(10);
+    assert_eq!(g.hero.hp, hp, "the raised shield takes it all");
+    assert!(g.hero.shield.unwrap().durability < dur);
+    // No swinging behind it.
+    g.hero.attack_cooldown = 0.0;
+    g.input.inject(Action::Attack);
+    g.update(crate::app::STEP);
+    assert!(!g.hero.swinging());
+    // Lowered, it takes only its share again.
+    g.input.inject_release(Action::Block);
+    g.update(crate::app::STEP);
+    assert!(!g.hero.blocking);
+    let hp = g.hero.hp;
+    g.hero.invuln = 0.0;
+    g.hurt_hero(10);
+    assert!(g.hero.hp < hp);
+}
+
+#[test]
+fn the_controls_page_switches_between_the_controller_and_the_keyboard() {
+    let mut g = Game::new();
+    g.open_controls();
+    assert!(g.show_controls);
+    let start = g.controls_keyboard;
+    g.input.nav = Some(Dir::Right);
+    g.update(crate::app::STEP);
+    assert_eq!(g.controls_keyboard, !start);
+    assert!(g.show_controls, "still open");
+    g.input.inject(Action::TabNext);
+    g.update(crate::app::STEP);
+    assert_eq!(g.controls_keyboard, start);
+    // A click on the keyboard's tab.
+    let tabs = crate::render::hud::controls_tab_rects(g.viewport.0, g.viewport.1);
+    g.input.click = Some((tabs[1][0] + 5.0, tabs[1][1] + 5.0));
+    g.update(crate::app::STEP);
+    assert!(g.controls_keyboard && g.show_controls);
+    g.input.inject(Action::Pause);
+    g.update(crate::app::STEP);
+    assert!(!g.show_controls, "Esc puts it away");
+}
+
+#[test]
+fn an_outfit_and_the_paths_ribbons_dress_the_hero() {
+    let mut g = playing();
+    g.open_shop();
+    press_shop(&mut g, ShopAction::Loadout);
+    press_shop(&mut g, ShopAction::Outfit(2));
+    assert_eq!((g.progress.hero(g.hero_kind).outfit, g.hero.outfit), (2, 2));
+    // A path learned is a ribbon on his arm: the model grows by them.
+    let plain = g.view.hero_voxels();
+    g.progress.hero_mut(g.hero_kind).owned[Tree::Path.index()] = 4;
+    g.equip_from_progress();
+    g.update(crate::app::STEP);
+    assert!(g.view.hero_voxels() > plain, "ribbons on his arm");
+}
+
+#[test]
+fn reinforcements_come_in_dungeon_three_too() {
+    // Dungeon III (reached from the map) is foe stage 3, whose foes the reinforcement cycle does
+    // not list: the spawner used to unwrap a missing spec there and crash.
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(2));
+    let before = g.enemies.len();
+    for _ in 0..(120.0 / crate::app::STEP) as usize {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+    }
+    assert!(g.enemies.len() > before || g.spawned > 0, "reinforcements came ({} foes)", g.enemies.len());
+}
+
+#[test]
+fn a_new_level_waits_behind_the_loading_screen_until_the_renderer_has_it() {
+    let mut g = Game::new();
+    g.await_renderer = true;
+    g.map_jump(Stage::Dungeon(0));
+    assert!(g.loading.as_ref().is_some_and(|l| l.cold), "the first load is cold");
+    let (screen, timer) = (g.screen, g.screen_timer);
+    for _ in 0..120 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!((g.screen, g.screen_timer), (screen, timer), "the world waits");
+    assert_eq!(g.juice.fade, 1.0, "behind black");
+    g.finish_loading();
+    assert!(g.loading.is_none());
+    assert_eq!(g.transitions.len(), 1);
+    g.update(crate::app::STEP);
+    assert!(g.screen_timer < timer, "the countdown runs again");
+    // Back to the same level: warm.
+    g.map_jump(Stage::Dungeon(0));
+    assert!(g.loading.as_ref().is_some_and(|l| !l.cold));
+    // A renderer that never answers does not hold it for ever.
+    for _ in 0..((crate::game::LOADING_TIMEOUT + 0.5) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!(g.loading.is_none());
+}
+
+#[test]
+fn without_a_renderer_to_wait_for_levels_start_at_once() {
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(0));
+    assert!(g.loading.is_none());
+}
+
+/// Into the Garden, playing, with a wall he can blow up beside him: (where he stands, the wall).
+fn by_a_breakable_wall() -> (Game, P, P) {
+    use crate::logic::systems::is_protected;
+    let mut g = Game::new();
+    g.map_jump(Stage::Dungeon(0));
+    for _ in 0..(4.0 / crate::app::STEP) as usize {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.screen, Screen::Playing);
+    let grid = &g.level.grid;
+    let (mut stand, mut wall) = (None, None);
+    'find: for y in 2..grid.height - 2 {
+        for x in 2..grid.width - 2 {
+            if grid.get(x, y) != Tile::Open {
+                continue;
+            }
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (wx, wy) = (x + dx, y + dy);
+                if grid.get(wx, wy) == Tile::Rock
+                    && !is_protected(grid, wx, wy)
+                    && !grid.is_landmark(wx, wy)
+                    && g.view.wall_standing(P::new(wx, wy))
+                {
+                    (stand, wall) = (Some(P::new(x, y)), Some(P::new(wx, wy)));
+                    break 'find;
+                }
+            }
+        }
+    }
+    let (stand, wall) = (stand.unwrap(), wall.unwrap());
+    g.hero.place(stand);
+    (g, stand, wall)
+}
+
+#[test]
+fn a_blown_wall_opens_its_way_and_its_scenery_in_the_same_step() {
+    // RP04: no frame shows an open wall with blocking collision, or the reverse.
+    let (mut g, _, wall) = by_a_breakable_wall();
+    g.place_bomb();
+    assert_eq!(g.bombs.len(), 1);
+    let static_before = g.view.static_cubes.len();
+    let mut steps = 0;
+    while !g.bombs.is_empty() && steps < 1200 {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+        steps += 1;
+        let open = g.level.grid.get(wall.x, wall.y) != Tile::Rock;
+        assert_eq!(open, !g.view.wall_standing(wall), "the way and the scenery agree, step {steps}");
+    }
+    assert!(g.bombs.is_empty(), "the bomb went off");
+    assert_eq!(g.level.grid.get(wall.x, wall.y), Tile::Open, "the wall is floor");
+    assert!(!g.view.wall_standing(wall));
+    // Rubble is left, low: nothing of it stands above a shin.
+    let added = &g.view.static_cubes[static_before..];
+    assert!(added.len() > 1, "a floor patch and rubble");
+    for c in added {
+        let top = glam::Mat4::from_cols_array(&c.m).transform_point3(glam::Vec3::splat(0.5)).y;
+        assert!(top < g.level.grid.elevation(wall.x, wall.y) as f32 * crate::render::view::STEP + 0.3, "low rubble ({top})");
+    }
+    assert!(g.view.debris_count() <= crate::render::view::effects::MAX_DEBRIS);
+    // The foes' way-finding takes the new opening at once (it reads the grid every step).
+    let stand = g.hero.occupied();
+    let toward = Dir::nearest(V::new((wall.x - stand.x) as f64, (wall.y - stand.y) as f64));
+    let beyond = P::new(wall.x + (wall.x - stand.x), wall.y + (wall.y - stand.y));
+    if g.level.grid.get(beyond.x, beyond.y) == Tile::Open {
+        let way = crate::logic::pathing::route_toward(&g.level.grid, stand, beyond.v(), false, false, false);
+        assert_eq!(way, Some(toward), "through the gap");
+    }
+}
+
+#[test]
+fn chains_of_blasts_keep_their_debris_to_its_budget() {
+    let (mut g, stand, _) = by_a_breakable_wall();
+    for _ in 0..40 {
+        let grid = g.level.grid.clone();
+        g.view.explode(&grid, stand.x as f64, stand.y as f64, 12);
+    }
+    assert_eq!(g.view.debris_count(), crate::render::view::effects::MAX_DEBRIS);
+}
+
+#[test]
+fn coming_back_to_a_level_finds_its_walls_whole_and_keeps_what_he_earned() {
+    // RP05: transient damage goes with the visit; what he carries stays.
+    let (mut g, _, wall) = by_a_breakable_wall();
+    g.place_bomb();
+    while !g.bombs.is_empty() {
+        g.hero.invuln = 1.0;
+        g.update(crate::app::STEP);
+    }
+    assert!(!g.view.wall_standing(wall));
+    g.progress.silver += 7;
+    let (silver, runes) = (g.progress.silver, g.progress.runes);
+    g.map_jump(Stage::Hub);
+    g.map_jump(Stage::Dungeon(0));
+    assert_eq!(g.level.grid.get(wall.x, wall.y), Tile::Rock, "the wall stands again");
+    assert!(g.view.wall_standing(wall));
+    assert_eq!(g.view.debris_count(), 0, "no debris carried over");
+    assert!(g.bombs.is_empty() && g.projectiles.is_empty());
+    assert_eq!((g.progress.silver, g.progress.runes), (silver, runes), "his silver and runes stay");
+}
+
+#[test]
+fn f5_makes_him_immortal_blows_land_but_his_health_comes_back() {
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    g.load_level(0);
+    g.enter(Screen::Playing);
+    g.input.inject(Action::Immortal);
+    g.update(crate::app::STEP);
+    assert!(g.immortal);
+    // A blow far past his health, by touch and in the brawl: he stands, whole.
+    g.hero.invuln = 0.0;
+    g.hurt_hero(10_000);
+    assert!(g.hero.alive && g.hero.hp == g.hero.max_hp);
+    assert_ne!(g.screen, Screen::Dying);
+    g.wound_hero(10_000.0, 0xff0000);
+    assert!(g.hero.alive && g.hero.hp == g.hero.max_hp);
+    assert_ne!(g.screen, Screen::Dying);
+    // F5 again: mortal, and the next such blow kills.
+    g.input.inject(Action::Immortal);
+    g.update(crate::app::STEP);
+    assert!(!g.immortal);
+    g.hero.invuln = 0.0;
+    g.hero.shield = None;
+    g.hurt_hero(10_000);
+    assert!(!g.hero.alive);
+}
+
+#[test]
+fn the_map_plays_scene_one_from_either_place_and_scene_two() {
+    use logic::story::{first, Scene, Shot};
+    std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
+    let mut g = Game::new();
+    let stops = map_stops();
+    let scenes: Vec<(Scene, usize)> = stops.iter().filter_map(|s| s.scene).collect();
+    let gateway = (Scene::One, first(Shot::Arrive).unwrap());
+    let mut want = vec![(Scene::One, 0), gateway];
+    want.extend(crate::logic::sins::SINS.iter().map(|&s| (Scene::After(s), 0)));
+    want.push((Scene::Two, 0));
+    assert_eq!(scenes, want, "the graveyard, the gateway below, the scenes at Hızır's, and the end");
+    g.show_map = true;
+    g.map_index = stops.iter().position(|s| s.scene == Some(gateway)).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert!(!g.show_map);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| (s.scene, s.beat)), Some(gateway));
+    // Scene II from the map plays the end, without counting the game as finished.
+    let mut g = Game::new();
+    g.show_map = true;
+    g.map_index = stops.iter().position(|s| s.scene == Some((Scene::Two, 0))).unwrap();
+    g.input.inject(Action::Confirm);
+    g.update(crate::app::STEP);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| (s.scene, s.beat)), Some((Scene::Two, 0)));
+    assert!(!g.finished);
+}
+
+/// F6 (a testing cheat) puts a thousand coins in his purse, every press.
+#[test]
+fn f6_gives_a_thousand_coins_every_press() {
+    let mut g = playing();
+    let before = g.progress.silver;
+    for _ in 0..3 {
+        g.input.inject(Action::Gold);
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.progress.silver, before + 3000);
+}
+
+/// The compass shows only while he stands idle, fading in a moment after he stops.
+#[test]
+fn the_compass_shows_only_while_he_stands_idle() {
+    let mut g = playing();
+    for _ in 0..(2.0 / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert!((g.compass_shown() - 1.0).abs() < 1e-6, "idle: shown");
+    g.input.set_pad(Some(crate::input::PadState { left: (1.0, 0.0), ..Default::default() }));
+    for _ in 0..30 {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.compass_shown(), 0.0, "moving: hidden");
+}
+
+/// In the maze, as in a fight, every foe drawn on the screen is posed by its clips (ANIMATION.md
+/// §11): the first stage's four hunting him, fleeing in a frenzy, and a slain draugr's bones
+/// scattered and pulling together.
+#[test]
+fn the_maze_foes_on_screen_play_their_clips() {
+    // (From either gameplay camera: the follow camera here, the top one at the end. Another test
+    // may have saved either as the player's choice.)
+    let mut g = playing();
+    g.view.camera_mode = crate::render::view::CameraMode::Third;
+    g.debug_foes(1, Some(0));
+    let n = g.enemies.len();
+    assert_eq!(n, 4, "the first stage's four");
+    let check = |g: &mut Game, steps: usize, what: &str| {
+        let (mut shown, mut posed) = (0, 0);
+        for step in 0..steps {
+            g.update(crate::app::STEP);
+            for i in 0..g.enemies.len() {
+                if g.view.foe_on_screen(i) {
+                    shown += 1;
+                    if g.view.foe_posed_by_clips(i) {
+                        posed += 1;
+                    } else {
+                        panic!(
+                            "{what}: foe {i} ({:?}, {:?}) on screen but not posed by its clips at step {step}, camera at {}",
+                            g.enemies[i].kind(),
+                            g.enemies[i].mode(),
+                            g.view.camera_position()
+                        );
+                    }
+                }
+            }
+        }
+        assert!(shown > steps / 2, "{what}: foes on screen ({shown} foe-steps)");
+        posed
+    };
+    check(&mut g, 90, "hunting");
+    g.frenzy.start(10.0);
+    for e in g.enemies.iter_mut() {
+        e.enter_frenzy(&g.level.grid);
+    }
+    assert!(g.enemies.iter().any(|e| e.mode() == EnemyMode::Frenzied));
+    check(&mut g, 60, "frenzied");
+    let k = g.enemies.iter().position(|e| e.kind() == EnemyKind::Skeleton).unwrap();
+    g.enemies[k].kill();
+    assert_eq!(g.enemies[k].mode(), EnemyMode::Scattered);
+    check(&mut g, 60, "scattered");
+    let mut g = playing();
+    g.view.camera_mode = crate::render::view::CameraMode::Top;
+    g.debug_foes(1, Some(0));
+    check(&mut g, 90, "hunting, from above");
+}
