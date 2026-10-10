@@ -341,8 +341,8 @@ impl Bell {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stolen {
     Potion(PotionKind),
+    /// An archangel's call: he stays away until the thief falls (or `angels::STOLEN_WAIT`).
     Blessing(Archangel),
-    Patron,
 }
 
 /// A native keeping what was stolen (by its duelist's id), until it falls.

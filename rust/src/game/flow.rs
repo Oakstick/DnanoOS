@@ -46,7 +46,6 @@ macro_rules! scene_state {
             hero_kind: $g.hero_kind,
             spirits: &$g.spirits,
             fires: &$g.fires,
-            angels_spent: $g.angels_spent(),
             red_key: $g.red_key,
             realm: $g.realm,
             hub: $g.hub.as_ref().map(|h| HubView { doors: h.doors.map(|d| d as f32), sins: $g.sins_cleared, seal: h.seal as f32 }),

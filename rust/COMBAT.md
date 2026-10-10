@@ -582,7 +582,7 @@ where it is fought:
 | Threat | 3 points, a token per 30 f | **2 points, a token per 60 f**: a pack is a fight, not a pile-on |
 | His health | a lost bout, never death | real: lives, the dying, the packs back asleep at their posts and whole |
 | His gear | never worn | his shield wears as it blocks and breaks for good; his blade dulls as it strikes |
-| Blows from outside the frame data | nothing (the lab is pure) | a plain blow through the fighter (an archangel's fire, a spirit: 20 damage, 30 poise; bombs are out of play) |
+| Blows from outside the frame data | nothing (the lab is pure; the archangels cannot be called there) | a plain blow through the fighter (a spirit: 20 damage, 30 poise; bombs are out of play). The archangels (B58: all four from the first shrine, each back 25 s after its call) are blows of their own: Gabriel's thunder 16 damage and 40 poise to every duelist within 8 tiles, Raphael's beam 30 and 50 along its line, Uriel's wave 22 and 45 to each it passes (once each); a prince or Krampus takes three tenths of the damage and all the poise. Michael's fire awes (below; a prince loses three tenths of his poise to it). A blow on a sleeping pack wakes its den |
 | A kill | gone | gone, with its coins, rune chance, streak and points, and 20% a health potion |
 
 The kit is refreshed every frame, so a dulled blade, a broken shield or a potion counts at once

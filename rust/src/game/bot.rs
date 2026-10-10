@@ -21,6 +21,12 @@
 //! expert refuse a whisper (they call the old man, who denies it), strike a mimic chest
 //! rather than trade with him, and strike a mimic chest before they would open it.
 //!
+//! Wherever the archangels may be called (not in the ring), the adept and the expert call each of the four as
+//! soon as he is back and has something to strike: Michael and Gabriel a foe near, Raphael one
+//! along its aim, Uriel one within his wave; the chosen one is called, or the next button turned
+//! toward one worth calling (B58); the novice, the masher, never does. They reckon only foes already awake, call
+//! only Michael on the Burning Field, and do not call while Envy's Eye watches.
+//!
 //! `balance` plays every bout with every skill over a few seeds and reports win rate, time to
 //! kill and damage taken against the targets of COMBAT.md §2.1 (`gym::Bout::target`).
 
@@ -137,6 +143,10 @@ pub struct Bot {
     /// Where it stood a while ago, and for how many updates it has pushed without getting
     /// anywhere: wedged on a corner the straight line cuts, it takes the tiles' way round.
     stand: (V, u32),
+    /// An archangel's button was down last update (each press is let go before the next).
+    angel_down: bool,
+    /// It calls the archangels (a test of the foes' own play may keep them out).
+    pub angels: bool,
 }
 
 impl Bot {
@@ -154,6 +164,8 @@ impl Bot {
             chase: (P::new(-1, -1), 0),
             given_up: Vec::new(),
             stand: (V::new(f64::NAN, f64::NAN), 0),
+            angel_down: false,
+            angels: true,
         }
     }
 
@@ -546,6 +558,69 @@ impl Bot {
         pad
     }
 
+    /// The archangels on their cooldowns: the chosen one called when he is back and has something to
+    /// strike, else the next button turned toward one who has (a press, then a release).
+    fn call_angels(&mut self, g: &Game, pad: &mut PadState) {
+        use crate::logic::angels::{Archangel, ARCHANGELS, THUNDER_RADIUS, WAVE_RADIUS};
+        // (`VH_NO_ANGELS`: the bots never call them, to measure the run without.)
+        static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        // (The novice is the masher, the floor: it never calls them.)
+        if std::mem::take(&mut self.angel_down)
+            || !self.angels
+            || self.skill == Skill::Novice
+            || *OFF.get_or_init(|| std::env::var_os("VH_NO_ANGELS").is_some())
+        {
+            return;
+        }
+        let patron = g.patron();
+        if !g.angels.any(patron) || g.grotto_watched() {
+            return;
+        }
+        let hp = g.hero.pos();
+        let aim = g.hero.aim();
+        let foes: Vec<V> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && !d.untouchable() && !self.ignore.contains(&d.id))
+            // (The adept and the expert reckon only the foes already up: a power's blow would wake a
+            // sleeping pack, and Uriel's wave three.)
+            .filter(|d| d.den.is_none_or(|den| den.awake && !den.returning))
+            .map(|d| d.pos)
+            .collect();
+        // ...nor strike all about them while a pack sleeps within reach.
+        let sleeping: Vec<V> = g
+            .enemies
+            .iter()
+            .filter_map(|e| e.duel.as_deref())
+            .filter(|d| d.alive() && d.den.is_some_and(|den| !den.awake || den.returning))
+            .map(|d| d.pos)
+            .collect();
+        let near = |r: f64| foes.iter().any(|p| math::len(math::sub(*p, hp)) <= r);
+        let quiet = |r: f64| !sleeping.iter().any(|p| math::len(math::sub(*p, hp)) <= r + 1.0);
+        // On the Burning Field every blow cracks the ground and every kill rises again: the adept and
+        // the expert call only Michael there, as Hızır counsels (let them feud).
+        let field = matches!(g.run, Some(crate::logic::realms::Run::Wrath(_)));
+        let worth = |a: Archangel| match a {
+            _ if field && a != Archangel::Michael => false,
+            Archangel::Michael => near(9.0),
+            Archangel::Gabriel => near(THUNDER_RADIUS - 0.5) && quiet(THUNDER_RADIUS),
+            Archangel::Raphael => foes.iter().any(|p| {
+                let d = math::sub(*p, hp);
+                let l = math::len(d);
+                l > 0.1 && l <= 10.0 && (d.x * aim.x + d.y * aim.y) / l > 0.95
+            }),
+            Archangel::Uriel => near(WAVE_RADIUS - 2.0) && quiet(WAVE_RADIUS),
+        };
+        let want: Vec<Archangel> = ARCHANGELS.into_iter().filter(|&a| g.angels.ready(a, patron) && worth(a)).collect();
+        if want.is_empty() {
+            return;
+        }
+        let call = g.chosen_angel().is_some_and(|c| want.contains(&c));
+        pad.actions.insert(if call { Action::Angel } else { Action::AngelNext });
+        self.angel_down = true;
+    }
+
     /// The stick and buttons as the bot's reading of the fight gives them (`act` keeps the
     /// Burning Field's lava out of them).
     fn decide(&mut self, g: &Game) -> PadState {
@@ -636,6 +711,8 @@ impl Bot {
             return pad;
         }
         self.guard_hold = 0;
+        // The archangels, on their cooldowns.
+        self.call_angels(g, &mut pad);
 
         // The prince's cheats, while nothing hunts it.
         if let Some(p) = self.see_through(g, &mut pad) {
@@ -1906,6 +1983,8 @@ pub struct CourtFight {
     pub secs: f64,
     pub phase: u8,
     pub stats: BoutStats,
+    /// The archangels called (Michael, Gabriel, Raphael, Uriel).
+    pub angels: [u32; 4],
 }
 
 /// A bot fights the prince of `sin` in his court (Greed's: the Counting House) until he falls, its
@@ -1954,6 +2033,7 @@ pub fn court_fight(sin: crate::logic::sins::Sin, skill: Skill, seed: u32, loadou
     out.secs = t;
     out.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.game_over);
     out.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.angels = g.angels.count;
     out
 }
 
@@ -2011,6 +2091,7 @@ pub fn lair_fight(skill: Skill, seed: u32, loadout: Option<Loadout>, limit: f64)
     out.fight.secs = t;
     out.fight.deaths = lives.saturating_sub(g.score.lives) + u32::from(out.fight.game_over);
     out.fight.stats = g.brawl.as_ref().map(|b| b.stats).unwrap_or_default();
+    out.fight.angels = g.angels.count;
     if let Some(l) = g.lair.as_ref() {
         (out.charges, out.dazes, out.taunts) = (l.charges, l.dazes, l.taunts);
     }

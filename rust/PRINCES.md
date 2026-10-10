@@ -396,8 +396,8 @@ keeps: the angel last called and his move as last seen).
   the covet does, so only the fire's landing moves (its bolts fly): it is planned again with the
   threat manager, and if it would land too near another strike he copies Raphael's beam instead.
   The covet is kept off (its cooldown held) while the hero is out of the coveted move's range.
-  The angel last called is seen from the hero's blessing charges and his patron's wait (no field
-  added to `Game`); none called, he copies Raphael. The banner reads "HE COVETS YOUR <ANGEL>" with
+  The angel last called is seen from the hero's archangels (`Angels::calls` and `last`, since
+  B58); none called, he copies Raphael. The banner reads "HE COVETS YOUR <ANGEL>" with
   what to do.
 * *Gabriel's thunder*, three marks round the hero: the first is a `Shape::Mark` on him, the other
   two stand behind him from Leviathan, so the way out is toward Leviathan or straight back.

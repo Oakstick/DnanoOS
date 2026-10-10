@@ -429,6 +429,8 @@ pub struct WholeRun {
     pub outcomes: [u32; 4],
     /// New Game+: the times over (0 a first run).
     pub ng: u8,
+    /// The archangels called over the run, each (Michael, Gabriel, Raphael, Uriel).
+    pub angels: [u32; 4],
 }
 
 impl WholeRun {
@@ -833,6 +835,7 @@ pub fn run_of(skill: Skill, seed: u32, sins: &[Sin], finale: bool) -> WholeRun {
 /// The purse and the Ledger at the run's end, into its report.
 fn finish_report(run: &mut WholeRun, g: &Game) {
     run.purse = (g.progress.silver, g.progress.runes);
+    run.angels = g.angels.count;
     let l = &g.warband.save.ledger;
     run.ledger = (
         run.parts.iter().map(|p| p.made).sum(),
@@ -868,6 +871,7 @@ fn play_run(g: &mut Game, skill: Skill, seed: u32, sins: &[Sin], finale: bool) -
         ledger: (0, 0, 0, 0, 0),
         outcomes: [0; 4],
         ng: g.ng_plus,
+        angels: [0; 4],
     };
     let mut before = Part::new(PartKind::Pit, g);
     shop(g, skill, seed, &mut before);
@@ -1020,6 +1024,8 @@ pub fn run_table(r: &WholeRun) -> String {
         r.realms_done(),
         r.princes_slain()
     );
+    let [m, ga, ra, u] = r.angels;
+    let _ = writeln!(out, "archangels called: Michael {m}, Gabriel {ga}, Raphael {ra}, Uriel {u}");
     out
 }
 

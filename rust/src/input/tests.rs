@@ -32,13 +32,13 @@ fn keys_combine_into_eight_directions() {
 }
 
 #[test]
-fn in_play_the_d_pad_chooses_potions_opens_the_map_and_switches_the_camera_and_never_runs() {
+fn in_play_the_d_pad_chooses_potions_and_archangels_and_switches_the_camera_and_never_runs() {
     let mut i = Input::new();
     i.set_context(Context::Play);
     for (b, want) in [
         (PadButton::DPadLeft, Action::PotionPrev),
         (PadButton::DPadRight, Action::PotionNext),
-        (PadButton::DPadUp, Action::Map),
+        (PadButton::DPadUp, Action::AngelNext),
         (PadButton::DPadDown, Action::Camera),
     ] {
         let (got, nav) = step(&mut i, Some(pad(&[b], Device::Xbox)));

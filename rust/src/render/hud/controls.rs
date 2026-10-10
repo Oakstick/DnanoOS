@@ -25,7 +25,8 @@ fn does(a: Action) -> &'static str {
         Action::Jump => "Jump; evade in a fight",
         Action::Block => "Hold: raise your shield",
         Action::Step => "Bifrost Step, once learned",
-        Action::Angel => "Archangel's power",
+        Action::Angel => "Call the chosen archangel",
+        Action::AngelNext => "Choose the next archangel",
         Action::Drink => "Drink the chosen potion",
         Action::PotionPrev => "Previous potion",
         Action::PotionNext => "Next potion",
@@ -46,12 +47,13 @@ fn does(a: Action) -> &'static str {
 }
 
 /// The keyboard and mouse rows: each action's keys (as bound) beside what it does.
-const KEY_ROWS: [Action; 14] = [
+const KEY_ROWS: [Action; 15] = [
     Action::Attack,
     Action::Jump,
     Action::Block,
     Action::Step,
     Action::Angel,
+    Action::AngelNext,
     Action::Drink,
     Action::PotionNext,
     Action::Call,
