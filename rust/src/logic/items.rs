@@ -277,10 +277,12 @@ impl Bomb {
 
 pub const DIAMOND_CYCLE_SECONDS: f64 = 1.6;
 pub const DIAMOND_RESPAWN_SECONDS: f64 = 25.0;
+/// An archangel's shrine turns its statue through the four this often (it gives all four).
+pub const ANGEL_TURN_SECONDS: f64 = 2.5;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DiamondKind {
-    /// An archangel's shrine: it honours one of the four until struck (see `logic::angels`).
+    /// An archangel's shrine: its statue turns through the four, who all come to him (see `logic::angels`).
     Angel,
     Item,
 }
@@ -325,7 +327,20 @@ pub struct Diamond {
 impl Diamond {
     pub fn new(kind: DiamondKind, tile: P, start_index: usize) -> Self {
         let len = Self::len_of(kind);
-        Self { tile, kind, index: start_index % len, active: true, cycle_timer: DIAMOND_CYCLE_SECONDS, respawn_timer: 0.0 }
+        Self { tile, kind, index: start_index % len, active: true, cycle_timer: Self::turn_of(kind), respawn_timer: 0.0 }
+    }
+
+    /// Seconds between its turns.
+    fn turn_of(kind: DiamondKind) -> f64 {
+        match kind {
+            DiamondKind::Angel => ANGEL_TURN_SECONDS,
+            DiamondKind::Item => DIAMOND_CYCLE_SECONDS,
+        }
+    }
+
+    /// Holds the shrine on the one it shows (a realm's own archangel): it no longer turns.
+    pub fn hold(&mut self) {
+        self.cycle_timer = f64::INFINITY;
     }
 
     fn len_of(kind: DiamondKind) -> usize {
@@ -347,17 +362,17 @@ impl Diamond {
         1.0 - self.cycle_timer.max(0.0) / DIAMOND_CYCLE_SECONDS
     }
 
-    /// Advance to the next option (a strike).
+    /// Advance to the next option (a strike; a held shrine stays as it is).
     pub fn cycle(&mut self) {
-        if !self.active {
+        if !self.active || self.cycle_timer.is_infinite() {
             return;
         }
         self.index = (self.index + 1) % Self::len_of(self.kind);
-        self.cycle_timer = DIAMOND_CYCLE_SECONDS;
+        self.cycle_timer = Self::turn_of(self.kind);
     }
 
     /// Take the showing option; the shrine goes dormant until it respawns. (An archangel's shrine is
-    /// never taken: each archangel gives once a level, see `game::angels`.)
+    /// never taken: it gives once a level and stands grey, see `game::angels`.)
     pub fn take(&mut self) -> Offer {
         let chosen = self.current();
         self.active = false;
@@ -370,18 +385,15 @@ impl Diamond {
             self.respawn_timer -= dt;
             if self.respawn_timer <= 0.0 {
                 self.active = true;
-                self.cycle_timer = DIAMOND_CYCLE_SECONDS;
+                self.cycle_timer = Self::turn_of(self.kind);
             }
             return;
         }
-        // An archangel's shrine holds still until struck; the item shrine turns on its own.
-        if self.kind == DiamondKind::Angel {
-            return;
-        }
+        // Both kinds turn on their own (an archangel's more slowly), unless held.
         self.cycle_timer -= dt;
         if self.cycle_timer <= 0.0 {
             self.index = (self.index + 1) % Self::len_of(self.kind);
-            self.cycle_timer += DIAMOND_CYCLE_SECONDS;
+            self.cycle_timer += Self::turn_of(self.kind);
         }
     }
 }

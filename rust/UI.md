@@ -62,9 +62,9 @@ Controller (Xbox names; PlayStation in brackets):
 | LB [L1] | Shield (hold) | Previous tab |
 | RB [R1] | Drink the chosen potion | Next tab |
 | LT [L2] | Bifrost Step | – |
-| RT [R2] | Archangel's power | – |
+| RT [R2] | Call the chosen archangel | – |
 | D-pad ← → | Choose a potion | Move |
-| D-pad ↑ | Full map | Move |
+| D-pad ↑ | Choose the next archangel (B58; it was the full map, which keeps View) | Move |
 | D-pad ↓ | Switch camera (follow/top) | Move |
 | View [Share] | Full map | – |
 | Menu [Options] | Pause | Back |
@@ -79,7 +79,8 @@ Keyboard and mouse:
 | Right click (hold) | Shield |
 | Space | Jump / evade |
 | Left Shift | Bifrost Step |
-| R | Archangel's power |
+| R | Call the chosen archangel |
+| F | Choose the next archangel (B58) |
 | Q | Drink the chosen potion |
 | Mouse wheel / 1–5 | Choose a potion / drink slot N |
 | E | Call the old man (his wares) |
@@ -147,13 +148,19 @@ break, a short one on a parry; scaled by the setting (off, low, high).
   text in vector type at 0.75t, and a prompt glyph to skip or to open his guide. The guide page uses
   the same portrait at 9t. The prince's whisper keeps its own frame (smoke, the sin's colour), so the
   two can never be confused (the old man is amber and gold; a whisper never is).
-- **The archangels on screen**: a 4t emblem at the bottom left in the angel's colour (wings around
-  a halo, drawn as shapes), the charges as pips round it, a radial fill while recharging, a pulse
-  and the glyph of its button when ready, the angel's name in display type. When a blessing is
-  given, a full-width banner with the angel's name and what the power does (2.5 s).
+- **The archangels on screen** (B58, 2026-10-10: every shrine gives all four): at the bottom left,
+  beside the belt, the archangels with him as four emblems in a row, always in the same order and
+  slot (Michael, Gabriel, Raphael, Uriel), each in his colour (wings around a halo, drawn as shapes)
+  with his initial at its foot, so they are told apart without colour; a radial fill and the
+  seconds left while each comes back (25 s), bright and breathing when ready. The chosen one is
+  larger and ringed in gold; over the row his name, READY or the seconds, the angel button's glyph
+  before it and the next button's at the row's end. When a shrine gives, a full-width banner: THE
+  FOUR ARCHANGELS ARE WITH YOU (the first) or THE ARCHANGELS ARE READY, the four named, and both
+  controls (2.5 s).
 - **The archangels in the world**: each shrine gets a pillar of light visible from across the level
-  (tall, faint, the angel's colour, gone when spent), a brighter halo, and an off-screen arrow at
-  the screen's edge toward an unspent shrine within 25 tiles; their icons on the minimap.
+  (tall, faint, in the colour of the archangel its statue shows as it turns through the four, gone
+  once it has given), a brighter halo, its label ARCHANGELS, and an off-screen arrow at the screen's
+  edge toward a shrine still to give within 25 tiles; their icons on the minimap.
 
 ## 7. The minimap and the full map
 
@@ -497,14 +504,18 @@ a column beside it at 0.66 units (shrinking only if they would overflow). The po
 closer for the old man (his face and beard fill it) and the portrait's light is warmer (a lamp's key,
 a cooler fill, a stronger warm rim, a little light from above).
 
-**The archangels** (`render/hud/angel.rs`, `render/view/angels.rs`). Bottom left, once he has met
-one (a shrine's blessing or his patron; `Juice::angel_met`, presentation only): a 4-unit emblem in
-the angel's colour (the wings round a light, the halo over them, on a dark disc), the charges as
-diamonds round its foot, the ring filling while the patron's power comes back, a pulse and the
-`{Angel}` glyph when ready, the name in Cinzel on a glass plate with "2 OF 3", READY or the seconds;
-dim with NONE HELD when the blessing is spent; Uriel's rest over it. A blessing given raises a
-banner across the screen for 2.5 s (`Juice::blessed`): the emblem, "GABRIEL'S BLESSING", what it
-does and its control. In the world each unspent shrine stands under a pillar of its light, about
+**The archangels** (`render/hud/angel.rs`, `render/view/angels.rs`). *Rebuilt for B58 (2026-10-10),
+see §6:* bottom left, a glass plate across the corner with the archangels he has (only his patron
+before the first shrine; nothing if he has none) as emblems in four fixed slots, 1.7 units across
+(2.2 for the chosen one, ringed in gold, popping as it is chosen: `Juice::angel_chosen`): the wings
+round a light, the halo over them, on a dark disc, the ring filling from the top as the power
+comes back and the whole seconds left in white in the middle, the initial in Cinzel at its foot;
+dimmed while away, bright and breathing when ready, a flare as it comes back
+(`Juice::angel_back`). Over the row the `{Angel}` glyph, the chosen name in Cinzel and READY or the
+seconds; the `{AngelNext}` glyph at the row's end. A shrine given raises a banner across the screen
+for 2.5 s (`Juice::blessed`): the four emblems with their names, and "{Angel} CALLS THE CHOSEN
+{AngelNext} CHOOSES   EACH IS BACK 25 s AFTER HIS CALL". (Before: one 4-unit emblem with charge
+pips, NONE HELD when spent, and Uriel's ten-minute rest over it.) In the world each unspent shrine stands under a pillar of its light, about
 16 units tall, seen from across the level: glows turned to the camera about the upright (so it is
 a column from any side), a wide soft one and a bright core, fading as it rises, breathing; gone
 when spent. Its halo burns brighter. Off screen within 25 tiles, an arrow at the screen's edge (kept

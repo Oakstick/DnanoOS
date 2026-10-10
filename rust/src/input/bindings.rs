@@ -297,7 +297,7 @@ pub fn reserved(c: Control) -> bool {
 }
 
 /// The play layer's actions, in the order a controls page lists them.
-pub const PLAY: [Action; 25] = [
+pub const PLAY: [Action; 26] = [
     Action::MoveUp,
     Action::MoveDown,
     Action::MoveLeft,
@@ -307,6 +307,7 @@ pub const PLAY: [Action; 25] = [
     Action::Block,
     Action::Step,
     Action::Angel,
+    Action::AngelNext,
     Action::Drink,
     Action::PotionPrev,
     Action::PotionNext,
@@ -341,6 +342,7 @@ pub fn default_controls(a: Action) -> &'static [Control] {
         Action::Block => &[Mouse(MouseButton::Right), Pad(PadButton::LeftBumper)],
         Action::Step => &[Key(ShiftLeft), Pad(PadButton::LeftTrigger)],
         Action::Angel => &[Key(KeyR), Pad(PadButton::RightTrigger)],
+        Action::AngelNext => &[Key(KeyF), Pad(PadButton::DPadUp)],
         Action::Drink => &[Key(KeyQ), Pad(PadButton::RightBumper)],
         Action::PotionPrev => &[Control::WheelUp, Pad(PadButton::DPadLeft)],
         Action::PotionNext => &[Control::WheelDown, Pad(PadButton::DPadRight)],
@@ -351,7 +353,7 @@ pub fn default_controls(a: Action) -> &'static [Control] {
         Action::Slot(4) => &[Key(Digit5)],
         Action::Call => &[Key(KeyE), Pad(PadButton::North)],
         Action::Guide => &[Key(KeyB), Pad(PadButton::East)],
-        Action::Map => &[Key(KeyM), Key(Tab), Pad(PadButton::View), Pad(PadButton::DPadUp)],
+        Action::Map => &[Key(KeyM), Key(Tab), Pad(PadButton::View)],
         Action::Camera => &[Key(KeyC), Pad(PadButton::DPadDown)],
         Action::CameraReset => &[Pad(PadButton::RightStick)],
         Action::MinimapZoom => &[Pad(PadButton::LeftStick)],
@@ -632,6 +634,22 @@ impl Bindings {
                 }
             }
         }
+        // The map as it was by default before the next archangel took the D-pad's up: as now.
+        use KeyCode::{KeyM, Tab};
+        let old_map = [Control::Key(KeyM), Control::Key(Tab), Control::Pad(PadButton::View), Control::Pad(PadButton::DPadUp)];
+        if !seen.contains(&Action::AngelNext) {
+            if let Some(slot) = b.entry_mut(Action::Map).filter(|cs| cs[..] == old_map) {
+                slot.pop();
+            }
+        }
+        // An action newer than the save (the next archangel's) keeps only those of its defaults
+        // that no saved action has taken.
+        for a in PLAY.into_iter().filter(|a| !seen.contains(a)) {
+            let taken: Vec<Control> = b.play.iter().filter(|(o, _)| *o != a && seen.contains(o)).flat_map(|(_, cs)| cs.clone()).collect();
+            if let Some(slot) = b.entry_mut(a) {
+                slot.retain(|c| !taken.contains(c));
+            }
+        }
         b
     }
 
@@ -790,6 +808,7 @@ pub fn action_name(a: Action) -> &'static str {
         Action::Block => "Shield",
         Action::Step => "Bifrost Step",
         Action::Angel => "Archangel",
+        Action::AngelNext => "Next archangel",
         Action::Drink => "Drink",
         Action::PotionPrev => "Previous potion",
         Action::PotionNext => "Next potion",
@@ -833,7 +852,7 @@ pub fn action_name(a: Action) -> &'static str {
 }
 
 /// Every action and its token, for prompt strings and the saved bindings (stable: never renamed).
-const TOKENS: [(Action, &str); 48] = [
+const TOKENS: [(Action, &str); 49] = [
     (Action::MoveUp, "MoveUp"),
     (Action::MoveDown, "MoveDown"),
     (Action::MoveLeft, "MoveLeft"),
@@ -843,6 +862,7 @@ const TOKENS: [(Action, &str); 48] = [
     (Action::Block, "Block"),
     (Action::Step, "Step"),
     (Action::Angel, "Angel"),
+    (Action::AngelNext, "AngelNext"),
     (Action::Drink, "Drink"),
     (Action::PotionPrev, "PotionPrev"),
     (Action::PotionNext, "PotionNext"),
@@ -961,7 +981,8 @@ mod tests {
         assert_eq!(key(Action::PotionPrev), Some(Control::WheelUp));
         assert_eq!(key(Action::Call), Some(Key(KeyCode::KeyE)));
         assert_eq!(key(Action::Guide), Some(Key(KeyCode::KeyB)));
-        assert_eq!(b.controls(Action::Map), vec![Key(KeyCode::KeyM), Key(KeyCode::Tab), Pad(PadButton::View), Pad(PadButton::DPadUp)]);
+        assert_eq!(b.controls(Action::Map), vec![Key(KeyCode::KeyM), Key(KeyCode::Tab), Pad(PadButton::View)]);
+        assert_eq!(b.controls(Action::AngelNext), vec![Key(KeyCode::KeyF), Pad(PadButton::DPadUp)]);
         assert_eq!(key(Action::Camera), Some(Key(KeyCode::KeyC)));
         assert_eq!(key(Action::Pause), Some(Key(KeyCode::Escape)));
         // The menus' own: A selects, B goes back, LB and RB page, Y the secondary.
@@ -975,13 +996,13 @@ mod tests {
     }
 
     #[test]
-    fn the_d_pad_is_the_belt_the_map_and_the_camera_in_play_and_moves_in_menus() {
+    fn the_d_pad_is_the_belt_the_archangels_and_the_camera_in_play_and_moves_in_menus() {
         let b = Bindings::default();
         let play = |p| b.actions(Control::Pad(p), Context::Play);
         let menu = |p| b.actions(Control::Pad(p), Context::Menu);
         assert_eq!(play(PadButton::DPadLeft), vec![Action::PotionPrev]);
         assert_eq!(play(PadButton::DPadRight), vec![Action::PotionNext]);
-        assert_eq!(play(PadButton::DPadUp), vec![Action::Map]);
+        assert_eq!(play(PadButton::DPadUp), vec![Action::AngelNext]);
         assert_eq!(play(PadButton::DPadDown), vec![Action::Camera]);
         assert_eq!(menu(PadButton::DPadLeft), vec![Action::NavLeft]);
         assert_eq!(menu(PadButton::DPadRight), vec![Action::NavRight]);
@@ -1010,6 +1031,20 @@ mod tests {
         assert_eq!(back, b);
         assert!(back.controls(Action::Camera).is_empty(), "unbound stays unbound");
         assert_eq!(back.controls(Action::Attack), vec![Control::Pad(PadButton::West), Control::Key(KeyCode::KeyF)]);
+    }
+
+    #[test]
+    fn a_save_from_before_the_next_archangel_gives_him_what_is_free() {
+        use Control::{Key, Pad};
+        // The old defaults saved whole: the map gives up the D-pad's up.
+        let mut old = Bindings::default().to_setting().replace(";AngelNext=KeyF,PadDPadUp", "");
+        old = old.replace("Map=KeyM,Tab,PadView", "Map=KeyM,Tab,PadView,PadDPadUp");
+        let b = Bindings::from_setting(&old);
+        assert_eq!(b.controls(Action::Map), vec![Key(KeyCode::KeyM), Key(KeyCode::Tab), Pad(PadButton::View)]);
+        assert_eq!(b.controls(Action::AngelNext), vec![Key(KeyCode::KeyF), Pad(PadButton::DPadUp)]);
+        // F rebound to the attack: the next archangel keeps only the D-pad's up.
+        let b = Bindings::from_setting(&old.replace("Attack=MouseLeft", "Attack=KeyF"));
+        assert_eq!(b.controls(Action::AngelNext), vec![Pad(PadButton::DPadUp)]);
     }
 
     #[test]
@@ -1066,21 +1101,21 @@ mod tests {
     fn the_rebinding_page_binds_asks_swaps_clears_and_saves() {
         use Control::{Key, Mouse, Pad};
         let mut b = Bindings::default();
-        // Bind: F into the attack's first keyboard slot, in place of the left click.
-        assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyF), Resolve::Ask), Rebound::Done);
-        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyF)]);
+        // Bind: G into the attack's first keyboard slot, in place of the left click.
+        assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyG), Resolve::Ask), Rebound::Done);
+        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyG)]);
         assert_eq!(b.side(Action::Attack, true), vec![Pad(PadButton::West)], "the pad's side untouched");
         // A second slot, empty until now: added after.
         assert_eq!(b.rebind(Action::Attack, false, 1, Mouse(MouseButton::Left), Resolve::Ask), Rebound::Done);
-        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyF), Mouse(MouseButton::Left)]);
+        assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyG), Mouse(MouseButton::Left)]);
         // A conflict: Q is the drink's. Asked, nothing changes (the page's cancel leaves it so).
         let before = b.clone();
         assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyQ), Resolve::Ask), Rebound::Conflict(vec![Action::Drink]));
         assert_eq!(b, before);
-        // Swapped: the drink takes F, the attack Q.
+        // Swapped: the drink takes G, the attack Q.
         assert_eq!(b.rebind(Action::Attack, false, 0, Key(KeyCode::KeyQ), Resolve::Swap), Rebound::Resolved(vec![Action::Drink]));
         assert_eq!(b.side(Action::Attack, false), vec![Key(KeyCode::KeyQ), Mouse(MouseButton::Left)]);
-        assert_eq!(b.side(Action::Drink, false), vec![Key(KeyCode::KeyF)]);
+        assert_eq!(b.side(Action::Drink, false), vec![Key(KeyCode::KeyG)]);
         assert!(b.conflicts(Action::Attack, Key(KeyCode::KeyQ)).is_empty());
         // Cleared: B is the guide's; the guide loses it and is left with only its button.
         assert_eq!(b.rebind(Action::Call, false, 0, Key(KeyCode::KeyB), Resolve::Clear), Rebound::Resolved(vec![Action::Guide]));

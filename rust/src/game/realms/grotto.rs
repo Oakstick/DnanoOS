@@ -24,7 +24,7 @@ use super::super::{Banner, Game};
 use super::Meter;
 use crate::audio::Sfx;
 use crate::input::Action;
-use crate::logic::angels::Blessing;
+use crate::logic::angels::STOLEN_WAIT;
 use crate::logic::combat::{MoveId, State};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::gear::{self, BELT_SLOTS};
@@ -448,12 +448,13 @@ impl Game {
 
     /// The Eye watches him now: its cone holds him (no bead has warded this gaze), or he is under the
     /// bell, where it looks through the sound-hole.
-    fn grotto_watched(&self) -> bool {
+    pub(in crate::game) fn grotto_watched(&self) -> bool {
         let Some(g) = self.grotto() else { return false };
         matches!(g.bell.phase, BellPhase::Down | BellPhase::Lifted) || g.seen
     }
 
-    /// He reaches for a bottle, a blessing or his patron while the Eye watches: the grotto takes it.
+    /// He reaches for a bottle or calls an archangel while the Eye watches: the grotto takes it (the
+    /// archangel stays away `STOLEN_WAIT` seconds, or until the thief falls).
     fn grotto_snatch(&mut self) {
         let slot = if self.input.was_pressed(&[Action::Drink]) {
             Some(self.belt_index)
@@ -471,16 +472,12 @@ impl Game {
             }
             self.steal(Stolen::Potion(kind));
         }
-        if self.input.was_pressed(&[Action::Angel]) {
-            if let Some(mut b) = self.blessing.filter(|b| b.charges > 0) {
+        if self.input.was_pressed(&[Action::Angel]) && self.hero.alive {
+            let patron = self.patron();
+            if let Some(angel) = self.angels.current(patron).filter(|&a| self.angels.ready(a, patron)) {
                 self.input.consume(Action::Angel);
-                b.charges -= 1;
-                self.blessing = (b.charges > 0).then_some(b);
-                self.steal(Stolen::Blessing(b.angel));
-            } else if let Some(angel) = self.progress.hero(self.hero_kind).patron.filter(|_| self.patron_wait <= 0.0) {
-                self.input.consume(Action::Angel);
-                self.patron_wait = angel.recharge();
-                self.steal(Stolen::Patron);
+                self.angels.wait[angel.index()] = STOLEN_WAIT;
+                self.steal(Stolen::Blessing(angel));
             }
         }
     }
@@ -517,8 +514,7 @@ impl Game {
     fn stolen_name(&self, what: Stolen) -> String {
         match what {
             Stolen::Potion(k) => gear::potion(self.hero_kind, k).name.to_uppercase(),
-            Stolen::Blessing(a) => format!("{}'S BLESSING", a.name().to_uppercase()),
-            Stolen::Patron => "PATRON'S CALL".into(),
+            Stolen::Blessing(a) => format!("{}'S CALL", a.name().to_uppercase()),
         }
     }
 
@@ -547,12 +543,7 @@ impl Game {
                         continue;
                     }
                 }
-                Stolen::Blessing(a) => match self.blessing.as_mut() {
-                    Some(b) if b.angel == a => b.charges += 1,
-                    None => self.blessing = Some(Blessing { angel: a, charges: 1 }),
-                    Some(_) => continue,
-                },
-                Stolen::Patron => self.patron_wait = 0.0,
+                Stolen::Blessing(a) => self.angels.wait[a.index()] = 0.0,
             }
             self.audio.play(Sfx::Heal);
             self.floater(hp.x, hp.y - 1.2, format!("YOUR {name} COMES BACK TO YOU"), 1.8, Some(0xe8ffd0));
@@ -996,6 +987,29 @@ mod tests {
         step(&mut g, 0.5);
         assert_eq!(g.belt, vec![PotionKind::Health]);
         assert!(run(&g).thefts.is_empty());
+    }
+
+    #[test]
+    fn an_archangel_called_under_the_eye_stays_away_until_the_thief_falls() {
+        use crate::logic::angels::{Archangel, STOLEN_WAIT};
+        let mut g = in_realm(Sin::Envy);
+        g.angels.granted = true;
+        g.angels.chosen = Archangel::Gabriel;
+        under_the_eye(&mut g);
+        let calls = g.angels.calls;
+        g.input.inject(Action::Angel);
+        g.update(STEP);
+        assert_eq!(g.angels.calls, calls, "no thunder");
+        assert!(g.angels.wait[Archangel::Gabriel.index()] > STOLEN_WAIT - 1.0, "Gabriel stays away");
+        assert!(g.angels.ready(Archangel::Uriel, None), "the others are still his");
+        let theft = run(&g).thefts[0];
+        assert_eq!(theft.what, Stolen::Blessing(Archangel::Gabriel));
+        // Slay the thief: Gabriel is back at once.
+        let i = g.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| d.id == theft.by)).unwrap();
+        g.enemies[i].duel.as_mut().unwrap().hp = 1.0;
+        g.stray_blow(i);
+        step(&mut g, 0.5);
+        assert!(g.angels.ready(Archangel::Gabriel, None));
     }
 
     #[test]

@@ -38,8 +38,9 @@
 //! 0 sceptre, 1 coin toss, 2 grasp, 3 coin volley, 4 coin rain, 5 hoard slam; `foemove:M` has the
 //! ring's last duelist begin its move M of its breed's; `foeline[:N]` the first stage's four, N times
 //! over, on open ground ahead of the hero),
-//! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (an archangel's blessing:
-//! 0 Michael .. 3 Uriel) and `angel` (use it),
+//! (the Portals of Hell, and sin N's realm or its prince's court, 0 Pride to 6 Lust), `sins:N` (the keys held) and `at:X:Y`, `bless:N` (the four archangels with him,
+//! N chosen: 0 Michael .. 3 Uriel), `angel` (call the chosen), `angelnext` (choose the next) and
+//! `angelwait:N:S` (archangel N back in S seconds),
 //! and `nav:left` / `nav:right` for a menu step (the character screen), and `beat:N:T` (Scene I
 //! at beat N, T seconds in, its line shown in full; the story also plays from Play on the title,
 //! where `pause` skips it); `wheel:up` / `wheel:down` (a notch of the mouse wheel), `belt:prev` /
@@ -89,7 +90,7 @@
 use crate::audio::synth::Synth;
 use crate::game::{Game, Screen, Stage};
 use crate::input::Action;
-use crate::logic::angels::{Blessing, ARCHANGELS};
+use crate::logic::angels::ARCHANGELS;
 use crate::logic::gear::{ShieldGear, ALL_POTIONS};
 use crate::logic::items::DiamondKind;
 use crate::logic::progression::TIERS;
@@ -151,8 +152,10 @@ pub(crate) enum Cmd {
     Gate,
     Foes(usize, Option<u8>),
     Dungeon(usize),
-    /// An archangel's blessing: 0 Michael, 1 Gabriel, 2 Raphael, 3 Uriel.
+    /// The four archangels with him, one chosen: 0 Michael, 1 Gabriel, 2 Raphael, 3 Uriel.
     Bless(usize),
+    /// Archangel N back in S seconds.
+    AngelWait(usize, f64),
     /// Every tree owned up to tier N, that weapon in hand and that shield on his back.
     Arm(u8),
     Shield(u8),
@@ -345,6 +348,11 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "bless" => Cmd::Bless(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "angel" => Cmd::Press(Action::Angel),
+            "angelnext" => Cmd::Press(Action::AngelNext),
+            "angelwait" => Cmd::AngelWait(
+                parts.next().and_then(|v| v.parse().ok()).unwrap_or(0),
+                parts.next().and_then(|v| v.parse().ok()).unwrap_or(10.0),
+            ),
             "arm" => Cmd::Arm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "shield" => Cmd::Shield(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "runes" => Cmd::Runes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
@@ -564,7 +572,11 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Gate => game.cheat_to_gate(),
         Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
         Cmd::Dungeon(n) => game.debug_dungeon(n),
-        Cmd::Bless(n) => game.blessing = Some(Blessing::of(ARCHANGELS[n.min(3)])),
+        Cmd::Bless(n) => {
+            game.angels.granted = true;
+            game.angels.chosen = ARCHANGELS[n.min(3)];
+        }
+        Cmd::AngelWait(n, s) => game.angels.wait[n.min(3)] = s,
         Cmd::Arm(tier) => game.debug_arm(tier),
         Cmd::Shield(tier) => {
             game.hero.shield = (tier > 0).then(|| ShieldGear::new(tier.min(TIERS)));

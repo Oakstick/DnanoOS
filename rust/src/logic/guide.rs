@@ -105,7 +105,7 @@ const GARDEN_WATCH: &[&str] = &[
     "Draugr fall to pieces and pull themselves together again, and hunt by the sound of your steps. Ravens fly over the pits.",
     "Bog slimes leave a trail that slows you, but they cannot cross the bridges. The slain gather in the hollow and come out again.",
     "Every key angers the garden: more foes come out, and faster. Strike with {Attack}; leap the pits with {Jump}.",
-    "An archangel's shrine stands in each quarter. Strike one to change its angel, step on it for his blessing, and use it with {Angel}.",
+    "An archangel's shrine stands in each quarter. The first brings all four to you, and each after readies them: {AngelNext} chooses one, {Angel} calls him.",
     "Raise your shield with {Block}, drink with {Drink}, and call me with {Call} whenever you need. {Guide} brings you back to these words.",
 ];
 

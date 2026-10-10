@@ -1278,7 +1278,8 @@ mod tests {
         for (tier, seed) in [(8, 1), (7, 2)] {
             let f = lair_fight(Skill::Expert, seed, Some(Loadout::all(HeroKind::Ragnar, tier)), 300.0);
             assert!(f.fight.slain && f.fight.deaths <= 1 && f.fight.phase == 3, "tier {tier}: {f:?}");
-            assert!(f.fight.secs > 120.0 && f.fight.secs < 260.0, "tier {tier}: an epic's length, {f:?}");
+            // (Since B58 the expert calls all four archangels on their cooldowns: about a tenth sooner.)
+            assert!(f.fight.secs > 100.0 && f.fight.secs < 260.0, "tier {tier}: an epic's length, {f:?}");
             assert_eq!(f.fight.stats.overlaps, 0, "{f:?}");
         }
         let f = lair_fight(Skill::Novice, 1, Some(Loadout::all(HeroKind::Ragnar, 8)), 300.0);

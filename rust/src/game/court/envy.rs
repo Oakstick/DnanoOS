@@ -1,8 +1,8 @@
 //! Envy's court in play: the Drowned Bell (`logic::court::envy` lays it out) and Leviathan, its
 //! prince (`logic::combat::prince::envy` holds his rules).
 //!
-//! - **The covet.** Every archangel the hero calls on is watched (a blessing's charge spent, his
-//!   patron's wait begun again); when Leviathan begins his covet it becomes that angel's power in
+//! - **The covet.** Every archangel the hero calls on is watched (`Angels::calls`, `last`); when
+//!   Leviathan begins his covet it becomes the last called angel's power in
 //!   green (Raphael's, if none has been called), and the banner says so. Its strike is planned
 //!   again by the threat manager as what it has become.
 //! - **The serpentlings.** As his second phase begins two rise from the water at the springs
@@ -35,8 +35,8 @@ pub const ENVY_GREEN: u32 = 0x5adf7a;
 pub struct EnvyState {
     /// The archangel whose power the hero last called on in the court.
     pub angel: Option<Archangel>,
-    /// His blessing (its angel and charges) and his patron's wait as last seen, to see a call.
-    seen: Option<(Option<(Archangel, u8)>, f64)>,
+    /// The archangels' calls as last seen (`Angels::calls`), to see a call.
+    seen: Option<u32>,
     /// The prince's move and its frame as last seen (each move's first frames are met once).
     last: Option<(MoveId, u16)>,
 }
@@ -70,23 +70,14 @@ impl Game {
         self.envy_moves(i);
     }
 
-    /// The archangels he calls on: a blessing's charge spent, or his patron's wait begun again.
+    /// The archangels he calls on in the court: the last one called since the court began.
     fn envy_watch_angels(&mut self) {
-        let blessing = self.blessing.map(|b| (b.angel, b.charges));
-        let wait = self.patron_wait;
-        let patron = self.progress.hero(self.hero_kind).patron;
+        let (calls, last) = (self.angels.calls, self.angels.last);
         let Some(c) = self.court.as_mut() else { return };
-        if let Some((was, waited)) = c.envy.seen {
-            if let Some((angel, charges)) = was {
-                if blessing.is_none_or(|(a, n)| a != angel || n < charges) {
-                    c.envy.angel = Some(angel);
-                }
-            }
-            if wait > waited + 0.5 {
-                c.envy.angel = patron.or(c.envy.angel);
-            }
+        if c.envy.seen.is_some_and(|seen| seen != calls) {
+            c.envy.angel = last.or(c.envy.angel);
         }
-        c.envy.seen = Some((blessing, wait));
+        c.envy.seen = Some(calls);
     }
 
     /**
@@ -331,7 +322,6 @@ mod tests {
     use super::*;
     use crate::game::{save, Screen};
     use crate::input::PadState;
-    use crate::logic::angels::Blessing;
     use crate::logic::combat::archetype::Archetype;
     use crate::logic::combat::prince::envy::{burnt_side, COIL, FIRES};
     use crate::logic::combat::prince::phase_of;
@@ -373,11 +363,10 @@ mod tests {
         run(g, n as f64 / 60.0);
     }
 
-    /// The hero has called on `angel`'s power: a blessing's charge, spent.
+    /// The hero has called on `angel`'s power.
     fn called(g: &mut Game, angel: Archangel) {
-        g.blessing = Some(Blessing { angel, charges: 2 });
         run(g, 0.05);
-        g.blessing = Some(Blessing { angel, charges: 1 });
+        g.angels.call(angel);
         run(g, 0.05);
     }
 
@@ -482,7 +471,7 @@ mod tests {
         assert_eq!(leviathan(&mut g).f.attack().map(|a| a.0), Some(MoveId::CovetBeam));
         let text = g.juice.banner.as_ref().map(|b| b.text.clone()).unwrap_or_default();
         assert_eq!(text, "HE COVETS YOUR RAPHAEL");
-        // A blessing's charge spent on Gabriel: the thunder.
+        // Gabriel called: the thunder.
         let mut g = court();
         called(&mut g, Archangel::Gabriel);
         assert_eq!(g.court.as_ref().unwrap().envy.angel, Some(Archangel::Gabriel));
@@ -492,21 +481,12 @@ mod tests {
         run(&mut g, 0.02);
         assert_eq!(leviathan(&mut g).f.attack().map(|a| a.0), Some(MoveId::CovetThunder));
         assert!(g.juice.banner.as_ref().is_some_and(|b| b.text == "HE COVETS YOUR GABRIEL"));
-        // His patron's power called (its wait begun again): Uriel's wave.
+        // Uriel called, then Michael: the last called is the one coveted.
         let mut g = court();
-        let kind = g.hero_kind;
-        g.progress.hero_mut(kind).patron = Some(Archangel::Uriel);
-        run(&mut g, 0.05);
-        g.patron_wait = 45.0;
-        run(&mut g, 0.05);
+        called(&mut g, Archangel::Uriel);
         assert_eq!(g.court.as_ref().unwrap().envy.angel, Some(Archangel::Uriel));
-        // Michael's fire, the last blessing's charge spent: a volley of four, its landing planned
-        // again for the bolts' flight.
-        let mut g = court();
-        g.blessing = Some(Blessing { angel: Archangel::Michael, charges: 1 });
-        run(&mut g, 0.05);
-        g.blessing = None;
-        run(&mut g, 0.05);
+        // Michael's fire: a volley of four, its landing planned again for the bolts' flight.
+        called(&mut g, Archangel::Michael);
         assert_eq!(g.court.as_ref().unwrap().envy.angel, Some(Archangel::Michael));
         let hp = poised(&mut g, 6.0);
         leviathan(&mut g).breed.phase = 2;

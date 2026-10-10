@@ -72,8 +72,8 @@ impl Game {
     fn load_inner(&mut self, data: LevelData, index: usize) {
         self.score.level = index;
         self.dungeon = index;
-        // Every level begins with the patron's power ready.
-        self.patron_wait = 0.0;
+        // Every level begins with the archangels' powers ready.
+        self.angels.refresh();
         self.level = parse_level(&data);
         self.vault = None;
         self.run = None;
@@ -230,7 +230,6 @@ impl Game {
         };
         self.boss_shots.clear();
         self.red_key = None;
-        self.angels_used = [false; 4];
         self.diamonds = self
             .level
             .angel_shrines
@@ -394,8 +393,9 @@ impl Game {
 
     pub(super) fn start_game(&mut self) {
         self.score.reset();
-        self.blessing = None;
-        self.uriel_rest = 0.0;
+        // The archangels come at the first shrine; until then only his patron, who is chosen.
+        let patron = self.patron();
+        self.angels.restart(false, patron);
         self.holy_wave = None;
         self.new_kit();
         self.hero.respawn(self.level.hero_spawn); // a new game starts with the bare axe

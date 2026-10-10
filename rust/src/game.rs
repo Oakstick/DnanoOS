@@ -465,21 +465,16 @@ pub struct Game {
     /// The testing keys work (F1, F2, F5-F10, F12, 0): in developer builds only (`DEV_BUILD`), or
     /// with `--dev` there (`ask_dev`) and the harnesses; inert in the distributables.
     pub testing_keys: bool,
-    /// The archangel's blessing he carries (from dungeon to dungeon), if any.
-    pub blessing: Option<crate::logic::angels::Blessing>,
-    /// Seconds of play until Uriel grants his blessing again; when the last refusal was shown.
-    pub uriel_rest: f64,
+    /// The archangels with him (all four from the first shrine on), each one's wait, the one chosen.
+    pub angels: crate::logic::angels::Angels,
+    /// When the last refusal (an archangel not yet back) was shown.
     refused_at: f64,
-    /// Seconds until his patron archangel's power is his to call again (0: ready).
-    pub patron_wait: f64,
     /// Wear carried between whole points of a blade's edge.
     edge_carry: f64,
     /// The controls page shows the keyboard rather than the controller.
     pub controls_keyboard: bool,
     /// Uriel's wave while it rolls out.
     pub holy_wave: Option<angels::HolyWave>,
-    /// Which archangels have given their blessing in this level (each gives once).
-    pub angels_used: [bool; 4],
     /// The sins whose keys he holds (one bit each, `Sin::bit`).
     pub sins_cleared: u8,
     /// The Portals of Hell, while he is there.
@@ -657,14 +652,11 @@ impl Game {
             dev: DEV_BUILD && !cfg!(test),
             // (The tests press them; `testing_keys_are_inert_outside_developer_builds` turns them off.)
             testing_keys: DEV_BUILD || cfg!(test),
-            blessing: None,
-            uriel_rest: 0.0,
+            angels: crate::logic::angels::Angels::default(),
             refused_at: -10.0,
-            patron_wait: 0.0,
             edge_carry: 0.0,
             controls_keyboard: false,
             holy_wave: None,
-            angels_used: [false; 4],
             sins_cleared: 0,
             hub: None,
             realm: None,
@@ -801,9 +793,7 @@ impl Game {
         if !ring && self.input.was_pressed(&[Action::Step]) {
             self.bifrost_step();
         }
-        if (!ring || vault_brawl) && self.input.was_pressed(&[Action::Angel]) {
-            self.invoke_blessing();
-        }
+        self.angel_buttons(!ring || vault_brawl);
         if self.hero.winded {
             self.hero.winded = false;
             let hp = self.hero.pos();

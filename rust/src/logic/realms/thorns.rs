@@ -231,9 +231,8 @@ pub struct Thorns {
     /// Health owed by the thorns and to the roses, not yet whole.
     pub thorn_carry: f64,
     pub rose_carry: f64,
-    /// Raphael's charges and his patron's wait as last seen (a cast shows as a drop or a jump).
-    pub raphael_seen: u8,
-    pub patron_seen: f64,
+    /// The archangels' calls as last seen (`Angels::calls`): one more, and Raphael's, is his beam.
+    pub calls_seen: u32,
     /// The hints already given.
     pub hints: u8,
 }
@@ -483,8 +482,7 @@ impl Thorns {
             brides_raised: false,
             thorn_carry: 0.0,
             rose_carry: 0.0,
-            raphael_seen: 0,
-            patron_seen: 0.0,
+            calls_seen: 0,
             hints: 0,
         }
     }

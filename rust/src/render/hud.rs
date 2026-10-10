@@ -884,10 +884,6 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
         let (tx, ty) = (d.tile.x as f32, d.tile.y as f32);
         if let Some((x, y)) = view.project(Vec3::new(tx, floor_at(grid, tx, ty) + 1.25, ty), w, h) {
             let offer = d.current();
-            let spent = match offer {
-                Offer::Angel(a) => g.angels_spent()[a.index()].then_some(a),
-                _ => None,
-            };
             // (A name that would sit under the HUD's panels fades out rather than being cut by them.)
             let under = clear_of_hud(&layout::HudLayout::of(w, h), x, y, t * 3.2, t * 0.5);
             if under <= 0.0 {
@@ -895,21 +891,15 @@ fn draw_world_overlays(o: &mut Overlay, g: &Game, t: f32) {
             }
             let keep = o.alpha;
             o.alpha *= under;
-            if let Some(a) = spent {
-                // One who has given this level (or Uriel resting): the name greyed; Uriel's rest counted down.
-                let text = if a == Archangel::Uriel && !g.angels_used[a.index()] {
-                    let left = g.uriel_rest.ceil() as u32;
-                    format!("URIEL {}:{:02}", left / 60, left % 60)
-                } else {
-                    a.name().to_uppercase()
-                };
-                o.text_styled(&text, x, y, &style::name(t, 0.58, rgba(0x8a8a90, 1.0)).centered());
-            } else {
-                // A name in the display serif, lit in its colour.
-                let c = offer.color();
-                let st = style::name(t, 0.64, rgba(mix_rgb(c, 0xffffff, 0.25), 1.0)).centered().glow(t * 0.22, rgba(c, 0.45));
-                o.text_styled(&offer.name().to_uppercase(), x, y, &st);
-            }
+            // A name in the display serif, lit in its colour (an archangel's shrine, which gives all
+            // four, is named for them all, in the colour of the one its statue shows now).
+            let c = offer.color();
+            let st = style::name(t, 0.64, rgba(mix_rgb(c, 0xffffff, 0.25), 1.0)).centered().glow(t * 0.22, rgba(c, 0.45));
+            let name = match offer {
+                Offer::Angel(_) => "ARCHANGELS".to_string(),
+                _ => offer.name().to_uppercase(),
+            };
+            o.text_styled(&name, x, y, &st);
             o.alpha = keep;
         }
     }

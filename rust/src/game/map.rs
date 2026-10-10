@@ -287,8 +287,9 @@ impl Game {
     /**
      * Straight to a stop on the map. From the title he goes as the saved hero
      * (or Ragnar) with a fresh kit and no story or tour; from the pause menu he
-     * keeps his score, belt and blessing. Either way the adventure is saved
-     * there, so Continue comes back to it.
+     * keeps his score, belt and archangels. Either way the adventure is saved
+     * there, so Continue comes back to it, and anywhere past the first
+     * dungeon's start the four archangels are with him (as Continue has it).
      */
     pub fn map_jump(&mut self, stage: Stage) {
         self.show_map = false;
@@ -304,7 +305,10 @@ impl Game {
             self.score.reset();
             self.juice.score_shown = 0.0;
             self.new_kit();
+            let patron = self.patron();
+            self.angels.restart(false, patron);
         }
+        self.angels.granted |= stage != Stage::Dungeon(0);
         if stage == Stage::Hub {
             // The first time in the Portals of Hell, the tour shows him round the seven doors.
             self.arrive_in_hub();

@@ -581,116 +581,134 @@ fn meadow() -> Game {
 }
 
 #[test]
-fn an_archangels_shrine_switches_when_struck_and_blesses_whoever_steps_on_it() {
-    use logic::angels::{Archangel, Blessing};
+fn an_archangels_shrine_turns_and_brings_all_four_then_readies_them() {
+    use logic::angels::{Archangel, ARCHANGELS, RECHARGE};
     let mut g = playing();
+    assert!(!g.angels.granted && g.chosen_angel().is_none(), "none before the first shrine");
     let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).expect("an archangel's shrine");
     assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Michael));
-    // It holds still until struck.
-    for _ in 0..600 {
+    // Its statue turns through the four on its own (a blow turns it at once).
+    for _ in 0..((logic::items::ANGEL_TURN_SECONDS + 0.1) / crate::app::STEP) as usize {
         g.diamonds[i].update(crate::app::STEP);
     }
-    assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Michael));
-    g.diamonds[i].cycle();
     assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Gabriel));
+    g.diamonds[i].cycle();
+    assert_eq!(g.diamonds[i].current(), Offer::Angel(Archangel::Raphael));
+    // Stepping on: all four, whichever it showed; this shrine stands grey for the level.
     g.hero.m.teleport(g.diamonds[i].tile);
     g.visit_shrines();
-    assert_eq!(g.blessing, Some(Blessing { angel: Archangel::Gabriel, charges: 3 }));
-    // Each archangel gives once a level: Gabriel again, at this shrine or another, is refused.
-    g.blessing = None;
-    let other = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel && d.tile != g.diamonds[i].tile).unwrap();
-    while g.diamonds[other].current() != Offer::Angel(Archangel::Gabriel) {
-        g.diamonds[other].cycle();
-    }
+    assert!(g.angels.granted && ARCHANGELS.iter().all(|&a| g.angels.ready(a, None)));
+    assert!(g.juice.blessed.is_some_and(|b| b.0), "the four's banner");
+    assert!(!g.diamonds[i].active);
+    // Another shrine readies all four at once.
+    g.angels.call(Archangel::Uriel);
+    g.angels.call(Archangel::Gabriel);
+    let other = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel && d.active).unwrap();
     g.hero.m.teleport(g.diamonds[other].tile);
     g.visit_shrines();
-    assert_eq!(g.blessing, None, "Gabriel has given this level");
-    // The other three, then every shrine stands grey.
-    for angel in [Archangel::Michael, Archangel::Raphael, Archangel::Uriel] {
-        while g.diamonds[other].current() != Offer::Angel(angel) {
-            g.diamonds[other].cycle();
-        }
-        g.visit_shrines();
-        assert_eq!(g.blessing.map(|b| b.angel), Some(angel));
-    }
-    assert!(g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel).all(|d| !d.active), "all four have given: grey");
-    g.blessing = Some(Blessing::of(Archangel::Gabriel));
-    // The archangels stand in every dungeon.
+    assert_eq!(g.angels.wait, [0.0; 4]);
+    assert!(g.juice.blessed.is_some_and(|b| !b.0), "the ready banner");
+    // They stay with him; the next dungeon's shrines stand fresh, and he begins it with all four ready.
+    g.angels.call(Archangel::Raphael);
     g.load_level(1);
     assert_eq!(g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel && d.active).count(), 4, "fresh in the next level");
-    assert_eq!(g.angels_used, [false; 4]);
-    assert_eq!(g.blessing.map(|b| b.charges), Some(3), "the blessing goes with him");
+    assert!(g.angels.granted && g.angels.wait == [0.0; 4]);
+    // Each power comes back 25 seconds after its call, on its own.
+    g.angels.chosen = Archangel::Gabriel;
+    g.invoke_angel();
+    assert!((g.angels.wait[Archangel::Gabriel.index()] - RECHARGE).abs() < 1e-9);
+    assert_eq!(g.angels.wait[Archangel::Uriel.index()], 0.0);
 }
 
 #[test]
-fn gabriels_thunder_strikes_every_foe_within_ten_tiles() {
-    use logic::angels::{Archangel, Blessing};
+fn the_next_button_chooses_among_the_four_and_the_patron_is_chosen_first() {
+    use crate::input::Action;
+    use logic::angels::Archangel;
+    let mut g = playing();
+    // Before a shrine, his patron alone: chosen, and the next button has nothing to choose.
+    let kind = g.hero_kind;
+    g.progress.hero_mut(kind).patron = Some(Archangel::Uriel);
+    g.input.inject(Action::AngelNext);
+    g.update(crate::app::STEP);
+    assert_eq!(g.chosen_angel(), Some(Archangel::Uriel));
+    // The first shrine: all four, his patron chosen; the next button goes round them.
+    let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).unwrap();
+    g.hero.m.teleport(g.diamonds[i].tile);
+    g.visit_shrines();
+    assert_eq!(g.chosen_angel(), Some(Archangel::Uriel));
+    for want in [Archangel::Michael, Archangel::Gabriel, Archangel::Raphael, Archangel::Uriel] {
+        g.input.inject(Action::AngelNext);
+        g.update(crate::app::STEP);
+        assert_eq!(g.chosen_angel(), Some(want));
+    }
+    // Called while away: refused, and nothing is spent.
+    g.angels.wait[Archangel::Uriel.index()] = 10.0;
+    let calls = g.angels.calls;
+    g.input.inject(Action::Angel);
+    g.update(crate::app::STEP);
+    assert_eq!(g.angels.calls, calls);
+}
+
+#[test]
+fn gabriels_thunder_strikes_every_foe_near_him() {
+    use logic::angels::Archangel;
     let mut g = meadow();
     let o = g.hero.occupied();
     let near = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 4));
     let far = foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 7, o.y - 11));
-    g.blessing = Some(Blessing::of(Archangel::Gabriel));
-    g.invoke_blessing();
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Gabriel;
+    g.invoke_angel();
     assert!(fell(&g, near) && !fell(&g, far));
-    assert_eq!(g.blessing.map(|b| b.charges), Some(2));
+    assert!(!g.angels.ready(Archangel::Gabriel, None), "away 25 seconds");
 }
 
 #[test]
 fn raphaels_beam_fells_all_in_its_path_and_nothing_beside_it() {
-    use logic::angels::{Archangel, Blessing};
+    use logic::angels::Archangel;
     let mut g = meadow();
     let o = g.hero.occupied();
     g.hero.face(Dir::Up);
     let ahead = [foe_at(&mut g, EnemyKind::Slime, P::new(o.x, o.y - 2)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x, o.y - 4))];
     let beside = foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 3, o.y - 3));
-    g.blessing = Some(Blessing::of(Archangel::Raphael));
-    g.invoke_blessing();
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Raphael;
+    g.invoke_angel();
     assert!(ahead.iter().all(|&i| fell(&g, i)) && !fell(&g, beside));
-    g.invoke_blessing();
-    assert_eq!(g.blessing, None, "two uses, then it is spent");
 }
 
 #[test]
-fn uriels_wave_rolls_out_over_everything_and_uriel_then_rests() {
-    use logic::angels::{Archangel, Blessing, URIEL_REST};
+fn uriels_wave_rolls_out_over_everything_it_reaches() {
+    use logic::angels::Archangel;
     let mut g = meadow();
     let o = g.hero.occupied();
-    let foes = [foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 1, o.y - 1)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 8, o.y - 12))];
-    g.blessing = Some(Blessing::of(Archangel::Uriel));
-    g.invoke_blessing();
+    let foes = [foe_at(&mut g, EnemyKind::Bat, P::new(o.x + 1, o.y - 1)), foe_at(&mut g, EnemyKind::Bat, P::new(o.x - 6, o.y - 11))];
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Uriel;
+    g.invoke_angel();
     assert!(!fell(&g, foes[1]), "the far one only when the wave reaches it");
     for _ in 0..(1.6 / crate::app::STEP) as usize {
         g.update_angels(crate::app::STEP);
     }
     assert!(foes.iter().all(|&i| fell(&g, i)));
-    assert!((g.uriel_rest - URIEL_REST).abs() < 2.0, "ten minutes' rest");
-    // Meanwhile his shrines turn the hero away.
-    let mut g = playing();
-    g.uriel_rest = 100.0;
-    let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).unwrap();
-    for _ in 0..3 {
-        g.diamonds[i].cycle();
-    }
-    g.hero.m.teleport(g.diamonds[i].tile);
-    g.visit_shrines();
-    assert_eq!(g.blessing, None);
-    assert!(g.diamonds[i].active);
+    // No ten minutes' rest any more: 25 seconds, like the others.
+    assert!(g.angels.wait[Archangel::Uriel.index()] <= logic::angels::RECHARGE);
 }
 
 #[test]
 fn michaels_fire_turns_a_foe_that_then_hunts_the_others() {
-    use logic::angels::{Archangel, Blessing};
+    use logic::angels::Archangel;
     let mut g = meadow();
     let o = g.hero.occupied();
     g.hero.face(Dir::Up);
     let turned = foe_at(&mut g, EnemyKind::Slime, P::new(o.x, o.y - 3));
-    g.blessing = Some(Blessing::of(Archangel::Michael));
-    g.invoke_blessing();
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Michael;
+    g.invoke_angel();
     for _ in 0..(1.0 / crate::app::STEP) as usize {
         g.update_projectiles(crate::app::STEP);
     }
     assert!(g.enemies[turned].is_ally() && !g.enemies[turned].is_dangerous(), "turned to his side");
-    assert_eq!(g.blessing.map(|b| b.charges), Some(3));
     // A foe that comes within its reach dies.
     let at = g.enemies[turned].occupied();
     let foe = foe_at(&mut g, EnemyKind::Bat, at);
@@ -701,7 +719,7 @@ fn michaels_fire_turns_a_foe_that_then_hunts_the_others() {
 
 #[test]
 fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
-    use logic::angels::{Archangel, Blessing};
+    use logic::angels::Archangel;
     let mut g = playing();
     g.input.key_down(winit::keyboard::KeyCode::F1, false);
     g.update(crate::app::STEP);
@@ -713,9 +731,10 @@ fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
     assert_eq!(g.boss.as_ref().unwrap().max_hp, 50);
     let bp = g.boss.as_ref().unwrap().pos;
     g.hero.m.teleport(P::new(bp.x.round() as i32, bp.y.round() as i32 + 4));
-    g.blessing = Some(Blessing::of(Archangel::Gabriel));
-    g.invoke_blessing();
-    assert_eq!(g.boss.as_ref().unwrap().hp, hp0 - 5);
+    g.angels.granted = true;
+    g.angels.chosen = Archangel::Gabriel;
+    g.invoke_angel();
+    assert_eq!(g.boss.as_ref().unwrap().hp, hp0 - 3);
     // Dazed, it would take double from a blade, but an archangel's blow is what it is.
     g.debug_daze_boss();
     for _ in 0..20 {
@@ -723,8 +742,9 @@ fn the_first_cyclops_takes_fifty_and_the_archangels_wound_it_exactly() {
         g.hero.invuln = 1.0;
     }
     let hp1 = g.boss.as_ref().unwrap().hp;
-    g.invoke_blessing();
-    assert_eq!(g.boss.as_ref().unwrap().hp, hp1 - 5);
+    g.angels.refresh();
+    g.invoke_angel();
+    assert_eq!(g.boss.as_ref().unwrap().hp, hp1 - 3);
 }
 
 #[test]
@@ -1454,7 +1474,7 @@ fn right_click_raises_the_shield_and_left_click_swings() {
 }
 
 #[test]
-fn in_play_the_d_pad_turns_the_belt_shows_the_map_and_the_camera_and_never_runs() {
+fn in_play_the_d_pad_turns_the_belt_chooses_the_archangel_and_the_camera_and_never_runs() {
     use crate::input::{Device, PadButton, PadState};
     let mut g = playing();
     g.belt = vec![PotionKind::Strength, PotionKind::Health, PotionKind::Life];
@@ -1481,19 +1501,21 @@ fn in_play_the_d_pad_turns_the_belt_shows_the_map_and_the_camera_and_never_runs(
     g.input.set_pad(Some(pad(&[])));
     g.update(crate::app::STEP);
     assert_eq!(g.input.last_device(), Device::Xbox);
-    // Down switches the camera; up opens the full map over the pause, and View (or up again) puts
-    // it away, back to play.
+    // Down switches the camera; up chooses the next archangel; View opens the full map over the
+    // pause, and View again puts it away, back to play.
     let mode = g.view.camera_mode;
     press(&mut g, PadButton::DPadDown);
     assert_ne!(g.view.camera_mode, mode);
+    g.angels.granted = true;
+    let chosen = g.chosen_angel();
     press(&mut g, PadButton::DPadUp);
+    assert_eq!(g.chosen_angel(), chosen.map(|a| a.next()), "the next archangel");
+    assert!(!g.full_map_open() && g.screen == Screen::Playing);
+    press(&mut g, PadButton::View);
     assert!(g.full_map_open() && g.screen == Screen::Paused);
     press(&mut g, PadButton::DPadDown);
     assert!(g.full_map_open(), "the D-pad's other ways leave it open");
     press(&mut g, PadButton::View);
-    assert!(!g.full_map_open() && g.screen == Screen::Playing);
-    press(&mut g, PadButton::DPadUp);
-    press(&mut g, PadButton::DPadUp);
     assert!(!g.full_map_open() && g.screen == Screen::Playing);
     press(&mut g, PadButton::Menu);
     // B backs out of the pause, and Menu pauses again.
@@ -1561,8 +1583,8 @@ fn press_shop(g: &mut Game, action: ShopAction) {
 }
 
 #[test]
-fn the_loadout_tab_swears_an_archangel_whose_power_comes_back_on_its_timer() {
-    use logic::angels::{Archangel, Blessing};
+fn the_loadout_tab_swears_an_archangel_who_is_with_him_before_the_shrines_and_chosen_first() {
+    use logic::angels::{Archangel, RECHARGE};
     let mut g = playing();
     g.open_shop();
     press_shop(&mut g, ShopAction::Loadout);
@@ -1577,35 +1599,26 @@ fn the_loadout_tab_swears_an_archangel_whose_power_comes_back_on_its_timer() {
         g.update(crate::app::STEP);
     }
     assert_eq!(g.screen, Screen::Playing);
-    // Michael's fire, then ten seconds before it comes again.
+    // Before any shrine: Michael's fire, then 25 seconds before it comes again.
+    assert!(!g.angels.granted);
     g.input.inject(Action::Angel);
     g.update(crate::app::STEP);
     assert!(g.projectiles.iter().any(|p| p.kind == RangedKind::Grace), "blue fire");
-    assert!((g.patron_wait - Archangel::Michael.recharge()).abs() < 0.05);
+    assert!((g.angels.wait[Archangel::Michael.index()] - RECHARGE).abs() < 0.05);
     g.projectiles.clear();
     g.input.inject(Action::Angel);
     g.update(crate::app::STEP);
     assert!(g.projectiles.is_empty(), "not yet");
-    for _ in 0..(10.1 / crate::app::STEP) as usize {
+    for _ in 0..((RECHARGE + 0.1) / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
         g.hero.invuln = 1.0;
     }
-    assert_eq!(g.patron_wait, 0.0, "back after ten seconds");
-    // A shrine's blessing is used first, and the patron's power waits its turn.
-    g.blessing = Some(Blessing::of(Archangel::Gabriel));
-    g.input.inject(Action::Angel);
-    g.update(crate::app::STEP);
-    assert_eq!(g.blessing.map(|b| b.charges), Some(Archangel::Gabriel.charges() - 1));
-    assert_eq!(g.patron_wait, 0.0);
-    // Each archangel's own timer.
-    for a in logic::angels::ARCHANGELS {
-        g.progress.hero_mut(g.hero_kind).patron = Some(a);
-        g.blessing = None;
-        g.patron_wait = 0.0;
-        g.input.inject(Action::Angel);
-        g.update(crate::app::STEP);
-        assert!((g.patron_wait - a.recharge()).abs() < 0.05, "{a:?}");
-    }
+    assert_eq!(g.angels.wait[Archangel::Michael.index()], 0.0, "back after 25 seconds");
+    // Sworn to another, he is chosen at once.
+    g.open_shop();
+    press_shop(&mut g, ShopAction::Loadout);
+    press_shop(&mut g, ShopAction::Patron(Archangel::Raphael));
+    assert_eq!(g.chosen_angel(), Some(Archangel::Raphael));
 }
 
 #[test]

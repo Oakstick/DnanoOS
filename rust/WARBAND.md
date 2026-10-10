@@ -1986,3 +1986,37 @@ expert's three kills spread over the doors' packs).
   untouched) and the first prince, which a masher must not fell.
 * **Carvings stay with the blade:** a player who buys a new tier starts it uncut. Carrying them over
   (the old man recuts them) would make the runes stretch further; a call for the user.
+
+### B58 The archangels on their cooldowns, for the bots too (2026-10-10, branch `angels`)
+
+Every shrine now gives all four archangels, each back 25 s after its call (README, UI.md §6).
+W10 had noted that the bots never called them; now the adept and the expert call each of the four
+as soon as he is back and has something to strike (`Bot::call_angels`): Michael and Gabriel a foe
+near, Raphael one along the aim, Uriel one within his wave; the chosen one is called, or the next
+button turned toward one worth calling. They reckon only foes already awake and keep Gabriel and
+Uriel off while a pack sleeps within reach (a power's blow wakes its den), call only Michael on the
+Burning Field (every blow cracks the ground there and every kill rises again), and do not call
+while Envy's Eye watches. The novice stays the masher and never calls them. `VH_NO_ANGELS` keeps
+every bot from calling them (with it the runs match the build before, number for number); the run
+table ends with the calls of each archangel, and a court's or the lair's line with `angels`.
+
+The harnesses that move (before: `rust-port` at 55788d3; after: this branch):
+
+| | before | after |
+|---|---|---|
+| adept, 8 seeds, the vaults first | the ending 7/8, 128 min, 19.5 lives and 6.2 tries lost | the ending 7/8, 100 min, 12.9 lives and 4.2 tries lost |
+| adept, 8 seeds, the reverse | the ending 7/8, 117 min, 25.8 lives and 8.2 tries lost | the ending 8/8, 115 min, 27.6 lives and 8.6 tries lost |
+| adept's courts (8 seeds, vaults first; minutes) | Mammon 3.1, Lucifer 3.0, Leviathan 3.9, Amon 5.0, Belphegor 4.9, Beelzebub 4.4, Asmodeus 5.8, Krampus 7.5 | 2.4, 2.4, 3.4, 4.0, 3.1, 3.6, 5.0, 6.1 |
+| expert seed 1, the vaults first | 74 min, 1 life lost; courts 1.2-1.9 min | 83 min, 10 lives and 3 tries lost (all on the Burning Field); courts 1.2-1.9 min |
+| expert seed 1, the reverse | 97 min, 2 lives lost, 2 realms cleared | 81 min, 2 lives lost, 4 realms cleared; courts 1.1-1.9 min (Mammon 1.8 to 1.5, Lucifer 1.7 to 1.4) |
+| `--court` (Mammon, expert) | 119.9 s | 106.4 s |
+| `--lair` (Krampus, expert, tier 8) | 122.9 s | 111.3 s |
+| `--pit 2 8 1` | 985 s, 153 kills, 110 taken, no fall | 1026 s, 158 kills, 193 taken, one fall on level 7 |
+| `--balance 2` | | the same (the ring forbids the archangels) |
+
+No court fell under half its time (the shortest ratio is about 0.7). The Burning Field is where the
+numbers move the wrong way (the adept's reverse order: 5.0 to 8.1 deaths there). With no calls on
+the field at all the expert's reverse run still read worse there, so part of it is the run arriving
+changed: the powers end fights sooner, and the bots earn fewer of the deeds mastery counts (none
+counts an archangel's call; that run came to the field a rank lower). The Krampus test's floor went
+from 120 s to 100 s.

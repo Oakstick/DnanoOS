@@ -95,8 +95,8 @@ impl Game {
             if !d.active || d.tile != o {
                 continue;
             }
-            if let Offer::Angel(angel) = d.current() {
-                self.receive_blessing(i, angel);
+            if let Offer::Angel(_) = d.current() {
+                self.visit_angel_shrine(i);
                 continue;
             }
             let chosen = self.diamonds[i].take();

@@ -2,8 +2,8 @@
 //! him (he promised he would come). Four tabs, one for each of the hero's
 //! trees (weapons, path, shields, elixirs), each a column of ten tiers:
 //! unlock the next, wield or carry what is owned, buy bottles of the elixirs
-//! learned. A fifth, the loadout: the archangel he swears to (whose power
-//! comes back to him on a timer), the outfit he wears, his blade sharpened
+//! learned. A fifth, the loadout: the archangel he swears to (with him before
+//! the shrines bring all four, and the one chosen first), the outfit he wears, his blade sharpened
 //! for gold, and a broken shield forged anew. Driven by the keyboard, a
 //! controller or the mouse. The rows are built fresh from the hero's
 //! progress, so labels and prices always tell the truth. The tabs are the
@@ -193,10 +193,7 @@ impl Game {
         let mut rows = Vec::new();
         rows.push(ShopRow {
             kind: RowKind::Patron,
-            buttons: ARCHANGELS
-                .iter()
-                .map(|&a| button(ShopAction::Patron(a), format!("{} {}s", a.name().to_uppercase(), a.recharge() as u32), 0, 0, true))
-                .collect(),
+            buttons: ARCHANGELS.iter().map(|&a| button(ShopAction::Patron(a), a.name().to_uppercase(), 0, 0, true)).collect(),
         });
         rows.push(ShopRow {
             kind: RowKind::Outfit,
@@ -510,11 +507,12 @@ impl Game {
                     return;
                 }
                 self.progress.hero_mut(hero).patron = Some(a);
-                self.patron_wait = 0.0;
+                // He is chosen now (and with him even before the shrines).
+                self.angels.chosen = a;
                 self.audio.play(Sfx::Milestone);
                 self.shop.flourish = 1.0;
                 self.note(
-                    format!("{} WATCHES OVER YOU - HIS POWER RETURNS EVERY {} SECONDS", a.name().to_uppercase(), a.recharge() as u32),
+                    format!("{} WATCHES OVER YOU - CHOSEN FIRST, AND WITH YOU BEFORE THE SHRINES", a.name().to_uppercase()),
                     a.color(),
                 );
                 self.save_progress();
