@@ -336,7 +336,7 @@ fn draw_status(o: &mut Overlay, g: &Game, t: f32, rc: f32, ty: f32, small: f32) 
     } else if g.in_court() || g.in_lair() {
         court::draw_status(o, g, rc, ty, small);
     } else if g.in_vault() {
-        // The hoard: what he carries out of the vaults, for Mammon to ask his toll on.
+        // The hoard: what he carries out of the vaults, counted into his score at the far portal.
         let cp = j.coin_punch;
         let gold = format!("{}", g.hoard.gold);
         let gs = style::label(t, size::LABEL * 1.2 * (1.0 + 0.3 * cp), rgba(mix_rgb(GOLD, 0xffffff, cp * 0.6), 1.0))

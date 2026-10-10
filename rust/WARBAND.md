@@ -650,10 +650,10 @@ time, health, silver carried, or a better route.
 | Cheat | The lie | Its tell | Counter → reward | Cost if believed |
 |---|---|---|---|---|
 | **The Whisper** | false counsel: a wrong weakness, a wrong instrument, a wrong way | the sin's colour instead of amber, a reversed echo, no bark | ask the old man (H): "I said no such thing." → **Seen-through** mark (+runes) | a wasted elixir, a walk into a den |
-| **The Crooked Bargain** | a deal mid-realm, like Mammon's toll: "Leave the horn whole and I'll open the court now" | his offers always cost more than they say (a learnable rule; the old man says so early) | refuse → nothing; accept → the gain is real, and so is the hidden price (the general's decree completes) | a harder prince for a shorter road: sometimes worth taking, which is the decision |
+| ~~The Crooked Bargain~~ | removed (BACKLOG B40, D11): **the princes never make a deal** | | | |
 | **Loaded Dice** | a mimic chest (Greed, Gluttony) | it breathes; its coins don't glint; the hinge creaks | strike it first → double loot | it bites (a body strike, planned by the threat manager) |
 | **The Turned Sign** | the realm's compass points toward a trap for 20 s | the arrow in the sin's colour, and it flickers | follow the old man's amber marker, which is always true | a detour |
-| **The Prince's lie** (exists) | the end-of-realm lie (the toll, "take your throne", ...) | kept as built | kept as built | kept as built |
+| **The Prince's lie** (exists) | the end-of-realm lie ("take your throne", "all you want lies below", ...); Mammon's toll was a deal and is gone (B40) | kept as built | kept as built | kept as built |
 
 Each prince flavours his cheats with his sin: Mammon's are all prices, Lucifer's flatter, Leviathan
 offers what another hero had, Amon goads, Belphegor offers rest, Beelzebub offers food, Asmodeus

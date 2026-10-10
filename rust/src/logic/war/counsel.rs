@@ -354,7 +354,7 @@ pub fn realm_line(sin: Sin, hero: HeroKind, intel: Option<&GeneralIntel>, first:
         None => format!("{realm}. {prince} keeps a general there; I have not learned his name. Listen for horns."),
     };
     if first {
-        body.push_str(" And whatever the prince offers you, it costs more than he says.");
+        body.push_str(" And whatever the prince tells you down there, it is a lie. He offers nothing; ask me.");
     }
     framed(hero, Frame::Realm, &body)
 }
@@ -382,7 +382,6 @@ pub fn gear_line(w: GearWarning, hero: HeroKind) -> String {
 pub fn praise_line(cheat: CheatKind, hero: HeroKind) -> String {
     let body = match cheat {
         CheatKind::Whisper => "That was not my voice down there. I said no such thing.",
-        CheatKind::CrookedBargain => "You refused his bargain. It cost more than he said; it always does.",
         CheatKind::LoadedDice => "A chest that breathes is no chest.",
         CheatKind::TurnedSign => "You followed my lamp, not his sign.",
     };
@@ -490,7 +489,7 @@ pub struct Line {
 #[derive(Clone, Debug, Default)]
 pub struct Counsel {
     /// Once-flags kept for the run: "d<kind>" a breed's counter given, "m<rival>" a rival named,
-    /// "bargain" the prince's rule told. (Rooms are this visit's only, and not kept.)
+    /// "lies" the prince's rule told. (Rooms are this visit's only, and not kept.)
     pub flags: BTreeSet<String>,
     rooms: HashMap<u64, u32>,
     pub pending: Vec<Line>,
@@ -500,7 +499,7 @@ pub struct Counsel {
 }
 
 impl Counsel {
-    /// The flags as the save keeps them ("d3,m12,bargain"; no '|').
+    /// The flags as the save keeps them ("d3,m12,lies"; no '|').
     pub fn encode(&self) -> String {
         self.flags.iter().filter(|f| !f.starts_with('r')).cloned().collect::<Vec<_>>().join(",")
     }
@@ -560,10 +559,10 @@ impl Counsel {
                 }
             }
             Trigger::RealmEntered { sin, intel } => {
-                let first = !self.flags.contains("bargain");
+                let first = !self.flags.contains("lies");
                 let text = realm_line(sin, hero, intel, first);
                 if first {
-                    self.flags.insert("bargain".into());
+                    self.flags.insert("lies".into());
                 }
                 push(self, Rule::RealmEntered, text, About::Realm(sin), None);
             }

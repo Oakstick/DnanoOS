@@ -320,8 +320,8 @@ const GREED_TALE: &[&str] = &[
 
 const GREED_TASK: [&str; 3] = [
     "Cross the vaults from the west antechamber to the far portal in the east wall. Take what gold and chests you like on the way.",
-    "At the far portal Mammon asks his toll: a chance, he says, to keep the gold. It is a lie. Keep it, and the vaults close and begin again.",
-    "Leave the gold, and the portal opens on his court. What his chests gave you, you keep.",
+    "The far portal opens on his court. The gold you carry through is counted to your name; what his chests gave you, you keep.",
+    "Mammon offers nothing. If a voice in the gold promises you a bargain, that is a lie: no prince makes a deal.",
 ];
 
 const GREED_WATCH: &[&str] = &[
@@ -727,7 +727,7 @@ mod tests {
                 Sin::Envy => "All you want lies below",
                 Sin::Wrath => "Sound the horn and the battle ends",
                 Sin::Sloth => "Lie down. The door opens when you wake",
-                Sin::Greed => "toll",
+                Sin::Greed => "bargain",
                 Sin::Gluttony => "Finish your plate, and you may leave",
                 Sin::Lust => "Turn around",
             };

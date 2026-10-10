@@ -1746,7 +1746,6 @@ fn crawl_full(
                 out.game_over = true;
                 break;
             }
-            super::Screen::Toll => break,
             super::Screen::Ready => g.enter(super::Screen::Playing),
             _ => {}
         }

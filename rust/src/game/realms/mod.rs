@@ -54,8 +54,9 @@ impl Meter {
     }
 }
 
-/// The prince's offer, when a realm makes one (as Mammon makes his toll): its title, what is
-/// said, and the answers, the one he would have chosen first.
+/// A realm's own lie put to him as a question at its end (the Grey Mire's bed: "Lie down. The door
+/// opens when you wake."): its title, what is said, and the answers, the one the prince would have
+/// him choose first. A lie with its tell, never a deal (BACKLOG B40).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Offer {
     pub title: String,
@@ -266,12 +267,8 @@ impl Game {
         )
     }
 
-    /// The prince's offer standing before him now, if his realm makes one.
+    /// The realm's lie put to him now, if his realm asks one.
     pub fn run_offer(&self) -> Option<Offer> {
-        // A prince's cheat asking (his bargain) comes first.
-        if let Some(o) = self.deceit_offer() {
-            return Some(o);
-        }
         let sin = self.run.as_ref()?.sin();
         match sin {
             Sin::Sloth => self.mire_offer(),

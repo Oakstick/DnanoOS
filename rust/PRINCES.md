@@ -27,6 +27,10 @@ These come from COMBAT.md §0 and §13 and WARBAND.md, and they are not bent:
   a parry still deflects him. In his court it lets `COURT_HIDE` (0.6) through, 0.3 before W10
   (`HIDE_SHARE`, which the ring's Mammon and Krampus's pelt keep): a hero who strikes his
   recoveries fells him as fast as before, one who guards first is no longer turned to nothing.
+* **He never makes a deal** (BACKLOG B40, D11). No prince offers the hero anything to accept or
+  refuse, anywhere: Mammon's toll ("keep the gold") and the crooked bargain are gone. He lies (the
+  whisper, the mimic, the turned sign, his realm's own lie at its end: "take your throne"), every
+  lie has a tell, and the old man sees through them.
 * **His general weighs on him** (`PrinceTerms`): his general slain, he fights without his adds;
   his general's decree done, his adds come at once as the fight begins (and the design below
   may name one more thing the decree changes).

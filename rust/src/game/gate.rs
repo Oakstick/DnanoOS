@@ -42,11 +42,9 @@ impl Game {
         let hp = self.hero.pos();
         let near = (hp.x - g.x as f64).abs() < 1.2 && (hp.y - g.y as f64).abs() < 1.7;
         if near && !self.gate_open && self.vault.is_some() {
-            // The far portal of the vaults asks Mammon's toll instead of keys.
-            if !self.toll_asked {
-                self.ask_toll();
-            }
-            return;
+            // The far portal of the vaults opens on Mammon's court: he asks no toll (no prince
+            // makes a deal, BACKLOG B40).
+            self.gate_open = true;
         }
         if near && !self.gate_open && self.run.is_some() {
             // The realms after the vaults seal theirs until their last trap has been survived.
@@ -91,6 +89,9 @@ impl Game {
                 self.audio.play(Sfx::Win);
                 self.enter(Screen::Won);
             } else {
+                if self.in_vault() {
+                    self.count_hoard();
+                }
                 self.win();
             }
         }
