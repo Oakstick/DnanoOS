@@ -2161,6 +2161,14 @@ impl Game {
         }
     }
 
+    /// General `k` falls at once (the `slaygeneral:K` capture): his key drops where he stood.
+    pub fn debug_slay_general(&mut self, k: usize) {
+        let Some(id) = self.general.as_ref().and_then(|g| g.lords[k.min(2)].id) else { return };
+        if let Some(d) = self.foe_mut(id) {
+            d.f.kill();
+        }
+    }
+
     /// Every general of the realm counted slain and his key taken (the tests, a testing cheat).
     pub fn debug_all_keys(&mut self) {
         let Some(g) = self.general.as_mut() else { return };
@@ -2205,12 +2213,40 @@ impl Game {
             }
             return self.gate.map(|p| p.v());
         }
-        g.lords
+        let standing = g
+            .lords
             .iter()
             .enumerate()
             .filter(|(_, l)| !l.slain && !l.waiting)
             .map(|(k, l)| l.id.and_then(|id| self.foe(id)).map(|d| d.pos).unwrap_or(g.posts.post(k).v()))
-            .min_by(near)
+            .min_by(near);
+        if standing.is_some() {
+            return standing;
+        }
+        // (The other two down, their keys taken: on to the realm's climax, the road to the third.)
+        if g.lords[CLIMAX].waiting && !g.climax_done {
+            return self.climax_road();
+        }
+        None
+    }
+
+    /// Where the realm's climax is sprung: the throne's dais, the bell's pool, the horn on the
+    /// field (then the truce stone), Hel's bed, the Black Thorn's gate.
+    pub fn climax_road(&self) -> Option<V> {
+        Some(match self.run.as_ref()? {
+            Run::Pride(m) => m.throne.v(),
+            Run::Envy(gr) => gr.bell.pool.first()?.v(),
+            Run::Wrath(f) => {
+                if f.called.is_some() {
+                    f.stone.v()
+                } else {
+                    f.horn.v()
+                }
+            }
+            Run::Sloth(m) => m.to_world(m.bed).v(),
+            Run::Lust(t) => t.base.exit.front().v(),
+            Run::Gluttony(_) => return None,
+        })
     }
 
     /// The duelists of general `k`'s own pack (him first, then his guard and his room's foes).

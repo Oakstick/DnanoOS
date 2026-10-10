@@ -991,7 +991,7 @@ impl WorldView {
             }
             let at = Vec3::new(hx + super::hell_portals::house_seal_x(i), super::hell_portals::HOUSE_SEALS_Y, face + 0.06);
             let broken = hv.seal > 0.0;
-            super::seal_stones::emit_seal_stone(f, at, *sin, time, 0.22, 0.0, if broken { 2.4 } else { 1.2 });
+            super::seal_stones::emit_seal_stone(f, at, *sin, time, 0.2, 0.0, if broken { 0.7 } else { 0.35 });
             f.lights.push(Light { pos: at + Vec3::new(0.0, 0.0, 0.5), color: lin(sin.color()) * 0.9, distance: 1.6 });
         }
         let p = hub::altar();

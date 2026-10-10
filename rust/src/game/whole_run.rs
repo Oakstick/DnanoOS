@@ -704,7 +704,18 @@ fn play(g: &mut Game, bot: &mut Bot, limit: f64, guided: bool, done: &dyn Fn(&Ga
                 g.hero.edge,
                 w.idle,
                 g.general.as_ref().map(|r| (0..3)
-                    .map(|k| (r.posts.post(k), r.lords[k].slain, r.lords[k].waiting, r.lords[k].key, r.lords[k].key_taken))
+                    .map(|k| (
+                        r.posts.post(k),
+                        r.lords[k].slain,
+                        r.lords[k].waiting,
+                        r.lords[k].key,
+                        r.lords[k].key_taken,
+                        r.lords[k].id.and_then(|id| g.enemies.iter().filter_map(|e| e.duel.as_deref()).find(|d| d.id == id)).map(|d| (
+                            d.hp as i32,
+                            d.pos.x as i32,
+                            d.pos.y as i32
+                        ))
+                    ))
                     .collect::<Vec<_>>()),
                 g.general_errand_goal()
             );

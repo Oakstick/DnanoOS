@@ -81,5 +81,5 @@ pub(super) fn emit_seal_stone(f: &mut Frame, at: Vec3, sin: Sin, time: f32, size
             facet(f, at, rot * diamond, Vec3::new(0.0, 0.14, 0.0), Vec3::splat(0.26), size, lin(0xffc0dc), glow);
         }
     }
-    glow_orb(f, at, size * 0.9, c, 0.22 * glow.max(0.2));
+    glow_orb(f, at, size * 0.9, c, 0.12 * glow.max(0.2));
 }

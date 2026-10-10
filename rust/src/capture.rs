@@ -150,6 +150,9 @@ pub(crate) enum Cmd {
     Streak,
     Goo,
     Gate,
+    SlayGeneral(usize),
+    Keys,
+    TakeKey,
     Foes(usize, Option<u8>),
     Dungeon(usize),
     /// The four archangels with him, one chosen: 0 Michael, 1 Gabriel, 2 Raphael, 3 Uriel.
@@ -344,6 +347,9 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "streak" => Cmd::Streak,
             "goo" => Cmd::Goo,
             "gate" => Cmd::Gate,
+            "slaygeneral" => Cmd::SlayGeneral(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "keys" => Cmd::Keys,
+            "takekey" => Cmd::TakeKey,
             "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1), parts.next().and_then(|v| v.parse().ok())),
             "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "bless" => Cmd::Bless(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
@@ -573,6 +579,13 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Streak => game.debug_streak(),
         Cmd::Goo => game.debug_goo(),
         Cmd::Gate => game.cheat_to_gate(),
+        Cmd::SlayGeneral(k) => game.debug_slay_general(k),
+        Cmd::Keys => game.debug_all_keys(),
+        Cmd::TakeKey => {
+            if let Some(k) = game.general.as_ref().and_then(|g| g.lords.iter().find_map(|l| l.key)) {
+                game.hero.place(crate::logic::types::P::new(k.x.round() as i32, k.y.round() as i32));
+            }
+        }
         Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
         Cmd::Dungeon(n) => game.debug_dungeon(n),
         Cmd::Bless(n) => {
