@@ -55,7 +55,7 @@ impl Game {
             // (The general's puppet line, the witches' minions.)
             kinds.push(EnemyKind::Minion);
             kinds.extend(self.ledger().live().map(|r| r.kind));
-            kinds.extend(self.general.as_ref().map(|g| g.body));
+            kinds.extend(self.general.as_ref().into_iter().flat_map(|g| g.lords.iter().map(|l| l.body)));
             match &self.run {
                 Some(Run::Sloth(_)) => kinds.push(EnemyKind::Ganglot),
                 // (A mimic's biter in the feast is a gaki too.)

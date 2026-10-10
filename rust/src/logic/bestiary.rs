@@ -191,7 +191,7 @@ pub fn archetype(entry: Entry) -> Option<(Archetype, Attack)> {
         // (The Peerless fights with the hero's own moves, turned on him: no archetype's.)
         Entry::Foe(EnemyKind::Peerless) => return None,
         Entry::Foe(k) => k,
-        Entry::General(s) => General::of(s).body,
+        Entry::General(s) => General::of(s).captains[0].body,
         Entry::Cyclops | Entry::Mimic => return None,
     };
     let b = Breed::of(kind);
@@ -1129,7 +1129,7 @@ mod tests {
             assert_eq!(foe_lore(k).name, spec.name, "{k:?}");
         }
         for s in SINS {
-            let name = General::of(s).name.to_lowercase();
+            let name = General::of(s).name().to_lowercase();
             assert_eq!(general_lore(s).name.to_lowercase(), name, "{s:?}");
         }
     }

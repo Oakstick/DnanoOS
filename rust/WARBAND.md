@@ -581,20 +581,50 @@ any order is. This is the "they change their plans for me" beat.
 A rival of rank ≥ 4 can **usurp** a general's place in a realm not yet taken: the general becomes
 the rival, with his memory and lesson, and the orders keep their instruments. The Mordor tie.
 
-### 9.3 The seven generals (proposals)
+### 9.3 The generals: three a realm, each carrying a key (BACKLOG B41, D12)
 
-Bodies are existing breeds dressed with a banner, a cloak and a sigil, so no new sculpt is
-required (a new sculpt per general can come later).
+Every realm is about fighting, beating its generals, taking their keys and opening the prince's
+door. **Each realm has three generals**, each a named, real fight (a frame-data duel on his breed,
+health ×2.5 his breed's but not past 300 × the realm's weight, a horn at half health that steadies
+his guard: two phases), each at a post of his own with his own guard pack, **each giving one of the
+realm's three orders** (general `k` gives order `k`; slain, his order ends for good, a decree
+already done stays done) and **each carrying a key**. Slain, his key falls where he fell (a gold key
+turning over a glint of his cloak, on floor the hero can walk to: a pickup with a moment, a chime,
+a beat of slowing and KEY n OF 3), his banner goes to the workshop's wall, and his name card is
+shown as he wakes (WARBAND §8.4's beat for a rival). With all three keys **the door to the
+prince's court opens**; until then it is sealed with a "3 KEYS n/3" lock. The HUD's banner shows the
+keys held (KEYS 0/3 to 3/3) and a key under each general's order disc; the minimap and the screen
+show each general's post once known (seen, named, or marked by a caught herald's map) and each key
+lying about.
 
-| Realm | General | Body | Orders |
-|---|---|---|---|
-| Greed: the Vaults of Mammon | **The Assessor**, who counts what the hero carries | blemmyes, gilded | Muster (the counting-bell), Kindle (coin traps), Decree (treasurers empty the chests into the court: Mammon's golems come sooner) |
-| Pride: the Hall of Mirrors | **The Chamberlain of Glass** | tengu, white and gold | Watch (patrols that walk out of mirrors), Kindle (light beams along mirror lines), Decree (polish the throne-mirror: the Peerless gains his crown) |
-| Envy: the Serpent Grotto | **The Bell-Warden** | kappa, verdigris | Kindle (geysers), Muster (the drowned rise at the bell's toll), Decree (lower the bell: the court's water rises) |
-| Wrath: the Burning Field | **Marshal Gorebrand** | oni, scarred | Muster (war horns), Kindle (lava sluices), Decree (sappers burn the bridges) |
-| Sloth: the Grey Mire | **The Lamplighter** | karakoncolos, hooded | Watch (lantern patrols), Kindle (torpor lamps), Decree (wind the hourglass: Belphegor wakes rested) |
-| Gluttony: the Rotting Feast | **The Steward of the Last Course** | gaki, aproned | Muster (the dinner gong), Kindle (acid tide valves), Decree (cooks lay the feast Beelzebub eats to heal) |
-| Lust: the Garden of Thorns | **The Bridesmaid** | albastı, veiled | Watch (the wedding procession), Kindle (censers), Decree (the vows: the Black Thorn's gate seals for a time) |
+The first is the realm's general of the first plan. The third (`CLIMAX`) is the one the realm's
+climax leads to in the six realms after the vaults: he waits until its last trap ends and comes out
+before the court's portal a breath later, with his guard (`climax_survived`): the Peerless leads to
+the Mirror-Cin, Kiyohime's bell to Kiyohime, the truce stone to the Carrion Herald, Hel's bed to the
+Night Hag, the wedding night to the Thorn-Warden. In the Rotting Feast the gullet is the road: the
+Gingerbread Witch stands at the table at the Stomach's heart, the teeth of a seam stay shut while a
+general holds the zone before it (no general is ever digested behind them), and the pylorus parts
+for the lean key-bearer only. In the vaults all three hold rooms.
+
+| Realm | General (order, instrument) | Body |
+|---|---|---|
+| Greed: the Vaults of Mammon | **The Assessor** (Muster, the counting-bell) · **the Hoard-Hound** (Decree, the treasury chain) · **the Usurer** (Kindle, the coin-bellows) | blemmyes · dire wolf · kitsune |
+| Pride: the Hall of Mirrors | **The Chamberlain of Glass** (Kindle, the lens-bellows) · **the Peacock Guard** (Decree, the throne chain) · **the Mirror-Cin** (Watch, the mirror-fire; after the Peerless) | tengu · rasetsu · cin |
+| Envy: the Serpent Grotto | **The Bell-Warden** (Muster, the drowned bell) · **the Cobra Priestess** (Decree, the bell chain) · **Kiyohime** (Kindle, the geyser valve; after the bell) | kappa · cobra · rokurokubi |
+| Wrath: the Burning Field | **Marshal Gorebrand** (Muster, the war horn) · **the Wolf-Coat** (Decree, the bridge chain) · **the Carrion Herald** (Kindle, the lava sluice; after the truce stone) | oni · loup-garou · tülükuş |
+| Sloth: the Grey Mire | **The Lamplighter** (Kindle, the lamp-bellows) · **Ganglati** (Decree, the hourglass chain) · **the Night Hag** (Watch, the lantern-fire; after the Long Sleep) | karakoncolos · Ganglöt · albastı |
+| Gluttony: the Rotting Feast | **The Steward of the Last Course** (Muster, the dinner gong) · **the Starved Knight** (Decree, the larder chain) · **the Gingerbread Witch** (Kindle, the acid valve; at the dome) | gaki · helmeted skeleton · witch |
+| Lust: the Garden of Thorns | **The Bridesmaid** (Watch, the procession's torch) · **the Matchmaker** (Decree, the vow-chain) · **the Thorn-Warden** (Kindle, the censer; after the wedding night) | elf-maid · jorōgumo · arçura |
+
+Twenty-one bodies, none twice. The names that PRINCES-EPIC.md's set pieces use (the Chamberlain's
+mirror-lines, the Bell-Warden's toll, Gorebrand's horn, the Lamplighter's lamps, the Assessor's
+counting-bell, the Steward's gong, the Bridesmaid's procession) keep those instruments.
+
+**The prince's fight** (`PrinceTerms`, decision D14): **his adds always come**, however many of his
+generals fell (all three always have, since the door asks their keys); the decree done brings them
+at once as before. The court reads which generals fell and whether the decree was done
+(`PrinceTerms::slain`, `decree_done`) for the epic courts' set pieces; no general's death weakens
+him otherwise.
 
 Realm generators expose candidate places for the post and the instruments (`Base.posts`), picked
 by seed, each reachable (a test as the hub's portals have).

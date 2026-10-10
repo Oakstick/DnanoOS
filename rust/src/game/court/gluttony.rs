@@ -860,7 +860,7 @@ mod tests {
     }
 
     /// A game in his court with his general's record as given.
-    fn with_general(decree_done: bool, slain: bool) -> Game {
+    fn with_general(decree_done: bool, slain: u8) -> Game {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-court"));
         let mut g = Game::new();
         let mut all: Records = g.general_records();
@@ -873,20 +873,20 @@ mod tests {
     }
 
     #[test]
-    fn his_general_slain_no_swarms_and_the_feast_laid_six_platters_and_the_swarms_at_once() {
-        // The Steward slain: no swarms in his second phase.
-        let mut g = with_general(false, true);
-        assert!(beelzebub(&mut g).lore.summoned, "his phase-two adds are lost");
+    fn his_generals_slain_the_swarms_still_come_and_the_feast_laid_six_platters_and_the_swarms_at_once() {
+        // All three generals slain (B41): his swarms still come in his second phase (D14).
+        let mut g = with_general(false, 0b111);
+        assert!(!beelzebub(&mut g).lore.summoned, "his phase-two adds still come");
         let from = beelzebub(&mut g).pos;
         let max = beelzebub(&mut g).max_hp;
         beelzebub(&mut g).hp = max * 0.6;
         g.call_duel_hit(0, from);
         run(&mut g, 0.2);
         assert_eq!(beelzebub(&mut g).breed.phase, 2);
-        assert_eq!(swarms(&g), 0, "no swarms");
+        assert_eq!(swarms(&g), SWARMS as usize, "the swarms come");
         assert_eq!(banquet(&g).dishes.len(), PLATTERS_SET);
         // The feast laid: six platters, and the swarms at once.
-        let mut g = with_general(true, false);
+        let mut g = with_general(true, 0);
         run(&mut g, 0.1);
         assert_eq!(swarms(&g), SWARMS as usize, "the swarms come at once");
         assert_eq!(banquet(&g).dishes, vec![Dish::Laden; PLATTERS_LAID], "six platters");

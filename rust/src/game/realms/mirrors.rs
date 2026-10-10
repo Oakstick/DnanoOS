@@ -769,7 +769,8 @@ impl Game {
                 self.level.grid.set(p.x, p.y, Tile::Pit);
             }
         }
-        self.gate_open = true;
+        // (The road leads to the Mirror-Cin, who steps out before the court's portal: B41.)
+        self.climax_survived();
         self.audio.play(Sfx::ShieldBreak);
         self.audio.play(Sfx::BossDeath);
         self.view.shake(0.8);
@@ -1035,6 +1036,7 @@ mod tests {
         let spot = P::new(stand.x, stand.y + 2);
         let line = g.pride_beam_line(0, 0, None).unwrap();
         g.hero.place(spot);
+        g.general = None; // (The beams alone: no general's name card slows the moment.)
         let hp = g.hero.hp;
         if let Some(m) = g.pride_mut() {
             m.beam = Some(Beam { relay: 0, from: line.0, to: line.1, age: BEAM_TELL, touched: false, bite: 0.0 });
@@ -1195,7 +1197,7 @@ mod tests {
         g.enemies[i].duel.as_mut().unwrap().hp = 1.0;
         g.stray_blow(i);
         run(&mut g, 0.3);
-        assert!(g.gate_open, "the court's portal opens");
+        assert!(g.realm_climax_done() && !g.gate_open, "the road to the Mirror-Cin; the door waits for the keys (B41)");
         assert!(mirrors(&g).won && mirrors(&g).fall.is_some_and(|f| f.win));
         assert!(g.hero.altitude < 0.0, "falling");
         // (The last foe's fall slows time for a beat: the fall takes that much longer.)
@@ -1204,7 +1206,8 @@ mod tests {
         assert_eq!(g.hero.occupied(), m.base.exit.front(), "at the foot of the spire, before the court");
         assert_eq!(m.gallery, 0);
         assert!(g.juice.banner.as_ref().is_some_and(|b| b.text == "HOW ART THOU FALLEN"));
-        // Through the portal to Lucifer's court.
+        // Through the portal to Lucifer's court, with the three generals' keys (B41).
+        g.debug_all_keys();
         for _ in 0..(3.0 / STEP) as usize {
             g.update(STEP);
             g.hero.invuln = 1.0;

@@ -139,7 +139,9 @@ impl Game {
         }
         self.refresh_foe_views();
         self.hero.pace = 1.0;
-        self.gate_open |= opened;
+        if opened {
+            self.check_court_door();
+        }
         self.field_mark();
         if welcome {
             self.juice.banner = Some(Banner {
@@ -795,7 +797,8 @@ impl Game {
         f.opened = true;
         f.open_age = 0.0;
         let stone = f.stone.v();
-        self.gate_open = true;
+        // (The road leads to the Carrion Herald, who comes out on the hill: B41.)
+        self.climax_survived();
         self.audio.play(Sfx::Win);
         self.audio.play(Sfx::Bells);
         self.view.sparkle(&self.level.grid, stone.x, stone.y, 1.4, WHITE, 60);
@@ -1118,7 +1121,7 @@ mod tests {
         run(&mut g, 2.0);
         assert!(!g.gate_open);
         run(&mut g, 3.5);
-        assert!(field(&g).opened && g.gate_open, "the stone opens the far portal");
+        assert!(field(&g).opened && g.realm_climax_done() && !g.gate_open, "the stone ends the climax; the door waits for the keys (B41)");
     }
 
     #[test]

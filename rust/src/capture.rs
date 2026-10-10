@@ -212,7 +212,7 @@ pub(crate) enum Cmd {
     Trial(u8),
     Toast,
     /// Into sin S's realm, before its general's command post (WARBAND.md §9).
-    General(usize),
+    General(usize, usize),
     /// The realm's general gives his order K (0..2) now.
     Order(usize),
     /// The end: Scene II from T seconds in (FINALE.md §4).
@@ -305,7 +305,9 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "bot" => Cmd::Bot(parts.next().and_then(|v| v.parse().ok()).unwrap_or(2)),
             "readout" => Cmd::Press(Action::Readout),
             "realm" => Cmd::Realm(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
-            "general" => Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4)),
+            "general" => {
+                Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4), parts.next().and_then(|v| v.parse().ok()).unwrap_or(0))
+            }
             "order" => Cmd::Order(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "ending" => Cmd::Ending(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0)),
             "after" => {
@@ -518,9 +520,9 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             *bot = Some(crate::game::bot::Bot::new(crate::game::bot::Skill::ALL[k.min(2)], 1));
         }
         Cmd::Realm(n) => game.map_jump(Stage::Realm(SINS[n.min(6)])),
-        Cmd::General(n) => {
+        Cmd::General(n, k) => {
             game.map_jump(Stage::Realm(SINS[n.min(6)]));
-            game.jump_to_post();
+            game.debug_general(k);
         }
         Cmd::Order(k) => game.debug_order(k),
         Cmd::Ending(at) => game.ending_jump(at),

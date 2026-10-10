@@ -48,11 +48,39 @@ impl WorldView {
             let i = r.command.instruments[k];
             let busy = matches!(r.command.stages[k], OrderStage::Announced { .. } | OrderStage::Live { .. });
             let live = matches!(r.command.stages[k], OrderStage::Live { .. });
-            self.emit_instrument(s, f, &i, busy, live, r.general().cloak, r.general().hazard_color, time);
+            self.emit_instrument(s, f, &i, busy, live, r.lord(k).cloak, r.general().hazard_color, time);
         }
         self.emit_gate(s, f, r, time);
         self.emit_kindling(s, f, r, time);
-        self.emit_dress(s, f, r, time);
+        for k in 0..3 {
+            if let Some(id) = r.lord(k).id {
+                self.emit_dress(s, f, r, id, r.lord(k).cloak, time);
+            }
+        }
+        self.emit_keys(f, r, time);
+    }
+
+    /// Each key lying where its general fell: a gold key turning over a glint of his colour.
+    fn emit_keys(&self, f: &mut Frame, r: &GeneralRun, time: f32) {
+        for l in &r.lords {
+            let Some(at) = l.key else { continue };
+            let (x, z) = (at.x as f32, at.y as f32);
+            let bob = 0.55 + 0.08 * (time * 2.6 + x).sin();
+            let spin = time * 1.8 + z;
+            let rot = Quat::from_rotation_y(spin);
+            let p = Vec3::new(x, bob, z);
+            let gold = 0xffd84a;
+            // The bow (a ring of four), the shaft, the bit.
+            for k in 0..4 {
+                let a = k as f32 * std::f32::consts::FRAC_PI_2;
+                let o = rot * Vec3::new(0.0, 0.11 * a.sin(), 0.11 * a.cos());
+                tilted(f, p + Vec3::new(0.0, 0.16, 0.0) + o, Vec3::new(0.05, 0.07, 0.07), rot, gold, 0.6);
+            }
+            tilted(f, p, Vec3::new(0.05, 0.26, 0.05), rot, gold, 0.6);
+            tilted(f, p + rot * Vec3::new(0.0, -0.1, 0.07), Vec3::new(0.05, 0.05, 0.1), rot, gold, 0.6);
+            tilted(f, p + rot * Vec3::new(0.0, -0.02, 0.06), Vec3::new(0.05, 0.04, 0.08), rot, gold, 0.6);
+            f.lights.push(Light { pos: p + Vec3::new(0.0, 0.3, 0.0), color: lin(l.cloak) * 1.2 + lin(gold) * 0.8, distance: 2.6 });
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -281,15 +309,13 @@ impl WorldView {
 
     /// The general dressed: a cloak of his colour hanging at his back, and his banner on its pole
     /// above it, his sin's sigil on the cloth.
-    fn emit_dress(&self, s: &SceneState, f: &mut Frame, r: &GeneralRun, time: f32) {
-        let Some(id) = r.id else { return };
+    fn emit_dress(&self, s: &SceneState, f: &mut Frame, r: &GeneralRun, id: u32, cloak: u32, time: f32) {
         let Some((i, d)) =
             s.enemies.iter().enumerate().find_map(|(i, e)| e.duel.as_deref().filter(|d| d.id == id && d.alive()).map(|d| (i, d)))
         else {
             return;
         };
         let Some(v) = self.enemy_views.get(i).filter(|v| v.visible) else { return };
-        let gen = r.general();
         let top = crown(d.breed.kind).unwrap_or(1.2);
         let back = Vec3::new(-d.facing.x as f32, 0.0, -d.facing.y as f32).normalize_or_zero();
         let side = Vec3::new(-back.z, 0.0, back.x);
@@ -300,7 +326,7 @@ impl WorldView {
         for k in 0..3 {
             let y = top * (0.75 - 0.22 * k as f32);
             let p = at + back * (0.26 + 0.05 * k as f32 + sway * k as f32) + Vec3::new(0.0, y, 0.0);
-            block(f, p, Vec3::new(0.05, top * 0.24, 0.5 + 0.06 * k as f32), turn, gen.cloak, 0.05);
+            block(f, p, Vec3::new(0.05, top * 0.24, 0.5 + 0.06 * k as f32), turn, cloak, 0.05);
         }
         // The banner: its pole from his back to over his head, the cloth, the sigil.
         let pole = at + back * 0.32 + side * 0.18;
@@ -310,8 +336,8 @@ impl WorldView {
         let flap = 0.15 * (time * 4.0 + at.z).sin();
         let cloth = pole + Vec3::new(0.0, tall - 0.28, 0.0) + side * 0.26;
         let rot = Quat::from_rotation_y(turn + flap);
-        tilted(f, cloth, Vec3::new(0.03, 0.44, 0.5), rot, gen.cloak, 0.1);
+        tilted(f, cloth, Vec3::new(0.03, 0.44, 0.5), rot, cloak, 0.1);
         tilted(f, cloth + side * 0.02 + Vec3::new(0.0, 0.02, 0.0), Vec3::new(0.035, 0.16, 0.16), rot, r.sin.color(), 0.6);
-        f.lights.push(Light { pos: at + Vec3::new(0.0, top + 0.6, 0.0), color: lin(gen.cloak) * 1.4, distance: 3.5 });
+        f.lights.push(Light { pos: at + Vec3::new(0.0, top + 0.6, 0.0), color: lin(cloak) * 1.4, distance: 3.5 });
     }
 }

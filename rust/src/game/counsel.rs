@@ -148,7 +148,8 @@ impl Game {
         // construction: read from the general the realm holds.
         let run = self.general.as_ref().filter(|r| r.sin == sin && !r.command.slain)?;
         let general = crate::logic::war::general::General::of(sin);
-        let k = (0..3).find(|&k| !run.command.instruments[k].broken)?;
+        // (The first general standing whose instrument still stands: it is his he names.)
+        let k = (0..3).find(|&k| !run.command.instruments[k].broken && !run.lords[k].slain)?;
         let at = run.posts.instruments[k];
         let from = self.level.hero_spawn;
         let (dx, dy) = ((at.x - from.x) as f64, (at.y - from.y) as f64);
@@ -173,7 +174,7 @@ impl Game {
             (n, e) => format!("to the {n}-{e} of where you came in"),
         };
         Some(GeneralIntel {
-            name: crate::game::general::title_case(&run.name),
+            name: crate::game::general::title_case(&run.lords[k].name),
             // ("THE COUNTING-BELL" as the line says it: "counting-bell".)
             instrument: general.instruments[k].trim_start_matches("THE ").to_lowercase(),
             place: way,
@@ -517,7 +518,7 @@ mod tests {
         let g = crate::game::realms::tests::in_realm(Sin::Greed);
         let intel = g.general_intel(Sin::Greed).expect("the vaults hold a general");
         let run = g.general.as_ref().unwrap();
-        assert_eq!(intel.name.to_uppercase(), run.name.to_uppercase());
+        assert_eq!(intel.name.to_uppercase(), run.lords[0].name.to_uppercase());
         assert!(crate::logic::war::general::General::of(Sin::Greed)
             .instruments
             .iter()

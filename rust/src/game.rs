@@ -499,6 +499,9 @@ pub struct Game {
     /// The gold he carries out of the vaults (counted into his score as he goes through their far
     /// door: no prince makes a deal for it, BACKLOG B40).
     pub hoard: Hoard,
+    /// His belt and rune fragments as he came into the realm he is in: what `replay_realm` gives
+    /// back when the realm begins again with everything where it lay.
+    pub(crate) realm_kit: (Vec<PotionKind>, u32),
     /// The camera as it was before the vaults turned it to the top view.
     camera_before_vault: Option<CameraMode>,
     /// The gym's Sparring Ring: its bouts (none elsewhere).
@@ -671,6 +674,7 @@ impl Game {
             lair: None,
             general: None,
             hoard: Hoard::default(),
+            realm_kit: (Vec::new(), 0),
             camera_before_vault: None,
             spar: None,
             brawl: None,

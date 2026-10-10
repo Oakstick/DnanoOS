@@ -380,6 +380,24 @@ impl Bot {
     }
 
     /**
+     * The realm's generals (BACKLOG B41): between fights the adept and the expert go for a key lying
+     * where its general fell, then (with all three) through the court's door, else to the nearest
+     * general standing at his post, waking what lies on the way rather than every den of the realm.
+     */
+    fn keys_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        if self.skill == Skill::Novice || hunting_near {
+            return None;
+        }
+        let goal = g.general_errand_goal()?;
+        let mut pad = PadState::default();
+        let to = math::sub(goal, hp);
+        let dir = if math::len(to) > 0.6 { self.way(g, hp, goal) } else { math::norm(to) };
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        Some(pad)
+    }
+
+    /**
      * The Rotting Feast walked as a player walks it (WARBAND.md W11): between fights it goes on down
      * the gullet rather than waking every den (the gaki in their corners off the way, which only
      * the smell of food brings): through the next seam's arch (the wide one when too full for the
@@ -684,6 +702,9 @@ impl Bot {
         // off their planned frames.)
         let hunting_near = hunting.iter().any(|d| !d.puppet);
         if let Some(errand) = self.general_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        if let Some(errand) = self.keys_errand(g, hp, hunting_near) {
             return errand;
         }
         if let Some(errand) = self.feast_errand(g, hp, hunting_near) {
@@ -1725,7 +1746,7 @@ fn crawl_full(
     let mut bot = Bot::new(skill, seed);
     // (Skipping him, the bot goes round his post: his room's pack is held out of the fight, a
     // stand-in for a player who never sets foot there, while his orders run on.)
-    let skipped = if skip_general { g.general_pack() } else { Vec::new() };
+    let skipped = if skip_general { (0..3).flat_map(|k| g.general_pack(k)).collect() } else { Vec::new() };
     for d in g.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).filter(|d| skipped.contains(&d.id)) {
         d.puppet = true;
     }
@@ -1814,7 +1835,7 @@ pub fn general_report(sin: crate::logic::sins::Sin, skill: Skill, tier: u8, seed
         "{} - {} ({}), {} with Ragnar's tier-{tier} kit, seed {seed}
 ",
         sin.realm(),
-        crate::logic::war::general::General::of(sin).name,
+        crate::logic::war::general::General::of(sin).name(),
         sin.title(),
         skill.name()
     );

@@ -805,7 +805,8 @@ impl Game {
         self.hero.place(landing);
         self.hero.altitude = 4.0;
         self.hero.face(Dir::Up);
-        self.gate_open = true;
+        // (The road leads to Kiyohime, who comes out before the court's portal: B41.)
+        self.climax_survived();
         self.audio.play(Sfx::Win);
         self.audio.play(Sfx::Portal);
         self.view.sparkle(&self.level.grid, landing.x as f64, landing.y as f64, 1.0, GREEN, 50);
@@ -1034,7 +1035,7 @@ mod tests {
         g.hero.place(bell.center);
         g.update(STEP);
         assert_eq!(run(&g).bell.phase, BellPhase::Won);
-        assert!(g.gate_open, "the far portal opens");
+        assert!(g.realm_climax_done() && !g.gate_open, "the bell survived: the road to Kiyohime, the door still sealed (B41)");
         assert_eq!(g.hero.occupied(), bell.landing);
         let exit = run(&g).base.exit;
         assert!((g.hero.occupied().y - exit.front().y).abs() <= 3 && g.hero.occupied().x == exit.front().x, "before the portal");

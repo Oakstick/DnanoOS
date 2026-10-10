@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn his_general_slain_no_ravens_come_and_his_decree_done_they_come_at_once() {
+    fn his_generals_slain_the_ravens_still_come_and_his_decree_done_they_come_at_once() {
         let at_court = |record: general::Record| {
             let mut g = court();
             let mut all = g.general_records();
@@ -456,16 +456,16 @@ mod tests {
             g.hero.free_move = true;
             g
         };
-        // Marshal Gorebrand slain: at two thirds no ravens.
-        let mut g = at_court(general::Record { met: true, slain: true, ..Default::default() });
-        assert!(amon(&mut g).lore.summoned, "his ravens are lost");
+        // All three slain (B41): at two thirds the ravens still come (D14).
+        let mut g = at_court(general::Record { met: true, slain: 0b111, keys: 0b111, ..Default::default() });
+        assert!(!amon(&mut g).lore.summoned, "his ravens still come");
         let max = amon(&mut g).max_hp;
         let from = amon(&mut g).pos;
         amon(&mut g).hp = max * 0.6;
         g.call_duel_hit(0, from);
         run(&mut g, 0.1);
         assert_eq!(amon(&mut g).breed.phase, 2);
-        assert_eq!(ravens(&g), 0, "no ravens");
+        assert_eq!(ravens(&g), RAVENS as usize, "the ravens come");
         // His decree done (the bridges burnt): the ravens come as the fight begins, and not again.
         let mut g = at_court(general::Record { met: true, decree_done: true, ..Default::default() });
         run(&mut g, 0.1);

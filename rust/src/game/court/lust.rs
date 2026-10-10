@@ -735,19 +735,19 @@ mod tests {
     }
 
     #[test]
-    fn the_bridesmaid_slain_he_has_no_maids_and_her_vows_spoken_they_come_at_once_and_the_censers_light_once() {
+    fn the_generals_slain_his_maids_still_come_and_the_vows_spoken_they_come_at_once_and_the_censers_light_once() {
         use crate::logic::war::general::Record;
         let maids = |g: &Game| g.enemies.iter().filter(|e| e.kind() == EnemyKind::Ellepige).count();
-        // Slain: no elf-maids at his second phase.
-        let mut g = court_after(Record { met: true, slain: true, ..Default::default() });
-        assert!(asmodeus(&mut g).lore.summoned, "his maids are lost");
+        // All three slain (B41): the elf-maids still come at his second phase (D14).
+        let mut g = court_after(Record { met: true, slain: 0b111, keys: 0b111, ..Default::default() });
+        assert!(!asmodeus(&mut g).lore.summoned, "his maids still come");
         let max = asmodeus(&mut g).max_hp;
         let from = asmodeus(&mut g).pos;
         asmodeus(&mut g).hp = max * 0.6;
         g.call_duel_hit(0, from);
         run(&mut g, 0.05);
         assert_eq!(asmodeus(&mut g).breed.phase, 2);
-        assert_eq!(maids(&g), 0, "none come");
+        assert_eq!(maids(&g), MAIDS as usize, "they come");
         assert!(g.censers().iter().all(|c| c.2 == LIGHTS));
         // The vows spoken: the maids at once, and each censer lights only once.
         let mut g = court_after(Record { met: true, decree_done: true, ..Default::default() });

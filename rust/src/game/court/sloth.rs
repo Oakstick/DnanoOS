@@ -603,7 +603,7 @@ mod tests {
     }
 
     /// The court of Sloth, his general (the Lamplighter) slain or his decree done.
-    fn with_general(decree_done: bool, slain: bool) -> Game {
+    fn with_general(decree_done: bool, slain: u8) -> Game {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-court"));
         let mut g = Game::new();
         let mut all = g.general_records();
@@ -616,9 +616,10 @@ mod tests {
     }
 
     #[test]
-    fn his_general_slain_no_nightmares_come_and_his_decree_done_he_wakes_rested_with_them() {
-        // The Lamplighter slain: asleep as ever, but no nightmares at his second phase.
-        let mut g = with_general(false, true);
+    fn his_generals_slain_his_nightmares_still_come_and_his_decree_done_he_wakes_rested_with_them() {
+        // All three slain (B41): asleep as ever, and his nightmares still come at his second phase
+        // (D14).
+        let mut g = with_general(false, 0b111);
         assert!(belphegor(&mut g).puppet);
         let max = belphegor(&mut g).max_hp;
         strike(&mut g, 1.0);
@@ -627,11 +628,11 @@ mod tests {
         strike(&mut g, 2.0);
         run(&mut g, 1.0);
         assert_eq!(belphegor(&mut g).breed.phase, 2);
-        assert_eq!(nightmares(&g), 0, "his nightmares are lost");
+        assert_eq!(nightmares(&g), NIGHTMARES as usize, "his nightmares come");
         assert!(belphegor(&mut g).lore.slumber.open(), "he dreams all the same");
         // The hourglass wound (his decree done): he wakes rested (no free blow) and his
         // nightmares come at once.
-        let mut g = with_general(true, false);
+        let mut g = with_general(true, 0);
         run(&mut g, 0.1);
         let d = belphegor(&mut g);
         assert!(!d.puppet && d.breed.phase == 1 && !d.lore.slumber.open(), "awake from the first");

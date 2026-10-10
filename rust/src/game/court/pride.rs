@@ -541,16 +541,16 @@ mod tests {
     }
 
     #[test]
-    fn the_chamberlain_slain_he_has_no_reflections_and_his_decree_done_they_stand_at_his_side() {
-        // Slain: no Reflections when the Mirror comes.
-        let mut g = court_after(Record { met: true, slain: true, ..Default::default() });
-        assert!(lucifer(&mut g).lore.summoned, "his Reflections are lost");
+    fn the_generals_slain_his_reflections_still_come_and_his_decree_done_they_stand_at_his_side() {
+        // All three slain (B41): his Reflections still come when the Mirror comes (D14).
+        let mut g = court_after(Record { met: true, slain: 0b111, keys: 0b111, ..Default::default() });
+        assert!(!lucifer(&mut g).lore.summoned, "his Reflections still come");
         let (max, from) = (lucifer(&mut g).max_hp, lucifer(&mut g).pos);
         lucifer(&mut g).hp = max * 0.6;
         g.call_duel_hit(0, from);
         run(&mut g, 0.1);
         assert_eq!(lucifer(&mut g).breed.phase, 2);
-        assert_eq!(reflections(&g), 0, "the glass stays empty");
+        assert_eq!(reflections(&g), REFLECTIONS as usize, "they step out of the glass");
         // The throne-mirror polished: they stand at his side as the fight begins, and not again.
         let mut g = court_after(Record { met: true, decree_done: true, ..Default::default() });
         run(&mut g, 0.05);

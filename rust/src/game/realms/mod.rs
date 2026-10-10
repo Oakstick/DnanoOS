@@ -91,6 +91,8 @@ impl Game {
     /// camera above, the far portal sealed.
     pub(super) fn enter_run(&mut self, sin: Sin) {
         let Some(run) = Run::generate(sin, self.realm_tier()) else { return };
+        // His kit as he came in: what he gets back if the realm is played again (`replay_realm`).
+        self.realm_kit = (self.belt.clone(), self.progress.runes);
         // Seen from above, as the vaults are; the camera goes back to what it was on leaving.
         if self.camera_before_vault.is_none() {
             self.camera_before_vault = Some(self.view.camera_mode);
@@ -297,8 +299,12 @@ impl Game {
         }
     }
 
-    /// What the sealed far portal tells him when he comes up to it.
+    /// What the sealed door to the court tells him when he comes up to it: the three keys' lock.
     pub(super) fn run_seal_hint(&self) -> String {
+        let held = self.general.as_ref().map(|g| g.keys()).unwrap_or(0);
+        if self.general.is_some() && held < super::general::KEYS {
+            return format!("SEALED: 3 KEYS   {held}/3   THE GENERALS CARRY THEM");
+        }
         let Some(sin) = self.run.as_ref().map(Run::sin) else { return String::new() };
         format!("SEALED: {} HAS NOT LET YOU GO", sin.realm().to_uppercase())
     }
@@ -336,7 +342,7 @@ pub(super) mod tests {
             assert!(g.brawl.as_ref().is_some_and(|b| b.field == Field::Vault), "{sin:?} is fought by frame data");
             assert!(g.enemies.iter().all(|e| e.duel.as_ref().is_some_and(|d| d.den.is_some_and(|d| !d.awake))), "{sin:?}: asleep");
             assert_eq!(g.view.camera_mode, CameraMode::Top);
-            assert_eq!(g.keys_total, 0, "{sin:?}: no keys; the realm's own trap seals the way");
+            assert_eq!(g.keys_total, 3, "{sin:?}: the three generals keys open the court (B41)");
             assert!(g.relic_shrine.is_none() && g.potions.is_empty());
         }
     }

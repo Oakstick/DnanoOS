@@ -41,19 +41,15 @@ impl Game {
         self.gate_hint = (self.gate_hint - dt).max(0.0);
         let hp = self.hero.pos();
         let near = (hp.x - g.x as f64).abs() < 1.2 && (hp.y - g.y as f64).abs() < 1.7;
-        if near && !self.gate_open && self.vault.is_some() {
-            // The far portal of the vaults opens on Mammon's court: he asks no toll (no prince
-            // makes a deal, BACKLOG B40).
-            self.gate_open = true;
-        }
-        if near && !self.gate_open && self.run.is_some() {
-            // The realms after the vaults seal theirs until their last trap has been survived.
+        if near && !self.gate_open && (self.run.is_some() || self.vault.is_some()) {
+            // The door to the prince's court is sealed until all three generals' keys are held
+            // (BACKLOG B41; Mammon asks no toll, B40).
             if self.gate_hint <= 0.0 {
                 // (Not every few seconds: a realm's last trap may be sprung right before it.)
                 self.gate_hint = 12.0;
                 self.audio.play(Sfx::Denied);
                 let text = self.run_seal_hint();
-                let color = self.run.as_ref().map(|r| r.sin().color()).unwrap_or(0xffffff);
+                let color = self.realm.map(|s| s.color()).unwrap_or(0xffffff);
                 self.floater(g.x as f64, g.y as f64 + 0.6, text, 1.6, Some(color));
             }
             return;

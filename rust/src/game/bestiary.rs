@@ -327,7 +327,7 @@ impl Game {
         if let Some(who) = self.bestiary.watch.duels.get(&id) {
             return who.clone();
         }
-        if let Some(g) = self.general.as_ref().filter(|g| g.id == Some(id)) {
+        if let Some(g) = self.general.as_ref().filter(|g| g.lord_of(id).is_some()) {
             return Subject::Page(Entry::General(g.sin));
         }
         if let Some(r) = self.rival_of(id).and_then(|r| self.ledger().get(r)) {

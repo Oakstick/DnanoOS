@@ -60,6 +60,8 @@ impl Game {
         self.start_facing = Dir::Right;
         self.level.hero_spawn = vault.arrival;
         self.hoard = Hoard::default();
+        // His kit as he came in: what he gets back if the realm is played again (`replay_realm`).
+        self.realm_kit = (self.belt.clone(), self.progress.runes);
         self.vault = Some(vault);
         let mut brawl = Brawl::new(Field::Vault);
         brawl.reset(self.hero_kit());
@@ -358,7 +360,7 @@ mod tests {
         let v = g.vault.as_ref().expect("the Vaults of Mammon");
         assert_eq!(g.level.data.name, "The Vaults of Mammon");
         assert_eq!(g.hero.occupied(), v.arrival, "he arrives in the antechamber");
-        assert_eq!(g.keys_total, 0, "no golden keys in the vaults");
+        assert_eq!(g.keys_total, 3, "the three generals' keys to Mammon's court (B41)");
         assert!(g.enemies.len() >= 50, "packs sized for frame-data fights");
         assert!(g.enemies.iter().all(asleep), "every foe sleeps in its room");
         assert!(g.brawl.as_ref().is_some_and(|b| b.field == Field::Vault), "the vaults are fought by frame data");
@@ -534,7 +536,7 @@ mod tests {
     /// BACKLOG B40: Mammon makes no deal. F2 brings him to the far portal; it opens on his court
     /// with no question asked, and the gold he carries through is counted into his score.
     #[test]
-    fn f2_brings_him_to_the_far_portal_and_it_opens_with_no_toll() {
+    fn f2_brings_him_to_the_far_portal_sealed_by_three_keys_and_it_opens_with_no_toll() {
         let mut g = in_the_vault();
         let v = g.vault.clone().unwrap();
         let coin = v.loot.iter().find(|l| l.kind == LootKind::Coin).unwrap();
@@ -545,6 +547,19 @@ mod tests {
         g.input.key_down(winit::keyboard::KeyCode::F2, false);
         g.update(STEP);
         assert_eq!(g.hero.occupied(), P::new(v.exit_gate.x - 1, v.exit_gate.y));
+        for _ in 0..(1.0 / STEP) as usize {
+            g.update(STEP);
+            g.hero.invuln = 1.0;
+            assert_ne!(g.screen, Screen::Toll, "no question at the portal");
+        }
+        assert!(!g.gate_open, "sealed: the three generals' keys (B41)");
+        // The three keys: the door unseals.
+        if let Some(r) = g.general.as_mut() {
+            for l in r.lords.iter_mut() {
+                (l.slain, l.key_taken, l.key) = (true, true, None);
+            }
+        }
+        g.check_court_door();
         for _ in 0..(3.0 / STEP) as usize {
             g.update(STEP);
             g.hero.invuln = 1.0;
@@ -561,6 +576,28 @@ mod tests {
         assert_eq!((g.screen, g.realm, g.in_court()), (Screen::Ready, Some(Sin::Greed), true), "Mammon's court");
         assert!(g.boss.is_none() && g.prince().is_some(), "Mammon himself, by frame data");
         assert!(g.vault.is_none());
+    }
+
+    /// The old toll's machinery, kept as a function any realm can call (`replay_realm`): the realm
+    /// begins again with every coin back where it lay, the hoard emptied, and his kit as he came in.
+    #[test]
+    fn replaying_the_realm_puts_every_coin_back_and_his_kit_as_he_came_in() {
+        let mut g = in_the_vault();
+        g.belt = vec![crate::logic::types::PotionKind::Health];
+        g.progress.runes = 3;
+        g.realm_kit = (g.belt.clone(), g.progress.runes);
+        let v = g.vault.clone().unwrap();
+        let coin = v.loot.iter().find(|l| l.kind == LootKind::Coin).unwrap();
+        g.hero.place(coin.at);
+        g.update(STEP);
+        assert_eq!(g.hoard.gold, 10);
+        g.progress.runes = 9;
+        g.belt.clear();
+        g.replay_realm(crate::logic::sins::Sin::Greed);
+        assert_eq!(g.screen, Screen::Ready);
+        assert!(g.hoard.is_empty() && g.vault.as_ref().unwrap().loot.iter().all(|l| !l.taken), "every coin back where it lay");
+        assert_eq!((g.progress.runes, g.belt.len()), (3, 1), "his kit as he came in");
+        assert_eq!(g.hero.occupied(), v.arrival);
     }
 
     #[test]

@@ -127,7 +127,7 @@ fn figure_of(entry: Entry) -> Figure {
         Entry::Foe(k) => Figure::Foe(k),
         Entry::Cyclops => Figure::Cyclops,
         Entry::Mimic => Figure::Mimic,
-        Entry::General(s) => Figure::Foe(crate::logic::war::general::General::of(s).body),
+        Entry::General(s) => Figure::Foe(crate::logic::war::general::General::of(s).captains[0].body),
     }
 }
 

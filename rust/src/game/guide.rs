@@ -41,19 +41,26 @@ impl Game {
             }
             GuidePlace::Realm(sin) => {
                 if let Some(r) = self.general.as_ref().filter(|r| r.sin == sin) {
-                    let name = super::general::title_case(&r.name);
-                    if r.command.slain {
-                        now.push(format!("{name} is slain. His orders died with him, and his prince is weaker for it."));
+                    let keys = r.keys();
+                    if keys >= 3 {
+                        now.push(format!("You hold all three keys. {}'s door is open to you.", sin.prince()));
                     } else {
-                        let left = (0..3).filter(|&k| !r.command.instruments[k].broken).count();
-                        let standing = match left {
-                            3 => "All three of his instruments still stand".to_string(),
-                            0 => "Every one of his instruments is broken".to_string(),
-                            n => format!("{n} of his three instruments still stand"),
-                        };
-                        now.push(format!("{name} holds this realm for his prince. {standing}: break them and his orders fail."));
-                        if r.post_known {
-                            now.push("His herald's map marks his post. Strike him there, and his prince fights the weaker.".into());
+                        let standing: Vec<String> =
+                            r.lords.iter().filter(|l| !l.slain).map(|l| super::general::title_case(&l.name)).collect();
+                        now.push(format!(
+                            "You hold {keys} of the three keys to {}'s court. Still standing: {}. Each carries a key.",
+                            sin.prince(),
+                            standing.join(", ")
+                        ));
+                        let left = (0..3).filter(|&k| !r.command.instruments[k].broken && !r.lords[k].slain).count();
+                        if left > 0 {
+                            now.push(format!("{left} of their instruments still stand: break them and their orders fail."));
+                        }
+                        if r.climax && r.lords[2].waiting {
+                            now.push(format!(
+                                "{} waits where the realm's trap ends. Survive it, and he comes out.",
+                                super::general::title_case(&r.lords[2].name)
+                            ));
                         }
                     }
                 }

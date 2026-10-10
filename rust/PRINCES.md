@@ -31,9 +31,11 @@ These come from COMBAT.md §0 and §13 and WARBAND.md, and they are not bent:
   refuse, anywhere: Mammon's toll ("keep the gold") and the crooked bargain are gone. He lies (the
   whisper, the mimic, the turned sign, his realm's own lie at its end: "take your throne"), every
   lie has a tell, and the old man sees through them.
-* **His general weighs on him** (`PrinceTerms`): his general slain, he fights without his adds;
-  his general's decree done, his adds come at once as the fight begins (and the design below
-  may name one more thing the decree changes).
+* **His generals weigh on him** (`PrinceTerms`, BACKLOG B41, decision D14): his three generals
+  carry the keys to his court, so all three have fallen when the hero reaches him. **His adds
+  always come**; his realm's decree done, they come at once as the fight begins (and the design
+  below may name one more thing the decree changes). The court can read which generals fell and
+  whether the decree was done, for the epic courts' set pieces (PRINCES-EPIC.md).
 * **He drops his sin's key.** The way on is as from Mammon: the gate behind him, the old man's
   wares, the Portals of Hell with the sin sealed. A fall brings him back before his throne **with
   his wounds** (W10: `prince::after_fall`; HIS WOUNDS REMAIN over him, his bar where it was, and in

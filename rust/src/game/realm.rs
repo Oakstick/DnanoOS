@@ -35,6 +35,25 @@ impl Game {
         self.load(sin_arena(sin, tier), tier);
     }
 
+    /**
+     * The realm of `sin` played again from its start (the machinery of Mammon's old toll, kept for a
+     * temptation at a realm's end that the backlog may decide on; nothing calls it today): every coin
+     * and chest back where it lay, the hoard emptied, his belt and rune fragments as they were when
+     * he came in, and the checkpoint at its entrance. What the run keeps of its generals (slain,
+     * their keys) stays kept.
+     */
+    pub fn replay_realm(&mut self, sin: Sin) {
+        let (belt, runes) = self.realm_kit.clone();
+        self.belt = belt;
+        self.belt_index = 0;
+        self.progress.runes = runes;
+        self.hoard = super::vault::Hoard::default();
+        self.load_realm(sin);
+        self.checkpoint(Stage::Realm(sin));
+        self.juice.fade = 1.0;
+        self.enter(Screen::Ready);
+    }
+
     /// Through a portal in the Portals of Hell, into its realm.
     pub(super) fn enter_realm(&mut self, sin: Sin) {
         self.audio.play(Sfx::Portal);
