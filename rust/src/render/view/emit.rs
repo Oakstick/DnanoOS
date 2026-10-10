@@ -2,6 +2,7 @@
 //! own life (water, lava, the vaults' gold), the sea of cloud, and the lights nearest the hero.
 
 use super::*;
+use crate::settings::ColourBlind;
 
 const LIGHT_POOL_TORCHES: usize = 3;
 /// The garden's lanterns lit at once, the nearest the hero first.
@@ -83,7 +84,6 @@ fn emit_cloud_sea(grid: &Grid, f: &mut Frame, eye: Vec3) {
 /// Slime's wet material: glossy, a sharp highlight (voxel material 9).
 pub(super) const SHADE_GOO: f32 = 14.0;
 /// The bog slime's trail and spit: its jelly's colours (`foes::goo`), a little darker where it lies thin.
-pub(super) const GOO_TRAIL: u32 = 0x356a4a;
 pub(super) const GOO_TRAIL_L: u32 = 0x5c9a62;
 
 /// How much of what lies behind a bog slime's jelly it hides, head-on (edge-on it hides more:
@@ -91,11 +91,13 @@ pub(super) const GOO_TRAIL_L: u32 = 0x5c9a62;
 const GOO_ALPHA: f32 = 0.34;
 
 /**
- * One tile of slime trail: a lumpy splat of glossy goo with droplets flung
- * around it, a smear joining it to the next trail tile, and bubbles that swell
- * and pop. `life` runs 1 (fresh) to 0 (dried up); the goo shrinks as it dries.
+ * One tile of slime trail (B66: it slows him, so it must read at a glance): a lumpy splat of wet,
+ * glossy goo in a bright colour of its own (the colour-blind palettes' too, `palette::slime_trail`),
+ * with a clear dark edge round it, a wet sheen catching the light, droplets flung about it, a smear
+ * joining it to the next tile of the trail, and faint bubbles swelling and popping. `life` runs 1
+ * (fresh) to 0 (dried up); the goo shrinks and dulls as it dries. Presentation only.
  */
-fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &std::collections::HashSet<P>) {
+fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &std::collections::HashSet<P>, cb: ColourBlind) {
     let disc = MeshKind::Disc as usize;
     let k = (life / 0.4).min(1.0).sqrt();
     if k <= 0.02 {
@@ -103,12 +105,12 @@ fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &st
     }
     let (tx, tz) = (tile.x as f32, tile.y as f32);
     let (hx, hy) = (tile.x as f64, tile.y as f64);
-    // (The bog slime's own jelly: murky bog green, a paler sheen where it pools thick.)
-    let goo = lin(GOO_TRAIL);
-    let goo_l = lin(GOO_TRAIL_L);
-    let glow = lin(super::animation::SLIME_LIGHT) * 0.03;
+    let (body, sheen, edge) = crate::render::palette::slime_trail(cb);
+    let (goo, goo_l, rim) = (lin(body), lin(sheen), lin(edge));
+    // (Its own faint light, so it reads in the dark realms too, dimming as it dries.)
+    let glow = goo * (0.06 * k);
     let mut lift = 0.012;
-    let mut blob = |f: &mut Frame, x: f32, z: f32, rx: f32, rz: f32, rot: f32, color: Vec3| {
+    let mut blob = |f: &mut Frame, x: f32, z: f32, rx: f32, rz: f32, rot: f32, color: Vec3, glow: Vec3| {
         let m = Mat4::from_translation(Vec3::new(x, floor + lift, z))
             * Mat4::from_rotation_y(rot)
             * Mat4::from_rotation_x(-PI / 2.0)
@@ -120,33 +122,49 @@ fn emit_goo(f: &mut Frame, tile: P, floor: f32, life: f32, time: f32, trail: &st
     let jx = (hash(hx * 3.0, hy * 5.0) as f32 - 0.5) * 0.12;
     let jz = (hash(hy * 3.0, hx * 5.0) as f32 - 0.5) * 0.12;
     let spin = hash(hx, hy) as f32 * TAU;
-    // The main splat: two overlapping lobes.
-    blob(f, tx + jx, tz + jz, 0.25 * k * wob, 0.19 * k / wob, spin, goo);
-    blob(f, tx + jx + spin.cos() * 0.08, tz + jz + spin.sin() * 0.08, 0.15 * k / wob, 0.12 * k * wob, spin + 1.3, goo_l);
-    // Droplets flung around it.
+    let smears: Vec<(i32, i32)> =
+        [(1, 0), (0, 1)].into_iter().filter(|&(dx, dz)| trail.contains(&P::new(tile.x + dx, tile.y + dz))).collect();
+    // The edge first, a little wider than all of it: the trail's clear dark rim.
+    let e = 0.035;
+    blob(f, tx + jx, tz + jz, 0.25 * k * wob + e, 0.19 * k / wob + e, spin, rim, Vec3::ZERO);
+    for &(dx, dz) in &smears {
+        let (rx, rz) = if dx != 0 { (0.36, 0.1) } else { (0.1, 0.36) };
+        blob(f, tx + dx as f32 * 0.5, tz + dz as f32 * 0.5, rx * k + e, rz * k + e, 0.0, rim, Vec3::ZERO);
+    }
+    // The main splat: two overlapping lobes, the second its paler pool.
+    blob(f, tx + jx, tz + jz, 0.25 * k * wob, 0.19 * k / wob, spin, goo, glow);
+    blob(f, tx + jx + spin.cos() * 0.08, tz + jz + spin.sin() * 0.08, 0.15 * k / wob, 0.12 * k * wob, spin + 1.3, goo_l, glow);
+    // Droplets flung around it, each with its own dark rim.
     for i in 0..5 {
         let hi = hash(hx * 7.0 + i as f64, hy * 11.0) as f32;
         let a = spin + i as f32 * 1.3 + hi;
         let d = 0.24 + hi * 0.14;
         let r = (0.035 + hi * 0.045) * k;
-        blob(f, tx + jx + a.cos() * d, tz + jz + a.sin() * d, r, r * 0.85, a, if i % 2 == 0 { goo } else { goo_l });
+        let (dx, dz) = (tx + jx + a.cos() * d, tz + jz + a.sin() * d);
+        blob(f, dx, dz, r + 0.018, r * 0.85 + 0.018, a, rim, Vec3::ZERO);
+        blob(f, dx, dz, r, r * 0.85, a, if i % 2 == 0 { goo } else { goo_l }, glow);
     }
     // A smear toward the next tile of the trail, so it reads as one track.
-    for (dx, dz) in [(1, 0), (0, 1)] {
-        if trail.contains(&P::new(tile.x + dx, tile.y + dz)) {
-            let (rx, rz) = if dx != 0 { (0.36, 0.1) } else { (0.1, 0.36) };
-            blob(f, tx + dx as f32 * 0.5, tz + dz as f32 * 0.5, rx * k, rz * k, 0.0, goo);
-        }
+    for &(dx, dz) in &smears {
+        let (rx, rz) = if dx != 0 { (0.36, 0.1) } else { (0.1, 0.36) };
+        blob(f, tx + dx as f32 * 0.5, tz + dz as f32 * 0.5, rx * k, rz * k, 0.0, goo, glow);
     }
-    // Bubbles: swell, then pop.
-    for b in 0..2 {
+    // The wet sheen: a long highlight slicked across the pool, catching the light whichever way it
+    // falls (brighter while fresh).
+    let slick = Mat4::from_translation(Vec3::new(tx + jx - spin.sin() * 0.05, floor + lift + 0.001, tz + jz + spin.cos() * 0.05))
+        * Mat4::from_rotation_y(spin + 0.6)
+        * Mat4::from_rotation_x(-PI / 2.0)
+        * Mat4::from_scale(Vec3::new(0.13 * k, 0.035 * k, 1.0));
+    f.transparent[disc].push(Instance::new(slick, goo_l * 1.3, 0.5 * k, goo_l * (0.35 * k), SHADE_GOO));
+    // Faint bubbles: three, swelling and popping, see-through.
+    for b in 0..3 {
         let hb = hash(hx * 13.0 + b as f64, hy * 17.0) as f32;
         let phase = (time * (0.35 + hb * 0.3) + hb * 5.0).fract();
-        let r = phase.powf(0.7) * 0.04 * k;
+        let r = phase.powf(0.7) * 0.05 * k;
         if phase < 0.95 && r > 0.004 {
-            let p = Vec3::new(tx + jx + (hb - 0.5) * 0.24, floor + 0.012 + r * 0.6, tz + jz + (0.5 - hb) * 0.2);
+            let p = Vec3::new(tx + jx + (hb - 0.5) * 0.28, floor + 0.012 + r * 0.6, tz + jz + (0.5 - hb) * 0.22);
             let m = Mat4::from_translation(p) * Mat4::from_scale(Vec3::splat(r));
-            f.opaque[MeshKind::Sphere as usize].push(Instance::new(m, goo_l, 1.0, glow, SHADE_GOO));
+            f.transparent[MeshKind::Sphere as usize].push(Instance::new(m, goo_l, 0.55, glow, SHADE_GOO));
         }
     }
 }
@@ -807,7 +825,15 @@ impl WorldView {
         // --- slime trails: glossy splats joined tile to tile, bubbling, drying away
         let trail: std::collections::HashSet<P> = s.puddles.iter().map(|(p, _)| p).collect();
         for (tile, life) in s.puddles.iter() {
-            emit_goo(f, tile, floor_at(grid, tile.x as f32, tile.y as f32), life as f32 / PUDDLE_SECONDS as f32, time, &trail);
+            emit_goo(
+                f,
+                tile,
+                floor_at(grid, tile.x as f32, tile.y as f32),
+                life as f32 / PUDDLE_SECONDS as f32,
+                time,
+                &trail,
+                self.colour_blind,
+            );
         }
 
         // --- debris and blasts

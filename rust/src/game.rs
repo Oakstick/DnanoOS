@@ -384,6 +384,8 @@ pub struct Game {
     streak_timer: f64,
     step_dist: f64,
     was_airborne: bool,
+    /// He stood in a slime's trail last step (the squelch as he steps in, B66).
+    was_slimy: bool,
     /// The way Ragnar faces at spawn: down the longest corridor from the center.
     start_facing: Dir,
     /// The dungeon number this stretch of the game belongs to (its boss shares it).
@@ -616,6 +618,7 @@ impl Game {
             streak_timer: 0.0,
             step_dist: 0.0,
             was_airborne: false,
+            was_slimy: false,
             start_facing: Dir::Down,
             dungeon: 0,
             level_track: None,

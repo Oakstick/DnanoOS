@@ -95,6 +95,12 @@ impl Game {
         if airborne || !self.hero.alive {
             return;
         }
+        // Into a bog slime's trail: a squelch as the boot goes in (B66; the slowing is the trail's own).
+        let slimy = self.hero.slowed();
+        if slimy && !self.was_slimy {
+            self.audio.play(Sfx::Squelch);
+        }
+        self.was_slimy = slimy;
         let after = self.hero.pos();
         let moved = dist_sq(before, after).sqrt();
         if moved <= 0.0 || moved > 1.5 {

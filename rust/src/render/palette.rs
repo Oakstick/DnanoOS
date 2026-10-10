@@ -34,6 +34,18 @@ pub fn safe(mode: ColourBlind) -> u32 {
     }
 }
 
+/// The bog slime's trail on the floor (B66: it slows him, so it must read at a glance): its
+/// glossy body, the paler sheen where it pools, and the dark edge round it. A bog green as the
+/// slime's own, bright and saturated; where red and green read alike a sulphur yellow, which stays
+/// apart from the floors' greys, browns and moss by its brightness as well as its hue.
+pub fn slime_trail(mode: ColourBlind) -> (u32, u32, u32) {
+    match mode {
+        ColourBlind::Off => (0x48c25a, 0xa4f27e, 0x0b1f10),
+        ColourBlind::Deuteranopia | ColourBlind::Protanopia => (0xd4c43a, 0xf6ee96, 0x241c06),
+        ColourBlind::Tritanopia => (0x36cc8a, 0xa2f4cc, 0x08241a),
+    }
+}
+
 /// A plain foe's dot on the map.
 pub fn foe(mode: ColourBlind) -> u32 {
     match mode {

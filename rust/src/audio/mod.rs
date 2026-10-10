@@ -116,6 +116,8 @@ pub enum Sfx {
     Wind,
     /// Water dripping in the dungeon.
     Drip,
+    /// A boot stepping into a bog slime's trail (B66): a wet, sucking squelch.
+    Squelch,
     // ---- the archangels' powers, each with its own voice
     /// Michael's fire: a blade ringing out in blue flame.
     MichaelFire,
@@ -1322,6 +1324,17 @@ impl AudioManager {
                         .filtered(synth::FilterKind::Bandpass, 1300.0 * vp, 2.0),
                     );
                 }
+                Sfx::Squelch => {
+                    // A wet slap (low, muffled noise) and the suck of the boot coming free.
+                    let gain = Env::points(vec![(t, 0.0001), (t + 0.012, 0.16 * vg), (t + 0.09, 0.03 * vg), (t + 0.2, 0.0005)]);
+                    s.push(Voice::new(t, t + 0.21, Wave::Noise { rate: 0.7, offset }, Env::constant(1.0), gain, Bus::Sfx).filtered(
+                        synth::FilterKind::Bandpass,
+                        420.0 * vp,
+                        1.4,
+                    ));
+                    sweep(s, t + 0.05, 320.0, 120.0, 0.12, Wave::Sine, 0.05);
+                    sweep(s, t + 0.14, 700.0, 1400.0, 0.04, Wave::Sine, 0.012);
+                }
                 Sfx::Drip => {
                     sweep(s, t, 1900.0, 900.0, 0.05, Wave::Sine, 0.04);
                     sweep(s, t + 0.13, 1900.0, 900.0, 0.05, Wave::Sine, 0.012);
@@ -1782,6 +1795,7 @@ mod tests {
             Sfx::DoorGrind,
             Sfx::Wind,
             Sfx::Drip,
+            Sfx::Squelch,
             Sfx::Cackle,
             Sfx::Howl,
             Sfx::Hoot,

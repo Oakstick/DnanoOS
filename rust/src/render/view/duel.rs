@@ -1366,7 +1366,7 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
     };
     let (light, reach) = match b.look {
         BoltLook::Spit => {
-            // A gob of the bog slime's own jelly (`emit::GOO_TRAIL`: gold once it flies at the foes),
+            // A gob of the bog slime's own jelly (`emit::GOO_TRAIL_L`: gold once it flies at the foes),
             // glossy and see-through round a darker knot, wobbling as it flies, stretched along its
             // flight, dripping onto the floor behind it.
             let gold = b.tint != BoltLook::Spit.tint();
