@@ -242,6 +242,47 @@ pub fn weight(stage: u8, tier: usize) -> (f64, f64) {
     }
 }
 
+/// How much larger every pack of the vaults and the six realms is raised than it was laid out
+/// (BACKLOG B42, the user's call: foes per minute of play up by about half).
+pub const THICKEN: f64 = 0.5;
+
+/**
+ * The foes a pack is raised with, thickened (B42): its own, then about half as many again, each
+ * a kind of the pack's own in turn, at the free floor of its den nearest its own foes (`open` says
+ * what is floor). The same every time. `VH_THIN` raises them as laid out, for A/B runs.
+ */
+pub fn thickened(pack: &Pack, open: &dyn Fn(P) -> bool) -> Vec<(EnemyKind, u8, P)> {
+    let mut out = pack.foes.clone();
+    if pack.foes.is_empty() || thin() {
+        return out;
+    }
+    // (Half as many again, a single foe left single: 2 more 1, 4 more 2, 5 more 2.)
+    let n = (pack.foes.len() as f64 * THICKEN + 0.25).floor() as usize;
+    let (sx, sy) = pack.foes.iter().fold((0.0, 0.0), |(x, y), f| (x + f.2.x as f64, y + f.2.y as f64));
+    let c = (sx / pack.foes.len() as f64, sy / pack.foes.len() as f64);
+    let mut spots: Vec<P> = pack.den.tiles().filter(|p| open(*p)).collect();
+    spots.sort_by(|a, b| {
+        let d = |p: &P| (p.x as f64 - c.0).powi(2) + (p.y as f64 - c.1).powi(2);
+        d(a).total_cmp(&d(b)).then(a.y.cmp(&b.y)).then(a.x.cmp(&b.x))
+    });
+    for k in 0..n {
+        // (A tile clear of every foe already posted, by a step where it can be.)
+        let free = |p: &P, gap: i32| out.iter().all(|f| (f.2.x - p.x).abs().max((f.2.y - p.y).abs()) >= gap);
+        let Some(&at) = spots.iter().find(|p| free(p, 2)).or_else(|| spots.iter().find(|p| free(p, 1))) else { break };
+        // (Of the pack's own kinds those that fight with body or blade where it has any: a second
+        // caster's bolt, paced for where he stood, is the one most often found arriving late.)
+        let close: Vec<&(EnemyKind, u8, P)> = pack.foes.iter().filter(|f| Breed::of(f.0).attack() != Attack::Distance).collect();
+        let (kind, stage, _) = if close.is_empty() { pack.foes[k % pack.foes.len()] } else { *close[k % close.len()] };
+        out.push((kind, stage, at));
+    }
+    out
+}
+
+fn thin() -> bool {
+    static THIN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *THIN.get_or_init(|| std::env::var_os("VH_THIN").is_some())
+}
+
 /// A plan for a realm's ground: tiles and heights as characters (see `logic::level`), every tile
 /// rock until carved.
 #[derive(Clone, Debug)]

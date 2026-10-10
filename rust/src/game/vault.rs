@@ -73,12 +73,15 @@ impl Game {
     fn vault_garrison(&self, brawl: &mut Brawl) -> Vec<Enemy> {
         let Some(v) = &self.vault else { return Vec::new() };
         let mut out = Vec::new();
+        let grid = &self.level.grid;
+        let open = |p: P| grid.get(p.x, p.y) == Tile::Open && !v.loot.iter().any(|l| l.at == p);
         for pack in &v.packs {
             let r = pack.den;
             let lo = V::new(r.x0 as f64 - 0.5, r.y0 as f64 - 0.5);
             let hi = V::new(r.x1 as f64 + 0.5, r.y1 as f64 + 0.5);
             let (cx, cy) = r.center();
-            for &(kind, _, post) in &pack.foes {
+            // (Half as large again as laid out: B42.)
+            for (kind, _, post) in crate::logic::realms::thickened(pack, &open) {
                 let mut spec = spec_of(&self.level.grid, kind);
                 spec.name = format!("{} {}", spec.name, out.len() + 1);
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);

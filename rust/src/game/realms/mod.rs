@@ -105,7 +105,7 @@ impl Game {
         let mut brawl = Brawl::new(Field::Vault);
         brawl.reset(self.hero_kit());
         self.run = Some(run);
-        self.enemies = self.raise_packs(&packs, tier, &mut brawl);
+        self.enemies = self.raise_realm_packs(&packs, tier, &mut brawl);
         self.brawl = Some(brawl);
         self.gate_open = false;
         match sin {
@@ -122,13 +122,26 @@ impl Game {
     /// Every foe of `packs` at its post in its den, asleep there: a duelist on its archetype,
     /// weighed for `tier` (`logic::realms::weight`).
     pub(super) fn raise_packs(&self, packs: &[Pack], tier: usize, brawl: &mut Brawl) -> Vec<Enemy> {
+        self.raise_packs_as(packs, tier, brawl, false)
+    }
+
+    /// The realm's own packs as laid out, raised half as large again (BACKLOG B42).
+    pub(super) fn raise_realm_packs(&self, packs: &[Pack], tier: usize, brawl: &mut Brawl) -> Vec<Enemy> {
+        self.raise_packs_as(packs, tier, brawl, true)
+    }
+
+    fn raise_packs_as(&self, packs: &[Pack], tier: usize, brawl: &mut Brawl, thick: bool) -> Vec<Enemy> {
         let mut out = Vec::new();
+        let grid = &self.level.grid;
+        let open = |p: crate::logic::types::P| grid.is_walkable(p.x, p.y, false);
         for pack in packs {
             let r = pack.den;
             let lo = V::new(r.x0 as f64 - 0.5, r.y0 as f64 - 0.5);
             let hi = V::new(r.x1 as f64 + 0.5, r.y1 as f64 + 0.5);
             let (cx, cy) = r.center();
-            for &(kind, stage, post) in &pack.foes {
+            // (Half as large again as laid out: B42.)
+            let foes = if thick { crate::logic::realms::thickened(pack, &open) } else { pack.foes.clone() };
+            for (kind, stage, post) in foes {
                 let mut spec = spec_of(&self.level.grid, kind);
                 spec.name = format!("{} {}", spec.name, out.len() + 1);
                 let mut e = Enemy::new(&spec, post, self.level.data.enemy_speed);

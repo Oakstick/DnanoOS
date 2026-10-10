@@ -135,6 +135,8 @@ pub struct Part {
     pub general_slain: bool,
     pub generals: u32,
     pub keys: u32,
+    /// The generals' fights: seconds from his waking to his fall, each.
+    pub duels: Vec<f64>,
     /// The harness stood in for the realm's climax (its general brought out) where the bot could
     /// not play it.
     pub climax_carried: bool,
@@ -188,6 +190,7 @@ impl Part {
             general_slain: false,
             generals: 0,
             keys: 0,
+            duels: Vec::new(),
             climax_carried: false,
             overlaps: 0,
             sudden: 0,
@@ -280,6 +283,8 @@ struct Watch {
     still: f64,
     /// Seconds waited for the bot to play the realm's climax (`climax_stand_in`).
     climax_wait: f64,
+    /// Each general's fall already counted into the part's duels.
+    duel_seen: [Option<f64>; 3],
 }
 
 impl Watch {
@@ -375,6 +380,14 @@ impl Watch {
             part.general_slain |= r.command.slain;
             part.generals = part.generals.max(r.lords.iter().filter(|l| l.slain).count() as u32);
             part.keys = part.keys.max(r.keys());
+            for k in 0..3 {
+                if let (Some(a), Some(b)) = (r.tally.woke[k], r.tally.fell[k]) {
+                    if r.tally.fell[k].is_some() && part.duels.len() < 3 && self.duel_seen[k] != Some(b) {
+                        self.duel_seen[k] = Some(b);
+                        part.duels.push(b - a);
+                    }
+                }
+            }
         }
         // (The guide's clock: seconds since a blow last landed either way.)
         let mark = g.brawl.as_ref().map(|b| (b.stats.hits, b.stats.landings, b.stats.kills)).unwrap_or_default();
@@ -1134,7 +1147,7 @@ pub fn run_table(r: &WholeRun) -> String {
             p.runes_in,
             p.spent_silver,
             p.spent_runes,
-            p.bought.join(" ")
+            if p.duels.is_empty() { p.bought.join(" ") } else { format!("duels {:?}s {}", p.duels.iter().map(|d| d.round() as i32).collect::<Vec<_>>(), p.bought.join(" ")) }
         );
         for l in &p.pit {
             let _ = writeln!(

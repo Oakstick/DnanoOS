@@ -249,6 +249,9 @@ impl Brawl {
         self.stats.landings += 1;
         if self.strikes.iter().any(|&g| f.abs_diff(g) < SPACING) {
             self.stats.overlaps += 1;
+            if std::env::var_os("VH_TRACE_OVERLAP").is_some() {
+                eprintln!("OVERLAP at f{f} after {:?}", self.strikes);
+            }
         }
         self.strikes.push(f);
         self.strikes.retain(|&g| f.saturating_sub(g) < 120);

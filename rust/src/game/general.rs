@@ -72,6 +72,8 @@ pub const KEY_REACH: f64 = 0.8;
 const SEEN_AT: f64 = 11.0;
 /// His name card is shown when he wakes this near the hero (tiles).
 const CARD_AT: f64 = 12.0;
+/// Tiles of road between one picket and the next on the way to a general (B42).
+const PICKET_EVERY: usize = 14;
 /// Seconds after a climax's payoff before its general comes out.
 pub const CLIMAX_BREATH: f64 = 2.0;
 
@@ -159,6 +161,9 @@ pub struct GeneralTally {
     pub slain: u8,
     /// Keys taken this visit.
     pub keys: u32,
+    /// Each general's fight: when he woke for the hero (the realm's clock) and when he fell.
+    pub woke: [Option<f64>; 3],
+    pub fell: [Option<f64>; 3],
 }
 
 /// One of the realm's three generals in play (BACKLOG B41).
@@ -532,6 +537,7 @@ impl Game {
             }
         }
         self.raise_watch();
+        self.raise_pickets(arrival);
         // The court's door: three keys (B41).
         self.keys_total = KEYS;
         self.keys_got = self.general.as_ref().map(|g| g.keys()).unwrap_or(0);
@@ -571,6 +577,7 @@ impl Game {
             self.enemies.remove(i);
             guard = false;
         }
+        // (His room's pack is raised half as large again as laid out, B42: the post is reinforced.)
         if guard {
             den = Self::den_at(post, 3.0);
             for n in 0..2 {
@@ -591,6 +598,56 @@ impl Game {
         }
         if let Some(g) = self.general.as_mut() {
             g.lords[k].id = id;
+        }
+    }
+
+    /**
+     * Pickets on the roads to the generals (BACKLOG B42: more foes met a minute): along the way from
+     * where he arrives to each general's post, every `PICKET_EVERY` tiles of open road clear of the
+     * dens and of every foe, two of the realm's foes asleep in a small den of their own. Not in the
+     * Rotting Feast, whose gullet is one road already full, nor with `VH_THIN`.
+     */
+    fn raise_pickets(&mut self, arrival: P) {
+        if std::env::var_os("VH_THIN").is_some() || matches!(self.run.as_ref(), Some(Run::Gluttony(_))) {
+            return;
+        }
+        let Some(g) = self.general.as_ref() else { return };
+        let mut roads: Vec<Vec<P>> = Vec::new();
+        for k in 0..3 {
+            if g.lords[k].slain || g.lords[k].waiting {
+                continue;
+            }
+            if let Some(w) = general::walk(&g.layout, arrival, g.posts.post(k)) {
+                roads.push(w);
+            }
+        }
+        let dens: Vec<crate::logic::hub::Rect> = match (&self.vault, &self.run) {
+            (Some(v), _) => v.packs.iter().map(|p| p.den).collect(),
+            (_, Some(r)) => r.base().packs.iter().map(|p| p.den).collect(),
+            _ => Vec::new(),
+        };
+        let mut placed: Vec<P> = Vec::new();
+        for road in roads {
+            let mut i = PICKET_EVERY;
+            while i + 8 < road.len() {
+                let p = road[i];
+                i += 1;
+                let clear = !dens.iter().any(|d| d.contains(p))
+                    && self.enemies.iter().all(|e| crate::logic::types::dist_sq(e.pos(), p.v()) > 5.0 * 5.0)
+                    && placed.iter().all(|q| (q.x - p.x).abs() + (q.y - p.y).abs() > PICKET_EVERY as i32 / 2)
+                    && self.level.grid.is_walkable(p.x, p.y, false);
+                if !clear {
+                    continue;
+                }
+                let den = Self::den_at(p, 2.5);
+                for n in 0..2 {
+                    let (kind, stage) = self.deal();
+                    let at = if n == 0 { p } else { self.open_near(p, 1) };
+                    self.raise(kind, stage, at, Some(den), false, 1.0);
+                }
+                placed.push(p);
+                i += PICKET_EVERY;
+            }
         }
     }
 
@@ -927,9 +984,11 @@ impl Game {
     /// General `k` wakes and comes for him: his name card (WARBAND.md §8.4's beat for a rival), a
     /// moment's slowing, his cry.
     fn general_met(&mut self, k: usize, at: V) {
+        let t = self.time;
         let Some(g) = self.general.as_mut() else { return };
         g.lords[k].met = true;
         g.lords[k].known = true;
+        g.tally.woke[k].get_or_insert(t);
         let (name, body, cloak) = (g.lords[k].name.clone(), g.lords[k].body, g.lords[k].cloak);
         let line = if g.lords[k].usurper.is_some() { "A RIVAL IN A GENERAL'S PLACE" } else { g.general().captains[k].line };
         let order = g.general().orders[k];
@@ -1912,6 +1971,7 @@ impl Game {
         let t = self.time;
         g.tally.slain_at = Some(t);
         g.tally.slain |= 1 << k;
+        g.tally.fell[k] = Some(t);
         let gen = *g.general();
         let name = g.lords[k].name.clone();
         let cloak = g.lords[k].cloak;

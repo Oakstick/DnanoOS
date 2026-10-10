@@ -743,7 +743,7 @@ impl Game {
         self.relevel();
         let mut brawl = self.brawl.take().unwrap_or_else(|| Brawl::new(Field::Vault));
         brawl.reset(self.hero_kit());
-        self.enemies = self.raise_packs(&packs, tier, &mut brawl);
+        self.enemies = self.raise_realm_packs(&packs, tier, &mut brawl);
         self.brawl = Some(brawl);
         self.enter_mire();
         // (Woken three hundred years on: the Night Hag is out, waiting by the open door.)

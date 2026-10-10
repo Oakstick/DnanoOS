@@ -134,7 +134,7 @@ impl Game {
         let (packs, tier, opened) = (fresh.base.packs.clone(), fresh.base.tier, fresh.opened);
         *f = fresh;
         if let Some(mut b) = self.brawl.take() {
-            self.enemies = self.raise_packs(&packs, tier, &mut b);
+            self.enemies = self.raise_realm_packs(&packs, tier, &mut b);
             self.brawl = Some(b);
         }
         self.refresh_foe_views();

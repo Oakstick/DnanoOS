@@ -298,7 +298,7 @@ impl Game {
         for id in gone {
             brawl.threat.release(id);
         }
-        let fresh = self.raise_packs(&[pack], tier, &mut brawl);
+        let fresh = self.raise_realm_packs(&[pack], tier, &mut brawl);
         self.brawl = Some(brawl);
         self.enemies.extend(fresh);
         self.refresh_foe_views();

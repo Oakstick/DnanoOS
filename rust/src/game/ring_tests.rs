@@ -444,7 +444,8 @@ fn the_vaults_are_a_brawl_a_skilled_player_can_clear_with_a_readable_cadence() {
         let c = crawl(skill, 1, Some(Loadout::all(HeroKind::Ragnar, tier)), 900.0);
         assert!(c.cleared && !c.game_over, "{skill:?} at tier {tier}: {c:?}");
         assert!(c.overlaps_per_minute() < 0.5, "{skill:?} at tier {tier}: {c:?}");
-        assert!(c.peak <= 8, "a pack at a time: {c:?}");
+        // (Packs half as large again since B42: a pack and its stragglers.)
+        assert!(c.peak <= 12, "a pack at a time: {c:?}");
     }
 }
 
