@@ -34,6 +34,10 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D17 | B43 template: Lucifer first, built with B11 Pride's art pass (more spectacle), or Mammon first (his court's art is done; less spectacle)? **Decided: Lucifer first**, built with B11 Pride's art pass. | B43 |
 | D18 | B43: Asmodeus's dragon mount left out for now (L on its own)? | B43 |
 | D19 | B43 Krampus's finale: Toby unties the red ribbon (Krampus loses Birch Lash), and the seven seal-stones rise and burn his pelt away. Approve? **Decided: approved** as written. | B43 |
+| D20 | B63: who offers the temptation? Proposed: **the sin itself** (a voice and a glowing altar at the court door, in the sin's colour), not the prince, so B40 (princes never deal) holds. | B63 |
+| D21 | B63: when? Proposed: **at the court door, once the three generals' keys are held** (B41), before the prince. | B63 |
+| D22 | B64: Hızır only between levels: does the B guide (his pages) stay usable in a level, or only the call (E/Y) goes? | B64 |
+| D23 | B65: what counts as the level's hoard? Proposed: the silver, runes, chest loot, relics and Toby's token found in that realm; potions drunk and mastery earned stay spent/earned. | B65 |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
@@ -128,6 +132,22 @@ Open items and proposals from the agents' reports. Every new idea lands here fir
 | B60 | **Princes read small and dark courts read very dark from above**: a 3 m prince is about 3% of the frame's height in the top camera; Envy, Sloth, Gluttony, Wrath and the lair are very dark (B11/B12 not yet there). Scale (B43) and the art passes address it; also consider the top camera's framing in courts. | Each prince reads at a glance in both cameras. | M | to decide |
 | B61 | **Background giants built per court at load**: the sculpts are built at startup and capped at the hero's size; B43's giant forms (Leviathan's body, Belphegor standing, the shadows) need per-court building at load. | A court can load a large figure behind the loading card. | M | to decide |
 | B62 | **A capture stop for entrances** (`entrance:S:T` in `capture.rs`) so cinematic entrances can be reviewed headless. | The capture command exists. | S | to decide |
+| B63 | **The sin's temptation at the end of every realm** (user, 2026-10-10). This generalises Greed's toll, which works well. At the end of each realm the player is offered the sin's gift.
+• **Yes:** the realm starts again with the gift active, a power fantasy. The hoard is reset exactly as it lay. At the end the offer comes again: keep it (and replay), or let it go.
+• **No:** "I'll earn my strength", and they pass with their hoard.
+• **After a wrong choice:** Hızır comes and says, briefly and kindly, what the sin is and to be smart. The answer is always, in the end, "we came for Toby".
+The gifts:
+• **Pride:** "you have done amazingly: become a god, invincible forever" (the user's).
+• **Envy:** "you found Krampus's crown: be the new King of the Underworld" (the user's).
+• **Greed:** "keep all the gold" (the toll as built).
+Proposals for the rest:
+• **Wrath:** "the Fury": every blow kills and the world burns, but you can never stop attacking. Asked at the end: "keep your fury?"
+• **Sloth:** "Rest": the road walks itself; foes sleep and time stands still for all but you. At the end: "lie down here for ever?"
+• **Gluttony:** "the Endless Feast": you grow huge and devour foes, eating heals you. At the end: "one more course?"
+• **Lust:** "the Bride's love": everyone adores you and no foe will strike. At the end: "stay with her for ever, and forget why you came?"
+Each gift is fun to play once, and each "yes" costs a replay. The bots refuse. Needs B41's door hook and the replay machinery kept from the toll (the realms job is told). See D20, D21. | All seven temptations playable; yes replays with the gift and the hoard reset; no passes; Hızır's line after a wrong choice; tests; REALMS.md and STORY.md updated; the user approves the gifts' lines. | L | to decide |
+| B64 | **Hızır can be called only between levels** (user, 2026-10-10): no calling him (E/Y) inside a level. He appears between levels (the wares, after each prince) and at the temptation's wrong choice (B63). See D22. | The call is unavailable in levels with a clear cue; tips and docs updated; tests. | S | to decide |
+| B65 | **Everything collected in a level is its hoard, kept only when the level is passed** (user, 2026-10-10). If the player fails the temptation (says yes), they don't take the hoard. Replaying puts the level's hoard back unchanged, with no duplication. See D23. | The hoard is shown during the level and banked on passing; a replay restores it exactly; save-safe; tests. | M | to decide |
 
 ## Suggested order
 
