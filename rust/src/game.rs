@@ -477,6 +477,10 @@ pub struct Game {
     pub holy_wave: Option<angels::HolyWave>,
     /// The sins whose keys he holds (one bit each, `Sin::bit`).
     pub sins_cleared: u8,
+    /// The seal-stones taken from the princes' courts, a bit a sin (BACKLOG B44): with all seven
+    /// the seals of the House of Seven Seals break and the way down opens. (`sins_cleared` counts
+    /// the princes beaten, for the realms' tier.)
+    pub seal_stones: u8,
     /// The Portals of Hell, while he is there.
     pub hub: Option<hub::HubState>,
     /// The sin whose realm, or whose prince's court, he is in.
@@ -658,6 +662,7 @@ impl Game {
             controls_keyboard: false,
             holy_wave: None,
             sins_cleared: 0,
+            seal_stones: 0,
             hub: None,
             realm: None,
             vault: None,

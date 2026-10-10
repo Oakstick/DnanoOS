@@ -811,12 +811,13 @@ mod tests {
         assert_eq!(swarms(&g), 0, "his swarms scatter with him");
         assert!(g.red_key.is_some(), "the Key of Gluttony lies on the floor");
         assert!(g.sins_cleared & Sin::Gluttony.bit() != 0);
-        assert_eq!(g.key_name(), "THE KEY OF GLUTTONY");
+        assert_eq!(g.key_name(), "THE SEAL-STONE OF GLUTTONY");
         assert!(g.saved_run.as_ref().is_some_and(|r| r.stage == save::Stage::SinShop(Sin::Gluttony)), "the old man's next");
         let k = g.red_key.unwrap();
         g.hero.place(k);
         run(&mut g, 0.3);
         assert!(g.red_key.is_none() && g.gate_open);
+        assert!(g.seal_stones & Sin::Gluttony.bit() != 0, "his seal-stone is the hero's (B44)");
         let gate = g.gate.unwrap();
         g.hero.place(P::new(gate.x, gate.y - 1));
         for _ in 0..1200 {

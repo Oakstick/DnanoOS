@@ -70,6 +70,8 @@ pub struct Run {
     /// New Game+: how many times over the tale is being told again (0 the first time), each a tier
     /// harder (`newgame`).
     pub ng: u8,
+    /// The seal-stones taken (B44; a line before v4 reads them as the sins conquered).
+    pub stones: u8,
 }
 
 impl Run {
@@ -92,8 +94,10 @@ impl Run {
         let belt: Vec<String> = self.belt.iter().filter_map(|b| BREWS.iter().position(|x| x == b)).map(|i| i.to_string()).collect();
         let belt = if belt.is_empty() { "-".to_string() } else { belt.join(",") };
         let line = format!("{} {kind} {n} {} {} {belt} {}", self.hero.slot(), self.score, self.lives, self.sins);
-        // (A first run's line is as it always was.)
-        if self.ng == 0 {
+        // (A first run's line is as it always was; v4 when a seal-stone was left lying in a court.)
+        if self.stones != self.sins {
+            format!("v4 {line} {} {}", self.ng, self.stones)
+        } else if self.ng == 0 {
             format!("v2 {line}")
         } else {
             format!("v3 {line} {}", self.ng)
@@ -103,7 +107,7 @@ impl Run {
     pub fn decode(text: &str) -> Option<Run> {
         let mut f = text.split_whitespace();
         let version = f.next()?;
-        if !matches!(version, "v1" | "v2" | "v3") {
+        if !matches!(version, "v1" | "v2" | "v3" | "v4") {
             return None;
         }
         let hero = *ROSTER.get(f.next()?.parse::<usize>().ok()?)?;
@@ -129,8 +133,9 @@ impl Run {
             list => list.split(',').map(|i| i.parse::<usize>().ok().and_then(|i| BREWS.get(i).copied())).collect::<Option<_>>()?,
         };
         let sins = if version != "v1" { f.next()?.parse::<u8>().ok()? & ALL_SINS } else { 0 };
-        let ng = if version == "v3" { f.next()?.parse::<u8>().ok()?.min(super::newgame::NG_MAX) } else { 0 };
-        Some(Run { hero, stage, score, lives, belt, sins, ng })
+        let ng = if matches!(version, "v3" | "v4") { f.next()?.parse::<u8>().ok()?.min(super::newgame::NG_MAX) } else { 0 };
+        let stones = if version == "v4" { f.next()?.parse::<u8>().ok()? & ALL_SINS } else { sins };
+        Some(Run { hero, stage, score, lives, belt, sins, ng, stones })
     }
 }
 
@@ -181,6 +186,7 @@ impl Game {
             lives: self.score.lives,
             belt: self.belt.clone(),
             sins: self.sins_cleared,
+            stones: self.seal_stones,
             ng: self.ng_plus,
         };
         // (A New Game+ taken is under way from its first checkpoint: the offer is used up.)
@@ -224,6 +230,7 @@ impl Game {
         self.new_kit();
         self.belt = run.belt;
         self.sins_cleared = run.sins;
+        self.seal_stones = run.stones;
         // Past the first dungeon's start the four archangels are with him (its shrines bring them).
         let patron = self.patron();
         self.angels.restart(run.stage != Stage::Dungeon(0), patron);
@@ -328,6 +335,7 @@ impl Game {
         // (One write: the purse, the run and the Ledger go together.)
         self.write_run(None);
         self.sins_cleared = 0;
+        self.seal_stones = 0;
         // (A New Game+ under way is over with it; the offer, if one stands, stays on the title.)
         self.ng_plus = 0;
         self.ng_taken = false;
@@ -376,9 +384,19 @@ mod tests {
                 belt: vec![PotionKind::Health, PotionKind::Life, PotionKind::Spirit],
                 sins: 0,
                 ng: 0,
+                stones: 0,
             },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Envy), score: 5, lives: 3, belt: Vec::new(), sins: 0x05, ng: 2 },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 },
+            Run {
+                hero: HeroKind::Ragnar,
+                stage: Stage::Realm(Sin::Envy),
+                score: 5,
+                lives: 3,
+                belt: Vec::new(),
+                sins: 0x05,
+                ng: 2,
+                stones: 0x05,
+            },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0, stones: 0 },
             Run {
                 hero: HeroKind::Mehmed,
                 stage: Stage::Shop(4),
@@ -387,14 +405,53 @@ mod tests {
                 belt: vec![PotionKind::Ragnarok],
                 sins: 0b101_0011,
                 ng: 0,
+                stones: 0b101_0011,
             },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f, ng: 0 },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Wrath), score: 5, lives: 2, belt: Vec::new(), sins: 0x03, ng: 0 },
-            Run { hero: HeroKind::Miyamoto, stage: Stage::Court(Sin::Lust), score: 5, lives: 2, belt: Vec::new(), sins: 0x03, ng: 0 },
-            Run { hero: HeroKind::Mehmed, stage: Stage::SinShop(Sin::Pride), score: 5, lives: 2, belt: Vec::new(), sins: 0x01, ng: 0 },
-            Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 },
-            Run { hero: HeroKind::Mehmed, stage: Stage::Pit(4), score: 77, lives: 2, belt: vec![PotionKind::Health], sins: 0x7f, ng: 0 },
-            Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 7, lives: 2, belt: Vec::new(), sins: 0x7f, ng: 0 },
+            // (A seal-stone left lying in a court: the line is v4.)
+            Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x03, ng: 1, stones: 0x01 },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Hub, score: 5, lives: 2, belt: Vec::new(), sins: 0x7f, ng: 0, stones: 0x7f },
+            Run {
+                hero: HeroKind::Ragnar,
+                stage: Stage::Realm(Sin::Wrath),
+                score: 5,
+                lives: 2,
+                belt: Vec::new(),
+                sins: 0x03,
+                ng: 0,
+                stones: 0x03,
+            },
+            Run {
+                hero: HeroKind::Miyamoto,
+                stage: Stage::Court(Sin::Lust),
+                score: 5,
+                lives: 2,
+                belt: Vec::new(),
+                sins: 0x03,
+                ng: 0,
+                stones: 0x03,
+            },
+            Run {
+                hero: HeroKind::Mehmed,
+                stage: Stage::SinShop(Sin::Pride),
+                score: 5,
+                lives: 2,
+                belt: Vec::new(),
+                sins: 0x01,
+                ng: 0,
+                stones: 0x01,
+            },
+            Run { hero: HeroKind::Ragnar, stage: Stage::Gym, score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0, stones: 0 },
+            Run {
+                hero: HeroKind::Mehmed,
+                stage: Stage::Pit(4),
+                score: 77,
+                lives: 2,
+                belt: vec![PotionKind::Health],
+                sins: 0x7f,
+                ng: 0,
+                stones: 0x7f,
+            },
+            Run { hero: HeroKind::Mehmed, stage: Stage::Lair, score: 7, lives: 2, belt: Vec::new(), sins: 0x7f, ng: 0, stones: 0x7f },
         ];
         for run in runs {
             assert_eq!(Run::decode(&run.encode()), Some(run));

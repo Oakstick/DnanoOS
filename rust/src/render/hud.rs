@@ -333,6 +333,21 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
             play::draw_pause_summary(o, g, t, below + t * 0.5);
             // Toby's things found on the way down (B08).
             toby::draw_row(o, g, t, below + t * 1.45);
+            // The seal-stones taken for the House of Seven Seals (B44).
+            let held = g.seal_stones.count_ones();
+            let sy = below + t * 2.5;
+            let gs = t * 0.26;
+            let gap = gs * 3.0;
+            o.text(
+                &format!("SEAL-STONES {held}/7"),
+                o.width / 2.0 - gap * 3.5 - t * 0.6,
+                sy,
+                t * 0.42,
+                rgba(0xff8a5a, 0.95),
+                Align::Right,
+                true,
+            );
+            play::draw_stones(o, g, o.width / 2.0 - gap * 3.0, sy, gs, gap);
             fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);

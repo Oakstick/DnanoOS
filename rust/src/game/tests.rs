@@ -414,11 +414,18 @@ fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
         g.update(crate::app::STEP);
     }
     assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
-    // All seven keys: the seal breaks and the causeways rise to the House of Seven Seals.
+    // Seven princes beaten is not enough: the seals break for the seven seal-stones (B44), and the
+    // causeways rise to the House of Seven Seals.
     let lane = hub::causeways()[2];
     let p = P::new(lane.x0 + 1, lane.y0 + 1);
     assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");
     g.sins_cleared = ALL_SINS;
+    g.seal_stones = ALL_SINS & !Sin::Lust.bit();
+    for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
+        g.update(crate::app::STEP);
+    }
+    assert_eq!(g.hub.as_ref().unwrap().seal, 0.0, "six seal-stones: the seals hold");
+    g.seal_stones = ALL_SINS;
     for _ in 0..((SEAL_SECONDS + 0.5) / crate::app::STEP) as usize {
         g.update(crate::app::STEP);
     }
@@ -962,7 +969,8 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     assert_eq!(g.saved_run.as_ref().map(|r| r.stage), Some(save::Stage::SinShop(Sin::Sloth)));
     g.hero.m.teleport(key);
     g.update(STEP);
-    assert!(g.red_key.is_none() && g.gate_open, "the key of Sloth opens the court's gate");
+    assert!(g.red_key.is_none() && g.gate_open, "the seal-stone of Sloth opens the court's gate");
+    assert_eq!(g.seal_stones, Sin::Sloth.bit(), "his seal-stone is the hero's, for the House of Seven Seals (B44)");
     let gate = g.gate.unwrap();
     // (Inside the gate: the meadow's is in its north hedge, a built court's in its south wall.)
     let inside = if g.in_court() { gate.y - 1 } else { gate.y + 1 };

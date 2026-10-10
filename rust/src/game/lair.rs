@@ -204,6 +204,7 @@ impl Game {
     /// Pit: no one comes here without them).
     pub fn load_lair(&mut self) {
         self.sins_cleared |= ALL_SINS;
+        self.seal_stones |= ALL_SINS;
         let tier = self.realm_tier();
         self.load(plan::level(tier), tier);
     }

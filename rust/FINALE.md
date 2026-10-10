@@ -20,8 +20,18 @@ keep the fight readable however many stand round him. The old man always leads t
 
 ## 1. The way in
 
-With all seven keys the causeways rise and the door of the House of Seven Seals opens (already
-built). Inside there is no throne and no devil: a square shaft drops into the dark, and a stone
+**The seven seal-stones** (BACKLOG B44): every prince drops a seal-stone as he falls, its own stone
+in his sin's colour (Lucifer's a star-cut amethyst, Leviathan's an emerald like a serpent's eye,
+Amon's a ruby that glows like a coal, Belphegor's a moonstone, Mammon's a citrine cut like a coin,
+Beelzebub's an amber with a fly in it, Asmodeus's a rose-cut stone: PRINCES-EPIC.md §9.6). It
+hovers where he fell under a beam in his colour; taken (a banner, a beat of slowing), it is the
+hero's, and the court's gate opens. Back in the Portals of Hell it is set in its seal over the
+House's door (seven iron sockets in a band above it; the altar's seal stone shows the princes
+beaten); the pause screen and the hub's purse row show them (SEAL-STONES n/7), and Hızır's scene
+after each prince sets the stone beside Toby's token on the anvil. **With all seven seal-stones**
+the seals break, the causeways rise and the door of the House opens (`Game::seal_stones`, saved in
+the run's line: v4 when a stone was left lying; an older line reads the princes beaten as stones).
+The realms' tier still counts the princes beaten (`sins_cleared`). Inside there is no throne and no devil: a square shaft drops into the dark, and a stone
 platform waits at its lip, a long table on it set with a feast. A banner: **THE HOUSE IS EMPTY. NO THRONE,
 NO DEVIL. ONLY THE WAY DOWN.** The hero jumps onto the platform, and it begins to sink.
 
@@ -115,8 +125,8 @@ down to the House of Seven Seals, which the old man says nobody has ever seen th
 prince no longer keeps the sin "for Satan". Krampus is simply Krampus, who takes children down to
 the bottom of the world.
 
-**The House of Seven Seals** (B23, 2026-10-09; it was the House of the Devil): each prince's key
-holds one of its seven seals, which is why the seal of the seven breaks when all are brought. Its
+**The House of Seven Seals** (B23, 2026-10-09; it was the House of the Devil): each prince's
+seal-stone (B44) is set in one of its seven seals, which is why the seals break when all are brought. Its
 door's banner reads THE HOUSE IS EMPTY. NO THRONE, NO DEVIL. ONLY THE WAY DOWN. One line says why
 every land's monsters share this underworld, and it never names a lord over them: "Every fear and
 every wrong in the world, from every land and every tongue, sinks down here and grows teeth." The
@@ -142,7 +152,7 @@ Built on branch `finale-pit`. Files: `logic/pit.rs` (the layout, the levels, the
 functions), `game/pit.rs` (the rules in play), `render/view/pit.rs` (the art), `render/hud/pit.rs`
 (the clock), and the bot's `pit_board` and `pit_ride` in `game/bot.rs`.
 
-**The way in.** With all seven keys the House's door stands open (a banner says so as he comes up to
+**The way in.** With all seven seal-stones the House's door stands open (a banner says so as he comes up to
 it); walking into it calls `enter_pit()`: the banner THE HOUSE IS EMPTY. NO THRONE, NO DEVIL. ONLY THE WAY DOWN., the
 countdown, and he leaps from the lip onto the platform as play begins (`Hero::leap_to`, the same
 arc as his own leap). Each level is a checkpoint (`Stage::Pit(n)`, saved as `p n`); Continue and the

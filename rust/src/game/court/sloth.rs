@@ -559,12 +559,13 @@ mod tests {
         assert!(g.court.as_ref().unwrap().slain);
         assert!(g.red_key.is_some(), "the Key of Sloth lies on the floor");
         assert!(g.sins_cleared & Sin::Sloth.bit() != 0, "Sloth's bit is set");
-        assert_eq!(g.key_name(), "THE KEY OF SLOTH");
+        assert_eq!(g.key_name(), "THE SEAL-STONE OF SLOTH");
         assert!(g.saved_run.as_ref().is_some_and(|r| r.stage == save::Stage::SinShop(Sin::Sloth)), "the checkpoint is the old man's");
         let k = g.red_key.unwrap();
         g.hero.place(k);
         run(&mut g, 0.3);
         assert!(g.red_key.is_none() && g.gate_open);
+        assert!(g.seal_stones & Sin::Sloth.bit() != 0, "his seal-stone is the hero's (B44)");
         let gate = g.gate.unwrap();
         g.hero.place(P::new(gate.x, gate.y - 1));
         for _ in 0..1200 {

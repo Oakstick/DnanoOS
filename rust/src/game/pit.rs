@@ -164,6 +164,7 @@ impl Game {
     /// Everyone who reaches it holds every sin's key.
     pub fn load_pit(&mut self, level: u8) {
         self.sins_cleared = ALL_SINS;
+        self.seal_stones = ALL_SINS;
         let tier = self.realm_tier();
         self.load(pit::cell(), tier);
         self.begin_pit(level.clamp(1, pit::LEVELS), Vec::new());
@@ -882,9 +883,10 @@ mod tests {
         std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test"));
         let mut g = Game::new();
         g.sins_cleared = ALL_SINS;
+        g.seal_stones = ALL_SINS;
         g.map_jump(Stage::Hub);
         g.enter(Screen::Playing);
-        assert_eq!(g.hub.as_ref().unwrap().seal, 1.0, "every key held: the causeways stand");
+        assert_eq!(g.hub.as_ref().unwrap().seal, 1.0, "every seal-stone set: the causeways stand");
         let door = hub::house_door();
         g.hero.place(P::new(door.x, door.y + 1));
         g.hero.face(Dir::Up);

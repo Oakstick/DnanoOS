@@ -1,11 +1,12 @@
 //! The Portals of Hell in play (the layout is `logic::hub`). No foes come
 //! here. A portal's doors swing open as he comes up to them, showing the
 //! swirl of its sin's realm, and pushing through them takes him into the
-//! realm (`game::realm`); a realm he has cleared keeps its doors shut with
-//! its key in the lock. With all seven keys the seal breaks: the ground
-//! shakes, the wall of fire round the volcano dies and four causeways rise
-//! out of the lava to the House of Seven Seals, whose door stands open:
-//! walking into it leads down into the Pit (`game::pit`).
+//! realm (`game::realm`); a realm he has cleared keeps its doors shut. Each
+//! prince's seal-stone (B44) is set in the House of Seven Seals, one in each
+//! of its seven seals; with all seven the seals break: the ground shakes,
+//! the wall of fire round the volcano dies and four causeways rise out of
+//! the lava to the House, whose door stands open: walking into it leads down
+//! into the Pit (`game::pit`).
 
 use super::{Banner, Game};
 use crate::audio::Sfx;
@@ -44,14 +45,14 @@ impl HubState {
 }
 
 impl Game {
-    /// Into the Portals of Hell. With every sin's key already held, the causeways stand risen.
+    /// Into the Portals of Hell. With every seal-stone already set, the causeways stand risen.
     pub fn load_hub(&mut self) {
         self.load(hub::portals_of_hell(), 1);
     }
 
     /// Called as the hub level loads.
     pub(super) fn open_hub(&mut self) {
-        let broken = self.sins_cleared & ALL_SINS == ALL_SINS;
+        let broken = self.seal_stones & ALL_SINS == ALL_SINS;
         self.hub = Some(HubState::new(!broken));
         if broken {
             self.raise_causeways();
@@ -100,13 +101,13 @@ impl Game {
                 return;
             }
         }
-        // The seal of the seven: every key held, and it breaks.
-        if self.sins_cleared & ALL_SINS == ALL_SINS && h.seal < 1.0 {
+        // The seals of the seven: every seal-stone set, and they break.
+        if self.seal_stones & ALL_SINS == ALL_SINS && h.seal < 1.0 {
             if h.seal == 0.0 {
                 self.audio.play(Sfx::BossSlam);
                 self.audio.play(Sfx::DoorGrind);
                 self.juice.banner = Some(Banner {
-                    text: "THE SEAL OF THE SEVEN IS BROKEN".into(),
+                    text: "THE SEVEN SEALS ARE BROKEN".into(),
                     sub: "THE WAY TO THE HOUSE OF SEVEN SEALS RISES FROM THE LAVA".into(),
                     color: 0xff5a2a,
                     life: 4.0,

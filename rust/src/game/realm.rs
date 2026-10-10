@@ -83,8 +83,8 @@ impl Game {
         self.level.hero_spawn = gate.front();
         self.start_facing = gate.facing;
         self.reset_round();
-        if self.sins_cleared & ALL_SINS == ALL_SINS {
-            // He is to watch the seal break: the causeways wait under the lava to rise before him.
+        if self.seal_stones & ALL_SINS == ALL_SINS {
+            // He is to watch the seals break: the causeways wait under the lava to rise before him.
             for c in hub::causeways() {
                 for p in c.tiles() {
                     self.level.grid.set(p.x, p.y, Tile::Pit);
@@ -97,9 +97,14 @@ impl Game {
         self.checkpoint(Stage::Hub);
         self.juice.fade = 1.0;
         self.audio.play(Sfx::Milestone);
-        let held = self.sins_cleared.count_ones();
+        let held = self.seal_stones.count_ones();
+        let set = self.seal_stones & sin.bit() != 0;
         self.juice.banner = Some(Banner {
-            text: format!("THE KEY OF {} IS SET IN THE SEAL", sin.title()),
+            text: if set {
+                format!("THE SEAL-STONE OF {} IS SET IN THE HOUSE", sin.title())
+            } else {
+                format!("{} IS CONQUERED", sin.title())
+            },
             sub: if held >= 7 { "ALL SEVEN ARE HIS".to_string() } else { format!("{held} OF SEVEN   {} MORE TO TAKE", 7 - held) },
             color: sin.color(),
             life: 4.0,
@@ -135,9 +140,10 @@ impl Game {
         }
     }
 
-    /// The key the boss drops.
+    /// The key the boss drops (a prince's: his seal-stone, B44).
     pub fn key_name(&self) -> String {
         match self.realm {
+            Some(sin) if self.in_court() => format!("THE SEAL-STONE OF {}", sin.title()),
             Some(sin) => format!("THE KEY OF {}", sin.title()),
             None => "THE RED DIAMOND KEY".to_string(),
         }

@@ -51,6 +51,19 @@ impl Sin {
     }
 
     /// Its name in capitals, for titles.
+    /// His seal-stone (BACKLOG B44, PRINCES-EPIC.md §9.6), as the screen names it.
+    pub fn seal_stone(self) -> &'static str {
+        match self {
+            Sin::Pride => "A STAR-CUT AMETHYST",
+            Sin::Envy => "AN EMERALD LIKE A SERPENT'S EYE",
+            Sin::Wrath => "A RUBY THAT GLOWS LIKE A COAL",
+            Sin::Sloth => "A MOONSTONE",
+            Sin::Greed => "A CITRINE CUT LIKE A COIN",
+            Sin::Gluttony => "AN AMBER WITH A FLY IN IT",
+            Sin::Lust => "A ROSE-CUT STONE",
+        }
+    }
+
     pub fn title(self) -> &'static str {
         match self {
             Sin::Pride => "PRIDE",

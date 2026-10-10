@@ -268,7 +268,16 @@ impl WorldView {
             f.lights.push(Light { pos: p + Vec3::new(0.0, 0.3, 0.0), color: lin(0xffd060) * 3.5, distance: 3.5 });
         }
         // ---- the Cyclops' red diamond key, lying where it fell: larger, redder, a tall beam over it
-        if let Some(p) = s.red_key {
+        if let (Some(p), Some(sin), true) = (s.red_key, s.realm, s.in_court) {
+            // A prince's seal-stone (B44): hovering in his colour where he fell, a beam to find it by.
+            let c = lin(sin.color());
+            let base = Vec3::new(p.x as f32, floor_at(s.grid, p.x as f32, p.y as f32), p.y as f32);
+            let at = base + Vec3::new(0.0, 0.6 + (time * 2.0).sin() * 0.08, 0.0);
+            super::seal_stones::emit_seal_stone(f, at, sin, time, 0.32, 1.4, 1.6);
+            let beam = Mat4::from_translation(base + Vec3::new(0.0, 5.0, 0.0)) * Mat4::from_scale(Vec3::new(0.08, 8.0, 0.08));
+            f.additive.push(Instance::new(beam, c, 0.12 + (time * 2.0).sin() * 0.03, Vec3::ZERO, SHADE_UNLIT));
+            f.lights.push(Light { pos: at + Vec3::new(0.2, 0.6, 0.3), color: c * 2.5, distance: 4.0 });
+        } else if let Some(p) = s.red_key {
             let red = lin(s.realm.map(|r| r.color()).unwrap_or(RED_KEY));
             let base = Vec3::new(p.x as f32, floor_at(s.grid, p.x as f32, p.y as f32), p.y as f32);
             let bob = (time * 2.0).sin() * 0.07;

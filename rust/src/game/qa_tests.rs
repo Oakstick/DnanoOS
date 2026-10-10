@@ -93,7 +93,7 @@ fn continue_comes_back_to_every_kind_of_checkpoint() {
         let hero = ROSTER[k % ROSTER.len()];
         let sins = sins_at(stage, k);
         let belt = vec![PotionKind::Health, PotionKind::Stamina][..k % 3].to_vec();
-        let run = Run { hero, stage, score: 100 + k as u32, lives: 1 + (k % 3) as u32, belt: belt.clone(), sins, ng: 0 };
+        let run = Run { hero, stage, score: 100 + k as u32, lives: 1 + (k % 3) as u32, belt: belt.clone(), sins, ng: 0, stones: sins };
         {
             let mut g = launched();
             g.saved_run = Some(run.clone());
@@ -264,6 +264,7 @@ fn a_spoiled_save_never_stops_the_game() {
         belt: vec![PotionKind::Health, PotionKind::Life],
         sins: 0b11,
         ng: 0,
+        stones: 0b11,
     };
     let valid = run.encode();
     g.progress = Progress::default();
@@ -812,7 +813,8 @@ fn back_closes_the_camera_choice_and_keeps_the_camera() {
     for before in [CameraMode::Third, CameraMode::Top] {
         let mut g = Game::new();
         g.view.camera_mode = before;
-        g.saved_run = Some(Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0 });
+        g.saved_run =
+            Some(Run { hero: HeroKind::Ragnar, stage: Stage::Dungeon(0), score: 0, lives: 3, belt: Vec::new(), sins: 0, ng: 0, stones: 0 });
         g.continue_game();
         assert_eq!(g.screen, Screen::View);
         // Another card highlighted, then Esc.
@@ -1006,6 +1008,7 @@ fn after_the_end_start_begins_anew_and_the_bestiary_stays() {
             belt: vec![PotionKind::Health],
             sins: ALL_SINS,
             ng: 0,
+            stones: ALL_SINS,
         });
         g.progress.silver = 1500;
         g.progress.runes = 40;
@@ -1083,6 +1086,7 @@ fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
             belt: vec![PotionKind::Health],
             sins: ALL_SINS,
             ng: 0,
+            stones: ALL_SINS,
         });
         g.progress.silver = 1500;
         g.progress.runes = 40;
@@ -1178,8 +1182,16 @@ fn after_the_end_new_game_plus_keeps_the_kit_a_tier_harder() {
 fn a_lost_gpu_saves_first_and_waits_on_the_pause_menu() {
     let _dir = own_folder("gpu-lost");
     let mut g = launched();
-    g.saved_run =
-        Some(Run { hero: HeroKind::Ragnar, stage: Stage::Realm(Sin::Greed), score: 10, lives: 3, belt: Vec::new(), sins: 0, ng: 0 });
+    g.saved_run = Some(Run {
+        hero: HeroKind::Ragnar,
+        stage: Stage::Realm(Sin::Greed),
+        score: 10,
+        lives: 3,
+        belt: Vec::new(),
+        sins: 0,
+        ng: 0,
+        stones: 0,
+    });
     g.continue_game();
     assert!(until(&mut g, Screen::Playing, 30.0));
     for _ in 0..60 {

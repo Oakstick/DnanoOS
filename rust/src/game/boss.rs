@@ -111,6 +111,21 @@ impl Game {
         self.audio.play(Sfx::Milestone);
         self.floater(x, y - 0.8, self.key_name(), 2.0, Some(color));
         self.unlock_gate();
+        // A prince's seal-stone (B44): his for the House of Seven Seals, with a moment.
+        if let (Some(sin), true) = (self.realm, self.in_court()) {
+            self.seal_stones |= sin.bit();
+            let held = self.seal_stones.count_ones();
+            self.dilate(crate::logic::juice::DilationKind::RivalMet);
+            self.view.shake(0.25);
+            self.juice.banner = Some(Banner {
+                text: format!("THE SEAL-STONE OF {}", sin.title()),
+                sub: format!("{}   {held} OF SEVEN FOR THE HOUSE OF SEVEN SEALS", sin.seal_stone()),
+                color,
+                life: 3.4,
+                max: 3.4,
+            });
+            self.save_progress();
+        }
     }
 
     /**

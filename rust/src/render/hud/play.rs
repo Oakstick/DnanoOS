@@ -298,6 +298,23 @@ fn draw_purse(o: &mut Overlay, g: &Game, l: &HudLayout) {
     );
 }
 
+/// The seven seal-stones in a row from `x` (each `gs` across, `gap` apart): a cut stone in its
+/// sin's colour for each taken, an empty iron socket for each still to take (B44).
+pub(super) fn draw_stones(o: &mut Overlay, g: &Game, x: f32, y: f32, gs: f32, gap: f32) {
+    for (i, sin) in SINS.iter().enumerate() {
+        let got = g.seal_stones & sin.bit() != 0;
+        let cx = x + i as f32 * gap;
+        style::disc(o, cx, y, gs * 1.18, rgba(0x2a2420, 0.95));
+        if got {
+            style::glow(o, cx, y, gs * 2.6, rgba(sin.color(), 0.45));
+            o.triangle([cx - gs, y], [cx, y - gs * 1.1], [cx + gs, y], rgba(mix_rgb(sin.color(), 0xffffff, 0.3), 1.0));
+            o.triangle([cx - gs, y], [cx + gs, y], [cx, y + gs * 1.1], rgba(sin.color(), 1.0));
+        } else {
+            style::disc(o, cx, y, gs * 0.7, rgba(0x14100e, 1.0));
+        }
+    }
+}
+
 /// The purse's first row: the sin keys, the fight's state, the hoard, the Pit's riders, or the
 /// golden keys found. The y below what it drew.
 fn draw_status(o: &mut Overlay, g: &Game, t: f32, rc: f32, ty: f32, small: f32) -> f32 {
@@ -309,22 +326,15 @@ fn draw_status(o: &mut Overlay, g: &Game, t: f32, rc: f32, ty: f32, small: f32) 
     };
     let mut below = ty;
     if g.hub.is_some() {
-        // The seven sins' keys: a gem in each one's colour, lit for those he holds.
-        let held = SINS.iter().filter(|s| g.sins_cleared & s.bit() != 0).count();
+        // The seven seal-stones (B44): a stone in each one's colour, lit for those set in the House.
+        let held = SINS.iter().filter(|s| g.seal_stones & s.bit() != 0).count();
         let gs = t * 0.24;
         let gap = gs * 2.7;
         let x0 = rc - gap * 6.0 - gs;
-        label(o, &format!("SIN KEYS {held}/7"), x0 - t * 0.45, 0xff8a5a);
-        for (i, sin) in SINS.iter().enumerate() {
-            let got = g.sins_cleared & sin.bit() != 0;
-            let x = x0 + i as f32 * gap;
-            if got {
-                style::glow(o, x + gs, ty, gs * 2.6, rgba(sin.color(), 0.45));
-            }
-            style::disc(o, x + gs, ty, gs, rgba(if got { sin.color() } else { 0x3a3440 }, if got { 1.0 } else { 0.85 }));
-        }
+        label(o, &format!("SEAL-STONES {held}/7"), x0 - t * 0.45, 0xff8a5a);
+        draw_stones(o, g, x0 + gs, ty, gs, gap);
     } else if let Some(b) = &g.boss {
-        let key = g.realm.map(|s| format!("THE KEY OF {}", s.title())).unwrap_or_else(|| "THE RED KEY".to_string());
+        let key = g.key_name();
         let (text, color) = if b.alive() {
             ("BOSS FIGHT".to_string(), 0xff8a2a)
         } else if g.red_key.is_some() {

@@ -959,8 +959,11 @@ pub fn place(
         // He stands where one of the room's own foes stood (the realm keeps its foes' posts on its
         // ground, however that ground moves), else on its open floor.
         let (cx, cy) = room.center();
-        let mut theirs: Vec<P> =
-            foes.iter().copied().filter(|p| room.contains(*p) && reach.contains(p) && !busy.contains(p) && (!footed || walk0.contains(p))).collect();
+        let mut theirs: Vec<P> = foes
+            .iter()
+            .copied()
+            .filter(|p| room.contains(*p) && reach.contains(p) && !busy.contains(p) && (!footed || walk0.contains(p)))
+            .collect();
         theirs.sort_by(|a, b| {
             let d = |p: &P| (p.x as f32 - cx).powi(2) + (p.y as f32 - cy).powi(2);
             d(a).total_cmp(&d(b)).then(a.y.cmp(&b.y)).then(a.x.cmp(&b.x))
