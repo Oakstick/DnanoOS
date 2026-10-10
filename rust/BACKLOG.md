@@ -20,7 +20,21 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D3 | Voice. **Decided: better synth, no recorded voices.** Warmer, more expressive stylized speech. | B10 |
 | D4 | "House of the Devil". **Decided: rename to "The House of Seven Seals".** | B23 |
 | D5 | Lucifer's last phase "The Fallen". **Decided: rename** (the user, 2026-10-10). New name chosen: **"The Shattered Star"** (the Morning Star's pride broken, as his mirrors break); the move "Pride's Fall" keeps its name. | B54 |
-| D6 | Music per place: do you want to compose or supply themes (Krampus, each prince), or assign from the 12 tracks we have? | B14 |
+| D6 | Music per place. **Decided: Claude assigns fixed tracks from the 12 we have** (the user, 2026-10-10); the table is in B14. | B14 | **A fixed theme per place and prince** (D6: Claude assigns). Each realm and its court share one theme, the sin's theme, so the prince sounds like his realm. Courts lay the war drum on top harder. The assignment, chosen by tempo, brightness, bass and dynamics measured from the files and by each place's character:
+- **Title and Hızır's wares:** Menu (105 bpm, mid). As today.
+- **The Garden of Krampus:** Level 1, "The New Adventure". As today.
+- **The Cyclops' meadow:** Boss (93 bpm, dramatic). As today.
+- **The Portals of Hell hub:** Desolation Vesper (92 bpm, brooding, an evening prayer before the descent).
+- **Pride (Hall of Mirrors, Lucifer):** Celestia Ardent 2 (bright, steady: white marble and the Morning Star).
+- **Greed (the Vaults, Mammon):** Bastion Lux, "Enter" (the brightest, steady: the vault doors opening on gold).
+- **Envy (Serpent Grotto, Leviathan):** Celestia Ardent 4 (the darkest, with the widest swells: deep water and the drowned bell).
+- **Wrath (Burning Field, Amon):** Scavenger Guild (150 bpm, driving: fury).
+- **Sloth (Grey Mire, Belphegor):** Level One Boss (83 bpm, dark, an unchanging drone: fog and stopped clocks).
+- **Gluttony (Rotting Feast, Beelzebub):** Celestia Ardent 3 (80 bpm, the heaviest bass: the gullet).
+- **Lust (Garden of Thorns, Asmodeus):** Boss, shared with the Cyclops. There aren't enough tracks; see B56.
+- **The Pit and Krampus's lair:** The Last One (140 bpm, high energy), one piece across the descent and the final fight.
+- **The credits:** Credits. As today.
+- **Off the road** (the Cisterns, the Bone Vaults, the gym): may still draw from the pool. | `track.rs` maps every place on the road to its fixed track; no random choice on the road; a test pins the table; AUDIO/README notes updated. | S | todo |
 | D7 | Localisation. **Decided: Danish, Turkish and German** (all Latin script: æ ø å, ç ğ ı İ ö ş ü, ä ö ü ß; no CJK font needed). | B26 | **Localisation** (D7: Danish, Turkish, German): string tables for every player-facing string, a language setting, the fonts checked for each language's letters (Cinzel and Alegreya Sans cover them), then the three languages, with names kept (Hızır, Toby, the bestiary's native names). | A language setting; every player-facing string through the table; Danish, Turkish and German complete and checked by a reader. | L | todo |
 | D8 | Web build. **Decided: drop it.** | B27 | **Drop the web build** (D8): remove the wasm target, its build scripts and the wasm-only code paths, the WebGPU/WebGL claims in README and the docs, and the wasm clippy step from the checks and the agents' rules. | No wasm code or claim left; the desktop checks pass; README and RENDERING.md updated. | S | todo |
 | D9 | The boys in play. **Decided: all three:** the silhouette in the glow, a line per realm, a scene after each prince. | B07 |
@@ -28,6 +42,7 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D11 | With no deals (B40): do the princes' other cheats stay (the Whisper, Loaded Dice, the Turned Sign: lies with a tell, not deals), and the end-of-realm lies ("take your throne")? | B40 |
 | D12 | Generals and keys (B41). **Decided: 3 generals per realm, each carrying a key; the 3 keys open the prince's court. The realms' climaxes stay** (the Peerless, Kiyohime's bell, Hel's bed, the pylorus...) as the road to a general. | B41 |
 | D13 | The three boys' names. **Decided by Claude at the user's word (2026-10-10): Magnus** (Ragnar's boy), **Emre** (Mehmed's boy), **Kenji** (Miyamoto's boy): a mixed group of friends, each boy's name from the land of the soul that chose him; Toby is the fourth. | B55 |
+| B56 | **More music**: twelve tracks don't give every place its own. Lust shares the Cyclops' Boss track, the Pit shares Krampus's, and the courts share their realms'. Find or commission (licensed) themes for Lust, the Pit and each prince's court, plus a Krampus theme of his own. | Every place and prince has a theme of its own. | M | to decide |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
