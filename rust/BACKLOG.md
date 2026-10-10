@@ -153,6 +153,10 @@ Open items and proposals from the agents' reports. Every new idea lands here fir
 | B81 | **The House's seal-stone sockets read small and dim** from the hub camera, and the court's stones are small next to the hero. | Both read at a glance; captures. | S | to decide |
 | B82 | **Bestiary pages for the new generals**: only the first general per realm has a page; the other 14 have none. | 21 general pages. | S–M | to decide |
 | B83 | **The +50% density barely changed kills per minute** (+7% adept): the bots walk to the generals and fight at their own pace. Check by hand (B30) whether the realms now feel full; raise patrols or reinforcements if not. | A playtest note; adjusted if needed. | S | to decide |
+| B84 | **The leap's glow washes him pale pink near lamps** (B78): a whole-body emissive; try a rim light, or tune by hand. | The untouchable cue reads without washing his colours, in the Garden's lantern light and a dark court. | S | to decide |
+| B85 | **Leaping away turns his back to the foe** until his next swing; and with no stick in a fight he leaps along his facing, which after a swing is toward the foe. Keep facing the locked foe while leaping, and leap away from the nearest threat with no stick. | Both behave as a player expects; tests. | S | to decide |
+| B86 | **The 45° landing fallback can carry him sideways along arena edges** (B78); hand-check it never surprises a player. | A playtest note (B30); adjusted if needed. | S | to decide |
+| B87 | **The capture tool's `camera` command toggles from the last saved camera**, so captures with a shared save folder alternate between top and chase. Make it set the camera explicitly. | `camera top` / `camera chase` in capture scripts. | S | to decide |
 
 ## Suggested order
 
