@@ -426,6 +426,10 @@ impl Game {
     /// The lesson ends (taught, or put away): the draugr crumbles, Hızır is gone, the Garden goes on.
     pub(super) fn end_lesson(&mut self, taught: bool) {
         let Some(l) = self.lesson.take() else { return };
+        if !taught {
+            // (Put away: his line goes with him.)
+            self.voices.spoken = None;
+        }
         if let Some(i) = self.enemies.iter().position(|e| e.duel.as_ref().is_some_and(|d| d.id == l.foe)) {
             let p = self.enemies[i].pos();
             self.enemies.remove(i);
