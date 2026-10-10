@@ -95,7 +95,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
         let i = if es.len() == 1 { 0 } else { e.angel.index() };
         let cx = x + slot * (i as f32 + 0.5);
         let pop = if e.chosen { g.juice.angel_chosen } else { 0.0 };
-        let r = t * if e.chosen { 1.12 } else { 0.86 } * (1.0 + 0.12 * pop);
+        let r = t * if e.chosen { 1.12 } else { 0.94 } * (1.0 + 0.12 * pop);
         let cy = row_y - if e.chosen { t * 0.12 } else { 0.0 };
         // A power just come back flares.
         let back = g.juice.angel_back[e.angel.index()];
@@ -155,14 +155,16 @@ pub(super) fn draw_banner(o: &mut Overlay, g: &Game, t: f32) {
     let ts = style::name(t, 1.15, rgba(0xfff6dc, fade)).centered().glow(t * 0.35, rgba(light, 0.4 * fade));
     o.text_styled(title, w / 2.0, y - t * 1.35, &ts);
     // The four, in their order and colours, each named.
-    let r = t * 0.62;
-    let gap = t * 3.4;
+    let r = t * 0.66;
+    let gap = t * 5.6;
+    let at = |i: usize| w / 2.0 + (i as f32 - 1.5) * gap - t * 1.6;
     for (i, &a) in ARCHANGELS.iter().enumerate() {
-        let cx = w / 2.0 + (i as f32 - 1.5) * gap;
         let e = Emblem { angel: a, fill: 1.0, ready: true, chosen: false, wait: 0.0 };
-        draw_emblem_art(o, &e, cx - t * 0.75, y + t * 0.05, r, g.time as f32, fade);
-        let ns = style::name(t, 0.5, rgba(mix_rgb(a.color(), 0xffffff, 0.35), fade));
-        o.text_styled(&a.name().to_uppercase(), cx - t * 0.05, y + t * 0.05, &ns);
+        draw_emblem_art(o, &e, at(i), y + t * 0.05, r, g.time as f32, fade);
+    }
+    for (i, &a) in ARCHANGELS.iter().enumerate() {
+        let ns = style::name(t, 0.55, rgba(mix_rgb(a.color(), 0xffffff, 0.35), fade));
+        o.text_styled(&a.name().to_uppercase(), at(i) + r + t * 0.3, y + t * 0.05, &ns);
     }
     let sub = style::label(t, size::LABEL * 0.9, rgba(SAND, fade)).centered();
     let line = format!("{{Angel}} CALLS THE CHOSEN   {{AngelNext}} CHOOSES   EACH IS BACK {} s AFTER HIS CALL", RECHARGE as u32);
