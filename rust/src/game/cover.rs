@@ -114,6 +114,21 @@ impl Game {
         self.audio.play(Sfx::Explode);
     }
 
+    /// Capture hook: a boulder hurled at the piece of cover nearest him, from beside him.
+    pub fn debug_hurl(&mut self) {
+        let hp = self.hero.pos();
+        let (x0, y0, x1, y1) = ARENA;
+        let near = (y0..=y1)
+            .flat_map(|y| (x0..=x1).map(move |x| P::new(x, y)))
+            .filter(|&p| self.is_cover(p))
+            .min_by(|a, b| crate::logic::types::dist_sq(a.v(), hp).total_cmp(&crate::logic::types::dist_sq(b.v(), hp)));
+        if let Some(p) = near {
+            let from = V::new(hp.x + 0.6, hp.y);
+            let dir = (p.y as f64 - from.y).atan2(p.x as f64 - from.x);
+            self.boss_shots.push(crate::logic::boss::BossShot::new(from, dir, 6.0, crate::logic::boss::ShotKind::Boulder));
+        }
+    }
+
     /// A dive's slam at `at`: every piece of cover within reach is shaken.
     pub(super) fn slam_cover(&mut self, at: V) {
         let r = SLAM_REACH.ceil() as i32;

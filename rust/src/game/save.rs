@@ -224,6 +224,9 @@ impl Game {
         self.new_kit();
         self.belt = run.belt;
         self.sins_cleared = run.sins;
+        // Past the first dungeon's start the four archangels are with him (its shrines bring them).
+        let patron = self.patron();
+        self.angels.restart(run.stage != Stage::Dungeon(0), patron);
         match run.stage {
             Stage::Dungeon(n) => {
                 self.load_level(n);

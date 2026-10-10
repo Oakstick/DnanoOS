@@ -844,6 +844,8 @@ fn two_casters_cross_their_fire_as_one_strike() {
     g.brawl.as_mut().unwrap().reset(kit);
     g.hero.free_move = true;
     let mut bot = Bot::new(Skill::Expert, 4);
+    // (The pack's own play is measured: no archangel fells its casters first.)
+    bot.angels = false;
     for _ in 0..(600.0 / crate::app::STEP) as usize {
         if g.screen != Screen::Playing {
             g.enter(Screen::Playing);

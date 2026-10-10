@@ -593,7 +593,7 @@ fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[Sho
             y += t * 0.9;
             y = wrap_left(o, a.power(), x, y, w - t * 2.4, t * 0.58, small, rgba(TEXT, 1.0)) + t * 0.2;
             o.text(
-                &format!("RETURNS EVERY {} SECONDS   A BOSS LOSES {}", a.recharge() as u32, a.boss_damage()),
+                &format!("RETURNS {} SECONDS AFTER EACH CALL   A CYCLOPS LOSES {}", crate::logic::angels::RECHARGE as u32, a.boss_damage()),
                 x,
                 y,
                 small * 0.9,
@@ -605,8 +605,9 @@ fn draw_loadout_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[Sho
             wrap_left(
                 o,
                 &format!(
-                    "Call on him with {}. A blessing from a shrine is used first while you carry one; then his power, each time it comes back.",
-                    g.input.prompt(crate::input::Action::Angel).unwrap_or_default()
+                    "Your patron is with you before the shrines bring all four archangels, and is the one {} calls first; {} chooses another.",
+                    g.input.prompt(crate::input::Action::Angel).unwrap_or_default(),
+                    g.input.prompt(crate::input::Action::AngelNext).unwrap_or_default()
                 ),
                 x,
                 y,

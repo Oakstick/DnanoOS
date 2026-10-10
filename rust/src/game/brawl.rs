@@ -889,9 +889,23 @@ impl Game {
     /// Something outside the frame data reached duelist `i` (a bomb, an archangel's fire, a spirit):
     /// in the ring nothing (the lab is pure); in the vaults a plain blow through its fighter.
     pub(super) fn stray_blow(&mut self, i: usize) {
+        self.outside_blow(i, STRAY_DAMAGE, STRAY_POISE);
+    }
+
+    /// An archangel's power reached duelist `i`: its blow (`Archangel::brawl_blow`), a prince
+    /// taking `PRINCE_SHARE` of its damage; in the ring nothing.
+    pub(super) fn angel_blow(&mut self, i: usize, angel: crate::logic::angels::Archangel) {
+        let (mut damage, poise) = angel.brawl_blow();
+        if self.enemies[i].duel.as_ref().is_some_and(|d| d.arch == crate::logic::combat::Archetype::Prince) {
+            damage *= crate::logic::angels::PRINCE_SHARE;
+        }
+        self.outside_blow(i, damage, poise);
+    }
+
+    fn outside_blow(&mut self, i: usize, damage: f64, poise: f64) {
         if self.brawl.as_ref().is_some_and(|b| b.field == Field::Vault) {
             let from = self.hero.pos();
-            self.duel_hit(i, Hit { damage: STRAY_DAMAGE, poise: STRAY_POISE, hitstun: 12, ..Default::default() }, 2, from);
+            self.duel_hit(i, Hit { damage, poise, hitstun: 12, ..Default::default() }, 2, from);
         }
     }
 

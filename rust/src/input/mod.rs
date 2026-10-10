@@ -64,8 +64,10 @@ pub enum Action {
     Block,
     /// E / Y: call the old gatekeeper, and his wares open.
     Call,
-    /// R / RT: one use of the archangel's blessing he carries.
+    /// R / RT: the chosen archangel's power.
     Angel,
+    /// F / D-pad up: choose the next of the archangels with him.
+    AngelNext,
     /// LB and RB, Q and E (or Tab) in a menu: the tab before, the tab after.
     TabPrev,
     TabNext,

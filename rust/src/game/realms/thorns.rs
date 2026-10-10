@@ -126,17 +126,12 @@ impl Game {
         }
     }
 
-    /// Raphael's beam (his blessing spent, or his power as patron called) burns a straight path
-    /// through every hedge it crosses, for good.
+    /// Raphael's beam burns a straight path through every hedge it crosses, for good.
     fn thorns_raphael(&mut self) {
-        let raphael = self.blessing.filter(|b| b.angel == Archangel::Raphael).map(|b| b.charges).unwrap_or(0);
-        let replaced = self.blessing.is_some_and(|b| b.angel != Archangel::Raphael);
-        let patron = self.progress.hero(self.hero_kind).patron == Some(Archangel::Raphael);
-        let wait = self.patron_wait;
+        let (calls, last) = (self.angels.calls, self.angels.last);
         let Some(t) = self.thorns_mut() else { return };
-        let cast = (raphael < t.raphael_seen && !replaced) || (patron && wait > t.patron_seen + 1.0);
-        t.raphael_seen = raphael;
-        t.patron_seen = wait;
+        let cast = calls != t.calls_seen && last == Some(Archangel::Raphael);
+        t.calls_seen = calls;
         if cast {
             let (from, aim) = (self.hero.pos(), self.hero.aim());
             self.burn_path(from, aim);
@@ -664,8 +659,7 @@ impl Game {
     /// broken, the smoke gone, the koi lost, the ponds full, the wedding night undone; what Raphael
     /// burnt and what the bowers gave stay so. Raphael waits on his shrine.
     pub(in crate::game) fn reset_thorns(&mut self) {
-        let raphael = self.blessing.filter(|b| b.angel == Archangel::Raphael).map(|b| b.charges).unwrap_or(0);
-        let wait = self.patron_wait;
+        let calls = self.angels.calls;
         let mut music = false;
         if let Some(t) = self.thorns_mut() {
             music = t.wedding.is_some();
@@ -683,12 +677,12 @@ impl Game {
                 pd.empty = 0.0;
             }
             t.bride_path = None;
-            t.raphael_seen = raphael;
-            t.patron_seen = wait;
+            t.calls_seen = calls;
         }
         self.hero.pace = 1.0;
         for d in self.diamonds.iter_mut().filter(|d| d.kind == DiamondKind::Angel) {
             d.index = Archangel::Raphael.index();
+            d.hold();
         }
         if music {
             self.thorns_music();
@@ -966,7 +960,8 @@ mod tests {
         let at = P::new(x0 + 1, (y0 + y1) / 2);
         g.hero.place(at);
         g.hero.face(Dir::Right);
-        g.blessing = Some(crate::logic::angels::Blessing::of(Archangel::Raphael));
+        g.angels.granted = true;
+        g.angels.chosen = Archangel::Raphael;
         g.update(STEP);
         let wall = P::new(x0 + 2, at.y);
         assert!(!g.level.grid.is_walkable(wall.x, wall.y, false));

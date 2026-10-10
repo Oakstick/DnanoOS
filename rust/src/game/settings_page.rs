@@ -956,21 +956,21 @@ mod tests {
     #[test]
     fn rebinding_binds_asks_on_a_conflict_swaps_cancels_and_times_out() {
         let mut g = paused();
-        // Bind: F for the attack.
+        // Bind: G for the attack.
         listening_for_attack(&mut g);
-        key(&mut g, KeyCode::KeyF);
+        key(&mut g, KeyCode::KeyG);
         assert!(g.settings_page.listen.is_none());
-        assert_eq!(g.input.bindings.side(Action::Attack, false), vec![Control::Key(KeyCode::KeyF)]);
-        // Conflict: Q is the drink's. Asked; swapped: the drink takes F.
+        assert_eq!(g.input.bindings.side(Action::Attack, false), vec![Control::Key(KeyCode::KeyG)]);
+        // Conflict: Q is the drink's. Asked; swapped: the drink takes G.
         listening_for_attack(&mut g);
         key(&mut g, KeyCode::KeyQ);
         let c = g.settings_page.conflict.clone().expect("asked");
         assert_eq!(c.others, vec![Action::Drink]);
-        assert_eq!(g.input.bindings.side(Action::Attack, false), vec![Control::Key(KeyCode::KeyF)], "nothing yet");
+        assert_eq!(g.input.bindings.side(Action::Attack, false), vec![Control::Key(KeyCode::KeyG)], "nothing yet");
         key(&mut g, KeyCode::Enter);
         assert!(g.settings_page.conflict.is_none());
         assert_eq!(g.input.bindings.side(Action::Attack, false), vec![Control::Key(KeyCode::KeyQ)]);
-        assert_eq!(g.input.bindings.side(Action::Drink, false), vec![Control::Key(KeyCode::KeyF)]);
+        assert_eq!(g.input.bindings.side(Action::Drink, false), vec![Control::Key(KeyCode::KeyG)]);
         // Conflict, cancelled with Esc: nothing changes, and the page stays open.
         let before = g.input.bindings.clone();
         listening_for_attack(&mut g);

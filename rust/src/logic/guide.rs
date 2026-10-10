@@ -105,7 +105,7 @@ const GARDEN_WATCH: &[&str] = &[
     "A pack sleeps by each key. The first three come alone: a draugr (wait out its slow swing), a raven (read its bite), a bog slime (close in).",
     "A foe glows as it winds up and flashes as it strikes. Raise your shield with {Block}; raise it as the blow lands to parry.",
     "A red glint means no shield holds the blow: leap with {Jump}. Every key angers the garden: more come for you, and sooner.",
-    "An archangel's shrine stands in each quarter. Strike one to change its angel, step on it for his blessing, and use it with {Angel}.",
+    "An archangel's shrine stands in each quarter. The first brings all four to you, and each after readies them: {AngelNext} chooses one, {Angel} calls him.",
     "Drink with {Drink}, and call me with {Call} whenever you need: my training yard teaches the lesson again. {Guide} brings you back to these words.",
 ];
 

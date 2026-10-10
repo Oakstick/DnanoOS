@@ -173,9 +173,6 @@ pub struct SceneState<'a> {
     pub hero_kind: HeroKind,
     /// The ancestral spirits at his side.
     pub spirits: &'a [Spirit],
-    /// The archangels who cannot be had now (each gives once a level; Uriel also rests):
-    /// a shrine showing one of them stands grey.
-    pub angels_spent: [bool; 4],
     /// Holy fire burning on tiles, seconds left each.
     pub fires: &'a [(P, f64)],
     /// The red diamond key the Cyclops dropped, while it lies on the grass.

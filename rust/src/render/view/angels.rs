@@ -4,9 +4,9 @@
 //! a halo over it, and the archangel's light baked into the place: the
 //! marble glowing faintly in their colour, a soft shaft falling on the statue
 //! and a pool of that light on the floor round it, steady as a lamp (all gone
-//! grey and dark when that archangel has given this level, or all four
-//! have), and while it has a blessing to give a tall pillar of their light over it, seen from
-//! across the level. And their powers:
+//! grey and dark once the shrine has given this level), and while it has
+//! the archangels to give a tall pillar of their light over it, seen from
+//! across the level. The statue turns through the four (`Diamond::update`). And their powers:
 //! Gabriel's thunderbolts, Raphael's beam and Uriel's wave. Michael's fire
 //! flies as a shot (`emit_forged_shot`); the foes it turns glow blue and
 //! wear a halo (`update_enemy`, the enemies' emitter).
@@ -384,11 +384,11 @@ impl WorldView {
      * floor. It does not flicker. Spent, it stands grey and dark. Returns
      * where it stands and its colour, for the light pool and the label.
      */
-    pub(super) fn emit_angel_shrine(&self, d: &Diamond, grid: &Grid, spent: &[bool; 4], f: &mut Frame) -> Option<(Vec3, Vec3)> {
+    pub(super) fn emit_angel_shrine(&self, d: &Diamond, grid: &Grid, f: &mut Frame) -> Option<(Vec3, Vec3)> {
         let Offer::Angel(angel) = d.current() else { return None };
         let (x, y) = (d.tile.x, d.tile.y);
         let base = Vec3::new(x as f32, floor_at(grid, x as f32, y as f32), y as f32);
-        let lit = d.active && !spent[angel.index()];
+        let lit = d.active;
         let color = if lit { lin(angel.color()) } else { lin(0x6a6e76) };
         // Face the first open path round it, the south first.
         let yaw = [(0, 1, 0.0f32), (1, 0, PI / 2.0), (-1, 0, -PI / 2.0), (0, -1, PI)]
@@ -454,14 +454,15 @@ mod tests {
         g.view.emit(&g.scene(), &mut f);
         let lit = pillars(&f);
         assert_eq!(lit, shrines * super::PILLAR_STEPS * 3, "every unspent shrine has its pillar");
-        // One angel has given: the shrines showing him lose theirs.
-        let showing = |g: &Game, a: usize| g.diamonds.iter().filter(|d| d.kind == DiamondKind::Angel && d.index == a).count();
-        let a = (0..4).find(|&a| showing(&g, a) > 0).unwrap();
-        g.angels_used[a] = true;
+        // One shrine has given: it loses its pillar.
+        let i = g.diamonds.iter().position(|d| d.kind == DiamondKind::Angel).unwrap();
+        g.diamonds[i].active = false;
         g.view.emit(&g.scene(), &mut f);
-        assert_eq!(pillars(&f), (shrines - showing(&g, a)) * super::PILLAR_STEPS * 3);
+        assert_eq!(pillars(&f), (shrines - 1) * super::PILLAR_STEPS * 3);
         // All spent: none.
-        g.angels_used = [true; 4];
+        for d in g.diamonds.iter_mut().filter(|d| d.kind == DiamondKind::Angel) {
+            d.active = false;
+        }
         g.view.emit(&g.scene(), &mut f);
         assert_eq!(pillars(&f), 0);
     }

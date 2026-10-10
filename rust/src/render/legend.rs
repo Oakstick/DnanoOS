@@ -119,6 +119,7 @@ pub fn short(a: Action) -> &'static str {
         Action::Block => "Shield",
         Action::Step => "Bifrost Step",
         Action::Angel => "Archangel",
+        Action::AngelNext => "Next archangel",
         Action::Drink => "Drink potion",
         Action::PotionPrev => "Potion ←",
         Action::PotionNext => "Potion →",
@@ -213,7 +214,7 @@ pub fn key_rows(b: &Bindings) -> Vec<KeyRow> {
         }
     };
     group(&[Action::MoveUp, Action::MoveLeft, Action::MoveDown, Action::MoveRight], "Run", &mut rows);
-    for a in [Action::Attack, Action::Block, Action::Jump, Action::Step, Action::Angel, Action::Drink] {
+    for a in [Action::Attack, Action::Block, Action::Jump, Action::Step, Action::Angel, Action::AngelNext, Action::Drink] {
         group(&[a], short(a), &mut rows);
     }
     group(&[Action::PotionPrev, Action::PotionNext], "Choose a potion", &mut rows);
@@ -264,7 +265,7 @@ pub const TIPS: [&str; 14] = [
     "Lost? Press {Guide} and I will tell you what this place asks of you.",
     "Call me with {Call} wherever you are, and my wares are open to you.",
     "{Drink} drinks the chosen potion; {PotionPrev} and {PotionNext} choose another.",
-    "The archangel's blessing you carry answers {Angel}. Keep it for when you are hard pressed.",
+    "From the first shrine all four archangels walk with you. {AngelNext} chooses one, {Angel} calls him; each comes back 25 seconds after his call.",
     "Parry a witch's bolt and it flies back at her.",
     "{Camera} switches the camera: from above, or over your shoulder.",
     "Once you have learned the Bifrost Step, {Step} carries you clear in a blink.",
@@ -316,11 +317,11 @@ mod tests {
     fn the_legend_lists_every_action_bound_on_each_device() {
         let mut b = Bindings::default();
         listed(&b);
-        // The defaults: X attacks, the D-pad's up is the map, the left stick's click the minimap.
+        // The defaults: X attacks, the D-pad's up the next archangel, the left stick's click the minimap.
         let c = callouts(&b);
         let of = |p: Part| c.iter().find(|x| x.part == p).unwrap().clone();
         assert_eq!(of(Part::Button(PadButton::West)).does, "Attack");
-        assert!(of(Part::DPad).does.contains("↑ Map"), "{}", of(Part::DPad).does);
+        assert!(of(Part::DPad).does.contains("↑ Next archangel"), "{}", of(Part::DPad).does);
         assert!(of(Part::LeftStick).does.starts_with("Run · click: Minimap"), "{}", of(Part::LeftStick).does);
         assert_eq!(of(Part::Button(PadButton::Menu)).does, "Pause");
         // Rebound: the legend follows (Y attacks too; the jump to a mouse button; the slots apart).

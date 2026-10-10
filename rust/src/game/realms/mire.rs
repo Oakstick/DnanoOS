@@ -99,11 +99,10 @@ impl Game {
     pub(in crate::game) fn enter_mire(&mut self) {
         self.name_servants();
         let kills = self.brawl.as_ref().map(|b| b.stats.kills).unwrap_or(0);
-        let (wait, charges) = (self.patron_wait, self.blessing.map(|b| b.charges).unwrap_or(0));
+        let calls = self.angels.calls;
         if let Some(m) = self.mire_mut() {
             m.kills_seen = kills;
-            m.prev_wait = wait;
-            m.prev_charges = charges;
+            m.calls_seen = calls;
         }
     }
 
@@ -125,8 +124,7 @@ impl Game {
         let blocking = self.hero.blocking;
         let kills = self.brawl.as_ref().map(|b| b.stats.kills).unwrap_or(0);
         let walkable_here = self.level.grid.is_walkable(tile.x, tile.y, false);
-        let wait = self.patron_wait;
-        let charges = self.blessing.map(|b| b.charges).unwrap_or(0);
+        let calls = self.angels.calls;
         let gate_open = self.gate_open;
         let vel = self.hero.vel;
         let engaged = self.enemies.iter().filter_map(|e| e.duel.as_deref()).filter(|d| d.engaged() && dist_sq(d.pos, hp) < 64.0).count();
@@ -258,9 +256,8 @@ impl Game {
                 }
             }
             // ---- a loud fight by his head turns him in his sleep
-            let blessed = wait > m.prev_wait + 0.5 || charges < m.prev_charges;
-            m.prev_wait = wait;
-            m.prev_charges = charges;
+            let blessed = calls != m.calls_seen;
+            m.calls_seen = calls;
             if m.turning.is_none() && m.turn_rest <= 0.0 && m.phase == Phase::Wander {
                 let near_head = dist_sq(hp, m.head_world().v()) < HEAD_RANGE * HEAD_RANGE;
                 if near_head && (engaged >= 3 || blessed) {
@@ -1139,9 +1136,9 @@ mod tests {
         g.hero.place(spot);
         g.update(STEP);
         assert!(mire(&g).turning.is_none(), "a quiet hero lets him sleep");
-        g.patron_wait = 30.0;
+        g.angels.call(crate::logic::angels::Archangel::Gabriel);
         g.update(STEP);
-        assert!(mire(&g).turning.is_some(), "a blessing wakes him");
+        assert!(mire(&g).turning.is_some(), "an archangel called wakes him");
     }
 
     #[test]

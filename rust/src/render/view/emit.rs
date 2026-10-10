@@ -696,7 +696,7 @@ impl WorldView {
         let mut shrine_points = Vec::new();
         for (i, d) in s.diamonds.iter().enumerate() {
             if d.kind == DiamondKind::Angel {
-                if let Some(lit) = self.emit_angel_shrine(d, grid, &s.angels_spent, f) {
+                if let Some(lit) = self.emit_angel_shrine(d, grid, f) {
                     shrine_points.push(lit);
                 }
                 continue;

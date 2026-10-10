@@ -854,12 +854,11 @@ pub fn markers(game: &Game) -> Vec<Marker> {
         put(MarkerKind::Potion, p.tile.v(), seen(p.tile));
     }
     // The archangels' shrines (and the item shrines of the first dungeon).
-    let spent = game.angels_spent();
     for d in &game.diamonds {
         match d.kind {
             DiamondKind::Angel => {
                 let angel = ARCHANGELS[d.index % ARCHANGELS.len()];
-                put(MarkerKind::Shrine { angel, spent: !d.active || spent[angel.index()] }, d.tile.v(), seen(d.tile));
+                put(MarkerKind::Shrine { angel, spent: !d.active }, d.tile.v(), seen(d.tile));
             }
             DiamondKind::Item if d.active => put(MarkerKind::ItemShrine, d.tile.v(), seen(d.tile)),
             DiamondKind::Item => {}

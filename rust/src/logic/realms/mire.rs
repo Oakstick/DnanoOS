@@ -316,9 +316,8 @@ pub struct Mire {
     /// Servants that climbed out of the bog (their duelists' ids), and the next climbing.
     pub raised: Vec<u32>,
     pub rise_timer: f64,
-    /// His patron's wait and his blessing's charges last tick: a fall in either is a blessing used.
-    pub prev_wait: f64,
-    pub prev_charges: u8,
+    /// The archangels' calls he had made as of last tick (`Angels::calls`): more is one called.
+    pub calls_seen: u32,
     /// Falling asleep: seconds in.
     pub dozing: Option<f64>,
     /// A warning given while Torpor is high.
@@ -892,8 +891,7 @@ impl Mire {
             wave: 99.0,
             raised: Vec::new(),
             rise_timer: 2.0,
-            prev_wait: 0.0,
-            prev_charges: 0,
+            calls_seen: 0,
             dozing: None,
             warned: false,
             turned_at: None,
