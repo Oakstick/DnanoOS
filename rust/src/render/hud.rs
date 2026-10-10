@@ -31,6 +31,7 @@ mod guide;
 pub mod layout;
 mod ledger;
 pub mod legend;
+mod lesson;
 mod map;
 mod mastery;
 pub mod minimap;
@@ -281,6 +282,7 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
         if g.screen != Screen::Paused {
             dialogue::draw(o, g);
         }
+        lesson::draw(o, g, t);
     }
     match g.screen {
         Screen::Title => {

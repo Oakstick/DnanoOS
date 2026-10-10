@@ -192,13 +192,14 @@ impl WorldView {
         // reels, stunned), so its move shows through it; a blow landing on it floods it as before.
         v.rim = d.flash == 0
             && match d.f.state {
-                State::Attack { mv, frame } => mv.data().phase(frame) != Phase::Recovery,
+                State::Attack { mv, frame } => d.data(mv).phase(frame) != Phase::Recovery,
                 State::Reel { kind: Reel::Staggered | Reel::GuardBroken, .. } => true,
                 _ => false,
             };
         match d.f.state {
             State::Attack { mv, frame } => {
-                let data = mv.data();
+                // (Its own frames: a gentle foe of the Garden winds up longer.)
+                let data = d.data(mv);
                 match data.phase(frame) {
                     Phase::Startup => {
                         let u = frame as f32 / data.startup as f32;
@@ -302,7 +303,7 @@ impl WorldView {
         }
         match d.f.state {
             State::Attack { mv, frame } => {
-                let data = mv.data();
+                let data = d.data(mv);
                 let (s, a, f) = (data.startup as f32, data.active as f32, frame as f32);
                 // 0..1 through the wind-up, the strike and the recovery.
                 let (wind, strike, rec) = if f < s {
@@ -1365,7 +1366,7 @@ fn emit_bolt(b: &Bolt, time: f32, f: &mut Frame) {
     };
     let (light, reach) = match b.look {
         BoltLook::Spit => {
-            // A gob of the bog slime's own jelly (`emit::GOO_TRAIL`: gold once it flies at the foes),
+            // A gob of the bog slime's own jelly (`emit::GOO_TRAIL_L`: gold once it flies at the foes),
             // glossy and see-through round a darker knot, wobbling as it flies, stretched along its
             // flight, dripping onto the floor behind it.
             let gold = b.tint != BoltLook::Spit.tint();

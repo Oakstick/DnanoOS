@@ -56,6 +56,7 @@ fn layout(rows: &[ShopRow], w: f32, h: f32) -> Layout {
             | RowKind::Sharpen
             | RowKind::Carve(_)
             | RowKind::Trials
+            | RowKind::Lesson
             | RowKind::General(_)
             | RowKind::Rival(_)
             | RowKind::Trophy(_) => {
@@ -115,6 +116,7 @@ pub fn shop_row_at(rows: &[ShopRow], w: f32, h: f32, p: (f32, f32)) -> Option<us
                 | RowKind::Patron
                 | RowKind::Outfit
                 | RowKind::Trials
+                | RowKind::Lesson
                 | RowKind::General(_)
                 | RowKind::Rival(_)
                 | RowKind::Trophy(_)
@@ -378,6 +380,24 @@ pub(super) fn draw_shop(o: &mut Overlay, g: &Game, t: f32) {
                 o.text("MASTERY", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(lit, 1.0), Align::Left, true);
                 o.text(
                     &format!("{}  {}/{}", way.name, mst.rank, crate::logic::war::mastery::RANKS),
+                    rect[0] + t * 0.5,
+                    cy + t * 0.3,
+                    small * 0.78,
+                    rgba(TEXT_DIM, 1.0),
+                    Align::Left,
+                    false,
+                );
+            }
+            RowKind::Lesson => {
+                o.rect(rect[0], rect[1], rect[2], rect[3], [1.0, 1.0, 1.0, 0.03]);
+                if selected {
+                    o.rect_outline(rect[0], rect[1], rect[2], rect[3], (t * 0.06).max(1.0), rgba(GOLD, pulse));
+                }
+                let cy = rect[1] + rect[3] / 2.0;
+                let lit = if g.in_garden_fight() { GOLD } else { SAND };
+                o.text("HIZIR'S LESSON", rect[0] + t * 0.5, cy - t * 0.25, small, rgba(lit, 1.0), Align::Left, true);
+                o.text(
+                    "strike, guard, parry, leap, the tells",
                     rect[0] + t * 0.5,
                     cy + t * 0.3,
                     small * 0.78,
@@ -737,7 +757,7 @@ fn draw_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], rows: &[ShopRow]) {
         return;
     }
     let kind = rows.get(g.shop.row).map(|r| r.kind).unwrap_or(RowKind::Tabs);
-    if g.shop.board.is_some() || kind == RowKind::Trials {
+    if g.shop.board.is_some() || matches!(kind, RowKind::Trials | RowKind::Lesson) {
         draw_board_card(o, g, t, c, kind);
         return;
     }
@@ -909,6 +929,16 @@ fn draw_board_card(o: &mut Overlay, g: &Game, t: f32, c: [f32; 4], kind: RowKind
     match kind {
         RowKind::Trials => {
             super::mastery::draw_mastery_card(o, g, t, c);
+        }
+        RowKind::Lesson => {
+            title(o, y, "HIZIR'S LESSON", GOLD);
+            y += t * 0.9;
+            let text = if g.in_garden_fight() {
+                "\"Again? Gladly. My old sparring draugr is waiting in the garden: the three-hit string, the shield, the parry, the leap, and his three signs.\""
+            } else {
+                "\"I teach it in the garden, where my old sparring draugr lives. Here below you will have to learn from the real thing.\""
+            };
+            wrap_left(o, text, x, y, w, t * 0.58, small * 0.95, rgba(TEXT, 1.0));
         }
         RowKind::Trophy(i) => match g.workshop.trophies.get(i as usize) {
             Some(tr) => {

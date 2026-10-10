@@ -180,6 +180,9 @@ pub struct Fighter {
     pub parry_to: u16,
     pub evade_total: u16,
     pub break_frames: u16,
+    /// Frames added to the wind-up of every move of a foe's table (not the hero's string): a
+    /// beginner's foe telegraphs longer (the Garden, B01). 0 for every other.
+    pub tell: u16,
     regen_wait: u16,
     calm: u16,
     grace: Option<(MoveId, u16)>,
@@ -214,6 +217,7 @@ impl Fighter {
             parry_to: PARRY_TO,
             evade_total: EVADE_TOTAL,
             break_frames: GUARD_BREAK,
+            tell: 0,
         }
     }
 
@@ -239,6 +243,11 @@ impl Fighter {
             MoveId::L1 => self.table[0],
             MoveId::L2 => self.table[1],
             MoveId::L3 => self.table[2],
+            _ if self.tell > 0 => {
+                // (Its aim commits as early as ever: the longer wind-up is all time to read it.)
+                let d = mv.data();
+                MoveData { startup: d.startup + self.tell, ..d }
+            }
             _ => mv.data(),
         }
     }

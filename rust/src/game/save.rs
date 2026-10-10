@@ -321,6 +321,8 @@ impl Game {
         if !cfg!(test) {
             super::tour::forget_tour();
             self.tour_pending = true;
+            super::lesson::forget_lesson();
+            self.lesson_pending = true;
         }
     }
 

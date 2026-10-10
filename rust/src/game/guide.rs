@@ -109,6 +109,14 @@ impl Game {
             self.open_bestiary_from_guide();
             return;
         }
+        // In the Garden: his lesson again (B04).
+        if self.in_garden_fight() && self.input.was_pressed(&[Action::Attack]) && self.replay_lesson() {
+            self.input.consume(Action::Attack);
+            self.guide_open = false;
+            self.audio.play(Sfx::Nodule);
+            self.enter(Screen::Playing);
+            return;
+        }
         let back = [Action::Guide, Action::Pause, Action::Confirm, Action::Jump, Action::Tap];
         if !self.input.was_pressed(&back) && self.input.click.is_none() {
             return;

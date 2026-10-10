@@ -116,6 +116,8 @@ const RESERVE: f64 = 24.0;
 /// Tiles about it (beyond a foe's body) within which the adept counts a foe's dearest blow in the
 /// stamina it keeps (`Bot::block_worth`).
 const WORTH_RANGE: f64 = 4.0;
+/// Tiles within which a hunter of the Garden is a fight now rather than one to meet when it comes.
+const GARDEN_NEAR: f64 = 9.0;
 /// Frames from pressing attack until the guard can come up again (L1's cancel frame, and the raise).
 const COMMIT: f64 = 16.0;
 
@@ -526,6 +528,20 @@ impl Bot {
         Some(pad)
     }
 
+    /// The Garden walked as a player walks it (B01): between fights, to the nearest golden key still
+    /// lying, then to the gate (`garden_run::garden_goal`); the dens on the way wake as it passes.
+    fn garden_errand(&mut self, g: &Game, hp: V, hunting_near: bool) -> Option<PadState> {
+        if hunting_near || !g.in_garden_fight() {
+            return None;
+        }
+        let goal = super::garden_run::garden_goal(g)?;
+        let mut pad = PadState::default();
+        let dir = self.way(g, hp, goal);
+        pad.left = (dir.x as f32, dir.y as f32);
+        self.attack_down = false;
+        Some(pad)
+    }
+
     /// Floor it may walk on: the grid's, less the Burning Field's lava (a third of his health each
     /// time; WARBAND.md W9 taught the bots that much of the realm).
     pub(super) fn floor(g: &Game, t: P) -> bool {
@@ -559,9 +575,24 @@ impl Bot {
         out
     }
 
+    /// The straight walk from `from` to `to` (in `n` steps) climbs nothing his legs cannot: the
+    /// Garden's terraces are climbed at their ramps (B01).
+    fn no_climb(g: &Game, from: V, to: V, n: usize) -> bool {
+        let grid = &g.level.grid;
+        let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
+        let mut at = tile(from);
+        (1..=n).all(|k| {
+            let t = tile(math::add(from, math::scale(math::sub(to, from), k as f64 / n as f64)));
+            let climb = grid.elevation(t.x, t.y) - grid.elevation(at.x, at.y);
+            let ok = t == at || climb <= 0 || (climb == 1 && (grid.is_ramp(t.x, t.y) || grid.is_ramp(at.x, at.y)));
+            at = t;
+            ok
+        })
+    }
+
     /// Which way to walk from `from` to `to`: straight while nothing stands between, else the
     /// first step of the shortest way round (searched again only when either end changes tile).
-    fn way(&mut self, g: &Game, from: V, to: V) -> V {
+    pub(super) fn way(&mut self, g: &Game, from: V, to: V) -> V {
         let grid = &g.level.grid;
         let tile = |p: V| P::new(p.x.round() as i32, p.y.round() as i32);
         // Pushing a second (120 updates) without moving a tenth of a tile: wedged, so no shortcut.
@@ -579,7 +610,8 @@ impl Bot {
                 [(-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)]
                     .iter()
                     .all(|&(dx, dy)| Self::floor(g, tile(V::new(p.x + dx, p.y + dy))))
-            });
+            })
+            && (!g.in_garden_fight() || Self::no_climb(g, from, to, n));
         if clear {
             self.route = None;
             return math::norm(math::sub(to, from));
@@ -865,7 +897,11 @@ impl Bot {
         } else {
             all
         };
-        let hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
+        let mut hunting: Vec<_> = all.iter().copied().filter(|d| d.engaged()).collect();
+        if g.in_garden_fight() {
+            // (In the Garden a hunter far off is met when it comes: the keys first, B01.)
+            hunting.retain(|d| math::len(math::sub(d.pos, hp)) < GARDEN_NEAR);
+        }
         // (Between fights only: walking off on an errand mid-fight drags its foes' blows and bolts
         // off their planned frames.)
         let hunting_near = hunting.iter().any(|d| !d.puppet);
@@ -876,6 +912,9 @@ impl Bot {
             return errand;
         }
         if let Some(errand) = self.feast_errand(g, hp, hunting_near) {
+            return errand;
+        }
+        if let Some(errand) = self.garden_errand(g, hp, hunting_near) {
             return errand;
         }
         // Between fights (or hurt), what lies near goes into the belt first: a potion, a weapon, a boon.

@@ -195,6 +195,10 @@ impl Game {
         if gym {
             self.enemies = self.gym_garrison();
         }
+        // The Garden of Krampus fights by frame data (B01): its packs asleep by the keys.
+        if index == 0 && self.garden.is_some() && !self.level.data.boss {
+            self.enter_garden();
+        }
         if vault_level {
             self.enter_vault();
         }
@@ -230,6 +234,7 @@ impl Game {
         };
         self.boss_shots.clear();
         self.red_key = None;
+        self.cover = Default::default();
         self.diamonds = self
             .level
             .angel_shrines
@@ -331,7 +336,7 @@ impl Game {
             b.respawn(kit);
         }
         self.disband_packs();
-        let keep = self.run.is_some() || self.vault.is_some();
+        let keep = self.run.is_some() || self.vault.is_some() || self.in_garden_fight();
         let grid = &self.level.grid;
         for (i, e) in self.enemies.iter_mut().enumerate() {
             if let Some(d) = e.duel.as_deref_mut() {
@@ -388,6 +393,7 @@ impl Game {
         self.reset_lair();
         self.reset_general();
         self.reset_pit();
+        self.reset_garden();
         self.explore.observe(&self.level.grid, self.hero.pos());
     }
 

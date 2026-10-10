@@ -40,6 +40,8 @@ pub enum MapPage {
     LoadingCard,
     /// The bestiary, every page open for review (nothing of it saved).
     Bestiary,
+    /// Hızır's lesson in the Garden (B04), from its start.
+    Lesson,
 }
 
 /// The road down: the Garden and its Cyclops, the Portals of Hell, then each sin's realm and
@@ -64,6 +66,15 @@ pub fn map_stops() -> Vec<MapStop> {
     // Off the road: dungeons II and III, the levels built to the art direction.
     stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
     stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
+    // Hızır's lesson in the Garden (B04), from its start.
+    stops.push(MapStop {
+        stage: Stage::Dungeon(0),
+        label: "DEPTH I - HIZIR'S LESSON".to_string(),
+        scene: None,
+        post: None,
+        full_map: false,
+        page: Some(MapPage::Lesson),
+    });
     // The old man's workshop, as after the first Cyclops.
     stops.push(stop(Stage::Shop(0), "HIZIR'S WORKSHOP".to_string()));
     // Each realm's three generals at their command posts (B41; the third of a realm after the vaults
@@ -236,6 +247,10 @@ impl Game {
                     MapPage::Settings => self.open_settings(),
                     MapPage::LoadingCard => self.show_loading_card(6.0),
                     MapPage::Bestiary => self.review_bestiary(0, 0),
+                    MapPage::Lesson => {
+                        self.map_jump(Stage::Dungeon(0));
+                        self.replay_lesson();
+                    }
                 }
                 return;
             }

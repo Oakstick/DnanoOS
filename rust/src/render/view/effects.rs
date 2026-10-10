@@ -193,6 +193,26 @@ impl WorldView {
         }
     }
 
+    /// Cover brought down (B57): stones of it thrown up and tumbling, no fire.
+    pub fn crumble(&mut self, grid: &Grid, x: f64, y: f64) {
+        let (x, y) = (x as f32, y as f32);
+        let h = floor_at(grid, x, y);
+        for _ in 0..22 {
+            let r = &mut self.rng;
+            let color = lin(if r.nextf() < 0.7 { STONE_A } else { DIRT });
+            let pos = Vec3::new(x + (r.nextf() - 0.5) * 0.8, h + 0.3 + r.nextf() * 0.6, y + (r.nextf() - 0.5) * 0.8);
+            let a = r.nextf() * TAU;
+            let s = 1.0 + r.nextf() * 2.5;
+            let vel = Vec3::new(a.cos() * s, 2.5 + r.nextf() * 3.5, a.sin() * s);
+            let spin = Vec3::new(r.nextf() * 8.0, r.nextf() * 8.0, r.nextf() * 8.0);
+            let life = DEBRIS_SECONDS * (0.7 + r.nextf() * 0.5);
+            if self.debris.len() >= MAX_DEBRIS {
+                self.debris.remove(0);
+            }
+            self.debris.push(Debris::rubble(pos, vel, spin, life, h + 0.08, color));
+        }
+    }
+
     /// Trauma-based shake: a few incommensurate sines, so it never loops visibly.
     pub(super) fn update_shake(&mut self, dt: f32) {
         self.trauma = (self.trauma - TRAUMA_DECAY * dt).max(0.0);

@@ -168,6 +168,11 @@ impl Game {
                 }
             }
             BossEvent::Slam(p) => {
+                // A dive slammed down shakes the cover beside it (not its first landing: B57).
+                if self.boss.as_ref().is_some_and(|b| b.dazed()) {
+                    self.slam_cover(p);
+                }
+                let grid = &self.level.grid;
                 self.audio.play(Sfx::BossSlam);
                 self.view.shockwave(grid, p.x, p.y);
                 self.view.dust(grid, p.x, p.y, 0x8a6a40, 34, 4.2);
@@ -275,6 +280,8 @@ impl Game {
         let hero_pos = self.hero.pos();
         let hero_open = self.hero.alive && !self.hero.airborne();
         let mut hurt = 0;
+        // (The cover each struck: B57.)
+        let mut on_cover: Vec<(P, ShotKind)> = Vec::new();
         for s in self.boss_shots.iter_mut() {
             let mut remaining = dt;
             while remaining > 0.0 && s.alive {
@@ -288,6 +295,7 @@ impl Game {
                     s.alive = false;
                 } else if grid.get(t.x, t.y) == Tile::Rock {
                     s.alive = false;
+                    on_cover.push((t, s.kind));
                     let color = if s.kind == ShotKind::Boulder { 0x8a867c } else { 0xff7a3a };
                     self.view.spark(grid, s.pos.x, s.pos.y, color);
                     self.view.dust(grid, s.pos.x, s.pos.y, if s.kind == ShotKind::Boulder { 0x8a867c } else { 0x4a3620 }, 8, 2.0);
@@ -299,6 +307,10 @@ impl Game {
             }
         }
         self.boss_shots.retain(|s| s.alive);
+        for (t, kind) in on_cover {
+            let wear = if kind == ShotKind::Boulder { super::cover::BOULDER_WEAR } else { super::cover::BOLT_WEAR };
+            self.chip_cover(t, wear);
+        }
         if hurt > 0 {
             let ward = self.hero.shield.map(|s| progression::ward(s.tier));
             let open = !self.hero.invulnerable() && !self.hero.invincible();

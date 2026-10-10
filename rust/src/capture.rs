@@ -149,12 +149,16 @@ pub(crate) enum Cmd {
     Tour,
     Streak,
     Goo,
+    /// A boulder hurled at the meadow's cover nearest him (B57's captures).
+    Hurl,
     Gate,
     SlayGeneral(usize),
     Keys,
     TakeKey,
     Foes(usize, Option<u8>),
     Dungeon(usize),
+    /// Hızır's lesson at step N (1 strike .. 5 the tells, 6 the farewell; 0 the greeting).
+    Lesson(usize),
     /// The four archangels with him, one chosen: 0 Michael, 1 Gabriel, 2 Raphael, 3 Uriel.
     Bless(usize),
     /// Archangel N back in S seconds.
@@ -346,12 +350,14 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "tour" => Cmd::Tour,
             "streak" => Cmd::Streak,
             "goo" => Cmd::Goo,
+            "hurl" => Cmd::Hurl,
             "gate" => Cmd::Gate,
             "slaygeneral" => Cmd::SlayGeneral(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "keys" => Cmd::Keys,
             "takekey" => Cmd::TakeKey,
             "foes" => Cmd::Foes(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1), parts.next().and_then(|v| v.parse().ok())),
             "dungeon" => Cmd::Dungeon(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "lesson" => Cmd::Lesson(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "bless" => Cmd::Bless(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "angel" => Cmd::Press(Action::Angel),
             "angelnext" => Cmd::Press(Action::AngelNext),
@@ -578,6 +584,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         Cmd::Tour => game.tour_pending = true,
         Cmd::Streak => game.debug_streak(),
         Cmd::Goo => game.debug_goo(),
+        Cmd::Hurl => game.debug_hurl(),
         Cmd::Gate => game.cheat_to_gate(),
         Cmd::SlayGeneral(k) => game.debug_slay_general(k),
         Cmd::Keys => game.debug_all_keys(),
@@ -588,6 +595,7 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         }
         Cmd::Foes(rows, stage) => game.debug_foes(rows, stage),
         Cmd::Dungeon(n) => game.debug_dungeon(n),
+        Cmd::Lesson(n) => game.debug_lesson(n),
         Cmd::Bless(n) => {
             game.angels.granted = true;
             game.angels.chosen = ARCHANGELS[n.min(3)];

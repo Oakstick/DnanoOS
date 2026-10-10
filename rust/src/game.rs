@@ -28,6 +28,7 @@ mod combat;
 mod controls;
 pub mod counsel;
 mod court;
+mod cover;
 mod debug;
 pub mod deceit;
 pub mod ending;
@@ -36,6 +37,8 @@ mod feel;
 mod flow;
 mod foes;
 pub mod fullmap;
+mod garden_fight;
+pub mod garden_run;
 mod gate;
 pub mod general;
 mod guide;
@@ -46,6 +49,7 @@ mod juice;
 mod juice_tests;
 pub mod lair;
 pub mod ledger;
+pub mod lesson;
 mod level;
 mod map;
 pub mod mastery;
@@ -374,6 +378,8 @@ pub struct Game {
     streak_timer: f64,
     step_dist: f64,
     was_airborne: bool,
+    /// He stood in a slime's trail last step (the squelch as he steps in, B66).
+    was_slimy: bool,
     /// The way Ragnar faces at spawn: down the longest corridor from the center.
     start_facing: Dir,
     /// The dungeon number this stretch of the game belongs to (its boss shares it).
@@ -384,6 +390,8 @@ pub struct Game {
     pub boss: Option<Cyclops>,
     pub boss_shots: Vec<BossShot>,
     boss_events: Vec<BossEvent>,
+    /// The wear on the meadow's cover (B57, `cover`).
+    pub cover: cover::Cover,
     /// Where the Cyclops' red diamond key lies, until he takes it.
     pub red_key: Option<P>,
     /// Silver, rune fragments and every hero's unlocked trees: kept between adventures.
@@ -422,6 +430,9 @@ pub struct Game {
     /// The first-run tour, while it plays, and whether it is still owed.
     pub tour: Option<Tour>,
     pub tour_pending: bool,
+    /// Hızır's lesson in the Garden (B04), while it plays, and whether it is still owed.
+    pub lesson: Option<lesson::Lesson>,
+    pub lesson_pending: bool,
     /// After the camera is chosen: the tour (or else the countdown).
     view_then_tour: bool,
     /// The camera in use when the choice opened (Back keeps it).
@@ -601,6 +612,7 @@ impl Game {
             streak_timer: 0.0,
             step_dist: 0.0,
             was_airborne: false,
+            was_slimy: false,
             start_facing: Dir::Down,
             dungeon: 0,
             level_track: None,
@@ -608,6 +620,7 @@ impl Game {
             boss_shots: Vec::new(),
             boss_events: Vec::new(),
             red_key: None,
+            cover: Default::default(),
             // Tests start from nothing; the game from the saved progress.
             progress: if cfg!(test) { Progress::default() } else { persist::read_progress() },
             belt: Vec::new(),
@@ -631,6 +644,8 @@ impl Game {
             tour: None,
             // Tests start straight into play; they switch the tour on when they want it.
             tour_pending: !cfg!(test) && !tour::tour_seen(),
+            lesson: None,
+            lesson_pending: !cfg!(test) && !lesson::lesson_seen(),
             view_then_tour: false,
             view_before: crate::render::view::CameraMode::Third,
             hero_kind: crate::logic::heroes::HeroKind::Ragnar,
@@ -877,6 +892,7 @@ impl Game {
         self.update_gym(dt);
         self.update_vault(dt);
         self.update_run(dt);
+        self.update_garden(dt);
         self.update_pit(dt);
         self.update_general(dt);
         self.sim.fights += lap.lap();

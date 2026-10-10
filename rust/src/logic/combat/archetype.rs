@@ -274,6 +274,8 @@ pub struct Breed {
     /// The share of a blow a hide lets through outside its openings (`prince::HIDE_SHARE`; a prince
     /// in his court wears `prince::COURT_HIDE`).
     pub hide: f64,
+    /// Frames its every move's wind-up is drawn out (a gentle foe of the Garden, B01; 0 elsewhere).
+    pub tell: u16,
 }
 
 impl Breed {
@@ -389,7 +391,22 @@ impl Breed {
             K::Krampus => (Rider::None, Power::Pelt),
             _ => (Rider::None, Power::None),
         };
-        Breed { kind, arch, hp, damage, poise, speed, radius, cost, reach, rider, power, phase: 1, hide: super::prince::HIDE_SHARE }
+        Breed {
+            kind,
+            arch,
+            hp,
+            damage,
+            poise,
+            speed,
+            radius,
+            cost,
+            reach,
+            rider,
+            power,
+            phase: 1,
+            hide: super::prince::HIDE_SHARE,
+            tell: 0,
+        }
     }
 
     /// The moves it knows, in the order it prefers them: its archetype's own, or its legend's.
@@ -451,7 +468,9 @@ impl Breed {
     /// A fresh fighter for it.
     pub fn fighter(&self) -> Fighter {
         let s = self.stats();
-        Fighter::new(s.poise, s.armor, s.stagger, s.resolve)
+        let mut f = Fighter::new(s.poise, s.armor, s.stagger, s.resolve);
+        f.tell = self.tell;
+        f
     }
 }
 

@@ -215,15 +215,35 @@ pub struct Flow {
     pub from: P,
     w: i32,
     dist: Vec<u16>,
+    /// The ground has heights: a foe climbs only up a ramp, a level at a time, as he does
+    /// (`Grid::can_move`), and steps down anywhere (the Garden's terraces, B01). The vaults' and the
+    /// realms' floors are walked as flat, as they always were.
+    pub climbs: bool,
+}
+
+/// May a body walk from tile `a` to its neighbour `b` on ground with heights: no climb, or one level
+/// up a ramp.
+fn may_step(grid: &Grid, a: P, b: P) -> bool {
+    let climb = grid.elevation(b.x, b.y) - grid.elevation(a.x, a.y);
+    climb <= 0 || (climb == 1 && (grid.is_ramp(a.x, a.y) || grid.is_ramp(b.x, b.y)))
 }
 
 impl Flow {
+    /// The way to `from` over ground with heights (`climbs`): only the steps a foe may take.
+    pub fn climbing(grid: &Grid, from: P, reach: u16) -> Self {
+        Self::build(grid, from, reach, true)
+    }
+
     pub fn new(grid: &Grid, from: P, reach: u16) -> Self {
+        Self::build(grid, from, reach, false)
+    }
+
+    fn build(grid: &Grid, from: P, reach: u16, climbs: bool) -> Self {
         let (w, h) = (grid.width, grid.height);
         let mut dist = vec![u16::MAX; (w * h).max(0) as usize];
         let idx = |p: P| (p.y * w + p.x) as usize;
         if from.x < 0 || from.y < 0 || from.x >= w || from.y >= h {
-            return Self { from, w, dist };
+            return Self { from, w, dist, climbs };
         }
         dist[idx(from)] = 0;
         let mut queue = VecDeque::from([from]);
@@ -238,11 +258,15 @@ impl Flow {
                 if n.x < 0 || n.y < 0 || n.x >= w || n.y >= h || !grid.is_walkable(n.x, n.y, false) || dist[idx(n)] != u16::MAX {
                     continue;
                 }
+                // (Walked the other way: from `n` toward him.)
+                if climbs && !may_step(grid, n, p) {
+                    continue;
+                }
                 dist[idx(n)] = d + 1;
                 queue.push_back(n);
             }
         }
-        Self { from, w, dist }
+        Self { from, w, dist, climbs }
     }
 
     /// Steps from `p` to the hero's tile (none: out of reach).
@@ -295,25 +319,52 @@ impl GridTerrain<'_> {
     }
 }
 
+impl GridTerrain<'_> {
+    /// Can a body of `radius` stand at `p`, come from `from`: room there, and (on ground with heights)
+    /// no climb its legs cannot make into the tile under it.
+    fn reaches(&self, from: V, p: V, radius: f64) -> bool {
+        self.fits(p, radius) && (!self.flow.climbs || tile(from) == tile(p) || may_step(self.grid, tile(from), tile(p)))
+    }
+
+    /// Is the straight walk from `a` to `b` one a foe's legs can make (on ground with heights)?
+    fn walkable_line(&self, a: V, b: V) -> bool {
+        if !self.flow.climbs {
+            return true;
+        }
+        let n = (len(sub(b, a)) / 0.3).ceil().max(1.0) as usize;
+        let mut at = tile(a);
+        for k in 1..=n {
+            let t = tile(add(a, scale(sub(b, a), k as f64 / n as f64)));
+            if t != at {
+                if !may_step(self.grid, at, t) {
+                    return false;
+                }
+                at = t;
+            }
+        }
+        true
+    }
+}
+
 impl Terrain for GridTerrain<'_> {
     fn slide(&self, from: V, step: V, radius: f64) -> V {
         let full = add(from, step);
-        if self.fits(full, radius) {
+        if self.reaches(from, full, radius) {
             return full;
         }
         let x = V::new(from.x + step.x, from.y);
-        if self.fits(x, radius) {
+        if self.reaches(from, x, radius) {
             return x;
         }
         let y = V::new(from.x, from.y + step.y);
-        if self.fits(y, radius) {
+        if self.reaches(from, y, radius) {
             return y;
         }
         from
     }
 
     fn toward(&self, from: V, to: V) -> V {
-        if self.clear(from, to) {
+        if self.clear(from, to) && self.walkable_line(from, to) {
             return to;
         }
         let here = tile(from);
