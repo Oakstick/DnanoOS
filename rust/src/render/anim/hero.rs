@@ -59,8 +59,6 @@ pub struct Drive {
     pub motion: f32,
     /// How far through a leap (0 to 1), while he is in the air.
     pub airborne: Option<f32>,
-    /// The leap is his evade in a fight (the roll, where he has one, rather than the jump).
-    pub evade: bool,
     /// Seconds since his guard turned a blow (a parry), while its snap and recoil play.
     pub parry: Option<f32>,
     pub strike: Option<Strike>,
@@ -110,8 +108,8 @@ pub struct Animator {
     /// Seconds since he landed, while the leap's landing plays out.
     landing: Option<f32>,
     was_airborne: bool,
-    /// The leap under way (or landing) is the evade's roll.
-    rolling: bool,
+    /// The clip the leap in the air was last posed by (tests: the jump, in a fight too).
+    leap_clip: Option<&'static str>,
     guard_t: f32,
     guard_w: f32,
     hit_t: f32,
@@ -128,7 +126,7 @@ impl Default for Animator {
             run_cycle: 0.0,
             landing: None,
             was_airborne: false,
-            rolling: false,
+            leap_clip: None,
             guard_t: 0.0,
             guard_w: 0.0,
             hit_t: 0.0,
@@ -156,6 +154,11 @@ fn marks(clip: &Clip, names: &[&str], shares: &[f32]) -> Vec<f32> {
 }
 
 impl Animator {
+    /// The clip the leap in the air was last posed by (B78: the jump wherever it is pressed).
+    pub fn leap_clip(&self) -> Option<&'static str> {
+        self.leap_clip
+    }
+
     /// The pose for this frame and the juice's turns of bones (in the model's axes), or none when
     /// a clip the moment needs is missing: then the code's animation plays instead.
     pub fn step(&mut self, clips: &HeroClips, d: &Drive) -> Option<(Locals, [Quat; BONE_COUNT])> {
@@ -222,18 +225,19 @@ impl Animator {
             }
         }
 
-        // The leap (the roll, for the evade in a fight), and its landing.
+        // The leap, and its landing: the jump wherever it is pressed, the evade in a fight too (B78:
+        // its untouchable frames show as a glow, `view::leap_glow`, not as a roll).
         if self.was_airborne && d.airborne.is_none() {
             self.landing = Some(0.0);
-        }
-        if d.airborne.is_some() && !self.was_airborne {
-            self.rolling = d.evade && clips.get("roll").is_some();
         }
         self.was_airborne = d.airborne.is_some();
         if let Some(l) = self.landing.as_mut() {
             *l += dt;
         }
-        let jump = clips.get(if self.rolling { "roll" } else { "jump" });
+        let jump = clips.get("jump");
+        if d.airborne.is_some() && jump.is_some() {
+            self.leap_clip = Some("jump");
+        }
         if d.airborne.is_some() || self.landing.is_some() {
             jump?;
         }
@@ -426,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn the_finisher_the_roll_and_the_parry_have_their_own_clips() {
+    fn the_finisher_and_the_parry_have_their_own_clips_and_every_leap_is_the_jump() {
         let mut c = clips();
         c.clips.push(ramp("slash_heavy", 41, 2.0, &[("windup_end", 12.0), ("active_end", 18.0), ("recover_end", 40.0)], false));
         c.clips.push(ramp("roll", 41, -0.8, &[("takeoff", 0.0), ("land", 30.0), ("recover_end", 40.0)], false));
@@ -436,10 +440,7 @@ mod tests {
         let bounds = [0.0, 0.1, 0.2, 0.4];
         let (p, _) = a.step(&c, &Drive { strike: Some(Strike { t: 0.1, bounds, side: -1.0, serial: 1, heavy: true }), ..d }).unwrap();
         assert!((spine(&p) - 0.6).abs() < 1e-3, "the finisher's clip: {}", spine(&p));
-        // The evade leaps by the roll, a leap elsewhere by the jump (both to their land at the leap's end).
-        let mut a = Animator::default();
-        let (p, _) = a.step(&c, &Drive { airborne: Some(1.0), evade: true, ..d }).unwrap();
-        assert!(spine(&p) < 0.0, "rolled: {}", spine(&p));
+        // Every leap is the jump, the evade in a fight too, though a roll clip is there (B78).
         let mut a = Animator::default();
         let (p, _) = a.step(&c, &Drive { airborne: Some(1.0), ..d }).unwrap();
         assert!(spine(&p) > 0.0, "jumped: {}", spine(&p));

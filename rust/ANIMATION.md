@@ -230,7 +230,10 @@ changed). Every script is described in `tools/blender/README.md`.
     own clock with the old swing's proportions elsewhere.
   - **The leap**: `jump` from `takeoff` to `land` by the leap's progress, then its landing to
     `recover_end` in real time (cut short by a strike, the guard or a run). In a fight the leap is
-    the evade (the fighter's `Evade` state): `roll`, the same way.
+    the evade (the fighter's `Evade` state), and it plays the `jump` too (B78: one jump
+    everywhere); its untouchable frames show as a soft pale glow and faint afterimages
+    (`view::leap_glow`). `roll` is no longer the hero's evade (it stays in his clip set, unused;
+    the foes that roll keep theirs).
   - **What he carries** (`Drive::two_hands`, `Drive::slung`, laid on the finished pose by
     `hold.rs`): both fists on the grip, his shield slung on his back but to guard (Miyamoto, §6.6).
   - **The juice**: the upper sword arm carried on past the strike's end and back
@@ -284,7 +287,7 @@ kept and ignored.
 | `active_end` | a strike | The blow's end: the move's last active frame. |
 | `recover_end` | a strike, `jump`, `hit` | The follow-through settled: the move's (or the landing's, or the flinch's) end. |
 | `takeoff`, `apex`, `land` | `jump` | The leap: off the floor, at its top, touching down. `takeoff` to `land` fills the leap. |
-| `takeoff`, `apex`, `land` | `roll` | The same for the evade's roll: the dive, the tuck, the rise. |
+| `takeoff`, `apex`, `land` | `roll` | The same for the roll: the dive, the tuck, the rise (no longer the hero's evade, B78). |
 | `raised` | `block`, `parry` | The shield up: the guard's raise ends here (without `block_idle`, the rest loops while he holds it). |
 | `impact` | `hit`, `parry` | The blow's moment in the flinch, or on the shield. |
 | `foot_l`, `foot_r` | a gait | Each heel strike (for footfalls and phase). |
@@ -359,10 +362,10 @@ rays from it in Blender against his voxels.
 | `block` + `block_idle` | Sword And Shield Block, Block Idle | stance | The shield square before him, its centre on his middle (x 0.01 m), his sword drawn back behind it. |
 | `parry` | built: the block's raised pose reached in 3 frames, then the Impact's flinch on his upper body at half depth, back by frame 22 | | Mixamo has no parry. |
 | `jump` | Sword And Shield Jump | | Off the floor on frame 3 (the game's leap starts at once), tucked at the top, a full landing; it faces forward as he leaps. |
-| `roll` | Stand To Roll (extra) | its turning taken out | The evade in a fight: a dive and tuck through the air over the blow, from `takeoff` (his hips sinking into the dive) to `land`. |
+| `roll` | Stand To Roll (extra) | its turning taken out | Was the evade in a fight: a dive and tuck through the air. Unused since B78 (the evade is the jump; it read as a flip and not as the leap it is). |
 | `hit` | Sword And Shield Impact (2) | stance | Thrown back and recovering, upper body only in the game. Impact (1) and (3) twist him 80 and 130 degrees. |
 
-**Not used**: Dodging Right (the game has no sidestep: its evade is the leap, which the roll plays),
+**Not used**: Dodging Right (the game has no sidestep: its evade is the leap, which the jump plays),
 the deaths (the game does not show his body once he falls), the crouches, strafes, turns, kick,
 casting, power up, drawing and sheathing (nothing in the game asks for them yet).
 
@@ -505,7 +508,7 @@ shield at all). The code's animation (`VH_ANIM=code`) keeps it strapped on his a
 - `python tools/anim_compare.py OUT [EXE] [--also EXE2] [--hero K] [moment ...]` renders 30 moments in the
   Sparring Ring (idle and a breath; the run, and from the chase camera; the walk under the guard;
   the first and second swings and the finisher at wind-up, blow, through and settle; the guard
-  rising and held; the evade's roll rising, at its top and landing) and the leap in the Garden,
+  rising and held; the evade's leap rising, at its top and landing) and the leap in the Garden,
   close (from before him, three-quarters), from his side, and from the game's chase camera (behind and
   above him, as it is played). Each is one picture: **the code's animation on the left, the
   clips' on the right**, the same frame of the same deterministic run (`--capture ...
@@ -611,7 +614,7 @@ it back at rest.
   - The finisher keeps Mixamo's whole spin: the blade is away from the camera for part of it.
   - His stance is side-on (Mixamo's): from behind the camera sees his shield side more than his
     back. Running and leaping he faces forward; the crossfades turn him between the two.
-  - The evade's roll is a dive and tuck in the air (the leap lifts him): it reads as a flip.
+  - (The evade's roll read as a flip: since B78 the evade plays the jump, its i-frames a glow.)
   - The parry is built (Mixamo has none); a parry keyed by hand would be sharper.
   - Strikes start from the clip's first frame with no blend (the rule): a strike begun from the
     run snaps from the run's pose to the stance.

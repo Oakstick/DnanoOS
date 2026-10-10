@@ -65,7 +65,7 @@ different numbers (§8).
 | **Parry** | guard f2-f9 (8 f, 133 ms) | A hit landing in the window: no damage, no stamina. Attacker → *Deflected* **60 f** (longer than any recovery, so a parry always opens more than a dodge) and loses 50% of max poise. A hex bolt is **reflected** (×1.5 damage to foes). |
 | Block | after f9 | Stamina − **0.7** × damage (the training buckler's 30% stability). Hero → *Blockstun* 6 + dmg/3 f (he walks on at his guard's pace). |
 | Guard break | block with stamina < cost | 50% damage through, hero → *GuardBroken* 48 f, stamina → 0. He walks on at his whole pace. |
-| Evade (Space / A) | 25 f airborne + 6 f landing | The leap. **Airborne = i-frames** (f0-f24), then 6 f landing recovery. From neutral or the guard, any startup frame, or recovery from its cancel frame. |
+| Evade (Space / A) | 25 f airborne + 6 f landing | **The evade is the jump** (B78): the same leap as anywhere else (2 tiles, else 1; over pits and up a level; along the stick held at the press, else his facing; the `jump` clip). **Airborne = i-frames** (f0-f24), shown as a soft pale glow and faint afterimages on him, then 6 f landing recovery. From neutral or the guard, any startup frame, or recovery from its cancel frame. |
 | Bare leap (Space / A) | the same 25 + 6 f | **Space always leaps** in a fight (B05): out of a recovery *before* its cancel frame, or out of a block's stun, it is the same leap with **no i-frames** (a blow reaches him in the air), so a whiffed swing's punish window stays honest. Never from the active frames, hitstun, a broken guard, Mammon's grasp or death: a press there waits in the 8 f buffer and leaps the frame they end. |
 | Hit taken | hitstun 10 + dmg/2 f | Then **30 f mercy** i-frames, so two attacks can't stack into one combo. The formula of §2 applies to him too: a foe that catches his recovery deals ×1.25, a broken guard ×1.5. |
 | No hit-lock | any reel | Hitstun, blockstun and a broken guard keep him from swinging and guarding for their frames, and nothing else: he walks at his whole pace through them (`Fighter::stride`). Only his own swing plants him. No foe slows him but the bog slime's trail. |
@@ -180,7 +180,11 @@ it, fresh: the buffer ages on frames, and none pass in a freeze (`Game::play_ste
 
 **One verb (B05):** in every brawl (the Ring, the Vaults, the realms, the courts, the Pit, the lair)
 Space is the fighter's `Evade` press, and it always leaps but in the states above; outside brawls
-it is the plain leap. The adept and expert bots hold a press back while the leap would be bare and
+it is the plain leap. Both are one and the same leap (B78, `Hero::try_jump`): the same arc, height
+and distance, the way the stick or keys pointed at the press (`Hero::press_jump`, kept 0.2 s for a
+press the buffer holds), or 45 degrees to either side when neither landing straight on is open,
+else a hop in place; only the untouchable frames are the fight's, and they show as a glow
+(`view::leap_glow`), not as a roll. The adept and expert bots hold a press back while the leap would be bare and
 press it on the first frame it is an evade (`Fighter::leap_kind`); measured against rust-port 0ea0616 that moved
 only Krampus's fight (the expert 0.1 min longer, 59 → 0 damage taken in order 1) and the adept's
 FIRE AND ICE bout (taken 148 → 154, blocks 5.5 → 4, of 2 seeds; still 0%).

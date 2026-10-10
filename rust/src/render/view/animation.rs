@@ -411,7 +411,6 @@ impl WorldView {
                 self.parry_t = None;
             }
         }
-        let evade = s.hero_fighter.is_some_and(|f| matches!(f.state, State::Evade { .. }));
         // Miyamoto fights two-handed, his shield slung on his back but to guard (a pair of blades, a
         // bow or a gun is held as it comes).
         let (two_hands, slung) = match s.hero_kind {
@@ -424,7 +423,6 @@ impl WorldView {
         };
         let drive = Drive {
             dt,
-            evade,
             parry: self.parry_t,
             speed: (hero.m.speed * hero.motion) as f32,
             motion: hero.motion as f32,
@@ -463,6 +461,12 @@ impl WorldView {
             return None;
         }
         Some((self.models.jointed.as_ref()?, self.hero_mats.as_ref()?.as_slice()))
+    }
+
+    /// The clip his leap in the air was last posed by (tests).
+    #[cfg(test)]
+    pub fn hero_leap_clip(&self) -> Option<&'static str> {
+        self.hero_anim.leap_clip()
     }
 
     /// Whether his clips posed him this frame (tests).

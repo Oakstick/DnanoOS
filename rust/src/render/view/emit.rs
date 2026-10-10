@@ -388,6 +388,9 @@ impl WorldView {
         if hero.fx.ragnarok > 0.0 {
             emissive += lin(0x9a2aff) * (0.1 + (time * 5.0).sin().abs() * 0.1);
         }
+        // Untouchable in his leap: a soft pale glow, and afterimages behind him (B78).
+        emissive += self.leap_glow();
+        self.emit_leap_trail(f);
         if hero.alive && !blink {
             let alpha = if ghost { 0.3 + (time * 6.0).sin() * 0.08 } else { 1.0 };
             let root = hero_group

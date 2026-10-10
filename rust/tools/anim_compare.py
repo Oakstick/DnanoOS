@@ -56,7 +56,7 @@ BASE = [
     ('jump_top', f'{GO}:jump', GO + 0.22, (-80, 2.6)),
     ('jump_top_play', f'{GO}:jump', GO + 0.22, PLAY),
     ('jump_land', f'{GO}:jump', GO + 0.5, (-80, 2.6)),
-    # (Outside a fight his leap is the jump; in the ring it is the evade, the roll above.)
+    # (His leap is the jump everywhere, the evade in the ring too: B78.)
     ('leap_garden_top', '!0:dungeon:0,4:jump', 4.2, (-80, 2.6)),
     ('leap_garden_play', '!0:dungeon:0,4:jump', 4.2, PLAY),
 ]

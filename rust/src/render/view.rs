@@ -66,6 +66,7 @@ mod hell_art;
 mod hell_portals;
 mod juice;
 mod lair;
+mod leap_glow;
 pub mod lesson;
 mod lookdev;
 mod meadow;
@@ -468,6 +469,8 @@ pub struct WorldView {
     /// Swiftness afterimages: position, heading, fade.
     ghosts: Vec<(Vec3, f32, f32)>,
     ghost_clock: f32,
+    /// The leap's untouchable frames: his glow and its afterimages (B78).
+    leap_glow: leap_glow::LeapGlow,
     rng: Rng,
     /// The rigs the level keeps ready on the GPU from its load to the next (`prepare_rigs`).
     resident: Resident,
@@ -622,6 +625,7 @@ impl WorldView {
             rains: Vec::new(),
             flashes: Vec::new(),
             ghosts: Vec::new(),
+            leap_glow: Default::default(),
             ghost_clock: 0.0,
             rng: Rng::from_time(),
             resident: Resident::default(),
@@ -703,6 +707,7 @@ impl WorldView {
         self.rains.clear();
         self.flashes.clear();
         self.ghosts.clear();
+        self.leap_glow = Default::default();
         self.juice.reset();
         self.trauma = 0.0;
         for l in self.effect_lights.iter_mut() {
@@ -961,6 +966,7 @@ impl WorldView {
         self.hero_yaw = lerp_angle(self.hero_yaw, turn_to, 1.0 - (-TURN_RATE_HERO * dtf).exp());
         self.animate_hero(hero);
         self.animate_clips(hero, s, dtf);
+        self.update_leap_glow(dtf, s);
 
         for (i, e) in s.enemies.iter().enumerate() {
             if i >= self.enemy_views.len() {

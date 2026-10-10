@@ -57,6 +57,12 @@ pub const LANDING_KEEP: f64 = 0.6;
 /// Standing still, a new direction first turns him on the spot; he only steps
 /// off once it has been held this long. A tap turns, a hold walks.
 pub const TURN_TAP_SECONDS: f64 = 0.12;
+/// A jump pressed keeps the way the stick or keys pointed at the press this long: in a fight a
+/// press waits in the fighter's 8-frame buffer (out of a swing's active frames, a reel) and takes
+/// off a little later, still the way it was pressed (B78).
+const PRESS_KEEP: f64 = 0.2;
+/// The stick pushed past this far is a way to leap; nearer its middle, he leaps the way he faces.
+const LEAP_STICK: f64 = 0.3;
 
 /// Seconds left on each timed elixir (invulnerability uses the boon timer).
 #[derive(Clone, Copy, Debug, Default)]
@@ -200,6 +206,8 @@ pub struct Hero {
     pub free_move: bool,
     /// Which way the player wants him to go, in grid units (any length; zero to stop).
     pub wish: V,
+    /// The way the stick or keys pointed when the jump was last pressed, and seconds since (B78).
+    pressed: Option<(V, f64)>,
     free_pos: V,
     free_vel: V,
     synced: P,
@@ -268,6 +276,7 @@ impl Hero {
             turn_timer: 0.0,
             free_move: false,
             wish: V::new(0.0, 0.0),
+            pressed: None,
             free_pos: start.v(),
             free_vel: V::new(0.0, 0.0),
             synced: start,
@@ -490,11 +499,30 @@ impl Hero {
         }
     }
 
+    /// The jump was pressed: the leap that comes of it, now or out of a fight's buffer, goes the
+    /// way the stick or keys point now (B78).
+    pub fn press_jump(&mut self) {
+        self.pressed = self.stick().map(|v| (v, 0.0));
+    }
+
+    /// The stick or keys, as a unit vector, when they are pushed far enough to mean a way.
+    fn stick(&self) -> Option<V> {
+        let len = (self.wish.x * self.wish.x + self.wish.y * self.wish.y).sqrt();
+        (len > LEAP_STICK).then(|| V::new(self.wish.x / len, self.wish.y / len))
+    }
+
+    /// The way a leap goes: the stick or keys held at the jump's press, else those held now, else
+    /// the way he faces.
+    pub fn leap_aim(&self) -> V {
+        self.pressed.map(|p| p.0).or_else(|| self.stick()).unwrap_or_else(|| self.aim())
+    }
+
     /**
-     * Leap the way he faces: two tiles when the landing is clear (over a pit,
-     * an enemy, or up one level), one tile otherwise, or a hop in place. On
-     * the grid it goes tile to tile; in free movement it follows his heading
-     * and lands wherever it comes down.
+     * Leap (B78: the same leap everywhere, the evade in a fight too) the way the stick or keys
+     * point, else the way he faces: two tiles when the landing is clear (over a pit, an enemy,
+     * or up one level), one tile otherwise; if neither, the nearest other ways (45 degrees to
+     * either side) the same; else a hop in place. On the grid it goes tile to tile; in free
+     * movement it lands wherever it comes down. He turns to the way he leaps.
      */
     pub fn try_jump(&mut self, grid: &Grid) -> bool {
         if !self.alive || self.jump.is_some() {
@@ -502,12 +530,23 @@ impl Hero {
         }
         let from_pos = self.pos();
         let from = self.m.occupied();
-        let (to, to_pos) = if self.free_move {
-            free_landing(grid, from_pos, self.aim()).unwrap_or((from, from_pos))
+        let held = self.pressed.is_some() || self.stick().is_some();
+        let aim = self.leap_aim();
+        self.pressed = None;
+        let (to, to_pos, way) = if self.free_move {
+            leap_landing(grid, from_pos, aim, true).unwrap_or((from, from_pos, aim))
         } else {
-            let to = grid.jump_landing(from, self.facing).unwrap_or(from);
-            (to, to.v())
+            // On the grid the stick's way is the nearest of the four, and he lands on a tile's center.
+            let dir = if held { dir_of(aim) } else { self.facing.or_down() };
+            grid.jump_landing(from, dir)
+                .map(|to| (to, to.v(), dir.vecf()))
+                .or_else(|| leap_landing(grid, from.v(), dir.vecf(), false).map(|(to, _, a)| (to, to.v(), a)))
+                .unwrap_or((from, from.v(), dir.vecf()))
         };
+        if held || to != from {
+            self.heading = way.y.atan2(way.x);
+            self.facing = dir_of(way);
+        }
         if self.kind == HeroKind::Miyamoto && self.path >= 3 {
             // Wind Step: every leap is a dodge.
             self.invuln = self.invuln.max(path::DODGE_SECONDS);
@@ -550,6 +589,12 @@ impl Hero {
 
     pub fn update(&mut self, dt: f64, grid: &Grid, wanted: Dir) {
         self.invuln = (self.invuln - dt).max(0.0);
+        if let Some(p) = self.pressed.as_mut() {
+            p.1 += dt;
+            if p.1 > PRESS_KEEP {
+                self.pressed = None;
+            }
+        }
         self.attack_cooldown = (self.attack_cooldown - dt).max(0.0);
         self.fire_cooldown = (self.fire_cooldown - dt).max(0.0);
         self.swing = (self.swing - dt).max(0.0);
@@ -1243,6 +1288,46 @@ fn free_landing(grid: &Grid, from: V, aim: V) -> Option<(P, V)> {
     None
 }
 
+/**
+ * Where a leap from `from` along `aim` comes down (B78): straight on (`free_landing`; with
+ * `straight` false not tried, as the grid's straight leap is its own), else 45 degrees to either
+ * side, the farther landing of the two (the turn toward +y first on a tie). Returns the tile, the
+ * point and the way it went.
+ */
+fn leap_landing(grid: &Grid, from: V, aim: V, straight: bool) -> Option<(P, V, V)> {
+    if straight {
+        if let Some((t, land)) = free_landing(grid, from, aim) {
+            return Some((t, land, aim));
+        }
+    }
+    let turn = |a: f64| {
+        let (c, s) = (a.cos(), a.sin());
+        V::new(aim.x * c - aim.y * s, aim.x * s + aim.y * c)
+    };
+    let quarter = std::f64::consts::FRAC_PI_4;
+    let sides: Vec<(P, V, V)> =
+        [turn(quarter), turn(-quarter)].into_iter().filter_map(|a| free_landing(grid, from, a).map(|(t, land)| (t, land, a))).collect();
+    let far = |l: &(P, V, V)| (l.1.x - from.x).powi(2) + (l.1.y - from.y).powi(2);
+    sides.into_iter().reduce(|a, b| if far(&b) > far(&a) + 1e-9 { b } else { a })
+}
+
+/// The nearest of the four directions to `v` (Down for none).
+fn dir_of(v: V) -> Dir {
+    if v.x == 0.0 && v.y == 0.0 {
+        Dir::Down
+    } else if v.x.abs() >= v.y.abs() {
+        if v.x > 0.0 {
+            Dir::Right
+        } else {
+            Dir::Left
+        }
+    } else if v.y > 0.0 {
+        Dir::Down
+    } else {
+        Dir::Up
+    }
+}
+
 /// The floor height (in levels) under a free-moving point: level ground, or partway up a ramp.
 fn free_floor(grid: &Grid, p: V) -> f64 {
     let t = grid.wrap(P::new(p.x.round() as i32, p.y.round() as i32));
@@ -1360,6 +1445,70 @@ mod tests {
         run(&mut h, &g, JUMP_SECONDS + 0.05);
         assert_eq!(h.occupied(), P::new(8, 3));
         assert!(h.pos().x <= 8.5 - FREE_RADIUS + 1e-6, "kept out of the wall: {:?}", h.pos());
+    }
+
+    /// B78: with no landing straight on (a rock before him, the wall behind it), the leap goes 45
+    /// degrees to the side instead of hopping in place, in free movement and on the grid; boxed in
+    /// on three sides, a hop in place.
+    #[test]
+    fn with_no_landing_ahead_the_leap_goes_45_degrees_aside() {
+        let mut g = room(10, 7);
+        g.set(8, 3, Tile::Rock);
+        let mut h = Hero::new(P::new(7, 3), 5.0);
+        h.free_move = true;
+        h.heading = 0.0;
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.occupied(), P::new(8, 4), "down and to the right: {:?}", h.pos());
+        assert!((h.heading - std::f64::consts::FRAC_PI_4).abs() < 1e-9, "turned to it: {}", h.heading);
+        // The stick held straight on, and that side blocked too: the other side.
+        let mut h = Hero::new(P::new(7, 3), 5.0);
+        h.free_move = true;
+        h.wish = V::new(1.0, 0.0);
+        g.set(8, 4, Tile::Rock);
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.occupied(), P::new(8, 2), "up and to the right: {:?}", h.pos());
+        // On the grid, the same, onto a tile's center.
+        let mut h = Hero::new(P::new(7, 3), 5.0);
+        h.face(Dir::Right);
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.pos(), P::new(8, 2).v());
+        // Boxed in: a hop in place.
+        g.set(8, 2, Tile::Rock);
+        let mut h = Hero::new(P::new(7, 3), 5.0);
+        h.free_move = true;
+        h.heading = 0.0;
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.occupied(), P::new(7, 3));
+    }
+
+    /// B78: the stick held at the press steers the leap though it is let go before he takes off
+    /// (a fight's buffer); a stale press does not.
+    #[test]
+    fn the_stick_at_the_press_steers_the_leap() {
+        let g = room(12, 12);
+        let mut h = Hero::new(P::new(5, 5), 5.0);
+        h.free_move = true;
+        h.heading = 0.0;
+        h.wish = V::new(0.0, -1.0);
+        h.press_jump();
+        h.wish = V::new(0.0, 0.0);
+        h.update(DT, &g, Dir::None);
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.occupied(), P::new(5, 3), "up, as pressed: {:?}", h.pos());
+        // Pressed long ago: the way he faces now.
+        h.wish = V::new(-1.0, 0.0);
+        h.press_jump();
+        h.wish = V::new(0.0, 0.0);
+        run(&mut h, &g, PRESS_KEEP + 0.05);
+        h.heading = std::f64::consts::FRAC_PI_2;
+        assert!(h.try_jump(&g));
+        run(&mut h, &g, JUMP_SECONDS + 0.05);
+        assert_eq!(h.occupied(), P::new(5, 5), "down, as he faces: {:?}", h.pos());
     }
 
     #[test]

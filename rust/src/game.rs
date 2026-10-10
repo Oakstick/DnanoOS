@@ -48,6 +48,8 @@ mod juice;
 #[cfg(test)]
 mod juice_tests;
 pub mod lair;
+#[cfg(test)]
+mod leap_tests;
 pub mod ledger;
 pub mod lesson;
 mod level;
@@ -767,6 +769,10 @@ impl Game {
         self.hero.wish = self.free_wish();
         // A realm may take the controls (a berserk rage aims them; nothing turns them).
         let wanted = self.steer_run(wanted);
+        // The jump's way is the stick's at its press, though a fight's buffer holds it a little (B78).
+        if self.input.was_pressed(&[Action::Jump]) {
+            self.hero.press_jump();
+        }
         // LB or Shift held: the shield is raised (if he has one, and is on his feet). Where fights go by
         // frame data (the Sparring Ring, the vaults) the guard is his fighter's, and so are his attack
         // and evade; a shrine weapon from a vault chest still fires as it always has.
