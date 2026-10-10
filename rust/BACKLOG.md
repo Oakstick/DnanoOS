@@ -142,6 +142,11 @@ Open items and proposals from the agents' reports. Every new idea lands here fir
 | B70 | **Archangel feedback noise** (B58): Gabriel's thunder fills the screen every 25 s; the return chime may be busy with four timers; the minimap's shrine marker changes colour as the statue cycles; the HUD row leaves a little empty space above it. | Each toned or fixed; captures. | S | to decide |
 | B71 | **Uriel's wave wakes sleeping packs** with no warning. Warn, spare sleepers, or keep as a choice. | As decided. | S | to decide |
 | B72 | **A run saved at the Garden's start continues without the four archangels** until a shrine is reached (B58 edge case). | Decide whether that's right; fix if not. | S | to decide |
+| B73 | **Hızır's lesson polish** (B04 report): his line moves on as soon as a step completes, even mid-sentence; the sparring draugr's bar shows full at 100,000 hp so he looks unbeatable; the first blow of a step can take about 4 s after a stagger; the bots don't play the lesson (and the expert walks off during it in captures). | Lines finish before the next; the draugr's bar reads as a sparring partner; no step waits seconds; the lesson has a harness case. | S | to decide |
+| B74 | **The lesson after the first shrine**: Hızır shows the four archangels (choose, call, the 25 s return) the first time a shrine is reached; and offers the Sparring Ring as "practise more" after the lesson. | Both taught once, skippable. | S | to decide |
+| B75 | **Cover shows no damage on the stone** (B57): half-worn is only a clang and the word CRACKED; and the bots don't hide, so "the fight moves" is unproven. Visible cracks per wear stage; a bot that uses cover, or a scripted check. | Cracks visible at each stage; cover use measured. | S | to decide |
+| B76 | **The Garden may be too gentle for the novice** (about 9 strikes reach it in a two-minute walk), and the Cyclops' meadows still run the contact rules (B02). | Decide after a hand playtest (B30). | S | to decide |
+| B77 | **The slime's trail in the deuteranopia palette** is sulphur yellow, close to the torchlight; told apart by brightness only. | A distinct hue or pattern in every palette. | S | to decide |
 
 ## Suggested order
 
