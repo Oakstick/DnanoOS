@@ -28,12 +28,12 @@ The waves follow the review's tiers and can partly run in parallel. The constrai
 | D11 | With no deals (B40), do the princes' other cheats stay? **Decided: keep the lies** (the Whisper, Loaded Dice, the Turned Sign, the end-of-realm lies such as "take your throne"); only the deals go. Hızır still sees through them. | B40 |
 | D12 | Generals and keys (B41). **Decided: 3 generals per realm, each carrying a key; the 3 keys open the prince's court. The realms' climaxes stay** (the Peerless, Kiyohime's bell, Hel's bed, the pylorus...) as the road to a general. | B41 |
 | D13 | The three boys' names. **Decided by Claude at the user's word (2026-10-10): Magnus** (Ragnar's boy), **Emre** (Mehmed's boy), **Kenji** (Miyamoto's boy): a mixed group of friends, each boy's name from the land of the soul that chose him; Toby is the fourth. | B55 |
-| D14 | B43 epic courts, the generals and the adds: with three generals slain before every court (B41), "a slain general removes his prince's adds" would remove them all. Proposal: the adds always come; each general's instrument returns in the court as a breakable set piece; a finished decree adds one twist. (The realms job keeps the adds coming meanwhile.) | B43, B41 |
-| D15 | B43: the finale carved from the bottom of each prince's health bar (12–15%), with health trims where the adept is over 6 min, so courts get epic, not longer. Approve? | B43 |
+| D14 | B43 epic courts, the generals and the adds: with three generals slain before every court (B41), "a slain general removes his prince's adds" would remove them all. Proposal: the adds always come; each general's instrument returns in the court as a breakable set piece; a finished decree adds one twist. (The realms job keeps the adds coming meanwhile.) **Decided: the helpers always come**; each general's instrument returns in the court as a breakable set piece; a completed decree adds one twist. | B43, B41 |
+| D15 | B43: the finale carved from the bottom of each prince's health bar (12–15%), with health trims where the adept is over 6 min, so courts get epic, not longer. Approve? **Decided: epic, not longer**: the finale carved from the bar, trims where the adept is over 6 min. | B43 |
 | D16 | B43: the princes' entrances unskippable the first time, or skippable after 3 s? | B43 |
-| D17 | B43 template: Lucifer first, built with B11 Pride's art pass (more spectacle), or Mammon first (his court's art is done; less spectacle)? | B43 |
+| D17 | B43 template: Lucifer first, built with B11 Pride's art pass (more spectacle), or Mammon first (his court's art is done; less spectacle)? **Decided: Lucifer first**, built with B11 Pride's art pass. | B43 |
 | D18 | B43: Asmodeus's dragon mount left out for now (L on its own)? | B43 |
-| D19 | B43 Krampus's finale: Toby unties the red ribbon (Krampus loses Birch Lash), and the seven seal-stones rise and burn his pelt away. Approve? | B43 |
+| D19 | B43 Krampus's finale: Toby unties the red ribbon (Krampus loses Birch Lash), and the seven seal-stones rise and burn his pelt away. Approve? **Decided: approved** as written. | B43 |
 
 ## Wave A: the first hour (the review's Tier 1, about +4 to +5)
 
