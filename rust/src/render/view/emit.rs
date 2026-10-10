@@ -278,11 +278,13 @@ impl WorldView {
         f.coin_pulse = 0.35 + (time * 3.0).sin() * 0.2;
 
         let hero_pos = self.emit_hero(s, f);
+        self.emit_boy_glow(s, f, hero_pos);
         self.emit_foes(s, f);
         self.emit_juice(f);
         self.emit_duels(s, f);
         self.emit_war(s, f);
         let (remedy_points, shrine_points) = self.emit_pickups(s, f);
+        self.emit_token(s, f);
         self.emit_transients(s, f);
         self.emit_world(s, f, hero_pos);
         self.emit_light_pools(f, time, Vec3::new(hero_pos.x, 0.0, hero_pos.z), &remedy_points, &shrine_points);

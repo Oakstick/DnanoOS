@@ -163,7 +163,9 @@ impl Game {
         let spot = prince_spot(sin);
         let at = P::new(spot.0, spot.1);
         let ((hp, damage), (hp_temper, damage_temper)) = (weight(tier), temper(sin));
-        let (hp, damage) = (hp * hp_temper, damage * damage_temper);
+        // (New Game+: his own weight on top, `newgame::prince_weight`.)
+        let (ng_hp, ng_damage, ng_poise) = self.ng_prince();
+        let (hp, damage) = (hp * hp_temper * ng_hp, damage * damage_temper * ng_damage);
         let kind = sin.prince_kind();
         let spec = spec_of(&self.level.grid, kind);
         let mut e = Enemy::new(&spec, at, self.level.data.enemy_speed);
@@ -174,6 +176,7 @@ impl Game {
         d.max_hp *= hp;
         d.hp = d.max_hp;
         d.breed.damage *= damage;
+        d.breed.poise *= ng_poise;
         d.breed.hide = COURT_HIDE;
         d.rest = 90;
         // His general's realm weighs on his fight: slain, his phase-two adds are lost; his decree

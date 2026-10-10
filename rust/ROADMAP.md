@@ -6,9 +6,9 @@ Status: phases 0, 1 and 2 are done (the engine groundwork, the hub with a polish
 
 ## The idea
 
-The Cyclops of the Garden of Krampus drops the red diamond key, and its gate opens the way down to **the Portals of Hell**, a hub over a sea of lava. Eight stone platforms float round a volcano where the House of the Devil stands. The hero comes in from outside onto the entrance platform. Each of the other seven platforms has a portal gate to the realm of one of the seven deadly sins: its name is carved over the door, and the door itself shows the sin. Wooden bridges join every platform to its two neighbours, in a ring.
+The Cyclops of the Garden of Krampus drops the red diamond key, and its gate opens the way down to **the Portals of Hell**, a hub over a sea of lava. Eight stone platforms float round a volcano where the House of Seven Seals stands. The hero comes in from outside onto the entrance platform. Each of the other seven platforms has a portal gate to the realm of one of the seven deadly sins: its name is carved over the door, and the door itself shows the sin. Wooden bridges join every platform to its two neighbours, in a ring.
 
-Each realm ends with a boss, the prince of that sin, who drops the sin's key. With all seven keys the seal breaks: causeways rise out of the lava to the volcano, and the last fight waits in the House of the Devil.
+Each realm ends with a boss, the prince of that sin, who drops the sin's key. With all seven keys the seal breaks: causeways rise out of the lava to the volcano, and the last fight waits in the House of Seven Seals.
 
 With the hub and the House that makes nine new levels, and with Krampus nine new bosses (Satan was planned too; the finale cut him: there is no Devil): the "9 more levels and 9 more bosses" planned earlier.
 
@@ -20,7 +20,7 @@ A 3×3 grid of platforms with the volcano in the middle cell. Every ring bridge 
   NW  Wrath  ════  N  Sloth  ════  NE  Greed
       ║                              ║
   W   Envy        [ volcano ]        E   Gluttony
-      ║         House of the Devil   ║
+      ║         House of Seven Seals   ║
   SW  Pride  ════  S  Entrance ════  SE  Lust
                       ║
                  from outside
@@ -75,7 +75,7 @@ Done when every current level plays exactly as it does now and all tests pass.
    - **Platforms:** cracked flagstones with glowing veins and jagged rock hanging beneath. On top: bones and skulls, broken columns, ruined walls, braziers and chains.
    - **Wooden bridges:** planks, some charred or missing, with rope rails on posts and a slight sag.
    - **Volcano:** lava rivers down its flanks, a glowing crater, and a column of smoke and ash.
-   - **House of the Devil:** a black keep with horned spires and a door glowing red, behind a wall of fire.
+   - **House of Seven Seals:** a black keep with horned spires and a door glowing red, behind a wall of fire.
    - **Sky:** blood red to violet, with ash falling, embers rising and demons wheeling far off. The hub gets its own ambience and music.
 3. **Seven portal gates:**
    - Each gate has a stone arch and double doors carrying the sin in relief.
@@ -122,7 +122,7 @@ Proposed order: Greed first, because gold and treasure are easy to read and Mamm
 | Beelzebub (Gluttony) | fly swarms; eats crosses and bottles to heal; belly slam |
 | Asmodeus (Lust) | charm (your controls flip for a moment); thorned vines; illusions |
 
-### Phase 10: the House of the Devil (L) — built, redesigned (`FINALE.md`)
+### Phase 10: the House of Seven Seals (L) — built, redesigned (`FINALE.md`)
 
 1. Inside the House there is no devil: the Pit, seven levels ridden down on a sinking platform, two minutes each.
 2. Krampus at the bottom, the stolen friend in his cage: the last fight.

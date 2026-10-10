@@ -2,8 +2,8 @@
 //! floating over a sea of lava round a volcano, joined by rope-railed wooden
 //! bridges. The platforms are cracked basalt flagstones with glowing veins,
 //! jagged rock hanging beneath them, bones and broken columns on them. The
-//! volcano smokes, lava rivers run down its flanks, and the House of the
-//! Devil stands in its south face, horned spires and red windows, behind a
+//! volcano smokes, lava rivers run down its flanks, and the House of
+//! Seven Seals stands in its south face, horned spires and red windows, behind a
 //! wall of fire until the seal breaks and the causeways rise. Each sin's
 //! portal is a black arch with its name in gold letters over doors that show
 //! the sin in relief, braziers burning in its colour, and a swirl of its

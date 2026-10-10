@@ -938,6 +938,49 @@ pub const STAMINA_PER_BLOW: f64 = 16.0;
 pub const STAMINA_REGEN: f64 = 30.0;
 pub const STAMINA_REST: f64 = 0.45;
 
+// ------------------------------------------------------------ the runes carved
+
+/// Carvings the old man cuts into a blade, or into a shield (WARBAND.md W11): three each, as the
+/// old heroes' smiths did (Ragnar's runes, Mehmed's turquoise inlay, Miyamoto's spirit-crystal
+/// temper). No silver: runes alone.
+pub const CARVINGS: u8 = 3;
+/// The runes each carving costs, the first to the third.
+pub const CARVE_RUNES: [u32; CARVINGS as usize] = [4, 8, 12];
+/// What each carving on the blade in hand leaves of the edge a landed swing takes off it.
+pub const CARVE_EDGE: f64 = 0.75;
+/// ...and on the shield on his arm, of the wear a blocked blow takes off it.
+pub const CARVE_WEAR: f64 = 0.75;
+
+/// What the old man cuts for each hero, as his people's smiths did: Ragnar's runes, Mehmed's
+/// turquoise inlay, Miyamoto's spirit-crystal temper.
+pub fn carving(hero: HeroKind) -> &'static str {
+    match hero {
+        HeroKind::Ragnar => "RUNES",
+        HeroKind::Mehmed => "TURQUOISE INLAY",
+        HeroKind::Miyamoto => "SPIRIT TEMPER",
+    }
+}
+
+/// The colour the carvings glow with on the steel: the runes' ice-blue, the turquoise, the
+/// spirit crystal's pale violet.
+pub fn carving_color(hero: HeroKind) -> u32 {
+    match hero {
+        HeroKind::Ragnar => 0x8ad8ff,
+        HeroKind::Mehmed => 0x30d8c8,
+        HeroKind::Miyamoto => 0xc8a8ff,
+    }
+}
+
+/// The runes the next carving costs, after `done` (none once the three are cut).
+pub fn carve_price(done: u8) -> Option<u32> {
+    CARVE_RUNES.get(done as usize).copied()
+}
+
+/// What `n` carvings leave of a loss, each leaving `per` of it.
+pub fn carved_share(n: u8, per: f64) -> f64 {
+    per.powi(n.min(CARVINGS) as i32)
+}
+
 // ------------------------------------------------------------ progress
 
 /// One hero's unlocks: what is his in each tree, which sealed tiers he has found
@@ -960,6 +1003,9 @@ pub struct HeroProgress {
     pub edge: [u8; 10],
     /// His mastery of technique: its rank, his deeds, his trials (WARBAND.md §11.1).
     pub mastery: Mastery,
+    /// The old man's rune carvings on each blade of his armory and each shield of his wall, 0 to
+    /// `CARVINGS`: `[blades, shields]`, index `tier - 1` (WARBAND.md W11, the runes' use).
+    pub carved: [[u8; 10]; 2],
 }
 
 impl Default for HeroProgress {
@@ -974,6 +1020,7 @@ impl Default for HeroProgress {
             broken: 0,
             edge: [100; 10],
             mastery: Mastery::default(),
+            carved: [[0; 10]; 2],
         }
     }
 }
@@ -982,6 +1029,17 @@ impl HeroProgress {
     /// Is his shield of `tier` broken (to be reforged before it is carried again)?
     pub fn is_broken(&self, tier: u8) -> bool {
         self.broken & (1 << tier) != 0
+    }
+
+    /// The carvings on his blade (`Tree::Armory`) or shield (`Tree::Shield`) of `tier`; none on
+    /// anything else.
+    pub fn carved(&self, tree: Tree, tier: u8) -> u8 {
+        let i = (tier.clamp(1, TIERS) - 1) as usize;
+        match tree {
+            Tree::Armory => self.carved[0][i],
+            Tree::Shield => self.carved[1][i],
+            _ => 0,
+        }
     }
 
     /// How sharp his blade of `tier` is, 0 to 1.
@@ -1072,6 +1130,27 @@ impl Progress {
         Ok(p)
     }
 
+    /**
+     * The old man carves the next rune into `hero`'s blade (`Tree::Armory`) or shield
+     * (`Tree::Shield`) of `tier`, his own, for its runes. Returns the carvings it now bears.
+     */
+    pub fn carve(&mut self, hero: HeroKind, tree: Tree, tier: u8) -> Result<u8, Refusal> {
+        let h = self.hero(hero);
+        if !matches!(tree, Tree::Armory | Tree::Shield) || !h.has(tree, tier) {
+            return Err(Refusal::Locked);
+        }
+        let done = h.carved(tree, tier);
+        let Some(runes) = carve_price(done) else { return Err(Refusal::Owned) };
+        if self.runes < runes {
+            return Err(Refusal::Runes(runes - self.runes));
+        }
+        self.runes -= runes;
+        let i = (tier.clamp(1, TIERS) - 1) as usize;
+        let h = self.hero_mut(hero);
+        h.carved[usize::from(tree == Tree::Shield)][i] = done + 1;
+        Ok(done + 1)
+    }
+
     /// Pays for and takes the next tier of a tree. Returns the highest tier now owned.
     pub fn unlock(&mut self, hero: HeroKind, tree: Tree, tier: u8) -> Result<u8, Refusal> {
         let p = self.can_unlock(hero, tree, tier)?;
@@ -1119,11 +1198,12 @@ impl Progress {
     }
 
     // A line of text for the save file:
-    // "v3 silver runes | a p s e r0 r1 r2 r3 wield carry patron outfit broken edge1 .. edge10 mastery(14) | ...".
-    // (A "v2" line, from before mastery, stops after the edges; a "v1" line, from before the
-    // loadout, stops after carry; both still load.)
+    // "v4 silver runes | a p s e r0 r1 r2 r3 wield carry patron outfit broken edge1 .. edge10 mastery(14)
+    // blade-carvings1 .. 10 shield-carvings1 .. 10 | ...". (A "v3" line, from before the carvings,
+    // stops after mastery; a "v2" line, from before mastery, stops after the edges; a "v1" line, from before the
+    // loadout, stops after carry; all of them still load.)
     pub fn encode(&self) -> String {
-        let mut out = format!("v3 {} {}", self.silver, self.runes);
+        let mut out = format!("v4 {} {}", self.silver, self.runes);
         for h in &self.heroes {
             out.push_str(&format!(
                 " | {} {} {} {} {} {} {} {} {} {}",
@@ -1136,6 +1216,9 @@ impl Progress {
             }
             out.push(' ');
             out.push_str(&h.mastery.encode());
+            for c in h.carved.iter().flatten() {
+                out.push_str(&format!(" {c}"));
+            }
         }
         out
     }
@@ -1143,16 +1226,19 @@ impl Progress {
     pub fn decode(text: &str) -> Option<Progress> {
         let mut parts = text.split('|');
         let mut head = parts.next()?.split_whitespace();
-        let (v2, v3) = match head.next()? {
-            "v1" => (false, false),
-            "v2" => (true, false),
-            "v3" => (true, true),
+        let (v2, v3, v4) = match head.next()? {
+            "v1" => (false, false, false),
+            "v2" => (true, false, false),
+            "v3" => (true, true, false),
+            "v4" => (true, true, true),
             _ => return None,
         };
         let mut p = Progress { silver: head.next()?.parse().ok()?, runes: head.next()?.parse().ok()?, ..Default::default() };
         for h in p.heroes.iter_mut() {
             let n: Vec<u32> = parts.next()?.split_whitespace().map(|v| v.parse().ok()).collect::<Option<_>>()?;
-            let len = if v3 {
+            let len = if v4 {
+                23 + mastery::SAVED_NUMBERS + 20
+            } else if v3 {
                 23 + mastery::SAVED_NUMBERS
             } else if v2 {
                 23
@@ -1163,7 +1249,14 @@ impl Progress {
                 return None;
             }
             if v3 {
-                h.mastery = Mastery::decode(&n[23..])?;
+                h.mastery = Mastery::decode(&n[23..23 + mastery::SAVED_NUMBERS])?;
+            }
+            if v4 {
+                // (A save from before the carvings reads none.)
+                let at = 23 + mastery::SAVED_NUMBERS;
+                for k in 0..20 {
+                    h.carved[k / 10][k % 10] = (n[at + k] as u8).min(CARVINGS);
+                }
             }
             if v2 {
                 h.patron = (1..=4).contains(&n[10]).then(|| crate::logic::angels::ARCHANGELS[n[10] as usize - 1]);
@@ -1216,7 +1309,8 @@ mod tests {
         p.hero_mut(HeroKind::Miyamoto).mastery = Mastery { rank: 2, deeds: [80, 31, 0], tries: [1, 3, 0, 0, 0], best: [3, 5, 0, 0, 0] };
         p.hero_mut(HeroKind::Ragnar).edge[2] = 55;
         let line = p.encode();
-        assert!(line.starts_with("v3 "));
+        // (v4 since the old man's carvings: WARBAND.md W11.)
+        assert!(line.starts_with("v4 "));
         assert_eq!(Progress::decode(&line), Some(p));
         // A v2 line (no mastery) loads with every mastery fresh.
         let v2 = concat!(
@@ -1227,9 +1321,48 @@ mod tests {
         let old = Progress::decode(v2).expect("a v2 save");
         assert_eq!(old.hero(HeroKind::Ragnar).edge[2], 55);
         assert!(old.heroes.iter().all(|h| h.mastery == Mastery::default()));
-        // A v3 line cut short is refused, not half-read.
+        // A v4 line cut short is refused, not half-read.
         assert_eq!(Progress::decode(&line[..line.len() - 2]), None);
     }
+    #[test]
+    fn the_old_man_carves_three_runes_into_a_blade_or_a_shield_for_runes_alone() {
+        let mut p = Progress { silver: 500, runes: 30, ..Default::default() };
+        let hero = HeroKind::Ragnar;
+        assert_eq!(p.hero(hero).carved(Tree::Armory, 1), 0);
+        // 4, 8 and 12 runes, no silver.
+        assert_eq!(p.carve(hero, Tree::Armory, 1), Ok(1));
+        assert_eq!(p.carve(hero, Tree::Armory, 1), Ok(2));
+        assert_eq!((p.runes, p.silver), (18, 500));
+        assert_eq!(p.carve(hero, Tree::Armory, 1), Ok(3));
+        assert_eq!(p.runes, 6);
+        assert_eq!(p.carve(hero, Tree::Armory, 1), Err(Refusal::Owned), "three is all");
+        assert_eq!(p.carve(hero, Tree::Shield, 1), Ok(1));
+        assert_eq!(p.carve(hero, Tree::Shield, 1), Err(Refusal::Runes(6)));
+        // Only what is his, and only blades and shields.
+        assert_eq!(p.carve(hero, Tree::Armory, 2), Err(Refusal::Locked));
+        assert_eq!(p.carve(hero, Tree::Path, 1), Err(Refusal::Locked));
+        // Each carving leaves three quarters of the loss: three leave 42%.
+        assert!((carved_share(3, CARVE_EDGE) - 0.421875).abs() < 1e-9);
+        assert_eq!(carved_share(0, CARVE_WEAR), 1.0);
+        // They are saved, per blade and shield; a save from before them (v3) reads none.
+        p.hero_mut(HeroKind::Mehmed).carved[1][4] = 2;
+        let back = Progress::decode(&p.encode()).expect("it loads");
+        assert_eq!(back, p);
+        assert_eq!(back.hero(hero).carved(Tree::Armory, 1), 3);
+        let v3 = p.encode().replacen("v4", "v3", 1);
+        let v3: Vec<String> = v3
+            .split('|')
+            .map(|h| h.split_whitespace().collect::<Vec<_>>())
+            .map(|n| {
+                let keep = if n[0] == "v3" { n.len() } else { n.len() - 20 };
+                n[..keep].join(" ")
+            })
+            .collect();
+        let old = Progress::decode(&v3.join(" | ")).expect("a v3 save");
+        assert!(old.heroes.iter().all(|h| h.carved == [[0; 10]; 2]));
+        assert_eq!(old.hero(hero).edge, p.hero(hero).edge);
+    }
+
     use crate::logic::heroes::ROSTER;
 
     #[test]

@@ -362,6 +362,7 @@ impl Game {
         b.refit(kit);
         let cost = kit.swing_cost();
         b.hero.can_attack = self.hero.tireless() || self.hero.stamina + 1e-9 >= cost;
+        let held = b.held.is_some();
         let events = b.hero.step();
         for e in events {
             match e {
@@ -409,10 +410,15 @@ impl Game {
                         }
                     }
                 }
-                Event::Evade if self.hero.try_jump(&self.level.grid) => {
+                // Space always leaps (B05): an evade when he is free, a bare leap out of a recovery or a block.
+                Event::Evade | Event::Leap if !held && self.hero.try_jump(&self.level.grid) => {
                     self.audio.play(Sfx::Jump);
                     if let Some(b) = self.brawl.as_mut() {
-                        b.hero.evade();
+                        if e == Event::Evade {
+                            b.hero.evade();
+                        } else {
+                            b.hero.leap();
+                        }
                     }
                 }
                 _ => {}
@@ -1479,7 +1485,8 @@ impl Game {
                 Wound::Venom => 0x8ad04a,
                 Wound::Fire => 0xff7a2a,
             };
-            let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0);
+            // (What the realm's foes' blows carry is tempered as the blows are: WARBAND.md W11.)
+            let taken = self.brawl.as_ref().map(|b| b.kit.taken).unwrap_or(1.0) * self.realm_blows();
             self.wound_hero((amount * taken).round(), color);
             if tracing() {
                 let frame = self.brawl.as_ref().map(|b| b.threat.frame).unwrap_or(0);
@@ -1681,6 +1688,13 @@ impl Game {
     /// His shield takes `amount` of wear from a blow it caught; worn through, it breaks for good
     /// (unless it is too well made to), and his guard is bare hands until the old man reforges it.
     fn wear_shield(&mut self, amount: f64) {
+        // (The old man's runes cut into it spare it some of each blow: WARBAND.md W11.)
+        let carved = self
+            .hero
+            .shield
+            .map(|s| self.progress.hero(self.hero_kind).carved(crate::logic::progression::Tree::Shield, s.tier))
+            .unwrap_or(0);
+        let amount = amount * crate::logic::progression::carved_share(carved, crate::logic::progression::CARVE_WEAR);
         let Some(s) = self.hero.shield.as_mut() else { return };
         let floor = if crate::logic::progression::ward(s.tier).unbreakable { 1 } else { 0 };
         s.durability = (s.durability - amount.round() as i32).max(floor);
@@ -1773,7 +1787,8 @@ impl Game {
                     };
                     let blow =
                         Blow { from, damage: b.damage, hitstop: 3, bolt: true, rule: GuardRule::Full, rider: b.rider, by: b.owner, lands };
-                    if self.blow_on_hero(blow) == Defense::Parried {
+                    let def = self.blow_on_hero(blow);
+                    if def == Defense::Parried {
                         // Turned back at the foes, faster, and harder as his shield is better.
                         let reflect = self.brawl.as_ref().map(|b| b.kit.guard.reflect).unwrap_or(1.0);
                         b.vel = math::scale(b.vel, -REFLECT_SPEED);
@@ -1782,7 +1797,8 @@ impl Game {
                         b.poise = REFLECT_POISE;
                         b.tint = REFLECT_TINT;
                         b.rider = Rider::None;
-                    } else if !self.hero.airborne() {
+                    } else if def != Defense::Evaded {
+                        // (Leapt, it flies on under him; a bare leap's does not.)
                         b.life = 0;
                         self.bolt_lands(b.look, b.pos);
                     }

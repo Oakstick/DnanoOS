@@ -55,10 +55,7 @@ impl StoryView {
 
     /// Seconds since the first beat of `shot` began: negative before it, large after it.
     pub(super) fn since(&self, shot: Shot) -> f32 {
-        if shot.scene() != self.scene {
-            return -1.0;
-        }
-        match first(shot) {
+        match crate::logic::story::first_in(self.scene, shot) {
             Some(i) if self.beat == i => self.t,
             Some(i) if self.beat > i => 1000.0,
             _ => -1.0,
@@ -248,7 +245,7 @@ impl WorldView {
         match self.story?.shot().place() {
             Place::Graveyard => Some(self.story_sets[0].id),
             Place::Gateway => Some(self.story_sets[1].id),
-            Place::Pit => None,
+            Place::Pit | Place::Workshop => None,
         }
     }
 
@@ -269,7 +266,7 @@ impl WorldView {
 
     pub(super) fn emit_story(&self, sv: StoryView, s: &SceneState, f: &mut Frame) {
         let place = sv.shot().place();
-        if place != Place::Pit {
+        if matches!(place, Place::Graveyard | Place::Gateway) {
             // Each set lit by its own probes, both worked out (and sent up) as the story loads.
             let shown = usize::from(place == Place::Gateway);
             f.probes = Some(self.story_probes(shown));
@@ -289,6 +286,7 @@ impl WorldView {
                 self.emit_gateway(sv, s, f);
             }
             Place::Pit => self.emit_ascent(sv, s, f),
+            Place::Workshop => self.emit_after(sv, s, f),
         }
     }
 
@@ -1250,6 +1248,15 @@ impl WorldView {
     /// draw him.
     #[allow(clippy::too_many_arguments)]
     fn emit_old_man_clips(&self, f: &mut Frame, act: OldAct, yaw: f32, head: f32, doze: f32, descent: f32, time: f32) -> bool {
+        let aside = smooth(OLD_MAN_STEP.0, OLD_MAN_STEP.1, descent.min(60.0));
+        let feet = OLD_MAN_AT + OLD_MAN_ASIDE_TO * aside;
+        self.emit_old_man_at(f, act, GATEWAY + feet, yaw, head, doze, time)
+    }
+
+    /// The old man by his clips standing at `feet` (the world's), facing `yaw` (Scene I's gateway, the
+    /// scenes at his workshop). False when the code must draw him.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn emit_old_man_at(&self, f: &mut Frame, act: OldAct, feet: Vec3, yaw: f32, head: f32, doze: f32, time: f32) -> bool {
         let c = CastRig::OldMan;
         let breathe = (time * 1.6).sin();
         let play = cast_clips::old_man_play(act, time);
@@ -1260,9 +1267,7 @@ impl WorldView {
         }) else {
             return false;
         };
-        let aside = smooth(OLD_MAN_STEP.0, OLD_MAN_STEP.1, descent.min(60.0));
-        let feet = OLD_MAN_AT + OLD_MAN_ASIDE_TO * aside;
-        let root = Mat4::from_translation(GATEWAY + feet) * Mat4::from_rotation_y(yaw);
+        let root = Mat4::from_translation(feet) * Mat4::from_rotation_y(yaw);
         f.rigs.push_matrices(jr, &mats, root, Vec3::ONE, 1.0, Vec3::ZERO, rig_look::PLAIN, 0.0);
         true
     }
@@ -1270,7 +1275,7 @@ impl WorldView {
     /// The old man: facing `yaw`, his head turned `head` and drooping with sleep (`doze`),
     /// his free hand raised (`raise`), talking (seconds into the line) or not.
     #[allow(clippy::too_many_arguments)]
-    fn emit_old_man(&self, f: &mut Frame, feet: Vec3, yaw: f32, head: f32, doze: f32, raise: f32, talk: Option<f32>, time: f32) {
+    pub(super) fn emit_old_man(&self, f: &mut Frame, feet: Vec3, yaw: f32, head: f32, doze: f32, raise: f32, talk: Option<f32>, time: f32) {
         let rig = &self.models.old_man;
         let mut pose = Pose::rest(rig);
         let idx = |n: &str| rig.index(n).unwrap_or(0);
@@ -1379,7 +1384,7 @@ impl WorldView {
 
     /// A warrior's soul: rising out of the floor in a column of light, hovering, glowing.
     #[allow(clippy::too_many_arguments)]
-    fn emit_soul(&self, f: &mut Frame, kind: HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
+    pub(super) fn emit_soul(&self, f: &mut Frame, kind: HeroKind, feet: Vec3, yaw: f32, rise: f32, scale: f32, tint: Vec3, time: f32) {
         use HeroKind;
         let rig = match kind {
             HeroKind::Ragnar => &self.models.ragnar,
@@ -1419,6 +1424,7 @@ impl WorldView {
             Place::Graveyard => (GRAVEYARD + Vec3::new(0.0, 0.6, -2.8), 10.0),
             Place::Gateway => (GATEWAY + Vec3::new(0.0, 1.0, 0.0), 6.5),
             Place::Pit => self.ascent_shadow_box(sv),
+            Place::Workshop => self.after_shadow_box(),
         }
     }
 }

@@ -55,6 +55,14 @@ const FROST: u32 = 0xc8e4ff;
 /// His health and his blows at the bottom of the Pit, by the tier of the hero who reaches it (all
 /// seven keys held: tier 8): the courts' straight line (without their curve: his own breed's
 /// health, tuned against it, carries the rest), and his own breed's on top.
+/// His blows in the lair, and his pelt there a court's hide (`prince::COURT_HIDE`), as the princes'
+/// since W10 (WARBAND.md W11: the adept's blows were turned to nothing and his guard broken by every
+/// bell; the expert, who strikes his recoveries, fells him much as before).
+pub const KRAMPUS_BLOWS: f64 = 0.6;
+/// His health over his weight (WARBAND.md W11: the adept with a seventh-tier kit fought him for
+/// seven to ten minutes; the expert, who strikes his recoveries, about two).
+pub const KRAMPUS_HEALTH: f64 = 0.8;
+
 pub fn lair_weight(tier: usize) -> (f64, f64) {
     let t = tier.max(1) as f64 - 1.0;
     (1.0 + 0.3 * t, 0.85 + 0.1 * t)
@@ -237,19 +245,22 @@ impl Game {
         brawl.reset(self.hero_kit());
         brawl.threat.capacity = COURT_CAPACITY;
         brawl.threat.cadence = COURT_CADENCE;
-        brawl.foe_damage = 1.0;
+        brawl.foe_damage = KRAMPUS_BLOWS;
         let id = brawl.next_id();
         let at = P::new(KRAMPUS.0, KRAMPUS.1);
-        let (hp, damage) = lair_weight(tier);
+        let ((hp, damage), (ng_hp, ng_damage, ng_poise)) = (lair_weight(tier), self.ng_krampus());
+        let (hp, damage) = (hp * ng_hp, damage * ng_damage);
         let spec = spec_of(&self.level.grid, EnemyKind::Krampus);
         let mut e = Enemy::new(&spec, at, self.level.data.enemy_speed);
         e.post = Some(at);
         e.b.mode = EnemyMode::Chase;
         e.b.name = spec.name.to_uppercase();
         let mut d = Duelist::bred(id, Breed::of(EnemyKind::Krampus), at.v(), V::new(0.0, 1.0));
-        d.max_hp *= hp;
+        d.max_hp *= hp * KRAMPUS_HEALTH;
         d.hp = d.max_hp;
         d.breed.damage *= damage;
+        d.breed.poise *= ng_poise;
+        d.breed.hide = crate::logic::combat::prince::COURT_HIDE;
         d.rest = 90;
         let trail = d.max_hp as f32;
         e.duel = Some(Box::new(d));
@@ -541,7 +552,7 @@ impl Game {
             let across = math::norm(V::new(-(hp.y - at.y), hp.x - at.x));
             [-1.0, 1.0].iter().map(|s| math::add(at, math::scale(across, 2.4 * s))).collect()
         };
-        let (weight_hp, weight_damage) = lair_weight(self.realm_tier());
+        let (weight_hp, weight_damage) = self.ng_foe(lair_weight(self.realm_tier()));
         for p in spots.into_iter().take(PERCHTEN as usize) {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { rise: PERCHT_RISE, ..Lore::default() };
@@ -718,6 +729,9 @@ impl Game {
         }
         if door {
             self.audio.play(Sfx::DoorGrind);
+            // Toby sees what the hero carries: his things, found on the way down (B08).
+            let said = crate::logic::tale::toby_recognises(self.tokens());
+            self.speak(super::counsel::Speaker::Toby, said);
         }
         if held {
             let p = math::scale(math::add(hp, c.pos), 0.5);
@@ -909,7 +923,8 @@ mod tests {
         // He is heavier than any prince at the tier he is met at.
         let max = krampus(&mut g).max_hp;
         let (w, _) = crate::logic::court::weight(8);
-        assert!(max > 900.0 * w * 1.3, "{max}");
+        // (WARBAND.md W11: 0.8 of what he was, `KRAMPUS_HEALTH`, and still above any prince.)
+        assert!(max > 900.0 * w * 1.3 * KRAMPUS_HEALTH && max > 900.0 * w, "{max}");
         // The way in: the platform comes to rest, the adventure saved there.
         let mut h = Game::new();
         h.enter_lair();
@@ -965,7 +980,10 @@ mod tests {
         let before = d.hp;
         g.call_duel_hit(0, from);
         let open = before - krampus(&mut g).hp;
-        assert!(shut > 0.0 && open > shut * 2.5, "pelt {shut}, open {open}");
+        // (WARBAND.md W11: his pelt a court's hide, as the princes' since W10; 0.3 before.)
+        assert_eq!(krampus(&mut g).breed.hide, crate::logic::combat::prince::COURT_HIDE);
+        assert!(shut > 0.0 && open > shut * 1.5, "pelt {shut}, open {open}");
+        assert_eq!(g.brawl.as_ref().unwrap().foe_damage, KRAMPUS_BLOWS, "his blows tempered");
     }
 
     /// Krampus west of a column of ice, the hero standing before it; he charges, the hero steps

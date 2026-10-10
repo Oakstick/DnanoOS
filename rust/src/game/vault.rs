@@ -93,8 +93,10 @@ impl Game {
                 // Facing into the room, asleep at its post.
                 let facing = V::new(cx as f64 - post.x as f64, cy as f64 - post.y as f64 + 0.01);
                 let mut d = Duelist::bred(brawl.next_id(), Breed::of(kind), post.v(), facing);
-                d.max_hp *= super::brawl::VAULT_HP;
+                let (hp, damage) = self.ng_foe((super::brawl::VAULT_HP, 1.0));
+                d.max_hp *= hp;
                 d.hp = d.max_hp;
+                d.breed.damage *= damage * self.realm_blows();
                 d.den = Some(Den { lo, hi, home: post.v(), awake: false, returning: false });
                 e.duel = Some(Box::new(d));
                 out.push(e);
@@ -545,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn a_foe_in_the_vaults_can_slay_him_and_the_pack_goes_home_whole() {
+    fn a_foe_in_the_vaults_can_slay_him_and_the_pack_goes_home_with_its_wounds() {
         let mut g = one_on_one(1.4, true);
         g.enemies[0].duel.as_mut().unwrap().hp = 5.0;
         let lives = g.score.lives;
@@ -560,7 +562,29 @@ mod tests {
         assert_eq!(g.score.lives, lives - 1);
         let d = g.enemies[0].duel.as_ref().unwrap();
         let den = d.den.unwrap();
-        assert!(!den.awake && d.pos == den.home && d.hp == d.max_hp, "home, asleep and whole");
+        // (WARBAND.md W11: as a prince does, it keeps the wounds he gave it.)
+        assert!(!den.awake && d.pos == den.home && d.hp == 5.0, "home, asleep, and wounded still: {}", d.hp);
+    }
+
+    #[test]
+    fn the_old_mans_carvings_spare_the_shield_a_quarter_of_each_blocked_blow_apiece() {
+        let worn = |carved: u8| {
+            let mut g = one_on_one(1.4, true);
+            let tier = g.progress.hero(g.hero_kind).carry;
+            g.progress.hero_mut(g.hero_kind).carved[1][(tier - 1) as usize] = carved;
+            g.hero.shield = Some(gear::ShieldGear::new(tier));
+            let full = g.hero.shield.unwrap().durability;
+            g.input.inject(Action::Block);
+            for _ in 0..(1.2 / STEP) as usize {
+                g.update(STEP);
+            }
+            assert_eq!(g.brawl.as_ref().unwrap().stats.blocks, 1);
+            full - g.hero.shield.unwrap().durability
+        };
+        let (bare, three) = (worn(0), worn(3));
+        assert!(bare > 0, "a block wears the shield");
+        let want = (bare as f64 * crate::logic::progression::carved_share(3, crate::logic::progression::CARVE_WEAR)).round() as i32;
+        assert!((three - want).abs() <= 1, "three carvings: {three} of {bare}");
     }
 
     #[test]

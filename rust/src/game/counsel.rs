@@ -13,7 +13,7 @@
 
 use super::deceit::Deceit;
 use super::{Game, Screen};
-use crate::audio::{Sfx, Speech};
+use crate::audio::{Mood, Sfx, Talker};
 use crate::logic::enemy::EnemyKind;
 use crate::logic::sins::Sin;
 use crate::logic::types::V;
@@ -26,8 +26,6 @@ use crate::logic::war::WarEvent;
 pub const TYPE_RATE: f64 = 42.0;
 /// Seconds a line stays up once typed.
 pub const HOLD: f64 = 5.0;
-/// A voice blip every this many letters.
-const BLIP_EVERY: usize = 3;
 /// The compass shows once he has stood idle this long (seconds), fading in over this long.
 pub const COMPASS_AFTER: f64 = 0.8;
 pub const COMPASS_FADE: f64 = 0.4;
@@ -42,6 +40,10 @@ pub enum Speaker {
     OldMan,
     /// The prince of this sin, in the old man's words.
     Whisper(Sin),
+    /// The boy who carries this warrior's soul (B07: `tale::arrival`), with his face, in his soul's colour.
+    Boy(crate::logic::heroes::HeroKind),
+    /// Toby, in the lair.
+    Toby,
 }
 
 /// A line in the panel: whose, what, since when (the game's time), and the sounds made for it.
@@ -70,11 +72,23 @@ impl Spoken {
         now - self.since > self.text.chars().count() as f64 / TYPE_RATE + HOLD
     }
 
+    /// The voice it is spoken in, and how (B10): the old man's own, the prince's cold and low.
+    pub fn voice(&self) -> (Talker, Mood) {
+        match self.who {
+            Speaker::OldMan => (Talker::Hizir, Mood::of("", &self.text)),
+            Speaker::Whisper(sin) => (Talker::Prince(sin), Mood::Menace),
+            Speaker::Boy(hero) => (Talker::Kid(crate::logic::tale::boy_of(hero) as u8), Mood::of("", &self.text)),
+            Speaker::Toby => (Talker::Toby, Mood::Joy),
+        }
+    }
+
     /// The text's colour: amber, or the sin's.
     pub fn color(&self) -> u32 {
         match self.who {
             Speaker::OldMan => AMBER,
             Speaker::Whisper(sin) => whisper_color(sin),
+            Speaker::Boy(hero) => crate::logic::tale::soul_color(hero),
+            Speaker::Toby => crate::logic::tale::TOBY_COLOR,
         }
     }
 }
@@ -110,6 +124,10 @@ pub struct Voices {
     /// Seconds he has stood still, out of any swing (the compass shows only then), and where.
     pub idle: f64,
     still_at: Option<V>,
+    /// Lines waiting for the panel, before the old man's next (the boys', Toby's: B07).
+    pub queue: std::collections::VecDeque<(Speaker, String)>,
+    /// The place the boy last said his line on coming into (`tale::Place`).
+    arrived: Option<crate::logic::tale::Place>,
 }
 
 /// What the War Table asks for a rival's true weakness: 40 silver at rank 1, up to 120 at rank 5.
@@ -231,6 +249,49 @@ impl Game {
         self.voices.spoken = Some(Spoken::new(who, text, self.time));
     }
 
+    /// Where the boys are now, as their lines know places.
+    fn tale_place(&self) -> Option<crate::logic::tale::Place> {
+        use crate::logic::tale::Place;
+        if self.lair.is_some() {
+            Some(Place::Lair)
+        } else if self.pit.is_some() {
+            Some(Place::Pit)
+        } else if self.hub.is_some() {
+            Some(Place::Hub)
+        } else if let Some(sin) = self.realm {
+            (!self.level.data.boss).then_some(Place::Realm(sin))
+        } else if self.dungeon == 0 && !self.level.data.boss && self.level.data.theme == crate::logic::level::Theme::Estate {
+            Some(Place::Garden)
+        } else {
+            None
+        }
+    }
+
+    /// The boy's line as he comes into a place he was not in: once each time he comes in.
+    fn boy_arrives(&mut self) {
+        if !matches!(self.screen, Screen::Playing | Screen::Ready) {
+            return;
+        }
+        let here = self.tale_place();
+        if here == self.voices.arrived {
+            return;
+        }
+        self.voices.arrived = here;
+        let Some(place) = here else { return };
+        let hero = self.hero_kind;
+        // (A line for a place already left is not said late.)
+        self.voices.queue.retain(|(w, _)| !matches!(w, Speaker::Boy(_) | Speaker::Toby));
+        self.voices.queue.push_back((Speaker::Boy(hero), crate::logic::tale::arrival(hero, place).to_string()));
+        if place == crate::logic::tale::Place::Lair {
+            self.voices.queue.push_back((Speaker::Toby, crate::logic::tale::TOBY_IN_THE_CAGE.to_string()));
+        }
+    }
+
+    /// A line from the boy (or Toby) for the panel, next after the one up now.
+    pub(super) fn boy_says(&mut self, who: Speaker, text: String) {
+        self.voices.queue.push_front((who, text));
+    }
+
     /// Once a frame: the counsel's flags from the save (once), a realm entered or left, the
     /// shield's wear, the prince's cheats, and the line in the panel typed out with its sounds.
     /// F6 (a testing cheat): a thousand coins into his purse, every press.
@@ -297,28 +358,35 @@ impl Game {
             self.voices.shield = frac;
             self.update_deceit(dt);
         }
-        // The next line, when the old man may speak and the panel is free.
+        // Coming into a place: the boy whose warrior he is says his line (B07).
+        self.boy_arrives();
+        // The next line, when the old man may speak and the panel is free: the boys' and Toby's
+        // first (they speak whatever the Drum says, in play).
         let open = (self.screen == Screen::Playing && self.drum_bounds().voices) || self.screen == Screen::Dying;
+        if self.voices_line().is_none() && matches!(self.screen, Screen::Playing | Screen::Ready) {
+            if let Some((who, text)) = self.voices.queue.pop_front() {
+                self.speak(who, text);
+            }
+        }
         if self.voices_line().is_none() {
             if let Some(line) = self.voices.counsel.next(self.time, open) {
                 self.speak(Speaker::OldMan, line.text);
             }
         }
-        // Typed out: a blip every few letters, and for the whisper its reversed echo at the end.
+        // Typed out: its syllables spoken, and for the whisper its reversed echo at the end.
         let now = self.time;
         if let Some(s) = self.voices.spoken.as_mut() {
+            // (Each syllable typed is spoken, in the speaker's voice: B10.)
             let shown = s.shown(now);
-            let mut blips = 0;
-            while s.blips * BLIP_EVERY < shown {
-                s.blips += 1;
-                blips += 1;
-            }
+            let from = s.blips;
+            s.blips = shown;
             let echo = matches!(s.who, Speaker::Whisper(_)) && !s.echoed && shown >= s.text.chars().count();
             if echo {
                 s.echoed = true;
             }
-            for _ in 0..blips.min(2) {
-                self.audio.play_voice(Speech::Old);
+            if shown > from {
+                let (who, mood) = s.voice();
+                self.audio.speak_line(who, mood, &s.text, from, shown);
             }
             if echo {
                 self.audio.play(Sfx::Whisper);
@@ -464,6 +532,9 @@ mod tests {
     fn the_old_man_speaks_once_in_45_seconds_and_never_at_the_peak() {
         let mut g = playing();
         g.update(crate::app::STEP);
+        // (The boy's line on coming into the Garden is said first, B07; it is not the old man's.)
+        g.voices.spoken = None;
+        g.voices.queue.clear();
         g.counsel_gear(GearWarning::BladeDulling);
         g.counsel_gear(GearWarning::ShieldBroken);
         // At the peak he holds his tongue.
@@ -490,6 +561,8 @@ mod tests {
     fn a_fall_brings_the_breeds_counter_to_the_death_screen_and_the_workshop() {
         let mut g = playing();
         g.update(crate::app::STEP);
+        g.voices.spoken = None;
+        g.voices.queue.clear();
         g.war.log.push(WarEvent::Landed {
             foe: 1,
             kind: Some(EnemyKind::Gashadokuro),

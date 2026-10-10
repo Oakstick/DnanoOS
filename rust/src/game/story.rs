@@ -5,7 +5,7 @@
 //! Scene II, "The Way Up", plays the same way at the end (`ending`), and the title follows it.
 
 use super::{Game, Screen};
-use crate::audio::{Sfx, Speech};
+use crate::audio::{Mood, Sfx, Talker};
 use crate::input::Action;
 use crate::logic::story::{first, pause_after, stage, Beat, Place, Scene, Shot, Speaker, SOULS_LINE};
 use crate::render::view::StoryView;
@@ -82,6 +82,33 @@ impl Story {
     }
 }
 
+/// The voice a speaker of the story speaks in (B10), with `hero` played (a boy's part is his).
+pub fn talker(s: Speaker, hero: crate::logic::heroes::HeroKind) -> Talker {
+    match s {
+        Speaker::Boys => Talker::Boys,
+        Speaker::Boy(role) => Talker::Kid(crate::logic::after::kid_of_role(hero, role) as u8),
+        Speaker::OldMan => Talker::Hizir,
+        Speaker::Dog => Talker::Dog,
+        Speaker::Narrator => Talker::Narrator,
+    }
+}
+
+/// How a beat's line is said: by its stage direction, and at the key beats as they need (B10): "He
+/// took him!" in terror, the old man's promise warm through its weight.
+pub fn mood(b: &Beat) -> Mood {
+    match b.shot {
+        Shot::Scream => Mood::Fear,
+        Shot::Promise | Shot::Souls => Mood::Warmth,
+        _ => Mood::of(b.cue, b.line),
+    }
+}
+
+/// How many characters of `line` lie before byte `at` (the typewriter counts bytes; Hızır's name
+/// has two-byte letters).
+fn chars_before(line: &str, at: usize) -> usize {
+    line.char_indices().take_while(|&(b, _)| b < at).count()
+}
+
 impl Game {
     /// Starts Scene I from its first beat.
     pub(super) fn begin_story(&mut self) {
@@ -96,6 +123,28 @@ impl Game {
         self.audio.set_threat(0.12);
         self.view.prepare_cast(false);
         self.begin_loading("Scene I".into(), web_time::Instant::now());
+    }
+
+    /// The scene at Hızır's after `sin`'s prince falls (B07, `logic::after`): the boys, the souls,
+    /// Toby's thing on the anvil. If the hero walked past it in the realm, Quitmer went down and
+    /// fetched it: it is his now either way. The wares open after it.
+    pub fn begin_after(&mut self, sin: crate::logic::sins::Sin) {
+        self.find_token(crate::logic::tale::Token::of(sin));
+        self.play_after(sin);
+    }
+
+    /// The scene at Hızır's itself (the LEVELS map plays it with nothing of the run changed).
+    pub fn play_after(&mut self, sin: crate::logic::sins::Sin) {
+        let story = Story::of(Scene::After(sin));
+        self.view.story = Some(story.view());
+        self.view.showcase = false;
+        self.story = Some(story);
+        self.enter(Screen::Story);
+        self.audio.hush();
+        self.audio.set_threat(0.0);
+        self.view.prepare_cast(false);
+        self.view.prepare_after(self.hero_kind);
+        self.begin_loading("At Hızır's".into(), web_time::Instant::now());
     }
 
     /// Jumps Scene I to beat `beat`, `t` seconds in, its line showing in full (captures, tests).
@@ -147,6 +196,7 @@ impl Game {
         // The typewriter: a letter at a time, holding a moment at the stops.
         let len = beat.line.len();
         let mut letters = 0;
+        let typed_from = st.shown as usize;
         if len > 0 && t > TYPE_DELAY && !st.line_done() {
             if st.hold > 0.0 {
                 st.hold -= dt;
@@ -191,7 +241,9 @@ impl Game {
         if gust {
             st.ambience = 2.5 + (st.age * 7.31).sin().abs() * 3.0;
         }
-        let blips = (st.typed + letters) / 2 != st.typed / 2;
+        // The syllables typed this step, to be spoken (B10): from where the typewriter was to where it is.
+        let typed_to = st.shown as usize;
+        let spoken = (letters > 0).then(|| (chars_before(beat.line, typed_from), chars_before(beat.line, typed_to)));
         st.typed += letters;
         // Each warrior's soul rises as the old man names him.
         let mut risen = 0;
@@ -206,13 +258,8 @@ impl Game {
         }
         self.input.consume(Action::Attack);
 
-        if blips {
-            self.audio.play_voice(match beat.speaker {
-                Speaker::Boys => Speech::Child,
-                Speaker::OldMan => Speech::Old,
-                Speaker::Dog => Speech::Beast,
-                Speaker::Narrator => Speech::Narrator,
-            });
+        if let Some((from, to)) = spoken {
+            self.audio.speak_line(talker(beat.speaker, self.hero_kind), mood(&beat), beat.line, from, to);
         }
         if gust {
             // The wind over the graves up above; water dripping in the dungeon below.
@@ -221,10 +268,15 @@ impl Game {
         for _ in 0..risen {
             self.audio.play(Sfx::Soul);
         }
-        if scene == Scene::Two {
-            self.ending_cues(beat.shot, prev, t);
-        } else {
-            self.story_cues(beat.shot, prev, t);
+        match scene {
+            Scene::Two => self.ending_cues(beat.shot, prev, t),
+            Scene::After(_) => {
+                // Quitmer lifts his head and thumps his tail as the scene comes up; the fire crackles.
+                if beat.shot == Shot::Gather && prev < 1.2 && t >= 1.2 {
+                    self.audio.play(Sfx::Bark);
+                }
+            }
+            Scene::One => self.story_cues(beat.shot, prev, t),
         }
         if next && !done {
             self.next_beat();
@@ -335,6 +387,12 @@ impl Game {
         self.audio.set_threat(0.0);
         if scene == Scene::Two {
             self.finish_ending();
+            return;
+        }
+        if let Scene::After(_) = scene {
+            // On to the wares, as before the scene.
+            self.open_shop();
+            self.juice.fade = 1.0;
             return;
         }
         self.open_select();

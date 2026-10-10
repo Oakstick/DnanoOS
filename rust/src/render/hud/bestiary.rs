@@ -162,6 +162,28 @@ fn shown(g: &Game, b: &Bestiary, page: Page) -> Shown {
                 open: true,
             }
         }
+        Page::Toby => {
+            let held = g.tokens();
+            let found: Vec<String> = held.held().map(|t| format!("{}: {}", t.name(), t.note())).collect();
+            let fights = if found.is_empty() {
+                "Nothing of his yet. He left something in every realm on the way down; look for a warm red glow near where you come in."
+                    .to_string()
+            } else {
+                format!("{} of 7. {}", found.len(), found.join(" "))
+            };
+            Shown {
+                figure: Figure::Toby,
+                name: "TOBY".into(),
+                native: "Tobias, the fourth of the four".into(),
+                origin: "The friend we came for".into(),
+                arch: None,
+                tally: None,
+                legend: "Red bobble cap, red scarf, a scuffed old football. He draws everybody, shares everything, and laughs at his own jokes before he gets to the end of them. At dusk at the old graveyard, Krampus came out of the fog and took him.".into(),
+                fights,
+                old_man: "Long ago a boy called Tobias walked a dark road, and an angel walked beside him all the way. Your Toby has three friends walking his. Keep his things safe; he will want them back.".into(),
+                open: true,
+            }
+        }
         Page::Rival(i) => {
             let Some(r) = b.book.rivals.get(i) else {
                 return Shown {
@@ -268,10 +290,17 @@ pub(super) fn draw(o: &mut Overlay, g: &Game, t: f32) {
     let count = if b.review { format!("EVERY PAGE OPEN FOR REVIEW   {all} PAGES") } else { format!("{open} OF {all} PAGES") };
     o.text_styled(&count, px + pw - pad, py + pad + t * 0.4, &style::label(t, size::LABEL, rgba(SAND, 1.0)).right());
     o.text_styled(
-        "The old man's book of every foe you have met down here.",
+        "Hızır's book of every foe you have met down here.",
         px + pw - pad,
         py + pad + t * 1.25,
         &style::body(t, 0.56, rgba(TEXT_DIM, 1.0)).right(),
+    );
+    // Why every land's monsters share one underworld (B23), in the old man's amber, under the title.
+    o.text_styled(
+        crate::logic::story::COSMOLOGY,
+        px + pad,
+        py + pad + t * 1.62,
+        &style::body(t, 0.52, rgba(mix_rgb(AMBER, TEXT_DIM, 0.35), 1.0)),
     );
 
     // ---- the tabs, between LB and RB
@@ -364,6 +393,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game, t: f32) {
             _ if !open => "? ? ?".to_string(),
             Page::Fixed(e) => book::lore(e).name.to_string(),
             Page::Rival(k) => b.book.rivals.get(k).map(|r| r.name.clone()).unwrap_or_default(),
+            Page::Toby => "Toby".to_string(),
         };
         let color = if chosen {
             GOLD
@@ -488,9 +518,10 @@ pub(super) fn draw(o: &mut Overlay, g: &Game, t: f32) {
         }
         lines.push(Line::Gap);
     };
-    part(&mut lines, "THE LEGEND", LEGEND, &s.legend, false);
-    part(&mut lines, "HOW IT FIGHTS", FIGHTS, &s.fights, false);
-    part(&mut lines, "THE OLD MAN SAYS", AMBER, &s.old_man, true);
+    let toby = s.figure == Figure::Toby;
+    part(&mut lines, if toby { "WHO HE IS" } else { "THE LEGEND" }, LEGEND, &s.legend, false);
+    part(&mut lines, if toby { "HIS THINGS, FOUND ON THE WAY DOWN" } else { "HOW IT FIGHTS" }, FIGHTS, &s.fights, false);
+    part(&mut lines, "HIZIR SAYS", AMBER, &s.old_man, true);
     let height = |l: &Line| match l {
         Line::Heading(..) => t * 1.1,
         Line::Body(..) | Line::His(..) => line_h,

@@ -569,7 +569,7 @@ fn draw_loadout(o: &mut Overlay, g: &Game, l: &HudLayout) {
             let p = g.progress.hero(hk);
             if p.is_broken(p.carry) {
                 o.text_styled("SHIELD DESTROYED", shx, y0 + t * 1.0, &label(size::LABEL, 0xff8a6a));
-                o.text_styled("THE OLD MAN CAN REFORGE IT", shx, y0 + t * 1.8, &label(size::MARK + 0.04, TEXT_DIM));
+                o.text_styled("HIZIR CAN REFORGE IT", shx, y0 + t * 1.8, &label(size::MARK + 0.04, TEXT_DIM));
             } else {
                 o.text_styled("NO SHIELD", shx, y0 + ph / 2.0, &label(size::LABEL, TEXT_DIM));
             }

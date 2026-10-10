@@ -401,7 +401,7 @@ impl Game {
     /// A spawned foe weighed as the realm weighs its own, times `extra` on its health.
     fn weigh_spawned(&mut self, id: u32, stage: u8, extra: f64) {
         let tier = self.realm_tier();
-        let (hp, damage) = weight(stage, tier);
+        let (hp, damage) = self.ng_foe(weight(stage, tier));
         if let Some(d) = self.enemies.iter_mut().filter_map(|e| e.duel.as_deref_mut()).find(|d| d.id == id) {
             d.max_hp *= hp * extra;
             d.hp = d.max_hp;
@@ -587,7 +587,7 @@ mod tests {
             for _ in 0..3 {
                 g.update_deceit(STEP);
                 if let Some(o) = g.deceit_offer() {
-                    assert!(!o.title.contains("OLD MAN") && !o.lines.join(" ").to_lowercase().contains("quitmer"), "{sin:?}: {o:?}");
+                    assert!(!o.title.contains("HIZIR") && !o.lines.join(" ").to_lowercase().contains("quitmer"), "{sin:?}: {o:?}");
                 }
                 if let Some(s) = g.voices_line() {
                     if matches!(s.who, Speaker::Whisper(_)) {

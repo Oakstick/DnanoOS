@@ -294,6 +294,8 @@ impl Game {
         // The minimap's fog: kept if this is the level he was in, begun again for another.
         self.explore.enter(&self.level);
         self.reset_round();
+        // Toby's thing in this realm, if it is still to be found (B08).
+        self.lay_token();
         if let Some((WeaponKind::Ranged(w), ammo)) = carried.filter(|_| index == 0) {
             self.hero.equip(w);
             self.hero.ammo = ammo;
@@ -322,14 +324,15 @@ impl Game {
         self.was_airborne = false;
         let center = self.level.nest_center;
         let graves = self.grave_spawns();
-        // Under the frame data the fight begins afresh: the vaults' packs back asleep at their posts, whole
-        // (a prince, and Krampus, keep their wounds: `note_wounds`).
+        // Under the frame data the fight begins afresh: the vaults' packs back asleep at their posts
+        // with the wounds they had (a prince, and Krampus, keep theirs too: `note_wounds`).
         self.note_wounds();
         let kit = self.hero_kit();
         if let Some(b) = self.brawl.as_mut() {
             b.respawn(kit);
         }
         self.disband_packs();
+        let keep = self.run.is_some() || self.vault.is_some();
         let grid = &self.level.grid;
         for (i, e) in self.enemies.iter_mut().enumerate() {
             if let Some(d) = e.duel.as_deref_mut() {
@@ -343,7 +346,13 @@ impl Game {
                     den.hi = V::new(den.hi.x + shift.x, den.hi.y + shift.y);
                     den.home = pos;
                 }
+                let was = d.hp;
                 d.reset_home();
+                // A realm's foes (and the vaults') keep their wounds across his falls, as the princes do
+                // (WARBAND.md W11): a fight is never begun again from nothing while he has lives.
+                if keep && was > 0.0 {
+                    d.hp = was.min(d.max_hp);
+                }
                 continue;
             }
             match (e.post, graves.get(i % graves.len().max(1))) {
@@ -417,6 +426,8 @@ impl Game {
         self.hero.path = h.path();
         self.hero.max_hp = self.hero.health_cap();
         self.hero.edge = h.sharpness(h.wield);
+        self.hero.carved =
+            [h.carved(crate::logic::progression::Tree::Armory, h.wield), h.carved(crate::logic::progression::Tree::Shield, h.carry)];
         self.hero.outfit = h.outfit;
     }
 

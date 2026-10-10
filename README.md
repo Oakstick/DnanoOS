@@ -1,5 +1,9 @@
 # Void Harvest
 
+> This folder's TypeScript code is the original prototype, kept as it was. Today's game,
+> **Adventures of the Ancient Blades** (Rust + wgpu), lives in `rust/`: see `rust/README.md`.
+> Nothing below (Popolon, the nuggets, the bombs) describes it.
+
 A voxel dungeon crawler through a moonlit forest labyrinth with verticality.
 Popolon walks single-file forest paths, one tile wide, walled by undergrowth
 and trees, to gather twenty-five gold nuggets while a skeleton, two bats, and a

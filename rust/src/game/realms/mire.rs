@@ -603,7 +603,7 @@ impl Game {
         let (fx, fy) = (hp.x - at.x as f64, hp.y - at.y as f64);
         let l = (fx * fx + fy * fy).sqrt().max(1e-6);
         let mut d = Duelist::bred(id, Breed::of(EnemyKind::Ganglot), at.v(), V::new(fx / l, fy / l));
-        let (h, damage) = weight(0, tier);
+        let (h, damage) = super::super::newgame::with_foe_weight(weight(0, tier), self.ng_plus);
         d.max_hp *= h;
         d.hp = d.max_hp;
         d.breed.damage *= damage;

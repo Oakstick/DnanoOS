@@ -297,7 +297,7 @@ impl Game {
     }
 
     /**
-     * The War Cry (Ragnar 4; F or L3, where it is not the blink): his fighter is held for its
+     * The War Cry (Ragnar 4; the Step's button, Left Shift or LT, where it is not the blink): his fighter is held for its
      * frames (struck in its startup, the cry is lost); on its first active frame every body foe
      * about him staggers.
      */

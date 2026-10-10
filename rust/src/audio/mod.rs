@@ -4,6 +4,7 @@
 pub mod hymn;
 pub mod mix;
 pub mod music;
+pub mod speech;
 pub mod synth;
 pub mod track;
 pub mod voices;
@@ -13,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 pub use mix::{Listener, Priority};
 use music::BASE_BPM;
+pub use speech::{Mood, Talker};
 use synth::{Bus, Env, Synth, Voice, Wave};
 pub use track::Soundtrack;
 pub use voices::{Cry, HeroCry, HitSound, ShieldTier, SoundMatter, SwingKind};
@@ -428,6 +430,31 @@ impl AudioManager {
             }
             s.stamp = mix::Stamp::default();
         });
+    }
+
+    /// One syllable of a line typing out, spoken in `who`'s voice and `mood` (B10, `speech`): on the
+    /// voices' volume. Quitmer's lines keep his snarl.
+    pub fn speak(&mut self, who: Talker, mood: Mood, syl: speech::Syllable) {
+        if who == Talker::Dog {
+            self.play_voice(Speech::Beast);
+            return;
+        }
+        self.with(|s| {
+            s.stamp.voice = true;
+            speech::render(s, who, mood, syl);
+            s.stamp = mix::Stamp::default();
+        });
+    }
+
+    /// Every syllable `line` begins between characters `from` and `to` (a typewriter's step), at most
+    /// two at once (a skip shows the rest without a babble).
+    pub fn speak_line(&mut self, who: Talker, mood: Mood, line: &str, from: usize, to: usize) {
+        if to <= from || to - from > 8 {
+            return;
+        }
+        for syl in speech::syllables(line, from, to).into_iter().take(2) {
+            self.speak(who, mood, syl);
+        }
     }
 
     pub fn soundtrack(&self) -> Option<Soundtrack> {
@@ -1791,6 +1818,25 @@ mod tests {
         for voice in [Speech::Child, Speech::Old, Speech::Beast, Speech::Narrator] {
             a.play_voice(voice);
             render(&format!("{voice:?}"));
+        }
+        // Every speaker of the new speech, in every mood, a question and a shout (B10).
+        let mut who = vec![
+            Talker::Kid(1),
+            Talker::Kid(2),
+            Talker::Kid(3),
+            Talker::Boys,
+            Talker::Toby,
+            Talker::Hizir,
+            Talker::Narrator,
+            Talker::Krampus,
+        ];
+        who.extend(crate::logic::sins::SINS.iter().map(|&s| Talker::Prince(s)));
+        let moods = [Mood::Plain, Mood::Fear, Mood::Anger, Mood::Resolve, Mood::Warmth, Mood::Grave, Mood::Grief, Mood::Menace, Mood::Joy];
+        for (k, w) in who.into_iter().enumerate() {
+            let line = "Will you carry them? NO! He took him!";
+            a.speak_line(w, moods[k % moods.len()], line, 0, 8);
+            a.speak_line(w, moods[(k + 4) % moods.len()], line, 30, 37);
+            render(&format!("{w:?}"));
         }
     }
 }

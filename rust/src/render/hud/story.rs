@@ -8,13 +8,14 @@ use super::*;
 use crate::game::TYPE_DELAY;
 use crate::logic::story::{ascent, stage, Scene, Shot, Speaker, SCENE_TITLE};
 
-/// The colour each speaker's name (and the box's edge) is drawn in.
-fn voice_color(s: Speaker) -> u32 {
+/// The colour each speaker's name (and the box's edge) is drawn in: a boy at Hızır's in his soul's.
+fn voice_color(s: Speaker, hero: crate::logic::heroes::HeroKind) -> u32 {
     match s {
         Speaker::Boys => 0xf2c46a,
         Speaker::OldMan => 0xa8c4e8,
         Speaker::Dog => 0xe0604a,
         Speaker::Narrator => 0xe8dcc0,
+        Speaker::Boy(role) => crate::logic::tale::soul_color(crate::logic::tale::warrior_of(crate::logic::after::kid_of_role(hero, role))),
     }
 }
 
@@ -115,6 +116,8 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
         Shot::Arrive => white = 1.0 - smooth(0.0, 0.9, bt),
         // Scene II comes up out of the black the fight left.
         Shot::Embrace => black = 1.0 - smooth(0.0, ascent::FADE_IN, bt),
+        // The scenes at Hızır's come up out of black too.
+        Shot::Gather => black = 1.0 - smooth(0.0, crate::logic::after::stage::FADE_IN, bt),
         _ => {}
     }
     if black > 0.0 {
@@ -186,7 +189,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
                 max,
                 size,
                 lh,
-                rgba(voice_color(beat.speaker), appear),
+                rgba(voice_color(beat.speaker, g.hero_kind), appear),
                 Align::Center,
                 0.0,
                 time,
@@ -205,7 +208,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
                 );
             }
         } else {
-            let color = voice_color(beat.speaker);
+            let color = voice_color(beat.speaker, g.hero_kind);
             let bw = (w * 0.7).min(t * 36.0);
             let bh = t * 3.7;
             let bx = (w - bw) / 2.0;
@@ -216,7 +219,7 @@ pub(super) fn draw_story(o: &mut Overlay, g: &Game, t: f32) {
             o.rect_outline(bx, by, bw, bh, 1.0, [1.0, 1.0, 1.0, 0.16 * appear]);
             o.rect(bx, by, t * 0.14, bh, rgba(color, 0.9 * appear));
             // The name on a tab above the box's corner, the stage direction after it.
-            let name = beat.speaker.name();
+            let name = beat.speaker.tag(g.hero_kind);
             let size = t * 0.62;
             let tab_w = o.measure(name, size) + t * 1.2;
             o.rect(bx, by - t * 1.05, tab_w, t * 1.05, [4.0 / 255.0, 6.0 / 255.0, 10.0 / 255.0, 0.86 * appear]);

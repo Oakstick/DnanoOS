@@ -7,6 +7,7 @@
 //! attack, guide, jump, camera, pause, tap), `+dir`/`-dir` to hold or release
 //! up/down/left/right, `look:dx:dy` for a mouse turn in pixels, `nugget`,
 //! `hurt`, `boss` (the F1 cheat), `wound:N` (N damage to the boss), `daze`,
+//! `carve:B:S` (the old man's carvings, B on the blade in hand and S on the shield carried),
 //! `shop` (open the blacksmith), `workshop:S` (the old man's workshop at station S: 0 the anvil,
 //! 1 the shield wall, 2 the alchemy bench, 3 the training yard, 4 the war table, 5 the trophy
 //! wall), `stocked` (sample news, trophies and generals for its walls), `coins:N`, `tab`, `drink`, and `potion:I`
@@ -167,6 +168,8 @@ pub(crate) enum Cmd {
     Patron(usize),
     Outfit(u8),
     Edge(u8),
+    /// The old man's carvings on the blade in hand and the shield carried (WARBAND.md W11).
+    Carve(u8, u8),
     /// The controls page, and its keyboard tab.
     Controls,
     Keyboard,
@@ -214,6 +217,14 @@ pub(crate) enum Cmd {
     Order(usize),
     /// The end: Scene II from T seconds in (FINALE.md §4).
     Ending(f64),
+    /// The scene at Hızır's after sin S's prince, at beat N, T seconds in (B07).
+    After(usize, usize, f64),
+    /// Toby's things held: their bits (B08).
+    Toby(u8),
+    /// The hero beside this realm's token (B08).
+    Token,
+    /// The boy in the warrior's soul-glow: 1 as he falls, 0 at a shrine (B07).
+    BoyGlow(bool),
     /// Into level N (1 to 7) of the Pit, and its clock set to S seconds into the level.
     Pit(u8),
     PitClock(f64),
@@ -297,6 +308,15 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "general" => Cmd::General(parts.next().and_then(|v| v.parse().ok()).unwrap_or(4)),
             "order" => Cmd::Order(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "ending" => Cmd::Ending(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0)),
+            "after" => {
+                let s = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let n = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let at = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                Cmd::After(s, n, at)
+            }
+            "toby" => Cmd::Toby(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0x7f)),
+            "token" => Cmd::Token,
+            "boyglow" => Cmd::BoyGlow(parts.next() == Some("1")),
             "pit" => Cmd::Pit(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "pitclock" => Cmd::PitClock(parts.next().and_then(|v| v.parse().ok()).unwrap_or(100.0)),
             "lair" => Cmd::Lair,
@@ -331,6 +351,10 @@ pub(crate) fn parse_script(s: &str) -> Vec<(f64, Cmd)> {
             "patron" => Cmd::Patron(parts.next().and_then(|v| v.parse().ok()).unwrap_or(0)),
             "outfit" => Cmd::Outfit(parts.next().and_then(|v| v.parse().ok()).unwrap_or(1)),
             "edge" => Cmd::Edge(parts.next().and_then(|v| v.parse().ok()).unwrap_or(10)),
+            "carve" => {
+                let b = parts.next().and_then(|v| v.parse().ok()).unwrap_or(3);
+                Cmd::Carve(b, parts.next().and_then(|v| v.parse().ok()).unwrap_or(b))
+            }
             "controls" => Cmd::Controls,
             "keyboard" => Cmd::Keyboard,
             "block" => Cmd::Press(Action::Block),
@@ -500,6 +524,10 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
         }
         Cmd::Order(k) => game.debug_order(k),
         Cmd::Ending(at) => game.ending_jump(at),
+        Cmd::After(s, n, at) => game.debug_after(SINS[s.min(6)], n, at),
+        Cmd::Toby(bits) => game.debug_toby(bits),
+        Cmd::Token => game.debug_token(),
+        Cmd::BoyGlow(fall) => game.debug_boy_glow(fall),
         Cmd::Pit(n) => game.map_jump(Stage::Pit(n.clamp(1, 7))),
         Cmd::PitClock(s) => game.debug_pit_clock(s),
         Cmd::Lair => game.map_jump(Stage::Lair),
@@ -566,6 +594,14 @@ pub(crate) fn exec(game: &mut Game, cmd: &Cmd, bot: &mut Option<crate::game::bot
             let h = game.progress.hero_mut(hero);
             let k = (h.wield - 1) as usize;
             h.edge[k] = n.min(100);
+            game.equip_from_progress();
+        }
+        Cmd::Carve(b, s) => {
+            let hero = game.hero_kind;
+            let h = game.progress.hero_mut(hero);
+            let (w, c) = ((h.wield - 1) as usize, (h.carry - 1) as usize);
+            h.carved[0][w] = b.min(crate::logic::progression::CARVINGS);
+            h.carved[1][c] = s.min(crate::logic::progression::CARVINGS);
             game.equip_from_progress();
         }
         Cmd::Controls => game.open_controls(),

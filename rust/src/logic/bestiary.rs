@@ -46,11 +46,13 @@ pub enum Group {
     Generals,
     Courts,
     Pit,
+    /// Toby, the friend the boys came down for, and his things found on the way (B08).
+    Toby,
     Rivals,
 }
 
 /// The groups in the book's order.
-pub const GROUPS: [Group; 13] = [
+pub const GROUPS: [Group; 14] = [
     Group::Stage(1),
     Group::Stage(2),
     Group::Stage(3),
@@ -63,6 +65,7 @@ pub const GROUPS: [Group; 13] = [
     Group::Generals,
     Group::Courts,
     Group::Pit,
+    Group::Toby,
     Group::Rivals,
 ];
 
@@ -82,6 +85,7 @@ impl Group {
             Group::Generals => "THE PRINCES' HANDS",
             Group::Courts => "THE PRINCES' COURTS",
             Group::Pit => "THE BOTTOM OF THE PIT",
+            Group::Toby => "THE BOY WE CAME FOR",
             Group::Rivals => "THE LEDGER'S NAMES",
         }
     }
@@ -101,6 +105,7 @@ impl Group {
             Group::Generals => "GENERALS",
             Group::Courts => "PRINCES",
             Group::Pit => "THE PIT",
+            Group::Toby => "TOBY",
             Group::Rivals => "RIVALS",
         }
     }
@@ -120,6 +125,7 @@ impl Group {
             Group::Generals => "Each realm's general, who runs it against you by his orders.",
             Group::Courts => "The seven princes of the sins, and what each one raises.",
             Group::Pit => "What waits at the very bottom.",
+            Group::Toby => "Not a foe: the friend Krampus took, and what he left on the way down.",
             Group::Rivals => "Foes who did a deed against you, and earned a name for it.",
         }
     }
@@ -133,7 +139,7 @@ impl Group {
             Group::Generals => SINS.iter().map(|&s| Entry::General(s)).collect(),
             Group::Courts => EnemyKind::COURTS_OWN.iter().map(|&k| Entry::Foe(k)).collect(),
             Group::Pit => EnemyKind::LAIR_OWN.iter().map(|&k| Entry::Foe(k)).collect(),
-            Group::Rivals => Vec::new(),
+            Group::Toby | Group::Rivals => Vec::new(),
         }
     }
 }
@@ -1112,7 +1118,7 @@ mod tests {
         }
         // And the Cyclops, the mimic, the seven generals.
         assert_eq!(all_entries().len(), 51 + 2 + 7);
-        assert_eq!(GROUPS.iter().filter(|g| g.entries().is_empty()).count(), 1, "only the rivals' group is the player's own");
+        assert_eq!(GROUPS.iter().filter(|g| g.entries().is_empty()).count(), 2, "only the rivals' group and Toby's are the player's own");
     }
 
     #[test]

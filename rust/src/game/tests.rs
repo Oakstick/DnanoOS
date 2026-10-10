@@ -316,8 +316,8 @@ fn the_map_jumps_to_any_dungeon_or_cyclops() {
     let stops = map_stops();
     assert_eq!(
         stops.len(),
-        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 1 + 2 + 3,
-        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
+        3 + 2 * 7 + 1 + 1 + 2 + 2 + 1 + 7 + 7 + 7 + 1 + 2 + 3,
+        "the Garden and its Cyclops, the Portals of Hell, each realm and its prince, Krampus's lair, the gym, the Cisterns and Bone Vaults off the road, Scene I's two places, the old man's workshop, each general's post, the Pit's seven levels, the scene at Hızır's after each prince, Scene II, the full map of two places, and the UI's settings, loading card and bestiary"
     );
     assert!(stops.iter().any(|s| s.post && s.label == "GREED - THE ASSESSOR'S POST"));
     assert!(stops[0].label.contains("THE GARDEN OF KRAMPUS"));
@@ -413,7 +413,7 @@ fn the_portals_of_hell_open_their_doors_and_break_their_seal() {
         g.update(crate::app::STEP);
     }
     assert_eq!(g.hub.as_ref().unwrap().doors[i], 0.0, "Greed is conquered");
-    // All seven keys: the seal breaks and the causeways rise to the House of the Devil.
+    // All seven keys: the seal breaks and the causeways rise to the House of Seven Seals.
     let lane = hub::causeways()[2];
     let p = P::new(lane.x0 + 1, lane.y0 + 1);
     assert!(!g.level.grid.is_walkable(p.x, p.y, false), "sunk in the lava");
@@ -950,9 +950,16 @@ fn a_portal_leads_through_its_realm_and_its_princes_court_and_back_with_the_sins
     g.hero.m.teleport(gate);
     g.update(STEP);
     assert_eq!(g.screen, Screen::Won);
-    // The old man, and then back before the portal, now sealed, with the next realm one deeper.
+    // The scene at Hızır's (B07), skipped; the old man's wares; and then back before the portal,
+    // now sealed, with the next realm one deeper.
     g.input.inject(Action::Confirm);
     g.update(STEP);
+    assert_eq!(g.screen, Screen::Story);
+    assert_eq!(g.story.as_ref().map(|s| s.scene), Some(crate::logic::story::Scene::After(Sin::Sloth)));
+    g.input.inject(Action::Pause);
+    for _ in 0..(1.0 / STEP) as usize {
+        g.update(STEP);
+    }
     assert_eq!(g.screen, Screen::Shop);
     g.input.inject(Action::Pause);
     g.update(STEP);
@@ -1640,6 +1647,43 @@ fn blades_dull_as_they_strike_bite_the_boss_less_and_are_sharpened_for_gold() {
 }
 
 #[test]
+fn the_old_man_carves_runes_into_the_blade_and_the_shield_and_they_wear_slower() {
+    use crate::logic::progression::{CARVE_RUNES, CARVINGS};
+    let mut g = meadow();
+    g.equip_from_progress();
+    g.open_shop();
+    g.progress.runes = 30;
+    // At the anvil: the blade in hand, three carvings for 4, 8 and 12 runes.
+    press_shop(&mut g, ShopAction::Tab(Tree::Armory));
+    for k in 0..CARVINGS {
+        assert!(g.shop_rows().iter().any(|r| r
+            .buttons
+            .iter()
+            .any(|b| b.action == ShopAction::Carve(Tree::Armory) && b.enabled && b.runes == CARVE_RUNES[k as usize] && b.price == 0)));
+        press_shop(&mut g, ShopAction::Carve(Tree::Armory));
+    }
+    let h = *g.progress.hero(g.hero_kind);
+    assert_eq!((h.carved(Tree::Armory, h.wield), g.progress.runes), (3, 6));
+    assert_eq!(g.hero.carved, [3, 0], "they show on the blade in his hand");
+    assert!(
+        g.shop_rows().iter().any(|r| r.buttons.iter().any(|b| b.action == ShopAction::Carve(Tree::Armory) && !b.enabled)),
+        "all three cut"
+    );
+    // At the shield wall: the shield he carries.
+    press_shop(&mut g, ShopAction::Tab(Tree::Shield));
+    press_shop(&mut g, ShopAction::Carve(Tree::Shield));
+    assert_eq!(g.progress.hero(g.hero_kind).carved(Tree::Shield, h.carry), 1);
+    assert_eq!((g.hero.carved, g.progress.runes), ([3, 1], 2));
+    // The carved blade keeps its edge: the hundred blows that take sixty off a bare one take a quarter.
+    let k = (g.hero.blade - 1) as usize;
+    for _ in 0..100 {
+        g.dull_blade();
+    }
+    let edge = g.progress.hero(g.hero_kind).edge[k];
+    assert!((73..=76).contains(&edge), "a carved blade worn down by about 25: {edge}");
+}
+
+#[test]
 fn a_rusted_blade_glances_off_some_foes_and_a_keen_one_never() {
     let mut g = meadow();
     let at = P::new(13, 16);
@@ -1936,7 +1980,10 @@ fn the_map_plays_scene_one_from_either_place_and_scene_two() {
     let stops = map_stops();
     let scenes: Vec<(Scene, usize)> = stops.iter().filter_map(|s| s.scene).collect();
     let gateway = (Scene::One, first(Shot::Arrive).unwrap());
-    assert_eq!(scenes, vec![(Scene::One, 0), gateway, (Scene::Two, 0)], "the graveyard, the gateway below, and the end");
+    let mut want = vec![(Scene::One, 0), gateway];
+    want.extend(crate::logic::sins::SINS.iter().map(|&s| (Scene::After(s), 0)));
+    want.push((Scene::Two, 0));
+    assert_eq!(scenes, want, "the graveyard, the gateway below, the scenes at Hızır's, and the end");
     g.show_map = true;
     g.map_index = stops.iter().position(|s| s.scene == Some(gateway)).unwrap();
     g.input.inject(Action::Confirm);

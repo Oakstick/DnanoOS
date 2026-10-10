@@ -31,6 +31,7 @@ use crate::logic::{gear, progression, systems};
 use crate::render::foliage;
 use crate::render::foliage::FOREST;
 
+mod aftermath;
 mod angels;
 mod animation;
 mod ascent;
@@ -80,6 +81,7 @@ mod spring;
 mod story;
 mod story_camera;
 mod story_sets;
+pub mod toby;
 mod vault;
 mod vault_art;
 mod vault_decor;
@@ -419,6 +421,14 @@ pub struct WorldView {
     shop_stage: workshop::WorkshopStage,
     /// The prince's cheats standing in the world: a mimic chest.
     pub deceit: DeceitView,
+    /// Toby's thing lying in this realm, still to be found (B08, `toby`).
+    pub token: Option<(crate::logic::tale::Token, P)>,
+    /// The boy inside the warrior's soul-glow, at a shrine or where he fell (B07).
+    pub boy_glow: Option<toby::BoyGlow>,
+    /// The hero played in the scene at Hızır's (its camera frames the boy who speaks, by his part).
+    pub after_hero: crate::logic::heroes::HeroKind,
+    /// Toby's football was found: it lies at their feet in the end (B08).
+    pub ending_ball: bool,
     /// The character screen, while it is up.
     pub select: Option<SelectView>,
     /// The character screen's cavern (built once), how far each hero has stepped forward,
@@ -582,6 +592,10 @@ impl WorldView {
             forge: false,
             workshop: None,
             deceit: DeceitView::default(),
+            token: None,
+            boy_glow: None,
+            after_hero: Default::default(),
+            ending_ball: false,
             shop_stage: Default::default(),
             select: None,
             select_set: InstanceSet::new(select::cavern()),

@@ -41,6 +41,7 @@ pub mod settings;
 mod shop;
 pub mod specimen;
 pub mod style;
+mod toby;
 mod war;
 
 pub use controls::controls_tab_rects;
@@ -330,6 +331,8 @@ pub fn draw(o: &mut Overlay, g: &Game, fps: u32) {
                 rgba(TEXT_DIM, 1.0),
             );
             play::draw_pause_summary(o, g, t, below + t * 0.5);
+            // Toby's things found on the way down (B08).
+            toby::draw_row(o, g, t, below + t * 1.45);
             fullmap::draw(o, g, t);
             if g.show_controls {
                 controls::draw_controls(o, g, t);
@@ -506,6 +509,13 @@ fn draw_feedback(o: &mut Overlay, g: &Game, t: f32) {
     // Red at the screen's edges when hurt.
     if j.hurt > 0.0 {
         style::vignette(o, t * 3.0, rgba(0xd8262e, flash(0.55 * j.hurt)));
+    }
+    // Enthralled in the Garden of Thorns: a rose haze closes in from the edges and his sight narrows
+    // (B18: the spell draws him; it never turns his controls).
+    let haze = g.enthral_haze();
+    if haze > 0.0 {
+        style::vignette(o, t * 9.0, rgba(0xff5a8a, 0.3 * haze));
+        style::vignette(o, t * 4.0, rgba(0xc8306a, 0.4 * haze));
     }
 
     // Nuggets flying to the counter along an arc, with a short trail.
@@ -1270,7 +1280,7 @@ fn draw_title(o: &mut Overlay, g: &Game, t: f32) {
     glyphs::prompt_line(
         o,
         &g.input,
-        "{Move} run   {Attack} attack   {Jump} jump   {Block} shield   {Step} step   {Angel} archangel   {Guide} his word   {Call} call the old man   {Pause} pause",
+        "{Move} run   {Attack} attack   {Jump} jump   {Block} shield   {Step} step   {Angel} archangel   {Guide} his word   {Call} call Hızır   {Pause} pause",
         w / 2.0,
         h * 0.965,
         t * 0.45,

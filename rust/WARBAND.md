@@ -11,7 +11,8 @@ Status: approved 2026-10-04 ("I like the plan... Lets go"), §17 settled on the 
 day, and W0 to W8 built and merged on `rust-port` that day (the build log at the end says what
 and how; several parts were built in parallel worktrees). W9's bots' half is done (2026-10-05: the
 whole-run harness, the tuning log and the checklist at the end of the build log); left is the
-playthrough by hand that closes it. W10 (2026-10-09) softened the princes' wall the QA pass found.
+playthrough by hand that closes it. W10 (2026-10-09) softened the princes' wall the QA pass found;
+W11 the adept's last walls (the Rotting Feast, the Pit, Krampus) and gave the runes a use (rune-carving).
 
 ---
 
@@ -765,7 +766,7 @@ All in the charcoal-and-copper panels of the art-direction pass.
 **New Game+** (2026-10-09, `game/newgame.rs`). Once the tale is told the title offers NEW GAME+
 beside Start: the adventure from Scene I again with the finished run's `vh.progress` (every hero's
 tiers, mastery, loadout; the purse) and its living rivals seeded back into the Ledger (their tally
-of the slain begins again), every foe and prince a tier harder. The offer is saved apart, from the
+of the slain begins again), every foe and prince tiers harder and heavier (below). The offer is saved apart, from the
 moment the end begins until the New Game+ it offers reaches its first checkpoint:
 
 | Key | Scope | Holds |
@@ -773,11 +774,14 @@ moment the end begins until the New Game+ it offers reaches its first checkpoint
 | `vh.ngplus`, `.kit`, `.rivals` | the offer, across runs | its level (1 to 3), the kit and purse, the Ledger's living rivals |
 | `vh.run` | the run | a New Game+ run's checkpoint is a "v3" line ending in its level (a first run's stays "v2") |
 
-"A tier harder" is an offset on top of the numbers, never a change to them: `Game::realm_tier` is
-1 + keys held + the level, so the dealer deals a stage deeper (to the seventh), packs grow and weigh
-as a later realm's, each prince fights at the next tier (`court::weight`), the Pit and Krampus too
-(`lair_weight`); the Garden brings a stage deeper (`foe_stage_of`). Whatever the princes' and foes'
-own numbers become, the offset composes with them; a first run (level 0) is untouched.
+"Tiers harder" is an offset on top of the numbers, never a change to them: `Game::realm_tier` is
+1 + keys held + `NG_TIERS` (2) for each level, so the dealer deals two stages deeper (to the
+seventh), packs grow and weigh as a later realm's, each prince fights two tiers up for each level
+(`court::weight`), the Pit and Krampus too (`lair_weight`); the Garden brings two stages deeper
+(`foe_stage_of`). On top of the offset the New Game+ multipliers (`NG_PRINCE`, `NG_KRAMPUS`,
+`NG_FOES`, below) weigh the princes, Krampus and every other foe. Whatever the princes' and foes'
+own numbers become, both compose with them; a first run (level 0) is untouched. (The first table
+below was measured at one tier a level, before either; what follows it brings it to today's.)
 
 `--run SKILL SEED ORDER ng+N` plays the whole run, then New Game+ N times over with what it left (a
 run that did not reach the end hands on what it had where it stopped), and prints the last.
@@ -802,6 +806,68 @@ realm at tier 3. Expert, seed 1: order 0 the ending in 72 min, 3 lives lost, 4 r
 min, 14 and 9 lives): the carried kit (8/8/8 from the first realm, blade 10 by the second court)
 outweighs the tiers; the princes fall in 0.7-2.7 min. The tiers alone are not the lever; the kit
 carried is.
+
+**Heavier on top of the tiers** (2026-10-09, the user's call: keep all the gear; in New Game+ the
+princes and Krampus get more health and hit harder, and the realms' foes get tougher too). Three
+tables in `newgame.rs`, one row per level, multiplied on top of everything that weighs a foe today
+(the tiers, `court::weight` and `court::temper`, `lair_weight`, `realms::weight`, `VAULT_HP`),
+at the point each is applied; a first run's row is all 1 (`prince_weight`, `krampus_weight`,
+`foe_weight` of level 0), so its numbers are bit-identical.
+
+| Level | Princes (`NG_PRINCE`): health, blows, poise | Krampus (`NG_KRAMPUS`) | Every other foe (`NG_FOES`): health, blows |
+|---|---|---|---|
+| NG+1 | 2.5, 1.5, 1.1 | 2.0, 1.5, 1.1 | 1.75, 1.75 |
+| NG+2 | 1.75, 1.75, 1.2 | 1.6, 1.75, 1.2 | 1.85, 1.85 |
+| NG+3 | 1.5, 2.0, 1.3 | 1.4, 2.0, 1.3 | 2.0, 2.0 |
+
+"Every other foe": the realms' and the Pit's packs (`raise_packs`), the Vaults' garrison, what the
+generals raise, the princes' cheats' spawns, the Mire's young, the Peerless, the princes' adds
+(`adds_weight` at each court), the Perchten, and the Garden's bites (their contact damage).
+
+Why this shape. The prince's health is what makes a court last: the expert parries nearly every
+blow a prince throws (Asmodeus at NG+2 dealt the same 192 damage with his blows at 1.5 and at 2.0),
+so blows and poise are for the player who does not, and rise with every level. Health takes its big
+step at NG+1 and eases after it, because the two tiers each level adds already weigh more on the late
+princes every time (the court's curve): with 2.0 or more from NG+2 on, Asmodeus at the eleventh tier
+and beyond outlasted the expert's eight minutes (`COURT_LIMIT`) three tries running; Krampus, met two
+tiers below the last prince and untempered, came to 9.5 min of his 10 at NG+3 with the princes'
+health, hence his lighter row. The foes' row is what costs lives and realm time: at 1.5 health and
+1.3 blows the expert lost 1-5 lives in NG+1, at 1.75/1.75 about as many as his first run. The
+maids' health does not lengthen Asmodeus's fight (the same 345 s at NG+2 with them at 1 or 1.6).
+
+The expert (`--run 2 SEED ORDER ng+3`), every run of it in turn (the harness now prints the first
+and each New Game+), against the first run:
+
+| Expert | First run | NG+1 | NG+2 | NG+3 |
+|---|---|---|---|---|
+| seed 1, order 0 | 100 min, 14 lives, 3 tries | 112 min, 10 lives, 3 tries | 107 min, 10 lives, 3 tries | 130 min, 20 lives, 6 tries |
+| seed 1, order 1 | 107 min, 9 lives, 1 try | 100 min, 4 lives, 0 tries | 120 min, 8 lives, 1 try | 117 min, 14 lives, 3 tries |
+| seed 2, order 0 | 96 min, 9 lives, 2 tries | 119 min, 10 lives, 2 tries | 140 min, 19 lives, 6 tries | ends in the Rotting Feast (3 tries), 5 princes |
+| seed 2, order 1 | 92 min, 1 life, 0 tries | 106 min, 3 lives, 0 tries | 118 min, 1 life, 0 tries | 135 min, 16 lives, 3 tries |
+
+Every run reaches the ending up to NG+2; NG+3 once falls short in a realm. Each court (minutes,
+first run / NG+1 / NG+2 / NG+3; no life lost in any court, one in Krampus's lair at NG+3):
+
+| Seed 1 order 0 | | Seed 1 order 1 | | Seed 2 order 0 | | Seed 2 order 1 | |
+|---|---|---|---|---|---|---|---|
+| Mammon | 1.5 / 1.9 / 1.3 / 2.3 | Asmodeus | 1.7 / 2.1 / 1.6 / 2.7 | Mammon | 1.6 / 1.8 / 2.3 / 1.8 | Asmodeus | 1.5 / 2.3 / 2.3 / 3.0 |
+| Lucifer | 1.4 / 1.7 / 1.3 / 1.5 | Beelzebub | 1.1 / 1.4 / 1.2 / 1.6 | Lucifer | 1.4 / 1.6 / 1.7 / 1.8 | Beelzebub | 1.2 / 1.4 / 1.5 / 1.8 |
+| Leviathan | 1.8 / 2.2 / 2.3 / 3.2 | Belphegor | 1.2 / 1.9 / 1.7 / 1.5 | Leviathan | 1.8 / 2.3 / 3.2 / 3.6 | Belphegor | 1.3 / 1.7 / 1.9 / 1.6 |
+| Amon | 1.5 / 2.4 / 2.4 / 2.8 | Amon | 1.5 / 2.7 / 2.7 / 3.1 | Amon | 1.5 / 2.7 / 2.7 / 3.5 | Amon | 1.9 / 3.4 / 3.1 / 3.1 |
+| Belphegor | 1.4 / 2.2 / 2.1 / 2.7 | Leviathan | 1.6 / 3.7 / 3.3 / 3.4 | Belphegor | 1.4 / 2.6 / 2.4 / 3.2 | Leviathan | 1.7 / 4.5 / 3.7 / 4.0 |
+| Beelzebub | 1.3 / 2.6 / 2.2 / 2.3 | Lucifer | 1.4 / 2.7 / 2.7 / 2.6 | Beelzebub | 1.2 / 2.9 / 2.7 / - | Lucifer | 1.7 / 3.1 / 3.4 / 2.9 |
+| Asmodeus | 1.6 / 4.1 / 5.4 / 5.3 | Mammon | 1.3 / 5.8 / 4.7 / 3.5 | Asmodeus | 2.0 / 4.6 / 5.7 / - | Mammon | 1.4 / 5.3 / 5.1 / 8.0 |
+| Krampus | 2.5 / 5.8 / 6.7 / 5.9 | Krampus | 2.6 / 5.9 / 5.5 / 6.2 | Krampus | 2.6 / 6.3 / 6.6 / - | Krampus | 2.6 / 6.3 / 6.1 / 8.8 |
+
+The courts together: 10-11 min in a first run, 19-23 in NG+1. NG+1 is longer than the first run in
+three cases of four; seed 1 order 1 is 7 minutes quicker, all of it the realms: the first run's
+Rotting Feast ran out its 15 minutes on a 2/2/2 kit and the Wrath field cost a try, where NG+1's
+10/10/10 cleared the Feast in 4 (its courts took 22 minutes against 10). The expert loses his lives in
+the realms (the Wrath field, the Thorns), never at a prince; harder blows at the princes are felt by
+a player who does not parry them all. The adept for reference (`--run 1 1 ORDER ng+1`; his first run
+ends in the Rotting Feast and is never offered New Game+ in play): order 0 ends in the Vaults (10
+lives, 3 tries, 7 min; with one tier and nothing on top it reached the Feast), order 1 at Asmodeus (3 tries, 23
+min): the kit his first run left him (4/4/4 at best) is not a finished run's.
 
 ---
 
@@ -1766,3 +1832,127 @@ first court's weight, where their tempering lets three lives' work fell them;
   player wears a prince down rather than reading him (the expert is the reader), but its blade wears
   with the length (Mammon seventh: to 0%).
 * **Runes**: a proposal, not built, is with the main session.
+
+### W11 The adept's last walls, and the runes' use (2026-10-09/10, branch `balance`)
+
+After W10 the adept felled every prince it reached, and its runs ended at the Rotting Feast (both
+orders) and, past it, the Pit and Krampus (and, the Thorns first, the vaults met seventh). The user
+chose to soften those walls and to build the runes' use the proposal recommended: the old man's
+rune-carving.
+
+#### Why the adept fell there (traced blow by blow, `VH_TRACE`, `VH_RUN_TRACE`)
+
+* **The Rotting Feast, the harness.** The bots hunted every den, the gaki in their corners off the
+  way included, and then fought the Last Course's endless gaki to the realm's fifteen minutes: no
+  bot ever left by the pylorus (the expert too survived the fifteen minutes rather than finishing).
+* **The Rotting Feast met second (tier 2, kit 2/2/2):** the gaki's bites were half the adept's
+  damage (724 of 1396 in a traced run, 36 of 50 bites landing: the Bite's 18 frames sit at the
+  adept's reaction of 18 ± 4), the stage-3 natives' bites most of the rest.
+* **The Feast met sixth (tier 6, kit 4/4/4), the vaults met seventh, Krampus:** guard breaks. The
+  adept attacked down to a fixed 40 stamina, and a deep foe's blow (Surtr's, Tepegöz's, Krampus's
+  bells) costs more than that to block: 860 of 1400 taken in the Feast came through broken guards,
+  and against Krampus every blow after the first few. Every foe it had worn down was whole again
+  after each of its falls (Surtr worn to 8 rose at 646). At depth the gaki, whose blows grow with
+  the tier (1.62 at the sixth), took the rest; the giants' frostbite and venom rode on top.
+* **Krampus's charge:** the bots saw a charge only once its runner was on them, too late to raise a
+  guard (12 hoof charges landed open in a traced fight, 362 of the adept's 390 taken).
+* **The Pit:** the stage 5-7 inmates against a shield three tiers below the expert's.
+
+#### What moved, and why
+
+| Change | Why |
+|---|---|
+| **The bots walk the Rotting Feast** (`Bot::feast_errand`): between fights on down the gullet (through the next seam's arch, the wide one when too full), to the dome, and in the Last Course to the pylorus, through it when its teeth part for the lean. A realm left through its way out is done (`whole_run::cleared`). | the harness made them fight four times what a player walks past (a measure, not the game) |
+| **The adept keeps a block's worth** (`Bot::block_worth`): the stamina the dearest blow of a foe within four tiles would cost to block, not a fixed 24, outside the courts and the ring | what the adept's description said it did; a fixed 24 let every deep foe break its guard |
+| **The adept sees a charge coming** (`Bot::threats`, `Shape::Charge`): from the length of the charge, met when the runner will reach it (the expert's timing as it was) | the charge was read only on contact |
+| **A realm's foes keep their wounds across the hero's falls** (`Game::reset_round`; the vaults and the six realms), as the princes since W10 | a fall undid every blow; the dead already stayed dead |
+| **The walked realms are tempered with depth** (`realms::temper`): the Rotting Feast's packs strike at 0.5 met first, falling to 0.35 met seventh (`FEAST_BLOWS`, `DEEP_BLOWS`); the vaults' as they were met first, falling to 0.35 met seventh. Their generals' men and what their foes' blows carry (frost, venom, fire) with them (`Game::realm_blows`). The depth is the keys held, New Game+'s offset aside. | the two realms the bots walk as a player does, met at every depth; the adept's kit is three tiers behind the expert's there |
+| **The gaki's bites do not grow with the depth** (their health does): `game::realms::raise_packs` | their needle throats; at the sixth realm their bites were 1.62 of the first's |
+| **The Pit's inmates strike at 0.6** (`pit::INMATE_BLOWS`) | at tier 7 the adept lost all its lives by level 5 (`--pit 1 7`, 3 of 3); with it it reaches the bottom 3 of 3 |
+| **Krampus: his pelt a court's hide (0.6, as the princes' since W10), his blows at 0.6 and his health at 0.8 of his weight** (`lair::KRAMPUS_BLOWS`, `KRAMPUS_HEALTH`) | the adept's blows were turned to nothing and he outlasted its ten minutes; the expert, who strikes his recoveries, fells him in about two |
+| **Rune-carving** (below) | the adept's blade wore to nothing in its long fights, and its runes were never spent |
+
+The courts, the ring's bouts (`--balance 2`: the same to the digit), the five stand-in realms'
+numbers, the trees and their prices are as they were.
+
+#### The whole run (`--run`, seeds 1-8 for the adept, 1-4 for the expert and the novice)
+
+Before is `rust-port` at 5defc78 (W10 merged); after is this branch.
+
+| Bot, order | Before | After |
+|---|---|---|
+| Adept, vaults first | **0/8 endings**: all end at the Rotting Feast (85-106 min) | **7/8 endings** (113-137 min); one ends at the Feast |
+| Adept, Thorns first | **0/8**: all end at the Rotting Feast (11-14 min) | **7/8** (115-127 min); one ends at Leviathan |
+| Expert, vaults first | 4/4, 92-100 min (mean 95.3) | 4/4, 74-82 min (mean 77.8: 17.5 less) |
+| Expert, Thorns first | 4/4, 92-116 min (mean 106.0) | 4/4, 92-99 min (mean 95.8: 10.2 less) |
+| Novice, vaults first | the vaults, 4 min, 18 of 61 foes slain | the vaults, 4-5 min, 28 of 61 slain |
+| Novice, Thorns first | Asmodeus, 10 min | Asmodeus, 10 min (unchanged: a prince a masher must not fell) |
+
+The expert's time: the Rotting Feast 15.0 → 7.1 min (vaults first) and 13.4 → 8.2 (Thorns first),
+now left by the pylorus rather than survived to the realm's time; the Burning Field 21.4 → 13.8
+and 16.9 → 14.4 (its foes keep their wounds across its falls into the lava); Krampus 2.6 → 1.9;
+the rest within a minute. Its lives lost and its courts are as they were (1.1-1.9 min a court).
+
+The adept where it fell, mean of eight runs:
+
+| Part | Before | After |
+|---|---|---|
+| The Feast met sixth (kit 4/4/4) | 0/8 done, 3 tries lost, 7.9 lives, 1418 taken | 5/8 done, 0.5 tries lost, 2.8 lives, 589 taken |
+| The Feast met second (kit 2/2/2) | 0/8, 3 tries, 9 lives, 1430 taken | 8/8, 0.6 tries, 3.0 lives, 658 taken |
+| The vaults met seventh (kit 4/4/4) | (not reached) | 7/7 passed (survived to the realm's time), 0.7 lives |
+| The Pit (kit 7/7/4 to 7/7/7) | (not reached; `--pit 1 7`: game over at levels 3-5) | 14/14 reach the bottom, 0-1 lives |
+| Krampus | (not reached; `--lair 1 8`: game over in his third phase) | 14/14 felled in 7.4-7.9 min, 0-0.3 lives |
+
+#### The harnesses
+
+* `--lair` (tier 8, seed 1, 2): the expert 164 → 122 s; the adept game over (313 s, 351 s) → felled
+  in 234 and 206 s without a fall; the novice still loses every life (37 → 69 s).
+* `--pit` (tier 8): the expert reaches the bottom as before (81 → 110 taken); the adept as before
+  (258 → 205 and 351 → 156 taken, 1 → 0 lives lost); the novice still falls (619 → 670 s). At
+  tier 7 the adept (seeds 1-3) went from game over at levels 3-5 to the bottom.
+* `--court` (every prince, expert tiers 4 and 7, adept 4, novice 1; seeds 1-2): the same but the
+  adept's Amon 87 → 75 s, Beelzebub 69 → 66 s, the expert's Asmodeus 61 → 62 s.
+* `--balance 2`: unchanged.
+
+#### The runes' use: rune-carving (the proposal's Option A, as written)
+
+At the anvil the old man, smith to the heroes of old, cuts their blessing into the blade in hand;
+at the shield wall, into the shield carried: **three carvings each, 4 / 8 / 12 runes, no silver**
+(`progression::CARVE_RUNES`). **Each carving on a blade leaves ×0.75 of the edge a landed blow takes
+off it, each on a shield ×0.75 of the wear a blocked blow takes** (three: ×0.42); no damage
+bonus. Ragnar's are runes, Mehmed's turquoise inlay, Miyamoto's spirit-crystal temper
+(`progression::carving`), and they glow on the steel in play, on the blade's middle and in a ring on
+the shield's face (`render::armory::carve_blade`, `carve_shield`; ice-blue, turquoise, violet), a
+third more with each carving. Carvings are kept per blade and per shield in the save (v4: twenty
+numbers a hero; a v3 save reads none). The bots' shopping rule carves the blade in hand and the
+shield carried in turn, the one with fewer first, while the runes hold the price and what the next
+sealed tier of its lowest tree would want.
+
+Runes a run (`--run`): before, the adept spent none (39-58 earned with the vaults first), the expert
+8-12 of 71-88. After, the adept spends 44-68 of 58-80 (vaults first) and 32-64 of 34-70 (Thorns
+first), 7-12 carvings a run; the expert 63-72 of 71-82, 11-12 carvings. A carving cut into a blade
+stays with that blade: a new tier is bought uncut (the bots cut each blade they wield).
+
+#### The tests
+
+New: `the_walked_realms_are_tempered_with_depth_and_the_rest_as_they_were`,
+`the_old_man_carves_three_runes_into_a_blade_or_a_shield_for_runes_alone` (prices, the limit, the
+save, a v3 save), `the_old_man_carves_runes_into_the_blade_and_the_shield_and_they_wear_slower`
+(the anvil and the shield wall, the edge), `the_old_mans_carvings_spare_the_shield_a_quarter_of_each_blocked_blow_apiece`,
+`the_old_mans_carvings_glow_on_every_blade_and_shield_more_with_each`,
+`the_bots_have_the_old_man_carve_the_blade_and_the_shield_in_turn`,
+`the_bots_walk_the_rotting_feast_and_leave_through_the_pylorus`. Changed where the tuning means it:
+the vaults' pack goes home with its wounds (it went home whole); Krampus's pelt lets a court's hide
+through and is lighter than he was, still above any prince; the progress line is v4; the Pit's perf
+scene no longer asks for a pack to fall in its twenty seconds (with the inmates' blows softened the
+expert's three kills spread over the doors' packs).
+
+#### Left for the user
+
+* **The expert's run is shorter** by 10-18 minutes: mostly the Feast left by its way out (a
+  measure the harness did not take before) and the Burning Field's foes keeping their wounds.
+* **The adept's long fights:** Krampus 7.4-7.9 minutes against the expert's 1.9.
+* **The novice** goes no further in place: its walls are the vaults at the first realm (the measure,
+  untouched) and the first prince, which a masher must not fell.
+* **Carvings stay with the blade:** a player who buys a new tier starts it uncut. Carrying them over
+  (the old man recuts them) would make the runes stretch further; a call for the user.

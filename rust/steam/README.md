@@ -4,13 +4,13 @@ What is already done in the code, and what only you can do on the Steamworks sid
 
 ## Ready in the build
 
-- **Standalone executable.** `Adventures of the Ancient Blades.exe` has everything baked in: voxel art, font, music and sound are all generated in code. The C runtime is linked statically (`.cargo/config.toml`), so players need no Visual C++ redistributable. No console window in release builds.
+- **Standalone executable.** `Adventures of the Ancient Blades.exe` has everything baked in: the voxel art and the sound effects are generated in code, and the music (twelve OGG tracks in `assets/music`), the two fonts (Cinzel and Alegreya Sans, `assets/fonts`) and the animation clips (`assets/anim`) are embedded at build time. The C runtime is linked statically (`.cargo/config.toml`), so players need no Visual C++ redistributable. No console window in release builds.
 - **Direct3D 12 first** on Windows, with Vulkan as the fallback (set `WGPU_BACKEND=vulkan` to force it). That keeps the Steam overlay and Steam's recording happy.
 - **Borderless fullscreen by default** in release builds, toggled with F11 or Alt+Enter and remembered. Pass `--windowed` or `--fullscreen` to override it (for example in Steam launch options).
-- **Controllers** through gilrs (XInput, DualShock/DualSense, Steam Deck): left stick runs, right stick aims the camera (R3 recenters), A jump, X or RT attack, B or LB bomb, RB drinks a potion, LT picks the next one, Y camera, Start begins and pauses. The blacksmith's shop is fully navigable with the stick and A. Keep Steam Input enabled and pick "Gamepad" as the default template.
+- **Controllers** through gilrs (XInput, DualShock/DualSense, Steam Deck), with the defaults of `src/input/bindings.rs` (UI.md §3; every play control can be rebound in Settings): left stick runs, right stick aims the camera (R3 recentres), A jumps (in a fight, the evade), X attacks, LB raises the shield, B opens the old man's guide (there are no bombs), Y calls the old man, RB drinks the chosen potion and the D-pad's left and right choose it, LT the Bifrost Step, RT the archangel's power, D-pad up or View the map, D-pad down the camera, L3 the minimap's zoom, Menu pauses. The old man's wares and every menu are fully navigable with the stick or D-pad and A. Keep Steam Input enabled and pick "Gamepad" as the default template.
 - **Pause on focus loss**, so opening the Steam overlay pauses the game.
-- **Save data** lives in `%APPDATA%\VoidHarvest\settings.txt` (high score, mute, fullscreen). A panic writes `crash.log` there too.
-- **Achievements** (build with `-Steam`): `ACH_FIRST_NUGGET` (first nugget), `ACH_HARVEST` (all 25 nuggets) and `ACH_CYCLOPS` (the first boss slain). The F1 boss cheat is meant for testing; take it out (the `Cheat` key in `src/input.rs`) or accept that it can unlock `ACH_CYCLOPS` before you ship. Create them with exactly these API names in the partner site before testing.
+- **Save data** lives in `%APPDATA%\VoidHarvest\settings.txt` (the settings and bindings, the progress, the bestiary and the saved adventure; the copy before the last write is `settings.txt.bak`). A panic writes `crash.log` there too.
+- **Achievements** (build with `-Steam`, `src/steam.rs`): only three so far, with API names older than today's game: `ACH_FIRST_NUGGET` (the first key taken), `ACH_HARVEST` (the first time through a dungeon's gate) and `ACH_CYCLOPS` (the first boss slain). Today's set is BACKLOG.md B28. The testing keys (F1 and the rest) work only in developer builds, so they cannot unlock anything in a distributable. Create the achievements with exactly these API names in the partner site before testing.
 - **Icon** embedded in the exe, generated from Ragnar's voxel front view (`AdventuresOfTheAncientBlades --write-icon assets/icon.ico` rebuilds it).
 
 ## Before you can upload
@@ -20,7 +20,7 @@ What is already done in the code, and what only you can do on the Steamworks sid
 3. Replace `480` / `481` in `app_build.vdf`, `depot_build_windows.vdf` and `steam_appid.txt`. Keep `steam_appid.txt` out of the depot; it is only for running the exe outside Steam while testing.
 4. Set the launch option: executable `Adventures of the Ancient Blades.exe`, OS Windows.
 5. Steam Cloud (optional): Auto-Cloud with root `WinAppDataRoaming`, subdirectory `VoidHarvest`, pattern `settings.txt`.
-6. Third-party licenses: the Rust crates are MIT/Apache-2.0, font8x8 is public domain. Ship a notice file; `cargo install cargo-about` then `cargo about generate` produces one.
+6. Third-party licenses: the Rust crates are MIT/Apache-2.0, font8x8 is public domain, the fonts are SIL OFL 1.1 (`assets/fonts/OFL-*.txt`, to ship beside the game), and the music in `assets/music` needs its licences noted too. Ship a notice file; `cargo install cargo-about` then `cargo about generate` produces the crates' part.
 
 ## Building and uploading
 

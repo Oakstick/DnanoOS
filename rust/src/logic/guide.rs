@@ -26,7 +26,7 @@ pub enum GuidePlace {
     Court(Sin),
     /// The gym and its Sparring Ring.
     Gym,
-    /// Level `n` (1 to 7) of the Pit under the House of the Devil.
+    /// Level `n` (1 to 7) of the Pit under the House of Seven Seals.
     Pit(u8),
     /// Krampus's lair at the bottom of the Pit (FINALE.md §3).
     Lair,
@@ -90,7 +90,7 @@ fn page<A: AsRef<str>, B: AsRef<str>, C: AsRef<str>>(title: &str, hail: &str, ta
 const GARDEN_TALE: &[&str] = &[
     "in the Alpine valleys they tell of Krampus: horned and shaggy, the dark companion of St Nicholas, with chains, bells and birch switches.",
     "On Krampusnacht, the night of 5 December, he walks the villages, and a naughty child goes off in the sack or basket on his back.",
-    "At dusk, at the graveyard, he took one of four boys. The other three ran after him through the gate and fell into my gateway.",
+    "At dusk, at the graveyard, he took Toby, one of four boys. The other three ran after him through the gate and fell into my gateway.",
     "I gave them the souls of Ragnar, Mehmed and Miyamoto, and you carry one. Krampus takes the children he steals to the bottom of the world.",
     "This garden is the first depth. His statue stands on the fountain at its heart.",
 ];
@@ -185,17 +185,17 @@ fn cyclops(n: usize, hail: &str) -> Guide {
 // ------------------------------------------------------------------ the Portals of Hell
 
 const HUB_TALE: &[&str] = &[
-    "these are the Portals of Hell: eight platforms over a sea of lava, round the volcano where the House of the Devil stands.",
-    "Seven gates, one for each deadly sin, stand round it in the order of Dante's terraces of Purgatory, from Pride to Lust.",
-    "In 1589 Peter Binsfeld gave each sin a prince, and here each prince keeps his own. Amon, who stirs up feuds, keeps wrath.",
+    "these are the Portals of Hell: eight platforms over a sea of lava, round the volcano where the House of Seven Seals stands.",
+    crate::logic::story::COSMOLOGY,
+    "Seven gates, one for each deadly sin, stand round it in Dante's order, from Pride to Lust. In 1589 Peter Binsfeld gave each sin a prince.",
     "Pride is Lucifer's, envy Leviathan's, wrath Amon's, sloth Belphegor's, greed Mammon's, gluttony Beelzebub's, lust Asmodeus's.",
-    "Each prince keeps his sin's key. Behind the seal of the seven stands the House of the Devil: no one has ever seen inside it.",
+    "Each prince keeps his sin's key, and each key holds one of the House's seven seals. No one has ever seen inside it.",
 ];
 
 const HUB_TASK: &[&str] = &[
     "Choose any gate and go through. Each realm ends in its prince's court, and the prince drops his sin's key.",
     "A realm you have taken keeps its doors shut, its key in the lock. Bring all seven keys, and the seal of the seven breaks.",
-    "Then causeways rise from the lava to the House of the Devil. The trail runs on through it, down to the bottom of the world.",
+    "Then causeways rise from the lava to the House of Seven Seals. The trail runs on through it, down to the bottom of the world.",
 ];
 
 const HUB_WATCH: &[&str] = &[
@@ -367,7 +367,7 @@ const LUST_TASK: [&str; 3] = [
 ];
 
 const LUST_WATCH: &[&str] = &[
-    "Charm fills while you face the Bride or stand in perfume mist. Full, you are enthralled three seconds: your controls turn, and she pulls.",
+    "Charm fills while you face the Bride or stand in perfume mist. Full, you are enthralled three seconds: a rose haze, and she pulls you.",
     "The rose paths heal you, but every one points at her. The thorn paths bite and slow you, and turn your back on her: they are honest.",
     "Stand two seconds in a koi pond to catch a fish, and burn it at a censer: ten seconds of smoke that blocks charm and lights the true paths.",
     "The elf-maids cannot be hurt from the front: strike their hollow backs. A ring of dancing elf-maids drags in whoever comes near.",
@@ -592,7 +592,7 @@ const GYM_WATCH: &[&str] = &[
 // ------------------------------------------------------------------ the Pit
 
 const PIT_TALE: &[&str] = &[
-    "under the House of the Devil there is no throne and no devil. There is only this: a prison that goes down, one stone cell for every level.",
+    "under the House of Seven Seals there is no throne and no devil. There is only this: a prison that goes down, one stone cell for every level.",
     "In each cell's floor a square hole, and in the hole a stone platform with a long table on it. Those above eat first; each level below finds less.",
     "Krampus took the boy to the very bottom. Seven levels lie between you and him, and the platform is the only way down.",
 ];

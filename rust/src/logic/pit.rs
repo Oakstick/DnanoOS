@@ -30,6 +30,9 @@ pub const HOLE_AT: i32 = (SIZE - PLATFORM) / 2;
 pub const LEVELS: u8 = 7;
 /// Seconds a level lasts before the platform sinks.
 pub const LEVEL_SECONDS: f64 = 120.0;
+/// The inmates' blows over their realms' weight (WARBAND.md W11: the adept, with its shield three
+/// tiers below the expert's, fell at the fourth or fifth level).
+pub const INMATE_BLOWS: f64 = 0.6;
 /// The last seconds, when the bell tolls each second and the platform's edge glows.
 pub const BELL_SECONDS: f64 = 15.0;
 /// After this the doors stay shut: what has not come out by then does not come.

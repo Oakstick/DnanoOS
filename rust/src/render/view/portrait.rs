@@ -85,6 +85,7 @@ impl WorldView {
     fn portrait_rig(&self, id: PortraitId) -> &Rig {
         match id {
             PortraitId::OldMan => &self.models.old_man,
+            PortraitId::Kid(k) => &self.models.kids[(k as usize).min(3)],
             PortraitId::Hero(kind) if kind == self.models.hero_key.0 => &self.models.hero,
             PortraitId::Hero(kind) => {
                 let k = ROSTER.iter().position(|&r| r == kind).unwrap_or(0);
@@ -105,6 +106,7 @@ impl WorldView {
             PortraitId::Figure(Figure::Foe(kind)) => self.models.rig(animation::rig_for(kind).0),
             PortraitId::Figure(Figure::Cyclops) => &self.models.cyclops,
             PortraitId::Figure(Figure::Mimic) => mimic(),
+            PortraitId::Figure(Figure::Toby) => &self.models.kids[0],
         }
     }
 

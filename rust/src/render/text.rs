@@ -56,6 +56,11 @@ pub const WORD_SPACE: f32 = 0.24;
 /// The characters every face carries: printable ASCII, Latin-1, Latin Extended-A (the Turkish
 /// names, the macrons of the Japanese ones, and room for any name to come), and the marks the
 /// game's strings use. What a face lacks it borrows from the other; the heart is drawn.
+/// Can every letter of `s` be drawn (the faces carry `charset`)?
+pub fn drawable(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii() && !c.is_ascii_control() || ('\u{a0}'..'\u{180}').contains(&c) || "–—‘’“”•…→←↑↓×·♥".contains(c))
+}
+
 fn charset() -> Vec<char> {
     let mut set: Vec<char> = (0x20u32..0x7f).chain(0xa0..0x180).filter_map(char::from_u32).collect();
     set.extend("–—‘’“”•…→←↑↓×·♥".chars());

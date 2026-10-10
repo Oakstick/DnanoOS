@@ -153,6 +153,9 @@ impl WorldView {
     /// The story's camera for this moment: where it is, what it looks at, what is in focus, and
     /// its lens.
     pub(super) fn story_camera(&self, sv: StoryView) -> StoryCam {
+        if let Scene::After(_) = sv.scene {
+            return self.after_camera(sv, self.after_hero);
+        }
         if sv.scene == Scene::Two {
             // Scene II keeps the camera it was composed with (ascent.rs), held by hand.
             let (eye, look, focus) = self.ascent_camera(sv);
@@ -643,7 +646,7 @@ mod tests {
                 (Shot::Scream, _) => GRAVEYARD + v(-0.45, 0.6, 2.6),
                 (_, Speaker::Boys) => GATEWAY + speaker_face(said_before(sv, Speaker::Boys)),
                 (_, Speaker::Dog) => GATEWAY + DOG_LUNGE + (BOYS_MID - DOG_LUNGE).normalize() * 0.62 + v(0.0, 0.62, 0.0),
-                (_, Speaker::Narrator) => continue,
+                (_, Speaker::Narrator | Speaker::Boy(_)) => continue,
             };
             let cam = scene_one(sv);
             let at = format!("{:?} (beat {beat}) at {t:.2} s", b.shot);

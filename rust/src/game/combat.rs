@@ -202,7 +202,9 @@ impl Game {
     pub(super) fn dull_blade_by(&mut self, loss: f64) {
         let tier = self.hero.blade;
         let before = self.hero.edge;
-        self.edge_carry += loss;
+        // The old man's runes cut into it keep its edge longer (WARBAND.md W11).
+        let carved = self.progress.hero(self.hero_kind).carved(crate::logic::progression::Tree::Armory, tier);
+        self.edge_carry += loss * crate::logic::progression::carved_share(carved, crate::logic::progression::CARVE_EDGE);
         let whole = self.edge_carry.floor();
         self.edge_carry -= whole;
         if whole <= 0.0 {

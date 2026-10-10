@@ -522,6 +522,28 @@ fn shop(g: &mut Game, skill: Skill, seed: u32, part: &mut Part) {
             _ => break,
         }
     }
+    // The old man's carvings (WARBAND.md W11): the blade in hand or the shield carried, whichever
+    // bears fewer (the blade on a tie), while the runes hold its price and what the next sealed
+    // tier of the lowest tree would want.
+    loop {
+        let h = *g.progress.hero(hero);
+        let keep = [Tree::Armory, Tree::Shield, Tree::Path]
+            .into_iter()
+            .filter_map(|t| h.next(t).map(|n| (h.owned(t), t, n)))
+            .min_by_key(|&(owned, _, _)| owned)
+            .map(|(_, t, n)| if progression::sealed(n) && !h.found(t, n) { progression::price(t, n).runes } else { 0 })
+            .unwrap_or(0);
+        let (blade, shield) = (h.carved(Tree::Armory, h.wield), h.carved(Tree::Shield, h.carry));
+        let (tree, tier, done) = if blade <= shield { (Tree::Armory, h.wield, blade) } else { (Tree::Shield, h.carry, shield) };
+        match progression::carve_price(done) {
+            Some(r) if g.progress.runes >= r + keep => {
+                let _ = g.progress.carve(hero, tree, tier);
+                part.bought.push(format!("carve-{}", if tree == Tree::Armory { "blade" } else { "shield" }));
+            }
+            _ => break,
+        }
+    }
+    g.equip_from_progress();
     let carry = g.progress.hero(hero).carry;
     if g.hero.shield.as_ref().is_none_or(|s| s.tier != carry) && !g.progress.hero(hero).is_broken(carry) {
         g.hero.shield = Some(ShieldGear::new(carry));
@@ -658,9 +680,13 @@ pub fn bots_walk(sin: Sin) -> bool {
 /// Every duelist of the level down (a realm cleared): every one he could reach, that is (a ghost
 /// left hovering over a chasm counts as gone).
 fn cleared(g: &Game) -> bool {
-    !g.enemies.iter().any(|e| {
-        e.duel.as_deref().is_some_and(|d| d.alive() && !d.puppet && Bot::floor(g, P::new(d.pos.x.round() as i32, d.pos.y.round() as i32)))
-    })
+    // (Or left through its way out: the Rotting Feast's pylorus, WARBAND.md W11.)
+    g.screen == Screen::Cleared
+        || !g.enemies.iter().any(|e| {
+            e.duel
+                .as_deref()
+                .is_some_and(|d| d.alive() && !d.puppet && Bot::floor(g, P::new(d.pos.x.round() as i32, d.pos.y.round() as i32)))
+        })
 }
 
 /// A part: entered at `stage`, played (and played again by Continue after a loss) until done.
@@ -760,13 +786,22 @@ pub fn whole_run(skill: Skill, seed: u32, order: usize) -> WholeRun {
  * stopped, as if it had (the adept's runs end at a prince). `ng` 0 is `whole_run` itself.
  */
 pub fn whole_run_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> WholeRun {
+    whole_runs_ng(skill, seed, order, ng).pop().expect("the first run at least")
+}
+
+/// As `whole_run_ng`, every run of it in turn: the first, then each New Game+ (`ng` + 1 runs).
+pub fn whole_runs_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> Vec<WholeRun> {
     if ng == 0 {
-        return whole_run(skill, seed, order);
+        return vec![whole_run(skill, seed, order)];
     }
     let sins = ORDERS[order.min(1)];
     let mut g = fresh_game(seed);
     let mut run = play_run(&mut g, skill, seed, &sins, true);
+    let mut runs = Vec::new();
     for _ in 0..ng.min(super::newgame::NG_MAX) {
+        run.order = order;
+        finish_report(&mut run, &g);
+        runs.push(run);
         let offer = g.ng_offer.take().unwrap_or_else(|| g.new_game_plus_offer());
         // (Back to the title, as the end or Quit to Title leaves him, and the run closed.)
         if g.story.is_some() {
@@ -783,7 +818,8 @@ pub fn whole_run_ng(skill: Skill, seed: u32, order: usize, ng: u8) -> WholeRun {
     }
     run.order = order;
     finish_report(&mut run, &g);
-    run
+    runs.push(run);
+    runs
 }
 
 /// The run through the realms of `sins` in that order, and on through the finale if `finale`.
@@ -1001,6 +1037,10 @@ pub fn court_at(sin: Sin, skill: Skill, seed: u32, kit: Loadout, keys: usize, li
         r.set(sin, crate::logic::war::general::Record { met: true, broken: 0, decree_done: v == "decree", slain: v == "slain" });
         g.warband.save.generals = r.encode();
     }
+    // (`VH_NG=N`: New Game+ N, its tiers and its weight on the prince.)
+    if let Some(n) = std::env::var("VH_NG").ok().and_then(|v| v.parse::<u8>().ok()) {
+        g.ng_plus = n.min(super::newgame::NG_MAX);
+    }
     g.map_jump(Stage::Court(sin));
     kit.equip(&mut g);
     // (`VH_EDGE=N`: his blade's edge, 0 to 100, as the run's realm left it.)
@@ -1155,5 +1195,33 @@ mod tests {
                 assert!(realm.dullest > crate::logic::gear::DULL_EDGE, "a realm leaves his blade short of dull: {realm:?}");
             }
         }
+    }
+
+    /// WARBAND.md W11: at the old man's the bots have him carve the blade in hand and the shield
+    /// carried in turn (the one with fewer first) while the runes hold, all for runes.
+    #[test]
+    fn the_bots_have_the_old_man_carve_the_blade_and_the_shield_in_turn() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-run"));
+        let mut g = fresh_game(1);
+        g.hero_kind = HeroKind::Ragnar;
+        (g.progress.silver, g.progress.runes) = (0, 30);
+        let mut part = Part::new(PartKind::Pit, &g);
+        shop(&mut g, Skill::Adept, 1, &mut part);
+        let h = *g.progress.hero(HeroKind::Ragnar);
+        assert_eq!((h.carved(Tree::Armory, h.wield), h.carved(Tree::Shield, h.carry)), (2, 2), "{:?}", part.bought);
+        assert_eq!(g.progress.runes, 6, "4 + 4 + 8 + 8 spent; the third blade carving's 12 is more than is left");
+        assert_eq!(g.hero.carved, [2, 2]);
+    }
+
+    /// WARBAND.md W11: the bots walk the Rotting Feast as a player walks it, down the gullet and
+    /// out through the pylorus, rather than waking every den and fighting the Last Course's gaki
+    /// to the realm's time.
+    #[test]
+    fn the_bots_walk_the_rotting_feast_and_leave_through_the_pylorus() {
+        std::env::set_var("VH_SAVE_DIR", std::env::temp_dir().join("vh-test-run"));
+        let r = run_of(Skill::Expert, 1, &[Sin::Gluttony], false);
+        let realm = &r.parts[0];
+        assert!(realm.done && realm.game_overs == 0, "{realm:?}");
+        assert!(realm.secs < 600.0, "well inside the realm's fifteen minutes: {realm:?}");
     }
 }

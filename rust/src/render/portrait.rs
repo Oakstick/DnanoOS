@@ -26,6 +26,8 @@ pub enum PortraitId {
     Hero(HeroKind),
     /// The old gatekeeper.
     OldMan,
+    /// One of the four boys of the story (`render::cast::kid`: 0 Toby, 1 to 3 the boys who carry the souls).
+    Kid(u8),
     /// A foe of this kind.
     Foe(EnemyKind),
     /// The prince of this sin.
@@ -43,6 +45,8 @@ pub enum Figure {
     Cyclops,
     /// The mimic chest, its mouth open.
     Mimic,
+    /// Toby, the friend the boys came for (the bestiary's page of him).
+    Toby,
 }
 
 /// How the model stands for its portrait, and how often it is made again.

@@ -29,6 +29,10 @@ pub struct Look {
     pub name: String,
     /// "& QUITMER" beside his name, when the line speaks of the dog.
     pub quitmer: bool,
+    /// Whose face the portrait shows (the old man's, a boy's, Toby's).
+    pub face: PortraitId,
+    /// The old man's own frame: amber, his gold plate, his guide's prompt.
+    pub his: bool,
 }
 
 /// The frame for `s`.
@@ -38,12 +42,46 @@ pub fn look(s: &Spoken) -> Look {
             accent: AMBER,
             words: mix_rgb(AMBER, 0xfff4e0, 0.35),
             portrait: true,
-            name: "THE OLD MAN".to_string(),
+            name: "HIZIR".to_string(),
             quitmer: s.text.to_lowercase().contains("quitmer"),
+            face: PortraitId::OldMan,
+            his: true,
         },
+        Speaker::Boy(hero) => {
+            let c = crate::logic::tale::soul_color(hero);
+            Look {
+                accent: c,
+                words: mix_rgb(c, 0xfff4e0, 0.45),
+                portrait: true,
+                name: crate::logic::tale::boy_tag(hero).to_string(),
+                quitmer: false,
+                face: PortraitId::Kid(crate::logic::tale::boy_of(hero) as u8),
+                his: false,
+            }
+        }
+        Speaker::Toby => {
+            let c = crate::logic::tale::TOBY_COLOR;
+            Look {
+                accent: c,
+                words: mix_rgb(c, 0xfff4e0, 0.45),
+                portrait: true,
+                name: "TOBY".to_string(),
+                quitmer: false,
+                face: PortraitId::Kid(0),
+                his: false,
+            }
+        }
         Speaker::Whisper(sin) => {
             let c = whisper_color(sin);
-            Look { accent: c, words: c, portrait: false, name: format!("{} WHISPERS", sin.prince().to_uppercase()), quitmer: false }
+            Look {
+                accent: c,
+                words: c,
+                portrait: false,
+                name: format!("{} WHISPERS", sin.prince().to_uppercase()),
+                quitmer: false,
+                face: PortraitId::OldMan,
+                his: false,
+            }
         }
     }
 }
@@ -104,13 +142,13 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
     let ps = style::label(t, 0.56, rgba(TEXT_DIM, fade)).right();
     let device = g.input.last_device();
     let skip = g.input.bindings.shown(Action::Confirm, device).is_some();
-    let prompt = match (look.portrait, skip) {
+    let prompt = match (look.his, skip) {
         (true, true) => "{Confirm} skip     {Guide} his guide",
         (true, false) => "{Guide} his guide",
         (false, true) => "{Confirm} skip",
         (false, false) => "",
     };
-    let name_st = style::name(t, 0.72, rgba(if look.portrait { PLATE } else { look.accent }, fade));
+    let name_st = style::name(t, 0.72, rgba(if look.his { PLATE } else { look.accent }, fade));
     let q_st = style::label(t, 0.56, rgba(TEXT_DIM, 0.9 * fade));
     let name_w = o.measure_styled(&look.name, &name_st) + if look.quitmer { t * 0.4 + o.measure_styled(QUITMER, &q_st) } else { 0.0 };
     let words_w = lines.iter().map(|l| o.measure_styled(l, &ws)).fold(0.0, f32::max);
@@ -122,7 +160,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
     let back = (prefs().backing / 0.85).clamp(0.3, 1.0);
     o.alpha = fade;
     if look.portrait {
-        style::panel_ruled(o, [x, y, pw, ph], t, back, AMBER);
+        style::panel_ruled(o, [x, y, pw, ph], t, back, if look.his { AMBER } else { look.accent });
     } else {
         // The whisper: darker glass, its rule in the sin's colour.
         style::shadow(o, [x, y, pw, ph], t, 1.0);
@@ -141,7 +179,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
         style::glow(o, fx + face * 0.5, fy + face * 0.95, face * 0.6, rgba(0x3a2410, 0.5 * fade));
         let talking = s.shown(g.time) < n;
         let pose = if talking { Pose::talking(time, age) } else { Pose::live(time, 1.0) };
-        o.portrait(PortraitId::OldMan, pose, fx, fy, face, face, false, [1.0, 1.0, 1.0, fade]);
+        o.portrait(look.face, pose, fx, fy, face, face, false, [1.0, 1.0, 1.0, fade]);
         // A soft vignette inside the frame, so the face sits in it.
         for (k, a) in [(0.0f32, 0.35f32), (1.0, 0.18)] {
             let inset = k * t * 0.12;
@@ -168,7 +206,7 @@ pub(super) fn draw(o: &mut Overlay, g: &Game) {
     // The name plate.
     let tx = x + text_x0;
     let ny = y + t * 0.82;
-    let plate = if look.portrait { PLATE } else { look.accent };
+    let plate = if look.his { PLATE } else { look.accent };
     let nw = o.text_styled(&look.name, tx, ny, &name_st.color(rgba(plate, fade)));
     if look.quitmer {
         o.text_styled(QUITMER, tx + nw + t * 0.4, ny, &q_st);
@@ -228,12 +266,12 @@ mod tests {
     #[test]
     fn the_old_man_never_looks_like_a_whisper_nor_a_whisper_like_him() {
         let him = look(&spoken(Speaker::OldMan, "Up, Ragnar. Quitmer has your scent."));
-        assert!(him.portrait && him.accent == AMBER && him.name == "THE OLD MAN" && him.quitmer);
+        assert!(him.portrait && him.accent == AMBER && him.name == "HIZIR" && him.quitmer);
         assert!(!look(&spoken(Speaker::OldMan, "Strike its back.")).quitmer, "the dog only when the line has him");
         for sin in SINS {
             let w = look(&spoken(Speaker::Whisper(sin), "The way is through the fire."));
             assert!(!w.portrait, "{sin:?}: a whisper shows no face");
-            assert!(!w.name.contains("OLD MAN") && w.name.contains(&sin.prince().to_uppercase()), "{sin:?}: {}", w.name);
+            assert!(!w.name.contains("HIZIR") && w.name.contains(&sin.prince().to_uppercase()), "{sin:?}: {}", w.name);
             for c in [w.accent, w.words] {
                 // (As `counsel::whisper_color` keeps it from his amber; his plate's gold and the HUD's too.)
                 assert!(far(c, AMBER) > 90.0 && far(c, PLATE) > 80.0 && far(c, GOLD) > 80.0, "{sin:?}: {c:06x} near the old man's colours");

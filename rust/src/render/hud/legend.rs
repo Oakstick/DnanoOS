@@ -265,7 +265,7 @@ pub fn draw_loading_card(o: &mut Overlay, g: &Game, l: &Loading, t: f32, show: f
     // (In his amber, as his dialogue is.)
     style::panel_ruled(o, [tx, ty, tw, tip_h], t, show, AMBER);
     let name = Style::display(t * 0.55, rgba(AMBER, show)).tracking(0.08);
-    o.text_styled("THE OLD MAN SAYS", tx + t * 0.6, ty + t * 0.65, &name);
+    o.text_styled("HIZIR SAYS", tx + t * 0.6, ty + t * 0.65, &name);
     let tip = glyphs::words(&g.input, data::tip(g.transitions.len()));
     let words = Style::body(t * 0.62 * prose, rgba(TEXT, show));
     o.wrap_styled(&tip, tx + t * 0.6, ty + t * 1.55, tw - t * 1.2, t * 0.8 * prose, &words);

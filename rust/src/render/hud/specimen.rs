@@ -21,7 +21,7 @@ pub fn draw(o: &mut Overlay, t: f32) {
             o.text_styled(&label, x, y, &Style::body(t * 0.36, rgba(TEXT_DIM, 1.0)));
             let mut cx = x + t * 2.2;
             cx += o.text_styled("The Garden of Krampus 0123", cx, y, &s) + t * 0.6;
-            cx += o.text_styled("THE OLD MAN'S WORD", cx, y, &s.bold()) + t * 0.6;
+            cx += o.text_styled("HIZIR'S WORD", cx, y, &s.bold()) + t * 0.6;
             let shadow = Shadow { dx: 1.6, dy: 1.6, blur: 0.5, color: [0.0, 0.0, 0.0, 0.7] };
             cx += o.text_styled("Tülükuş Goryō", cx, y, &Style { shadow: Some(shadow), ..s.color(rgba(GOLD, 1.0)) }) + t * 0.6;
             o.text_styled("ARÇURA", cx, y, &s.outline((size * 0.08).max(1.0), rgba(0x000000, 1.0)).color(rgba(SAND, 1.0)));

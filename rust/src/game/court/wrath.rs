@@ -110,7 +110,8 @@ impl Game {
             [-1.0, 1.0, 0.0].iter().map(|s| math::add(at, math::scale(across, 2.2 * s + 0.01))).take(RAVENS as usize).collect()
         };
         let tier = self.realm_tier();
-        let (weight_hp, weight_damage) = if self.in_court() { adds_weight(crate::logic::sins::Sin::Wrath, tier) } else { (1.0, 1.0) };
+        let (weight_hp, weight_damage) =
+            if self.in_court() { self.ng_foe(adds_weight(crate::logic::sins::Sin::Wrath, tier)) } else { (1.0, 1.0) };
         for p in spots {
             let facing = math::norm(math::sub(hp, p));
             let lore = Lore { master: Some(id), rise: RAVEN_DESCENT, ..Lore::default() };

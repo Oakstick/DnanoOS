@@ -57,7 +57,7 @@ pub fn map_stops() -> Vec<MapStop> {
     // The bottom of the Pit: Krampus in his lair, the friend in the cage (FINALE.md §3).
     stops.push(stop(Stage::Lair, "THE BOTTOM OF THE PIT - KRAMPUS".to_string()));
     stops.push(stop(Stage::Gym, "THE GYM - ONE OF EVERY FOE".to_string()));
-    // The Pit under the House of the Devil, level by level.
+    // The Pit under the House of Seven Seals, level by level.
     for n in 1..=crate::logic::pit::LEVELS {
         stops.push(stop(Stage::Pit(n), format!("THE PIT - LEVEL {n}")));
     }
@@ -65,7 +65,7 @@ pub fn map_stops() -> Vec<MapStop> {
     stops.push(stop(Stage::Dungeon(1), format!("OFF THE ROAD - {}", level_for(1).name.to_uppercase())));
     stops.push(stop(Stage::Dungeon(2), format!("OFF THE ROAD - {}", level_for(2).name.to_uppercase())));
     // The old man's workshop, as after the first Cyclops.
-    stops.push(stop(Stage::Shop(0), "THE OLD MAN'S WORKSHOP".to_string()));
+    stops.push(stop(Stage::Shop(0), "HIZIR'S WORKSHOP".to_string()));
     // Each realm's general at his command post.
     for sin in SINS {
         // (The Steward of the Last Course is the Steward on the Map's button.)
@@ -86,6 +86,17 @@ pub fn map_stops() -> Vec<MapStop> {
             stage: Stage::Dungeon(0),
             label: label.to_string(),
             scene: Some((Scene::One, beat)),
+            post: false,
+            page: None,
+            full_map: false,
+        });
+    }
+    // The scenes at Hızır's, one after each prince (B07).
+    for sin in SINS {
+        stops.push(MapStop {
+            stage: Stage::SinShop(sin),
+            label: format!("AT HIZIR'S - AFTER {}", sin.prince().to_uppercase()),
+            scene: Some((Scene::After(sin), 0)),
             post: false,
             page: None,
             full_map: false,
@@ -255,6 +266,11 @@ impl Game {
         match scene {
             Scene::One => self.begin_story(),
             Scene::Two => self.play_ending(),
+            Scene::After(sin) => {
+                // At the old man's after the prince, as Continue would find it.
+                self.load_court(sin);
+                self.play_after(sin);
+            }
         }
         if beat > 0 {
             self.story_jump(beat, 0.0);

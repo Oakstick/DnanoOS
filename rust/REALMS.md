@@ -334,6 +334,11 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
     - **Refuse the food.** Parry the thrown food, and it deflects into the gaki instead of into you.
     - **Time the teeth.** Leap the pylorus during its 2-second opening; your airborne frames carry you past the teeth.
 
+**Tuned in W11** (WARBAND.md's log): its packs strike at half met as the first realm, falling to
+0.35 met as the seventh (`realms::temper`, the vaults' with it from 1.0); the gaki's bites do not
+grow with the depth, their health does; its foes, as every realm's, keep their wounds across the
+hero's falls. The bots walk it to the pylorus as a player does.
+
 ---
 
 ## 6 · LUST: The Garden of Thorns
@@ -378,7 +383,7 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
 - **The Trap: Charm**
   - **Lever:** the Charm meter.
     - It fills while you face the Bride (within 45°, +20/s) or stand in perfume mist (+10/s). Otherwise it drains (−15/s).
-    - At 100 you are **Enthralled** for 3 s: your controls are mirrored, and you're pulled toward her at 3 tiles/s.
+    - At 100 you are **Enthralled** for 3 s: you're pulled toward her at 3 tiles/s (a drift you can walk against, slower), a warm rose haze closes in round you and narrows your sight, and the rose paths, her false ways, glow invitingly. Your controls stay your own: nothing in the game turns them (PRINCES.md §0; until B18 they were mirrored). Then the spell breaks and Charm falls back to 45.
   - **The rose paths** are smooth, perfumed and free of enemies, and they heal 2 health a second. But each one points at her, so walking one *is* facing her: the geometry itself charms you.
   - **The thorn paths** run straight, cost 2 health a second, slow you by 20%, and are held by the brides. Walking them means turning your back on her.
   - **Tobit's cure:**
@@ -407,4 +412,4 @@ These are concepts for the six realms still to build, phases 4 to 9 of `ROADMAP.
 | Wrath | `Rider::Raise` for the rising dead; Michael's turned foes; Pit tiles as lava; poise breaks | slabs as moving ground in height bands; crack counters per slab; the truce ring |
 | Sloth | the albastı's pin, the tülükuş's doom, Hel's raise; the vault's restart for the Long Sleep | land that rotates round a pivot; the Torpor meter; a world-ageing step |
 | Gluttony | gates that shut behind the hero; a venom-style tick for the acid | floor drift; Bloat as a modifier on speed, hitbox and landing; arches gated by width |
-| Lust | the karakoncolos's Call (pull); Raphael's beam | a Charm meter driven by facing; mirrored input; facades whose backs the camera never shows; censers |
+| Lust | the karakoncolos's Call (pull); Raphael's beam | a Charm meter driven by facing; the Enthralled pull and haze; facades whose backs the camera never shows; censers |

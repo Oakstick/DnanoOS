@@ -10,7 +10,7 @@
 //! old man lends the boys the souls of three great warriors (Ragnar the
 //! viking, Mehmed the janissary and Miyamoto the samurai), swears to ask the
 //! archangels to send them help, and promises to come whenever they call. From there the road
-//! only goes down, depth by depth, past the House of the Devil (which no one has ever seen the
+//! only goes down, depth by depth, past the House of Seven Seals (which no one has ever seen the
 //! inside of) to the bottom of the world, where Krampus takes the children he steals.
 //!
 //! At the bottom the friend is freed, and Scene II plays (FINALE.md §4): the two hold each other,
@@ -29,6 +29,9 @@ pub enum Speaker {
     OldMan,
     /// Quitmer, the gatekeeper's dog.
     Dog,
+    /// One of the three boys by his part in a scene at Hızır's (`after`): 0 the boy whose warrior
+    /// is played, 1 and 2 the other two.
+    Boy(u8),
 }
 
 impl Speaker {
@@ -37,8 +40,17 @@ impl Speaker {
         match self {
             Speaker::Narrator => "",
             Speaker::Boys => "THE BOYS",
-            Speaker::OldMan => "THE OLD MAN",
+            Speaker::OldMan => "HIZIR",
             Speaker::Dog => "THE DOG",
+            Speaker::Boy(_) => "THE BOY",
+        }
+    }
+
+    /// The name on the box with `hero` played: a boy goes by the warrior he carries.
+    pub fn tag(self, hero: crate::logic::heroes::HeroKind) -> &'static str {
+        match self {
+            Speaker::Boy(role) => crate::logic::tale::boy_tag(crate::logic::tale::warrior_of(crate::logic::after::kid_of_role(hero, role))),
+            s => s.name(),
         }
     }
 }
@@ -52,6 +64,8 @@ pub enum Place {
     Gateway,
     /// The shaft of the Pit, from its bottom up through its seven levels into the light.
     Pit,
+    /// Hızır's workshop, after a prince falls (`after`).
+    Workshop,
 }
 
 /// What the picture does during a beat: the view stages each one.
@@ -96,6 +110,15 @@ pub enum Shot {
     Words,
     /// The credits, rolling.
     Credits,
+    // ---- the scenes at Hızır's (`after`)
+    /// The room, the fire, the boys round the anvil with Toby's thing on it.
+    Gather,
+    /// A line spoken: the camera on the speaker.
+    Talk,
+    /// The finder speaks of Toby's thing: the camera on it.
+    Show,
+    /// The camera draws back as they turn to go.
+    Leave,
 }
 
 impl Shot {
@@ -103,14 +126,17 @@ impl Shot {
         match self {
             Shot::Title | Shot::Establish | Shot::Taken | Shot::Scream | Shot::Pursuit => Place::Graveyard,
             Shot::Embrace | Shot::Light | Shot::Rise | Shot::White | Shot::Words | Shot::Credits => Place::Pit,
+            Shot::Gather | Shot::Talk | Shot::Show | Shot::Leave => Place::Workshop,
             _ => Place::Gateway,
         }
     }
 
-    /// The scene the shot belongs to.
+    /// The scene the shot belongs to (the scenes at Hızır's are all of one shape: the first of them
+    /// stands for them all, `first_in` asks of a scene itself).
     pub fn scene(self) -> Scene {
         match self.place() {
             Place::Pit => Scene::Two,
+            Place::Workshop => Scene::After(crate::logic::sins::Sin::Pride),
             _ => Scene::One,
         }
     }
@@ -124,6 +150,8 @@ pub enum Scene {
     One,
     /// "The Way Up": the bottom of the Pit and the rise into the light, at the end.
     Two,
+    /// At Hızır's, after this sin's prince falls (`after`).
+    After(crate::logic::sins::Sin),
 }
 
 impl Scene {
@@ -131,6 +159,7 @@ impl Scene {
         match self {
             Scene::One => SCENE_ONE,
             Scene::Two => SCENE_TWO,
+            Scene::After(sin) => crate::logic::after::beats(sin),
         }
     }
 
@@ -139,6 +168,7 @@ impl Scene {
         match self {
             Scene::One => SCENE_TITLE,
             Scene::Two => SCENE_TWO_TITLE,
+            Scene::After(sin) => crate::logic::after::title(sin),
         }
     }
 
@@ -188,11 +218,11 @@ pub struct Beat {
 }
 
 impl Beat {
-    const fn action(shot: Shot, hold: f64, card: Option<Card>) -> Self {
+    pub(crate) const fn action(shot: Shot, hold: f64, card: Option<Card>) -> Self {
         Self { shot, speaker: Speaker::Narrator, cue: "", line: "", hold, card }
     }
 
-    const fn say(shot: Shot, speaker: Speaker, cue: &'static str, line: &'static str) -> Self {
+    pub(crate) const fn say(shot: Shot, speaker: Speaker, cue: &'static str, line: &'static str) -> Self {
         Self { shot, speaker, cue, line, hold: 0.0, card: None }
     }
 
@@ -213,10 +243,21 @@ pub const SOULS_LINE: &str =
     "Then you will not go alone. Rise, old souls... Ragnar (the Viking)... Mehmed (the Janissary)... Miyamoto (the Samurai). Will you carry them?";
 /// His promise, made out of guilt: the archangels' help (their shrines in every dungeon), and his own.
 pub const PROMISE_LINE: &str =
-    "So it begins... This is my failure, and I feel the guilt of it. I will ask the archangels to send you help. And call me whenever you need - I will come.";
-/// The last words: the road down past the House of the Devil, and why it goes so deep.
+    "So it begins... This is my failure, and I feel the guilt of it. I will ask the archangels to send you help. And I am Hızır: call me whenever you need - I will come.";
+/// The last words: the road down past the House of Seven Seals, and why it goes so deep.
 pub const ROUTE_LINE: &str =
-    "The boys took up the warrior souls and went down into the dark, depth by depth, after their stolen friend. The trail led past the House of the Devil, which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the world.";
+    "The boys took up the warrior souls and went down into the dark, depth by depth, after their stolen friend. The trail led past the House of Seven Seals, which no one has ever seen inside... for Krampus takes the children he steals to the bottom of the world.";
+
+/// Why every land's monsters share one underworld (B23): every fear and every wrong of the world sinks
+/// down to it and takes a shape. No lord made them, and none rules them; the poem pays it off ("Every
+/// monster in these depths was made of us"). The old man says it at his door, the guide's page of the
+/// Portals of Hell says it, and so does the bestiary's heading.
+pub const COSMOLOGY: &str = "Every fear and every wrong in the world, from every land and every tongue, sinks down here and grows teeth.";
+/// The old man at his door: what lies beyond it, and why it is full of every land's monsters.
+pub const WORLD_LINE: &str = concat!(
+    "Beyond this door lies the world of the dead. ",
+    "Every fear and every wrong in the world, from every land and every tongue, sinks down here and grows teeth."
+);
 
 /// Scene I, "The Threshold", beat by beat.
 pub const SCENE_ONE: &[Beat] = &[
@@ -249,12 +290,7 @@ pub const SCENE_ONE: &[Beat] = &[
         "Horns and bells... Krampus. So he slipped past me. I closed my eyes for one moment... one moment.",
     ),
     Beat::say(Shot::Boys, Speaker::Boys, "", "Then help us! We have to get him back!"),
-    Beat::say(
-        Shot::OldMan,
-        Speaker::OldMan,
-        "",
-        "Beyond this door lies the world of the dead. The living do not walk there... not for long.",
-    ),
+    Beat::say(Shot::OldMan, Speaker::OldMan, "", WORLD_LINE),
     Beat::say(Shot::Boys, Speaker::Boys, "angrily", "You were supposed to guard it! How could you let him out?"),
     Beat::say(
         Shot::OldMan,
@@ -278,7 +314,12 @@ pub const SCENE_ONE: &[Beat] = &[
 
 /// The first beat of a shot in its own scene, if the scene has one.
 pub fn first(shot: Shot) -> Option<usize> {
-    shot.scene().beats().iter().position(|b| b.shot == shot)
+    first_in(shot.scene(), shot)
+}
+
+/// The first beat of `shot` in `scene`, if it has one.
+pub fn first_in(scene: Scene, shot: Shot) -> Option<usize> {
+    scene.beats().iter().position(|b| b.shot == shot)
 }
 
 /// Seconds the typewriter holds after letter `i` of `line`: a moment on a comma or colon,
@@ -427,7 +468,7 @@ pub fn credits() -> Vec<Credit> {
     out.extend([
         Credit::Gap,
         Credit::Heading("THE GATEKEEPER"),
-        Credit::Name("The Old Man".into(), "who kept the door, and kept his word".into()),
+        Credit::Name("Hızır".into(), "who kept the door, and kept his word".into()),
         Credit::Name("Quitmer".into(), "his dog".into()),
         Credit::Gap,
         Credit::Line("and the friend who was taken".into()),
@@ -454,7 +495,7 @@ pub fn credits() -> Vec<Credit> {
 /**
  * The road the adventure takes. Past the gatekeeper's door each dungeon lies
  * a depth further down the underworld than the last, a Cyclops keeps the way
- * down out of each, and the trail runs on past the House of the Devil, which
+ * down out of each, and the trail runs on past the House of Seven Seals, which
  * no one has seen the inside of, to the bottom of the world: that is where
  * Krampus takes the children he steals.
  */
@@ -472,7 +513,7 @@ pub struct Route {
 pub const ROUTE: Route = Route {
     goal: "Bring back the friend Krampus stole",
     quarry: "Krampus",
-    destination: "The bottom of the world, down past the House of the Devil",
+    destination: "The bottom of the world, down past the House of Seven Seals",
     reveal: "Krampus takes the children he steals to the bottom of the world",
 };
 
@@ -520,7 +561,7 @@ pub fn depth_line(dungeon: usize, boss: bool) -> String {
 
 /// What the boys are doing, for the pause screen.
 pub fn objective() -> &'static str {
-    "Follow Krampus down through the underworld, past the House of the Devil to the bottom of the world, and bring your friend home."
+    "Follow Krampus down through the underworld, past the House of Seven Seals to the bottom of the world, and bring Toby home."
 }
 
 #[cfg(test)]
@@ -549,7 +590,7 @@ mod tests {
         assert!(promise.line.contains("I will ask the archangels to send you help"));
         let last = SCENE_ONE.last().unwrap();
         assert_eq!(last.shot, Shot::Descent);
-        assert!(last.line.contains("House of the Devil") && last.line.contains("bottom of the world"));
+        assert!(last.line.contains("House of Seven Seals") && last.line.contains("bottom of the world"));
         assert!(ROUTE.reveal.contains("bottom of the world"));
     }
 
@@ -562,7 +603,7 @@ mod tests {
         assert!(places[turn..].iter().all(|&p| p == Place::Gateway));
         for b in SCENE_ONE {
             // The bitmap font is plain ASCII.
-            assert!(b.line.is_ascii() && b.cue.is_ascii(), "{:?}", b.line);
+            assert!(crate::render::text::drawable(b.line) && b.cue.is_ascii(), "{:?}", b.line);
             assert!(b.waits() == !b.line.is_empty(), "lines wait for the player, action does not: {b:?}");
         }
     }
@@ -621,12 +662,11 @@ mod tests {
             })
             .collect();
         let has = |s: &str| text.iter().any(|t| t.contains(s));
-        for name in ["Ragnar", "Mehmed", "Miyamoto", "The Old Man", "Quitmer", "the friend who was taken", "THE PIT", "Mammon", "Asmodeus"]
-        {
+        for name in ["Ragnar", "Mehmed", "Miyamoto", "Hızır", "Quitmer", "the friend who was taken", "THE PIT", "Mammon", "Asmodeus"] {
             assert!(has(name), "{name} missing from the credits");
         }
         assert_eq!(text.last().map(String::as_str), Some("Made with Claude"));
-        assert!(text.iter().all(|t| t.is_ascii()));
+        assert!(text.iter().all(|t| crate::render::text::drawable(t)));
     }
 
     /// FINALE.md §5: there is no Devil, and no lord of devils. Krampus is simply Krampus.
@@ -667,6 +707,26 @@ mod tests {
         for line in shown {
             let low = line.to_lowercase();
             assert!(banned.iter().all(|b| !low.contains(b.as_str())), "{line}");
+        }
+    }
+
+    /// B23: one cosmology, said in three places (the old man at his door, the guide's page of the
+    /// Portals of Hell, the bestiary's heading), paid off by the poem, and never naming a devil.
+    #[test]
+    fn one_line_says_why_every_lands_monsters_share_the_underworld_and_the_poem_pays_it_off() {
+        let said = |line: &str| line.contains(COSMOLOGY);
+        assert!(SCENE_ONE.iter().any(|b| b.speaker == Speaker::OldMan && said(b.line)), "the old man says it at his door");
+        let hub = crate::logic::guide::guide(crate::logic::guide::GuidePlace::Hub, crate::logic::heroes::HeroKind::Mehmed);
+        assert!(hub.tale.iter().any(|l| said(l)), "the guide's page of the Portals of Hell");
+        assert!(include_str!("../render/hud/bestiary.rs").contains("story::COSMOLOGY"), "the bestiary's heading");
+        assert!(WORDS.iter().any(|w| w.contains("monster in these depths was made of us")), "the poem pays it off");
+        assert!(!COSMOLOGY.to_lowercase().contains("devil") && COSMOLOGY.is_ascii());
+        // The House is the House of Seven Seals wherever it is named.
+        assert!(ROUTE_LINE.contains("House of Seven Seals") && ROUTE.destination.contains("House of Seven Seals"));
+        for src in
+            [include_str!("guide.rs"), include_str!("../game/tour.rs"), include_str!("../game/hub.rs"), include_str!("../game/pit.rs")]
+        {
+            assert!(!src.contains(&["House of the ", "Devil"].concat()) && !src.contains(&["HOUSE OF THE ", "DEVIL"].concat()));
         }
     }
 

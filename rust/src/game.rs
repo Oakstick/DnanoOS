@@ -15,7 +15,7 @@
 //!   `save`: the archangels, the Portals of Hell, the realms, the Vaults of Mammon, the old man's
 //!   wares, the map, Scene I, the first-run tour, the character screen, the controller page, saves;
 //!   `settings_page`: the settings (UI.md §8) and the rebinding of the controls
-//! - `pit`: the Pit under the House of the Devil, ridden down level by level (FINALE.md)
+//! - `pit`: the Pit under the House of Seven Seals, ridden down level by level (FINALE.md)
 //! - `debug`: testing cheats and the capture tool's hooks
 //! - `ending`: the end, Scene II, the words and the credits (FINALE.md §4)
 
@@ -72,6 +72,7 @@ pub mod sparring;
 mod story;
 #[cfg(test)]
 mod tests;
+mod toby;
 mod tour;
 mod vault;
 mod viewpick;
@@ -231,7 +232,7 @@ impl MenuItem {
             MenuItem::Ledger => "THE LEDGER",
             MenuItem::Bestiary => "THE BESTIARY",
             MenuItem::Resume => "RESUME",
-            MenuItem::CallOldMan => "CALL THE OLD MAN",
+            MenuItem::CallOldMan => "CALL HIZIR",
             MenuItem::QuitToTitle => "QUIT TO TITLE",
             MenuItem::Quit => "QUIT GAME",
             MenuItem::KeepAll => "KEEP THE GOLD",
@@ -399,6 +400,8 @@ pub struct Game {
     pub shop: ShopState,
     /// What the old man's workshop shows of the war below (trophies, news, the generals known).
     pub workshop: WorkshopData,
+    /// Toby's thing lying in this realm, still to be found, and where (B08, `toby`).
+    pub token: Option<(crate::logic::tale::Token, P)>,
     /// Seconds the boss has left bleeding, and until its next bite.
     boss_bleed: f64,
     bleed_tick: f64,
@@ -617,6 +620,7 @@ impl Game {
             belt_index: 0,
             shop: ShopState::default(),
             workshop: WorkshopData::default(),
+            token: None,
             boss_bleed: 0.0,
             bleed_tick: 0.0,
             decoy: None,
@@ -754,7 +758,7 @@ impl Game {
 
         let wanted = self.resolve_wanted_dir();
         self.hero.wish = self.free_wish();
-        // A realm may take the controls (a charm mirrors them, a berserk rage aims them).
+        // A realm may take the controls (a berserk rage aims them; nothing turns them).
         let wanted = self.steer_run(wanted);
         // LB or Shift held: the shield is raised (if he has one, and is on his feet). Where fights go by
         // frame data (the Sparring Ring, the vaults) the guard is his fighter's, and so are his attack
@@ -784,6 +788,8 @@ impl Game {
         self.visit_shrines();
         self.visit_potions();
         self.visit_relic_shrine();
+        // (Toby's thing: a flag, nothing more.)
+        self.update_token();
         self.update_decoy(dt);
         self.update_spirits(dt);
         self.update_fires(dt);

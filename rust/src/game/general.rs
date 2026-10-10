@@ -287,14 +287,14 @@ impl Game {
         let hp = self.hero.pos();
         let facing = math::norm(V::new(hp.x - at.x as f64 + 0.01, hp.y - at.y as f64));
         let mut d = Duelist::bred(id, Breed::of(kind), at.v(), facing);
-        let (wh, wd) = if self.in_vault() {
+        let (wh, wd) = self.ng_foe(if self.in_vault() {
             (super::brawl::VAULT_HP, 1.0)
         } else {
             crate::logic::realms::weight(if kind.realm_own() { 0 } else { stage }, tier)
-        };
+        });
         d.max_hp *= wh * health;
         d.hp = d.max_hp;
-        d.breed.damage *= wd;
+        d.breed.damage *= wd * self.realm_blows();
         // (A puppet on its way is asleep to the fight, not hunting him, until he comes near it.)
         d.den = if puppet { den.or(Some(Self::den_at(at, 0.6))) } else { den };
         d.puppet = puppet;
@@ -672,7 +672,8 @@ impl Game {
             Cue::Announce { order, lead } => {
                 let kind = gen.orders[order];
                 let hp = self.hero.pos();
-                let mut sub = format!("{} - {}", title_case(gen.instruments[order]).to_uppercase(), cue_line(&gen, kind));
+                let step = self.input.prompt(crate::input::Action::Step).unwrap_or_default().to_uppercase();
+                let mut sub = format!("{} - {}", title_case(gen.instruments[order]).to_uppercase(), cue_line(&gen, kind, &step));
                 match kind {
                     OrderKind::Muster => {
                         // The gate nearest him (not on top of him) glows.
@@ -1399,7 +1400,7 @@ impl Game {
         }
     }
 
-    /// F at the bellows (whole, not yet turned): it burns his foes from now on.
+    /// The Step's button (Left Shift / LT) at the bellows (whole, not yet turned): it burns his foes from now on.
     fn turn_bellows(&mut self) {
         if !self.input.was_pressed(&[Action::Step]) {
             return;
@@ -1751,12 +1752,12 @@ pub fn title_case(s: &str) -> String {
         .collect()
 }
 
-/// The card's second line for an order: what to do about it.
-fn cue_line(gen: &General, kind: OrderKind) -> String {
+/// The card's second line for an order: what to do about it (`step` names the button that turns the bellows).
+fn cue_line(gen: &General, kind: OrderKind, step: &str) -> String {
     match kind {
         OrderKind::Watch => "BREAK THE FIRE, OR STRIKE THE WATCH BEFORE IT WHISTLES".into(),
         OrderKind::Muster => "BREAK IT, OR BAR THE GATE".into(),
-        OrderKind::Kindle => format!("{} - STEP OFF THE MARKS, OR TURN THE BELLOWS (F)", gen.hazard),
+        OrderKind::Kindle => format!("{} - STEP OFF THE MARKS, OR TURN THE BELLOWS ({step})", gen.hazard),
         OrderKind::Decree => "KILL THE CARRIERS OR CUT THE CHAIN".into(),
     }
 }
