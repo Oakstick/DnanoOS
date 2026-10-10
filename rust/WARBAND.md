@@ -2020,3 +2020,112 @@ the field at all the expert's reverse run still read worse there, so part of it 
 changed: the powers end fights sooner, and the bots earn fewer of the deeds mastery counts (none
 counts an archangel's call; that run came to the field a rank lower). The Krampus test's floor went
 from 120 s to 100 s.
+
+### W12 The realms redesigned: generals, keys, seal-stones and more foes (2026-10-10, branch `realms`)
+
+BACKLOG B40, B41, B42, B44 (decisions D11, D12, D14). What moved the simulation, on purpose:
+
+| Change | Why |
+|---|---|
+| **Three generals a realm, each carrying a key** (§9.3); a realm is done through the court's door, which opens on the third key (`whole_run::cleared`; before, when every foe the bot could reach was down) | B41: every realm is fight, generals, keys, the prince's door |
+| The realms' climaxes no longer open the court: they bring out the third general | D12 |
+| **The princes' adds always come** (D14); before, a slain general took them, and the bots slew the realm's one general in most runs | the user's decision: the adds are part of the spectacle |
+| The bots: a keys errand (a key lying about, the door, the nearest general), crossings over Pride's mirror-doors and the Grotto's pools and vents, foes across the other surface not targets, the climax's road once the other two fall | B41: the bots find and beat the generals |
+| The harness: its carry goes to the generals (never into the Feast's digested zones), and a realm's climax is stood in for after 120 s where the bot cannot play it (counted, `*` in the tables) | as the carry before it: a measure, not the game |
+| **Packs half as large again** as laid out (`realms::thickened`, `THICKEN` 0.5: 2 foes become 3, 4 become 6, a single foe stays single; the extras of the pack's own body and blade kinds), in the vaults and the six realms (not the Garden), and **pickets** of two on the roads to the generals every 14 tiles (not the Feast) | B42: the user's +50%. (Extras copying the pack's casters crossed a second caster's late bolt into the first's: the crossfire test met one; body and blade extras keep the overlaps where they were.) |
+
+Foes laid out (realm counts at their start, the adept's runs): the vaults 61 → 102, the Hall
+24 → 33, the Grotto 29 → 42, the Field 35 → 48, the Mire 39 → 57, the Feast 60 → 91, the Thorns
+18 → 24 (+54% in all, pickets with them). **Foes met a minute**: kills a minute of realm play, both
+orders, the adept 5.5 → 5.9 (+7%), the expert 7.9 → 8.0. With B41 the bots walk to the generals and
+wake what lies on the way rather than every den, so a realm's count grew more than its count a
+minute did: the bots fight near their own pace either way. The threat manager is untouched
+(tokens, no two blows inside 300 ms): overlaps 1 → 2 in 190 parts of the whole runs (the Pit's).
+
+**The whole run** (`--run`, seeds 1-4 for the adept, 1-2 for the expert; before is rust-port at
+66fa1e6, with the archangels of B58 and the first hour):
+
+| Bot, order | Before | B41 + B44 | B42 (now) |
+|---|---|---|---|
+| Adept, vaults first | 3/4 endings (76-103 min), one ends at the Feast | 4/4 (102-114) | 3/4 (85-119), one ends at the Feast |
+| Adept, Thorns first | 4/4 (116-118) | 3/4 (111-122), one ends at the Feast (second realm) | 3/4 (106-112), one ends at the Feast (second realm) |
+| Expert, vaults first | 2/2 (77-83) | 2/2 (93-99) | 2/2 (91-101) |
+| Expert, Thorns first | 2/2 (81-87) | 2/2 (84-90) | 2/2 (86-89) |
+| Novice | the vaults (4 min); Asmodeus (10 min) | as before | as before |
+
+The adept keeps reaching the ending in 3 runs of 4 in each order; the expert finishes every run,
+up to 20 minutes longer (the generals, the climaxes played or waited for, the thicker packs). No
+retune was needed after B42. The adept's wall is the Rotting Feast, as before: met sixth (kit
+4/4/4) it is through the pylorus in 1 run of 4 (3 of 4 before), 22 minutes and 5 lives a run; met
+second, 3 of 4 (4 of 4 before).
+
+**The courts** in the run: as long as before (the adept 2.2-5.1 minutes, the expert 1.1-2.0), the
+adds now felled in each (3 kills a court where 1-2 before). `--court`, `--pit 2 8 1`, `--lair` and
+`--balance 2` are unchanged to the digit (no general's record in them; B42 does not touch them).
+
+**The generals' fights** (from the run's tables: generals slain of three and keys taken, each run;
+the duel's seconds, waking to fall, print in the `duels` column since this branch): the expert takes
+all three keys in the vaults, the Hall, the Grotto and the Feast in every run, 2 of 3 in the Garden of
+Thorns (the wedding night kills it), 0-3 on the Field and none in the Mire; the adept all three in
+the vaults, the Hall and the Feast in every run, in the Grotto in the runs that meet it early (none at
+tier 5), none in the Thorns, on the Field or in the Mire.
+
+**The frame budget** (`--perf warband`, the vaults with the expert fighting, A/B twice): wall p99
+5.06 / 5.21 ms before, 4.93 / 5.06 after; CPU p50 +0.1 ms (1.68-1.78 → 1.80-1.92 ms).
+
+**What the bots still cannot do without the harness** (B41 asked for none; this is what is left):
+
+* **The vaults and the Rotting Feast**: all three generals and the door with no carry.
+* **The Hall of Mirrors**: the first two with no carry (through the mirror-doors); the Peerless,
+  the road to the Mirror-Cin, is stood in for.
+* **The Serpent Grotto**: the first two with no carry (pools and vents); Kiyohime's bell kills the
+  bots (3 lives an expert), so it is stood in for.
+* **The Garden of Thorns**: the expert takes the first two with no carry, then dies in the wedding
+  night (the stand-in waits two minutes in a try, and its tries end first); the adept dies to the
+  elf-maids before any general, as it died there before B41.
+* **The Burning Field**: shoves into the lava kill the bots (4-10 lives a realm), carried or not.
+* **The Grey Mire**: Torpor puts the bots to sleep and the Long Sleep raises the realm older, its
+  generals whole again; the bots never take a key there.
+
+
+**Per realm** (means of the runs that reached it: done %, minutes, lives lost, kills / foes at its start; done before = every foe it could reach down, after = through the court's door with the three keys):
+
+| adept, vaults first | before | after |
+|---|---|---|
+| greed | 100%, 7.2 min, 0.0, 68/61 | 100%, 5.1 min, 0.2, 53/102 |
+| pride | 100%, 3.5 min, 0.0, 24/24 | 100%, 4.5 min, 0.0, 14/33 |
+| envy | 75%, 8.6 min, 0.8, 31/29 | 100%, 9.5 min, 4.5, 42/42 |
+| wrath | 0%, 14.1 min, 3.5, 120/35 | 0%, 11.6 min, 4.2, 138/48 |
+| sloth | 0%, 10.0 min, 0.5, 21/39 | 0%, 10.0 min, 0.2, 19/57 |
+| gluttony | 75%, 10.6 min, 2.8, 72/60 | 25%, 22.3 min, 5.0, 157/91 |
+| lust | 0%, 3.7 min, 6.3, 16/18 | 0%, 2.9 min, 5.0, 16/24 |
+
+| adept, Thorns first | before | after |
+|---|---|---|
+| lust | 0%, 2.9 min, 9.0, 10/15 | 0%, 2.5 min, 9.0, 8/20 |
+| gluttony | 100%, 3.0 min, 1.0, 30/41 | 75%, 9.7 min, 4.0, 84/63 |
+| sloth | 0%, 10.0 min, 0.5, 34/39 | 0%, 10.0 min, 0.0, 31/57 |
+| wrath | 0%, 20.3 min, 9.0, 184/35 | 0%, 12.1 min, 5.7, 136/48 |
+| envy | 0%, 10.0 min, 0.8, 11/29 | 0%, 2.9 min, 8.0, 2/42 |
+| pride | 0%, 7.4 min, 8.2, 3/24 | 33%, 7.9 min, 7.7, 8/33 |
+| greed | 0%, 15.0 min, 0.2, 66/61 | 33%, 18.8 min, 1.3, 51/102 |
+
+| expert, vaults first | before | after |
+|---|---|---|
+| greed | 100%, 5.3 min, 0.0, 67/61 | 100%, 3.2 min, 0.0, 48/102 |
+| pride | 100%, 2.3 min, 0.0, 24/24 | 100%, 3.7 min, 0.0, 16/33 |
+| envy | 100%, 4.9 min, 0.0, 29/29 | 100%, 6.1 min, 3.0, 42/42 |
+| wrath | 0%, 20.8 min, 9.0, 240/35 | 0%, 14.6 min, 3.0, 166/48 |
+| sloth | 0%, 10.0 min, 0.0, 39/39 | 0%, 10.0 min, 0.0, 34/57 |
+| gluttony | 100%, 5.5 min, 0.0, 57/60 | 0%, 15.0 min, 0.0, 178/91 |
+| lust | 100%, 3.0 min, 0.5, 27/18 | 50%, 14.4 min, 5.0, 61/24 |
+
+| expert, Thorns first | before | after |
+|---|---|---|
+| lust | 100%, 1.9 min, 0.0, 19/15 | 0%, 10.0 min, 1.5, 22/20 |
+| gluttony | 100%, 4.2 min, 0.0, 43/41 | 100%, 9.4 min, 1.0, 148/63 |
+| sloth | 0%, 10.0 min, 0.0, 40/39 | 0%, 10.0 min, 0.0, 42/57 |
+| wrath | 0%, 13.2 min, 5.5, 134/35 | 0%, 10.0 min, 2.0, 120/48 |
+| envy | 100%, 6.8 min, 0.0, 33/29 | 100%, 8.6 min, 2.5, 51/42 |
+| pride | 50%, 7.1 min, 0.0, 31/24 | 100%, 4.0 min, 0.0, 11/33 |
+| greed | 50%, 12.6 min, 0.0, 70/61 | 100%, 7.1 min, 0.0, 72/102 |

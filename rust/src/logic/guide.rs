@@ -193,8 +193,8 @@ const HUB_TALE: &[&str] = &[
 ];
 
 const HUB_TASK: &[&str] = &[
-    "Choose any gate and go through. Each realm ends in its prince's court, and the prince drops his sin's key.",
-    "A realm you have taken keeps its doors shut, its key in the lock. Bring all seven keys, and the seal of the seven breaks.",
+    "Choose any gate and go through. Three generals hold each realm with the keys to its prince's court; the prince drops his seal-stone.",
+    "A realm you have taken keeps its doors shut. Set all seven seal-stones in the House of Seven Seals, and its seals break.",
     "Then causeways rise from the lava to the House of Seven Seals. The trail runs on through it, down to the bottom of the world.",
 ];
 
@@ -207,9 +207,9 @@ const HUB_WATCH: &[&str] = &[
 
 // ------------------------------------------------------------------ the realms
 
-/// Every realm has its prince's general (the game names him under these words).
+/// Every realm has its prince's three generals (the game names them under these words: B41).
 const GENERAL: &str =
-    "A general runs this realm by orders, each through an instrument: three blows break one. Slay the general, and his prince is weaker.";
+    "Three generals hold this realm, each with a key to the court: take all three keys, and its door opens. Three blows break an instrument of theirs.";
 
 /// The realm of `sin`.
 fn realm(sin: Sin, hail: &str) -> Guide {
@@ -236,7 +236,7 @@ const PRIDE_TALE: &[&str] = &[
 const PRIDE_TASK: [&str; 3] = [
     "Climb the seven galleries through the mirror-doors. A true mirror climbs one gallery; a vain one loops you one or two down.",
     "At the top the Morning Star says: \"Take your throne.\" That is a lie. Step onto the dais, and your reflection rises: the Peerless.",
-    "Shatter it, and the floor gives way: you fall the spire's length to the court's portal, open now, and Lucifer waits beyond.",
+    "Shatter it, and the floor gives way: you fall the spire's length to the court's portal, where the Mirror-Cin steps out with the last key.",
 ];
 
 const PRIDE_WATCH: &[&str] = &[
@@ -257,7 +257,7 @@ const ENVY_TALE: &[&str] = &[
 const ENVY_TASK: [&str; 3] = [
     "Cross between the Waterline and the Drowned Floor: deep pools only go down, geyser vents only go up. Four crossings reach the bell.",
     "At the bell the water whispers: \"All you want lies below.\" It is a lie. Dive, and the bell drops over you while the serpent heats it.",
-    "Strike the white-hot patch where his head presses, three times with the last blow of your string. The bell lifts one second: dive then.",
+    "Strike the white-hot patch where his head presses, three times with the last blow of your string. The bell lifts one second: dive, and Kiyohime comes.",
 ];
 
 const ENVY_WATCH: &[&str] = &[
@@ -278,7 +278,7 @@ const WRATH_TALE: &[&str] = &[
 const WRATH_TASK: [&str; 3] = [
     "Cross the drifting slabs to the herald's isle. A raven-headed herald says: \"Sound the horn and the battle ends.\" It is a lie.",
     "Strike the horn and it calls the whole field: five slabs rise toward the hill, and the last begins to sink. Cross within sixty seconds.",
-    "On the hill stands the truce stone, the true gate. Stand by it five seconds without one swing, and the far portal opens.",
+    "On the hill stands the truce stone. Stand by it five seconds without one swing, and the Carrion Herald comes down with the last key.",
 ];
 
 const WRATH_WATCH: &[&str] = &[
@@ -300,7 +300,7 @@ const SLOTH_TALE: &[&str] = &[
 const SLOTH_TASK: [&str; 3] = [
     "Reach the Stopped Hourglass on the giant's palm. Stand still a moment and his fingers rise toward you across the moat; hurry and they sink.",
     "At its foot Hel's bed says: \"Lie down. The door opens when you wake.\" It is a lie: you wake at the mire's edge, three hundred years older.",
-    "Stand instead. The hourglass turns: hold the island sixty seconds, and when the sand runs out the giant's hand opens the door.",
+    "Stand instead. The hourglass turns: hold the island sixty seconds, and when the sand runs out the Night Hag climbs out of the bed.",
 ];
 
 const SLOTH_WATCH: &[&str] = &[
@@ -320,7 +320,7 @@ const GREED_TALE: &[&str] = &[
 
 const GREED_TASK: [&str; 3] = [
     "Cross the vaults from the west antechamber to the far portal in the east wall. Take what gold and chests you like on the way.",
-    "The far portal opens on his court. The gold you carry through is counted to your name; what his chests gave you, you keep.",
+    "The far portal opens on his court with the three keys. The gold you carry through is counted to your name; what his chests gave you, you keep.",
     "Mammon offers nothing. If a voice in the gold promises you a bargain, that is a lie: no prince makes a deal.",
 ];
 
@@ -342,7 +342,7 @@ const GLUTTONY_TALE: &[&str] = &[
 const GLUTTONY_TASK: [&str; 3] = [
     "Go down the gullet: the Hall of Courses, the Kitchens, the Larder, the Stomach. Each archway closes behind you.",
     "At the Stomach's heart a dome says: \"Finish your plate, and you may leave.\" It is a lie: the plate is empty, and the meal is you.",
-    "The Stomach closes in over forty-five seconds. Its ring of teeth opens two seconds in every ten, and only for 3 Bloat or less.",
+    "The Stomach closes in over forty-five seconds. Its ring of teeth opens two seconds in every ten, only for 3 Bloat or less and the three keys.",
 ];
 
 const GLUTTONY_WATCH: &[&str] = &[
@@ -363,7 +363,7 @@ const LUST_TALE: &[&str] = &[
 const LUST_TASK: [&str; 3] = [
     "Walk to the Black Thorn, the one dead tree that never moves; the court's gate stands at its foot. Walk toward what you do not want.",
     "At the Thorn the gate grinds open for ten seconds, and the Bride walks up behind you: \"Turn around.\" It is a lie, and her embrace.",
-    "Keep your back to her until the gate is open. Or leap through her, land behind her, and strike her hollow back three times.",
+    "Keep your back to her ten seconds, or leap through her and strike her hollow back three times: then the Thorn-Warden comes out.",
 ];
 
 const LUST_WATCH: &[&str] = &[
@@ -463,7 +463,7 @@ fn court(sin: Sin, hail: &str) -> Guide {
         "The Sleeper yawns you back (leap it, or parry it and stand fast), swats wide with his great hand, and lets sand drift down to burst: step off it.",
         "At two thirds he lies down to dream and two nightmares come. Asleep he mends: do not stand back and wait. Strike him hard, or finish a string, and he wakes.",
         "At one third he stands for good, slow but vast: the hourglass slams the floor round him, the clock's hands sweep all round from far. Step back, then punish.",
-        "If his general, the Lamplighter, fell, no nightmares come. If the hourglass was wound, he wakes rested, with no free blow, and his nightmares come at once.",
+        "His nightmares come in his second phase. If the hourglass was wound, he wakes rested, with no free blow, and his nightmares come at once.",
     ];
     if sin == Sin::Sloth {
         return page("THE HALL OF STOPPED CLOCKS", hail, BELPHEGOR_TALE, BELPHEGOR_TASK, BELPHEGOR_WATCH);
@@ -536,7 +536,7 @@ fn court(sin: Sin, hail: &str) -> Guide {
     let task = [
         format!("Bring {} down. He drops the Key of {}: take it, and the gate in the north hedge opens.", sin.prince(), sin.name()),
         "Through it you come to me, and then back to the Portals of Hell, where his door shuts with its key in the lock.".to_string(),
-        "If his general fell in the realm he comes to you weaker; if the general's decree reached the court, stronger.".to_string(),
+        "His helpers come in his second phase; if the realm's decree reached the court, they come at once.".to_string(),
     ];
     let watch = [
         "When his eye squints and glows he is about to throw: fans and rings of bolts, a stream that follows you, boulders that roll.",
@@ -564,7 +564,7 @@ const MAMMON_WATCH: &[&str] = &[
     "The Banker tosses coins that lie on the floor and burst. No shield stops them: step off them, or leap. His sceptre sweeps wide.",
     "The Collector's grasp can only be parried. If his fist closes, it holds your feet and drains your silver: strike him at once to break it.",
     "At two thirds two gold golems climb from his heaps, once. The Hoard rains coins, slams the floor and throws coins in fives, and is quicker.",
-    "If his general fell in the vaults, no golems come; if the treasurers' decree reached the court, they come at once.",
+    "His golems climb out of the gold in his second phase; if the treasurers' decree reached the court, they come at once.",
 ];
 
 // ------------------------------------------------------------------ the gym
