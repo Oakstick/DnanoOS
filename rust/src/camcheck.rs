@@ -499,6 +499,8 @@ fn play(game: &mut Game, secs: f64) {
 
 /// Into a level, playing, the camera chosen.
 fn enter(game: &mut Game, stage: Stage, mode: CameraMode) -> bool {
+    // (The level's cameras, not Hızır's lesson in the Garden: B04.)
+    game.skip_lesson();
     game.map_jump(stage);
     play(game, 4.0);
     if game.screen != Screen::Playing {
